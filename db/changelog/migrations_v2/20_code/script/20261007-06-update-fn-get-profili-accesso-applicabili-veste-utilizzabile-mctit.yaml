@@ -1,0 +1,251 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_profili_accesso_applicabili: LA VESTE CONTA SE E' UTILIZZABILE OGGI
+#   Brief: brief-db-veste-utilizzabile (building block: 20261007-01)
+#
+#   Tre rami, tre copie di attivo + finestra: diventano il building block. Nel ramo
+#   REPARTO cade `ru.attivo`: il rapporto lo guarda il building block (attivo E
+#   nelle sue date), e la risorsa umana e' una sola per soggetto_ruolo
+#   (uq_risorse_umane_soggetto_ruolo). ⚠️ LANGUAGE sql a stringa com'era: le due
+#   BEGIN ATOMIC che la leggono (fn_get_permessi_ereditati_aree / _azioni)
+#   restano valide perche' firma e RETURNS TABLE non cambiano.
+#
+#   Corpo vivo = pg_get_functiondef su dbdev il 2026-10-07 (uguale alla doc
+#   auto-gen); sostituzioni contate. Firma, RETURNS, DECLARE e firma del
+#   COMMENT ancorati a %TYPE dove c'e' una colonna dietro; dove non c'e', il
+#   tipo esplicito porta il perche' accanto. I %TYPE si risolvono negli STESSI
+#   tipi di oggi (provato: nessun overload), quindi i chiamanti (comprese le
+#   BEGIN ATOMIC) restano validi. Il rollback e' il corpo vivo di prima, con la
+#   stessa firma ancorata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-06-update-fn-get-profili-accesso-applicabili-veste-utilizzabile-mctit.yaml
+
+  - changeSet:
+      id: 20261007-06-update-fn-get-profili-accesso-applicabili-veste-utilizzabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_get_profili_accesso_applicabili: in tutti e tre i rami la veste conta se utilizzabile oggi (script.fn_veste_utilizzabile). Brief: brief-db-veste-utilizzabile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_get_profili_accesso_applicabili';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_profili_accesso_applicabili(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE, p_ruolo_applicativo anagrafiche.identita_digitali.ruolo_applicativo%TYPE DEFAULT NULL)
+               RETURNS TABLE(
+                   profilo_accesso_id config.profili_accesso_bindings.profilo_accesso_id%TYPE,
+                   priorita           smallint   -- calcolata dal tipo di binding: nessuna colonna dietro
+               )
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Risolve i profili di accesso applicabili a un utente
+                  -- via bindings, dal piu' specifico al piu' generale:
+                  --   AD_HOC  prio 1 (sull'identita')
+                  --   REPARTO prio 2 (sull'unita' organizzativa)
+                  --   PORTALE prio 3 (sulla veste, cioe' tutti)
+                  -- Rev 20260925-80 (D-3): PORTALE era 2, a pari merito col
+                  -- REPARTO; sotto la veste OPERATORE i due coesistono e
+                  -- LIMIT 1 sceglieva a caso.
+                  --
+                  -- p_ruolo_applicativo:
+                  --   NULL -> tutti i profili applicabili all'user
+                  --           (comportamento legacy, tutte le vesti)
+                  --   non NULL -> solo le identita dell'user con quel
+                  --               ruolo_applicativo (veste corrente)
+                  -- ⚠️ Con una veste sola ogni priorita' ha al massimo UN
+                  --   profilo (indici unici dei binding e di risorse_umane):
+                  --   chi ordina per priorita' ha uno spareggio determinato.
+                  --   Con NULL no: due vesti di portale danno due PORTALE.
+                  -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): in tutti e
+                  --   tre i rami la veste conta se e' UTILIZZABILE oggi, cioe'
+                  --   script.fn_veste_utilizzabile, non piu' attivo + finestra
+                  --   ricopiati tre volte. Nel ramo REPARTO cade `ru.attivo`: il
+                  --   rapporto dell'operatore umano lo guarda il building block
+                  --   (attivo E nelle sue date), e la risorsa umana e' una sola
+                  --   per soggetto_ruolo.
+                  -- =========================================================
+
+                  -- 1) AD_HOC: binding diretto sull'identita
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         1::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.identita_digitale_id = id.id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND (p_ruolo_applicativo IS NULL
+                          OR id.ruolo_applicativo = p_ruolo_applicativo)
+                     AND script.fn_veste_utilizzabile(id.id)
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'AD_HOC'::config.tipo_profilo_accesso
+
+                  UNION ALL
+
+                  -- 2) REPARTO: binding per UO (solo identita OPERATORE)
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         2::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.unita_organizzativa_id = ru.unita_organizzativa_id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND (p_ruolo_applicativo IS NULL
+                          OR p_ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo)
+                     AND script.fn_veste_utilizzabile(id.id)
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'REPARTO'::config.tipo_profilo_accesso
+
+                  UNION ALL
+
+                  -- 3) PORTALE: binding per ruolo_applicativo dell'identita
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         3::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.ruolo_applicativo = id.ruolo_applicativo
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND (p_ruolo_applicativo IS NULL
+                          OR id.ruolo_applicativo = p_ruolo_applicativo)
+                     AND script.fn_veste_utilizzabile(id.id)
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'PORTALE'::config.tipo_profilo_accesso;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_get_profili_accesso_applicabili(anagrafiche.identita_digitali.auth_user_id%TYPE, anagrafiche.identita_digitali.ruolo_applicativo%TYPE) IS 'Profili applicabili a un auth_user, dal piu'' specifico al piu'' generale: AD_HOC priorita'' 1 (sull''identita''), REPARTO 2 (sull''unita'' organizzativa), PORTALE 3 (sulla veste). Rev 20260925-80 (D-3 di brief-db-pgtap-permessi-ereditati): PORTALE era 2, a pari merito col REPARTO, e sotto la veste OPERATORE lo spareggio per priorita'' sceglieva a caso. p_ruolo_applicativo NULL = tutte le vesti (legacy), valorizzato = solo quella veste; con una veste sola ogni priorita'' ha al massimo un profilo (indici unici dei binding e di risorse_umane). I resolver dei permessi da operatore passano ''OPERATORE'' tramite script.fn_get_permessi_ereditati_aree / _azioni (D-1). Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): una veste spenta si riconosce solo da attivo; il controllo su DISABILITATO (rami AD_HOC e PORTALE) e'' caduto con il tipo. Rev 2026-10-07 (brief-db-veste-utilizzabile): la veste conta se e'''' utilizzabile oggi (script.fn_veste_utilizzabile) in tutti e tre i rami; nel ramo REPARTO il controllo del rapporto (prima solo ru.attivo) e'''' quello del building block, con le date.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_profili_accesso_applicabili(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE, p_ruolo_applicativo anagrafiche.identita_digitali.ruolo_applicativo%TYPE DEFAULT NULL)
+               RETURNS TABLE(
+                   profilo_accesso_id config.profili_accesso_bindings.profilo_accesso_id%TYPE,
+                   priorita           smallint   -- calcolata dal tipo di binding: nessuna colonna dietro
+               )
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Risolve i profili di accesso applicabili a un utente
+                  -- via bindings, dal piu' specifico al piu' generale:
+                  --   AD_HOC  prio 1 (sull'identita')
+                  --   REPARTO prio 2 (sull'unita' organizzativa)
+                  --   PORTALE prio 3 (sulla veste, cioe' tutti)
+                  -- Rev 20260925-80 (D-3): PORTALE era 2, a pari merito col
+                  -- REPARTO; sotto la veste OPERATORE i due coesistono e
+                  -- LIMIT 1 sceglieva a caso.
+                  --
+                  -- p_ruolo_applicativo:
+                  --   NULL -> tutti i profili applicabili all'user
+                  --           (comportamento legacy, tutte le vesti)
+                  --   non NULL -> solo le identita dell'user con quel
+                  --               ruolo_applicativo (veste corrente)
+                  -- ⚠️ Con una veste sola ogni priorita' ha al massimo UN
+                  --   profilo (indici unici dei binding e di risorse_umane):
+                  --   chi ordina per priorita' ha uno spareggio determinato.
+                  --   Con NULL no: due vesti di portale danno due PORTALE.
+                  -- =========================================================
+
+                  -- 1) AD_HOC: binding diretto sull'identita
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         1::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.identita_digitale_id = id.id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND id.attivo            = true
+                     AND (p_ruolo_applicativo IS NULL
+                          OR id.ruolo_applicativo = p_ruolo_applicativo)
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'AD_HOC'::config.tipo_profilo_accesso
+
+                  UNION ALL
+
+                  -- 2) REPARTO: binding per UO (solo identita OPERATORE)
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         2::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.unita_organizzativa_id = ru.unita_organizzativa_id
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND id.attivo            = true
+                     AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                     AND (p_ruolo_applicativo IS NULL
+                          OR p_ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo)
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND ru.attivo  = true
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'REPARTO'::config.tipo_profilo_accesso
+
+                  UNION ALL
+
+                  -- 3) PORTALE: binding per ruolo_applicativo dell'identita
+                  SELECT DISTINCT
+                         pab.profilo_accesso_id,
+                         3::smallint AS priorita
+                    FROM anagrafiche.identita_digitali id
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.ruolo_applicativo = id.ruolo_applicativo
+                    JOIN config.profili_accesso pa
+                      ON pa.id = pab.profilo_accesso_id
+                   WHERE id.auth_user_id      = p_auth_user_id
+                     AND id.attivo            = true
+                     AND (p_ruolo_applicativo IS NULL
+                          OR id.ruolo_applicativo = p_ruolo_applicativo)
+                     AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
+                     AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+                     AND pab.attivo = true
+                     AND pa.attivo  = true
+                     AND pa.tipo    = 'PORTALE'::config.tipo_profilo_accesso;
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_get_profili_accesso_applicabili(anagrafiche.identita_digitali.auth_user_id%TYPE, anagrafiche.identita_digitali.ruolo_applicativo%TYPE) IS 'Profili applicabili a un auth_user, dal piu'' specifico al piu'' generale: AD_HOC priorita'' 1 (sull''identita''), REPARTO 2 (sull''unita'' organizzativa), PORTALE 3 (sulla veste). Rev 20260925-80 (D-3 di brief-db-pgtap-permessi-ereditati): PORTALE era 2, a pari merito col REPARTO, e sotto la veste OPERATORE lo spareggio per priorita'' sceglieva a caso. p_ruolo_applicativo NULL = tutte le vesti (legacy), valorizzato = solo quella veste; con una veste sola ogni priorita'' ha al massimo un profilo (indici unici dei binding e di risorse_umane). I resolver dei permessi da operatore passano ''OPERATORE'' tramite script.fn_get_permessi_ereditati_aree / _azioni (D-1). Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): una veste spenta si riconosce solo da attivo; il controllo su DISABILITATO (rami AD_HOC e PORTALE) e'' caduto con il tipo.';

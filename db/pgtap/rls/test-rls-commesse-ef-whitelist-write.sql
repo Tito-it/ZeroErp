@@ -25,7 +25,7 @@
 -- Ordine (mirror test-rls-resi-ef-whitelist-write):
 --   1) _refs: commessa + emittente_fiscale in-scope + emittente_fiscale off-scope;
 --   2) SET CONSTRAINTS ALL IMMEDIATE + ENABLE/FORCE su commesse e commesse_attivita;
---   3) crea gli operatori DOPO l'ALTER (check deferred -> rollback);
+--   3) crea gli operatori dalla madre, completi (i vincoli restano IMMEDIATE);
 --   4) casi in-scope / off-scope / no-ruolo con UPDATE no-op (SET meta=meta).
 --
 -- Indice test (1..5):
@@ -63,43 +63,31 @@ ALTER TABLE vendite.commesse           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vendite.commesse           FORCE  ROW LEVEL SECURITY;
 ALTER TABLE vendite.commesse_attivita  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vendite.commesse_attivita  FORCE  ROW LEVEL SECURITY;
-SET CONSTRAINTS ALL DEFERRED;
 
 -- 3) Operatori DOPO l'ALTER (whitelist emittente in config.user_emittenti_fiscali).
 CREATE TEMP TABLE _op (ruolo text, auth_user_id int);
 
-CREATE OR REPLACE FUNCTION pg_temp.mk_op(p_tag text, p_cf text, p_emit bigint)
+-- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
+--   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
+--   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
+--   l'emittente gli si da' con la funzione di dominio
+--   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
+--   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
+--   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
+--   operatore valido. Il builder esce con i vincoli IMMEDIATE: niente piu'
+--   finestra differita da riaprire per lui.
+CREATE OR REPLACE FUNCTION pg_temp.mk_op(p_tag text, p_emit bigint)
 RETURNS void LANGUAGE plpgsql AS $fn$
-DECLARE v_uid int; v_sog uuid; v_sr bigint; v_sfx text;
+DECLARE v_op record;
 BEGIN
-    v_sfx := substring(md5(clock_timestamp()::text || p_tag) from 1 for 8);
-    INSERT INTO django.auth_user (username, password, is_active, is_staff,
-        is_superuser, first_name, last_name, email, date_joined)
-    VALUES ('_pgtap_rls_comm_' || v_sfx, '!', true, false, false, '', '', '', now())
-    RETURNING id INTO v_uid;
+    SELECT * INTO v_op
+      FROM dbops.fn_pgtap_crea_operatore_umano('rls commesse ' || p_tag);
 
-    v_sog := anagrafiche.fn_crea_soggetto_pf(
-        p_cognome           := 'PnzTestScopeComm' || p_tag,
-        p_nome              := 'Fdn',
-        p_codice_fiscale    := p_cf,
-        p_email             := 'pgtap_rls_comm_' || v_sfx || '@test.local',
-        p_data_nascita      := DATE '1980-01-01',
-        p_sesso             := 'M',
-        p_stato_iso2        := 'IT',
-        p_comune_nascita_id := (SELECT id FROM config.comuni ORDER BY id LIMIT 1),
-        p_tipo_contatto_id  := NULL);
+    -- Istruzione separata: cio' che il builder scrive si legge da qui in poi.
+    PERFORM script.fn_change_user_emittenti_scope(v_op.auth_user_id, ARRAY[p_emit]);
 
-    v_sr := script.fn_get_or_create_soggetto_ruolo(
-        p_soggetto_id := v_sog, p_cd_int_ruolo := 'RIS_UMANA');
-
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_uid, 'OPERATORE', true);
-
-    INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-    VALUES (v_uid, p_emit);
-
-    INSERT INTO _op VALUES (p_tag, v_uid);
+    INSERT INTO _op VALUES (p_tag, v_op.auth_user_id);
 END
 $fn$;
 
@@ -107,8 +95,8 @@ DO $ops$
 BEGIN
     IF (SELECT emit_in_fiscale FROM _refs) IS NOT NULL
        AND (SELECT emit_out_fiscale FROM _refs) IS NOT NULL THEN
-        PERFORM pg_temp.mk_op('in',  'PNZFDN78A01L219Y', (SELECT emit_in_fiscale  FROM _refs));
-        PERFORM pg_temp.mk_op('out', 'LCCRLD80A01L736X', (SELECT emit_out_fiscale FROM _refs));
+        PERFORM pg_temp.mk_op('in', (SELECT emit_in_fiscale  FROM _refs));
+        PERFORM pg_temp.mk_op('out', (SELECT emit_out_fiscale FROM _refs));
     END IF;
 END
 $ops$;

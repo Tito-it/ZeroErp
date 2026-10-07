@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION script.fn_get_setup_status()
  STABLE
 AS $function$
 DECLARE
-    v_result jsonb;
+    v_result jsonb;  -- oggetto composto qui: nessuna colonna dietro
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -23,7 +23,8 @@ BEGIN
     --
     -- Refactor §4.6.B.10:
     --   Source of truth operatori = identita_digitali
-    --   (ruolo_applicativo=OPERATORE, attivo, in finestra).
+    --   (ruolo_applicativo=OPERATORE, utilizzabile oggi:
+    --   script.fn_veste_utilizzabile, rev 2026-10-07).
     --   Admin = fn_is_super_admin anziche' ruolo_sistema='ADMIN'.
     -- =========================================================
 
@@ -47,9 +48,7 @@ BEGIN
           LEFT JOIN config.user_emittenti_fiscali uef
             ON uef.auth_user_id = id.auth_user_id
          WHERE id.ruolo_applicativo = 'OPERATORE'
-           AND id.attivo = true
-           AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-           AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+           AND script.fn_veste_utilizzabile(id.id)
            AND au.is_active = true
     )
     SELECT jsonb_build_object(
@@ -69,7 +68,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.fn_get_setup_status()
-IS 'Stato di setup operatore-emittente in un singolo jsonb. Refactor §4.6.B.10: source of truth operatori = identita_digitali (OPERATORE attiva); admin = fn_is_super_admin.';
+IS 'Stato di setup operatore-emittente in un singolo jsonb. Refactor §4.6.B.10: source of truth operatori = identita_digitali (OPERATORE attiva); admin = fn_is_super_admin. Rev 2026-10-07 (brief-db-veste-utilizzabile): un operatore conta se la sua veste e'' utilizzabile oggi (script.fn_veste_utilizzabile), non piu'' attivo + finestra ricopiati.';
 ```
 
 ---

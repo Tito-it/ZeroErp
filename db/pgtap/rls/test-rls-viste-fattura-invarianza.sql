@@ -1,9 +1,5 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
---   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
---   fixture viene completata, si toglie questa riga e si rimette il
---   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgtap-contesto: escluso — la ragione e' scritta per esteso piu' sotto in
 --   questo stesso file. Dichiarazione leggibile dal cancello
 --   scripts/guardrail_pgtap_preambolo.py: distingue «escluso apposta» da
@@ -54,20 +50,18 @@
 -- ------------------------------------------------------------
 
 BEGIN;
--- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, a differenza degli
---   altri, e non e' una dimenticanza.
---   `anagrafiche.soggetti` ha TRE guard DEFERRABLE INITIALLY DEFERRED —
---   indirizzi, contatti, dati societari — e li' la deferralita' e' il CONTRATTO
---   DEL DOMINIO: si crea il soggetto, poi il suo indirizzo, e la completezza si
---   verifica al COMMIT. E' per questo che anagrafiche.fn_crea_soggetto_pf puo'
---   restituire un soggetto ancora incompleto, ed e' cosi' che la usa il backend.
---   Forzare IMMEDIATE pretenderebbe l'indirizzo nell'istante stesso dell'INSERT
---   del soggetto: vieterebbe il pattern che il dominio ha scelto.
---   ⚠️ Resta un buco reale: senza la riga quei guard non vengono esercitati da
---   questo test, e la fixture lascia un soggetto che l'applicazione non
---   potrebbe committare. La correzione vera e' COMPLETARE LA FIXTURE
---   (indirizzo + contatti): allora la riga si rimette e il test verifica sul
---   serio. Brief: brief-db-pgtap-runner-rls-baseline §21.
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+-- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): fino a oggi questo file non
+--   la aveva, perche' costruiva l'operatore a mano con fn_crea_soggetto_pf e
+--   lasciava il soggetto senza indirizzo, contando sul ROLLBACK (§22.4). Ora
+--   l'operatore viene dalla madre (dbops.fn_pgtap_crea_operatore_umano), che
+--   lo consegna COMPLETO: la riga torna, e i guard del soggetto si esercitano.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT plan(4);
 
@@ -81,54 +75,32 @@ SELECT
       WHERE EXISTS (SELECT 1 FROM vendite.fatture_righe fr WHERE fr.fattura_id = fa.id)
       ORDER BY ef.id LIMIT 1) AS emit_pk;
 
-CREATE TEMP TABLE _op (auth_user_id int, identita_id bigint);
+CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identita_id bigint);
 
-DO $fix$
-DECLARE
-    v_uid int; v_sog uuid; v_sr bigint; v_idn bigint;
-BEGIN
-    INSERT INTO django.auth_user (username, password, is_active, is_staff,
-        is_superuser, first_name, last_name, email, date_joined)
-    VALUES ('_pgtap_rls_viste_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-        '!', true, false, false, '', '', '', now())
-    RETURNING id INTO v_uid;
-
-    v_sog := anagrafiche.fn_crea_soggetto_pf(
-        p_cognome           := 'PnzTestScopeEf',
-        p_nome              := 'Fdn',
-        p_codice_fiscale    := 'PNZFDN78A01L219Y',
-        p_email             := 'pgtap_rls_viste_' || substring(md5(clock_timestamp()::text) from 1 for 6) || '@test.local',
-        p_data_nascita      := DATE '1978-01-01',
-        p_sesso             := 'M',
-        p_stato_iso2        := 'IT',
-        p_comune_nascita_id := (SELECT id FROM config.comuni ORDER BY id LIMIT 1),
-        p_tipo_contatto_id  := NULL);
-
-    v_sr := script.fn_get_or_create_soggetto_ruolo(
-        p_soggetto_id := v_sog, p_cd_int_ruolo := 'RIS_UMANA');
-
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_uid, 'OPERATORE', true)
-    RETURNING id INTO v_idn;
-
-    INSERT INTO _op VALUES (v_uid, v_idn);
-END
-$fix$;
+-- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
+--   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
+--   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
+--   l'emittente gli si da' con la funzione di dominio
+--   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
+--   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
+--   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
+--   operatore valido. Il builder esce con i vincoli IMMEDIATE: niente piu'
+--   finestra differita da riaprire per lui.
+INSERT INTO _op
+SELECT o.auth_user_id, o.soggetto_id, o.soggetto_ruolo_id, o.identita_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('rls viste fattura') o;
 
 CREATE TEMP TABLE _flags AS
 SELECT COALESCE((SELECT emit_pk IS NOT NULL FROM _refs LIMIT 1), false) AS prereq;
 
--- Whitelist = emittente scelto. L'override sul DELETE serve: la tabella e'
--- protetta da trgfn_user_emittenti_fiscali_guard_delete (20260408-17).
+-- Whitelist = emittente scelto, con la funzione di dominio (l'operatore nasce
+-- senza azienda, come in produzione).
 DO $wl$
 BEGIN
     IF NOT (SELECT prereq FROM _flags) THEN RETURN; END IF;
-    PERFORM set_config('zeroerp.allow_user_emittente_delete_override', 'on', true);
-    DELETE FROM config.user_emittenti_fiscali WHERE auth_user_id = (SELECT auth_user_id FROM _op);
-    PERFORM set_config('zeroerp.allow_user_emittente_delete_override', '', true);
-    INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-    VALUES ((SELECT auth_user_id FROM _op), (SELECT emit_pk FROM _refs)) ON CONFLICT DO NOTHING;
+    PERFORM script.fn_change_user_emittenti_scope(
+        (SELECT auth_user_id FROM _op), ARRAY[(SELECT emit_pk FROM _refs)]);
 END $wl$;
 
 -- Sessione operatore: resta identica per entrambe le misure.

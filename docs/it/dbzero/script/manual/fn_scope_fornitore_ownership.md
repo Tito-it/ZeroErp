@@ -22,7 +22,7 @@ di scope `FORNITORE_OWNERSHIP`: verifica che un'identità `FORNITORE_PORTALE`
 possa vedere dati riferiti a un `soggetto_ruolo` di tipo fornitore.
 
 Regola: il fornitore target coincide con il `soggetto_ruolo` dell'identità,
-e l'identità stessa è in veste `FORNITORE_PORTALE` attiva.
+e l'identità stessa è in veste `FORNITORE_PORTALE` utilizzabile oggi.
 
 ---
 
@@ -45,16 +45,23 @@ e l'identità stessa è in veste `FORNITORE_PORTALE` attiva.
 
 | Caso | Risultato |
 |------|-----------|
-| Identità inesistente / non attiva | `false` |
+| Identità inesistente / non utilizzabile oggi | `false` |
 | Identità con `ruolo_applicativo ≠ FORNITORE_PORTALE` | `false` |
 | Target `soggetto_ruolo_id` diverso da quello dell'identità | `false` |
 | Tutte le condizioni soddisfatte | `true` |
+
+⭐ **Dal 07-10-2026** (brief `brief-db-veste-utilizzabile`): l'identità deve essere
+**utilizzabile oggi** secondo
+[script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+(accesa, nelle sue date, soggetto attivo), non solo accesa. Prima una veste
+scaduta, ma ancora accesa, continuava a vedere i suoi dati.
+
 
 ---
 
 ### Regole implementative
 
-* `LANGUAGE sql`, `STABLE`: inlineable dal planner.
+* `LANGUAGE sql`, `STABLE`.
 * `%TYPE` su firma per allineamento alle colonne sorgente.
 * 4 filtri AND nel WHERE, tutti su colonne indicizzate (PK + FK con indice di policy).
 * Single `EXISTS` su singola tabella (`identita_digitali`): lookup index-only

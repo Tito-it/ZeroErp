@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_scope_ba_ownership: LA VESTE CONTA SE E' UTILIZZABILE OGGI
+#   Brief: brief-db-veste-utilizzabile (building block: 20261007-01)
+#
+#   Come il -11, per il billing account del cliente (portale B2B e shop).
+#
+#   Corpo vivo = pg_get_functiondef su dbdev il 2026-10-07 (uguale alla doc
+#   auto-gen); sostituzioni contate. Firma, RETURNS, DECLARE e firma del
+#   COMMENT ancorati a %TYPE dove c'e' una colonna dietro; dove non c'e', il
+#   tipo esplicito porta il perche' accanto. I %TYPE si risolvono negli STESSI
+#   tipi di oggi (provato: nessun overload), quindi i chiamanti (comprese le
+#   BEGIN ATOMIC) restano validi. Il rollback e' il corpo vivo di prima, con la
+#   stessa firma ancorata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-13-update-fn-scope-ba-ownership-veste-utilizzabile-mctit.yaml
+
+  - changeSet:
+      id: 20261007-13-update-fn-scope-ba-ownership-veste-utilizzabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_scope_ba_ownership: l'identita' deve essere utilizzabile oggi (script.fn_veste_utilizzabile). Brief: brief-db-veste-utilizzabile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scope_ba_ownership';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership(p_identita_id anagrafiche.identita_digitali.id%TYPE, p_billing_account_id anagrafiche.billing_account.id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Scope policy BA_OWNERSHIP, versione ruolo-aware.
+                  -- Ritorna true se:
+                  --   1. l'identita (p_identita_id) e' utilizzabile oggi
+                  --      (script.fn_veste_utilizzabile, rev 2026-10-07)
+                  --   2. l'identita e' in veste cliente (CLIENTE_PORTALE o
+                  --      SHOP_CUSTOMER) — filtro interno alla fn
+                  --   3. il billing_account ha lo stesso soggetto_ruolo
+                  --      dell'identita
+                  -- Fail-closed: NULL o identita inesistente/inattiva -> false.
+                  -- STABLE, inlineable dal planner. Usata sia dal portale
+                  -- B2B (policy senza filtro canale) sia dallo shop (policy
+                  -- con filtro canale_origine='SHOP' aggiuntivo).
+                  -- =========================================================
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                        JOIN anagrafiche.billing_account  ba
+                          ON ba.soggetto_ruolo_id = id.soggetto_ruolo_id
+                       WHERE id.id                = p_identita_id
+                         -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+                         AND script.fn_veste_utilizzabile(id.id)
+                         AND id.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                         AND ba.id                = p_billing_account_id
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.billing_account.id%TYPE) IS 'Scope policy BA_OWNERSHIP ruolo-aware (post 20-04-2026): true se l''identita e'' in veste cliente (CLIENTE_PORTALE o SHOP_CUSTOMER) attiva e condivide il soggetto_ruolo col BA. Il filtro canale_origine e'' demandato alle policy RLS (portale B2B senza filtro, shop con canale=SHOP). STABLE, inlineable, fail-closed. Rev 2026-10-07 (brief-db-veste-utilizzabile): «attiva» e'''' diventata «utilizzabile oggi» (script.fn_veste_utilizzabile): una veste scaduta non vede piu'''' i suoi dati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership(p_identita_id anagrafiche.identita_digitali.id%TYPE, p_billing_account_id anagrafiche.billing_account.id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- =========================================================
+                  -- Scope policy BA_OWNERSHIP, versione ruolo-aware.
+                  -- Ritorna true se:
+                  --   1. l'identita (p_identita_id) e' attiva
+                  --   2. l'identita e' in veste cliente (CLIENTE_PORTALE o
+                  --      SHOP_CUSTOMER) — filtro interno alla fn
+                  --   3. il billing_account ha lo stesso soggetto_ruolo
+                  --      dell'identita
+                  -- Fail-closed: NULL o identita inesistente/inattiva -> false.
+                  -- STABLE, inlineable dal planner. Usata sia dal portale
+                  -- B2B (policy senza filtro canale) sia dallo shop (policy
+                  -- con filtro canale_origine='SHOP' aggiuntivo).
+                  -- =========================================================
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                        JOIN anagrafiche.billing_account  ba
+                          ON ba.soggetto_ruolo_id = id.soggetto_ruolo_id
+                       WHERE id.id                = p_identita_id
+                         AND id.attivo            = true
+                         AND id.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
+                         AND ba.id                = p_billing_account_id
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_scope_ba_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.billing_account.id%TYPE) IS 'Scope policy BA_OWNERSHIP ruolo-aware (post 20-04-2026): true se l''identita e'' in veste cliente (CLIENTE_PORTALE o SHOP_CUSTOMER) attiva e condivide il soggetto_ruolo col BA. Il filtro canale_origine e'' demandato alle policy RLS (portale B2B senza filtro, shop con canale=SHOP). STABLE, inlineable, fail-closed.';

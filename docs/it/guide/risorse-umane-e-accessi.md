@@ -140,6 +140,13 @@ Ogni risorsa umana deve riferire un `soggetto_ruolo_id` con tipo ruolo **RISORSA
 
 Se `valido_al` e valorizzato, deve essere >= `valido_dal`. Il check `chk_risorse_umane_date` lo garantisce.
 
+⭐ **Le date del rapporto contano anche per l'accesso.** Un operatore entra solo se la sua
+veste e accesa e nelle sue date **e** il suo rapporto e attivo e nelle sue date: l'accesso
+finisce al piu tardi quando finisce il rapporto. La data «Valido al» che l'amministratore
+imposta nel dettaglio dell'operatore e quella del rapporto, e chiude l'accesso. La regola
+completa sta in un posto solo, [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+(dal 07-10-2026).
+
 ### R4 — Collegamento a Django (solo persona fisica pura)
 <a id="r4--collegamento-a-django-solo-persona-fisica-pura"></a>
 
@@ -171,7 +178,7 @@ Il primo livello decide **cosa puo fare** l'utente. E il campo `identita_digital
 
 * **`OPERATORE` con binding `SUPER_ADMIN`**: bypass completo — accede a tutto senza verifiche
 * **`OPERATORE`**: eredita i permessi dal profilo del suo reparto, con eventuali override individuali
-* **`DISABILITATO`** (oppure `attivo = false`): bloccato su ogni endpoint protetto (403)
+* **veste non utilizzabile oggi** (spenta, fuori dalle sue date, o con il rapporto chiuso): bloccata su ogni endpoint protetto. Il valore `DISABILITATO` non esiste piu: una veste spenta resta del suo tipo, con `attivo = false`
 
 > Per l'architettura completa della catena di risoluzione: vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).
 
@@ -181,7 +188,7 @@ Il secondo livello decide **se l'utente puo entrare**. Una veste `DISABILITATO` 
 
 **Come funziona.** La funzione [`anagrafiche.fn_sync_auth_user_is_active`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active) riceve un `auth_user_id` e calcola lo stato atteso di `auth_user.is_active`:
 
-* l'account resta **attivo** se **esiste almeno una** identita *utilizzabile*: veste `attivo = true`, `ruolo_applicativo <> 'DISABILITATO'`, data corrente dentro la finestra `[valido_dal, valido_al]` ([R3](#r3--validita-temporale)) e **soggetto attivo** (`anagrafiche.soggetti.attivo`)
+* l'account resta **attivo** se **esiste almeno una** veste *utilizzabile oggi*, secondo [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile): accesa, con la data di oggi dentro le sue date, soggetto attivo e, per l'operatore, rapporto attivo e nelle sue date ([R3](#r3--validita-temporale))
 * altrimenti `is_active = false`, e il login viene bloccato
 
 ⚠️ La condizione e un **OR fra le vesti**, non un AND: se un utente ha tre vesti e due vengono disattivate, deve poter entrare con la terza. Il blocco della singola veste sospesa non passa da `is_active` — lo applicano il namespace API e le policy di visibilita dei dati. Solo quando **nessuna** veste resta utilizzabile l'account si spegne.
@@ -194,7 +201,7 @@ Il secondo livello decide **se l'utente puo entrare**. Una veste `DISABILITATO` 
 | Cambio stato veste   | `trg_identita_digitali_z90_sync_auth_user_active_upd` | UPDATE di `attivo` su `identita_digitali`                         |
 | Nuova veste          | `trg_identita_digitali_z90_sync_auth_user_active_ins` | INSERT su `identita_digitali`                                     |
 
-**Scadenze overnight.** I trigger reagiscono a UPDATE espliciti: se ieri sera `valido_al` e scaduto e nessuno ha toccato nulla, nessun trigger parte. Se ne occupa la funzione batch [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita ogni giorno alle 06:00 dal job schedulato: trova le identita con finestra scaduta ancora collegate a un `auth_user` attivo e le disattiva. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
+**Scadenze overnight.** I trigger reagiscono a UPDATE espliciti: se ieri sera `valido_al` e scaduto e nessuno ha toccato nulla, nessun trigger parte. Se ne occupa la funzione batch [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita ogni giorno alle 06:00 dal job schedulato: riallinea gli account alla data di oggi **nei due versi**, con la stessa regola della sync: spegne quelli che hanno delle vesti ma nessuna piu utilizzabile (veste scaduta, oppure rapporto scaduto) e **accende** quelli che ne hanno una diventata valida oggi (data di inizio arrivata). Fino al 07-10-2026 spegneva e basta, e un accesso con data di inizio futura restava spento anche il giorno in cui partiva. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
 
 **Invalidazione cache permessi.** Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente disattivato, cosi il blocco e immediato e non deve attendere la scadenza naturale della cache (TTL 300s). Per le disattivazioni real-time dei trigger la cache si rinnova alla scadenza del TTL; il listener LISTEN/NOTIFY (vedi [Cambio reparto](#cambio-reparto)) e il pattern event-driven su cui estendere anche questi scenari.
 
@@ -259,6 +266,26 @@ Il sistema si occupa automaticamente di aggiornare la cache. Quando `unita_organ
 Il listener backend (`PermessiListener`, avviato con `python manage.py listen_permessi`) intercetta la notifica e chiama `invalidate_user(auth_user_id)` per l'utente spostato. Lo stesso processo ascolta anche il canale `permessi_catalogo` (cambio del catalogo o dei profili dei permessi, che svuota la cache di tutti: [architettura dei permessi §6.1](architettura-permessi-e-autorizzazioni.md)). Il meccanismo e trasparente: qualsiasi strada che modifica il reparto (API, management command, operazione diretta sul DB, import massivo) ottiene l'invalidazione automatica, senza doverla ricordare caso per caso.
 
 Il listener usa una connessione psycopg3 dedicata con riconnessione automatica (backoff esponenziale) in caso di caduta della connessione a PostgreSQL. Va eseguito come processo long-running (systemd, supervisor, o in foreground durante lo sviluppo).
+
+### L'ultimo amministratore non scade
+<a id="lultimo-amministratore-non-scade"></a>
+
+Il sistema deve avere sempre **almeno un `SUPER_ADMIN` senza scadenza**: accesso
+utilizzabile oggi, **nessuna data di fine** né sull'accesso né sul rapporto di lavoro,
+credenziale non bloccata ([fn_identita_super_admin_senza_scadenza](/dbzero/script/funzioni/fn_identita_super_admin_senza_scadenza),
+dal 07-10-2026).
+
+Perché «senza scadenza» e non solo «attivo»: una data che passa non scrive niente, e
+nessun controllo può fermare il calendario. Se tutti gli amministratori avessero una
+data di fine, il giorno dopo l'ultima il sistema resterebbe senza amministratori. Per
+questo la regola si applica quando la data di fine viene **scritta**: a un
+amministratore si può dare una data di fine (o spegnerlo, o bloccarne la credenziale)
+solo finché ne resta un altro che non scade. Altrimenti l'operazione è rifiutata con
+`E_PROFILO_ULTIMO_SUPER_ADMIN`.
+
+Nel dettaglio dell'operatore il pulsante per spegnere l'ultimo amministratore senza
+scadenza resta spento col motivo. Un amministratore che ha **già** una data di fine non
+è «l'ultimo», e si spegne liberamente.
 
 ### Cambio qualifica
 
@@ -713,7 +740,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | `trg_risorse_umane_z90_sync_auth_user_active_upd`     | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al` su `risorse_umane`          | Reagisce a cambio stato della risorsa                                                         |
 | `trg_identita_digitali_z90_sync_auth_user_active_upd` | AFTER UPDATE di `attivo` su `identita_digitali`                                 | Reagisce a cambio stato di una veste                                                          |
 | `trg_identita_digitali_z90_sync_auth_user_active_ins` | AFTER INSERT su `identita_digitali`                                             | Reagisce alla creazione di una veste                                                          |
-| `fn_sync_auth_user_expired`                           | Job schedulato giornaliero (06:00) o management command `sync_auth_user_active` | Disattiva in batch le vesti con finestra scaduta                                              |
+| `fn_sync_auth_user_expired`                           | Job schedulato giornaliero (06:00) o management command `sync_auth_user_active` | Riallinea in batch gli account alla data di oggi: spegne gli scaduti, accende chi diventa valido |
 
 ### Invalidazione cache al cambio reparto
 
@@ -730,7 +757,8 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | `trgfn_risorse_umane_guard_ruolo`                  | BEFORE INSERT/UPDATE su `risorse_umane`                | Verifica che il ruolo sia RIS_UMANA                                                                                                                           |
 | `trgfn_risorse_umane_guard_identita_attiva`        | BEFORE UPDATE di `attivo` su `risorse_umane`           | Rifiuta di spegnere una risorsa che ha ancora una veste `OPERATORE` attiva (`E_RISORSA_UMANA_IDENTITA_ATTIVA`)                                                |
 | `trgfn_identita_digitali_guard_coerenza`           | BEFORE INSERT/UPDATE su `identita_digitali`            | Verifica la coerenza fra veste e tipo di soggetto-ruolo, e la persona fisica pura per `OPERATORE` ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)) |
-| `trgfn_identita_digitali_guard_ultimo_super_admin` | AFTER UPDATE su `identita_digitali`                    | Presidia il caso limite dell'ultimo `SUPER_ADMIN`: il sistema non resta senza                                                                                 |
+| `trgfn_identita_digitali_guard_ultimo_super_admin` | AFTER UPDATE di `attivo` e date su `identita_digitali` | Presidia l'ultimo `SUPER_ADMIN` **senza scadenza** ([sotto](#lultimo-amministratore-non-scade)): rifiuta di spegnerlo, di dargli una data di fine, di spostarne l'inizio nel futuro |
+| `trgfn_risorse_umane_guard_ultimo_super_admin`     | AFTER UPDATE di `attivo`, date e ruolo su `risorse_umane` | Lo stesso sul **rapporto** dell'ultimo `SUPER_ADMIN` senza scadenza (dal 07-10-2026) |
 | `trgfn_prevent_deactivate_if_children`             | BEFORE UPDATE su `risorse_umane` e `identita_digitali` | Blocca la disattivazione finche esistono figli attivi: per la risorsa commesse, pratiche e flussi; per la veste i binding di profilo e di scope               |
 | `trgfn_child_requires_active_parent`               | AFTER INSERT/UPDATE su `risorse_umane`                 | Verifica che i genitori (qualifiche, soggetti, unita organizzative) siano attivi                                                                              |
 

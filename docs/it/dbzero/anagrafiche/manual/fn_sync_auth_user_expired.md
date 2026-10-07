@@ -31,18 +31,38 @@ che triggeri i trigger reattivi.
 
 ### Estensione §4.5 multi-face-auth
 
-Dal **12-09-2026** (`20_code/20260912-21`) la funzione ha **un solo ramo**:
-qualsiasi identità digitale attiva (tutti i ruoli applicativi: operatori,
-clienti portale, fornitori portale, shop customer, api_client) con
-`identita_digitali.valido_al < CURRENT_DATE`.
+⭐⭐ **Dal 07-10-2026, seconda revisione** (`20_code/20261007-21`, decisione di Tid):
+il batch riallinea `is_active` **nei due versi**. Spegne le credenziali che hanno vesti
+ma nessuna più utilizzabile, e **accende** quelle che ne hanno una diventata valida
+oggi. Prima solo spegneva: una credenziale con l'unica veste a `valido_dal` futuro
+nasceva spenta e restava spenta anche quel giorno, perché una data che arriva non
+scrive niente. I candidati sono le credenziali con vesti il cui `is_active` non dice
+più «esiste una veste utilizzabile oggi»; decide sempre
+`fn_sync_auth_user_is_active`. Il nome resta (pgAgent, command Django e repository BE
+lo chiamano), il ritorno conta le credenziali **riallineate**, spente o accese.
+
+⭐ **Dal 07-10-2026, prima revisione** (`20_code/20261007-09`, brief `brief-db-veste-utilizzabile`)
+i candidati sono le credenziali ancora `is_active = true` che **hanno vesti ma
+nessuna utilizzabile oggi** secondo
+[script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile):
+la stessa regola che poi decide in `fn_sync_auth_user_is_active`. Una
+credenziale senza vesti resta fuori, com'era.
+
+Perché: con D-2 l'operatore umano scade anche quando scade il suo **rapporto**
+(`risorse_umane.valido_al`), e il ramo unico su `identita_digitali.valido_al`
+quel candidato non lo proponeva mai.
+
+*(Dal 12-09 al 07-10-2026 la funzione aveva un solo ramo: identità attive con
+`identita_digitali.valido_al < CURRENT_DATE`.)*
 
 ⛔ **Il «ramo legacy» è caduto** — leggeva `risorse_umane.valido_al` attraverso
 la vista `risorse_umane_auth_user` (ritirata). Decisione di Tid: *«tutto deve
 entrare in `identita_digitali`»*. E non è una perdita di regola:
 `fn_sync_auth_user_is_active` (v4) decide **solo** sull'identità, quindi quel
-ramo poteva proporre candidati, mai cambiare l'esito. Chi vuole spegnere un
-operatore a fine rapporto chiude la **validità dell'identità**, non quella
-della risorsa umana (che è la finestra del rapporto di lavoro, non dell'accesso).
+ramo poteva proporre candidati, mai cambiare l'esito.
+⚠️ **Superato il 07-10-2026 su un punto** (D-2 di `brief-db-veste-utilizzabile`):
+per l'operatore umano la fine del rapporto chiude l'accesso. Non torna il ramo
+legacy: il rapporto lo guarda il building block, in una sede sola.
 
 *(Testo precedente, per la storia: la funzione copriva «entrambi i modelli»,
 combinati via `UNION`.)*

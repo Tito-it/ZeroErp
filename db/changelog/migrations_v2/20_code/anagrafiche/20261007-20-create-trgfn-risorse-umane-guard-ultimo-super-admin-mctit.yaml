@@ -1,0 +1,163 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin: L'ANTI-LOCKOUT SUL RAPPORTO
+#   Brief: brief-db-veste-utilizzabile §7.5 (decisione di Tid del 2026-10-07)
+#
+#   Con D-2 l'operatore umano vale finche' vale il suo RAPPORTO (risorsa umana),
+#   e l'anti-lockout chiede «resta almeno un SUPER_ADMIN SENZA SCADENZA» (-16,
+#   -18): una data di fine sul rapporto riduce la garanzia quanto una sulla
+#   veste. Il drawer operatore scrive proprio quella data, e «Disabilita» scrive
+#   valido_al = oggi. Sulla risorsa umana non c'era nessun guard: nasce qui,
+#   gemello di trgfn_identita_digitali_guard_ultimo_super_admin (-19).
+#
+#   Scritture che RIDUCONO la garanzia (le sole che si guardano):
+#     * spegnere il rapporto (attivo true -> false). Oggi lo ferma gia'
+#       trgfn_risorse_umane_guard_identita_attiva (BEFORE) se la veste OPERATORE e'
+#       accesa; qui resta per una veste accesa senza quel guard, a costo zero;
+#     * dargli una data di fine (valido_al da NULL a valorizzato);
+#     * spostarne l'inizio nel futuro (valido_dal da <= oggi a > oggi);
+#     * spostarlo su un altro soggetto_ruolo (la veste dell'amministratore
+#       resterebbe senza rapporto).
+#   Solo se sul soggetto_ruolo di PRIMA c'e' una veste OPERATORE con un binding
+#   SUPER_ADMIN attivo. Poi la verifica post-stato:
+#   script.fn_check_almeno_un_super_admin_attivo, e se false
+#   E_PROFILO_ULTIMO_SUPER_ADMIN.
+#
+#   Trigger AFTER UPDATE, fase _a10_, con `WHEN (... IS DISTINCT FROM ...)` sulle
+#   quattro colonne (linee-guida-trigger: si reagisce a un CAMBIO di valore).
+#   AFTER e non BEFORE: il controllo legge lo stato dopo la scrittura (la riga
+#   nuova e' gia' nella tabella), come il gemello sulla veste. Nessun altro
+#   trigger AFTER della tabella dipende da lui: il sync della credenziale
+#   (_z90_) viene dopo in ordine alfabetico, e con l'eccezione non gira.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261007-20-create-trgfn-risorse-umane-guard-ultimo-super-admin-mctit.yaml
+
+  - changeSet:
+      id: 20261007-20-create-trgfn-risorse-umane-guard-ultimo-super-admin
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard anti-lockout sul rapporto (risorse_umane): rifiuta la data di fine, l'inizio nel
+        futuro, lo spegnimento o lo spostamento del rapporto di un SUPER_ADMIN se dopo non resta
+        nessun SUPER_ADMIN senza scadenza (E_PROFILO_ULTIMO_SUPER_ADMIN). Brief:
+        brief-db-veste-utilizzabile §7.5.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'trgfn_risorse_umane_guard_ultimo_super_admin';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_identita_id anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire le scritture sul rapporto di un SUPER_ADMIN
+                  --   che lascerebbero il sistema senza un SUPER_ADMIN SENZA
+                  --   SCADENZA (script.fn_check_almeno_un_super_admin_attivo).
+                  --
+                  -- Regole:
+                  --   1. Short-circuit: solo le scritture che RIDUCONO la
+                  --      garanzia (spegnere, data di fine, inizio nel futuro,
+                  --      spostamento su un altro soggetto_ruolo). Togliere una
+                  --      data di fine o riaprire il rapporto passa sempre.
+                  --   2. Short-circuit 2: solo se sul soggetto_ruolo di PRIMA
+                  --      c'e' una veste OPERATORE con un binding SUPER_ADMIN
+                  --      attivo.
+                  --   3. Verifica post-stato via fn_check; se false, raise.
+                  -- =========================================================
+
+                  IF NOT (   (OLD.attivo AND NOT NEW.attivo)
+                          OR (OLD.valido_al IS NULL AND NEW.valido_al IS NOT NULL)
+                          OR (OLD.valido_dal <= CURRENT_DATE AND NEW.valido_dal > CURRENT_DATE)
+                          OR (OLD.soggetto_ruolo_id IS DISTINCT FROM NEW.soggetto_ruolo_id))
+                  THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- La veste SUPER_ADMIN appesa a questo rapporto (al piu' una
+                  -- accesa per soggetto_ruolo e tipo: uq_identita_digitali_sr_ruolo_attivo;
+                  -- ORDER BY per non dipendere dal piano quando ce ne sono di spente).
+                  SELECT idg.id
+                    INTO v_identita_id
+                    FROM anagrafiche.identita_digitali   idg
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.identita_digitale_id = idg.id
+                     AND pab.attivo
+                    JOIN config.profili_accesso          pa
+                      ON pa.id = pab.profilo_accesso_id
+                     AND pa.attivo
+                     AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                   WHERE idg.soggetto_ruolo_id = OLD.soggetto_ruolo_id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   ORDER BY idg.attivo DESC, idg.id
+                   LIMIT 1;
+
+                  IF v_identita_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT script.fn_check_almeno_un_super_admin_attivo() THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          TG_NAME,
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'risorsa_umana_id', OLD.id,
+                              'identita_digitale_id', v_identita_id,
+                              'attivo', NEW.attivo,
+                              'valido_dal', NEW.valido_dal,
+                              'valido_al', NEW.valido_al
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin() IS
+              'Guard anti-lockout sul rapporto (AFTER UPDATE di attivo, valido_dal, valido_al, soggetto_ruolo_id su risorse_umane): rifiuta una scrittura che riduce la garanzia del rapporto di un SUPER_ADMIN (spegnerlo, dargli una data di fine, spostarne l''inizio nel futuro, spostarlo su un altro soggetto_ruolo) se dopo non resta nessun SUPER_ADMIN senza scadenza (script.fn_check_almeno_un_super_admin_attivo). Le scritture che migliorano non si fermano mai. Codice E_PROFILO_ULTIMO_SUPER_ADMIN. Gemello di trgfn_identita_digitali_guard_ultimo_super_admin. Nasce il 2026-10-07 (brief-db-veste-utilizzabile, decisione di Tid): con D-2 la fine del rapporto chiude l''accesso dell''operatore, e il calendario non scrive.';
+
+              CREATE TRIGGER trg_risorse_umane_a10_guard_ultimo_super_admin_upd
+                  AFTER UPDATE
+                  ON anagrafiche.risorse_umane
+                  FOR EACH ROW
+                  WHEN (   OLD.attivo            IS DISTINCT FROM NEW.attivo
+                        OR OLD.valido_dal        IS DISTINCT FROM NEW.valido_dal
+                        OR OLD.valido_al         IS DISTINCT FROM NEW.valido_al
+                        OR OLD.soggetto_ruolo_id IS DISTINCT FROM NEW.soggetto_ruolo_id)
+                  EXECUTE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_risorse_umane_a10_guard_ultimo_super_admin_upd
+                  ON anagrafiche.risorse_umane;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin();

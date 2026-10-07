@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_identita_super_admin_senza_scadenza(identita_id):
+#   UN AMMINISTRATORE CHE NON SCADE
+#   Brief: brief-db-veste-utilizzabile §7.5 (decisione di Tid del 2026-10-07)
+#
+# -- IL DIFETTO ---------------------------------------------------------------------
+#   L'anti-lockout (E_PROFILO_ULTIMO_SUPER_ADMIN) scatta su una SCRITTURA: veste
+#   spenta, binding tolto, credenziale bloccata. Una data che passa non scrive
+#   niente: se tutti gli amministratori hanno una data di fine, il calendario
+#   lascia il sistema senza amministratori e nessun guard lo vede. Con D-2 conta
+#   anche la fine del RAPPORTO, quindi le date in gioco sono due.
+#
+# -- LA REGOLA (Tid, 2026-10-07) ----------------------------------------------------
+#   Resta sempre almeno un SUPER_ADMIN SENZA SCADENZA. La garanzia si chiede sulla
+#   scrittura che mette la data di fine, finche' qualcuno che non scade c'e' ancora.
+#   Un'identita' e' «SUPER_ADMIN senza scadenza» se:
+#     * ha un binding SUPER_ADMIN attivo verso un profilo attivo;
+#     * e' OPERATORE e utilizzabile oggi (script.fn_veste_utilizzabile, -01);
+#     * la veste non ha data di fine (valido_al IS NULL);
+#     * il rapporto non ha data di fine (nessuna risorsa umana dello stesso
+#       soggetto_ruolo con valido_al). Il BB -01 ha gia' preteso che il rapporto
+#       ci sia e valga oggi, per l'operatore umano; un'identita' tecnica non e' mai
+#       SUPER_ADMIN (COMMENT della colonna tecnica);
+#     * la credenziale non e' bloccata dall'amministratore
+#       (config.credenziali.bloccata_at, come le check sorelle dal 2026-09-25).
+#   Binding, profili e credenziali non hanno date: la scadenza sta solo su veste
+#   e rapporto.
+#
+# -- PERCHE' UN BUILDING BLOCK ------------------------------------------------------
+#   La leggono fn_check_almeno_un_super_admin_attivo (-18) e, due volte,
+#   fn_check_ultimo_super_admin_attivo (-17): prima ognuna aveva il suo blocco di
+#   filtri, e non coincidevano (una guardava la finestra, l'altra no).
+#
+# -- FORMA --------------------------------------------------------------------------
+#   Per IDENTITA' (non per credenziale): i guard su veste e rapporto ragionano su
+#   righe. LANGUAGE sql BEGIN ATOMIC, STABLE, INVOKER, come il -01; il COMMENT nel
+#   secondo `- sql:` (pgjdbc dopo END non riprende a spezzare le istruzioni).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-16-create-fn-identita-super-admin-senza-scadenza-mctit.yaml
+
+  - changeSet:
+      id: 20261007-16-create-fn-identita-super-admin-senza-scadenza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_identita_super_admin_senza_scadenza(identita_id): true se l'identita' e' un
+        SUPER_ADMIN utilizzabile oggi, senza data di fine su veste e rapporto, con la credenziale
+        non bloccata. Building block dell'anti-lockout «resta almeno un amministratore che non
+        scade». Brief: brief-db-veste-utilizzabile §7.5.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_identita_super_admin_senza_scadenza';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_identita_super_admin_senza_scadenza(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE)
+              RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali   idg
+                        JOIN config.profili_accesso_bindings pab
+                          ON pab.identita_digitale_id = idg.id
+                         AND pab.attivo
+                        JOIN config.profili_accesso          pa
+                          ON pa.id = pab.profilo_accesso_id
+                         AND pa.attivo
+                         AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                       WHERE idg.id = p_identita_id
+                         AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                         -- vale oggi: accesa, nelle sue date, soggetto e rapporto
+                         AND script.fn_veste_utilizzabile(idg.id)
+                         -- ...e non scade: nessuna data di fine, ne' sulla veste
+                         AND idg.valido_al IS NULL
+                         -- ...ne' sul rapporto
+                         AND NOT EXISTS (
+                                 SELECT 1
+                                   FROM anagrafiche.risorse_umane ru
+                                  WHERE ru.soggetto_ruolo_id = idg.soggetto_ruolo_id
+                                    AND ru.valido_al IS NOT NULL)
+                         -- ...e la credenziale non e' bloccata dall'amministratore
+                         AND NOT EXISTS (
+                                 SELECT 1
+                                   FROM config.credenziali c
+                                  WHERE c.auth_user_id = idg.auth_user_id
+                                    AND c.bloccata_at IS NOT NULL)
+                  );
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_identita_super_admin_senza_scadenza(
+                  anagrafiche.identita_digitali.id%TYPE) IS
+                  'L''identita'' e'' un SUPER_ADMIN che non scade? true se ha un binding SUPER_ADMIN '
+                  'attivo verso un profilo attivo, e'' OPERATORE e utilizzabile oggi '
+                  '(script.fn_veste_utilizzabile), non ha data di fine ne'' sulla veste ne'' sul '
+                  'rapporto (risorsa umana dello stesso soggetto_ruolo), e la sua credenziale non e'' '
+                  'bloccata dall''amministratore. Building block dell''anti-lockout (decisione di Tid '
+                  'del 2026-10-07: resta sempre almeno un amministratore senza scadenza, perche'' il '
+                  'calendario non scrive e nessun guard lo ferma): lo leggono '
+                  'fn_check_almeno_un_super_admin_attivo e fn_check_ultimo_super_admin_attivo. '
+                  'Brief: brief-db-veste-utilizzabile.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_identita_super_admin_senza_scadenza(bigint);

@@ -1,0 +1,213 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin: ANCHE LE DATE
+#   Brief: brief-db-veste-utilizzabile §7.5 (decisione di Tid del 2026-10-07)
+#
+#   L'anti-lockout chiede ora «resta almeno un SUPER_ADMIN SENZA SCADENZA»
+#   (-16, -18). Sulla veste, la garanzia si riduce in TRE modi, e il guard li
+#   guarda tutti e tre (prima solo il primo):
+#     * spegnerla (attivo true -> false);
+#     * darle una data di fine (valido_al da NULL a valorizzato);
+#     * spostarne l'inizio nel futuro (valido_dal da <= oggi a > oggi).
+#   Tutto il resto (riaccendere, togliere la data di fine, accorciare una fine
+#   gia' messa) non riduce la garanzia e non si ferma: una scrittura che migliora
+#   passa anche quando il sistema e' gia' scoperto.
+#
+#   ⭐ Il trigger passa da `UPDATE OF attivo` a `UPDATE` + `WHEN (... IS DISTINCT
+#   FROM ...)` sulle tre colonne (linee-guida-trigger: si reagisce a un CAMBIO di
+#   valore). Stesso nome, stessa fase _a10_, AFTER come prima: il controllo legge
+#   lo stato DOPO la scrittura. Il trigger e' scritto a mano (20260419-70), non
+#   lo genera ci_apply.
+#   ⚠️ Il messaggio di E_PROFILO_ULTIMO_SUPER_ADMIN non ha segnaposti: il
+#   variadico si passa vuoto ed esplicito, come nel guard sorello su
+#   config.credenziali; il dettaglio va nel contesto.
+#   Corpo vivo = pg_get_functiondef su dbdev il 2026-10-07 (uguale alla doc
+#   auto-gen, ultimo changeSet 20260419-70 + rev 2026-06-29).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261007-19-update-trgfn-identita-digitali-guard-ultimo-super-admin-date-mctit.yaml
+
+  - changeSet:
+      id: 20261007-19-update-trgfn-identita-digitali-guard-ultimo-super-admin-date
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard anti-lockout sulla veste: oltre allo spegnimento ferma anche la data di fine messa
+        e l'inizio spostato nel futuro, se lascerebbero il sistema senza un SUPER_ADMIN senza
+        scadenza. Trigger rifatto su UPDATE + WHEN delle tre colonne. Brief:
+        brief-db-veste-utilizzabile §7.5.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'trgfn_identita_digitali_guard_ultimo_super_admin';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_was_super_admin boolean := false;  -- esito di un EXISTS: nessuna colonna dietro
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire le scritture su identita_digitali che
+                  --   lascerebbero il sistema senza un SUPER_ADMIN SENZA
+                  --   SCADENZA (script.fn_check_almeno_un_super_admin_attivo).
+                  --
+                  -- Regole:
+                  --   1. Short-circuit: solo le scritture che RIDUCONO la
+                  --      garanzia — spegnere la veste, darle una data di fine,
+                  --      spostarne l'inizio nel futuro. Rev 2026-10-07
+                  --      (brief-db-veste-utilizzabile, decisione di Tid): prima
+                  --      solo lo spegnimento, e il calendario passava.
+                  --   2. Short-circuit 2: solo se la veste porta un binding
+                  --      SUPER_ADMIN attivo. Altrimenti la garanzia non cambia.
+                  --   3. Se a rischio, verifica post-stato via fn_check.
+                  --      Se false, raise E_PROFILO_ULTIMO_SUPER_ADMIN.
+                  --
+                  -- rev 2026-06-29: profilo SUPER_ADMIN identificato per l'enum
+                  --   stabile tipo invece che per codice (mutabile) -- §4a.
+                  -- =========================================================
+
+                  IF NOT (   (OLD.attivo AND NOT NEW.attivo)
+                          OR (OLD.valido_al IS NULL AND NEW.valido_al IS NOT NULL)
+                          OR (OLD.valido_dal <= CURRENT_DATE AND NEW.valido_dal > CURRENT_DATE))
+                  THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso_bindings pab
+                        JOIN config.profili_accesso          pa
+                          ON pa.id = pab.profilo_accesso_id
+                       WHERE pab.identita_digitale_id = OLD.id
+                         AND pab.attivo = true
+                         AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo  = true
+                  )
+                  INTO v_was_super_admin;
+
+                  IF NOT v_was_super_admin THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT script.fn_check_almeno_un_super_admin_attivo() THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          TG_NAME,
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'identita_digitale_id', OLD.id,
+                              'auth_user_id', OLD.auth_user_id,
+                              'ruolo_applicativo', OLD.ruolo_applicativo,
+                              'attivo', NEW.attivo,
+                              'valido_dal', NEW.valido_dal,
+                              'valido_al', NEW.valido_al
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin() IS
+              'Guard anti-lockout sulla veste (AFTER UPDATE di attivo, valido_dal, valido_al): rifiuta una scrittura che riduce la garanzia di una veste con binding SUPER_ADMIN attivo (spegnerla, darle una data di fine, spostarne l''inizio nel futuro) se dopo non resta nessun SUPER_ADMIN senza scadenza (script.fn_check_almeno_un_super_admin_attivo). Le scritture che migliorano non si fermano mai. Codice E_PROFILO_ULTIMO_SUPER_ADMIN. rev 2026-06-29: tipo invece di codice (§4a). Rev 2026-10-07 (brief-db-veste-utilizzabile, decisione di Tid): anche le date, perche'' il calendario non scrive e una data di fine messa all''ultimo amministratore lo avrebbe fatto scadere senza che nessun guard lo vedesse.';
+
+              DROP TRIGGER IF EXISTS trg_identita_digitali_a10_guard_ultimo_super_admin_upd
+                  ON anagrafiche.identita_digitali;
+
+              CREATE TRIGGER trg_identita_digitali_a10_guard_ultimo_super_admin_upd
+                  AFTER UPDATE
+                  ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  WHEN (   OLD.attivo     IS DISTINCT FROM NEW.attivo
+                        OR OLD.valido_dal IS DISTINCT FROM NEW.valido_dal
+                        OR OLD.valido_al  IS DISTINCT FROM NEW.valido_al)
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_was_super_admin boolean := false;
+              BEGIN
+                  IF NOT (OLD.attivo = true AND NEW.attivo = false) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso_bindings pab
+                        JOIN config.profili_accesso          pa
+                          ON pa.id = pab.profilo_accesso_id
+                       WHERE pab.identita_digitale_id = OLD.id
+                         AND pab.attivo = true
+                         AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo  = true
+                  )
+                  INTO v_was_super_admin;
+
+                  IF NOT v_was_super_admin THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT script.fn_check_almeno_un_super_admin_attivo() THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          TG_NAME,
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'identita_digitale_id', OLD.id,
+                              'auth_user_id', OLD.auth_user_id,
+                              'ruolo_applicativo', OLD.ruolo_applicativo
+                          ),
+                          NULL::uuid,
+                          format('Disattivazione identita_digitali id=%s lascerebbe zero SUPER_ADMIN attivi', OLD.id)
+                      );
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin() IS
+              'Guard anti-lockout: impedisce di disattivare un''identita che portava l''ultimo binding SUPER_ADMIN attivo (profilo identificato per tipo enum). Delega il check a script.fn_check_almeno_un_super_admin_attivo. Codice errore E_PROFILO_ULTIMO_SUPER_ADMIN. rev 2026-06-29: tipo invece di codice (§4a).';
+
+              DROP TRIGGER IF EXISTS trg_identita_digitali_a10_guard_ultimo_super_admin_upd
+                  ON anagrafiche.identita_digitali;
+
+              CREATE TRIGGER trg_identita_digitali_a10_guard_ultimo_super_admin_upd
+                  AFTER UPDATE OF attivo
+                  ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin();

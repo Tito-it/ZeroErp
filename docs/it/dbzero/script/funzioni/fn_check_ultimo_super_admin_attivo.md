@@ -15,82 +15,42 @@ CREATE OR REPLACE FUNCTION script.fn_check_ultimo_super_admin_attivo(p_auth_user
 AS $function$
     -- =========================================================
     -- Scopo:
-    --   Predicato per-utente: true sse rimuovere il privilegio
-    --   SUPER_ADMIN da p_auth_user_id porterebbe il sistema a
-    --   0 super-admin attivi (lockout).
+    --   Predicato per-utente: true sse togliere a p_auth_user_id la
+    --   sua garanzia di SUPER_ADMIN lascerebbe il sistema senza
+    --   nessun SUPER_ADMIN SENZA SCADENZA (lockout, subito o col
+    --   calendario).
     --
-    -- Algoritmo (single-pass, due EXISTS short-circuit):
-    --   1) p_auth_user_id IS NOT NULL.
-    --   2) Target e' SA attivo (EXISTS si ferma alla prima riga).
-    --   3) NESSUN altro auth_user e' SA attivo (NOT EXISTS si
-    --      ferma alla prima riga "altra").
-    --
-    -- Filtri SA coerenti con script.fn_is_super_admin (single
-    -- source of truth concettuale):
-    --   identita attiva, ruolo OPERATORE, in finestra,
-    --   binding attivo, profilo attivo, tipo SUPER_ADMIN.
-    --   ⭐ rev 2026-09-25: e credenziale NON bloccata
-    --   dall'amministratore (config.credenziali.bloccata_at),
-    --   come fn_check_almeno_un_super_admin_attivo — un SUPER_ADMIN
-    --   bloccato non e' raggiungibile. Brief:
-    --   brief-db-blocco-login-per-credenziale §3.3.
-    --
-    -- NB: la duplicazione del blocco filtri e' voluta. Una CTE
-    -- referenziata 2 volte verrebbe materializzata da PG e
-    -- valutata interamente; con EXISTS+NOT EXISTS l'optimizer
-    -- usa indici partial (uq_identita_digitali_*_attivo) e
-    -- short-circuita.
+    -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile, decisione di
+    --   Tid): «SUPER_ADMIN» qui vuol dire SENZA SCADENZA, cioe'
+    --   script.fn_identita_super_admin_senza_scadenza: utilizzabile
+    --   oggi, nessuna data di fine su veste e rapporto, credenziale
+    --   non bloccata. E' la stessa domanda di
+    --   fn_check_almeno_un_super_admin_attivo, e le due funzioni la
+    --   leggono dallo stesso building block: prima ognuna aveva il
+    --   suo blocco di filtri, e non coincidevano (questa guardava la
+    --   finestra, l'altra no).
+    --   Un amministratore che ha GIA' una data di fine non e' «senza
+    --   scadenza»: spegnerlo non riduce la garanzia, e qui risponde
+    --   false (il drawer lo lascia spegnere).
     -- =========================================================
     SELECT
             p_auth_user_id IS NOT NULL
         AND EXISTS (
             SELECT 1
-              FROM anagrafiche.identita_digitali       id
-              JOIN config.profili_accesso_bindings     pab
-                ON pab.identita_digitale_id = id.id
-              JOIN config.profili_accesso              pa
-                ON pa.id = pab.profilo_accesso_id
-             WHERE id.auth_user_id      = p_auth_user_id
-               AND id.attivo            = true
-               AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-               AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-               AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
-               AND pab.attivo = true
-               AND pa.attivo  = true
-               AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-               AND NOT EXISTS (
-                   SELECT 1
-                     FROM config.credenziali c
-                    WHERE c.auth_user_id = id.auth_user_id
-                      AND c.bloccata_at IS NOT NULL
-               )
+              FROM anagrafiche.identita_digitali id
+             WHERE id.auth_user_id = p_auth_user_id
+               AND script.fn_identita_super_admin_senza_scadenza(id.id)
         )
         AND NOT EXISTS (
             SELECT 1
-              FROM anagrafiche.identita_digitali       id
-              JOIN config.profili_accesso_bindings     pab
-                ON pab.identita_digitale_id = id.id
-              JOIN config.profili_accesso              pa
-                ON pa.id = pab.profilo_accesso_id
-             WHERE id.auth_user_id     <> p_auth_user_id
-               AND id.attivo            = true
-               AND id.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
-               AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-               AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
-               AND pab.attivo = true
-               AND pa.attivo  = true
-               AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
-               AND NOT EXISTS (
-                   SELECT 1
-                     FROM config.credenziali c
-                    WHERE c.auth_user_id = id.auth_user_id
-                      AND c.bloccata_at IS NOT NULL
-               )
+              FROM anagrafiche.identita_digitali id
+             WHERE id.auth_user_id <> p_auth_user_id
+               AND script.fn_identita_super_admin_senza_scadenza(id.id)
         );
 $function$
 
 COMMENT ON FUNCTION script.fn_check_ultimo_super_admin_attivo(p_auth_user_id integer)
-IS 'Predicato per-utente: true sse questo auth_user e'' l''unico SUPER_ADMIN attivo e raggiungibile del sistema (rimuovergli il privilegio causerebbe lockout). Raggiungibile = identita OPERATORE attiva e in finestra, binding e profilo SUPER_ADMIN attivi, credenziale NON bloccata dall''amministratore (config.credenziali.bloccata_at; rev 2026-09-25, stesso gate di fn_check_almeno_un_super_admin_attivo). Usato per le capability can_disable / can_demote_super_admin del drawer Operatore. LANGUAGE sql STABLE, pure check, nessun raise. Param INTEGER esplicito (django.auth_user.id; niente %TYPE su colonne django.*).';
+IS 'Predicato per-utente: true sse questo auth_user e'' l''unico SUPER_ADMIN SENZA SCADENZA del sistema, cioe'' togliergli la garanzia (spegnerlo, dargli una data di fine sulla veste o sul rapporto, bloccarne la credenziale, togliergli il profilo) lascerebbe il sistema senza amministratori, subito o col calendario. «Senza scadenza» = script.fn_identita_super_admin_senza_scadenza (utilizzabile oggi, nessuna data di fine su veste e rapporto, credenziale non bloccata): la stessa regola di fn_check_almeno_un_super_admin_attivo, dallo stesso building block. Un amministratore che ha gia'' una data di fine risponde false: spegnerlo non riduce la garanzia. Usato per le capability can_disable / can_demote_super_admin del drawer Operatore. Rev 2026-10-07 (brief-db-veste-utilizzabile): prima «attivo e raggiungibile» era un blocco di filtri ricopiato due volte, con la finestra della veste e senza il rapporto; ora e'' il building block, con la garanzia sulla data di fine decisa da Tid.';
 ```
 
 ---

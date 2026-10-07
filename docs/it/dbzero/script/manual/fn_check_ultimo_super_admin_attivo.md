@@ -46,46 +46,44 @@ script.fn_check_ultimo_super_admin_attivo(
 | `p_auth_user_id` è SUPER_ADMIN ma esiste **almeno un altro** SUPER_ADMIN attivo | `false` |
 | `p_auth_user_id` è l'**unico** SUPER_ADMIN attivo del sistema | `true` |
 
-## Definizione di "SUPER_ADMIN attivo"
+## Definizione: SUPER_ADMIN **senza scadenza**
 
-Identica a [`fn_is_super_admin`](/dbzero/script/funzioni/fn_is_super_admin)
-(single source of truth concettuale): tutti i seguenti AND obbligatori.
+Dal 07-10-2026 (decisione di Tid) «SUPER_ADMIN» qui vuol dire **senza scadenza**:
+[`fn_identita_super_admin_senza_scadenza`](/dbzero/script/funzioni/fn_identita_super_admin_senza_scadenza)
+(binding e profilo attivi, identità utilizzabile oggi, nessuna data di fine su veste e
+rapporto, credenziale non bloccata). La funzione chiede quel building block due volte:
+per l'utente in esame e per «nessun altro».
 
-```sql
-identita_digitali.attivo            = true
-AND identita_digitali.ruolo_applicativo = 'OPERATORE'
-AND (valido_dal IS NULL OR valido_dal <= CURRENT_DATE)
-AND (valido_al  IS NULL OR valido_al  >= CURRENT_DATE)
-AND profili_accesso_bindings.attivo = true
-AND profili_accesso.attivo          = true
-AND profili_accesso.tipo            = 'SUPER_ADMIN'
-```
+⭐ È la stessa definizione di
+[`fn_check_almeno_un_super_admin_attivo`](/dbzero/script/funzioni/fn_check_almeno_un_super_admin_attivo),
+dallo stesso building block: fino al 07-10-2026 quella guardava solo `attivo` e questa
+anche la finestra, e le due funzioni dell'anti-lockout rispondevano su due regole diverse.
+
+Conseguenza per il drawer: un amministratore che ha **già** una data di fine non è
+«l'ultimo», perché spegnerlo non riduce la garanzia, e il pulsante resta acceso.
 
 ## Algoritmo
 
 Singola valutazione boolean, senza materializzazione:
 
 1. `p_auth_user_id IS NOT NULL`
-2. `EXISTS` (target è SUPER_ADMIN attivo) — short-circuit alla prima riga
-3. `NOT EXISTS` (un altro auth_user è SUPER_ADMIN attivo) — short-circuit
+2. `EXISTS` (target è SUPER_ADMIN senza scadenza) — short-circuit alla prima riga
+3. `NOT EXISTS` (un altro auth_user è SUPER_ADMIN senza scadenza) — short-circuit
    alla prima riga "altra"
 
-La duplicazione del blocco filtri tra i due `EXISTS` è **voluta**: una CTE
-referenziata 2 volte verrebbe materializzata da PG, costringendo la
-scansione completa dell'insieme SUPER_ADMIN. Con `EXISTS + NOT EXISTS`
-l'optimizer usa gli indici parziali esistenti
-(`uq_identita_digitali_*_attivo`, `uq_profili_accesso_bindings_identita`)
-e si ferma alla prima evidenza.
+Dal 07-10-2026 i due `EXISTS` non ricopiano più un blocco di filtri: chiamano entrambi
+il building block, per riga di `identita_digitali`. Il blocco duplicato «per le
+prestazioni» era il punto in cui le due metà potevano divergere, e l'insieme dei
+SUPER_ADMIN è piccolo.
 
 ## Caratteristiche
 
-* `LANGUAGE sql STABLE` — read-only, **inlineable**, cache-friendly.
+* `LANGUAGE sql STABLE` — read-only, cache-friendly (non inlineabile: contiene `EXISTS`).
 * **Pure check**: non solleva mai eccezioni; l'enforcement resta nei
   trigger guard 384.
 * Nessun riferimento a `django.*` → `LANGUAGE sql` ammesso (vedi
   [memoria pattern Liquibase ordering](/dev/work-done/refactor-operatore-emittenti#7bis6)).
-* Coerente con `fn_is_super_admin` su filtri ruolo/finestra ma
-  **non GUC-aware**: la chiamata vale per qualsiasi sessione.
+* **Non GUC-aware**: la chiamata vale per qualsiasi sessione.
 
 ## Capability di drawer derivate
 
