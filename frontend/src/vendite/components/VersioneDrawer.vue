@@ -111,7 +111,7 @@ const {
 // che ci aggiungono il form del prezzo. Il click apre la modifica solo in
 // BOZZA (getter letto al click: `isBozza` e' dichiarata piu' sotto).
 const {
-  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
   puoModificare: () => isBozza.value,
   // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
@@ -578,7 +578,7 @@ const annullaForm = () => inline.chiudiConConferma(closeForm)
 
     <!-- === DETAIL: form inserimento/modifica (inline, sotto la tabella) === -->
     <template v-if="formMode">
-      <div class="app-drawer-section">
+      <div :ref="ancoraForm" class="app-drawer-section">
         <h4>{{ formTitle }}</h4>
       </div>
 

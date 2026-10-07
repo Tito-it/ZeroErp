@@ -110,7 +110,7 @@ Il FE usa `identita.ruolo_applicativo` per decidere la UI della veste attiva.
 
 - L'endpoint restituisce sempre i dati dell'utente **autenticato** — non e' possibile consultare il profilo di altri utenti (per quello usare `/users/<id>/permessi-effettivi/`)
 - Se l'utente non ha un'identita' digitale OPERATORE (`identita_digitali`) associata, la funzione DB solleva `E_ADMIN_VALIDAZIONE` (400)
-- Identita' o risorsa umana disattivata, non ancora valida o scaduta: `E_UTENTE_DISABILITATO` / `E_UTENTE_NON_ATTIVO` / `E_UTENTE_SCADUTO` (403)
+- Veste non utilizzabile (spenta o fuori dalle sue date, o rapporto non attivo o fuori date: `script.fn_veste_utilizzabile`): `E_UTENTE_DISABILITATO` (403). I codici delle date `E_UTENTE_NON_ATTIVO` / `E_UTENTE_SCADUTO` sono ritirati dal 2026-10-07 (brief-db-veste-utilizzabile D-4)
 - Emittente: si prende il primo emittente attivo della whitelist `user_emittenti_fiscali` (ordine per id); se la whitelist non ne da', il gestore globale (`emittenti_fiscali_billing_account` con billing account NULL e `is_default = true`), con `user_emittente_fiscale_id` NULL
 - Se nessuno dei due si risolve, la sezione `emittente` e' `null`
 
@@ -178,7 +178,7 @@ serve l'header anti-CSRF: l'endpoint pretende gia' il Bearer.
 |---|---|---|
 | `E_CORE_PROFILE_NOT_FOUND` | 404 | La funzione DB restituisce NULL o nessuna riga |
 | `E_ADMIN_VALIDAZIONE` | 400 | Utente senza identita' digitale OPERATORE o senza risorsa umana (guard in `fn_get_user_profile`) |
-| `E_UTENTE_DISABILITATO` / `E_UTENTE_NON_ATTIVO` / `E_UTENTE_SCADUTO` | 403 | Identita' o risorsa umana disattivata, non ancora valida o scaduta |
+| `E_UTENTE_DISABILITATO` | 403 | Veste spenta o fuori dalle sue date, oppure rapporto non attivo o fuori date (`script.fn_veste_utilizzabile`) |
 | `E_JWT_SENZA_IDENTITA` | 401 | JWT senza claim `identita_id` (token pre-§8.3.2) — intercettato da `JwtAuditAuthentication` a monte della view |
 | `E_IDENTITA_NON_ATTIVA` | 401 | Claim `identita_id` non corrisponde a identita attiva (revocata dopo emissione JWT) — intercettato a monte |
 | `E_AUTHENTICATION_FAILED` | 401 | JWT scaduto, invalido o non fornito |

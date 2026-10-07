@@ -1356,6 +1356,12 @@ Due pattern disponibili in base al dominio:
    risolve in Python i `soggetto_ruolo_id` degli emittenti autorizzati e li passa
    come array `bigint[]` alle query SQL.
 
+⛔ **Perimetro ≠ attore.** `get_scope_user_id` vale `None` per il superuser perché
+il suo perimetro non ha limiti: serve **solo alle letture**. Una scrittura che
+passa l'utente a un gate (prezzi L1/L2/L3), all'audit o a una pratica usa
+`get_actor_user_id(request)`: con lo scope, il gate legge il `None` del superuser
+come «chiamata senza utente» e lo blocca.
+
 Usare `get_emittenti_sr_ids` (filtra su `*_soggetto_ruolo_id`, convenzione SR)
 o `get_emittenti_pk_ids` (filtra su `emittente_fiscale_id` PK) secondo la colonna.
 ⛔ Sono i **soli due nomi**: l'alias `get_emittenti_ids` — dichiarato deprecato

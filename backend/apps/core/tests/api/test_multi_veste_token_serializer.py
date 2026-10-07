@@ -136,7 +136,7 @@ class MultiVesteTokenSerializerValidateTests(TestCase):
         """Happy path: l'identita esiste -> il refresh riceve i 2 claim
         custom e data viene rigenerato con i nuovi token."""
         mock_super_validate.side_effect = self._fake_super_validate
-        mock_repo.find_identita_attiva_for_ruoli.return_value = {
+        mock_repo.find_veste_utilizzabile_per_ruoli.return_value = {
             "id": 99,
             "soggetto_ruolo_id": 7,
             "ruolo_applicativo": RUOLO_APPLICATIVO_OPERATORE,
@@ -153,7 +153,7 @@ class MultiVesteTokenSerializerValidateTests(TestCase):
             JWT_CLAIM_RUOLO_APPLICATIVO, RUOLO_APPLICATIVO_OPERATORE
         )
         # Repo chiamato con i ruoli del namespace
-        mock_repo.find_identita_attiva_for_ruoli.assert_called_once_with(
+        mock_repo.find_veste_utilizzabile_per_ruoli.assert_called_once_with(
             auth_user_id=42,
             ruoli_applicativi=(RUOLO_APPLICATIVO_OPERATORE,),
         )
@@ -170,7 +170,7 @@ class MultiVesteTokenSerializerValidateTests(TestCase):
     def test_validate_veste_non_attiva(self, mock_repo, mock_super_validate):
         """Identita assente per il namespace -> VesteNonAttivaError (403)."""
         mock_super_validate.side_effect = self._fake_super_validate
-        mock_repo.find_identita_attiva_for_ruoli.return_value = None
+        mock_repo.find_veste_utilizzabile_per_ruoli.return_value = None
 
         ser = _AdminSerializerUnderTest()
         with self.assertRaises(VesteNonAttivaError) as ctx:
@@ -262,7 +262,7 @@ class ChiaveIngressoPerPortaTests(TestCase):
                 patch.object(PortaleTokenSerializer, "_auth_repo") as repo, \
                 patch.object(PortaleTokenSerializer, "get_token", return_value=MagicMock()), \
                 patch("apps.core.api.multi_veste_token_serializer.emetti_refresh_veste") as emetti:
-            repo.find_identita_attiva_for_ruoli.return_value = {"id": 1, "ruolo_applicativo": RUOLO_APPLICATIVO_CLIENTE_PORTALE}
+            repo.find_veste_utilizzabile_per_ruoli.return_value = {"id": 1, "ruolo_applicativo": RUOLO_APPLICATIVO_CLIENTE_PORTALE}
             emetti.return_value = MagicMock(access_token="a")
             ser = PortaleTokenSerializer(data={"email": " Ada@X.it ", "password": "p"})
             self.assertTrue(ser.is_valid(), ser.errors)

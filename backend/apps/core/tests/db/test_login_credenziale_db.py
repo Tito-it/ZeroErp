@@ -51,6 +51,12 @@ Indice test eseguiti:
    (M-5 sul login: porta admin 403 E_VESTE_NON_ATTIVA, porta shop 200 con l'email, L-4)
 13) CicloOperatoreDbTests.test_operatore_disabilitato_entra_ancora_come_cliente_portale
    (lo stesso giro con la veste CLIENTE_PORTALE: porta portale 200)
+14) CicloOperatoreDbTests.test_veste_scaduta_non_entra_e_chiude_la_sessione_aperta
+   (L-6, brief-db-veste-utilizzabile §6: la richiesta dopo e' 401, il refresh e'
+    rifiutato — dopo uno riuscito, a veste valida —, il login 403
+    E_VESTE_NON_ATTIVA; la porta del cliente resta aperta)
+15) CicloOperatoreDbTests.test_scaduta_e_valida_sulla_stessa_porta_entra_la_valida
+16) CicloOperatoreDbTests.test_rapporto_chiuso_dal_drawer_non_entra (D-2)
 """
 
 from __future__ import annotations
@@ -66,6 +72,7 @@ from django.db import DatabaseError, connection, transaction
 from django.test import override_settings
 from rest_framework.test import APIClient
 
+from apps.core.api.refresh_cookie import ANTI_CSRF_HEADER, ANTI_CSRF_VALORE, REFRESH_COOKIE_NAME
 from apps.core.api.throttling import ConfermaTokenRateThrottle, LoginRateThrottle, PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.db_error_fields import structured_db_error_code
@@ -76,6 +83,8 @@ _PASSWORD = "Giusta-Per-Il-Test-2026!"
 _URL_LOGIN = "/api/v1/admin/token/"
 _URL_LOGIN_SHOP = "/api/v1/shop/token/"
 _URL_LOGIN_PORTALE = "/api/v1/portale/token/"
+_URL_REFRESH = "/api/v1/admin/token/refresh/"
+_URL_ME = "/api/v1/core/me/"
 # Con la credenziale il DB non legge l'impronta, ma la pretende (brief §13.6):
 # un check che la volesse solo per i nomi inesistenti darebbe al backend un
 # ramo in piu' da tenere uguale.
@@ -252,9 +261,10 @@ class _ViewVere(_TransazioneAnnullata):
     # Ogni altro esito si annulla: un rifiuto sollevato dal DB (403) o un
     # guasto (500) lasciano la transazione interrotta, e confermarla farebbe
     # fallire le asserzioni successive con un errore che non e' il loro.
-    def _post(self, url: str, dati: dict, ip: str = "198.51.100.99"):
+    # `client`: per chi deve portare un cookie (il refresh); di norma uno nuovo.
+    def _post(self, url: str, dati: dict, ip: str = "198.51.100.99", client: APIClient | None = None):
         sid = transaction.savepoint_create()
-        risposta = APIClient().post(url, dati, format="json", REMOTE_ADDR=ip)
+        risposta = (client or APIClient()).post(url, dati, format="json", REMOTE_ADDR=ip)
         if risposta.status_code in (200, 401):
             transaction.savepoint_commit(sid)
         else:
@@ -415,6 +425,14 @@ class CicloOperatoreDbTests(_ViewVere):
     _CON_RUOLO_CLIENTE = frozenset({
         "test_operatore_disabilitato_entra_ancora_come_cliente_shop",
         "test_operatore_disabilitato_entra_ancora_come_cliente_portale",
+        "test_veste_scaduta_non_entra_e_chiude_la_sessione_aperta",
+        "test_scaduta_e_valida_sulla_stessa_porta_entra_la_valida",
+        "test_rapporto_chiuso_dal_drawer_non_entra",
+    })
+    # Quelli che vogliono anche il ruolo fornitore (FO), per la seconda veste
+    # della porta portale.
+    _CON_RUOLO_FORNITORE = frozenset({
+        "test_scaduta_e_valida_sulla_stessa_porta_entra_la_valida",
     })
 
     def setUp(self) -> None:
@@ -432,6 +450,11 @@ class CicloOperatoreDbTests(_ViewVere):
                 cliente = cur.fetchone()[0]
                 cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_ruolo(%s, 'CL')", [cliente])
                 self.ruolo_cliente = cur.fetchone()[0]
+                if self._testMethodName in self._CON_RUOLO_FORNITORE:
+                    cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_pg('Fornitore portale')")
+                    fornitore = cur.fetchone()[0]
+                    cur.execute("SELECT dbops.fn_pgtap_crea_soggetto_ruolo(%s, 'FO')", [fornitore])
+                    self.ruolo_fornitore = cur.fetchone()[0]
                 # ⚠️ Il builder chiude la sua saga con i controlli IMMEDIATE, e
                 #    il modo vale per il resto della transazione: la madre che
                 #    crea l'operatore verrebbe controllata a meta' della sua
@@ -585,6 +608,41 @@ class CicloOperatoreDbTests(_ViewVere):
         self.assertIs(self._veste_attiva(uid), True)
         self.assertEqual(self._login(nome, _PASSWORD, "198.51.100.32").status_code, 200)
 
+    # Scopo: Un operatore attivato (madre + invito), che e' anche cliente:
+    # la veste `ruolo_applicativo` sulla stessa credenziale (D-6), sul ruolo
+    # cliente (CL) di un'azienda preparato dal setUp. La veste del cliente
+    # tiene accesa la credenziale, cosi' un rifiuto alla porta admin e'
+    # quello della VESTE operatore, non della password. Ritorna (nome, uid).
+    def _operatore_anche_cliente(self, ruolo_applicativo: str, ip: str) -> tuple[str, int]:
+        nome = f"op_{uuid.uuid4().hex[:10]}"
+        uid = self._crea(email=f"{nome}@example.invalid", username=nome)["auth_user_id"]
+        r = self._post("/api/v1/auth/attivazione/", {
+            "token": self._invita(uid), "new_password": _PASSWORD, "new_password_confirm": _PASSWORD,
+        }, ip)
+        self.assertEqual(r.status_code, 200, r.content)
+        with connection.cursor() as cur:
+            cur.execute(
+                "INSERT INTO anagrafiche.identita_digitali "
+                "(soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo) "
+                "VALUES (%s, %s, %s, true)",
+                [self.ruolo_cliente, uid, ruolo_applicativo],
+            )
+        return nome, uid
+
+    # Scopo: Porta admin chiusa (403 E_VESTE_NON_ATTIVA: la credenziale e'
+    # valida, la veste no) e porta del cliente aperta con la stessa password.
+    # Spenta e fuori date hanno lo stesso esito (D-4). `email`: come la
+    # scrive chi entra; di norma quella dell'operatore.
+    def _porta_admin_chiusa_porta_cliente_aperta(
+        self, nome: str, url_porta: str, ip: str, *, email: str | None = None,
+    ) -> None:
+        r = self._login(nome, _PASSWORD, ip)
+        self.assertEqual(r.status_code, 403, r.content)
+        self.assertEqual(r.json()["error"]["code"], "E_VESTE_NON_ATTIVA")
+        email = email or f"{nome}@example.invalid"
+        r = self._post(url_porta, {"email": email, "password": _PASSWORD}, ip)
+        self.assertEqual(r.status_code, 200, r.content)
+
     # Scopo: ⭐ M-5 visto da chi entra (2026-10-04). Un operatore che e' anche
     # cliente (dello shop o del portale), con UNA credenziale (D-6):
     # disabilitato come operatore, dalla porta admin non entra piu', dalla
@@ -593,23 +651,8 @@ class CicloOperatoreDbTests(_ViewVere):
     # che e' l'esito che conta per la persona. Prima di M-5 disabilitare
     # l'operatore toglieva l'accesso anche come cliente.
     def _disabilitato_entra_ancora_come_cliente(self, ruolo_applicativo: str, url_porta: str) -> None:
-        nome = f"op_{uuid.uuid4().hex[:10]}"
-        uid = self._crea(email=f"{nome}@example.invalid", username=nome)["auth_user_id"]
-        r = self._post("/api/v1/auth/attivazione/", {
-            "token": self._invita(uid), "new_password": _PASSWORD, "new_password_confirm": _PASSWORD,
-        })
-        self.assertEqual(r.status_code, 200, r.content)
-
-        # La veste del cliente sulla stessa credenziale, sul ruolo cliente (CL)
-        # di un'azienda preparato dal setUp.
-        with connection.cursor() as cur:
-            cur.execute(
-                "INSERT INTO anagrafiche.identita_digitali "
-                "(soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo) "
-                "VALUES (%s, %s, %s, true)",
-                [self.ruolo_cliente, uid, ruolo_applicativo],
-            )
         ip = "198.51.100.33"
+        nome, uid = self._operatore_anche_cliente(ruolo_applicativo, ip)
         self.assertEqual(self._login(nome, _PASSWORD, ip).status_code, 200)
         # La porta del cliente si apre con l'EMAIL (L-4), senza badare alle
         # maiuscole; il nome utente non e' il suo contratto (400, non un tentativo).
@@ -625,19 +668,113 @@ class CicloOperatoreDbTests(_ViewVere):
         # `is_active` resta acceso: c'e' ancora una veste utilizzabile.
         self.assertIs(User.objects.get(id=uid).is_active, True)
 
-        # Porta admin chiusa: la credenziale e' valida ma la veste no.
-        r = self._login(nome, _PASSWORD, ip)
-        self.assertEqual(r.status_code, 403, r.content)
-        self.assertEqual(r.json()["error"]["code"], "E_VESTE_NON_ATTIVA")
-        # Porta del cliente aperta, con la stessa password.
-        r = self._post(url_porta, {"email": email, "password": _PASSWORD}, ip)
-        self.assertEqual(r.status_code, 200, r.content)
+        self._porta_admin_chiusa_porta_cliente_aperta(nome, url_porta, ip, email=email)
 
     def test_operatore_disabilitato_entra_ancora_come_cliente_shop(self):
         self._disabilitato_entra_ancora_come_cliente("SHOP_CUSTOMER", _URL_LOGIN_SHOP)
 
     def test_operatore_disabilitato_entra_ancora_come_cliente_portale(self):
         self._disabilitato_entra_ancora_come_cliente("CLIENTE_PORTALE", _URL_LOGIN_PORTALE)
+
+    # Scopo: ⭐ L-6 (brief-db-veste-utilizzabile §6). Una veste ACCESA ma uscita
+    # dalle sue date non vale: la sessione aperta si chiude alla richiesta
+    # successiva (401 E_IDENTITA_NON_ATTIVA, `set_jwt_gucs`), il refresh e'
+    # rifiutato, il login nuovo e' 403. Prima del 2026-10-07 il BE guardava
+    # solo `attivo`, e una veste scaduta entrava.
+    def test_veste_scaduta_non_entra_e_chiude_la_sessione_aperta(self):
+        ip = "198.51.100.50"
+        nome, uid = self._operatore_anche_cliente("SHOP_CUSTOMER", ip)
+        r = self._login(nome, _PASSWORD, ip)
+        self.assertEqual(r.status_code, 200, r.content)
+        access = r.json()["access"]
+        bearer = APIClient(REMOTE_ADDR=ip)
+        bearer.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        self.assertEqual(bearer.get(_URL_ME).status_code, 200)
+
+        # ⚠️ Controllo positivo: con la veste ancora valida il refresh RINNOVA.
+        #    Senza, il 401 di sotto passerebbe anche con un cookie che non
+        #    arriva (refresh assente = 401): verde per sottrazione. Si tiene
+        #    il refresh ruotato, il solo ancora buono.
+        client_refresh = APIClient(headers={ANTI_CSRF_HEADER: ANTI_CSRF_VALORE})
+        client_refresh.cookies[REFRESH_COOKIE_NAME] = r.cookies[REFRESH_COOKIE_NAME].value
+        r = self._post(_URL_REFRESH, {}, ip, client=client_refresh)
+        self.assertEqual(r.status_code, 200, r.content)
+        client_refresh.cookies[REFRESH_COOKIE_NAME] = r.cookies[REFRESH_COOKIE_NAME].value
+
+        # La veste resta ACCESA: esce solo dalla sua finestra (scaduta ieri).
+        with connection.cursor() as cur:
+            cur.execute(
+                "UPDATE anagrafiche.identita_digitali "
+                "   SET valido_dal = CURRENT_DATE - 10, valido_al = CURRENT_DATE - 1 "
+                " WHERE id = script.fn_veste_di_riferimento(%s, 'OPERATORE')",
+                [uid],
+            )
+        self.assertIs(self._veste_attiva(uid), True)
+
+        r = bearer.get(_URL_ME)
+        self.assertEqual(r.status_code, 401, r.content)
+        self.assertEqual(r.json()["error"]["code"], "E_IDENTITA_NON_ATTIVA")
+
+        r = self._post(_URL_REFRESH, {}, ip, client=client_refresh)
+        self.assertEqual(r.status_code, 401, r.content)
+
+        self._porta_admin_chiusa_porta_cliente_aperta(nome, _URL_LOGIN_SHOP, ip)
+
+    # Scopo: Due vesti della STESSA porta (portale), la piu' vecchia scaduta e
+    # l'altra valida: entra la valida. Il login prende la prima UTILIZZABILE,
+    # non la prima accesa.
+    def test_scaduta_e_valida_sulla_stessa_porta_entra_la_valida(self):
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        email = f"portale_{uuid.uuid4().hex[:10]}@example.invalid"
+        persona = User.objects.create_user(username=email, email=email, password=_PASSWORD)
+        with connection.cursor() as cur:
+            cur.execute(
+                "INSERT INTO anagrafiche.identita_digitali "
+                "(soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo, valido_dal, valido_al) "
+                "VALUES (%s, %s, 'CLIENTE_PORTALE', true, CURRENT_DATE - 10, CURRENT_DATE - 1)",
+                [self.ruolo_cliente, persona.id],
+            )
+            cur.execute(
+                "INSERT INTO anagrafiche.identita_digitali "
+                "(soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo) "
+                "VALUES (%s, %s, 'FORNITORE_PORTALE', true) RETURNING id",
+                [self.ruolo_fornitore, persona.id],
+            )
+            valida = cur.fetchone()[0]
+
+        r = self._post(_URL_LOGIN_PORTALE, {"email": email, "password": _PASSWORD}, "198.51.100.51")
+        self.assertEqual(r.status_code, 200, r.content)
+        claims = AccessToken(r.json()["access"])
+        self.assertEqual(claims["identita_id"], valida)
+        self.assertEqual(claims["ruolo_applicativo"], "FORNITORE_PORTALE")
+
+    # Scopo: ⭐ D-2 (strada (a)): per l'operatore conta anche il RAPPORTO. La
+    # data «Valido al» del drawer scrive la fine del rapporto, non della veste,
+    # e con la regola unica chiude l'accesso: la veste resta accesa, la porta
+    # admin no.
+    def test_rapporto_chiuso_dal_drawer_non_entra(self):
+        ip = "198.51.100.52"
+        nome, uid = self._operatore_anche_cliente("SHOP_CUSTOMER", ip)
+        self.assertEqual(self._login(nome, _PASSWORD, ip).status_code, 200)
+
+        # Il rapporto comincia prima, cosi' la sua fine puo' essere ieri.
+        with connection.cursor() as cur:
+            cur.execute(
+                "UPDATE anagrafiche.risorse_umane ru SET valido_dal = CURRENT_DATE - 10 "
+                "  FROM anagrafiche.identita_digitali id "
+                " WHERE id.soggetto_ruolo_id = ru.soggetto_ruolo_id "
+                "   AND id.id = script.fn_veste_di_riferimento(%s, 'OPERATORE')",
+                [uid],
+            )
+            cur.execute("SELECT (CURRENT_DATE - 1)::text")
+            ieri = cur.fetchone()[0]
+        r = self._admin("patch", f"/api/v1/amm-software/operatori/{uid}/", {"valido_al": ieri})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(str(self._rapporto(uid)[2]), ieri)
+        self.assertIs(self._veste_attiva(uid), True)
+
+        self._porta_admin_chiusa_porta_cliente_aperta(nome, _URL_LOGIN_SHOP, ip)
 
     # Scopo: T-2. Il login a due passi per intero, sulle view e sul DB veri.
     def test_login_a_due_passi_col_secondo_fattore_attivo(self):
@@ -676,20 +813,20 @@ class CicloOperatoreDbTests(_ViewVere):
         primo = r.json()
         self.assertTrue(primo["two_factor_required"])
         self.assertNotIn("access", primo)
-        self.assertNotIn("zeroerp_refresh", r.cookies)
+        self.assertNotIn(REFRESH_COOKIE_NAME, r.cookies)
 
         # Secondo passo: il codice di adesso apre la sessione.
         codice = pyotp.TOTP(segreto).now()
         r = self._post(url_secondo, {"sfida": primo["sfida"], "codice": codice}, ip)
         self.assertEqual(r.status_code, 200, r.content)
         access = r.json()["data"]["access"]
-        self.assertIn("zeroerp_refresh", r.cookies)
+        self.assertIn(REFRESH_COOKIE_NAME, r.cookies)
         self.assertIsNotNone(User.objects.get(id=uid).last_login)
 
         # La sessione vale: una richiesta col Bearer passa autenticazione e cancello.
         client = APIClient(REMOTE_ADDR=ip)
         client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
-        self.assertEqual(client.get("/api/v1/core/me/").status_code, 200)
+        self.assertEqual(client.get(_URL_ME).status_code, 200)
 
         # Lo stesso codice, con una sfida nuova: l'anti-replay sul passo lo rifiuta.
         sfida = self._login(nome, _PASSWORD, ip).json()["sfida"]

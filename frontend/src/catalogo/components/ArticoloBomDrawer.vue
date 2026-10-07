@@ -105,7 +105,7 @@ const { opzioni: esposizioniOptions, etichetta: etichettaEsposizione } = useEspo
 //    altro articolo, chiude il form.
 const {
   formMode, rigaInModifica, formAperto,
-  nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+  nuovaRiga, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
   padre: () => (props.visible ? props.articoloId : null),
   puoModificare: () => !isReadonly.value,
@@ -537,7 +537,7 @@ const fotoDuplica = useFotografiaDialog(() => ({ chiudiAl: duplicaDialogChiudiAl
     <!-- Form sotto la lista: nuovo componente (anche la nuova versione del
          Duplica, con titolo e banner suoi) o la riga in sola lettura. -->
     <template v-if="!isReadonly && formAperto">
-      <div class="app-drawer-section">
+      <div :ref="ancoraForm" class="app-drawer-section">
         <h4>
           {{
             isFormReadonly

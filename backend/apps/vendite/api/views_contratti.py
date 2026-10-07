@@ -18,7 +18,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -267,7 +267,7 @@ class ApiContrattoDetail(DomainAPIView):
     #        in PATCH (cambio stato via endpoint dedicato). auth_user_id
     #        propagato al gate L2 sulla variazione globale (§3-bis-E).
     def patch(self, request: Request, contratto_id: int) -> JsonResponse:
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
         return success_response(
             ContrattiService().update_contratto(
                 contratto_id, corpo_oggetto(request),
@@ -357,7 +357,7 @@ class ApiContrattoRigheList(DomainAPIView):
         return success_response(
             ContrattiService().create_riga(
                 contratto_id, corpo_oggetto(request),
-                auth_user_id=get_scope_user_id(request),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 
@@ -462,7 +462,7 @@ class ApiContrattoRigaDetail(DomainAPIView):
     # serve al workflow L3 (gate L1+L2+L3 quando PATCH tocca prezzo_unitario).
     def patch(self, request: Request, contratto_id: int, riga_id: int) -> JsonResponse:
         del contratto_id  # riga_id e' identificatore globale; contratto_id solo per coerenza URL.
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
         return success_response(
             ContrattiService().update_riga(
                 riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
@@ -551,7 +551,7 @@ class ApiContrattoRigaPreviewComponenti(DomainAPIView):
         # Cattura auth_user_id PRIMA dell'handler chiuso: il service risolve
         # internamente l'emittente (precedenza testata > operatore), evitando
         # accesso a membri privati dal caller.
-        auth_user_id = get_scope_user_id(request)
+        auth_user_id = get_actor_user_id(request)
 
         def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
             articolo_id = str(payload.get("articolo_id") or "")

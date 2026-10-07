@@ -786,8 +786,6 @@
     "logout_other_tab": "You signed out in another tab",
     "sessione_chiusa_freno": "Session closed: too many wrong passwords from this device. You can sign in again in a few minutes.",
     "account_disabled": "Account disabled — contact the administrator",
-    "account_not_active": "Account not yet active",
-    "account_expired": "Account expired — contact the administrator",
     "access_denied": "Access denied",
     "too_many_attempts": "Too many login attempts. Please try again in a few minutes.",
     "account_locked": "Too many failed attempts from this device: access suspended for a few minutes.",
@@ -1300,10 +1298,10 @@
         "senza_email": "No email address configured: the invitation cannot be sent."
       },
       "disabilita_reason": {
-        "ultimo_super_admin": "This is the last active super admin: their access cannot be disabled."
+        "ultimo_super_admin": "This is the only administrator without an end date: their access cannot be disabled."
       },
       "rimuovi_super_admin_reason": {
-        "ultimo_super_admin": "This is the last active super admin: the role cannot be removed."
+        "ultimo_super_admin": "This is the only administrator without an end date: the role cannot be removed."
       }
     },
     "invito_inviato": "Invitation sent",
@@ -1790,9 +1788,17 @@
       "sbloccata_ok": "Access unblocked.",
       "blocca_reason": {
         "credenziale_di_sistema": "This is the access of an automated process or an external system: blocking it would stop its work.",
-        "ultimo_super_admin": "This is the last reachable super administrator: blocking it would leave the system without administrators."
+        "ultimo_super_admin": "This is the only administrator without an end date: blocking it would leave the system without administrators."
       },
-      "nessun_accesso_spiegazione": "This access has no role: it cannot sign in anywhere. It needs fixing, and the check of credentials to fix reports it too.",
+      "elimina": "Delete access",
+      "elimina_conferma": "The access «{username}» never had a role and will be deleted. A record of who deleted it and when is kept. This cannot be undone.",
+      "eliminata_ok": "Access deleted.",
+      "elimina_reason": {
+        "con_vesti": "It has roles, even switched off: it belongs to a person or to an automated process, and it cannot be deleted. To stop a person from signing in, switch off their roles from their record.",
+        "con_storia": "It already appears in the recorded data ({dove}): it cannot be deleted. Tell the developers, quoting this message.",
+        "storia_non_verificabile": "This installation lacks the database links to the credentials: it cannot be checked whether it has a history, so it cannot be deleted. Tell whoever administers the database."
+      },
+      "nessun_accesso_spiegazione": "This access has no role: it cannot sign in anywhere. It needs fixing, and the check of credentials to fix reports it too: if the person must sign in, invite them from their record with the same email (the invitation reuses this access); otherwise delete it.",
       "invito_scade": "Invitation valid until {quando}",
       "veste_valida_al": "Valid until {quando}",
       "apri_scheda": "Open the record",

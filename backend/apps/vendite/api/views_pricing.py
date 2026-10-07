@@ -19,7 +19,7 @@ from rest_framework.request import Request
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
 from apps.core.api.request_parsers import parse_iso_date
 from apps.core.api.success_responses import success_response
 from apps.core.services.error_manager import ErrorManager
@@ -339,7 +339,7 @@ class PricingLimitiUtenteView(DomainAPIView):
         ],
     )
     def get(self, request: Request):
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
         # Single round-trip: risolve entrambe le chiavi in una query DB.
         # Valori ritornati come stringa (envelope stabile); il FE le converte
         # in Number (zero-safe) per l'interpolazione dell'hint.

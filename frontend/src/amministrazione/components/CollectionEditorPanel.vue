@@ -50,7 +50,7 @@ const { t } = useI18n()
       </Column>
     </DataTable>
 
-    <div v-if="coll.formMode.value" class="app-drawer-section coll-form">
+    <div v-if="coll.formMode.value" :ref="coll.ancoraForm" class="app-drawer-section coll-form">
       <slot name="form" />
       <div class="coll-form__actions">
         <Button :label="t('common.cancel')" severity="secondary" text @click="coll.chiudiForm()" />

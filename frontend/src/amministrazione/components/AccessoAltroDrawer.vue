@@ -6,14 +6,17 @@
 // Scopo: il drawer di una riga del tab «Altri accessi» (brief-db-be-fe-area-
 //        accessi, A-4): chi e' la persona, le sue vesti con lo stato e il
 //        soggetto collegato — da cui si apre la scheda che le governa — e le
-//        azioni della CREDENZIALE (blocco, secondo fattore).
+//        azioni della CREDENZIALE (blocco, secondo fattore, e «Elimina
+//        accesso» per la credenziale senza vesti).
 // ⛔ Le VESTI non si gestiscono da qui: invito, reinvio e disattivazione
 //    restano nella scheda del cliente o del fornitore, che ne e' il
 //    proprietario. Qui si legge la veste e si va alla sua scheda.
 // ⚠️ Niente dettaglio da rileggere: la riga della lista porta gia' tutto
 //    (`anagrafiche.vw_accessi_altri`); lo stato della credenziale lo rilegge
 //    `CredenzialeAzioni` per conto suo, e dopo un blocco il drawer avvisa la
-//    lista (`changed`), che si ricarica.
+//    lista (`changed`), che si ricarica. La capability dell'eliminazione sta
+//    sulla riga (`can_delete` + `delete_*`); eliminata la credenziale il
+//    drawer si chiude, perche' non c'e' piu' niente da mostrare.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
@@ -26,6 +29,7 @@ import { NAV_ICONS } from '../../core/navigation'
 import { displayDate, displayTimestamp } from '../../core/utils/date'
 import { etichettaRuoloApplicativo } from '../../core/utils/i18nLabel'
 import { statoVesteSeverity } from '../../core/utils/severity'
+import { useEliminaCredenziale } from '../composables/useEliminaCredenziale'
 import { destinazioneVeste, useSchedaVeste } from '../composables/useSchedaVeste'
 import CredenzialeAzioni from './CredenzialeAzioni.vue'
 
@@ -41,12 +45,24 @@ const parentReadonly = useInjectReadonly()
 const isReadonly = computed(() => props.readonly || parentReadonly.value)
 const onClose = useDrawerClose(emit)
 const { apriSchedaVeste } = useSchedaVeste()
+const { loading: eliminando, eliminaSpenta, motivoEliminaSpenta, chiediElimina } = useEliminaCredenziale()
 
 // Scopo: va alla scheda del soggetto della veste, chiudendo il drawer: la
 //        scheda si apre in un'altra pagina, e questo resterebbe davanti.
 function vaiAllaScheda(veste) {
   onClose()
   apriSchedaVeste(veste)
+}
+
+// Scopo: elimina la credenziale; a gesto riuscito il drawer si chiude e la
+//        lista dietro si ricarica.
+function elimina() {
+  chiediElimina(props.riga, {
+    onEliminata: () => {
+      onClose()
+      emit('changed')
+    },
+  })
 }
 </script>
 
@@ -114,6 +130,27 @@ function vaiAllaScheda(veste) {
         :readonly="isReadonly"
         @changed="emit('changed')"
       />
+
+      <!-- Permesso ⇒ nascondi (sola lettura); stato ⇒ spento col motivo. Il
+           tooltip sull'involucro: un `<button disabled>` non emette eventi
+           del mouse. Il motivo e' anche scritto sotto: dice cosa fare (avvisare
+           lo sviluppo, spegnere le vesti), e su touch un tooltip non si legge. -->
+      <div v-if="!isReadonly" class="form-field">
+        <span v-tooltip.top="motivoEliminaSpenta(riga)" class="app-action-tooltip-wrap">
+          <Button
+            :label="t('amministrazione.accessi.elimina')"
+            :icon="MANAGE_ICONS.DELETE"
+            severity="danger"
+            outlined size="small"
+            :disabled="eliminaSpenta(riga) || eliminando"
+            :loading="eliminando"
+            @click="elimina"
+          />
+        </span>
+        <small v-if="eliminaSpenta(riga)" class="app-field-hint">
+          {{ motivoEliminaSpenta(riga) }}
+        </small>
+      </div>
     </template>
   </AppDrawer>
 </template>

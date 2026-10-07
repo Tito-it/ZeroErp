@@ -54,10 +54,11 @@ const usaRecupero = ref(false)
 // generico (niente enumeration di quali canali sono attivi).
 // `E_CREDENZIALE_BLOCCATA`: blocco deciso dall'amministratore, vale su
 // tutte le porte e non scade da solo (config.credenziali).
+// Una veste fuori dalle sue date ha l'esito di una spenta: niente codici
+// per le date (`E_UTENTE_NON_ATTIVO`/`E_UTENTE_SCADUTO` ritirati il
+// 2026-10-07, brief-db-veste-utilizzabile D-4).
 const ERROR_CODE_MAP = {
   E_UTENTE_DISABILITATO: 'auth.account_disabled',
-  E_UTENTE_NON_ATTIVO: 'auth.account_not_active',
-  E_UTENTE_SCADUTO: 'auth.account_expired',
   E_VESTE_NON_ATTIVA: 'auth.veste_non_attiva',
   E_CREDENZIALE_BLOCCATA: 'auth.credential_locked',
   // Il secondo passo: il codice sbagliato, gia' usato, di recupero non valido.

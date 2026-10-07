@@ -19,7 +19,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -435,7 +435,7 @@ class ApiOrdineRighe(DomainAPIView):
     )
     # Scopo: Aggiunge una riga (solo DRAFT). Pricing via BB condiviso.
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
-        auth_user_id = get_scope_user_id(request)
+        auth_user_id = get_actor_user_id(request)
         return handle_post_json(
             request,
             handler=lambda payload: ordini_service.gestisci_riga(
@@ -458,7 +458,7 @@ class ApiOrdineRigaDetail(DomainAPIView):
         return success_response(
             ordini_service.aggiorna_riga(
                 int(ordine_id), int(riga_id), dict(corpo_oggetto(request)),
-                auth_user_id=get_scope_user_id(request),
+                auth_user_id=get_actor_user_id(request),
             ),
         )
 
@@ -485,7 +485,7 @@ class ApiOrdineRigaPreviewComponenti(DomainAPIView):
         responses={200: PREVIEW_COMPONENTI_RESPONSE},
     )
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
-        auth_user_id = get_scope_user_id(request)
+        auth_user_id = get_actor_user_id(request)
 
         # Ritorna la LISTA nuda dei componenti (contratto condiviso col
         # ComponentiDialog FE: `response.data.data` = array). NON avvolgere in

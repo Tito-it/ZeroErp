@@ -20,7 +20,7 @@ from rest_framework.request import Request
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
 from apps.core.api.payload_validators import corpo_oggetto, qp_bool, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.core.services.partitioned_note_service import PartitionedNoteService
@@ -176,7 +176,7 @@ def make_note_views(
         # Scopo: Crea una nuova nota sul documento padre. Idempotency-Key obbligatoria.
         def post(self, request: Request, **path_kwargs: Any) -> JsonResponse:
             target_id = int(path_kwargs[_parent_param])
-            auth_user_id = get_scope_user_id(request)
+            auth_user_id = get_actor_user_id(request)
 
             def _handler(payload: dict[str, Any]) -> dict[str, Any]:
                 svc = service_factory()
@@ -218,7 +218,7 @@ def make_note_views(
             self, request: Request, *, note_id: int, **path_kwargs: Any,
         ) -> JsonResponse:
             target_id = int(path_kwargs[_parent_param])
-            auth_user_id = get_scope_user_id(request)
+            auth_user_id = get_actor_user_id(request)
             svc = service_factory()
             updated = svc.aggiorna_nota(
                 note_id=note_id,

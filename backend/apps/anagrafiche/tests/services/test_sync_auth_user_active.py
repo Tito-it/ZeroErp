@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unitari per il management command sync_auth_user_active.
-#        Verifica il flusso batch di disattivazione utenti scaduti
+#        Verifica il flusso batch di riallineamento degli utenti (spegne e accende)
 #        e l'invalidazione cache permessi.
 # Note: Usa unittest.TestCase con mock (no DB reale, compatibile CI).
 # ------------------------------------------------------------
@@ -44,7 +44,7 @@ _INVALIDATE = "apps.anagrafiche.management.commands.sync_auth_user_active.invali
 class SyncAuthUserActiveTests(TestCase):
 
     # Scopo: Verifica che il command chiami fn_sync_auth_user_expired
-    # e riporti il conteggio degli utenti disattivati.
+    # e riporti il conteggio degli utenti riallineati.
     @patch(_INVALIDATE)
     @patch(_REPO)
     def test_command_calls_fn_sync_and_reports_count(
@@ -60,7 +60,7 @@ class SyncAuthUserActiveTests(TestCase):
         repo.sync_auth_user_expired.assert_called_once_with(dry_run=False)
         output = out.getvalue()
         self.assertIn("3", output)
-        self.assertIn("disattivati", output)
+        self.assertIn("riallineati", output)
 
     # Scopo: Verifica che invalidate_user venga chiamata per ogni
     # auth_user_id coinvolto nella sync.

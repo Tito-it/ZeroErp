@@ -99,14 +99,15 @@ class ChangePasswordView(DomainAPIView):
             # toccare la password: se nel frattempo e' stata revocata, il
             # cambio non avviene e la risposta e' quella di una sessione
             # scaduta, non un token che la richiesta dopo rifiuterebbe.
+            # «Valida» = utilizzabile oggi (`script.fn_veste_utilizzabile`).
             identita_id = extract_identita_id_from_request(request)
             identita = (
-                _auth_repo.get_identita_dettaglio(identita_id, user.id)
+                _auth_repo.get_veste_utilizzabile(identita_id, user.id)
                 if identita_id is not None
                 else None
             )
             ErrorManager.require(
-                identita is not None and bool(identita.get("attivo")),
+                identita is not None,
                 code=E_IDENTITA_NON_ATTIVA,
                 message="Sessione non piu' valida: effettua nuovamente l'accesso.",
             )

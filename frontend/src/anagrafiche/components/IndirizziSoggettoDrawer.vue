@@ -65,7 +65,7 @@ const matriceCompleta = ref([])
 //    indirizzo esistente. Che il salvataggio lo SOSTITUISCA (replace, o
 //    cancella + crea sul ruolo) e' il verbo del dominio, e resta qui. Fino a
 //    quel giorno gli stati erano 'new'/'replace'.
-const { formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm } = useFormInline({
+const { formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, ancoraForm } = useFormInline({
   // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
   confermaCambio: (p) => chiudiInlineConConferma(p),
 })
@@ -440,7 +440,7 @@ const annullaForm = () => chiudiInlineConConferma(onCancelForm)
 
     <!-- Form (aggiungi o cambia) -->
     <template v-if="formMode">
-      <div class="app-drawer-section">
+      <div :ref="ancoraForm" class="app-drawer-section">
         <h4>{{ formMode === 'edit'
           ? t('anagrafiche.indirizzo_soggetto.cambia_indirizzo') + ': ' + replaceLabel
           : t('anagrafiche.indirizzo_soggetto.nuovo_indirizzo')

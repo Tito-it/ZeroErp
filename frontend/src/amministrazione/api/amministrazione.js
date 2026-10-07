@@ -70,6 +70,15 @@ export function bloccaCredenziale(authUserId, motivo) {
   )
 }
 
+// Scopo: elimina una credenziale che non ha mai avuto una veste. Il gesto e'
+//        irreversibile: la chiave fa rispondere il doppio invio come il primo.
+export function eliminaCredenziale(authUserId) {
+  return api.delete(
+    `${BASE}/credenziali/${authUserId}/`,
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
 // Scopo: toglie il blocco dell'amministratore.
 export function sbloccaCredenziale(authUserId) {
   return api.post(

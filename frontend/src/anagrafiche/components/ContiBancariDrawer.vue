@@ -56,6 +56,7 @@ const {
   listLoading,
   saving,
   formMode,
+  ancoraForm,
   formErrors,
   campiErrati,
   loadList: loadConti,
@@ -205,7 +206,7 @@ function usoSeverity(uso) {
 
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">
-        <div class="app-drawer-section">
+        <div :ref="ancoraForm" class="app-drawer-section">
           <h4>{{ formMode === 'edit' ? t('anagrafiche.conti_bancari.modifica_conto') : t('anagrafiche.conti_bancari.nuovo_conto') }}</h4>
         </div>
         <ContoBancarioForm

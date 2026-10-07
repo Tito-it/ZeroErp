@@ -5,7 +5,8 @@
 # Scopo: L'area «Accessi» sul DB vero (brief-db-be-fe-area-accessi): la
 #        partizione delle credenziali fra i tre tab, le due liste nuove con
 #        OGNI filtro e OGNI chiave d'ordinamento attraversati, lo stato della
-#        credenziale, blocco e sblocco coi verbi veri, e la porta degli
+#        credenziale, blocco e sblocco coi verbi veri, l'eliminazione col verbo
+#        vero (brief-db-elimina-credenziale-senza-veste) e la porta degli
 #        operatori chiusa a chi operatore non e'.
 # Note: in transazione annullata. I casi si COSTRUISCONO (operatore, cliente
 #       dello shop, credenziale senza vesti): i dati di oggi non decidono
@@ -24,6 +25,15 @@
 7. test_la_porta_operatori_non_apre_altre_categorie
 8. test_lo_stato_della_veste_della_scheda_cliente_viene_dal_db
 9. test_la_credenziale_di_sistema_non_si_blocca
+10. test_la_capability_dell_eliminazione_viene_dalla_check
+11. test_elimina_la_credenziale_senza_vesti
+12. test_la_credenziale_con_vesti_non_si_elimina
+13. test_la_credenziale_con_storia_non_si_elimina
+
+⭐ 10, 11 e 13 provano DUE MONDI, come il pgTAP `test-elimina-credenziale-v1`:
+dove le FK del ponte django esistono (dbdev) il verbo elimina; dove non ci sono
+(CI: Liquibase prima di `manage.py migrate`) la check e' fail-closed e il verbo
+rifiuta con `E_CREDENZIALE_STORIA_NON_VERIFICABILE`. Nessun ramo e' saltato.
 """
 
 from __future__ import annotations
@@ -81,6 +91,25 @@ class AccessiDbTests(unittest.TestCase):
         cur.execute("SET LOCAL app.current_user_id = %s", [str(self.admin)])
         cur.execute("SELECT script.fn_is_super_admin(%s)", [self.admin])
         self.assertTrue(cur.fetchone()[0], "il contesto del test dev'essere un SUPER_ADMIN")
+
+    # Scopo: Il mondo in cui gira il test: la FK di `identita_digitali` verso
+    #        `django.auth_user` c'e'? E' la stessa domanda della check (D-4).
+    def _ponte_django(self) -> bool:
+        self.cur.execute(
+            "SELECT EXISTS (SELECT 1 FROM pg_constraint c WHERE c.contype = 'f' "
+            "AND c.conrelid = 'anagrafiche.identita_digitali'::regclass "
+            "AND c.confrelid = to_regclass('django.auth_user'))"
+        )
+        return self.cur.fetchone()[0]
+
+    # Scopo: Le righe di «Altri accessi» di UNA credenziale costruita dal test,
+    #        cercata per username: `{auth_user_id: riga}`.
+    # ⚠️ Non la prima pagina della lista intera: con piu' credenziali ALTRO
+    #    della pagina la riga cercata sta oltre, e un `assertNotIn` passerebbe
+    #    a vuoto — verde per sottrazione.
+    def _righe_altri(self, username: str) -> dict[int, dict]:
+        righe, _ = AccessiRepository().list_accessi_altri(search=username, limit=200, offset=0)
+        return {r["auth_user_id"]: r for r in righe}
 
     def _credenziale(self, username: str) -> int:
         self.cur.execute(
@@ -207,6 +236,91 @@ class AccessiDbTests(unittest.TestCase):
         self.assertIs(servizio.get_credenziale(self.macchina)["bloccata"], False)
 
         self.assertIs(servizio.sblocca_credenziale(self.macchina)["bloccata"], False)
+
+    # Scopo: La capability dell'eliminazione, sulla riga di lista e sul
+    #        dettaglio, e' il primo motivo di `fn_check_credenziale_eliminabile`:
+    #        una veste (anche accesa) la spegne con CON_VESTI; la credenziale
+    #        senza vesti si elimina dove il ponte c'e', ed e' fail-closed dove
+    #        manca.
+    def test_la_capability_dell_eliminazione_viene_dalla_check(self):
+        servizio = AccessiService()
+        for fonte, shop, nuda in (
+            ("lista", self._righe_altri("accessi_solo_shop")[self.shop],
+             self._righe_altri("accessi_senza_vesti")[self.nuda]),
+            ("dettaglio", servizio.get_credenziale(self.shop), servizio.get_credenziale(self.nuda)),
+        ):
+            with self.subTest(fonte=fonte):
+                self.assertIs(shop["can_delete"], False)
+                self.assertEqual(shop["delete_reason"], "CON_VESTI")
+                self.assertEqual(shop["delete_reason_key"], "amministrazione.accessi.elimina_reason.con_vesti")
+                # Il dettaglio arriva DECODIFICATO: un oggetto, non la stringa del driver.
+                self.assertIsInstance(shop["delete_dettaglio"], dict)
+                if self._ponte_django():
+                    self.assertIs(nuda["can_delete"], True)
+                    self.assertIsNone(nuda["delete_reason"])
+                    self.assertIsNone(nuda["delete_dettaglio"])
+                else:
+                    self.assertIs(nuda["can_delete"], False)
+                    self.assertEqual(nuda["delete_reason"], "STORIA_NON_VERIFICABILE")
+
+    # Scopo: Il verbo vero: col ponte la credenziale senza vesti se ne va,
+    #        esce dalla lista e lascia la traccia (chi l'ha eliminata, e il suo
+    #        username); senza il ponte rifiuta e la credenziale resta.
+    def test_elimina_la_credenziale_senza_vesti(self):
+        servizio = AccessiService()
+        if not self._ponte_django():
+            with self.assertRaises(DatabaseError) as ctx:
+                servizio.elimina_credenziale(self.nuda)
+            self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_STORIA_NON_VERIFICABILE")
+            self.assertEqual(servizio.get_credenziale(self.nuda)["auth_user_id"], self.nuda)
+            return
+
+        # La stessa ricerca la trova PRIMA: l'`assertNotIn` sotto non e' a vuoto.
+        self.assertIn(self.nuda, self._righe_altri("accessi_senza_vesti"))
+        self.assertEqual(servizio.elimina_credenziale(self.nuda), {"status": "ok", "auth_user_id": self.nuda})
+        self.assertIsNone(AccessiRepository().get_credenziale(self.nuda))
+        self.assertNotIn(self.nuda, self._righe_altri("accessi_senza_vesti"))
+        self.cur.execute(
+            "SELECT username, eliminata_da FROM config.credenziali_eliminate WHERE auth_user_id = %s",
+            [self.nuda],
+        )
+        self.assertEqual(self.cur.fetchall(), [("accessi_senza_vesti", self.admin)])
+
+    # Scopo: Una veste, accesa o spenta, ferma l'eliminazione col codice del
+    #        primo motivo, in ogni mondo (le vesti si guardano per prime).
+    def test_la_credenziale_con_vesti_non_si_elimina(self):
+        self.cur.execute(
+            "UPDATE anagrafiche.identita_digitali SET attivo = false WHERE auth_user_id = %s", [self.shop],
+        )
+        with self.assertRaises(DatabaseError) as ctx:
+            AccessiService().elimina_credenziale(self.shop)
+        self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_CON_VESTI")
+        self.assertEqual(AccessiService().get_credenziale(self.shop)["auth_user_id"], self.shop)
+
+    # Scopo: Una credenziale senza vesti ma con una storia (un override di
+    #        parametro a suo nome, FK NO ACTION) non si elimina, e il rifiuto
+    #        nomina la tabella; senza il ponte e' il fail-closed.
+    def test_la_credenziale_con_storia_non_si_elimina(self):
+        self.cur.execute(
+            "INSERT INTO config.parameter_overrides (parameter_id, overridden_value, django_user_id) "
+            "SELECT min(p.id), 'test accessi', %s FROM config.parameters p",
+            [self.nuda],
+        )
+        ponte = self._ponte_django()
+        cred = AccessiService().get_credenziale(self.nuda)
+        self.assertIs(cred["can_delete"], False)
+        if ponte:
+            self.assertEqual(cred["delete_reason"], "CON_STORIA")
+            self.assertIn("config.parameter_overrides", cred["delete_dettaglio"]["dove"])
+
+        with self.assertRaises(DatabaseError) as ctx:
+            AccessiService().elimina_credenziale(self.nuda)
+        if ponte:
+            self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_CON_STORIA")
+            self.assertIn("config.parameter_overrides", str(ctx.exception))
+        else:
+            self.assertEqual(structured_db_error_code(ctx.exception), "E_CREDENZIALE_STORIA_NON_VERIFICABILE")
+        self.assertEqual(AccessiService().get_credenziale(self.nuda)["auth_user_id"], self.nuda)
 
     def test_il_blocco_vuole_il_motivo(self):
         with self.assertRaises(DatabaseError) as ctx:

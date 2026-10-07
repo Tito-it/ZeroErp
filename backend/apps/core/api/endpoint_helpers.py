@@ -27,9 +27,26 @@ logger = logging.getLogger(__name__)
 
 # Scopo: Restituisce l'auth_user_id per il filtro scope emittente DB-first.
 # Superuser Django bypassa il filtro (None); per gli altri si usa user.id.
+# ⛔ Serve SOLO al PERIMETRO di una lettura: `None` vuol dire «nessun limite».
+#    Non e' l'utente che agisce: per gate, audit e pratiche usa
+#    `get_actor_user_id`. Passato a un gate prezzi, il `None` del superuser
+#    diventa «chiamata senza utente» e il gate blocca proprio il superuser
+#    (E_PRICING_OVERRIDE_NON_AUTORIZZATO su offerte e contratti, 2026-10-07).
 def get_scope_user_id(request: HttpRequest | Request) -> int | None:
     user = request.user
     return None if user.is_superuser else user.id
+
+
+# Scopo: Restituisce l'id dell'utente che AGISCE nella richiesta: quello che i
+#        gate autorizzativi controllano (prezzi L1/L2, approvazioni), che
+#        l'audit registra e che apre le pratiche. `None` solo se la richiesta
+#        non e' autenticata, e per i gate vuol dire «blocca».
+# ⭐ Il gemello di `get_scope_user_id`, con la semantica opposta sul
+#    superuser: qui il superuser e' un utente come gli altri (il bypass lo
+#    decide il gate, non la view).
+def get_actor_user_id(request: HttpRequest | Request) -> int | None:
+    user = request.user
+    return user.id if user and user.is_authenticated else None
 
 
 # Scopo: Restituisce il risorsa_umana_id dell'utente autenticato.

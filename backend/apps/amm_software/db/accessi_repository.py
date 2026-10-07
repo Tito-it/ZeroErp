@@ -70,6 +70,28 @@ ACCESSI_SISTEMA_ORDER_COLUMNS: dict[str, str] = {
 # Il primo motivo per cui la credenziale non si blocca (`[]` = si blocca).
 _LATERAL_BLOCCO = sql_lateral_primo_motivo("script.fn_check_credenziale_bloccabile(au.id)", "blocco")
 
+# Il primo motivo per cui la credenziale non si elimina (`[]` = si elimina),
+# per il dettaglio (`au`) e per le righe di «Altri accessi» (`v`): la stessa
+# check che il verbo `fn_elimina_credenziale` solleva (brief-db-elimina-
+# credenziale-senza-veste §7.3). ⚠️ Sulla lista gira per riga filtrata (sotto
+# la `COUNT(*) OVER ()`): con una veste la check esce subito, e la ricerca
+# della storia (una lettura per FK) tocca le sole credenziali senza vesti.
+_LATERAL_ELIMINA_DETTAGLIO = sql_lateral_primo_motivo(
+    "script.fn_check_credenziale_eliminabile(au.id)", "elimina",
+)
+_LATERAL_ELIMINA_RIGA = sql_lateral_primo_motivo(
+    "script.fn_check_credenziale_eliminabile(v.auth_user_id)", "elimina",
+)
+
+# La terna dell'eliminazione, stessa famiglia del blocco (`can_block`,
+# `block_reason`, `block_reason_key`) piu' il dettaglio: per `CON_STORIA`
+# porta `dove`, le tabelle che la chiave i18n nomina.
+_COLONNE_ELIMINA = """
+       (elimina.reason IS NULL) AS can_delete,
+       elimina.reason AS delete_reason,
+       elimina.reason_key AS delete_reason_key,
+       elimina.dettaglio AS delete_dettaglio"""
+
 # Le colonne DATA delle due liste: senza `order_dir` si leggono dalla piu'
 # recente (regola di Tid, 2026-09-02). Costante di modulo: il presidio
 # `test_liste_configurabili_seed` la confronta con le date ordinabili del seed.
@@ -94,7 +116,9 @@ class AccessiRepository:
     # Scopo: Le credenziali di categoria ALTRO (`anagrafiche.vw_accessi_altri`),
     #        paginate col totale in una valutazione. Filtri: la veste
     #        (`ruolo_applicativo` dentro `vesti`), lo stato riassunto, nessun
-    #        accesso, secondo fattore (stato e obbligo), blocco.
+    #        accesso, secondo fattore (stato e obbligo), blocco. Ogni riga
+    #        porta la capability dell'eliminazione (`can_delete` e la terna
+    #        del motivo), per il kebab e il drawer.
     # ⚠️ `v.*`: la vista e' il contratto (§7.4 del brief), e una colonna
     #    elencata a mano sarebbe una colonna che il giorno dopo manca.
     # ⚠️ La vista attraversa `anagrafiche.clienti` (RLS): letta senza contesto,
@@ -148,18 +172,22 @@ class AccessiRepository:
         )
         safe_limit, safe_offset = limiti_pagina(limit, offset)
         sql = f"""
-            SELECT v.*, COUNT(*) OVER () AS total_count
+            SELECT v.*,{_COLONNE_ELIMINA},
+                   COUNT(*) OVER () AS total_count
               FROM anagrafiche.vw_accessi_altri v
+              {_LATERAL_ELIMINA_RIGA}
              WHERE {" AND ".join(conditions)}
              ORDER BY {ordinamento}
              LIMIT %s OFFSET %s
-        """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_ACCESSI_ALTRI, ORDER BY da whitelist, valori come parametri
+        """  # noqa: S608 — WHERE da frammenti letterali + colonne _RICERCA_ACCESSI_ALTRI, ORDER BY da whitelist, LATERAL e colonne da costanti di modulo, valori come parametri
         rows, total = fetch_paged_with_total(sql, [*params, safe_limit, safe_offset], offset=safe_offset)
         # ⚠️ Fuori dall'ORM il driver consegna il jsonb come `str`: `vesti`
         #    va decodificato, o il frontend riceve una stringa al posto della
-        #    lista (e `len()` conterebbe i caratteri).
+        #    lista (e `len()` conterebbe i caratteri). Lo stesso per il
+        #    dettaglio del motivo.
         for r in rows:
             r["vesti"] = jsonb_out(r["vesti"])
+            r["delete_dettaglio"] = jsonb_out(r["delete_dettaglio"])
         return rows, total
 
     # Scopo: Le credenziali di categoria SISTEMA (`anagrafiche.vw_accessi_sistema`):
@@ -213,8 +241,9 @@ class AccessiRepository:
 
     # Scopo: Lo stato di UNA credenziale per il pannello delle sue azioni:
     #        categoria (il tab), blocco dell'amministratore (chi, quando,
-    #        perche') e la capability del blocco (`can_block`, `block_reason`,
-    #        `block_reason_key`). `None` se la credenziale non esiste.
+    #        perche'), la capability del blocco (`can_block`, `block_reason`,
+    #        `block_reason_key`) e quella dell'eliminazione (`can_delete` e la
+    #        sua terna). `None` se la credenziale non esiste.
     # ⭐ La capability e' il PRIMO motivo di `script.fn_check_credenziale_bloccabile`,
     #    la stessa check che il verbo `fn_blocca_credenziale` chiama prima di
     #    scrivere e di cui solleva il primo motivo: pulsante spento e rifiuto
@@ -235,16 +264,20 @@ class AccessiRepository:
                        cr.motivo_blocco,
                        (blocco.reason IS NULL) AS can_block,
                        blocco.reason AS block_reason,
-                       blocco.reason_key AS block_reason_key
+                       blocco.reason_key AS block_reason_key,{_COLONNE_ELIMINA}
                   FROM auth_user au
                   LEFT JOIN config.credenziali cr ON cr.auth_user_id = au.id
                   LEFT JOIN auth_user chi ON chi.id = cr.bloccata_da
                   {_LATERAL_BLOCCO}
+                  {_LATERAL_ELIMINA_DETTAGLIO}
                  WHERE au.id = %s
-                """,  # noqa: S608 — frammento da costante di modulo, valori come parametri
+                """,  # noqa: S608 — frammenti da costanti di modulo, valori come parametri
                 [auth_user_id],
             )
-            return row_to_dict(cursor)
+            cred = row_to_dict(cursor)
+        if cred is not None:
+            cred["delete_dettaglio"] = jsonb_out(cred["delete_dettaglio"])
+        return cred
 
     # Scopo: Il verbo del blocco (`script.fn_blocca_credenziale`): SUPER_ADMIN
     #        (prima riga del verbo), motivo obbligatorio, anti-lockout nel guard.
@@ -257,3 +290,13 @@ class AccessiRepository:
     def sblocca_credenziale(self, auth_user_id: int) -> None:
         with connection.cursor() as cursor:
             cursor.execute("SELECT script.fn_sblocca_credenziale(%s)", [auth_user_id])
+
+    # Scopo: Il verbo dell'eliminazione (`script.fn_elimina_credenziale`):
+    #        SUPER_ADMIN (prima riga del verbo), lock sulla riga di
+    #        `auth_user`, primo motivo della check, traccia in
+    #        `config.credenziali_eliminate`, poi il DELETE (le righe che le
+    #        appartengono seguono in CASCADE). ⛔ L'app non ha il DELETE su
+    #        `django.auth_user`: questa e' l'unica porta.
+    def elimina_credenziale(self, auth_user_id: int) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT script.fn_elimina_credenziale(%s)", [auth_user_id])

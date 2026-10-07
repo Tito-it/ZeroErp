@@ -6,6 +6,7 @@
 #          GET  accessi/altri/                       le persone senza veste operatore
 #          GET  accessi/sistema/                     le credenziali delle macchine
 #          GET  credenziali/<id>/                    lo stato della credenziale
+#          DELETE credenziali/<id>/                  elimina una credenziale senza vesti
 #          POST credenziali/<id>/blocca/             blocco dell'amministratore
 #          POST credenziali/<id>/sblocca/            toglie il blocco
 #          GET  credenziali/<id>/secondo-fattore/    stato del secondo fattore
@@ -190,12 +191,16 @@ _CREDENZIALE = inline_serializer(
         "can_block": serializers.BooleanField(),
         "block_reason": serializers.CharField(allow_null=True),
         "block_reason_key": serializers.CharField(allow_null=True),
+        "can_delete": serializers.BooleanField(),
+        "delete_reason": serializers.CharField(allow_null=True),
+        "delete_reason_key": serializers.CharField(allow_null=True),
+        "delete_dettaglio": serializers.DictField(allow_null=True),
     },
 )
 
 
 class CredenzialeDetailView(AdminAPIView):
-    """GET /amm-software/credenziali/<id>/ — lo stato della credenziale."""
+    """GET / DELETE /amm-software/credenziali/<id>/ — stato della credenziale, eliminazione."""
 
     @extend_schema(
         summary="Stato di una credenziale (blocco dell'amministratore)",
@@ -203,13 +208,53 @@ class CredenzialeDetailView(AdminAPIView):
             "Categoria (il tab dell'area Accessi), blocco dell'amministratore (quando, chi, "
             "perche') e la capability del blocco: `can_block = false` con `block_reason` "
             "`ULTIMO_SUPER_ADMIN` sull'ultimo SUPER_ADMIN raggiungibile (il guard del DB "
-            "rifiuterebbe con `E_PROFILO_ULTIMO_SUPER_ADMIN`)."
+            "rifiuterebbe con `E_PROFILO_ULTIMO_SUPER_ADMIN`). Porta anche la capability "
+            "dell'eliminazione (`can_delete`, `delete_reason`, `delete_reason_key`, "
+            "`delete_dettaglio`): il primo motivo di `script.fn_check_credenziale_eliminabile`."
         ),
         responses={200: _CREDENZIALE},
     )
     # Scopo: Lo stato della credenziale per il pannello delle sue azioni.
     def get(self, request: Request, auth_user_id: int) -> JsonResponse:
         return success_response(AccessiService().get_credenziale(auth_user_id))
+
+    @extend_schema(
+        summary="Elimina una credenziale senza vesti",
+        description=(
+            "Elimina una credenziale che non ha mai avuto una veste "
+            "(`script.fn_elimina_credenziale`): e' il gesto che chiede il presidio "
+            "`dbops.vw_credenziali_da_sanare` (`NESSUNA_VESTE`). Il verbo rifiuta col primo "
+            "motivo della check: `E_CREDENZIALE_CON_VESTI` (409, anche una veste spenta), "
+            "`E_CREDENZIALE_CON_STORIA` (409, la credenziale compare gia' fra i dati: il "
+            "messaggio dice dove), `E_CREDENZIALE_STORIA_NON_VERIFICABILE` (500, mancano i "
+            "legami del database verso le credenziali). La traccia resta in "
+            "`config.credenziali_eliminate`."
+        ),
+        parameters=[
+            OpenApiParameter(
+                name="Idempotency-Key", type=str, location=OpenApiParameter.HEADER, required=True,
+                description=(
+                    "Obbligatoria: il gesto e' irreversibile e un doppio invio riceverebbe "
+                    "altrimenti un 404 per un'operazione riuscita."
+                ),
+            ),
+        ],
+        request=None,
+        responses={200: inline_serializer(
+            name="CredenzialeEliminaResp",
+            fields={"status": serializers.CharField(), "auth_user_id": serializers.IntegerField()},
+        )},
+    )
+    # Scopo: Elimina la credenziale, o riporta il motivo del rifiuto.
+    # ⚠️ `handle_post_json` e non una chiamata diretta: e' la sede unica del
+    #    controllo `Idempotency-Key`. Il corpo di un DELETE e' vuoto e il
+    #    payload si ignora: quello che serve e' nel path.
+    def delete(self, request: Request, auth_user_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda _payload: AccessiService().elimina_credenziale(auth_user_id),
+            require_idempotency_key=True,
+        )
 
 
 class CredenzialeBloccaView(AdminAPIView):

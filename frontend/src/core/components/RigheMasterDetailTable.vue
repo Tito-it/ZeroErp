@@ -125,7 +125,7 @@ const fotografiaRiga = unisciFotografie(() => formRiga.value)
 
 const {
   formMode, rigaInModifica, formAperto,
-  apriRiga, chiudiForm, risincronizza, azioneNuovaRiga,
+  apriRiga, chiudiForm, ancoraForm, risincronizza, azioneNuovaRiga,
 } = useFormInline({
   padre: () => props.parentId,
   puoModificare: () => props.isModificabile,
@@ -311,7 +311,7 @@ defineExpose({
 
     <!-- Form master-detail inline: visibile SOLO quando attivo. Il form di riga
          espone già Salva/Annulla interni (no FormFooter: è una sezione). -->
-    <div v-if="formAperto" class="app-drawer-section" style="margin-top: 1rem;">
+    <div v-if="formAperto" :ref="ancoraForm" class="app-drawer-section" style="margin-top: 1rem;">
       <h4>{{ formMode === 'edit' ? t(editLabelKey) : t(newLabelKey) }}</h4>
       <slot
         name="form"

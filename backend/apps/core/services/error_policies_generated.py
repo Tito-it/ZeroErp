@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 978, di cui 99 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 981, di cui 101 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -361,6 +361,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CREDENZIALE_ALTRA_PERSONA": "DATO_ERRATO",
     # Login rifiutato da script.fn_check_blocco_login: la credenziale e' bloccata dall'amministratore (config.credenziali.bloccata_at, D-1 riletta, D-B1). Vale su tutte le porte, non scade e il reset password non la toglie (D-B3). ⚠️ 403 e NON 429, come E_UTENTE_BLOCCATO: il login del frontend intercetta il 429 prima di leggere il codice (e' il throttle per IP). Frase chiusa. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale).
     "E_CREDENZIALE_BLOCCATA": "NON_PERMESSO",
+    # Secondo motivo di script.fn_check_credenziale_eliminabile (reason CON_STORIA), sollevato da script.fn_elimina_credenziale: la credenziale non ha vesti ma compare in una tabella che la tiene con una FK RESTRICT o NO ACTION verso django.auth_user (documenti, email, eventi, override di parametri...). * L'elenco non e' scritto: la check lo deriva da pg_constraint, quindi la prossima FK entra da sola. * Non si cancella la storia per far passare il DELETE (D-2): una credenziale che ha lasciato traccia senza mai avere una veste e' un'anomalia da far vedere allo sviluppo. Valore: le tabelle in cui compare, perche' l'amministratore le possa riferire (sono anche nel contesto, chiave dove). CONFLITTO_STATO come E_CREDENZIALE_CON_VESTI. Nasce il 2026-10-06 (brief-db-elimina-credenziale-senza-veste).
+    "E_CREDENZIALE_CON_STORIA": "CONFLITTO_STATO",
+    # Primo motivo di script.fn_check_credenziale_eliminabile (reason CON_VESTI), sollevato da script.fn_elimina_credenziale: la credenziale ha almeno una veste in anagrafiche.identita_digitali, anche spenta. * Si elimina solo una credenziale senza nessuna veste, la stessa regola di NESSUNA_VESTE del presidio dbops.vw_credenziali_da_sanare (script.fn_credenziale_ha_vesti, D-1): una credenziale con sole vesti spente e' una persona disattivata e la sua storia e' sua. * Arriva anche quando una veste nasce mentre l'amministratore elimina (un invito concorrente): il verbo blocca la riga di django.auth_user prima di leggere la check, e un 23503 residuo del DELETE si rilegge dalla check. CONFLITTO_STATO e non NON_PERMESSO: chi agisce e' SUPER_ADMIN, il limite sta nello stato della credenziale. Frase chiusa: l'id viaggia nel contesto. Nasce il 2026-10-06 (brief-db-elimina-credenziale-senza-veste).
+    "E_CREDENZIALE_CON_VESTI": "CONFLITTO_STATO",
     # anagrafiche.fn_crea_operatore_v2: l'email ha gia' una credenziale e il riuso non e' stato confermato, oppure la conferma (p_riusa_auth_user_id) dichiara una credenziale diversa da quella che c'e'. Stampo della dichiarazione di E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE: chi conferma dichiara cio' che ha visto. Il contesto porta auth_user_id, username e vesti della credenziale trovata, per il log (al client non arriva): il dialog di conferma li legge da script.fn_get_credenziale_per_email, la stessa funzione da cui li prende la madre (20260927-41); campo = email. Segnaposto: l'email e lo username trovato. Nasce il 2026-09-25 (brief-db-blocco-login-per-credenziale §12.7).
     "E_CREDENZIALE_DA_CONFERMARE": "CONFLITTO_STATO",
     # Un verbo dell'amministratore su una credenziale di categoria SISTEMA (script.fn_categoria_accesso: l'utente tecnico di un processo automatico o un API_CLIENT). Lo sollevano script.fn_blocca_credenziale (primo motivo di script.fn_check_credenziale_bloccabile, reason CREDENZIALE_DI_SISTEMA; non dalla sessione del migratore, che e' l'uscita d'emergenza per una credenziale di sistema compromessa, D-1) e script.fn_imposta_totp_obbligatorio quando ACCENDE l'obbligo (spegnerlo passa, D-2). Lo sblocco e la cancellazione del device restano aperti: sono le uscite. CONFLITTO_STATO e non NON_PERMESSO: chi agisce e' SUPER_ADMIN, il limite sta nella natura della credenziale, come il motivo accanto E_PROFILO_ULTIMO_SUPER_ADMIN. Frase chiusa: nessuno riempirebbe un segnaposto dal motivo della check. Nasce il 2026-10-03 (brief-db-credenziale-verbi-amministratore R-DB-A6).
@@ -375,6 +379,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CREDENZIALE_NON_TROVATA": "NON_TROVATO",
     # anagrafiche.trgfn_identita_digitali_guard_natura_credenziale: la veste che si scrive e un'altra veste della stessa credenziale (anche spenta) hanno nature diverse, una di persona e una di macchina (script.fn_veste_di_sistema: API_CLIENT o flag tecnica). Una credenziale e' una password per tutte le porte, e le sue azioni (blocco, secondo fattore) valgono per tutte le vesti. Il caso reale e' un'email che appartiene a un utente tecnico usata per invitare una persona: rimedia chi compila, con un'altra email (DATO_ERRATO). Segnaposto: lo username della credenziale, o il suo id se Django non la ha. Nasce il 2026-10-02 (brief-db-be-fe-area-accessi R-DB-A1).
     "E_CREDENZIALE_PERSONA_E_SISTEMA": "DATO_ERRATO",
+    # Motivo di script.fn_check_credenziale_eliminabile (reason STORIA_NON_VERIFICABILE), sollevato da script.fn_elimina_credenziale: la FK di anagrafiche.identita_digitali verso django.auth_user non esiste, quindi mancano i legami che la check legge per dire se la credenziale ha una storia, e che il DELETE userebbe per portarsi via le righe che le appartengono. * Succede su un'installazione nuova e in CI: Liquibase gira prima di manage.py migrate, e i changeSet del ponte django finiscono MARK_RAN (voce aperta in PROJECT_CONTEXT). * Fail-closed per decisione di Tid (2026-10-06): senza i legami eliminare lascerebbe righe orfane. TECNICO: l'operatore non puo' rimediare, serve chi amministra il database. Frase chiusa. Nasce il 2026-10-06 (brief-db-elimina-credenziale-senza-veste).
+    "E_CREDENZIALE_STORIA_NON_VERIFICABILE": "TECNICO",
     "E_DATA_AL_MINORE_DAL": "DATO_ERRATO",
     "E_DATA_APERTURA": "DATO_ERRATO",
     "E_DATABASE": "DATO_ERRATO",
@@ -1453,7 +1459,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # 423 -> 403 il 2026-08-06 (audit coerenza status). Il 423 e' il lock · WebDAV di una RISORSA (RFC 4918), non di un account: qui e' un · blocco temporaneo dopo troppi tentativi, sollevato da · script.fn_check_blocco_login. Il gemello E_USER_DISABILITATO e' · gia' 403. Il frontend aggancia il CODICE, non lo status · (LoginView.resolveLoginError), quindi a video non cambia nulla. · ⚠️ E NON 429, che sembrerebbe il candidato ovvio: LoginView · intercetta il 429 PRIMA di leggere il codice (e' il throttle per · IP) e il messaggio del DB coi minuti rimanenti andrebbe perso. · Dal 2026-09-25 (20260925-10) e' il freno sulla sola coppia credenziale + provenienza, e dal 20260925-52 il segnaposto sono i minuti rimanenti, riempiti dalla funzione (minuti_rimanenti anche nel contesto).
     "E_UTENTE_BLOCCATO": "NON_PERMESSO",
     "E_UTENTE_DISABILITATO": "NON_PERMESSO",
+    # RITIRATO il 2026-10-07 (brief-db-veste-utilizzabile, D-4): era il rifiuto di script.fn_get_user_profile per una veste OPERATORE o un rapporto con valido_dal futuro. Una veste fuori dalle sue date ha ora lo stesso esito di una veste spenta, E_UTENTE_DISABILITATO, letto dal building block script.fn_veste_utilizzabile: la data non cambia cosa fa chi non entra (chiede all'amministratore, che le date le vede nel dettaglio). Nessuna funzione viva lo nomina piu'; la riga resta perche' il diario deve restare leggibile.
+    # ⚠️ RITIRATO il 2026-10-07
     "E_UTENTE_NON_ATTIVO": "NON_PERMESSO",
+    # RITIRATO il 2026-10-07 (brief-db-veste-utilizzabile, D-4): era il rifiuto di script.fn_get_user_profile per una veste OPERATORE o un rapporto con valido_al passato. Una veste fuori dalle sue date ha ora lo stesso esito di una veste spenta, E_UTENTE_DISABILITATO, letto dal building block script.fn_veste_utilizzabile: la data non cambia cosa fa chi non entra (chiede all'amministratore, che le date le vede nel dettaglio). Nessuna funzione viva lo nomina piu'; la riga resta perche' il diario deve restare leggibile.
+    # ⚠️ RITIRATO il 2026-10-07
     "E_UTENTE_SCADUTO": "NON_PERMESSO",
     # script.fn_crea_utente_tecnico: per la coppia (processo, emittente) lo username deterministico processo@emittente è già preso, ma il legame in dbops.processi_identita è SPENTO. ⛔ Prima ci si sbatteva contro un 23505 NUDO su auth_user_username_key: il guard sul duplicato guarda processi_identita.attivo, e lo username no — quindi disattivare il legame (la via che la documentazione indicava per sostituire l'utente di un processo) liberava il guard e lasciava in piedi il muro. ⚠️ NON è E_UTENTE_TECNICO_GIA_ESISTE, che dice «ha già un utente ATTIVO» e il cui rimedio è «non serve fare niente». Qui l'utente c'è ed è spento, e il rimedio è l'opposto: RIATTIVARLO con script.fn_riattiva_utente_tecnico. Due situazioni diverse mandano a fare due cose diverse. ⭐ CONFLITTO_STATO: i parametri sono giusti, è lo STATO del mondo che non ammette questa operazione. Brief: brief-db-processi-automatici-residui-be, DB-6.
     "E_UTENTE_TECNICO_DA_RIATTIVARE": "CONFLITTO_STATO",
@@ -1682,6 +1692,8 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_TASK_RUNTIME",
         "E_TXID_DBLINK_ERROR",
         "E_TXID_DBLINK_NULL",
+        "E_UTENTE_NON_ATTIVO",
+        "E_UTENTE_SCADUTO",
         "FLUSSI_COMPETENZA_MANCANTE",
         "FLUSSI_ESITO_NON_AMMESSO",
         "FLUSSI_ESITO_OBBLIGATORIO",

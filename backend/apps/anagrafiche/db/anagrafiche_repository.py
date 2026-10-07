@@ -16,14 +16,18 @@ from apps.core.db._helpers import fetchone_scalar, rows_to_list, pattern_contien
 class AnagraficheRepository:
     """Accesso DB per lo schema anagrafiche."""
 
-    # Scopo: Esegue `anagrafiche.fn_sync_auth_user_expired()` — la disattivazione
-    #        batch degli utenti con finestra temporale scaduta — e dice CHI ha
-    #        toccato. Ritorna `(n_disattivati, auth_user_id modificati)`.
+    # Scopo: Esegue `anagrafiche.fn_sync_auth_user_expired()` — il
+    #        riallineamento batch di `auth_user.is_active` a «esiste una veste
+    #        utilizzabile oggi», nei due versi (spegne chi non ne ha piu' una,
+    #        accende chi ne ha una diventata valida) — e dice CHI ha toccato.
+    #        Ritorna `(n_riallineati, auth_user_id modificati)`. Il nome resta
+    #        quello della funzione DB (brief-db-veste-utilizzabile §8.2).
     #
     # ⭐ GLI ID SI RICAVANO DALL'EFFETTO, NON DA UNA COPIA DELLA REGOLA: si
     #    fotografano gli `auth_user` attivi prima e dopo la funzione, dentro la
     #    STESSA transazione, e la differenza e' chi ha cambiato stato. La regola
-    #    «chi e' scaduto» vive in una sede sola, la funzione DB.
+    #    «chi vale oggi» vive in una sede sola, a DB
+    #    (`script.fn_veste_utilizzabile`, letta dalla funzione).
     # ⛔ Fino al 2026-09-12 qui c'era `list_expired_auth_user_ids`: la stessa
     #    `WHERE` della funzione ricopiata in Python — e ricopiata a META', perche'
     #    conosceva solo il ramo legacy (`risorse_umane` via la vista
@@ -35,8 +39,8 @@ class AnagraficheRepository:
     #    puo' lasciare un candidato com'e' (`fn_sync_auth_user_is_active`
     #    decide), e prima la cache veniva invalidata su un elenco piu' largo
     #    del conteggio che si stampava accanto.
-    # ⚠️ La differenza e' SIMMETRICA: la funzione oggi spegne soltanto, ma se
-    #    un giorno riaccendesse, anche quell'utente ha una cache da buttare.
+    # ⚠️ La differenza e' SIMMETRICA: dal 2026-10-07 la funzione spegne E
+    #    accende, e anche chi si accende ha una cache da buttare.
     # `dry_run`: la stessa corsa, dentro una transazione ritirata — l'elenco
     #    e' quello vero perche' lo produce la funzione vera, e non resta niente.
     # ⚠️ Il `set_rollback` e' l'ULTIMA istruzione del blocco: dentro un atomic
@@ -46,11 +50,11 @@ class AnagraficheRepository:
             with connection.cursor() as cursor:
                 prima = self._auth_user_attivi(cursor)
                 cursor.execute("SELECT anagrafiche.fn_sync_auth_user_expired()")
-                disattivati = int(fetchone_scalar(cursor))
+                riallineati = int(fetchone_scalar(cursor))
                 dopo = self._auth_user_attivi(cursor)
             if dry_run:
                 transaction.set_rollback(True)
-        return disattivati, sorted(prima ^ dopo)
+        return riallineati, sorted(prima ^ dopo)
 
     # Scopo: gli `auth_user` attivi in questo istante — un'osservazione, non
     #        una regola: nessun `WHERE` di dominio.

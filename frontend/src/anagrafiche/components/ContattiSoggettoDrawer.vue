@@ -45,6 +45,7 @@ const {
   listLoading,
   saving,
   formMode,
+  ancoraForm,
   formErrors,
   startNew: onStartNew,
   startEdit: onStartEdit,
@@ -160,7 +161,7 @@ const {
 
     <!-- Form (aggiungi o modifica) -->
     <template v-if="formMode">
-      <div class="app-drawer-section">
+      <div :ref="ancoraForm" class="app-drawer-section">
         <h4>{{ formMode === 'edit' ? t('anagrafiche.contatto.modifica_contatto') : t('anagrafiche.contatto.nuovo_contatto') }}</h4>
       </div>
       <ContattoForm
