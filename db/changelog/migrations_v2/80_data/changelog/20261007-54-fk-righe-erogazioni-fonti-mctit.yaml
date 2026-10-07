@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DI CONTRATTO E OFFERTA SI LEGANO AL VOCABOLARIO DELL'EROGAZIONE
+#   vendite.contratti_righe, vendite.offerte_commerciali_eccezioni
+#     (tipo_erogazione, fonte_quantita_attesa) -> config.erogazioni_fonti
+#   e i sei CHECK gemelli si ritirano: la FK e' la sede unica.
+#   Brief: brief-db-offerta-emissione-ed-erogazione §C.7 (giro B1)
+#
+# -- PERCHE' IN 80_data E NON IN 00_schema ---------------------------------
+#   La FK punta a righe di seed (20261007-53): in 00_schema il vocabolario e'
+#   vuoto, e su dbdev le righe esistenti la violerebbero. Forma di 20261004-22.
+#
+# -- I CHECK CHE SI RITIRANO ----------------------------------------------
+#   chk_*_tipo_erog e chk_*_fonte_qta (i due domini) e
+#   chk_*_coerenza_fonte_erogazione (le coppie vietate): ammettevano esattamente
+#   le combinazioni del seed, quindi la FK non trova righe fuori vocabolario.
+#   Lo dice la FK stessa, fail-fast. Nessun changeSet di 80_data/90_end nomina i
+#   sei CHECK (censito il 2026-10-07). Restano i CHECK che non sono la matrice:
+#   chk_*_erogazione_per_tipo_eccezione, chk_*_fonte_per_tipo_eccezione,
+#   chk_*_coerenza_canone, chk_*_esclusione_senza_dati.
+#   ⚠️ MATCH SIMPLE: con una delle due colonne NULL la FK non controlla. Le due
+#   sono NULL insieme solo sull'ESCLUSIONE; sulle altre righe le pretendono i
+#   CHECK *_per_tipo_eccezione.
+#
+# -- LA FORMA -----------------------------------------------------------------
+#   Prima le FK, poi il DROP dei CHECK, nello stesso changeSet: non c'e' un
+#   istante senza cancello. ON UPDATE / ON DELETE RESTRICT: i codici non si
+#   rinominano e una combinazione non si cancella. Nessun `attivo` sul
+#   vocabolario: nessuna coppia ATTIVO a ci_apply. Indici delle FK: policy
+#   opt-in, nessuna query entra dal vocabolario verso le righe.
+#
+# -- RICADUTA SUL BACKEND ------------------------------------------------------
+#   Una combinazione fuori vocabolario esce 23503 col nome della FK, non piu'
+#   23514 col nome del CHECK: va riallineata la traduzione degli errori di
+#   integrita' delle righe (brief §C.7). Finche' il BE tiene la sua copia della
+#   matrice il rifiuto arriva prima, quindi nessuna regressione nel frattempo.
+#   Ritorno indietro: i sei CHECK come li stampa pg_get_constraintdef, e le FK via.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261007-54-fk-righe-erogazioni-fonti-mctit.yaml
+
+  - changeSet:
+      id: 20261007-54-fk-righe-erogazioni-fonti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK (tipo_erogazione, fonte_quantita_attesa) da vendite.contratti_righe e
+        vendite.offerte_commerciali_eccezioni su config.erogazioni_fonti, al posto dei sei CHECK
+        della matrice. In 80_data perche' il vocabolario nasce dal seed 20261007-53. Brief:
+        brief-db-offerta-emissione-ed-erogazione §C.7 (B1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: erogazioni_fonti
+            - sqlCheck:
+                expectedResult: "0"
+                sql: |
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE c.conname IN ('fk_contratti_righe_erogazione_fonte',
+                                       'fk_offerte_commerciali_eccezioni_erogazione_fonte');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT fk_contratti_righe_erogazione_fonte
+                  FOREIGN KEY (tipo_erogazione, fonte_quantita_attesa)
+                  REFERENCES config.erogazioni_fonti (tipo_erogazione, fonte_quantita_attesa)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT fk_offerte_commerciali_eccezioni_erogazione_fonte
+                  FOREIGN KEY (tipo_erogazione, fonte_quantita_attesa)
+                  REFERENCES config.erogazioni_fonti (tipo_erogazione, fonte_quantita_attesa)
+                  ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_tipo_erog,
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_fonte_qta,
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_coerenza_fonte_erogazione;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_tipo_erog,
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_fonte_qta,
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_coerenza_fonte_erogazione;
+
+              COMMENT ON CONSTRAINT fk_contratti_righe_erogazione_fonte ON vendite.contratti_righe IS
+                  'La combinazione (tipo_erogazione, fonte_quantita_attesa) della riga è una di config.erogazioni_fonti. MATCH SIMPLE: con una delle due NULL non si controlla, ed è il caso dell''ESCLUSIONE, che nasce vuota (chk_contrighe_esclusione_senza_dati). Ha preso il posto di chk_contrighe_tipo_erog, chk_contrighe_fonte_qta e chk_contrighe_coerenza_fonte_erogazione (20261007-54, brief-db-offerta-emissione-ed-erogazione §C.7).';
+
+              COMMENT ON CONSTRAINT fk_offerte_commerciali_eccezioni_erogazione_fonte ON vendite.offerte_commerciali_eccezioni IS
+                  'Come fk_contratti_righe_erogazione_fonte su vendite.contratti_righe: le due tabelle sono gemelle per progetto. Ha preso il posto di chk_offerte_eccezioni_tipo_erog, chk_offerte_eccezioni_fonte_qta e chk_offerte_eccezioni_coerenza_fonte_erogazione.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contrighe_tipo_erog CHECK (((tipo_erogazione)::text = ANY (ARRAY[('CANONE'::character varying)::text, ('UNA_TANTUM'::character varying)::text, ('ORARIO'::character varying)::text, ('CONSUMO'::character varying)::text]))),
+                  ADD CONSTRAINT chk_contrighe_fonte_qta CHECK (((fonte_quantita_attesa)::text = ANY (ARRAY[('FISSA'::character varying)::text, ('MANUALE'::character varying)::text, ('TIMESHEET'::character varying)::text, ('LETTURE'::character varying)::text, ('DERIVATA_COMPONENTI'::character varying)::text]))),
+                  ADD CONSTRAINT chk_contrighe_coerenza_fonte_erogazione CHECK ((NOT ((((tipo_erogazione)::text = 'CANONE'::text) AND ((fonte_quantita_attesa)::text = ANY (ARRAY[('TIMESHEET'::character varying)::text, ('LETTURE'::character varying)::text]))) OR (((tipo_erogazione)::text = 'UNA_TANTUM'::text) AND ((fonte_quantita_attesa)::text = ANY (ARRAY[('TIMESHEET'::character varying)::text, ('LETTURE'::character varying)::text]))) OR (((tipo_erogazione)::text = 'ORARIO'::text) AND ((fonte_quantita_attesa)::text = 'LETTURE'::text)) OR (((tipo_erogazione)::text = 'CONSUMO'::text) AND ((fonte_quantita_attesa)::text = ANY (ARRAY[('FISSA'::character varying)::text, ('TIMESHEET'::character varying)::text]))))));
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_tipo_erog CHECK (((tipo_erogazione)::text = ANY ((ARRAY['CANONE'::character varying, 'UNA_TANTUM'::character varying, 'ORARIO'::character varying, 'CONSUMO'::character varying])::text[]))),
+                  ADD CONSTRAINT chk_offerte_eccezioni_fonte_qta CHECK (((fonte_quantita_attesa)::text = ANY ((ARRAY['FISSA'::character varying, 'MANUALE'::character varying, 'TIMESHEET'::character varying, 'LETTURE'::character varying, 'DERIVATA_COMPONENTI'::character varying])::text[]))),
+                  ADD CONSTRAINT chk_offerte_eccezioni_coerenza_fonte_erogazione CHECK ((NOT ((((tipo_erogazione)::text = 'CANONE'::text) AND ((fonte_quantita_attesa)::text = ANY ((ARRAY['TIMESHEET'::character varying, 'LETTURE'::character varying])::text[]))) OR (((tipo_erogazione)::text = 'UNA_TANTUM'::text) AND ((fonte_quantita_attesa)::text = ANY ((ARRAY['TIMESHEET'::character varying, 'LETTURE'::character varying])::text[]))) OR (((tipo_erogazione)::text = 'ORARIO'::text) AND ((fonte_quantita_attesa)::text = 'LETTURE'::text)) OR (((tipo_erogazione)::text = 'CONSUMO'::text) AND ((fonte_quantita_attesa)::text = ANY ((ARRAY['FISSA'::character varying, 'TIMESHEET'::character varying])::text[]))))));
+              ALTER TABLE vendite.contratti_righe DROP CONSTRAINT IF EXISTS fk_contratti_righe_erogazione_fonte;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni DROP CONSTRAINT IF EXISTS fk_offerte_commerciali_eccezioni_erogazione_fonte;

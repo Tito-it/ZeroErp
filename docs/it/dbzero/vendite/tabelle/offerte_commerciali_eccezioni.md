@@ -37,14 +37,12 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_offerte_eccezioni_coerenza_canone |  |
-| CHECK | chk_offerte_eccezioni_coerenza_fonte_erogazione |  |
 | CHECK | chk_offerte_eccezioni_erogazione_per_tipo_eccezione |  |
 | CHECK | chk_offerte_eccezioni_esclusione_senza_dati |  |
 | CHECK | chk_offerte_eccezioni_fonte_per_tipo_eccezione |  |
-| CHECK | chk_offerte_eccezioni_fonte_qta |  |
 | CHECK | chk_offerte_eccezioni_prezzo_per_tipo_eccezione |  |
 | CHECK | chk_offerte_eccezioni_qta_operativa_nonzero |  |
-| CHECK | chk_offerte_eccezioni_tipo_erog |  |
+| FOREIGN KEY | fk_offerte_commerciali_eccezioni_erogazione_fonte | tipo_erogazione, fonte_quantita_attesa |
 | FOREIGN KEY | fk_offerte_eccezioni_articolo | articolo_id |
 | FOREIGN KEY | fk_offerte_eccezioni_offerta | offerta_id |
 | FOREIGN KEY | fk_offerte_eccezioni_pratica_approvazione_prezzo | pratica_approvazione_prezzo_id |

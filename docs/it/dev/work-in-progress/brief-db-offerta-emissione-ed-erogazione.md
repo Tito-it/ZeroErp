@@ -9,6 +9,16 @@
 > **eredita dall'articolo**, dalla sua tipologia; il perimetro delle scelte segue la utility.
 > **Stato:** ⏳ da fare lato DB. 🔴 **A blocca l'emissione di ogni offerta nuova.**
 > **Da decidere:** A-D1, A-D2 (§A.3); B-D1…B-D3 (§B.3).
+> **Da leggere per primo (2026-10-07, team DB): §C**, cioè l'analisi del team DB. A-D1 si chiude
+> sul modello, A-D2 trova un difetto gemello sul contratto, la parte B ha tre vincoli che il brief
+> non vede (C.2.1). Per partire il team DB aspetta le decisioni di Tid elencate in §C.3. Nessun
+> changeSet è ancora scritto.
+> **Decisioni di Tid del 2026-10-07 (§C.5):** A-D2, A-D3, B-D1, B-D1 bis come da proposta;
+> **B-D4 rovesciata**: il perimetro è la **tipologia dell'articolo**, non la utility (C.5).
+> **Parte A scritta il 2026-10-07 (§C.6): `20261007-40 → -47` + CSV dei codici + pgTAP, provata in
+> transazione annullata su `zeroerp_ci`. ⏳ Apply e corsa pgTAP di Tid, poi il giro BE/FE (§C.6.4).**
+> Parte B: **seed §C.5.2 confermato da Tid** il 2026-10-07, con `generazione_canone` = INIZIO_PERIODO
+> sulle righe CANONE. Da scrivere.
 
 ## A. «Emetti» spento per una versione di listino che l'emissione stessa dovrebbe fissare
 
@@ -136,3 +146,440 @@ Un'offerta nuova non si emette.
   (lasciar parlare il DB).
 * Il codice nuovo di B-R3, se nasce: policy generata e ripiego senza `%s`.
 * Doc: `api_contratti.md`, `api_offerte.md`, `modello-contratti.md`.
+
+## C. Analisi del team DB (`dev/db-tid`, 2026-10-07)
+
+> Letta la **struttura**: corpi delle funzioni dalla doc auto-generata, vincoli e trigger dal
+> catalogo, seed di catalogo. Nessun conteggio di righe entra negli argomenti.
+
+### C.1 Parte A, l'emissione
+
+#### C.1.1 A-D1: una versione CHIUSA non è mai «in vigore oggi», per costruzione
+
+* `trgfn_listini_versioni_guard_transizione_stato` ammette ATTIVA → CHIUSA **solo** con
+  `valido_al < CURRENT_DATE`.
+* `trgfn_listini_versioni_guard_date_chiusa` impedisce di cambiare le date di una CHIUSA.
+* `validita` è `[valido_dal, valido_al]` (colonna generata).
+
+Quindi `fn_listino_versione_in_vigore(listino, CURRENT_DATE)` **non può restituire una CHIUSA**: il
+ramo «ATTIVA o CHIUSA» serve solo alle date passate. Per il congelamento all'emissione
+(data = oggi) la versione del BB è sempre ATTIVA o NULL. Il guard («solo ATTIVA») e il BB **non
+dissentono** sull'emissione di un'offerta nuova. Il difetto vero è solo quello del §A.1: la capability
+legge la colonna nuda.
+
+⚠️ **Resta una sola strada per arrivare a una CHIUSA**, e il brief non la vede: la **revisione**.
+`fn_crea_revisione_offerta` ricopia `listino_versione_id` dal padre, che è congelata. Se nel frattempo
+quella versione si è chiusa, la revisione nasce in BOZZA con una versione CHIUSA già fissata. Il BB
+la rispetta, e le righe mostrano i prezzi del padre. La capability la spegne
+(`LISTINO_VERSIONE_NON_ATTIVA`), il guard la rifiuta, e il form non permette di cambiarla
+(§A.4). **La revisione non si emette più.** È la decisione **A-D3** (§C.3).
+
+⚠️ Porta secondaria, fuori dal perimetro di questo brief: su `vendite.listini_versioni` nessun
+guard sull'INSERT vieta di creare una versione **già** CHIUSA, con date qualsiasi. Il
+«per costruzione» qui sopra vale per le versioni passate dal workflow. Da chiudere in un giro
+`listini` (un guard o un CHECK sull'INSERT: si nasce BOZZA), oppure da dichiarare.
+
+#### C.1.2 A-D2: il contratto congela già a DB, ma lascia passare l'attivazione senza versione
+
+`vendite.trgfn_contratti_freeze_listino_versione` (`trg_contratti_a10_freeze_listino_versione_upd`)
+fa sul contratto proprio ciò che A-R1 chiede per l'offerta. Su DRAFT → ATTIVO, se la versione è
+NULL, la fissa con `fn_listino_versione_in_vigore(listino, CURRENT_DATE)`. È lo stampo da seguire.
+
+🔴 **Ma se il listino non ha una versione in vigore, il contratto si attiva lo stesso con
+`listino_versione_id` NULL** (commento: «§4.4, warning UI»). Da quel momento il BB operativo lo fa
+**galleggiare** sulla versione in vigore di ogni giorno. Un contratto ATTIVO cambia prezzi in
+silenzio a ogni nuova versione del listino, cioè l'opposto di «congela all'attivazione».
+`fn_available_actions_contratto` non dice niente del listino, quindi coerente col guard, ma su una
+regola che contraddice il modello. La sezione `refactor-contratti-modalita` §4.4 del 2026-05-18 è
+stata scritta **prima** del BB operativo. È la decisione **A-D2** (§C.3).
+
+#### C.1.3 La forma proposta per A-R1…A-R4
+
+1. **Una check pura sui valori**, sede unica del predicato «la versione che governerebbe questo
+   documento, e se è ammessa per congelarlo»:
+   `vendite.fn_check_listino_congelabile(p_listino_id, p_listino_versione_id)` → array dei motivi
+   (§12.5.1 delle linee guida). Prende i **valori** e non l'id, perché la chiama un guard
+   `BEFORE ROW` che ha in mano `NEW`. La versione candidata è
+   `COALESCE(p_listino_versione_id, fn_listino_versione_in_vigore(p_listino_id, CURRENT_DATE))`, cioè
+   la stessa composizione del BB `fn_documento_listino_operativo`. Il BB passa a chiamarla al posto
+   della sua `COALESCE`, così la regola del 2 resta chiusa.
+2. **Il guard di transizione dell'offerta congela e poi verifica**. Su BOZZA → EMESSA:
+   `NEW.listino_versione_id := <candidata>` se NULL, poi solleva il primo motivo della check
+   (`fn_raise_primo_motivo_se_presente`). Stessa scrittura del cambio stato (A-R1), nessun trigger
+   nuovo. Il ramo attuale «NULL → errore; ≠ ATTIVA → errore» si ritira.
+3. **La capability chiama la stessa check** con i valori della testata. Ritira la lettura della
+   colonna nuda. Pulsante e guard non possono più dissentire (A-R2, §12.5.2).
+4. **Motivi** (A-R4):
+   * listino senza versione in vigore oggi: `reason = LISTINO_SENZA_VERSIONE_IN_VIGORE`,
+     **`reason_key` nuova** `vendite.offerte.azione_reason.listino_senza_versione_in_vigore`. Il
+     testo FE attuale di `listino_versione_mancante` («Manca la versione di listino: obbligatoria per
+     emettere l'offerta») descrive il difetto, non il caso. Codice `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`
+     riusato con il **testo riscritto** nel CSV («il listino non ha una versione in vigore oggi:
+     pubblicarne una»);
+   * versione fissata e non più ammessa (solo la revisione, C.1.1): `LISTINO_VERSIONE_NON_ATTIVA`
+     e il suo codice restano, se A-D3 tiene la copia.
+   * `listino_versione_mancante` resta senza emettitori. Va ritirata dai locales nello stesso giro
+     FE.
+5. **Contratto** (se A-D2 = rifiutare): `trgfn_contratti_freeze_listino_versione` chiama la stessa
+   check, e `fn_available_actions_contratto` spegne «Attiva» col motivo. Il negoziato puro
+   (`listino_id` NULL) resta fuori, come oggi.
+6. **pgTAP** (A-R5): costruisce listino e versioni da sé, senza appoggiarsi a quelli di dbdev. Copre
+   l'offerta nuova emessa con la versione fissata dal DB; il listino senza versione in vigore,
+   spento col motivo e rifiutato col codice; la revisione secondo A-D3; il push al contratto con la
+   versione dell'offerta (`trgfn_contratti_freeze_listino_versione` non la tocca, è già valorizzata).
+
+Ricadute sul BE, oltre al §A.5: anche il **secondo** lettore di
+`ListiniRepository.get_versione_attiva_alla_data` (`offerte_service.py`, risoluzione del
+`listino_versione_id_preferito` per il pricing) è una copia del BB. Deve leggere
+`vendite.fn_documento_listino_operativo`. Il commento del repository («a DB non esiste un UNIQUE…»)
+è stantio: `ex_listini_versioni_no_overlap` garantisce al più una versione in vigore.
+
+### C.2 Parte B, l'erogazione
+
+#### C.2.1 Tre vincoli che il brief non vede
+
+1. **CANONE vuole anche `generazione_canone`**: `chk_contrighe_coerenza_canone` /
+   `chk_offerte_eccezioni_coerenza_canone`. Una riga che **eredita** CANONE senza
+   `generazione_canone` viene rifiutata dal CHECK, con un messaggio tecnico. L'eredità deve portare
+   anche il default di `generazione_canone`, ed eventualmente di `periodicita` e
+   `competenza_canone`. Oppure il default dell'erogazione non può essere CANONE. B-R1 si allarga di
+   conseguenza.
+2. **L'articolo senza tipologia esiste solo sull'AGGIUNTA.** `trgfn_listini_righe_guard_tipologia`
+   rifiuta in un listino un articolo senza tipologia (`E_ARTICOLO_TIPOLOGIA_MANCANTE`) o di tipologia
+   diversa da quella del listino. Quindi ogni OVERRIDE ha un articolo con tipologia, e la tipologia è
+   quella del listino del documento. B-D1 riguarda **solo** le AGGIUNTE (articolo fuori listino).
+3. **L'ordine dei trigger è portante.** L'eredità deve scrivere `tipo_erogazione` **prima** di
+   `…_a10_default_fonte_qta_…` (la fonte dipende dall'erogazione) e di
+   `…_a10_guard_erogazione_obbligatoria_…`. Il nome `…_a10_default_erogazione_da_articolo_ins_upd`
+   precede entrambi sulle due tabelle. ⚠️ `default_fonte_qta` è agganciato con
+   `UPDATE OF tipo_erogazione, fonte_quantita_attesa`: su un UPDATE l'erogazione scritta da un altro
+   trigger `BEFORE` **non** lo fa scattare (linee-guida-trigger, «cosa fa davvero `UPDATE OF`»).
+   L'eredità va quindi limitata all'**INSERT**, oppure quel trigger va riagganciato con `WHEN`. La
+   proposta è l'INSERT: un UPDATE che svuota l'erogazione è una scelta dell'operatore, e il guard
+   d'obbligo resta la rete.
+
+E un fatto sulla forma di oggi: la matrice erogazione × fonte è scritta **quattro volte**. Due
+CHECK gemelli, il `CASE` di `trgfn_righe_default_fonte_qta` (due volte nello stesso corpo),
+`fontiQuantitaErogazione.js` e `_FONTE_VIETATE_PER_TIPO_EROGAZIONE`. Una quinta copia nella lettura di
+B-R4 non è accettabile (regola del 2).
+
+#### C.2.2 La forma proposta
+
+1. **La matrice diventa un dato**: `config.erogazioni_fonti` (`tipo_erogazione`,
+   `fonte_quantita_attesa`, `e_default_erogazione`), una riga per combinazione ammessa, seed CSV.
+   Sulle due tabelle di riga una **FK composta**
+   `(tipo_erogazione, fonte_quantita_attesa) → config.erogazioni_fonti`. Con `MATCH SIMPLE` non
+   controlla le righe con un NULL, cioè l'ESCLUSIONE, che resta vuota. La FK prende il posto di
+   `chk_*_tipo_erog`, `chk_*_fonte_qta` e `chk_*_coerenza_fonte_erogazione`. Il `CASE` di
+   `trgfn_righe_default_fonte_qta` legge `e_default_erogazione` (B-D3: la matrice generica resta
+   come **ultimo** ripiego, ma diventa dato e non codice).
+   ⚠️ Una FK nuova genera i suoi guard e i suoi indici. Va censito cosa oscura e quali pgTAP
+   pinnano i nomi dei CHECK ritirati (presidio: grep dei nomi in `db/pgtap`).
+2. **La tipologia dichiara ciò che ammette e il default**: `config.listini_tipologie_erogazioni`
+   (`tipologia_id`, `tipo_erogazione`, `fonte_quantita_attesa`, `e_default`), con FK composta su
+   `config.erogazioni_fonti` e un UNIQUE parziale «un default per tipologia». I default di canone
+   (C.2.1, punto 1) stanno sulla stessa riga quando l'erogazione è CANONE. Il seed copre le sei
+   tipologie (B-R5). È la forma «tabella a sé» di B-R1: ammessi e default in un posto solo, senza sei
+   colonne sulla tipologia.
+3. **Eredità** (B-R2): `script.trgfn_righe_default_erogazione_da_articolo`, generica sulle due
+   tabelle come `trgfn_righe_default_fonte_qta`, `BEFORE INSERT`, `WHEN tipo_eccezione <>
+   'ESCLUSIONE'`. Riempie solo i campi **NULL**, perché la scelta dell'operatore vince, dentro il
+   perimetro del punto 4. Scrive il valore nella riga (non lo deriva in lettura): revisione e push
+   ricopiano le colonne, quindi B-R5 «push con i valori ereditati» vale per costruzione.
+4. ⚠️ **Superato da B-D4 (§C.5)**: il perimetro è la tipologia dell'articolo, non l'unione della utility.
+   **Perimetro** (B-R3): un guard `BEFORE INSERT OR UPDATE` rifiuta una combinazione
+   (erogazione, fonte) che **nessuna** tipologia ammessa dalla utility del documento
+   (`config.listini_tipologie_utilities`, `utility_id` NOT NULL su offerta e contratto) prevede. Il
+   predicato sta in una `fn_check_*` pura sui valori, perché lo legge anche il punto 5. Codice nuovo
+   `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` (DATO_ERRATO, `campo = fonte_quantita_attesa` o
+   `tipo_erogazione`), con la sua policy.
+5. **La lettura per il form** (B-R4): `vendite.fn_documento_riga_erogazioni(p_documento,
+   p_documento_id, p_articolo_id)` restituisce le combinazioni ammesse dal perimetro, ciascuna con
+   `e_default`, risolte con la **stessa** funzione del trigger d'eredità. Il form preseleziona ciò che
+   il DB scriverebbe.
+
+### C.3 Le decisioni di Tid che servono per partire
+
+| # | Domanda | Proposta del team DB |
+| --- | --- | --- |
+| **A-D1** | CHIUSA può governare un'offerta? | **Chiusa dal modello** (C.1.1): all'emissione la versione in vigore oggi è sempre ATTIVA. Il guard resta «ATTIVA» |
+| **A-D2** | Il contratto con listino si attiva senza versione in vigore? | **No**: si rifiuta come l'offerta, con motivo e capability (C.1.2). Rovescia il §4.4 del 2026-05-18 |
+| **A-D3** *(nuova)* | La revisione eredita la versione congelata del padre? | **No**: nasce con `listino_versione_id` NULL e congela alla **sua** emissione. Una revisione è una proposta nuova, mandata in un giorno nuovo. ⚠️ Contraddice A-R5 («la revisione porta la versione congelata»), quindi va scelta esplicitamente. Con la copia, invece, la revisione su una versione chiusa non si emette più |
+| **B-D1** | L'AGGIUNTA con articolo senza tipologia | Ripiego sulla **natura di vendita**, con una colonna di default su `config.nature_vendita` (MERCE e SERVIZIO_UNA_TANTUM → UNA_TANTUM/FISSA, SERVIZIO_RICORRENTE → CANONE/FISSA + default di canone). **Vince la tipologia** quando c'è. ⚠️ Controesempio sul modello: un articolo SERVIZI può essere una tantum o ricorrente, e un default unico per SERVIZI sbaglia uno dei due. Alternativa: la natura sceglie **fra le combinazioni ammesse dalla tipologia**, e la tipologia decide solo se la natura non vi rientra |
+| **B-D1 bis** | Fonte dei generici: FISSA o MANUALE? | Tid indica MANUALE. FISSA vuol dire «la quantità della riga», MANUALE «la scrive l'operatore a ogni periodo». Per un bene una tantum la proposta è FISSA, da confermare |
+| **B-D2** | Valore STANDARD di `tipo_erogazione` | **No**, come la sessione BE/FE |
+| **B-D3** | La matrice CONSUMO → LETTURE | Resta come **ultimo ripiego**, fatta dato (`e_default_erogazione`), dopo tipologia e natura |
+| **B-D4** *(nuova)* | Perimetro della utility o della tipologia dell'articolo? | Tid ha deciso: **la utility**. Effetto da sapere: su ENE un articolo QUOTA_FISSA venduto CONSUMO + LETTURE passa, perché la utility ammette CONSUMO. Da confermare che sia voluto |
+
+### C.4 Ordine di consegna proposto
+
+1. **Parte A da sola, subito dopo A-D2/A-D3**: sblocca l'emissione e non dipende da B.
+2. **Parte B**: prima il vocabolario e la FK (C.2.2, punti 1-2, con il censimento dei CHECK
+   ritirati), poi eredità, perimetro e lettura.
+
+### C.5 Decisioni di Tid (2026-10-07)
+
+| # | Decisione |
+| --- | --- |
+| **A-D2** | ✅ Come da proposta: un contratto con listino **non** si attiva senza una versione in vigore. Lo rifiuta il freeze, e la capability spegne «Attiva» col motivo |
+| **A-D3** | ✅ Come da proposta: la revisione nasce con `listino_versione_id` NULL e congela alla **sua** emissione. Il punto di A-R5 «la revisione porta la versione congelata» è superato; resta vero per il **push** al contratto |
+| **B-D1** | ✅ Come da proposta: vince la tipologia dell'articolo. Senza tipologia (solo AGGIUNTA, C.2.1) si ripiega sulla natura di vendita |
+| **B-D1 bis** | ✅ Fonte dei generici FISSA |
+| **B-D4** | ⛔ **Non voluto.** Una QUOTA_FISSA si eroga **a periodo** e la sua fonte non sono le letture. Il perimetro non può essere l'unione delle tipologie della utility |
+
+#### C.5.1 Il perimetro dopo B-D4 (sostituisce C.2.2, punto 4)
+
+* **Articolo con tipologia**: le combinazioni ammesse sono quelle di **quella** tipologia
+  (`config.listini_tipologie_erogazioni`). In più, la tipologia dev'essere fra quelle ammesse dalla
+  utility del documento (`config.listini_tipologie_utilities`). Su un OVERRIDE questo è già vero,
+  perché lo garantisce il listino. Su un'AGGIUNTA è un controllo nuovo: un articolo CONSUMO non entra
+  in un documento BASE.
+* **Articolo senza tipologia** (solo AGGIUNTA): le combinazioni ammesse dalla **natura di vendita**.
+  Per questo la natura vuole una tabella gemella, `config.nature_vendita_erogazioni`, con la stessa
+  forma e lo stesso default, e non una sola colonna di default. Nessuna natura ammette LETTURE: le
+  letture vengono da una tipologia a contatore.
+* Il default (B-R2) è quello dichiarato `e_default` dalla stessa sede del perimetro. Perimetro e
+  default non possono dissentire.
+* Codici: `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` (combinazione non ammessa, campo
+  `fonte_quantita_attesa` o `tipo_erogazione`) e `E_RIGA_TIPOLOGIA_FUORI_UTILITY` (AGGIUNTA di un
+  articolo con una tipologia che la utility non ammette, campo `articolo_id`).
+
+#### C.5.2 Seed proposto (B-R5), da confermare prima di scriverlo
+
+| Tipologia / natura | Ammesse (⭐ = default) |
+| --- | --- |
+| CONSUMO | ⭐ CONSUMO/LETTURE · CONSUMO/MANUALE |
+| QUOTA_FISSA | ⭐ CANONE/FISSA |
+| IMPOSTA | ⭐ CONSUMO/LETTURE · CANONE/FISSA |
+| ONERE_SISTEMA | ⭐ CONSUMO/LETTURE · CANONE/FISSA |
+| PRODOTTI | ⭐ UNA_TANTUM/FISSA · UNA_TANTUM/MANUALE |
+| SERVIZI | ⭐ UNA_TANTUM/FISSA · UNA_TANTUM/MANUALE · CANONE/FISSA · CONSUMO/MANUALE |
+| natura MERCE | ⭐ UNA_TANTUM/FISSA · UNA_TANTUM/MANUALE |
+| natura SERVIZIO_UNA_TANTUM | ⭐ UNA_TANTUM/FISSA · UNA_TANTUM/MANUALE · CONSUMO/MANUALE |
+| natura SERVIZIO_RICORRENTE | ⭐ CANONE/FISSA · CONSUMO/MANUALE |
+
+* Su ogni riga CANONE il seed porta anche `generazione_canone` (il CHECK la pretende): proposta
+  **INIZIO_PERIODO**, da confermare.
+* ORARIO resta nel vocabolario generico (`config.erogazioni_fonti`), ma nessuna tipologia o natura
+  lo ammette finché il modulo timesheet non c'è (§B.4).
+* ⚠️ Con il default dalla tipologia, un articolo SERVIZI ricorrente nasce UNA_TANTUM: la natura non
+  vince sulla tipologia (B-D1). L'operatore sceglie CANONE, che il perimetro ammette. Se diventa un
+  fastidio, la strada è il raffinamento scritto in §C.3, cioè la natura che sceglie fra le
+  combinazioni della tipologia.
+
+### C.6 Consegna della parte A (team DB, 2026-10-07)
+
+#### C.6.1 ChangeSet
+
+| ChangeSet | Oggetto | Cosa |
+| --- | --- | --- |
+| `20261007-40` | `vendite.fn_listino_versione_operativa` (nuova) | la versione fissata, altrimenti quella in vigore oggi, sui **valori** della testata |
+| `20261007-41` | `script.fn_check_listino_congelabile` (nuova) | i motivi per cui un'offerta non si emette o un contratto non si attiva per la versione di listino |
+| `20261007-42` | `vendite.fn_documento_listino_operativo` | la sua `COALESCE` passa a `-40`, stesso esito |
+| `20261007-43` | `vendite.trgfn_offerte_commerciali_guard_transizione` | BOZZA → EMESSA: primo motivo della check, poi **congela** `listino_versione_id` (A-R1) |
+| `20261007-44` | `script.fn_available_actions_offerta` | «Emetti» dalla check sulla versione che verrebbe congelata, non dalla colonna nuda (A-R2) |
+| `20261007-45` | `vendite.trgfn_contratti_freeze_listino_versione` | senza versione in vigore il contratto con listino **non** si attiva (A-D2). Una versione già fissata dal push resta, anche se chiusa |
+| `20261007-46` | `script.fn_available_actions_contratto` | «Attiva» spento col motivo, prima dei prezzi |
+| `20261007-47` | `vendite.fn_crea_revisione_offerta` | la revisione nasce con `listino_versione_id` NULL (A-D3) |
+
+Ogni `CREATE OR REPLACE` parte dall'ultimo changeSet dell'oggetto: il `prosrc` è stato verificato
+uguale al vivo su dbdev e su `zeroerp_ci` il 2026-10-07. Le sostituzioni sono contate e il
+rollback è il blocco precedente alla lettera. ⚠️ `-45` riscrive anche il COMMENT, che descriveva
+ancora l'attivazione senza versione; il rollback non lo ripristina.
+
+**Codici** (CSV `messaggi_errore` / `codici_errore`):
+
+* `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO` (457): testo riscritto, «il listino di riferimento
+  non ha una versione in vigore oggi». Prima diceva «versione non impostata».
+* `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA` (458): invariato.
+* `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` (**1201, nuovo**): CONFLITTO_STATO, frase
+  chiusa.
+
+#### C.6.2 pgTAP
+
+* **Nuovo** `vendite/offerte_commerciali/test-offerta-emissione-congela-listino-v1` (25
+  asserzioni, fixture costruita: un listino valido da oggi e uno con la sola versione 2022). Copre
+  la regola sui valori; «Emetti» acceso su un'offerta senza versione (il difetto del collaudo);
+  l'emissione che congela; il listino senza versione in vigore, spento e rifiutato con lo stesso
+  codice; la revisione senza versione che congela alla sua emissione; la versione fissata CHIUSA;
+  il contratto rifiutato, congelato o che tiene la versione del push; il codice a catalogo.
+* **Aggiornati**, perché pinnavano la forma vecchia:
+  * `script/test-fn-available-actions-offerta-v1` 16a/16b: pretendeva «Emetti» spento con
+    `LISTINO_VERSIONE_MANCANTE`, cioè il difetto stesso;
+  * `script/test-rubinetto-primo-motivo-v1` test 5: da 32 a 33, il freeze del contratto è un
+    sito nuovo dell'helper;
+  * `vendite/test-listino-versione-in-vigore-v1` test 13: l'elenco dei consumatori della sede
+    unica, con la regola sui valori in mezzo (da 7 a 10);
+  * `vendite/offerte_commerciali/test_offerte_commerciali_state_machine` test 2: il rifiuto
+    vuole un listino **senza** versione in vigore, ora costruito. Prima prendeva il «primo per id»
+    del DB.
+
+#### C.6.3 La prova (2026-10-07, prima dell'apply)
+
+Su `zeroerp_ci`, come owner (le credenziali disponibili), in transazione annullata con l'SQL
+**estratto** dagli YAML:
+
+* tutti gli otto blocchi compilano; `plpgsql_check` non dà errori. Restano due avvisi
+  STABLE/VOLATILE dal ramo d'errore, gli stessi che il BB aveva già. Una firma sola per funzione;
+* il pgTAP nuovo dà 24/25 senza il CSV e 25/25 con le due righe del codice simulate. Il 22 legge
+  il catalogo, che si carica in `80_data`;
+* **regressione**: 46 pgTAP vicini (capability, offerte, contratti con listino, revisioni, push,
+  presidi dei motivi e dei messaggi), eseguiti ciascuno prima e dopo l'SQL estratto. Si sono
+  mossi solo i tre file pinnati qui sopra, rossi prima della correzione e verdi dopo. Gli `err`
+  presenti già «prima» sono fixture che prendono dati da dbdev e su `zeroerp_ci` non li trovano:
+  identici prima e dopo;
+* ⚠️ `test_offerte_commerciali_state_machine` su `zeroerp_ci` non parte nemmeno prima (fixture da
+  dbdev). Il test 2 corretto lo vede solo la tua corsa;
+* rollback: eseguiti dopo i changeSet riportano i sei corpi identici al vivo (md5) e tolgono le
+  due funzioni nuove.
+
+⚠️ Non provato: la corsa come app sotto RLS e i presidi trasversali completi. Restano della tua
+corsa.
+
+Fatto datato (dbdev, 2026-10-07, letto come app nel contesto dell'operatore di prova): **0**
+contratti ATTIVO con listino e versione NULL, **1** offerta in BOZZA con una versione già fissata
+(una revisione nata con la copia). Nessuno dei due casi viene corretto dai changeSet. La
+revisione si emette se la versione copiata è ancora ATTIVA; altrimenti «Emetti» è spento col
+motivo. **Da decidere con Tid se correggerla a mano.** Verificato lo stesso giorno: è
+`OFC-0000181` (rev. 2), e la versione copiata (`v1-clone`) è ATTIVA ed è proprio quella in vigore
+oggi. All'emissione congela la stessa versione che sceglierebbe la regola nuova, quindi
+**nessuna correzione** serve (proposta a Tid).
+
+#### C.6.4 Richieste al BE/FE, dopo l'apply (aggiornano il §A.5)
+
+* **BE**: ritirare `OfferteService._fissa_versione_listino_se_necessario` e la sua chiamata in
+  `emetti`. Il secondo lettore di `ListiniRepository.get_versione_attiva_alla_data` (la versione
+  preferita del pricing in `offerte_service.py`) deve leggere
+  `vendite.fn_documento_listino_operativo`. Poi il metodo si ritira, perché è una copia della
+  regola. Rigenerare le policy per `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` (ripiego senza
+  `%s`) e aggiornare il ripiego di `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`. Va tolto anche
+  il «warning UI» del contratto attivo senza versione, se esiste (§4.4 del 2026-05-18).
+* **FE**, due `reason_key` nuove (`scripts/check_i18n_keys.py` è rosso finché mancano):
+  * `vendite.offerte.azione_reason.listino_senza_versione_in_vigore`, per esempio «Il listino non
+    ha una versione in vigore oggi: pubblicane una o scegli un altro listino.»;
+  * `vendite.contratti.azione_reason.listino_senza_versione_in_vigore`, per esempio «Il listino non
+    ha una versione in vigore oggi: il contratto non si può attivare.».
+* **FE**: ritirare `vendite.offerte.azione_reason.listino_versione_mancante`, che non ha più
+  emettitori.
+* Doc: `api_offerte.md` § emissione e `api_contratti.md` § attivazione.
+
+#### C.6.5 Dopo l'apply: le regressioni dei fixture presi dai dati (2026-10-07)
+
+Tid ha applicato `-40 → -47` e la corsa su dbdev ha dato rossi che la prova pre-apply non aveva
+visto. **Perché non li aveva visti**: quei file prendono billing account e listino «primo per id» dai
+dati di dbdev. Su `zeroerp_ci` i dati non ci sono, il fixture non costruisce niente e i conteggi
+«prima/dopo» risultavano uguali. La prova era cieca proprio su di loro (§C.6.3 va letto così).
+
+La causa è una sola, ed è la decisione A-D2: il fixture **attiva** un contratto su un listino che
+oggi non ha una versione in vigore. Prima l'attivazione passava con la versione NULL. Ora è
+rifiutata, e siccome avviene fuori da un'asserzione il file muore.
+
+| File | Correzione |
+| --- | --- |
+| `vendite/test-bozza-non-operativa-e-preview-contratto-v1` | il caso «ATTIVO su listino BOZZA-only» non è più costruibile. Il test 3 diventa «attivazione rifiutata», il 6 «resta DRAFT, versione NULL» |
+| `vendite/test-contratti-modalita-pricing-v1` | listino costruito (`dbops.fn_pgtap_crea_listino`, versione da oggi) |
+| `vendite/test-fn-resolve-prezzo-listino-v2-step24-v1` | listino costruito. I test 6-7 (COND, versione in vigore con righe) vanno in skip, come già facevano sul listino dei dati |
+| `vendite/test-contratti-guard-transizione-stato-v1` | listino costruito |
+
+Censimento statico degli altri file che attivano contratti o emettono offerte su un listino preso
+dai dati:
+
+* `test-contratti-step23-v1` attiva solo se il listino ha una versione in vigore (COND);
+* `test-contratti-schema-step22-v1`, `test-fn-resolve-prezzo-listino-v2-classe-da-contratto-v1` e
+  `test-vw-dash-*` inseriscono il contratto già ATTIVO, e il freeze scatta solo sull'UPDATE;
+* `test_fn_push_offerta_successione`, `test_offerte_commerciali_end_to_end`, `test_fn_push_*` e
+  gli altri test delle offerte fissano una versione ATTIVA, che la regola 2 della check ammette.
+  Le revisioni che creano non vengono emesse.
+
+Su `zeroerp_ci` i quattro file non costruiscono i fixture, né prima né dopo: l'esito vero è quello
+della corsa su dbdev. Lezione salvata: una prova su ci con «prima = dopo» su un fixture vuoto vuol
+dire «non provato», non «verde».
+
+⚠️ **Secondo giro, stesso giorno.** Tre di quei file (`modalita-pricing`, `guard-transizione-stato`,
+`step24`) erano già nel registro dei rossi di CI (`baseline-rossi-ci.tsv`, righe 188, 189, 269):
+anche il billing account era preso dai dati. Il listino costruito li faceva fermare sull'utility
+NULL e cambiava la classe del rosso. Corretti fino in fondo: anche cliente e BA sono costruiti
+(`dbops.fn_pgtap_crea_cliente_ba`). Su `zeroerp_ci`, come owner e con `-40 → -47` in testa: 4/4,
+9/9, 9/9. ⏳ Dopo la corsa di Tid **come app** su CI, le tre righe escono dal registro (anche da
+`baseline-rossi-scratch.tsv`, righe 66, 67, 140).
+
+### C.7 Parte B: piano di consegna (team DB, 2026-10-07, dopo i pgTAP verdi della parte A)
+
+Quattro giri, ognuno applicabile da solo:
+
+| Giro | Cosa | Effetto visibile |
+| --- | --- | --- |
+| **B1** | Vocabolario `config.erogazioni_fonti` (combinazioni coerenti + default della fonte per erogazione, seed CSV). FK composta dalle due tabelle di riga; ritiro dei tre CHECK gemelli (`chk_*_tipo_erog`, `chk_*_fonte_qta`, `chk_*_coerenza_fonte_erogazione`). `trgfn_righe_default_fonte_qta` legge il default dalla tabella | **nessuno**: le stesse combinazioni di oggi, scritte come dato |
+| **B2** | `config.listini_tipologie_erogazioni` e `config.nature_vendita_erogazioni` col seed del §C.5.2 (e `generazione_canone` = INIZIO_PERIODO sulle righe CANONE) | nessuno: tabelle senza lettori |
+| **B3** | La regola: BB «combinazioni dell'articolo» (tipologia, altrimenti natura). Trigger d'eredità `BEFORE INSERT`, che riempie i campi vuoti col default. Guard del perimetro, che chiama una `fn_check_*` sui valori. Codici `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` e `E_RIGA_TIPOLOGIA_FUORI_UTILITY` | **sì**: righe ereditate, combinazioni fuori perimetro rifiutate |
+| **B4** | Lettura per il form: `vendite.fn_documento_riga_erogazioni(documento, id, articolo)`, dalla stessa BB | il BE/FE può ritirare `fontiQuantitaErogazione.js` e la copia Python |
+
+⚠️ **Il costo vero è B3 sui pgTAP**: 26 file inseriscono righe con un'erogazione scritta a mano,
+quasi sempre `CANONE`/`FISSA` su un articolo qualunque. Il censimento statico si fa **prima** di
+scrivere B3, file per file (articolo → tipologia o natura → combinazione), su dbdev e non solo su
+`zeroerp_ci` (lezione del §C.6.5). Quattro file e un test BE nominano i CHECK che B1 ritira.
+
+Il ripiego sulla natura (B-D1) si prova quanto il ramo della tipologia: `listino_tipologia_id` è
+nullable, quindi il modello ammette l'articolo senza tipologia e il ramo esiste. Fatto datato, che
+non decide niente: su dbdev, il 2026-10-07, 15 articoli attivi sono PRODOTTI, 16 SERVIZI e 221 senza
+tipologia.
+
+**Da decidere prima di B3** (Tid):
+
+* **B-D5, `DERIVATA_COMPONENTI`**: la fonte del padre di un bundle, che il form propone e il seed
+  del §C.5.2 non nomina. Proposta: ammessa per **ogni articolo composito**, accanto a ogni
+  erogazione che la tipologia o la natura ammette (se il vocabolario B1 la dichiara coerente). È un
+  fatto della distinta, non della tipologia.
+* **B-D6, le righe già scritte**: il guard del perimetro scatta su INSERT e quando cambiano
+  articolo, erogazione o fonte. Le righe di oggi fuori perimetro restano dove sono. Proposta: sì, e
+  un presidio a catalogo che le conta, invece di una bonifica alla cieca.
+
+**Decisioni di Tid (2026-10-07, sera):**
+
+* **B-D5** ✅ come da proposta: `DERIVATA_COMPONENTI` è ammessa per ogni articolo composito, con
+  ogni erogazione che la tipologia o la natura ammette, se il vocabolario B1 la dichiara coerente.
+* **B-D6** ✅ le righe già scritte restano come sono, **senza presidio**: sono solo dati di test.
+  Il guard scatta su INSERT e quando cambiano articolo, erogazione o fonte.
+
+### C.8 Consegna dei giri B1 e B2 (team DB, 2026-10-07)
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `00_schema/config/20261007-50` | `config.erogazioni_fonti`: le combinazioni coerenti erogazione/fonte, `e_default` (al più uno per erogazione, indice unico parziale) |
+| `00_schema/config/20261007-51` | `config.listini_tipologie_erogazioni` e `config.nature_vendita_erogazioni`: combinazioni ammesse, default, `generazione_canone` sulle righe CANONE (CHECK: valorizzata se e solo se CANONE). FK composta sul vocabolario |
+| `20_code/script/20261007-52` | `script.trgfn_righe_default_fonte_qta` legge il default e la coerenza dal vocabolario; ritirato il CASE della matrice |
+| `80_data/changelog/20261007-53` + 3 CSV | seed dei tre vocabolari (mirror `loadUpdateData`, `nullValue: "NULL"`) |
+| `80_data/changelog/20261007-54` | FK `(tipo_erogazione, fonte_quantita_attesa)` dalle due tabelle di riga su `config.erogazioni_fonti`; ritirati i sei CHECK della matrice. In `80_data` perché punta a righe di seed (forma di `20261004-22`) |
+
+**Effetto visibile: nessuno.** Il vocabolario contiene esattamente le 13 combinazioni che i CHECK
+ammettevano, con i default del CASE ritirato. Cambiano solo due cose:
+
+* una combinazione fuori vocabolario esce **23503** (nome della FK), non più 23514 (nome del CHECK);
+* una riga **senza erogazione** non prende più la fonte FISSA, ma il guard d'obbligo la rifiuta
+  comunque, come prima.
+
+**pgTAP**: nuovo `vendite/test-erogazioni-vocabolario-v1` (12: vocabolario uguale alla matrice
+ritirata; completezza dei default per erogazione, tipologia e natura; nessuna natura a LETTURE;
+QUOTA_FISSA solo CANONE; FK presenti, CHECK ritirati; trigger che legge il vocabolario). Aggiornati
+`vendite/test-contratti-righe-coerenza-fonte-erogazione` (test 2: la FK; test 5-11: 23503) e
+`vendite/offerte_commerciali/test_offerte_commerciali_eccezioni_struttura` (test 4, 5, 7: la FK
+al posto dei tre CHECK).
+
+**Prova** (su `zeroerp_ci`, come owner, in transazione annullata con l'SQL estratto e il seed
+**simulato** dai CSV):
+
+* compila tutto e `plpgsql_check` non segnala niente; `zeroerp_app` ha `SELECT` sulle tre tabelle
+  nuove, dai privilegi di default (il trigger le legge come INVOKER);
+* regressione su 38 pgTAP che toccano righe, erogazione o fonte, prima e dopo: si muovono solo i
+  tre file aggiornati;
+* rollback: trigger identico al vivo (md5), i sei CHECK tornano.
+
+⚠️ **Non provati**: il loader di Liquibase (il seed è simulato: `nullValue` e tipi delle colonne
+li prova solo l'apply) e `test-contratti-righe-coerenza-fonte-erogazione` su dbdev. Su
+`zeroerp_ci` il suo fixture prende contratto e articoli dai dati, quindi i test 5-11 vanno in skip.
+Su dbdev girano e ora aspettano 23503 (lezione del §C.6.5).
+
+**Al BE, a consegna fatta**: il codice nomina `chk_contrighe_coerenza_fonte_erogazione` solo nei
+commenti (`contratti_service.py` righe 368 e 2286, `test_contratti_service.py` riga 2243). Nessuna
+traduzione d'errore lo usa, quindi niente si rompe. I commenti vanno aggiornati, e la copia Python
+della matrice si ritira con B4.

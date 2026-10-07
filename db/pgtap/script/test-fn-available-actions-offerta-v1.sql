@@ -24,8 +24,13 @@
 -- 13) non ACCETTATA (BOZZA): can_genera_ordine=false, reason='OFFERTA_NON_ACCETTATA'
 -- 14) Indice: secondo ordine ('OFFERTA', X) viola uq_ordini_v_documento_origine_offerta
 -- 15) Indice: due ordini ('PREVENTIVO', Y) consentiti (indice non li vincola)
--- 16a/16b) BOZZA senza listino_versione_id: azione verso EMESSA enabled=false +
---     reason='LISTINO_VERSIONE_MANCANTE' (rev 2026-07-19, uniformita' 6 domini)
+-- 16a/16b) BOZZA senza listino_versione_id su un listino con una versione in
+--     vigore: azione verso EMESSA ACCESA, nessun motivo. ⚠️ Rev 2026-10-07
+--     (brief-db-offerta-emissione-ed-erogazione §C.1.3): fino a quel giorno qui
+--     si pretendeva enabled=false + LISTINO_VERSIONE_MANCANTE, cioe' il test
+--     pinnava il difetto — la versione si congela ALL'emissione, e il pulsante
+--     non ci arrivava mai. Il caso «listino senza versione in vigore» sta in
+--     vendite/offerte_commerciali/test-offerta-emissione-congela-listino-v1.
 -- 17) BOZZA con versione ATTIVA: azione verso EMESSA enabled=true
 -- 19) Tutte le reason_key di push_contratto/genera_ordine iniziano per
 --     'vendite.offerte.' (guard namespace i18n, 20260719-13)
@@ -511,9 +516,10 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- 16-17) enabled/reason sull'azione verso EMESSA (rev 2026-07-19):
---   la capability specchia il guard BOZZA->EMESSA (versione listino
---   valorizzata + ATTIVA). Brief-db-guard-righe-avanzamento-stato §1a.
+-- 16-17) enabled/reason sull'azione verso EMESSA: la capability specchia il
+--   guard BOZZA->EMESSA. Rev 2026-10-07: entrambi leggono
+--   script.fn_check_listino_congelabile sulla versione che VERREBBE congelata
+--   (la fissata, altrimenti quella in vigore oggi), non la colonna nuda.
 -- ============================================================
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -535,8 +541,8 @@ SELECT is(
                 (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'BOZZA_NOLISTINO')
               ) -> 'available_actions') AS a
       WHERE a ->> 'target_state' = 'EMESSA') -> 'enabled',
-    'false'::jsonb,
-    '16a) BOZZA senza versione listino: azione verso EMESSA disabled'
+    'true'::jsonb,
+    '16a) BOZZA senza versione fissata, listino con una versione in vigore: azione verso EMESSA accesa'
 );
 
 SELECT is(
@@ -545,9 +551,9 @@ SELECT is(
               script.fn_available_actions_offerta(
                 (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'BOZZA_NOLISTINO')
               ) -> 'available_actions') AS a
-      WHERE a ->> 'target_state' = 'EMESSA') ->> 'reason',
-    'LISTINO_VERSIONE_MANCANTE',
-    '16b) ...con reason LISTINO_VERSIONE_MANCANTE'
+      WHERE a ->> 'target_state' = 'EMESSA') -> 'reasons',
+    '[]'::jsonb,
+    '16b) ...senza nessun motivo (LISTINO_VERSIONE_MANCANTE non si emette piu'')'
 );
 
 SELECT is(

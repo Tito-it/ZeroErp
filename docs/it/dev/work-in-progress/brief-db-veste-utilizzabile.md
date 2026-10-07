@@ -430,6 +430,18 @@ come un database ricostruito da zero.
   `fn_veste_utilizzabile(`, da owner sullo scratch `script.fn_veste_utilizzabile(`. La
   prova pre-apply girava da owner ed era verde. Il presidio ora cerca il nome senza
   schema: 28/28 come app e come owner. Il codice non cambia.
+* ⚠️ **Rosso trovato dalla corsa di Tid (2026-10-07, dopo il giro 3), corretto**: la
+  riscrittura del messaggio di `E_PROFILO_ULTIMO_SUPER_ADMIN` (§8.1) rompeva quattro
+  asserzioni che pinnavano la **frase** vecchia (`throws_like '%zero SUPER_ADMIN
+  attivi%'`): `test-credenziale-blocco-admin-v1` (13), `test-credenziale-di-sistema-v1`
+  (15), `test-profili-accesso-guard-ultimo-super-admin` (2, 3). Il censimento del giro 2
+  cercava fixture e scrittori, non chi asseriva il **testo** del catalogo. Ora le quattro
+  asserzioni pinnano il **codice** (`CONSTRAINT_NAME` di `fn_log_and_raise_error`, helper
+  `pg_temp.codice_errore` come in `test-super-admin-senza-scadenza-v1`), che non cambia
+  quando la frase si riscrive. Provati su `zeroerp_ci` da owner: 16/16, 3/3; il
+  `di-sistema` dà 14/16 con i rossi 6 e 7, che c'erano già prima (ramo della sessione del
+  migratore, D-1: da owner per costruzione), mentre il 15 torna verde. ⏳ Rilancio di Tid
+  come app.
 * `plpgsql_check` sulle tre plpgsql nuove o toccate: nessun messaggio. Il ritorno
   indietro del giro 2, eseguito dopo l'apply simulato, riporta esattamente allo stato del
   giro 1. Guardrail statici: verdi.

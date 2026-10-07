@@ -63,8 +63,6 @@ db/pgtap/vendite/test-commesse-emittente-invariante-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-commesse-schema-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-commesse-stati-commessa-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-commesse-transizioni-stati-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-contratti-guard-transizione-stato-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-contratti-modalita-pricing-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-overlap-draft-escluso-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-righe-coerenza-fonte-erogazione.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-schema-step22-v1.sql	ASSERZIONE
@@ -137,7 +135,6 @@ db/pgtap/vendite/test-fn-resolve-iva-riga.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-composito-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-listino-esito-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-listino-v2-classe-da-contratto-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-resolve-prezzo-listino-v2-step24-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-resolve-prezzo-listino-v2-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-ricalcola-riepilogo-iva-preventivo-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-ricalcola-totali-preventivo.sql	ERRORE_FIXTURE

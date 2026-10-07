@@ -8,7 +8,13 @@
 --
 -- Indice test (1..10):
 --   1)  Trigger guard esiste
---   2)  BOZZA->EMESSA con listino_versione_id NULL -> throws E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO
+--   2)  BOZZA->EMESSA, versione NULL, listino SENZA versione in vigore -> throws
+--       E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO. ⚠️ Rev 2026-10-07
+--       (brief-db-offerta-emissione-ed-erogazione §C.1.3): con la versione NULL
+--       il guard CONGELA quella in vigore, quindi il rifiuto vuole un listino che
+--       non ne ha. Il listino dello slot A e' COSTRUITO (versione 2022 scaduta):
+--       quello «primo per id» del DB rispondeva secondo i dati.
+--       Il congelamento sta in test-offerta-emissione-congela-listino-v1.
 --   3)  BOZZA->EMESSA con versione NON ATTIVA -> throws E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA
 --       (skip condizionale se nessuna versione non-ATTIVA disponibile)
 --   4)  BOZZA->EMESSA con versione ATTIVA -> ok
@@ -72,14 +78,20 @@ CREATE TEMP TABLE tmp_sm_ids (
     offerta_id bigint
 );
 
--- Slot A: BOZZA, listino_versione_id NULL (test 2: BOZZA->EMESSA con NULL)
+-- Slot A: BOZZA, listino_versione_id NULL, listino senza versione in vigore
+--   (test 2). Listino costruito: la sola versione e' del 2022.
+CREATE TEMP TABLE tmp_sm_listino_scaduto AS
+SELECT * FROM dbops.fn_pgtap_crea_listino(
+    (SELECT utility_id FROM tmp_sm_ctx), 'state machine scaduto',
+    DATE '2022-01-01', DATE '2022-12-31');
+
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
         listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
-           ctx.listino_id, NULL, DATE '2082-01-01', ctx.stato_bozza_id
+           (SELECT listino_id FROM tmp_sm_listino_scaduto), NULL, DATE '2082-01-01', ctx.stato_bozza_id
       FROM tmp_sm_ctx ctx
     RETURNING id
 )
@@ -223,7 +235,7 @@ SELECT throws_ok(
         (SELECT offerta_id FROM tmp_sm_ids WHERE slot = 'A')
     ),
     'P0001', NULL,
-    '2) BOZZA->EMESSA con listino_versione_id NULL -> throws E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO'
+    '2) BOZZA->EMESSA, versione NULL, listino senza versione in vigore -> throws E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO'
 );
 
 -- ============================================================

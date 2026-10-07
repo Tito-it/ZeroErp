@@ -37,14 +37,12 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_contrighe_coerenza_canone |  |
-| CHECK | chk_contrighe_coerenza_fonte_erogazione |  |
 | CHECK | chk_contrighe_erogazione_per_tipo_eccezione |  |
 | CHECK | chk_contrighe_esclusione_senza_dati |  |
 | CHECK | chk_contrighe_fonte_per_tipo_eccezione |  |
-| CHECK | chk_contrighe_fonte_qta |  |
 | CHECK | chk_contrighe_prezzo_per_tipo_eccezione |  |
 | CHECK | chk_contrighe_qta_operativa_nonzero |  |
-| CHECK | chk_contrighe_tipo_erog |  |
+| FOREIGN KEY | fk_contratti_righe_erogazione_fonte | tipo_erogazione, fonte_quantita_attesa |
 | FOREIGN KEY | fk_contratti_righe_uom_operativa_id | uom_operativa_id |
 | FOREIGN KEY | fk_contrighe_articoli | articolo_id |
 | FOREIGN KEY | fk_contrighe_contratti | contratto_id |

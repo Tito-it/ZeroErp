@@ -11,14 +11,21 @@
 --   2)  RETURNS TABLE include colonna componenti (jsonb)
 --
 --   Bug A — resolver:
---   3)  Contratto ATTIVO con listino BOZZA-only → resolver raise E_LISTINO_VERSIONE_NON_ATTIVA
+--   3)  Contratto con listino BOZZA-only: l'attivazione e' RIFIUTATA
+--       (E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO). ⚠️ Rev 2026-10-07
+--       (brief-db-offerta-emissione-ed-erogazione §C.1.2, decisione A-D2 di Tid):
+--       fino a quel giorno il contratto si attivava con la versione NULL e qui si
+--       provava che il resolver, poi, non usasse la BOZZA. Lo stato «ATTIVO su un
+--       listino senza versione in vigore» non e' piu' costruibile: il Bug A e'
+--       chiuso a monte, all'attivazione.
 --   4)  Contratto ATTIVO con listino BOZZA+ATTIVA → freeze snapshot ATTIVA, resolver non raise
 --
 --   Bug A — guard AGGIUNTA:
 --   5)  BOZZA presente nel listino → AGGIUNTA su contratto DRAFT non bloccata dal guard
 --
 --   Bug A — freeze trigger:
---   6)  Attivazione con solo BOZZA → listino_versione_id resta NULL (non snapshot BOZZA)
+--   6)  Attivazione rifiutata con solo BOZZA → il contratto resta DRAFT, versione NULL
+--       (la BOZZA non e' mai congelata)
 --   7)  Attivazione con BOZZA+ATTIVA → listino_versione_id = id versione ATTIVA
 --
 --   Bug B — preview:
@@ -142,8 +149,7 @@ SELECT v.id, a.id, ctx.uom_id, 44.00
 
 -- -------------------------------------------------------
 -- Contratto PGTAP_BO_CNT: listino BOZZA-only, date 2070
--- Listino con listino_id → Branch B freeze trigger, ma solo BOZZA →
--- listino_versione_id resta NULL dopo attivazione.
+-- Resta DRAFT: l'attivazione e' il test 3, che ora la deve vedere rifiutata.
 -- -------------------------------------------------------
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id,
@@ -152,10 +158,6 @@ SELECT 'PGTAP_BO_CNT', c.ba_id, c.istanza_utility_id, c.utility_id,
        c.id_draft, (SELECT id FROM tmp_lst_bozza_only LIMIT 1),
        '2070-01-01'::date, '2070-12-31'::date
   FROM tmp_bozza_ctx c;
-
-UPDATE vendite.contratti
-   SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_bozza_ctx)
- WHERE numero = 'PGTAP_BO_CNT';
 
 -- -------------------------------------------------------
 -- Contratto PGTAP_MX_CNT: listino BOZZA+ATTIVA, date 2071
@@ -218,26 +220,18 @@ SELECT ok(
 );
 
 -- ============================================================
--- 3) Contratto ATTIVO con listino BOZZA-only → raise P0001
---    Resolver non trova versione ATTIVA/CHIUSA → E_LISTINO_VERSIONE_NON_ATTIVA
+-- 3) Contratto con listino BOZZA-only: l'attivazione e' rifiutata
+--    (rev 2026-10-07, A-D2). Prima passava con la versione NULL.
 -- ============================================================
 SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_BO_CNT')
     THEN skip('Fixture PGTAP_BO_CNT non creata - skip', 1)
-    ELSE throws_ok(
+    ELSE throws_like(
         format(
-            $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
-                %L::uuid, %s, '2070-06-01'::date, %s, %s::integer, %s, NULL::integer, NULL::uuid
-            )$$,
-            (SELECT id FROM tmp_bozza_art LIMIT 1),
-            (SELECT uom_id FROM tmp_bozza_ctx),
-            (SELECT ba_id FROM tmp_bozza_ctx),
-            (SELECT utility_id FROM tmp_bozza_ctx),
-            (SELECT emittente_soggetto_ruolo_id FROM tmp_bozza_ctx)
-        ),
-        'P0001',
-        NULL,
-        '3) Resolver con listino BOZZA-only raise E_LISTINO_VERSIONE_NON_ATTIVA'
+            'UPDATE vendite.contratti SET stato_doc_contratto_id = %s WHERE numero = %L',
+            (SELECT id_attivo FROM tmp_bozza_ctx), 'PGTAP_BO_CNT'),
+        '%Impossibile attivare il contratto%',
+        '3) Listino BOZZA-only: attivazione rifiutata (E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO)'
     )
 END;
 
@@ -278,15 +272,16 @@ SELECT CASE
 END;
 
 -- ============================================================
--- 6) Freeze con BOZZA-only → listino_versione_id IS NULL
+-- 6) Attivazione rifiutata con BOZZA-only → resta DRAFT, versione NULL
 -- ============================================================
 SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM vendite.contratti WHERE numero = 'PGTAP_BO_CNT')
     THEN skip('Fixture PGTAP_BO_CNT non creata - skip', 1)
     ELSE ok(
         (SELECT c.listino_versione_id IS NULL
+                AND c.stato_doc_contratto_id = (SELECT id_draft FROM tmp_bozza_ctx)
            FROM vendite.contratti c WHERE c.numero = 'PGTAP_BO_CNT'),
-        '6) Freeze BOZZA-only: listino_versione_id resta NULL'
+        '6) BOZZA-only: il contratto resta DRAFT e la BOZZA non e'' congelata'
     )
 END;
 

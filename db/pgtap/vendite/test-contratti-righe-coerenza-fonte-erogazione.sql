@@ -8,18 +8,19 @@
 -- Indice test (1..15):
 --   Struttura:
 --   1) fonte_quantita_attesa obbligatoria sulle righe che non sono ESCLUSIONE (CHECK)
---   2) CHECK chk_contrighe_coerenza_fonte_erogazione presente
+--   2) FK fk_contratti_righe_erogazione_fonte su config.erogazioni_fonti presente
+--      (20261007-54: la matrice e' un dato, i CHECK si sono ritirati)
 --   3) Trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd presente
 --   4) Setup fixture OK (contratto DRAFT + almeno 1 articolo trovato)
 --
---   Comportamento CHECK — 7 combinazioni vietate (skip se no fixture):
---   5)  CANONE     + TIMESHEET  → raises 23514
---   6)  CANONE     + LETTURE    → raises 23514
---   7)  UNA_TANTUM + TIMESHEET  → raises 23514
---   8)  UNA_TANTUM + LETTURE    → raises 23514
---   9)  ORARIO     + LETTURE    → raises 23514
---   10) CONSUMO    + FISSA      → raises 23514
---   11) CONSUMO    + TIMESHEET  → raises 23514
+--   Comportamento della FK — 7 combinazioni fuori vocabolario (skip se no fixture):
+--   5)  CANONE     + TIMESHEET  → raises 23503
+--   6)  CANONE     + LETTURE    → raises 23503
+--   7)  UNA_TANTUM + TIMESHEET  → raises 23503
+--   8)  UNA_TANTUM + LETTURE    → raises 23503
+--   9)  ORARIO     + LETTURE    → raises 23503
+--   10) CONSUMO    + FISSA      → raises 23503
+--   11) CONSUMO    + TIMESHEET  → raises 23503
 --
 --   Comportamento normalize trigger — INSERT (skip se < 4 articoli):
 --   12) INSERT CANONE  + fonte NULL → trigger imposta FISSA
@@ -36,7 +37,9 @@
 --
 -- Nota sui test CHECK (5-11):
 --   Fonte ESPLICITA vietata (non NULL): normalize non tocca valori non-NULL su INSERT.
---   Il CHECK fires prima delle FK (AFTER trigger) → errore atteso 23514.
+--   ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.7, giro B1): la
+--   matrice non e' piu' un CHECK ma config.erogazioni_fonti, e la riga vi si lega con
+--   la FK fk_contratti_righe_erogazione_fonte → errore atteso 23503 (era 23514).
 --
 -- Nota sui test normalize (12-15):
 --   I WITH-DML devono stare al top-level (non dentro CASE — vincolo PG).
@@ -189,17 +192,18 @@ SELECT is(
 );
 
 -- ============================================================
--- 2) CHECK chk_contrighe_coerenza_fonte_erogazione presente
+-- 2) FK sul vocabolario presente (rev 2026-10-07: era il CHECK
+--    chk_contrighe_coerenza_fonte_erogazione, ritirato da 20261007-54)
 -- ============================================================
 SELECT ok(
     EXISTS(
-        SELECT 1 FROM information_schema.table_constraints
-         WHERE constraint_schema = 'vendite'
-           AND table_name        = 'contratti_righe'
-           AND constraint_name   = 'chk_contrighe_coerenza_fonte_erogazione'
-           AND constraint_type   = 'CHECK'
+        SELECT 1 FROM pg_constraint c
+         WHERE c.conrelid  = 'vendite.contratti_righe'::regclass
+           AND c.conname   = 'fk_contratti_righe_erogazione_fonte'
+           AND c.contype   = 'f'
+           AND c.confrelid = 'config.erogazioni_fonti'::regclass
     ),
-    '2) CHECK chk_contrighe_coerenza_fonte_erogazione presente (20260519-05)'
+    '2) FK fk_contratti_righe_erogazione_fonte su config.erogazioni_fonti presente (20261007-54)'
 );
 
 -- ============================================================
@@ -222,7 +226,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 5-11) CHECK — 7 combinazioni vietate
+-- 5-11) FK — 7 combinazioni fuori vocabolario
 -- ============================================================
 
 SELECT CASE
@@ -237,8 +241,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23514', NULL,
-        '5) CANONE+TIMESHEET → check_violation 23514'
+        '23503', NULL,
+        '5) CANONE+TIMESHEET → foreign_key_violation 23503'
     )
 END;
 
@@ -254,8 +258,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23514', NULL,
-        '6) CANONE+LETTURE → check_violation 23514'
+        '23503', NULL,
+        '6) CANONE+LETTURE → foreign_key_violation 23503'
     )
 END;
 
@@ -271,8 +275,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23514', NULL,
-        '7) UNA_TANTUM+TIMESHEET → check_violation 23514'
+        '23503', NULL,
+        '7) UNA_TANTUM+TIMESHEET → foreign_key_violation 23503'
     )
 END;
 
@@ -288,8 +292,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23514', NULL,
-        '8) UNA_TANTUM+LETTURE → check_violation 23514'
+        '23503', NULL,
+        '8) UNA_TANTUM+LETTURE → foreign_key_violation 23503'
     )
 END;
 
@@ -305,8 +309,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23514', NULL,
-        '9) ORARIO+LETTURE → check_violation 23514'
+        '23503', NULL,
+        '9) ORARIO+LETTURE → foreign_key_violation 23503'
     )
 END;
 
@@ -322,8 +326,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23514', NULL,
-        '10) CONSUMO+FISSA → check_violation 23514'
+        '23503', NULL,
+        '10) CONSUMO+FISSA → foreign_key_violation 23503'
     )
 END;
 
@@ -339,8 +343,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23514', NULL,
-        '11) CONSUMO+TIMESHEET → check_violation 23514'
+        '23503', NULL,
+        '11) CONSUMO+TIMESHEET → foreign_key_violation 23503'
     )
 END;
 

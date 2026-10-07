@@ -1,0 +1,151 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_righe_default_fonte_qta: LA FONTE DI DEFAULT DAL VOCABOLARIO
+#   Brief: brief-db-offerta-emissione-ed-erogazione §C.7 (giro B1)
+#
+#   Il CASE con la matrice erogazione -> fonte (scritto due volte nel corpo, e
+#   copia dei CHECK chk_*_coerenza_fonte_erogazione) lascia il posto a
+#   config.erogazioni_fonti (-50). Stesse combinazioni, stessi default: il
+#   comportamento non cambia, tranne la riga SENZA erogazione, che prima prendeva
+#   FISSA e ora resta senza fonte (la rifiuta comunque il guard d'obbligo).
+#
+# ── COME ─────────────────────────────────────────────────────────
+#   Corpo vivo = 20260531-09 (prosrc uguale al vivo su dbdev il 2026-10-07),
+#   riscritto per intero: e' tutto matrice. SECURITY INVOKER esplicito.
+#   ⚠️ Il numero e' piu' alto di -50 (00_schema e 20_code si ordinano per numero),
+#   e la tabella e' vuota fino al seed di 80_data: in mezzo nessuno scrive righe.
+#   Ritorno indietro: il corpo e il COMMENT del 20260531-09.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-52-update-trgfn-righe-default-fonte-qta-da-vocabolario-mctit.yaml
+
+  - changeSet:
+      id: 20261007-52-update-trgfn-righe-default-fonte-qta-da-vocabolario
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.trgfn_righe_default_fonte_qta legge la fonte di default e le combinazioni
+        coerenti da config.erogazioni_fonti, al posto del CASE con la matrice.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: erogazioni_fonti
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_default_fonte_qta()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: normalizza fonte_quantita_attesa al default coerente con
+              --   tipo_erogazione, letto da config.erogazioni_fonti (e_default).
+              -- Generica: usabile su qualunque *_righe / *_eccezioni con le colonne
+              --   tipo_erogazione + fonte_quantita_attesa (oggi vendite.contratti_righe e
+              --   vendite.offerte_commerciali_eccezioni).
+              -- INSERT: fonte NULL -> la fonte di default dell'erogazione.
+              -- UPDATE: se l'erogazione cambia e la combinazione con la fonte attuale non
+              --   e' coerente (non sta in config.erogazioni_fonti) -> la fonte di default.
+              --   Le combinazioni coerenti non si toccano.
+              -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.7, giro B1):
+              --   la matrice era scritta qui due volte, in un CASE, ed era la stessa dei
+              --   CHECK chk_*_coerenza_fonte_erogazione. Ora e' un dato, e la sede e' una.
+              -- ⚠️ Senza erogazione (NULL) la fonte resta NULL: prima diventava FISSA, ma
+              --   una riga che si fattura senza erogazione la rifiuta comunque
+              --   trgfn_righe_guard_erogazione_obbligatoria, e l'ESCLUSIONE non passa di
+              --   qui (WHEN del trigger).
+              BEGIN
+                  IF NEW.fonte_quantita_attesa IS NULL
+                     OR (TG_OP = 'UPDATE'
+                         AND NEW.tipo_erogazione IS DISTINCT FROM OLD.tipo_erogazione
+                         AND NOT EXISTS (
+                             SELECT 1
+                               FROM config.erogazioni_fonti ef
+                              WHERE ef.tipo_erogazione       = NEW.tipo_erogazione
+                                AND ef.fonte_quantita_attesa = NEW.fonte_quantita_attesa))
+                  THEN
+                      NEW.fonte_quantita_attesa := (
+                          SELECT ef.fonte_quantita_attesa
+                            FROM config.erogazioni_fonti ef
+                           WHERE ef.tipo_erogazione = NEW.tipo_erogazione
+                             AND ef.e_default);
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_righe_default_fonte_qta()
+              IS 'Trigger generico (righe di contratto e di offerta): normalizza fonte_quantita_attesa alla fonte di default dell''erogazione, letta da config.erogazioni_fonti (e_default). INSERT: fonte NULL -> default. UPDATE: se cambia l''erogazione e la combinazione con la fonte attuale non è in config.erogazioni_fonti -> default; le combinazioni coerenti non si toccano. Senza erogazione la fonte resta NULL (la riga la rifiuta trgfn_righe_guard_erogazione_obbligatoria). Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.7, giro B1): la matrice era scritta qui in un CASE, copia dei CHECK chk_*_coerenza_fonte_erogazione; ora è il vocabolario, sede unica. Riusata da contratti_righe e offerte_commerciali_eccezioni.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_righe_default_fonte_qta()
+              RETURNS TRIGGER
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Scopo: normalizza fonte_quantita_attesa al default coerente con tipo_erogazione.
+                  -- Generica: nessun riferimento a una tabella specifica (usabile su qualunque
+                  -- *_righe / *_eccezioni con le colonne tipo_erogazione + fonte_quantita_attesa).
+                  -- INSERT: fonte NULL -> imposta default dalla matrice.
+                  -- UPDATE: se tipo cambia e la nuova combinazione e' vietata (❌) -> resetta.
+                  -- Le combinazioni 🟡 rare ma non vietate non vengono alterate.
+
+                  IF NEW.fonte_quantita_attesa IS NULL THEN
+                      -- INSERT senza fonte o UPDATE che azzera fonte (difensivo, NOT NULL è il backstop).
+                      NEW.fonte_quantita_attesa := CASE NEW.tipo_erogazione
+                          WHEN 'CANONE'     THEN 'FISSA'
+                          WHEN 'UNA_TANTUM' THEN 'FISSA'
+                          WHEN 'ORARIO'     THEN 'MANUALE'
+                          WHEN 'CONSUMO'    THEN 'LETTURE'
+                          ELSE                   'FISSA'
+                      END;
+
+                  ELSIF TG_OP = 'UPDATE'
+                        AND NEW.tipo_erogazione IS DISTINCT FROM OLD.tipo_erogazione
+                        AND (
+                                (NEW.tipo_erogazione = 'CONSUMO'
+                                     AND NEW.fonte_quantita_attesa IN ('FISSA', 'TIMESHEET'))
+                            OR  (NEW.tipo_erogazione IN ('CANONE', 'UNA_TANTUM')
+                                     AND NEW.fonte_quantita_attesa IN ('TIMESHEET', 'LETTURE'))
+                            OR  (NEW.tipo_erogazione = 'ORARIO'
+                                     AND NEW.fonte_quantita_attesa = 'LETTURE')
+                        )
+                  THEN
+                      -- Tipo cambiato e la combinazione attuale diventa vietata → reset al default.
+                      NEW.fonte_quantita_attesa := CASE NEW.tipo_erogazione
+                          WHEN 'CANONE'     THEN 'FISSA'
+                          WHEN 'UNA_TANTUM' THEN 'FISSA'
+                          WHEN 'ORARIO'     THEN 'MANUALE'
+                          WHEN 'CONSUMO'    THEN 'LETTURE'
+                          ELSE                   'FISSA'
+                      END;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_righe_default_fonte_qta()
+              IS 'Generica/table-agnostic. Normalizza fonte_quantita_attesa al default per '
+                 'tipo_erogazione. INSERT: imposta default se NULL. UPDATE OF tipo_erogazione: '
+                 'resetta solo se la nuova combinazione tipo+fonte e'' vietata (❌, matrice 20260519). '
+                 'Generalizza vendite.trgfn_contratti_righe_default_fonte_qta. '
+                 'Riusata da contratti_righe e offerte_commerciali_eccezioni. Rev 2026-05-31.';
