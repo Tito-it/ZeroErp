@@ -26,7 +26,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.api._serialize_helpers import serialize_value
 from apps.vendite.services._iva_contesto_documento import (
@@ -130,7 +130,7 @@ class IvaResolveView(DomainAPIView):
                 error_code=_E_VALIDATION,
                 function_name=_FN,
             )
-            auth_user_id = request.user.id if request.user.is_authenticated else None
+            auth_user_id = get_actor_user_id(request)
             ctx = contesto_da_testata(
                 testata,
                 auth_user_id=auth_user_id,

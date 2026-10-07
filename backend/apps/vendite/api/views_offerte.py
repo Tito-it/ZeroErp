@@ -23,7 +23,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -668,7 +668,7 @@ class ApiOffertaEccezioni(DomainAPIView):
         return success_response(
             OfferteService().crea_eccezione(
                 offerta_id, corpo_oggetto(request),
-                auth_user_id=get_scope_user_id(request),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 
@@ -691,7 +691,7 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
         return success_response(
             OfferteService().aggiorna_eccezione(
                 offerta_id, eccezione_id, corpo_oggetto(request),
-                auth_user_id=get_scope_user_id(request),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 
@@ -736,7 +736,7 @@ class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
         responses={200: PREVIEW_COMPONENTI_RESPONSE},
     )
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        auth_user_id = get_scope_user_id(request)
+        auth_user_id = get_actor_user_id(request)
 
         def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
             articolo_id = str(payload.get("articolo_id") or "")

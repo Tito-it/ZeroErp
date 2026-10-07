@@ -137,7 +137,7 @@ async function loadDettaglio() {
 // BB core `useFormInline` (sede unica, ok Tid 2026-09-28). Il padre e' la
 // definizione: aprirne un'altra chiude il form.
 const {
-  formMode, rigaInModifica: stepInForm, nuovaRiga: onNuovoStep, apriRiga, chiudiForm,
+  formMode, rigaInModifica: stepInForm, nuovaRiga: onNuovoStep, apriRiga, chiudiForm, ancoraForm,
 } = useFormInline({ padre: () => defId.value })
 
 // Ordine stabile per il riordino ▲▼ (la DataTable ordina per sequenza in view).
@@ -360,7 +360,7 @@ watch(defId, loadDettaglio)
       </DataTable>
 
       <!-- Form step inline (create/edit) -->
-      <div v-if="formMode" class="app-drawer-section editor-step-form">
+      <div v-if="formMode" :ref="ancoraForm" class="app-drawer-section editor-step-form">
         <h3 class="editor-section-title">
           {{ formMode === 'edit'
             ? t('amministrazione.definizioni_workflow.ed_step_form_edit', { codice: stepInForm?.codice })

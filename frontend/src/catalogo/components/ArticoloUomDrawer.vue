@@ -50,7 +50,7 @@ const uomList = ref([])
 const listLoading = ref(false)
 // ⚠️ Il click apre la modifica solo in scrittura: il getter e' letto al click.
 const {
-  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
   puoModificare: () => !isReadonly.value,
   // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
@@ -370,7 +370,7 @@ function onRowSelect(event) {
     </template>
 
     <template v-if="formMode">
-      <div class="app-drawer-section">
+      <div :ref="ancoraForm" class="app-drawer-section">
         <h4>{{ formMode === 'edit' ? t('catalogo.modifica_uom_operativa') : t('catalogo.nuova_uom_operativa') }}</h4>
       </div>
 

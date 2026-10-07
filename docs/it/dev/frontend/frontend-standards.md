@@ -1702,7 +1702,7 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 3. **Paginazione**: `paginator` con `rows="10"` e `rows-per-page-options="[10, 25]"`, `paginator-position="top"`, `data-key="id"`
 4. **Azioni toolbar**: usare `PageActionsBar`; l'azione "Nuovo/Aggiungi" e' `kind: 'primary'`
 5. **Selezione riga**: `selection-mode="single"` + `v-model:selection`. Click riga popola il form in edit mode con `@row-select`
-6. **Form dettaglio**: visibile SOLO quando attivo (Nuovo o click riga). Nascosto di default. Titolo "Nuova riga" o "Modifica riga"
+6. **Form dettaglio**: visibile SOLO quando attivo (Nuovo o click riga). Nascosto di default. Titolo "Nuova riga" o "Modifica riga". ⭐ **All'apertura scorre in vista** (2026-10-07): il form si lega con `:ref="ancoraForm"` di `useFormInline`, che lo porta in vista dopo il gesto (Nuovo o click riga) e mai da solo. Un form non legato si apre sotto un elenco lungo, fuori vista, e il click sembra non fare nulla
 7. **Articolo**: in create editabile (autocomplete), in edit disabled (immutabile)
 8. **UoM**: filtrate per articolo via `listArticoloUom(articoloId)`, pre-seleziona la UoM base. Placeholder "Seleziona prima l'articolo" se nessun articolo scelto
 9. **Salva/Annulla**: sempre in basso dopo il form. Salva crea o aggiorna, chiude form, emette `changed`. Annulla chiude form e deseleziona riga

@@ -242,6 +242,8 @@ export function useSoggettoRuoloCollection(config) {
     listLoading,
     saving,
     formMode,
+    // L'ancora del form inline: il drawer la lega al form (scorre in vista all'apertura).
+    ancoraForm: form.ancoraForm,
     formErrors,
     campiErrati,
     loadList,

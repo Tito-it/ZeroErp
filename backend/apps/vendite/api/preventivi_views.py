@@ -13,7 +13,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     optional_bool,
@@ -685,7 +685,7 @@ class ApiPreventivoRigheList(DomainAPIView):
     #        sviluppo-autorizzazioni-prezzi.md §3. auth_user_id e' passato
     #        al service per risolvere emittente + verificare permesso.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        auth_user_id = request.user.id if request.user and request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             return preventivi_service.gestisci_riga(
                 preventivo_id, payload, auth_user_id=auth_user_id,
@@ -714,7 +714,7 @@ class ApiPreventivoRigaDetail(DomainAPIView):
     #        Se il payload tocca `prezzo_unitario`, scatta il check L1
     #        (permesso prezzo_override_manuale se diverso dal resolver).
     def patch(self, request: Request, preventivo_id: int, riga_id: int) -> JsonResponse:
-        auth_user_id = request.user.id if request.user and request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
         result = preventivi_service.aggiorna_riga(
             preventivo_id, riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
         )
@@ -777,10 +777,7 @@ class ApiPreventivoRigaPreviewComponenti(DomainAPIView):
         self, request: Request, preventivo_id: int,
     ) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
-            auth_user_id = (
-                request.user.id if request.user and request.user.is_authenticated
-                else None
-            )
+            auth_user_id = get_actor_user_id(request)
             articolo_id = str(payload.get("articolo_id") or "")
             uom_id = optional_int(payload, "uom_operativa_id")
             quantita_raw = payload.get("quantita")
@@ -862,9 +859,7 @@ class ApiPreventivoRigaComponenteDetail(DomainAPIView):
         riga_id: int,
         componente_id: int,
     ) -> JsonResponse:
-        auth_user_id = (
-            request.user.id if request.user and request.user.is_authenticated else None
-        )
+        auth_user_id = get_actor_user_id(request)
         result = preventivi_service.update_componente(
             preventivo_id, riga_id, componente_id, corpo_oggetto(request),
             auth_user_id=auth_user_id,
@@ -947,7 +942,7 @@ class ApiPreventivoRigaSuggerisciPrezzo(DomainAPIView):
         def _handler(payload: dict[str, object]) -> dict[str, object]:
             articolo_id = payload.get("articolo_id")
             uom_id = payload.get("uom_id")
-            auth_user_id = request.user.id if request.user and request.user.is_authenticated else None
+            auth_user_id = get_actor_user_id(request)
             return preventivi_service.suggerisci_prezzo_riga(
                 preventivo_id,
                 articolo_id=str(articolo_id) if articolo_id else None,

@@ -17,8 +17,10 @@
 > sui verbi del DB col BB condiviso col contratto, le sette chiavi, le policy. Tutto il §6 e il §10.7
 > sono chiusi: ⏳ resta solo la decisione di archiviare il brief (§11.4).
 > ⚠️ **Correzione DB del 2026-10-05** (§12): `20261005-27`, `pg_temp` in coda al `search_path`
-> dei due lettori della testata. ⏳ Da applicare e da far girare (Tid).
-> **Da leggere per primo:** §12, poi §11 (consegna BE/FE del secondo giro), §10.7 e §6.
+> dei due lettori della testata. ✅ Applicata, pgTAP verdi (Tid).
+> ⚠️ **Collaudo a video del 2026-10-07** (§13): due difetti BE/FE trovati e corretti, uno di
+> modello passato a un brief nuovo. ⏳ Ricollaudo del cambio prezzo, poi archiviazione (§11.4).
+> **Da leggere per primo:** §13, poi §12, §11 (consegna BE/FE del secondo giro), §10.7 e §6.
 
 ## 1. La regola
 
@@ -750,3 +752,22 @@ dei tre pin del 2026-09-12 (`20260912-39…-41`).
 `search_path=pg_catalog, public, pg_temp`; il conteggio del test 4 scende a 17 (fatto datato,
 2026-10-05). ⏳ Da far girare: `dbops/test-security-definer-search-path-v1.sql` e
 `vendite/test-righe-gemelle-secondo-giro-v1.sql`, dopo l'apply.
+
+## 13. Collaudo a video (2026-10-07, Tid)
+
+> **Chi scrive:** sessione BE/FE (`dev/backend-tid`), 2026-10-07. Il §12 è applicato (Tid), i due
+> pgTAP verdi.
+
+| # | Trovato | Esito |
+| --- | --- | --- |
+| C1 | 🔴 **Il super admin non poteva cambiare un prezzo** (offerta OFC-0001064, `art-comp-001`): 403 `E_PRICING_OVERRIDE_NON_AUTORIZZATO`. Le view di crea/modifica eccezione dell'offerta e di crea riga del contratto passavano al gate prezzi `get_scope_user_id`, che per il superuser vale `None` («nessun limite di perimetro»); il gate legge `None` come «chiamata senza utente» e blocca. Non è un difetto di questo brief: c'era da prima, il collaudo l'ha fatto vedere | ✅ BB `get_actor_user_id` (regola del 2, ok Tid): le cinque scritture (le tre difettose più modifica riga di ordine e DDT, che il valore non lo usano) e le 16 copie inline passano di lì. Presidio `test_actor_user_id_api` (9 test; sulle view vecchie cadono i tre delle scritture difettose). Catalogo BB BE e `api.md` § Scope emittente. ⚠️ Verifica critica dello stesso giorno: lo stesso difetto su crea riga di ordine e DDT (gate L1 degli override componenti) e sulle preview componenti di contratto e offerta → passate all'attore, presidio a 13 test (i quattro nuovi cadono per mutazione). Poi (ok Tid) anche form-defaults di vendita e note, che leggevano le preferenze personali con lo scope (superuser → valori generali, senza errore): 15 test |
+| C2 | Il form inline si apriva sotto l'elenco, fuori vista | ✅ `useFormInline` espone `ancoraForm` e scorre il form in vista dopo un gesto; legata nei 13 contenitori e in `CollectionEditorPanel`. Presidio `useFormInline.spec.js` 9-13 (il 12 fallisce se un contenitore non la lega). ⚠️ Verifica critica: in `DistintaDrawer` e `DocumentoInternoDrawer` il form è multi-radice e `$el` era l'ancora di testo del Fragment, senza `scrollIntoView` — non scorreva, in silenzio; il BB ora scorre al primo elemento vero (test 13, cade per mutazione). Catalogo BB FE, frontend-standards § Master-Detail |
+| C4 | «Disponibile dopo l'accettazione dell'offerta» compariva due volte | ✅ `OffertaDrawer`: i motivi di push contratto e genera ordine si mostrano una volta per chiave (le due azioni sono mutuamente esclusive, i motivi coincidono) |
+| C5 | 🔴 «Emetti» spento con «Manca la versione di listino», senza modo di sceglierla, mentre le righe funzionano | ⏳ è di modello: la capability legge la colonna nuda, mentre la versione la fissa l'emissione stessa; le righe usano già il BB operativo → `brief-db-offerta-emissione-ed-erogazione` §A |
+| C3 | Erogazione e fonte proposte da utility a contatore (CONSUMO, «Da letture utility») anche su una utility BASE | ⏳ è di modello: `brief-db-offerta-emissione-ed-erogazione` §B (decisione di Tid: si eredita dall'articolo) |
+
+Verifica: BE `apps.vendite`, `apps.core`, `apps.ui` con `ZEROERP_TEST_DB_E2E=1`, 4178 test: verdi
+tranne due rossi estranei — la divergenza delle policy (il DB di sviluppo è avanti a git col
+`brief-db-veste-utilizzabile`, non si rigenera) e un deadlock casuale in
+`test_email_bozza_invio_db` (rilanciato da solo: verde). FE: vitest 723/723, eslint, 13 guard e
+build puliti. ⏳ Resta da ricollaudare il punto 5 a video.

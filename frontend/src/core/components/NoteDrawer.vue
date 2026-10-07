@@ -71,7 +71,7 @@ const PAGE_SIZE_DEFAULT = 200
 
 // ⚠️ Il click apre la modifica solo in scrittura: il getter e' letto al click.
 const {
-  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
   puoModificare: () => !isReadonly.value,
   // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
@@ -326,7 +326,7 @@ function rigaLabel(n) {
     </DataTable>
 
     <template v-if="formMode">
-      <div class="app-drawer-section">
+      <div :ref="ancoraForm" class="app-drawer-section">
         <h4>{{ formMode === 'edit' ? t('note.modifica') : t('note.nuova') }}</h4>
       </div>
       <div class="form-grid">

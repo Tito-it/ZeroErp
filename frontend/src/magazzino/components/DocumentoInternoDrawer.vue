@@ -101,7 +101,7 @@ const loading = ref(false)
 //    ⚠️ `isReadonly` e' dichiarata piu' sotto: il getter e' letto al click,
 //    non adesso.
 const {
-  formAperto, rigaInModifica, apriRiga, chiudiForm, azioneNuovaRiga,
+  formAperto, rigaInModifica, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
   padre: () => (props.visible ? props.documentoId : null),
   puoModificare: () => !isReadonly.value,
@@ -136,6 +136,11 @@ const { preserva, reset: resetPreserva, modificato, chiudiConConferma } = useDra
 //    tiene il suo form (`DocumentoInternoRigaForm`, `defineExpose`).
 const rigaForm = ref(null)
 const documento = unisciFotografie({ modificato, chiudiConConferma }, () => rigaForm.value)
+// L'ancora del form inline (`useFormInline`) e' il form della riga: il suo
+// `ref` serve gia' alla fotografia, quindi l'ancora lo segue invece di
+// prendersi un secondo `ref`. ⚠️ `flush: 'sync'`: l'ancora dev'essere legata
+// prima del `nextTick` in cui il BB fa scorrere il form in vista.
+watch(rigaForm, (el) => ancoraForm(el), { flush: 'sync' })
 // Il footer di un documento: la regola e' del BB (D-11), qui come per vendite.
 // ⚠️ `presente`: finche' il dettaglio non c'e' (caricamento, errore) niente
 //    Annulla/Salva su un form vuoto.

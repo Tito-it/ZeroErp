@@ -95,6 +95,11 @@ const onClose = useDrawerClose(emit)
 // niente da chiedere. Ogni uscita passa di qui: X, ESC, clic fuori, «Chiudi».
 const rigaForm = ref(null)
 const scheda = unisciFotografie(() => rigaForm.value)
+// L'ancora del form inline (`useFormInline`) e' il form della riga: il suo
+// `ref` serve gia' alla fotografia, quindi l'ancora lo segue invece di
+// prendersi un secondo `ref`. ⚠️ `flush: 'sync'`: l'ancora dev'essere legata
+// prima del `nextTick` in cui il BB fa scorrere il form in vista.
+watch(rigaForm, (el) => ancoraForm(el), { flush: 'sync' })
 const modificato = scheda.modificato
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 const { execute } = useApiHandler()
@@ -125,7 +130,7 @@ const loading = ref(false)
 //    ⚠️ `modificabile` e' dichiarata piu' sotto: il getter e' letto al click,
 //    non adesso.
 const {
-  formAperto, rigaInModifica, apriRiga, chiudiForm, azioneNuovaRiga,
+  formAperto, rigaInModifica, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
   padre: () => (props.visible ? props.distintaId : null),
   puoModificare: () => modificabile.value,

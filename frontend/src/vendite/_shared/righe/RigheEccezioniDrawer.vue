@@ -145,7 +145,7 @@ const canVariarePrezzi = computed(() => auth.isActionAllowed(PRICING_ACTIONS.OVE
 //    (D-8) e la chiusura al cambio di documento. Prima della lista: le sue
 //    azioni leggono «Nuova riga» da qui.
 const {
-  formMode, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
+  formMode, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
   padre: () => (props.visible ? props.documentoId : null),
   puoModificare: () => !isReadonly.value,
@@ -836,7 +836,7 @@ function origineSeverity(origine) {
 
     <!-- === DETAIL: form inserimento/modifica === -->
     <template v-if="formMode">
-      <div class="app-drawer-section">
+      <div :ref="ancoraForm" class="app-drawer-section">
         <h4>{{ formTitle }}</h4>
       </div>
 

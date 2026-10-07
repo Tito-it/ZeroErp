@@ -128,12 +128,17 @@ const canEditTestata = caps.canEdit
 // `available_actions` solo quando sono eseguibili, quindi da sole spariscono
 // senza spiegare perche'. La capability espone anche il motivo: banner
 // informativo, mirror di PreventiviDrawer/OrdiniDrawer.
-const pushReasons = computed(() =>
-  [
+// ⚠️ Un motivo si mostra UNA volta: le due azioni sono mutuamente esclusive con
+//    la stessa abilitazione (fn_available_actions_offerta), quindi i due motivi
+//    coincidono quasi sempre («Disponibile dopo l'accettazione» compariva due
+//    volte, 2026-10-07) — e due `:key` uguali nel `v-for`.
+const pushReasons = computed(() => {
+  const motivi = [
     { ok: caps.flag('can_push_contratto'), key: capabilities.value.can_push_contratto_reason_key },
     { ok: caps.flag('can_genera_ordine'), key: capabilities.value.can_genera_ordine_reason_key },
-  ].filter((r) => !r.ok && r.key && te(r.key)),
-)
+  ].filter((r) => !r.ok && r.key && te(r.key))
+  return motivi.filter((r, i) => motivi.findIndex((m) => m.key === r.key) === i)
+})
 
 // isReadonly cumulativo: OR tra permessi area e workflow lock (= !canEditTestata
 // in edit mode). In create canEditTestata e' true per costruzione (l'offerta
