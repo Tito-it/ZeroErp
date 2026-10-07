@@ -48,7 +48,7 @@ decisione.
 
 | Presidio | Cosa impedisce |
 | --- | --- |
-| `test_error_codes_declared_guardrail.py` | un codice `E_*` passato a `code=` / `error_code=` e non dichiarato in `error_policies.py` |
+| `test_error_codes_declared_guardrail.py` | un codice `E_*` scritto nel codice di produzione (ogni literal che è per intero un codice, dal 2026-10-07; prima i soli `code=` / `error_code=`) e non dichiarato in `error_policies_generated.py`, o ritirato; il debito motivato sta in `_DEBITO` e deve calare |
 | `test_error_codes_db_policy_guardrail.py` | un codice `E_*` sollevato da una funzione PL/pgSQL viva senza voce in `error_policies.py` |
 | `test_event_codes_declared_guardrail.py` | un `event_code` scritto su `vendite.event_log` e assente da `config.eventi_dominio` |
 | `test_schema_openapi_registro.py` + `openapi_schema.baseline.json` | nuovi rilievi drf-spectacular: una view senza `@extend_schema`, cioè un endpoint vuoto nello schema OpenAPI |

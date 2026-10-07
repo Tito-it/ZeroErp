@@ -220,11 +220,11 @@ class SoggettiService:
     #    «valida», cioe' un effetto collaterale che il nome non annuncia
     #    (`feedback_estrarre_non_condividere_stato`). E su un `QueryDict`
     #    immutabile l'assegnamento solleverebbe.
-    # ⚠️ Il guard NON e' ridondante rispetto al CHECK, ed e' il motivo per cui
-    #    esiste: `update_with_dedup` traduce QUALUNQUE IntegrityError nel
-    #    messaggio di duplicato, quindi un `split_payment = 'Y'` arriverebbe
-    #    all'operatore come «Codice fiscale o partita IVA duplicata» — un
-    #    messaggio che afferma il falso su un campo che non ha toccato.
+    # ⚠️ Il guard NON e' ridondante rispetto al CHECK: dice QUALE campo e con
+    #    quali valori ammessi. Senza, il CHECK uscirebbe come validazione
+    #    generica (`rifiuto_integrita`, dal 2026-10-07; prima ancora
+    #    `update_with_dedup` lo traduceva in «Codice fiscale o partita IVA
+    #    duplicata», un messaggio che affermava il falso).
     #    Il CHECK a DB resta la difesa dura (defense-in-depth).
     # ⭐ E il valore sbagliato non e' innocuo: la colonna accetterebbe 'Y', 't',
     #    '1' o uno spazio, e ognuno si comporterebbe come «non applicare lo

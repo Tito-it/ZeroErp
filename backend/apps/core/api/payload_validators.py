@@ -44,12 +44,25 @@ def corpo_oggetto(request: Any) -> dict[str, Any]:
     try:
         return oggetto_json(request.data)
     except (ParseError, ValueError) as exc:
-        motivo = "invalid_json" if isinstance(exc, ParseError) else str(exc)
-        raise ServiceError(
-            code=E_VALIDATION_INPUT,
-            message=_MESSAGGIO_CORPO.get(motivo, _MESSAGGIO_CORPO["invalid_payload"]),
-            context={"motivo": motivo},
-        ) from exc
+        raise errore_corpo(exc) from exc
+
+
+# Scopo: ⭐ Il rifiuto di un corpo illeggibile o che non e' un oggetto, in UN
+#        posto: 400 `E_VALIDATION_INPUT` nell'envelope, con `context.motivo`
+#        (`invalid_json` / `invalid_payload`). Lo usano `corpo_oggetto` (view
+#        DRF) e `handle_post_json` (E-6, 2026-10-07: fino a quel giorno
+#        rispondeva `{"error": "invalid_json"}` fuori envelope — la stessa
+#        regola in due forme). `exc` e' il `ParseError` di DRF o il
+#        `ValueError` di `parse_json_body`/`oggetto_json`, che porta il motivo.
+def errore_corpo(exc: Exception) -> ServiceError:
+    motivo = "invalid_json" if isinstance(exc, ParseError) else str(exc)
+    if motivo not in _MESSAGGIO_CORPO:
+        motivo = "invalid_payload"
+    return ServiceError(
+        code=E_VALIDATION_INPUT,
+        message=_MESSAGGIO_CORPO[motivo],
+        context={"motivo": motivo},
+    )
 
 
 # Scopo: ⭐ Una password dal corpo COSI' COM'E' digitata: assente = "", un

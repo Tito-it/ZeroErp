@@ -36,6 +36,12 @@ from apps.anagrafiche.db.categorie_clienti_listini_repository import (
     _ORDER_COLS,
     CategorieClientiListiniRepository,
 )
+from apps.anagrafiche.error_codes import (
+    E_ANAG_FK,
+    E_ANAG_MATRICE_OVERLAP,
+    E_ANAG_NOT_FOUND,
+    E_ANAG_VALIDAZIONE,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.non_editable_fields_helper import (
@@ -45,14 +51,6 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
 )
-
-
-# Codici errore (registrati in apps/core/services/error_policies.py)
-E_ANAG_VALIDAZIONE = "E_ANAG_VALIDAZIONE"
-E_ANAG_NOT_FOUND = "E_ANAG_NOT_FOUND"
-E_ANAG_DUPLICATO = "E_ANAG_DUPLICATO"
-E_ANAG_FK = "E_ANAG_FK"
-E_ANAG_MATRICE_OVERLAP = "E_ANAG_MATRICE_OVERLAP"
 
 
 # Whitelist order_by ammessi dal service (gate prima del repository), DERIVATA

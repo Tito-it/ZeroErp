@@ -20,24 +20,6 @@ if TYPE_CHECKING:
 # Helper condivisi API: envelope errori uniforme per tutti i domini.
 
 
-# Scopo: Gestisce `invalid_json_response` nel flusso applicativo del modulo.
-def invalid_json_response() -> JsonResponse:
-    payload = {"error": "invalid_json"}
-    meta = _build_meta()
-    if meta:
-        payload["meta"] = meta
-    return JsonResponse(payload, status=400)
-
-
-# Scopo: Gestisce `invalid_payload_response` nel flusso applicativo del modulo.
-def invalid_payload_response() -> JsonResponse:
-    payload = {"error": "invalid_payload"}
-    meta = _build_meta()
-    if meta:
-        payload["meta"] = meta
-    return JsonResponse(payload, status=400)
-
-
 # Scopo: Gestisce `exception_to_error_response` nel flusso applicativo del modulo.
 # Prima di mascherare i dettagli tecnici per il client, registra l'eccezione
 # sul logger "api.exception" cosi' il dev puo' risalire dal request_id mostrato

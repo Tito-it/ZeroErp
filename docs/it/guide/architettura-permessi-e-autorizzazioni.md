@@ -407,7 +407,7 @@ Chi resta senza assegnazione si conta in `dbops.vw_operatori_senza_emittente`, c
 
 | Livello                | Responsabilita'                                                    | Dove                                  |
 | ---------------------- | ------------------------------------------------------------------ | ------------------------------------- |
-| **Django/DRF**         | Autenticazione, enforcement permessi sulle API, filtering queryset | Permission classes, Mixins            |
+| **Django/DRF**         | Autenticazione, enforcement permessi sulle API, scope emittente nelle letture | Permission classes, repository (`add_emittente_scope_condition`) |
 | **DB (config/script)** | Source of truth per profili, aree, override, ambito emittente      | Tabelle config, ENUM, funzioni script |
 | **DB (trigger)**       | Defense-in-depth: vincoli di coerenza, guard su ambito emittente   | Trigger sulle tabelle operative       |
 | **DB (verbi)**         | Il permesso applicato alla scrittura, dove il dominio lo adotta    | Funzioni di scrittura con guard (§7.4) |
@@ -422,8 +422,10 @@ Il flusso di una richiesta attraversa, nell'ordine, cinque passaggi:
 3. **Permission class delle azioni** — per le azioni di processo,
    verifica l'abilitazione considerando profilo, eventuali override
    individuali e il tetto dell'area dell'azione.
-4. **Mixin di ambito emittente** — applica il filtro sul queryset in
-   base alla whitelist `user_emittenti_fiscali`.
+4. **Scope emittente nella lettura** — il repository aggiunge alla query
+   la condizione sul perimetro dell'utente (BB `add_emittente_scope_condition`,
+   che legge `script.fn_get_emittenti_scope_*`); sulle tabelle del perimetro
+   la RLS applica la stessa regola dal DB.
 5. **View/Serializer** — esegue la logica applicativa; ogni eventuale
    tentativo di operare fuori perimetro viene intercettato come
    ulteriore difesa dai trigger DB al momento di INSERT/UPDATE. Sulle
@@ -602,12 +604,14 @@ Il filtro "quali righe l'utente vede tra quelle dell'area" e' implementato
 in modo **diverso per veste**, ma tramite un meccanismo unificato (scope
 policy):
 
-**Operatori interni.** `EmittenteFiscaleScopeMixin` applica la scope
-policy `EF_WHITELIST` al queryset: la view dichiara il percorso del campo
-emittente (es. `billing_account__emittente_fiscale`), il mixin legge
-`user_emittenti_fiscali` e filtra. Se l'operatore non ha righe, il filtro non
-lascia passare **niente**: e' fail-closed, e la riga mancante e' un errore di
-configurazione (§4.9).
+**Operatori interni.** Lo scope policy `EF_WHITELIST` lo applica il
+repository nella query: il building block `add_emittente_scope_condition` (`apps/core/db/emittente_scope_helpers.py`), che legge il perimetro da `script.fn_get_emittenti_scope_pk_ids` / `_sr_ids` (perimetro `user_emittenti_fiscali`
+intersecato con l'emittente attivo della sessione). Semantica del BB: `None` =
+nessuna restrizione (super admin), lista vuota = **fail-closed**. Se
+l'operatore non ha righe non passa **niente**, e la riga mancante e' un errore
+di configurazione (§4.9). ⚠️ Fino al 2026-10-07 qui si nominava
+`EmittenteFiscaleScopeMixin`, un mixin per queryset ORM che nessuna view usava
+(il progetto non ha view su queryset ORM): ritirato.
 
 **Sul lato DB la stessa regola e' una policy RLS.** Per lo scope emittente degli
 operatori le tabelle del perimetro hanno la RLS **attiva** (`ENABLE`, senza `FORCE`:
@@ -625,7 +629,7 @@ concetto.
 
 **Clienti portale.** Applica la scope policy `BA_OWNERSHIP` (il cliente
 vede solo i propri billing account) oppure `CLIENTE_OWNERSHIP` (per dati
-legati al SR-CL direttamente). Il filtro non e' nel mixin: e' **nel DB
+legati al SR-CL direttamente). Il filtro non e' nel repository: e' **nel DB
 tramite Row Level Security** (cfr. §7.1 e §7.2 per la difesa DB e [Multi-Face
 Auth §6](/guide/architettura-multi-face-auth#6-row-level-security-la-difesa-al-livello-giusto)
 per il dettaglio). Il backend non filtra a mano: la policy RLS lo fa per
@@ -1216,7 +1220,7 @@ erDiagram
 **Enforcement:**
 
 * **Permission class API** → `ZeroERPPermission` (admin) / `PortaleBasePermission` (portale) / `ShopPermission` (shop), una per namespace
-* **Ambito queryset operatore** → `EmittenteFiscaleScopeMixin` (mixin su ViewSet, applica EF_WHITELIST)
+* **Ambito dati operatore** → condizione di scope nei repository (`add_emittente_scope_condition`, applica EF_WHITELIST) + RLS sulle tabelle del perimetro
 * **Defense-in-depth** → trigger DB + RLS policy + scope functions `script.fn_scope_*`; fail-closed su tripla GUC incoerente
 * **Permesso nella scrittura** → verbi DB con `fn_guard_azione` / `fn_guard_livello` / `fn_guard_super_admin` nella prima riga; tabelle protette in sola lettura per l'app (loop dei grant); il pannello di configurazione scrive col verbo generico `config.fn_pannello_scrivi`
 

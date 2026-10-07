@@ -76,11 +76,11 @@ E_VENDITE_PRICING_FAILED = "E_VENDITE_PRICING_FAILED"
 # strutturale completa = esporre il codice in DETAIL/HINT del RAISE lato DB;
 # fino a che quel refactor non e' fatto, usiamo match multi-substring stretto
 # con test di regressione che protegge dai drift del CSV.
+# ⚠️ Il marker di `E_PREZZO_LISTINO_NON_TROVATO` e' ritirato il 2026-10-07
+#    (E-2 di analisi-be-difetti-emersi-verifica-doc-api-core): il codice e'
+#    ritirato a catalogo dal 2026-08-19 e il ramo che lo sollevava e' tolto
+#    dalla funzione DB (`20260819-10`), quindi il marker non poteva piu' scattare.
 _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    (
-        "E_PREZZO_LISTINO_NON_TROVATO",
-        ("Nessun prezzo listino risolto per articolo",),
-    ),
     (
         "E_CATEGORIA_LISTINO_NON_MAPPATA",
         ("Nessuna mappa categoria", "-> listino per utility"),

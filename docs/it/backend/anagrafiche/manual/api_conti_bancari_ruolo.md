@@ -185,9 +185,12 @@ La riga del legame appena creato:
 | `bloccato` | bool | Flag blocco |
 
 Stringa vuota su `valido_dal`, `valido_al`, `intestazione_dichiarata`,
-`istanza_utility_id` = `NULL`. Le chiavi fuori da questa tabella sono ignorate.
+`istanza_utility_id` = `NULL`. Una chiave fuori da questa tabella → 400
+`E_ANAG_VALIDAZIONE` (dal 2026-09-26); un corpo senza campi → 400 (dal
+2026-10-07, prima 404).
 ⚠️ A differenza del POST, qui `uso` **non** è validato né portato in maiuscolo
-dal service: un valore fuori elenco lo rifiuta il `CHECK` del DB (vedi Errori).
+dal service: un valore fuori elenco lo rifiuta il `CHECK` del DB, col campo
+`uso` (vedi Errori).
 
 ### Risposta (200)
 
@@ -216,24 +219,30 @@ dal service: un valore fuori elenco lo rifiuta il `CHECK` del DB (vedi Errori).
 
 | Codice | HTTP | Quando | Sede |
 |---|---|---|---|
-| `E_ANAG_VALIDAZIONE` | 400 | IBAN mancante o fuori formato; `bank_branch_id` mancante; `uso` fuori elenco (solo POST); `predefinito` e `bloccato` entrambi veri (anche sommando payload e stato corrente, in PATCH) | service |
+| `E_ANAG_VALIDAZIONE` | 400 | IBAN mancante o fuori formato; `bank_branch_id` mancante; `uso` fuori elenco (in POST dal service, in PATCH dal `CHECK`, campo `uso`); `predefinito` e `bloccato` entrambi veri (anche sommando payload e stato corrente, in PATCH); chiave fuori elenco o corpo vuoto in PATCH; vincolo DB non mappato | service, mappa vincoli |
 | `E_DATA_AL_MINORE_DAL` | 400, campo `valido_al` | `valido_al < valido_dal`, in POST e PATCH. Il service non lo anticipa (dal 2026-09-23) | guard comune `script.trgfn_guard_date_validita` |
 | `E_CONTO_BANCARIO` | 400, campo `conto_bancario_id` | il conto del registro non è attivo | `anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard` |
-| `E_ANAG_DUPLICATO` | 409 | legame già presente per lo stesso ruolo/istanza/conto/uso, o secondo predefinito per lo stesso uso. ⚠️ Vedi nota sotto | service (qualunque `IntegrityError`) |
+| `E_ANAG_DUPLICATO` | 409 | legame già presente per lo stesso ruolo/istanza/conto/uso; secondo predefinito per lo stesso uso (campo `predefinito`); conto di incasso già di un altro soggetto | mappa vincoli |
+| `E_ANAG_FK` | 400 | conto, ruolo o istanza inesistenti (campo `istanza_utility_id` sull'istanza) | mappa vincoli |
 | `E_ANAG_CONTO_NOT_FOUND` | ⚠️ 400 | `conto_bancario_id` non esiste nel registro | service |
-| `E_ANAG_NOT_FOUND` | 404 | PATCH: legame inesistente o di un altro ruolo. ⚠️ Anche PATCH senza nessun campo ammesso | service |
+| `E_ANAG_NOT_FOUND` | 404 | PATCH: legame inesistente o di un altro ruolo | service |
 | `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` | ⚠️ 400 | DELETE: legame inesistente o di un altro ruolo | service |
+| `E_VALIDATION_INPUT` | 400 | corpo illeggibile o che non è un oggetto JSON | `handle_post_json` / `corpo_oggetto` |
 
-⚠️ **Difetti noti (2026-09-24), non ancora corretti** — E-1 ed E-7 di [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
+La mappa vincoli è `_VINCOLI_LEGAME_RUOLO` di `conti_bancari_service.py`
+(E-7, 2026-10-07: prima ogni `IntegrityError` usciva «già associato», anche un
+`CHECK` o una FK). Le unicità di questa tabella sono **indici parziali** (con e
+senza istanza), non vincoli: il presidio
+`anagrafiche/tests/db/test_conti_bancari_vincoli_mappati_db.py` confronta la
+mappa con vincoli e indici unici veri, nei due versi.
 
-- `E_ANAG_CONTO_NOT_FOUND` e `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` **non sono a
-  catalogo**: il traduttore li tratta come codici sconosciuti e risponde
-  **400** «Errore di validazione.» invece di un 404;
-- in POST e PATCH ogni `IntegrityError` esce come `E_ANAG_DUPLICATO` («già
-  associato»): anche un `uso` fuori elenco in PATCH (`CHECK`) o un
-  `istanza_utility_id` inesistente (FK);
-- una PATCH senza nessun campo ammesso risponde 404 «Associazione non
-  trovata», anche quando il legame esiste.
+⚠️ **Difetto noto** — E-1 di [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
+`E_ANAG_CONTO_NOT_FOUND` e `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` **non sono a
+catalogo**: il traduttore li tratta come codici sconosciuti e risponde
+**400** «Errore di validazione.» invece di un 404. Il seed è chiesto al team DB.
+
+Conti del soggetto e lookup IBAN/filiali:
+[api_conti_bancari_soggetto.md](api_conti_bancari_soggetto.md).
 
 ---
 

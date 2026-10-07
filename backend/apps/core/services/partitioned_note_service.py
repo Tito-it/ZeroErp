@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 from django.db import IntegrityError, connection, transaction
 
@@ -67,12 +67,74 @@ PARAM_DEFAULT_STILE = "NOTE_DEFAULT_STILE"
 # -> lookup id su config.lingue.codice_iso (vedi `_lookup_lingua_id_by_codice_iso`).
 PARAM_DEFAULT_LINGUA = "NOTE_DEFAULT_LINGUA"
 
+# Vincoli LOCALI di ogni partizione di `vendite.note`: stesso significato su
+# ogni partizione (coerenza anchor/riga, testo non vuoto, FK testata e riga),
+# nomi diversi. ⚠️ I nomi NON seguono un prefisso solo (`offnote`, ma
+# `ordini_note` per l'anchor e `ordnote` per il testo): si copiano dalla doc
+# auto-gen `dbzero/vendite/tabelle/note_*.md`, mai per analogia. `testo` None =
+# la partizione non ha un CHECK locale sul testo (vale `chk_note_testo_non_vuoto`
+# della madre). Presidio: `core/tests/db/test_note_vincoli_mappati_db.py` legge
+# i vincoli veri da `pg_constraint` e fallisce su uno non mappato (F-7 di
+# analisi-be-difetti-emersi-verifica-doc-api-core: fino al 2026-10-07 offerta,
+# ordine, DDT e fattura cadevano su `E_NOTA_VALIDATION`).
+
+
+# Scopo: i nomi dei vincoli locali di UNA partizione e le frasi delle sue FK.
+#        Tipizzata e non un `dict`: una chiave sbagliata o un None dove serve
+#        un nome falliscono all'import, invece di diventare la voce `"None"`.
+class _VincoliPartizione(NamedTuple):
+    anchor: str
+    testo: str | None
+    fk_testata: str
+    fk_riga: str
+    msg_testata: str
+    msg_riga: str
+
+
+_VINCOLI_PARTIZIONE: tuple[_VincoliPartizione, ...] = (
+    _VincoliPartizione(
+        "chk_prevnote_anchor", "chk_prevnote_testo_non_vuoto",
+        "fk_prevnote_testata", "fk_prevnote_riga",
+        "Preventivo di riferimento non trovato.", "Riga preventivo non trovata.",
+    ),
+    _VincoliPartizione(
+        "chk_contnote_anchor", "chk_contnote_testo_non_vuoto",
+        "fk_contnote_testata", "fk_contnote_riga",
+        "Contratto di riferimento non trovato.", "Riga contratto non trovata.",
+    ),
+    _VincoliPartizione(
+        "chk_offnote_anchor", None,
+        "fk_offnote_testata", "fk_offnote_riga",
+        "Offerta di riferimento non trovata.", "Riga offerta non trovata.",
+    ),
+    _VincoliPartizione(
+        "chk_ordini_note_anchor", "chk_ordnote_testo_non_vuoto",
+        "fk_ordini_note_testata", "fk_ordini_note_riga",
+        "Ordine di riferimento non trovato.", "Riga ordine non trovata.",
+    ),
+    _VincoliPartizione(
+        "chk_ddt_note_anchor", "chk_ddtnote_testo_non_vuoto",
+        "fk_ddt_note_testata", "fk_ddt_note_riga",
+        "DDT di riferimento non trovato.", "Riga DDT non trovata.",
+    ),
+    _VincoliPartizione(
+        "chk_fatture_note_anchor", "chk_fatnote_testo_non_vuoto",
+        "fk_fatture_note_testata", "fk_fatture_note_riga",
+        "Fattura di riferimento non trovata.", "Riga fattura non trovata.",
+    ),
+    _VincoliPartizione(
+        "chk_ven_note_att_anchor", None,
+        "fk_ven_note_att_testata", "fk_ven_note_att_riga",
+        "Attivita' fatturabile di riferimento non trovata.",
+        "Riga attivita' fatturabile non trovata.",
+    ),
+)
+
 # Mappa vincoli DB -> codici errore applicativi per IntegrityError.
-# Cross-partizione: i nomi `chk_note_*` sono ereditati dalla parent table,
-# i nomi `chk_prevnote_*`/`chk_contnote_*` sono locali alla singola partizione.
-# Vedi vendite/manual/note_preventivo.md e note_contratto.md.
+# Cross-partizione: i nomi `chk_note_*` sono ereditati dalla parent table, i
+# locali di ogni partizione si derivano da `_VINCOLI_PARTIZIONE` (sotto).
 # ⭐ Il terzo elemento e' il CAMPO del form (chiave del payload): arriva al
-#    client in `error.fields`. Le tre voci di coerenza e il tipo target restano a
+#    client in `error.fields`. Le voci di coerenza e il tipo target restano a
 #    due — non hanno UN campo (presidio C2, brief-be-presidio-ui-action-e-canale-campi §3-ter).
 _CHECK_CONSTRAINTS: dict[str, tuple] = {
     "chk_note_target_tipo": (
@@ -99,28 +161,10 @@ _CHECK_CONSTRAINTS: dict[str, tuple] = {
         "Il testo della nota non puo' essere vuoto.",
         "testo",
     ),
-    "chk_prevnote_anchor": (
-        "E_NOTA_CHECK_VIOLATION",
-        "Coerenza anchor_tipo/target_riga_id non rispettata.",
-    ),
-    "chk_prevnote_testo_non_vuoto": (
-        "E_NOTA_CHECK_VIOLATION",
-        "Il testo della nota non puo' essere vuoto.",
-        "testo",
-    ),
-    "chk_contnote_anchor": (
-        "E_NOTA_CHECK_VIOLATION",
-        "Coerenza anchor_tipo/target_riga_id non rispettata.",
-    ),
-    "chk_contnote_testo_non_vuoto": (
-        "E_NOTA_CHECK_VIOLATION",
-        "Il testo della nota non puo' essere vuoto.",
-        "testo",
-    ),
 }
 
-# FK comuni: lo stile e la lingua + le FK locali a ogni partizione
-# (fk_prevnote_testata/riga, fk_contnote_testata/riga, ecc.).
+# FK comuni: lo stile e la lingua. Le FK locali a ogni partizione si
+# derivano da `_VINCOLI_PARTIZIONE` (sotto).
 _FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_vendite_note_id_stile": (
         "E_NOTA_FK",
@@ -132,23 +176,25 @@ _FK_CONSTRAINTS: dict[str, tuple] = {
         "Lingua nota non valida.",
         "id_lingua",
     ),
-    "fk_prevnote_testata": (
-        "E_NOTA_PARENT_NOT_FOUND",
-        "Preventivo di riferimento non trovato.",
-    ),
-    "fk_prevnote_riga": (
-        "E_NOTA_FK",
-        "Riga preventivo non trovata.",
-    ),
-    "fk_contnote_testata": (
-        "E_NOTA_PARENT_NOT_FOUND",
-        "Contratto di riferimento non trovato.",
-    ),
-    "fk_contnote_riga": (
-        "E_NOTA_FK",
-        "Riga contratto non trovata.",
-    ),
 }
+
+# Scopo: i vincoli locali di ogni partizione nelle due mappe, con UNA frase
+#        per significato; le frasi delle FK nominano il documento, e stanno
+#        intere in `_VINCOLI_PARTIZIONE` (il genere cambia col documento).
+for _p in _VINCOLI_PARTIZIONE:
+    _CHECK_CONSTRAINTS[_p.anchor] = (
+        "E_NOTA_CHECK_VIOLATION",
+        "Coerenza anchor_tipo/target_riga_id non rispettata.",
+    )
+    if _p.testo is not None:
+        _CHECK_CONSTRAINTS[_p.testo] = (
+            "E_NOTA_CHECK_VIOLATION",
+            "Il testo della nota non puo' essere vuoto.",
+            "testo",
+        )
+    _FK_CONSTRAINTS[_p.fk_testata] = ("E_NOTA_PARENT_NOT_FOUND", _p.msg_testata)
+    _FK_CONSTRAINTS[_p.fk_riga] = ("E_NOTA_FK", _p.msg_riga)
+del _p
 
 
 class PartitionedNoteService:

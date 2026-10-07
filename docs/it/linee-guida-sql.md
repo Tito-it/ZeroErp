@@ -1395,8 +1395,9 @@ Due clausole distinte, con semantica diversa:
 
 #### 10.7 Defense-in-depth, non sostituzione
 
-Le policy RLS **si sommano** ai filtri applicativi esistenti (`EmittenteFiscaleScopeMixin`,
-filtri repository, `ZeroERPPermission`), **non li rimpiazzano**.
+Le policy RLS **si sommano** ai filtri applicativi esistenti (la condizione di
+scope emittente dei repository, `add_emittente_scope_condition`, e
+`ZeroERPPermission`), **non li rimpiazzano**.
 
 | Livello | Cosa controlla | Dove |
 | --- | --- | --- |

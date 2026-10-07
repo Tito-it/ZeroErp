@@ -28,6 +28,10 @@
  3) test_nome_vincolo_non_matcha_per_sottostringa   <- il difetto corretto
  4) test_nessun_match_senza_default_rilancia        <- la politica da NON toccare
  5) test_nessun_match_con_default_maschera
+ 6) RifiutoIntegritaTest (2026-10-07): lo SQLSTATE decide, non il chiamante —
+    unicita' → duplicato; FK → E_ANAG_FK; CHECK → validazione; NOT NULL →
+    validazione col campo; il default di `create_with_constraint_mapping` non
+    maschera una FK da duplicato
 """
 
 from __future__ import annotations
@@ -36,15 +40,25 @@ from unittest import TestCase
 
 from django.db import IntegrityError
 
-from apps.anagrafiche.services._validators import create_with_constraint_mapping
+from apps.anagrafiche.services._validators import (
+    create_with_constraint_mapping,
+    create_with_dedup,
+    update_with_dedup,
+)
 from apps.core.services.service_errors import ServiceError
+from apps.core.tests.db_error_fakes import (
+    SQLSTATE_CHECK,
+    SQLSTATE_FK,
+    SQLSTATE_NOT_NULL,
+    SQLSTATE_UNICITA,
+    make_integrity_error,
+)
 
 
-def _fallisce_con(vincolo: str):
+# Scopo: una funzione che fallisce con l'errore dato (di default un'unicita').
+def _fallisce_con(vincolo: str, sqlstate: str = SQLSTATE_UNICITA, colonna: str | None = None):
     def _fn():
-        raise IntegrityError(
-            f'duplicate key value violates unique constraint "{vincolo}"'
-        )
+        raise make_integrity_error(sqlstate, vincolo=vincolo, colonna=colonna)
     return _fn
 
 
@@ -107,3 +121,41 @@ class CreateWithConstraintMappingTest(TestCase):
                 default_message="Violazione di unicita'.",
             )
         self.assertEqual(ctx.exception.message, "Violazione di unicita'.")
+
+
+class RifiutoIntegritaTest(TestCase):
+    """Lo SQLSTATE decide la traduzione (E-7, parte fuori perimetro, 2026-10-07)."""
+
+    def test_unicita_e_duplicato(self):
+        with self.assertRaises(ServiceError) as ctx:
+            create_with_dedup(_fallisce_con("uq_x"), "Gia' esistente.")
+        self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+        self.assertEqual(ctx.exception.message, "Gia' esistente.")
+
+    def test_fk_non_e_duplicato(self):
+        with self.assertRaises(ServiceError) as ctx:
+            create_with_dedup(_fallisce_con("fk_x", SQLSTATE_FK), "Gia' esistente.")
+        self.assertEqual(ctx.exception.code, "E_ANAG_FK")
+
+    def test_check_e_validazione(self):
+        with self.assertRaises(ServiceError) as ctx:
+            update_with_dedup(_fallisce_con("chk_x", SQLSTATE_CHECK), "Gia' esistente.", "Non trovato.")
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertNotEqual(ctx.exception.message, "Gia' esistente.")
+
+    def test_not_null_porta_il_campo(self):
+        with self.assertRaises(ServiceError) as ctx:
+            create_with_dedup(
+                _fallisce_con(None, SQLSTATE_NOT_NULL, colonna="descrizione"), "Gia' esistente.",
+            )
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertEqual(ctx.exception.fields, ("descrizione",))
+
+    def test_default_non_maschera_una_fk(self):
+        with self.assertRaises(ServiceError) as ctx:
+            create_with_constraint_mapping(
+                _fallisce_con("fk_x", SQLSTATE_FK),
+                {"uq_tab_codice": ("Codice duplicato.", "codice")},
+                default_message="Violazione di unicita'.",
+            )
+        self.assertEqual(ctx.exception.code, "E_ANAG_FK")

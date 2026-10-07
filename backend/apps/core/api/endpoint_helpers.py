@@ -7,11 +7,8 @@ from django.conf import settings
 from django.http import HttpRequest, JsonResponse
 from rest_framework.request import Request
 
-from apps.core.api.error_responses import (
-    exception_to_error_response,
-    invalid_json_response,
-    invalid_payload_response,
-)
+from apps.core.api.error_responses import exception_to_error_response
+from apps.core.api.payload_validators import errore_corpo
 from apps.core.api.request_parsers import parse_json_body
 from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
@@ -107,10 +104,12 @@ def handle_post_json(
     handler: Callable[[dict[str, Any]], dict[str, Any]],
     require_idempotency_key: bool = False,
 ) -> JsonResponse:
+    # ⭐ Corpo illeggibile o non oggetto: 400 `E_VALIDATION_INPUT` nell'envelope,
+    #    come le view DRF (`corpo_oggetto`) — una regola, una forma (E-6).
     try:
         payload = parse_json_body(request)
-    except ValueError:
-        return invalid_json_response()
+    except ValueError as exc:
+        return exception_to_error_response(errore_corpo(exc))
 
     try:
         idempotency_key = get_idempotency_key()
@@ -177,19 +176,10 @@ def handle_post_json(
                 request_id,
             )
         return response
-    except ValueError:
-        if idempotency_claimed and idempotency_key and getattr(
-            settings,
-            "API_STRONG_IDEMPOTENCY_ENABLED",
-            False,
-        ):
-            IdempotencyStore.mark_failed(idempotency_key=idempotency_key, request_id=request_id)
-            logger.warning(
-                "idempotency_failed_invalid_payload key=%s request_id=%s",
-                idempotency_key,
-                request_id,
-            )
-        return invalid_payload_response()
+    # ⚠️ Un `ValueError` dell'handler passa di qui come ogni altra eccezione: il
+    #    translator lo porta a 400 `E_VALIDATION_INPUT` col suo messaggio. Fino
+    #    al 2026-10-07 aveva un ramo suo che rispondeva `{"error":
+    #    "invalid_payload"}` e buttava codice e messaggio (E-6).
     except Exception as exc:
         if idempotency_claimed and idempotency_key and getattr(
             settings,

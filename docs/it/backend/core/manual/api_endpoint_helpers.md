@@ -13,12 +13,11 @@ La logica e` implementata in `apps/core/api/endpoint_helpers.py` e viene usata d
 
 ## Output
 - `JsonResponse` di successo (`success_response`)
-- `JsonResponse` errore (`invalid_json`, `invalid_payload`, `exception_to_error_response`)
+- `JsonResponse` errore, sempre nell'envelope (`exception_to_error_response`)
 
 ## Regole
-- Parsing JSON centralizzato con `parse_json_body`: body non JSON -> 400 `{"error": "invalid_json"}`.
-- Ogni `ValueError` sollevato dall'handler -> 400 `{"error": "invalid_payload"}`, senza codice ne' messaggio (le altre eccezioni passano da `exception_to_error_response`).
-  ⚠️ Difetto noto (E-6): i due errori sono una stringa, non l'oggetto `error` dell'envelope, e il `ValueError` perde il suo messaggio — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Parsing JSON centralizzato con `parse_json_body`: corpo illeggibile (anche non UTF-8) o che non e' un oggetto -> 400 `E_VALIDATION_INPUT` nell'envelope, `context.motivo` `invalid_json` / `invalid_payload` (BB `errore_corpo`, lo stesso di `corpo_oggetto`).
+- Ogni eccezione dell'handler, `ValueError` compreso, passa da `exception_to_error_response`: un `ValueError` esce 400 `E_VALIDATION_INPUT` col suo messaggio. Fino al 2026-10-07 i due casi rispondevano `{"error": "invalid_json"}` / `{"error": "invalid_payload"}` fuori envelope (E-6, chiuso).
 - Se `require_idempotency_key=True` e header mancante -> `E_IDEMPOTENCY_KEY_REQUIRED`.
 - Se `DJANGO_API_STRONG_IDEMPOTENCY_ENABLED=1` **e** l'endpoint passa `require_idempotency_key=True` (con l'header presente):
   - claim key su `dbops.idempotency_keys`

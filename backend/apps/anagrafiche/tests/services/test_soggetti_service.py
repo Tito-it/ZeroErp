@@ -44,7 +44,7 @@ Indice test eseguiti:
 from unittest import TestCase
 from unittest.mock import patch
 
-from django.db import IntegrityError
+from apps.core.tests.db_error_fakes import SQLSTATE_UNICITA, make_integrity_error
 
 from apps.core.services.service_errors import ServiceError
 
@@ -181,7 +181,7 @@ class TestSoggettiCreate(TestCase):
         """CF duplicato → E_ANAG_DUPLICATO."""
         repo = mock_repo.return_value
         repo.get_natura_by_tipo_id.return_value = "PF"
-        repo.crea_soggetto_pf.side_effect = IntegrityError("unique cf")
+        repo.crea_soggetto_pf.side_effect = make_integrity_error(SQLSTATE_UNICITA)
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
             SoggettiService().create_soggetto({
@@ -280,11 +280,10 @@ class TestSoggettiUpdate(TestCase):
     def test_update_soggetto_flag_fiscali_valore_ignoto(self, mock_repo):
         """Un valore fuori da ('S','N') e' respinto con la SUA classe.
 
-        ⛔ Il guard non e' ridondante rispetto al CHECK a DB, ed e' il motivo per
-        cui esiste: `update_with_dedup` traduce QUALUNQUE IntegrityError nel
-        messaggio di duplicato, quindi senza guard l'operatore leggerebbe
-        «Codice fiscale o partita IVA duplicata» per un campo che non ha
-        toccato — un messaggio che afferma il falso.
+        ⛔ Il guard non e' ridondante rispetto al CHECK a DB: dice quale campo
+        e quali valori. Senza, il CHECK uscirebbe come validazione generica
+        (`rifiuto_integrita`, dal 2026-10-07; prima `update_with_dedup` lo
+        traduceva in «Codice fiscale o partita IVA duplicata», il falso).
         ⭐ E il valore sbagliato non e' innocuo: 'Y' si comporterebbe come «non
         applicare lo split» al primo `= 'S'`, cioe' un errore fiscale silenzioso
         nella direzione peggiore.

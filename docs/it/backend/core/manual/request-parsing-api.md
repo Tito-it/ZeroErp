@@ -17,10 +17,13 @@ Helper condivisi disponibili in:
 
 ## Regole
 - Con una `Request` DRF si usa `request.data`; con un `HttpRequest` Django si decodifica il body in UTF-8.
-  - ⚠️ Difetto noto ([F-10](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): un body non UTF-8 solleva `UnicodeDecodeError` (sottoclasse di `ValueError`) senza il messaggio `invalid_json`.
+  Un body non UTF-8 vale come JSON non valido (`invalid_json`; F-10, chiuso il 2026-10-07).
 - Body vuoto (`HttpRequest`) -> `{}`
 - JSON non valido (o `ParseError` DRF) -> `ValueError("invalid_json")`
 - Payload JSON non oggetto -> `ValueError("invalid_payload")`
+- Il `ValueError` porta il **motivo**, e chi risponde al client lo traduce con
+  `errore_corpo` (`payload_validators`): 400 `E_VALIDATION_INPUT` con la frase
+  del motivo e `context.motivo`.
 - `parse_iso_date`: valore vuoto o `None` -> `None`; data non valida -> `ValueError` standard Python
 
 ## Dipendenze DB
