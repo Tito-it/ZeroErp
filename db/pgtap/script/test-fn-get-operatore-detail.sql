@@ -42,11 +42,26 @@
 --   6. ⭐ veste attiva + una copia spenta: UNA riga, e mostra l'attiva
 --   7. ⭐ due vesti spente: UNA riga, veste_attiva=false, e l'invito non e'
 --      offerto (motivo di fn_check_operatore_invitabile, rev -53)
+--   8. la data di fine del rapporto (rev 20261007-27): con due SA senza
+--      scadenza (c1, c4) can_set_valido_al=true, motivo e chiave NULL; e
+--      anche per l'operatore non SA
+--   9. il rapporto di c4 riceve una data di fine (permesso: c1 non scade):
+--      ora c1 e' l'ultimo senza scadenza -> can_set_valido_al=false,
+--      ULTIMO_SUPER_ADMIN e la chiave PROPRIA della data di fine
+--  10. c4, che una data di fine ce l'ha gia': can_set_valido_al=true,
+--      motivo e chiave NULL (il campo resta modificabile, anche per toglierla)
 --
 -- ⭐ Rev 20260927-02 (brief-db-blocco-login-per-credenziale §16): i motivi
 --   sono CODICI con la chiave i18n (*_reason + *_reason_key), non frasi. I
 --   casi pinnano la coppia; prima pinnavano parole delle frasi (ILIKE).
 --   Casi 1 e 4 anche i NULL: ammessa => motivo e chiave vuoti.
+--
+-- ⭐ Rev 20261007-27 (brief-db-veste-utilizzabile §10): la terna della data
+--   di fine del rapporto (can_set_valido_al, valido_al_reason,
+--   valido_al_reason_key). Dal giro 2 «ultimo SUPER_ADMIN» vuol dire «ultimo
+--   SENZA SCADENZA» (-17), e il guard -20 rifiuta la data di fine sul suo
+--   rapporto: il drawer deve saperlo prima. Casi 8-10 in coda, sullo stato
+--   lasciato dal 7 (SA attivi: c1 e c4, entrambi senza date di fine).
 --
 -- Niente SAVEPOINT (azzera il counter pgTAP).
 -- ------------------------------------------------------------
@@ -68,7 +83,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(7);
+SELECT plan(10);
 
 -- =========================================================
 -- Helper: disattiva tutti i binding SA attivi tranne quello passato.
@@ -235,6 +250,43 @@ SELECT is(
        FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c7))),
     '1|true|true|PIU_VESTI_SPENTE|amministrazione.operatori.invito_reason.piu_vesti_spente',
     '7. due vesti spente: UNA riga, veste_attiva=false, invito non offerto (PIU_VESTI_SPENTE)'
+);
+
+-- =========================================================
+-- 8-10) La data di fine del rapporto (rev 20261007-27).
+--   Qui i SA attivi sono c1 (il binding che il caso 2 ha tenuto) e c4
+--   (costruito dopo), tutti e due senza date di fine.
+-- =========================================================
+SELECT is(
+    (SELECT string_agg(can_set_valido_al || '|' || (valido_al_reason IS NULL
+                                                     AND valido_al_reason_key IS NULL),
+                       ',')
+       FROM (SELECT * FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c1))
+             UNION ALL
+             SELECT * FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c7))) d),
+    'true|true,true|true',
+    '8. due SA senza scadenza, e un operatore non SA: can_set_valido_al=true, motivo e chiave NULL'
+);
+
+-- Il rapporto di c4 riceve una data di fine: permesso, c1 non scade.
+UPDATE anagrafiche.risorse_umane ru
+   SET valido_al = CURRENT_DATE + 30
+  FROM anagrafiche.identita_digitali idg
+ WHERE idg.id = (SELECT id_id FROM _t_c4)
+   AND ru.soggetto_ruolo_id = idg.soggetto_ruolo_id;
+
+SELECT is(
+    (SELECT can_set_valido_al || '|' || valido_al_reason || '|' || valido_al_reason_key
+       FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c1))),
+    'false|ULTIMO_SUPER_ADMIN|amministrazione.operatori.valido_al_reason.ultimo_super_admin',
+    '9. ultimo SA senza scadenza: can_set_valido_al=false, ULTIMO_SUPER_ADMIN + chiave della data di fine'
+);
+
+SELECT is(
+    (SELECT can_set_valido_al || '|' || (valido_al_reason IS NULL AND valido_al_reason_key IS NULL)
+       FROM script.fn_get_operatore_detail((SELECT au_id FROM _t_c4))),
+    'true|true',
+    '10. SA che ha gia'' una data di fine: can_set_valido_al=true, motivo e chiave NULL'
 );
 
 SELECT * FROM finish();

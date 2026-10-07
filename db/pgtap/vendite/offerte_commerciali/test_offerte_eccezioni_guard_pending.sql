@@ -39,6 +39,14 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- ============================================================
 -- BA senza tipi_utenze + emittente risolto dalla stessa funzione usata dai
 -- guard di coerenza emittente↔BA: emittente coerente per costruzione.
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   offerta stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra
+--   quelle della utility del cliente. Gli articoli si COSTRUISCONO (dbops.fn_pgtap_crea_articolo:
+--   MERCE senza tipologia, ammette UNA_TANTUM): prima erano i primi per id del database,
+--   che su dbdev sono PRODOTTI, e la utility del cliente preso dai dati (TEL) non li prevede.
+CREATE TEMP TABLE tmp_ofc_pnd_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-OFCPND-1') AS a1;
+
 CREATE TEMP TABLE tmp_ofc_pnd_ctx AS
 SELECT
     anagrafiche.fn_get_emittente_fiscale_pk(ba.id)            AS emittente_fiscale_id,
@@ -48,9 +56,7 @@ SELECT
     (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1)
                                                                AS listino_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA') AS id_bozza,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) = FALSE
-      ORDER BY a.id LIMIT 1)                                   AS articolo_id
+    (SELECT a1 FROM tmp_ofc_pnd_art)                          AS articolo_id
   FROM anagrafiche.billing_account ba
  WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
  ORDER BY ba.id
@@ -96,7 +102,7 @@ BEGIN
         offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
         tipo_erogazione
     )
-    VALUES (v_off, v_ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00, 'CANONE')
+    VALUES (v_off, v_ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00, 'UNA_TANTUM')
     RETURNING id INTO v_ecc;
 
     INSERT INTO tmp_ofc_pnd_ids VALUES (v_off, v_ecc);

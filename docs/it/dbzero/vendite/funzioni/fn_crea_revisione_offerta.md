@@ -34,6 +34,8 @@ AS $function$
 --     (rev 2026-10-05: prima non si copiavano)
 --   - utility: copia 1:1 (un record per offerta)
 --   - timestamp transizione (data_emissione, ...) restano NULL
+--   - listino_versione_id NULL: la revisione congela alla sua emissione
+--     (rev 2026-10-07, A-D3, brief-db-offerta-emissione-ed-erogazione)
 --
 -- Parametri:
 --   p_offerta_id : ID dell'offerta da revisionare
@@ -156,7 +158,12 @@ BEGIN
         oc.istanza_utility_id,
         oc.utility_id,
         oc.listino_id,
-        oc.listino_versione_id,
+        -- ⭐ rev 2026-10-07 (decisione A-D3 di Tid): la revisione NON
+        -- eredita la versione congelata del padre. E' una proposta nuova,
+        -- mandata in un giorno nuovo: vive sulla versione in vigore e la
+        -- congela alla SUA emissione. Con la copia, una revisione su una
+        -- versione nel frattempo chiusa non si emetteva piu'.
+        NULL,
         oc.valore_variazione_globale,
         oc.tipo_variazione_globale,
         oc.validita_dal,
@@ -331,7 +338,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_offerta(p_offerta_id bigint, p_user text)
-IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive coi loro componenti + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user. rev 2026-09-24 (20260924-35, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (eccezioni e loro componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione»: un''eccezione in attesa ricopiata restava legata alla pratica della rev N. Approvato e rifiutato continuano a ricopiarsi. Firma e RETURNS ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-05 (20261005-19, decisione di Tid): la revisione copia anche i COMPONENTI delle eccezioni copiate (vendite.offerte_commerciali_eccezioni_componenti), tutti, rimappati sull''eccezione nuova riga per riga con RETURNING, con stato e pratica di approvazione 1:1. Prima una revisione di un''offerta con un bundle nasceva senza componenti e il push la portava cosi'' nel contratto. Brief: brief-db-righe-esclusione-solo-non-si-vende §8.2 B1.';
+IS 'Crea rev.N+1 di un''offerta EMESSA: copia testata + eccezioni attive coi loro componenti + utility (1:1). Rev2 (2026-06-01): carry-forward 1:1 di stato_approvazione_prezzo + pratica_approvazione_prezzo_id sulle eccezioni (preserva l''invariante "prezzo fuori-policy sempre marcato"). uid e codice OFC-* generati ex novo. Il trigger z90 revisione (Step 6) marca automaticamente il padre SUPERATA. Guard: stato EMESSA obbligatorio. Parametri: p_offerta_id, p_user. rev 2026-09-24 (20260924-35, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (eccezioni e loro componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione»: un''eccezione in attesa ricopiata restava legata alla pratica della rev N. Approvato e rifiutato continuano a ricopiarsi. Firma e RETURNS ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-05 (20261005-19, decisione di Tid): la revisione copia anche i COMPONENTI delle eccezioni copiate (vendite.offerte_commerciali_eccezioni_componenti), tutti, rimappati sull''eccezione nuova riga per riga con RETURNING, con stato e pratica di approvazione 1:1. Prima una revisione di un''offerta con un bundle nasceva senza componenti e il push la portava cosi'' nel contratto. Brief: brief-db-righe-esclusione-solo-non-si-vende §8.2 B1. rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.1, decisione A-D3 di Tid): la revisione nasce con listino_versione_id NULL e congela la versione alla sua emissione (trgfn_offerte_commerciali_guard_transizione). Prima ricopiava la versione congelata del padre, e una revisione su una versione nel frattempo chiusa non si emetteva più. Il listino e la variazione globale si ricopiano come prima.';
 ```
 
 ---

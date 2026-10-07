@@ -79,6 +79,11 @@
 --    «errore di dominio», non quale.
 -- ------------------------------------------------------------
 
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   contratto e offerta stanno nel PERIMETRO dell'articolo. L'articolo del builder e' MERCE
+--   senza tipologia, che ammette UNA_TANTUM: l'erogazione, scritta CANONE per caso, ora e'
+--   UNA_TANTUM (stessa fonte FISSA, la quantita' si comporta uguale).
+
 BEGIN;
 
 -- Contesto applicativo: il test gira come l'applicazione (zeroerp_app, RLS
@@ -390,7 +395,7 @@ BEGIN
             (contratto_id, articolo_id, fonte_quantita_attesa, tipo_eccezione,
              prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES
-            (v_ctr, k.cmp_id, 'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 100, 1, 'CANONE')
+            (v_ctr, k.cmp_id, 'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 100, 1, 'UNA_TANTUM')
         RETURNING id INTO v_riga;
 
         UPDATE vendite.contratti_righe
@@ -483,7 +488,7 @@ BEGIN
              prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES
             (v_off, CASE v_tag WHEN 'kit' THEN k.kit_id ELSE k.cmp_id END,
-             'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 100, 1, 'CANONE')
+             'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 100, 1, 'UNA_TANTUM')
         RETURNING id INTO v_ecc;
 
         v_comp := NULL;

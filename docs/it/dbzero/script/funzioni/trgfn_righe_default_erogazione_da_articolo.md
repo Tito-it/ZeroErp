@@ -1,0 +1,131 @@
+# ⚙️ Funzione `trgfn_righe_default_erogazione_da_articolo`
+
+```sql
+CREATE FUNCTION trgfn_righe_default_erogazione_da_articolo()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo: la riga eredita dall'articolo come si eroga (B-R2, decisione di
+--   Tid del 2026-10-07): riempie SOLO i campi vuoti, la scelta
+--   dell'operatore vince (dentro il perimetro, che giudica il guard).
+--   · erogazione vuota: la combinazione di default dell'articolo
+--     (erogazione, fonte se vuota, generazione_canone se vuota); se la fonte
+--     e' gia' indicata, un'erogazione che l'articolo ammette con QUELLA fonte
+--     (il default per primo), altrimenti il default — e il guard rifiuta la
+--     fonte, col suo campo;
+--   · erogazione indicata e fonte vuota: la fonte che l'articolo ammette per
+--     quell'erogazione (il default, se e' quella; altrimenti la prima, mai
+--     DERIVATA_COMPONENTI se ce n'e' un'altra). Se l'articolo non la ammette
+--     la fonte resta vuota: la riempie la matrice generica
+--     (trgfn_righe_default_fonte_qta) e il guard del perimetro rifiuta la riga;
+--   · CANONE senza generazione_canone: quella dell'articolo.
+-- Fonte: vendite.fn_articolo_erogazioni (tipologia, altrimenti natura).
+-- Generica sulle due tabelle gemelle (vendite.contratti_righe,
+--   vendite.offerte_commerciali_eccezioni): legge NEW.articolo_id e le tre
+--   colonne. Trigger BEFORE INSERT WHEN tipo_eccezione <> 'ESCLUSIONE', fascia
+--   _a10_, nome che precede default_fonte_qta e guard_erogazione_*: prima si
+--   eredita, poi la matrice generica riempie cio' che resta, poi si giudica.
+-- ⚠️ Su UPDATE (OF tipo_erogazione) non si eredita niente di vuoto: un UPDATE che
+--   svuota l'erogazione e' una scelta, e la rifiuta il guard d'obbligo. Si
+--   riallinea solo la FONTE quando cambia la sola erogazione (prima lo faceva la
+--   matrice generica di trgfn_righe_default_fonte_qta, col default del
+--   vocabolario e non con quello dell'articolo: un servizio CANONE -> CONSUMO
+--   prendeva LETTURE, fuori dal suo perimetro).
+DECLARE
+    v_scelta record;
+BEGIN
+    -- UPDATE (solo OF tipo_erogazione, vedi -64): l'erogazione cambia e la
+    -- fonte NO. Se la coppia esce dal perimetro dell'articolo, la fonte diventa
+    -- quella che l'articolo ammette per la nuova erogazione (il default per
+    -- primo). Se l'operatore ha cambiato anche la fonte, la scelta e' sua: non
+    -- si tocca, e il guard la giudica.
+    IF TG_OP = 'UPDATE' THEN
+        IF NEW.tipo_erogazione IS NOT NULL
+           AND NEW.tipo_erogazione IS DISTINCT FROM OLD.tipo_erogazione
+           AND NEW.fonte_quantita_attesa IS NOT DISTINCT FROM OLD.fonte_quantita_attesa
+           AND NOT EXISTS (
+               SELECT 1 FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
+                WHERE ae.tipo_erogazione = NEW.tipo_erogazione
+                  AND ae.fonte_quantita_attesa = NEW.fonte_quantita_attesa) THEN
+            SELECT ae.fonte_quantita_attesa INTO v_scelta
+              FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
+             WHERE ae.tipo_erogazione = NEW.tipo_erogazione
+             ORDER BY ae.e_default DESC,
+                      (ae.fonte_quantita_attesa = 'DERIVATA_COMPONENTI'),
+                      ae.fonte_quantita_attesa
+             LIMIT 1;
+            IF FOUND THEN
+                NEW.fonte_quantita_attesa := v_scelta.fonte_quantita_attesa;
+            END IF;
+        END IF;
+        IF NEW.tipo_erogazione = 'CANONE' AND NEW.generazione_canone IS NULL THEN
+            NEW.generazione_canone := (
+                SELECT ae.generazione_canone
+                  FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
+                 WHERE ae.tipo_erogazione = 'CANONE'
+                   AND ae.generazione_canone IS NOT NULL
+                 ORDER BY ae.e_default DESC
+                 LIMIT 1);
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    IF NEW.tipo_erogazione IS NULL THEN
+        -- Con la fonte gia' indicata, un'erogazione che l'articolo ammette CON
+        -- quella fonte (il default per primo); se nessuna, il default, e il
+        -- guard rifiutera' la fonte col suo campo.
+        SELECT ae.tipo_erogazione, ae.fonte_quantita_attesa, ae.generazione_canone
+          INTO v_scelta
+          FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
+         WHERE ae.e_default
+            OR ae.fonte_quantita_attesa = NEW.fonte_quantita_attesa
+         ORDER BY (ae.fonte_quantita_attesa IS NOT DISTINCT FROM NEW.fonte_quantita_attesa) DESC,
+                  ae.e_default DESC,
+                  ae.tipo_erogazione
+         LIMIT 1;
+        IF FOUND THEN
+            NEW.tipo_erogazione := v_scelta.tipo_erogazione;
+            IF NEW.fonte_quantita_attesa IS NULL THEN
+                NEW.fonte_quantita_attesa := v_scelta.fonte_quantita_attesa;
+            END IF;
+        END IF;
+    ELSIF NEW.fonte_quantita_attesa IS NULL THEN
+        SELECT ae.fonte_quantita_attesa, ae.generazione_canone
+          INTO v_scelta
+          FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
+         WHERE ae.tipo_erogazione = NEW.tipo_erogazione
+         ORDER BY ae.e_default DESC,
+                  (ae.fonte_quantita_attesa = 'DERIVATA_COMPONENTI'),
+                  ae.fonte_quantita_attesa
+         LIMIT 1;
+        IF FOUND THEN
+            NEW.fonte_quantita_attesa := v_scelta.fonte_quantita_attesa;
+        END IF;
+    END IF;
+
+    IF NEW.tipo_erogazione = 'CANONE' AND NEW.generazione_canone IS NULL THEN
+        NEW.generazione_canone := (
+            SELECT ae.generazione_canone
+              FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
+             WHERE ae.tipo_erogazione = 'CANONE'
+               AND ae.generazione_canone IS NOT NULL
+             ORDER BY ae.e_default DESC
+             LIMIT 1);
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+
+COMMENT ON FUNCTION script.trgfn_righe_default_erogazione_da_articolo()
+IS 'Trigger generico (vendite.contratti_righe, vendite.offerte_commerciali_eccezioni), BEFORE INSERT OR UPDATE OF tipo_erogazione WHEN tipo_eccezione <> ESCLUSIONE. Su UPDATE: se cambia la sola erogazione e la coppia esce dal perimetro dell''articolo, la fonte diventa quella che l''articolo ammette per la nuova erogazione (se l''operatore ha cambiato anche la fonte non si tocca). Su INSERT la riga eredita dall''articolo come si eroga, riempiendo solo i campi vuoti (la scelta dell''operatore vince, il perimetro lo giudica script.trgfn_righe_guard_erogazione_perimetro). Erogazione vuota: la combinazione di default dell''articolo (erogazione; fonte se vuota); con la fonte già indicata, un''erogazione che l''articolo ammette con quella fonte, default per primo (altrimenti il default, e il guard rifiuta la fonte). Erogazione indicata e fonte vuota: la fonte che l''articolo ammette per quell''erogazione (il default se lo è, mai DERIVATA_COMPONENTI se c''è un''altra); se non la ammette resta vuota, la riempie trgfn_righe_default_fonte_qta e il guard rifiuta la riga. CANONE senza generazione_canone: quella dell''articolo. Fonte: vendite.fn_articolo_erogazioni (tipologia, altrimenti natura). Decisione B-R2 di Tid del 2026-10-07. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

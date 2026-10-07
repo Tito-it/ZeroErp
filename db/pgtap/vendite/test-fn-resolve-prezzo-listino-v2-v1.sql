@@ -52,6 +52,13 @@ SELECT
   JOIN catalogo.articoli a
     ON a.attivo IS TRUE
    AND a.listino_tipologia_id IS NOT NULL
+   -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la riga di
+   --   contratto del test 3 vuole la tipologia dell'articolo fra quelle della utility del
+   --   cliente (guard del perimetro).
+   AND EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                WHERE ltu.utility_id = ba.utility_id
+                  AND ltu.tipologia_id = a.listino_tipologia_id
+                  AND ltu.attivo)
  WHERE ba.categoria_cliente_id IS NOT NULL
    AND NOT EXISTS (
        SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
@@ -224,7 +231,9 @@ SELECT 'PGTAP_V5_CONTR', t.ba_id, t.istanza_utility_id, t.utility_id,
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario,
                                     tipo_eccezione, attivo, qta_operativa, tipo_erogazione)
 SELECT c.id, t.articolo_id, 42,
-       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE, 1, 'CANONE'
+       -- rev 2026-10-07 (giro B3): erogazione VUOTA, la riga la eredita dalla tipologia
+       --   dell'articolo (era CANONE scritto a mano).
+       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE, 1, NULL
   FROM vendite.contratti c, tmp_ctx t
  WHERE c.numero = 'PGTAP_V5_CONTR';
 

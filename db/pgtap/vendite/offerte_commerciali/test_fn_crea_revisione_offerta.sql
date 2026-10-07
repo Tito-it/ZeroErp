@@ -40,6 +40,16 @@ SELECT ok(
 -- ============================================================
 -- Setup fixture completa: contesti
 -- ============================================================
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   offerta stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra
+--   quelle della utility del cliente. Gli articoli si COSTRUISCONO (dbops.fn_pgtap_crea_articolo:
+--   MERCE senza tipologia, ammette UNA_TANTUM): prima erano i primi per id del database,
+--   che su dbdev sono PRODOTTI, e la utility del cliente preso dai dati (TEL) non li prevede.
+CREATE TEMP TABLE tmp_rev_fn_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-REVF-1') AS a1,
+       dbops.fn_pgtap_crea_articolo('PGT-REVF-2') AS a2,
+       dbops.fn_pgtap_crea_articolo('PGT-REVF-3') AS a3;
+
 CREATE TEMP TABLE tmp_rev_fn_ctx AS
 SELECT
     (SELECT ba.id FROM anagrafiche.billing_account ba
@@ -54,20 +64,13 @@ SELECT
     (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
     (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
     (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id_attiva,
-    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id LIMIT 1)  AS articolo_id_1,
+    (SELECT a1 FROM tmp_rev_fn_art) AS articolo_id_1,
     -- rev 2026-10-04: l'articolo dell'AGGIUNTA sta FUORI dalla versione di listino
     --   dell'offerta (guard script.trgfn_righe_guard_aggiunta_fuori_listino, ora
-    --   anche sull'offerta), e diverso dal primo.
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE
-        AND a.id <> (SELECT a1.id FROM catalogo.articoli a1 WHERE a1.attivo IS TRUE ORDER BY a1.id LIMIT 1)
-        AND NOT EXISTS (
-            SELECT 1 FROM vendite.listini_righe lr
-             WHERE lr.articolo_id = a.id AND lr.attivo
-               AND lr.listino_versione_id = (SELECT lv.id FROM vendite.listini_versioni lv
-                                              WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1))
-      ORDER BY a.id LIMIT 1) AS articolo_id_2,
-    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id OFFSET 2 LIMIT 1) AS articolo_id_3,
+    --   anche sull'offerta), e diverso dal primo. Rev 2026-10-07: costruito, quindi
+    --   fuori da ogni listino per costruzione.
+    (SELECT a2 FROM tmp_rev_fn_art) AS articolo_id_2,
+    (SELECT a3 FROM tmp_rev_fn_art) AS articolo_id_3,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA') AS stato_accettata_id,

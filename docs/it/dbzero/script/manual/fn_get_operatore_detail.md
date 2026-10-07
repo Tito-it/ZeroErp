@@ -15,6 +15,9 @@ concesse / vietate / non applicabili) e ne riportano il motivo come
 * `can_invite` / `invite_reason` / `invite_reason_key`
 * `can_disable` / `disable_reason` / `disable_reason_key`
 * `can_demote_super_admin` / `demote_reason` / `demote_reason_key`
+* `can_set_valido_al` / `valido_al_reason` / `valido_al_reason_key` — la
+  data di fine del rapporto, il campo «Valido al» del drawer (dal 2026-10-07,
+  `20261007-27`)
 
 > **Vedi anche**
 >
@@ -100,13 +103,23 @@ Tabella a riga singola (0 righe se `p_auth_user_id` non esiste o è `NULL`/≤0)
 | `can_demote_super_admin` | `BOOLEAN` o `NULL` | `NULL` se l'utente non è SA (azione **non applicabile**); altrimenti `NOT fn_check_ultimo_super_admin_attivo(au.id)` |
 | `demote_reason` | `TEXT` | `ULTIMO_SUPER_ADMIN`; NULL se non SA o se concessa |
 | `demote_reason_key` | `TEXT` | `amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin`; NULL se non SA o se concessa |
+| `can_set_valido_al` | `BOOLEAN` | `NOT fn_check_ultimo_super_admin_attivo(au.id)`: si può mettere una data di fine al **rapporto** (`risorse_umane.valido_al`) |
+| `valido_al_reason` | `TEXT` | `ULTIMO_SUPER_ADMIN`, NULL se concessa |
+| `valido_al_reason_key` | `TEXT` | `amministrazione.operatori.valido_al_reason.ultimo_super_admin`, NULL se concessa |
 
 ⭐ **Il motivo è un codice, non una frase** (dal 2026-09-27; brief
 blocco-login-per-credenziale §16). Il testo vive nei `locales` sotto la
-chiave, e il client la rende con un ripiego sul codice. Disable e demote
-hanno lo **stesso codice** (la condizione è una: sarebbe l'ultimo super admin
-attivo) ma **chiavi diverse**, perché la frase dice quale azione non si può
-fare. Fino a quel giorno i tre motivi erano frasi italiane composte nel DB.
+chiave, e il client la rende con un ripiego sul codice. Disable, demote e
+data di fine hanno lo **stesso codice** (la condizione è una: sarebbe
+l'ultimo super admin **senza data di fine**) ma **chiavi diverse**, perché la
+frase dice quale azione non si può fare.
+
+La condizione è quella dei guard che rifiutano la scrittura (sulla veste,
+sul binding, sul rapporto: `E_PROFILO_ULTIMO_SUPER_ADMIN`). Un
+amministratore che ha **già** una data di fine non è «senza scadenza»:
+`can_set_valido_al` risponde `true`, e il campo resta modificabile anche per
+toglierla. Il drawer spegne il campo col motivo; il 409 resta la rete per due
+sessioni che scrivono insieme. Fino a quel giorno i tre motivi erano frasi italiane composte nel DB.
 I nomi dei campi sono quelli già in servizio sul dettaglio operatore
 (`<verbo>_reason` + `<verbo>_reason_key`).
 
@@ -192,6 +205,7 @@ I nomi dei campi sono quelli già in servizio sul dettaglio operatore
 * `script.fn_is_super_admin(integer)` — GUC-aware (sostituisce la chiamata storica a `fn_get_ruolo_sistema`, droppata in Fase 7 2026-04-29)
 * `script.fn_check_operatore_invitabile(integer)` — capability invito
 * `script.fn_check_ultimo_super_admin_attivo(integer)` — capability lockout
+  (disable, demote, data di fine)
 
 ## Chi la chiama
 

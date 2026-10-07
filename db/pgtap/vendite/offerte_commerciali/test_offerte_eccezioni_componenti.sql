@@ -49,13 +49,19 @@ SELECT plan(27);
 -- ============================================================
 -- Contesto dati-dipendenti (skip se assenti)
 -- ============================================================
-CREATE TEMP TABLE tmp_oce_ctx AS
-SELECT
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe
+--   stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra quelle
+--   della utility del cliente. I due articoli si scelgono PRIMA, e il billing account e' il
+--   primo la cui utility ne ammette le tipologie (su dbdev il composito e' SERVIZI, che la
+--   utility del primo cliente non prevede). Le erogazioni sono quelle che il perimetro
+--   ammette: UNA_TANTUM sul semplice, CANONE/DERIVATA_COMPONENTI e CONSUMO/MANUALE sul
+--   composito (CONSUMO/LETTURE non lo ammette una tipologia non a contatore).
+CREATE TEMP TABLE tmp_oce_comp AS
     -- Articolo composito con almeno un componente attivo valido al DATE '2082-01-01'
     -- (fixture) e tutti opzionali (obbligatorio=FALSE): il fallback prezzo=0 del
     -- resolver e' ammesso solo su componenti opzionali. Nessun filtro esposto_in_fattura
     -- (modello unificato rev 2026-05-27).
-    (SELECT a.id
+SELECT (SELECT a.id
        FROM catalogo.articoli a
       WHERE a.is_composito = TRUE
         AND EXISTS (
@@ -70,13 +76,28 @@ SELECT
                AND COALESCE(ac.attivo, TRUE) = TRUE
                AND COALESCE(ac.obbligatorio, TRUE) = TRUE
         )
-      ORDER BY a.id LIMIT 1) AS articolo_composito_id,
+        -- rev 2026-10-07 (giro B3): le combinazioni che il test scrive sono nel perimetro
+        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                     WHERE e.tipo_erogazione = 'CANONE' AND e.fonte_quantita_attesa = 'DERIVATA_COMPONENTI')
+        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                     WHERE e.tipo_erogazione = 'CONSUMO' AND e.fonte_quantita_attesa = 'MANUALE')
+      ORDER BY a.id LIMIT 1) AS articolo_composito_id;
 
+CREATE TEMP TABLE tmp_oce_sempl AS
     -- Articolo non composito (per test 15)
-    (SELECT a.id
+SELECT (SELECT a.id
        FROM catalogo.articoli a
       WHERE COALESCE(a.is_composito, FALSE) = FALSE
-      ORDER BY a.id LIMIT 1) AS articolo_semplice_id,
+        -- rev 2026-10-07 (giro B3): UNA_TANTUM/FISSA nel perimetro
+        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                     WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
+      ORDER BY a.id LIMIT 1) AS articolo_semplice_id;
+
+CREATE TEMP TABLE tmp_oce_ctx AS
+SELECT
+    (SELECT articolo_composito_id FROM tmp_oce_comp) AS articolo_composito_id,
+
+    (SELECT articolo_semplice_id FROM tmp_oce_sempl) AS articolo_semplice_id,
 
     -- Contesto billing/utility: BA senza tipi_utenze (evita guard tipo/classe)
     (SELECT ba.id
@@ -84,6 +105,16 @@ SELECT
       WHERE NOT EXISTS (
           SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
       )
+        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
+                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS billing_account_id,
 
     (SELECT ba.istanza_utility_id
@@ -91,6 +122,16 @@ SELECT
       WHERE NOT EXISTS (
           SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
       )
+        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
+                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
 
     (SELECT ba.utility_id
@@ -98,6 +139,16 @@ SELECT
       WHERE NOT EXISTS (
           SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
       )
+        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
+                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS utility_id,
 
     (SELECT ef.id
@@ -175,7 +226,7 @@ BEGIN
             offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
             prezzo_unitario, qta_operativa, tipo_erogazione
         )
-        VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 'FISSA', 10.00, 1, 'CANONE')
+        VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 'FISSA', 10.00, 1, 'UNA_TANTUM')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('SEMPLICE', v_off_id, v_ecc_id);
     END IF;
@@ -213,7 +264,7 @@ BEGIN
             prezzo_unitario, quantita, tipo_erogazione
         )
         VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'OVERRIDE',
-                'LETTURE', 0.00, NULL, 'CONSUMO')
+                'MANUALE', 0.00, NULL, 'CONSUMO')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('CONSUMO', v_off_consumo, v_ecc_id);
     END IF;

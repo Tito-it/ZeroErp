@@ -185,7 +185,7 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
     ELSE format(
       $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione, prezzo_unitario,
                tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
-        SELECT %s, a.id, %L, 80.00, 'CANONE', 'FISSA', 1, 1, a.uom_id
+        SELECT %s, a.id, %L, 80.00, NULL, NULL, 1, 1, a.uom_id
           FROM catalogo.articoli a WHERE a.id = %L$$,
       CASE p_doc WHEN 'contratto' THEN 'contratti_righe' ELSE 'offerte_commerciali_eccezioni' END,
       CASE p_doc WHEN 'contratto' THEN 'contratto_id' ELSE 'offerta_id' END,
@@ -323,18 +323,25 @@ SELECT is(
     'E_RIGA_ESCLUSIONE_CON_DATI / tipo_erogazione',
     '9) contratto: ESCLUSIONE con la sola erogazione rifiutata, campo tipo_erogazione');
 
--- R2: il WHEN salta solo l'esclusione. Un OVERRIDE senza fonte riceve ancora il
---   default della matrice (CANONE -> FISSA).
+-- R2: il WHEN salta solo l'esclusione. Un OVERRIDE senza fonte riceve ancora un
+--   default.
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): il default
+--   viene dall'ARTICOLO (vendite.fn_articolo_erogazioni), e l'erogazione indicata deve
+--   stare nel suo perimetro. Prima: CANONE scritto a mano e FISSA dalla matrice, che su
+--   un articolo del listino del test (tipologia CONSUMO) oggi e' fuori perimetro.
+--   Qui la riga non indica ne' l'erogazione ne' la fonte, e le riceve tutte e due.
 INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
-       tipo_erogazione, quantita, qta_operativa, uom_operativa_id)
-SELECT pg_temp.doc('contratto'), a.id, 'OVERRIDE', 90.00, 'CANONE', 1, 1, a.uom_id
+       quantita, qta_operativa, uom_operativa_id)
+SELECT pg_temp.doc('contratto'), a.id, 'OVERRIDE', 90.00, 1, 1, a.uom_id
   FROM catalogo.articoli a WHERE a.id = pg_temp.art('A');
 
 SELECT is(
-    (SELECT fonte_quantita_attesa::text FROM vendite.contratti_righe
-      WHERE contratto_id = pg_temp.doc('contratto') AND articolo_id = pg_temp.art('A')),
-    'FISSA',
-    '10) contratto: un OVERRIDE senza fonte riceve ancora FISSA (il WHEN salta solo l''esclusione)');
+    (SELECT r.tipo_erogazione::text || '/' || r.fonte_quantita_attesa::text
+       FROM vendite.contratti_righe r
+      WHERE r.contratto_id = pg_temp.doc('contratto') AND r.articolo_id = pg_temp.art('A')),
+    (SELECT e.tipo_erogazione::text || '/' || e.fonte_quantita_attesa::text
+       FROM vendite.fn_articolo_erogazioni(pg_temp.art('A')) e WHERE e.e_default),
+    '10) contratto: un OVERRIDE senza erogazione ne'' fonte riceve il default dell''articolo (il WHEN salta solo l''esclusione)');
 
 -- Tolto, per non cambiare la fixture della lista (A resta DA_LISTINO).
 DELETE FROM vendite.contratti_righe

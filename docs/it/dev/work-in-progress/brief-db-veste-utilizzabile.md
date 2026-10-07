@@ -14,9 +14,10 @@
 > ✅ §7.5 deciso da Tid: l'ultimo amministratore non scade, il batch accende.
 > ✅ **Giro 2 applicato** (§8, `-16 → -22`; Tid, 2026-10-07): pgTAP senza regressioni.
 > ✅ **Giri 1-2 DB chiusi.** ✅ **BE/FE fatto** (§9, 2026-10-07): test Django verdi
-> sul DB vero. ⏳ **Giro 3 DB richiesto** (§10, 2026-10-07): la capability della data
-> di fine nel dettaglio operatore; poi il BE/FE spegne il campo «Valido al» col motivo.
-> **Da leggere per primo:** §3-bis (le decisioni), §8 (il giro 2), §9 (il BE/FE).
+> sul DB vero. ✅ **Giro 3 DB applicato** (§10.4, `20261007-27`; Tid, 2026-10-07): la
+> capability della data di fine nel dettaglio operatore, pgTAP verdi. ⏳ **BE/FE** (§10.3):
+> spegne il campo «Valido al» col motivo; poi l'archiviazione.
+> **Da leggere per primo:** §3-bis (le decisioni), §8 (il giro 2), §9 (il BE/FE), §10.4.
 
 ## 1. Il difetto, sul modello
 
@@ -429,6 +430,18 @@ come un database ricostruito da zero.
   `fn_veste_utilizzabile(`, da owner sullo scratch `script.fn_veste_utilizzabile(`. La
   prova pre-apply girava da owner ed era verde. Il presidio ora cerca il nome senza
   schema: 28/28 come app e come owner. Il codice non cambia.
+* ⚠️ **Rosso trovato dalla corsa di Tid (2026-10-07, dopo il giro 3), corretto**: la
+  riscrittura del messaggio di `E_PROFILO_ULTIMO_SUPER_ADMIN` (§8.1) rompeva quattro
+  asserzioni che pinnavano la **frase** vecchia (`throws_like '%zero SUPER_ADMIN
+  attivi%'`): `test-credenziale-blocco-admin-v1` (13), `test-credenziale-di-sistema-v1`
+  (15), `test-profili-accesso-guard-ultimo-super-admin` (2, 3). Il censimento del giro 2
+  cercava fixture e scrittori, non chi asseriva il **testo** del catalogo. Ora le quattro
+  asserzioni pinnano il **codice** (`CONSTRAINT_NAME` di `fn_log_and_raise_error`, helper
+  `pg_temp.codice_errore` come in `test-super-admin-senza-scadenza-v1`), che non cambia
+  quando la frase si riscrive. Provati su `zeroerp_ci` da owner: 16/16, 3/3; il
+  `di-sistema` dà 14/16 con i rossi 6 e 7, che c'erano già prima (ramo della sessione del
+  migratore, D-1: da owner per costruzione), mentre il 15 torna verde. ⏳ Rilancio di Tid
+  come app.
 * `plpgsql_check` sulle tre plpgsql nuove o toccate: nessun messaggio. Il ritorno
   indietro del giro 2, eseguito dopo l'apply simulato, riporta esattamente allo stato del
   giro 1. Guardrail statici: verdi.
@@ -564,6 +577,53 @@ In `script.fn_get_operatore_detail`, in coda al `RETURNS TABLE` come le chiavi d
 * ➕ Già fatto lato FE in questo giro (non aspetta il DB): le due frasi esistenti
   (`disabilita_reason`, `rimuovi_super_admin_reason`) dicevano «l'ultimo super admin
   **attivo**», che dal giro 2 non è più la regola: ora dicono «senza data di fine».
+
+### 10.4 Consegna DB (2026-10-07) — ✅ applicata (Tid, 2026-10-07, pgTAP verdi)
+
+> Il BE/FE (§10.3) non attende più: le tre colonne sono sul DB.
+
+`20261007-27-update-fn-get-operatore-detail-capability-valido-al` (`20_code/script`).
+Tre colonne in coda al `RETURNS TABLE` di `script.fn_get_operatore_detail`, con i nomi
+chiesti al §10.2:
+
+| Colonna | Valore |
+| --- | --- |
+| `can_set_valido_al` | `NOT ctx.is_last_sa` (la condizione di `can_disable`) |
+| `valido_al_reason` | `ULTIMO_SUPER_ADMIN`, altrimenti `NULL` |
+| `valido_al_reason_key` | `amministrazione.operatori.valido_al_reason.ultimo_super_admin`, altrimenti `NULL` |
+
+* `DROP` + `CREATE` (il `RETURNS TABLE` cambia). Corpo vivo = `20261002-30` (md5 di
+  `prosrc` uguale al vivo su dbdev e `zeroerp_ci`), patchato con sostituzioni contate.
+  Firma e `RETURNS TABLE` erano già ancorati (`%TYPE`, `django.*` esplicito col perché),
+  `SECURITY INVOKER` esplicito. Ritorno indietro: `DROP` + il corpo del `-30`.
+* Il COMMENT della funzione e il commento nel corpo nominano la terna e la chiave.
+  ⚠️ Per il FE: la chiave sta dentro un `CASE`, quindi `scripts/check_i18n_keys.py` **non
+  la vede** (come le due sorelle di disable e demote). Va seminata in `it.json`/`en.json`
+  dall'elenco qui sopra, non dal rosso del guard.
+* Manuale aggiornato: `docs/it/dbzero/script/manual/fn_get_operatore_detail.md` (la terna,
+  e la condizione detta «senza data di fine» invece di «attivo»).
+
+**Prove** (prima dell'apply, su `zeroerp_ci` come owner, in transazione ritirata; lo
+scratch ha già i giri 1-2, `-01 → -26`):
+
+* SQL **estratto** dallo YAML (`yaml.safe_load`), `ON_ERROR_STOP`: una sola funzione con
+  quel nome, firma `p_auth_user_id integer` invariata, `INVOKER`, `STABLE`; privilegi
+  **uguali come insieme** (PUBLIC, owner, `zeroerp_app`, `zeroerp_batch_fatturazione`,
+  dai default del proprietario: cambia solo l'ordine nell'array). `plpgsql_check`: zero
+  messaggi. Ritorno indietro eseguito dopo: corpo, COMMENT e privilegi uguali al vivo.
+* pgTAP `db/pgtap/script/test-fn-get-operatore-detail.sql`, **casi 8-10 nuovi** (plan
+  7 → 10), sullo stato lasciato dal caso 7: con due SA senza scadenza la terna è
+  `true`/`NULL`/`NULL` (anche per l'operatore non SA); il rapporto di uno riceve una data
+  di fine (permesso) e l'altro, ora l'ultimo, risponde `false` + `ULTIMO_SUPER_ADMIN` +
+  la chiave; quello con la data di fine risponde `true` con motivo e chiave `NULL`.
+  **10/10** col `-27`; 7/7 e poi l'errore sulla colonna mancante col corpo di prima.
+  Mutazione (`can_set_valido_al` sempre `true`): **rosso il 9**, quindi il test vede il
+  difetto.
+* Gli altri tre pgTAP che chiamano la funzione, prima/dopo: `test-credenziale-login-v1`
+  22/22, `test-veste-operatore-spenta-v1` 12/12,
+  `test-emittente-denominazione-da-soggetto-v1` 14/14, uguali.
+* Guardrail statici del repo: verdi.
+* ✅ Dopo l'apply (Tid, 2026-10-07): corsa pgTAP verde.
 
 ---
 {% include-markdown "signature-core.md" %}

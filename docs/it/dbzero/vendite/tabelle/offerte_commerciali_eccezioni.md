@@ -37,14 +37,12 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_offerte_eccezioni_coerenza_canone |  |
-| CHECK | chk_offerte_eccezioni_coerenza_fonte_erogazione |  |
 | CHECK | chk_offerte_eccezioni_erogazione_per_tipo_eccezione |  |
 | CHECK | chk_offerte_eccezioni_esclusione_senza_dati |  |
 | CHECK | chk_offerte_eccezioni_fonte_per_tipo_eccezione |  |
-| CHECK | chk_offerte_eccezioni_fonte_qta |  |
 | CHECK | chk_offerte_eccezioni_prezzo_per_tipo_eccezione |  |
 | CHECK | chk_offerte_eccezioni_qta_operativa_nonzero |  |
-| CHECK | chk_offerte_eccezioni_tipo_erog |  |
+| FOREIGN KEY | fk_offerte_commerciali_eccezioni_erogazione_fonte | tipo_erogazione, fonte_quantita_attesa |
 | FOREIGN KEY | fk_offerte_eccezioni_articolo | articolo_id |
 | FOREIGN KEY | fk_offerte_eccezioni_offerta | offerta_id |
 | FOREIGN KEY | fk_offerte_eccezioni_pratica_approvazione_prezzo | pratica_approvazione_prezzo_id |
@@ -62,33 +60,37 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')` |
 | trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')` |
 | trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')` |
+| trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')` |
 | trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_immutabile('offerta_id')` |
 | trg_offerte_commerciali_eccezioni_a10_articoli_require_a_f5bd6c | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_offerte_commerciali_eccezioni_a10_articoli_require_a_f5bd6c | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'articoli', 'attivo', 'articolo_id', 'id')` |
 | trg_offerte_commerciali_eccezioni_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('tipo_eccezione', 'E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE')` |
 | trg_offerte_commerciali_eccezioni_a10_note_offerte_comme_22884e | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'note_offerte_commerciali', 'target_riga_id', 'id', 'attivo')` |
 | trg_offerte_commerciali_eccezioni_a10_offerte_commercial_160059 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'offerte_commerciali_eccezioni_componenti', 'eccezione_offerta_id', 'id', 'attivo')` |
-| trg_offerte_commerciali_eccezioni_a10_unita_misura_requi_4af3a4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_offerte_commerciali_eccezioni_a10_unita_misura_requi_4af3a4 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
+| trg_offerte_commerciali_eccezioni_a10_unita_misura_requi_4af3a4 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('catalogo', 'unita_misura', 'attivo', 'uom_operativa_id', 'id')` |
 | trg_offerte_commerciali_eccezioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_offerte_commerciali_eccezioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_offerte_commerciali_eccezioni_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_commerciali_eccezioni_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
+| trg_offerte_eccezioni_a10_default_erogazione_articolo_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
+| trg_offerte_eccezioni_a10_default_erogazione_articolo_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo()` |
 | trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
+| trg_offerte_eccezioni_a10_default_fonte_qta_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_default_fonte_qta()` |
 | trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('OFFERTA', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_aggiunta_fuori_listino_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_aggiunta_fuori_listino('OFFERTA', 'offerta_id')` |
-| trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
-| trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('OFFERTA', 'offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_erogazione_obbligatoria_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria('offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_erogazione_perimetro_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA', 'offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_erogazione_perimetro_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('OFFERTA', 'offerta_id')` |
+| trg_offerte_eccezioni_a10_guard_escl_figlio_bundle_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_figlio_bundle('OFFERTA', 'offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_esclusione_senza_dati_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_righe_guard_esclusione_senza_dati('offerta_id')` |
 | trg_offerte_eccezioni_a10_guard_pending_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_righe_guard_pending('offerta_id')` |
-| trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
 | trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
+| trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_qta_from_operativa('true', 'fonte_quantita_attesa')` |
 | trg_offerte_eccezioni_z90_propaga_qta_componenti_upd | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_componenti_propaga_qta('vendite', 'offerte_commerciali_eccezioni_componenti', 'eccezione_offerta_id')` |
 
 ---

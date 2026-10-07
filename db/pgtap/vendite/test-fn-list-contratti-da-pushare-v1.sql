@@ -260,7 +260,9 @@ INSERT INTO vendite.contratti_righe (
   qta_operativa, quantita, fonte_quantita_attesa, tipo_eccezione, attivo, meta
 )
 SELECT
-  c.id, r.articolo_id, 30.000000, 'CANONE',
+  -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): l'articolo
+  --   del builder e' MERCE, che ammette UNA_TANTUM; CANONE era scritto per caso.
+  c.id, r.articolo_id, 30.000000, 'UNA_TANTUM',
   1.000000, 1.000000, 'FISSA',
   'AGGIUNTA'::vendite.tipo_eccezione_contratto, true,
   jsonb_build_object('test_scope', 'pgtap_fn_list_contr', 'case', 'draft')

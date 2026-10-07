@@ -22,13 +22,16 @@ AS $function$
 -- dal building block script.fn_check_prezzi_autorizzati; escluso il
 -- rientro da uno stato di superamento (brief-db-preventivi-congelamento-
 -- pricing, D-4/D-5).
+-- rev 2026-10-07: BOZZA->EMESSA congela la versione di listino (la fissata,
+-- altrimenti quella in vigore oggi) dopo il predicato
+-- script.fn_check_listino_congelabile (brief-db-offerta-emissione-ed-
+-- erogazione §C.1.3).
 DECLARE
     v_codice_da config.stati_doc_offerte.codice_interno%TYPE;
     v_codice_a  config.stati_doc_offerte.codice_interno%TYPE;
     v_superato_da boolean;
     v_superato_a  boolean;
     v_figlia_viva_codice vendite.offerte_commerciali.codice%TYPE;
-    v_stato_versione vendite.listini_versioni.stato%TYPE;
 BEGIN
     -- Nessuna transizione effettiva: niente da validare.
     IF OLD.stato_doc_offerta_id = NEW.stato_doc_offerta_id THEN
@@ -112,41 +115,31 @@ BEGIN
 
     END IF;
 
-    -- Guard specifica BOZZA -> EMESSA: listino_versione_id obbligatorio + ATTIVA.
+    -- Emissione (BOZZA -> EMESSA), rev 2026-10-07 (brief-db-offerta-
+    -- emissione-ed-erogazione §C.1.3): l'offerta vive sulla versione di
+    -- listino in vigore e la CONGELA qui, nella stessa scrittura del cambio
+    -- stato. Prima il predicato, script.fn_check_listino_congelabile: lo
+    -- stesso con cui fn_available_actions_offerta spegne «Emetti», quindi
+    -- pulsante e guard non possono dissentire. Poi il congelamento,
+    -- vendite.fn_listino_versione_operativa: la fissata se c'e', altrimenti
+    -- quella in vigore oggi.
+    -- ⚠️ Fino a questa rev la versione la fissava il backend prima del
+    --   cambio stato, e la capability guardava la colonna nuda: «Emetti»
+    --   restava spento perche' il congelamento non c'era ancora stato.
     IF v_codice_da = 'BOZZA' AND v_codice_a = 'EMESSA' THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_listino_congelabile('OFFERTA', NEW.listino_id, NEW.listino_versione_id),
+            NULL,
+            NEW.tx_id,
+            jsonb_build_object(
+                'offerta_id', NEW.id,
+                'codice',     NEW.codice,
+                'stato_da',   v_codice_da,
+                'stato_a',    v_codice_a));
 
-        -- listino_versione_id deve essere valorizzato.
-        IF NEW.listino_versione_id IS NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME::text,
-                'E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO',
-                jsonb_build_object('offerta_id', NEW.id),
-                NEW.tx_id,
-                NEW.id::text
-            );
-        END IF;
-
-        -- La versione listino deve essere in stato ATTIVA.
-        SELECT stato INTO v_stato_versione
-          FROM vendite.listini_versioni
-         WHERE id = NEW.listino_versione_id;
-
-        IF v_stato_versione IS DISTINCT FROM 'ATTIVA' THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database',
-                TG_NAME::text,
-                'E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA',
-                jsonb_build_object(
-                    'offerta_id',          NEW.id,
-                    'listino_versione_id', NEW.listino_versione_id,
-                    'stato_versione',      v_stato_versione
-                ),
-                NEW.tx_id,
-                coalesce(v_stato_versione, 'NULL')
-            );
-        END IF;
-
+        NEW.listino_versione_id := vendite.fn_listino_versione_operativa(
+            NEW.listino_id, NEW.listino_versione_id);
     END IF;
 
     -- Prezzi non autorizzati (rev 2026-09-24): un'offerta con un prezzo che
@@ -196,7 +189,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
-IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Regola del RIENTRO (rev 2026-08-28): si esce da uno stato con is_superato solo se non esiste piu'' una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA — la condizione vale per chiunque scriva, non solo per il trigger di rientro. Valorizza data_accettazione|data_rifiuto|data_annullamento, e data_emissione solo se ancora NULL (un rientro non riscrive la data di emissione reale). rev 2026-09-24: verso EMESSA e ACCETTATA solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su eccezioni e loro componenti BoM attivi, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO) — prima nessun controllo sul prezzo. ⛔ Non sul rientro da uno stato di superamento (flag is_superato): e'''' l''''automatismo del padre che torna vivo, e bloccarlo fermerebbe l''''annullamento della revisione. La capability fn_available_actions_offerta legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5).';
+IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Regola del RIENTRO (rev 2026-08-28): si esce da uno stato con is_superato solo se non esiste piu'' una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA — la condizione vale per chiunque scriva, non solo per il trigger di rientro. Valorizza data_accettazione|data_rifiuto|data_annullamento, e data_emissione solo se ancora NULL (un rientro non riscrive la data di emissione reale). rev 2026-09-24: verso EMESSA e ACCETTATA solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su eccezioni e loro componenti BoM attivi, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO) — prima nessun controllo sul prezzo. ⛔ Non sul rientro da uno stato di superamento (flag is_superato): e'''' l''''automatismo del padre che torna vivo, e bloccarlo fermerebbe l''''annullamento della revisione. La capability fn_available_actions_offerta legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5). Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.3): BOZZA->EMESSA non pretende più una versione già fissata, la CONGELA: solleva il primo motivo di script.fn_check_listino_congelabile(''OFFERTA'', ...) — nessuna versione in vigore oggi (E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO) o versione fissata non ATTIVA (E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA), lo stesso predicato della capability — poi scrive NEW.listino_versione_id := vendite.fn_listino_versione_operativa (la fissata, altrimenti quella in vigore oggi), nella stessa scrittura del cambio stato. Prima la fissava il backend, e la capability spegneva «Emetti» perché non era ancora fissata.';
 ```
 
 ---

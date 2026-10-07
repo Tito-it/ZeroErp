@@ -246,8 +246,11 @@ SELECT id FROM ins;
 
 INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
        tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
+-- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): erogazione e
+--   fonte VUOTE, la riga le eredita dalla tipologia del listino (era CANONE/FISSA, fuori
+--   dal perimetro di un articolo del listino del test).
 VALUES ((SELECT id FROM tmp_bnd_contratto), pg_temp.art('F2'), 'OVERRIDE', 999.00,
-        'CANONE', 'FISSA', 1, 1, pg_temp.uom('F2'));
+        NULL, NULL, 1, 1, pg_temp.uom('F2'));
 
 UPDATE vendite.contratti
    SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')

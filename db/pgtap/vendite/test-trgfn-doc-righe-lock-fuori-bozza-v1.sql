@@ -64,6 +64,11 @@
 --  21) Stato bozza con codice diverso (TG_ARGV[2]): la riga passa in quello stato e non in DRAFT
 -- ------------------------------------------------------------
 
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   contratto e offerta stanno nel PERIMETRO dell'articolo. L'articolo del builder e' MERCE
+--   senza tipologia, che ammette UNA_TANTUM: l'erogazione, scritta CANONE per caso, ora e'
+--   UNA_TANTUM (stessa fonte FISSA, la quantita' si comporta uguale).
+
 BEGIN;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -243,7 +248,7 @@ BEGIN
   RETURNING id INTO v_con;
   -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
   INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione)
-  VALUES (v_con, r.articolo_id, 'AGGIUNTA', 99.00, 1.00, 'CANONE')
+  VALUES (v_con, r.articolo_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM')
   RETURNING id INTO v_riga;
   IF p_fino_a IN ('ATTIVO', 'CESSATO') THEN
     UPDATE vendite.contratti SET stato_doc_contratto_id = r.stato_con_attivo_id WHERE id = v_con;
@@ -423,13 +428,13 @@ SELECT pg_temp.lr_prova('14_ord_conf_upd',
 
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 SELECT pg_temp.lr_prova('15_con_bozza_ins',
-  format('INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione) VALUES (%s, %L, ''AGGIUNTA'', 10, 1, ''CANONE'')',
+  format('INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione) VALUES (%s, %L, ''AGGIUNTA'', 10, 1, ''UNA_TANTUM'')',
          (SELECT id FROM tmp_fix WHERE chiave='con_bozza'), (SELECT articolo2_id FROM tmp_refs_lr)))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='con_bozza');
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
 --   senza, il guard nuovo potrebbe parlare al posto del lock fuori bozza che qui si prova.
 SELECT pg_temp.lr_prova('16_con_attivo_ins',
-  format('INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione) VALUES (%s, %L, ''AGGIUNTA'', 10, 1, ''CANONE'')',
+  format('INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa, tipo_erogazione) VALUES (%s, %L, ''AGGIUNTA'', 10, 1, ''UNA_TANTUM'')',
          (SELECT id FROM tmp_fix WHERE chiave='con_attivo'), (SELECT articolo2_id FROM tmp_refs_lr)))
  WHERE EXISTS (SELECT 1 FROM tmp_fix WHERE chiave='con_attivo');
 SELECT pg_temp.lr_prova('17a_con_attivo_upd',

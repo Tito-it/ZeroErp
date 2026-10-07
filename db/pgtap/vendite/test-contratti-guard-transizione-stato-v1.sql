@@ -45,16 +45,18 @@ SELECT plan(9);
 -- ============================================================
 -- Setup fixture: BA + lookup stati
 -- ============================================================
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.6.5): il
+--   cliente e il billing account sono COSTRUITI (dbops.fn_pgtap_crea_cliente_ba),
+--   come il listino. Prima erano «il primo BA per id» del DB: su un database
+--   ricostruito da zero (CI) non c'e' nessun BA e il file era nel registro dei
+--   rossi di CI per questo.
 CREATE TEMP TABLE tmp_ctx_ba AS
-SELECT ba.id AS billing_account_id,
-       ba.istanza_utility_id,
-       ba.utility_id
-  FROM anagrafiche.billing_account ba
- WHERE NOT EXISTS (
-     SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
- )
- ORDER BY ba.id
- LIMIT 1;
+SELECT billing_account_id, istanza_utility_id, utility_id
+  FROM dbops.fn_pgtap_crea_cliente_ba(
+    'guard transizione contratto',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
 
 CREATE TEMP TABLE tmp_ctx_stati AS
 SELECT
@@ -62,8 +64,14 @@ SELECT
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')  AS id_attivo,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'CESSATO') AS id_cessato;
 
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.2, A-D2): il
+--   listino e' COSTRUITO, con una versione valida da oggi. Prima era «il primo
+--   listino attivo per id» del DB, e il fixture ci ATTIVA dei contratti: da quel
+--   giorno un contratto con un listino senza versione in vigore non si attiva
+--   piu', e l'esito dipendeva da cosa c'era sulla macchina.
 CREATE TEMP TABLE tmp_ctx_listino AS
-SELECT id AS listino_id FROM vendite.listini WHERE attivo IS TRUE ORDER BY id LIMIT 1;
+SELECT listino_id FROM dbops.fn_pgtap_crea_listino(
+    (SELECT utility_id FROM tmp_ctx_ba), 'guard transizione contratto');
 
 -- ============================================================
 -- Slot fixture: 6 contratti modalita' A su periodi disgiunti.
