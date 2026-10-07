@@ -1,0 +1,212 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_list_parameters_for_user: OGNI LIVELLO MOSTRA SOLO I SUOI OVERRIDE PURI,
+# E IL VALORE RISOLTO LO DICE LA CASCATA, NON UNA SUA COPIA
+#   Brief: brief-db-codici-sfilati-e-lista-parametri §3 (R-2)
+#   Corpo di partenza: doc auto-gen docs/it/dbzero/script/funzioni/fn_list_parameters_for_user.md
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────
+#   config.parameter_overrides ha sei dimensioni e il modello ammette righe che
+#   ne valorizzano piu' d'una (nessun CHECK le vieta). Il backend scrive e
+#   cancella solo override di livello PURO (tutte le altre dimensioni NULL,
+#   dal 2026-09-28). La lista invece li leggeva cosi':
+#     · po_us (utente)   filtrava solo django_user_id;
+#     · po_em (emittente) escludeva utente e gruppo, non categoria/sessione/funzione;
+#     · po_gr (gruppo)   escludeva solo l'utente;
+#     · po_cat (categoria) escludeva tutte le altre: era gia' giusta.
+#   Una riga mista compariva come «override personale» (o d'emittente) con un id
+#   che la DELETE del backend rifiuta con 404, e piu' righe miste dello stesso
+#   utente moltiplicavano la riga del parametro (LEFT JOIN).
+#   In piu' resolved_value RICOPIAVA la cascata di script.fn_get_parameter_full
+#   (il commento stesso diceva «replica»): due copie della stessa regola, che
+#   alla prima modifica di una delle due rispondono in due modi.
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   1. I quattro livelli mostrati (emittente, gruppo, utente, categoria) leggono
+#      solo override PURI: la loro dimensione valorizzata, le altre cinque NULL.
+#      Una regola sola per i quattro, come po_cat. Il gruppo non ha id in
+#      uscita, ma un valore misto mostrato come «del gruppo» e' lo stesso falso.
+#      Con uq_overrides_full_scope_v5 NULLS NOT DISTINCT (20261007-70) un
+#      override puro e' UNO per parametro e ambito: la riga del parametro e'
+#      una per costruzione del modello, non per un LIMIT.
+#   2. resolved_value CHIAMA script.fn_get_parameter_full con gli stessi ambiti
+#      (sessione e funzione NULL: la lista non li gestisce, e a NULL la cascata
+#      salta quei livelli da sola). La copia della cascata esce dal corpo: il
+#      valore risolto e' quello del runtime per costruzione (regola del 2).
+#
+# ⚠️ CONSEGUENZA DICHIARATA, ed e' voluta: con una riga mista in vigore la lista
+#   puo' mostrare un resolved_value che non coincide con nessun livello puro
+#   esposto (per esempio una riga utente+categoria: la cascata la prende al
+#   livello utente, la lista non la mostra come personale). La lista dice la
+#   verita' su entrambe le cose: cosa il backend sa gestire, e cosa il runtime
+#   usa. Se le righe miste debbano esistere e come pesino nella cascata e' la
+#   domanda aperta del §3 del brief, di Tid: non si decide qui.
+#
+# ── FIRMA ────────────────────────────────────────────────────────
+#   Invariata: stessi nomi, stessi tipi risolti, stesso RETURNS TABLE, quindi
+#   CREATE OR REPLACE senza DROP. %TYPE su parametri e colonne di uscita (i
+#   tipi risolti sono gli stessi: integer, bigint, smallint, varchar, text);
+#   espliciti p_group_ids (%TYPE[] non esiste) e resolved_value (e' il ritorno
+#   text di fn_get_parameter_full, che puo' essere un override o il default).
+#   Consumatori censiti per nome il 2026-10-07: backend
+#   core/db/parameter_repository.py (list_for_user, SELECT *), pgTAP
+#   script/test-fn-list-parameters-for-user.sql. Nessuna funzione DB la chiama.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-71-update-fn-list-parameters-for-user-livelli-puri-mctit.yaml
+
+  - changeSet:
+      id: 20261007-71-update-fn-list-parameters-for-user-livelli-puri
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_list_parameters_for_user: i quattro livelli mostrati leggono solo override
+        di livello puro (le altre cinque dimensioni NULL); resolved_value delega a
+        script.fn_get_parameter_full invece di ricopiarne la cascata. Firma invariata.
+        Brief: brief-db-codici-sfilati-e-lista-parametri §3.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_list_parameters_for_user(
+                  p_django_user_id       config.parameter_overrides.django_user_id%TYPE,
+                  -- %TYPE[] non esiste: tipo esplicito, come in fn_get_parameter_full
+                  p_group_ids            integer[] DEFAULT NULL,
+                  p_emittente_fiscale_id config.parameter_overrides.emittente_fiscale_id%TYPE DEFAULT NULL,
+                  p_categoria_cliente_id config.parameter_overrides.categoria_cliente_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  code                          config.parameters.code%TYPE,
+                  description                   config.parameters.description%TYPE,
+                  default_value                 config.parameters.default_value%TYPE,
+                  emittente_value               config.parameter_overrides.overridden_value%TYPE,
+                  emittente_override_id         config.parameter_overrides.id%TYPE,
+                  group_value                   config.parameter_overrides.overridden_value%TYPE,
+                  user_value                    config.parameter_overrides.overridden_value%TYPE,
+                  user_override_id              config.parameter_overrides.id%TYPE,
+                  categoria_cliente_value       config.parameter_overrides.overridden_value%TYPE,
+                  categoria_cliente_override_id config.parameter_overrides.id%TYPE,
+                  -- il ritorno di fn_get_parameter_full: un override o il default
+                  resolved_value                text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- Scopo: tutti i parametri di config.parameters con, per ciascun
+                  -- livello mostrato (emittente, gruppo, utente, categoria_cliente),
+                  -- l'override DI LIVELLO PURO e il valore risolto dal runtime.
+                  -- Destinata alla UI admin: mostra ciò che il backend sa scrivere e
+                  -- cancellare (override puri, con l'id per la DELETE) e il valore che
+                  -- il sistema usa davvero.
+                  --
+                  -- Override PURO di un livello = la sua dimensione valorizzata e le
+                  -- altre cinque NULL. Con uq_overrides_full_scope_v5 (NULLS NOT
+                  -- DISTINCT) ce n'è al più UNO per parametro e ambito: ogni LEFT
+                  -- JOIN qui sotto trova al più una riga, e la lista ha una riga per
+                  -- parametro per costruzione del modello.
+                  --
+                  -- resolved_value NON ricopia la cascata: la chiede alla sua sede,
+                  -- script.fn_get_parameter_full (sessione e funzione NULL: la lista
+                  -- non li gestisce, e a NULL quei livelli si saltano da soli). Una
+                  -- riga mista in vigore può quindi dare un resolved_value che nessun
+                  -- livello puro mostra: è voluto, la lista non nasconde ciò che il
+                  -- runtime usa (brief-db-codici-sfilati-e-lista-parametri §3).
+                  --
+                  -- p_categoria_cliente_id NULL: NULL = NULL è falso, il livello
+                  -- categoria non trova righe e le sue colonne restano NULL.
+                  RETURN QUERY
+                  SELECT
+                      p.code,
+                      p.description,
+                      p.default_value,
+                      po_em.overridden_value,
+                      po_em.id,
+                      po_gr.overridden_value,
+                      po_us.overridden_value,
+                      po_us.id,
+                      po_cat.overridden_value,
+                      po_cat.id,
+                      script.fn_get_parameter_full(
+                          p.code,
+                          p_emittente_fiscale_id,
+                          p_django_user_id,
+                          p_group_ids,
+                          NULL,
+                          NULL,
+                          p_categoria_cliente_id
+                      )
+                    FROM config.parameters p
+
+                    -- Emittente puro
+                    LEFT JOIN config.parameter_overrides po_em
+                      ON  po_em.parameter_id         = p.id
+                      AND po_em.emittente_fiscale_id = p_emittente_fiscale_id
+                      AND po_em.django_user_id       IS NULL
+                      AND po_em.django_group_id      IS NULL
+                      AND po_em.categoria_cliente_id IS NULL
+                      AND po_em.session_key          IS NULL
+                      AND po_em.function_name        IS NULL
+                      AND po_em.attivo               = true
+
+                    -- Gruppo puro: LATERAL perché l'utente può stare in più gruppi
+                    -- (tie-break per id, lo stesso della cascata)
+                    LEFT JOIN LATERAL (
+                        SELECT o.overridden_value
+                          FROM config.parameter_overrides o
+                         WHERE o.parameter_id         = p.id
+                           AND o.django_group_id      = ANY(p_group_ids)
+                           AND o.django_user_id       IS NULL
+                           AND o.emittente_fiscale_id IS NULL
+                           AND o.categoria_cliente_id IS NULL
+                           AND o.session_key          IS NULL
+                           AND o.function_name        IS NULL
+                           AND o.attivo               = true
+                         ORDER BY o.id
+                         LIMIT 1
+                    ) po_gr ON p_group_ids IS NOT NULL
+
+                    -- Utente puro
+                    LEFT JOIN config.parameter_overrides po_us
+                      ON  po_us.parameter_id         = p.id
+                      AND po_us.django_user_id       = p_django_user_id
+                      AND po_us.django_group_id      IS NULL
+                      AND po_us.emittente_fiscale_id IS NULL
+                      AND po_us.categoria_cliente_id IS NULL
+                      AND po_us.session_key          IS NULL
+                      AND po_us.function_name        IS NULL
+                      AND po_us.attivo               = true
+
+                    -- Categoria cliente pura
+                    LEFT JOIN config.parameter_overrides po_cat
+                      ON  po_cat.parameter_id         = p.id
+                      AND po_cat.categoria_cliente_id = p_categoria_cliente_id
+                      AND po_cat.django_user_id       IS NULL
+                      AND po_cat.django_group_id      IS NULL
+                      AND po_cat.emittente_fiscale_id IS NULL
+                      AND po_cat.session_key          IS NULL
+                      AND po_cat.function_name        IS NULL
+                      AND po_cat.attivo               = true
+
+                   ORDER BY p.code;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_list_parameters_for_user(
+                  config.parameter_overrides.django_user_id%TYPE,
+                  integer[],
+                  config.parameter_overrides.emittente_fiscale_id%TYPE,
+                  config.parameter_overrides.categoria_cliente_id%TYPE
+              ) IS
+                  'Lista tutti i parametri con, per emittente, gruppo, utente e categoria_cliente, l''override DI LIVELLO PURO (la dimensione del livello valorizzata, le altre cinque NULL): sono gli override che il backend scrive e cancella, e gli id (emittente_override_id, user_override_id, categoria_cliente_override_id) servono alla sua DELETE. Con uq_overrides_full_scope_v5 NULLS NOT DISTINCT ce n''e'' al piu'' uno per parametro e ambito, quindi una riga per parametro. resolved_value e'' script.fn_get_parameter_full con gli stessi ambiti (sessione e funzione NULL): il valore del runtime, non una sua copia; con una riga mista in vigore puo'' non coincidere con nessun livello mostrato, ed e'' voluto. p_categoria_cliente_id NULL: livello categoria saltato. Rev 20261007-71 (brief-db-codici-sfilati-e-lista-parametri §3): livelli puri su tutti e quattro i JOIN (prima po_us filtrava il solo utente, po_em e po_gr non tutte le dimensioni) e cascata delegata (prima ricopiata).';

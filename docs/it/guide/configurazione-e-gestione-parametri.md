@@ -124,7 +124,9 @@ Da un punto di vista tecnico:
 | `storicizza`           | BOOLEAN      |    si    | Flag storicizzazione (default: true)                                |
 | Campi audit            | —            |    —     | `data_insert`, `user_insert`, `data_update`, `user_update`, `tx_id` |
 
-**Vincolo UNIQUE** `uq_overrides_full_scope_v4` su `(parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, session_key, function_name)` — un solo override per combinazione completa di ambito.
+**Vincolo UNIQUE** `uq_overrides_full_scope_v5` su `(parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, session_key, function_name)`, `NULLS NOT DISTINCT` — un solo override per combinazione completa di ambito, contando le dimensioni vuote come uguali fra loro: non possono esistere due override personali dello stesso utente sullo stesso parametro.
+
+**Un override vale per un ambito solo** (vincolo `chk_parameter_overrides_un_ambito`): utente, oppure categoria cliente, oppure gruppo, oppure emittente, oppure sessione, oppure funzione — mai due insieme, mai nessuno. Gli sconti di livelli diversi non si combinano: la cascata sceglie il primo che trova.
 
 **Indici dedicati**, sui quattro livelli più interrogati:
 

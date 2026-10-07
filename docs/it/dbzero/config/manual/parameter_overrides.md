@@ -53,9 +53,20 @@ il livello viene saltato (NULL-equality è sempre FALSE in SQL).
 | `session_key` | `text NULL` | 5 — session | Override temporaneo legato alla sessione web. |
 | `function_name` | `text NULL` | 6 — function | Override per specifica funzione applicativa chiamante. |
 
-**Regola pratica:** ogni riga dovrebbe avere esattamente UNA dimensione valorizzata
-e le restanti a NULL. La UNIQUE `uq_overrides_full_scope_v4` garantisce che non
-esistano due override con la stessa combinazione completa di scope.
+**Regola:** ogni riga ha esattamente UNA dimensione valorizzata e le restanti a
+NULL. Dal 2026-10-07 è un vincolo, `chk_parameter_overrides_un_ambito`
+(`20261007-72`): una riga con due ambiti (per esempio utente + categoria) o
+senza nessun ambito è rifiutata (`23514`). Il perché: fra due ambiti la cascata
+sceglie **un** valore, non li combina — se Mario ha il 15% e la categoria PREMIUM
+il 5%, per Mario su un cliente PREMIUM vale il 15%; un override «Mario + PREMIUM»
+non ha un significato commerciale. La UNIQUE `uq_overrides_full_scope_v5` garantisce che non
+esistano due override con la stessa combinazione completa di scope, **NULL
+compresi**: due override personali puri per lo stesso parametro e lo stesso utente
+sono la stessa riga, e la seconda è rifiutata (`23505`).
+
+Fino al vincolo una riga mista era ammessa, e la cascata la prendeva al primo
+livello che combaciava ignorando le altre dimensioni: «Mario + PREMIUM» valeva
+per Mario sempre, anche fuori da PREMIUM (`brief-db-codici-sfilati-e-lista-parametri` §7.6).
 
 ---
 
@@ -64,15 +75,19 @@ esistano due override con la stessa combinazione completa di scope.
 | Tipo | Nome | Colonne | Note |
 |---|---|---|---|
 | PRIMARY KEY | `parameter_overrides_pkey` | `id` | |
-| UNIQUE | `uq_overrides_full_scope_v4` | `parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, session_key, function_name` | Impedisce override duplicati per la stessa combinazione di scope. NULL = distinto per UNIQUE PostgreSQL. |
+| UNIQUE | `uq_overrides_full_scope_v5` | `parameter_id, emittente_fiscale_id, django_user_id, django_group_id, categoria_cliente_id, session_key, function_name` | `NULLS NOT DISTINCT`: un ambito, un override, anche quando l'ambito ha dei NULL (cioè sempre). `attivo` è fuori: una riga spenta occupa il suo ambito. |
+| CHECK | `chk_parameter_overrides_un_ambito` | le sei dimensioni | `num_nonnulls(...) = 1`: esattamente un ambito per override |
 | FOREIGN KEY | `fk_overrides_parameter` | `parameter_id` | `ON UPDATE CASCADE ON DELETE RESTRICT` |
 | FOREIGN KEY | `fk_overrides_emittente_fiscale` | `emittente_fiscale_id` | `ON UPDATE CASCADE ON DELETE RESTRICT` |
 | FOREIGN KEY | `fk_overrides_categoria_cliente` | `categoria_cliente_id` | `ON UPDATE CASCADE ON DELETE RESTRICT` |
 | FOREIGN KEY | `fk_overrides_django_user` | `django_user_id` | surrogate tramite trigger |
 | FOREIGN KEY | `fk_overrides_django_group` | `django_group_id` | surrogate tramite trigger |
 
-> **Nota**: la UNIQUE è alla versione v4 (aggiunta `categoria_cliente_id` il 2026-05-15).
-> La precedente v3 non includeva `categoria_cliente_id`.
+> **Nota**: la UNIQUE è alla versione v5 (`20261007-70`): stesse colonne della v4,
+> ma `NULLS NOT DISTINCT`. La v4 (2026-05-15, aggiunta `categoria_cliente_id`) era
+> `NULLS DISTINCT`, il default di PostgreSQL: non scattava su nessuna riga con una
+> dimensione NULL, cioè su nessun override reale, e due override puri per lo stesso
+> ambito convivevano — la cascata ne sceglieva uno a caso (`LIMIT 1` senza ordine).
 
 ---
 

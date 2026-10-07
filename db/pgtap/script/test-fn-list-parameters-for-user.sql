@@ -19,6 +19,17 @@
 --  12) Override user + categoria -> resolved_value = user_value (user vince)
 --  13) Override categoria + group (no user) -> resolved_value = categoria_cliente_value (categoria vince su group)
 --  14) Override categoria + emittente (no user, no group) -> resolved_value = categoria_cliente_value (categoria vince su emittente)
+--  15) Override su tutti e quattro i livelli -> UNA riga per parametro
+--  16) Livello utente: valore e id della sua riga
+--  17) Livello emittente: valore e id della sua riga
+--  18) resolved_value = script.fn_get_parameter_full con gli stessi ambiti:
+--      la lista non ricopia la cascata
+--
+-- ⭐ Rev 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri §3 e §7.6,
+--   changeSet 20261007-70/-71/-72): una riga per parametro la garantiscono i
+--   vincoli (un ambito per override, un override per ambito), la lista non
+--   filtra piu' niente da se'. Le righe miste non si costruiscono: non nascono
+--   (lo prova config/test-parameter-overrides-categoria-cliente-v1, test 14).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -38,7 +49,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(14);
+SELECT plan(18);
 
 -- ============================================================
 -- 1) Funzione presente con firma 4-arg
@@ -280,6 +291,83 @@ SELECT is(
       WHERE r.code = '_TEST_LIST_A_'),
     'CAT_A',
     '14) override categoria + emittente -> resolved_value = categoria_cliente_value (categoria vince su emittente)'
+);
+
+-- ============================================================
+-- Setup dati test — parte 3: parametro C con un override per livello
+-- ============================================================
+INSERT INTO config.parameters (id, code, default_value, description)
+VALUES (99984, '_TEST_LIST_C_', 'DEF_C', 'Test list parametro C (tutti i livelli)')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO config.parameter_overrides
+    (parameter_id, overridden_value, django_user_id, django_group_id, emittente_fiscale_id, categoria_cliente_id)
+SELECT 99984, v.valore, v.u, v.g, v.e, v.c
+  FROM tmp_refs_list r
+ CROSS JOIN LATERAL (VALUES
+        ('USER_C',  r.user_id, NULL::integer, NULL::bigint,   NULL::smallint),
+        ('GROUP_C', NULL,      r.group_id,    NULL,           NULL),
+        ('EMIT_C',  NULL,      NULL,          r.emittente_id, NULL),
+        ('CAT_C',   NULL,      NULL,          NULL,           9999::smallint)
+     ) AS v(valore, u, g, e, c);
+
+CREATE TEMP TABLE tmp_lista_c AS
+SELECT r.*
+  FROM script.fn_list_parameters_for_user(
+           (SELECT user_id FROM tmp_refs_list),
+           ARRAY[(SELECT group_id FROM tmp_refs_list)],
+           (SELECT emittente_id FROM tmp_refs_list),
+           9999::smallint
+       ) r
+ WHERE r.code = '_TEST_LIST_C_';
+
+-- ============================================================
+-- 15) Una riga per parametro
+-- ============================================================
+SELECT is(
+    (SELECT count(*)::int FROM tmp_lista_c),
+    1,
+    '15) override su tutti e quattro i livelli -> una riga sola per il parametro'
+);
+
+-- ============================================================
+-- 16) Livello utente: valore e id
+-- ============================================================
+SELECT ok(
+    (SELECT bool_and(l.user_value = 'USER_C'
+                     AND l.user_override_id = (SELECT po.id
+                                                 FROM config.parameter_overrides po
+                                                WHERE po.parameter_id = 99984
+                                                  AND po.overridden_value = 'USER_C'))
+       FROM tmp_lista_c l),
+    '16) livello utente: user_value e user_override_id della sua riga'
+);
+
+-- ============================================================
+-- 17) Livello emittente: valore e id
+-- ============================================================
+SELECT ok(
+    (SELECT bool_and(l.emittente_value = 'EMIT_C'
+                     AND l.emittente_override_id = (SELECT po.id
+                                                      FROM config.parameter_overrides po
+                                                     WHERE po.parameter_id = 99984
+                                                       AND po.overridden_value = 'EMIT_C'))
+       FROM tmp_lista_c l),
+    '17) livello emittente: emittente_value e emittente_override_id della sua riga'
+);
+
+-- ============================================================
+-- 18) resolved_value = il runtime, sugli stessi ambiti
+-- ============================================================
+SELECT ok(
+    (SELECT bool_and(l.resolved_value IS NOT DISTINCT FROM script.fn_get_parameter_full(
+                '_TEST_LIST_C_',
+                (SELECT emittente_id FROM tmp_refs_list),
+                (SELECT user_id FROM tmp_refs_list),
+                ARRAY[(SELECT group_id FROM tmp_refs_list)],
+                NULL, NULL, 9999::smallint))
+       FROM tmp_lista_c l),
+    '18) resolved_value = script.fn_get_parameter_full con gli stessi ambiti'
 );
 
 -- ============================================================

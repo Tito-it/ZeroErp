@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.parameter_overrides: OGNI OVERRIDE HA ESATTAMENTE UN AMBITO
+#   Brief: brief-db-codici-sfilati-e-lista-parametri §7.6, decisione di Tid del 2026-10-07
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────
+#   Le sei dimensioni di ambito (utente, gruppo, emittente, categoria cliente,
+#   sessione, funzione) sono tutte nullable e niente obbligava a valorizzarne
+#   UNA. Il modello ammetteva quindi:
+#   · righe MISTE (es. utente + categoria): la cascata
+#     script.fn_get_parameter_full le prende al primo livello che combacia e
+#     ignora le altre dimensioni, quindi «Mario + PREMIUM» valeva per Mario
+#     SEMPRE, anche fuori da PREMIUM. Il backend non le scrive e la lista non
+#     le sa mostrare;
+#   · righe SENZA ambito (tutte NULL): nessun livello della cascata le legge,
+#     sono override inerti.
+#
+# ── LA DECISIONE (Tid, 2026-10-07) ───────────────────────────────
+#   Un override vale per un ambito solo. Commercialmente non esiste «utente E
+#   categoria insieme»: fra utente e categoria la cascata sceglie UN valore
+#   (vince l'utente), non li combina. Quindi un override ha esattamente una
+#   dimensione valorizzata.
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   CHECK chk_parameter_overrides_un_ambito:
+#     num_nonnulls(le sei dimensioni) = 1
+#   Plain CHECK, nessun codice d'errore nuovo: il backend scrive sempre un
+#   ambito solo (parameter_repository), quindi la violazione (23514, nome del
+#   vincolo nel CONSTRAINT) la vede solo uno scrittore sbagliato. E' un guasto
+#   del chiamante, non un errore dell'operatore.
+#   Col vincolo, «override puro» smette di essere un filtro da ricordare nelle
+#   query: lo e' ogni riga. La lista (20261007-73) non ripete il filtro.
+#
+# ── IL CANCELLO ──────────────────────────────────────────────────
+#   preCondition HALT su zero righe che non passerebbero (expectedResult 0,
+#   linee-guida-sql §11.4). Se ce ne sono si sistemano a mano prima del migrate:
+#   una riga mista va spezzata o cancellata, una senza ambito cancellata.
+#     SELECT * FROM config.parameter_overrides
+#      WHERE num_nonnulls(django_user_id, django_group_id, emittente_fiscale_id,
+#                         categoria_cliente_id, session_key, function_name) <> 1;
+#   Fatto datato (dbdev, 2026-10-07): 4 override, zero righe miste.
+#
+# ── CHI NE RISENTE ───────────────────────────────────────────────
+#   · pgTAP config/test-parameter-overrides-categoria-cliente-v1: il test 11
+#     scriveva una riga senza ambito e diventa il test del rifiuto.
+#   · pgTAP script/test-fn-list-parameters-for-user: i test che costruivano
+#     righe miste non hanno piu' oggetto (la riga non nasce).
+#   · Backend, test core/tests/db/test_parameter_overrides_db.py: scrive righe
+#     miste (utente + categoria, utente + sessione) per provare che la DELETE
+#     pura non le tocca. Col vincolo quelle INSERT rifiutano: richiesta al BE
+#     nel §7 del brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261007-72-alter-parameter-overrides-check-un-ambito-mctit.yaml
+
+  - changeSet:
+      id: 20261007-72-alter-parameter-overrides-check-un-ambito
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK chk_parameter_overrides_un_ambito su config.parameter_overrides: esattamente una
+        delle sei dimensioni di ambito valorizzata (niente righe miste, niente righe senza
+        ambito). Cancello HALT su zero righe fuori regola. Brief:
+        brief-db-codici-sfilati-e-lista-parametri §7.6.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >-
+            config.parameter_overrides ha override con piu' di un ambito o senza ambito: vanno
+            sistemati a mano prima del CHECK. Query nell'intestazione di questo changeSet.
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+            - sqlCheck:
+                expectedResult: 0
+                sql: |
+                  SELECT count(*)
+                    FROM config.parameter_overrides po
+                   WHERE num_nonnulls(po.django_user_id, po.django_group_id,
+                                      po.emittente_fiscale_id, po.categoria_cliente_id,
+                                      po.session_key, po.function_name) <> 1;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.parameter_overrides
+                  ADD CONSTRAINT chk_parameter_overrides_un_ambito
+                  CHECK (num_nonnulls(django_user_id, django_group_id, emittente_fiscale_id,
+                                      categoria_cliente_id, session_key, function_name) = 1);
+
+              COMMENT ON CONSTRAINT chk_parameter_overrides_un_ambito ON config.parameter_overrides IS
+                  'Ogni override vale per UN ambito: esattamente una fra django_user_id, django_group_id, emittente_fiscale_id, categoria_cliente_id, session_key, function_name. Niente righe miste (la cascata le prendeva al primo livello e ignorava le altre dimensioni) e niente righe senza ambito (nessun livello le legge). Decisione di Tid del 2026-10-07: fra due ambiti la cascata sceglie un valore, non li combina. 20261007-72, brief-db-codici-sfilati-e-lista-parametri.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.parameter_overrides
+                  DROP CONSTRAINT IF EXISTS chk_parameter_overrides_un_ambito;
