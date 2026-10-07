@@ -29,6 +29,12 @@
 //   8) dati salvati e scope rifiutato: i dati restano salvati, e il Salva
 //      successivo manda il solo scope
 //   9) scope non modificabile: radio spente col motivo del BE
+//
+//   Data di fine del rapporto (brief-db-veste-utilizzabile §10):
+//  10) ultimo SUPER_ADMIN senza data di fine: calendario spento col motivo
+//      del DB (`can_set_valido_al`), anche se l'interruttore e' libero
+//  11) salvare senza toccarla: la data non viaggia
+//  12) messa viaggia come 'YYYY-MM-DD'; tolta viaggia `null`
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -70,6 +76,7 @@ vi.mock('../../core/apiCore', async (originale) => ({
 const { monta } = await import('../../../test/montaggio')
 const { default: OperatoreDrawer } = await import('./OperatoreDrawer.vue')
 const { default: Select } = await import('primevue/select')
+const { default: DatePicker } = await import('primevue/datepicker')
 
 const ID = 42
 const comeAxios = (data) => ({ data: { data } })
@@ -98,6 +105,7 @@ function operatore(sovrascritture = {}) {
     can_invite: true, invite_reason: null, invite_reason_key: null,
     can_disable: true, disable_reason: null, disable_reason_key: null,
     can_demote_super_admin: null, demote_reason: null, demote_reason_key: null,
+    can_set_valido_al: true, valido_al_reason: null, valido_al_reason_key: null,
     invito_inviato_at: '2026-10-01T10:00:00Z', last_login: null,
     ...sovrascritture,
   }
@@ -250,5 +258,60 @@ describe('OperatoreDrawer — scope emittenti fiscali nei Dati', () => {
     })
     expect(w.find('#scope-mode-GLOBAL').attributes('disabled')).toBeDefined()
     expect(w.find('#scope-mode-SINGLE').attributes('disabled')).toBeDefined()
+  })
+})
+
+describe('OperatoreDrawer — data di fine del rapporto', () => {
+  beforeEach(() => {
+    getOperatore.mockReset()
+    confirmAction.mockReset()
+    updateOperatore.mockReset().mockImplementation((_id, payload) =>
+      Promise.resolve(comeAxios(operatore({ ...payload, veste_attiva: true }))))
+  })
+
+  const calendario = (w) => w.find('#dp-valido-al')
+  // Scopo: sceglie (o svuota) la data come farebbe il calendario.
+  async function scegliData(w, valore) {
+    w.findComponent(DatePicker).vm.$emit('update:modelValue', valore)
+    await flushPromises()
+  }
+  async function salva(w) {
+    await w.find('.salva-finto').trigger('click')
+    await flushPromises()
+  }
+
+  it('ultimo SUPER_ADMIN senza data di fine: calendario spento col motivo del DB', async () => {
+    const w = await apri(operatore({
+      veste_attiva: true, can_invite: false, is_super_admin: true,
+      can_set_valido_al: false, valido_al_reason: 'ULTIMO_SUPER_ADMIN',
+      valido_al_reason_key: 'amministrazione.operatori.valido_al_reason.ultimo_super_admin',
+    }))
+    expect(calendario(w).attributes('disabled')).toBeDefined()
+    expect(interruttore(w).attributes('disabled')).toBeUndefined()
+    // Nei test nessuna chiave esiste (`te` falso): `bloccoMotivo` mostra il codice.
+    expect(suggerimenti(w)).toContain('ULTIMO_SUPER_ADMIN')
+    expect(suggerimenti(w)).not.toContain('amministrazione.valido_al_hint')
+  })
+
+  it('salvare senza toccarla: la data non viaggia', async () => {
+    const w = await apri(operatore({ veste_attiva: true, can_invite: false, valido_al: '2026-12-31' }))
+    expect(calendario(w).attributes('disabled')).toBeUndefined()
+    expect(suggerimenti(w)).toContain('amministrazione.valido_al_hint')
+    await salva(w)
+    expect(updateOperatore).toHaveBeenCalledTimes(1)
+    expect(updateOperatore.mock.calls[0][1]).not.toHaveProperty('valido_al')
+  })
+
+  it('messa viaggia come data ISO, tolta viaggia null', async () => {
+    const w = await apri(operatore({ veste_attiva: true, can_invite: false }))
+    await scegliData(w, new Date(2026, 11, 31))
+    await salva(w)
+    expect(updateOperatore.mock.calls[0][1].valido_al).toBe('2026-12-31')
+
+    const w2 = await apri(operatore({ veste_attiva: true, can_invite: false, valido_al: '2026-12-31' }))
+    updateOperatore.mockClear()
+    await scegliData(w2, null)
+    await salva(w2)
+    expect(updateOperatore.mock.calls[0][1]).toHaveProperty('valido_al', null)
   })
 })

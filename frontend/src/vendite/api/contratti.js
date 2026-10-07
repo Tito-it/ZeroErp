@@ -4,6 +4,7 @@
 import api from '../../core/api'
 import { makeComponentiBomApi } from '../../core/api/componentiBom'
 import { makeRigheListaApi } from '../_shared/righe/righeListaApi'
+import { makeRigaErogazioniApi } from '../_shared/righe/erogazioniRigaApi'
 
 const BASE = '/vendite/contratti'
 
@@ -64,6 +65,10 @@ export function addRigaContratto(contrattoId, payload) {
 // `vendite.fn_contratto_righe_preview` — listino con le eccezioni sopra, piu'
 // le aggiunte — per le due forme (brief-db-liste-righe-documento, lotto D).
 export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
+
+// Come si puo' erogare un articolo su una riga del contratto: le combinazioni
+// (erogazione, fonte) ammesse, il default in testa (BB `makeRigaErogazioniApi`).
+export const { listRigaErogazioni } = makeRigaErogazioniApi(BASE)
 
 // Contesto pricing contratto (FE 2.2): forma, listino + versione fissata
 // (post-attivazione) o corrente (DRAFT), variazione, categoria cliente.

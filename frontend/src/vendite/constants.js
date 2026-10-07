@@ -204,9 +204,9 @@ export const AZIONE_RIGA_CONTRATTO = Object.freeze({
   RIMUOVI: 'RIMUOVI',
 })
 
-// Tipi erogazione su `vendite.contratti_righe.tipo_erogazione` (CHECK DB
-// `chk_contrighe_tipo_erog`). `ORARIO` modellato ma non ancora esposto
-// in UI (modulo timesheet futuro).
+// Tipi erogazione su `vendite.contratti_righe.tipo_erogazione` (vocabolario
+// `config.erogazioni_fonti`). Il form delle righe mostra quelli che il DB
+// dichiara per l'articolo (`fn_documento_riga_erogazioni`), ORARIO compreso.
 export const TIPO_EROGAZIONE = Object.freeze({
   CANONE: 'CANONE',
   UNA_TANTUM: 'UNA_TANTUM',
@@ -215,13 +215,10 @@ export const TIPO_EROGAZIONE = Object.freeze({
 })
 
 // Fonti quantita su `vendite.contratti_righe.fonte_quantita_attesa`
-// (CHECK DB `chk_contrighe_fonte_qta`; obbligatoria su ogni riga che non e'
-// un'ESCLUSIONE, `chk_*_fonte_per_tipo_eccezione` dal 2026-10-04). Coerenza con la matrice
-// `tipo_erogazione x fonte_quantita_attesa` vincolata dal CHECK
-// `chk_contrighe_coerenza_fonte_erogazione` (migration 20260519-05):
-// 7 combinazioni vietate, vedi `_FONTE_VIETATE_PER_TIPO_EROGAZIONE`
-// in `apps/vendite/services/contratti_service.py` e il piano
-// `docs/it/dev/work-done/refactor-contratti-fonte-quantita.md` §3.
+// (obbligatoria su ogni riga che non e' un'ESCLUSIONE). ⛔ Quali coppie
+// (erogazione, fonte) una riga puo' avere NON si scrive qui: lo dice il DB
+// dall'articolo (`vendite.fn_documento_riga_erogazioni`, letta dal form delle
+// righe), dal 2026-10-07 (brief-db-offerta-emissione-ed-erogazione B-R4).
 export const FONTE_QUANTITA_ATTESA = Object.freeze({
   FISSA: 'FISSA',
   MANUALE: 'MANUALE',

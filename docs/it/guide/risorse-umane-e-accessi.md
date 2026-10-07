@@ -143,7 +143,8 @@ Se `valido_al` e valorizzato, deve essere >= `valido_dal`. Il check `chk_risorse
 ⭐ **Le date del rapporto contano anche per l'accesso.** Un operatore entra solo se la sua
 veste e accesa e nelle sue date **e** il suo rapporto e attivo e nelle sue date: l'accesso
 finisce al piu tardi quando finisce il rapporto. La data «Valido al» che l'amministratore
-imposta nel dettaglio dell'operatore e quella del rapporto, e chiude l'accesso. La regola
+imposta nel dettaglio dell'operatore e quella del rapporto, e chiude l'accesso dal giorno
+dopo; svuotata, il rapporto torna senza scadenza. La regola
 completa sta in un posto solo, [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
 (dal 07-10-2026). La chiedono il login, ogni richiesta, il rinnovo della sessione, il
 secondo passo del secondo fattore e il cambio password: una veste che esce dalle sue date
@@ -286,9 +287,10 @@ amministratore si può dare una data di fine (o spegnerlo, o bloccarne la creden
 solo finché ne resta un altro che non scade. Altrimenti l'operazione è rifiutata con
 `E_PROFILO_ULTIMO_SUPER_ADMIN`.
 
-Nel dettaglio dell'operatore il pulsante per spegnere l'ultimo amministratore senza
-scadenza resta spento col motivo. Un amministratore che ha **già** una data di fine non
-è «l'ultimo», e si spegne liberamente.
+Nel dettaglio dell'operatore, per l'ultimo amministratore senza scadenza, restano spenti
+col motivo l'interruttore dell'accesso, il ruolo di amministratore e il campo «Valido al».
+Un amministratore che ha **già** una data di fine non è «l'ultimo»: si spegne liberamente,
+e la sua data si può cambiare o togliere.
 
 ### Cambio qualifica
 

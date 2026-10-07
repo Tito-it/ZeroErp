@@ -38,6 +38,7 @@ import {
   updateEccezioneComponente,
   deleteEccezioneComponente,
   exportRigheLista,
+  listRigaErogazioni,
 } from '../api/offerteApi'
 import { useOfferteStore } from '../stores/offerte'
 import { useOffertaRigheStore } from '../stores/offertaRighe'
@@ -98,6 +99,7 @@ const apiComponenti = {
     :scritture="scritture"
     :esporta-righe="exportRigheLista"
     :api-componenti="apiComponenti"
+    :erogazioni-articolo="listRigaErogazioni"
     :tab-entity="TAB_ENTITIES.OFFERTA_COMMERCIALE"
     i18n-documento="vendite.offerte"
     :bloccato="bloccato"

@@ -28,6 +28,7 @@ import {
   deleteRigaComponente,
   getContrattoContestoPricing,
   exportRigheLista,
+  listRigaErogazioni,
 } from '../api/contratti'
 import DrawerContextHeader from '../../core/components/DrawerContextHeader.vue'
 import RigheEccezioniDrawer from '../_shared/righe/RigheEccezioniDrawer.vue'
@@ -139,6 +140,7 @@ watch(() => props.visible, (v) => {
     :scritture="scritture"
     :esporta-righe="exportRigheLista"
     :api-componenti="apiComponenti"
+    :erogazioni-articolo="listRigaErogazioni"
     :tab-entity="TAB_ENTITIES.CONTRATTO"
     i18n-documento="vendite.contratti"
     :bloccato="bloccato"

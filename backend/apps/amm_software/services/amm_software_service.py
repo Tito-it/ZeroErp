@@ -23,7 +23,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.invito_veste import PORTA_OPERATORE, InvitoVeste
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.payload_helpers import PayloadValidator, translate_db_errors
+from apps.core.services.payload_helpers import MISSING, PayloadValidator, translate_db_errors
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
 from apps.amm_software.constants import DEFAULT_SESSO
@@ -272,7 +272,8 @@ class AmmSoftwareService:
     # Scopo: Aggiorna operatore e invalida cache permessi.
     # Contract pubblico Fase 7 multi-face:
     #   {is_super_admin?: bool, attivo?: bool, email?, first_name?, last_name?,
-    #    unita_organizzativa_id?, valido_al?}
+    #    unita_organizzativa_id?, valido_al?: date | null}
+    # `valido_al` e' la fine del RAPPORTO: `null` la toglie, assente non la tocca.
     # `is_super_admin` e `attivo` sono ortogonali: ognuno puo' essere
     # presente da solo (NO-OP per il flag mancante). Il guard "ultimo super
     # admin" e' centralizzato sul trigger DB; il service traduce l'errore in
@@ -303,6 +304,15 @@ class AmmSoftwareService:
         # (spenta da poco, o mai attivata e in attesa dell'invito) non deve
         # chiudere il rapporto che l'invito ha appena riaperto.
         spegni = payload.get("attivo") is False and veste_attiva
+        # La data di fine del RAPPORTO: assente non si tocca, `null` la toglie
+        # (§10 del brief-db-veste-utilizzabile). Il formato lo controlla il
+        # validator; l'ordine con `valido_dal` e l'ultimo SUPER_ADMIN senza
+        # scadenza li giudica il DB (`trgfn_guard_date_validita`,
+        # `trgfn_risorse_umane_guard_ultimo_super_admin`).
+        valido_al = (
+            PayloadValidator(validation_code=E_AMM_VALIDAZIONE).optional_date(payload, "valido_al")
+            if "valido_al" in payload else MISSING
+        )
 
         def _aggiorna() -> None:
             self._repo.update_operatore(
@@ -312,7 +322,7 @@ class AmmSoftwareService:
                 last_name=payload.get("last_name"),
                 is_super_admin=payload.get("is_super_admin"),
                 unita_organizzativa_id=payload.get("unita_organizzativa_id"),
-                valido_al=payload.get("valido_al"),
+                valido_al=valido_al,
             )
 
         # ⛔ Spegnere dall'interruttore E' «Disabilita» (Tid, 2026-10-04):

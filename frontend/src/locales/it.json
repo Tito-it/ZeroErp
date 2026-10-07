@@ -1282,6 +1282,7 @@
     "field_valido_dal": "Valido dal",
     "field_valido_al": "Valido fino al",
     "valido_al_illimitato": "Illimitato",
+    "valido_al_hint": "Fine del rapporto: dal giorno dopo l'operatore non entra più. Vuota = senza scadenza.",
     "select_reparto": "Seleziona reparto",
     "field_qualifica": "Qualifica",
     "select_qualifica": "Seleziona qualifica",
@@ -1302,6 +1303,9 @@
       },
       "rimuovi_super_admin_reason": {
         "ultimo_super_admin": "È l'unico amministratore senza data di fine: non si può togliergli il ruolo."
+      },
+      "valido_al_reason": {
+        "ultimo_super_admin": "È l'unico amministratore senza data di fine: non gli si può mettere una data di fine."
       }
     },
     "invito_inviato": "Invito inviato",
@@ -2377,7 +2381,6 @@
       "field_uom": "Unita' di misura",
       "select_fonte_quantita": "Seleziona fonte quantita'...",
       "select_tipo_erogazione": "Seleziona tipo di erogazione...",
-      "fonte_quantita_uso_atipico": "Combinazione atipica per questo tipo di erogazione. Confermata?",
       "fonte_quantita_value_fissa": "Fissa (contrattualizzata)",
       "fonte_quantita_value_manuale": "Manuale (sul documento)",
       "fonte_quantita_value_timesheet": "Da rendicontazione ore",
@@ -2500,6 +2503,11 @@
       "tipo_erogazione_canone": "Canone",
       "tipo_erogazione_consumo": "Consumo",
       "tipo_erogazione_una_tantum": "Una tantum",
+      "tipo_erogazione_orario": "A ore",
+      "erogazioni_articolo_non_ammesso": "Questo articolo non si vende su questo documento: la sua tipologia non è fra quelle previste dalla utility.",
+      "azione_reason": {
+        "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: il contratto non si può attivare."
+      },
       "pdf": {
         "label_anteprima": "Anteprima",
         "tooltip_anteprima": "Anteprima PDF (non viene salvata)",
@@ -3564,7 +3572,7 @@
       "successione_senza_fine": "senza scadenza",
       "successione_effetto": "Confermando, il contratto esistente verrà chiuso al {data} e verrà generato il nuovo contratto in BOZZA.",
       "azione_reason": {
-        "listino_versione_mancante": "Manca la versione di listino: obbligatoria per emettere l'offerta.",
+        "listino_senza_versione_in_vigore": "Il listino non ha una versione in vigore oggi: pubblicane una o scegli un altro listino.",
         "listino_versione_non_attiva": "La versione di listino collegata non è ATTIVA."
       },
       "col_descrizione": "Descrizione",

@@ -67,6 +67,10 @@ from apps.vendite.db.contratti_repository import (
     ContrattiRepository,
     ContrattoRigheListaRepository,
 )
+from apps.vendite.db._documento_eccezioni_repo import (
+    list_erogazioni_riga,
+    listino_versione_operativa,
+)
 from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
@@ -362,35 +366,6 @@ _TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA
 # `resolve_or_check_override_prezzo_riga_contratto` con la matrice
 # Alternativa B (L1 sempre, L2/L3 condizionali al resolver).
 _TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
-
-# Matrice coerenza (tipo_erogazione, fonte_quantita_attesa) — refactor
-# 2026-05-19. Le 7 combinazioni vietate corrispondono al CHECK DB
-# `chk_contrighe_coerenza_fonte_erogazione` (migration 20260519-05).
-# Defense-in-depth: stesso vincolo applicato lato BE con errore parlante
-# prima del round-trip DB. Vedi docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §3.
-_FONTE_VIETATE_PER_TIPO_EROGAZIONE: frozenset[tuple[str, str]] = frozenset({
-    ("CANONE", "TIMESHEET"),
-    ("CANONE", "LETTURE"),
-    ("UNA_TANTUM", "TIMESHEET"),
-    ("UNA_TANTUM", "LETTURE"),
-    ("ORARIO", "LETTURE"),
-    ("CONSUMO", "FISSA"),
-    ("CONSUMO", "TIMESHEET"),
-})
-
-# Default fonte_quantita_attesa per tipo_erogazione — speculare al trigger
-# DB `trg_contratti_righe_a10_default_fonte_qta_ins_upd` (migration 20260519-06).
-# Applicato lato BE per (a) pre-compilare il FE form CREATE con la scelta
-# predefinita visibile all'utente, (b) errore parlante in validazione 2.1
-# anche su payload minimi (la coppia viene risolta prima del CHECK DB).
-# Nota: per ORARIO il default diventera' TIMESHEET quando il modulo
-# rendicontazione ore sara' implementato.
-_FONTE_DEFAULT_PER_TIPO_EROGAZIONE: dict[str, str] = {
-    "CANONE": "FISSA",
-    "UNA_TANTUM": "FISSA",
-    "ORARIO": "MANUALE",
-    "CONSUMO": "LETTURE",
-}
 
 # Fonti per cui `quantita` non e' inserita dall'utente sulla riga contratto:
 # il valore reale arriva downstream (manuale su documento / timesheet /
@@ -1681,6 +1656,26 @@ class ContrattiService:
             function_name=function_name,
         )
 
+    # Scopo: Le combinazioni (tipo_erogazione, fonte_quantita_attesa) che una
+    #        riga con questo articolo puo' avere sul contratto, col default che
+    #        erediterebbe in testa: il form delle righe le propone e
+    #        preseleziona il default (brief-db-offerta-emissione-ed-erogazione
+    #        B-R4). Le dice il DB (`vendite.fn_documento_riga_erogazioni`), la
+    #        stessa sede che leggono l'eredita' e il guard del perimetro.
+    #        Prima la testata: un contratto che non si vede e' un 404, non una
+    #        lista vuota. Lista vuota = l'articolo ha una tipologia che la
+    #        utility del contratto non prevede. Gemello di
+    #        `OfferteService.list_erogazioni_riga`.
+    def list_erogazioni_riga(
+        self, contratto_id: int, articolo_id: Any,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        articolo = self._v.require_uuid({"articolo_id": articolo_id}, "articolo_id")
+        self._get_contratto_or_raise(
+            contratto_id, op="list_erogazioni_riga", getter=self._repo.get_stato_codice,
+        )
+        return list_erogazioni_riga("CONTRATTO", contratto_id, articolo)
+
     # Scopo: Preview componenti BoM per drawer riga contratto (ComponentiDialog
     # FE). Read-only: il FE invoca PRIMA del save di una riga composita per
     # ottenere prezzi suggeriti dei componenti. Per ogni componente:
@@ -2281,14 +2276,13 @@ class ContrattiService:
                     assert isinstance(raw, str)
                     data[field] = raw.strip().upper()
 
-        # Refactor 2026-05-19: coerenza (tipo_erogazione, fonte_quantita_attesa)
-        # + normalizzazione `quantita` in base alla fonte.
-        # Il DB applica gli stessi vincoli via CHECK chk_contrighe_coerenza_fonte_erogazione
-        # e trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd (migrations
-        # 20260519-05/06). Lato BE: defense-in-depth + errore parlante prima del
-        # round-trip + UX coerente (FE mostra/nasconde `quantita` in base alla
-        # fonte; il service rispetta la stessa semantica).
-        self._apply_fonte_quantita_logic(data, for_create=for_create)
+        # Normalizzazione di `quantita` in base alla fonte. ⛔ Quali coppie
+        # (tipo_erogazione, fonte_quantita_attesa) sono ammesse, e quali valori
+        # una riga eredita quando non li indica, lo dice il DB dall'articolo
+        # (`vendite.fn_articolo_erogazioni`: eredita' e guard del perimetro,
+        # brief-db-offerta-emissione-ed-erogazione B-R2/B-R3): qui non se ne
+        # tiene una copia.
+        self._apply_fonte_quantita_logic(data)
 
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
@@ -2296,51 +2290,21 @@ class ContrattiService:
                 data["meta"] = meta
         return data
 
-    # Scopo: Applica la matrice di coerenza (tipo_erogazione, fonte_quantita_attesa)
-    #        sul `data` gia' costruito da _build_data_riga. Tre responsabilita':
-    #         1. Default fonte se non specificata (solo create, e solo se
-    #            tipo_erogazione e' presente nel data accumulato).
-    #         2. Guard combinazione vietata → E_VENDITE_VALIDATION parlante.
-    #         3. Normalizzazione `quantita`: forzata a NULL per fonti downstream
-    #            (MANUALE/TIMESHEET/LETTURE); DERIVATA_COMPONENTI lasciata al
-    #            trigger DB z90_propaga_qta_componenti; FISSA mantenuta.
+    # Scopo: Normalizza `quantita` sul `data` gia' costruito da _build_data_riga,
+    #        in base alla fonte che la riga dichiara:
+    #         - fonti downstream (MANUALE/TIMESHEET/LETTURE): forzata a NULL;
+    #         - FISSA: serve una quantita' diversa da zero;
+    #         - DERIVATA_COMPONENTI: lasciata al trigger DB z90_propaga_qta_componenti.
+    #        ⛔ Non giudica la coppia (tipo_erogazione, fonte) e non sceglie una
+    #        fonte di default: li decide il DB dall'articolo (eredita' + guard
+    #        del perimetro, 2026-10-07). Fonte assente → niente da normalizzare:
+    #        la eredita il DB.
     #        Riferimenti: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
-    def _apply_fonte_quantita_logic(
-        self,
-        data: dict[str, Any],
-        *,
-        for_create: bool,
-    ) -> None:
+    def _apply_fonte_quantita_logic(self, data: dict[str, Any]) -> None:
         tipo = data.get("tipo_erogazione")
         fonte = data.get("fonte_quantita_attesa")
 
-        # 1) Default fonte: applica solo in create quando tipo e' valorizzato.
-        # In update lasciamo decidere all'utente / trigger DB (il trigger
-        # resetta solo se la combo nuova diventa vietata, vedi decisione 3).
-        if for_create and fonte is None and tipo in _FONTE_DEFAULT_PER_TIPO_EROGAZIONE:
-            fonte = _FONTE_DEFAULT_PER_TIPO_EROGAZIONE[tipo]
-            data["fonte_quantita_attesa"] = fonte
-
-        # 2) Guard combinazione vietata (se entrambi i campi sono presenti
-        # nel data — niente da validare se uno dei due e' implicito DB).
-        if tipo is not None and fonte is not None:
-            ErrorManager.require(
-                (tipo, fonte) not in _FONTE_VIETATE_PER_TIPO_EROGAZIONE,
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail=(
-                    f"Combinazione vietata: tipo_erogazione='{tipo}' "
-                    f"non e' compatibile con fonte_quantita_attesa='{fonte}'. "
-                    f"Vedi matrice in docs/it/dev/work-in-progress/"
-                    f"refactor-contratti-fonte-quantita.md §3."
-                ),
-                context={
-                    "tipo_erogazione": tipo,
-                    "fonte_quantita_attesa": fonte,
-                },
-            )
-
-        # 3) Normalizzazione `quantita`:
+        # Normalizzazione `quantita`:
         #    - fonti downstream → forza NULL (il valore arrivera' downstream).
         #    - FISSA → richiede quantita <> 0 (guard esplicita, oltre al CHECK
         #      `qta_operativa <> 0`: zero vietato, negativi ammessi es. resi).
@@ -2566,19 +2530,15 @@ def _load_contratto_context_for_pricing(
     # v2 come `p_listino_versione_id_preferito` per attivare il fast path
     # CONTRATTO_LISTINO. Evita il drift verso stadio CATEGORIA quando il BA
     # ha una mappa categorie_clienti_listini su un listino diverso.
-    # Contratto ATTIVO: usa lo snapshot in testata (zero round-trip).
-    # Contratto DRAFT: lookup dinamico della versione operativa con la stessa
-    # regola di `fn_contratto_righe_preview` (ATTIVA/CHIUSA validità @
-    # valido_dal, BOZZA esclusa) — coerenza preview/pricing garantita.
-    # Senza listino_id: nessun fast path possibile → None (legacy resolver).
+    # ⭐ La versione la dice il DB (`vendite.fn_documento_listino_operativo`):
+    # la fissata all'attivazione, altrimenti quella in vigore oggi — la stessa
+    # che governa le righe a video, quindi preview e pricing coincidono per
+    # costruzione. Senza listino: None (resolver senza fast path).
+    # ⛔ Fino al 2026-10-07 qui c'era una copia Python che la cercava alla data
+    # `valido_dal`, mentre le righe usavano gia' quella di oggi
+    # (brief-db-offerta-emissione-ed-erogazione §C.1.3).
     # Doc DB: cfr. nota team `dev/db-tid` sul 9° arg di fn_resolve_prezzo_listino_v2.
-    listino_versione_id_preferito = testata.get("listino_versione_id")
-    if listino_versione_id_preferito is None:
-        listino_id_raw = testata.get("listino_id")
-        if listino_id_raw is not None:
-            listino_versione_id_preferito = repo.get_listino_versione_attiva_alla_data(
-                int(listino_id_raw), data_riferimento,
-            )
+    listino_versione_id_preferito = listino_versione_operativa("CONTRATTO", contratto_id)
 
     return {
         "testata": testata,

@@ -33,6 +33,7 @@ from apps.vendite.api.views_contratti import (
     ApiContrattoRigaComponenteDetail,
     ApiContrattoRigaComponentiList,
     ApiContrattoRigaDetail,
+    ApiContrattoRigaErogazioni,
     ApiContrattoRigaPreviewComponenti,
     ApiContrattoRigheList,
     ApiContrattoRigheListaExportView,
@@ -86,6 +87,11 @@ urlpatterns = [
          name="vendite-contratto-righe-lista"),
     path("<int:contratto_id>/righe/lista/export/", ApiContrattoRigheListaExportView.as_view(),
          name="vendite-contratto-righe-lista-export"),
+    # Le combinazioni erogazione/fonte di una riga con l'articolo dato, col
+    # default in testa: il form delle righe le legge invece di ricopiare la
+    # matrice (brief-db-offerta-emissione-ed-erogazione B-R4).
+    path("<int:contratto_id>/righe/erogazioni/", ApiContrattoRigaErogazioni.as_view(),
+         name="vendite-contratto-righe-erogazioni"),
     path(
         "<int:contratto_id>/contesto-pricing/",
         ApiContrattoContestoPricing.as_view(),

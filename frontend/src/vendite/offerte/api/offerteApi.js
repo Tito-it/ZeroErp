@@ -4,6 +4,7 @@
 
 import api from '../../../core/api'
 import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
+import { makeRigaErogazioniApi } from '../../_shared/righe/erogazioniRigaApi'
 
 const BASE = '/vendite/offerte'
 
@@ -135,6 +136,10 @@ export function getContrattoSovrapposto(id) {
 // scritte) non ha piu' un consumatore qui: il drawer legge la lista, il
 // dettaglio dell'offerta porta gia' le eccezioni (note, conteggio).
 export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
+
+// Come si puo' erogare un articolo su una riga dell'offerta: le combinazioni
+// (erogazione, fonte) ammesse, il default in testa (BB `makeRigaErogazioniApi`).
+export const { listRigaErogazioni } = makeRigaErogazioniApi(BASE)
 
 // --- Eccezioni (scritture, solo BOZZA) ---
 

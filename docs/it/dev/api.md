@@ -658,7 +658,7 @@ una.** Le famiglie in servizio sono tre, e nessuna è il calco delle altre:
 | riga mapping BA                                      | `can_remove`        | `rimozione_blocco_reason`                 | `rimozione_blocco_reason_key`                                                                |
 | righe reso · coda accrediti                          | —                   | `annullo_blocco_codice` · `blocco_codice` | —                                                                                            |
 | riga del piano d'inventario (magazzino, 2026-09-23)  | — (`esito = NON_POSTABILE`) | `posting_blocco_reason`         | `posting_blocco_reason_key`                                                                  |
-| dettaglio operatore (amm. software, 2026-09-27)      | `can_invite` · `can_disable` · `can_demote_super_admin` | `invite_reason` · `disable_reason` · `demote_reason` | `invite_reason_key` · `disable_reason_key` · `demote_reason_key` |
+| dettaglio operatore (amm. software, 2026-09-27)      | `can_invite` · `can_disable` · `can_demote_super_admin` · `can_set_valido_al` (2026-10-07) | `invite_reason` · `disable_reason` · `demote_reason` · `valido_al_reason` | `invite_reason_key` · `disable_reason_key` · `demote_reason_key` · `valido_al_reason_key` |
 
 ⭐ **Solo le prime due sono terne coerenti** (la famiglia 1): motivo e chiave
 si ricavano dal nome del flag, quindi chi ne legge uno sa già come si chiamano

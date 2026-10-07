@@ -8,9 +8,9 @@
 > **Decisione:** di Tid, 2026-10-07, su B: il default dell'erogazione (e della fonte) si
 > **eredita dall'articolo**, dalla sua tipologia; il perimetro delle scelte segue la utility.
 > **Stato (2026-10-07, notte): ✅ LATO DB CHIUSO.** Parte A (`20261007-40 → -47`) e parte B
-> (`-50 → -54`, `-60 → -65`) applicate da Tid; pgTAP verdi su dbdev. **Resta il giro BE/FE**:
-> §C.6.4 per la parte A, §C.9.6 per la parte B (sostituiscono §A.5 e §B.5). Poi il collaudo a video
-> e l'archiviazione in `work-done/`.
+> (`-50 → -54`, `-60 → -65`) applicate da Tid; pgTAP verdi su dbdev. **✅ Giro BE/FE fatto**
+> (2026-10-07, §D): restano il collaudo a video di Tid (§D.5), le domande al team DB (§D.4) e
+> l'archiviazione in `work-done/`.
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
 > **Le decisioni** (di Tid, 2026-10-07) stanno in §C.5 e in coda al §C.7: A-D1 chiusa dal modello,
 > A-D2 il contratto non si attiva senza versione in vigore, A-D3 la revisione congela alla sua
@@ -756,3 +756,116 @@ su un articolo non composito, ora UNA_TANTUM/MANUALE), `test-fn-resolve-prezzo-l
 sui fixture che prendono i dati dalla macchina, perché «prima = dopo» su un fixture vuoto vuol
 dire «non provato» (§C.6.5). Scegliere dai dati un cliente «compatibile» lo sposta su un cliente
 con una storia propria: dove il test attiva un contratto, il cliente si costruisce (§C.9.7).
+
+## D. Giro BE/FE (`dev/backend-tid`, 2026-10-07)
+
+> Sostituisce §A.5 e §B.5, esegue §C.6.4 e §C.9.6. Non committato: lo decide Tid.
+
+### D.1 Parte A — l'emissione
+
+* **Congelamento**: ritirato `OfferteService._fissa_versione_listino_se_necessario` e la sua
+  chiamata in `emetti`, che ora fa il solo cambio stato. Il codice `E_VENDITE_VALIDATION` di quel
+  ramo non esiste piu': parla il DB (`E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`).
+* **La versione del pricing** la legge un BB solo, `listino_versione_operativa(documento, id)`
+  (`apps/vendite/db/_documento_eccezioni_repo.py`, su `vendite.fn_documento_listino_operativo`),
+  per **l'offerta e il contratto**. Ritirate le **due** copie Python della regola:
+  `ListiniRepository.get_versione_attiva_alla_data` (quella del brief) e
+  `ContrattiRepository.get_listino_versione_attiva_alla_data`, che il brief non nominava ed era la
+  stessa copia sul contratto (simmetria). ⚠️ **Cambio di comportamento, da sapere**: le due copie
+  cercavano la versione alla data d'**inizio** del documento (`validita_dal` / `valido_dal`), il DB
+  quella in vigore **oggi** — la stessa che le righe a video usavano gia'. Ora prezzo suggerito e
+  righe coincidono per costruzione; su un documento in BOZZA che parte nel futuro, se nel frattempo
+  il listino cambia versione, il prezzo suggerito e' quello di oggi, come le righe.
+* **Codici**: policy rigenerate dal catalogo (`genera_error_policies`: solo i tre codici nuovi
+  1201-1203); ripieghi senza `%s` per i tre nuovi e testo riscritto per il 457, come il CSV.
+* **FE**: le due `reason_key` nuove in `it.json`/`en.json`
+  (`vendite.offerte.azione_reason.listino_senza_versione_in_vigore`,
+  `vendite.contratti.azione_reason.listino_senza_versione_in_vigore`); ritirata
+  `vendite.offerte.azione_reason.listino_versione_mancante`. `check_i18n_keys` pulito.
+* **Il «warning UI» del contratto attivo senza versione** (§4.4 del 2026-05-18): non esiste come
+  avviso dell'ATTIVO. L'avviso che resta nel drawer delle righe del contratto
+  (`preview_listino_senza_versione`) descrive il DRAFT su un listino senza versione in vigore — la
+  preview e' vuota, legittimamente — e resta.
+
+### D.2 Parte B — l'erogazione
+
+* **La lettura per il form**: `GET …/contratti/<id>/righe/erogazioni/?articolo_id=` e
+  `GET …/offerte/<id>/righe/erogazioni/?articolo_id=`, una base `RigaErogazioniView`
+  (`apps/vendite/api/_riga_erogazioni_views.py`) e due sottoclassi; envelope dei lookup
+  `{"results": [...]}`; il service legge **prima** la testata (404, non una lista vuota) e valida
+  `articolo_id` UUID col campo. Il repository e' il BB `list_erogazioni_riga` dello stesso modulo
+  della versione.
+* **La copia Python della matrice**: ritirati `_FONTE_VIETATE_PER_TIPO_EROGAZIONE` e
+  `_FONTE_DEFAULT_PER_TIPO_EROGAZIONE`. `_apply_fonte_quantita_logic` tiene la sola
+  normalizzazione di `quantita` per fonte (§D.4, punto 2).
+* **Il form** (`RigheEccezioniDrawer`, contratto e offerta, prop nuova `erogazioniArticolo`): legge
+  le combinazioni quando l'articolo e' noto (scelta in «Aggiungi articolo», riga del listino in
+  «Modifica prezzo», riga salvata in modifica); in creazione **preseleziona la combinazione di
+  default** del DB; le tendine propongono solo cio' che il DB ammette, e il valore gia' scritto su
+  una riga resta fra le opzioni (B-D6). Al cambio d'erogazione la fonte resta se ancora ammessa,
+  diventa l'unica se e' una sola, altrimenti resta vuota e la sceglie l'operatore (§D.4, punto 1).
+  Lista vuota → messaggio sotto l'articolo («non si vende su questo documento») e Salva spento.
+  Il campo `fonte_quantita_attesa` si accende col canale `fields`. Ritirato il segnale «uso
+  atipico» (`fonte_quantita_uso_atipico`): era un'invenzione della matrice FE, il DB non lo conosce.
+  Aggiunta `tipo_erogazione_orario` (una riga ORARIO gia' scritta si legge).
+* Le funzioni che mettono in forma le combinazioni stanno in `erogazioniRiga.js` (pure, con
+  spec): `fontiQuantitaErogazione.js` e la sua spec sono **cancellati** (ok di Tid, 2026-10-07).
+  `TIPO_EROGAZIONE` in `vendite/constants.js` resta (decisione di Tid, 2026-10-07): e' il
+  vocabolario con cui `RigheEccezioniDrawer.spec.js` verifica che ogni erogazione che il DB puo'
+  dichiarare abbia la sua etichetta, in it e in en.
+
+### D.3 Test
+
+* **Test Django sul DB** (§C.9.6): `test_righe_erogazione_obbligatoria_db` riscritto sulla regola
+  nuova — la riga che nasce senza erogazione la **eredita** (si confronta col default che il DB
+  dichiara, non con uno scritto a mano), il PATCH che la svuota resta rifiutato col campo; la riga
+  di partenza prende la combinazione di default dell'articolo. `test_ricerca_liste_db`: la riga
+  AGGIUNTA del fixture eredita (colonne vuote). Gli altri due file del §C.9.6 erano gia' verdi.
+  `apps.vendite.tests.db` 161/161 con `ZEROERP_TEST_DB_E2E=1`.
+* **Unitari**: emissione senza scrittura della versione; suite della fonte senza matrice ne' default;
+  `tests/api/test_riga_erogazioni_api.py` nuovo (10 test, gli stessi sui due documenti). Provato per
+  mutazione: togliendo la lettura della testata il test del 404 va rosso.
+* **Suite BE completa** con i presidi su DB: 6256 test, verde.
+* **FE**: `erogazioniRiga.spec.js` (6, provato per mutazione), vitest 733/733, `npm run guards`,
+  eslint, build verdi.
+* **Binding reale** delle due letture provato sul DB di sviluppo, come app sotto RLS col contesto
+  operatore: versione operativa di un'offerta in BOZZA e di un contratto DRAFT, combinazioni di un
+  articolo con tipologia, di un composito con tipologia e di un composito senza tipologia (natura).
+
+### D.4 Al team DB (non bloccanti)
+
+1. **L'ordine di `vendite.fn_documento_riga_erogazioni` non e' quello del trigger d'eredita'.** La
+   lettura ordina `e_default DESC, tipo_erogazione, fonte_quantita_attesa`; il trigger, dentro
+   un'erogazione, mette `DERIVATA_COMPONENTI` per ultima. Su un composito SERVIZI (dbdev,
+   2026-10-07) l'erogazione CANONE viene letta come `DERIVATA_COMPONENTI` poi `FISSA`, mentre il
+   trigger sceglierebbe `FISSA`. Per questo il form, al cambio d'erogazione, **non** preseleziona «la
+   prima della lista» (sarebbe stata una copia della regola del trigger): lascia la scelta
+   all'operatore quando le fonti sono piu' d'una. Se la lettura ordinasse come il trigger
+   (`(fonte = 'DERIVATA_COMPONENTI')` dopo `e_default`), il form potrebbe proporre la prima fonte
+   dell'erogazione e coincidere con il DB per costruzione. Una riga, a giudizio del team DB.
+2. **La quantita' per fonte resta una regola del solo backend, e del solo contratto.**
+   `_apply_fonte_quantita_logic` azzera `quantita`/`qta_operativa` sulle fonti a valle (MANUALE,
+   TIMESHEET, LETTURE) e pretende una quantita' sulla FISSA; l'offerta non lo fa, e il DB non lo
+   impone (`trgfn_qta_from_operativa` solleva solo sulla FISSA senza quantita'). Asimmetria
+   preesistente, fuori dal perimetro del brief: va decisa la sede (un CHECK o il trigger della
+   quantita'), e allora la copia Python si ritira. Dichiarata, non toccata.
+3. **`_guard_listino_ha_versione_attiva`** (`contratti_service`, §4.4 del 2026-05-18): un listino
+   senza **nessuna** versione ATTIVA non e' selezionabile sul contratto, controllo in Python. Con
+   A-D2 l'attivazione pretende una versione **in vigore oggi**, controllata dal DB. Le due regole
+   non sono la stessa (selezionabile ≠ attivabile), ma la prima e' una regola di dominio in Python
+   accanto a una del DB: da valutare se resta, o se diventa una check del DB letta anche dal lookup
+   dei listini. Non toccata.
+
+### D.5 Collaudo a video (Tid)
+
+* **Offerta nuova in BOZZA** su un listino con versione in vigore: «Emetti» **acceso**; l'emissione
+  riesce e la testata mostra la versione congelata.
+* Offerta su un listino **senza** versione in vigore oggi: «Emetti» spento col tooltip «Il listino
+  non ha una versione in vigore oggi…».
+* **Contratto DRAFT** con listino senza versione in vigore: «Attiva» spento col motivo.
+* **Righe**, su un documento di una utility BASE: «Aggiungi articolo» con un articolo PRODOTTI/SERVIZI
+  → erogazione e fonte preselezionate, nessuna «Da letture utility»; un articolo di una tipologia
+  che la utility non prevede → il messaggio sotto l'articolo e Salva spento.
+* «Modifica prezzo» su una riga del listino → la combinazione di default dell'articolo.
+* Una riga salvata in modifica → erogazione e fonte com'erano; cambio d'erogazione → la fonte si
+  adegua o si svuota.
