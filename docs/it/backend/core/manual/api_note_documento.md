@@ -116,14 +116,17 @@ solo in stampa, tardi.
 `E_NOTA_CHECK_VIOLATION` ed `E_NOTA_FK` nascono dalla traduzione degli
 `IntegrityError` di PostgreSQL. Solo i vincoli **ereditati dalla parent
 table** (`chk_note_*`, `fk_vendite_note_id_stile`, `fk_vendite_note_id_lingua`)
-valgono identici per tutte e sei le partizioni; i vincoli di coerenza, testata
-e riga sono **locali** a ogni partizione, con nomi propri, e la mappa del
-service copre solo quelli di preventivo e contratto (`chk_prevnote_*`,
-`fk_prevnote_*`, `chk_contnote_*`, `fk_contnote_*`).
-
-> ⚠️ Difetto noto (F-7): per offerta, ordine, DDT e fattura i vincoli locali
-> cadono sul ripiego `E_NOTA_VALIDATION` (400) invece del codice mappato — vedi
-> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+valgono identici per tutte le partizioni; i vincoli di coerenza, testo, testata
+e riga sono **locali** a ogni partizione, con nomi propri che non seguono un
+prefisso solo (`offnote`, `ordini_note`, `ordnote`…). La mappa del service li
+copre tutti da una tabella per partizione (`_VINCOLI_PARTIZIONE`): coerenza e
+testo → `E_NOTA_CHECK_VIOLATION`, testata → `E_NOTA_PARENT_NOT_FOUND`, riga →
+`E_NOTA_FK`. Fino al 2026-10-07 copriva solo preventivo e contratto, e per
+offerta, ordine, DDT e fattura i vincoli locali cadevano sul ripiego
+`E_NOTA_VALIDATION` (F-7, chiuso). Presidio:
+`core/tests/db/test_note_vincoli_mappati_db.py` legge i vincoli veri delle
+partizioni da `pg_constraint` e fallisce, nei due versi, su un vincolo non
+mappato o su una voce che non nomina niente.
 
 ## 7. Permessi
 

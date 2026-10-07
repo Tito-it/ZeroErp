@@ -1528,7 +1528,7 @@ def suggerisci_prezzo_riga(
     data_riferimento = date.fromisoformat(str(data_riferimento_str))
 
     # Delega al building block centrale. Gli errori di dominio
-    # (E_PREZZO_LISTINO_NON_TROVATO ecc.) sono tradotti dal service
+    # (E_CATEGORIA_LISTINO_NON_MAPPATA ecc.) sono tradotti dal service
     # e propagati al chiamante come ServiceError.
     result = PricingService().resolve_prezzo(
         articolo_id=articolo_id,

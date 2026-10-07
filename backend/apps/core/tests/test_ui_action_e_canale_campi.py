@@ -19,9 +19,12 @@
 #        sul DB provvisto (`richiedi_db_provvisto`) e NON rifatta: il context in
 #        una variabile, il codice in una variabile, la risalita alle `fn_check_*`
 #        del primo motivo sono cose che una regex sul corpo non regge, e la
-#        vista le segue. I siti Python li legge questo file con l'AST, riusando
-#        la stessa risoluzione delle costanti di `test_error_codes_declared_guardrail`
-#        (un codice passato per NOME di costante non si vede con un grep).
+#        vista le segue. I siti Python li legge questo file con l'AST,
+#        risolvendo le costanti di modulo (un codice passato per NOME di
+#        costante non si vede con un grep). ⚠️ Qui serve il SITO che solleva
+#        col suo canale campo, quindi la risoluzione resta; il gemello
+#        `test_error_codes_declared_guardrail` dal 2026-10-07 guarda invece
+#        ogni literal `E_*` (E-2), e non risolve piu' nulla.
 #
 #        ⚠️ RICHIEDE IL DB VERO, stessa opt-in `ZEROERP_TEST_DB_E2E=1` del
 #        cancello del terzo lato (accesa in CI da `ci-validate.yaml`). Non
@@ -117,8 +120,8 @@ _HIGHLIGHT = "highlight_form_fields"
 _VIA_SITO = ("DIRETTO", "PRIMO_MOTIVO")
 _CANALE_OK = ("IN_CHIAMATA", "IN_VARIABILE")
 
-# Keyword che veicolano un codice verso ErrorManager / ServiceError — le stesse
-# di `test_error_codes_declared_guardrail`, piu' il fallback delle traduzioni.
+# Keyword che veicolano un codice verso ErrorManager / ServiceError, piu' il
+# fallback delle traduzioni.
 _CODE_KWARGS = ("code", "error_code")
 _FALLBACK_KWARGS = ("fallback_code",)
 
@@ -160,8 +163,7 @@ class SitoPython:
 
 
 # Scopo: le costanti di modulo che valorizzano un codice (`E_GIRO_PAYLOAD =
-#        "E_FATTURAZIONE_GIRO_PAYLOAD"`), come in
-#        `test_error_codes_declared_guardrail._costanti_modulo`.
+#        "E_FATTURAZIONE_GIRO_PAYLOAD"`).
 def _costanti_locali(tree: ast.Module) -> dict[str, str]:
     costanti: dict[str, str] = {}
     for nodo in ast.walk(tree):

@@ -61,7 +61,7 @@ class PermissionResolver:
         OPERATORE, non all'auth_user. Enforcement centralizzato lato
         DB — il wrapper Python non duplica la logica. Il contratto
         cross-veste e' verificato da pgTAP su
-        `db/pgtap/script/fn_is_super_admin*.sql` (single source of
+        `db/pgtap/script/test-fn-is-super-admin*.sql` (single source of
         truth): un mock Python non puo' darne prova, ritorna solo
         quello che gli si passa.
         """

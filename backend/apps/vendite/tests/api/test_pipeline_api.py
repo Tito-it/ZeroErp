@@ -71,7 +71,8 @@ class VenditePipelineApiTests(JwtMockedApiTest):
             headers={"Idempotency-Key": "idem-ok-2"},
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "invalid_json")
+        # Nell'envelope dal 2026-10-07 (E-6), come le view DRF.
+        self.assertEqual(response.json()["error"]["code"], "E_VALIDATION_INPUT")
 
     # Scopo: Verifica il caso `test_run_lotto_pipeline_pipeline_error`.
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

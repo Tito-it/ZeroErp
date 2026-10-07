@@ -571,9 +571,10 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # `pratiche_service._KNOWN_DB_ERROR_MARKERS`): non e' a catalogo DB.
     # Non era registrato — quindi cadeva sulla scorciatoia «E_* sconosciuto»
     # e un duplicato rispondeva 400 «errore di validazione» invece di 409.
-    # Trovato il 2026-08-05 mentre si aggiungevano i gemelli: sfugge al
-    # guardrail `test_error_codes_declared_guardrail` perche' quello guarda
-    # i kwarg `code=`/`error_code=`, e qui il codice sta dentro una tupla.
+    # Trovato il 2026-08-05 mentre si aggiungevano i gemelli: allora sfuggiva
+    # al guardrail `test_error_codes_declared_guardrail`, che guardava i soli
+    # kwarg `code=`/`error_code=` (qui il codice sta dentro una tupla). Dal
+    # 2026-10-07 il guardrail guarda ogni literal `E_*` (E-2) e lo vede.
     "E_TEMPLATE_CODICE_DUPLICATO": "highlight_form_fields",  # classe CONFLITTO_STATO
     # <- TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA  (ritirato)
     "E_TEMPLATE_FLUSSO_AUTOMATICO_SOLO_INTERNA": "highlight_form_fields",  # classe DATO_ERRATO

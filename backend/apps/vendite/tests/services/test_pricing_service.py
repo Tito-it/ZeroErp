@@ -18,7 +18,7 @@ Indice test:
  6) test_resolve_classe_utenza_opzionale        — classe None ok
  7) test_resolve_classe_utenza_zero_ko          — classe=0 -> VALIDATION
  8) test_resolve_db_error_categoria_non_mappata — preserva codice E_CATEGORIA_LISTINO_NON_MAPPATA
- 9) test_resolve_db_error_listino_non_trovato   — preserva codice E_PREZZO_LISTINO_NON_TROVATO
+ 9) (ritirato il 2026-10-07 col marker di E_PREZZO_LISTINO_NON_TROVATO, codice ritirato)
 10) test_resolve_db_error_generico              — fallback E_VENDITE_PRICING_FAILED
 11) test_composito_ok                           — ritorna lista di righe
 12) test_composito_uuid_invalido                — UUID invalido -> VALIDATION
@@ -123,15 +123,6 @@ class TestResolvePrezzo(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             PricingService().resolve_prezzo(**_base_kwargs())
         self.assertEqual(ctx.exception.code, "E_CATEGORIA_LISTINO_NON_MAPPATA")
-
-    @patch(_REPO)
-    def test_resolve_db_error_listino_non_trovato(self, mock_repo):
-        mock_repo.return_value.resolve_prezzo_listino_v2.side_effect = DatabaseError(
-            f"Nessun prezzo listino risolto per articolo {_UUID}"
-        )
-        with self.assertRaises(ServiceError) as ctx:
-            PricingService().resolve_prezzo(**_base_kwargs())
-        self.assertEqual(ctx.exception.code, "E_PREZZO_LISTINO_NON_TROVATO")
 
     @patch(_REPO)
     def test_resolve_db_error_non_negoziato_corto_non_matcha_generico(self, mock_repo):

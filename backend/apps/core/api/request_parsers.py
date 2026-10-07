@@ -18,7 +18,10 @@ def parse_json_body(request: HttpRequest | Request) -> dict[str, Any]:
         else:
             raw_body = request.body.decode("utf-8") or "{}"
             value = json.loads(raw_body)
-    except (json.JSONDecodeError, ParseError) as exc:
+    # ⚠️ `UnicodeDecodeError` (corpo non UTF-8) e' un `ValueError` ma non un
+    #    `JSONDecodeError`: senza nominarlo usciva col suo testo invece che
+    #    come `invalid_json` (F-10, chiuso con E-6 il 2026-10-07).
+    except (json.JSONDecodeError, UnicodeDecodeError, ParseError) as exc:
         raise ValueError("invalid_json") from exc
 
     return oggetto_json(value)

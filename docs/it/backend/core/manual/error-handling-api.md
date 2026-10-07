@@ -41,8 +41,7 @@ La logica condivisa e` centralizzata in:
 
 - Mapping centralizzato in `ErrorPolicyRegistry`: codice → classe (`CLASSE_PER_CODICE` in `error_policies_generated.py`), classe → HTTP status e `ui_action` (`error_policies.py`).
 - Traduzione delle eccezioni (`ErrorTranslator.to_api_error`): `ServiceError` → suo codice; `ValueError`/`TypeError` → `E_VALIDATION_INPUT`; `DatabaseError` → codice applicativo estratto dal DB, altrimenti `E_DATABASE` (`E_DATABASE_RETRYABLE` se ritentabile); altro → `E_GENERICO`.
-- Eccezione: dentro `handle_post_json` un `ValueError` produce `400 {"error": "invalid_payload"}` (e il JSON non valido `{"error": "invalid_json"}`), con `error` stringa e non oggetto.
-  > ⚠️ Difetto noto (E-6): envelope incoerente, codice e messaggio del `ValueError` si perdono. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Nessuna eccezione per `handle_post_json` (dal 2026-10-07, E-6): un `ValueError` dell'handler passa dal translator come altrove, e un corpo illeggibile o non oggetto esce 400 `E_VALIDATION_INPUT` col `context.motivo` (BB `errore_corpo`).
 - I domini devono usare `ErrorManager.require(...)` / `ErrorManager.raise_error(...)`.
 - Le view API dominio **non devono** usare `try/except Exception` generici: il middleware globale gestisce il fallback.
 - Middleware globale intercetta eccezioni non gestite solo su path `/api/*`, lasciando invariato il comportamento Django su pagine non API e su eccezioni `Http404`/`PermissionDenied`/`SuspiciousOperation`.

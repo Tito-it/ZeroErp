@@ -2488,7 +2488,7 @@ class ContrattiService:
 #        Solleva `E_VENDITE_VALIDATION` su input mancanti o non risolubili,
 #        `E_VENDITE_NOT_FOUND` su contratto inesistente, e propaga errori
 #        ServiceError dal `PricingService.resolve_prezzo` (es.
-#        `E_PREZZO_LISTINO_NON_TROVATO`).
+#        `E_CATEGORIA_LISTINO_NON_MAPPATA`).
 # Scopo: Helper module-level. Risolve il contesto di pricing per un
 #        contratto: lookup testata + emittente + validazione BA/utility/data,
 #        parsing `valido_dal` a `date`. Riusato da

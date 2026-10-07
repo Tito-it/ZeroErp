@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from django.db import DatabaseError
+from django.db import DatabaseError, IntegrityError
 
 # SQLSTATE di `RAISE EXCEPTION` senza ERRCODE esplicito — l'unico su cui il
 # backend si fida del campo `constraint_name` (vedi `db_error_fields`).
@@ -90,5 +90,36 @@ def make_db_error(
         # resta nel `context` e finisce in `dbops.error_log`; qui viaggia la
         # versione minima che serve a disegnare un gesto.
         datatype_name=bersaglio,
+    )
+    return exc
+
+
+# SQLSTATE delle violazioni d'integrita' che i test simulano.
+SQLSTATE_UNICITA = "23505"
+SQLSTATE_FK = "23503"
+SQLSTATE_CHECK = "23514"
+SQLSTATE_NOT_NULL = "23502"
+
+
+# Scopo: Un `IntegrityError` con la catena `__cause__` del vero: SQLSTATE,
+#        `constraint_name` e, per il NOT NULL, `column_name`. Il testo nomina il
+#        vincolo come lo scrive PostgreSQL.
+# ⚠️ Un `IntegrityError("unique")` nudo non ha SQLSTATE, e PostgreSQL non lo
+#    solleva mai cosi': dal 2026-10-07 la traduzione dei service anagrafiche
+#    decide sullo SQLSTATE (`_validators.rifiuto_integrita`), e un finto senza
+#    SQLSTATE proverebbe il ripiego, non il percorso vero.
+def make_integrity_error(
+    sqlstate: str,
+    *,
+    vincolo: str | None = None,
+    colonna: str | None = None,
+) -> IntegrityError:
+    testo = f'violates constraint "{vincolo}"' if vincolo else "integrity violation"
+    exc = IntegrityError(testo)
+    exc.__cause__ = FakeCausaPg(
+        sqlstate,
+        message_primary=testo,
+        constraint_name=vincolo,
+        column_name=colonna,
     )
     return exc

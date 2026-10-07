@@ -21,14 +21,14 @@ Gli helper sono in:
   `targets` quando valorizzati (le chiavi `null` vengono omesse).
 - Errore da eccezione DRF di autenticazione/permessi (`drf_exception_handler`):
   `error` ridotto a `{code, message, ui_action}`.
-- JSON o payload non validi (`invalid_json_response` / `invalid_payload_response`):
-  `{ "error": "invalid_json" }` / `{ "error": "invalid_payload" }` — `error` e' una
-  **stringa**, non un oggetto.
+- Corpo illeggibile o che non e' un oggetto JSON: stesso envelope degli altri
+  errori, 400 `E_VALIDATION_INPUT` con `context.motivo` `invalid_json` /
+  `invalid_payload` (BB `errore_corpo`, uno per `handle_post_json` e le view
+  DRF). Fino al 2026-10-07 `handle_post_json` rispondeva `{"error":
+  "invalid_json"}` con `error` stringa (E-6, chiuso).
 - `meta` include `request_id` e, se presente, `idempotency_key`; manca se entrambi
   sono assenti.
 
-> ⚠️ Difetto noto (E-6): l'envelope di JSON/payload non validi non rispetta la
-> forma `error: {code, message}` — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ## Regole
 - Contratto stabile: `message` resta business/safe per codici tecnici.

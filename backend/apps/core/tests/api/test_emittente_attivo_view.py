@@ -46,8 +46,8 @@ def _corpo(response) -> dict:
     return json.loads(response.content)["data"]
 
 
-# Scopo: envelope d'errore di `handle_post_json` — `{"error": {"code": ...}}`
-#        per i ServiceError, `{"error": "invalid_payload"}` per i payload rotti.
+# Scopo: envelope d'errore di `handle_post_json` — `{"error": {"code": ...}}`,
+#        anche per i payload rotti dal 2026-10-07 (E-6).
 def _errore(response):
     return json.loads(response.content)["error"]
 
@@ -164,7 +164,7 @@ class EmittenteAttivoViewTests(SimpleTestCase):
         MockService.return_value.imposta.assert_called_once_with(_UTENTE, None)
         self.assertNotIn(JWT_CLAIM_EMITTENTE_ATTIVO_ID, token.payload)
 
-    # 5. `emittente_fiscale_id` non numerico: 400 `invalid_payload` dal
+    # 5. `emittente_fiscale_id` non numerico: 400 `E_VALIDATION_INPUT` dal
     #    validator (`optional_int` → ValueError → handle_post_json), non un
     #    `int()` che esplode in 500 — il bug della prima stesura. Il service
     #    non deve nemmeno essere interpellato.
@@ -174,5 +174,5 @@ class EmittenteAttivoViewTests(SimpleTestCase):
             _request({"emittente_fiscale_id": "abc"}, refresh="tok")
         )
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(_errore(response), "invalid_payload")
+        self.assertEqual(_errore(response)["code"], "E_VALIDATION_INPUT")
         MockService.return_value.imposta.assert_not_called()

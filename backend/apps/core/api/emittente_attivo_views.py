@@ -112,7 +112,7 @@ class EmittenteAttivoView(DomainAPIView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, object]) -> tuple[dict[str, object], str]:
             # Stringa vuota = assente (stesso contratto dei filtri opzionali);
-            # garbage → ValueError → 400 `invalid_payload` di handle_post_json,
+            # garbage → ValueError → 400 `E_VALIDATION_INPUT` di handle_post_json,
             # non un `int()` che esplode in 500.
             emittente_id = (
                 None

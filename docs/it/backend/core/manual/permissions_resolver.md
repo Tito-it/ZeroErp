@@ -19,7 +19,7 @@ non ripetere lo stesso round-trip due volte nella stessa richiesta HTTP.
 ## Contesto
 
 Classe in `apps/core/services/permissions_resolver.py`. La usano
-`ZeroERPPermission` (DRF), `EmittenteFiscaleScopeMixin`, `JwtAuditMiddleware`,
+`ZeroERPPermission` (DRF), `JwtAuditMiddleware`,
 gli endpoint `/api/v1/core/me/` e `/users/{id}/permessi-effettivi/`, i service
 che applicano lo **scope emittente** (documenti, vendite, coda lavori, AI).
 
@@ -94,9 +94,11 @@ chiamanti — è stato **tolto il 2026-09-12** (analisi-software-per-dati-morti
   i valori di `ruolo_applicativo`, `is_super_admin`, `area:*`, `azione:*` ed
   `emittenti_*` li calcolano funzioni che leggono le GUC di veste ed emittente attivo.
   L'invalidazione Redis la fanno i writer (profili, override, reparto).
-- ⚠️ Difetto noto (S-4): il ripiego di `get_ruolo_applicativo` senza GUC prende
-  un'identita attiva qualsiasi: per un utente con piu' vesti il risultato non e'
-  deterministico. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Il ripiego di `get_ruolo_applicativo` senza GUC legge le sole vesti
+  **utilizzabili** (`script.fn_veste_utilizzabile`, la regola con cui
+  `set_jwt_gucs` popola la GUC) e fra piu' vesti prende la piu' vecchia
+  (`ORDER BY id`), come il login. Fino al 2026-10-07 prendeva un'identita
+  attiva qualsiasi (S-4, chiuso).
 - **I mock non provano il contratto DB.** Un test con `connection` finta prova
   la traduzione del risultato, non che la funzione esista o che la firma leghi:
   il contratto cross-veste di `fn_is_super_admin` è provato dai pgTAP in
