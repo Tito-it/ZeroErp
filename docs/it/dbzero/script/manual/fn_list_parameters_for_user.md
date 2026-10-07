@@ -61,27 +61,28 @@ RETURNS TABLE (
 
 ### Regole di priorita'
 
-La risoluzione del `resolved_value` segue la cascata (coerente con
-`fn_get_parameter_full` overload 7-arg, migration `20260515-08`):
+Il `resolved_value` lo calcola `script.fn_get_parameter_full`, che è la sede
+della cascata (l'ordine dei livelli sta lì):
 
 ```text
-user_value > categoria_cliente_value > group_value > emittente_value > default_value
+utente > categoria_cliente > gruppo > emittente > default
 ```
-
-Il primo valore non-NULL vince (`COALESCE` su subquery indipendenti).
 
 ### Architettura a due livelli
 
 La funzione usa due logiche distinte per coprire visualizzazione e risoluzione:
 
-- **LEFT JOIN "puri"** (per `*_value` e `*_override_id`): filtrano ogni livello
-  con scope esclusivo (es. il livello categoria_cliente usa `django_user_id IS NULL
-  AND django_group_id IS NULL AND emittente_fiscale_id IS NULL AND ...`).
-  Mostrano solo override "di livello puro", utili per la UI admin.
+- **LEFT JOIN per livello** (per `*_value` e `*_override_id`): ogni livello
+  (emittente, gruppo, utente, categoria_cliente) legge l'override della sua
+  dimensione. Ogni override ha esattamente un ambito
+  (`chk_parameter_overrides_un_ambito`) e ce n'è al più uno per parametro e ambito
+  (`uq_overrides_full_scope_v5`, `NULLS NOT DISTINCT`): la lista ha **una riga per
+  parametro** per costruzione, e le regole stanno nei vincoli, non nella query.
+  Gli id servono alla DELETE del backend.
 
-- **Subquery COALESCE** (per `resolved_value`): replicano esattamente la logica
-  di `fn_get_parameter_full` senza filtri IS NULL aggiuntivi sul livello categoria,
-  garantendo che il valore visualizzato sia identico a quello usato dal runtime.
+- **`resolved_value`**: è `script.fn_get_parameter_full` chiamata con gli stessi
+  ambiti (sessione e funzione `NULL`). Non una copia della cascata: il valore
+  mostrato è quello del runtime per costruzione.
 
 ### Retro-compatibilita'
 
@@ -89,7 +90,7 @@ Con `p_categoria_cliente_id = NULL` (default):
 
 - Il confronto `NULL = NULL` è sempre false: `po_cat` non matcha nessuna riga
 - `categoria_cliente_value` e `categoria_cliente_override_id` restano NULL
-- La subquery categoria nel resolver non matcha → cascata identica alla firma 3-arg
+- Il livello categoria della cascata non trova righe → cascata identica alla firma 3-arg
 
 I caller SQL che passano 3 argomenti continuano a funzionare senza modifiche.
 
@@ -117,3 +118,5 @@ I caller SQL che passano 3 argomenti continuano a funzionare senza modifiche.
 | 2026-04-03 | `20260403-16` | Creazione funzione 3-arg |
 | 2026-04-06 | `20260406-02` | Aggiunta colonna `emittente_override_id` |
 | 2026-05-19 | `20260519-01` | Aggiunto 4° param `p_categoria_cliente_id`; nuove colonne `categoria_cliente_value` e `categoria_cliente_override_id` (bigint); `resolved_value` ricalcolato con subquery coerenti con `fn_get_parameter_full` 7-arg |
+| 2026-10-07 | `20261007-71` | Livelli puri su tutti e quattro i JOIN (prima l'utente filtrava la sola sua dimensione, emittente e gruppo non tutte: una riga mista compariva come override personale con un id che la DELETE rifiuta, e duplicava la riga); `resolved_value` delegato a `fn_get_parameter_full` invece di ricopiarne la cascata. Firma invariata |
+| 2026-10-07 | `20261007-73` | Escono i filtri «altre dimensioni `NULL`» del `-71`: col vincolo `chk_parameter_overrides_un_ambito` (`-72`) ogni override è puro per costruzione |
