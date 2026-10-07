@@ -26,6 +26,14 @@ SELECT plan(4);
 -- ============================================================
 -- Fixture
 -- ============================================================
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   offerta stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra
+--   quelle della utility del cliente. Gli articoli si COSTRUISCONO (dbops.fn_pgtap_crea_articolo:
+--   MERCE senza tipologia, ammette UNA_TANTUM): prima erano i primi per id del database,
+--   che su dbdev sono PRODOTTI, e la utility del cliente preso dai dati (TEL) non li prevede.
+CREATE TEMP TABLE tmp_pfq_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-PFQ-1') AS a1;
+
 CREATE TEMP TABLE tmp_pf_ctx AS
 SELECT
     (SELECT ba.id FROM anagrafiche.billing_account ba
@@ -43,9 +51,7 @@ SELECT
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno='BOZZA') AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno='EMESSA') AS stato_emessa_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno='ACCETTATA') AS stato_accettata_id,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND a.is_composito = FALSE
-      ORDER BY a.id LIMIT 1) AS articolo_id;
+    (SELECT a1 FROM tmp_pfq_art) AS articolo_id;
 
 -- Offerta in BOZZA (date lontane per non collidere con altri pgTAP/overlap)
 INSERT INTO vendite.offerte_commerciali (
@@ -62,7 +68,7 @@ SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id,
 -- Eccezione FISSA con qta_operativa valorizzata (il trigger deriva quantita)
 INSERT INTO vendite.offerte_commerciali_eccezioni
     (offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, qta_operativa)
-SELECT o.id, ctx.articolo_id, 'AGGIUNTA', 'CANONE', 'FISSA', 100, 3
+SELECT o.id, ctx.articolo_id, 'AGGIUNTA', 'UNA_TANTUM', 'FISSA', 100, 3
   FROM vendite.offerte_commerciali o, tmp_pf_ctx ctx
  WHERE o.meta->>'pgtap_pushfissa'='1';
 

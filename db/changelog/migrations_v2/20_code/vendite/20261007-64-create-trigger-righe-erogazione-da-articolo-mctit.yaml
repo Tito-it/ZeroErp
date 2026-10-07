@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TRIGGER DELL'EROGAZIONE DALL'ARTICOLO, SULLE DUE TABELLE GEMELLE
+#   vendite.contratti_righe, vendite.offerte_commerciali_eccezioni
+#   Brief: brief-db-offerta-emissione-ed-erogazione §C.2.1 punto 3, §C.7 (giro B3)
+#
+# ── ⭐ L'ORDINE E' PORTANTE (i BEFORE ROW girano per nome) ─────────────
+#   contratti_righe:
+#     …_a10_default_erogazione_articolo_ins_upd eredita (-62); su UPDATE OF
+#                                                tipo_erogazione riallinea la fonte
+#     …_a10_default_fonte_qta_ins_upd            la matrice generica, se resta vuota
+#     …_a10_guard_erogazione_obbligatoria_ins_upd senza erogazione: rifiuta
+#     …_a10_guard_erogazione_perimetro_ins|_upd  fuori perimetro: rifiuta (-63)
+#   offerte_commerciali_eccezioni: stessa sequenza col prefisso trg_offerte_eccezioni_
+#   («de» < «gu», «guard_erogazione_o» < «guard_erogazione_p»). Il WHEN dell'_upd
+#   vede la riga dopo i BEFORE che lo precedono, quindi anche la fonte
+#   rimessa dalla matrice.
+#   ⚠️ UPDATE senza OF: la fonte la puo' cambiare default_fonte_qta
+#   (linee-guida-trigger, «cosa fa davvero UPDATE OF»), il cambio si legge nel WHEN.
+#   ⚠️ L'_upd scatta solo quando cambiano articolo, erogazione o fonte: le
+#   righe gia' scritte restano come sono (B-D6, Tid: sono dati di test).
+#
+# ── LA FK RESTA LA RETE ──────────────────────────────────────────────
+#   Il guard parla prima di fk_*_erogazione_fonte (20261007-54): ogni
+#   combinazione di tipologie e nature sta nel vocabolario, quindi una riga
+#   fuori vocabolario e' anche fuori perimetro, e la dice il guard col campo.
+#   Ritorno indietro: DROP dei sei trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261007-64-create-trigger-righe-erogazione-da-articolo-mctit.yaml
+
+  - changeSet:
+      id: 20261007-64-create-trigger-righe-erogazione-da-articolo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        I trigger dell'erogazione sulle righe di contratto e offerta: eredità dall'articolo su
+        INSERT, guard del perimetro su INSERT e su UPDATE di articolo, erogazione o fonte.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_righe_default_erogazione_da_articolo'
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_righe_guard_erogazione_perimetro'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_contratti_righe_a10_default_erogazione_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione ON vendite.contratti_righe
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                  EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo();
+
+              CREATE TRIGGER trg_contratti_righe_a10_guard_erogazione_perimetro_ins
+                  BEFORE INSERT ON vendite.contratti_righe
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                  EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('CONTRATTO', 'contratto_id');
+
+              CREATE TRIGGER trg_contratti_righe_a10_guard_erogazione_perimetro_upd
+                  BEFORE UPDATE ON vendite.contratti_righe
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                        AND (OLD.articolo_id           IS DISTINCT FROM NEW.articolo_id
+                          OR OLD.tipo_erogazione       IS DISTINCT FROM NEW.tipo_erogazione
+                          OR OLD.fonte_quantita_attesa IS DISTINCT FROM NEW.fonte_quantita_attesa))
+                  EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('CONTRATTO', 'contratto_id');
+
+              CREATE TRIGGER trg_offerte_eccezioni_a10_default_erogazione_articolo_ins_upd
+                  BEFORE INSERT OR UPDATE OF tipo_erogazione ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                  EXECUTE FUNCTION script.trgfn_righe_default_erogazione_da_articolo();
+
+              CREATE TRIGGER trg_offerte_eccezioni_a10_guard_erogazione_perimetro_ins
+                  BEFORE INSERT ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto)
+                  EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA', 'offerta_id');
+
+              CREATE TRIGGER trg_offerte_eccezioni_a10_guard_erogazione_perimetro_upd
+                  BEFORE UPDATE ON vendite.offerte_commerciali_eccezioni
+                  FOR EACH ROW
+                  WHEN (NEW.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                        AND (OLD.articolo_id           IS DISTINCT FROM NEW.articolo_id
+                          OR OLD.tipo_erogazione       IS DISTINCT FROM NEW.tipo_erogazione
+                          OR OLD.fonte_quantita_attesa IS DISTINCT FROM NEW.fonte_quantita_attesa))
+                  EXECUTE FUNCTION script.trgfn_righe_guard_erogazione_perimetro('OFFERTA', 'offerta_id');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_default_erogazione_articolo_ins_upd ON vendite.contratti_righe;
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_erogazione_perimetro_ins ON vendite.contratti_righe;
+              DROP TRIGGER IF EXISTS trg_contratti_righe_a10_guard_erogazione_perimetro_upd ON vendite.contratti_righe;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_default_erogazione_articolo_ins_upd ON vendite.offerte_commerciali_eccezioni;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_erogazione_perimetro_ins ON vendite.offerte_commerciali_eccezioni;
+              DROP TRIGGER IF EXISTS trg_offerte_eccezioni_a10_guard_erogazione_perimetro_upd ON vendite.offerte_commerciali_eccezioni;

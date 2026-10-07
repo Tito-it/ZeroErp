@@ -70,8 +70,14 @@ SELECT
 -- 5 articoli non-composite attivi (per tests comportamento 8-13)
 CREATE TEMP TABLE tmp_s22_arts AS
 SELECT id, row_number() OVER (ORDER BY id) AS rn
-  FROM catalogo.articoli
- WHERE attivo = TRUE AND is_composito = FALSE
+  FROM catalogo.articoli a
+ WHERE a.attivo = TRUE AND a.is_composito = FALSE
+   -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): l'articolo
+   --   sta nel PERIMETRO delle righe: senza tipologia (decide la natura, la utility del
+   --   cliente non conta) e con UNA_TANTUM/FISSA ammessa, chiesto alla sede unica.
+   AND a.listino_tipologia_id IS NULL
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
  ORDER BY id
  LIMIT 5;
 
@@ -95,6 +101,10 @@ SELECT
           FROM catalogo.articoli a
          WHERE a.attivo = TRUE
            AND a.is_composito = FALSE
+           -- rev 2026-10-07 (giro B3): nel perimetro, come tmp_s22_arts
+           AND a.listino_tipologia_id IS NULL
+           AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                        WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
            AND NOT EXISTS (
                SELECT 1 FROM vendite.listini_righe lr2
                 WHERE lr2.listino_versione_id = lv.id
@@ -148,7 +158,7 @@ SELECT 'PGTAP_S22_C',
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
        tipo_erogazione)
-SELECT ca.id, a.id, 'OVERRIDE', 100.00, 1.00, 'CANONE'
+SELECT ca.id, a.id, 'OVERRIDE', 100.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti ca, tmp_s22_arts a
  WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 3;
 
@@ -157,7 +167,7 @@ SELECT ca.id, a.id, 'OVERRIDE', 100.00, 1.00, 'CANONE'
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
        tipo_erogazione)
-SELECT ca.id, a.id, 'OVERRIDE', 200.00, 1.00, 'CANONE'
+SELECT ca.id, a.id, 'OVERRIDE', 200.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti ca, tmp_s22_arts a
  WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 4;
 
@@ -282,7 +292,7 @@ SELECT throws_ok(
     --   senza, il guard nuovo (P0001) parlerebbe prima del CHECK prezzo (23514) che qui si prova.
     $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
              tipo_erogazione)
-      SELECT ca.id, a.id, 'OVERRIDE', NULL, 1.00, 'CANONE'
+      SELECT ca.id, a.id, 'OVERRIDE', NULL, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 2$$,
     '23514',
@@ -297,7 +307,7 @@ SELECT lives_ok(
     -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
              tipo_erogazione)
-      SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00, 'CANONE'
+      SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 5$$,
     '11) INSERT AGGIUNTA + prezzo NOT NULL su contratto senza listino -> ok (guard non scatta)'
@@ -312,7 +322,7 @@ SELECT throws_ok(
     --   senza, il guard nuovo (P0001) parlerebbe prima della UNIQUE (23505) che qui si prova.
     $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
              tipo_erogazione)
-      SELECT ca.id, a.id, 'OVERRIDE', 150.00, 1.00, 'CANONE'
+      SELECT ca.id, a.id, 'OVERRIDE', 150.00, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 3$$,
     '23505',
@@ -347,7 +357,7 @@ SELECT CASE
         --   senza, il P0001 atteso verrebbe dal guard nuovo e non da E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO.
         $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
                  tipo_erogazione)
-          SELECT ca.id, lv.art_in_listino_id, 'AGGIUNTA', 99.00, 1.00, 'CANONE'
+          SELECT ca.id, lv.art_in_listino_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
             FROM vendite.contratti ca, tmp_s22_lv lv
            WHERE ca.numero = 'PGTAP_S22_B'$$,
         'P0001',
@@ -368,7 +378,7 @@ SELECT CASE
         -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
                  tipo_erogazione)
-          SELECT ca.id, lv.art_fuori_listino_id, 'AGGIUNTA', 99.00, 1.00, 'CANONE'
+          SELECT ca.id, lv.art_fuori_listino_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
             FROM vendite.contratti ca, tmp_s22_lv lv
            WHERE ca.numero = 'PGTAP_S22_B'$$,
         '15) AGGIUNTA art FUORI listino (contratto DRAFT) -> ok (guard non scatta)'
@@ -388,7 +398,7 @@ SELECT CASE
         --   senza, il P0001 atteso verrebbe dal guard nuovo e non da E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO.
         $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
                  tipo_erogazione)
-          SELECT ca.id, lv.art_in_listino_id, 'AGGIUNTA', 99.00, 1.00, 'CANONE'
+          SELECT ca.id, lv.art_in_listino_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
             FROM vendite.contratti ca, tmp_s22_lv lv
            WHERE ca.numero = 'PGTAP_S22_C'$$,
         'P0001',
@@ -409,7 +419,7 @@ SELECT CASE
         -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
                  tipo_erogazione)
-          SELECT ca.id, lv.art_fuori_listino_id, 'AGGIUNTA', 99.00, 1.00, 'CANONE'
+          SELECT ca.id, lv.art_fuori_listino_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
             FROM vendite.contratti ca, tmp_s22_lv lv
            WHERE ca.numero = 'PGTAP_S22_C'$$,
         '17) AGGIUNTA art FUORI versione fissata (contratto ATTIVO) -> ok (guard Branch 3 non scatta)'

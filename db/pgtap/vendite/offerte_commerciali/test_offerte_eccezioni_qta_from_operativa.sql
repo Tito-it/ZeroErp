@@ -23,7 +23,7 @@
 --   Comportamento:
 --   8)  FISSA qta_operativa=5 -> quantita=5 (conversione, factor 1)
 --   9)  default fonte: CANONE senza fonte -> trigger imposta FISSA
---   10) non-FISSA (CONSUMO+LETTURE) qta_operativa NULL -> no raise (fonte governa)
+--   10) non-FISSA (CONSUMO+MANUALE) qta_operativa NULL -> no raise (fonte governa)
 --   11) FISSA qta_operativa NULL -> E_QTA_MISSING (P0001)
 --   12) factor!=1 (art ...0101/uom 2): qta_operativa=2, factor NULL -> quantita=12, snapshot=6
 --   13) qta_operativa=0 -> check_violation 23514
@@ -92,28 +92,68 @@ SELECT ok(
 -- ============================================================
 -- Fixture: offerta BOZZA + articoli distinti (uq one_aggiunta_per_articolo)
 -- ============================================================
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe
+--   stanno nel PERIMETRO dell'articolo, e la sua tipologia dev'essere fra quelle della
+--   utility del cliente. L'articolo f6 (UdM operativa a fattore 6, il cuore del test) si
+--   sceglie PRIMA, fra quelli che ammettono UNA_TANTUM/FISSA, e il billing account e' il
+--   primo la cui utility ne ammette la tipologia. Gli altri articoli sono senza tipologia
+--   e ammettono UNA_TANTUM/FISSA. L'erogazione, CANONE per caso, ora e' UNA_TANTUM (stessa
+--   fonte FISSA); il caso 10 passa da CONSUMO/LETTURE a CONSUMO/MANUALE, sempre «fonte non
+--   FISSA», che e' cio' che il caso prova.
+CREATE TEMP TABLE tmp_oe_f6 AS
+SELECT (SELECT m.articolo_id FROM catalogo.articoli_uom_operativa m
+       JOIN catalogo.articoli a ON a.id=m.articolo_id
+      WHERE m.uom_id=2 AND m.factor_to_base=6 AND m.attivo IS TRUE AND a.attivo IS TRUE
+        AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+        AND (m.valido_al  IS NULL OR m.valido_al  >= CURRENT_DATE)
+        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                     WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
+      LIMIT 1) AS articolo_f6_id;
+
 CREATE TEMP TABLE tmp_oe_ctx AS
 SELECT
     (SELECT ba.id FROM anagrafiche.billing_account ba
-      WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      WHERE TRUE AND ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+        -- rev 2026-10-07 (giro B3): la utility ammette la tipologia dell'articolo f6
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id = (SELECT articolo_f6_id FROM tmp_oe_f6)
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS billing_account_id,
     (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-      WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      WHERE TRUE AND ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+        -- rev 2026-10-07 (giro B3): la utility ammette la tipologia dell'articolo f6
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id = (SELECT articolo_f6_id FROM tmp_oe_f6)
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
     (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-      WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      WHERE TRUE AND ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+        -- rev 2026-10-07 (giro B3): la utility ammette la tipologia dell'articolo f6
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id = (SELECT articolo_f6_id FROM tmp_oe_f6)
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS utility_id,
     (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
       ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
     (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
     (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato='ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno='BOZZA') AS stato_bozza_id,
-    (SELECT m.articolo_id FROM catalogo.articoli_uom_operativa m
-       JOIN catalogo.articoli a ON a.id=m.articolo_id
-      WHERE m.uom_id=2 AND m.factor_to_base=6 AND m.attivo IS TRUE AND a.attivo IS TRUE
-        AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-        AND (m.valido_al  IS NULL OR m.valido_al  >= CURRENT_DATE)
-      LIMIT 1) AS articolo_f6_id;
+    (SELECT articolo_f6_id FROM tmp_oe_f6) AS articolo_f6_id;
 
 -- 4 articoli distinti factor=1 (esclude ...0101) per gli INSERT AGGIUNTA
 CREATE TEMP TABLE tmp_oe_arts AS
@@ -123,6 +163,13 @@ SELECT a.id AS articolo_id, ROW_NUMBER() OVER (ORDER BY a.id) AS seq
    AND a.id <> '00000000-0000-0000-0000-000000000101'::uuid
    AND NOT EXISTS (SELECT 1 FROM catalogo.articoli_uom_operativa m
                     WHERE m.articolo_id=a.id AND m.factor_to_base<>1)
+   -- rev 2026-10-07 (giro B3): senza tipologia, e UNA_TANTUM/FISSA e CONSUMO/MANUALE
+   --   nel perimetro (il caso 10 usa il seq 3 a consumo)
+   AND a.listino_tipologia_id IS NULL
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'CONSUMO' AND e.fonte_quantita_attesa = 'MANUALE')
  ORDER BY a.id LIMIT 4;
 
 INSERT INTO vendite.offerte_commerciali (
@@ -149,7 +196,7 @@ CREATE TEMP TABLE tmp_oe_res (label text, quantita numeric, fonte text, factor_t
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali_eccezioni
         (offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, qta_operativa)
-    SELECT o.id, na.articolo_id, 'AGGIUNTA', 'CANONE', 'FISSA', 100, 5
+    SELECT o.id, na.articolo_id, 'AGGIUNTA', 'UNA_TANTUM', 'FISSA', 100, 5
       FROM vendite.offerte_commerciali o, tmp_oe_arts na
      WHERE o.meta->>'pgtap_oe'='qta' AND na.seq=1
     RETURNING quantita, fonte_quantita_attesa, factor_to_base
@@ -160,7 +207,7 @@ INSERT INTO tmp_oe_res SELECT 'fissa5', quantita, fonte_quantita_attesa, factor_
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali_eccezioni
         (offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, prezzo_unitario, qta_operativa)
-    SELECT o.id, na.articolo_id, 'AGGIUNTA', 'CANONE', 100, 1
+    SELECT o.id, na.articolo_id, 'AGGIUNTA', 'UNA_TANTUM', 100, 1
       FROM vendite.offerte_commerciali o, tmp_oe_arts na
      WHERE o.meta->>'pgtap_oe'='qta' AND na.seq=2
     RETURNING quantita, fonte_quantita_attesa, factor_to_base
@@ -171,7 +218,7 @@ INSERT INTO tmp_oe_res SELECT 'deffonte', quantita, fonte_quantita_attesa, facto
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali_eccezioni
         (offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, qta_operativa, uom_operativa_id)
-    SELECT o.id, ctx.articolo_f6_id, 'AGGIUNTA', 'CANONE', 'FISSA', 100, 2, 2
+    SELECT o.id, ctx.articolo_f6_id, 'AGGIUNTA', 'UNA_TANTUM', 'FISSA', 100, 2, 2
       FROM vendite.offerte_commerciali o, tmp_oe_ctx ctx
      WHERE o.meta->>'pgtap_oe'='qta' AND ctx.articolo_f6_id IS NOT NULL
     RETURNING quantita, fonte_quantita_attesa, factor_to_base
@@ -197,17 +244,17 @@ SELECT CASE
 END;
 
 -- ============================================================
--- 10) non-FISSA (CONSUMO+LETTURE) qta_operativa NULL -> no raise (art seq=3)
+-- 10) non-FISSA (CONSUMO+MANUALE) qta_operativa NULL -> no raise (art seq=3)
 -- ============================================================
 SELECT lives_ok(
     format(
         $$INSERT INTO vendite.offerte_commerciali_eccezioni
             (offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario)
-          VALUES (%s, %L::uuid, 'AGGIUNTA', 'CONSUMO', 'LETTURE', 50)$$,
+          VALUES (%s, %L::uuid, 'AGGIUNTA', 'CONSUMO', 'MANUALE', 50)$$,
         (SELECT id FROM vendite.offerte_commerciali WHERE meta->>'pgtap_oe'='qta'),
         (SELECT articolo_id FROM tmp_oe_arts WHERE seq=3)
     ),
-    '10) CONSUMO+LETTURE, qta_operativa NULL -> no raise (fonte governa la nullabilita'')');
+    '10) CONSUMO+MANUALE, qta_operativa NULL -> no raise (fonte governa la nullabilita'')');
 
 -- ============================================================
 -- 11) FISSA qta_operativa NULL -> E_QTA_MISSING (art seq=4)
@@ -216,7 +263,7 @@ SELECT throws_ok(
     format(
         $$INSERT INTO vendite.offerte_commerciali_eccezioni
             (offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario)
-          VALUES (%s, %L::uuid, 'AGGIUNTA', 'CANONE', 'FISSA', 100)$$,
+          VALUES (%s, %L::uuid, 'AGGIUNTA', 'UNA_TANTUM', 'FISSA', 100)$$,
         (SELECT id FROM vendite.offerte_commerciali WHERE meta->>'pgtap_oe'='qta'),
         (SELECT articolo_id FROM tmp_oe_arts WHERE seq=4)
     ),
@@ -230,7 +277,7 @@ SELECT throws_ok(
     format(
         $$INSERT INTO vendite.offerte_commerciali_eccezioni
             (offerta_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, qta_operativa)
-          VALUES (%s, %L::uuid, 'OVERRIDE', 'CANONE', 'FISSA', 100, 0)$$,
+          VALUES (%s, %L::uuid, 'OVERRIDE', 'UNA_TANTUM', 'FISSA', 100, 0)$$,
         (SELECT id FROM vendite.offerte_commerciali WHERE meta->>'pgtap_oe'='qta'),
         (SELECT articolo_id FROM tmp_oe_arts WHERE seq=1)
     ),

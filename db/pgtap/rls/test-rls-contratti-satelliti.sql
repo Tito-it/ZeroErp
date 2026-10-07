@@ -51,6 +51,12 @@
 --   *Non serve una riga per chiedere a una funzione se dice il vero.*
 -- ------------------------------------------------------------
 
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la riga
+--   deve stare nel PERIMETRO dell'articolo, o il guard BEFORE ROW parla (P0001) prima della
+--   RLS che qui si prova. L'articolo e' il primo SENZA tipologia (decide la natura, e la
+--   utility del cliente non conta) che ammette UNA_TANTUM/FISSA, chiesto alla sede unica
+--   vendite.fn_articolo_erogazioni; l'erogazione era CANONE per caso, ora UNA_TANTUM.
+
 BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -101,9 +107,14 @@ WITH r AS (
         (contratto_id, articolo_id, fonte_quantita_attesa, tipo_eccezione,
          prezzo_unitario, qta_operativa, tipo_erogazione)
     SELECT k.contratto_id,
-           (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
+           (SELECT a.id FROM catalogo.articoli a
+             WHERE a.listino_tipologia_id IS NULL
+               AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                            WHERE e.tipo_erogazione = 'UNA_TANTUM'
+                              AND e.fonte_quantita_attesa = 'FISSA')
+             ORDER BY a.id LIMIT 1),
            'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto,
-           100.00, 1, 'CANONE'
+           100.00, 1, 'UNA_TANTUM'
       FROM _contratti k
     RETURNING id, contratto_id
 )
@@ -212,8 +223,13 @@ BEGIN
             (contratto_id, articolo_id, fonte_quantita_attesa, tipo_eccezione,
              prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES (v_b.contratto_id,
-                (SELECT a.id FROM catalogo.articoli a ORDER BY a.id LIMIT 1),
-                'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 1.00, 1, 'CANONE');
+                (SELECT a.id FROM catalogo.articoli a
+             WHERE a.listino_tipologia_id IS NULL
+               AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                            WHERE e.tipo_erogazione = 'UNA_TANTUM'
+                              AND e.fonte_quantita_attesa = 'FISSA')
+             ORDER BY a.id LIMIT 1),
+                'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 1.00, 1, 'UNA_TANTUM');
         PERFORM set_config('pgtap.scrittura', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation THEN
         PERFORM set_config('pgtap.scrittura', 'RIFIUTATA', true);

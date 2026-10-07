@@ -15,12 +15,19 @@
 --   contratto in BOZZA:  A -> OVERRIDE, C -> ESCLUSIONE, E -> AGGIUNTA
 --   offerta in BOZZA:    gli stessi tre casi
 --
+-- ⚠️ REV 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3, decisione
+--   B-R2 di Tid): una riga che NON indica l'erogazione la EREDITA dall'articolo
+--   (vendite.fn_articolo_erogazioni), su INSERT. Il guard d'obbligo resta, e morde
+--   l'UPDATE che la svuota: e' li' che ora si misurano frase e canali. I test 5, 6, 12,
+--   13 (prima: «senza erogazione rifiutato») diventano «la eredita»; 8 e 15 verificano
+--   cosa eredita; 10-11 e 17-18 leggono i canali dell'UPDATE.
+--
 -- ⛔ COSA PRESIDIA:
 --   · la regola e' scritta nella struttura delle due tabelle (CHECK), e il
 --     guard e' montato sulle due (R1, R2);
---   · OVERRIDE e AGGIUNTA senza erogazione: rifiutati col CODICE e col CAMPO,
+--   · OVERRIDE e AGGIUNTA senza erogazione: la ereditano dall'articolo (B-R2);
+--   · un UPDATE che toglie l'erogazione e' rifiutato col CODICE e col CAMPO,
 --     non col 23514 del CHECK (il guard parla prima);
---   · un UPDATE che toglie l'erogazione e' rifiutato allo stesso modo;
 --   · l'ESCLUSIONE senza erogazione passa, sulle due tabelle;
 --   · il lister del push non propone l'esclusione, e legge l'erogazione della
 --     riga senza ripiego su CANONE (R4).
@@ -30,23 +37,23 @@
 --    2) CHECK sull'offerta: lo stesso
 --    3) guard montato sul contratto: _a10_, BEFORE, per riga, INSERT + UPDATE OF
 --    4) guard montato sull'offerta: lo stesso
---    5) contratto: OVERRIDE senza erogazione rifiutato (frase)
---    6) contratto: AGGIUNTA senza erogazione rifiutata (frase)
+--    5) contratto: OVERRIDE senza erogazione accettato: la eredita
+--    6) contratto: AGGIUNTA senza erogazione accettata: la eredita
 --    7) contratto: ESCLUSIONE senza erogazione accettata
---    8) contratto: OVERRIDE con erogazione accettato (controllo del 5)
+--    8) contratto: l'OVERRIDE ha ereditato erogazione e fonte di default dell'articolo
 --    9) contratto: togliere l'erogazione a un OVERRIDE e' rifiutato
---   10) contratto: canale CONSTRAINT = il codice
+--   10) contratto: canale CONSTRAINT = il codice (UPDATE che svuota)
 --   11) contratto: canale COLUMN = tipo_erogazione
---   12) offerta: OVERRIDE senza erogazione rifiutato (frase)
---   13) offerta: AGGIUNTA senza erogazione rifiutata (frase)
+--   12) offerta: OVERRIDE senza erogazione accettato: la eredita
+--   13) offerta: AGGIUNTA senza erogazione accettata: la eredita
 --   14) offerta: ESCLUSIONE senza erogazione accettata
---   15) offerta: AGGIUNTA con erogazione accettata (controllo del 13)
+--   15) offerta: l'AGGIUNTA ha ereditato erogazione e fonte di default dell'articolo
 --   16) offerta: togliere l'erogazione a un'AGGIUNTA e' rifiutato
 --   17) offerta: canale CONSTRAINT = il codice
 --   18) offerta: canale COLUMN = tipo_erogazione
 --   19) R4: il contratto attivato si lista con l'OVERRIDE
 --   20) R4: l'ESCLUSIONE non si lista (non si fattura)
---   21) R4: tipo_consumo e' l'erogazione della riga (UNA_TANTUM), senza ripiego
+--   21) R4: tipo_consumo e' l'erogazione della riga (ereditata), senza ripiego su CANONE
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -150,7 +157,7 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
       ELSE
       $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione, prezzo_unitario,
                tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
-        SELECT %s, a.id, %L::vendite.tipo_eccezione_contratto, %s, %L, 'FISSA', 1, 1, a.uom_id
+        SELECT %s, a.id, %L::vendite.tipo_eccezione_contratto, %s, %L, NULL, 1, 1, a.uom_id
           FROM catalogo.articoli a WHERE a.id = %L$$
       END,
       CASE p_tabella WHEN 'contratto' THEN 'contratti_righe' ELSE 'offerte_commerciali_eccezioni' END,
@@ -234,23 +241,25 @@ SELECT ok(
 -- ============================================================
 -- ⚠️ Sul TESTO del messaggio a catalogo, non su «un errore qualsiasi»: il 23514
 --    del CHECK (o un altro guard) non deve passare per questo.
-SELECT throws_like(
+SELECT lives_ok(
     pg_temp.ins_riga('contratto', 'A', 'OVERRIDE', NULL),
-    '%Manca il tipo di erogazione%',
-    '5) contratto: OVERRIDE senza erogazione rifiutato');
+    '5) contratto: OVERRIDE senza erogazione accettato: la eredita dall''articolo');
 
-SELECT throws_like(
+SELECT lives_ok(
     pg_temp.ins_riga('contratto', 'E', 'AGGIUNTA', NULL),
-    '%Manca il tipo di erogazione%',
-    '6) contratto: AGGIUNTA senza erogazione rifiutata');
+    '6) contratto: AGGIUNTA senza erogazione accettata: la eredita dall''articolo');
 
 SELECT lives_ok(
     pg_temp.ins_riga('contratto', 'C', 'ESCLUSIONE', NULL),
     '7) contratto: ESCLUSIONE senza erogazione accettata (non si fattura)');
 
-SELECT lives_ok(
-    pg_temp.ins_riga('contratto', 'A', 'OVERRIDE', 'UNA_TANTUM'),
-    '8) contratto: OVERRIDE con erogazione accettato (controllo del 5)');
+SELECT is(
+    (SELECT r.tipo_erogazione::text || '/' || r.fonte_quantita_attesa::text
+       FROM vendite.contratti_righe r
+      WHERE r.contratto_id = (SELECT id FROM tmp_ero_contratto) AND r.articolo_id = pg_temp.art('A')),
+    (SELECT e.tipo_erogazione::text || '/' || e.fonte_quantita_attesa::text
+       FROM vendite.fn_articolo_erogazioni(pg_temp.art('A')) e WHERE e.e_default),
+    '8) contratto: l''OVERRIDE ha ereditato erogazione e fonte di default dell''articolo');
 
 SELECT throws_like(
     format($$UPDATE vendite.contratti_righe SET tipo_erogazione = NULL
@@ -260,7 +269,10 @@ SELECT throws_like(
     '9) contratto: togliere l''erogazione a un OVERRIDE e'' rifiutato');
 
 CREATE TEMP TABLE tmp_ero_canali_c AS
-SELECT pg_temp.canali(pg_temp.ins_riga('contratto', 'E', 'AGGIUNTA', NULL)) AS canali;
+SELECT pg_temp.canali(format(
+    $$UPDATE vendite.contratti_righe SET tipo_erogazione = NULL
+       WHERE contratto_id = %s AND articolo_id = %L$$,
+    (SELECT id FROM tmp_ero_contratto), pg_temp.art('E'))) AS canali;
 
 SELECT is(
     split_part((SELECT canali FROM tmp_ero_canali_c), ' / ', 1),
@@ -275,23 +287,25 @@ SELECT is(
 -- ============================================================
 -- 12..18 — offerta
 -- ============================================================
-SELECT throws_like(
+SELECT lives_ok(
     pg_temp.ins_riga('offerta', 'A', 'OVERRIDE', NULL),
-    '%Manca il tipo di erogazione%',
-    '12) offerta: OVERRIDE senza erogazione rifiutato');
+    '12) offerta: OVERRIDE senza erogazione accettato: la eredita dall''articolo');
 
-SELECT throws_like(
+SELECT lives_ok(
     pg_temp.ins_riga('offerta', 'E', 'AGGIUNTA', NULL),
-    '%Manca il tipo di erogazione%',
-    '13) offerta: AGGIUNTA senza erogazione rifiutata');
+    '13) offerta: AGGIUNTA senza erogazione accettata: la eredita dall''articolo');
 
 SELECT lives_ok(
     pg_temp.ins_riga('offerta', 'C', 'ESCLUSIONE', NULL),
     '14) offerta: ESCLUSIONE senza erogazione accettata');
 
-SELECT lives_ok(
-    pg_temp.ins_riga('offerta', 'E', 'AGGIUNTA', 'CANONE'),
-    '15) offerta: AGGIUNTA con erogazione accettata (controllo del 13)');
+SELECT is(
+    (SELECT r.tipo_erogazione::text || '/' || r.fonte_quantita_attesa::text
+       FROM vendite.offerte_commerciali_eccezioni r
+      WHERE r.offerta_id = (SELECT id FROM tmp_ero_offerta) AND r.articolo_id = pg_temp.art('E')),
+    (SELECT e.tipo_erogazione::text || '/' || e.fonte_quantita_attesa::text
+       FROM vendite.fn_articolo_erogazioni(pg_temp.art('E')) e WHERE e.e_default),
+    '15) offerta: l''AGGIUNTA ha ereditato erogazione e fonte di default dell''articolo');
 
 SELECT throws_like(
     format($$UPDATE vendite.offerte_commerciali_eccezioni SET tipo_erogazione = NULL
@@ -301,7 +315,10 @@ SELECT throws_like(
     '16) offerta: togliere l''erogazione a un''AGGIUNTA e'' rifiutato');
 
 CREATE TEMP TABLE tmp_ero_canali_o AS
-SELECT pg_temp.canali(pg_temp.ins_riga('offerta', 'A', 'OVERRIDE', NULL)) AS canali;
+SELECT pg_temp.canali(format(
+    $$UPDATE vendite.offerte_commerciali_eccezioni SET tipo_erogazione = NULL
+       WHERE offerta_id = %s AND articolo_id = %L$$,
+    (SELECT id FROM tmp_ero_offerta), pg_temp.art('A'))) AS canali;
 
 SELECT is(
     split_part((SELECT canali FROM tmp_ero_canali_o), ' / ', 1),
@@ -319,8 +336,9 @@ SELECT is(
 -- Sul contratto restano A (OVERRIDE, UNA_TANTUM, test 8) e C (ESCLUSIONE, test
 -- 7). Si attiva — la strada di un contratto vero: righe in bozza, poi ATTIVO —
 -- e si chiede il push del solo contratto della fixture.
--- ⭐ UNA_TANTUM e non CANONE: CANONE era il vecchio ripiego del lister, e il
---   test 21 passerebbe per coincidenza.
+-- ⭐ L'erogazione di A e' quella EREDITATA dalla tipologia del listino (rev
+--   2026-10-07): non CANONE, che era il vecchio ripiego del lister — il test 21
+--   passerebbe per coincidenza.
 UPDATE vendite.contratti
    SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
  WHERE id = (SELECT id FROM tmp_ero_contratto);
@@ -340,9 +358,14 @@ SELECT is(
     '20) R4: l''ESCLUSIONE non si lista: non si fattura');
 
 SELECT is(
-    (SELECT tipo_consumo::text FROM tmp_ero_push WHERE articolo_id = pg_temp.art('A')),
-    'UNA_TANTUM',
-    '21) R4: tipo_consumo e'' l''erogazione della riga, senza ripiego su CANONE');
+    (SELECT p.tipo_consumo::text
+       FROM tmp_ero_push p
+      WHERE p.articolo_id = pg_temp.art('A')
+        AND p.tipo_consumo IS DISTINCT FROM 'CANONE'),
+    (SELECT r.tipo_erogazione::text
+       FROM vendite.contratti_righe r
+      WHERE r.contratto_id = (SELECT id FROM tmp_ero_contratto) AND r.articolo_id = pg_temp.art('A')),
+    '21) R4: tipo_consumo e'' l''erogazione della riga (ereditata, non CANONE), senza ripiego');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -14,21 +14,21 @@
 --   4) Setup fixture OK (contratto DRAFT + almeno 1 articolo trovato)
 --
 --   Comportamento della FK — 7 combinazioni fuori vocabolario (skip se no fixture):
---   5)  CANONE     + TIMESHEET  → raises 23503
---   6)  CANONE     + LETTURE    → raises 23503
---   7)  UNA_TANTUM + TIMESHEET  → raises 23503
---   8)  UNA_TANTUM + LETTURE    → raises 23503
---   9)  ORARIO     + LETTURE    → raises 23503
---   10) CONSUMO    + FISSA      → raises 23503
---   11) CONSUMO    + TIMESHEET  → raises 23503
+--   5)  CANONE     + TIMESHEET  → raises P0001 (perimetro)
+--   6)  CANONE     + LETTURE    → raises P0001 (perimetro)
+--   7)  UNA_TANTUM + TIMESHEET  → raises P0001 (perimetro)
+--   8)  UNA_TANTUM + LETTURE    → raises P0001 (perimetro)
+--   9)  ORARIO     + LETTURE    → raises P0001 (perimetro)
+--   10) CONSUMO    + FISSA      → raises P0001 (perimetro)
+--   11) CONSUMO    + TIMESHEET  → raises P0001 (perimetro)
 --
 --   Comportamento normalize trigger — INSERT (skip se < 4 articoli):
---   12) INSERT CANONE  + fonte NULL → trigger imposta FISSA
---   13) INSERT CONSUMO + fonte NULL → trigger imposta LETTURE
---   14) INSERT ORARIO  + fonte NULL → trigger imposta MANUALE
+--   12) INSERT CANONE  + fonte NULL → la fonte dell'articolo (FISSA)
+--   13) INSERT CONSUMO + fonte NULL → la fonte dell'articolo (LETTURE)
+--   14) INSERT ORARIO → rifiutato: nessuno lo ammette (rev 2026-10-07)
 --
 --   Comportamento normalize trigger — UPDATE tipo (skip se < 4 articoli):
---   15) UPDATE tipo CANONE→CONSUMO, fonte=FISSA → trigger resetta fonte a LETTURE
+--   15) UPDATE tipo CANONE→CONSUMO, fonte=FISSA → la fonte dell'articolo (MANUALE)
 --
 --   TG_ARGV[3] fonte_nullability_col — trgfn_qta_from_operativa (migration 20260519-08/09):
 --   16) INSERT AGGIUNTA CONSUMO+LETTURE, qta_operativa NULL → no raise (fonte governa)
@@ -40,6 +40,11 @@
 --   ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.7, giro B1): la
 --   matrice non e' piu' un CHECK ma config.erogazioni_fonti, e la riga vi si lega con
 --   la FK fk_contratti_righe_erogazione_fonte → errore atteso 23503 (era 23514).
+--   ⚠️ Rev 2026-10-07 (sera, giro B3): prima della FK parla il guard del PERIMETRO
+--   dell'articolo (script.trgfn_righe_guard_erogazione_perimetro): ogni combinazione di
+--   tipologie e nature sta nel vocabolario, quindi una fuori vocabolario e' anche fuori
+--   perimetro → P0001 col codice E_RIGA_EROGAZIONE_FUORI_PERIMETRO. La FK resta la rete
+--   (presenza: test 2), non piu' raggiungibile da una scrittura normale.
 --
 -- Nota sui test normalize (12-15):
 --   I WITH-DML devono stare al top-level (non dentro CASE — vincolo PG).
@@ -68,17 +73,53 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ============================================================
 -- Setup fixture
 -- ============================================================
+-- ⭐ Rev 2026-10-07: il mondo si COSTRUISCE, non si cerca. Prima il file prendeva
+--   il primo billing account e i primi articoli attivi del database: su
+--   zeroerp_ci ricostruito da zero (nessun billing account) i casi 5-17 finivano
+--   nello skip, e su dbdev l'articolo dei casi 5-11 era lo stesso del caso 12
+--   (vedi sotto). Ora il cliente con il suo billing account viene da
+--   dbops.fn_pgtap_crea_cliente_ba, e i sette articoli da
+--   dbops.fn_pgtap_crea_articolo, uno per ruolo:
+--     n = 0      casi 5-11 (le combinazioni fuori vocabolario)
+--     n = 1..4   casi 12-15 (normalize)
+--     n = 5..6   casi 16-17 (qta_operativa NULL)
+--   ⛔ Un articolo per ruolo, e nessuno in comune: uq_contrighe_one_aggiunta_per_articolo
+--   vieta due AGGIUNTA sullo stesso (contratto, articolo). Prima l'articolo dei
+--   casi 5-11 era anche quello del caso 12, quindi aveva gia' un'AGGIUNTA. Finche'
+--   la matrice era un CHECK, il CHECK scattava prima dell'indice univoco (23514);
+--   dal 20261007-54 e' una FK, che scatta DOPO: vinceva l'unique (23505) e la FK
+--   non veniva mai esercitata.
+
+CREATE TEMP TABLE tmp_fonte_arts AS
+SELECT g AS n, dbops.fn_pgtap_crea_articolo('PGTAP-FONTE-EROG-' || g) AS articolo_id
+  FROM generate_series(0, 6) g;
+
+-- ⚠️ Rev 2026-10-07 (sera, brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la
+--   riga sta nel PERIMETRO dell'articolo (vendite.fn_articolo_erogazioni). L'articolo del
+--   builder e' MERCE senza tipologia, che ammette solo UNA_TANTUM: a ogni ruolo si da' la
+--   classificazione che ammette la combinazione del suo caso. Il cliente e' ENE (prima
+--   utility), che ammette la tipologia CONSUMO.
+--     n = 0     MERCE: le sette combinazioni fuori vocabolario sono anche fuori perimetro
+--     n = 1, 4, 6  natura SERVIZIO_RICORRENTE: CANONE/FISSA (e CONSUMO/MANUALE)
+--     n = 2, 5  tipologia CONSUMO: CONSUMO/LETTURE
+--     n = 3     MERCE: ORARIO non lo ammette nessuno (non esposto, brief §B.4)
+UPDATE catalogo.articoli
+   SET natura_vendita_id = (SELECT id FROM config.nature_vendita
+                             WHERE codice_interno = 'SERVIZIO_RICORRENTE')
+ WHERE id IN (SELECT articolo_id FROM tmp_fonte_arts WHERE n IN (1, 4, 6));
+
+UPDATE catalogo.articoli
+   SET listino_tipologia_id = (SELECT id FROM config.listini_tipologie WHERE codice = 'CONSUMO')
+ WHERE id IN (SELECT articolo_id FROM tmp_fonte_arts WHERE n IN (2, 5));
 
 CREATE TEMP TABLE tmp_fonte_ctx AS
 SELECT
-    ba.id                   AS ba_id,
+    ba.billing_account_id   AS ba_id,
     ba.istanza_utility_id,
     ba.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT' LIMIT 1) AS id_draft,
-    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo = TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS articolo_id
-FROM anagrafiche.billing_account ba
-ORDER BY ba.id
-LIMIT 1;
+    (SELECT articolo_id FROM tmp_fonte_arts WHERE n = 0) AS articolo_id
+FROM dbops.fn_pgtap_crea_cliente_ba('pgTAP fonte erogazione') ba;
 
 -- Contratto DRAFT senza listino (date 2075 per non collidere con altri pgTAP)
 INSERT INTO vendite.contratti (
@@ -89,22 +130,16 @@ SELECT 'PGTAP_FONTE_CNT', c.ba_id, c.istanza_utility_id, c.utility_id,
 FROM tmp_fonte_ctx c
 WHERE c.ba_id IS NOT NULL AND c.id_draft IS NOT NULL;
 
--- 4 articoli distinti per i test normalize (12-15): evita uq_contrighe_one_aggiunta_per_articolo
--- (lo stesso (contratto, articolo) non può avere due AGGIUNTA).
+-- 4 articoli distinti per i test normalize (12-15).
 CREATE TEMP TABLE tmp_norm_arts AS
-SELECT a.id AS articolo_id, ROW_NUMBER() OVER (ORDER BY a.id) AS seq
-  FROM catalogo.articoli a
- WHERE a.attivo = TRUE AND a.is_composito = FALSE
- ORDER BY a.id
- LIMIT 4;
+SELECT articolo_id, n AS seq FROM tmp_fonte_arts WHERE n BETWEEN 1 AND 4;
 
 -- ============================================================
 -- Pre-esecuzione test normalize 12-15:
 -- Gli INSERT/UPDATE con WITH-DML devono stare al top level (non dentro CASE).
 -- La tabella tmp_norm_fonte raccoglie (test_num, fonte_value) da RETURNING.
--- Se il contratto PGTAP_FONTE_CNT non esiste o mancano articoli, gli INSERT
--- non trovano righe nella SELECT → 0 righe inserite → tmp_norm_fonte resta
--- senza quella riga → il test skippa via CASE WHEN NOT EXISTS.
+-- Il CASE WHEN NOT EXISTS delle asserzioni resta come rete: con la fixture
+-- costruita una riga mancante e' un difetto, e lo skip lo direbbe.
 -- ============================================================
 
 CREATE TEMP TABLE tmp_norm_fonte (test_num int, fonte_value text);
@@ -131,19 +166,20 @@ WITH ins AS (
 )
 INSERT INTO tmp_norm_fonte SELECT 13, fonte_quantita_attesa FROM ins;
 
--- Test 14: ORARIO + fonte NULL → aspettato MANUALE (articolo seq=3)
-WITH ins AS (
-    INSERT INTO vendite.contratti_righe
-        (contratto_id, articolo_id, tipo_eccezione, tipo_erogazione, prezzo_unitario, qta_operativa)
-    SELECT c.id, na.articolo_id, 'AGGIUNTA', 'ORARIO', 100, 1
-      FROM vendite.contratti c, tmp_norm_arts na
-     WHERE c.numero = 'PGTAP_FONTE_CNT' AND na.seq = 3
-    RETURNING fonte_quantita_attesa
-)
-INSERT INTO tmp_norm_fonte SELECT 14, fonte_quantita_attesa FROM ins;
+-- Test 14: ORARIO (articolo seq=3) — rev 2026-10-07: nessuna tipologia ne' natura lo
+--   ammette (non esposto, §B.4 del brief), quindi la riga e' RIFIUTATA dal guard del
+--   perimetro: l'asserzione e' un throws, non piu' un INSERT di setup.
 
 -- Test 15: INSERT CANONE+FISSA (articolo seq=4), poi UPDATE tipo→CONSUMO.
--- Il trigger rileva CONSUMO+FISSA (❌) e resetta fonte a LETTURE.
+-- Rev 2026-10-07: CONSUMO+FISSA esce dal perimetro dell'articolo (SERVIZIO_RICORRENTE),
+--   e la fonte diventa quella che l'ARTICOLO ammette per CONSUMO: MANUALE (prima: LETTURE,
+--   il default del vocabolario, che la natura non ammette).
+-- ⛔ Rev 2026-10-07: due istruzioni, non una. Con INSERT e UPDATE nella stessa
+--   WITH l'UPDATE lavora sulla fotografia presa PRIMA dell'istruzione e non vede
+--   la riga appena inserita: aggiornava zero righe, e il caso 15 finiva SEMPRE
+--   nello skip («meno di 4 articoli»), anche con gli articoli.
+CREATE TEMP TABLE tmp_riga_15 (id bigint);  -- vendite.contratti_righe.id (%TYPE non vale in DDL)
+
 WITH ins AS (
     INSERT INTO vendite.contratti_righe
         (contratto_id, articolo_id, tipo_eccezione, tipo_erogazione, fonte_quantita_attesa, prezzo_unitario, qta_operativa)
@@ -151,25 +187,22 @@ WITH ins AS (
       FROM vendite.contratti c, tmp_norm_arts na
      WHERE c.numero = 'PGTAP_FONTE_CNT' AND na.seq = 4
     RETURNING id
-),
-upd AS (
+)
+INSERT INTO tmp_riga_15 SELECT id FROM ins;
+
+WITH upd AS (
     UPDATE vendite.contratti_righe
        SET tipo_erogazione = 'CONSUMO'
-     WHERE id IN (SELECT id FROM ins)
+     WHERE id IN (SELECT id FROM tmp_riga_15)
     RETURNING fonte_quantita_attesa
 )
 INSERT INTO tmp_norm_fonte SELECT 15, fonte_quantita_attesa FROM upd;
 
 -- ============================================================
--- Articoli aggiuntivi per test 16/17 (non inclusi in tmp_norm_arts)
+-- Articoli per test 16/17 (fuori da tmp_norm_arts e dai casi 5-11)
 -- Servono per INSERT separati: unica AGGIUNTA per (contratto, articolo).
 CREATE TEMP TABLE tmp_fonte_arts_ext AS
-SELECT a.id AS articolo_id, ROW_NUMBER() OVER (ORDER BY a.id) AS seq
-  FROM catalogo.articoli a
- WHERE a.attivo = TRUE AND a.is_composito = FALSE
-   AND a.id NOT IN (SELECT articolo_id FROM tmp_norm_arts)
- ORDER BY a.id
- LIMIT 2;
+SELECT articolo_id, n - 4 AS seq FROM tmp_fonte_arts WHERE n IN (5, 6);
 -- ============================================================
 
 -- ============================================================
@@ -241,8 +274,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23503', NULL,
-        '5) CANONE+TIMESHEET → foreign_key_violation 23503'
+        'P0001', NULL,
+        '5) CANONE+TIMESHEET → rifiutata dal perimetro dell''articolo (P0001)'
     )
 END;
 
@@ -258,8 +291,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23503', NULL,
-        '6) CANONE+LETTURE → foreign_key_violation 23503'
+        'P0001', NULL,
+        '6) CANONE+LETTURE → rifiutata dal perimetro dell''articolo (P0001)'
     )
 END;
 
@@ -275,8 +308,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23503', NULL,
-        '7) UNA_TANTUM+TIMESHEET → foreign_key_violation 23503'
+        'P0001', NULL,
+        '7) UNA_TANTUM+TIMESHEET → rifiutata dal perimetro dell''articolo (P0001)'
     )
 END;
 
@@ -292,8 +325,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23503', NULL,
-        '8) UNA_TANTUM+LETTURE → foreign_key_violation 23503'
+        'P0001', NULL,
+        '8) UNA_TANTUM+LETTURE → rifiutata dal perimetro dell''articolo (P0001)'
     )
 END;
 
@@ -309,8 +342,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23503', NULL,
-        '9) ORARIO+LETTURE → foreign_key_violation 23503'
+        'P0001', NULL,
+        '9) ORARIO+LETTURE → rifiutata dal perimetro dell''articolo (P0001)'
     )
 END;
 
@@ -326,8 +359,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23503', NULL,
-        '10) CONSUMO+FISSA → foreign_key_violation 23503'
+        'P0001', NULL,
+        '10) CONSUMO+FISSA → rifiutata dal perimetro dell''articolo (P0001)'
     )
 END;
 
@@ -343,8 +376,8 @@ SELECT CASE
             (SELECT id FROM vendite.contratti WHERE numero = 'PGTAP_FONTE_CNT'),
             (SELECT articolo_id FROM tmp_fonte_ctx)
         ),
-        '23503', NULL,
-        '11) CONSUMO+TIMESHEET → foreign_key_violation 23503'
+        'P0001', NULL,
+        '11) CONSUMO+TIMESHEET → rifiutata dal perimetro dell''articolo (P0001)'
     )
 END;
 
@@ -360,7 +393,7 @@ SELECT CASE
     ELSE is(
         (SELECT fonte_value FROM tmp_norm_fonte WHERE test_num = 12),
         'FISSA',
-        '12) normalize INSERT: CANONE + NULL fonte → trigger imposta FISSA'
+        '12) INSERT CANONE + fonte NULL → la fonte dell''articolo per CANONE (FISSA)'
     )
 END;
 
@@ -370,19 +403,18 @@ SELECT CASE
     ELSE is(
         (SELECT fonte_value FROM tmp_norm_fonte WHERE test_num = 13),
         'LETTURE',
-        '13) normalize INSERT: CONSUMO + NULL fonte → trigger imposta LETTURE'
+        '13) INSERT CONSUMO + fonte NULL → la fonte dell''articolo per CONSUMO (LETTURE)'
     )
 END;
 
-SELECT CASE
-    WHEN NOT EXISTS (SELECT 1 FROM tmp_norm_fonte WHERE test_num = 14)
-    THEN skip('14) meno di 3 articoli disponibili — skip normalize ORARIO')
-    ELSE is(
-        (SELECT fonte_value FROM tmp_norm_fonte WHERE test_num = 14),
-        'MANUALE',
-        '14) normalize INSERT: ORARIO + NULL fonte → trigger imposta MANUALE'
-    )
-END;
+SELECT throws_ok(
+    format($$INSERT INTO vendite.contratti_righe
+               (contratto_id, articolo_id, tipo_eccezione, tipo_erogazione, prezzo_unitario, qta_operativa)
+             SELECT c.id, na.articolo_id, 'AGGIUNTA', 'ORARIO', 100, 1
+               FROM vendite.contratti c, tmp_norm_arts na
+              WHERE c.numero = 'PGTAP_FONTE_CNT' AND na.seq = 3$$),
+    'P0001', NULL,
+    '14) ORARIO: nessuna tipologia ne'' natura lo ammette (non esposto) → rifiutato dal perimetro');
 
 -- ============================================================
 -- 15) Normalize trigger — UPDATE tipo_erogazione con combo vietata
@@ -395,8 +427,8 @@ SELECT CASE
     THEN skip('15) meno di 4 articoli disponibili — skip normalize UPDATE tipo')
     ELSE is(
         (SELECT fonte_value FROM tmp_norm_fonte WHERE test_num = 15),
-        'LETTURE',
-        '15) normalize UPDATE: tipo CANONE→CONSUMO, fonte FISSA → trigger resetta LETTURE'
+        'MANUALE',
+        '15) UPDATE tipo CANONE→CONSUMO con fonte FISSA → la fonte diventa quella che l''articolo ammette (MANUALE)'
     )
 END;
 

@@ -66,8 +66,14 @@ SELECT
 -- 3 articoli per i test righe
 CREATE TEMP TABLE tmp_s23_arts AS
 SELECT id, row_number() OVER (ORDER BY id) AS rn
-  FROM catalogo.articoli
- WHERE attivo = TRUE AND is_composito = FALSE
+  FROM catalogo.articoli a
+ WHERE a.attivo = TRUE AND a.is_composito = FALSE
+   -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): l'articolo
+   --   sta nel PERIMETRO delle righe: senza tipologia (decide la natura, la utility del
+   --   cliente non conta) e con UNA_TANTUM/FISSA ammessa, chiesto alla sede unica.
+   AND a.listino_tipologia_id IS NULL
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
  ORDER BY id
  LIMIT 3;
 
@@ -95,7 +101,7 @@ SELECT 'PGTAP_S23_ATT',
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
        tipo_erogazione)
-SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00, 'CANONE'
+SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti ca, tmp_s23_arts a
  WHERE ca.numero = 'PGTAP_S23_ATT' AND a.rn = 1;
 
@@ -125,7 +131,7 @@ SELECT 'PGTAP_S23_NEG_OK',
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
        tipo_erogazione)
-SELECT ca.id, a.id, 'AGGIUNTA', 50.00, 1.00, 'CANONE'
+SELECT ca.id, a.id, 'AGGIUNTA', 50.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti ca, tmp_s23_arts a
  WHERE ca.numero = 'PGTAP_S23_NEG_OK' AND a.rn = 2;
 
@@ -290,7 +296,7 @@ SELECT throws_ok(
     --   senza, il P0001 atteso verrebbe dal guard nuovo e non da E_RIGA_DOC_NON_BOZZA.
     $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
              tipo_erogazione)
-      SELECT ca.id, a.id, 'AGGIUNTA', 10.00, 1.00, 'CANONE'
+      SELECT ca.id, a.id, 'AGGIUNTA', 10.00, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s23_arts a
        WHERE ca.numero = 'PGTAP_S23_ATT' AND a.rn = 2$$,
     'P0001',
@@ -332,7 +338,7 @@ SELECT lives_ok(
     -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
              tipo_erogazione)
-      SELECT ca.id, a.id, 'AGGIUNTA', 20.00, 1.00, 'CANONE'
+      SELECT ca.id, a.id, 'AGGIUNTA', 20.00, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s23_arts a
        WHERE ca.numero = 'PGTAP_S23_DRAFT' AND a.rn = 3$$,
     '13) INSERT riga su contratto DRAFT -> ok (lock non scatta)'

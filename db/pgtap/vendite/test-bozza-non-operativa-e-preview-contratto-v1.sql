@@ -53,18 +53,35 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- Setup fixture
 -- ============================================================
 
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la riga
+--   AGGIUNTA del test 5 sta nel PERIMETRO dell'articolo, e la sua tipologia dev'essere fra
+--   quelle della utility del cliente. L'articolo ha la tipologia del listino copiato (il
+--   primo attivo: le righe di listino lo pretendono), quindi il cliente si COSTRUISCE sulla
+--   prima utility che ammette QUELLA tipologia (dbops.fn_pgtap_crea_cliente_ba).
+--   ⛔ Non un cliente preso dal database: la prima versione di questa rev sceglieva il
+--   primo billing account con la utility giusta, che su dbdev aveva gia' un contratto
+--   attivo sovrapposto alle date del fixture (ex_contratti_no_overlap all'attivazione del
+--   contratto MX). Un cliente nuovo non ha contratti. Prima ancora: il primo billing
+--   account in assoluto, che su dbdev e' GAS e non ammette PRODOTTI.
+CREATE TEMP TABLE tmp_bozza_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'bozza non operativa',
+    (SELECT ltu.utility_id FROM config.listini_tipologie_utilities ltu
+      WHERE ltu.attivo
+        AND ltu.tipologia_id = (SELECT l.tipologia_id FROM vendite.listini l
+                                 WHERE l.attivo = TRUE ORDER BY l.id LIMIT 1)
+      ORDER BY ltu.utility_id LIMIT 1));
+
 CREATE TEMP TABLE tmp_bozza_ctx AS
 SELECT
-    ba.id                   AS ba_id,
+    ba.billing_account_id   AS ba_id,
     ba.istanza_utility_id,
     ba.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO' LIMIT 1) AS id_attivo,
     (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id,
     1::bigint AS emittente_soggetto_ruolo_id
-  FROM anagrafiche.billing_account ba
- ORDER BY ba.id
- LIMIT 1;
+  FROM tmp_bozza_cli ba;
 
 -- Articolo standalone per le righe listino di test
 CREATE TEMP TABLE tmp_bozza_art AS
@@ -157,7 +174,10 @@ INSERT INTO vendite.contratti(
 SELECT 'PGTAP_BO_CNT', c.ba_id, c.istanza_utility_id, c.utility_id,
        c.id_draft, (SELECT id FROM tmp_lst_bozza_only LIMIT 1),
        '2070-01-01'::date, '2070-12-31'::date
-  FROM tmp_bozza_ctx c;
+  FROM tmp_bozza_ctx c
+ -- rev 2026-10-07 (giro B3): il cliente ora si costruisce, quindi il contratto nascerebbe
+ --   anche dove il listino da copiare non c'e' (CI): senza listino non e' il caso del test.
+ WHERE EXISTS (SELECT 1 FROM tmp_lst_bozza_only);
 
 -- -------------------------------------------------------
 -- Contratto PGTAP_MX_CNT: listino BOZZA+ATTIVA, date 2071
@@ -169,7 +189,10 @@ INSERT INTO vendite.contratti(
 SELECT 'PGTAP_MX_CNT', c.ba_id, c.istanza_utility_id, c.utility_id,
        c.id_draft, (SELECT id FROM tmp_lst_mixed LIMIT 1),
        '2071-01-01'::date, '2071-12-31'::date
-  FROM tmp_bozza_ctx c;
+  FROM tmp_bozza_ctx c
+ -- rev 2026-10-07 (giro B3): il cliente ora si costruisce, quindi il contratto nascerebbe
+ --   anche dove il listino da copiare non c'e' (CI): senza listino non e' il caso del test.
+ WHERE EXISTS (SELECT 1 FROM tmp_lst_mixed);
 
 UPDATE vendite.contratti
    SET stato_doc_contratto_id = (SELECT id_attivo FROM tmp_bozza_ctx)
@@ -185,7 +208,10 @@ INSERT INTO vendite.contratti(
 SELECT 'PGTAP_GA_CNT', c.ba_id, c.istanza_utility_id, c.utility_id,
        c.id_draft, (SELECT id FROM tmp_lst_bozza_only LIMIT 1),
        '2072-01-01'::date, '2072-12-31'::date
-  FROM tmp_bozza_ctx c;
+  FROM tmp_bozza_ctx c
+ -- rev 2026-10-07 (giro B3): il cliente ora si costruisce, quindi il contratto nascerebbe
+ --   anche dove il listino da copiare non c'e' (CI): senza listino non e' il caso del test.
+ WHERE EXISTS (SELECT 1 FROM tmp_lst_bozza_only);
 
 -- ============================================================
 SELECT plan(8);
@@ -263,7 +289,7 @@ SELECT CASE
             $$INSERT INTO vendite.contratti_righe(
                 contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
                 tipo_erogazione)
-              SELECT c.id, %L::uuid, 'AGGIUNTA', 111.00, 1.00, 'CANONE'
+              SELECT c.id, %L::uuid, 'AGGIUNTA', 111.00, 1.00, 'UNA_TANTUM'
                 FROM vendite.contratti c WHERE c.numero = 'PGTAP_GA_CNT'$$,
             (SELECT id FROM tmp_bozza_art LIMIT 1)
         ),

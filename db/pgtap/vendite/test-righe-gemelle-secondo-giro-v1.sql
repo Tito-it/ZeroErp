@@ -64,6 +64,11 @@
 --  31) lista vendite.offerta_righe: intestazioni nel namespace dell'offerta
 -- ------------------------------------------------------------
 
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   contratto e offerta stanno nel PERIMETRO dell'articolo. Gli articoli del builder sono
+--   MERCE senza tipologia, che ammette UNA_TANTUM: l'erogazione, scritta CANONE per caso,
+--   ora e' UNA_TANTUM (stessa fonte FISSA).
+
 BEGIN;
 -- Contesto applicativo (preambolo, guardrail_pgtap_preambolo): il builder del
 -- mondo lo riapre poi sul suo operatore.
@@ -196,7 +201,7 @@ $fx$;
 INSERT INTO vendite.offerte_commerciali_eccezioni
        (offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, tipo_erogazione,
         fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
-SELECT pg_temp.doc('rev1'), a.id, 'AGGIUNTA', v.prezzo, 'CANONE', 'FISSA', 1, 1, a.uom_id
+SELECT pg_temp.doc('rev1'), a.id, 'AGGIUNTA', v.prezzo, 'UNA_TANTUM', 'FISSA', 1, 1, a.uom_id
   FROM (VALUES ('X', 999999999999.999999::numeric), ('P', 1::numeric)) AS v(sigla, prezzo)
   JOIN catalogo.articoli a ON a.id = pg_temp.art(v.sigla);
 
@@ -444,7 +449,7 @@ SELECT is(
 SELECT is(
     pg_temp.canali(format($$INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione,
                               prezzo_unitario, tipo_erogazione, fonte_quantita_attesa, qta_operativa, attivo)
-                            VALUES (%s, %L, 'AGGIUNTA', 1, 'CANONE', 'FISSA', 1, NULL)$$,
+                            VALUES (%s, %L, 'AGGIUNTA', 1, 'UNA_TANTUM', 'FISSA', 1, NULL)$$,
                           pg_temp.doc('contratto'), pg_temp.art('Y'))),
     '23502 / - / attivo',
     '21) contratto: una riga con attivo NULL e'' rifiutata (NOT NULL, come sull''offerta)');
@@ -452,7 +457,7 @@ SELECT is(
 SELECT is(
     pg_temp.canali(format($$INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione,
                               prezzo_unitario, tipo_erogazione, fonte_quantita_attesa, qta_operativa, meta)
-                            VALUES (%s, %L, 'AGGIUNTA', 1, 'CANONE', 'FISSA', 1, NULL)$$,
+                            VALUES (%s, %L, 'AGGIUNTA', 1, 'UNA_TANTUM', 'FISSA', 1, NULL)$$,
                           pg_temp.doc('contratto'), pg_temp.art('Y'))),
     '23502 / - / meta',
     '22) contratto: una riga con meta NULL e'' rifiutata');

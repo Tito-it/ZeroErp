@@ -1,0 +1,118 @@
+# ⚙️ Funzione `fn_check_riga_erogazione`
+
+```sql
+CREATE FUNCTION fn_check_riga_erogazione(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_tipo_erogazione character varying, p_fonte character varying)
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION script.fn_check_riga_erogazione(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_tipo_erogazione character varying, p_fonte character varying)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+-- ⚠️ p_documento e p_documento_id nudi DICHIARATI: un selettore
+--   (OFFERTA | CONTRATTO) senza colonna-vocabolario e un id polimorfo (due
+--   testate), come in vendite.fn_documento_listino_operativo.
+DECLARE
+    v_utility   vendite.contratti.utility_id%TYPE;
+    v_tipologia catalogo.articoli.listino_tipologia_id%TYPE;
+    v_campo     text;
+BEGIN
+    -- =========================================================
+    -- Scopo:
+    --   Dire perche' una riga di contratto o di offerta NON puo' avere
+    --   questo articolo con questa erogazione e questa fonte. '[]' =
+    --   ammessa. Non solleva: lo fa il guard
+    --   script.trgfn_righe_guard_erogazione_perimetro, che la CHIAMA.
+    --   Sui VALORI della riga: la chiama un guard BEFORE ROW.
+    --
+    -- Motivi (il primo e' quello che il guard solleva):
+    --   1. TIPOLOGIA_FUORI_UTILITY: l'articolo ha una tipologia che la
+    --      utility del documento non prevede
+    --      (config.listini_tipologie_utilities) — campo articolo_id;
+    --   2. EROGAZIONE_FUORI_PERIMETRO: la combinazione non e' fra quelle
+    --      dell'articolo (vendite.fn_articolo_erogazioni) — campo
+    --      fonte_quantita_attesa se l'erogazione e' ammessa con un'altra
+    --      fonte, tipo_erogazione altrimenti.
+    --   L'ESCLUSIONE non si giudica (nasce vuota). Erogazione o fonte
+    --   mancanti: nessun motivo qui, parlano il guard d'obbligo e i CHECK.
+    -- =========================================================
+
+    IF p_documento IS NULL OR p_documento NOT IN ('OFFERTA', 'CONTRATTO') THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite',
+            'script.fn_check_riga_erogazione',
+            'E_DOC_TIPO_NON_GESTITO',
+            jsonb_build_object('documento', p_documento),
+            NULL::uuid,
+            COALESCE(p_documento, '<null>'));
+    END IF;
+
+    IF p_tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto THEN
+        RETURN jsonb_build_array();
+    END IF;
+
+    -- La utility del documento (sotto RLS: un documento che non si vede non
+    -- da' utility, e il motivo 1 tace — il documento lo rifiuta altrove).
+    IF p_documento = 'CONTRATTO' THEN
+        SELECT c.utility_id INTO v_utility FROM vendite.contratti c WHERE c.id = p_documento_id;
+    ELSE
+        SELECT o.utility_id INTO v_utility FROM vendite.offerte_commerciali o WHERE o.id = p_documento_id;
+    END IF;
+
+    SELECT a.listino_tipologia_id INTO v_tipologia
+      FROM catalogo.articoli a
+     WHERE a.id = p_articolo_id;
+
+    -- 1. La tipologia dell'articolo dev'essere fra quelle della utility.
+    IF v_tipologia IS NOT NULL AND v_utility IS NOT NULL
+       AND NOT EXISTS (
+           SELECT 1 FROM config.listini_tipologie_utilities ltu
+            WHERE ltu.utility_id = v_utility
+              AND ltu.tipologia_id = v_tipologia
+              AND ltu.attivo) THEN
+        RETURN jsonb_build_array(jsonb_build_object(
+            'codice',     'E_RIGA_TIPOLOGIA_FUORI_UTILITY',
+            'reason',     'TIPOLOGIA_FUORI_UTILITY',
+            'dettaglio',  jsonb_build_object('campo', 'articolo_id',
+                                             'articolo_id', p_articolo_id,
+                                             'tipologia_id', v_tipologia,
+                                             'utility_id', v_utility),
+            -- Frase chiusa: niente da infilare nei segnaposto.
+            'valori',     jsonb_build_array()));
+    END IF;
+
+    IF p_tipo_erogazione IS NULL OR p_fonte IS NULL THEN
+        RETURN jsonb_build_array();
+    END IF;
+
+    -- 2. La combinazione dev'essere fra quelle dell'articolo.
+    SELECT CASE WHEN bool_or(ae.tipo_erogazione = p_tipo_erogazione)
+                THEN 'fonte_quantita_attesa' ELSE 'tipo_erogazione' END
+      INTO v_campo
+      FROM vendite.fn_articolo_erogazioni(p_articolo_id) ae
+    HAVING NOT bool_or(ae.tipo_erogazione = p_tipo_erogazione
+                       AND ae.fonte_quantita_attesa = p_fonte);
+    IF FOUND THEN
+        RETURN jsonb_build_array(jsonb_build_object(
+            'codice',     'E_RIGA_EROGAZIONE_FUORI_PERIMETRO',
+            'reason',     'EROGAZIONE_FUORI_PERIMETRO',
+            'dettaglio',  jsonb_build_object('campo', v_campo,
+                                             'articolo_id', p_articolo_id,
+                                             'tipo_erogazione', p_tipo_erogazione,
+                                             'fonte_quantita_attesa', p_fonte),
+            'valori',     jsonb_build_array()));
+    END IF;
+
+    RETURN jsonb_build_array();
+END;
+$function$
+
+COMMENT ON FUNCTION script.fn_check_riga_erogazione(p_documento text, p_documento_id bigint, p_articolo_id uuid, p_tipo_eccezione vendite.tipo_eccezione_contratto, p_tipo_erogazione character varying, p_fonte character varying)
+IS 'Check pura: i motivi per cui una riga di contratto (p_documento = CONTRATTO) o di offerta (OFFERTA) non può avere questo articolo con questa erogazione e questa fonte. ''[]'' = ammessa. Sui valori della riga (la chiama un guard BEFORE ROW). Motivi in ordine: 1) E_RIGA_TIPOLOGIA_FUORI_UTILITY (reason TIPOLOGIA_FUORI_UTILITY, campo articolo_id): l''articolo ha una tipologia di listino che la utility del documento non prevede (config.listini_tipologie_utilities); 2) E_RIGA_EROGAZIONE_FUORI_PERIMETRO (reason EROGAZIONE_FUORI_PERIMETRO): la combinazione non è fra quelle di vendite.fn_articolo_erogazioni — campo fonte_quantita_attesa se l''erogazione è ammessa con un''altra fonte, tipo_erogazione altrimenti. Il campo viaggia in dettaglio.campo. L''ESCLUSIONE non si giudica; erogazione o fonte mancanti nessun motivo (parlano il guard d''obbligo e i CHECK). Altro p_documento: E_DOC_TIPO_NON_GESTITO. Lettore: script.trgfn_righe_guard_erogazione_perimetro. Decisioni di Tid del 2026-10-07 (B-R3, B-D4: il perimetro è la tipologia dell''articolo). Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3).';
+```
+
+---
+{% include-markdown "signature-core.md" %}

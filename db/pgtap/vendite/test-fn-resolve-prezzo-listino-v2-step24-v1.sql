@@ -84,10 +84,19 @@ SELECT
   FROM tmp_v2_cli ba;
 
 -- 3 articoli non-composite per le eccezioni
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe
+--   stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra quelle
+--   della utility del cliente. Articoli SENZA tipologia (decide la natura) che ammettono
+--   UNA_TANTUM/FISSA, chiesto alla sede unica; le righe ereditano l'erogazione (era
+--   CANONE scritto a mano). Prima: i primi tre per id, che su dbdev sono PRODOTTI e la
+--   utility del cliente costruito (ENE) non li prevede.
 CREATE TEMP TABLE tmp_v2_arts AS
 SELECT id, row_number() OVER (ORDER BY id) AS rn
-  FROM catalogo.articoli
- WHERE attivo = TRUE AND is_composito = FALSE
+  FROM catalogo.articoli a
+ WHERE a.attivo = TRUE AND a.is_composito = FALSE
+   AND a.listino_tipologia_id IS NULL
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
  ORDER BY id
  LIMIT 3;
 
@@ -121,7 +130,7 @@ SELECT 'PGTAP_V2_OV',
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
        tipo_erogazione)
-SELECT ca.id, a.id, 'OVERRIDE', 111.00, 1.00, 'CANONE'
+SELECT ca.id, a.id, 'OVERRIDE', 111.00, 1.00, NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_OV' AND a.rn = 1;
 
@@ -165,7 +174,7 @@ SELECT 'PGTAP_V2_AGG',
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
        tipo_erogazione)
-SELECT ca.id, a.id, 'AGGIUNTA', 222.00, 1.00, 'CANONE'
+SELECT ca.id, a.id, 'AGGIUNTA', 222.00, 1.00, NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_AGG' AND a.rn = 1;
 

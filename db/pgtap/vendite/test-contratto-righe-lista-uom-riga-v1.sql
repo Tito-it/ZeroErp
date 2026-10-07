@@ -18,7 +18,7 @@
 -- LA FIXTURE — U1 e' l'UdM base di tutti gli articoli, U2 un'UdM operativa:
 --   A  dal listino, nessuna eccezione                  -> DA_LISTINO
 --   X  AGGIUNTA standalone quotata in U2, ordine 30     -> UdM U2
---   Y  AGGIUNTA a consumo (LETTURE), nessuna quantita', ordine 40
+--   Y  AGGIUNTA a consumo (MANUALE), nessuna quantita', ordine 40
 --        -> uom_operativa_id NULL: ricade sulla base U1
 --   P  AGGIUNTA bundle in U1, ordine 50, componente K quotato in U2
 --
@@ -132,16 +132,27 @@ RETURNS bigint LANGUAGE sql AS $fx$
   RETURNING id;
 $fx$;
 
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe
+--   stanno nel PERIMETRO dell'articolo. B (OVERRIDE, nel listino) eredita l'erogazione
+--   dalla tipologia del listino; X e P (MERCE del builder) sono UNA_TANTUM; Y diventa un
+--   servizio una tantum a consumo MANUALE: la quantita' la scrive l'operatore, come con
+--   le LETTURE che una natura non ammette. Prima erano CANONE/FISSA e CONSUMO/LETTURE,
+--   scritte a mano.
+UPDATE catalogo.articoli
+   SET natura_vendita_id = (SELECT id FROM config.nature_vendita
+                             WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')
+ WHERE id = pg_temp.art('Y');
+
 CREATE TEMP TABLE tmp_cru_righe AS
-SELECT 'B' AS sigla, pg_temp.riga('B', 'OVERRIDE', 80.00, 'CANONE', 'FISSA', 1,
+SELECT 'B' AS sigla, pg_temp.riga('B', 'OVERRIDE', 80.00, NULL, NULL, 1,
                                   (SELECT u1 FROM tmp_cru_uom), 20::smallint) AS id
 UNION ALL
-SELECT 'X', pg_temp.riga('X', 'AGGIUNTA', 40.00, 'CANONE', 'FISSA', 2,
+SELECT 'X', pg_temp.riga('X', 'AGGIUNTA', 40.00, 'UNA_TANTUM', 'FISSA', 2,
                          (SELECT u2 FROM tmp_cru_uom), 30::smallint)
 UNION ALL
-SELECT 'Y', pg_temp.riga('Y', 'AGGIUNTA', 0.15, 'CONSUMO', 'LETTURE', NULL, NULL, 40::smallint)
+SELECT 'Y', pg_temp.riga('Y', 'AGGIUNTA', 0.15, 'CONSUMO', 'MANUALE', NULL, NULL, 40::smallint)
 UNION ALL
-SELECT 'P', pg_temp.riga('P', 'AGGIUNTA', 90.00, 'CANONE', 'FISSA', 1,
+SELECT 'P', pg_temp.riga('P', 'AGGIUNTA', 90.00, 'UNA_TANTUM', 'FISSA', 1,
                          (SELECT u1 FROM tmp_cru_uom), 50::smallint);
 
 -- Il componente K del bundle P, quotato in U2.

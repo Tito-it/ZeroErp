@@ -138,8 +138,12 @@ RETURNS bigint LANGUAGE sql AS $fx$
          -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): un'ESCLUSIONE
          -- nasce vuota, senza dati di vendita; le altre righe coi dati di una riga
          -- che si fattura.
-         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 'CANONE' END,
-         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 'FISSA' END,
+         -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3):
+         -- erogazione e fonte VUOTE, la riga le eredita dall'articolo (la tipologia
+         -- del listino del test). Erano CANONE/FISSA scritte a mano, fuori dal
+         -- perimetro di un articolo CONSUMO.
+         NULL,
+         NULL,
          CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 1 END,
          CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 1 END,
          CASE WHEN p_tipo <> 'ESCLUSIONE' THEN a.uom_id END

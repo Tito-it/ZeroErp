@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_documento_riga_erogazioni: COSA PROPONE IL FORM DELLE RIGHE
+#   Brief: brief-db-offerta-emissione-ed-erogazione §B.2 (B-R4), §B.5, §C.7 (giro B4)
+#
+#   Per (documento, articolo): le combinazioni ammesse e il default, dalla
+#   stessa sede di eredita' e guard (vendite.fn_articolo_erogazioni, -60). Il
+#   BE la espone, il FE la legge e ritira fontiQuantitaErogazione.js.
+#   Ritorno indietro: DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261007-65-create-fn-documento-riga-erogazioni-mctit.yaml
+
+  - changeSet:
+      id: 20261007-65-create-fn-documento-riga-erogazioni
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce vendite.fn_documento_riga_erogazioni: per il form delle righe, le combinazioni di
+        erogazione e fonte ammesse per (documento, articolo) e quella di default.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_articolo_erogazioni'
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_riga_erogazione'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_documento_riga_erogazioni(
+                  p_documento    text,
+                  p_documento_id bigint,
+                  p_articolo_id  catalogo.articoli.id%TYPE)
+              RETURNS TABLE(
+                  tipo_erogazione       config.erogazioni_fonti.tipo_erogazione%TYPE,
+                  fonte_quantita_attesa config.erogazioni_fonti.fonte_quantita_attesa%TYPE,
+                  e_default             config.erogazioni_fonti.e_default%TYPE,
+                  generazione_canone    config.listini_tipologie_erogazioni.generazione_canone%TYPE,
+                  -- Nudo DICHIARATO: TIPOLOGIA | NATURA | DISTINTA (vendite.fn_articolo_erogazioni).
+                  origine               text)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- ⚠️ p_documento e p_documento_id nudi DICHIARATI (selettore e id polimorfo).
+              -- Scopo: per il form delle righe (B-R4), le combinazioni (erogazione, fonte)
+              --   che una riga con questo articolo puo' avere su questo documento, con
+              --   quella che la riga erediterebbe (e_default). Le stesse righe di
+              --   vendite.fn_articolo_erogazioni, che l'eredita' e il guard leggono: il form
+              --   preseleziona cio' che il DB scriverebbe e propone solo cio' che il DB
+              --   accetterebbe.
+              -- Zero righe se l'articolo ha una tipologia che la utility del documento
+              --   non prevede: per quell'articolo nessuna combinazione e' ammessa (il guard
+              --   lo dice col campo articolo_id). Zero righe anche se documento o articolo
+              --   non ci sono o non si vedono.
+              DECLARE
+                  v_motivi jsonb;
+              BEGIN
+                  -- Lo stesso predicato del guard, sulla sola parte che non dipende dalla
+                  -- combinazione (erogazione e fonte NULL: il motivo 2 tace).
+                  v_motivi := script.fn_check_riga_erogazione(
+                      p_documento, p_documento_id, p_articolo_id,
+                      'AGGIUNTA'::vendite.tipo_eccezione_contratto, NULL, NULL);
+
+                  IF jsonb_array_length(v_motivi) > 0 THEN
+                      RETURN;
+                  END IF;
+
+                  RETURN QUERY
+                  SELECT ae.tipo_erogazione, ae.fonte_quantita_attesa, ae.e_default,
+                         ae.generazione_canone, ae.origine
+                    FROM vendite.fn_articolo_erogazioni(p_articolo_id) ae
+                   ORDER BY ae.e_default DESC, ae.tipo_erogazione, ae.fonte_quantita_attesa;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_riga_erogazioni(text, bigint, catalogo.articoli.id%TYPE)
+              IS 'Lettura per il form delle righe di contratto (p_documento = CONTRATTO) e di offerta (OFFERTA), richiesta B-R4: le combinazioni (tipo_erogazione, fonte_quantita_attesa) che una riga con questo articolo può avere su questo documento, con e_default su quella che la riga erediterebbe, la generazione_canone da proporre sulle CANONE e l''origine. Sono le righe di vendite.fn_articolo_erogazioni, la stessa sede che leggono l''eredità e il guard: il form preseleziona ciò che il DB scriverebbe e propone solo ciò che accetterebbe. Prende il posto di fontiQuantitaErogazione.js nel frontend e della copia Python della matrice. Zero righe se l''articolo ha una tipologia che la utility del documento non prevede (script.fn_check_riga_erogazione, motivo TIPOLOGIA_FUORI_UTILITY) o se documento o articolo non si vedono. Ordinate col default in testa. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B4).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_documento_riga_erogazioni(text, bigint, uuid);
