@@ -116,7 +116,7 @@ class SecondoPassoTests(JwtMockedApiTest):
         servizio_auth = patch.object(_secondo_fattore, "_auth_repo", self.auth_repo)
         servizio_auth.start()
         self.addCleanup(servizio_auth.stop)
-        self.auth_repo.get_identita_dettaglio.return_value = {
+        self.auth_repo.get_veste_utilizzabile.return_value = {
             "id": 7, "ruolo_applicativo": "OPERATORE", "attivo": True,
         }
         self.auth_repo.registra_tentativo_login.return_value = {"bloccato": False}
@@ -230,7 +230,7 @@ class SecondoPassoTests(JwtMockedApiTest):
         self._assert_sfida_rifiutata(self._post({"sfida": _sfida(), "codice": _CODICE}))
 
     def test_veste_spenta_fra_i_due_passi_401(self):
-        self.auth_repo.get_identita_dettaglio.return_value = {"id": 7, "attivo": False}
+        self.auth_repo.get_veste_utilizzabile.return_value = None
         self._assert_sfida_rifiutata(self._post({"sfida": _sfida(), "codice": _CODICE}))
 
     def test_senza_prova_non_e_un_tentativo(self):

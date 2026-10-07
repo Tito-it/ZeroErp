@@ -51,7 +51,7 @@ Indice test eseguiti:
 28) RefreshCookieTests.test_nome_cookie_e_header_uguali_nei_tre_linguaggi
 29) RefreshCookieTests.test_post_con_refresh_riuscito_scrive_il_cookie
 30) RefreshCookieTests.test_post_con_refresh_fallito_non_scrive_il_cookie
-31) RefreshVesteSpentaTests.test_veste_accesa_rinnova
+31) RefreshVesteSpentaTests.test_veste_utilizzabile_rinnova
 32) RefreshVesteSpentaTests.test_veste_spenta_401_senza_rotazione_e_sessione_bloccata
 33) RefreshVesteSpentaTests.test_veste_assente_401
 34) RefreshVesteSpentaTests.test_claim_identita_assente_401_senza_db
@@ -104,7 +104,7 @@ _RINNOVA = "apps.core.api.auth_views.AuditTokenRefreshView._rinnova"
 _CLAIMS = "apps.core.api.auth_views.claims_refresh_firmati"
 # Il device del secondo fattore, che il login legge dopo la password giusta.
 _SECONDO_FATTORE = "apps.core.api.auth_views._secondo_fattore_repo"
-_VESTE_ACCESA = "apps.core.api.auth_views._veste_accesa"
+_VESTE_UTILIZZABILE = "apps.core.api.auth_views._veste_utilizzabile"
 _AUTH_REPO = "apps.core.api.auth_views._auth_repo"
 _BLOCCA = "apps.core.api.auth_views.blocca_token_sessioni"
 
@@ -120,11 +120,12 @@ def _senza_secondo_fattore(test: TestCase) -> MagicMock:
     return repo
 
 
-# Scopo: Tiene accesa la veste del refresh (`_veste_accesa`, D-5): i test del
-#        rinnovo che non parlano di veste spenta non devono leggere il DB.
+# Scopo: Tiene utilizzabile la veste del refresh (`_veste_utilizzabile`, D-5):
+#        i test del rinnovo che non parlano di veste spenta non devono leggere
+#        il DB.
 #        Il controllo vero lo prova `RefreshVesteSpentaTests`.
-def _veste_accesa(test: TestCase) -> MagicMock:
-    patcher = patch(_VESTE_ACCESA, return_value=True)
+def _veste_utilizzabile(test: TestCase) -> MagicMock:
+    patcher = patch(_VESTE_UTILIZZABILE, return_value=True)
     mock = patcher.start()
     test.addCleanup(patcher.stop)
     return mock
@@ -149,7 +150,7 @@ class AuditAuthViewsTests(TestCase):
         self.mock_get_ip = patcher.start()
         self.addCleanup(patcher.stop)
         _senza_secondo_fattore(self)
-        _veste_accesa(self)
+        _veste_utilizzabile(self)
 
     # Scopo: Verifica che login con successo chiami record_login con user_id e jti.
     @patch(f"{_SERVICE}.record_login")
@@ -664,7 +665,7 @@ class RefreshCrossNamespaceGuardTests(TestCase):
     e viceversa (rumore semantico cross-path)."""
 
     def setUp(self):
-        _veste_accesa(self)
+        _veste_utilizzabile(self)
 
     def test_base_astratta_guard_solleva_runtime_error(self):
         """AuditTokenRefreshView e' astratta: `as_view()` diretto senza
@@ -771,7 +772,7 @@ class RefreshCookieTests(TestCase):
 
     def setUp(self):
         _senza_secondo_fattore(self)
-        _veste_accesa(self)
+        _veste_utilizzabile(self)
 
     # Scopo: Gli attributi del cookie scritto: sono loro la protezione.
     def _assert_cookie_refresh(self, response, valore: str) -> None:
@@ -959,7 +960,7 @@ class RefreshVesteSpentaTests(TestCase):
         "user_id": "42", "identita_id": 7, "sid": "sid-x",
     }
 
-    # Scopo: Veste accesa → si rinnova, e la veste si cerca sulla credenziale
+    # Scopo: Veste utilizzabile → si rinnova, e la veste si cerca sulla credenziale
     #        del token (id della veste + user_id, mai la sola veste).
     @patch(f"{_SERVICE}.record_refresh")
     @patch.object(AuditTokenRefreshView, "_resolve_username", return_value=None)
@@ -967,19 +968,20 @@ class RefreshVesteSpentaTests(TestCase):
     @patch(_RINNOVA)
     @patch(_AUTH_REPO)
     @patch(_CLAIMS)
-    def test_veste_accesa_rinnova(
+    def test_veste_utilizzabile_rinnova(
         self, mock_claims, mock_repo, mock_rinnova, mock_blocca, _resolve, _record,
     ):
         mock_claims.return_value = dict(self._CLAIMS_VESTE)
-        mock_repo.get_identita_dettaglio.return_value = {"id": 7, "attivo": True}
+        mock_repo.get_veste_utilizzabile.return_value = {"id": 7, "attivo": True}
         mock_rinnova.return_value = Response({"access": "a", "refresh": "r"}, status=200)
         response = AdminTokenRefreshView().post(_richiesta_refresh())
         self.assertEqual(response.status_code, 200)
-        mock_repo.get_identita_dettaglio.assert_called_once_with(7, 42)
+        mock_repo.get_veste_utilizzabile.assert_called_once_with(7, 42)
         mock_blocca.assert_not_called()
 
-    # Scopo: Veste spenta → 401, nessuna rotazione, e la SOLA sessione del
-    #        token presentato finisce in blacklist (filtro per sid).
+    # Scopo: Veste non utilizzabile (spenta o fuori date: decide il DB) → 401,
+    #        nessuna rotazione, e la SOLA sessione del token presentato finisce
+    #        in blacklist (filtro per sid).
     @patch(_BLOCCA)
     @patch(_RINNOVA)
     @patch(_AUTH_REPO)
@@ -988,7 +990,7 @@ class RefreshVesteSpentaTests(TestCase):
         self, mock_claims, mock_repo, mock_rinnova, mock_blocca,
     ):
         mock_claims.return_value = dict(self._CLAIMS_VESTE)
-        mock_repo.get_identita_dettaglio.return_value = {"id": 7, "attivo": False}
+        mock_repo.get_veste_utilizzabile.return_value = None
         with self.assertRaises(InvalidToken):
             AdminTokenRefreshView().post(_richiesta_refresh())
         mock_rinnova.assert_not_called()
@@ -1007,7 +1009,7 @@ class RefreshVesteSpentaTests(TestCase):
     @patch(_CLAIMS)
     def test_veste_assente_401(self, mock_claims, mock_repo, mock_rinnova, _blocca):
         mock_claims.return_value = dict(self._CLAIMS_VESTE)
-        mock_repo.get_identita_dettaglio.return_value = None
+        mock_repo.get_veste_utilizzabile.return_value = None
         with self.assertRaises(InvalidToken):
             AdminTokenRefreshView().post(_richiesta_refresh())
         mock_rinnova.assert_not_called()
@@ -1026,7 +1028,7 @@ class RefreshVesteSpentaTests(TestCase):
         mock_claims.return_value = claims
         with self.assertRaises(InvalidToken):
             AdminTokenRefreshView().post(_richiesta_refresh())
-        mock_repo.get_identita_dettaglio.assert_not_called()
+        mock_repo.get_veste_utilizzabile.assert_not_called()
         mock_rinnova.assert_not_called()
 
     # Scopo: Un guasto nella lettura della veste PROPAGA: il refresh non si
@@ -1039,7 +1041,7 @@ class RefreshVesteSpentaTests(TestCase):
         self, mock_claims, mock_repo, mock_rinnova, mock_blocca,
     ):
         mock_claims.return_value = dict(self._CLAIMS_VESTE)
-        mock_repo.get_identita_dettaglio.side_effect = DatabaseError("giu'")
+        mock_repo.get_veste_utilizzabile.side_effect = DatabaseError("giu'")
         with self.assertRaises(DatabaseError):
             AdminTokenRefreshView().post(_richiesta_refresh())
         mock_rinnova.assert_not_called()

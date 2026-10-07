@@ -25,6 +25,18 @@ from django.db import connection
 
 from apps.core.db._helpers import fetchone_scalar, jsonb_out, row_to_dict, rows_to_list
 
+# Le colonne di una veste, lette da `get_identita_dettaglio` e
+# `get_veste_utilizzabile`: le due letture tornano lo stesso dict.
+_SELECT_VESTE = """
+            SELECT id,
+                   soggetto_ruolo_id,
+                   ruolo_applicativo::text AS ruolo_applicativo,
+                   attivo,
+                   valido_dal,
+                   valido_al,
+                   invito_inviato_at
+              FROM anagrafiche.identita_digitali"""
+
 
 class AuthRepository:
     """Building block: operazioni atomiche su auth_user."""
@@ -198,23 +210,27 @@ class AuthRepository:
             cursor.execute(sql, [identita_id, auth_user_id])
             return cursor.rowcount > 0
 
-    # Scopo: Risolve la prima identita digitale attiva dell'utente il cui
+    # Scopo: Risolve la prima veste UTILIZZABILE dell'utente il cui
     # ruolo_applicativo rientra nei ruoli ammessi dal namespace chiamante
     # (es. ("OPERATORE",) per /admin/token/, ("CLIENTE_PORTALE",
     # "FORNITORE_PORTALE") per /portale/token/).
-    # Post modello 1:N: un auth_user puo' avere piu' identita attive con
+    # Post modello 1:N: un auth_user puo' avere piu' vesti con
     # ruoli_applicativi diversi; questo helper scopre quale "veste" il
     # namespace sta richiedendo e ritorna solo quella.
-    # Ritorna None se l'utente non ha alcuna identita attiva per i ruoli
-    # richiesti (la view tradurra' in 403 E_VESTE_NON_ATTIVA).
+    # ⭐ «Utilizzabile» lo decide il DB, `script.fn_veste_utilizzabile`
+    #    (brief-db-veste-utilizzabile): accesa, nelle sue date, soggetto attivo
+    #    e, per l'operatore umano, rapporto attivo e nelle sue date. Il Python
+    #    non riscrive la regola e non calcola date. Fra le vesti della porta si
+    #    prende la prima utilizzabile: una scaduta non copre una valida.
+    # Ritorna None se l'utente non ha alcuna veste utilizzabile per i ruoli
+    # richiesti (la view tradurra' in 403 E_VESTE_NON_ATTIVA: spenta e fuori
+    # date hanno lo stesso esito, D-4).
     #
     # Invariante: per un singolo (auth_user_id, namespace) il risultato e'
-    # atteso UNIVOCO. Il modello multi-face assegna un auth_user dedicato
-    # per ogni identita, quindi la probabilita' di collisione e' bassa.
-    # `ORDER BY id LIMIT 1` garantisce deterministicita' (la piu' vecchia)
-    # se dovessero comunque coesistere piu' identita attive con ruoli in
-    # `ruoli_applicativi` diversi — stato da considerarsi anomalo.
-    def find_identita_attiva_for_ruoli(
+    # atteso UNIVOCO. `ORDER BY id LIMIT 1` garantisce deterministicita' (la
+    # piu' vecchia) se dovessero comunque coesistere piu' vesti utilizzabili
+    # con ruoli in `ruoli_applicativi` diversi — stato da considerarsi anomalo.
+    def find_veste_utilizzabile_per_ruoli(
         self,
         auth_user_id: int,
         ruoli_applicativi: Sequence[str],
@@ -230,8 +246,8 @@ class AuthRepository:
                    ruolo_applicativo::text AS ruolo_applicativo
               FROM anagrafiche.identita_digitali
              WHERE auth_user_id = %s
-               AND attivo = true
                AND ruolo_applicativo::text = ANY(%s)
+               AND script.fn_veste_utilizzabile(id)
              ORDER BY id
              LIMIT 1
         """
@@ -246,22 +262,36 @@ class AuthRepository:
     # Il filtro auth_user_id e' guard anti-tampering (defense-in-depth):
     # se un client passasse un identita_id altrui (non ha senso con JWT
     # firmato, ma comunque) non riceverebbe dati di altri utenti.
+    # ⛔ E' una LETTURA, non dice se la veste vale: per quello
+    #    `get_veste_utilizzabile`.
     def get_identita_dettaglio(
         self, identita_id: int, auth_user_id: int
     ) -> dict[str, Any] | None:
         # NB: auth_user_id non viene ritornato nel dict (e' gia' esposto
         # altrove nel /me/ via `profile.utente.auth_user_id`); filtra
         # solo come guard anti-tampering.
-        sql = """
-            SELECT id,
-                   soggetto_ruolo_id,
-                   ruolo_applicativo::text AS ruolo_applicativo,
-                   attivo,
-                   valido_dal,
-                   valido_al,
-                   invito_inviato_at
-              FROM anagrafiche.identita_digitali
+        sql = f"""
+            {_SELECT_VESTE}
              WHERE id = %s AND auth_user_id = %s
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [identita_id, auth_user_id])
+            return row_to_dict(cursor)
+
+    # Scopo: La veste di una sessione, se e' della credenziale ed e'
+    # UTILIZZABILE oggi (`script.fn_veste_utilizzabile`); altrimenti None.
+    # E' la sola domanda «questa veste lascia ancora lavorare?» per i punti
+    # che la fanno a sessione aperta: refresh, secondo passo del secondo
+    # fattore, cambio password. Ogni richiesta la fa in `set_jwt_gucs`, che
+    # chiama lo stesso building block dentro la sua query.
+    # ⚠️ Un guasto della lettura PROPAGA: non e' una prova che la veste valga.
+    def get_veste_utilizzabile(
+        self, identita_id: int, auth_user_id: int
+    ) -> dict[str, Any] | None:
+        sql = f"""
+            {_SELECT_VESTE}
+             WHERE id = %s AND auth_user_id = %s
+               AND script.fn_veste_utilizzabile(id)
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [identita_id, auth_user_id])

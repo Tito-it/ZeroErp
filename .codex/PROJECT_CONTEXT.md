@@ -225,10 +225,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   «Elimina accesso» in kebab e drawer di «Altri accessi». Collaudo a video di Tid superato. Il residuo (D-4) sta nella
   voce ❓ sul ponte django, sotto.
 - **Accessi: una credenziale, più vesti** (`work-in-progress/piano-be-fe-accessi-credenziale-e-vesti.md`):
-  resta R-4, che vuole un brief DB non ancora scritto. L-6 (date della veste) ha il suo brief,
-  `work-in-progress/brief-db-veste-utilizzabile.md` (2026-10-06): la regola «veste utilizzabile» a DB
-  in un BB, oggi in quattro versioni diverse (BE solo `attivo`); per l'operatore contano anche le date
-  del rapporto. ⏳ D-1…D-4 da Tid, poi DB. ✅ L-4 fatto il 2026-10-06: portale e shop entrano con
+  resta R-4, che vuole un brief DB non ancora scritto. ✅ L-6 (date della veste) fatto il 2026-10-07,
+  DB e BE/FE (`work-in-progress/brief-db-veste-utilizzabile.md`; ⏳ giro 3 DB al §10, la capability
+  della data di fine per spegnere «Valido al» col motivo, poi BE/FE): la regola «veste
+  utilizzabile» sta in un BB a DB (`script.fn_veste_utilizzabile`), letto da tutte le sedi DB e dai
+  cinque punti del BE; per l'operatore contano anche le date del rapporto; l'ultimo SUPER_ADMIN non
+  scade e il batch notturno accende oltre che spegnere. ✅ L-4 fatto il 2026-10-06: portale e shop entrano con
   l'email, il reset accetta nome utente o email. Chiuso il 2026-10-03
   `work-done/brief-db-credenziale-verbi-amministratore.md` (motivo del blocco dal DB, verbi
   dell'amministratore che rifiutano le credenziali di sistema).

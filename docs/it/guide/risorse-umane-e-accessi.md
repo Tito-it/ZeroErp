@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 25 settembre 2026
+> **Ultimo aggiornamento**: 7 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -145,7 +145,10 @@ veste e accesa e nelle sue date **e** il suo rapporto e attivo e nelle sue date:
 finisce al piu tardi quando finisce il rapporto. La data «Valido al» che l'amministratore
 imposta nel dettaglio dell'operatore e quella del rapporto, e chiude l'accesso. La regola
 completa sta in un posto solo, [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
-(dal 07-10-2026).
+(dal 07-10-2026). La chiedono il login, ogni richiesta, il rinnovo della sessione, il
+secondo passo del secondo fattore e il cambio password: una veste che esce dalle sue date
+a sessione aperta perde la sessione alla richiesta successiva, e al login nuovo riceve lo
+stesso rifiuto di una veste spenta.
 
 ### R4 — Collegamento a Django (solo persona fisica pura)
 <a id="r4--collegamento-a-django-solo-persona-fisica-pura"></a>
@@ -203,7 +206,7 @@ Il secondo livello decide **se l'utente puo entrare**. Una veste `DISABILITATO` 
 
 **Scadenze overnight.** I trigger reagiscono a UPDATE espliciti: se ieri sera `valido_al` e scaduto e nessuno ha toccato nulla, nessun trigger parte. Se ne occupa la funzione batch [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita ogni giorno alle 06:00 dal job schedulato: riallinea gli account alla data di oggi **nei due versi**, con la stessa regola della sync: spegne quelli che hanno delle vesti ma nessuna piu utilizzabile (veste scaduta, oppure rapporto scaduto) e **accende** quelli che ne hanno una diventata valida oggi (data di inizio arrivata). Fino al 07-10-2026 spegneva e basta, e un accesso con data di inizio futura restava spento anche il giorno in cui partiva. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
 
-**Invalidazione cache permessi.** Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente disattivato, cosi il blocco e immediato e non deve attendere la scadenza naturale della cache (TTL 300s). Per le disattivazioni real-time dei trigger la cache si rinnova alla scadenza del TTL; il listener LISTEN/NOTIFY (vedi [Cambio reparto](#cambio-reparto)) e il pattern event-driven su cui estendere anche questi scenari.
+**Invalidazione cache permessi.** Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente riallineato (spento o acceso), cosi il blocco e immediato e non deve attendere la scadenza naturale della cache (TTL 300s). Per le disattivazioni real-time dei trigger la cache si rinnova alla scadenza del TTL; il listener LISTEN/NOTIFY (vedi [Cambio reparto](#cambio-reparto)) e il pattern event-driven su cui estendere anche questi scenari.
 
 ---
 

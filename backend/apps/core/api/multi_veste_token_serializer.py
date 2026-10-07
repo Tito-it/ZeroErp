@@ -133,7 +133,7 @@ class MultiVesteTokenSerializer(SidTokenObtainPairSerializer):
         data = super().validate(attrs)
 
         # Step 2: risolve l'identita dell'utente per la veste del namespace.
-        identita = self._auth_repo.find_identita_attiva_for_ruoli(
+        identita = self._auth_repo.find_veste_utilizzabile_per_ruoli(
             auth_user_id=self.user.id,
             ruoli_applicativi=self.allowed_ruoli_applicativi,
         )

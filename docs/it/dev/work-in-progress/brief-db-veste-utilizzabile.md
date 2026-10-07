@@ -13,8 +13,10 @@
 > **(a)**. ✅ **Giro 1 applicato su dbdev** (§7, `20261007-01 → -15`, 12:09).
 > ✅ §7.5 deciso da Tid: l'ultimo amministratore non scade, il batch accende.
 > ✅ **Giro 2 applicato** (§8, `-16 → -22`; Tid, 2026-10-07): pgTAP senza regressioni.
-> ✅ **Lato DB chiuso.** ⏳ Resta il BE/FE (§6, §8.3).
-> **Da leggere per primo:** §3-bis (le decisioni), §8 (il giro 2), §6 + §8.3 (il BE).
+> ✅ **Giri 1-2 DB chiusi.** ✅ **BE/FE fatto** (§9, 2026-10-07): test Django verdi
+> sul DB vero. ⏳ **Giro 3 DB richiesto** (§10, 2026-10-07): la capability della data
+> di fine nel dettaglio operatore; poi il BE/FE spegne il campo «Valido al» col motivo.
+> **Da leggere per primo:** §3-bis (le decisioni), §8 (il giro 2), §9 (il BE/FE).
 
 ## 1. Il difetto, sul modello
 
@@ -430,6 +432,135 @@ come un database ricostruito da zero.
 * ⚠️ Non provato: la corsa come `zeroerp_app` e la baseline intera (di Tid); il passaggio
   dal driver JDBC per il `BEGIN ATOMIC` del `-16`, che ha il `COMMENT` nel secondo
   `- sql:` come il `-01`, già applicato.
+
+## 9. Consegna BE/FE (2026-10-07)
+
+### 9.1 Una lettura nel BE (§6)
+
+| Punto | Prima | Ora |
+| --- | --- | --- |
+| Login | `find_identita_attiva_for_ruoli`, `attivo = true` | `AuthRepository.find_veste_utilizzabile_per_ruoli`: `script.fn_veste_utilizzabile(id)` nel `WHERE`, fra le vesti della porta la prima **utilizzabile** |
+| Ogni richiesta | CTE `id_row` di `set_jwt_gucs`, `attivo = true` | lo stesso BB nella CTE |
+| Refresh | `_veste_accesa` → `get_identita_dettaglio` + `attivo` | `_veste_utilizzabile` → `AuthRepository.get_veste_utilizzabile` |
+| Secondo passo | `get_identita_dettaglio` + `attivo` | `get_veste_utilizzabile` |
+| Cambio password | `get_identita_dettaglio` + `attivo` | `get_veste_utilizzabile` |
+| Ruolo della sessione senza GUC (fallback di `PermissionResolver.get_ruolo_applicativo`: command, chiamate non-HTTP) | `attivo = true`, `LIMIT 1` senza ordine | il BB nel `WHERE`, `ORDER BY id` come al login. ⚠️ Sfuggito al censimento del §5 e trovato in revisione (2026-10-07): con la GUC una veste scaduta non ha ruolo, col fallback ne aveva uno |
+
+Le tre copie Python sono ritirate (regola del 2): `get_veste_utilizzabile` è la sola
+domanda «questa veste vale ancora?» a sessione aperta, registrata nel catalogo BB
+backend. Il commento di `set_jwt_gucs` che chiedeva di tenere allineate due sedi è
+chiuso: la condizione sta nel BB SQL. `get_identita_dettaglio` resta, come **lettura**
+per `/me/`. I due metodi del repository condividono la lista delle colonne
+(`_SELECT_VESTE`). `find_identita_attiva_for_ruoli` è rinominato: il nome diceva
+«attiva», e la regola non è più quella.
+
+### 9.2 Codici, ripieghi, FE (§6 ➕, §8.3)
+
+* **Policy generate** rigenerate dal catalogo: diff dei soli due codici ritirati
+  (`E_UTENTE_NON_ATTIVO`, `E_UTENTE_SCADUTO` con `⚠️ RITIRATO il 2026-10-07`).
+* **Ripieghi**: i due codici ritirati **restano** in `error_messages_fallback.py`, come
+  gli altri ritirati (`CF_NON_VALIDO`…): un codice ritirato continua a risolvere,
+  perché il diario ne ha le righe. `E_UTENTE_DISABILITATO` invariato (§6 ➕).
+  `E_PROFILO_ULTIMO_SUPER_ADMIN` riallineato al catalogo («Operazione vietata: non
+  resterebbe nessun amministratore (SUPER_ADMIN) attivo e senza data di fine.»).
+* **FE**: `LoginView.vue` perde le due voci dei codici ritirati, e `it.json`/`en.json`
+  le due chiavi rimaste senza lettori (`auth.account_not_active`,
+  `auth.account_expired`). Nessun altro cambiamento: D-4 non introduce codici.
+* **Batch** (§8.3): `AnagraficheRepository.sync_auth_user_expired` e il command
+  `sync_auth_user_active` contano credenziali **riallineate** (spente o accese), non
+  «disattivate»; la differenza simmetrica prima/dopo c'era già.
+* **Drawer operatore** (§8.3): una data «Valido al» sull'ultimo SUPER_ADMIN senza
+  scadenza passa già da `_run_or_raise_super_admin_guard` → 409
+  `E_PROFILO_ULTIMO_SUPER_ADMIN`, col messaggio nuovo. Il campo spento col motivo
+  è chiesto al DB nel §10 (Tid, 2026-10-07): la regola c'è già, ma la capability del
+  drawer la produce `script.fn_get_operatore_detail`, e la sua terna manca.
+
+### 9.3 Prove
+
+* **Sul DB vero** (`test_login_credenziale_db`, casi costruiti in transazione annullata):
+  * n. 14: un operatore entrato, anche cliente dello shop (la sua veste tiene accesa la
+    credenziale, così il rifiuto che si vede è quello della veste). La veste operatore
+    esce dalle sue date restando **accesa**: la richiesta successiva è 401
+    `E_IDENTITA_NON_ATTIVA`, il refresh è rifiutato (401), il login nuovo è 403
+    `E_VESTE_NON_ATTIVA`, la porta dello shop resta aperta;
+  * n. 15: due vesti della porta portale, la più vecchia scaduta e l'altra valida:
+    entra la valida (claim `identita_id` e `ruolo_applicativo` della valida);
+  * n. 16 (D-2): il rapporto chiuso **dal drawer** (`PATCH` con `valido_al` ieri) e la
+    veste ancora accesa: la porta admin è chiusa, quella dello shop aperta.
+* Suite `core`, `amm_software`, `portale`, `shop`, `anagrafiche` sul DB vero:
+  2489 test verdi (`ZEROERP_TEST_DB_E2E=1`). Nessun test esistente ha cambiato esito
+  per D-2 (gli operatori dei test nascono dalla madre, col rapporto).
+* Unitari allineati ai metodi nuovi (mock di `get_veste_utilizzabile` e
+  `find_veste_utilizzabile_per_ruoli`; il test SQL del login pretende il BB e non più
+  `attivo = true`). `ruff` e guard i18n puliti.
+* ⚠️ **Non provato**: il 409 del drawer sull'ultimo SUPER_ADMIN senza scadenza sul DB
+  vero (la prova chiede un database con un solo amministratore senza date); il
+  collaudo a video.
+
+### 9.4 Documentazione e chiusura
+
+Aggiornati: `api_multi_veste_token.md` (la regola dal DB, §2-bis, §3, codici),
+`api_user_profile.md` (un codice solo), la guida `risorse-umane-e-accessi` (chi legge la
+regola, cache «riallineati»), il piano accessi (§0, A-7, L-6, §4.4), il catalogo BB
+backend, PROJECT_CONTEXT. L'archiviazione aspetta il giro 3 (§10).
+
+## 10. Giro 3 DB — la capability della data di fine (richiesta BE/FE, 2026-10-07)
+
+> **A chi:** team DB (`dev/db-tid`); poi BE/FE (§10.3), che **attende**.
+> **Decisione di Tid (2026-10-07):** il campo «Valido al» del drawer operatore si
+> spegne col motivo, invece di lasciar arrivare il 409.
+
+### 10.1 Il difetto
+
+Dal giro 2 (`-19`, `-20`) mettere una data di fine all'ultimo SUPER_ADMIN senza
+scadenza è rifiutato con `E_PROFILO_ULTIMO_SUPER_ADMIN`. Il drawer però non lo sa
+prima: il campo «Valido al» (fine del **rapporto**) è acceso, l'amministratore
+scrive una data, salva, e riceve un 409. È la regola di casa al contrario: **stato
+⇒ controllo spento col motivo** (api.md §«Capability di riga»), e il 409 resta la
+rete per la corsa fra due sessioni.
+
+La regola **c'è già**, ed è una: `script.fn_check_ultimo_super_admin_attivo`, che
+dal `-17` risponde anche per «dargli una data di fine» (lo dice il suo COMMENT).
+Manca solo il **trasporto**: le capability del drawer le produce
+`script.fn_get_operatore_detail`, a terne `can_<verbo>` / `<verbo>_reason` /
+`<verbo>_reason_key`, **una chiave per verbo** (rev `20260927-02`). Per la data di
+fine la terna non c'è.
+
+⛔ Perché non la deriva il BE da `can_disable`: il codice del motivo sarebbe lo
+stesso (`ULTIMO_SUPER_ADMIN`), ma la **chiave** la sceglierebbe il backend o il
+client, e la frase deve dire **quale** gesto è spento. È la stessa ragione per cui
+disable e demote hanno già due chiavi sulla stessa condizione.
+
+### 10.2 Richiesta
+
+In `script.fn_get_operatore_detail`, in coda al `RETURNS TABLE` come le chiavi del
+`20260927-02` (nomi e forma li sceglie il team DB):
+
+| Colonna | Valore |
+| --- | --- |
+| `can_set_valido_al` | `NOT ctx.is_last_sa` (la stessa condizione di `can_disable`) |
+| `valido_al_reason` | `'ULTIMO_SUPER_ADMIN'` se `is_last_sa`, altrimenti `NULL` |
+| `valido_al_reason_key` | `'amministrazione.operatori.valido_al_reason.ultimo_super_admin'` se `is_last_sa`, altrimenti `NULL` |
+
+* Un amministratore che ha **già** una data di fine risponde `true` (il `-17` lo dice
+  già: non è «senza scadenza»), e il campo resta modificabile anche per toglierla.
+* Il COMMENT della funzione nomina la terna nuova accanto alle altre.
+* Prova: il pgTAP della funzione (o quello del giro 2,
+  `test-super-admin-senza-scadenza-v1`) costruisce l'ultimo SUPER_ADMIN senza
+  scadenza → `false` col motivo e la chiave; un secondo amministratore senza
+  scadenza → `true`, motivo e chiave `NULL`.
+* ⚠️ Cambia il `RETURNS TABLE`: `DROP` + `CREATE`. Il BE legge le colonne per nome
+  (`row_to_dict`), quindi una colonna in coda non rompe niente.
+
+### 10.3 Dopo la consegna — lato BE/FE (attende)
+
+* BE: `OperatoreDetail` (`amm_software/types.py`) prende la terna; nessuna logica.
+* FE: `OperatoreDrawer.vue` spegne «Valido al» con `bloccoAttivo(…, 'valido_al',
+  'can_set_valido_al')`, come l'interruttore; tooltip dalla chiave; chiave nuova in
+  `it.json`/`en.json`; spec del drawer.
+* ➕ Già fatto lato FE in questo giro (non aspetta il DB): le due frasi esistenti
+  (`disabilita_reason`, `rimuovi_super_admin_reason`) dicevano «l'ultimo super admin
+  **attivo**», che dal giro 2 non è più la regola: ora dicono «senza data di fine».
 
 ---
 {% include-markdown "signature-core.md" %}

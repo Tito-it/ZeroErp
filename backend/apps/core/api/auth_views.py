@@ -105,18 +105,19 @@ _auth_repo = AuthRepository()
 _secondo_fattore_repo = SecondoFattoreRepository()
 
 
-# Scopo: La veste del refresh presentato e' ancora ACCESA? Chiede la riga della
+# Scopo: La veste del refresh presentato e' ancora UTILIZZABILE? Chiede la
 #        veste `identita_id` legata alla credenziale `user_id` (dai claim
-#        verificati). Claim assente (None) = False: ogni refresh nostro lo porta
-#        (`emetti_refresh_veste`), come gia' il claim `ruolo_applicativo`.
-# ⚠️ Gemella della CTE `id_row` di `set_jwt_gucs` (jwt_audit_authentication):
-#    stesso predicato (id, auth_user, `attivo`), una per il refresh e una per
-#    ogni richiesta. Chi aggiunge una condizione alla veste valida (L-6, A-7:
-#    `valido_dal`/`valido_al`) la aggiunge a TUTTE E DUE, o il refresh rinnova
-#    una sessione che ogni richiesta rifiuta.
+#        verificati) al repository, che la fa decidere al building block DB
+#        `script.fn_veste_utilizzabile` (accesa, nelle sue date, rapporto per
+#        l'operatore: brief-db-veste-utilizzabile). Claim assente (None) =
+#        False: ogni refresh nostro lo porta (`emetti_refresh_veste`), come gia'
+#        il claim `ruolo_applicativo`.
+#        La stessa regola la chiede `set_jwt_gucs` a ogni richiesta: una
+#        condizione nuova sulla veste si scrive nel building block, non qui.
 #
-# ⛔ D-5 (Tid, 2026-10-02): spegnere una veste chiude le sue sessioni al
-#    primo rinnovo, QUALUNQUE sia la strada che l'ha spenta — interruttore
+# ⛔ D-5 (Tid, 2026-10-02): spegnere una veste (o farla uscire dalle sue
+#    date) chiude le sue sessioni al primo rinnovo, QUALUNQUE sia la strada
+#    che l'ha spenta — interruttore
 #    «Accesso attivo», «Disabilita», portale, shop, e le strade che verranno.
 #    Fino a quel giorno il controllo stava solo in `set_jwt_gucs`, DOPO la
 #    rotazione, e un esito negativo era un warning: il refresh ruotava per
@@ -124,12 +125,11 @@ _secondo_fattore_repo = SecondoFattoreRepository()
 #    in un posto solo; la blacklist dei singoli comandi e' la chiusura
 #    IMMEDIATA, non la regola.
 # ⚠️ Un guasto della lettura PROPAGA (500): non e' una prova che la veste sia
-#    accesa, e il refresh non si concede su un dubbio.
-def _veste_accesa(identita_id: int | None, user_id: int | None) -> bool:
+#    utilizzabile, e il refresh non si concede su un dubbio.
+def _veste_utilizzabile(identita_id: int | None, user_id: int | None) -> bool:
     if identita_id is None or not user_id:
         return False
-    veste = _auth_repo.get_identita_dettaglio(identita_id, user_id)
-    return bool(veste and veste.get("attivo"))
+    return _auth_repo.get_veste_utilizzabile(identita_id, user_id) is not None
 
 
 
@@ -556,22 +556,23 @@ class AuditTokenRefreshView(TokenRefreshView):
             )
             raise VesteNonAttivaError()
 
-        # ⛔ Veste spenta: la sessione e' chiusa, PRIMA della rotazione (D-5,
-        #    `_veste_accesa`). Si blocca anche il refresh presentato, per sid:
+        # ⛔ Veste non piu' utilizzabile (spenta o fuori date): la sessione e'
+        #    chiusa, PRIMA della rotazione (D-5, `_veste_utilizzabile`). Si
+        #    blocca anche il refresh presentato, per sid:
         #    una veste riaccesa dopo non resuscita la sessione — si rientra col
         #    login. 401 e non il 403 del guard sopra: il token era buono, la
         #    sessione non c'e' piu', e il client va al login come per ogni
         #    refresh rifiutato.
         user_id, sid = self._extract_claims(claims)
         identita_id = _int_claim(claims, JWT_CLAIM_IDENTITA_ID)
-        if not _veste_accesa(identita_id, user_id):
+        if not _veste_utilizzabile(identita_id, user_id):
             if user_id and sid:
                 blocca_token_sessioni(user_id, lambda s: s == sid)
             logger.warning(
                 "security.refresh_veste_spenta user_id=%s identita_id=%s",
                 user_id, identita_id,
             )
-            raise InvalidToken("Sessione chiusa: la veste non e' piu' attiva.")
+            raise InvalidToken("Sessione chiusa: la veste non e' piu' utilizzabile.")
 
         # `_rinnova` risponde 200 o solleva: da qui in poi il rinnovo e' riuscito.
         response = self._rinnova(refresh_str)

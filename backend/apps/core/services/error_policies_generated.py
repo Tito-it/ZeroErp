@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 981, di cui 99 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 981, di cui 101 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1459,7 +1459,11 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # 423 -> 403 il 2026-08-06 (audit coerenza status). Il 423 e' il lock · WebDAV di una RISORSA (RFC 4918), non di un account: qui e' un · blocco temporaneo dopo troppi tentativi, sollevato da · script.fn_check_blocco_login. Il gemello E_USER_DISABILITATO e' · gia' 403. Il frontend aggancia il CODICE, non lo status · (LoginView.resolveLoginError), quindi a video non cambia nulla. · ⚠️ E NON 429, che sembrerebbe il candidato ovvio: LoginView · intercetta il 429 PRIMA di leggere il codice (e' il throttle per · IP) e il messaggio del DB coi minuti rimanenti andrebbe perso. · Dal 2026-09-25 (20260925-10) e' il freno sulla sola coppia credenziale + provenienza, e dal 20260925-52 il segnaposto sono i minuti rimanenti, riempiti dalla funzione (minuti_rimanenti anche nel contesto).
     "E_UTENTE_BLOCCATO": "NON_PERMESSO",
     "E_UTENTE_DISABILITATO": "NON_PERMESSO",
+    # RITIRATO il 2026-10-07 (brief-db-veste-utilizzabile, D-4): era il rifiuto di script.fn_get_user_profile per una veste OPERATORE o un rapporto con valido_dal futuro. Una veste fuori dalle sue date ha ora lo stesso esito di una veste spenta, E_UTENTE_DISABILITATO, letto dal building block script.fn_veste_utilizzabile: la data non cambia cosa fa chi non entra (chiede all'amministratore, che le date le vede nel dettaglio). Nessuna funzione viva lo nomina piu'; la riga resta perche' il diario deve restare leggibile.
+    # ⚠️ RITIRATO il 2026-10-07
     "E_UTENTE_NON_ATTIVO": "NON_PERMESSO",
+    # RITIRATO il 2026-10-07 (brief-db-veste-utilizzabile, D-4): era il rifiuto di script.fn_get_user_profile per una veste OPERATORE o un rapporto con valido_al passato. Una veste fuori dalle sue date ha ora lo stesso esito di una veste spenta, E_UTENTE_DISABILITATO, letto dal building block script.fn_veste_utilizzabile: la data non cambia cosa fa chi non entra (chiede all'amministratore, che le date le vede nel dettaglio). Nessuna funzione viva lo nomina piu'; la riga resta perche' il diario deve restare leggibile.
+    # ⚠️ RITIRATO il 2026-10-07
     "E_UTENTE_SCADUTO": "NON_PERMESSO",
     # script.fn_crea_utente_tecnico: per la coppia (processo, emittente) lo username deterministico processo@emittente è già preso, ma il legame in dbops.processi_identita è SPENTO. ⛔ Prima ci si sbatteva contro un 23505 NUDO su auth_user_username_key: il guard sul duplicato guarda processi_identita.attivo, e lo username no — quindi disattivare il legame (la via che la documentazione indicava per sostituire l'utente di un processo) liberava il guard e lasciava in piedi il muro. ⚠️ NON è E_UTENTE_TECNICO_GIA_ESISTE, che dice «ha già un utente ATTIVO» e il cui rimedio è «non serve fare niente». Qui l'utente c'è ed è spento, e il rimedio è l'opposto: RIATTIVARLO con script.fn_riattiva_utente_tecnico. Due situazioni diverse mandano a fare due cose diverse. ⭐ CONFLITTO_STATO: i parametri sono giusti, è lo STATO del mondo che non ammette questa operazione. Brief: brief-db-processi-automatici-residui-be, DB-6.
     "E_UTENTE_TECNICO_DA_RIATTIVARE": "CONFLITTO_STATO",
@@ -1688,6 +1692,8 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_TASK_RUNTIME",
         "E_TXID_DBLINK_ERROR",
         "E_TXID_DBLINK_NULL",
+        "E_UTENTE_NON_ATTIVO",
+        "E_UTENTE_SCADUTO",
         "FLUSSI_COMPETENZA_MANCANTE",
         "FLUSSI_ESITO_NON_AMMESSO",
         "FLUSSI_ESITO_OBBLIGATORIO",

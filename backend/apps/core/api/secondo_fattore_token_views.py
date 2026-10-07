@@ -120,9 +120,11 @@ class AuditSecondoFattoreTokenView(APIView):
             raise _sfida_superata("credenziale assente o disattivata")
         digest = digest_nome_tentato(user.get_username())
 
-        identita = _auth_repo.get_identita_dettaglio(sfida.identita_id, user.id)
-        if identita is None or not identita.get("attivo"):
-            raise _sfida_superata("veste della sfida non piu' attiva")
+        # La veste deve valere ANCHE al secondo passo: fra i due passi puo'
+        # essere stata spenta o essere uscita dalle sue date. Decide il DB.
+        identita = _auth_repo.get_veste_utilizzabile(sfida.identita_id, user.id)
+        if identita is None:
+            raise _sfida_superata("veste della sfida non piu' utilizzabile")
         device = _secondo_fattore.device(user.id)
         if device["stato"] != STATO_DEVICE_ATTIVO:
             raise _sfida_superata("secondo fattore non piu' attivo")

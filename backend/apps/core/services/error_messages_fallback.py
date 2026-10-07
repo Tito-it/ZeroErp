@@ -970,7 +970,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PROFILO_ACCESSO_BINDING_INCOERENTE": "Binding non coerente con il tipo del profilo di accesso.",
     "E_PROFILO_ACCESSO_NON_TROVATO": "Profilo di accesso non trovato.",
     "E_PROFILO_ACCESSO_TIPO_NON_GESTITO": "Tipo profilo non gestito dal guard di coerenza bindings: regola mancante.",
-    "E_PROFILO_ULTIMO_SUPER_ADMIN": "Impossibile rimuovere l'ultimo super admin attivo.",
+    "E_PROFILO_ULTIMO_SUPER_ADMIN": "Operazione vietata: non resterebbe nessun amministratore (SUPER_ADMIN) attivo e senza data di fine.",
     "E_PROMO_INIZIATA_CAMPI_RISTRETTI": "Promo gia' iniziata: solo descrizione e data fine sono modificabili. Per cambiare prezzo o periodo, chiudere questa promo (data fine = oggi) e crearne una nuova.",
     "E_PROMO_RETROATTIVA": "Le date della promo non possono essere retroattive: valido_dal deve essere successivo a oggi e valido_al non puo' essere antecedente a oggi.",
     "E_PROMO_SCADUTA_IMMUTABILE": "Promo scaduta: non modificabile. Per riproporla creare una nuova promo.",

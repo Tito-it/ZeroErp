@@ -17,6 +17,14 @@ Il login deve discriminare quale "veste" sta usando l'utente: il claim
 `identita_id` iniettato nel JWT tiene traccia della veste scelta, e
 `JwtAuditAuthentication` lo valida a ogni richiesta per popolare le GUC.
 
+⭐ **Quando una veste «vale» lo decide il DB** (dal 2026-10-07,
+brief-db-veste-utilizzabile): `script.fn_veste_utilizzabile(identita_id)` —
+accesa, oggi nelle sue date (estremi compresi), soggetto attivo e, per
+l'operatore umano, rapporto di lavoro attivo e nelle sue date. Login, ogni
+richiesta, refresh, secondo passo del secondo fattore e cambio password
+chiedono a lui, e nessun punto del backend guarda `attivo` o le date da solo.
+Spenta e fuori date hanno lo **stesso esito** (D-4): nessun codice per le date.
+
 ## Endpoint
 
 ### Login
@@ -239,8 +247,10 @@ JWT_CLAIM_EMITTENTE_ATTIVO_ID = "emittente_attivo_id"
 ### 1. Guard "veste" al login (MultiVesteTokenSerializer, §8.3.2)
 
 Dopo la verifica credenziali (`super().validate()`), il serializer
-risolve l'identita attiva dell'utente con `ruolo_applicativo` nel
-subset del namespace. Se assente:
+risolve la prima veste **utilizzabile** dell'utente con `ruolo_applicativo`
+nel subset del namespace (`AuthRepository.find_veste_utilizzabile_per_ruoli`):
+con una veste scaduta e un'altra valida della stessa porta entra la valida.
+Se nessuna:
 
 - **Esito**: `VesteNonAttivaError` → HTTP 403 `E_VESTE_NON_ATTIVA`
 - **No autoblock**: `AuditTokenObtainPairView` intercetta l'eccezione
@@ -266,15 +276,17 @@ rientri nel set `expected_ruoli_applicativi` del namespace chiamato:
 Non c'e' escalation di privilegio (il claim veste viene dal token firmato),
 ma chiude l'ambiguita' semantica cross-path.
 
-### 2-bis. Veste spenta al refresh (D-5, 2026-10-02)
+### 2-bis. Veste non utilizzabile al refresh (D-5, 2026-10-02; date dal 2026-10-07)
 
 Subito dopo il guard cross-namespace, e **prima** della rotazione,
 `AuditTokenRefreshView.post()` controlla che la veste del claim `identita_id`
-sia ancora accesa sulla credenziale del token (`_veste_accesa`: id della veste +
-`user_id` + `attivo`, lo stesso predicato di `set_jwt_gucs`):
+sia ancora utilizzabile sulla credenziale del token (`_veste_utilizzabile` →
+`AuthRepository.get_veste_utilizzabile`: id della veste + `user_id` +
+`script.fn_veste_utilizzabile`, lo stesso building block di `set_jwt_gucs`):
 
-- Veste accesa → si prosegue col rinnovo.
-- Veste spenta, inesistente o di un'altra credenziale, oppure claim
+- Veste utilizzabile → si prosegue col rinnovo.
+- Veste spenta, fuori dalle sue date (o, per l'operatore, col rapporto chiuso),
+  inesistente o di un'altra credenziale, oppure claim
   `identita_id` assente → 401 `E_AUTHENTICATION_FAILED`, nessuna rotazione, e
   la sessione del token presentato (per `sid`) finisce in blacklist: una veste
   riaccesa dopo **non** la resuscita, si rientra col login.
@@ -282,7 +294,7 @@ sia ancora accesa sulla credenziale del token (`_veste_accesa`: id della veste +
   concede su un dubbio.
 
 La regola vale per **qualunque** strada spenga la veste (interruttore
-«Accesso attivo», «Disabilita», portale, shop). Fino al 2026-10-02 il controllo
+«Accesso attivo», «Disabilita», portale, shop) e per una data che passa. Fino al 2026-10-02 il controllo
 stava solo in `set_jwt_gucs`, dopo la rotazione, e un esito negativo era un
 warning: la richiesta veniva rifiutata (401 `E_IDENTITA_NON_ATTIVA`, §3), ma il
 refresh ruotava ancora.
@@ -293,8 +305,10 @@ Ad **ogni** richiesta con Bearer, `JwtAuditAuthentication.authenticate()`:
 
 1. Estrae `identita_id` dal claim. Se assente → 401 `E_JWT_SENZA_IDENTITA`.
    Poi verifica il claim `sid`: se assente o vuoto → 401 `E_JWT_SENZA_SID`.
-2. Query CTE che valida `(auth_user, identita_id)` attivi + popola 6 GUC
-   di sessione in singola round-trip. Se count = 0 → 401 `E_IDENTITA_NON_ATTIVA`.
+2. Query CTE che valida `(auth_user, identita_id)` con
+   `script.fn_veste_utilizzabile` + popola 6 GUC di sessione in singola
+   round-trip. Se count = 0 → 401 `E_IDENTITA_NON_ATTIVA`: una veste che
+   scade a sessione aperta chiude la sessione alla richiesta successiva.
 3. Setta marker `request._zeroerp_jwt_guc_set = True` per il reset
    simmetrico via middleware a response.
 
@@ -302,13 +316,13 @@ Ad **ogni** richiesta con Bearer, `JwtAuditAuthentication.authenticate()`:
 
 | Codice                    | HTTP | UI action         | Quando                                                                         | Policy        |
 | ------------------------- | ---- | ----------------- | ------------------------------------------------------------------------------ | ------------- |
-| `E_AUTHENTICATION_FAILED` | 401  | show_error_banner | Credenziali errate; refresh senza cookie `zeroerp_refresh` o con refresh non valido/scaduto/in blacklist; refresh di una veste spenta (§2-bis) | Pre-esistente |
+| `E_AUTHENTICATION_FAILED` | 401  | show_error_banner | Credenziali errate; refresh senza cookie `zeroerp_refresh` o con refresh non valido/scaduto/in blacklist; refresh di una veste non utilizzabile (§2-bis) | Pre-esistente |
 | `E_NOT_AUTHENTICATED`     | 401  | show_error_banner | Header `Authorization` assente su endpoint protetto                            | Pre-esistente |
 | `E_PERMISSION_DENIED`     | 403  | show_error_banner | Refresh senza header `X-Requested-With: XMLHttpRequest` (anti-CSRF)            | 2026-09-28    |
-| `E_VESTE_NON_ATTIVA`      | 403  | show_error_banner | Utente senza identita del namespace chiamato (login) / refresh cross-namespace | §8.3.2        |
+| `E_VESTE_NON_ATTIVA`      | 403  | show_error_banner | Utente senza una veste utilizzabile (accesa e nelle sue date) del namespace chiamato (login) / refresh cross-namespace | §8.3.2        |
 | `E_JWT_SENZA_IDENTITA`    | 401  | redirect_login    | JWT senza claim `identita_id` (token pre-refactor)                             | §8.3.4        |
 | `E_JWT_SENZA_SID`         | 401  | redirect_login    | JWT senza claim `sid` (o con `sid` vuoto)                                      | —             |
-| `E_IDENTITA_NON_ATTIVA`   | 401  | redirect_login    | `identita_id` non corrisponde a identita attiva (revocata)                     | §8.3.4        |
+| `E_IDENTITA_NON_ATTIVA`   | 401  | redirect_login    | `identita_id` non corrisponde a una veste utilizzabile (spenta, fuori date, rapporto chiuso) | §8.3.4        |
 | `E_CREDENZIALE_BLOCCATA`  | 403  | show_error_banner | Credenziale bloccata dall'amministratore: tutte le porte, non scade, il reset non la toglie | 2026-09-25 |
 | `E_UTENTE_BLOCCATO`       | 403  | show_error_banner | Freno sulla **provenienza**: troppe password sbagliate di fila da questo IP (frase chiusa, i minuti restano nel contesto del DB) | Pre-esistente, per credenziale + provenienza dal 2026-09-25 |
 | `E_LOGIN_ATTESA`          | 403  | show_error_banner | Attesa crescente sulla credenziale oltre il tetto di fallimenti da qualunque provenienza; i secondi nel `message` (⚠️ non in `detail`, che porta la causa del catalogo) | 2026-09-25 |
@@ -382,7 +396,7 @@ l'audit procede comunque con GUC vuote.
 | `apps/core/api/multi_veste_token_serializer.py` | `MultiVesteTokenSerializer` + 3 subclass (Admin/Portale/Shop), `VesteNonAttivaError`                                                                                                                                                |
 | `apps/core/api/jwt_audit_authentication.py`     | `JwtAuditAuthentication` (legge claim + popola GUC), `set_jwt_gucs`, `JwtSenzaIdentitaError`, `IdentitaNonAttivaError`                                                                                                              |
 | `apps/core/api/token_serializers.py`            | `SidTokenObtainPairSerializer` (parent di MultiVeste, aggiunge `sid`)                                                                                                                                                               |
-| `apps/core/db/auth_repository.py`               | `find_identita_attiva_for_ruoli`, `get_identita_dettaglio`, `check_blocco_login`, `registra_tentativo_login`, `get_deve_cambiare_password`                                                                                          |
+| `apps/core/db/auth_repository.py`               | `find_veste_utilizzabile_per_ruoli`, `get_veste_utilizzabile`, `get_identita_dettaglio`, `check_blocco_login`, `registra_tentativo_login`, `get_deve_cambiare_password`                                                                                          |
 | `apps/core/services/auth_constants.py`          | Costanti `JWT_CLAIM_*` + `RUOLO_APPLICATIVO_*`                                                                                                                                                                                      |
 | `apps/core/services/error_policies_generated.py` | Classe di `E_VESTE_NON_ATTIVA`, `E_JWT_SENZA_IDENTITA`, `E_JWT_SENZA_SID`, `E_IDENTITA_NON_ATTIVA` (`CLASSE_PER_CODICE`)                                                                                                             |
 | `apps/core/api/error_responses.py`              | `drf_exception_handler` — priorita' a `default_code` E_* delle subclass AuthenticationFailed                                                                                                                                        |

@@ -123,7 +123,7 @@ class ChangePasswordTokenVesteTests(SimpleTestCase):
     def test_cambio_password_emette_token_con_la_veste(
         self, _ip, _perm, repo, _audit, _apply, _val, svc, _get
     ):
-        repo.get_identita_dettaglio.return_value = _OPERATORE
+        repo.get_veste_utilizzabile.return_value = _OPERATORE
         svc.return_value.risolvi_per_login.return_value = None
         resp = self._chiama()
         self.assertEqual(resp.status_code, 200)
@@ -133,13 +133,13 @@ class ChangePasswordTokenVesteTests(SimpleTestCase):
         refresh = RefreshToken(resp.cookies[REFRESH_COOKIE_NAME].value, verify=False)
         self.assertEqual(refresh["identita_id"], 7)
         self.assertEqual(refresh["ruolo_applicativo"], "OPERATORE")
-        repo.get_identita_dettaglio.assert_called_once_with(7, 42)
+        repo.get_veste_utilizzabile.assert_called_once_with(7, 42)
 
     # Scopo: l'audit LOGIN registra il sid della sessione nuova, non il jti.
     def test_cambio_password_audit_col_sid(
         self, _ip, _perm, repo, audit, _apply, _val, svc, _get
     ):
-        repo.get_identita_dettaglio.return_value = _OPERATORE
+        repo.get_veste_utilizzabile.return_value = _OPERATORE
         svc.return_value.risolvi_per_login.return_value = None
         resp = self._chiama()
         refresh = RefreshToken(resp.cookies[REFRESH_COOKIE_NAME].value, verify=False)
@@ -150,7 +150,7 @@ class ChangePasswordTokenVesteTests(SimpleTestCase):
     def test_veste_revocata_401_senza_toccare_la_password(
         self, _ip, _perm, repo, _audit, apply, _val, _svc, _get
     ):
-        repo.get_identita_dettaglio.return_value = {**_OPERATORE, "attivo": False}
+        repo.get_veste_utilizzabile.return_value = None
         resp = self._chiama()
         self.assertEqual(resp.status_code, 401)
         self.assertEqual(json.loads(resp.content)["error"]["code"], "E_IDENTITA_NON_ATTIVA")

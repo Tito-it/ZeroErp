@@ -786,8 +786,6 @@
     "logout_other_tab": "Ti sei scollegato da un'altra scheda",
     "sessione_chiusa_freno": "Sessione chiusa: troppe password sbagliate da questa postazione. Si potrà accedere di nuovo fra qualche minuto.",
     "account_disabled": "Account disabilitato — contattare l'amministratore",
-    "account_not_active": "Account non ancora attivo",
-    "account_expired": "Account scaduto — contattare l'amministratore",
     "access_denied": "Accesso non autorizzato",
     "too_many_attempts": "Troppi tentativi di accesso. Riprovare tra qualche minuto.",
     "account_locked": "Troppi tentativi non riusciti da questa postazione: accesso sospeso per qualche minuto.",
@@ -1300,10 +1298,10 @@
         "senza_email": "Nessun indirizzo email configurato: l'invito non si può inviare."
       },
       "disabilita_reason": {
-        "ultimo_super_admin": "È l'ultimo super admin attivo: non si può disattivarne l'accesso."
+        "ultimo_super_admin": "È l'unico amministratore senza data di fine: non si può disattivarne l'accesso."
       },
       "rimuovi_super_admin_reason": {
-        "ultimo_super_admin": "È l'ultimo super admin attivo: non si può togliergli il ruolo."
+        "ultimo_super_admin": "È l'unico amministratore senza data di fine: non si può togliergli il ruolo."
       }
     },
     "invito_inviato": "Invito inviato",
@@ -1790,7 +1788,7 @@
       "sbloccata_ok": "Accesso sbloccato.",
       "blocca_reason": {
         "credenziale_di_sistema": "È l'accesso di un processo automatico o di un sistema esterno: bloccarlo fermerebbe il suo lavoro.",
-        "ultimo_super_admin": "È l'ultimo super amministratore raggiungibile: bloccarlo lascerebbe il sistema senza amministratori."
+        "ultimo_super_admin": "È l'unico amministratore senza data di fine: bloccarlo lascerebbe il sistema senza amministratori."
       },
       "elimina": "Elimina accesso",
       "elimina_conferma": "L'accesso «{username}» non ha mai avuto una veste e viene eliminato. Resta traccia di chi l'ha eliminato e quando. L'operazione non si annulla.",
