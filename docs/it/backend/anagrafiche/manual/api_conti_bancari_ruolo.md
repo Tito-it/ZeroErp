@@ -224,9 +224,9 @@ dal service: un valore fuori elenco lo rifiuta il `CHECK` del DB, col campo
 | `E_CONTO_BANCARIO` | 400, campo `conto_bancario_id` | il conto del registro non è attivo | `anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard` |
 | `E_ANAG_DUPLICATO` | 409 | legame già presente per lo stesso ruolo/istanza/conto/uso; secondo predefinito per lo stesso uso (campo `predefinito`); conto di incasso già di un altro soggetto | mappa vincoli |
 | `E_ANAG_FK` | 400 | conto, ruolo o istanza inesistenti (campo `istanza_utility_id` sull'istanza) | mappa vincoli |
-| `E_ANAG_CONTO_NOT_FOUND` | ⚠️ 400 | `conto_bancario_id` non esiste nel registro | service |
+| `E_ANAG_CONTO_NOT_FOUND` | 404 | `conto_bancario_id` non esiste nel registro | service |
 | `E_ANAG_NOT_FOUND` | 404 | PATCH: legame inesistente o di un altro ruolo | service |
-| `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` | ⚠️ 400 | DELETE: legame inesistente o di un altro ruolo | service |
+| `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` | 404 | DELETE: legame inesistente o di un altro ruolo | service |
 | `E_VALIDATION_INPUT` | 400 | corpo illeggibile o che non è un oggetto JSON | `handle_post_json` / `corpo_oggetto` |
 
 La mappa vincoli è `_VINCOLI_LEGAME_RUOLO` di `conti_bancari_service.py`
@@ -236,10 +236,10 @@ senza istanza), non vincoli: il presidio
 `anagrafiche/tests/db/test_conti_bancari_vincoli_mappati_db.py` confronta la
 mappa con vincoli e indici unici veri, nei due versi.
 
-⚠️ **Difetto noto** — E-1 di [analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md):
-`E_ANAG_CONTO_NOT_FOUND` e `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` **non sono a
-catalogo**: il traduttore li tratta come codici sconosciuti e risponde
-**400** «Errore di validazione.» invece di un 404. Il seed è chiesto al team DB.
+`E_ANAG_CONTO_NOT_FOUND` ed `E_ANAG_CONTO_SOGGETTO_NOT_FOUND` sono a catalogo
+come `NON_TROVATO` dal 2026-10-07: fino ad allora il traduttore li trattava come
+codici sconosciuti e rispondeva **400** «Errore di validazione.» (E-1 di
+[analisi-be-difetti-emersi-verifica-doc-api-core.md](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 
 Conti del soggetto e lookup IBAN/filiali:
 [api_conti_bancari_soggetto.md](api_conti_bancari_soggetto.md).

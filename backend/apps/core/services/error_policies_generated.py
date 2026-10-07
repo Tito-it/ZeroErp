@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 984, di cui 101 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 990, di cui 102 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -93,6 +93,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_AMM_SCOPE_NON_AMMESSO": "DATO_ERRATO",
     "E_AMM_UTENTE_NOT_FOUND": "NON_TROVATO",
     "E_AMM_VALIDAZIONE": "DATO_ERRATO",
+    # Sollevato dal backend (anagrafiche/services/conti_bancari_service.py), nessuna funzione DB: il conto_bancario_id indicato non esiste nel registro dei conti. NON_TROVATO come il gemello E_ANAG_NOT_FOUND, che lo stesso service usa per il soggetto: la cosa indicata non esiste. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1): prima il traduttore lo trattava come codice E_ sconosciuto e rispondeva 400.
+    "E_ANAG_CONTO_NOT_FOUND": "NON_TROVATO",
+    # Sollevato dal backend (anagrafiche/services/conti_bancari_service.py), nessuna funzione DB: il legame fra conto bancario e soggetto indicato non esiste, o appartiene a un altro proprietario (DELETE del legame). NON_TROVATO: per chi chiede, un legame altrui e uno inesistente sono la stessa cosa. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
+    "E_ANAG_CONTO_SOGGETTO_NOT_FOUND": "NON_TROVATO",
     "E_ANAG_DUPLICATO": "CONFLITTO_STATO",
     "E_ANAG_FK": "DATO_ERRATO",
     "E_ANAG_MATRICE_OVERLAP": "CONFLITTO_STATO",
@@ -215,6 +219,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CODA_ARCHIVIAZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_CODA_HANDLER_NON_REGISTRATO": "TECNICO",
     "E_CODA_IDENTITA_NON_ATTIVA": "CONFLITTO_STATO",
+    # Scritto dal backend in dbops.coda_lavori.ultimo_errore (core/services/coda_lavori/repository.py, reap_stale), non sollevato: un lavoro rimasto IN_CORSO oltre la soglia (worker morto o ucciso) viene recuperato dal reaper. Non attraversa HTTP: lo legge chi guarda la coda. TECNICO: un worker morto, e il lavoro e' gia' stato rimesso in coda o chiuso dal reaper. Gemello di E_STAMPA_JOB_STANTIO sulla coda di stampa. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
+    "E_CODA_JOB_STANTIO": "TECNICO",
     # Coda lavori generica (worker): codici sollevati durante il dispatch/ · esecuzione dei job. Non attraversano HTTP nel flusso normale (finiscono · in `ultimo_errore` del job), ma la regola è: registrati prima dell'uso.
     "E_CODA_SCOPE_OPERATORE_INVALIDO": "DATO_ERRATO",
     "E_CODICE": "DATO_ERRATO",
@@ -405,6 +411,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Configurazione mancante: logga ma non blocca, usa il fallback locale.
     # ⚠️ RITIRATO il 2026-08-07
     "E_DBLINK_LOG_CONN_MISSING": "AVVISO",
+    # Sollevato dal backend (core/middleware/jwt_audit_middleware.py), nessuna funzione DB: la connessione web gira su un ruolo con BYPASSRLS, cioe' senza le policy RLS, e la richiesta si rifiuta. TECNICO: e' configurazione della macchina (DB_USER del web uguale a un ruolo batch o al migratore), l'operatore non puo' rimediare. Frase volutamente generica, uguale a E_GUC_RESET_FAILED. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
+    "E_DB_ROLE_UNSAFE": "TECNICO",
     # Il DDT emesso porta stampata la sua causale: cambiarla dopo vorrebbe dire che il documento consegnato al vettore e quello in archivio dicono cose diverse. · Nasce il 2026-08-19 (brief-ddt-righe-senza-prezzo, decisione D-4): il gate all'emissione guarda solo la transizione verso EMESSO, quindi senza questo guard una causale non fatturabile poteva diventare fatturabile a documento gia' spedito — e la riga senza prezzo finiva eleggibile al lister, per fermarsi molto piu' tardi contro il NOT NULL di commesse_attivita.prezzo_snapshot.
     "E_DDT_CAUSALE_IMMUTABILE": "CONFLITTO_STATO",
     # Gate solo-trasporto all'emissione (trgfn_ddt_guard_causale_emissione, · DL-28): la causale di trasporto dichiara se la merce e' una vendita · da fatturare; obbligatoria a DRAFT->EMESSO, e se fatturabile ogni · riga attiva deve avere un prezzo risolvibile (proprio o ereditato · dall'ordine via fulfillment).
@@ -685,6 +693,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_GROUP_ATTIVITA_INVALID_DATA": "DATO_ERRATO",
     "E_GROUP_ATTIVITA_NOT_FOUND": "NON_TROVATO",
     "E_GROUP_ATTIVITA_VALIDATION": "DATO_ERRATO",
+    # Sollevato dal backend (core/middleware/jwt_audit_middleware.py), nessuna funzione DB: a inizio richiesta il reset delle GUC app.* della connessione e' fallito, e la richiesta si rifiuta (fail-closed: una connessione che porta il contesto di un'altra richiesta non si usa). TECNICO: e' un guasto della connessione o della macchina, l'operatore non puo' rimediare. Frase volutamente generica, uguale a E_DB_ROLE_UNSAFE: il dettaglio sta nel log, non a video. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
+    "E_GUC_RESET_FAILED": "TECNICO",
     "E_HANDLER_NON_REGISTRATO": "TECNICO",
     "E_IDEMPOTENCY_IN_PROGRESS": "CONFLITTO_STATO",
     "E_IDEMPOTENCY_KEY_REQUIRED": "DATO_ERRATO",
@@ -1318,6 +1328,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SOSPENSIONI_FLUSSO_NON_COERENTE": "DATO_ERRATO",
     # dbops.trgfn_tx_id_managed, `EXCEPTION WHEN OTHERS` sulla lettura.
     "E_SQL_READ_TABLE": "TECNICO",
+    # Scritto dal backend in vendite.fatture_stampa_coda.ultimo_errore (vendite/db/pipeline_repository.py, reset_stale_stampe_in_corso), non sollevato: un render rimasto IN_CORSO oltre la soglia (worker morto o ucciso) viene recuperato dal reaper. Non attraversa HTTP. TECNICO come il gemello E_CODA_JOB_STANTIO della coda lavori generica. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
+    "E_STAMPA_JOB_STANTIO": "TECNICO",
     # Codice sollevato dal trigger guard transizioni DDT · (trgfn_ddt_guard_transizione): la coppia (stato_attuale, stato_target) · non e' nella matrice config.transizioni_stati_ddt.
     "E_STATO_DDT_TRANSIZIONE_NON_VALIDA": "CONFLITTO_STATO",
     "E_STATO_DOC_ESITO_NON_VERDETTO": "DATO_ERRATO",
@@ -1460,6 +1472,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_UOM_MISSING": "DATO_ERRATO",
     # Gemello di E_DELETE_NOT_ALLOWED per i registri append-only · (vendite.trgfn_event_log_append_only). La storia non si modifica, e non · dipende dallo stato della riga: non cambia riprovando piu' tardi, quindi · NON_PERMESSO e non CONFLITTO_STATO. ⭐ Ed e' proprio questo veto a rendere · immutabile cleanup_at, cioe' la scadenza di retention della riga stessa.
     "E_UPDATE_NOT_ALLOWED": "NON_PERMESSO",
+    # RITIRATO il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri D-1, decisione di Tid): dal 2026-10-02 nessuno lo solleva. Col ritiro del tipo DISABILITATO (R-DB-1 del brief area Accessi) una veste spenta e' attivo = false col suo tipo, e chi ha solo vesti spente lo nega il livello d'area. Verificato per nome: nessuna funzione DB, nessun punto del backend o del frontend lo solleva (lo nominano solo le copie del catalogo nel backend: policy generate e frasi di ripiego). Non si riusa per «nessuna veste accesa»: una condizione nuova vuole un codice suo (api.md, il rubinetto degli accumulatori). Il messaggio resta perche' il diario deve restare leggibile.
+    # ⚠️ RITIRATO il 2026-10-07
     "E_USER_DISABILITATO": "NON_PERMESSO",
     "E_USER_EMITTENTE_DELETE_VIETATO": "DATO_ERRATO",
     # 423 -> 403 il 2026-08-06 (audit coerenza status). Il 423 e' il lock · WebDAV di una RISORSA (RFC 4918), non di un account: qui e' un · blocco temporaneo dopo troppi tentativi, sollevato da · script.fn_check_blocco_login. Il gemello E_USER_DISABILITATO e' · gia' 403. Il frontend aggancia il CODICE, non lo status · (LoginView.resolveLoginError), quindi a video non cambia nulla. · ⚠️ E NON 429, che sembrerebbe il candidato ovvio: LoginView · intercetta il 429 PRIMA di leggere il codice (e' il throttle per · IP) e il messaggio del DB coi minuti rimanenti andrebbe perso. · Dal 2026-09-25 (20260925-10) e' il freno sulla sola coppia credenziale + provenienza, e dal 20260925-52 il segnaposto sono i minuti rimanenti, riempiti dalla funzione (minuti_rimanenti anche nel contesto).
@@ -1698,6 +1712,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_TASK_RUNTIME",
         "E_TXID_DBLINK_ERROR",
         "E_TXID_DBLINK_NULL",
+        "E_USER_DISABILITATO",
         "E_UTENTE_NON_ATTIVO",
         "E_UTENTE_SCADUTO",
         "FLUSSI_COMPETENZA_MANCANTE",
