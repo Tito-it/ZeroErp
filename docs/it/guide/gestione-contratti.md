@@ -122,9 +122,12 @@ di preventivi e offerte (vedi [Gestione preventivi §2.2](gestione-preventivi.md
 L'operatore la inserisce **nell'unità di misura operativa scelta** (`qta_operativa`);
 il sistema deriva da sé il valore nell'unità base (`quantita = qta_operativa ×
 factor_to_base`, fattore "fotografato" sulla riga). La quantità **può essere negativa**
-(resi/storni), **non può essere zero**. Quando la fonte non è *fissa*
-(`fonte_quantita_attesa ≠ FISSA`, es. fatturazione a consumo) la quantità resta vuota
-e arriverà dalla sorgente esterna; quando è *fissa* è obbligatoria.
+(resi/storni), **non può essere zero**. La quantità la porta la **fonte**: quando è
+*fissa* è obbligatoria; quando è *derivata dai componenti* la scrive il sistema; con
+ogni altra fonte (letture, timesheet, inserimento manuale a ogni periodo) arriva a
+valle, e sulla riga **deve restare vuota**: il database rifiuta una quantità scritta
+lì (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, sul campo). La regola è la stessa sulle righe
+dell'offerta.
 
 Operativamente: in DRAFT le righe sono liberamente modificabili; dopo l'attivazione
 ogni INSERT / UPDATE / DELETE è bloccato dal trigger di lock.
@@ -506,7 +509,7 @@ Codici sollevati dal dominio contratti (registrati in `config.messaggi_errore`):
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`              | 453 | 422  | Resolver chiede prezzo per articolo con ESCLUSIONE attiva                                                                |
 | `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`  | 454 | 422  | Tentativo rimozione listino con OVERRIDE/ESCLUSIONE presenti                                                             |
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 455 | 422  | ESCLUSIONE su un articolo che è componente (figlio) di un bundle del listino — escludere il padre bundle                 |
-| `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`    | —   | 422  | Selezione/attivazione contratto con listino privo di versione ATTIVA (guard service `_guard_listino_ha_versione_attiva`) |
+| `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` | 1201 | 409 | Attivazione di un contratto con listino che non ha una versione in vigore oggi (il DB congela la versione all'attivazione). In DRAFT il listino si sceglie comunque |
 | `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`      | —   | 422  | Contratto senza listino e nessuna eccezione per l'articolo                                                               |
 | `E_OFFERTA_ORDINE_GIA_GENERATO`                | 478 | 409  | Push offerta → contratto quando l'offerta ha già generato un **ordine** (mutua esclusività XOR)                          |
 | `E_OFFERTA_CONTRATTO_GIA_GENERATO`             | —   | 409  | Push offerta → contratto già generato (idempotenza)                                                                      |
@@ -516,7 +519,9 @@ Codici sollevati dal dominio contratti (registrati in `config.messaggi_errore`):
 > attivazione contratto: è un errore di runtime del **resolver di pricing**
 > (`fn_resolve_prezzo_listino_v2`), sollevato quando un listino determinato non ha
 > una versione attiva alla data di riferimento. Per il contratto, l'errore corretto
-> è `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (sopra).
+> è `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` (sopra). Il vecchio
+> `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`, che impediva di scegliere il listino, è
+> ritirato dal 2026-10-07.
 
 ---
 

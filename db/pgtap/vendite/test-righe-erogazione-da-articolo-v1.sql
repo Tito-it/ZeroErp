@@ -20,8 +20,11 @@
 -- ⚠️ I codici si leggono dai canali dell'eccezione (CONSTRAINT = codice, COLUMN = campo),
 --   non dalla frase. Il test 20 legge il catalogo dei codici: rosso nella prova
 --   pre-apply (il CSV si carica in 80_data), verde dopo l'apply.
+-- ⚠️ Dal 20261007-28/-30 (§D.4 punto 2) con una fonte a valle la riga non porta
+--   quantita': le righe che nascono MANUALE (6, 7, 22) si scrivono senza
+--   qta_operativa, e il 12 la svuota insieme al cambio d'erogazione.
 --
--- Indice test (1..20):
+-- Indice test (1..22):
 --   La sede unica (vendite.fn_articolo_erogazioni)
 --    1) tipologia: vince sulla natura (C: solo CONSUMO)
 --    2) senza tipologia: la natura (M: MERCE)
@@ -48,13 +51,16 @@
 --   18) offerta → contratto: la riga porta i valori ereditati
 --   19) l'ordine dei trigger sulle due tabelle gemelle
 --   20) i due codici a catalogo, DATO_ERRATO
+--   L'ordine delle combinazioni (§D.4 punto 1, 20261007-66 … -68)
+--   21) il form sul composito: dentro un'erogazione DERIVATA_COMPONENTI per ultima
+--   22) la prima fonte che il form propone per un'erogazione e' quella che il DB eredita
 -- ------------------------------------------------------------
 
 BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(20);
+SELECT plan(22);
 
 -- Scopo: canali strutturati di uno statement che deve fallire: «codice / campo».
 CREATE OR REPLACE FUNCTION pg_temp.canali(p_sql text)
@@ -126,7 +132,8 @@ SELECT id FROM ins;
 
 -- Scopo: l'INSERT di un'AGGIUNTA sul contratto, come testo (NULL = colonna vuota).
 CREATE OR REPLACE FUNCTION pg_temp.agg(p_sigla text, p_erog text, p_fonte text,
-                                       p_tipo text DEFAULT 'AGGIUNTA')
+                                       p_tipo text DEFAULT 'AGGIUNTA',
+                                       p_qta numeric DEFAULT 1)
 RETURNS text LANGUAGE sql STABLE AS $fx$
     SELECT CASE WHEN p_tipo = 'ESCLUSIONE' THEN
         format($$INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione)
@@ -135,8 +142,8 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
     ELSE
         format($$INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione,
                        prezzo_unitario, qta_operativa, tipo_erogazione, fonte_quantita_attesa)
-                 VALUES (%s, %L, 'AGGIUNTA', 10, 1, %L, %L)$$,
-               (SELECT id FROM tmp_eda_ctr), pg_temp.art(p_sigla), p_erog, p_fonte)
+                 VALUES (%s, %L, 'AGGIUNTA', 10, %L, %L, %L)$$,
+               (SELECT id FROM tmp_eda_ctr), pg_temp.art(p_sigla), p_qta, p_erog, p_fonte)
     END;
 $fx$;
 
@@ -172,11 +179,12 @@ DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('R', NULL, NULL)); END $fx$;
 SELECT is(pg_temp.riga('R'), 'CANONE/FISSA/INIZIO_PERIODO',
     '5) niente erogazione ne'' fonte: il default dell''articolo, con la generazione_canone');
 
-DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('R2', 'CONSUMO', NULL)); END $fx$;
+-- Nasce MANUALE: senza quantita' (fonte a valle, 20261007-28).
+DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('R2', 'CONSUMO', NULL, 'AGGIUNTA', NULL)); END $fx$;
 SELECT is(pg_temp.riga('R2'), 'CONSUMO/MANUALE/-',
     '6) erogazione senza fonte: la fonte che l''articolo ammette per CONSUMO (MANUALE, non le LETTURE del vocabolario)');
 
-DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('M', NULL, 'MANUALE')); END $fx$;
+DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('M', NULL, 'MANUALE', 'AGGIUNTA', NULL)); END $fx$;
 SELECT is(pg_temp.riga('M'), 'UNA_TANTUM/MANUALE/-',
     '7) fonte senza erogazione: un''erogazione che l''articolo ammette con QUELLA fonte');
 
@@ -201,8 +209,9 @@ SELECT is(pg_temp.canali(pg_temp.agg('P', NULL, NULL, 'ESCLUSIONE')), 'NESSUN ER
 -- ============================================================
 -- 12-15) L'UPDATE
 -- ============================================================
--- R e' CANONE/FISSA (test 5). Cambia la sola erogazione.
-UPDATE vendite.contratti_righe SET tipo_erogazione = 'CONSUMO'
+-- R e' CANONE/FISSA (test 5). Cambia l'erogazione (non la fonte); la quantita'
+-- si svuota, perche' la fonte riallineata (MANUALE) e' a valle.
+UPDATE vendite.contratti_righe SET tipo_erogazione = 'CONSUMO', qta_operativa = NULL, quantita = NULL
  WHERE contratto_id = (SELECT id FROM tmp_eda_ctr) AND articolo_id = pg_temp.art('R');
 SELECT is(split_part(pg_temp.riga('R'), '/', 2), 'MANUALE',
     '12) cambia la sola erogazione: la fonte si riallinea a quella che l''articolo ammette');
@@ -323,6 +332,37 @@ SELECT is(
       WHERE ce.codice IN ('E_RIGA_EROGAZIONE_FUORI_PERIMETRO', 'E_RIGA_TIPOLOGIA_FUORI_UTILITY')),
     'E_RIGA_EROGAZIONE_FUORI_PERIMETRO=DATO_ERRATO E_RIGA_TIPOLOGIA_FUORI_UTILITY=DATO_ERRATO',
     '20) i due codici nuovi a catalogo, DATO_ERRATO');
+
+-- ============================================================
+-- 21-22) L'ordine delle combinazioni (§D.4 punto 1)
+-- ============================================================
+-- K composito SERVIZIO_RICORRENTE: CANONE/FISSA*, CONSUMO/MANUALE, + DERIVATA per
+-- ciascuna. In ordine alfabetico DERIVATA_COMPONENTI precederebbe MANUALE: era il
+-- difetto segnalato dal giro BE/FE.
+SELECT is(
+    (SELECT string_agg(e.tipo_erogazione || '/' || e.fonte_quantita_attesa
+                       || CASE WHEN e.e_default THEN '*' ELSE '' END, ' ' ORDER BY e.n)
+       FROM vendite.fn_documento_riga_erogazioni('CONTRATTO', (SELECT id FROM tmp_eda_ctr),
+                                                 pg_temp.art('K'))
+            WITH ORDINALITY AS e(tipo_erogazione, fonte_quantita_attesa, e_default,
+                                 generazione_canone, origine, n)),
+    'CANONE/FISSA* CANONE/DERIVATA_COMPONENTI CONSUMO/MANUALE CONSUMO/DERIVATA_COMPONENTI',
+    '21) il form sul composito: default in testa, dentro un''erogazione DERIVATA_COMPONENTI per ultima');
+
+-- L'erogazione CONSUMO senza fonte: la riga eredita la fonte, e prima il form
+-- proponeva per prima la DERIVATA. Ora le due coincidono per costruzione.
+DO $fx$ BEGIN PERFORM pg_temp.canali(pg_temp.agg('K', 'CONSUMO', NULL, 'AGGIUNTA', NULL)); END $fx$;
+SELECT is(
+    split_part(pg_temp.riga('K'), '/', 2),
+    (SELECT e.fonte_quantita_attesa
+       FROM vendite.fn_documento_riga_erogazioni('CONTRATTO', (SELECT id FROM tmp_eda_ctr),
+                                                 pg_temp.art('K'))
+            WITH ORDINALITY AS e(tipo_erogazione, fonte_quantita_attesa, e_default,
+                                 generazione_canone, origine, n)
+      WHERE e.tipo_erogazione = 'CONSUMO'
+      ORDER BY e.n
+      LIMIT 1)::text,
+    '22) la prima fonte che il form propone per CONSUMO e'' quella che il DB eredita (MANUALE)');
 
 SELECT * FROM finish();
 ROLLBACK;

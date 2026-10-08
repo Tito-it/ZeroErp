@@ -9,8 +9,10 @@
 > **eredita dall'articolo**, dalla sua tipologia; il perimetro delle scelte segue la utility.
 > **Stato (2026-10-07, notte): ✅ LATO DB CHIUSO.** Parte A (`20261007-40 → -47`) e parte B
 > (`-50 → -54`, `-60 → -65`) applicate da Tid; pgTAP verdi su dbdev. **✅ Giro BE/FE fatto**
-> (2026-10-07, §D): restano il collaudo a video di Tid (§D.5), le domande al team DB (§D.4) e
-> l'archiviazione in `work-done/`.
+> (2026-10-07, §D): restano il collaudo a video di Tid (§D.5) e l'archiviazione in `work-done/`.
+> **✅ Secondo giro DB (§E): le tre domande del §D.4, decise da Tid.** ChangeSet
+> `20261007-28 → -30` e `-66 → -68` applicati da Tid il 2026-10-08, pgTAP verdi su dbdev.
+> **⏳ Resta il secondo giro BE/FE (§E.5)**, poi il collaudo e l'archiviazione.
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
 > **Le decisioni** (di Tid, 2026-10-07) stanno in §C.5 e in coda al §C.7: A-D1 chiusa dal modello,
 > A-D2 il contratto non si attiva senza versione in vigore, A-D3 la revisione congela alla sua
@@ -869,3 +871,159 @@ con una storia propria: dove il test attiva un contratto, il cliente si costruis
 * «Modifica prezzo» su una riga del listino → la combinazione di default dell'articolo.
 * Una riga salvata in modifica → erogazione e fonte com'erano; cambio d'erogazione → la fonte si
   adegua o si svuota.
+
+## E. Secondo giro DB: le domande del §D.4 (`dev/db-tid`, 2026-10-07)
+
+### E.1 Decisioni di Tid (2026-10-07)
+
+| # | Domanda (§D.4) | Decisione |
+| --- | --- | --- |
+| **D.4.1** | L'ordine della lista non è quello dell'eredità | **L'ordine sta nel BB**: `vendite.fn_articolo_erogazioni` restituisce `ordine`, e l'eredità e la lista lo leggono. La regola d'ordine era scritta tre volte (due nel trigger, una nella lettura) |
+| **D.4.2** | La quantità per fonte è una regola del solo BE, e del solo contratto | **Il DB, e rifiuta**: con una fonte a valle quantità e `qta_operativa` restano vuote, su contratto **e** offerta. Il BE smette di azzerare in silenzio |
+| **D.4.3** | `_guard_listino_ha_versione_attiva` | **Si ritira**: la regola vera è «non si attiva senza una versione in vigore», e il DB la dice già (A-D2). In DRAFT un listino senza versione si sceglie, come sull'offerta. Il codice esce dal catalogo |
+
+### E.2 ChangeSet
+
+| ChangeSet | Oggetto | Cosa |
+| --- | --- | --- |
+| `00_schema/vendite/20261007-28` | `chk_contrighe_quantita_per_fonte`, `chk_offerte_eccezioni_quantita_per_fonte` | CHECK sulle due tabelle gemelle: solo FISSA e DERIVATA_COMPONENTI portano `quantita`/`qta_operativa`. È la rete. `preCondition` HALT se ci sono righe che il CHECK rifiuterebbe (§E.3) |
+| `20_code/script/20261007-29` | `script.trgfn_righe_guard_quantita_per_fonte()` | Il guard che parla: `E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, campo `qta_operativa` (o `quantita` se è la sola valorizzata). Stesso elenco del CHECK |
+| `20_code/vendite/20261007-30` | 2 trigger `…_a10_guard_quantita_per_fonte_ins_upd` | BEFORE INSERT OR UPDATE, `WHEN tipo_eccezione <> 'ESCLUSIONE'`, **senza colonne sull'UPDATE**: la fonte la può riallineare un altro BEFORE (`default_erogazione_articolo`). Il nome lo mette dopo il perimetro: una fonte sbagliata la dice prima il perimetro |
+| `20_code/vendite/20261007-66` | `vendite.fn_articolo_erogazioni` | **DROP + CREATE** (cambia `RETURNS TABLE`): colonna `ordine`, il rango della combinazione. Default in testa, poi per erogazione; dentro un'erogazione DERIVATA_COMPONENTI per ultima, poi la fonte |
+| `20_code/script/20261007-67` | `script.trgfn_righe_default_erogazione_da_articolo` | Le cinque `ORDER BY` leggono `ae.ordine`. Stesso esito di prima |
+| `20_code/vendite/20261007-68` | `vendite.fn_documento_riga_erogazioni` | `ORDER BY ae.ordine`. **Contratto invariato** (stesse colonne): cambia solo l'ordine |
+
+⚠️ **Numerazione**: `-28 → -30` occupano il buco libero del giorno (`-28 … -39`): non dipendono
+da niente di questo brief. `-66 → -68` stanno dopo `-60 → -65`, di cui sono revisioni. Il
+`-66` deve precedere il `-67` (il corpo nuovo legge `ordine`).
+
+**Codici** (CSV):
+
+* `E_RIGA_QUANTITA_CON_FONTE_A_VALLE` (**1210, nuovo**): DATO_ERRATO, frase chiusa.
+* `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (632): **ritirato**, `obsoleto_dal = 2026-10-07`
+  in `codici_errore.csv`. La riga resta (`dbops.error_log` ci punta). Lo solleva solo il Python:
+  dopo l'apply è il BE che deve smettere di usarlo (§E.5).
+
+**La regola della quantità, sul modello.** La fonte dice da dove arriva la quantità che si
+fattura. FISSA è la quantità della riga, ed era già obbligatoria e diversa da zero
+(`E_QTA_MISSING`, `chk_*_qta_operativa_nonzero`). DERIVATA_COMPONENTI la scrive il DB dai
+componenti. Con MANUALE, LETTURE e TIMESHEET arriva a valle, periodo per periodo. L'elenco è
+quello delle fonti che **portano** la quantità: una fonte nuova del vocabolario nasce «a valle»
+finché qualcuno non decide il contrario. Un pgTAP confronta l'elenco del CHECK con quello del
+guard.
+
+### E.3 ⚠️ Prima dell'apply, su dbdev
+
+Il CHECK si convalida su tutte le righe, e la `preCondition` del `-28` ferma il migrate se ce ne
+sono fuori regola. Non sono riuscito a contarle: come `zeroerp` non ho accesso allo schema
+`vendite`, e come `zeroerp_app` la RLS le nasconde. Da lanciare come owner:
+
+```sql
+SELECT 'contratti_righe' AS tabella, id, fonte_quantita_attesa, quantita, qta_operativa
+  FROM vendite.contratti_righe
+ WHERE fonte_quantita_attesa NOT IN ('FISSA', 'DERIVATA_COMPONENTI')
+   AND (quantita IS NOT NULL OR qta_operativa IS NOT NULL)
+UNION ALL
+SELECT 'offerte_commerciali_eccezioni', id, fonte_quantita_attesa, quantita, qta_operativa
+  FROM vendite.offerte_commerciali_eccezioni
+ WHERE fonte_quantita_attesa NOT IN ('FISSA', 'DERIVATA_COMPONENTI')
+   AND (quantita IS NOT NULL OR qta_operativa IS NOT NULL);
+```
+
+Sul contratto il backend azzerava già: le candidate sono soprattutto righe d'offerta. La
+correzione è un dato: svuotare `quantita` e `qta_operativa` di quelle righe. Sui documenti fuori
+bozza scatta il lock `_a05_doc_righe_lock_fuori_bozza`, quindi o si correggono col trigger spento
+per nome (la forma del `20261004-76`), o si cancellano, visto che sono dati di test.
+
+### E.4 Prova (2026-10-07, prima dell'apply)
+
+Su `zeroerp_ci`, come owner, in transazione annullata, con l'SQL **estratto** dagli YAML
+(vincoli differiti, come Liquibase) e il seed del codice nuovo simulato:
+
+* le `preCondition` estratte danno l'atteso (0, 0; la terza si prova dopo il `-29`);
+* tutto compila, `plpgsql_check` non segnala niente sulle quattro funzioni (i due trigger
+  provati su entrambe le tabelle); una firma sola per funzione;
+* rollback: i tre corpi tornano identici al vivo (md5), il guard nuovo sparisce;
+* **regressione su 87 pgTAP**, ciascuno prima e dopo (le due tabelle, le funzioni toccate, i
+  codici, i presidi trasversali): dopo le correzioni qui sotto si muovono solo il test nuovo e
+  `test-righe-erogazione-da-articolo-v1`, rossi senza i changeSet e verdi con. Fermi
+  `riferimenti-morti` (9/9), `rubinetto-primo-motivo` (7/7, nessun sito nuovo dell'helper),
+  `catalogo-messaggi-errore-completo` (7/7), `codici-errore-obsoleto-dal` (4/4).
+
+**pgTAP**:
+
+* **Nuovo** `vendite/test-righe-quantita-per-fonte-v1` (12): rifiuto col campo
+  `qta_operativa` o `quantita`, fonte a valle senza quantità ammessa, FISSA e DERIVATA ammesse,
+  l'offerta, l'UPDATE in cui la fonte la cambia un altro trigger, il perimetro che parla prima,
+  CHECK e guard con lo stesso elenco, la forma del trigger, il codice a catalogo (rosso prima
+  dell'apply: il CSV si carica in `80_data`).
+* `vendite/test-righe-erogazione-da-articolo-v1`: 20 → 22. Il 21 e il 22 provano l'ordine (il
+  caso del §D.4: un composito, CONSUMO, MANUALE prima di DERIVATA) e che la prima fonte proposta
+  dal form sia quella che il DB eredita. Le righe che nascono MANUALE ora nascono senza quantità.
+* **Fixture adattati**, perché scrivevano una quantità su righe che ereditano una fonte a valle
+  (la tipologia del listino del builder ha come default CONSUMO/LETTURE). La quantità era sempre
+  incidentale al soggetto del test, e ora si chiede alla sede unica (1 se la fonte di default è
+  FISSA, altrimenti vuota): `test-contratti-righe-coerenza-fonte-erogazione` (13, 15),
+  `test-contratto-esclusione-non-modificabile-v1` (helper e test 13: il prezzo, non la
+  quantità), `test-contratto-righe-lista-v1`, `test-contratto-righe-lista-uom-riga-v1` (B),
+  `test-fn-resolve-prezzo-listino-v2-bundle-prioritario-v1`, `test-righe-erogazione-obbligatoria-v1`,
+  `test-righe-esclusione-solo-non-si-vende-v1`.
+* **Corretti con lettura statica**, perché prendono gli articoli dai dati di dbdev e su
+  `zeroerp_ci` non costruiscono il fixture (§C.6.5): `test-fn-contratto-righe-preview-nuovi-campi-v1`
+  (le due AGGIUNTE MANUALE nascono senza quantità; i test 7-8 leggono la fonte) e
+  `test-fn-resolve-prezzo-listino-v2-v1` (l'OVERRIDE eredita: quantità solo se FISSA). **Sono i
+  due da guardare per primi nella corsa su dbdev.**
+* Censimento statico degli altri: ogni INSERT che scrive una quantità con erogazione UNA_TANTUM o
+  CANONE e fonte vuota eredita FISSA per costruzione (il seed non ammette altra fonte di default
+  per quelle erogazioni); `step24` lascia vuota anche l'erogazione, ma sceglie articoli senza
+  tipologia che ammettono UNA_TANTUM/FISSA, e quelle nature hanno proprio quel default. Quindi
+  `step22`, `step23`, `step24`, `overlap-draft`, `guard-pending`, `bozza-non-operativa`,
+  `lock-fuori-bozza` e i test delle offerte non si muovono.
+
+⚠️ Non provati: l'apply vero (loader del CSV, `preCondition` su dbdev), la corsa come app e i
+fixture presi dai dati di dbdev.
+
+### E.5 Richieste al BE/FE (l'apply è fatto: §E.6)
+
+* **BE, D.4.2**: ritirare la parte di `_apply_fonte_quantita_logic` che azzera
+  `quantita`/`qta_operativa` sulle fonti a valle (e `_FONTI_QUANTITA_DOWNSTREAM`): ora il DB
+  rifiuta, col campo. Il ramo FISSA («quantità diversa da zero») è già del DB (`E_QTA_MISSING`,
+  `chk_*_qta_operativa_nonzero`): si ritira anche quello, e con lui il metodo. Policy del codice
+  1210 (ripiego senza `%s`, canale COLUMN).
+* **FE, D.4.2**: il form delle righe non manda la quantità quando la fonte scelta è a valle, e
+  al cambio di fonte (o d'erogazione, se la fonte si riallinea) la svuota.
+* **FE, D.4.1**: al cambio d'erogazione il form può proporre la **prima fonte** di
+  quell'erogazione nella lista di `…/righe/erogazioni/`: coincide con quella che il DB eredita
+  per costruzione.
+* **BE, D.4.3**: ritirare `_guard_listino_ha_versione_attiva` (`contratti_service`, create e
+  update), `ListiniRepository.has_versione_attiva` se non ha altri lettori, e il filtro «almeno
+  una versione ATTIVA» del lookup `lookup/listini-selezionabili-contratto/` (o il lookup intero,
+  se torna uguale a quello generico dei listini). Togliere `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`
+  dal ripiego e dalle policy (la rigenerazione lo marca «RITIRATO»). Commento in
+  `ContrattoDrawer.vue` (riga 180) da aggiornare.
+* **BE, test Django sul DB** che scrivono una quantità su righe che ereditano una fonte a valle
+  (rossi attesi dopo l'apply, lato BE): da guardare `test_righe_erogazione_obbligatoria_db`,
+  `test_ricerca_liste_db`, `test_scritture_dinamiche_vendite_db`. Stessa ricetta dei pgTAP:
+  quantità solo se la fonte di default è FISSA.
+* Doc: `api_contratti.md` e `api_offerte.md` (righe: quantità per fonte; codice 1210),
+  `modello-contratti.md`. La guida `gestione-contratti.md` è già aggiornata (§2.2 e tabella dei
+  codici).
+
+### E.6 Chiusura del secondo giro DB (2026-10-08)
+
+**Applicati da Tid, pgTAP verdi su dbdev**: `20261007-28 → -30` e `-66 → -68`, letti dal
+`databasechangelog` (EXECUTED il 2026-10-08), più i CSV (codice 1210 nuovo, 632 ritirato). La
+`preCondition` del `-28` è passata: su dbdev, al momento dell'apply, nessuna riga violava il CHECK.
+
+| Domanda | Esito |
+| --- | --- |
+| D.4.1 l'ordine della lista e quello dell'eredità | ✅ `ordine` in `vendite.fn_articolo_erogazioni`, letto da trigger e lettura per il form |
+| D.4.2 la quantità per fonte | ✅ `chk_*_quantita_per_fonte` (la rete) + `script.trgfn_righe_guard_quantita_per_fonte` (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, col campo), su contratto e offerta |
+| D.4.3 il listino senza versione ATTIVA | ✅ lato DB: codice ritirato (`obsoleto_dal`); ⏳ il BE ritira il guard Python e il filtro del lookup |
+
+**Cosa resta, tutto fuori dal DB**: le richieste del §E.5 (BE: `_apply_fonte_quantita_logic`,
+`_guard_listino_ha_versione_attiva`, lookup dei listini, policy del 1210, i tre test Django sul
+DB; FE: niente quantità con una fonte a valle, la prima fonte dell'erogazione preselezionata;
+doc `api_contratti.md`, `api_offerte.md`, `modello-contratti.md`), il collaudo a video del §D.5
+e l'archiviazione del brief in `work-done/`.
+

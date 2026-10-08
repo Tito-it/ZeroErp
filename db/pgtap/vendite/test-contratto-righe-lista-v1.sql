@@ -128,6 +128,12 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
+-- Scopo: la fonte che la riga eredita dall'articolo (la combinazione di default).
+CREATE OR REPLACE FUNCTION pg_temp.fonte_default(p_articolo uuid)
+RETURNS text LANGUAGE sql STABLE AS $fx$
+  SELECT e.fonte_quantita_attesa::text FROM vendite.fn_articolo_erogazioni(p_articolo) e WHERE e.e_default;
+$fx$;
+
 -- Scopo: una riga di contratto (eccezione) sull'articolo della sigla.
 CREATE OR REPLACE FUNCTION pg_temp.riga(p_sigla text, p_tipo text, p_prezzo numeric)
 RETURNS bigint LANGUAGE sql AS $fx$
@@ -142,10 +148,13 @@ RETURNS bigint LANGUAGE sql AS $fx$
          -- erogazione e fonte VUOTE, la riga le eredita dall'articolo (la tipologia
          -- del listino del test). Erano CANONE/FISSA scritte a mano, fuori dal
          -- perimetro di un articolo CONSUMO.
+         -- rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): la quantita' solo se la
+         -- fonte ereditata la porta (FISSA); con una fonte a valle resta vuota.
+         -- Si chiede alla sede unica, perche' la tipologia e' quella del builder.
          NULL,
          NULL,
-         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 1 END,
-         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN 1 END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' AND pg_temp.fonte_default(a.id) = 'FISSA' THEN 1 END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' AND pg_temp.fonte_default(a.id) = 'FISSA' THEN 1 END,
          CASE WHEN p_tipo <> 'ESCLUSIONE' THEN a.uom_id END
     FROM catalogo.articoli a WHERE a.id = pg_temp.art(p_sigla)
   RETURNING id;

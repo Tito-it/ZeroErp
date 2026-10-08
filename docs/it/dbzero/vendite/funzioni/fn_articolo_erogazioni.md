@@ -8,7 +8,7 @@ CREATE FUNCTION fn_articolo_erogazioni(p_articolo_id uuid)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_articolo_erogazioni(p_articolo_id uuid)
- RETURNS TABLE(tipo_erogazione character varying, fonte_quantita_attesa character varying, e_default boolean, generazione_canone character varying, origine text)
+ RETURNS TABLE(tipo_erogazione character varying, fonte_quantita_attesa character varying, e_default boolean, generazione_canone character varying, origine text, ordine integer)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -26,10 +26,16 @@ AS $function$
 --     ogni erogazione ammessa, se il vocabolario la dichiara coerente
 --     (config.erogazioni_fonti) — B-D5: e' un fatto della distinta, non della
 --     tipologia. Mai di default.
+-- Ordine (`ordine`, §D.4 punto 1): il default per primo, poi per
+--   erogazione; dentro un'erogazione DERIVATA_COMPONENTI per ultima, poi
+--   per fonte. Chi deve scegliere UNA combinazione (l'eredita') prende la
+--   prima che gli serve; il form mostra la lista in quest'ordine. Cosi'
+--   la prima fonte che il form propone per un'erogazione e' quella che
+--   il DB scriverebbe.
 -- Zero righe se l'articolo non c'e'.
--- ⭐ Sede UNICA del perimetro: la leggono il trigger d'eredita', la check del
---   guard e la lettura per il form. Il default e il perimetro non possono
---   dissentire, perche' sono la stessa riga.
+-- ⭐ Sede UNICA del perimetro e del suo ordine: la leggono il trigger
+--   d'eredita', la check del guard e la lettura per il form. Il default e
+--   il perimetro non possono dissentire, perche' sono la stessa riga.
 DECLARE
     v_tipologia catalogo.articoli.listino_tipologia_id%TYPE;
     v_natura    catalogo.articoli.natura_vendita_id%TYPE;
@@ -72,15 +78,24 @@ BEGIN
                             WHERE b2.tipo_erogazione = b.tipo_erogazione
                               AND b2.fonte_quantita_attesa = 'DERIVATA_COMPONENTI')
          ORDER BY b.tipo_erogazione, b.e_default DESC
+    ), tutte AS (
+        SELECT * FROM base
+        UNION ALL
+        SELECT * FROM distinta
     )
-    SELECT * FROM base
-    UNION ALL
-    SELECT * FROM distinta;
+    SELECT t.tipo_erogazione, t.fonte_quantita_attesa, t.e_default,
+           t.generazione_canone, t.origine,
+           (row_number() OVER (
+               ORDER BY t.e_default DESC,
+                        t.tipo_erogazione,
+                        (t.fonte_quantita_attesa = 'DERIVATA_COMPONENTI'),
+                        t.fonte_quantita_attesa))::integer
+      FROM tutte t;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_articolo_erogazioni(p_articolo_id uuid)
-IS 'Building block: come si può erogare un articolo su una riga di contratto o di offerta. Restituisce le combinazioni (tipo_erogazione, fonte_quantita_attesa) ammesse, e_default su quella che la riga eredita quando non la indica, la generazione_canone da proporre sulle CANONE e l''origine (TIPOLOGIA | NATURA | DISTINTA). Regola (decisioni di Tid del 2026-10-07): con una tipologia di listino, le combinazioni della tipologia (config.listini_tipologie_erogazioni); senza, quelle della natura di vendita (config.nature_vendita_erogazioni) — vince la tipologia, le due non si sommano; un articolo composito ammette in più DERIVATA_COMPONENTI accanto a ogni erogazione ammessa, se il vocabolario config.erogazioni_fonti la dichiara coerente, mai di default. Zero righe se l''articolo non c''è. Sede unica del perimetro: la leggono script.trgfn_righe_default_erogazione_da_articolo (eredità), script.fn_check_riga_erogazione (guard) e vendite.fn_documento_riga_erogazioni (form). STABLE, SECURITY INVOKER. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3).';
+IS 'Building block: come si può erogare un articolo su una riga di contratto o di offerta. Restituisce le combinazioni (tipo_erogazione, fonte_quantita_attesa) ammesse, e_default su quella che la riga eredita quando non la indica, la generazione_canone da proporre sulle CANONE, l''origine (TIPOLOGIA | NATURA | DISTINTA) e l''ordine (1 = la prima: il default, poi per erogazione; dentro un''erogazione DERIVATA_COMPONENTI per ultima, poi per fonte). Regola (decisioni di Tid del 2026-10-07): con una tipologia di listino, le combinazioni della tipologia (config.listini_tipologie_erogazioni); senza, quelle della natura di vendita (config.nature_vendita_erogazioni) — vince la tipologia, le due non si sommano; un articolo composito ammette in più DERIVATA_COMPONENTI accanto a ogni erogazione ammessa, se il vocabolario config.erogazioni_fonti la dichiara coerente, mai di default. Zero righe se l''articolo non c''è. Sede unica del perimetro e del suo ordine: la leggono script.trgfn_righe_default_erogazione_da_articolo (eredità, prende la prima combinazione che le serve), script.fn_check_riga_erogazione (guard) e vendite.fn_documento_riga_erogazioni (form, ordina su ordine): la prima fonte che il form propone per un''erogazione è quella che il DB scriverebbe. STABLE, SECURITY INVOKER. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3); ordine dal 20261007-66 (§D.4 punto 1).';
 ```
 
 ---

@@ -165,6 +165,15 @@ RETURNS bigint LANGUAGE sql STABLE AS $fx$
          END;
 $fx$;
 
+-- Scopo: la quantita' di una riga che eredita dall'articolo: 1 se la fonte di
+--   default la porta (FISSA), altrimenti vuota (fonte a valle). Rev 2026-10-07,
+--   brief-db-offerta-emissione-ed-erogazione §D.4 punto 2 (20261007-28/-30).
+CREATE OR REPLACE FUNCTION pg_temp.qta(p_articolo uuid)
+RETURNS numeric LANGUAGE sql STABLE AS $fx$
+  SELECT 1::numeric FROM vendite.fn_articolo_erogazioni(p_articolo) e
+   WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA';
+$fx$;
+
 -- Scopo: l'INSERT di una riga, come testo da eseguire o da dare a throws_like.
 --   p_doc: 'contratto' | 'offerta' | 'emessa'. Una ESCLUSIONE nasce VUOTA (la
 --   regola), le altre coi dati di una riga che si fattura. p_extra: una
@@ -185,7 +194,7 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
     ELSE format(
       $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione, prezzo_unitario,
                tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
-        SELECT %s, a.id, %L, 80.00, NULL, NULL, 1, 1, a.uom_id
+        SELECT %s, a.id, %L, 80.00, NULL, NULL, pg_temp.qta(a.id), pg_temp.qta(a.id), a.uom_id
           FROM catalogo.articoli a WHERE a.id = %L$$,
       CASE p_doc WHEN 'contratto' THEN 'contratti_righe' ELSE 'offerte_commerciali_eccezioni' END,
       CASE p_doc WHEN 'contratto' THEN 'contratto_id' ELSE 'offerta_id' END,
@@ -332,7 +341,7 @@ SELECT is(
 --   Qui la riga non indica ne' l'erogazione ne' la fonte, e le riceve tutte e due.
 INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
        quantita, qta_operativa, uom_operativa_id)
-SELECT pg_temp.doc('contratto'), a.id, 'OVERRIDE', 90.00, 1, 1, a.uom_id
+SELECT pg_temp.doc('contratto'), a.id, 'OVERRIDE', 90.00, pg_temp.qta(a.id), pg_temp.qta(a.id), a.uom_id
   FROM catalogo.articoli a WHERE a.id = pg_temp.art('A');
 
 SELECT is(

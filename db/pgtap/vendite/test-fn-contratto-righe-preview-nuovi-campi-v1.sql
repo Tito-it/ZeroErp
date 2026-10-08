@@ -24,12 +24,13 @@
 --   8) UNA_TANTUM + MANUALE → fonte_quantita_attesa = 'MANUALE' (articolo seq=4; rev 2026-10-07, B-D5)
 --
 -- Note:
---   Trigger trgfn_qta_from_operativa exige qta_operativa NOT NULL su INSERT.
---   Le fixture usano qta_operativa e uom_operativa_id non-NULL per passare il trigger
---   con early return (entrambi valorizzati → RETURN NEW senza ricalcolo).
---   Il brief suggerisce "qta_operativa IS NULL" per LETTURE: si tratta di un vincolo
---   BE (_apply_fonte_quantita_logic), non DB; in DB qta_operativa è sempre non-NULL
---   perché il trigger alzerebbe E_QTA_MISSING.
+--   Trigger trgfn_qta_from_operativa esige qta_operativa NOT NULL su INSERT solo con
+--   la fonte FISSA (E_QTA_MISSING).
+--   ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §D.4 punto 2,
+--   20261007-28/-30): con una fonte a valle (MANUALE, LETTURE, TIMESHEET) la riga NON
+--   porta quantita': lo dice il DB (E_RIGA_QUANTITA_CON_FONTE_A_VALLE e i CHECK
+--   chk_*_quantita_per_fonte), non piu' il solo backend. Le AGGIUNTE MANUALE dei
+--   test 7 e 8 nascono quindi senza quantita'.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -176,7 +177,7 @@ INSERT INTO vendite.contratti_righe (
 )
 SELECT c.id, a.articolo_id, 'AGGIUNTA', 50.00,
        'CONSUMO', 'MANUALE',
-       1, ctx.uom_id
+       NULL, ctx.uom_id
   FROM tmp_prv_contratto c, tmp_prv_arts a, tmp_prv_ctx ctx
  WHERE a.seq = 3 AND c.id IS NOT NULL;
 
@@ -185,8 +186,8 @@ SELECT c.id, a.articolo_id, 'AGGIUNTA', 50.00,
 --   e seq=4 non lo e'. Il test prova che fonte e quantita' della riga arrivano alla preview:
 --   UNA_TANTUM/MANUALE con quantita' 5 lo prova ugualmente. La fonte derivata sul composito
 --   la prova vendite/offerte_commerciali/test_offerte_eccezioni_componenti.
--- quantita=5 esplicitamente; trigger early return perché entrambi qta_operativa
--- e uom_operativa_id sono valorizzati → quantita rimane 5.
+-- ⚠️ Rev 2026-10-07 (§D.4 punto 2): MANUALE e' a valle, la riga nasce senza
+--   quantita' (prima: quantita 5, qta_operativa 1). Il test 8 legge la fonte.
 INSERT INTO vendite.contratti_righe (
     contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
     tipo_erogazione, fonte_quantita_attesa,
@@ -194,7 +195,7 @@ INSERT INTO vendite.contratti_righe (
 )
 SELECT c.id, a.articolo_id, 'AGGIUNTA', 100.00,
        'UNA_TANTUM', 'MANUALE',
-       5, 1, ctx.uom_id
+       NULL, NULL, ctx.uom_id
   FROM tmp_prv_contratto c, tmp_prv_arts a, tmp_prv_ctx ctx
  WHERE a.seq = 4 AND c.id IS NOT NULL;
 
@@ -315,7 +316,7 @@ SELECT CASE
 END;
 
 -- ============================================================
--- 8) AGGIUNTA UNA_TANTUM+MANUALE (articolo seq=4): fonte e quantita corrette
+-- 8) AGGIUNTA UNA_TANTUM+MANUALE (articolo seq=4): la fonte arriva alla preview
 -- ============================================================
 SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM tmp_prv_arts WHERE seq = 4)

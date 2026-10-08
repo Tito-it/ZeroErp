@@ -249,8 +249,13 @@ INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, 
 -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): erogazione e
 --   fonte VUOTE, la riga le eredita dalla tipologia del listino (era CANONE/FISSA, fuori
 --   dal perimetro di un articolo del listino del test).
-VALUES ((SELECT id FROM tmp_bnd_contratto), pg_temp.art('F2'), 'OVERRIDE', 999.00,
-        NULL, NULL, 1, 1, pg_temp.uom('F2'));
+-- rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): la quantita' solo se la fonte
+--   ereditata la porta (FISSA); con una fonte a valle resta vuota. Si chiede alla sede
+--   unica: il soggetto del test e' il prezzo forzato, non la quantita'.
+SELECT (SELECT id FROM tmp_bnd_contratto), pg_temp.art('F2'), 'OVERRIDE', 999.00,
+       NULL, NULL, q.qta, q.qta, pg_temp.uom('F2')
+  FROM (SELECT (SELECT 1 FROM vendite.fn_articolo_erogazioni(pg_temp.art('F2')) e
+                 WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA') AS qta) q;
 
 UPDATE vendite.contratti
    SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
