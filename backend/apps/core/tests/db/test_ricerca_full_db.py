@@ -74,6 +74,7 @@ from django.db import connection, transaction
 
 from apps.core.db._helpers import add_ricerca_full_condition, soglia_ricerca
 from apps.core.tests.db_e2e import (
+    Annulla,
     apri_contesto_operatore,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
@@ -150,10 +151,6 @@ def _risolvi_test(percorso: str) -> None:
     getattr(getattr(importlib.import_module(modulo), classe), metodo)
 
 
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
-
-
 # Scopo: la vista qualificata di una lista, dal seed del catalogo.
 def _vista(codice: str) -> str | None:
     for riga in _seed("lista_definizione.csv"):
@@ -224,8 +221,8 @@ class RicercaFullDbTests(unittest.TestCase):
                 add_ricerca_full_condition(dopo, [], "abc", ricerca)
                 self.assertNotIn("ba_codice", dopo[0])
                 self.assertIn("(v.numero)::text", dopo[0])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_la_ricerca_trova_ogni_colonna_accesa_dal_repository(self):
@@ -519,8 +516,8 @@ class RicercaFullDbTests(unittest.TestCase):
                         mondo["emittente_soggetto_ruolo_id"], search=t, limit=200)[0],
                     chiave="billing_account_id",
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_la_configurazione_dice_se_la_lista_cerca(self):
@@ -542,8 +539,8 @@ class RicercaFullDbTests(unittest.TestCase):
                     " WHERE ld.id = lc.lista_id AND ld.codice = 'vendite.preventivi'"
                 )
                 self.assertFalse(svc.get_lista_config_per_video(utente, "vendite.preventivi")["ricerca_full"])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_la_configurazione_rifiuta_un_contesto_di_un_altro_utente(self):
@@ -567,8 +564,8 @@ class RicercaFullDbTests(unittest.TestCase):
                 with self.assertRaises(ServiceError) as ctx:
                     UiService().get_lista_config_per_video(utente, "vendite.preventivi")
                 self.assertEqual(ctx.exception.code, E_UI_CHIAMATA_NON_VALIDA)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_la_soglia_e_della_lista_e_la_leggono_i_due_lettori(self):
@@ -603,8 +600,8 @@ class RicercaFullDbTests(unittest.TestCase):
                 with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
                     soglia_ricerca("x.lista_che_non_esiste")
                 self.assertIn("E_UI_LISTA_NON_TROVATA", str(ctx.exception))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_il_resolver_soggetti_usa_la_soglia_della_lista(self):
@@ -639,6 +636,6 @@ class RicercaFullDbTests(unittest.TestCase):
                 dominio = list(cur.fetchone()[0])
                 config = SoggettiRepository().get_config_resolver("CL")
                 self.assertEqual(config["nature_ammesse"], dominio)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

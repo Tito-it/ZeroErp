@@ -830,7 +830,24 @@ Chiavi **alternative** in query string — esattamente una delle due:
 
 Risposta: stessa shape della riga di `results` in 9.3 (incl. `n_istanze`).
 Errori: `E_ANAG_VALIDAZIONE` (zero o due chiavi, UUID malformato, id non
-positivo), `E_ANAG_NOT_FOUND` (record inesistente).
+positivo), `E_ANAG_NOT_FOUND` (record inesistente **o fuori scope**).
+
+**Perimetro**: la stessa **regola** di scope emittente della ricerca 9.3,
+non lo stesso insieme di righe.
+
+* **Riga ruolo** (`soggetto_ruolo_id`): identica alla ricerca — vale la regola
+  del ruolo CL.
+* **Riga «senza ruolo»** (`soggetto_id`): il soggetto è restituito se
+  **nessuno** dei suoi ruoli è fuori scope (lo scope tocca solo il ruolo CL).
+  ⚠️ È **più largo** della ricerca, di proposito: la ricerca propone la riga
+  «senza ruolo» solo ai soggetti privi di qualunque ruolo, il restore
+  ricostruisce una selezione già fatta, e il soggetto può aver preso ruoli
+  dopo. Un soggetto scelto quando non aveva ruoli resta ricostruibile dopo che
+  è diventato cliente, ma solo da chi quel cliente lo vede; con soli ruoli
+  diversi da CL, da chiunque.
+
+Un id fuori scope risponde come un id inesistente: non rivela di esistere. ⛔ Fino al 2026-10-08 il restore non
+applicava nessuno scope (la view ha `skip_area_check`).
 
 ---
 

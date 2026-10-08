@@ -45,7 +45,7 @@ from unittest.mock import patch
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 _FIXTURE: tuple[str, ...] = (
     """
@@ -54,10 +54,6 @@ _FIXTURE: tuple[str, ...] = (
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 class EmailBozzaInvioDbTests(unittest.TestCase):
@@ -146,8 +142,8 @@ class EmailBozzaInvioDbTests(unittest.TestCase):
                     [a["id"] for a in EmailRepository().list_allegati_by_log(log_id)],
                     [allegato_id],
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. L'annullo toglie le righe degli allegati prima di chiudere la bozza.
@@ -164,8 +160,8 @@ class EmailBozzaInvioDbTests(unittest.TestCase):
 
                 self.assertEqual(esito["stato"], "CANCELLED")
                 self.assertEqual(EmailRepository().list_allegati_by_outbox(outbox_id), [])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. Dopo l'invio l'allegato e' storia: il database rifiuta di toglierlo.
@@ -183,8 +179,8 @@ class EmailBozzaInvioDbTests(unittest.TestCase):
                 with self.assertRaises(DatabaseError) as ctx, transaction.atomic():
                     EmailOutboxService().remove_attachment(allegato_id)
                 self.assertEqual(db_error_code(ctx.exception), "E_EMAIL_ALLEGATO_NON_BOZZA")
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 5. La modifica della bozza dal service: `destinatari_cc` arriva come
@@ -215,8 +211,8 @@ class EmailBozzaInvioDbTests(unittest.TestCase):
                 with self.assertRaises(ServiceError) as ctx:
                     EmailOutboxService().update_draft(outbox_id, stato="SENT")
                 self.assertEqual(ctx.exception.code, "E_OUTBOX")
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
 
@@ -274,6 +270,6 @@ class EmailLogDelCollegaDbTests(unittest.TestCase):
                     "la lista del log mostra la mail OPERATORE di un collega dello "
                     "stesso emittente: aperta a ogni operatore, sarebbe una fuga",
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

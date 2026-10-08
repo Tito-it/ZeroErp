@@ -28,6 +28,7 @@ from apps.core.services.auth_constants import (
 )
 from apps.core.services.permissions_cache import load_user_cache, save_user_cache
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
+from apps.core.services.service_errors import ServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +209,30 @@ class IsAdminZeroERP(BasePermission):
         )
         self.message = "Accesso riservato agli amministratori."
         return False
+
+
+# Scopo: BB — una lettura sui dati di UN utente (`user_id` dal percorso) e'
+#        ammessa a lui stesso o a un amministratore; altrimenti 403
+#        `E_PERMESSO_NEGATO`. Regola del 2 (ok Tid, 2026-10-08): la
+#        scrivevano per conto loro permessi effettivi e audit permessi.
+# ⭐ «Amministratore» non si riscrive qui: lo decide `IsAdminZeroERP.valuta`
+#    (superuser Django o SUPER_ADMIN), la sede di quel significato.
+# ⚠️ Serve alle view con `skip_area_check`, dove la catena non guarda piu'
+#    niente: il controllo sta nel corpo, e il presidio
+#    `test_skip_area_check_registro` (che legge gli attributi) non lo vede.
+#    `detail` dice al chiamante CHE COSA non si puo' consultare.
+def richiedi_se_stesso_o_amministratore(
+    user: Any, user_id: int, *, cache: dict[str, Any], detail: str,
+) -> None:
+    if user_id == user.id:
+        return
+    if IsAdminZeroERP.valuta(user, None, method="", cache=cache).consentito:
+        return
+    raise ServiceError(
+        code="E_PERMESSO_NEGATO",
+        message="Non hai i permessi per questa operazione.",
+        detail=detail,
+    )
 
 
 class ZeroERPPermission(BasePermission):

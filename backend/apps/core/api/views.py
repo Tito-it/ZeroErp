@@ -5,6 +5,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.permissions import richiedi_se_stesso_o_amministratore
 
 from apps.core.api.error_responses import exception_to_error_response
 from apps.core.api.payload_validators import qp_bool, qp_int_strict
@@ -181,21 +182,12 @@ class ApiPermessiEffettivi(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET i permessi effettivi risolti per un utente.
-    # Solo ADMIN e superuser possono consultare altri utenti.
+    # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
-        user = request.user
-        cache: dict = {}
-
-        # Solo SUPER_ADMIN/superuser possono vedere permessi di altri utenti
-        if user_id != user.id:
-            if not user.is_superuser and not PermissionResolver.is_super_admin(
-                user, cache=cache
-            ):
-                raise ServiceError(
-                    code="E_PERMESSO_NEGATO",
-                    message="Non hai i permessi per questa operazione.",
-                    detail="Solo SUPER_ADMIN possono consultare permessi di altri utenti.",
-                )
+        richiedi_se_stesso_o_amministratore(
+            request.user, user_id, cache={},
+            detail="Solo un amministratore (SUPER_ADMIN o superuser) puo' consultare i permessi di un altro utente.",
+        )
 
         target_user = _utente_target(user_id)
 
@@ -309,24 +301,16 @@ class ApiPermessiAudit(DomainAPIView):
     # Scopo: Restituisce via GET la timeline audit delle modifiche ai permessi di un utente.
     # Interroga le 8 tabelle storico permessi (5 per utente + 3 per reparto) con
     # filtri opzionali e paginazione. L'elenco e' `PermissionsAuditRepository`.
-    # Solo ADMIN e superuser possono consultare altri utenti.
+    # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
         from apps.core.api.payload_validators import optional_int, optional_iso_date
         from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
 
-        user = request.user
-        cache: dict = {}
-
-        # Scopo: Verifica autorizzazione — stessa policy di permessi-effettivi.
-        if user_id != user.id:
-            if not user.is_superuser and not PermissionResolver.is_super_admin(
-                user, cache=cache
-            ):
-                raise ServiceError(
-                    code="E_PERMESSO_NEGATO",
-                    message="Non hai i permessi per questa operazione.",
-                    detail="Solo SUPER_ADMIN possono consultare audit permessi di altri utenti.",
-                )
+        # Stessa policy di permessi-effettivi: lo stesso BB.
+        richiedi_se_stesso_o_amministratore(
+            request.user, user_id, cache={},
+            detail="Solo un amministratore (SUPER_ADMIN o superuser) puo' consultare l'audit permessi di un altro utente.",
+        )
 
         target_user = _utente_target(user_id)
 

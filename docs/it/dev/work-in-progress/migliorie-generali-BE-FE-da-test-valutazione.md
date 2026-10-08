@@ -48,6 +48,20 @@
 > (senza motivazione resta **11**). Riletti con la data i numeri di §2.1
 > (`.spec.js` 93), §2.3 (codici) e D9 (96 file sul DB vero). In §3 restano
 > **D1-f, D2-b, D3-b, D9-a, D10-bis, D12**, tutte invariate nel merito.
+>
+> ✅ **Riallineato il 2026-10-08** sul repo: le sei voci aperte sono
+> **invariate nel merito**, verificate ognuna sul file che le tiene. Il
+> registro delle `DataTable` grezze scende a **28** e quelle senza motivazione
+> a **9** (§3 D10): `PermessiRiepilogoView` è ritirata il 06-10, e
+> `OffertaEccezioniDrawer` è diventata `OffertaRigheDrawer` il 05-10. Riletti
+> con la data i numeri di §2.1 (`.spec.js` 102), §2.3 (codici) e D9 (104 file
+> sul DB vero). In D9-a la frase «lo smoke che esce `0`» non dice **quale**:
+> letti i sorgenti, tutti e diciassette hanno un'uscita d'errore, quindi lo si
+> trova solo lanciandoli.
+> ✅ Lo stesso giorno **D10-bis** chiude la sua parte di lettura (§9): le 52
+> letture con lo skip, un difetto vero (i restore per id fuori scope), un BB e
+> un [brief DB](brief-db-istanza-nasce-col-ba.md). In §3 restano **D1-f, D2-b,
+> D3-b, D9-a, D10-bis** (la sola baseline smoke), **D12**.
 
 ---
 
@@ -121,7 +135,7 @@ fissano, non la superficie coperta. ⭐ Dal **2026-09-23** provano anche i
 (`// @vitest-environment jsdom`), non globalmente, così i test puri — che
 restano la maggioranza — non pagano l'ambiente di chi monta. Al **2026-09-28**
 i file `.spec.js` in git sono **57**, e otto accendono il DOM; al
-**2026-10-04** sono **93**, e 27 accendono il DOM.
+**2026-10-04** sono **93**, e 27 accendono il DOM; al **2026-10-08** sono **102**.
 
 ### 2.2 Analisi statica del backend — `ruff`, dal 2026-09-09
 
@@ -143,7 +157,8 @@ checker** (D2-b).
 | Frasi di ripiego **orfane** / con `%s` non riempibile | **0** / **0** |
 
 Riletto il **2026-10-04**: **975** a catalogo, **99** ritirati, **876** vivi (in
-`apps/core/services/error_policies_generated.py`); gli zeri li tiene il test.
+`apps/core/services/error_policies_generated.py`); il **2026-10-08** **991**,
+**103** e **888**. Gli zeri li tiene il test.
 Presidiato da `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego` a ogni corsa.
 La classe non si deriva dallo status e viceversa; `UI_ACTION_PER_CLASSE` porta
 scritto perché su `DATO_ERRATO` il default è il banner e non l'evidenziazione.
@@ -360,7 +375,7 @@ giusto per validazione, dedup e not-found, non una copertura d'integrazione.
 
 ⭐ Il livello che attraversa la giuntura esiste e cresce da solo: **22 file** con
 `richiedi_db_provvisto` (rimisurato l'11-09; erano 19 il 09-09; **82** il
-2026-09-28; **96** il 2026-10-04), accesi in CI da `ZEROERP_TEST_DB_E2E=1`, registrati in `api.md`
+2026-09-28; **96** il 2026-10-04; **104** il 2026-10-08), accesi in CI da `ZEROERP_TEST_DB_E2E=1`, registrati in `api.md`
 §Test dal 09-09.
 
 **Aperto — D9-a**: gli smoke Python di `backend/scripts/tests/` (sedici al
@@ -383,16 +398,16 @@ Un registro è una buona invenzione **a condizione che scenda**. Stato:
 | -------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Errori `oxlint`                        | **0**                       | ✅ cancello in CI (`npm run lint`, senza `--fix`), dal 09-09                                                                                                                                                                                                          |
 | Rilievi `ruff`                         | **0**                       | ✅ cancello in pre-commit e CI, dal 09-09                                                                                                                                                                                                                             |
-| `DataTable` grezza in una view         | **30** grezze (+2 standard), 04-10; erano 31 il 29-09, 33 il 28-09, 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
-| …di cui senza commento di motivazione  | **11**, 29-09 (invariato al 04-10); erano 12 il 28-09, 33 prima | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Dieci delle 11 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono uscite il 29-09 col lotto C del [brief righe documento](../work-done/brief-db-liste-righe-documento.md) (con `ArticoloBomDrawer` fra le grezze), e `ContrattoRigheDrawer` il 04-10 alla chiusura dello stesso brief; gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
+| `DataTable` grezza in una view         | **28** grezze (+2 standard), 08-10; erano 30 il 04-10, 31 il 29-09, 33 il 28-09, 45 il 09-10 | ✅ **cricchetto dal 09-10**: `check-datatable-baseline.mjs` + registro `frontend/scripts/datatable.baseline.json` che **elenca i file**. Rosso se cresce, rosso **anche se cala** senza riscrivere il registro. ⭐ **Cala davvero dal 26-09** (§9 D10)                  |
+| …di cui senza commento di motivazione  | **9**, 08-10; erano 11 il 29-09 e il 04-10, 12 il 28-09, 33 prima | ✅ seconda soglia dello stesso cricchetto (finestra: quattro righe sopra l'import). Otto delle 9 sono **decisioni di Tid aperte** ([brief delle liste grezze](../work-done/brief-db-liste-datatable-grezze.md) §5); le righe di `FatturaDrawer` sono uscite il 29-09 col lotto C del [brief righe documento](../work-done/brief-db-liste-righe-documento.md) (con `ArticoloBomDrawer` fra le grezze), e `ContrattoRigheDrawer` il 04-10 alla chiusura dello stesso brief. Il 05-10 `OffertaEccezioniDrawer` è diventata `OffertaRigheDrawer` ([brief righe esclusione](brief-db-righe-esclusione-solo-non-si-vende.md)), e il 06-10 `PermessiRiepilogoView` è stata ritirata: il riepilogo è un interruttore della lista operatori ([brief riepilogo permessi](../work-done/brief-db-riepilogo-permessi-lista-operatori.md)). Gli step di `PraticaFlussiTab` sono Gruppo B per il piano e manca solo il commento |
 | Filtri di lista scritti a mano         | **0** su tre voci, dal 09-23 | ✅ cricchetto `check-filtri-lista.mjs` + `filtri-lista.baseline.json` (blocchi grezzi, larghezze inline, coppie di date a mano)                                                                                                                                        |
 | File tracciati senza header di licenza | 1.169 su 5.787 (09-10)      | ✅ cala davvero (erano 2.042 il 08-26); l'hook guarda i soli file aggiunti, per scelta                                                                                                                                                                                |
 | `baseline-smoke.tsv`                   | 2 su 16                     | ⛔ nessun verso: vive o muore con D9-a                                                                                                                                                                                                                                |
-| `skip_area_check = True`               | 73 view (09-12)             | ✅ **presidio dal 09-12** (D15): chi **scrive** con lo skip dichiara un `<metodo>_permission` o sta in un registro motivato; le 15 **mute** sono un registro a cricchetto. ⚠️ Resta una lettura, non un conteggio, la legittimità delle sole **letture** cross-dominio |
+| `skip_area_check = True`               | 73 view (09-12); 78 (08-10) | ✅ **presidio dal 09-12** (D15): chi **scrive** con lo skip dichiara un `<metodo>_permission` o sta in un registro motivato; le 15 **mute** sono un registro a cricchetto. ✅ Le **letture** lette una per una il 2026-10-08 (D10-bis, §9) |
 
-**Aperto — D10-bis**: la baseline degli smoke dipende da D9-a; degli
-`skip_area_check` resta da leggere la sola parte che il presidio non copre, le
-letture cross-dominio (le scritture e i muti sono in D15).
+**Aperto — D10-bis**: resta la sola baseline degli smoke, che dipende da D9-a.
+✅ La lettura delle letture cross-dominio con lo skip è **fatta il 2026-10-08**
+(§9): un difetto vero, chiuso.
 
 ⚠️ **Le `DataTable` grezze non sono in D10-bis**: il registro ha un verso e
 cala, e ciò che lo tiene sopra zero sono quasi solo decisioni, non letture.
@@ -463,7 +478,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Perimetro e permessi (applicativo)**  | 🟠 medio | **7,5/10** | Catena unica, fail-closed, reset GUC incondizionato. ✅ 25-09 D5 chiuso con presidio aree/catalogo. ✅ 12-09: lo skip muto (D15) deciso e chiuso su tutte e 15 le view, presidiato dagli attributi **e** dal percorso reale |
 | **Correttezza dei contratti di lista**  | 🟠 medio | **8/10**   | Lookup con `troncato`, presidiato sul DB vero (D6). Nessun cancello sui `count: len()` senza `LIMIT`                                                                                                                   |
 | **Simmetria del dominio**               | 🟠 medio | **non votata** (04-10) | Che `acquisti` e `magazzino` abbiano BE e FE indietro rispetto al DB è l'**ordine di costruzione** scelto, non un difetto (§4). Il voto 4/10 dato fino al 04-10 misurava il calendario. Ciò che si presidia è la regola: *ogni decisione presa su `vendite` vale anche per `acquisti`* |
-| **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 → 31 → **30** e senza motivo 33 → 12 → **11** (28-09 → 04-10): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
+| **Building block — frontend**           | 🟡 basso | **9/10**   | Un solo punto HTTP (presidiato anche nei componenti dal 26-09), `bersagli`, contratto KeepAlive presidiato (D8), 13 guard. `DataTable` grezze 45 → 33 → 31 → 30 → **28** e senza motivo 33 → 12 → 11 → **9** (28-09 → 08-10): le rimaste aspettano una decisione di Tid (voto rivisto il 28-09; era 8,5) |
 | **Multilingua**                         | 🟡 basso | **9/10**   | Parità perfetta e guard in CI. Il catalogo a monte è monolingue (§2.6)                                                                                                                                                 |
 | **Gestione del debito**                 | 🟡 basso | **8/10**   | Registri con cancello o cricchetto (D10), e quello delle `DataTable` è sceso davvero il 26-28/09. Senza verso: le letture cross-dominio con `skip_area_check` e la baseline smoke                                        |
 | **Documentazione di contesto**          | 🟡 basso | **9/10**   | Sette righe su sette chiuse (§1)                                                                                                                                                                                       |
@@ -581,10 +596,11 @@ D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
 * [x] **D10 (le `DataTable`)** — ✅ 2026-09-26/28: riclassificazione dei 44 file
       e brief delle liste grezze chiuso; registro 45 → 33, senza motivazione
       33 → 12; il 29-09 → **31** e **11** col lotto C delle righe documento,
-      il 04-10 → **30** alla chiusura di quel brief.
+      il 04-10 → **30** alla chiusura di quel brief; l'08-10 → **28** e **9**.
       Le rimaste aspettano decisioni di Tid (§3 D10).
-* [ ] **D10-bis** — gli `skip_area_check` (da leggere uno per uno) e la baseline
-      degli smoke (con D9-a).
+* [~] **D10-bis** — ✅ 2026-10-08: le 52 letture con lo skip lette una per una,
+      i due restore per id fuori scope chiusi, BB «se stesso o amministratore»
+      (§9). Resta la baseline degli smoke (con D9-a).
 * [x] **D11** — ✅ 2026-09-11: `acquisti`/`magazzino` prossimo cantiere, in `PROJECT_CONTEXT.md`.
 * [x] **§1-a/b/c/d** — ✅ 2026-09-09 (stack tolto, app complete, `ui_action` e
       §Test) e 2026-09-11 (§1-d con D9-b). ⚠️ Resta aperto l'ingresso di
@@ -663,7 +679,6 @@ D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
 | --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | 1   | **D1-f** — `npm audit` nel job                     | Registro a **zero** dal 13-09, e il lato backend (`pip-audit`) c'è dal 26-09                        |
 | 2   | **D2-b** — type checker                            | Una decisione: sì (e come) o no (e si toglie la riga da `PROJECT_CONTEXT.md`)                       |
-| 3   | **D10-bis** — le letture cross-dominio con lo skip | Lettura, non conteggio                                                                              |
 
 ### ⛔ Sembrano facili e non lo sono — sono cantieri veri
 
@@ -829,7 +844,8 @@ standard, di cui **33** senza motivazione) con `check-datatable-baseline.mjs`
 che **elenca i file** ed è rosso **anche se cala** senza riscrivere il registro,
 gli header di licenza che calano davvero (2.042 → **1.169**), e gli
 `skip_area_check` con il presidio di D15. Restano senza verso la baseline degli
-smoke (vive o muore con D9-a) e la lettura cross-dominio (D10-bis).
+smoke (vive o muore con D9-a) e la lettura cross-dominio (D10-bis, fatta il
+2026-10-08: §9).
 
 ✅ **Il registro delle `DataTable` cala davvero — 2026-09-26 → 28.** Decisione
 di Tid (26-09): *«correggere le DataTable grezze»*. I 44 file sono stati
@@ -846,6 +862,55 @@ validazione del catalogo liste contro la vista (`schema_dati`). Registro:
 **45 → 33** grezze, senza motivazione **33 → 12**; il 29-09, col lotto C del
 [brief righe documento](../work-done/brief-db-liste-righe-documento.md), **31** e **11**; il 04-10, alla chiusura del brief, **30** e **11**.
 Le rimaste sono in §3 D10.
+
+### ✅ D10-bis — Le letture con lo skip, lette una per una — 2026-10-08
+
+Le view con `skip_area_check` **attivo** che servono una lettura sono **52**, prese
+dal percorso reale (l'URLconf, con la stessa scansione del presidio di D15). Lette
+una per una, contro la domanda *«su che cosa altro può leggere chi chiama?»*:
+
+| Gruppo | Esito |
+| --- | --- |
+| Dati propri (`me/`, sessioni, emittente attivo, secondo fattore, parametri risolti) | ✅ il perimetro è l'identità |
+| Cataloghi e metadati (`lookup/codici` con whitelist a DB, tipi, comuni, stradario, conti contabili, config liste, misure pagina) | ✅ nessun dato di dominio |
+| Filtro per utente a DB (contatori e config dashboard, log email con RLS per ambito) | ✅ |
+| Controllo nel corpo (permessi effettivi e audit, `ui/admin/liste/`) | ✅ — ⚠️ invisibile al presidio, che legge gli attributi |
+| Lookup cross-dominio per testo (BA, istanze, soggetti-ruoli, utility per emittente, ricerca universale) | ✅ scope emittente |
+| Decisioni già prese (`pagamenti/fatture/<id>/…` del 12-09 con la RLS su `vendite.fatture`; `RuoliConfigResolverView`) | ✅ |
+| **Restore per id** di istanze e soggetti-ruoli | 🔴 → ✅ |
+
+🔴 **Il difetto**: i due restore per id (`IstanzaUtilityLookupByIdView`,
+`SoggettiRuoliLookupByIdView`) rispondevano su **qualunque** istanza o soggetto-ruolo,
+fuori dallo scope emittente che la ricerca per testo applica — e su `istanze_utilities`,
+`soggetti` e `soggetti_ruoli` non c'è RLS a fare da rete. Il repository lo dichiarava
+(«l'autorizzazione va gestita dall'endpoint chiamante»), e l'endpoint, con lo skip, non la
+gestiva: con un id si leggevano nome, CF, indirizzo e PDP di soggetti di altri emittenti,
+con un 200. Il BA per id era coperto dalla RLS.
+✅ **Chiuso lo stesso giorno**: il restore applica la **stessa** clausola della ricerca
+(`_SCOPE_EMITTENTE_SQL` estratta in `istanze_utility_repository`, `_RUOLO_CL_SCOPE_SQL` in
+`soggetti_repository`); `emittente_ids` è obbligatorio dal repository alla view; fuori scope
+è `E_ANAG_NOT_FOUND` come un id inesistente. Test sul DB vero
+`anagrafiche/tests/db/test_lookup_restore_scope_db.py` (mondo costruito, «altro emittente»
+fabbricato); tre mutazioni, tre rossi.
+⭐ **La domanda di modello che ne è uscita**: la regola «un'istanza è dell'emittente del suo
+BA» ha un buco solo se l'istanza può vivere senza BA. Decisione di Tid: *istanza e BA nascono
+insieme, sempre; resta differito solo il codice, prima della prima fattura*. L'applicazione la
+rispetta già, il contratto del DB no → [brief-db-istanza-nasce-col-ba.md](brief-db-istanza-nasce-col-ba.md).
+
+✅ **BB `richiedi_se_stesso_o_amministratore`** (`core/api/permissions.py`, regola del 2,
+ok Tid): il «solo i propri, oppure amministratore» di permessi effettivi e audit era scritto
+due volte; ora una, e «amministratore» lo decide `IsAdminZeroERP.valuta`. 🔴→✅ Trovato
+strada facendo: i test delle due view mettevano il mock sul `PermissionResolver` della view,
+e la decisione passava dal DB di sviluppo con un id finto — **verdi per il motivo
+sbagliato**. Ora il mock sta dove il BB decide (`RichiedenteMockatoMixin`, che nega di
+default; il test dichiara `richiedente_amministratore()`), separato dal resolver della view,
+che risponde sull'utente **consultato**: con un mock solo un test non distingueva «chi guarda
+è admin» da «chi è guardato è admin». Due mutazioni (BB sempre-sì, BB sempre-no), entrambe
+rosse. Messaggio del 403 corretto: «Solo un amministratore (SUPER_ADMIN o superuser)…».
+
+✅ **Regola del 2 sui test DB** (ok Tid, 2026-10-08): `_Annulla` era ricopiata in 22 file di
+8 app e importata come nome privato in altri tre; ora `Annulla` in `core/tests/db_e2e.py`,
+copie ritirate nello stesso giro.
 
 ### ✅ D11 — Quattro app scheletro: la decisione — 2026-09-11
 

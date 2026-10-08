@@ -46,7 +46,7 @@ from decimal import Decimal
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.db.promo_articoli_repository import PromoArticoliRepository
@@ -55,10 +55,6 @@ _MONDO = (
     "CREATE TEMP TABLE _mondo AS "
     "SELECT m.* FROM dbops.fn_pgtap_crea_mondo_cliente('SCRDYNV') m"
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 # Scopo: una riga come dict, per le verifiche.
@@ -215,8 +211,8 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                 self.assertEqual(_riga(cur, (
                     "SELECT prezzo_unitario FROM vendite.offerte_commerciali_eccezioni WHERE id = %s"
                 ), [eccezione])["prezzo_unitario"], Decimal("12.50"))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. Contratto: testata (nata dalla madre), righe e utility dal BB.
@@ -271,8 +267,8 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                 self.assertEqual(_riga(cur, (
                     "SELECT param_2_txt FROM vendite.contratti_utilities WHERE id = %s"
                 ), [utility])["param_2_txt"], "p2")
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 4. Promo: il `meta` dict arriva come OGGETTO jsonb, in INSERT e UPDATE.
@@ -308,6 +304,6 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                 self.assertEqual(_json(_riga(cur, (
                     "SELECT meta FROM vendite.promo_articoli WHERE id = %s"
                 ), [promo])["meta"]), {"v": 2})
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

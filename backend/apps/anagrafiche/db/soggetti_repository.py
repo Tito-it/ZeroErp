@@ -810,11 +810,29 @@ class SoggettiRepository:
     #        in edit. Due chiavi alternative: soggetto_ruolo_id per le righe
     #        ruolo, soggetto_id per le righe "senza ruolo" (riga a ruolo NULL,
     #        indipendentemente dai ruoli che il soggetto possiede).
+    # Perimetro: la STESSA regola di scope della ricerca, non lo stesso
+    #        insieme di righe.
+    #        - Riga ruolo: `_RUOLO_CL_SCOPE_SQL`, identica alla ricerca.
+    #        - Riga «senza ruolo»: il soggetto e' visibile se NESSUNO dei suoi
+    #          ruoli e' fuori scope (lo scope tocca solo il ruolo CL: gli altri
+    #          ruoli non nascondono niente). ⚠️ E' PIU' LARGO della ricerca, di
+    #          proposito: la ricerca propone la riga «senza ruolo» solo ai
+    #          soggetti privi di qualunque ruolo, mentre il restore ricostruisce
+    #          una selezione GIA' FATTA, e il soggetto puo' aver preso ruoli
+    #          dopo. Un soggetto scelto quando non aveva ruoli resta quindi
+    #          ricostruibile dopo che e' diventato cliente, ma solo per chi quel
+    #          cliente lo vede; con soli ruoli non-CL, per chiunque.
+    #        `emittente_ids` obbligatorio: None e' il bypass, e va detto.
+    # ⛔ Fino al 2026-10-08 nessuno dei due rami lo applicava e la view, con
+    #    `skip_area_check`, non lo chiedeva: con un id si leggevano nome e CF
+    #    di soggetti di qualunque emittente (D10-bis).
+    # Risultato: riga lookup, o None se non trovata O fuori scope.
     def get_ruolo_lookup_by_id(
         self,
         *,
         soggetto_ruolo_id: int | None = None,
         soggetto_id: str | None = None,
+        emittente_ids: list[int] | None,
     ) -> dict[str, Any] | None:
         if soggetto_ruolo_id is not None:
             sql = f"""
@@ -831,8 +849,9 @@ class SoggettiRepository:
                   JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
                   LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="s.id", sr_ref="sr.id")} ist ON true
                  WHERE sr.id = %s
+                   AND {_RUOLO_CL_SCOPE_SQL}
             """  # noqa: S608
-            params: list[Any] = [soggetto_ruolo_id]
+            params: list[Any] = [soggetto_ruolo_id, emittente_ids, emittente_ids]
         else:
             sql = f"""
                 SELECT s.id AS soggetto_id,
@@ -846,8 +865,15 @@ class SoggettiRepository:
                   FROM anagrafiche.soggetti s
                   LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="s.id", sr_ref="NULL::bigint")} ist ON true
                  WHERE s.id = %s::uuid
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM anagrafiche.soggetti_ruoli sr
+                         JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                        WHERE sr.soggetto_id = s.id
+                          AND NOT {_RUOLO_CL_SCOPE_SQL}
+                   )
             """  # noqa: S608
-            params = [soggetto_id]
+            params = [soggetto_id, emittente_ids, emittente_ids]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return row_to_dict(cursor)

@@ -142,8 +142,12 @@ class IstanzaUtilityLookupByIdView(DomainAPIView):
     # Scopo: Restituisce l'istanza_utility arricchita (codice, soggetto,
     #        indirizzo, BA campione, utility dichiarata) per ricostruire
     #        l'oggetto dell'AutoComplete in modalita' edit.
+    # ⛔ Con `skip_area_check` la catena non guarda piu' niente: il perimetro
+    #    e' lo scope emittente, lo stesso della ricerca. Fino al 2026-10-08
+    #    qui non c'era, e con un id si leggeva un'istanza di qualunque
+    #    emittente (D10-bis).
     def get(self, request: Request, istanza_utility_id: int) -> JsonResponse:
-        del request
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache={})
         service = IstanzeUtilityService()
-        result = service.get_lookup_by_id(istanza_utility_id)
+        result = service.get_lookup_by_id(istanza_utility_id, emittente_ids=emittente_ids)
         return success_response(result)

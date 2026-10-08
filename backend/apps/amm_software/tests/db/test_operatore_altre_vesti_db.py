@@ -40,11 +40,7 @@ from apps.core.db.risorse_umane_core_repository import RisorseUmaneCoreRepositor
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.invito_veste import PORTA_OPERATORE, PORTA_SHOP
 from apps.core.services.token_service import TokenService
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
+from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
 
 
 class OperatoreAltreVestiDbTests(TestCase):
@@ -95,8 +91,8 @@ class OperatoreAltreVestiDbTests(TestCase):
 
                 self.assertEqual(self._veste(cur, operatore), ("OPERATORE", True))
                 self.assertEqual(self._veste(cur, shop), ("SHOP_CUSTOMER", True))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     @staticmethod
@@ -143,8 +139,8 @@ class OperatoreAltreVestiDbTests(TestCase):
                 ))
                 self.assertEqual(self._veste(cur, operatore), ("OPERATORE", True))
                 self.assertEqual(self._veste(cur, shop), ("SHOP_CUSTOMER", True))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # Scopo: D-3 — l'interruttore non riaccende un operatore spento (400 sul
@@ -168,8 +164,8 @@ class OperatoreAltreVestiDbTests(TestCase):
                 # Il salvataggio del drawer: `attivo: false` invariato.
                 service.update_operatore(uid, {"attivo": False, "first_name": "Altre"})
                 self.assertTrue(self._rapporto(cur, operatore)[0])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # Scopo: Riaprire il rapporto azzera la `valido_al` arrivata (oggi o
@@ -193,8 +189,8 @@ class OperatoreAltreVestiDbTests(TestCase):
 
                 self.assertEqual(RisorseUmaneCoreRepository().riapri_risorsa_umana_della_veste(operatore), 1)
                 self.assertEqual(self._rapporto(cur, operatore), (True, valido_dal, fine))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_il_super_admin_si_lega_alla_sola_veste_operatore(self):
@@ -213,8 +209,8 @@ class OperatoreAltreVestiDbTests(TestCase):
                     [operatore, shop],
                 )
                 self.assertEqual([r[0] for r in cur.fetchall()], [operatore])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # Scopo: La lista operatori legge la veste con la stessa definizione dei
@@ -244,8 +240,8 @@ class OperatoreAltreVestiDbTests(TestCase):
                 self.assertIs(mie[0]["attivo"], False)
                 # L'altra veste attiva e' un'informazione della riga (D-6).
                 self.assertEqual(mie[0]["altre_vesti"], ["SHOP_CUSTOMER"])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # Scopo: Una credenziale con la SOLA veste shop non e' un operatore: non
@@ -279,8 +275,8 @@ class OperatoreAltreVestiDbTests(TestCase):
                 # Chiesto APPOSTA: il riepilogo deve scartare chi non e' operatore.
                 riepilogo = repo.get_permessi_riepilogo([uid])
                 self.assertNotIn(uid, [r["auth_user_id"] for r in riepilogo])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # Scopo: Una sessione aperta in una veste: un OutstandingToken con il claim
@@ -355,6 +351,6 @@ class OperatoreAltreVestiDbTests(TestCase):
                         self.assertEqual((attivo, valido_al), (False, cur.fetchone()[0]))
                         self.assertIsNone(inviti.validate(invito_operatore, PORTA_OPERATORE.token_invito))
                         self.assertIsNotNone(inviti.validate(invito_shop, PORTA_SHOP.token_invito))
-                        raise _Annulla
-                except _Annulla:
+                        raise Annulla
+                except Annulla:
                     pass

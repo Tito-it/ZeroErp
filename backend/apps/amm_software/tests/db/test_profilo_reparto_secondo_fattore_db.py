@@ -23,11 +23,7 @@ from unittest import TestCase
 from django.db import connection, transaction
 
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
+from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
 
 
 class ProfiloRepartoSecondoFattoreDbTests(TestCase):
@@ -57,6 +53,6 @@ class ProfiloRepartoSecondoFattoreDbTests(TestCase):
 
                 repo.put_profilo_reparto(uo_id, [], [], richiede_secondo_fattore=False)
                 self.assertFalse(repo.get_profilo_reparto(uo_id)["richiede_secondo_fattore"])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
