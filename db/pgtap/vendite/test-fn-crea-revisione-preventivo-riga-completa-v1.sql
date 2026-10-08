@@ -25,10 +25,12 @@
 --    3) la rev N+1 nasce (rev 1) con le tre righe
 --    4) ⭐ la riga APPROVED porta stato e pratica identici sulla rev N+1
 --    5) ⭐ la riga REJECTED porta stato e pratica identici sulla rev N+1
+--       ⚠️ SKIP motivato dal 2026-10-08: caso non costruibile (20261008-91)
 --    6) la riga senza marca resta senza marca: la revisione non inventa un'approvazione
 --    7) la rev N conserva le sue marche: la revisione COPIA, non sposta
 --    8) la marca REJECTED copiata fa il suo mestiere: la rev N+1 non si emette
 --       (script.fn_check_prezzi_autorizzati la segnala con E_DOC_PREZZO_RIFIUTATO)
+--       ⚠️ SKIP motivato dal 2026-10-08: caso non costruibile (20261008-91)
 --
 -- 🔄 rev 2026-09-24 — LA RIGA IN ATTESA NON C'E' PIU', ED E' IL MODELLO.
 --   Da 20260924-34 (decisione di Tid, brief-db-preventivi-congelamento-pricing
@@ -165,9 +167,11 @@ DO $ctx$ BEGIN
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
 END $ctx$;
 
--- Due pratiche di approvazione prezzo (una per riga marcata), come le crea il
--- BE: pratiche.fn_crea_pratica con il tipo APPROVAZIONE_PREZZO del catalogo,
+-- La pratica di approvazione prezzo della riga APPROVED, come la crea il BE:
+-- pratiche.fn_crea_pratica con il tipo APPROVAZIONE_PREZZO del catalogo,
 -- risolto per codice_interno.
+-- ⚠️ rev 2026-10-08: era due pratiche, una anche per la riga REJECTED (vedi
+--   sotto, alla fixture del preventivo).
 CREATE TEMP TABLE _pratiche AS
 SELECT x.tag,
        pratiche.fn_crea_pratica(
@@ -176,9 +180,20 @@ SELECT x.tag,
            NULL, NULL, NULL, NULL,
            'pgTAP revisione riga completa — ' || x.tag,
            jsonb_build_object('test_scope', 'pgtap_revisione_riga_completa')) AS pratica_id
-  FROM _mondo m, (VALUES ('approvata'), ('rifiutata')) AS x(tag);
+  FROM _mondo m, (VALUES ('approvata')) AS x(tag);
 
 -- Preventivo EMESSO: la revisione nasce solo da li'.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §4.5, decisione
+--   di Tid): il preventivo nasce DRAFT, prende le righe, poi passa a EMESSO per
+--   le transizioni (dbops.fn_pgtap_porta_a_stato) — da 20261008-91 le righe del
+--   preventivo fuori bozza non si scrivono. E la riga REJECTED non c'e' piu':
+--   un REJECTED su una riga attiva ferma l'uscita dalla bozza
+--   (fn_check_prezzi_autorizzati), e la revisione parte da EMESSO. «La rev N
+--   con una riga rifiutata» non nasce piu' da nessuna porta: i test 5 e 8 sono
+--   SKIP motivati, la copia 1:1 del rifiutato resta nel corpo come difesa in
+--   profondita' (e il suo ramo raggiungibile — il componente spento rifiutato —
+--   e' provato in vendite/test-righe-e-componenti-debiti-residui-v1, 22 e 24).
+--   La seconda riga resta, senza marca: tre righe come prima (test 3).
 CREATE TEMP TABLE _preventivo AS
 WITH p AS (
     INSERT INTO vendite.preventivi
@@ -188,7 +203,7 @@ WITH p AS (
            c.billing_account_id, c.istanza_utility_id, c.utility_id,
            (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
            (SELECT s.id FROM config.stati_doc_preventivi s
-             WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE),
+             WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
            m.emittente_fiscale_id,
            jsonb_build_object('test_scope', 'pgtap_revisione_riga_completa')
       FROM _cliente c, _mondo m
@@ -196,8 +211,9 @@ WITH p AS (
 )
 SELECT id AS preventivo_id FROM p;
 
--- Tre righe: APPROVED con la sua pratica, REJECTED con la sua, e una senza
--- marca. La terza e' il gemello che prova che la revisione non inventa.
+-- Tre righe: APPROVED con la sua pratica, e due senza marca (la seconda era
+-- REJECTED fino al 2026-10-08, vedi sopra). La terza e' il gemello che prova
+-- che la revisione non inventa.
 -- ⚠️ iva_id esplicito: un trigger di riga chiede l'aliquota.
 CREATE TEMP TABLE _righe_prev AS
 WITH r AS (
@@ -210,11 +226,16 @@ WITH r AS (
       FROM _preventivo p, _articolo a,
            (SELECT i.id AS iva_id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) i,
            (VALUES (1, 'APPROVED', 'approvata'),
-                   (2, 'REJECTED', 'rifiutata'),
+                   (2, NULL,       NULL),
                    (3, NULL,       NULL)) AS x(ordine, stato, tag)
     RETURNING id, ordine, stato_approvazione_prezzo, pratica_approvazione_prezzo_id
 )
 SELECT id AS riga_prev_id, ordine, stato_approvazione_prezzo, pratica_approvazione_prezzo_id FROM r;
+
+-- L'emissione, per le transizioni vere (rev 2026-10-08).
+DO $emetti$ BEGIN
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT preventivo_id FROM _preventivo), 'EMESSO');
+END $emetti$;
 
 -- ============================================================
 -- LA REVISIONE, sul percorso reale
@@ -243,11 +264,12 @@ SELECT is(
     '4) la riga APPROVED porta stato e pratica IDENTICI sulla rev N+1: un prezzo approvato resta marcato'
 );
 
-SELECT is(
-    (SELECT r.stato_approvazione_prezzo::text || '|' || r.pratica_approvazione_prezzo_id::text FROM _righe_rev r WHERE r.ordine = 2),
-    'REJECTED|' || (SELECT pratica_id::text FROM _pratiche WHERE tag = 'rifiutata'),
-    '5) la riga REJECTED porta stato e pratica IDENTICI sulla rev N+1: un prezzo rifiutato resta rifiutato'
-);
+-- ⚠️ SKIP motivato dal 2026-10-08 (vedi la fixture del preventivo).
+SELECT skip(
+    'riga REJECTED ricopiata sulla rev N+1: caso non costruibile dalle porte del modello '
+    'da 20261008-91 (un REJECTED su una riga attiva ferma l''uscita dalla bozza); la copia '
+    '1:1 resta nel corpo come difesa in profondita''',
+    1);
 
 SELECT is(
     (SELECT COALESCE(r.stato_approvazione_prezzo::text, 'NULL') || '|' || COALESCE(r.pratica_approvazione_prezzo_id::text, 'NULL')
@@ -272,14 +294,12 @@ SELECT is(
 -- tornerebbe un prezzo qualunque e la rev N+1 si emetterebbe. Si legge la
 -- CHECK (la stessa che il guard di emissione e la capability chiamano), non
 -- si tenta l'emissione: qui si prova la marca, non la transizione.
-SELECT is(
-    (SELECT string_agg(DISTINCT m ->> 'codice', ',')
-       FROM jsonb_array_elements(
-                script.fn_check_prezzi_autorizzati('vendite.preventivi'::regclass,
-                                                   (SELECT nuovo_preventivo_id FROM _rev))) m),
-    'E_DOC_PREZZO_RIFIUTATO',
-    '8) la marca REJECTED copiata fa il suo mestiere: la rev N+1 non si emette (E_DOC_PREZZO_RIFIUTATO)'
-);
+-- ⚠️ SKIP motivato dal 2026-10-08: senza una riga REJECTED sulla rev N non
+--   c'e' una marca copiata da far lavorare (vedi la fixture del preventivo).
+SELECT skip(
+    'la marca REJECTED copiata ferma l''emissione della rev N+1: caso non costruibile '
+    'dalle porte del modello da 20261008-91; il controllo resta in fn_check_prezzi_autorizzati',
+    1);
 
 SELECT * FROM finish();
 ROLLBACK;

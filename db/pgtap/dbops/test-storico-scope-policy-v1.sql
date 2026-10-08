@@ -25,7 +25,7 @@
 --   percorso da collaudare. Le righe di prova nella mappa le scrive l'app,
 --   che sulle tabelle di dbops ha i DML del loop dei grant.
 --
--- Elenco test (plan 33):
+-- Elenco test (plan 36):
 --   MAPPA — completezza
 --    1  : gemello «esiste»: ci sono madri col trigger di storico
 --    2  : ogni madre col trigger di storico ha la sua riga
@@ -34,6 +34,7 @@
 --    5  : nessuna riga di mappa orfana (madre inesistente o senza trigger)
 --   MAPPA — coerenza col catalogo
 --    6  : EF/SR/BA: la colonna dichiarata esiste sulla madre
+--    6-bis: COPPIA: le due colonne sono una FK composta verso la coppia del BA (rev 2026-10-09)
 --    7  : PADRE: la colonna è una FK monocolonna verso il padre dichiarato
 --    8  : PADRE: il padre ha la colonna `id` (è così che il resolver lo cerca)
 --    9  : ogni catena PADRE termina in EF/SR/BA entro il tetto (niente cicli)
@@ -59,6 +60,8 @@
 --   27  : ciclo nella mappa → la frase del catalogo
 --   28  : BA non mappato, IN SESSIONE → l'emittente dell'operatore (D13, dal 20260913-01)
 --   28-bis: BA non mappato, SENZA sessione → l'emittente di default (skip dichiarato se manca)
+--   28-ter : COPPIA: il BA della coppia, poi il suo emittente (rev 2026-10-09)
+--   28-quater: COPPIA: coppia senza BA → NULL
 --   LA VISTA DI PRESIDIO — dbops.vw_storico_scope_da_dichiarare (digest)
 --   29  : oggi è VUOTA: dice la stessa cosa dei test 2, 4, 5
 --   30  : ⭐ una madre costruita col trigger e senza riga → SENZA_RIGA
@@ -74,7 +77,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   puntano a un padre devono trovarlo GIÀ inserito, o la prova sbaglia bersaglio.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(33);
+SELECT plan(36);
 
 -- ============================================================
 -- MAPPA — completezza
@@ -124,6 +127,30 @@ SELECT is((SELECT count(*) FROM dbops.storico_scope_policy p
           0::bigint,
           '6. EF/SR/BA: la colonna dichiarata esiste sulla madre');
 
+-- ⭐ rev 2026-10-09 (brief-db-istanza-nasce-col-ba): il modo COPPIA dichiara DUE
+--   colonne, «<istanza>,<utility>». La mappa non mente se sulla madre c'e' una
+--   FK composta che le porta, in quell'ordine, su anagrafiche.billing_account
+--   (istanza_utility_id, utility_id): e' la chiave con cui il resolver cerca il BA.
+SELECT is((SELECT count(*) FROM dbops.storico_scope_policy p
+            WHERE p.modo = 'COPPIA'
+              AND NOT EXISTS (
+                  SELECT 1
+                    FROM pg_constraint con
+                    JOIN pg_attribute a1 ON a1.attrelid = con.conrelid  AND a1.attnum = con.conkey[1]
+                    JOIN pg_attribute a2 ON a2.attrelid = con.conrelid  AND a2.attnum = con.conkey[2]
+                    JOIN pg_attribute r1 ON r1.attrelid = con.confrelid AND r1.attnum = con.confkey[1]
+                    JOIN pg_attribute r2 ON r2.attrelid = con.confrelid AND r2.attnum = con.confkey[2]
+                   WHERE con.contype = 'f'
+                     AND array_length(con.conkey, 1) = 2
+                     AND con.conrelid  = to_regclass(format('%I.%I', p.schema_tabella, p.nome_tabella))
+                     AND con.confrelid = 'anagrafiche.billing_account'::regclass
+                     AND a1.attname = split_part(p.colonna, ',', 1)
+                     AND a2.attname = split_part(p.colonna, ',', 2)
+                     AND r1.attname = 'istanza_utility_id'
+                     AND r2.attname = 'utility_id')),
+          0::bigint,
+          '6-bis. COPPIA: le due colonne dichiarate sono una FK composta verso la coppia di anagrafiche.billing_account');
+
 SELECT is((SELECT count(*) FROM dbops.storico_scope_policy p
             WHERE p.modo = 'PADRE'
               AND NOT EXISTS (
@@ -163,11 +190,11 @@ WITH RECURSIVE catena AS (
      WHERE c.modo = 'PADRE' AND c.salti < 8
 )
 SELECT is((SELECT count(*) FROM (
-              SELECT radice, bool_or(modo IN ('EF', 'SR', 'BA')) AS termina
+              SELECT radice, bool_or(modo IN ('EF', 'SR', 'BA', 'COPPIA')) AS termina
                 FROM catena GROUP BY radice) x
             WHERE NOT termina),
           0::bigint,
-          '9. ogni catena PADRE termina in EF/SR/BA entro il tetto: niente cicli, niente catene che finiscono nel vuoto');
+          '9. ogni catena PADRE termina in EF/SR/BA/COPPIA entro il tetto: niente cicli, niente catene che finiscono nel vuoto');
 
 -- Il vocabolario si legge dal CHECK (è il contratto), non da un elenco scritto
 -- qui: un modo nuovo senza il suo ramo nel resolver fa rosso.
@@ -374,6 +401,26 @@ END;
 
 -- Il contesto del preambolo torna com'era (transazionale, come le due righe sopra).
 SELECT set_config('app.current_user_id', (SELECT user_id FROM _ctx_preambolo), true);
+
+-- ⭐ rev 2026-10-09 (brief-db-istanza-nasce-col-ba): il modo COPPIA, sui valori.
+--   Un mondo costruito: il suo cliente ha un BA legato all'emittente del mondo.
+--   La riga di prova porta la sua coppia; il resolver deve arrivare a QUELL'emittente.
+CREATE TEMP TABLE _mondo_coppia ON COMMIT DROP AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('storico scope coppia');
+
+SELECT is(dbops.fn_storico_risolvi_scope('anagrafiche', 'istanze_dati_precontrattuali',
+            (SELECT jsonb_build_object('istanza_utility_id', m.istanza_utility_id,
+                                       'utility_id',         m.utility_id)
+               FROM _mondo_coppia m)),
+          (SELECT emittente_fiscale_id FROM _mondo_coppia),
+          '28-ter. COPPIA: il BA della coppia (istanza, utility), poi il suo emittente');
+
+SELECT is(dbops.fn_storico_risolvi_scope('anagrafiche', 'istanze_dati_precontrattuali',
+            (SELECT jsonb_build_object('istanza_utility_id', m.istanza_utility_id,
+                                       'utility_id',         -1)
+               FROM _mondo_coppia m)),
+          NULL::bigint,
+          '28-quater. COPPIA: una coppia senza BA → NULL, fail-closed sulla shadow');
 
 -- ============================================================
 -- LA VISTA DI PRESIDIO — porta nel digest ciò che i test 2, 4, 5 dicono in CI

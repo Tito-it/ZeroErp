@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     r record;

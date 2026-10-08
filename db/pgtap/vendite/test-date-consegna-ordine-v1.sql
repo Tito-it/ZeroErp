@@ -138,6 +138,11 @@ END $ctx$;
 
 -- Preventivo ACCETTATO (lo stato d'ingresso del push), con i riferimenti
 -- della fixture: emittente derivato dal mondo, non pescato.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): i due
+--   preventivi del file (ACCETTATO per il push, EMESSO per la revisione)
+--   nascono DRAFT, prendono le righe, poi passano di stato con
+--   dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu'
+--   (20261008-91).
 CREATE TEMP TABLE _preventivo AS
 WITH p AS (
     INSERT INTO vendite.preventivi
@@ -147,7 +152,7 @@ WITH p AS (
            c.billing_account_id, c.istanza_utility_id, c.utility_id,
            (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
            (SELECT s.id FROM config.stati_doc_preventivi s
-             WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE),
+             WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
            m.emittente_fiscale_id,
            jsonb_build_object('test_scope', 'pgtap_date_consegna')
       FROM _cliente c, _mondo m
@@ -170,6 +175,11 @@ WITH r AS (
     RETURNING id, ordine, data_consegna_richiesta_cliente
 )
 SELECT id AS riga_prev_id, ordine, data_consegna_richiesta_cliente FROM r;
+
+DO $x$ BEGIN
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi',
+                                         (SELECT preventivo_id FROM _preventivo), 'ACCETTATO');
+END $x$;
 
 -- ============================================================
 -- 3) PRIMA DEL PUSH: la vista-predicato porta la data, dalla sorgente
@@ -287,7 +297,7 @@ WITH p AS (
            c.billing_account_id, c.istanza_utility_id, c.utility_id,
            (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),
            (SELECT s.id FROM config.stati_doc_preventivi s
-             WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE),
+             WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
            m.emittente_fiscale_id,
            jsonb_build_object('test_scope', 'pgtap_date_consegna')
       FROM _cliente c, _mondo m
@@ -305,6 +315,11 @@ SELECT p.preventivo_id, a.articolo_id, 10.00, 2, i.iva_id, x.ordine, x.data_rich
   FROM _preventivo_rev p, _articolo a,
        (SELECT i.id AS iva_id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) i,
        (VALUES (1, DATE '2026-12-03'), (2, NULL::date)) AS x(ordine, data_richiesta);
+
+DO $x$ BEGIN
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi',
+                                         (SELECT preventivo_id FROM _preventivo_rev), 'EMESSO');
+END $x$;
 
 -- La revisione, nei panni dell'operatore: la testata nuova prende l'emittente
 -- dal contesto (trigger BEFORE INSERT su preventivi), che e' quello del mondo.

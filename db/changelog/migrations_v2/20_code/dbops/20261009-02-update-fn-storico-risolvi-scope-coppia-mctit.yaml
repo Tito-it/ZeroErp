@@ -1,0 +1,297 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RESOLVER DELLO SCOPE DI STORICO: IL RAMO COPPIA
+#   dbops.fn_storico_risolvi_scope(p_schema, p_tabella, p_riga, p_profondita)
+#   — firma invariata; un ramo WHEN 'COPPIA', una variabile
+#   Brief: brief-db-istanza-nasce-col-ba (trovato post-merge, decisione di Tid del 2026-10-09)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il modo nuovo del 20261009-01. La riga di una madre COPPIA porta la
+#   coppia (istanza, utility), e il suo emittente e' quello del BA della
+#   coppia: lo stesso ragionamento della policy che la protegge
+#   (script.fn_scope_ef_whitelist_via_coppia, che passa dal BA). Il test 10
+#   del presidio pretende un WHEN per ogni modo del CHECK: senza questo
+#   ramo, il CHECK nuovo farebbe rosso li'.
+#
+# -- COME ----------------------------------------------------------------
+#   * le due colonne si leggono da v_mappa.colonna con split_part, nell'ordine
+#     della chiave del BA (istanza, utility). La coppia e' UNIQUE su
+#     billing_account (la FK composta fk_idp_billing_account_coppia la
+#     pretende): il SELECT INTO trova al piu' una riga;
+#   * dal BA all'emittente come nel ramo BA (script.fn_get_ba_emittente_sr_id),
+#     non con una copia: e' la funzione che serve gia' le policy via_efba;
+#   * niente ripiego sull'archivio, come il ramo BA: un BA cancellato prima
+#     della riga da' NULL, fail-closed sulla shadow.
+#   ⚠️ Le versioni GIA' archiviate della madre hanno origine_schema valorizzata
+#   e scope NULL: il backfill (fn_storico_backfill_scope) non le riprende, e con
+#   la shadow armata restano invisibili. E' il fail-closed del modello
+#   («versione precedente non attribuibile»), dichiarato.
+#
+#   Corpo e firma: 20260911-25 (corpo uguale al vivo su dbdev,
+#   2026-10-09). COMMENT: quello vivo piu' la rev. REVOKE e GRANT come allora.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261009-02-update-fn-storico-risolvi-scope-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261009-02-update-fn-storico-risolvi-scope-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.fn_storico_risolvi_scope: ramo COPPIA (il BA della coppia istanza/utility, poi il suo
+        emittente). Brief: brief-db-istanza-nasce-col-ba.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'dbops.storico_scope_policy'::regclass
+                 AND conname = 'chk_storico_scope_policy_modo'
+                 AND pg_catalog.pg_get_constraintdef(oid) LIKE '%COPPIA%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_storico_risolvi_scope(
+                  p_schema      dbops.storico_scope_policy.schema_tabella%TYPE,
+                  p_tabella     dbops.storico_scope_policy.nome_tabella%TYPE,
+                  p_riga        jsonb,
+                  p_profondita  integer DEFAULT 0
+              )
+              RETURNS anagrafiche.emittenti_fiscali.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path = pg_catalog, pg_temp
+              AS $function$
+              DECLARE
+                  -- Oltre questa profondità non c'è una catena legittima: la più
+                  -- lunga dichiarata è a due salti. È un tetto contro il ciclo,
+                  -- non un limite di disegno.
+                  c_max_profondita CONSTANT integer := 8;
+                  v_mappa     dbops.storico_scope_policy%ROWTYPE;
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_ba_id     anagrafiche.billing_account.id%TYPE;
+                  v_chiave    text;
+                  v_padre_oid oid;
+                  v_tipo_id   text;
+                  v_padre     jsonb;
+                  -- Ripiego sull'archivio del padre: la sua shadow e la colonna che
+                  -- vi punta alla riga (STORICO_FK, con override).
+                  v_sto_oid   oid;
+                  v_fk_hist   text;
+                  v_ha_orig   boolean;
+              BEGIN
+                  -- 0) Il tetto: una catena che a questo punto è ancora PADRE gira
+                  --    in cerchio. È l'unico caso in cui si solleva.
+                  IF p_profondita > c_max_profondita THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'dbops', 'fn_storico_risolvi_scope',
+                          'E_STORICO_SCOPE_CATENA_CICLICA',
+                          jsonb_build_object('schema', p_schema, 'tabella', p_tabella,
+                                             'profondita', p_profondita),
+                          NULL::uuid,
+                          p_schema || '.' || p_tabella, p_profondita::text);
+                  END IF;
+
+                  -- 1) La riga di mappa della madre. Senza riga: NULL, e il
+                  --    presidio pgTAP vede la madre non dichiarata.
+                  SELECT * INTO v_mappa
+                    FROM dbops.storico_scope_policy m
+                   WHERE m.schema_tabella = p_schema
+                     AND m.nome_tabella   = p_tabella;
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- 2) La strada dichiarata.
+                  CASE v_mappa.modo
+                      WHEN 'NESSUNO' THEN
+                          RETURN NULL;
+
+                      WHEN 'EF' THEN
+                          -- La colonna È l'emittente fiscale: si copia.
+                          v_ef_id := NULLIF(p_riga ->> v_mappa.colonna, '')::bigint;
+                          RETURN v_ef_id;
+
+                      WHEN 'SR' THEN
+                          -- Soggetto-ruolo dell'emittente: 1:1 con l'emittente
+                          -- fiscale, si normalizza alla rappresentazione della
+                          -- canonica. Nessuna riga -> NULL (fail-closed).
+                          v_sr_id := NULLIF(p_riga ->> v_mappa.colonna, '')::bigint;
+                          IF v_sr_id IS NULL THEN
+                              RETURN NULL;
+                          END IF;
+                          SELECT ef.id INTO v_ef_id
+                            FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.soggetto_ruolo_id = v_sr_id;
+                          RETURN v_ef_id;
+
+                      WHEN 'BA' THEN
+                          -- Un billing account ha ESATTAMENTE UN emittente
+                          -- (specifico, o il gestore globale): lo dice la
+                          -- funzione che già serve le policy via_efba.
+                          v_sr_id := script.fn_get_ba_emittente_sr_id(
+                                         NULLIF(p_riga ->> v_mappa.colonna, '')::bigint);
+                          IF v_sr_id IS NULL THEN
+                              RETURN NULL;
+                          END IF;
+                          SELECT ef.id INTO v_ef_id
+                            FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.soggetto_ruolo_id = v_sr_id;
+                          RETURN v_ef_id;
+
+                      WHEN 'COPPIA' THEN
+                          -- La coppia (istanza, utility): le due colonne dichiarate,
+                          -- «<istanza>,<utility>», sono la chiave di
+                          -- anagrafiche.billing_account (istanza_utility_id,
+                          -- utility_id). Il BA della coppia, poi il suo emittente come
+                          -- nel modo BA: la strada della policy via_coppia
+                          -- (script.fn_scope_ef_whitelist_via_coppia). Una colonna
+                          -- vuota, o una coppia senza BA: NULL, fail-closed (rev
+                          -- 2026-10-09, brief-db-istanza-nasce-col-ba).
+                          SELECT ba.id INTO v_ba_id
+                            FROM anagrafiche.billing_account ba
+                           WHERE ba.istanza_utility_id = NULLIF(p_riga ->> split_part(v_mappa.colonna, ',', 1), '')::bigint
+                             AND ba.utility_id         = NULLIF(p_riga ->> split_part(v_mappa.colonna, ',', 2), '')::integer;
+                          IF v_ba_id IS NULL THEN
+                              RETURN NULL;
+                          END IF;
+                          v_sr_id := script.fn_get_ba_emittente_sr_id(v_ba_id);
+                          IF v_sr_id IS NULL THEN
+                              RETURN NULL;
+                          END IF;
+                          SELECT ef.id INTO v_ef_id
+                            FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.soggetto_ruolo_id = v_sr_id;
+                          RETURN v_ef_id;
+
+                      WHEN 'PADRE' THEN
+                          -- La FK verso il padre. Vuota (FK nullable) -> NULL.
+                          v_chiave := NULLIF(p_riga ->> v_mappa.colonna, '');
+                          IF v_chiave IS NULL THEN
+                              RETURN NULL;
+                          END IF;
+                          -- Il padre si risolve per NOME QUALIFICATO con to_regclass,
+                          -- non cercando nspname nel catalogo: così vale anche per
+                          -- `pg_temp` (alias della temp schema, che nel catalogo si
+                          -- chiama pg_temp_N) — è ciò che permette al pgTAP di
+                          -- costruire una catena su tabelle temporanee.
+                          v_padre_oid := pg_catalog.to_regclass(
+                                             pg_catalog.format('%I.%I', v_mappa.padre_schema,
+                                                                        v_mappa.padre_tabella));
+                          IF v_padre_oid IS NULL THEN
+                              -- Padre dichiarato che non esiste: lo vede il pgTAP; qui NULL.
+                              RETURN NULL;
+                          END IF;
+                          -- Il tipo VERO della PK `id` del padre, per castare il
+                          -- testo del JSON e usare l'indice.
+                          SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
+                            INTO v_tipo_id
+                            FROM pg_catalog.pg_attribute a
+                           WHERE a.attrelid = v_padre_oid
+                             AND a.attname  = 'id'
+                             AND NOT a.attisdropped;
+                          IF v_tipo_id IS NULL THEN
+                              -- Padre senza `id`: la mappa dice una cosa che il
+                              -- catalogo non conferma. Lo vede il pgTAP; qui NULL.
+                              RETURN NULL;
+                          END IF;
+                          -- La riga del padre, letta come proprietario: è il
+                          -- motivo del SECURITY DEFINER.
+                          EXECUTE pg_catalog.format(
+                              'SELECT pg_catalog.to_jsonb(t) FROM %I.%I t WHERE t.id = %L::%s',
+                              v_mappa.padre_schema, v_mappa.padre_tabella, v_chiave, v_tipo_id)
+                             INTO v_padre;
+                          IF v_padre IS NULL THEN
+                              -- Padre non piu' vivo — ammesso dal modello (nessuna FK sulle
+                              -- shadow) e NORMALE in un DELETE a cascata: il padre e' gia'
+                              -- stato cancellato quando il trigger del figlio scrive la sua
+                              -- versione finale. Ma il padre ha un ARCHIVIO: la sua ultima
+                              -- versione nello storico porta ancora l'emittente. Leggere
+                              -- l'archivio del padre e' leggere il passato, non il presente.
+                              v_sto_oid := pg_catalog.to_regclass(pg_catalog.format('storico.%I', v_mappa.padre_tabella));
+                              IF v_sto_oid IS NOT NULL THEN
+                                  v_fk_hist := dbops.fn_get_override_col(v_mappa.padre_schema, v_mappa.padre_tabella,
+                                                                          'STORICO_FK', v_mappa.padre_tabella || '_id');
+                                  SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                                  WHERE a.attrelid = v_sto_oid AND a.attname = 'origine_schema'
+                                                    AND NOT a.attisdropped)
+                                    INTO v_ha_orig;
+                                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_attribute a
+                                              WHERE a.attrelid = v_sto_oid AND a.attname = v_fk_hist
+                                                AND NOT a.attisdropped) THEN
+                                      -- L'ultima versione scritta; nelle shadow condivise solo quella
+                                      -- dello schema giusto (o non attribuita, prima del backfill).
+                                      EXECUTE pg_catalog.format(
+                                          'SELECT s.snapshot FROM storico.%I s WHERE s.%I = %L::%s %s
+                                            ORDER BY s.valid_from DESC, s.id DESC LIMIT 1',
+                                          v_mappa.padre_tabella, v_fk_hist, v_chiave, v_tipo_id,
+                                          CASE WHEN v_ha_orig
+                                               THEN pg_catalog.format('AND (s.origine_schema = %L OR s.origine_schema IS NULL)',
+                                                                      v_mappa.padre_schema)
+                                               ELSE '' END)
+                                         INTO v_padre;
+                                  END IF;
+                              END IF;
+                          END IF;
+                          IF v_padre IS NULL THEN
+                              -- Nemmeno l'archivio lo conosce: NULL, fail-closed sulla shadow.
+                              RETURN NULL;
+                          END IF;
+                          -- Si continua sulla riga di mappa del padre.
+                          RETURN dbops.fn_storico_risolvi_scope(
+                                     v_mappa.padre_schema, v_mappa.padre_tabella,
+                                     v_padre, p_profondita + 1);
+                  END CASE;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_storico_risolvi_scope(text, text, jsonb, integer) IS
+                  'Risolve l''emittenti_fiscali.id a cui appartiene la riga (to_jsonb) di una madre storicizzata, '
+                  'seguendo la strada dichiarata in dbops.storico_scope_policy: EF (copia), SR (converte 1:1), BA '
+                  '(l''unico emittente del billing account), PADRE (carica la riga del padre per id — o, se il padre '
+                  'non è più vivo, la sua ULTIMA VERSIONE nello storico: normale in un DELETE a cascata, dove il padre '
+                  'sparisce prima che il figlio scriva — e si richiama, ricorsivamente), NESSUNO (NULL). La chiama il '
+                  'trigger di storico per congelare lo scope nella shadow. ⚠️ SECURITY DEFINER del PROPRIETARIO, non di'
+                  ' un superuser: catturare lo scope è un atto di sistema e deve vedere il padre anche quando chi '
+                  'scrive non lo vedrebbe sotto RLS; attraversa la RLS perché chi migra possiede le tabelle (ENABLE '
+                  'senza FORCE), e il pgTAP lo asserisce. Non solleva mai — madre non mappata, colonna vuota, padre '
+                  'sparito danno NULL, fail-closed sulla shadow — tranne su una catena che non termina '
+                  '(E_STORICO_SCOPE_CATENA_CICLICA). Brief: brief-db-rls-storico-scope-congelato §4b. rev 2026-10-09 '
+                  '(brief-db-istanza-nasce-col-ba, decisione di Tid): modo COPPIA — la colonna dichiara due nomi, '
+                  '«<istanza>,<utility>», la chiave di anagrafiche.billing_account (istanza_utility_id, utility_id); il'
+                  ' resolver trova il BA della coppia e ne prende l''emittente come nel modo BA, la strada della policy'
+                  ' via_coppia. Coppia senza BA o colonna vuota: NULL. Primo adottante: '
+                  'anagrafiche.istanze_dati_precontrattuali (RLS accesa in 28d9beeb6).';
+
+              -- La chiama il trigger, che gira come l'applicazione: l'EXECUTE
+              -- deve restare concesso all''app. PUBLIC non serve.
+              REVOKE EXECUTE ON FUNCTION dbops.fn_storico_risolvi_scope(text, text, jsonb, integer) FROM PUBLIC;
+              DO $grant$
+              BEGIN
+                  IF EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'zeroerp_app') THEN
+                      GRANT EXECUTE ON FUNCTION dbops.fn_storico_risolvi_scope(text, text, jsonb, integer) TO zeroerp_app;
+                  END IF;
+              END
+              $grant$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Manovra di emergenza: il corpo precedente e' 20260911-25 e si riapplica
+              --   a mano, prima di togliere COPPIA dai CHECK (20261009-01).
+              SELECT 1;

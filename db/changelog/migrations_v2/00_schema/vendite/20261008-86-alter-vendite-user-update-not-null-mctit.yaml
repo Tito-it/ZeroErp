@@ -1,0 +1,215 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI HA TOCCATO PER ULTIMO UNA RIGA SI SA SEMPRE — schema vendite
+#   user_update SET NOT NULL su 36 tabelle:
+#     vendite.articoli_descrizioni_aggiuntive
+#     vendite.articoli_gruppi
+#     vendite.articoli_spesa
+#     vendite.articoli_tipologie
+#     vendite.articolo_regole_fatturazione
+#     vendite.attivita_fatturabili
+#     vendite.contratti
+#     vendite.contratti_indirizzi
+#     vendite.contratti_utilities
+#     vendite.ddt
+#     vendite.ddt_indirizzi
+#     vendite.ddt_righe_prelievi
+#     vendite.fatturazione_lotti_gruppi
+#     vendite.fatture
+#     vendite.fatture_atti
+#     vendite.fatture_indirizzi
+#     vendite.fatture_rettifiche
+#     vendite.fatture_riepiloghi_iva
+#     vendite.fatture_scadenze
+#     vendite.listini_righe_componenti
+#     vendite.note
+#     vendite.offerte_commerciali
+#     vendite.offerte_commerciali_indirizzi
+#     vendite.offerte_commerciali_utilities
+#     vendite.ordini
+#     vendite.ordini_indirizzi
+#     vendite.ordini_righe_fulfillment
+#     vendite.preventivi
+#     vendite.preventivi_indirizzi
+#     vendite.preventivi_riepiloghi_iva
+#     vendite.registri_fatturazione
+#     vendite.resi
+#     vendite.resi_righe_accrediti
+#     vendite.resi_righe_riconsegne
+#     vendite.resi_righe_rientri
+#     vendite.resi_righe_rinunce
+#   Brief: brief-db-righe-e-componenti-debiti-residui (§2, D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   linee-guida-sql §7: le colonne di audit sono NOT NULL. Il 20261008-31
+#   ha chiuso righe e componenti dei documenti di vendita; qui il resto,
+#   uno schema per changeSet (D-2 di Tid, 2026-10-08: un giro solo, col
+#   presidio dbops/test-user-update-not-null-v1).
+#
+# -- CHE COSA CAMBIA PER CHI SCRIVE -------------------------------------
+#   Niente. Ognuna ha script.trgfn_audit_data_user_generic (BEFORE INSERT
+#   OR UPDATE), che scrive user_update a ogni scrittura da app.jwt_user o
+#   CURRENT_USER: il vincolo dice nel DDL cio' che il trigger gia' fa.
+#   ⚠️ Il trigger lo generano le automazioni (ci_apply, o il job notturno):
+#   su un database da zero, alla prima passata, i seed di 80_data entrano
+#   PRIMA che esista. Per questo dove manca si mette anche il DEFAULT
+#   CURRENT_USER di §7 — senza, il seed scriverebbe NULL. Un seed con la
+#   cella vuota non e' un rischio: i loader con nullValue "" scrivono ''
+#   sulle colonne STRING (misurato su magazzino.causali.user_insert).
+#   DEFAULT aggiunto: vendite.listini_righe_componenti.
+#
+# -- TABELLE PARTIZIONATE ------------------------------------------------
+#   vendite.note: il SET NOT NULL sulla madre scende a tutte le
+#   partizioni (le tabelle note_* dello schema), e il conteggio della
+#   preCondition sulla madre le comprende.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero NULL (expectedResult 0: un DB da zero la
+#   soddisfa, linee-guida-sql §11.4), come il 20261008-31. Se ce ne sono il
+#   migrate si ferma e si guardano a mano: nessun valore scelto dal migrate.
+#   Fatto datato (2026-10-08, dev): zero NULL su tutte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261008-86-alter-vendite-user-update-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261008-86-alter-vendite-user-update-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        user_update NOT NULL sullo schema vendite (36 tabelle, DEFAULT CURRENT_USER dove mancava),
+        come vuole linee-guida-sql §7. Brief: brief-db-righe-e-componenti-debiti-residui (§2, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT (SELECT count(*) FROM vendite.articoli_descrizioni_aggiuntive WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.articoli_gruppi                 WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.articoli_spesa                  WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.articoli_tipologie              WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.articolo_regole_fatturazione    WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.attivita_fatturabili            WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.contratti                       WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.contratti_indirizzi             WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.contratti_utilities             WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ddt                             WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ddt_indirizzi                   WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ddt_righe_prelievi              WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.fatturazione_lotti_gruppi       WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.fatture                         WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.fatture_atti                    WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.fatture_indirizzi               WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.fatture_rettifiche              WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.fatture_riepiloghi_iva          WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.fatture_scadenze                WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.listini_righe_componenti        WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.note                            WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.offerte_commerciali             WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_indirizzi   WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_utilities   WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ordini                          WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ordini_indirizzi                WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ordini_righe_fulfillment        WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.preventivi                      WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.preventivi_indirizzi            WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.preventivi_riepiloghi_iva       WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.registri_fatturazione           WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.resi                            WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.resi_righe_accrediti            WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.resi_righe_riconsegne           WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.resi_righe_rientri              WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.resi_righe_rinunce              WHERE user_update IS NULL);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.listini_righe_componenti        ALTER COLUMN user_update SET DEFAULT CURRENT_USER;
+              ALTER TABLE vendite.articoli_descrizioni_aggiuntive ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.articoli_gruppi                 ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.articoli_spesa                  ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.articoli_tipologie              ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.articolo_regole_fatturazione    ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.attivita_fatturabili            ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.contratti                       ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.contratti_indirizzi             ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.contratti_utilities             ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ddt                             ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ddt_indirizzi                   ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ddt_righe_prelievi              ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.fatturazione_lotti_gruppi       ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.fatture                         ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.fatture_atti                    ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.fatture_indirizzi               ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.fatture_rettifiche              ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.fatture_riepiloghi_iva          ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.fatture_scadenze                ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.listini_righe_componenti        ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.note                            ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali             ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali_indirizzi   ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali_utilities   ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ordini                          ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ordini_indirizzi                ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ordini_righe_fulfillment        ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.preventivi                      ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.preventivi_indirizzi            ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.preventivi_riepiloghi_iva       ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.registri_fatturazione           ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.resi                            ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.resi_righe_accrediti            ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.resi_righe_riconsegne           ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.resi_righe_rientri              ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.resi_righe_rinunce              ALTER COLUMN user_update SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.resi_righe_rinunce              ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.resi_righe_rientri              ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.resi_righe_riconsegne           ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.resi_righe_accrediti            ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.resi                            ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.registri_fatturazione           ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.preventivi_riepiloghi_iva       ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.preventivi_indirizzi            ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.preventivi                      ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ordini_righe_fulfillment        ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ordini_indirizzi                ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ordini                          ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali_utilities   ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali_indirizzi   ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali             ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.note                            ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.listini_righe_componenti        ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.fatture_scadenze                ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.fatture_riepiloghi_iva          ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.fatture_rettifiche              ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.fatture_indirizzi               ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.fatture_atti                    ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.fatture                         ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.fatturazione_lotti_gruppi       ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ddt_righe_prelievi              ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ddt_indirizzi                   ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ddt                             ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.contratti_utilities             ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.contratti_indirizzi             ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.contratti                       ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.attivita_fatturabili            ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.articolo_regole_fatturazione    ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.articoli_tipologie              ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.articoli_spesa                  ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.articoli_gruppi                 ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.articoli_descrizioni_aggiuntive ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.listini_righe_componenti        ALTER COLUMN user_update DROP DEFAULT;

@@ -52,7 +52,8 @@ attive coi loro componenti e utility (1:1). Il pattern riusa concettualmente
 - **Componenti copiati** (dal 2026-10-05): per ogni eccezione copiata, **tutti**
   i suoi componenti — anche gli opzionali spenti, che sono una scelta
   dell'offerta — agganciati alla riga nuova, con stato e pratica di
-  approvazione 1:1. Vedi la revisione del 2026-10-05 qui sotto.
+  approvazione 1:1, salvo lo spento in attesa, che arriva senza marca (dal
+  2026-10-08, sotto). Vedi la revisione del 2026-10-05 qui sotto.
 - **Stato approvazione prezzo carry-forward** (rev2, 2026-06-01): le colonne
   `stato_approvazione_prezzo` e `pratica_approvazione_prezzo_id` delle eccezioni
   (aggiunte da `20260601-01`) sono copiate **1:1** nella nuova revisione, **non**
@@ -166,12 +167,34 @@ assegna i numeri.
   dalla riga madre, e il prezzo della madre dai componenti attivi — lo stesso
   della versione precedente.
 
-⚠️ La gemella del preventivo (`fn_crea_revisione_preventivo`) copia solo i
-componenti **attivi**: è un'asimmetria nota, scritta nel brief, non corretta in
-questo giro.
+⚠️ La gemella del preventivo (`fn_crea_revisione_preventivo`) copiava solo i
+componenti **attivi**: asimmetria chiusa il 2026-10-08 (`20261008-35`), ora le
+due copiano tutti i componenti.
 
 Presidio: `db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 12-14,
 19).
+
+---
+
+### Rev 2026-10-08 — un componente spento in attesa si copia senza marca
+
+Il controllo «prima l'esito, poi la revisione» guarda i soli componenti **attivi**, ed è
+giusto: un componente spento non deve bloccare la revisione per sempre. Ma lo spento si
+copia, e copiato con la sua marca `PENDING` portava nella nuova revisione un prezzo in
+attesa legato alla pratica della revisione vecchia — riacceso, il caso che il controllo
+aveva chiuso per le righe.
+
+Dal `20261008-88` (D-3 di Tid, `brief-db-righe-e-componenti-debiti-residui` §3) un componente
+**spento in attesa** arriva sulla nuova revisione **senza marca né pratica**. Approvato e
+rifiutato si copiano come prima; un componente attivo in attesa continua a fermare la
+revisione. Le altre due strade bloccavano per sempre: sui componenti nessun verbo dà un
+esito, e i componenti di un documento fuori bozza sono chiusi.
+
+⚠️ Debito dichiarato: quando si riaccende, quel prezzo dovrebbe tornare a chiedere
+l'approvazione. È del ciclo di approvazione dei componenti, che oggi non esiste. La
+gemella è [fn_crea_revisione_preventivo](/dbzero/vendite/funzioni/fn_crea_revisione_preventivo).
+
+Presidio: `db/pgtap/vendite/test-righe-e-componenti-debiti-residui-v1.sql` (test 21-24).
 
 ---
 

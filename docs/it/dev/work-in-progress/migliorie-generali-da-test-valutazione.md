@@ -927,7 +927,9 @@ punti:
 
 Dettaglio e stato nel brief
 [brief-db-righe-e-componenti-debiti-residui.md](brief-db-righe-e-componenti-debiti-residui.md).
-Una decisione di Tid per punto (D-1, D-2, D-3).
+Decisi da Tid il 2026-10-08; DB scritto lo stesso giorno (`20261008-80` … `-94`), applicato su dev, pgTAP
+verdi anche su `zeroerp_ci` (2026-10-09); tre test non più costruibili sono skip motivati (§4.5).
+✅ **Chiuso lato DB**; restano le richieste al BE del §4.4 del brief.
 
 ---
 

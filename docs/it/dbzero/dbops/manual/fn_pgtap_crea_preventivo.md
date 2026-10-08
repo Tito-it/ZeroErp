@@ -46,6 +46,11 @@ valuta a modo suo. Era la stessa regola scritta più volte (regola del 2): ora h
 ### 🚫 Cosa NON scrive
 
 * **Le righe**: sono il caso del test.
+  ⚠️ Dal 2026-10-08 le righe si scrivono **solo in bozza**
+  (`brief-db-righe-e-componenti-debiti-residui`, D-1): un preventivo nato già `EMESSO`
+  non prende righe. Se servono, il preventivo nasce `DRAFT`, il test gli scrive le righe, e
+  lo stato lo porta [`dbops.fn_pgtap_porta_a_stato`](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato).
+  Lo stato alla nascita resta giusto per una testata **senza** righe.
 * **Il cambio di stato**: il preventivo ha un guard di transizione. Lo stato si sceglie
   alla nascita, col secondo parametro; uno stato che non esiste viene rifiutato per nome.
 

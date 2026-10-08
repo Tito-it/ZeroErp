@@ -103,6 +103,10 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tm
  WHERE id = (SELECT articolo_id FROM tmp_refs);
 
 -- Preventivo ACCETTATO + 1 riga MERCE (percorso happy).
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): i due
+--   preventivi ACCETTATO (happy e atomicita') nascono DRAFT, prendono la riga,
+--   poi passano ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+--   righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -110,7 +114,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-PUSHORD', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_push_ordine'), r.emittente_fiscale_id
     FROM tmp_refs r
@@ -128,6 +132,10 @@ WITH ins AS (
   RETURNING id
 )
 SELECT * FROM ins;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev), 'ACCETTATO');
+END $x$;
 
 -- Preventivo DRAFT (per test 7).
 CREATE TEMP TABLE tmp_prev_draft AS
@@ -153,7 +161,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-PUSHORD-ATOM', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_push_ordine_atom'), r.emittente_fiscale_id
     FROM tmp_refs r
@@ -166,6 +174,10 @@ INSERT INTO vendite.preventivi_righe (
 SELECT p.id, r.articolo_id, 2.000000, 10.000000, r.iva_id, true,
        jsonb_build_object('test_scope','pgtap_push_ordine_atom')
   FROM tmp_prev_atom p, tmp_refs r;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_atom), 'ACCETTATO');
+END $x$;
 
 -- ============================================================
 -- 2) Push preventivo ACCETTATO -> ammesso

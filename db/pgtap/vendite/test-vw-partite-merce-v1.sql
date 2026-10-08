@@ -145,6 +145,7 @@ SELECT
 -- `p_riga_manuale` (rev 2026-09-22): la riga aggiunta A MANO entra PRIMA delle
 -- transizioni — il BB trgfn_doc_righe_lock_fuori_bozza non ammette righe in un
 -- DDT fuori bozza — e il suo id esce in `riga_manuale_id`.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
 CREATE OR REPLACE FUNCTION pg_temp.mk_partita(p_qta numeric, p_causale bigint, p_consegna boolean,
                                               p_riga_manuale numeric DEFAULT NULL)
 RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint,
@@ -154,7 +155,9 @@ BEGIN
   SELECT * INTO r FROM tmp_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id,
+          (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
+          r.valuta_id,
           DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_partite'))
   RETURNING id, uid INTO v_ord, v_ord_uid;
@@ -163,6 +166,7 @@ BEGIN
   VALUES (v_ord, 1, r.articolo_id, 'Riga partita', p_qta, p_qta, 25, r.iva_id, true, false,
           jsonb_build_object('test_scope','pgtap_partite'))
   RETURNING id INTO v_orr;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
   v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;

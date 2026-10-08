@@ -120,6 +120,8 @@ SELECT
       WHERE s.codice_interno = 'CONSEGNATO' ORDER BY s.id LIMIT 1) AS stato_ddt_consegnato_id,
     (SELECT s.id FROM config.stati_doc_ordini s
       WHERE s.codice_interno = 'CONFERMATO' ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
+    (SELECT s.id FROM config.stati_doc_ordini s
+      WHERE s.codice_interno = 'DRAFT' ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,
     -- ⚠️ Qui l'aggancio e' su `codice` e NON su `codice_interno`, e non per
     --   scelta: config.causali_trasporto la colonna `codice_interno` non ce
     --   l'ha proprio. Resta quindi un aggancio FRAGILE — `codice` e'
@@ -185,6 +187,7 @@ SELECT is(
                     ('stato_ddt_spedito_id',t.stato_ddt_spedito_id IS NULL),
                     ('stato_ddt_consegnato_id', t.stato_ddt_consegnato_id IS NULL),
                     ('stato_ord_conf_id',   t.stato_ord_conf_id   IS NULL),
+                    ('stato_ord_draft_id',  t.stato_ord_draft_id  IS NULL),
                     ('causale_vendita_id',  t.causale_vendita_id  IS NULL),
                     ('tipo_ind_con_id',     t.tipo_ind_con_id     IS NULL),
                     ('sorgente_ddt_id',     t.sorgente_ddt_id     IS NULL),
@@ -304,7 +307,10 @@ BEGIN
         soggetto_ruolo_id, stato_doc_ordine_id, data,
         billing_account_id, valuta_id, utility_id, emittente_fiscale_id,
         storicizza, meta)
-    VALUES (r.soggetto_ruolo_id, r.stato_ord_conf_id, script.fn_data_operativa(),
+    -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce
+    --   DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato —
+    --   fuori bozza le righe non si scrivono piu' (20261008-90).
+    VALUES (r.soggetto_ruolo_id, r.stato_ord_draft_id, script.fn_data_operativa(),
             r.billing_account_id, r.valuta_id, r.utility_id, r.emittente_fiscale_id,
             false, jsonb_build_object('test_scope', 'pgtap_num_trasloco'))
     RETURNING id INTO v_ord;
@@ -314,6 +320,7 @@ BEGIN
         qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
     VALUES (v_ord, 1, r.articolo_id, 'Riga numerazione ordine', 2, 2, 10, r.iva_id,
             true, false, jsonb_build_object('test_scope', 'pgtap_num_trasloco'));
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
 
     INSERT INTO tmp_num_ord VALUES (v_ord);
 END;

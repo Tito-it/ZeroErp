@@ -111,6 +111,8 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
   la distinta alla data della revisione): se il catalogo l'ha ritirato dopo la
   rev N, la revisione si ferma e lo dice. Presidio:
   `db/pgtap/vendite/test-righe-e-componenti-le-altre-famiglie-v1.sql` (test 17-22).
+  Stato e pratica di approvazione si copiano 1:1, salvo lo spento in attesa, che
+  arriva senza marca (dal 2026-10-08, sotto).
 * **Indirizzi**: tutti copiati.
 
 ---
@@ -188,6 +190,28 @@ per sempre sulla nuova. **Prima l'esito, poi la revisione.**
 ⭐ La copia di approvato e rifiutato **resta** (`20260914-14`): azzerarla farebbe passare un
 prezzo rifiutato. Il pulsante «Crea revisione» è spento con lo stesso motivo
 (`fn_available_actions_preventivo`).
+
+---
+
+### Rev 2026-10-08 — un componente spento in attesa si copia senza marca
+
+Il controllo «prima l'esito, poi la revisione» guarda i soli componenti **attivi**, ed è
+giusto: un componente spento non deve bloccare la revisione per sempre. Ma lo spento si
+copia, e copiato con la sua marca `PENDING` portava nella nuova revisione un prezzo in
+attesa legato alla pratica della revisione vecchia — riacceso, il caso che il controllo
+aveva chiuso per le righe.
+
+Dal `20261008-87` (D-3 di Tid, `brief-db-righe-e-componenti-debiti-residui` §3) un componente
+**spento in attesa** arriva sulla nuova revisione **senza marca né pratica**. Approvato e
+rifiutato si copiano come prima; un componente attivo in attesa continua a fermare la
+revisione. Le altre due strade bloccavano per sempre: sui componenti nessun verbo dà un
+esito, e i componenti di un documento fuori bozza sono chiusi.
+
+⚠️ Debito dichiarato: quando si riaccende, quel prezzo dovrebbe tornare a chiedere
+l'approvazione. È del ciclo di approvazione dei componenti, che oggi non esiste. La
+gemella è [fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta).
+
+Presidio: `db/pgtap/vendite/test-righe-e-componenti-debiti-residui-v1.sql` (test 21-24).
 
 ---
 

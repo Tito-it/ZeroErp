@@ -39,7 +39,7 @@
 --   6) fn_get_testata_id_di_riga: contratto, offerta, riga assente, id non positivo
 --   7) fn_get_testata_id_di_riga: tipo sconosciuto -> E_DOC_TIPO_NON_GESTITO
 --   8) building block: livello sconosciuto -> E_DOC_RIGHE_LOCK_MONTAGGIO
---   9) sei adottanti a livello RIGA, con gli argomenti giusti (tre dal 20261008-34)
+--   9) sette adottanti a livello RIGA, con gli argomenti giusti (tre dal 20261008-34, i prelievi dal 20261008-93)
 --  10) su ogni nipote il lock e' il primo BEFORE ROW
 --  11) rientri: la copia ritirata, il guard di coerenza in _a10_ su INSERT/UPDATE
 --  12) revisione: stessi componenti della rev1 (anche lo spento)
@@ -340,11 +340,14 @@ SELECT is(
         AND pg_get_triggerdef(t.oid) LIKE '%''RIGA''%'),
     'contratti_righe_componenti:trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt:''CONTRATTO'', ''riga_contratto_id'', ''DRAFT'', ''RIGA'''
     ' | ddt_righe_componenti:trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt:''DDT'', ''riga_ddt_id'', ''DRAFT'', ''RIGA'''
+    -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): il settimo, i
+    --   prelievi del DDT, con l'eccezione dell'ubicazione d'arrivo (20261008-93).
+    ' | ddt_righe_prelievi:trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt:''DDT'', ''ddt_riga_id'', ''DRAFT'', ''RIGA'', ''ubicazione_arrivo_id'', ''EMESSO,SPEDITO'''
     ' | offerte_commerciali_eccezioni_componenti:trg_oce_comp_a05_doc_bozza_ins_upd_dlt:''OFFERTA'', ''eccezione_offerta_id'', ''BOZZA'', ''RIGA'''
     ' | ordini_righe_componenti:trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt:''ORDINE'', ''riga_ordine_id'', ''DRAFT'', ''RIGA'''
     ' | preventivi_righe_componenti:trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt:''PREVENTIVO'', ''riga_preventivo_id'', ''DRAFT'', ''RIGA'''
     ' | resi_righe_rientri:trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt:''RESO'', ''resi_riga_id'', ''DRAFT'', ''RIGA''',
-    '9) sei adottanti a livello RIGA: componenti di tutti i documenti di vendita, rientri del reso');
+    '9) sette adottanti a livello RIGA: componenti di tutti i documenti di vendita, rientri del reso, prelievi del DDT');
 
 -- Fra i BEFORE ROW parla per primo il nome minore: su ogni nipote dev'essere il lock.
 SELECT is(

@@ -103,7 +103,7 @@ SELECT
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1)              AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                             AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)                         AS iva_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1) AS stato_ord_draft_id,  -- rev 2026-10-08 (D-1)
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_spedito_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)    AS stato_ddt_consegnato_id,
@@ -149,7 +149,10 @@ BEGIN
   SELECT * INTO r FROM tmp_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): l'ordine nasce DRAFT,
+  --   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+  --   righe non si scrivono piu' (20261008-90).
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
           DATE '2026-07-15', p_trigger, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_reason_catchall'))
   RETURNING id INTO v_ord;
@@ -159,6 +162,7 @@ BEGIN
     qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
   VALUES (v_ord, 1, r.articolo_id, 'Riga catchall', 10, 10, 25, r.iva_id, true, false,
           jsonb_build_object('test_scope','pgtap_reason_catchall'));
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
   v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;

@@ -105,6 +105,7 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | **una fattura** del mondo (registro coerente, coppia emittente/utility configurata, stato scelto alla nascita) | `dbops.fn_pgtap_crea_fattura('<etichetta>'[, '<stato>'[, <ba_id>]])` |
 | **un ordine** di vendita del mondo (emittente del cliente, numero dal dominio, stato scelto alla nascita) | `dbops.fn_pgtap_crea_ordine('<etichetta>'[, '<stato>'])` |
 | **un preventivo** del mondo (emittente del cliente, numero dal dominio, validità da oggi, stato scelto alla nascita) | `dbops.fn_pgtap_crea_preventivo('<etichetta>'[, '<stato>'])` |
+| **una testata che cambia stato dopo aver preso le righe** (ordine o preventivo: nasce `DRAFT`, il test scrive le righe, poi lo stato per le transizioni vere — fuori bozza le righe non si scrivono) | `dbops.fn_pgtap_porta_a_stato('vendite.ordini' \| 'vendite.preventivi', <id>, '<stato>')` |
 | **una commessa** del mondo, aperta dalla madre del dominio (codice ed emittente dal dominio, competenza nel mese corrente) | `dbops.fn_pgtap_crea_commessa('<etichetta>')` |
 | **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione) | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, <prezzo>])` |
 | una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |

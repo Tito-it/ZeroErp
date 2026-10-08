@@ -33,6 +33,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(4);
 
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): le testate nascono DRAFT, prendono le righe (e la natura NULL), poi passano ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_refs AS
 SELECT
   (SELECT ba.id FROM anagrafiche.billing_account ba
@@ -50,6 +51,8 @@ SELECT
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS stato_bozza_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
     ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
@@ -71,7 +74,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-NATAWARE', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_list_natura_aware'), r.emittente_fiscale_id
     FROM tmp_refs r
@@ -125,6 +128,7 @@ SET LOCAL zeroerp.allow_lock_columns_override = 'on';
 UPDATE vendite.preventivi_righe SET natura_vendita_id = NULL
  WHERE id = (SELECT id FROM tmp_riga_null);
 SET LOCAL zeroerp.allow_lock_columns_override = 'off';
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev), 'ACCETTATO'); END $porta$;
 
 -- Preventivo di SOLE merci (per test 4).
 CREATE TEMP TABLE tmp_prev_merce AS
@@ -134,7 +138,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-NATAWARE-MERCE', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_list_natura_aware_merce'), r.emittente_fiscale_id
     FROM tmp_refs r
@@ -144,6 +148,7 @@ SELECT * FROM ins;
 INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
 SELECT p.id, r.art_merce_id, 2.000000, 30.000000, r.iva_id, true
   FROM tmp_prev_merce p, tmp_refs r;
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_merce), 'ACCETTATO'); END $porta$;
 
 -- ============================================================
 -- 1) riga SERVIZIO_UNA_TANTUM inclusa

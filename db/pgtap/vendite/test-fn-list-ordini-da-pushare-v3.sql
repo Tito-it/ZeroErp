@@ -106,7 +106,7 @@ WITH ins AS (
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
   SELECT r.soggetto_ruolo_id, r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_conf_id, r.valuta_id, DATE '2026-07-05', false,
+         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-05', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','orfano_a')
   FROM tmp_refs_v3 r
   WHERE r.push_ba_id IS NOT NULL
@@ -125,6 +125,13 @@ WITH ins AS (
   FROM tmp_ord_a3 o, tmp_refs_v3 r
   RETURNING id)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90). PERFORM ... FROM: tabella vuota se il BA manca.
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_a3 o;
+END $x$;
 
 -- Evasione FULL: e' il gesto che PRIMA del fix chiudeva la finestra di push
 -- (WHERE EXISTS: skip-tolerance se il BA pushabile manca -> fixture vuota)
@@ -245,7 +252,7 @@ WITH ins AS (
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
   SELECT r.soggetto_ruolo_id, r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_conf_id, r.valuta_id, DATE '2026-07-06', false,
+         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-06', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','orfano_b')
   FROM tmp_refs_v3 r
   WHERE r.push_ba_id IS NOT NULL
@@ -264,6 +271,13 @@ WITH ins AS (
   FROM tmp_ord_b3 o, tmp_refs_v3 r
   RETURNING id)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90). PERFORM ... FROM: tabella vuota se il BA manca.
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_b3 o;
+END $x$;
 
 -- Evasione parziale 4/10 -> PARZIALMENTE_EVASO
 SELECT vendite.fn_genera_ddt_da_ordine(
@@ -297,7 +311,7 @@ WITH ins AS (
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
   SELECT r.soggetto_ruolo_id, r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_conf_id, r.valuta_id, DATE '2026-07-07', false,
+         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-07', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','spedito_c')
   FROM tmp_refs_v3 r
   WHERE r.push_ba_id IS NOT NULL
@@ -316,6 +330,13 @@ SELECT o.id, 1, r.articolo_id, 'Riga spedito C (v3)',
        5.000000, 5.000000, 15.000000, r.iva_id,
        true, false, jsonb_build_object('test_scope','pgtap_list_ordini_v3')
 FROM tmp_ord_c3 o, tmp_refs_v3 r;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90). PERFORM ... FROM: tabella vuota se il BA manca.
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_c3 o;
+END $x$;
 
 CREATE TEMP TABLE tmp_ddt_c3 AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_c3)) AS ddt_id
@@ -394,7 +415,7 @@ WITH ins AS (
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
   SELECT r.soggetto_ruolo_id, r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_ord_annullato_id, r.valuta_id, DATE '2026-07-08', false,
+         r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-08', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','annullato_e')
   FROM tmp_refs_v3 r
   WHERE r.push_ba_id IS NOT NULL
@@ -410,6 +431,13 @@ SELECT o.id, 1, r.articolo_id, 'Riga annullato E (v3)',
        5.000000, 5.000000, 15.000000, r.iva_id,
        true, false, jsonb_build_object('test_scope','pgtap_list_ordini_v3')
 FROM tmp_ord_e3 o, tmp_refs_v3 r;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a ANNULLATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90). PERFORM ... FROM: tabella vuota se il BA manca.
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'ANNULLATO') FROM tmp_ord_e3 o;
+END $x$;
 
 SELECT ok(
   (SELECT count(*) = 0

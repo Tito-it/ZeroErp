@@ -20,7 +20,7 @@
 | tx_id | uuid | YES |  |
 | user_insert | text | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_update | text | YES |  |
+| user_update | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |

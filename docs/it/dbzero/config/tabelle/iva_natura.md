@@ -14,7 +14,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | user_insert | text | YES |  |
-| user_update | text | YES |  |
+| user_update | text | NO | CURRENT_USER |
 | storicizza | boolean | NO | true |
 | is_reverse_charge | boolean | NO |  |
 
