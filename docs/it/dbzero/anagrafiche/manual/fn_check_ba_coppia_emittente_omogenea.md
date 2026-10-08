@@ -50,3 +50,20 @@ controllo, perche' rassicura.
 
 * un solo posto dove sta scritto cosa vuol dire «stesso emittente»;
 * se l'emittente non si risolve, la risposta e' **no**: nel dubbio si chiude.
+
+---
+
+### ⭐ Due chiamanti (dal 2026-10-08)
+
+La stessa domanda — «questi due billing account sono della stessa azienda?» —
+la fanno due controlli, su due insiemi diversi:
+
+* [`fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente)
+  — padre e figli dell'albero;
+* [`fn_guard_istanza_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente)
+  — i billing account della stessa istanza («un'istanza, un'azienda»).
+
+I nomi dei parametri parlano di figlio e padre perche' la check e' nata per
+l'albero: il confronto non dipende dal verso, e per due fratelli di istanza
+vale identico. ⚠️ Cambiare cosa vuol dire «stessa azienda» qui cambia entrambi
+i controlli: e' il motivo per cui la definizione sta in un posto solo.

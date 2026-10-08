@@ -87,3 +87,22 @@ La tabella `pratiche.pratiche` e' l'**entita' principale** del modulo gestione p
 ---
 
 {% include-markdown "signature-core.md" %}
+
+---
+
+### Il cliente di cui parla la pratica (dal 2026-10-08)
+
+`billing_account_id` (nullable) e' l'aggancio a **grana fine** del cliente: un ruolo CLIENTE ha un
+billing account per ogni coppia istanza/utility, quindi il solo `soggetto_ruolo_id` non basta a
+dire di quale fornitura parla la pratica. Per gli altri ruoli (fornitori, vettori, …) basta il
+ruolo: le loro specializzazioni sono una per ruolo.
+
+* NULL per pratiche di fornitori e altri ruoli, pratiche interne, pratiche nate prima
+  dell'istanza (allaccio da pratica);
+* con un BA serve l'istanza (`chk_pratiche_ba_con_istanza`), e il BA e' quello dell'istanza
+  (`fk_pratiche_billing_account_istanza`) e del ruolo della pratica (regola 5 di
+  [`trgfn_pratiche_guard_contesto`](/dbzero/pratiche/manual/trgfn_pratiche_guard_contesto));
+* la pratica nata da un preventivo prende il BA del preventivo (la sorgente); quella generata da
+  un flusso lo copia dalla madre.
+
+Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).

@@ -45,6 +45,7 @@ Approfondimeto funzioni:
 * **Record fittizio**: `fittizia = true` consente `indirizzo_dettaglio_id IS NULL`; se `fittizia = false`, l’indirizzo è **obbligatorio**.
 * **Proprietario/Inquilino**: `proprietario_inquilino` accetta solo `P` o `I`.
 * **Gerarchia**: `parent_istanza_id` deve riferirsi a un’istanza valida (non sé stessa).
+* **Nasce col suo billing account** (dal 2026-10-08): alla conferma dell'operazione l'istanza deve avere almeno un billing account, e l'ultimo non si cancella da solo ([`fn_guard_istanza_ha_ba`](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba), `E_ISTANZA_SENZA_BA`). Tutti i suoi billing account sono della stessa azienda emittente ([`fn_guard_istanza_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente)). Vedi [Ogni istanza nasce col suo billing account](/it/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account).
 
 ---
 

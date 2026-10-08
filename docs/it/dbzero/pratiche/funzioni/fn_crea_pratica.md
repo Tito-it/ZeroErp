@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_crea_pratica`
 
 ```sql
-CREATE FUNCTION fn_crea_pratica(p_emittente_fiscale_id bigint, p_tipo_prestazione_id integer, p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_priorita_id integer, p_descrizione text, p_meta jsonb)
+CREATE FUNCTION fn_crea_pratica(p_emittente_fiscale_id bigint, p_tipo_prestazione_id integer, p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_priorita_id integer, p_descrizione text, p_meta jsonb, p_billing_account_id bigint)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION pratiche.fn_crea_pratica(p_emittente_fiscale_id bigint, p_tipo_prestazione_id integer, p_soggetto_id uuid DEFAULT NULL::uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_istanza_utility_id bigint DEFAULT NULL::bigint, p_priorita_id integer DEFAULT NULL::integer, p_descrizione text DEFAULT NULL::text, p_meta jsonb DEFAULT '{}'::jsonb)
+CREATE OR REPLACE FUNCTION pratiche.fn_crea_pratica(p_emittente_fiscale_id bigint, p_tipo_prestazione_id integer, p_soggetto_id uuid DEFAULT NULL::uuid, p_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_istanza_utility_id bigint DEFAULT NULL::bigint, p_priorita_id integer DEFAULT NULL::integer, p_descrizione text DEFAULT NULL::text, p_meta jsonb DEFAULT '{}'::jsonb, p_billing_account_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -46,11 +46,13 @@ BEGIN
     INSERT INTO pratiche.pratiche (
         emittente_fiscale_id, tipo_prestazione_id, soggetto_id,
         soggetto_ruolo_id, istanza_utility_id, stato_id, priorita_id,
-        descrizione, meta
+        descrizione, meta,
+        billing_account_id
     ) VALUES (
         p_emittente_fiscale_id, p_tipo_prestazione_id, p_soggetto_id,
         p_soggetto_ruolo_id, p_istanza_utility_id, v_stato_id, v_priorita_id,
-        p_descrizione, COALESCE(p_meta, '{}'::jsonb)
+        p_descrizione, COALESCE(p_meta, '{}'::jsonb),
+        p_billing_account_id
     )
     RETURNING id INTO v_pratica_id;
 
@@ -58,8 +60,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION pratiche.fn_crea_pratica(p_emittente_fiscale_id bigint, p_tipo_prestazione_id integer, p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_priorita_id integer, p_descrizione text, p_meta jsonb)
-IS 'Building block condiviso: crea una pratica (stato APERTA, priorita'' default NORMALE) con INSERT guardato dai trigger di pratiche.pratiche. NON include il guard pre/post-attivazione (solo Python). SECURITY INVOKER. Riusata dai madre di dominio (preventivo/ordine/...). Piano: analisi-fix-transazioni Classe A.';
+COMMENT ON FUNCTION pratiche.fn_crea_pratica(p_emittente_fiscale_id bigint, p_tipo_prestazione_id integer, p_soggetto_id uuid, p_soggetto_ruolo_id bigint, p_istanza_utility_id bigint, p_priorita_id integer, p_descrizione text, p_meta jsonb, p_billing_account_id bigint)
+IS 'Building block condiviso: crea una pratica (stato APERTA, priorita'' default NORMALE) con INSERT guardato dai trigger di pratiche.pratiche. NON include il guard pre/post-attivazione (solo Python). SECURITY INVOKER. Riusata dai madre di dominio (preventivo/ordine/...). Piano: analisi-fix-transazioni Classe A. rev 2026-10-08 (20261008-67): parametro p_billing_account_id in CODA (DEFAULT NULL) — il cliente di cui parla la pratica, a grana fine; i chiamanti per nome non cambiano. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).';
 ```
 
 ---

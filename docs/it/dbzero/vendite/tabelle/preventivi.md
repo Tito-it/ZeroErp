@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | numero | character varying(30) | NO |  |
 | rev | integer | NO | 0 |
-| billing_account_id | bigint | YES |  |
+| billing_account_id | bigint | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | validita_dal | date | YES |  |
@@ -40,6 +40,7 @@
 |------|------|---------|
 | CHECK | chk_preventivi_competenza_mese_primo |  |
 | CHECK | chk_preventivi_validita |  |
+| FOREIGN KEY | fk_preventivi_ba_coppia | billing_account_id, istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_preventivi_billing_account | billing_account_id |
 | FOREIGN KEY | fk_preventivi_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_preventivi_istanza | istanza_utility_id |

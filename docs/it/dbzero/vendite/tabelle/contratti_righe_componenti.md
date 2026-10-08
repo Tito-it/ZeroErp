@@ -27,7 +27,7 @@
 | ordine | smallint | NO | 0 |
 | attivo | boolean | NO | true |
 | user_insert | text | NO | CURRENT_USER |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | tx_id | uuid | YES |  |
@@ -37,7 +37,7 @@
 |------|------|---------|
 | CHECK | chk_contrighe_comp_coeff_qta_pos |  |
 | CHECK | chk_contrighe_comp_origine |  |
-| CHECK | chk_contrighe_comp_quantita_pos |  |
+| CHECK | chk_contrighe_comp_quantita_nz |  |
 | FOREIGN KEY | fk_contrighe_comp_articolo_componente | articolo_componente_id |
 | FOREIGN KEY | fk_contrighe_comp_componente | componente_id |
 | FOREIGN KEY | fk_contrighe_comp_iva | iva_id |

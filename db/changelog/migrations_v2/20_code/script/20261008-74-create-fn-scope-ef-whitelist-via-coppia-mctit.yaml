@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE script.fn_scope_ef_whitelist_via_coppia: il perimetro di una riga che
+# nomina la coppia (istanza, utility) e' quello del BA della coppia.
+#   Brief: brief-db-istanza-nasce-col-ba (§6.13, opzione A di Tid del 2026-10-08)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Dal 20261008-51 anagrafiche.istanze_dati_precontrattuali ha la FK verso il
+#   BA della sua coppia: i dati precontrattuali sono di un cliente di
+#   un'azienda, e il presidio del perimetro RLS
+#   (test-rls-perimetro-scoperto) l'ha segnalata come figlia di una tabella
+#   protetta senza RLS. Decisione di Tid: la RLS segue il BA della coppia.
+#
+# -- LA FORMA -------------------------------------------------------
+#   Come le sorelle fn_scope_ef_whitelist_via_offerta / _via_contratto: una
+#   funzione LANGUAGE sql STABLE che risale alla chiave del padre e DELEGA. Qui
+#   il padre e' il BA, e la scope del BA e' gia' scritta
+#   (script.fn_scope_ef_whitelist_via_efba): la regola «quale BA vede
+#   l'operatore» resta in un posto solo.
+#   La coppia individua al massimo un BA (uq_billing_instance_utility).
+#   ⚠️ La sottoquery su billing_account e' sotto la RLS del BA (INVOKER): un BA
+#   fuori perimetro e' invisibile, l'id e' NULL, e la scope del BA risponde
+#   false (fn_check_ba_visible_for_emittenti con NULL): fail-closed. Coppia
+#   senza BA: idem. Il super admin (scope NULL) vede tutto.
+#
+# Ritorno indietro: DROP (la policy che la usa cade col rollback del -75).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261008-74-create-fn-scope-ef-whitelist-via-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261008-74-create-fn-scope-ef-whitelist-via-coppia
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce script.fn_scope_ef_whitelist_via_coppia: l'operatore vede una riga della coppia
+        (istanza, utility) se vede il BA della coppia; delega a fn_scope_ef_whitelist_via_efba.
+        Brief: brief-db-istanza-nasce-col-ba (§6.13).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_coppia(
+                  p_auth_user_id       integer,
+                  p_istanza_utility_id anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  p_utility_id         anagrafiche.billing_account.utility_id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Scopo: dire se l'operatore ha nel proprio perimetro il BA
+                  --   della coppia (istanza, utility).
+                  -- ⭐ Delega alla scope del BA invece di ripeterla: la regola
+                  --   «quale BA vede l'operatore» resta scritta in un posto solo.
+                  -- ⚠️ BA invisibile (fuori perimetro, RLS) o coppia senza BA ->
+                  --   id NULL -> false: fail-closed.
+                  SELECT script.fn_scope_ef_whitelist_via_efba(
+                      p_auth_user_id,
+                      (SELECT ba.id
+                         FROM anagrafiche.billing_account ba
+                        WHERE ba.istanza_utility_id = p_istanza_utility_id
+                          AND ba.utility_id         = p_utility_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_coppia(integer, bigint, integer)
+              IS 'Scope RLS per le righe che nominano la coppia (istanza_utility_id, utility_id): true se l''operatore vede il billing account della coppia. Delega a script.fn_scope_ef_whitelist_via_efba (la regola resta una). BA fuori perimetro o assente: false (fail-closed). Usata dalla policy rls_istanze_dati_precontrattuali_ef_whitelist. Brief: brief-db-istanza-nasce-col-ba (§6.13).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_coppia(integer, bigint, integer);

@@ -259,18 +259,24 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   i rientri del reso ritirano la loro copia), applicato il 2026-10-05. BE/FE secondo giro fatto il 2026-10-05 (§11):
   endpoint della lista 106, drawer dell'offerta sui verbi del DB col BB `RigheEccezioniDrawer` condiviso col
   contratto (regola del 2, ok Tid), niente toggle «attivo». Archiviato il 2026-10-08 (§14): i trovati DB del
-  §10.8 sono il brief `work-in-progress/brief-db-righe-e-componenti-le-altre-famiglie.md`; il ricollaudo di
+  §10.8 sono il brief `work-done/brief-db-righe-e-componenti-le-altre-famiglie.md`; il ricollaudo di
   C5/C3 è il §D.5 di `brief-db-offerta-emissione-ed-erogazione`.
-- **Righe e componenti di preventivo, ordine e DDT allineati a contratto e offerta: aperto**
-  (`work-in-progress/brief-db-righe-e-componenti-le-altre-famiglie.md`, 2026-10-08): revisione del preventivo
-  (attende la decisione di Tid D-1 sui componenti spenti), lock «solo in bozza» sui componenti, `user_update NOT
-  NULL`, rinomina di `chk_contrighe_comp_quantita_pos`. Non iniziato.
+- **Righe e componenti di preventivo, ordine e DDT allineati a contratto e offerta: chiuso il 2026-10-08**
+  (`work-done/brief-db-righe-e-componenti-le-altre-famiglie.md`, `20261008-30` … `-35`, applicati, pgTAP verdi):
+  la revisione del preventivo porta anche i componenti spenti (D-1 di Tid) e li lega per identità; componenti
+  di preventivo, ordine e DDT solo in bozza; `user_update NOT NULL` su righe e componenti; CHECK `_nz`.
+- ⏳ **Righe e componenti: i tre debiti rimasti** (`work-in-progress/brief-db-righe-e-componenti-debiti-residui.md`,
+  D20, 2026-10-08): righe d'ordine e di preventivo ancora aperte fuori bozza; `user_update` nullable altrove e
+  senza presidio; componente spento in attesa copiato nella revisione. Decisi da Tid il 2026-10-08 (D-1 lock a tre porte, sull'ordine aperta la sola `data_consegna_confermata` negli stati da evadere; D-2 un giro solo col presidio; D-3 lo spento in attesa si copia senza marca). Sviluppo non iniziato.
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1 e 2 applicati e verdi, BE/FE in parte. Serve il terzo giro DB (§F:
   F-1 quantità calcolata, F-2 listino del documento), poi il resto del BE/FE, il collaudo a video §D.5 e l'archivio.
 - ⏳ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca**
   (`work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md`, richiesta BE del 2026-10-08, voci E-4/E-5/E-10
   dell'analisi della doc API core): da fare.
+- ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
+  decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); resta il BE/FE
+  (§5, §6.10.5, §6.12.4).
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

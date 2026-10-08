@@ -4,8 +4,9 @@
 --
 -- Test: le righe di un documento si aggiungono, modificano e tolgono SOLO
 --   finche' il documento e' in bozza — il building block
---   vendite.trgfn_doc_righe_lock_fuori_bozza e i suoi otto adottanti (il reso dal 2026-09-29, l'offerta dal 2026-10-04,
---   dal 2026-10-05 tre tabelle nipoti a livello RIGA: componenti di contratto e offerta, rientri del reso)
+--   vendite.trgfn_doc_righe_lock_fuori_bozza e i suoi undici adottanti (il reso dal 2026-09-29, l'offerta dal 2026-10-04,
+--   dal 2026-10-05 tre tabelle nipoti a livello RIGA: componenti di contratto e offerta, rientri del reso;
+--   dal 2026-10-08 altre tre: componenti di preventivo, ordine e DDT)
 --   (ddt_righe, ordini_righe sul solo DELETE, contratti_righe).
 --   changeSet 20260922-01 … -06.
 -- ------------------------------------------------------------
@@ -99,6 +100,9 @@ SELECT is(
 --   solo-non-si-vende §8.2 B3). Il comportamento e' provato in
 --   vendite/test-righe-gemelle-secondo-giro-v1 (test 8-18, 23-26) e, per i
 --   rientri, in magazzino/test-reso-carico-v1 (test 15).
+-- ⭐ 2026-10-08: altri tre a livello RIGA, i componenti di preventivo, ordine e
+--   DDT (20261008-34, brief-db-righe-e-componenti-le-altre-famiglie §2.2). Il
+--   comportamento e' provato in vendite/test-righe-e-componenti-le-altre-famiglie-v1.
 -- ⚠️ La fascia e' parte del contratto: con _a10_ il nome verrebbe DOPO
 --   block_ddt_dlt e i block_deact, e l'operatore leggerebbe un rimedio che
 --   non e' il rimedio (test 9).
@@ -111,12 +115,15 @@ SELECT is(
   $atteso$vendite.contratti_righe:trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'contratto_id')
 vendite.contratti_righe_componenti:trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'riga_contratto_id', 'DRAFT', 'RIGA')
 vendite.ddt_righe:trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id')
+vendite.ddt_righe_componenti:trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'riga_ddt_id', 'DRAFT', 'RIGA')
 vendite.offerte_commerciali_eccezioni:trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')
 vendite.offerte_commerciali_eccezioni_componenti:trg_oce_comp_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'eccezione_offerta_id', 'BOZZA', 'RIGA')
 vendite.ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id')
+vendite.ordini_righe_componenti:trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'riga_ordine_id', 'DRAFT', 'RIGA')
+vendite.preventivi_righe_componenti:trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'riga_preventivo_id', 'DRAFT', 'RIGA')
 vendite.resi_righe:trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'reso_id')
 vendite.resi_righe_rientri:trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'resi_riga_id', 'DRAFT', 'RIGA')$atteso$,
-  '2) Gli otto adottanti (cinque a livello TESTATA, tre a livello RIGA) sono montati in fascia _a05_ con gli argomenti giusti');
+  '2) Gli undici adottanti (cinque a livello TESTATA, sei a livello RIGA) sono montati in fascia _a05_ con gli argomenti giusti');
 
 SELECT is(
   (SELECT count(*)::int

@@ -47,7 +47,11 @@
 --  28) «Conferma» spento col motivo, dalla bozza
 --  29) DRAFT -> CONFERMATO con un componente rifiutato: BLOCCA
 --  30) DRAFT -> CONFERMATO con prezzi autorizzati: PASSA
---  31) il RIENTRO EVASO -> CONFERMATO non chiede il prezzo (via d'uscita)
+--  31) EVASO: un componente non diventa rifiutato (componenti fuori bozza)
+--      (rev 2026-10-08, brief-db-righe-e-componenti-le-altre-famiglie §2.2:
+--      prima «il RIENTRO EVASO -> CONFERMATO con un componente rifiutato
+--      passa», un caso che il lock dei componenti dell'ordine ora rende
+--      impossibile)
 --  DDT (D-6)
 --  32) causale che vende + componente PENDING: il motivo nuovo in
 --      fn_check_ddt_emittibile, non piu' E_COMPONENTE_PREZZO_PENDENTE
@@ -653,22 +657,25 @@ SELECT lives_ok(
 );
 
 -- ⭐ Il RIENTRO. La matrice riporta l'ordine da EVASO a CONFERMATO in
---   automatico quando l'evasione torna indietro. Un prezzo rimasto non
---   autorizzato sul documento non deve fermarlo: bloccherebbe l'annullamento a
---   valle, cioe' una via d'uscita (D-2).
+--   automatico quando l'evasione torna indietro, e un prezzo non autorizzato
+--   non deve fermarlo: e' una via d'uscita (D-2). Il guard lo dice ancora.
+-- 🔄 rev 2026-10-08 (20261008-34, brief-db-righe-e-componenti-le-altre-famiglie
+--   §2.2): il caso non si costruisce piu'. Sull'ordine la marca di approvazione
+--   ce l'hanno solo i componenti; l'ordine si conferma solo coi prezzi
+--   autorizzati (29), e dopo la conferma i componenti si toccano solo in bozza.
+--   Quindi un prezzo non diventa rifiutato su un ordine EVASO: il test prova
+--   questo. Stessa riscrittura dei test 26 e 44 sull'offerta (rev 2026-10-04).
 UPDATE vendite.ordini
    SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'EVASO')
  WHERE id = (SELECT ordine_id FROM _or WHERE tag = 'pulito');
 
-UPDATE vendite.ordini_righe_componenti
-   SET stato_approvazione_prezzo = 'REJECTED'
- WHERE id = (SELECT comp_id FROM _or WHERE tag = 'pulito');
-
-SELECT lives_ok(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO'),
-           (SELECT ordine_id FROM _or WHERE tag = 'pulito')),
-    '31) il RIENTRO EVASO -> CONFERMATO con un componente rifiutato PASSA: non e'' una conferma'
+SELECT throws_like(
+    format($$UPDATE vendite.ordini_righe_componenti
+                SET stato_approvazione_prezzo = 'REJECTED'
+              WHERE id = %s$$,
+           (SELECT comp_id FROM _or WHERE tag = 'pulito')),
+    '%non e'' piu'' in bozza%',
+    '31) EVASO: un componente non diventa rifiutato dopo la conferma (componenti fuori bozza)'
 );
 
 -- =========================================================

@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DATI PRECONTRATTUALI DI UNA COPPIA (istanza, utility) VIVONO COL SUO BA
+#   FK (istanza_utility_id, utility_id) di anagrafiche.istanze_dati_precontrattuali
+#   verso anagrafiche.billing_account (istanza_utility_id, utility_id).
+#   Brief: brief-db-istanza-nasce-col-ba (R-1, §6.2; D-2 di Tid del 2026-10-08)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Regola di Tid: istanza e billing account nascono insieme, e vale PER
+#   COPPIA (D-2): ogni utility dichiarata su un'istanza ha il suo BA. Fino a
+#   oggi la riga precontrattuale bastava da sola a «dichiarare» la utility
+#   (Strategia C del 2026-05-01): era la porta da cui un'istanza nasceva senza
+#   BA. Con la FK la riga precontrattuale resta un satellite di DATI, e non si
+#   scrive per una coppia che non ha il suo billing account.
+#   La destinazione e' uq_billing_instance_utility, che esiste gia'.
+#
+# -- IMMEDIATE, NON DEFERRED -----------------------------------------
+#   Nessun punto dell'applicazione crea righe precontrattuali (censimento del
+#   2026-10-08: ne' le funzioni DB ne' il backend; le scrivono i pgTAP e i dati
+#   a mano), e l'ordine naturale e' BA prima, dati poi. Una FK immediata parla
+#   sulla riga sbagliata, non al COMMIT.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero righe senza il BA della loro coppia
+#   (expectedResult 0: un DB da zero la soddisfa). Se ce ne sono, il migrate
+#   si ferma: si correggono a mano (brief §6.7, query di verifica nel brief).
+#
+# -- LA CANCELLAZIONE DEL BA ---------------------------------------
+#   NO ACTION: un billing account con dati precontrattuali non si cancella.
+#   E' coerente con la regola: la coppia vive finche' vive il suo BA.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261008-51-add-fk-idp-billing-account-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261008-51-add-fk-idp-billing-account-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        FK (istanza_utility_id, utility_id) di istanze_dati_precontrattuali verso il billing
+        account della stessa coppia: i dati precontrattuali non dichiarano piu' una utility da
+        soli. Brief: brief-db-istanza-nasce-col-ba (R-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM anagrafiche.istanze_dati_precontrattuali idp
+               WHERE NOT EXISTS (SELECT 1
+                                   FROM anagrafiche.billing_account ba
+                                  WHERE ba.istanza_utility_id = idp.istanza_utility_id
+                                    AND ba.utility_id         = idp.utility_id);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.istanze_dati_precontrattuali
+                ADD CONSTRAINT fk_idp_billing_account_coppia
+                FOREIGN KEY (istanza_utility_id, utility_id)
+                REFERENCES anagrafiche.billing_account (istanza_utility_id, utility_id);
+
+              COMMENT ON CONSTRAINT fk_idp_billing_account_coppia ON anagrafiche.istanze_dati_precontrattuali
+              IS 'I dati precontrattuali di una coppia (istanza, utility) esistono solo col billing account di quella coppia (regola di Tid del 2026-10-08, D-2: istanza e billing account nascono insieme, per coppia). Fino al 2026-10-08 la riga precontrattuale bastava a dichiarare la utility dell''istanza senza BA. Brief: brief-db-istanza-nasce-col-ba (R-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.istanze_dati_precontrattuali DROP CONSTRAINT fk_idp_billing_account_coppia;

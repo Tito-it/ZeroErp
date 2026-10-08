@@ -1,6 +1,6 @@
 # Guida — Generazione di un Cliente
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 8 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -69,14 +69,16 @@ E la persona fisica o giuridica registrata nel sistema. Puo avere piu ruoli (cli
 
 E il **ciclo tecnico-commerciale** di un servizio su un indirizzo per un soggetto. In pratica: quando un servizio gas o energia viene collegato a un civico per conto di una persona, nasce un'istanza.
 
-L'istanza **non e il cliente**: precede il contratto (puo esistere in fase precontrattuale) e sopravvive alla chiusura del rapporto come record storico.
+L'istanza **non e il cliente**: precede il contratto (puo esistere in fase precontrattuale) e sopravvive alla chiusura del rapporto come record storico. Ma non esiste mai da sola: **nasce insieme al suo billing account** (vedi [Ogni istanza nasce col suo billing account](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)).
 
 **Perche l'istanza e legata al soggetto e non al ruolo?**
-Perche l'istanza nasce prima del contratto. In fase precontrattuale il soggetto potrebbe non avere ancora il ruolo CLIENTE. L'istanza identifica semplicemente "chi" e associato a un certo indirizzo/servizio; il ruolo arriva dopo, con la specializzazione in `clienti`.
+Perche l'istanza identifica semplicemente "chi" e associato a un certo indirizzo/servizio, e sopravvive al rapporto commerciale. Il ruolo CLIENTE nasce con l'istanza, perche il billing account che nasce con lei fattura a quel ruolo; il **cliente** — la specializzazione in `clienti`, con le sue date — arriva dopo, con il contratto.
+
+Un soggetto puo non acquisire mai il ruolo CLIENTE: per esempio un soggetto che e solo fornitore. In quel caso non ha nemmeno istanze.
 
 ### Billing account (BA)
 
-E l'account di fatturazione. Identifica **a chi fatturare** e **con quale codice**. Viene creato dopo l'istanza e prima del cliente. Puo essere generato in anticipo (fase precontrattuale) e poi "ereditato" dal cliente alla firma del contratto.
+E l'account di fatturazione. Identifica **a chi fatturare** e **con quale codice**. Nasce **insieme all'istanza**, nella stessa operazione, e prima del cliente: esiste gia nella fase precontrattuale (preventivi, offerte) e viene "ereditato" dal cliente alla firma del contratto. Il suo codice si genera quando nasce.
 
 Il BA supporta una gerarchia padre/figlio per aggregare la fatturazione di piu utenze sullo stesso intestatario. Vedi la [documentazione dedicata](/dbzero/anagrafiche/manual/billing_account) per i dettagli.
 
@@ -85,9 +87,10 @@ Il BA supporta una gerarchia padre/figlio per aggregare la fatturazione di piu u
 > (`billing_account.istanza_utility_id` FK NOT NULL + UNIQUE
 > `(istanza_utility_id, utility_id)`). Quindi **dato il BA, l'istanza e'
 > univoca**: i documenti che hanno gia' un BA (ordini, DDT, fatture) ricavano
-> l'istanza dal BA e non la memorizzano; solo i precontrattuali
-> (preventivi/offerte/contratti), che scelgono l'istanza prima che esista un
-> BA, la portano sulla propria testata. Dettaglio:
+> l'istanza dal BA e non la memorizzano; i precontrattuali
+> (preventivi/offerte/contratti) scelgono l'istanza e la portano sulla propria
+> testata accanto al BA, e il database pretende che il BA sia quello della
+> coppia (istanza, utility). Dettaglio:
 > [Gestione Istanze Utility — Istanza e billing account](/guide/gestione-delle-istanze-utility#istanza-e-billing-account-relazione-11-per-utility-invariante).
 
 ### Cliente
@@ -137,16 +140,15 @@ La FK composita `(billing_account_id, istanza_utility_id)` su `clienti` garantis
 **Pre-contrattuale** (il contratto arriva dopo):
 
 ```text
-Soggetto → Istanza → [pausa, anche indefinita] → Ruolo CLIENTE + Billing Account → Cliente
+Soggetto → Ruolo CLIENTE + Istanza + Billing Account → [pausa, anche indefinita] → Cliente
 ```
 
-La pausa sta **dopo l'istanza**: e l'unica entita che puo esistere da sola in
-fase precontrattuale (richiede il solo soggetto). Il billing account NON puo
-precedere il ruolo CLIENTE: `billing_account` richiede `soggetto_ruolo_id`
-NOT NULL, quindi ruolo CL e BA nascono insieme (il ruolo via
-`fn_get_or_create_soggetto_ruolo`), solo quando si arriva a fatturare.
-Un'istanza puo legittimamente restare in pausa per sempre senza che il
-soggetto acquisisca mai il ruolo CLIENTE.
+La pausa sta **dopo il billing account**: istanza, ruolo CLIENTE e billing
+account nascono insieme, nella stessa operazione, e possono restare cosi a
+lungo — e il tempo dei preventivi e delle offerte. Un'istanza senza billing
+account non e uno stato ammesso: il database la rifiuta (vedi [Ogni istanza
+nasce col suo billing account](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)).
+Cio che puo arrivare dopo, o non arrivare mai, e il **cliente**: il contratto.
 
 **Attivazione diretta** (il contratto c'e gia):
 
@@ -154,7 +156,7 @@ soggetto acquisisca mai il ruolo CLIENTE.
 Soggetto + Ruolo CLIENTE → Istanza → Billing Account → Cliente
 ```
 
-In entrambi i casi i passi possono avvenire nella **stessa transazione** — e anzi questo e il modo consigliato per garantire la coerenza.
+In entrambi i casi istanza e billing account nascono nella **stessa transazione**: non e un consiglio, il database lo pretende. Il cliente puo nascere nella stessa transazione (attivazione diretta) o dopo, col contratto.
 
 ### Orchestrazione automatica
 
@@ -203,7 +205,7 @@ Se c'e un PDP, l'istanza eredita automaticamente indirizzo e utility dal PDP, e 
 
 ### 2. Creazione del billing account
 
-Il BA viene sempre associato all'istanza (`istanza_utility_id NOT NULL`) e a un ruolo soggetto. Puo essere creato anche **prima del cliente** (fase precontrattuale).
+Il BA viene sempre associato all'istanza (`istanza_utility_id NOT NULL`) e a un ruolo soggetto, e nasce **nella stessa operazione** dell'istanza: un'istanza senza billing account non esiste. Esiste gia **prima del cliente** (fase precontrattuale). L'istanza e la utility di un BA non si cambiano dopo la nascita.
 
 Il campo `codice` (l'account di fatturazione vero e proprio) viene generato automaticamente dal trigger `trgfn_billing_account_gen_codice` se non specificato.
 
@@ -515,7 +517,7 @@ erDiagram
 
     soggetti               ||--o{ istanze_utilities         : ha
 
-    istanze_utilities      ||--o| clienti                   : assegnato_a
+    istanze_utilities      ||--o{ clienti                   : assegnato_a
     istanze_utilities      ||--o{ billing_account           : genera
     istanze_utilities      ||--o{ catasto_unita_immobiliari : puo_avere
 

@@ -144,6 +144,10 @@ SELECT ok(
 SELECT pass('3) fn_ricalcola_prezzo_padre: nessun figlio attivo -> COALESCE 0 (verificato da definizione fn)');
 
 -- =========================================================
+-- ⚠️ Rev. 2026-10-08 — i test 4, 5 e 6 scelgono la riga solo fra i preventivi
+--    in DRAFT: dal 20261008-34 un componente su un preventivo fuori bozza lo
+--    respinge prima il lock (fascia _a05_), e il rosso parlerebbe del lock e
+--    non del guard di coerenza BOM. Brief: brief-db-righe-e-componenti-le-altre-famiglie §4.
 -- 4) guard_coerenza_bom: padre non composito
 --    CASE WHEN: skip se mancano prerequisiti (riga non-composita
 --    O componente esposto), throws_like altrimenti.
@@ -152,7 +156,7 @@ SELECT CASE
     WHEN NOT EXISTS (
              SELECT 1 FROM vendite.preventivi_righe pr
                JOIN catalogo.articoli a ON a.id = pr.articolo_id
-              WHERE a.is_composito = FALSE AND pr.attivo = TRUE
+              WHERE a.is_composito = FALSE AND pr.attivo = TRUE AND pr.preventivo_id IN (SELECT pb.id FROM vendite.preventivi pb JOIN config.stati_doc_preventivi sb ON sb.id = pb.stato_doc_preventivo_id WHERE sb.codice_interno = 'DRAFT')
          )
       OR NOT EXISTS (
              SELECT 1 FROM catalogo.articoli_componenti
@@ -171,7 +175,7 @@ SELECT CASE
             SELECT pr.id INTO v_riga_id
               FROM vendite.preventivi_righe pr
               JOIN catalogo.articoli a ON a.id = pr.articolo_id
-             WHERE a.is_composito = FALSE AND pr.attivo = TRUE
+             WHERE a.is_composito = FALSE AND pr.attivo = TRUE AND pr.preventivo_id IN (SELECT pb.id FROM vendite.preventivi pb JOIN config.stati_doc_preventivi sb ON sb.id = pb.stato_doc_preventivo_id WHERE sb.codice_interno = 'DRAFT')
              LIMIT 1;
 
             SELECT ac.id, ac.componente_id INTO v_bom_id, v_comp_id
@@ -200,7 +204,7 @@ SELECT CASE
     WHEN NOT EXISTS (
              SELECT 1 FROM vendite.preventivi_righe pr
                JOIN catalogo.articoli a ON a.id = pr.articolo_id
-              WHERE a.is_composito = TRUE AND pr.attivo = TRUE
+              WHERE a.is_composito = TRUE AND pr.attivo = TRUE AND pr.preventivo_id IN (SELECT pb.id FROM vendite.preventivi pb JOIN config.stati_doc_preventivi sb ON sb.id = pb.stato_doc_preventivo_id WHERE sb.codice_interno = 'DRAFT')
                 AND NOT EXISTS (
                     SELECT 1 FROM vendite.preventivi_righe_componenti prc
                      WHERE prc.riga_preventivo_id = pr.id
@@ -227,7 +231,7 @@ SELECT CASE
             SELECT pr.id INTO v_riga_id
               FROM vendite.preventivi_righe pr
               JOIN catalogo.articoli a ON a.id = pr.articolo_id
-             WHERE a.is_composito = TRUE AND pr.attivo = TRUE
+             WHERE a.is_composito = TRUE AND pr.attivo = TRUE AND pr.preventivo_id IN (SELECT pb.id FROM vendite.preventivi pb JOIN config.stati_doc_preventivi sb ON sb.id = pb.stato_doc_preventivo_id WHERE sb.codice_interno = 'DRAFT')
                AND NOT EXISTS (
                    SELECT 1 FROM vendite.preventivi_righe_componenti prc
                     WHERE prc.riga_preventivo_id = pr.id
@@ -265,7 +269,7 @@ SELECT CASE
     WHEN NOT EXISTS (
              SELECT 1 FROM vendite.preventivi_righe pr
                JOIN catalogo.articoli a ON a.id = pr.articolo_id
-              WHERE a.is_composito = TRUE AND pr.attivo = TRUE
+              WHERE a.is_composito = TRUE AND pr.attivo = TRUE AND pr.preventivo_id IN (SELECT pb.id FROM vendite.preventivi pb JOIN config.stati_doc_preventivi sb ON sb.id = pb.stato_doc_preventivo_id WHERE sb.codice_interno = 'DRAFT')
                 AND NOT EXISTS (
                     SELECT 1 FROM vendite.preventivi_righe_componenti prc
                      WHERE prc.riga_preventivo_id = pr.id
@@ -289,7 +293,7 @@ SELECT CASE
             SELECT pr.id INTO v_riga_id
               FROM vendite.preventivi_righe pr
               JOIN catalogo.articoli a ON a.id = pr.articolo_id
-             WHERE a.is_composito = TRUE AND pr.attivo = TRUE
+             WHERE a.is_composito = TRUE AND pr.attivo = TRUE AND pr.preventivo_id IN (SELECT pb.id FROM vendite.preventivi pb JOIN config.stati_doc_preventivi sb ON sb.id = pb.stato_doc_preventivo_id WHERE sb.codice_interno = 'DRAFT')
                AND NOT EXISTS (SELECT 1 FROM vendite.preventivi_righe_componenti prc WHERE prc.riga_preventivo_id = pr.id)
                AND EXISTS (SELECT 1 FROM catalogo.articoli_componenti ac
                             WHERE ac.prodotto_id = a.id AND ac.esposizione_in_fattura <> 'NASCOSTO' AND ac.validita @> CURRENT_DATE)

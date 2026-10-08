@@ -1,0 +1,118 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UNA UTILITY E' DICHIARATA SULL'ISTANZA DAL SUO BILLING ACCOUNT
+#   script.fn_check_utility_istanza_coerenza: una sola fonte, il BA.
+#   Brief: brief-db-istanza-nasce-col-ba (R-1, §6.2; D-2 di Tid del 2026-10-08)
+#
+# -- CHE COSA CAMBIA --------------------------------------------------
+#   Fino a oggi la coppia (istanza, utility) era «coerente» se compariva in
+#   una fra tre fonti: billing_account, istanze_dati_precontrattuali,
+#   clienti. Con la regola per coppia (D-2) le altre due implicano il BA:
+#   * istanze_dati_precontrattuali ha la FK composta verso il BA della stessa
+#     coppia (fk_idp_billing_account_coppia, 20261008-51);
+#   * clienti ha billing_account_id NOT NULL con FK composta
+#     (billing_account_id, istanza_utility_id).
+#   Leggerle ancora sarebbe ripetere il BA due volte; toglierle rende la
+#   check uguale alla regola.
+#   ⚠️ Non e' la stessa regola del constraint trigger dell'istanza («almeno
+#   un BA»): questa guarda la COPPIA. Per questo resta una funzione a se'.
+#
+# -- CHI LA LEGGE -----------------------------------------------------
+#   Firma e ritorno invariati. La chiamano: il guard del preventivo
+#   (trgfn_preventivi_guard_utility_istanza_coerenza, che parla prima della
+#   FK composta col suo codice E_PREV_UTILITY_ISTANZA_INCOERENTE) e il
+#   backend (istanze_utility_repository: filtro del lookup per utility e
+#   pre-validazione della creazione del preventivo).
+#
+# Ritorno indietro: il corpo del 20260501-11 (tre fonti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261008-58-update-fn-check-utility-istanza-coerenza-solo-ba-mctit.yaml
+
+  - changeSet:
+      id: 20261008-58-update-fn-check-utility-istanza-coerenza-solo-ba
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_check_utility_istanza_coerenza legge il solo billing account della coppia
+        (istanza, utility): dati precontrattuali e cliente lo implicano. Firma invariata. Brief:
+        brief-db-istanza-nasce-col-ba (R-1, D-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_utility_istanza_coerenza(
+                  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE,
+                  p_utility_id         config.utilities.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  -- Guard input: un valore mancante e' incoerente.
+                  IF p_istanza_utility_id IS NULL OR p_utility_id IS NULL THEN
+                      RETURN false;
+                  END IF;
+
+                  -- Una sola fonte: il billing account della coppia
+                  -- (uq_billing_instance_utility). Dati precontrattuali e
+                  -- cliente lo implicano per FK (regola per coppia, D-2).
+                  RETURN EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.billing_account ba
+                       WHERE ba.istanza_utility_id = p_istanza_utility_id
+                         AND ba.utility_id         = p_utility_id
+                  );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_utility_istanza_coerenza(bigint, integer)
+              IS 'Pure check (no raise): true se la coppia (istanza_utility_id, utility_id) ha il suo billing account. ⚠️ rev 2026-10-08: fino a quel giorno le fonti erano tre (billing_account, istanze_dati_precontrattuali, clienti); con la regola di Tid «istanza e BA nascono insieme, per coppia» (D-2) le altre due implicano il BA per FK, e la fonte e'' una. Non e'' la regola del constraint trigger dell''istanza (almeno un BA): questa guarda la coppia. Chiamanti: vendite.trgfn_preventivi_guard_utility_istanza_coerenza e il backend (lookup istanze per utility, pre-validazione del preventivo). Brief: brief-db-istanza-nasce-col-ba (R-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_utility_istanza_coerenza(
+                  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE,
+                  p_utility_id         config.utilities.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                  IF p_istanza_utility_id IS NULL OR p_utility_id IS NULL THEN
+                      RETURN false;
+                  END IF;
+                  IF EXISTS (SELECT 1 FROM anagrafiche.billing_account
+                              WHERE istanza_utility_id = p_istanza_utility_id
+                                AND utility_id = p_utility_id) THEN
+                      RETURN true;
+                  END IF;
+                  IF EXISTS (SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali
+                              WHERE istanza_utility_id = p_istanza_utility_id
+                                AND utility_id = p_utility_id) THEN
+                      RETURN true;
+                  END IF;
+                  IF EXISTS (SELECT 1 FROM anagrafiche.clienti
+                              WHERE istanza_utility_id = p_istanza_utility_id
+                                AND utility_id = p_utility_id) THEN
+                      RETURN true;
+                  END IF;
+                  RETURN false;
+              END
+              $function$;

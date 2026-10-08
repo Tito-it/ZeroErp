@@ -165,3 +165,13 @@ erDiagram
 {% include-markdown "signature-core.md" %}
 
 ---
+
+---
+
+### Un gestore per ruolo (dal 2026-10-08)
+
+`uq_gestori_soggetto_ruolo` = `UNIQUE (soggetto_ruolo_id)`, come le altre specializzazioni dei
+ruoli (fornitori, vettori, PSP, risorse umane, emittenti fiscali). L'indice dedicato
+`ix_anagrafiche_gestori_soggetto_ruolo_id`, che il vincolo rende ridondante, lo toglie la policy
+degli indici delle FK. ⚠️ `uq_gestori_singleton`, nonostante il nome, e' un indice GiST non unico
+su `id`: non vincola niente. Brief: brief-db-istanza-nasce-col-ba (R-9).

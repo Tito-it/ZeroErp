@@ -39,8 +39,9 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
 * **Attivazione derivata**: non viene piu' aggiornato alcun flag sul predecessore.
   `is_attiva` e' calcolata dinamicamente in `vendite.vw_preventivi` — la nuova rev
   DRAFT (non-abortita) rende automaticamente non-attiva la rev precedente.
-* **Righe copiate**: solo attive con `quantita > 0`, `ORDER BY ordine, id`
-  (ordinamento deterministico necessario per il remap FK componenti).
+* **Righe copiate**: solo attive con `quantita > 0`, `ORDER BY ordine, id`, una
+  alla volta col suo `RETURNING` (dal 2026-10-08: è l'id restituito che lega i
+  componenti, non l'ordinamento).
   ⚠️ **La copia ha un elenco ESPLICITO di colonne**: una colonna nuova sulla
   riga **non passa** finché qualcuno non la nomina qui. È il punto in cui una
   colonna si perde senza errore — successo con la data di consegna.
@@ -91,11 +92,25 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
   `BEFORE INSERT` (`trgfn_preventivi_righe_set_natura_vendita`): nominarla
   scriverebbe un valore che viene sovrascritto; `tx_id` — framework;
   `id`, `data_insert`, `data_update` — identity e audit.
-* **Componenti BoM copiati** (15-05-2026): le righe `preventivi_righe_componenti`
-  vengono copiate con FK remap `old_riga_id → new_riga_id` tramite
-  `ROW_NUMBER() OVER (ORDER BY ordine, id)`. Solo componenti con `attivo IS TRUE`.
+* **Componenti BoM copiati, TUTTI** (rev 2026-10-08, `20261008-35`, D-1 di Tid):
+  per ogni riga copiata si copiano tutti i suoi componenti, **anche gli
+  opzionali spenti**, che restano spenti. La revisione è lo stesso documento:
+  spegnere un opzionale è una scelta che si può annullare, e non portarlo la
+  cancellava — nella rev N+1 non si poteva più riaccendere. Non cambia cosa si
+  vende: il push a ordine porta solo i componenti attivi. È la regola di
+  [fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta)
+  dal `20261005-19`.
+  Il legame alla riga nuova è per **identità**: l'id restituito dall'`INSERT`
+  della riga. Dal 15-05 al 2026-10-08 era un `ROW_NUMBER() OVER (ORDER BY
+  ordine, id)` sui due insiemi, che reggeva solo finché gli id nuovi nascevano
+  nell'ordine della `SELECT` — una proprietà dell'esecuzione, non un contratto.
   Il trigger `trgfn_componenti_calcola_quantita` (BEFORE INSERT) ricalcola
-  `quantita` e `qta_operativa` da `coeff_qta_snapshot`.
+  `quantita` e `qta_operativa` da `coeff_qta_snapshot`; il ricalcolo della
+  riga madre usa i soli componenti attivi, quindi il prezzo è quello della rev N.
+  ⚠️ Un componente spento passa dagli stessi guard di un attivo (coerenza con
+  la distinta alla data della revisione): se il catalogo l'ha ritirato dopo la
+  rev N, la revisione si ferma e lo dice. Presidio:
+  `db/pgtap/vendite/test-righe-e-componenti-le-altre-famiglie-v1.sql` (test 17-22).
 * **Indirizzi**: tutti copiati.
 
 ---

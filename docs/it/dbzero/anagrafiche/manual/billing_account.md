@@ -27,7 +27,9 @@ Il **billing account** (BA) e l'account di fatturazione associato a un'istanza u
 Caratteristiche principali:
 
 * Il codice account (`codice`) puo essere generato **prima del contratto** (fase precontrattuale), quando il soggetto non e ancora ufficialmente cliente
-* Ogni BA e legato a una sola istanza e a una sola utility
+* Ogni BA e legato a una sola istanza e a una sola utility, e **non cambia ne l'una ne l'altra** dopo la nascita (lock di colonna, `E_BA_ISTANZA_IMMUTABILE`, dal 2026-10-08)
+* Il BA **nasce insieme alla sua istanza**, nella stessa operazione, e l'ultimo BA di un'istanza non si cancella da solo (`E_ISTANZA_SENZA_BA`, [`fn_guard_istanza_ha_ba`](/dbzero/anagrafiche/manual/fn_guard_istanza_ha_ba))
+* I BA della stessa istanza sono tutti della **stessa azienda emittente** (`E_ISTANZA_EMITTENTI_DIVERSI`, [`fn_guard_istanza_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_istanza_ba_emittente))
 * Il BA supporta una **gerarchia padre/figlio** per aggregare la fatturazione di piu utenze
 * Il BA resta attivo anche dopo la chiusura del cliente, per consentire fatture finali e conguagli
 * **BA separati per canale self-service** (post 20-04-2026): un SR-CL puo avere piu BA, uno per ogni `canale_origine` (`ADMIN`, `PORTALE`, `SHOP`). I BA portale e shop sono concettualmente distinti — portale gestisce fatture B2B con partita IVA, shop gestisce ricevute consumer.

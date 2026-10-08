@@ -55,7 +55,10 @@ etichetta «Contratto <numero>»); poi `EMAIL_BOZZA`, `RESO` e — dal 2026-10-0
 per le righe dell'offerta — `OFFERTA` (`vendite.offerte_commerciali` →
 `config.stati_doc_offerte`, etichetta «Offerta <codice>»). L'etichetta
 dell'offerta la usa anche il messaggio dell'aggiunta fuori listino, che nomina
-il documento. Qualunque altro valore non è un dato sbagliato,
+il documento. Dal 2026-10-08, per i componenti del preventivo, `PREVENTIVO`
+(`vendite.preventivi` → `config.stati_doc_preventivi`, etichetta «Preventivo
+<numero> rev. <rev>»: le revisioni hanno lo stesso numero, e senza la revisione
+la frase non dice quale documento è fermo). Qualunque altro valore non è un dato sbagliato,
 è un **chiamante rotto**: `E_DOC_TIPO_NON_GESTITO`, classe `TECNICO`.
 
 ---

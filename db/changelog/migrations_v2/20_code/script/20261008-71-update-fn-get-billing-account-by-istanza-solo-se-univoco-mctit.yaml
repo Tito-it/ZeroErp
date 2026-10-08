@@ -1,0 +1,113 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# «IL BA DELL'ISTANZA» HA UNA RISPOSTA SOLO SE IL BA E' UNO
+#   script.fn_get_billing_account_by_istanza: legge billing_account, non piu'
+#   il cliente; ritorna il BA solo se l'istanza ne ha UNO, altrimenti NULL.
+#   ⚠️ In ritiro: il backend passa a pratiche.billing_account_id (D-9).
+#   Brief: brief-db-istanza-nasce-col-ba (R-8, §6.11.3)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Leggeva «il BA del cliente dell'istanza» con ORDER BY id DESC LIMIT 1,
+#   contando su un cliente per istanza. Con piu' utility per istanza (D-5) e un
+#   cliente per BA (D-6, 20261008-64) sceglierebbe l'ultimo cliente creato, non
+#   quello della pratica. E il «prospect senza BA» (NULL se nessun cliente) non
+#   esiste piu': il BA nasce con l'istanza.
+#
+# -- PERCHE' NON SI CANCELLA ORA ---------------------------------------
+#   Il backend la chiama nel dettaglio pratica (pratiche_repository, due
+#   punti): cancellarla romperebbe l'applicazione all'apply. Si rende onesta
+#   (deriva solo cio' che e' univoco) e si dichiara in ritiro; quando il
+#   backend legge la colonna della pratica, si cancella con la sua pagina.
+#   Firma invariata (ancorata come nel 20260615-03).
+#
+# Ritorno indietro: corpo del 20260615-03.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261008-71-update-fn-get-billing-account-by-istanza-solo-se-univoco-mctit.yaml
+
+  - changeSet:
+      id: 20261008-71-update-fn-get-billing-account-by-istanza-solo-se-univoco
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_get_billing_account_by_istanza: il BA dell'istanza solo se e' uno, letto da
+        billing_account; in ritiro a favore di pratiche.billing_account_id. Brief: brief-db-istanza-
+        nasce-col-ba (R-8).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_billing_account_by_istanza(
+                  p_istanza_id anagrafiche.istanze_utilities.id%TYPE
+              )
+              RETURNS anagrafiche.clienti.billing_account_id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_billing_account_id anagrafiche.billing_account.id%TYPE;
+              BEGIN
+                  IF p_istanza_id IS NULL OR p_istanza_id <= 0 THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Il BA dell'istanza, se e' UNO. Un'istanza puo' avere piu' utility,
+                  -- ognuna col suo BA: con piu' di uno la domanda non ha una risposta,
+                  -- e la funzione non ne sceglie uno (niente LIMIT 1).
+                  SELECT min(ba.id)
+                    INTO v_billing_account_id
+                    FROM anagrafiche.billing_account ba
+                   WHERE ba.istanza_utility_id = p_istanza_id
+                  HAVING count(*) = 1;
+
+                  RETURN v_billing_account_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_billing_account_by_istanza(bigint)
+              IS 'Resolver di lettura: il billing account dell''istanza, SE l''istanza ne ha uno solo; NULL se ne ha piu'' d''uno (istanza con piu'' utility) o input NULL/<=0. Mai un LIMIT 1. ⚠️ IN RITIRO (2026-10-08): il suo consumatore, il dettaglio pratica del backend, deve leggere pratiche.billing_account_id (20261008-63, D-9); quando non lo chiama piu'' nessuno si cancella. Fino al 2026-10-08 leggeva il BA del cliente dell''istanza con ORDER BY id DESC LIMIT 1, contando su «un cliente per istanza» (non piu'' vero: un cliente per BA, 20261008-64). Brief: brief-db-istanza-nasce-col-ba (R-8).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_billing_account_by_istanza(
+                  p_istanza_id anagrafiche.istanze_utilities.id%TYPE
+              )
+              RETURNS anagrafiche.clienti.billing_account_id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              DECLARE
+                  v_billing_account_id anagrafiche.clienti.billing_account_id%TYPE;
+              BEGIN
+
+                  IF p_istanza_id IS NULL OR p_istanza_id <= 0 THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT c.billing_account_id
+                    INTO v_billing_account_id
+                    FROM anagrafiche.clienti c
+                   WHERE c.istanza_utility_id = p_istanza_id
+                   ORDER BY c.id DESC
+                   LIMIT 1;
+
+                  RETURN v_billing_account_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_billing_account_by_istanza(bigint)
+              IS 'Resolver di lettura: billing_account_id del cliente attivo per l''istanza utility, NULL se prospect (nessun cliente) o input NULL/<=0. Specchio di fn_get_stato_cliente_by_istanza. Coerenza (istanza,BA) garantita dalla FK fk_clienti_billing_account. Consumata dal dettaglio pratica (contesto cliente per i documenti aperti dal flusso).';

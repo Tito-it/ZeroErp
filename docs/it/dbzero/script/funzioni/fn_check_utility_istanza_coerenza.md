@@ -14,48 +14,25 @@ CREATE OR REPLACE FUNCTION script.fn_check_utility_istanza_coerenza(p_istanza_ut
  STABLE
 AS $function$
 BEGIN
-    -- Guard input: NULL su entrambi -> incoerente per default
+    -- Guard input: un valore mancante e' incoerente.
     IF p_istanza_utility_id IS NULL OR p_utility_id IS NULL THEN
         RETURN false;
     END IF;
 
-    -- Fonte 1: billing_account
-    -- UNIQUE (istanza_utility_id, utility_id) tramite uq_billing_instance_utility
-    IF EXISTS (
-        SELECT 1 FROM anagrafiche.billing_account
-         WHERE istanza_utility_id = p_istanza_utility_id
-           AND utility_id         = p_utility_id
-    ) THEN
-        RETURN true;
-    END IF;
-
-    -- Fonte 2: istanze_dati_precontrattuali
-    -- UNIQUE (istanza_utility_id, utility_id)
-    IF EXISTS (
-        SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali
-         WHERE istanza_utility_id = p_istanza_utility_id
-           AND utility_id         = p_utility_id
-    ) THEN
-        RETURN true;
-    END IF;
-
-    -- Fonte 3: clienti
-    -- (istanza_utility_id, utility_id) entrambi presenti, no UNIQUE esplicito
-    -- ma per costruzione 1:1 cliente <-> istanza
-    IF EXISTS (
-        SELECT 1 FROM anagrafiche.clienti
-         WHERE istanza_utility_id = p_istanza_utility_id
-           AND utility_id         = p_utility_id
-    ) THEN
-        RETURN true;
-    END IF;
-
-    RETURN false;
+    -- Una sola fonte: il billing account della coppia
+    -- (uq_billing_instance_utility). Dati precontrattuali e
+    -- cliente lo implicano per FK (regola per coppia, D-2).
+    RETURN EXISTS (
+        SELECT 1
+          FROM anagrafiche.billing_account ba
+         WHERE ba.istanza_utility_id = p_istanza_utility_id
+           AND ba.utility_id         = p_utility_id
+    );
 END
 $function$
 
 COMMENT ON FUNCTION script.fn_check_utility_istanza_coerenza(p_istanza_utility_id bigint, p_utility_id integer)
-IS 'Pure check (no raise): true se la coppia (istanza_utility_id, utility_id) e'' coerente con almeno 1 fonte satellite (billing_account, istanze_dati_precontrattuali, clienti). Lista fonti allineata a anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata. Riusabile cross-tabella (preventivi, attivita_fatturabili, ...).';
+IS 'Pure check (no raise): true se la coppia (istanza_utility_id, utility_id) ha il suo billing account. ⚠️ rev 2026-10-08: fino a quel giorno le fonti erano tre (billing_account, istanze_dati_precontrattuali, clienti); con la regola di Tid «istanza e BA nascono insieme, per coppia» (D-2) le altre due implicano il BA per FK, e la fonte e'' una. Non e'' la regola del constraint trigger dell''istanza (almeno un BA): questa guarda la coppia. Chiamanti: vendite.trgfn_preventivi_guard_utility_istanza_coerenza e il backend (lookup istanze per utility, pre-validazione del preventivo). Brief: brief-db-istanza-nasce-col-ba (R-1).';
 ```
 
 ---

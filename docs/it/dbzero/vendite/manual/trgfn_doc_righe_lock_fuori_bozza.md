@@ -26,7 +26,7 @@ con due argomenti obbligatori e due facoltativi.
 
 | `TG_ARGV` | Cosa | Esempio |
 | --- | --- | --- |
-| `[0]` | tipo di documento, per il lettore di stato (`DDT`, `ORDINE`, `CONTRATTO`, `OFFERTA`, `RESO`) | `'DDT'` |
+| `[0]` | tipo di documento, per il lettore di stato (`DDT`, `ORDINE`, `CONTRATTO`, `OFFERTA`, `RESO`, `PREVENTIVO`) | `'DDT'` |
 | `[1]` | colonna della riga che porta l'id del padre | `'ddt_id'` |
 | `[2]` (opz.) | `codice_interno` dello stato «bozza», default `DRAFT` | `'BOZZA'` per l'offerta |
 | `[3]` (opz., dal 2026-10-05) | **livello** del padre: `TESTATA` (default) se la colonna punta alla testata, `RIGA` se punta a una riga del documento (tabelle *nipoti*) | `'RIGA'` per i componenti |
@@ -94,6 +94,9 @@ per rifiutare*.
 | `vendite.contratti_righe_componenti` | `trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05, livello `RIGA`) | INSERT, UPDATE, DELETE |
 | `vendite.offerte_commerciali_eccezioni_componenti` | `trg_oce_comp_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05, livello `RIGA`, stato bozza `BOZZA`) | INSERT, UPDATE, DELETE |
 | `vendite.resi_righe_rientri` | `trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05, livello `RIGA`) | INSERT, UPDATE, DELETE |
+| `vendite.preventivi_righe_componenti` | `trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-08, livello `RIGA`, tipo `PREVENTIVO`) | INSERT, UPDATE, DELETE |
+| `vendite.ordini_righe_componenti` | `trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-08, livello `RIGA`) | INSERT, UPDATE, DELETE |
+| `vendite.ddt_righe_componenti` | `trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-08, livello `RIGA`) | INSERT, UPDATE, DELETE |
 
 ⚠️ **Sugli ordini `INSERT` e `UPDATE` restano aperti, ed è una decisione**
 (Tid, 14 settembre, voce «la promessa di consegna dopo la conferma» in
@@ -106,7 +109,15 @@ questa apertura (test 14), così un allargamento futuro sarà deliberato: è un
 I **preventivi** sono il candidato successivo (`_STATI_RIGHE_MODIFICABILI =
 {DRAFT}` anche lì), ma non in questo giro: il flusso di approvazione prezzo
 scrive `stato_approvazione_prezzo` sulle righe, e va censito prima di chiudere
-la porta.
+la porta. I loro **componenti** invece sono chiusi dal 2026-10-08: il flusso di
+approvazione non li scrive (censimento del BE, `brief-db-righe-e-componenti-le-altre-famiglie` §3.1).
+
+⚠️ **Il prezzo delle porte aperte sulle righe** (2026-10-08). Sulle righe d'ordine e
+su quelle del preventivo la quantità a DB si cambia anche fuori bozza; sui
+componenti no. Su una riga **kit** il cambio lo respinge quindi il lock del
+componente, attraverso la propagazione della quantità; su una riga semplice
+passa. Il lock dei componenti è giusto, il debito è sulle righe: §1 di
+`brief-db-righe-e-componenti-debiti-residui`.
 
 ---
 

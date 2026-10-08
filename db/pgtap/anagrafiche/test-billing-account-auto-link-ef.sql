@@ -141,27 +141,32 @@ BEGIN
     END IF;
 
     -- ⭐ FINESTRA DIFFERITA: `trg_istanze_utilities_z90_require_utility_dichiarata_ins`
-    --   e' un CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che pretende un
-    --   satellite (BA / dati precontrattuali / cliente). Il preambolo
-    --   obbligatorio lo fa scattare sul primo insert: si apre la finestra, si
-    --   costruisce istanza + satellite, e si RICHIUDE.
+    --   e' un CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che pretende il
+    --   billing account. Il preambolo obbligatorio lo fa scattare sul primo
+    --   insert: si apre la finestra qui.
+    --   ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): fino a quel
+    --   giorno ogni istanza si completava con una riga precontrattuale e la
+    --   finestra si richiudeva subito. Ora quella riga pretende il BA della sua
+    --   coppia, e il BA e' il SOGGETTO dei test 1-3: la finestra resta APERTA e
+    --   si richiude in coda al file, quando ogni istanza ha il suo BA. E' la
+    --   forma vera dell'operazione: istanza e BA nella stessa transazione.
+    --   Lo slot 4 riusa l'istanza dello slot 3: il suo INSERT e' rifiutato dal
+    --   guard BEFORE (test 4), quindi un'istanza sua resterebbe senza BA.
     SET CONSTRAINTS ALL DEFERRED;
 
-    FOR v_i IN 1..4 LOOP
+    FOR v_i IN 1..3 LOOP
         v_sfx := substring(md5(clock_timestamp()::text || v_i::text) from 1 for 8);
 
         INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
         VALUES (v_seed.soggetto_id, true, 'PGTAP-AUTOLINK-IU-' || v_i || '-' || v_sfx)
         RETURNING id INTO v_iu;
 
-        INSERT INTO anagrafiche.istanze_dati_precontrattuali (istanza_utility_id, utility_id)
-        VALUES (v_iu, v_seed.utility_id);
-
         INSERT INTO tmp_link_templates
         VALUES (v_i, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, current_date);
     END LOOP;
 
-    SET CONSTRAINTS ALL IMMEDIATE;
+    INSERT INTO tmp_link_templates
+    VALUES (4, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, current_date);
 END $seed$;
 
 -- Tabella di appoggio per i risultati intermedi (creata fuori da qualunque
@@ -381,6 +386,12 @@ SELECT is(
     'E_BA_ADMIN_GLOBALE_VIETATO',
     'Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata (E_BA_ADMIN_GLOBALE_VIETATO)'
 );
+
+-- La finestra differita si richiude QUI: le istanze degli slot 1-3 hanno il
+-- loro billing account (test 1-3) e il constraint trigger lo verifica. Se uno
+-- dei test e' morto, la sua istanza e' senza BA e il file si ferma su
+-- E_ISTANZA_SENZA_BA: il rosso del test e' gia' stampato sopra.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT * FROM finish();
 ROLLBACK;

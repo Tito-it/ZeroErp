@@ -20,7 +20,7 @@
 --
 -- ⛔ COSA PRESIDIA:
 --   · B2/B4: le due coppie di gemelle hanno gli stessi tipi, e la stessa
---     nullabilita' (salvo user_update dei componenti, DICHIARATA); il prezzo
+--     nullabilita' (anche user_update dei componenti, dal 20261008-31); il prezzo
 --     al limite dell'offerta arriva nel contratto;
 --   · B1: la revisione porta i componenti (anche lo spento), rimappati, e il
 --     push li porta nel contratto;
@@ -34,12 +34,12 @@
 --   1) righe: stessi tipi sulle colonne comuni
 --   2) componenti: stessi tipi sulle colonne comuni
 --   3) righe: stessa nullabilita'
---   4) componenti: nullabilita' diversa SOLO su user_update (dichiarata)
+--   4) componenti: stessa nullabilita' (user_update NOT NULL anche sul contratto dal 20261008-31)
 --   5) fn_get_testata_id_di_riga: DEFINER del proprietario delle righe, search_path chiuso
 --   6) fn_get_testata_id_di_riga: contratto, offerta, riga assente, id non positivo
 --   7) fn_get_testata_id_di_riga: tipo sconosciuto -> E_DOC_TIPO_NON_GESTITO
 --   8) building block: livello sconosciuto -> E_DOC_RIGHE_LOCK_MONTAGGIO
---   9) tre adottanti a livello RIGA, con gli argomenti giusti
+--   9) sei adottanti a livello RIGA, con gli argomenti giusti (tre dal 20261008-34)
 --  10) su ogni nipote il lock e' il primo BEFORE ROW
 --  11) rientri: la copia ritirata, il guard di coerenza in _a10_ su INSERT/UPDATE
 --  12) revisione: stessi componenti della rev1 (anche lo spento)
@@ -274,14 +274,16 @@ SELECT is(
     '',
     '3) righe: stessa nullabilita'' (attivo e meta NOT NULL anche sul contratto)');
 
--- ⚠️ Dichiarata, non dimenticata: user_update e' NOT NULL sul componente
---   dell'offerta (la regola delle colonne di audit) e nullable altrove; il push
---   non la copia. Il giorno in cui si allinea la famiglia, questo test cambia.
+-- 🔄 rev 2026-10-08: fino al 20261008-31 user_update era NOT NULL sul
+--   componente dell'offerta e nullable altrove, e questo test pinnava
+--   l'asimmetria come dichiarata. Il 20261008-31 ha allineato la famiglia
+--   (linee-guida-sql §7): ora nessuna differenza. Brief:
+--   brief-db-righe-e-componenti-le-altre-famiglie §2.3.
 SELECT is(
     pg_temp.differenze('vendite.contratti_righe_componenti',
                        'vendite.offerte_commerciali_eccezioni_componenti', 'null'),
-    'user_update',
-    '4) componenti: nullabilita'' diversa solo su user_update (asimmetria dichiarata nel brief)');
+    '',
+    '4) componenti: stessa nullabilita'' (user_update NOT NULL su entrambi)');
 
 -- ============================================================
 -- 5..11 — B3: il lettore, il building block, gli adottanti
@@ -290,14 +292,18 @@ SELECT ok(
     (SELECT p.prosecdef
             AND p.provolatile = 's'
             AND p.proconfig @> ARRAY['search_path=pg_catalog, public, pg_temp']   -- pg_temp in coda dal 20261005-27 (D6-bis)
-            AND (SELECT bool_and(c.relowner = p.proowner) AND count(*) = 3
+            AND (SELECT bool_and(c.relowner = p.proowner) AND count(*) = 6
                    FROM pg_class c
                   WHERE c.oid IN ('vendite.contratti_righe'::regclass,
                                   'vendite.offerte_commerciali_eccezioni'::regclass,
-                                  'vendite.resi_righe'::regclass))
+                                  'vendite.resi_righe'::regclass,
+                                  -- dal 20261008-33
+                                  'vendite.preventivi_righe'::regclass,
+                                  'vendite.ordini_righe'::regclass,
+                                  'vendite.ddt_righe'::regclass))
        FROM pg_proc p
       WHERE p.oid = 'script.fn_get_testata_id_di_riga(text, bigint)'::regprocedure),
-    '5) fn_get_testata_id_di_riga: DEFINER del PROPRIETARIO delle tre tabelle di righe, STABLE, search_path chiuso');
+    '5) fn_get_testata_id_di_riga: DEFINER del PROPRIETARIO delle sei tabelle di righe, STABLE, search_path chiuso');
 
 SELECT is(
     concat_ws(',',
@@ -310,8 +316,10 @@ SELECT is(
     't,t,t,t,t',
     '6) fn_get_testata_id_di_riga: la testata della riga; NULL per riga assente o id non positivo');
 
+-- 🔄 rev 2026-10-08: l'esempio era 'DDT', che dal 20261008-33 il lettore
+--   conosce. Un valore che nessun documento si chiamera' mai.
 SELECT is(
-    pg_temp.canali($$SELECT script.fn_get_testata_id_di_riga('DDT', 1)$$),
+    pg_temp.canali($$SELECT script.fn_get_testata_id_di_riga('TIPO_INESISTENTE', 1)$$),
     'P0001 / E_DOC_TIPO_NON_GESTITO / -',
     '7) fn_get_testata_id_di_riga: un tipo fuori elenco e'' un errore di chiamante');
 
@@ -331,9 +339,12 @@ SELECT is(
       WHERE NOT t.tgisinternal AND p.proname = 'trgfn_doc_righe_lock_fuori_bozza'
         AND pg_get_triggerdef(t.oid) LIKE '%''RIGA''%'),
     'contratti_righe_componenti:trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt:''CONTRATTO'', ''riga_contratto_id'', ''DRAFT'', ''RIGA'''
+    ' | ddt_righe_componenti:trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt:''DDT'', ''riga_ddt_id'', ''DRAFT'', ''RIGA'''
     ' | offerte_commerciali_eccezioni_componenti:trg_oce_comp_a05_doc_bozza_ins_upd_dlt:''OFFERTA'', ''eccezione_offerta_id'', ''BOZZA'', ''RIGA'''
+    ' | ordini_righe_componenti:trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt:''ORDINE'', ''riga_ordine_id'', ''DRAFT'', ''RIGA'''
+    ' | preventivi_righe_componenti:trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt:''PREVENTIVO'', ''riga_preventivo_id'', ''DRAFT'', ''RIGA'''
     ' | resi_righe_rientri:trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt:''RESO'', ''resi_riga_id'', ''DRAFT'', ''RIGA''',
-    '9) tre adottanti a livello RIGA: componenti di contratto e offerta, rientri del reso');
+    '9) sei adottanti a livello RIGA: componenti di tutti i documenti di vendita, rientri del reso');
 
 -- Fra i BEFORE ROW parla per primo il nome minore: su ogni nipote dev'essere il lock.
 SELECT is(
@@ -345,10 +356,17 @@ SELECT is(
                 AND (t.tgtype & 1) = 1      -- FOR EACH ROW
                 AND c.oid IN ('vendite.contratti_righe_componenti'::regclass,
                               'vendite.offerte_commerciali_eccezioni_componenti'::regclass,
-                              'vendite.resi_righe_rientri'::regclass)
+                              'vendite.resi_righe_rientri'::regclass,
+                              -- dal 20261008-34
+                              'vendite.preventivi_righe_componenti'::regclass,
+                              'vendite.ordini_righe_componenti'::regclass,
+                              'vendite.ddt_righe_componenti'::regclass)
               GROUP BY c.relname) x),
     'contratti_righe_componenti=trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt'
+    ' ddt_righe_componenti=trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt'
     ' offerte_commerciali_eccezioni_componenti=trg_oce_comp_a05_doc_bozza_ins_upd_dlt'
+    ' ordini_righe_componenti=trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt'
+    ' preventivi_righe_componenti=trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt'
     ' resi_righe_rientri=trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt',
     '10) su ogni tabella nipote il rifiuto di stato e'' il primo BEFORE ROW');
 

@@ -16,18 +16,26 @@ AS $function$
 --        nel modello a DUE RAMI indipendenti dal soggetto:
 --            soggetto -> soggetto_ruolo   (pratiche su ruoli)
 --            soggetto -> istanza_utility  (pratiche pre-contrattuali)
---        L'istanza puo' essere agganciata senza alcun ruolo
---        (prospect puro): l'istanza nasce prima del contratto, il
---        ruolo CLIENTE arriva a valle con il billing account.
+--        L'istanza puo' essere agganciata senza ruolo sulla pratica.
+--        ⚠️ rev 2026-10-08: non e' piu' un «prospect puro» — l'istanza
+--        nasce col suo billing account, e il ruolo CLIENTE con lui
+--        (brief-db-istanza-nasce-col-ba). Il BA della pratica
+--        (billing_account_id, aggancio a grana fine del cliente) e'
+--        del ruolo della pratica: regola 5.
 --        Tutti i campi sono opzionali (pratica interna = tutti NULL).
 -- Regole:
 --   1. soggetto_ruolo_id NOT NULL -> soggetto_id obbligatorio
 --   2. istanza_utility_id NOT NULL -> soggetto_id obbligatorio
 --   3. soggetto_ruolo_id deve appartenere a soggetto_id
 --   4. istanza_utility_id deve appartenere a soggetto_id
+--   5. billing_account_id deve essere del soggetto_ruolo_id
+--      (l'istanza la lega la FK composta, la presenza dell'istanza
+--      chk_pratiche_ba_con_istanza)
 DECLARE
     v_soggetto_id_ruolo   anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
     v_soggetto_id_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
+    v_ba_ruolo_id         anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+    v_ba_codice           anagrafiche.billing_account.codice%TYPE;
 BEGIN
     -- Regola 1: ruolo richiede soggetto (ramo ruolo)
     IF NEW.soggetto_ruolo_id IS NOT NULL AND NEW.soggetto_id IS NULL THEN
@@ -106,12 +114,39 @@ BEGIN
         END IF;
     END IF;
 
+    -- Regola 5: il BA della pratica e' del ruolo della pratica.
+    --   Un ruolo NULL con un BA e' incoerente quanto un ruolo diverso:
+    --   il BA dice di quale cliente parla la pratica, il ruolo chi e'.
+    IF NEW.billing_account_id IS NOT NULL THEN
+        SELECT ba.soggetto_ruolo_id, ba.codice
+          INTO v_ba_ruolo_id, v_ba_codice
+          FROM anagrafiche.billing_account ba
+         WHERE ba.id = NEW.billing_account_id;
+
+        IF v_ba_ruolo_id IS NULL
+           OR v_ba_ruolo_id IS DISTINCT FROM NEW.soggetto_ruolo_id THEN
+            PERFORM script.fn_log_and_raise_error(
+                'pratiche',
+                'pratiche.trgfn_pratiche_guard_contesto',
+                'E_PRATICHE_BA_NON_COERENTE',
+                jsonb_build_object(
+                    'campo', 'billing_account_id',
+                    'billing_account_id', NEW.billing_account_id,
+                    'soggetto_ruolo_id', NEW.soggetto_ruolo_id,
+                    'soggetto_ruolo_id_ba', v_ba_ruolo_id
+                ),
+                NULL::uuid,
+                COALESCE(v_ba_codice::text, NEW.billing_account_id::text)
+            );
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION pratiche.trgfn_pratiche_guard_contesto()
-IS 'BEFORE INSERT OR UPDATE su pratiche.pratiche: coerenza del contesto anagrafico (soggetto / soggetto_ruolo / istanza_utility). Codici rinominati il 2026-08-05 (20260805-20): E_PRATICHE_RUOLO_SENZA_SOGGETTO (846), E_PRATICHE_RUOLO_NON_COERENTE (847), E_PRATICHE_ISTANZA_NON_COERENTE (848), E_PRATICHE_ISTANZA_SENZA_SOGGETTO (849). I vecchi nomi senza prefisso restano a catalogo, ritirati con obsoleto_dal.';
+IS 'BEFORE INSERT OR UPDATE su pratiche.pratiche: coerenza del contesto anagrafico (soggetto / soggetto_ruolo / istanza_utility / billing_account). Codici rinominati il 2026-08-05 (20260805-20): E_PRATICHE_RUOLO_SENZA_SOGGETTO (846), E_PRATICHE_RUOLO_NON_COERENTE (847), E_PRATICHE_ISTANZA_NON_COERENTE (848), E_PRATICHE_ISTANZA_SENZA_SOGGETTO (849). I vecchi nomi senza prefisso restano a catalogo, ritirati con obsoleto_dal. rev 2026-10-08 (20261008-66): regola 5, il billing account della pratica e'' del suo ruolo (E_PRATICHE_BA_NON_COERENTE); il trigger scatta anche su billing_account_id. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).';
 ```
 
 ---

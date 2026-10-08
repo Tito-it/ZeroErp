@@ -12,7 +12,7 @@
 --   5)  FK fk_contrighe_comp_articolo_componente esiste
 --   6)  FK fk_contrighe_comp_componente esiste
 --   7)  UNIQUE uq_contrighe_comp_riga_art_comp esiste
---   8)  CHECK chk_contrighe_comp_quantita_pos esiste
+--   8)  CHECK chk_contrighe_comp_quantita_nz: nome e definizione (quantita <> 0)
 --   9)  Trigger trgfn_componenti_check_prezzo_obbligatorio registrato
 --       (modello unificato: CHECK prezzo<>0 rimosso, sostituito da trigger condizionale)
 --   10) CHECK chk_contrighe_comp_origine esiste
@@ -122,9 +122,17 @@ SELECT has_unique(
 -- =========================================================
 -- 8) CHECK quantita <> 0
 -- =========================================================
-SELECT has_check(
-    'vendite', 'contratti_righe_componenti',
-    '8) CHECK chk_contrighe_comp_quantita_pos esiste'
+-- ⚠️ Rev. 2026-10-08 (20261008-30): il vincolo si chiama _nz, non _pos — vieta
+--    lo zero, non il negativo. Prima qui c'era has_check(schema, tabella,
+--    descrizione), che verifica che esista UN check qualunque: il nome stava
+--    solo nella descrizione. Ora si leggono nome e definizione dal catalogo.
+SELECT is(
+    (SELECT pg_get_constraintdef(c.oid)
+       FROM pg_constraint c
+      WHERE c.conrelid = 'vendite.contratti_righe_componenti'::regclass
+        AND c.conname  = 'chk_contrighe_comp_quantita_nz'),
+    'CHECK ((quantita <> (0)::numeric))',
+    '8) CHECK chk_contrighe_comp_quantita_nz: quantita <> 0'
 );
 
 -- =========================================================

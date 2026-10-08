@@ -75,16 +75,17 @@ SELECT is(
 -- 0.3: Una istanza_utility senza record per utility_id=2
 -- ⚠️ rev 2026-09-23: l'istanza si PESCAVA («la prima senza dati GAS»): su
 --   un database ricostruito non ce n'e' nessuna. Ora viene da un cliente
---   COSTRUITO con dbops.fn_pgtap_crea_cliente_ba, sull'utility di default
---   (non GAS): l'istanza nasce senza dati precontrattuali GAS per
---   costruzione. ⛔ Cio' che il builder scrive si legge in un'istruzione
---   SEPARATA.
+--   COSTRUITO con dbops.fn_pgtap_crea_cliente_ba. ⛔ Cio' che il builder
+--   scrive si legge in un'istruzione SEPARATA.
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): il cliente si
+--   costruisce sul BA GAS. Fino a quel giorno nasceva su un'altra utility
+--   «apposta», e i dati GAS si scrivevano su una coppia (istanza, GAS) senza
+--   BA: e' il caso che fk_idp_billing_account_coppia ora rifiuta. L'istanza
+--   nasce comunque senza dati precontrattuali GAS: il builder non li scrive.
 CREATE TEMP TABLE tmp_cli_idp AS
 SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
     'dati precontrattuali',
-    (SELECT u.id FROM config.utilities u
-      WHERE u.id <> (SELECT utility_id FROM tmp_costanti_idp)
-      ORDER BY u.id LIMIT 1));
+    (SELECT utility_id FROM tmp_costanti_idp));
 
 CREATE TEMP TABLE tmp_istanza_utility AS
 SELECT c.istanza_utility_id
@@ -108,30 +109,28 @@ WHERE meta ->> 'test_scope' = (SELECT test_scope FROM tmp_costanti_idp);
 -- 1) Verifica vincoli FK (errori attesi)
 -- ============================================================
 
--- 1.1: utility_id inesistente → FK violation
-SELECT throws_ok(
-    $$
-    INSERT INTO anagrafiche.istanze_dati_precontrattuali (
-        istanza_utility_id,
-        utility_id,
-        classe_utenza_id,
-        param_1_num,
-        param_2_txt,
-        meta
-    )
-    SELECT
-        iu.istanza_utility_id,
-        -1,
-        cu.classe_utenza_id,
-        1.00,
-        'TEST-FK-UTILITY',
-        jsonb_build_object('test_scope', 'pgtap_istanze_dati_precontrattuali')
-    FROM tmp_istanza_utility iu,
-         tmp_classe_utenza cu;
-    $$,
-    '23503',
-    NULL,
-    'FK violation su utility_id inesistente'
+-- 1.1: utility_id -> config.utilities: FK, letta dal CATALOGO
+-- ⛔ Non per INSERT (rev 2026-10-08). Sotto RLS il WITH CHECK della policy
+--   (script.fn_scope_ef_whitelist_via_coppia) vede la coppia solo attraverso
+--   il suo BA, e PostgreSQL lo valuta all'INSERT PRIMA della FK: una utility
+--   inesistente non ha BA, quindi col runner app la riga esce 42501 e la FK
+--   non si raggiunge mai (come owner darebbe 23503). Era il rosso
+--   ASSERZIONE della baseline CI dal 2026-09-09. Pinnare il 42501 sarebbe
+--   pinnare il sintomo: la regola e' la FK.
+SELECT is(
+    -- ⚠️ nome della tabella da pg_class/pg_namespace: regclass::text
+    --   omette lo schema secondo il search_path di chi legge
+    (SELECT string_agg(a.attname || '->' || rn.nspname || '.' || rc.relname, ',')
+       FROM pg_constraint c
+       JOIN pg_attribute a  ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+       JOIN pg_class rc     ON rc.oid = c.confrelid
+       JOIN pg_namespace rn ON rn.oid = rc.relnamespace
+      WHERE c.contype  = 'f'
+        AND c.conrelid = 'anagrafiche.istanze_dati_precontrattuali'::regclass
+        AND c.conname  = 'fk_idp_utilities'
+        AND c.confrelid = 'config.utilities'::regclass),
+    'utility_id->config.utilities',
+    'FK fk_idp_utilities: utility_id verso config.utilities'
 );
 
 -- 1.2: classe_utenza_id inesistente → FK violation
@@ -160,30 +159,23 @@ SELECT throws_ok(
     'FK violation su classe_utenza_id inesistente'
 );
 
--- 1.3: istanza_utility_id inesistente → FK violation
-SELECT throws_ok(
-    $$
-    INSERT INTO anagrafiche.istanze_dati_precontrattuali (
-        istanza_utility_id,
-        utility_id,
-        classe_utenza_id,
-        param_1_num,
-        param_2_txt,
-        meta
-    )
-    SELECT
-        -1,
-        k.utility_id,
-        cu.classe_utenza_id,
-        1.00,
-        'TEST-FK-ISTANZA',
-        jsonb_build_object('test_scope', 'pgtap_istanze_dati_precontrattuali')
-    FROM tmp_costanti_idp k,
-         tmp_classe_utenza cu;
-    $$,
-    '23503',
-    NULL,
-    'FK violation su istanza_utility_id inesistente'
+-- 1.3: istanza_utility_id -> anagrafiche.istanze_utilities: FK, dal CATALOGO
+-- ⛔ Non per INSERT, per la stessa ragione dell'1.1: un'istanza inesistente
+--   non ha BA, e il WITH CHECK della policy parla (42501) prima della FK.
+SELECT is(
+    -- ⚠️ nome della tabella da pg_class/pg_namespace: regclass::text
+    --   omette lo schema secondo il search_path di chi legge
+    (SELECT string_agg(a.attname || '->' || rn.nspname || '.' || rc.relname, ',')
+       FROM pg_constraint c
+       JOIN pg_attribute a  ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+       JOIN pg_class rc     ON rc.oid = c.confrelid
+       JOIN pg_namespace rn ON rn.oid = rc.relnamespace
+      WHERE c.contype  = 'f'
+        AND c.conrelid = 'anagrafiche.istanze_dati_precontrattuali'::regclass
+        AND c.conname  = 'fk_idp_istanze_utilities'
+        AND c.confrelid = 'anagrafiche.istanze_utilities'::regclass),
+    'istanza_utility_id->anagrafiche.istanze_utilities',
+    'FK fk_idp_istanze_utilities: istanza_utility_id verso anagrafiche.istanze_utilities'
 );
 
 -- ============================================================

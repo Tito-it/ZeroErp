@@ -223,8 +223,9 @@ CREATE TEMP TABLE _rev AS
 SELECT r.nuovo_preventivo_id, r.nuova_rev
   FROM vendite.fn_crea_revisione_preventivo((SELECT preventivo_id FROM _preventivo), 'pgtap') r;
 
--- La riga della rev N+1 si riconosce per `ordine`, che la revisione copia:
--- e' la stessa chiave con cui la funzione rimappa i componenti.
+-- La riga della rev N+1 si riconosce per `ordine`, che la revisione copia.
+-- (Fino al 20261008-35 era anche la chiave con cui la funzione rimappava i
+-- componenti; ora li lega per identita', col RETURNING della riga.)
 CREATE TEMP TABLE _righe_rev AS
 SELECT pr.ordine, pr.stato_approvazione_prezzo, pr.pratica_approvazione_prezzo_id, pr.id AS riga_rev_id
   FROM vendite.preventivi_righe pr
