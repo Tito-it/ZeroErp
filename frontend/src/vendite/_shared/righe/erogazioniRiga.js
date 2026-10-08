@@ -53,14 +53,17 @@ export function combinazioneDefault(combinazioni) {
 }
 
 // Scopo: la fonte dopo che l'operatore ha cambiato erogazione: la stessa se
-//        l'articolo la ammette ancora con la nuova; l'unica ammessa se e' una
-//        sola; altrimenti null, e la sceglie l'operatore. ⛔ Fra piu' fonti il
-//        form non sceglie: quale preferire e' una regola del DB (il trigger
-//        d'eredita'), non una da ricopiare qui.
+//        l'articolo la ammette ancora con la nuova; altrimenti la PRIMA che il
+//        DB elenca per quell'erogazione, null se nessuna. ⭐ E' quella che il DB
+//        scriverebbe (§D.4 punto 1 di brief-db-offerta-emissione-ed-erogazione):
+//        la lista arriva nell'ordine della sede unica (`ordine` di
+//        `vendite.fn_articolo_erogazioni`, DERIVATA_COMPONENTI per ultima), lo
+//        stesso che legge il trigger d'eredita'. ⛔ Il form non ordina: prende la
+//        prima com'e' arrivata.
 export function fonteDopoCambioErogazione(combinazioni, tipo, fonteCorrente) {
   const fonti = (combinazioni ?? [])
     .filter((c) => c.tipo_erogazione === tipo)
     .map((c) => c.fonte_quantita_attesa)
   if (fonti.includes(fonteCorrente)) return fonteCorrente
-  return fonti.length === 1 ? fonti[0] : null
+  return fonti[0] ?? null
 }

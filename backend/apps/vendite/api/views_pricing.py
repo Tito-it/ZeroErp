@@ -17,7 +17,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
-from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
 from apps.core.api.request_parsers import parse_iso_date
@@ -333,7 +333,9 @@ class PricingLimitiUtenteView(DomainAPIView):
                 description=(
                     "Opzionale. ID del billing account destinatario: se "
                     "presente, la cascata include il livello categoria_cliente "
-                    "del BA. Senza, il livello categoria viene saltato."
+                    "del BA. Senza, il livello categoria viene saltato. "
+                    "Non numerico o <= 0 → 400 E_VALIDATION_INPUT; BA inesistente "
+                    "o fuori scope → 404 E_ANAG_NOT_FOUND."
                 ),
             ),
         ],
@@ -355,17 +357,12 @@ class PricingLimitiUtenteView(DomainAPIView):
             param_service.get_emittente_fiscale_id_for_user(auth_user_id)
             if auth_user_id is not None else None
         )
-        categoria_cliente_id: int | None = None
-        ba_id_raw = request.query_params.get("billing_account_id")
-        if ba_id_raw:
-            try:
-                ba_id = int(ba_id_raw)
-            except (TypeError, ValueError):
-                ba_id = None
-            if ba_id is not None and ba_id > 0:
-                categoria_cliente_id = (
-                    BillingAccountRepository().get_categoria_cliente_id(ba_id)
-                )
+        # BA malformato → 400, BA che non risulta (inesistente o fuori scope
+        # RLS) → 404 (F-6): prima saltavano il livello categoria in silenzio, e
+        # il drawer mostrava la soglia generica come se fosse quella del cliente.
+        categoria_cliente_id = categoria_cliente_da_query(
+            request.query_params.get("billing_account_id"),
+        )
         values = param_service.get_defaults(
             [PARAM_MAX_SCONTO_PCT, PARAM_MAX_MAGGIORAZIONE_PCT],
             django_user_id=auth_user_id,

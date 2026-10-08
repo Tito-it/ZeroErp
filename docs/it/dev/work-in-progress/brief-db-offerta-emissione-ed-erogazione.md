@@ -12,7 +12,8 @@
 > (2026-10-07, §D): restano il collaudo a video di Tid (§D.5) e l'archiviazione in `work-done/`.
 > **✅ Secondo giro DB (§E): le tre domande del §D.4, decise da Tid.** ChangeSet
 > `20261007-28 → -30` e `-66 → -68` applicati da Tid il 2026-10-08, pgTAP verdi su dbdev.
-> **⏳ Resta il secondo giro BE/FE (§E.5)**, poi il collaudo e l'archiviazione.
+> **⏳ Secondo giro BE/FE (§E.5) in parte fatto; serve un terzo giro DB (§F: F-1 la quantità
+> calcolata, F-2 il listino del documento), poi il resto del BE/FE, il collaudo e l'archiviazione.**
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
 > **Le decisioni** (di Tid, 2026-10-07) stanno in §C.5 e in coda al §C.7: A-D1 chiusa dal modello,
 > A-D2 il contratto non si attiva senza versione in vigore, A-D3 la revisione congela alla sua
@@ -1027,3 +1028,83 @@ DB; FE: niente quantità con una fonte a valle, la prima fonte dell'erogazione p
 doc `api_contratti.md`, `api_offerte.md`, `modello-contratti.md`), il collaudo a video del §D.5
 e l'archiviazione del brief in `work-done/`.
 
+
+## F. Terzo giro DB: ciò che il secondo giro BE/FE non può chiudere (`dev/backend-tid`, 2026-10-08)
+
+> **Chi scrive:** sessione BE/FE, dopo l'analisi completa del §E.5. **A chi:** team DB.
+> **Decisioni:** di Tid, 2026-10-08: F-1 come proposto; F-2 con utility **ed** emittente.
+> Il resto del §E.5 il BE/FE lo fa senza aspettare (§F.3). Le due voci sono indipendenti.
+
+### F.1 La quantità calcolata segue la fonte (D.4.2)
+
+**Il difetto.** Una riga ha due quantità: `qta_operativa`, che scrive l'operatore, e `quantita`,
+che il DB calcola dalla prima (`script.trgfn_qta_from_operativa`). Quando la riga passa a una fonte a
+valle (MANUALE, LETTURE, TIMESHEET) vanno vuote tutte e due. Il form manda `qta_operativa = NULL`
+(non manda mai `quantita`), ma `trgfn_qta_from_operativa`, con `qta_operativa` NULL e fonte ≠ FISSA,
+esce senza toccare `quantita`. Il guard `trgfn_righe_guard_quantita_per_fonte` trova la `quantita`
+rimasta e rifiuta `E_RIGA_QUANTITA_CON_FONTE_A_VALLE` sul campo `quantita`, che il form non ha.
+
+* Sul **contratto** oggi non si vede: `_apply_fonte_quantita_logic` (BE) svuota ancora `quantita`, ed
+  è la copia che il §E.5 chiede di ritirare. Ritirata, il difetto compare.
+* Sull'**offerta** si vede già (dedotto dal codice e dal pgTAP 9 di
+  `test-righe-quantita-per-fonte-v1`, che svuota le due colonne a mano; non provato a video): il BE
+  dell'offerta non ha mai svuotato niente, quindi FISSA → MANUALE sul drawer va in errore dal
+  2026-10-08.
+* Stesso caso, più nascosto: DERIVATA_COMPONENTI → fonte a valle. `qta_operativa` era già NULL,
+  `trgfn_qta_from_operativa` esce al corto circuito, `quantita` (scritta dai componenti) resta.
+
+**Decisione (Tid, F-1).** `quantita` è una colonna **calcolata**: la scrive solo il DB. Con una fonte
+a valle è vuota per costruzione, e la svuota il DB; il rifiuto resta sull'**input**.
+
+| # | Richiesta |
+| --- | --- |
+| F-1.1 | Su contratto e offerta, con una fonte a valle, il DB porta `quantita` a NULL (all'INSERT e a ogni UPDATE che cambia fonte o quantità). La forma (in `trgfn_qta_from_operativa` col suo argomento di fonte, o in un trigger a sé) la sceglie il team DB. ⚠️ Vale anche quando `qta_operativa` è già NULL (il caso DERIVATA → MANUALE): oggi lì il trigger esce prima |
+| F-1.2 | `trgfn_righe_guard_quantita_per_fonte` rifiuta solo `qta_operativa` valorizzata (campo `qta_operativa`). `quantita` non è più materia del rifiuto: non la scrive nessun client. Il CHECK `chk_*_quantita_per_fonte` resta la rete, invariato |
+| F-1.3 | L'elenco «fonti che portano la quantità» resta uno: quello del guard e del CHECK. Se F-1.1 ne fa una terza lettura, meglio farlo diventare un dato (per esempio una colonna su un vocabolario delle fonti) che le tre sedi leggono |
+| F-1.4 | pgTAP: FISSA → MANUALE mandando la sola `qta_operativa = NULL` passa e lascia `quantita` NULL; DERIVATA_COMPONENTI → MANUALE senza toccare quantità passa; MANUALE con `qta_operativa` valorizzata rifiutato col campo `qta_operativa`; le stesse prove sull'offerta |
+
+**Ricadute BE/FE a consegna fatta:** il BE ritira `_apply_fonte_quantita_logic` e
+`_FONTI_QUANTITA_DOWNSTREAM` (§E.5) e valuta di togliere `quantita` dalle chiavi ammesse del payload di
+riga (contratto e offerta), visto che è calcolata. Il FE non cambia: manda già `qta_operativa = NULL`
+fuori dalla FISSA.
+
+### F.2 Il listino di un documento è della sua utility e del suo emittente
+
+**Il difetto (trovato nell'analisi del D.4.3).** Nessuna sede impedisce a un contratto o a
+un'offerta di riferirsi a un listino di un'altra utility o di un altro emittente:
+
+* a DB, su `vendite.contratti` e `vendite.offerte_commerciali` per `listino_id` c'è solo il
+  `require_attivo` (letto dall'elenco dei trigger nella doc auto-generata);
+* nel BE nessun controllo (`contratti_service`, `offerte_service`);
+* la RLS di `vendite.listini` filtra sugli emittenti **dell'operatore**, non su quello del documento
+  (un operatore con più emittenti, o il SUPER_ADMIN su «Tutti», li vede tutti).
+
+Oggi lo nasconde in parte il lookup `lookup/listini-selezionabili-contratto/` (SQL in Python, usato
+anche dall'**offerta**: la frase del §E.1 «come sull'offerta» non è esatta), che propone i soli
+listini con una versione ATTIVA. Con il D.4.3 quel filtro si ritira, e la tendina proporrebbe ogni
+listino attivo, di ogni utility. Un listino di un'altra utility porta righe che il perimetro poi
+rifiuta (`E_RIGA_TIPOLOGIA_FUORI_UTILITY`) o, peggio, prezzi di un altro emittente.
+
+**Decisione (Tid, F-2):** il listino di un documento ha la **stessa utility e lo stesso emittente**
+del documento.
+
+| # | Richiesta |
+| --- | --- |
+| F-2.1 | Una check pura sui valori (§12.5.1 delle linee guida), sede unica del predicato: listino, utility ed emittente del documento → i motivi (utility diversa; emittente diverso). ⚠️ Il documento porta `emittente_fiscale_id` (PK), il listino `emittente_soggetto_ruolo_id`: la traduzione sta nella check |
+| F-2.2 | Un guard su `vendite.contratti` e `vendite.offerte_commerciali` che la chiama all'INSERT e quando cambiano listino, utility o emittente, col campo `listino_id`. Codici nuovi (DATO_ERRATO, frase chiusa) |
+| F-2.3 | **La lettura per il form**: i listini sceglibili per un documento (utility, emittente), dalla stessa check, nella forma `{id, codice, descrizione}`. Prende il posto dell'SQL di `ListiniRepository.list_lookup_selezionabili_contratti`, che col D.4.3 perde il filtro sulla versione ATTIVA. ⚠️ In creazione il documento non esiste: la lettura prende i **valori** (utility, emittente), non l'id |
+| F-2.4 | Le righe già scritte: proposta come B-D6, i documenti esistenti restano come sono (dati di test); il guard scatta solo sui cambi. Se il team DB preferisce una `preCondition` che li conti, la scrive lui |
+| F-2.5 | pgTAP: listino della stessa utility ed emittente ammesso; utility diversa e emittente diverso rifiutati col campo; la lettura che propone solo i primi; il push offerta → contratto che porta un listino coerente per costruzione |
+
+**Ricadute BE/FE a consegna fatta:** il lookup dei listini (contratto **e** offerta) espone la
+lettura F-2.3 con utility ed emittente del form; si ritira `list_lookup_selezionabili_contratti`;
+le policy dei codici nuovi.
+
+### F.3 Il secondo giro BE/FE senza aspettare (§E.5)
+
+Fatto il 2026-10-08 su `dev/backend-tid`, salvo dove scritto: ritiro di
+`_guard_listino_ha_versione_attiva` e `ListiniRepository.has_versione_attiva` (D.4.3; il lookup
+aspetta F-2.3); policy rigenerate (1210 nuovo, 632 ritirato) e ripiego del 1210; D.4.1 nel form (la
+prima fonte dell'erogazione); il fixture di `test_ricerca_liste_db` (quantità solo se la fonte di
+default è FISSA). Restano dopo il terzo giro DB: il ritiro di `_apply_fonte_quantita_logic` (F-1),
+il lookup dei listini (F-2), la doc e il collaudo a video.

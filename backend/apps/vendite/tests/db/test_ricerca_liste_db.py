@@ -207,10 +207,19 @@ _FIXTURE: tuple[str, ...] = (
         -- Erogazione e fonte VUOTE: le eredita dall'articolo (B-R2 di
         -- brief-db-offerta-emissione-ed-erogazione). Scritte a mano, il guard
         -- del perimetro le giudicherebbe sulla tipologia, e qui sono incidentali.
+        -- ⭐ La quantita' solo se la fonte ereditata e' FISSA: con una fonte a
+        -- valle il DB la rifiuta (E_RIGA_QUANTITA_CON_FONTE_A_VALLE, §E.2), e
+        -- quale fonte l'articolo porti lo dice la sede unica, non il test.
         INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
                quantita, qta_operativa, uom_operativa_id)
-        SELECT (SELECT contratto_id FROM _cnt), a.id, 'AGGIUNTA', 40.00, 1, 1, a.uom_id
-          FROM catalogo.articoli a WHERE a.id = (SELECT articolo_id FROM _art)
+        SELECT (SELECT contratto_id FROM _cnt), a.id, 'AGGIUNTA', 40.00, q.qta, q.qta, a.uom_id
+          FROM catalogo.articoli a
+          CROSS JOIN LATERAL (
+              SELECT CASE WHEN ae.fonte_quantita_attesa = 'FISSA' THEN 1 END AS qta
+                FROM vendite.fn_articolo_erogazioni(a.id) ae
+               WHERE ae.e_default
+          ) q
+         WHERE a.id = (SELECT articolo_id FROM _art)
         RETURNING id
     )
     SELECT id AS riga_id FROM ins

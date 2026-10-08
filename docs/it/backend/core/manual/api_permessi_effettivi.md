@@ -101,9 +101,7 @@ Campi risposta:
 - Solo superuser Django o utenti con binding SUPER_ADMIN possono consultare i permessi
   di **altri** utenti; tutti gli altri possono consultare solo i propri.
 - Se l'utente non ha il permesso di consultare altri, restituisce `E_PERMESSO_NEGATO` (403).
-- Se `user_id` non esiste, restituisce `E_CORE_VALIDATION` (400).
-  > ⚠️ Difetto noto (E-4): un «non trovato» che esce 400 — vedi
-  > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Se `user_id` non esiste, restituisce `E_AMM_UTENTE_NOT_FOUND` (404; fino al 2026-10-08 era 400 `E_CORE_VALIDATION`).
 - Utente senza veste OPERATORE attiva: tutte le aree risultano `BLOCCATO`.
 - Super admin: tutte le aree risultano `TUTTO`.
 - `has_profilo_reparto = false` con `livello = BLOCCATO` indica che nessun profilo
@@ -134,5 +132,5 @@ Campi risposta:
 | Codice              | HTTP | Causa                                        |
 |---------------------|------|----------------------------------------------|
 | `E_PERMESSO_NEGATO` | 403  | Utente non autorizzato a consultare altri     |
-| `E_CORE_VALIDATION` | 400  | `user_id` non trovato (difetto E-4)          |
+| `E_AMM_UTENTE_NOT_FOUND` | 404 | `user_id` non trovato                   |
 | `E_GENERICO`        | 500  | Errore imprevisto                            |

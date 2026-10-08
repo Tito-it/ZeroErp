@@ -76,8 +76,18 @@ dell'eccezione) e `ui_action`; lo status HTTP resta quello dell'eccezione DRF.
 `meta.request_id` / `meta.idempotency_key` compaiono solo se disponibili.
 Le eccezioni che non producono un codice passano invariate nel formato default DRF.
 
-> ⚠️ Difetto noto (E-5): i messaggi mirati impostati da `ZeroERPPermission` vengono
-> sostituiti dalla frase di `E_PERMISSION_DENIED`. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+Il codice si cerca in quest'ordine: quello dell'**istanza** (`detail.code`,
+se è un `E_*`), poi il `default_code` `E_*` della classe, poi la mappa per
+classe (`PermissionDenied` → `E_PERMISSION_DENIED`, …). Il primo è la strada
+con cui una permission dice **perché** nega: DRF trasforma il suo attributo
+`code` in `detail.code`. Così `ZeroERPPermission` manda
+`E_REPARTO_SENZA_PROFILO` (403) per l'operatore il cui reparto non ha un
+profilo applicabile all'area (dal 2026-10-08).
+
+> ⚠️ Difetto noto (E-5, residuo): «Accesso riservato agli amministratori / agli
+> utenti portale / ai clienti shop» (`IsAdminZeroERP`, `PortaleBasePermission`,
+> `ShopBasePermission`) escono ancora come `E_PERMISSION_DENIED` col messaggio
+> generico: manca il codice a catalogo. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ## Dipendenze DB
 

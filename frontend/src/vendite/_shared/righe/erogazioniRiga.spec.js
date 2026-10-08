@@ -28,14 +28,16 @@ const c = (tipo, fonte, eDefault = false) => ({
   tipo_erogazione: tipo, fonte_quantita_attesa: fonte, e_default: eDefault,
 })
 
+// Nell'ordine del DB (`ordine` di vendite.fn_articolo_erogazioni): il default in
+// testa, poi per erogazione, dentro un'erogazione DERIVATA_COMPONENTI per ultima.
 const COMBINAZIONI = [
   c('UNA_TANTUM', 'FISSA', true),
-  c('CANONE', 'DERIVATA_COMPONENTI'),
   c('CANONE', 'FISSA'),
-  c('CONSUMO', 'DERIVATA_COMPONENTI'),
+  c('CANONE', 'DERIVATA_COMPONENTI'),
   c('CONSUMO', 'MANUALE'),
-  c('UNA_TANTUM', 'DERIVATA_COMPONENTI'),
+  c('CONSUMO', 'DERIVATA_COMPONENTI'),
   c('UNA_TANTUM', 'MANUALE'),
+  c('UNA_TANTUM', 'DERIVATA_COMPONENTI'),
 ]
 
 const etichetta = (v) => `label:${v}`
@@ -50,7 +52,7 @@ describe('erogazioniRiga', () => {
 
   it("2. fonti: solo quelle ammesse con l'erogazione scelta", () => {
     expect(valori(opzioniFonte(COMBINAZIONI, 'CONSUMO', null, etichetta)))
-      .toEqual(['DERIVATA_COMPONENTI', 'MANUALE'])
+      .toEqual(['MANUALE', 'DERIVATA_COMPONENTI'])
     expect(valori(opzioniFonte(COMBINAZIONI, null, null, etichetta))).toEqual([])
   })
 
@@ -58,10 +60,10 @@ describe('erogazioniRiga', () => {
     expect(valori(opzioniErogazione(COMBINAZIONI, 'ORARIO', etichetta)))
       .toEqual(['UNA_TANTUM', 'CANONE', 'CONSUMO', 'ORARIO'])
     expect(valori(opzioniFonte(COMBINAZIONI, 'CONSUMO', 'LETTURE', etichetta)))
-      .toEqual(['DERIVATA_COMPONENTI', 'MANUALE', 'LETTURE'])
+      .toEqual(['MANUALE', 'DERIVATA_COMPONENTI', 'LETTURE'])
     // Un valore ammesso non si ripete.
     expect(valori(opzioniFonte(COMBINAZIONI, 'CONSUMO', 'MANUALE', etichetta)))
-      .toEqual(['DERIVATA_COMPONENTI', 'MANUALE'])
+      .toEqual(['MANUALE', 'DERIVATA_COMPONENTI'])
   })
 
   it("4. il default e' la combinazione `e_default`; nessuna → null", () => {
@@ -70,11 +72,13 @@ describe('erogazioniRiga', () => {
     expect(combinazioneDefault(null)).toBeNull()
   })
 
-  it("5. cambio d'erogazione: resta se ammessa, l'unica se sola, altrimenti vuota", () => {
+  it("5. cambio d'erogazione: resta se ammessa, altrimenti la prima del DB", () => {
     expect(fonteDopoCambioErogazione(COMBINAZIONI, 'CANONE', 'FISSA')).toBe('FISSA')
     expect(fonteDopoCambioErogazione([c('CANONE', 'FISSA')], 'CANONE', 'MANUALE')).toBe('FISSA')
-    // Due fonti ammesse e la corrente no: la sceglie l'operatore.
-    expect(fonteDopoCambioErogazione(COMBINAZIONI, 'CONSUMO', 'FISSA')).toBeNull()
+    // Piu' fonti ammesse e la corrente no: la prima della lista del DB, cioe'
+    // quella che il trigger d'eredita' scriverebbe (§D.4 punto 1).
+    expect(fonteDopoCambioErogazione(COMBINAZIONI, 'CONSUMO', 'FISSA')).toBe('MANUALE')
+    expect(fonteDopoCambioErogazione(COMBINAZIONI, 'CANONE', 'MANUALE')).toBe('FISSA')
   })
 
   it('6. nessuna combinazione (articolo fuori dalla utility): tendine vuote', () => {

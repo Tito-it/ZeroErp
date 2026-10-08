@@ -174,10 +174,12 @@ const mostraFooterSalva = computed(
 // versione ATTIVA. Cache modulo-level via useGlobalLookup (chiave stabile
 // `vendite.listini_selezionabili_contratto`): primo consumer fa la fetch,
 // successivi riusano. Single source of truth lato BE: endpoint dedicato
-// `/vendite/lookup/listini-selezionabili-contratto/`. Sostituisce il
-// generico `LookupSelect rel="vendite.listini"` che mostrava anche listini
-// senza versione operativa, il cui salvataggio sarebbe rifiutato dal guard
-// service `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (UX a doppio passo).
+// `/vendite/lookup/listini-selezionabili-contratto/`, condiviso con l'offerta.
+// ⚠️ Il guard che rifiutava al salvataggio un listino senza versione ATTIVA
+// e' ritirato (D.4.3 di brief-db-offerta-emissione-ed-erogazione): la regola
+// vera e' «non si attiva senza una versione in vigore», del DB. Il filtro della
+// tendina resta finche' il DB non da' i listini sceglibili per utility ed
+// emittente del documento (§F.2), che lo sostituiscono.
 const listiniLookup = useGlobalLookup(
   'vendite.listini_selezionabili_contratto',
   lookupListiniSelezionabiliContratto,

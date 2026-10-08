@@ -401,10 +401,9 @@ credenziali del portale (stesso `auth_user`).
 
 | Codice | HTTP | Quando |
 | --- | --- | --- |
-| `E_INVITO_PORTALE` | 400 | Validazione lato admin (email assente, cliente/fornitore inesistente, identita gia' attiva, identita gia' su altro auth_user, veste non supportata) |
-
-⚠️ Difetto noto (E-4): «cliente/fornitore inesistente» esce 400 con
-`E_INVITO_PORTALE`, non 404 — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+| `E_CLIENTE_NON_TROVATO` | 404 | `cliente_id` (PK di `anagrafiche.clienti`) inesistente: invito, reinvio, stato accessi, disattivazione (dal 2026-10-08; prima 400 `E_INVITO_PORTALE`) |
+| `E_FORNITORE_NON_TROVATO` | 404 | `fornitore_id` (PK di `anagrafiche.fornitori`) inesistente, stessi endpoint |
+| `E_INVITO_PORTALE` | 400 | Validazione lato admin (email assente, identita gia' attiva, identita gia' su altro auth_user, veste non supportata) |
 | `E_ATTIVAZIONE_PORTALE` | 400 | Token portale assente/invalido/scaduto, password mismatch, meta senza identita_id, riga identita rimossa tra invio e conferma |
 | `E_ATTIVAZIONE_SHOP` | 400 | Stesso perimetro di `E_ATTIVAZIONE_PORTALE` per i 2 endpoint shop |
 | `E_ATTIVAZIONE_SHOP_CROSS` | 400 | Cross-veste self-service: ruolo non CLIENTE_PORTALE, GUC vuota, identita su altro auth_user |

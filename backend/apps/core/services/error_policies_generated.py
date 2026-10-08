@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 990, di cui 102 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 991, di cui 103 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -340,7 +340,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # script.trgfn_righe_guard_esclusione_immutabile (trigger _a05_ BEFORE UPDATE su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni, WHEN OLD.tipo_eccezione = ESCLUSIONE): una riga ESCLUSIONE non si modifica. Un'esclusione dice solo che il documento non vende quell'articolo del listino: si crea (Escludi) e si cancella (Ripristina articolo, DELETE), e basta. Ammesse le sole colonne tecniche (data_update, user_update, tx_id); attivo compresa fra le vietate (la riga spenta terrebbe occupato lo slot di uq_contrighe_one_eccezione_per_articolo). Contesto: riga_id, contratto_id o offerta_id, articolo_id, colonne cambiate. * CONFLITTO_STATO: non c'e' un campo da correggere, e' l'operazione a non essere ammessa su quella riga. * Nessun valore nel messaggio. * Nasce il 2026-10-04 (brief-db-contratto-esclusione-non-modificabile R2, decisione di Tid: «una esclusione non si modifica»). * rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende R3, R8): anche sull'offerta, con la funzione generica in script; il nome dice CONTRATTO per storia, il messaggio e' neutro.
     "E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE": "CONFLITTO_STATO",
     "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI": "NON_ESEGUIBILE",
-    # Refactor 2026-05-18 (decisione §4.4 refactor-contratti-modalita): · un listino senza versione ATTIVA non e' selezionabile come · riferimento di un contratto. In assenza di una versione attiva non · ci sono righe da applicare, quindi il contratto sarebbe formalmente · "con listino" ma operativamente vuoto. Il vincolo si applica sia · in CREATE che in UPDATE (PATCH `listino_id`): l'errore parlante · arriva PRIMA del save evitando il flag `listino_senza_versione_oggi` · come zona grigia.
+    # RITIRATO il 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §D.4 punto 3, decisione di Tid): la regola vera e' «un contratto con listino non si ATTIVA senza una versione in vigore oggi», e la dice il DB (E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO, freeze e capability). In DRAFT un listino senza versione si sceglie, come sull'offerta. Il controllo Python che lo sollevava (_guard_listino_ha_versione_attiva) si ritira. · Storia: refactor 2026-05-18 (decisione §4.4 refactor-contratti-modalita): · un listino senza versione ATTIVA non e' selezionabile come · riferimento di un contratto. In assenza di una versione attiva non · ci sono righe da applicare, quindi il contratto sarebbe formalmente · "con listino" ma operativamente vuoto. Il vincolo si applica sia · in CREATE che in UPDATE (PATCH `listino_id`): l'errore parlante · arriva PRIMA del save evitando il flag `listino_senza_versione_oggi` · come zona grigia.
+    # ⚠️ RITIRATO il 2026-10-07
     "E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA": "NON_ESEGUIBILE",
     # ⚠️ RITIRATO il 2026-08-07
     "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO": "DATO_ERRATO",
@@ -1231,6 +1232,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Trigger DB immutabilita' v5 su listini_righe / listini_righe_componenti · (script.fn_log_and_raise_error, P0001): blocca INS/UPD/DLT quando · la versione listino non e' in BOZZA. Solleva il service · `fn_save_bundle` quando l'admin tenta di modificare prezzi bundle · su versione ATTIVA/CHIUSA.
     "E_RIGA_LISTINO_VERSIONE_CHIUSA": "CONFLITTO_STATO",
     "E_RIGA_PREZZO_PENDENTE": "CONFLITTO_STATO",
+    # script.trgfn_righe_guard_quantita_per_fonte (trigger _a10_ BEFORE INSERT OR UPDATE WHEN tipo_eccezione <> ESCLUSIONE su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni): la riga porta quantita o qta_operativa con una fonte che non la porta. Solo FISSA (la quantita' della riga) e DERIVATA_COMPONENTI (la scrive il DB dai componenti) hanno una quantita' sulla riga; con MANUALE, LETTURE, TIMESHEET arriva a valle, periodo per periodo. Rete: i CHECK chk_contrighe_quantita_per_fonte e chk_offerte_eccezioni_quantita_per_fonte. * DATO_ERRATO: c'e' un campo da svuotare; campo = qta_operativa se valorizzata, altrimenti quantita (canale COLUMN), colonne = le valorizzate, con fonte_quantita_attesa, riga_id, contratto_id o offerta_id, articolo_id. * Frase chiusa, nessun valore. * Prende il posto della copia Python _apply_fonte_quantita_logic, che azzerava in silenzio e solo sul contratto. * Nasce il 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §D.4 punto 2, decisione di Tid: «DB, rifiuto»).
+    "E_RIGA_QUANTITA_CON_FONTE_A_VALLE": "DATO_ERRATO",
     # Primo motivo di script.fn_check_riga_erogazione, sollevato da script.trgfn_righe_guard_erogazione_perimetro: l'articolo della riga ha una tipologia di listino che la utility del documento non prevede (config.listini_tipologie_utilities). Campo articolo_id. Su un OVERRIDE e' vero per costruzione (lo garantisce il listino); morde sull'AGGIUNTA. DATO_ERRATO: lo rimedia l'operatore scegliendo un altro articolo. Frase chiusa. Nasce il 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.5.1).
     "E_RIGA_TIPOLOGIA_FUORI_UTILITY": "DATO_ERRATO",
     # anagrafiche.fn_crea_risorsa_umana_v2: il soggetto e' gia' una risorsa umana (uq_risorse_umane_soggetto_ruolo, anche se spenta). Lo raggiunge il flusso B di fn_crea_operatore_v2 su un soggetto che ha gia' il suo operatore. Prima arrivava come 23505/E_DATABASE. Campo = soggetto_id. Segnaposto: il nome del soggetto (con ripiego su nome e cognome, poi Il soggetto).
@@ -1676,6 +1679,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE",
         "E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI",
         "E_CONTRATTO_EMITTENTE_NON_RISOLTO",
+        "E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA",
         "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
         "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
         "E_CONTRATTO_MODALITA_C_SENZA_RIGHE",

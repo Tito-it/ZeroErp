@@ -28,6 +28,10 @@ Indice test eseguiti:
 18) test_list_utilities_403_ba_di_altro_emittente — operatore + BA di altro EF → E_PERMESSO_NEGATO
 19) test_list_utilities_404_ba_inesistente — id BA non esistente → E_ANAG_NOT_FOUND prima dello scope
 20) test_list_utilities_ruolo_invalido — ruolo non in whitelist → E_ANAG_VALIDAZIONE
+21) test_categoria_da_query_assente_none — parametro assente o vuoto → None, nessun lookup
+22) test_categoria_da_query_malformato — non numerico o <= 0 → ValueError, nessun lookup
+23) test_categoria_da_query_ok — BA visibile → la sua categoria
+24) test_categoria_da_query_non_risulta — BA inesistente o fuori scope → E_ANAG_NOT_FOUND (F-6)
 """
 
 from unittest import TestCase
@@ -342,3 +346,40 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_lookup.return_value.list_utilities_per_billing_account.assert_not_called()
+
+
+class CategoriaClienteDaQueryTests(TestCase):
+    """BB `categoria_cliente_da_query` (F-6): BA del query param → categoria."""
+
+    @patch(_REPO)
+    def test_categoria_da_query_assente_none(self, mock_repo):
+        from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
+        for raw in (None, "", "   "):
+            with self.subTest(raw=raw):
+                self.assertIsNone(categoria_cliente_da_query(raw))
+        mock_repo.return_value.get_categoria_cliente_id.assert_not_called()
+
+    @patch(_REPO)
+    def test_categoria_da_query_malformato(self, mock_repo):
+        from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
+        for raw in ("abc", "1.0", "0", "-3"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ValueError):
+                    categoria_cliente_da_query(raw)
+        mock_repo.return_value.get_categoria_cliente_id.assert_not_called()
+
+    @patch(_REPO)
+    def test_categoria_da_query_ok(self, mock_repo):
+        from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
+        mock_repo.return_value.get_categoria_cliente_id.return_value = 4
+        self.assertEqual(categoria_cliente_da_query(" 77 "), 4)
+        mock_repo.return_value.get_categoria_cliente_id.assert_called_once_with(77)
+
+    @patch(_REPO)
+    def test_categoria_da_query_non_risulta(self, mock_repo):
+        """Inesistente e fuori scope (RLS) sono lo stesso None: un 404 solo."""
+        from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
+        mock_repo.return_value.get_categoria_cliente_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            categoria_cliente_da_query("77")
+        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")

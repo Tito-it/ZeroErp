@@ -21,6 +21,8 @@ Indice test eseguiti:
  6) ParameterOverrideViewTests.test_upsert_override_success
  7) ParameterOverrideDeleteViewTests.test_delete_override_success
  8) ParameterOverrideDeleteViewTests.test_delete_override_not_found
+ 9) ParameterSettingsViewTests.test_list_settings_ba_non_risulta_404 — BA inesistente o fuori scope → E_ANAG_NOT_FOUND (F-6)
+10) ParameterSettingsViewTests.test_list_settings_ba_zero_400 — billing_account_id <= 0 → ValueError (400 E_VALIDATION_INPUT)
 """
 
 from unittest import TestCase
@@ -224,7 +226,7 @@ class ParameterSettingsViewTests(TestCase):
     # Scopo: Verifica derivazione automatica `categoria_cliente_id` da BA via
     #        BillingAccountRepository.get_categoria_cliente_id quando il query
     #        param esplicito non e' valorizzato.
-    @patch("apps.core.api.views_parameters.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch(SVC_PATH)
     def test_list_settings_deriva_categoria_da_ba(self, mock_svc_cls, mock_ba_repo_cls):
         from apps.core.api.views_parameters import ParameterSettingsView
@@ -250,26 +252,63 @@ class ParameterSettingsViewTests(TestCase):
             categoria_cliente_id=42,
         )
 
-    # Scopo: Fail-fast su categoria_cliente_id <= 0. Evita di passare valori
-    #        non-positivi silenziosamente al DB (LEFT JOIN no-match, UX rumorosa).
+    # Scopo: F-6 — BA che non risulta (inesistente, o fuori scope: la RLS di
+    #        anagrafiche.billing_account non lo restituisce) → 404
+    #        E_ANAG_NOT_FOUND. Prima la categoria restava NULL in silenzio.
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch(SVC_PATH)
+    def test_list_settings_ba_non_risulta_404(self, mock_svc_cls, mock_ba_repo_cls):
+        from apps.core.api.views_parameters import ParameterSettingsView
+
+        mock_svc = MagicMock()
+        mock_svc_cls.return_value = mock_svc
+        mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
+        mock_ba_repo_cls.return_value.get_categoria_cliente_id.return_value = None
+
+        view = ParameterSettingsView()
+        request = _make_request(user_id=1, query_params={"billing_account_id": "777"})
+        with self.assertRaises(ServiceError) as ctx:
+            view.get(request)
+        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+        mock_svc.list_parameters_for_user.assert_not_called()
+
+    # Scopo: billing_account_id <= 0 → ValueError (400 E_VALIDATION_INPUT),
+    #        senza interrogare il BA.
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch(SVC_PATH)
+    def test_list_settings_ba_zero_400(self, mock_svc_cls, mock_ba_repo_cls):
+        from apps.core.api.views_parameters import ParameterSettingsView
+
+        mock_svc_cls.return_value.get_emittente_fiscale_id_for_user.return_value = 3
+
+        view = ParameterSettingsView()
+        request = _make_request(user_id=1, query_params={"billing_account_id": "0"})
+        with self.assertRaises(ValueError):
+            view.get(request)
+        mock_ba_repo_cls.return_value.get_categoria_cliente_id.assert_not_called()
+
+    # Scopo: Fail-fast su categoria_cliente_id non numerico o <= 0. Evita di
+    #        passare valori non-positivi silenziosamente al DB (LEFT JOIN
+    #        no-match, UX rumorosa). ValueError → 400 E_VALIDATION_INPUT, lo
+    #        stesso codice di `billing_account_id` (query string = dato di input).
     @patch(SVC_PATH)
     def test_list_settings_categoria_zero_solleva_validation(self, mock_svc_cls):
         from apps.core.api.views_parameters import ParameterSettingsView
-        from apps.core.services.service_errors import ServiceError
 
         mock_svc = MagicMock()
         mock_svc_cls.return_value = mock_svc
         mock_svc.get_emittente_fiscale_id_for_user.return_value = 3
 
         view = ParameterSettingsView()
-        request = _make_request(user_id=1, query_params={"categoria_cliente_id": "0"})
-        with self.assertRaises(ServiceError) as ctx:
-            view.get(request)
-        self.assertEqual(ctx.exception.code, "E_PARAMETER_VALIDATION")
+        for raw in ("0", "-2", "abc"):
+            with self.subTest(raw=raw):
+                request = _make_request(user_id=1, query_params={"categoria_cliente_id": raw})
+                with self.assertRaises(ValueError):
+                    view.get(request)
         mock_svc.list_parameters_for_user.assert_not_called()
 
     # Scopo: Priorita' esplicito > derivato quando entrambi presenti.
-    @patch("apps.core.api.views_parameters.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch(SVC_PATH)
     def test_list_settings_categoria_esplicito_batte_ba(
         self, mock_svc_cls, mock_ba_repo_cls,

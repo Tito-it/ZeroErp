@@ -412,8 +412,8 @@ watch(() => props.visible, (v) => {
 })
 
 // Al cambio di erogazione la fonte resta se l'articolo la ammette ancora con
-// la nuova; altrimenti la sceglie l'operatore (resta vuota), salvo che ce ne
-// sia una sola (`fonteDopoCambioErogazione`).
+// la nuova; altrimenti la prima che il DB elenca, cioe' quella che il DB
+// scriverebbe (`fonteDopoCambioErogazione`, §D.4 punto 1).
 watch(() => form.value?.tipo_erogazione, (nuovoTipo, vecchioTipo) => {
   if (!nuovoTipo || nuovoTipo === vecchioTipo || !erogazioni.value) return
   form.value.fonte_quantita_attesa = fonteDopoCambioErogazione(

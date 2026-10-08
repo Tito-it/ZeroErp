@@ -3844,6 +3844,7 @@
       "richiedi_approvazione_in_corso": "Invio richiesta approvazione...",
       "richiesta_approvazione_inviata": "Richiesta approvazione inviata. Riga in attesa di esito.",
       "prezzo_non_risolto": "Prezzo non risolto dal listino: inserisci manualmente.",
+      "limiti_non_caricati": "Limiti di sconto e maggiorazione non caricati per questo cliente: il prezzo verrà comunque verificato al salvataggio.",
       "banner_no_contratto_attivo": "Il cliente non ha un contratto attivo per questa utility alla data del preventivo. I prezzi delle righe verranno proposti dal listino di categoria (matrice categoria → listino), se configurata.",
       "badge_approvazione_pending": "In approvazione",
       "badge_approvazione_approved": "Approvato",

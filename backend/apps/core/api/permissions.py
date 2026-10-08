@@ -455,6 +455,7 @@ class ZeroERPPermission(BasePermission):
         user = request.user
         motivo = esito.motivo
         self.message = _MSG_PERMESSO_NEGATO
+        self.code = None
         if motivo is MotivoDiniego.AZIONE_NEGATA:
             logger.warning(
                 "security.permission_denied user_id=%s reason=azione_negata azione=%s path=%s",
@@ -500,10 +501,16 @@ class ZeroERPPermission(BasePermission):
         if ruolo_app == RUOLO_APPLICATIVO_OPERATORE and not PermissionResolver.has_profilo_applicabile_per_area(
             user, area_schema_db, cache=cache
         ):
+            # ⭐ Il codice viaggia con `self.code` (DRF lo mette in
+            #    `detail.code`, e `drf_exception_handler` lo legge): senza,
+            #    usciva `E_PERMISSION_DENIED` col messaggio generico e questa
+            #    frase non arrivava mai al client (E-5, 2026-10-08).
+            self.code = "E_REPARTO_SENZA_PROFILO"
             self.message = (
                 "Il reparto non ha ancora un profilo permessi configurato."
             )
         else:
+            self.code = None
             self.message = _MSG_PERMESSO_NEGATO
 
     @staticmethod

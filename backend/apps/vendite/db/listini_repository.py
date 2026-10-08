@@ -257,35 +257,14 @@ class ListiniRepository:
             )
             return row_to_dict(cursor)
 
-    # Scopo: Verifica se un listino ha almeno una versione in stato ATTIVA
-    #        attualmente. Usato dal `contratti_service` come gate pre-save
-    #        per impedire l'associazione di un contratto a un listino che
-    #        non ha versioni operative (decisione 2026-05-18: solo listini
-    #        con versione ATTIVA sono selezionabili come riferimento
-    #        contrattuale). Single round-trip via EXISTS.
-    def has_versione_attiva(self, listino_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT EXISTS (
-                    SELECT 1
-                      FROM vendite.listini_versioni v
-                     WHERE v.listino_id = %s
-                       AND v.stato = 'ATTIVA'
-                       AND v.attivo IS TRUE
-                ) AS has_active
-                """,
-                [listino_id],
-            )
-            row = cursor.fetchone()
-            return bool(row[0]) if row else False
-
     # Scopo: Lista lookup dei listini "selezionabili come riferimento
     #        contrattuale": listino attivo + esiste almeno una versione
-    #        ATTIVA (oggi). Stesso filtro semantico del guard pre-save
-    #        `_guard_listino_ha_versione_attiva` (decisione 2026-05-18
-    #        §4.4 refactor-contratti-modalita), in versione bulk per il
-    #        lookup FE del drawer contratto. Forma payload uniforme
+    #        ATTIVA (oggi). ⚠️ Il guard pre-save che diceva la stessa regola
+    #        (`_guard_listino_ha_versione_attiva`) e' ritirato (D.4.3 di
+    #        brief-db-offerta-emissione-ed-erogazione): questo filtro resta
+    #        finche' il DB non consegna la lettura dei listini sceglibili per
+    #        utility ed emittente del documento (§F.2), che lo sostituisce.
+    #        Lo leggono i drawer di contratto e offerta. Forma payload uniforme
     #        `{id, codice, descrizione}` compatibile col pattern lookup
     #        generico (zero adattamenti FE rispetto al precedente
     #        `LookupSelect rel="vendite.listini"`). Single round-trip via

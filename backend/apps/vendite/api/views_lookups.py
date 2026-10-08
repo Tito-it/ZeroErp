@@ -86,10 +86,11 @@ class ApiListiniSelezionabiliContrattoLookup(DomainAPIView):
     #        contratto. Filtra `vendite.listini` per `attivo=TRUE` + esistenza
     #        di almeno una `listini_versioni` con `stato='ATTIVA' AND attivo`
     #        (decisione 2026-05-18 §4.4 refactor-contratti-modalita). Sostituisce
-    #        `LookupSelect rel='vendite.listini'` nel ContrattoDrawer: senza
-    #        questo filtro l'operatore vedrebbe anche i listini senza versione
-    #        operativa, il cui salvataggio viene rifiutato dal guard service
-    #        `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (UX a doppio passo).
+    #        `LookupSelect rel='vendite.listini'` nei drawer di contratto e
+    #        offerta. ⚠️ Il guard al salvataggio che diceva la stessa regola e'
+    #        ritirato (D.4.3 di brief-db-offerta-emissione-ed-erogazione); il
+    #        filtro resta finche' il DB non consegna i listini sceglibili per
+    #        utility ed emittente del documento (§F.2), che lo sostituiscono.
     #        Forma payload uniforme `{id, codice, descrizione}` (no paginazione).
     area_funzionale = "vendite"
     model_permission = ("vendite", "listino")

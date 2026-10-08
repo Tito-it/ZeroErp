@@ -21,10 +21,10 @@ from rest_framework.request import Request
 
 import re
 
-from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import qp_int_strict, qp_str
+from apps.core.api.payload_validators import qp_int_optional
 from apps.core.api.permissions import IsAdminZeroERP
 from apps.core.api.success_responses import success_response
 from apps.core.db.parameter_repository import MAX_CODES
@@ -198,7 +198,8 @@ class ParameterSettingsView(DomainAPIView):
                     "Smallint opzionale: se valorizzato attiva il livello "
                     "categoria_cliente fra user e group, valorizzando "
                     "`categoria_cliente_value` e `categoria_cliente_override_id` "
-                    "nelle righe risultato."
+                    "nelle righe risultato. Non numerico o <= 0 → 400 "
+                    "E_VALIDATION_INPUT."
                 ),
             ),
             OpenApiParameter(
@@ -208,7 +209,9 @@ class ParameterSettingsView(DomainAPIView):
                     "Alternativa a categoria_cliente_id: deriva la categoria dal "
                     "BA indicato via anagrafiche.billing_account.categoria_cliente_id. "
                     "Ignorato se categoria_cliente_id e' valorizzato (priorita' al "
-                    "valore esplicito)."
+                    "valore esplicito). Non numerico o <= 0 → 400 "
+                    "E_VALIDATION_INPUT; BA inesistente o fuori scope → 404 "
+                    "E_ANAG_NOT_FOUND."
                 ),
             ),
         ],
@@ -232,7 +235,8 @@ class ParameterSettingsView(DomainAPIView):
     #        in SQL) e gli override emittente non vengono mostrati.
     #        Post brief DB 2026-05-19 (migration 20260519-01): accetta
     #        `categoria_cliente_id` come query param (esplicito) oppure
-    #        `billing_account_id` (deriva la categoria dal BA via repository).
+    #        `billing_account_id` (deriva la categoria dal BA col BB
+    #        `categoria_cliente_da_query`: BA che non risulta → 404).
     #        Priorita': esplicito > derivato. Se nessuno dei due, il livello
     #        categoria resta NULL nelle righe (`categoria_cliente_value` NULL).
     def get(self, request: Request) -> JsonResponse:
@@ -245,32 +249,22 @@ class ParameterSettingsView(DomainAPIView):
         emittente_fiscale_id = ctx["emittente_fiscale_id"] or svc.get_emittente_fiscale_id_for_user(request.user.id)
 
         # Risoluzione categoria_cliente_id: esplicito > derivato da BA.
-        # Guard `> 0`: rifiuta 0/negativi con E_PARAMETER_VALIDATION (400)
-        # invece di passare silenziosamente al DB (LEFT JOIN no-match,
-        # l'utente non capirebbe perche' categoria_cliente_value resta null).
-        # `qp_int_strict` solleva ValueError su non-int → middleware → 400.
-        raw_cat = qp_str(qp.get("categoria_cliente_id"))
-        categoria_cliente_id: int | None = None
-        if raw_cat is not None:
-            cat_val = qp_int_strict(raw_cat, "categoria_cliente_id", default=0)
-            ErrorManager.require(
-                cat_val > 0,
-                code="E_PARAMETER_VALIDATION",
-                message="categoria_cliente_id deve essere un intero positivo.",
-                context={"categoria_cliente_id": cat_val},
-            )
-            categoria_cliente_id = cat_val
+        # Guard `> 0`: rifiuta 0/negativi invece di passarli in silenzio al DB
+        # (LEFT JOIN no-match, l'utente non capirebbe perche'
+        # categoria_cliente_value resta null). Non numerico o <= 0 →
+        # ValueError → 400 E_VALIDATION_INPUT, come `billing_account_id` qui
+        # sotto: un query string malformato e' un dato di input (api.md
+        # §Query params), non un valore di parametro di configurazione
+        # (`E_PARAMETER_VALIDATION`, che restava qui fino al 2026-10-08).
+        categoria_cliente_id = qp_int_optional(
+            qp.get("categoria_cliente_id"), "categoria_cliente_id",
+        )
+        if categoria_cliente_id is not None:
+            if categoria_cliente_id <= 0:
+                raise ValueError("categoria_cliente_id_invalid")
         else:
-            raw_ba = qp_str(qp.get("billing_account_id"))
-            if raw_ba is not None:
-                ba_id = qp_int_strict(raw_ba, "billing_account_id", default=0)
-                ErrorManager.require(
-                    ba_id > 0,
-                    code="E_PARAMETER_VALIDATION",
-                    message="billing_account_id deve essere un intero positivo.",
-                    context={"billing_account_id": ba_id},
-                )
-                categoria_cliente_id = BillingAccountRepository().get_categoria_cliente_id(ba_id)
+            # BA che non risulta (inesistente o fuori scope RLS) → 404, F-6.
+            categoria_cliente_id = categoria_cliente_da_query(qp.get("billing_account_id"))
 
         parameters = svc.list_parameters_for_user(
             django_user_id=django_user_id,

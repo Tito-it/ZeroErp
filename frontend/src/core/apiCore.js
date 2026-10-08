@@ -104,8 +104,9 @@ export function fetchParameterDefaults(codes) {
 //   - categoria_cliente_id (number): attiva il livello categoria_cliente nella
 //     cascata visualizzata (post brief DB 2026-05-19, migration 20260519-01).
 //   - billing_account_id (number): alternativa al precedente; il BE risolve la
-//     categoria dal BA via BillingAccountRepository.get_categoria_cliente_id.
-//     Ignorato se categoria_cliente_id e' valorizzato.
+//     categoria dal BA (BB `categoria_cliente_da_query`): BA inesistente o
+//     fuori scope → 404 E_ANAG_NOT_FOUND. Ignorato se categoria_cliente_id
+//     e' valorizzato.
 export function fetchParameterSettings(options = {}) {
   const params = {}
   if (options.categoria_cliente_id != null) {

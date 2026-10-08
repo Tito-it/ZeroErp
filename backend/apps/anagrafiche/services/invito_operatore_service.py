@@ -32,6 +32,16 @@ logger = logging.getLogger("security")
 
 E_INVITO = PORTA_OPERATORE.codice_invito
 
+# I motivi di `fn_check_operatore_invitabile` per cui l'id indicato non nomina
+# un operatore: credenziale inesistente, o credenziale senza veste OPERATORE.
+# Sono un «non trovato» (404), non un dato errato (E-4 di
+# analisi-be-difetti-emersi-verifica-doc-api-core, 2026-10-08) — lo stesso
+# codice e la stessa lettura del dettaglio operatore
+# (`AmmSoftwareService`: categoria diversa da OPERATORE → non trovato).
+# Gli altri motivi (veste gia' attiva, fuori finestra, senza email, piu'
+# vesti spente) restano `E_INVITO_OPERATORE`: l'operatore c'e'.
+_MOTIVI_OPERATORE_NON_TROVATO = frozenset({"UTENTE_NON_TROVATO", "SENZA_VESTE_OPERATORE"})
+
 
 class InvitoOperatoreService:
     """Invito della veste operatore: verifica, emette, spedisce, reinvia."""
@@ -61,6 +71,12 @@ class InvitoOperatoreService:
         self, auth_user_id: int, invitato_da_user_id: int, *, reinvio: bool = False
     ) -> dict[str, Any]:
         check = self._check_invitabile(auth_user_id)
+        ErrorManager.require(
+            check.get("reason") not in _MOTIVI_OPERATORE_NON_TROVATO,
+            code="E_AMM_OPERATORE_NOT_FOUND",
+            message=f"Operatore {auth_user_id} non trovato.",
+            context={"auth_user_id": auth_user_id, "reason": check.get("reason")},
+        )
         ErrorManager.require(
             check.get("invitabile", False),
             code=E_INVITO,
