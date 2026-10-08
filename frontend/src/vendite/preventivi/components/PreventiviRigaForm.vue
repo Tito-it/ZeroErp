@@ -53,7 +53,13 @@ const props = defineProps({
 // vale anche da `onMounted` (Vue setup esegue immediate prima del mount),
 // quindi NON serve un onMounted aggiuntivo — eviterebbe solo doppio fetch
 // al primo mount (cache modulo-level dedupa per BA in useLimitiPricing).
-watch(() => props.billingAccountId, (baId) => loadLimiti(baId), { immediate: true })
+// Su errore (BA che non risulta → 404, F-6) i limiti restano a 0 e l'operatore
+// lo sa: senza avviso l'hint mostrerebbe la soglia generica come del cliente.
+watch(() => props.billingAccountId, (baId) => {
+  loadLimiti(baId).catch((err) => {
+    notify.warn(extractApiError(err, t('vendite.preventivi.limiti_non_caricati')))
+  })
+}, { immediate: true })
 const {
   ivaOrigine,
   origineLabel: ivaOrigineLabel,

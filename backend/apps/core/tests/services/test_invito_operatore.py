@@ -19,6 +19,7 @@ Indice test eseguiti:
 7) InvitoTests.test_email_non_partita_risponde_inviato_false (F-3)
 8) InvitoTests.test_invito_riapre_il_rapporto_nella_transazione_dell_emissione (D-3)
 9) InvitoTests.test_non_invitabile_non_riapre_il_rapporto (D-3)
+10) InvitoTests.test_operatore_non_trovato_404 — UTENTE_NON_TROVATO e SENZA_VESTE_OPERATORE → E_AMM_OPERATORE_NOT_FOUND (E-4)
 """
 
 from unittest import TestCase
@@ -152,6 +153,18 @@ class InvitoTests(TestCase):
             "amministrazione.operatori.invito_reason.veste_gia_attiva",
         )
         invito.emetti.assert_not_called()
+
+    # Scopo: E-4 — un id che non nomina un operatore (credenziale inesistente,
+    # o senza veste OPERATORE) e' un 404, non il 400 del rifiuto d'invito.
+    def test_operatore_non_trovato_404(self):
+        for reason in ("UTENTE_NON_TROVATO", "SENZA_VESTE_OPERATORE"):
+            with self.subTest(reason=reason):
+                svc, _, invito = _servizio(invitabile=False, reason=reason)
+                with self.assertRaises(ServiceError) as ctx:
+                    svc.invia_invito(42, invitato_da_user_id=1)
+                self.assertEqual(ctx.exception.code, "E_AMM_OPERATORE_NOT_FOUND")
+                self.assertEqual(ctx.exception.context["reason"], reason)
+                invito.emetti.assert_not_called()
 
     # Scopo: A-4 — il reinvio non invalida da se', fuori transazione: passa
     # dalla stessa emissione del BB, che invalida i token della veste dentro

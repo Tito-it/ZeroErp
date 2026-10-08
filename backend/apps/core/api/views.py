@@ -135,6 +135,22 @@ class ApiLookupCodici(DomainAPIView):
         return success_response(data)
 
 
+# Scopo: L'utente consultato da permessi effettivi e audit, o 404.
+#        `user_id` arriva dall'URL: un id che non esiste e' un «non trovato»
+#        (E-4 di analisi-be-difetti-emersi-verifica-doc-api-core). Fino al
+#        2026-10-08 le due view lo scrivevano ciascuna per conto suo con
+#        `E_CORE_VALIDATION` (DATO_ERRATO), cioe' 400.
+def _utente_target(user_id: int):
+    User = get_user_model()
+    try:
+        return User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        raise ServiceError(
+            code="E_AMM_UTENTE_NOT_FOUND",
+            message="Utente non trovato.",
+            detail=f"Nessun utente con id={user_id}.",
+            context={"user_id": user_id},
+        ) from None
 
 
 class ApiPermessiEffettivi(DomainAPIView):
@@ -181,16 +197,7 @@ class ApiPermessiEffettivi(DomainAPIView):
                     detail="Solo SUPER_ADMIN possono consultare permessi di altri utenti.",
                 )
 
-        # Carica l'utente target
-        User = get_user_model()
-        try:
-            target_user = User.objects.get(pk=user_id)
-        except User.DoesNotExist:
-            raise ServiceError(
-                code="E_CORE_VALIDATION",
-                message="Utente non trovato.",
-                detail=f"Nessun utente con id={user_id}.",
-            ) from None
+        target_user = _utente_target(user_id)
 
         # Risolvi i campi nativi multi-face (Fase 7).
         # `is_active` arriva da `auth_user.is_active`; e' la dimensione
@@ -321,16 +328,7 @@ class ApiPermessiAudit(DomainAPIView):
                     detail="Solo SUPER_ADMIN possono consultare audit permessi di altri utenti.",
                 )
 
-        # Scopo: Verifica che l'utente target esista.
-        User = get_user_model()
-        try:
-            target_user = User.objects.get(pk=user_id)
-        except User.DoesNotExist:
-            raise ServiceError(
-                code="E_CORE_VALIDATION",
-                message="Utente non trovato.",
-                detail=f"Nessun utente con id={user_id}.",
-            ) from None
+        target_user = _utente_target(user_id)
 
         # Scopo: Parse query params.
         data_da = optional_iso_date(

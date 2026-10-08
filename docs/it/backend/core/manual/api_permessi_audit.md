@@ -86,11 +86,10 @@ tagliato a 200). `data_a` **include** il giorno indicato: intervallo
 | Codice               | HTTP | Causa                                                        |
 | -------------------- | ---- | ------------------------------------------------------------ |
 | `E_PERMESSO_NEGATO`  | 403  | Consultazione di un altro utente senza superuser/SUPER_ADMIN |
-| `E_CORE_VALIDATION`  | 400  | `user_id` inesistente; `tabella` non ammessa                 |
+| `E_AMM_UTENTE_NOT_FOUND` | 404 | `user_id` inesistente (dal 2026-10-08; prima 400 `E_CORE_VALIDATION`) |
+| `E_CORE_VALIDATION`  | 400  | `tabella` non ammessa                                        |
 | `E_VALIDATION_INPUT` | 400  | Data non ISO, `page`/`page_size` non numerici                |
 
-> ⚠️ Difetto noto (E-4): `user_id` inesistente esce 400 `E_CORE_VALIDATION`
-> invece di un «non trovato» 404 — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ## Tabelle storico interrogate (8)
 

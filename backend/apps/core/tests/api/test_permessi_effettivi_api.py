@@ -12,7 +12,7 @@ Indice test eseguiti:
  3) test_modelli_vuoti_se_nessun_override    — `modelli` lista vuota se area non ha model
  4) test_admin_puo_vedere_altro_utente       — ADMIN puo' interrogare altri user_id
  5) test_operativo_negato_altro_utente       — OPERATIVO non puo' vedere altri user_id
- 6) test_utente_non_trovato                  — 404-equivalente se user_id inesistente
+ 6) test_utente_non_trovato                  — 404 E_AMM_UTENTE_NOT_FOUND se user_id inesistente (E-4)
  7) test_altro_utente_senza_veste_operatore  — S-6: la risposta dice la veste del CONSULTATO, non di chi guarda
 """
 
@@ -216,7 +216,7 @@ class ApiPermessiEffettiviViewTests(TestCase):
 
         self.assertEqual(ctx.exception.code, "E_PERMESSO_NEGATO")
 
-    # Scopo: user_id inesistente solleva ServiceError.
+    # Scopo: user_id inesistente → 404 E_AMM_UTENTE_NOT_FOUND (E-4).
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
     def test_utente_non_trovato(self, mock_get_user, mock_resolver):
@@ -237,4 +237,5 @@ class ApiPermessiEffettiviViewTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             view.get(request, user_id=9999)
 
-        self.assertEqual(ctx.exception.code, "E_CORE_VALIDATION")
+        # E-4: 404, non piu' E_CORE_VALIDATION (400).
+        self.assertEqual(ctx.exception.code, "E_AMM_UTENTE_NOT_FOUND")

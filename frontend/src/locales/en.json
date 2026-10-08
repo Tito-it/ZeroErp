@@ -3844,6 +3844,7 @@
       "richiedi_approvazione_in_corso": "Sending approval request...",
       "richiesta_approvazione_inviata": "Approval request sent. Line waiting for outcome.",
       "prezzo_non_risolto": "Price not resolved from price list: enter manually.",
+      "limiti_non_caricati": "Discount and markup limits not loaded for this customer: the price will still be checked on save.",
       "banner_no_contratto_attivo": "The customer has no active contract for this utility at the quote date. Line prices will be proposed from the category price list (category → price list matrix), if configured.",
       "badge_approvazione_pending": "Pending approval",
       "badge_approvazione_approved": "Approved",

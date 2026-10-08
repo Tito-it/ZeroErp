@@ -23,6 +23,7 @@ Indice test eseguiti:
 14) test_whitelist_include_user_override_oggetti (3.2 v2)
 15) test_filter_data_a_include_il_giorno          (F-4)
 16) test_page_zero_rifiutata                      (F-4)
+17) test_utente_non_trovato_404                   (E-4)
 """
 
 import math
@@ -311,6 +312,26 @@ class ApiPermessiAuditViewTests(TestCase):
         response = view.get(request, user_id=99)
 
         self.assertEqual(response.status_code, 200)
+
+    # Scopo: user_id inesistente → 404 E_AMM_UTENTE_NOT_FOUND (E-4: prima
+    # E_CORE_VALIDATION, 400), senza toccare il DB dell'audit.
+    @patch("apps.core.api.views.PermissionResolver")
+    @patch("apps.core.api.views.get_user_model")
+    @patch(_CONN)
+    def test_utente_non_trovato_404(self, mock_conn, mock_get_user, mock_resolver):
+        from apps.core.api.views import ApiPermessiAudit
+        from apps.core.services.service_errors import ServiceError
+
+        mock_resolver.is_super_admin.return_value = True
+        DoesNotExist = type("DoesNotExist", (Exception,), {})
+        mock_get_user.return_value.DoesNotExist = DoesNotExist
+        mock_get_user.return_value.objects.get.side_effect = DoesNotExist
+
+        with self.assertRaises(ServiceError) as ctx:
+            ApiPermessiAudit().get(_mock_request(user_id=1), user_id=9999)
+
+        self.assertEqual(ctx.exception.code, "E_AMM_UTENTE_NOT_FOUND")
+        mock_conn.cursor.assert_not_called()
 
     # Scopo: OPERATIVO puo' vedere il proprio audit.
     @patch("apps.core.api.views.PermissionResolver")

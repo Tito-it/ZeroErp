@@ -13,6 +13,7 @@ from datetime import date
 from typing import Any
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.core.api.payload_validators import qp_int_optional
 from apps.core.db.lookup_repository import LookupRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -193,3 +194,42 @@ class BillingAccountService:
         )
         assert result is not None
         return result
+
+
+# Scopo: BB — categoria cliente del billing account indicato nel query param
+#        `billing_account_id`, per alimentare il livello `categoria_cliente`
+#        della cascata parametri (F-6 di analisi-be-difetti-emersi-verifica-doc-api-core).
+#        Consumatori: `/core/parameters/settings/` e
+#        `/vendite/pricing/limiti-utente/` (regola del 2, ok Tid 2026-10-08).
+# Perimetro: sola lettura. Assente o vuoto → None (livello categoria saltato).
+#        Non numerico o <= 0 → ValueError (400 E_VALIDATION_INPUT).
+#        BA che non risulta → 404 E_ANAG_NOT_FOUND.
+# ⭐ «Non risulta» copre due casi, e di proposito non li distingue: il BA che
+#    non esiste e quello fuori dallo scope dell'operatore, che la RLS di
+#    `anagrafiche.billing_account` (policy `rls_billing_account_ef_whitelist`)
+#    non restituisce. Prima il `None` passava in silenzio: categoria NULL, e
+#    l'utente vedeva soglie senza livello categoria senza nessun segnale.
+# ⚠️ `None` dal repository vuol dire «non risulta» SOLO perche'
+#    `billing_account.categoria_cliente_id` e' NOT NULL: se la colonna
+#    diventasse nullable, un BA visibile senza categoria uscirebbe 404, e
+#    qui andrebbe distinta l'esistenza dalla categoria.
+# Risultato: int (categoria) oppure None se il parametro non c'e'.
+def categoria_cliente_da_query(raw: str | None) -> int | None:
+    billing_account_id = qp_int_optional(raw, "billing_account_id")
+    if billing_account_id is None:
+        return None
+    if billing_account_id <= 0:
+        raise ValueError("billing_account_id_invalid")
+    categoria_cliente_id = BillingAccountRepository().get_categoria_cliente_id(
+        billing_account_id,
+    )
+    ErrorManager.require(
+        categoria_cliente_id is not None,
+        code="E_ANAG_NOT_FOUND",
+        message="Billing account non trovato.",
+        detail=f"Nessun billing_account visibile con id={billing_account_id}.",
+        context={"billing_account_id": billing_account_id},
+        function_name="anagrafiche.billing_account_service.categoria_cliente_da_query",
+        log_to_db=False,
+    )
+    return categoria_cliente_id

@@ -91,6 +91,10 @@ risposta e' comunque **200** con `righe: []`.
 > ⚠️ Difetto noto ([E-10](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): la view prevede `E_SEARCH_NOT_FOUND` (404) quando la
 > funzione DB non restituisce nulla, ma `fn_get_search_detail` restituisce sempre
 > `{tipo_ruolo, righe}`: il 404 oggi non esce mai.
+> Contratto deciso il 2026-10-08: **404** quando il soggetto, con quel ruolo, non
+> risulta (inesistente, senza quel ruolo, o cliente fuori scope); `righe: []` solo
+> quando c'è ma il filtro `utility_id` non trova righe. In attesa del giro DB (R-4 del
+> [brief](../../../dev/work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md)).
 
 Esempio per CL:
 

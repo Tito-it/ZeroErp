@@ -65,8 +65,8 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
 - Path: `/api/v1/core/parameters/settings/`
 - Auth: JWT, `skip_area_check = True`
 - Query params (tutti opzionali):
-  - `categoria_cliente_id` (smallint) — attiva il livello `categoria_cliente` nella cascata visualizzata (fra `user` e `group`). Valorizza `categoria_cliente_value` e `categoria_cliente_override_id` nelle righe risposta.
-  - `billing_account_id` (int) — alternativa al precedente: il BE deriva la categoria dal BA via `BillingAccountRepository.get_categoria_cliente_id`. Ignorato se `categoria_cliente_id` esplicito è presente (priorità all'esplicito).
+  - `categoria_cliente_id` (smallint) — attiva il livello `categoria_cliente` nella cascata visualizzata (fra `user` e `group`). Valorizza `categoria_cliente_value` e `categoria_cliente_override_id` nelle righe risposta. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`, come `billing_account_id`.
+  - `billing_account_id` (int) — alternativa al precedente: il BE deriva la categoria dal BA col BB `categoria_cliente_da_query`. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`; BA inesistente **o fuori dallo scope** dell'operatore (la RLS di `anagrafiche.billing_account` non lo restituisce) → 404 `E_ANAG_NOT_FOUND`, senza distinguere i due casi. Ignorato se `categoria_cliente_id` esplicito è presente (priorità all'esplicito).
 - Output `200`:
 ```json
 {
@@ -107,8 +107,7 @@ La risoluzione e' gestita dalla funzione DB `script.fn_get_parameter_full()`. La
   - Cascata di risoluzione (post brief DB 2026-05-19, migration `20260519-01-recreate-fn-list-parameters-for-user-categoria-cliente-mctit`): `user > categoria_cliente > group > emittente > default`
   - `user_override_id` / `emittente_override_id` / `categoria_cliente_override_id`: ID dei rispettivi override (null se assente), da usare nel DELETE con lo `scope` corrispondente. `categoria_cliente_override_id` è **bigint** (non integer) per coerenza con `config.parameter_overrides.id` (derivato via `%TYPE`).
   - `emittente_fiscale_id` risolto automaticamente: whitelist personale `config.user_emittenti_fiscali`, altrimenti gestore globale da `anagrafiche.emittenti_fiscali_billing_account` (riga con `billing_account_id` NULL e `is_default`)
-  - `billing_account_id` inesistente: la categoria resta NULL senza errore, e sul BA non c'e' controllo di scope
-    > ⚠️ Difetto noto (F-6) — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+  - `billing_account_id` che non risulta (inesistente o fuori scope): 404 `E_ANAG_NOT_FOUND` (dal 2026-10-08; prima la categoria restava NULL senza errore)
   - `categoria_cliente_value` / `categoria_cliente_override_id` sono SEMPRE presenti come chiavi nello shape della risposta; restano `null` se la richiesta non ha passato né `categoria_cliente_id` né `billing_account_id`
   - Delega a `script.fn_list_parameters_for_user(p_django_user_id, p_group_ids, p_emittente_fiscale_id, p_categoria_cliente_id)` (firma 4-arg)
 

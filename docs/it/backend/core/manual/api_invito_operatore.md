@@ -123,10 +123,8 @@ veste nella transazione del nuovo — vale un link solo.
 
 | Codice | HTTP | Causa |
 | --- | --- | --- |
-| `E_INVITO_OPERATORE` | 400 | Operatore non invitabile (motivo specifico nel messaggio), anche quando l'utente non esiste |
-
-⚠️ Difetto noto (E-4): anche un `auth_user_id` inesistente esce 400 e non 404 — vedi
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+| `E_AMM_OPERATORE_NOT_FOUND` | 404 | L'`auth_user_id` non nomina un operatore: credenziale inesistente o senza veste OPERATORE (motivi `UTENTE_NON_TROVATO` / `SENZA_VESTE_OPERATORE` di `fn_check_operatore_invitabile`, nel `context.reason`). Dal 2026-10-08; prima 400 `E_INVITO_OPERATORE` |
+| `E_INVITO_OPERATORE` | 400 | Operatore non invitabile per gli altri motivi (veste gia' attiva, fuori finestra, senza email, piu' vesti spente): `reason` e `reason_key` nel contesto |
 
 ### Reinvia invito
 

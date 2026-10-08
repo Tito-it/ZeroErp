@@ -9,7 +9,8 @@
 """
 Indice test eseguiti:
 1)  InvitoPortaleTests.test_invia_invito_cliente_happy_path
-2)  InvitoPortaleTests.test_invia_invito_cliente_not_found
+2)  InvitoPortaleTests.test_invia_invito_cliente_not_found — 404 E_CLIENTE_NON_TROVATO (E-4)
+2b) InvitoPortaleTests.test_invia_invito_fornitore_not_found — 404 E_FORNITORE_NON_TROVATO (E-4)
 3)  InvitoPortaleTests.test_invia_invito_fornitore_happy_path
 4)  InvitoPortaleTests.test_email_vuota_solleva
 5)  InvitoPortaleTests.test_reinvia_invalida_precedente
@@ -120,7 +121,8 @@ class InvitoPortaleTests(TestCase):
         auth.set_deve_cambiare_password.assert_not_called()
         auth.set_invito_inviato_at.assert_called_once_with(200, identita_id=500)
 
-    # Scopo: BA inesistente -> ServiceError E_INVITO_PORTALE, nessun side-effect.
+    # Scopo: cliente inesistente -> 404 E_CLIENTE_NON_TROVATO (E-4: prima
+    # E_INVITO_PORTALE, cioe' 400), nessun side-effect.
     @patch(_REPO)
     def test_invia_invito_cliente_not_found(self, MockRepo):
         MockRepo.return_value.get_cliente_info.return_value = None
@@ -131,7 +133,20 @@ class InvitoPortaleTests(TestCase):
                 email="a@b.it",
                 invitato_da_user_id=1,
             )
-        self.assertEqual(ctx.exception.code, "E_INVITO_PORTALE")
+        self.assertEqual(ctx.exception.code, "E_CLIENTE_NON_TROVATO")
+
+    # Scopo: fornitore inesistente -> 404 E_FORNITORE_NON_TROVATO (E-4).
+    @patch(_REPO)
+    def test_invia_invito_fornitore_not_found(self, MockRepo):
+        MockRepo.return_value.get_fornitore_info.return_value = None
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        with self.assertRaises(ServiceError) as ctx:
+            InvitoPortaleService().invia_invito_fornitore(
+                fornitore_id=999,
+                email="a@b.it",
+                invitato_da_user_id=1,
+            )
+        self.assertEqual(ctx.exception.code, "E_FORNITORE_NON_TROVATO")
 
     # Scopo: Flusso invito fornitore — stesso scheletro, ruolo FORNITORE_PORTALE.
     @patch(_SETTINGS)
@@ -803,7 +818,7 @@ class GetStatoAccessiTests(TestCase):
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         with self.assertRaises(ServiceError) as ctx:
             InvitoPortaleService().get_stato_accessi_cliente(999)
-        self.assertEqual(ctx.exception.code, "E_INVITO_PORTALE")
+        self.assertEqual(ctx.exception.code, "E_CLIENTE_NON_TROVATO")
 
 
 class DisattivaVesteTests(TestCase):

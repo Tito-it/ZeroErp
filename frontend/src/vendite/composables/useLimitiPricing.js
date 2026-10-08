@@ -48,6 +48,8 @@ function _cacheKey(baId) {
 //        cliente). Idempotente per chiave: se gia' cached, restituisce
 //        subito dalla cache senza round-trip. Se senza BA, cascata "generica"
 //        utente. `baId` puo' essere null/undefined.
+//        Su errore la promise RIGETTA (limiti a default, niente cache): il
+//        chiamante lo mostra all'operatore.
 async function load(baId = null) {
   const key = _cacheKey(baId)
   // Cache hit: imposta i limiti correnti e ritorna.
@@ -64,11 +66,16 @@ async function load(baId = null) {
       _cache.set(key, data)
       _limiti.value = data
     })
-    .catch(() => {
-      // Errore silenzioso: fallback default '0' (safe — il BE blocchera'
-      // comunque l'override se non ammesso).
-      _cache.set(key, { ..._DEFAULT })
+    .catch((err) => {
+      // Fallback default '0' (safe — il BE blocchera' comunque l'override se
+      // non ammesso), ma ⛔ NON in cache e NON in silenzio: il BE risponde
+      // 400/404 apposta su un BA malformato o che non risulta (F-6 di
+      // analisi-be-difetti-emersi-verifica-doc-api-core), e la soglia
+      // generica mostrata come se fosse quella del cliente era il difetto.
+      // Fino al 2026-10-08 qui si inghiottiva l'errore e lo si metteva in
+      // cache per quel BA. Il messaggio lo da' il chiamante, che ha la vista.
       _limiti.value = { ..._DEFAULT }
+      throw err
     })
     .finally(() => {
       _loading.value = false
