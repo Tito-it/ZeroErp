@@ -23,6 +23,8 @@ prevede che ogni BA venga **auto‑collegato** all'emittente dell'operatore che 
 
 ### Regole principali
 
+* ⭐ **Un'istanza, un'azienda** (dal 2026-10-08): i billing account della stessa istanza devono risolvere alla stessa azienda emittente. Creare, cambiare o togliere un collegamento — e spostare l'azienda predefinita — e' controllato da [`trgfn_efba_guard_istanza_emittente`](/dbzero/anagrafiche/manual/trgfn_efba_guard_istanza_emittente) (`E_ISTANZA_EMITTENTI_DIVERSI`), gemello del controllo sull'albero padre/figlio.
+
 * **Unicita` per billing account**: una sola riga per `billing_account_id`.
 * **Default globale**:
   * `is_default = true` ammesso **una sola volta**.

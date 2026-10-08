@@ -75,16 +75,17 @@ SELECT is(
 -- 0.3: Una istanza_utility senza record per utility_id=2
 -- ⚠️ rev 2026-09-23: l'istanza si PESCAVA («la prima senza dati GAS»): su
 --   un database ricostruito non ce n'e' nessuna. Ora viene da un cliente
---   COSTRUITO con dbops.fn_pgtap_crea_cliente_ba, sull'utility di default
---   (non GAS): l'istanza nasce senza dati precontrattuali GAS per
---   costruzione. ⛔ Cio' che il builder scrive si legge in un'istruzione
---   SEPARATA.
+--   COSTRUITO con dbops.fn_pgtap_crea_cliente_ba. ⛔ Cio' che il builder
+--   scrive si legge in un'istruzione SEPARATA.
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): il cliente si
+--   costruisce sul BA GAS. Fino a quel giorno nasceva su un'altra utility
+--   «apposta», e i dati GAS si scrivevano su una coppia (istanza, GAS) senza
+--   BA: e' il caso che fk_idp_billing_account_coppia ora rifiuta. L'istanza
+--   nasce comunque senza dati precontrattuali GAS: il builder non li scrive.
 CREATE TEMP TABLE tmp_cli_idp AS
 SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
     'dati precontrattuali',
-    (SELECT u.id FROM config.utilities u
-      WHERE u.id <> (SELECT utility_id FROM tmp_costanti_idp)
-      ORDER BY u.id LIMIT 1));
+    (SELECT utility_id FROM tmp_costanti_idp));
 
 CREATE TEMP TABLE tmp_istanza_utility AS
 SELECT c.istanza_utility_id

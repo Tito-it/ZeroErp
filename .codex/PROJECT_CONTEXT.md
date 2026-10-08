@@ -274,6 +274,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - ⏳ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca**
   (`work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md`, richiesta BE del 2026-10-08, voci E-4/E-5/E-10
   dell'analisi della doc API core): da fare.
+- ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
+  decisioni di Tid del 2026-10-08): DB scritto e provato (`20261008-50…-62`, §6.10), da applicare; poi BE/FE (§5,
+  §6.10.5). Decisi anche R-8 «un BA, un cliente» (BA sulla pratica) e R-9 (UNIQUE gestori): si scrivono nello stesso giro, ⏸ al via di Tid.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

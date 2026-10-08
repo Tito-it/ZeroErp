@@ -169,4 +169,10 @@
 
 ## 📘 Altri contenuti manuali
 - [catasto-architettura](manual/catasto-architettura.md)
+- [fn_guard_istanza_ba_emittente](manual/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
+- [fn_guard_istanza_ba_gestore_globale](manual/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
+- [fn_guard_istanza_ha_ba](manual/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
+- [trgfn_billing_account_guard_istanza_emittente](manual/trgfn_billing_account_guard_istanza_emittente.md) — (latest review 08-10-26)
+- [trgfn_billing_account_require_istanza_ha_ba](manual/trgfn_billing_account_require_istanza_ha_ba.md) — (latest review 08-10-26)
+- [trgfn_efba_guard_istanza_emittente](manual/trgfn_efba_guard_istanza_emittente.md) — (latest review 08-10-26)
 - [trgfn_emittenti_fiscali_guard_attivo](manual/trgfn_emittenti_fiscali_guard_attivo.md)

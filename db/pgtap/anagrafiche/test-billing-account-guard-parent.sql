@@ -460,6 +460,14 @@ $smonta$;
 -- =========================================================
 DO $$
 BEGIN
+    -- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): l'ultimo BA di
+    --   un'istanza non si cancella da solo (constraint trigger
+    --   trg_billing_account_z90_require_istanza_ha_ba_dlt). Qui istanza e BA se
+    --   ne vanno INSIEME: la finestra differita si apre prima dei DELETE e si
+    --   richiude dopo quello delle istanze, cosi' il controllo scatta su uno
+    --   stato finito. Con i vincoli IMMEDIATE del preambolo scatterebbe sul
+    --   DELETE dei BA, con l'istanza ancora li'.
+    SET CONSTRAINTS ALL DEFERRED;
     DELETE FROM vendite.attivita_fatturabili af
     WHERE af.commessa_id IN (
         SELECT c.id FROM vendite.commesse c WHERE c.codice = 'TST-GUARD-PARENT-COMM-01'
@@ -496,6 +504,8 @@ BEGIN
 
     DELETE FROM anagrafiche.istanze_utilities iu
     WHERE iu.codice LIKE 'TST-GUARD-PARENT-%';
+
+    SET CONSTRAINTS ALL IMMEDIATE;
 END;
 $$;
 

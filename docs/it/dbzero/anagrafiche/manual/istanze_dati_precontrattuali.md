@@ -59,6 +59,7 @@ Tali informazioni, una volta **caricate**, sono considerate **definitive** e:
 
 * **PK**: `id`.
 * **FK**: verso `istanze_utilities`, `utilities`, `tipi_utenze`, `classi_utenze` come da tabella collegamenti.
+* **Solo col billing account della coppia** (dal 2026-10-08, `fk_idp_billing_account_coppia`): una riga per la coppia (istanza, utility) esiste solo se quella coppia ha il suo billing account. I dati precontrattuali sono **dati**, non dichiarano la utility dell'istanza: lo fa il billing account, che nasce con l'istanza. Fino a quel giorno una riga qui bastava a far nascere un'istanza senza BA. Vedi [Ogni istanza nasce col suo billing account](/it/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account).
 * **Immutabilità consigliata**: i campi **sensibili** dovrebbero essere **bloccati** dopo il consolidamento applicativo (es. tramite trigger), salvo `meta` per correzioni controllate.
 
 ---

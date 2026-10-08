@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ISTANZA NASCE COL BILLING ACCOUNT, NON CON UN SATELLITE QUALUNQUE
+#   anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata: il corpo
+#   delega ad anagrafiche.fn_guard_istanza_ha_ba (20261008-55).
+#   Brief: brief-db-istanza-nasce-col-ba (R-1, §6.2)
+#
+# -- CHE COSA CAMBIA --------------------------------------------------
+#   Fino a oggi (Strategia C, 20260501-10) bastava UNO fra tre satelliti:
+#   billing_account, istanze_dati_precontrattuali, clienti. Con la sola riga
+#   precontrattuale l'istanza nasceva senza BA. Regola di Tid del 2026-10-08:
+#   l'istanza nasce col BA, sempre.
+#   * clienti era gia' un ramo morto: clienti.billing_account_id e' NOT NULL
+#     con FK composta (billing_account_id, istanza_utility_id), quindi una
+#     riga cliente implica un BA sulla stessa istanza;
+#   * la riga precontrattuale ora richiede il BA della sua coppia
+#     (fk_idp_billing_account_coppia, 20261008-51): resta un satellite di
+#     DATI, non dichiara piu' niente da sola.
+#   Codice: E_ISTANZA_SENZA_BA al posto di E_ISTANZA_UTILITY_SENZA_UTILITY,
+#   la cui frase («serve almeno un riferimento: billing_account, dati
+#   precontrattuali, cliente») con la regola nuova e' falsa. Il vecchio e'
+#   segnato obsoleto_dal 2026-10-08 in codici_errore.csv.
+#
+# -- IL NOME RESTA ----------------------------------------------------
+#   Funzione e trigger tengono il nome «require_utility_dichiarata»: una
+#   utility e' dichiarata sull'istanza dal billing account di quella utility
+#   (D-2, per coppia), e il nome lo dice ancora. Il trigger
+#   (trg_istanze_utilities_z90_require_utility_dichiarata_ins, constraint
+#   trigger AFTER INSERT DEFERRABLE INITIALLY DEFERRED) non si tocca.
+#
+# Ritorno indietro: il corpo del 20260501-10 (tre satelliti).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261008-56-update-trgfn-istanze-utilities-require-ba-mctit.yaml
+
+  - changeSet:
+      id: 20261008-56-update-trgfn-istanze-utilities-require-ba
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        trgfn_istanze_utilities_require_utility_dichiarata pretende il billing account al COMMIT
+        (delega ad anagrafiche.fn_guard_istanza_ha_ba, codice E_ISTANZA_SENZA_BA): i dati
+        precontrattuali e il cliente non sostituiscono piu' il BA. Brief:
+        brief-db-istanza-nasce-col-ba (R-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Constraint trigger al COMMIT: l'istanza appena inserita
+                -- deve avere il suo billing account. Prima e dopo l'INSERT
+                -- dell'istanza, nella stessa transazione, l'ordine e' libero.
+                PERFORM anagrafiche.fn_guard_istanza_ha_ba(NEW.id);
+                RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata()
+              IS 'Constraint trigger function (DEFERRABLE INITIALLY DEFERRED, AFTER INSERT su anagrafiche.istanze_utilities): al COMMIT l''istanza appena nata deve avere almeno un billing account. Delega ad anagrafiche.fn_guard_istanza_ha_ba (E_ISTANZA_SENZA_BA), lo stesso guard del constraint trigger sulla cancellazione del BA. ⚠️ rev 2026-10-08: fino a quel giorno bastava uno fra tre satelliti (billing_account, istanze_dati_precontrattuali, clienti) e con la sola riga precontrattuale l''istanza nasceva senza BA. Regola di Tid: istanza e BA nascono insieme, sempre. Il nome resta: la utility e'' dichiarata dal billing account di quella utility. Brief: brief-db-istanza-nasce-col-ba (R-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                IF NOT EXISTS (
+                  SELECT 1 FROM anagrafiche.billing_account
+                   WHERE istanza_utility_id = NEW.id
+                  UNION ALL
+                  SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali
+                   WHERE istanza_utility_id = NEW.id
+                  UNION ALL
+                  SELECT 1 FROM anagrafiche.clienti
+                   WHERE istanza_utility_id = NEW.id
+                ) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'anagrafiche',
+                    'trgfn_istanze_utilities_require_utility_dichiarata',
+                    'E_ISTANZA_UTILITY_SENZA_UTILITY',
+                    jsonb_build_object(
+                      'detail', 'Istanza senza satellite (BA/IDP/cliente) al COMMIT',
+                      'istanza_utility_id', NEW.id,
+                      'soggetto_id', NEW.soggetto_id
+                    ),
+                    NULL::uuid,
+                    concat('istanza_utility_id=', NEW.id::text)
+                  );
+                END IF;
+                RETURN NULL;
+              END
+              $function$;

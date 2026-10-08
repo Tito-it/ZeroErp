@@ -1,0 +1,84 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PREVENTIVO HA SEMPRE IL SUO BILLING ACCOUNT, E E' QUELLO DELLA SUA COPPIA
+#   vendite.preventivi.billing_account_id SET NOT NULL
+#   + FK (billing_account_id, istanza_utility_id, utility_id)
+#     verso anagrafiche.billing_account (id, istanza_utility_id, utility_id).
+#   Brief: brief-db-istanza-nasce-col-ba (R-2, §6.3)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Regola di Tid del 2026-10-08: istanza e billing account nascono insieme,
+#   per coppia (D-2). Il «preventivo prospect senza BA» non esiste piu': il
+#   preventivo sceglie una coppia (istanza, utility) e quella coppia ha il suo
+#   BA. Su offerte e contratti il BA era gia' NOT NULL: l'asimmetria si chiude.
+#
+# -- LA FK COMPOSTA ------------------------------------------------
+#   Fino a oggi la sola FK semplice fk_preventivi_billing_account: un
+#   preventivo poteva puntare al BA di un'altra istanza o di un'altra utility.
+#   La composta lega i tre valori. Destinazione: uq_billing_account_id_coppia
+#   (20261008-50).
+#   ⚠️ La FK semplice RESTA: e' gia' in servizio e la composta la implica; il
+#   gemello su offerte e contratti la tiene perche' il backend ne mappa il
+#   nome a una frase. Toglierla e' un cantiere di forma, non di regola.
+#   ⚠️ Il guard parlante trg_preventivi_a10_guard_utility_istanza_coerenza_ins_upd
+#   resta: e' BEFORE ROW, quindi parla prima della FK con
+#   E_PREV_UTILITY_ISTANZA_INCOERENTE («la coppia non ha il suo BA»); la FK
+#   copre il caso che il guard non vede (BA esistente ma di un'altra coppia).
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero preventivi senza BA o col BA di un'altra
+#   coppia (expectedResult 0). Se ce ne sono, il migrate si ferma e si
+#   correggono a mano (brief §6.7). Nessun valore scelto dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261008-52-alter-preventivi-billing-account-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261008-52-alter-preventivi-billing-account-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.preventivi: billing_account_id NOT NULL e FK composta verso il billing account
+        della stessa coppia (istanza, utility). Brief: brief-db-istanza-nasce-col-ba (R-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM vendite.preventivi p
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
+               WHERE ba.id IS NULL
+                  OR ba.istanza_utility_id IS DISTINCT FROM p.istanza_utility_id
+                  OR ba.utility_id         IS DISTINCT FROM p.utility_id;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi
+                ALTER COLUMN billing_account_id SET NOT NULL;
+
+              ALTER TABLE vendite.preventivi
+                ADD CONSTRAINT fk_preventivi_ba_coppia
+                FOREIGN KEY (billing_account_id, istanza_utility_id, utility_id)
+                REFERENCES anagrafiche.billing_account (id, istanza_utility_id, utility_id);
+
+              COMMENT ON CONSTRAINT fk_preventivi_ba_coppia ON vendite.preventivi
+              IS 'Il billing account del preventivo e'' quello della sua coppia (istanza, utility): fino al 2026-10-08 la sola FK semplice ammetteva il BA di un''altra istanza o di un''altra utility. Gemelli: fk_offerte_commerciali_ba_coppia, fk_contratti_ba_coppia. Brief: brief-db-istanza-nasce-col-ba (R-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.preventivi DROP CONSTRAINT fk_preventivi_ba_coppia;
+              ALTER TABLE vendite.preventivi ALTER COLUMN billing_account_id DROP NOT NULL;

@@ -2,90 +2,52 @@
 
 ### Scopo
 
-Pure check (boolean, no raise) riusabile cross-tabella per validare la coppia `(istanza_utility_id, utility_id)` come **coerente**, ovvero dichiarata da almeno una delle 3 fonti satellite riconosciute dal modello istanze utility.
+Pure check (boolean, nessun errore) sulla coppia `(istanza_utility_id, utility_id)`:
+**true se la coppia ha il suo billing account**.
 
-Introdotta nel refactor preventivi 2026-05-01 (sessione brief preventivi rev2). Riusabile da qualsiasi tabella vendite/acquisti che abbia la coppia `(istanza, utility)`.
+Una utility e' dichiarata su un'istanza dal billing account di quella utility
+(regola di Tid del 2026-10-08, per coppia). La check la usano i punti che devono
+sapere se una coppia scelta dall'operatore e' valida prima di scriverla.
 
 ## Schema
 
-`script` (la convention progetto colloca in `script` le funzioni riusabili cross-dominio).
-
-## Firma
-
-```sql
-script.fn_check_utility_istanza_coerenza(
-    p_istanza_utility_id  anagrafiche.istanze_utilities.id%TYPE,
-    p_utility_id          config.utilities.id%TYPE
-) RETURNS boolean
-LANGUAGE plpgsql STABLE
-```
+`script`
 
 ## Logica
 
-Ritorna `true` se esiste almeno una riga matching la coppia in:
+* `p_istanza_utility_id` o `p_utility_id` NULL → `false`;
+* esiste un billing account su quella coppia (`uq_billing_instance_utility`) →
+  `true`; altrimenti `false`.
 
-1. `anagrafiche.billing_account` (UNIQUE `uq_billing_instance_utility (istanza_utility_id, utility_id)`)
-2. `anagrafiche.istanze_dati_precontrattuali` (UNIQUE `uq_istanze_dati_precontrattuali_id_utility_id`)
-3. `anagrafiche.clienti` (entrambe le colonne presenti, 1:1 cliente↔istanza)
+## Perche' una fonte sola
 
-Ritorna `false` se:
+Fino al 2026-10-08 le fonti erano tre: billing account, dati precontrattuali,
+cliente. Dalla regola «istanza e billing account nascono insieme, per coppia»
+le altre due **implicano** il billing account per FK:
 
-* `p_istanza_utility_id` o `p_utility_id` sono `NULL` (guard input)
-* Nessuna delle 3 fonti ha riga matching
+* i dati precontrattuali hanno la FK composta verso il BA della loro coppia
+  (`fk_idp_billing_account_coppia`);
+* il cliente ha il BA della sua istanza (`billing_account_id` NOT NULL, FK
+  composta).
 
-## Convenzione naming
+Leggerle ancora sarebbe ripetere il BA tre volte.
 
-* `fn_check_*` → pure check, no raise (questa)
-* `fn_guard_*` → fail-fast, puo' sollevare
+⚠️ Non e' la regola del constraint trigger dell'istanza («almeno un BA»):
+questa guarda la **coppia**. Per questo resta una funzione a se'.
 
-Per usi che richiedono raise (es. trigger guard), il caller wrappa la fn in un `IF NOT script.fn_check_...() THEN PERFORM script.fn_log_and_raise_error(...) END IF`.
+## Chiamanti
 
-## Performance
+* [`vendite.trgfn_preventivi_guard_utility_istanza_coerenza`](/dbzero/vendite/manual/trgfn_preventivi_guard_utility_istanza_coerenza)
+  — parla prima della FK composta del preventivo, con un codice leggibile;
+* il backend: filtro del lookup istanze per utility e pre-validazione della
+  creazione del preventivo (`istanze_utility_repository`).
 
-`STABLE` + 3 lookup su indici UNIQUE: O(log n) per ognuno, complessivamente O(log n) per chiamata. Sicura da chiamare in trigger BEFORE INSERT/UPDATE.
+## Note di migrazione
 
-## Allineamento con `trgfn_istanze_utilities_require_utility_dichiarata`
-
-La lista delle 3 fonti satellite **deve restare identica** al constraint trigger su `istanze_utilities`. Se cambia una delle due (es. si aggiunge una nuova fonte come `commesse_attivita`), aggiornare entrambe in coordinamento.
-
-## Esempio d'uso (in trigger guard)
-
-```sql
-IF NOT script.fn_check_utility_istanza_coerenza(
-       NEW.istanza_utility_id,
-       NEW.utility_id
-   ) THEN
-  PERFORM script.fn_log_and_raise_error(
-    'vendite', 'trgfn_<tabella>_guard_utility_istanza_coerenza',
-    'E_<DOM>_UTILITY_ISTANZA_INCOERENTE',
-    jsonb_build_object(
-      'istanza_utility_id', NEW.istanza_utility_id,
-      'utility_id',         NEW.utility_id
-    ),
-    NULL::uuid,
-    concat('istanza_utility_id=', NEW.istanza_utility_id::text,
-           ', utility_id=', NEW.utility_id::text)
-  );
-END IF;
-```
-
-## Caller attuali
-
-* [`vendite.trgfn_preventivi_guard_utility_istanza_coerenza`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_utility_istanza_coerenza)
-
-## Caller candidati futuri
-
-* `vendite.attivita_fatturabili` (se non gia' coperto da altra coerenza)
-* `vendite.commesse_attivita`
-* `vendite.ddt`, `vendite.fatture` (se hanno la coppia)
-* Qualsiasi nuova tabella con coppia `(istanza_utility_id, utility_id)` come perimetro
-
-## Dipendenze
-
-Nessuna fn esterna. Solo lookup su tabelle satellite.
+* **2026-05-01**: nasce con tre fonti (BA, dati precontrattuali, clienti).
+* **2026-10-08** (`20261008-58`, brief-db-istanza-nasce-col-ba R-1): una fonte
+  sola, il billing account. Firma e ritorno invariati.
 
 ## Vedi anche
 
-* [`anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata`](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) — constraint trigger gemello (stesse 3 fonti)
-* [`vendite.trgfn_preventivi_guard_utility_istanza_coerenza`](/dbzero/vendite/funzioni/trgfn_preventivi_guard_utility_istanza_coerenza) — primo caller
-* [Guida: Gestione delle istanze utility — sezione "Strategia C"](/it/guide/gestione-delle-istanze-utility#ogni-istanza-dichiara-la-utility-strategia-c)
+* [Guida: Gestione delle istanze utility — Ogni istanza nasce col suo billing account](/it/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)

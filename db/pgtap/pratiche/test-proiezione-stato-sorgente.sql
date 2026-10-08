@@ -71,20 +71,21 @@ SELECT plan(31);
 -- Riferimenti minimi per creare preventivi in pgTAP
 -- (pattern test-fn-available-actions-preventivo-v1)
 -- ============================================================
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): il preventivo ha
+--   sempre il suo billing account, quello della sua coppia (istanza, utility).
+--   Fino a quel giorno la coppia si PESCAVA dal primo BA del database e il
+--   preventivo nasceva senza BA; ora il BA va scritto, e il guard
+--   dell'emittente pretende che sia dell'emittente del documento — cioe' di
+--   chi agisce. Il cliente si COSTRUISCE: il builder lega il BA all'emittente
+--   dell'operatore in sessione. ⛔ Si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_cli_pss AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('proiezione stato sorgente');
+
 CREATE TEMP TABLE tmp_refs_pss AS
 SELECT
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
+  (SELECT billing_account_id FROM tmp_cli_pss) AS billing_account_id,
+  (SELECT istanza_utility_id FROM tmp_cli_pss) AS istanza_utility_id,
+  (SELECT utility_id FROM tmp_cli_pss) AS utility_id,
   (SELECT v.id
      FROM config.valute v
     ORDER BY v.id LIMIT 1
@@ -112,7 +113,7 @@ SELECT
 CREATE TEMP TABLE tmp_prev_pss AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, istanza_utility_id, utility_id,
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data, fatturazione_immediata,
     storicizza, meta, emittente_fiscale_id
@@ -120,7 +121,7 @@ WITH ins AS (
   SELECT
     'PGTAP-PSS-' || x.suffisso || '-' || substr(md5(clock_timestamp()::text || x.suffisso), 1, 8),
     0,
-    r.istanza_utility_id, r.utility_id,
+    r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
     x.stato_id, DATE '2026-07-01', false,
     false, '{"test_scope":"pgtap_proiezione_stato_sorgente"}'::jsonb,

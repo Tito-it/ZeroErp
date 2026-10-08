@@ -3,8 +3,12 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_check_utility_istanza_coerenza(istanza_utility_id, utility_id)
--- Pure check (no raise), 3 fonti satellite: BA, IDP, clienti.
+-- Pure check (no raise): la coppia ha il suo billing account.
 -- Riferimento brief preventivi rev2 (sessione 2026-05-01).
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): fino a quel giorno le
+--   fonti erano tre (BA, dati precontrattuali, clienti); ora e' il solo BA, e
+--   le altre due lo implicano per FK. Il test 4 (via clienti) resta: un cliente
+--   ha il BA della sua coppia, quindi la risposta e' ancora true.
 --
 -- Indice test (1..6):
 --    1. Param NULL su istanza  -> false

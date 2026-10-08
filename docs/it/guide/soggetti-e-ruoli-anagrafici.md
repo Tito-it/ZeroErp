@@ -1,6 +1,6 @@
 # Guida — Soggetti e Ruoli Anagrafici
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 8 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -204,7 +204,11 @@ Non tutti i ruoli hanno una tabella dedicata. Solo quelli che richiedono dati ag
 
 I ruoli **REFERENTE** (RE), **VENDITORE** (VE), **DISTRIBUTORE** (DI) e **BANCA** (BANK) non hanno tabella specializzata: operano solo tramite il record in `soggetti_ruoli` e le tabelle trasversali (contatti, conti bancari).
 
-Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → soggetti_ruoli.id` con vincolo UNIQUE: un solo record specializzato per ruolo assegnato. I dati appartengono solo al ruolo pertinente — le condizioni di pagamento del cliente non si mescolano con quelle del fornitore, anche se il soggetto e lo stesso.
+Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → soggetti_ruoli.id`. I dati appartengono solo al ruolo pertinente — le condizioni di pagamento del cliente non si mescolano con quelle del fornitore, anche se il soggetto e lo stesso.
+
+Per quasi tutti i ruoli il collegamento ha un vincolo UNIQUE: **un solo record specializzato per ruolo assegnato** (fornitori, vettori, PSP, risorse umane, emittenti fiscali; per i gestori il vincolo e deciso il 2026-10-08 e arriva col prossimo rilascio del database).
+
+⚠️ **L'eccezione e il CLIENTE.** Un cliente non e «la persona come cliente», ma **una sua fornitura**: un soggetto con un solo ruolo CLIENTE puo avere il gas a casa e la luce in ufficio, cioe due billing account e due clienti, tutti sullo stesso ruolo. Su `anagrafiche.clienti` non c'e — e non ci deve essere — un vincolo di unicita sul ruolo: la regola e **un cliente per ogni billing account** (decisa il 2026-10-08; il vincolo che la impone arriva col prossimo rilascio del database, al posto di quello di oggi «un cliente per istanza») (vedi [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)).
 
 ---
 

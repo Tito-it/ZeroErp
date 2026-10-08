@@ -4,11 +4,16 @@
 >
 > * `istanza_utility_id` ora **obbligatoria** (NOT NULL) — pattern allineato a `commesse_attivita` / `attivita_fatturabili`
 > * Aggiunta colonna `emittente_fiscale_id` (NOT NULL, FK `anagrafiche.emittenti_fiscali`) — snapshot user-derived dell'operatore creatore, **immutabile** post-create
-> * `billing_account_id` esplicitamente **opzionale** — supporto preventivi prospect (cliente non ancora BA)
+> * `billing_account_id` esplicitamente **opzionale** — supporto preventivi prospect (cliente non ancora BA). ⚠️ **Superato il 2026-10-08**: `billing_account_id` e' NOT NULL (vedi «Modifiche 2026-10-08» sotto)
 > * Vista `vw_preventivi_list.emittente_fiscale_id` ora legge la colonna persistita (era fn dinamica che esplodeva su BA NULL)
 > * Nuovi trigger di guardia: `default_emittente`, `guard_utility_istanza_coerenza`
 >
 > Brief completo: [risposta-db-brief-preventivi-rev2](/it/dev/work-done/risposta-db-brief-preventivi-rev2).
+
+> ⚠️ **Modifiche 2026-10-08** (brief-db-istanza-nasce-col-ba, R-2):
+>
+> * `billing_account_id` **obbligatorio** (NOT NULL): istanza e billing account nascono insieme, quindi il «preventivo prospect senza BA» non esiste piu'
+> * FK composta `fk_preventivi_ba_coppia` (`billing_account_id`, `istanza_utility_id`, `utility_id`): il BA del preventivo e' quello della sua coppia (istanza, utility); gemelle su offerte e contratti
 
 👀 **Vedi anche**
 >
@@ -28,12 +33,12 @@
 
 > • [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) — set emittente da operatore (building block unico dal 2026-09-15; prima la copia `trgfn_preventivi_default_emittente`)  
 > • [vendite.trgfn_preventivi_guard_utility_istanza_coerenza](/dbzero/vendite/funzioni/trgfn_preventivi_guard_utility_istanza_coerenza) — guard coerenza coppia istanza/utility  
-> • [script.fn_check_utility_istanza_coerenza](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — pure check riusabile (BA + IDP + clienti)  
-> • [anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) — Strategia C su istanze  
+> • [script.fn_check_utility_istanza_coerenza](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — pure check riusabile: la coppia ha il suo billing account  
+> • [anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata](/dbzero/anagrafiche/funzioni/trgfn_istanze_utilities_require_utility_dichiarata) — l'istanza nasce col suo billing account  
 
 **Guide concettuali:**
 
-> • [Gestione delle istanze utility — sezione "Strategia C"](/it/guide/gestione-delle-istanze-utility#ogni-istanza-dichiara-la-utility-strategia-c)  
+> • [Gestione delle istanze utility — Ogni istanza nasce col suo billing account](/it/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)  
 > • [Risorse umane e accessi (multi-face auth, GUC `app.current_user_id`)](/it/guide/risorse-umane-e-accessi)  
 
 ---
@@ -94,7 +99,7 @@ Stato implementativo:
 ### Campi chiave funzionali
 
 * **Identificazione/revisione**: `numero`, `rev`, `is_revision_attiva`
-* **Perimetro operativo**: `istanza_utility_id` (**obbligatoria**, post brief DB rev2 2026-05-01), `utility_id`, `billing_account_id` (opzionale: prospect senza BA ammesso)
+* **Perimetro operativo**: `istanza_utility_id` (**obbligatoria**, post brief DB rev2 2026-05-01), `utility_id`, `billing_account_id` (**obbligatorio** dal 2026-10-08: quello della coppia istanza/utility)
 * **Perimetro fiscale**: `emittente_fiscale_id` (**obbligatorio**, **immutabile** post-create, derivato dall'operatore — vedi sotto)
 * **Validita`**: `validita_dal`, `validita_al`
 * **Economici**: `totale_imponibile`, `totale_iva`, `totale_documento`, `valuta_id`
@@ -106,12 +111,13 @@ Stato implementativo:
 #### Modello `istanza_utility_id` / `billing_account_id` / `emittente_fiscale_id`
 
 * `istanza_utility_id` è **obbligatoria** (NOT NULL): allinea preventivi al pattern
-  di `commesse_attivita` / `attivita_fatturabili`. In contesti utility (gas/EE/idrico)
-  l'istanza esiste prima del BA (preventivo prospect); in contesti non-utility
-  l'istanza viene generata in automatico come "contenitore tecnico"
-  (vedi [Gestione delle istanze utility](/it/guide/gestione-delle-istanze-utility)).
-* `billing_account_id` è **opzionale**: i preventivi prospect (cliente non ancora
-  trasformato in BA) sono ammessi.
+  di `commesse_attivita` / `attivita_fatturabili`. L'istanza nasce sempre insieme
+  al suo billing account; in contesti non-utility viene generata in automatico come
+  "contenitore tecnico" (vedi [Gestione delle istanze utility](/it/guide/gestione-delle-istanze-utility)).
+* `billing_account_id` è **obbligatorio** (dal 2026-10-08): il preventivo ha sempre
+  il BA della sua coppia (istanza, utility), garantito dalla FK composta
+  `fk_preventivi_ba_coppia`. Fino a quel giorno era opzionale, per i «preventivi
+  prospect».
 * `emittente_fiscale_id` è **obbligatoria** (NOT NULL): snapshot dell'emittente
   fiscale dell'**operatore loggato** che ha creato la riga (modello user-derived).
   Valorizzata a INSERT-time dal trigger di default (`script.trgfn_default_emittente_fiscale`, dal 2026-09-15)
@@ -122,11 +128,10 @@ Stato implementativo:
 #### Coerenza utility/istanza
 
 Il trigger `trg_preventivi_a10_guard_utility_istanza_coerenza_ins_upd` garantisce
-che la coppia `(istanza_utility_id, utility_id)` sia coerente con almeno una
-fonte satellite (`billing_account`, `istanze_dati_precontrattuali`, `clienti`)
-tramite `script.fn_check_utility_istanza_coerenza`. La lista delle 3 fonti è
-allineata al constraint trigger su `istanze_utilities`
-(`trg_istanze_utilities_z90_require_utility_dichiarata_ins`).
+che la coppia `(istanza_utility_id, utility_id)` abbia il suo billing account
+tramite `script.fn_check_utility_istanza_coerenza`, e parla prima della FK
+composta con `E_PREV_UTILITY_ISTANZA_INCOERENTE`. La FK `fk_preventivi_ba_coppia`
+garantisce che il BA del preventivo sia proprio quello della coppia.
 
 ---
 
@@ -143,14 +148,14 @@ allineata al constraint trigger su `istanze_utilities`
 2. `chk_preventivi_competenza_mese_primo`: competenza allineata al primo giorno del mese.
 3. FK attive su stato documento, termini, utility, valuta, BA, emittente fiscale.
 4. **`istanza_utility_id` NOT NULL** (allinea preventivi al pattern di `commesse_attivita`/`attivita_fatturabili`). Il preventivo deve essere collegato a un'istanza utility, anche per business non-utility (istanza tecnica/contenitore).
-5. **Coerenza utility/istanza**: la coppia `(istanza_utility_id, utility_id)` deve essere dichiarata in almeno uno dei satelliti `billing_account` / `istanze_dati_precontrattuali` / `clienti` (post Strategia C). Trigger `trgfn_preventivi_guard_utility_istanza_coerenza` (`_a10_`) → errore `E_PREV_UTILITY_ISTANZA_INCOERENTE`.
+5. **Coerenza utility/istanza**: la coppia `(istanza_utility_id, utility_id)` deve avere il suo billing account, e il BA del preventivo e' quello. Trigger `trgfn_preventivi_guard_utility_istanza_coerenza` (`_a10_`) → errore `E_PREV_UTILITY_ISTANZA_INCOERENTE`; FK composta `fk_preventivi_ba_coppia`.
 6. **`emittente_fiscale_id` user-derived**: valorizzato a INSERT-time dal trigger di default (`script.trgfn_default_emittente_fiscale`; prima del 2026-09-15 la copia `trgfn_preventivi_default_emittente`) da GUC `app.current_user_id` via `script.fn_resolve_emittente_for_user`. Per admin globale (utente senza emittente assegnato) il payload deve specificare `emittente_fiscale_id` esplicito altrimenti errore `E_PREV_EMITTENTE_NON_RISOLTO`.
 7. **`emittente_fiscale_id` immutabile post-create**: pattern `automation_lock_columns` → errore `EMITTENTE_NON_MODIFICABILE`. Per cambiare l'emittente serve creare una revisione.
 4. **Istanza obbligatoria** (NOT NULL): regola dominio.
 5. **Emittente fiscale obbligatorio** (NOT NULL): snapshot user-derived,
    sollevato `E_PREV_EMITTENTE_NON_RISOLTO` se contesto non risolvibile.
 6. **Coerenza utility/istanza**: `E_PREV_UTILITY_ISTANZA_INCOERENTE` se la coppia
-   non e` dichiarata da nessuna fonte satellite.
+   non ha il suo billing account.
 7. **Emittente immutabile post-create**: `EMITTENTE_NON_MODIFICABILE` su UPDATE.
 
 ---
