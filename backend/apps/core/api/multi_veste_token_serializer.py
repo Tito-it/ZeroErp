@@ -131,6 +131,9 @@ class MultiVesteTokenSerializer(SidTokenObtainPairSerializer):
     def validate(self, attrs: dict) -> dict:
         # Step 1: verifica credenziali. super() popola self.user.
         data = super().validate(attrs)
+        # `super().validate` solleva AuthenticationFailed se la credenziale non
+        # passa: qui `self.user` c'e' per costruzione.
+        assert self.user is not None
 
         # Step 2: risolve l'identita dell'utente per la veste del namespace.
         identita = self._auth_repo.find_veste_utilizzabile_per_ruoli(

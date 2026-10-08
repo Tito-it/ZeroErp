@@ -129,6 +129,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     #    questo e' il ripiego di quando quegli argomenti non sono arrivati, quindi
     #    dice la regola e non l'elenco.
     "E_BA_EMITTENTE_CON_STORIA": "Il cliente ha gia' documenti numerati con l'emittente attuale: non si puo' spostare su un altro emittente. Se il cliente e' passato davvero all'altro emittente, si apre presso di lui una fornitura nuova; i documenti gia' emessi restano con chi li ha emessi.",
+    "E_BA_ISTANZA_IMMUTABILE": "Un billing account appartiene per sempre alla sua istanza e alla sua utility: per un'altra istanza o utility se ne crea uno nuovo.",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "Soggetto del billing account diverso da quello dell'istanza utility.",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "Billing account senza utility associata.",
     "E_BOM_IVA_DISCORDANTE": "Le aliquote IVA di articolo padre e componenti della distinta devono coincidere.",
@@ -525,6 +526,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_INVALID_ID": "ID non valido.",
     "E_INVITO_OPERATORE": "Operatore non invitabile.",
     "E_INVITO_PORTALE": "Invito portale non inviabile.",
+    "E_ISTANZA_EMITTENTI_DIVERSI": "I billing account di un'istanza sono tutti della stessa azienda emittente: questa operazione ne aggancerebbe uno a un'azienda diversa.",
+    "E_ISTANZA_SENZA_BA": "Un'istanza nasce e vive insieme al suo billing account: non puo' restarne senza.",
     "E_ISTANZA_UTILITY_SENZA_UTILITY": "Istanza utility senza utility dichiarata: serve almeno un riferimento (billing account, dati precontrattuali, cliente).",
     "E_IVA_CONTO_ACQ_ERR": "Il conto indicato per l'IVA acquisti non e' un conto di tipo Acquisto.",
     "E_IVA_CONTO_VEN_ERR": "Il conto indicato per l'IVA vendite non e' un conto di tipo Vendita.",
@@ -906,6 +909,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_PRATICA_QUERY": "Errore durante la lettura delle pratiche.",
     "E_PRATICA_SORGENTE_TIPO_INVALIDO": "Codice sorgente non presente in configurazione.",
     "E_PRATICA_VALIDATION": "Parametri pratica non validi.",
+    "E_PRATICHE_BA_NON_COERENTE": "Il billing account non appartiene al ruolo della pratica.",
     "E_PRATICHE_CHIUSURA_FLUSSI_APERTI": "Impossibile chiudere la pratica: ci sono flussi ancora aperti. Completali o annullali, poi riprova.",
     "E_PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI": "Impossibile chiudere la pratica: flussi obbligatori non completati.",
     "E_PRATICHE_CHIUSURA_FLUSSO_PREMATURO": "Impossibile completare il flusso di chiusura: restano altri flussi obbligatori da completare.",

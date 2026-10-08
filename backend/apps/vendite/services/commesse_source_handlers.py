@@ -42,6 +42,11 @@ from apps.vendite.db.commesse_repository import (
     PushableRow,
 )
 from apps.vendite.services import _kit_meta as kit_meta
+from apps.vendite.services.prezzo_riga_commessa import (
+    argomenti_resolver,
+    origine_ammessa,
+    provenienza_da_resolver,
+)
 from apps.vendite.services.pricing_service import PricingService
 
 logger = logging.getLogger(__name__)
@@ -62,16 +67,9 @@ _IS_COMPOSITO_MODULE_CACHE_TTL_SECONDS = 300
 # `segment_key`) sta in `_kit_meta`: e' letto anche dalla generazione righe
 # fattura, che e' l'altro capo del contratto.
 _META_KEY_ORIGINE_PREZZO = "origine_prezzo"
-
-# Valori ammessi per `commesse_attivita.origine_prezzo` (CHECK
-# chk_commesse_attivita_origine_prezzo, speculare ad attivita_fatturabili).
-# Il resolver pricing puo' restituire `origine` fuori da questo set (es.
-# 'LISTINO_BUNDLE' nello stadio bundle): in quel caso l'audit origine resta
-# NULL (NULL passa il CHECK), per non far fallire l'upsert. Allineare a DB se
-# il modello aggiunge valori.
-_ORIGINE_PREZZO_AMMESSE = frozenset(
-    {"PROMO", "CONTRATTO_OVERRIDE", "CONTRATTO_LISTINO", "CATEGORIA", "MANUALE"}
-)
+# ⚠️ Le origini ammesse dal CHECK di `commesse_attivita.origine_prezzo` stanno
+#    nel building block `prezzo_riga_commessa` (`origine_ammessa`), insieme al
+#    resto della provenienza del prezzo: fino al 2026-10-08 erano qui.
 
 
 # Scopo: invalida la cache modulo-level. Da chiamare nei test e in scenari
@@ -625,41 +623,40 @@ class BaseSourceHandler(ABC):
             return row.meta.get("policy_fatturazione", POLICY_FATTURAZIONE_DA_DOCUMENTO)
         return POLICY_FATTURAZIONE_DA_DOCUMENTO
 
-    # Scopo: risolve l'audit snapshot pricing v5 (8 campi diagnostici di
-    #        derivazione del prezzo) per una riga, via PricingService (F2-BE-12).
+    # Scopo: risolve la PROVENIENZA del prezzo di una riga (i
+    #        `CAMPI_PROVENIENZA` del building block `prezzo_riga_commessa`:
+    #        gli 8 campi diagnostici di derivazione e la versione di listino)
+    #        via PricingService (F2-BE-12).
     #        IMPORTANTE: NON tocca `prezzo_snapshot` (negoziato alla sorgente,
-    #        autoritativo); popola solo i campi di audit, ricostruendo dal
+    #        autoritativo); popola solo la provenienza, ricostruendo dal
     #        resolver QUALE listino/contratto/promo/categoria abbia determinato
     #        il prezzo alla data di competenza. La ricostruzione puo' divergere
     #        da un prezzo negoziato manualmente: per i componenti BoM si preferisce
     #        l'`origine_prezzo` gia' negoziato (in meta, autoritativo).
+    #        ⭐ Cosa chiedere al resolver e cosa scrivere della risposta lo
+    #        decide il building block, lo stesso di riallinea e sblocca
+    #        (regola del 2, 2026-10-08): contesto del kit, ripiego della data su
+    #        `competenza_mese` e versione di listino non possono piu' divergere.
     #        Best-effort: senza input sufficienti o su errore resolver ritorna
     #        dict vuoto (audit a None) e il push NON si blocca.
     def _resolve_pricing_audit(self, row: PushableRow) -> dict[str, Any]:
         # Pre-condizioni: senza questi input il resolver non e' chiamabile
         # (CONSUMI senza articolo, righe pre-espansione con uom None, ecc.).
-        if (
-            row.articolo_id is None
-            or row.uom_id is None
-            or row.billing_account_id is None
-            or row.utility_id is None
-            or row.emittente_soggetto_ruolo_id is None
-        ):
-            return {}
-        data_rif = row.data_attivita or row.competenza_mese
-        if data_rif is None:
+        argomenti = argomenti_resolver(
+            articolo_id=row.articolo_id,
+            uom_id=row.uom_id,
+            data_attivita=row.data_attivita,
+            competenza_mese=row.competenza_mese,
+            billing_account_id=row.billing_account_id,
+            utility_id=row.utility_id,
+            emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
+            meta=row.meta,
+        )
+        if argomenti is None:
             return {}
 
-        # Contesto BUNDLE per i componenti BoM: il padre e' tracciato in meta.
-        padre_contesto = (row.meta or {}).get(kit_meta.META_KEY_COMPONENTE_DI)
-        cache_key = (
-            str(row.articolo_id),
-            row.uom_id,
-            row.billing_account_id,
-            row.utility_id,
-            row.emittente_soggetto_ruolo_id,
-            data_rif,
-            padre_contesto,
+        cache_key = tuple(
+            str(v) if k == "articolo_id" else v for k, v in argomenti.items()
         )
         if cache_key in self._pricing_audit_cache:
             return self._pricing_audit_cache[cache_key]
@@ -669,25 +666,8 @@ class BaseSourceHandler(ABC):
             # Savepoint isolato: un errore resolver (DatabaseError → ServiceError)
             # non deve abortire la transazione del push ne' scartare la riga.
             with transaction.atomic():
-                r = self._pricing.resolve_prezzo(
-                    articolo_id=row.articolo_id,
-                    uom_id=row.uom_id,
-                    data_riferimento=data_rif,
-                    ba_id=row.billing_account_id,
-                    utility_id=row.utility_id,
-                    emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
-                    articolo_padre_contesto=padre_contesto,
-                )
-            audit = {
-                "prezzo_base_snapshot": r.get("prezzo_base_snapshot"),
-                "origine_prezzo": r.get("origine"),
-                "tipo_variazione_applicata": r.get("tipo_variazione_applicata"),
-                "valore_variazione_applicata": r.get("valore_variazione_applicata"),
-                "promo_id": r.get("promo_id"),
-                "contratto_id": r.get("contratto_id"),
-                "categoria_cliente_id_snapshot": r.get("categoria_cliente_id_snapshot"),
-                "classe_utenza_id_snapshot": r.get("classe_utenza_id_snapshot"),
-            }
+                r = self._pricing.resolve_prezzo(**argomenti)
+            audit = provenienza_da_resolver(r)
         except Exception as exc:  # best-effort: audit e' diagnostico, non bloccante
             logger.warning(
                 "Audit pricing snapshot non risolto (push prosegue) "
@@ -708,11 +688,8 @@ class BaseSourceHandler(ABC):
         # path snapshot) e' autoritativa: prevale sull'origine ricostruita.
         # Whitelist contro il CHECK DB: un valore fuori set (es. resolver
         # 'LISTINO_BUNDLE') diventa NULL invece di far fallire l'upsert.
-        origine_candidata = (row.meta or {}).get(_META_KEY_ORIGINE_PREZZO) or audit.get(
-            "origine_prezzo"
-        )
-        origine_prezzo = (
-            origine_candidata if origine_candidata in _ORIGINE_PREZZO_AMMESSE else None
+        origine_prezzo = origine_ammessa(
+            (row.meta or {}).get(_META_KEY_ORIGINE_PREZZO) or audit.get("origine_prezzo")
         )
         return CommessaAttivitaInput(
             commessa_id=commessa_id,
@@ -738,6 +715,10 @@ class BaseSourceHandler(ABC):
             sorgente_tipo_id=row.sorgente_tipo_id,
             sorgente_uid=row.sorgente_uid,
             meta=row.meta,
+            # ⭐ La versione di listino da cui verrebbe il prezzo (2026-10-08):
+            #    senza, il guard «versione cambiata» di `fn_riallinea_prezzo`
+            #    confrontava con NULL e non scattava mai sulle righe del push.
+            listino_versione_id=audit.get("listino_versione_id"),
             # === Snapshot pricing v5 (F2-BE-12) ===
             prezzo_base_snapshot=audit.get("prezzo_base_snapshot"),
             origine_prezzo=origine_prezzo,

@@ -233,3 +233,61 @@ def categoria_cliente_da_query(raw: str | None) -> int | None:
         log_to_db=False,
     )
     return categoria_cliente_id
+
+
+# Scopo: BB — l'ISTANZA del billing account che un payload indica, per chi
+#        scrive un documento o una pratica col BA (regola del 2, ok Tid
+#        2026-10-09). Il BA porta la sua istanza (FK NOT NULL, immutabile:
+#        E_BA_ISTANZA_IMMUTABILE): se il payload porta anche l'istanza, deve
+#        essere quella.
+#        Consumatori: `pratiche_service.crea_pratica`,
+#        `preventivi_service._risolvi_cliente_preventivo`,
+#        `commesse_service.aggiungi_onere_commessa`.
+# Perimetro: sola lettura. `code` e' il codice di validazione del dominio
+#        chiamante (400); `campo` e' quello che l'operatore deve correggere:
+#        il BA quando lo sceglie lui (pratica, preventivo), l'istanza quando il
+#        BA e' gia' scritto sul documento (l'onere: il BA e' della commessa).
+#        - BA che non risulta (inesistente o fuori RLS) → errore;
+#        - `istanza_utility_id` None → l'istanza del BA;
+#        - `istanza_utility_id` diversa da quella del BA → errore.
+#        Un BA ASSENTE non e' affare di questo BB: cosa significa lo decide il
+#        chiamante (per la commessa, un onere senza istanza a cui agganciarsi).
+# ⛔ Prima erano tre copie, e gia' divergenti: la pratica e la commessa
+#    controllavano la coincidenza, il preventivo no — un'istanza diversa da
+#    quella del BA usciva «Utility non coerente» sul campo `utility_id`, o
+#    arrivava alla FK composta.
+# Risultato: id dell'istanza del BA.
+def istanza_del_billing_account(
+    billing_account_id: int,
+    istanza_utility_id: int | None,
+    *,
+    code: str,
+    function_name: str,
+    campo: str = "billing_account_id",
+) -> int:
+    istanza_del_ba = BillingAccountRepository().get_istanza_utility_id(int(billing_account_id))
+    ErrorManager.require(
+        istanza_del_ba is not None,
+        code=code,
+        message="Billing account non trovato.",
+        detail=f"billing_account_id={billing_account_id}",
+        context={"field": campo, "billing_account_id": billing_account_id},
+        function_name=function_name,
+    )
+    assert istanza_del_ba is not None
+    ErrorManager.require(
+        istanza_utility_id is None or int(istanza_utility_id) == istanza_del_ba,
+        code=code,
+        message="L'istanza indicata non e' quella del billing account.",
+        detail=(
+            f"billing_account_id={billing_account_id} e' dell'istanza "
+            f"{istanza_del_ba}, indicata {istanza_utility_id}."
+        ),
+        context={
+            "field": campo,
+            "billing_account_id": billing_account_id,
+            "istanza_utility_id": istanza_utility_id,
+        },
+        function_name=function_name,
+    )
+    return istanza_del_ba

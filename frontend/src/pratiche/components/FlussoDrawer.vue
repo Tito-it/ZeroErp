@@ -165,7 +165,8 @@ const showEsitoDominioInfo = computed(() =>
 // pratiche.azioni_ui), risolta nel registry FE → drawer di dominio da aprire.
 const uiActivity = computed(() => getUiActivity(props.flusso?.template_azione_ui_key))
 // Gating cliente attivo: alcune attività (offerta/contratto) richiedono il BA.
-// Il flusso espone il BA risolto della pratica (NULL = prospect).
+// Il flusso espone il BA della pratica (colonna, D-9 di brief-db-istanza-nasce-col-ba;
+// NULL = pratica di un altro ruolo, interna o con la sola istanza).
 const hasActiveClient = computed(() => props.flusso?.pratica_billing_account_id != null)
 const uiActivityVisible = computed(
   () => !effectiveReadonly.value

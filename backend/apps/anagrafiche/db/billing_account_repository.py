@@ -198,6 +198,23 @@ class BillingAccountRepository:
             row = cursor.fetchone()
         return int(row[0]) if row and row[0] is not None else None
 
+    # Scopo: Risolve il BA della coppia (istanza, utility). La coppia ne ha al
+    #        piu' UNO per struttura (`uq_billing_instance_utility`): non e' una
+    #        scelta fra candidati, e' la lettura di una chiave. Con la regola
+    #        «l'istanza nasce col BA» (brief-db-istanza-nasce-col-ba, D-2) ogni
+    #        utility dichiarata su un'istanza ha il suo BA.
+    # Risultato: id del BA, oppure None se la coppia non ha BA (utility non
+    #        dichiarata su quell'istanza) o il BA e' fuori dal perimetro RLS.
+    def get_id_by_coppia(self, istanza_utility_id: int, utility_id: int) -> int | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM anagrafiche.billing_account "
+                "WHERE istanza_utility_id = %s AND utility_id = %s",
+                [istanza_utility_id, utility_id],
+            )
+            row = cursor.fetchone()
+        return int(row[0]) if row else None
+
     # Scopo: Risolve la categoria_cliente_id del BA (FK NOT NULL sulla tabella).
     #        Usato dai gate L2 dei service di dominio (preventivi, contratti)
     #        per alimentare il livello "categoria_cliente" della cascata di

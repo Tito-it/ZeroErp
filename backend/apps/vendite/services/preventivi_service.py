@@ -11,17 +11,19 @@
 
 import json
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
 from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db import DatabaseError, transaction
+from django.db import DatabaseError, IntegrityError, transaction
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
-from apps.anagrafiche.db.istanze_utility_repository import IstanzeUtilityRepository
+from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
@@ -31,7 +33,7 @@ from apps.vendite.services._pricing_gate_helpers import (
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
-from apps.core.services.payload_helpers import PayloadValidator
+from apps.core.services.payload_helpers import PayloadValidator, vincolo_violato
 from apps.core.services.testata_guard import (
     pagina_dopo_testata,
     riga_del_padre_o_not_found,
@@ -384,18 +386,119 @@ def delete_indirizzo(preventivo_id: int, indirizzo_id: int) -> dict[str, Any]:
 # ══════════════════════════════════════════════════════════
 
 
+# Scopo: il billing account della coppia (istanza, utility) di un preventivo,
+#        letto dal lato che il payload porta. Ritorna (billing_account_id,
+#        istanza_utility_id), entrambi valorizzati.
+# Perimetro: dal 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2) il preventivo
+#        ha sempre il BA, come offerta e contratto: `billing_account_id` NOT NULL
+#        e FK composta `fk_preventivi_ba_coppia` verso il BA della coppia.
+#        ⭐ Non e' una scelta fra candidati: la coppia ha UN BA per struttura
+#        (`uq_billing_instance_utility`), e il BA ha UNA istanza. Il preventivo
+#        «prospect senza BA» non esiste piu': l'istanza nasce col suo BA.
+#        - payload col BA: l'istanza e' la sua (BB `istanza_del_billing_account`,
+#          lo stesso della pratica), e il BA dev'essere QUELLO della coppia
+#          (istanza, utility). Se non lo e' — istanza diversa da quella del BA,
+#          o BA di un'altra utility — l'errore e' sul BA;
+#        - payload con la sola istanza: il BA e' quello della coppia. Se la
+#          coppia non ne ha, la utility non e' dichiarata sull'istanza: e' la
+#          regola di `script.fn_check_utility_istanza_coerenza`, che dal
+#          2026-10-08 legge il solo BA — qui detta prima del trigger.
+#        ⚠️ Fino al 2026-10-09 un BA fuori coppia, quando la coppia non aveva
+#           BA, usciva «Utility non coerente» sul campo `utility_id`: in
+#           modifica la utility e' immutabile, quindi l'operatore era mandato a
+#           correggere un campo che non puo' toccare. La FK composta resta il
+#           presidio di ultima istanza (`_vincoli_cliente_preventivo`).
+_MSG_BA_FUORI_COPPIA = (
+    "Il billing account non e' quello dell'istanza e della utility del preventivo."
+)
+
+
+def _risolvi_cliente_preventivo(
+    *,
+    billing_account_id: int | None,
+    istanza_utility_id: int | None,
+    utility_id: int,
+    function_name: str,
+) -> tuple[int, int]:
+    if billing_account_id is not None:
+        istanza_utility_id = istanza_del_billing_account(
+            billing_account_id,
+            istanza_utility_id,
+            code="E_PREV_VALIDAZIONE",
+            function_name=function_name,
+        )
+
+    ErrorManager.require(
+        istanza_utility_id is not None,
+        code="E_PREV_VALIDAZIONE",
+        message="istanza_utility_id obbligatorio.",
+        detail="Specificare il billing account o l'istanza utility.",
+        context={"field": "istanza_utility_id"},
+        function_name=function_name,
+    )
+    assert istanza_utility_id is not None
+
+    ba_della_coppia = BillingAccountRepository().get_id_by_coppia(int(istanza_utility_id), utility_id)
+    if billing_account_id is not None:
+        ErrorManager.require(
+            ba_della_coppia == int(billing_account_id),
+            code="E_PREV_VALIDAZIONE",
+            message=_MSG_BA_FUORI_COPPIA,
+            context={"field": "billing_account_id"},
+            detail=(
+                f"billing_account_id={billing_account_id}, coppia "
+                f"(istanza_utility_id={istanza_utility_id}, utility_id={utility_id}) "
+                f"-> billing_account_id={ba_della_coppia}."
+            ),
+            function_name=function_name,
+        )
+        return int(billing_account_id), int(istanza_utility_id)
+
+    ErrorManager.require(
+        ba_della_coppia is not None,
+        code="E_PREV_UTILITY_ISTANZA_INCOERENTE",
+        message="Utility non coerente con l'istanza selezionata.",
+        context={"field": "utility_id"},
+        detail=(
+            f"istanza_utility_id={istanza_utility_id} non ha il billing "
+            f"account per utility_id={utility_id}."
+        ),
+        function_name=function_name,
+    )
+    assert ba_della_coppia is not None
+    return ba_della_coppia, int(istanza_utility_id)
+
+
+# Scopo: traduce la FK composta del cliente del preventivo (R-2 di
+#        brief-db-istanza-nasce-col-ba): un BA che non e' quello della coppia
+#        (istanza, utility) del documento. Le altre violazioni proseguono
+#        intatte verso il middleware, come prima.
+@contextmanager
+def _vincoli_cliente_preventivo() -> Iterator[None]:
+    try:
+        yield
+    except IntegrityError as exc:
+        if vincolo_violato(exc, ["fk_preventivi_ba_coppia"]) is None:
+            raise
+        ErrorManager.raise_error(
+            code="E_VENDITE_FK",
+            message=_MSG_BA_FUORI_COPPIA,
+            detail=str(exc),
+            context={"field": "billing_account_id"},
+            cause=exc,
+        )
+
+
 # Scopo: Crea un nuovo preventivo in stato BOZZA.
 # Obiettivo: validazione input, risoluzione stato BOZZA, INSERT, restituisce id+uid+numero.
 #
-# Regole di dominio post brief DB rev2 (2026-05-01):
-#  - utility_id obbligatorio
-#  - istanza_utility_id obbligatorio (allinea preventivi al pattern di
-#    commesse_attivita / attivita_fatturabili). Se il payload ha solo BA,
-#    deriva istanza dal BA (FK NOT NULL su billing_account.istanza_utility_id).
-#  - coerenza coppia (istanza_utility_id, utility_id) verificata pre-trigger
-#    via script.fn_check_utility_istanza_coerenza per UX rapida con errore
-#    parlante. Defense-in-depth: il trigger DB
-#    trgfn_preventivi_guard_utility_istanza_coerenza applica la stessa regola.
+# Regole di dominio:
+#  - utility_id obbligatorio;
+#  - il cliente e' la coppia (istanza, utility) col suo billing account, letto
+#    dal lato che il payload porta (`_risolvi_cliente_preventivo`): il
+#    preventivo ha sempre il BA (brief-db-istanza-nasce-col-ba, R-2).
+#    Defense-in-depth: il trigger DB trgfn_preventivi_guard_utility_istanza_coerenza
+#    e la FK composta fk_preventivi_ba_coppia.
 #  - emittente_fiscale_id: opzionale nel payload. Se None il trigger DB
 #    script.trgfn_default_emittente_fiscale (BB unico dal 2026-09-15; la copia
 #    trgfn_preventivi_default_emittente e' droppata) lo valorizza da GUC
@@ -406,8 +509,6 @@ def delete_indirizzo(preventivo_id: int, indirizzo_id: int) -> dict[str, Any]:
 def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     payload = {k: v for k, v in payload.items() if k in CREATE_KEYS_PREVENTIVO}
     repo = PreventiviRepository()
-    ba_repo = BillingAccountRepository()
-    iu_repo = IstanzeUtilityRepository()
 
     utility_id = payload.get("utility_id")
     ErrorManager.require(
@@ -417,47 +518,10 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_preventivo",
     )
 
-    billing_account_id = payload.get("billing_account_id")
-    istanza_utility_id = payload.get("istanza_utility_id")
-
-    # Conveniencia: se BA presente ma istanza no, deriva istanza dal BA.
-    # Permette al FE di non duplicare l'informazione quando seleziona il BA.
-    if billing_account_id is not None and istanza_utility_id is None:
-        istanza_utility_id = ba_repo.get_istanza_utility_id(int(billing_account_id))
-        ErrorManager.require(
-            istanza_utility_id is not None,
-            code="E_PREV_VALIDAZIONE",
-            message="Billing account non trovato.",
-            detail=f"billing_account_id={billing_account_id}",
-            function_name=f"{_FN}.crea_preventivo",
-        )
-
-    # Istanza obbligatoria (regola dominio post landing DB rev2).
-    ErrorManager.require(
-        istanza_utility_id is not None,
-        code="E_PREV_VALIDAZIONE",
-        message="istanza_utility_id obbligatorio.",
-        detail=(
-            "Specificare l'istanza utility (direttamente o via billing account)."
-        ),
-        function_name=f"{_FN}.crea_preventivo",
-    )
-    assert istanza_utility_id is not None
-
-    # Pre-check coerenza utility/istanza: errore parlante prima del trigger DB.
-    coerente = iu_repo.check_utility_istanza_coerenza(
-        int(istanza_utility_id), int(utility_id),
-    )
-    ErrorManager.require(
-        coerente,
-        code="E_PREV_UTILITY_ISTANZA_INCOERENTE",
-        message="Utility non coerente con l'istanza selezionata.",
-        context={"field": "utility_id"},
-        detail=(
-            f"istanza_utility_id={istanza_utility_id} non e' dichiarata "
-            f"per utility_id={utility_id} (no billing account, dati "
-            "precontrattuali o cliente matching)."
-        ),
+    billing_account_id, istanza_utility_id = _risolvi_cliente_preventivo(
+        billing_account_id=payload.get("billing_account_id"),
+        istanza_utility_id=payload.get("istanza_utility_id"),
+        utility_id=int(utility_id),
         function_name=f"{_FN}.crea_preventivo",
     )
 
@@ -470,20 +534,21 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     )
     assert stato_bozza_id is not None
 
-    result = repo.create_preventivo(
-        billing_account_id=billing_account_id,
-        utility_id=utility_id,
-        istanza_utility_id=istanza_utility_id,
-        emittente_fiscale_id=payload.get("emittente_fiscale_id"),
-        valuta_id=payload.get("valuta_id"),
-        termine_pagamento_id=payload.get("termine_pagamento_id"),
-        validita_dal=payload.get("validita_dal"),
-        validita_al=payload.get("validita_al"),
-        competenza_mese=payload.get("competenza_mese"),
-        fatturazione_immediata=payload.get("fatturazione_immediata", False),
-        stato_doc_preventivo_id=stato_bozza_id,
-        meta=payload.get("meta"),
-    )
+    with _vincoli_cliente_preventivo():
+        result = repo.create_preventivo(
+            billing_account_id=billing_account_id,
+            utility_id=utility_id,
+            istanza_utility_id=istanza_utility_id,
+            emittente_fiscale_id=payload.get("emittente_fiscale_id"),
+            valuta_id=payload.get("valuta_id"),
+            termine_pagamento_id=payload.get("termine_pagamento_id"),
+            validita_dal=payload.get("validita_dal"),
+            validita_al=payload.get("validita_al"),
+            competenza_mese=payload.get("competenza_mese"),
+            fatturazione_immediata=payload.get("fatturazione_immediata", False),
+            stato_doc_preventivo_id=stato_bozza_id,
+            meta=payload.get("meta"),
+        )
     # UX v2: auto-assegnazione best-effort dell'indirizzo default (indirizzo
     # di ruolo CON del cliente, fallback FATT). Mai bloccante.
     auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(result["id"]))
@@ -559,8 +624,23 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
             val = payload[key]
             update_fields[key] = empty_to_none(val) if isinstance(val, str) else val
 
+    # Il cliente si cambia per coppia: BA e istanza viaggiano insieme, letti dal
+    # lato che il payload porta (stessa regola della creazione). Cambiare il
+    # solo BA lascerebbe l'istanza vecchia, che la FK composta rifiuta.
+    if "billing_account_id" in update_fields or "istanza_utility_id" in update_fields:
+        (
+            update_fields["billing_account_id"],
+            update_fields["istanza_utility_id"],
+        ) = _risolvi_cliente_preventivo(
+            billing_account_id=update_fields.get("billing_account_id"),
+            istanza_utility_id=update_fields.get("istanza_utility_id"),
+            utility_id=int(testata["utility_id"]),
+            function_name=f"{_FN}.aggiorna_preventivo",
+        )
+
     if update_fields:
-        repo.update_preventivo(preventivo_id, **update_fields)
+        with _vincoli_cliente_preventivo():
+            repo.update_preventivo(preventivo_id, **update_fields)
 
     return {"status": "ok", "preventivo_id": preventivo_id}
 

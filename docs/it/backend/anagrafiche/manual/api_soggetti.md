@@ -740,8 +740,9 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 Ricerca cross-dominio per autocomplete: restituisce **una riga per
 `soggetto_ruolo`** ("Rossi Srl — Cliente", "Rossi Srl — Fornitore" come
 opzioni distinte) piu' **una riga "senza ruolo"** (`soggetto_ruolo_id` e
-`ruolo_codice` NULL) per i soggetti privi di qualunque ruolo — i prospect
-puri delle utility, che hanno solo istanze (il ruolo CL nasce col BA, vedi
+`ruolo_codice` NULL) per i soggetti privi di qualunque ruolo — per esempio
+appena censiti. Non hanno istanze: l'istanza nasce col suo billing account, e il
+ruolo CLIENTE con la prima istanza (vedi
 [guide/generazione-cliente.md](../../../guide/generazione-cliente.md)).
 Consumato dal drawer pratiche per valorizzare `(soggetto_id,
 soggetto_ruolo_id)` in una selezione sola.
@@ -773,19 +774,21 @@ soggetto_ruolo_id)` in una selezione sola.
         "ragione_sociale_completa": "Azienda ConTutto",
         "id_fiscale": "01234567890",
         "soggetto_codice": "SOG-00042",
-        "n_istanze": 1,
-        "istanza_unica_id": 197,
-        "istanza_unica_codice": "IFO-0000051"
+        "n_billing_account": 1,
+        "billing_account_unico_id": 412,
+        "billing_account_unico_codice": "BA-0000412"
       },
       {
         "soggetto_id": "b2c3d4e5-...",
         "soggetto_ruolo_id": null,
         "ruolo_codice": null,
         "ruolo_descrizione": null,
-        "ragione_sociale_completa": "Prospect Senza Ruolo",
-        "id_fiscale": "PRSPCT80A01H501U",
+        "ragione_sociale_completa": "Soggetto Senza Ruolo",
+        "id_fiscale": "SGGSNZ80A01H501U",
         "soggetto_codice": "SOG-00043",
-        "n_istanze": 2
+        "n_billing_account": 0,
+        "billing_account_unico_id": null,
+        "billing_account_unico_codice": null
       }
     ],
     "total_count": 2,
@@ -796,17 +799,21 @@ soggetto_ruolo_id)` in una selezione sola.
 
 Note:
 
-- `n_istanze`: perimetro per riga — righe "senza ruolo" = tutte le istanze
-  del soggetto; righe con ruolo = SOLO le istanze legate a quel ruolo via
-  `clienti` (le forniture del cliente/BA; per i ruoli non-CL e' 0). Il FE lo
-  usa per decidere se proporre il campo "Istanza utility" (lookup
+- `n_billing_account`: le **forniture** del ruolo, cioe' i suoi billing
+  account (uno per coppia istanza+utility), con o senza la riga cliente. Per i
+  ruoli non-CL e per le righe "senza ruolo" e' 0: un BA e' sempre di un ruolo
+  CLIENTE, e la pratica lo accetta solo dal suo ruolo
+  (`E_PRATICHE_BA_NON_COERENTE`). Il FE lo usa per decidere se proporre il
+  campo "Fornitura" (lookup
   `/anagrafiche/istanze-utility/lookup/?soggetto_id=...&soggetto_ruolo_id=...`,
-  filtrato con lo stesso perimetro).
-- `istanza_unica_id` / `istanza_unica_codice`: valorizzati SOLO se il
-  conteggio di cui sopra e' 1 — per il ruolo CL il FE auto-deriva l'istanza e
-  nasconde il picker (pattern preventivi "istanza da BA"); con piu' istanze
-  restano NULL e la scelta e' dell'operatore (combo ristretta alle forniture
-  del cliente).
+  una riga per BA, filtrato con lo stesso perimetro).
+- `billing_account_unico_id` / `billing_account_unico_codice`: valorizzati SOLO
+  se il conteggio e' 1 — il FE auto-deriva il BA della pratica e nasconde il
+  picker; con piu' BA restano NULL e la scelta e' dell'operatore.
+- ⚠️ Fino al 2026-10-08 i campi erano `n_istanze` / `istanza_unica_*` e
+  contavano le istanze legate al ruolo via `clienti`: un ruolo col BA e senza
+  la riga cliente risultava senza forniture, e un'istanza con due utility
+  contava uno (brief-db-istanza-nasce-col-ba, D-9).
 - Scope emittente sul ruolo CL: stesso comportamento della lista ruoli (un
   operatore scoped vede il CL solo se il soggetto ha un cliente su un BA dei
   suoi emittenti). Le righe "senza ruolo" non sono scoped.
@@ -828,7 +835,7 @@ Chiavi **alternative** in query string — esattamente una delle due:
 | `soggetto_ruolo_id` | int | Restore di una riga ruolo |
 | `soggetto_id` | string (UUID) | Restore di una riga "senza ruolo" |
 
-Risposta: stessa shape della riga di `results` in 9.3 (incl. `n_istanze`).
+Risposta: stessa shape della riga di `results` in 9.3 (incl. `n_billing_account`).
 Errori: `E_ANAG_VALIDAZIONE` (zero o due chiavi, UUID malformato, id non
 positivo), `E_ANAG_NOT_FOUND` (record inesistente **o fuori scope**).
 

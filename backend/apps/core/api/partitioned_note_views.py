@@ -60,7 +60,7 @@ def make_note_views(
     target_tipo: str,
     model_permission: tuple[str, str] | None = None,
     is_search_endpoint: bool = True,
-) -> tuple[type, type]:
+) -> tuple[type[DomainAPIView], type[DomainAPIView]]:
     # Serializer inline univoci per il dominio. Schema OpenAPI puro: i campi
     # sono dichiarativi per drf-spectacular ma la validazione effettiva resta
     # nel service (PayloadValidator + map_integrity_error).

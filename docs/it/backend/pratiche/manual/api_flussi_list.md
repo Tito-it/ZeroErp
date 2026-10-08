@@ -119,7 +119,9 @@ Senza ordinamento: `sequenza` ASC, spareggio su `id`.
   data-driven per la UI: `template_azione_ui_key` (catalogo `pratiche.azioni_ui` —
   attività/drawer di dominio apribile dal flusso; `null` se nessuna) e il contesto
   cliente della pratica `pratica_istanza_utility_id` + `pratica_billing_account_id`
-  (BA derivato via `script.fn_get_billing_account_by_istanza`, `null` se prospect).
+  (dal 2026-10-08 la colonna `billing_account_id` della pratica, D-9 di
+  brief-db-istanza-nasce-col-ba; `null` per pratiche di altri ruoli, interne o con la
+  sola istanza).
   Alimentano l'apertura del documento dal flusso (eredità+lock cliente/istanza).
 - POST: `pratica_id` deve essere > 0.
 - POST (2026-06-14): `template_flusso_id` e' **obbligatorio** (> 0) — guard

@@ -430,8 +430,16 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Questo contratto ha gia' una riga utility associata.",
     ),
 }
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_contratti_billing_account": (E_VENDITE_FK, "Billing account inesistente."),
+    # FK composta (billing_account_id, istanza_utility_id, utility_id) verso il
+    # BA della coppia, dal 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): la
+    # semplice qui sopra resta accanto, e dice solo «non esiste».
+    "fk_contratti_ba_coppia": (
+        E_VENDITE_FK,
+        "Il billing account non e' quello dell'istanza e della utility del contratto.",
+        "billing_account_id",
+    ),
     "fk_contratti_istanza": (E_VENDITE_FK, "Istanza utility inesistente."),
     "fk_contratti_utility": (E_VENDITE_FK, "Utility inesistente."),
     "fk_contratti_listino": (E_VENDITE_FK, "Listino inesistente."),

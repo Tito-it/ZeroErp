@@ -25,7 +25,11 @@ _IDENT_IP_SCONOSCIUTO = "ip-sconosciuto"
 _CHIAVE_LOG_LIMITE = "throttle_log_%(scope)s_%(ident)s"
 
 
-class _ClientIpIdentMixin:
+# ⭐ Eredita da `SimpleRateThrottle` (dal 2026-10-09) perche' ne USA il
+#    contratto — `wait`, `cache`, `scope` in `allow_request` — e il type checker
+#    lo deve sapere. L'MRO dei due consumatori resta quello di prima: il mixin
+#    viene prima della classe DRF, quindi il suo `get_ident` vince ancora.
+class _ClientIpIdentMixin(SimpleRateThrottle):
     """L'IP del throttle viene dal BB `get_client_ip`, non da DRF.
 
     ⛔ `SimpleRateThrottle.get_ident` di DRF legge `X-Forwarded-For` per conto

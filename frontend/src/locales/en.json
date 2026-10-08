@@ -2079,7 +2079,7 @@
     "search_placeholder": "Search by business name, tax code or VAT...",
     "no_results": "No subject found",
     "senza_ruolo": "No role",
-    "n_istanze": "{n} instances",
+    "n_forniture": "{n} supplies",
     "refine_hint": "Showing {shown} of {total}. Refine your search to see more results."
   },
   "istanza_utility": {
@@ -2088,7 +2088,6 @@
     "refine_hint": "Showing {shown} of {total}. Refine your search to see more results.",
     "ba_label": "BA",
     "pdp_label": "PDP",
-    "solo_istanza_badge": "Instance only",
     "fittizia_badge": "Fictitious",
     "indirizzo_label": "Address"
   },
@@ -5250,10 +5249,9 @@
     "select_priorita": "Select priority...",
     "field_descrizione": "Description",
     "field_contesto": "Subject / role",
-    "field_istanza": "Utility instance",
-    "istanza_hint": "Optional — links the case to a specific instance (pre-contract)",
-    "istanza_derivata": "Instance {codice} automatically derived from the customer",
-    "istanza_scegli_fornitura": "The customer has {n} instances: choose the supply this case refers to",
+    "field_fornitura": "Supply",
+    "fornitura_derivata": "Supply {codice} automatically derived from the customer",
+    "fornitura_scegli": "The customer has {n} supplies: choose the one this case refers to",
     "nuovo_soggetto": "New subject",
     "section_soggetto": "Subject",
     "section_dati": "Case details",

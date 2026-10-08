@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import Any, NoReturn
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
@@ -659,7 +659,7 @@ def _coerce_non_negative_number(value: Any, *, field: str) -> int | float:
     _raise_invalid_margin(field, value)
 
 
-def _raise_invalid_margin(field: str, value: Any) -> None:
+def _raise_invalid_margin(field: str, value: Any) -> NoReturn:
     ErrorManager.raise_error(
         code=E_VALIDATION,
         message=f"Margine '{field}' non valido.",

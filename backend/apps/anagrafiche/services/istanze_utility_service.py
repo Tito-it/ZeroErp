@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Service per lookup istanze_utilities riutilizzabile cross-dominio
-#        (preventivi prospect senza BA, future utility-aware flows). Valida i
-#        parametri di ricerca, applica le regole di dominio (min lunghezza
-#        query, cap risultati) e delega al repository. Espone anche pre-check
-#        coerenza utility/istanza per migliorare UX prima del trigger DB.
+# Scopo: Service per il lookup delle forniture (istanze_utilities, una riga per
+#        billing account) riutilizzabile cross-dominio: la scelta del cliente
+#        per fornitura nel preventivo e nella pratica. Valida i parametri di
+#        ricerca, applica le regole di dominio (min lunghezza query, cap
+#        risultati) e delega al repository.
 # ------------------------------------------------------------
 
 from __future__ import annotations

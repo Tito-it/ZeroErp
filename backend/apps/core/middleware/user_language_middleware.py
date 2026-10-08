@@ -37,7 +37,9 @@ from django.utils.deprecation import MiddlewareMixin
 #        test il nome puntera' a un placeholder mai raised. Coerente con la
 #        filosofia best-effort del middleware: non bloccare la request.
 try:
-    from django.test.testcases import DatabaseOperationForbidden
+    # ⚠️ Il nome esiste (Django 6.1, `django/test/testcases.py`) ma gli stub non
+    #    lo dichiarano: l'ignore e' per lo stub, non per il codice.
+    from django.test.testcases import DatabaseOperationForbidden  # type: ignore[attr-defined]
 except ImportError:  # pragma: no cover
     class DatabaseOperationForbidden(Exception):  # type: ignore[no-redef]
         pass
@@ -86,8 +88,10 @@ class UserLanguageMiddleware(MiddlewareMixin):
                     "SELECT set_config(%s, %s, false)",
                     [GUC_NAME, language],
                 )
-            # type: ignore[attr-defined]
-            request._zeroerp_user_language_set = True
+            # Marcatore DINAMICO sulla request (lo rilegge `process_response`).
+            # ⚠️ Fino al 2026-10-09 qui c'era un `# type: ignore` su una riga
+            #    propria, cioe' su nessuna istruzione: non ignorava niente.
+            setattr(request, "_zeroerp_user_language_set", True)  # noqa: B010 — attributo dinamico: assegnato col punto, mypy lo rifiuta (il tipo non lo dichiara)
         except (DatabaseError, DatabaseOperationForbidden):
             logger.warning(
                 "user_language_middleware.set_failed lang=%s path=%s",

@@ -594,7 +594,7 @@ def _cella_aperto_fields(
 # Perimetro: sola lettura; scope emittente DB-side (RLS invoker).
 # Risultato: dict {aree: [{area, n_documenti, valore_totale, fasi: [...]}] x4+,
 #        fasi: [...] x3+}.
-def fn_dash_aperto_riepilogo() -> dict[str, object]:
+def fn_dash_aperto_riepilogo() -> dict[str, Any]:
     repository = VenditeRepository()
     rows: list[DashApertoRiepilogoRow] = repository.list_dash_aperto_riepilogo()
 
@@ -897,7 +897,7 @@ def _cella_stadio_payload(
 def fn_dash_competenza_mensile(
     *,
     anno: int,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
         code="E_VENDITE_VALIDATION",
@@ -1262,8 +1262,7 @@ def _valida_ids_riporto(ids: object, *, function_name: str) -> list[int]:
     # Dedup con ordine preservato: due volte lo stesso id e' la stessa riga, e
     # la madre lo tratterebbe una volta sola — ma il conteggio a video direbbe
     # un numero diverso da quello che si e' spuntato.
-    visti: set[int] = set()
-    return [i for i in ids if not (i in visti or visti.add(i))]
+    return list(dict.fromkeys(ids))
 
 
 # Scopo: Elenco dei RESIDUI di un mese di competenza — le attivita' fatturabili
@@ -1510,7 +1509,7 @@ class _ClasseBacklog:
 # Perimetro: sola lettura; scope emittente DB-side (RLS invoker + GUC).
 # Risultato: dict {classi: [{classe, n_documenti, valore_fermo_tot,
 #        unita_ferme_tot, anzianita_max_giorni, aree: [...]}]}.
-def fn_dash_backlog_riepilogo() -> dict[str, object]:
+def fn_dash_backlog_riepilogo() -> dict[str, Any]:
     repository = VenditeRepository()
     rows = repository.list_dash_backlog_riepilogo()
 

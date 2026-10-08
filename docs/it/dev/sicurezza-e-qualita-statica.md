@@ -44,6 +44,7 @@ al primo aggiornamento.
 | Presidio | Guarda | Al commit | In CI | A mano |
 | --- | --- | --- | --- | --- |
 | **ruff** | Python: difetti e sicurezza (bandit) | ✅ hook `ruff-check` | ✅ via pre-commit (`ci-validate`) | `ruff check .` |
+| **mypy** | Python: tipi fra gli strati (type checker), a cricchetto | — | ✅ `ci-validate`, passo dedicato, dal 2026-10-08 | vedi sotto |
 | **gitleaks** | segreti nei commit | ✅ hook `gitleaks` (staged) | ✅ via pre-commit, sui commit del range | vedi sotto |
 | **pip-audit** | dipendenze Python con CVE note | — | ✅ `ci-validate`, passo dedicato | vedi sotto |
 | **npm audit** | dipendenze JavaScript, `high`/`critical` | — | ✅ `ci-frontend`, dal 2026-10-08 | `npm audit --audit-level=high` |
@@ -125,6 +126,67 @@ ruff rule S608                        # spiegazione di una regola
 Si fa con la disciplina scritta in testa a `ruff.toml`: si conta quanti rilievi apre la regola
 nuova, si sanano, **poi** si accende. Mai il contrario: un cancello che nasce con un registro
 aperto protegge solo ciò che avanza.
+
+---
+
+## mypy — il type checker del backend
+
+**File**: `backend/mypy.ini` (perimetro e regole), `backend/mypy.baseline.json` (il registro),
+`scripts/check_mypy_baseline.py` (il cancello). **Dipendenze**: `backend/requirements-dev.in`
+→ `requirements-dev.txt` (mypy, `django-stubs`, `djangorestframework-stubs`), nella venv del
+backend ma **non** nell'immagine Docker. Acceso il 2026-10-08
+([piano](work-in-progress/piano-be-type-checker.md)).
+
+### Perché
+
+La suite del backend è quasi tutta mockata, e un `MagicMock` accetta qualunque attributo e
+qualunque firma: un service che chiama un metodo tolto, o passa `None` dove la funzione vuole un
+`int`, resta **verde**. mypy vede questi difetti di **giuntura** senza eseguire il codice. Il
+caso che lo ha acceso: riallinea e sblocca del prezzo di una riga di commessa chiamavano da sei
+mesi un metodo che non esisteva più, e il test lo fabbricava col mock.
+
+### Le scelte
+
+| Voce | Scelta | Perché |
+| --- | --- | --- |
+| Strumento | mypy con i plugin Django e DRF | il plugin legge settings e modelli: conosce l'ORM. Pylance non ha un plugin Django, e resta spento in VS Code (due checker che dicono cose diverse sono peggio di uno) |
+| Perimetro | `apps/` e `zeroerp_backend/`, **esclusi** `tests/` e `migrations/` | i difetti stanno fra gli strati, quindi tutti gli strati; i test controllano mock, le migration sono generate |
+| Severità | base + `check_untyped_defs` | senza, mypy salta il corpo delle funzioni non annotate. Niente `strict` |
+| Librerie senza tipi | `ignore_missing_imports` **per nome** (oggi `bleach`, `openpyxl`, `weasyprint`) | globale, un import sbagliato del progetto diventerebbe `Any` in silenzio. Uno stub (`types-…`) è una dipendenza nuova: entra con l'ok di Tid, e la voce si toglie |
+| Dove gira | CI, sempre su **tutto** il perimetro; non in pre-commit | una firma cambiata in un file rompe il chiamante in un altro; l'hook vede i soli file in stage e il plugin vuole l'ambiente Django |
+
+### Il registro
+
+⚠️ A differenza di `ruff`, mypy **nasce con un registro aperto** (decisione di Tid,
+2026-10-08): l'arretrato era di centinaia di rilievi su codice scritto senza checker, e
+sanarlo prima avrebbe rimandato di mesi la protezione del codice nuovo. Il registro deve
+**scendere**: la sede del suo smaltimento è il piano (lotti L2, L3+).
+
+* La chiave è **per nome**: file + codice (`[arg-type]`) + messaggio, con un conteggio. Mai il
+  numero di riga, che cambia a ogni modifica sopra il punto.
+* Il cancello è **rosso** su: un rilievo nuovo; una voce del registro che non c'è più (sanata e
+  non tolta); un'uscita di mypy che non sa leggere (configurazione rotta, plugin che non parte,
+  ambiente Django non caricato).
+* ⚠️ Limite: due rilievi identici nello stesso file sono una chiave col conteggio 2.
+
+Come si sana una voce: si corregge il codice (se è un difetto) o la firma (se l'annotazione era
+sbagliata), poi `--aggiorna` toglie la voce. ⛔ `--rigenera` riscrive il registro da zero, quindi
+anche **aggiungendo**: solo per una decisione (un aggiornamento di mypy o degli stub), e il diff
+lo mostra.
+
+### Comandi
+
+Dalla cartella `backend/`, con la venv del backend e l'ambiente della macchina caricato:
+
+```bash
+set -a && . ./.env && set +a
+.venv/bin/python ../scripts/check_mypy_baseline.py              # il cancello, come in CI
+.venv/bin/python ../scripts/check_mypy_baseline.py --aggiorna   # toglie le voci sanate
+.venv/bin/mypy apps/vendite/services/commesse_service.py        # i rilievi di un file, a mano
+```
+
+Le dipendenze si aggiornano con `backend/scripts/update-venv.sh`, che compila e sincronizza
+**entrambi** i lock: un `piptools sync` del solo `requirements.txt` disinstallerebbe mypy.
 
 ---
 

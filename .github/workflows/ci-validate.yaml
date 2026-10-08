@@ -120,6 +120,7 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             backend/requirements.in
+            backend/requirements-dev.txt
       # venv backend locale per gestire manage.py e deps
       - name: venv + pip (backend/.venv)
         working-directory: ./backend
@@ -683,6 +684,28 @@ jobs:
             echo "::error::check --deploy: rilievi non accettati: $nuovi"
             exit 1
           fi
+
+      - name: Type checker (mypy, a cricchetto)
+        working-directory: ./backend
+        # Il type checker del backend (piano-be-type-checker, L1, 2026-10-08):
+        # vede i difetti di GIUNTURA che una suite mockata non puo' vedere — un
+        # metodo chiamato e non piu' esistente, `None` passato dove si vuole
+        # un `int`. Il caso che lo ha fatto nascere: riallinea e sblocca prezzo
+        # chiamavano un metodo tolto da sei mesi, e il test mockato lo fabbricava.
+        # ⭐ A CRICCHETTO: l'arretrato sta in `backend/mypy.baseline.json`, e
+        #    `scripts/check_mypy_baseline.py` e' rosso su un rilievo NUOVO, su
+        #    una voce SANATA e non tolta, e su un'uscita di mypy illeggibile.
+        #    Perimetro e regole in `backend/mypy.ini`, non qui.
+        # ⚠️ Gli strumenti stanno in `requirements-dev.txt`, NON nel lock del
+        #    backend: il `Dockerfile` installa solo quello, e mypy in
+        #    produzione non serve. Il plugin Django importa le settings: per
+        #    questo il passo gira nella venv del backend, con l'ambiente del job.
+        # ⚠️ Gira sempre su TUTTO il perimetro, non sui file cambiati: una firma
+        #    cambiata in un file rompe il chiamante in un altro, non toccato.
+        run: |
+          source .venv/bin/activate
+          pip install -r requirements-dev.txt
+          python ../scripts/check_mypy_baseline.py
 
       - name: Django migrate (schema django)
         working-directory: ./backend

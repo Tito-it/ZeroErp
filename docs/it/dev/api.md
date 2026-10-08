@@ -2225,6 +2225,13 @@ documento lo nominava:
 
 Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 
+⚠️ **Un test mockato non vede la giuntura, e il type checker sì.** Un `MagicMock` accetta
+qualunque attributo: un test che dichiara `repo.metodo.return_value = …` resta verde anche il
+giorno in cui `metodo` non esiste più. È successo (riallinea e sblocca prezzo di commessa, sei
+mesi di 500 con il test verde). Dal 2026-10-08 lo vede **mypy** in CI, a cricchetto
+([sicurezza-e-qualita-statica.md](sicurezza-e-qualita-statica.md) §mypy); la chiamata vera la
+prova solo il secondo livello qui sotto.
+
 ⭐ **Il secondo livello si accende con `richiedi_db_provvisto`**
 (`apps/core/tests/db_e2e.py`) ed è oggi in **22 file** (rimisurato il
 2026-09-11; erano 19 il 09-09 — il livello cresce). È

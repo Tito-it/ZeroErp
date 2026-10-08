@@ -14,7 +14,9 @@ Indice test eseguiti:
 4) PraticheServiceTests.test_crea_pratica_errore_tipo_prestazione_zero
 5) PraticheServiceTests.test_crea_pratica_errore_priorita_zero
 5b) PraticheServiceTests.test_crea_pratica_priorita_default_normale
-6) PraticheServiceTests.test_crea_pratica_prospect_puro_istanza_senza_ruolo
+6) PraticheServiceTests.test_crea_pratica_istanza_senza_ruolo_ammessa
+6c) PraticheServiceTests.test_crea_pratica_ba_porta_la_sua_istanza
+6d) PraticheServiceTests.test_crea_pratica_errore_ba_di_altra_istanza
 6b) PraticheServiceTests.test_crea_pratica_errore_istanza_senza_soggetto
 7) PraticheServiceTests.test_crea_pratica_errore_ruolo_senza_soggetto
 8) PraticheServiceTests.test_aggiorna_pratica_ok
@@ -217,11 +219,13 @@ class PraticheServiceTests(SimpleTestCase):
         self.assertEqual(call_data["soggetto_ruolo_id"], 100)
         self.assertEqual(call_data["istanza_utility_id"], 200)
 
-    # Scopo: Prospect puro (soggetto + istanza, NESSUN ruolo) → ammesso.
-    #        Modello a due rami (brief-db-pratiche-guard-contesto-istanza,
-    #        consegna 20260611-01): l'istanza non richiede il ruolo.
+    # Scopo: soggetto + istanza senza ruolo → ammesso: il trigger
+    #        (trgfn_pratiche_guard_contesto, regole 2 e 4) non pretende il ruolo
+    #        accanto all'istanza, e il service non aggiunge regole sue. ⚠️ Non e'
+    #        piu' il «prospect puro»: l'istanza nasce col BA e il ruolo CLIENTE
+    #        con lei (brief-db-istanza-nasce-col-ba, D-3).
     @patch(f"{_SVC}.PraticheRepository")
-    def test_crea_pratica_prospect_puro_istanza_senza_ruolo(self, MockRepo):
+    def test_crea_pratica_istanza_senza_ruolo_ammessa(self, MockRepo):
         repo = MockRepo.return_value
         repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
         repo.resolve_stato_pratica.return_value = 1
@@ -238,6 +242,51 @@ class PraticheServiceTests(SimpleTestCase):
         call_data = repo.create_pratica.call_args[0][0]
         self.assertIsNone(call_data["soggetto_ruolo_id"])
         self.assertEqual(call_data["istanza_utility_id"], 200)
+
+    # Scopo: con il solo BA (il cliente a grana fine, D-9 di
+    #        brief-db-istanza-nasce-col-ba) l'istanza della pratica e' la sua, e
+    #        il BA arriva all'INSERT.
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_ba_porta_la_sua_istanza(self, MockRepo, MockBa):
+        repo = MockRepo.return_value
+        repo.get_tipo_prestazione_attivazione.return_value = {"pre_attivazione": True, "post_attivazione": True}
+        repo.resolve_stato_pratica.return_value = 1
+        repo.create_pratica.return_value = 52
+        MockBa.return_value.get_istanza_utility_id.return_value = 200
+
+        pratiche_service.crea_pratica(
+            emittente_fiscale_id=10,
+            tipo_prestazione_id=5,
+            priorita_id=2,
+            soggetto_id="aaa-bbb-ccc",
+            soggetto_ruolo_id=7,
+            billing_account_id=33,
+        )
+        MockBa.return_value.get_istanza_utility_id.assert_called_once_with(33)
+        call_data = repo.create_pratica.call_args[0][0]
+        self.assertEqual(call_data["billing_account_id"], 33)
+        self.assertEqual(call_data["istanza_utility_id"], 200)
+
+    # Scopo: BA e istanza che non stanno insieme → 400 sul campo del BA, prima
+    #        della FK composta fk_pratiche_billing_account_istanza (un 23503).
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch(f"{_SVC}.PraticheRepository")
+    def test_crea_pratica_errore_ba_di_altra_istanza(self, MockRepo, MockBa):
+        MockBa.return_value.get_istanza_utility_id.return_value = 200
+        with self.assertRaises(ServiceError) as ctx:
+            pratiche_service.crea_pratica(
+                emittente_fiscale_id=10,
+                tipo_prestazione_id=5,
+                priorita_id=2,
+                soggetto_id="aaa-bbb-ccc",
+                soggetto_ruolo_id=7,
+                istanza_utility_id=999,
+                billing_account_id=33,
+            )
+        self.assertEqual(ctx.exception.code, "E_PRATICA_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+        MockRepo.return_value.create_pratica.assert_not_called()
 
     # Scopo: Verifica errore se istanza_utility_id presente senza soggetto_id
     #        (regola sostitutiva del modello a due rami).

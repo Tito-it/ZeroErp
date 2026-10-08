@@ -161,7 +161,7 @@ urlpatterns = [
     path("billing-account/<int:billing_account_id>/lookup/", BillingAccountLookupByIdView.as_view(), name="anagrafiche-billing-account-lookup-by-id"),
     # Billing account — utility "guidate da emittente" (refactor operatore-emittenti)
     path("billing-account/<int:billing_account_id>/utilities/", BillingAccountUtilitiesView.as_view(), name="anagrafiche-billing-account-utilities"),
-    # Istanze utility — lookup ricco per autocomplete (preventivi prospect senza BA, ecc.)
+    # Istanze utility — lookup delle forniture (una riga per BA) per autocomplete: preventivo, pratica
     path("istanze-utility/lookup/", IstanzaUtilityLookupView.as_view(), name="anagrafiche-istanze-utility-lookup"),
     path("istanze-utility/<int:istanza_utility_id>/lookup/", IstanzaUtilityLookupByIdView.as_view(), name="anagrafiche-istanze-utility-lookup-by-id"),
     # Contatti ruolo
@@ -181,7 +181,7 @@ urlpatterns = [
     path("soggetti/export/", SoggettiExportView.as_view(), name="anagrafiche-soggetti-export"),
     # Soggetti — CRUD
     # Soggetti-ruoli — lookup ricco per selezione contesto pratica (una riga
-    # per ruolo + riga "senza ruolo" per i prospect puri). PRIMA delle rotte
+    # per ruolo + riga "senza ruolo" per i soggetti privi di ruoli). PRIMA delle rotte
     # <str:soggetto_id> per evitare il match del path parametrico.
     path("soggetti-ruoli/lookup/", SoggettiRuoliLookupView.as_view(), name="anagrafiche-soggetti-ruoli-lookup"),
     path("soggetti-ruoli/lookup-by-id/", SoggettiRuoliLookupByIdView.as_view(), name="anagrafiche-soggetti-ruoli-lookup-by-id"),

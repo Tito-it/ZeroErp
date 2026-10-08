@@ -123,6 +123,15 @@ class ApiPraticheList(DomainAPIView):
                 "tipo_prestazione_id": serializers.IntegerField(),
                 "priorita_id": serializers.IntegerField(required=False, allow_null=True),
                 "soggetto_id": serializers.UUIDField(required=False, allow_null=True),
+                "soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
+                "istanza_utility_id": serializers.IntegerField(required=False, allow_null=True),
+                "billing_account_id": serializers.IntegerField(
+                    required=False, allow_null=True,
+                    help_text=(
+                        "Il cliente di cui parla la pratica (ruolo CLIENTE). Deve essere "
+                        "del soggetto_ruolo_id; con il solo BA l'istanza e' la sua."
+                    ),
+                ),
                 "risorsa_umana_id": serializers.IntegerField(required=False, allow_null=True),
                 "unita_organizzativa_id": serializers.IntegerField(required=False, allow_null=True),
                 "canale_origine_id": serializers.IntegerField(required=False, allow_null=True),
@@ -150,6 +159,8 @@ class ApiPraticheList(DomainAPIView):
                 soggetto_id=str(payload["soggetto_id"]) if payload.get("soggetto_id") else None,
                 soggetto_ruolo_id=optional_int(payload, "soggetto_ruolo_id"),
                 istanza_utility_id=optional_int(payload, "istanza_utility_id"),
+                # Il cliente a grana fine (D-9): con il solo BA l'istanza e' la sua.
+                billing_account_id=optional_int(payload, "billing_account_id"),
                 risorsa_umana_id=optional_int(payload, "risorsa_umana_id"),
                 unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
                 canale_origine_id=optional_int(payload, "canale_origine_id"),

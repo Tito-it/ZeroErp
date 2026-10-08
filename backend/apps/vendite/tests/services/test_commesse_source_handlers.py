@@ -1191,6 +1191,7 @@ class PricingAuditSnapshotTests(TestCase):
             "contratto_id": 77,
             "categoria_cliente_id_snapshot": 5,
             "classe_utenza_id_snapshot": None,
+            "listino_versione_id": 404,
         }
         return ps
 
@@ -1221,6 +1222,9 @@ class PricingAuditSnapshotTests(TestCase):
         self.assertEqual(inp.contratto_id, 77)
         self.assertEqual(inp.categoria_cliente_id_snapshot, 5)
         self.assertIsNone(inp.classe_utenza_id_snapshot)
+        # ⭐ 2026-10-08: anche la versione di listino, o il guard «versione
+        #    cambiata» di riallinea confronta con NULL e non scatta mai.
+        self.assertEqual(inp.listino_versione_id, 404)
         ps.resolve_prezzo.assert_called_once()
 
     # Scopo: il prezzo negoziato alla sorgente NON viene sovrascritto dal resolver.

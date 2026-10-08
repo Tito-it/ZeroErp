@@ -3,9 +3,10 @@
 > Nato il **2026-10-08** dalla decisione di Tid su **D2-b** di
 > [migliorie-generali-BE-FE-da-test-valutazione.md](migliorie-generali-BE-FE-da-test-valutazione.md):
 > il progetto **vuole** un type checker, acceso **a cricchetto**.
-> Stato: 🟡 **piano in approvazione** — S2 e le tre dipendenze approvate il
-> 2026-10-08; L0 (§4.2) in attesa di Tid. Niente è ancora nel repo: nessuna
-> dipendenza installata nella venv del backend, nessun file di configurazione.
+> Stato: 🟡 **in corso** — S2 e le tre dipendenze approvate il 2026-10-08.
+> ✅ **L0 chiuso il 2026-10-08** (§4.5). ✅ **L1 chiuso il 2026-10-09** (§5.1):
+> mypy acceso in CI, registro alla nascita **620** rilievi. ✅ **L2 chiuso il
+> 2026-10-09** (§5.2): registro a **558**. Prossimo: L3+.
 
 ## 1. Perché
 
@@ -180,7 +181,7 @@ In `apps/vendite/services/` una funzione sola che, data una riga di commessa,
 **costruisce gli argomenti** del resolver (articolo, uom, data con il fallback
 `data_attivita` → `competenza_mese`, BA, utility, emittente, contesto kit dal
 `meta`) e **traduce il risultato** nei campi snapshot della riga (prezzo più i
-dieci campi di provenienza). La usano il push (`_resolve_pricing_audit`) e
+nove campi di provenienza). La usano il push (`_resolve_pricing_audit`) e
 riallinea/sblocca. Le due letture attuali si ritirano nello stesso giro.
 
 **B — Riallinea e sblocca passano dal `PricingService`.**
@@ -212,7 +213,10 @@ provato nel test.
 **fabbricati** dal test, non cercati nei dati esistenti (regola del verde per
 sottrazione).
 
-### 4.3 Due domande che la proposta non decide (Tid)
+### 4.3 Due domande che la proposta non decide — ✅ decise da Tid il 2026-10-08
+
+✅ **1: sì** — `MANUALE` e provenienza da listino azzerata. ✅ **2: backend** —
+la regola resta nel service, con la `UPDATE` del repository.
 
 1. **La variazione eccezionale** (`fn_variazione_prezzo_eccezionale`) blocca un
    prezzo scritto a mano ma lascia lo snapshot di provenienza del listino: la
@@ -226,14 +230,151 @@ sottrazione).
    (`fn_riallinea_prezzo_attivita`, DB-first), è un brief al team DB e il
    lotto L0 lo aspetta.
 
+### 4.4 Un punto aperto, trovato facendo L0 🟡 (Tid)
+
+`commesse_attivita.listino_riga_id` resta **fuori** dalla provenienza, e non per
+dimenticanza. Su quella colonna il guard `trgfn_listini_righe_guard_stato`
+considera la riga di listino **propagata**, cioè non più modificabile: scriverla
+cambia il comportamento dei listini, non solo l'audit della commessa. E la madre
+del push, `fn_upsert_commessa_attivita`, non ha un parametro per riceverla:
+oggi **nessun** percorso la scrive, quindi per i listini una riga usata da una
+commessa non risulta mai «propagata».
+
+Scriverla dal solo riallineamento (che usa una `UPDATE`) sarebbe un'altra
+asimmetria. La domanda per Tid: una riga di listino che ha dato il prezzo a una
+riga di commessa deve diventare immutabile? Se sì, è un brief al team DB (il
+parametro nella madre del push) e poi una riga nel building block.
+
+✅ **Deciso da Tid il 2026-10-08: sì.** Brief al team DB:
+[brief-db-riga-listino-propagata-dalla-commessa.md](brief-db-riga-listino-propagata-dalla-commessa.md).
+Il seguito BE sta in quel brief (§5), non in questo piano.
+
+### 4.5 ✅ L0 fatto — 2026-10-08
+
+- **Building block** `apps/vendite/services/prezzo_riga_commessa.py`
+  (`argomenti_resolver`, `provenienza_da_resolver`, `provenienza_manuale`,
+  `origine_ammessa`), registrato nel catalogo BB backend. Le colonne di
+  provenienza hanno sede unica in `CommesseRepository.COLONNE_PROVENIENZA_PREZZO`.
+- **Push**: `_resolve_pricing_audit` passa dal BB e scrive anche
+  `listino_versione_id` (P4); la whitelist delle origini è traslocata nel BB.
+- **Riallinea e sblocca**: `PricingService.resolve_prezzo` con gli argomenti
+  del BB, `prezzo_finale`, contesto kit e ripiego della data (P1, P2, P5).
+- **Variazione eccezionale**: origine `MANUALE`, provenienza da listino a `NULL`.
+- **Repository**: `update_attivita_prezzo(…, provenienza=)` scrive prezzo e
+  provenienza e propaga le 8 colonne di audit ad `attivita_fatturabili` (P3);
+  rifiuta una provenienza con colonne diverse. `get_attivita_pricing` legge
+  anche `competenza_mese`.
+- **Test**: `test_prezzo_riga_commessa.py` (6, funzioni pure),
+  `test_commesse_service.py` (i tre test che fabbricavano `test_resolver` ora
+  sostituiscono il `PricingService` con la forma vera della risposta, più 2
+  nuovi), `test_commesse_source_handlers.py` (versione di listino sull'input),
+  e **`tests/db/test_prezzo_riga_commessa_db.py`** sul DB vero: mondo costruito
+  con i builder dei pgTAP, tre casi (conferma di versione e versione scritta,
+  manuale poi sblocco, componente di kit).
+  Provato **per mutazione**, tre mutazioni e tre rossi: il service di prima
+  (`AttributeError: test_resolver`, 3 errori), il contesto kit tolto (1 rosso),
+  la versione non scritta (3 rossi). Suite backend intera verde (6.301 test).
+- **mypy** (venv temporanea, configurazione di §3): sui quattro file toccati i
+  due `[attr-defined]` di `test_resolver` spariscono e non ne nascono di nuovi.
+- **Documenti**: `api_commesse_pricing.md`, guide `gestione-listini.md` §7.2-7.4
+  e `gestione-commesse.md`.
+
 ## 5. Lotti
 
 | Lotto | Cosa | Prova |
 | --- | --- | --- |
-| **L0** | Il difetto di §4, nella forma di §4.2 (A-D) | i test sul DB vero di §4.2 rossi prima, verdi dopo |
-| **L1** | Accensione: `requirements-dev.in/.txt` (S2), `backend/mypy.ini` (S1/S5), `scripts/check_mypy_baseline.py` + `backend/mypy.baseline.json` (S4), passo CI (S6), documentazione (§6) | tre mutazioni, tre rossi: un rilievo nuovo, una voce sanata e non tolta, un'uscita illeggibile |
-| **L2** | Smaltimento dei rilievi che sono **difetti di per sé**, qualunque sia il file: chiamate ad attributi inesistenti (`[attr-defined]`), uso del valore di una funzione che non restituisce niente (`[func-returns-value]`), funzioni che possono uscire senza `return` (`[return]`), `None` non gestito (`[union-attr]`, `[index]`) | il registro scende; per ogni difetto vero un test che lo costruisce |
+| **L0** ✅ | Il difetto di §4, nella forma di §4.2 (A-D) — fatto il 2026-10-08 (§4.5) | i test sul DB vero di §4.2 rossi prima, verdi dopo |
+| **L1** ✅ | Accensione: `requirements-dev.in/.txt` (S2), `backend/mypy.ini` (S1/S5), `scripts/check_mypy_baseline.py` + `backend/mypy.baseline.json` (S4), passo CI (S6), documentazione (§6) | tre mutazioni, tre rossi: un rilievo nuovo, una voce sanata e non tolta, un'uscita illeggibile |
+| **L2** ✅ | Smaltimento dei rilievi che sono **difetti di per sé**, qualunque sia il file: chiamate ad attributi inesistenti (`[attr-defined]`), uso del valore di una funzione che non restituisce niente (`[func-returns-value]`), funzioni che possono uscire senza `return` (`[return]`), `None` non gestito (`[union-attr]`, `[index]`) | il registro scende; per ogni difetto vero un test che lo costruisce |
 | **L3+** | Il resto, **per app**, partendo da quelle con i service più centrali (vendite, core). Ogni voce si giudica: difetto (si corregge il codice) o annotazione sbagliata (si corregge la firma) | il registro scende |
+
+### 5.1 ✅ L1 fatto — 2026-10-09
+
+- **Dipendenze** (S2): `backend/requirements-dev.in` → `requirements-dev.txt`
+  (`-c requirements.txt`; mypy 2.4.0, django-stubs 6.1.2,
+  djangorestframework-stubs 3.18.1), installate nella venv del backend.
+  `backend/scripts/update-venv.sh` compila e sincronizza **entrambi** i lock:
+  il `piptools sync` del solo `requirements.txt` le avrebbe disinstallate.
+- **Configurazione** (S1, S3, S5): `backend/mypy.ini`. Le librerie senza tipi
+  elencate per nome sono `bleach`, `openpyxl`, `weasyprint`: per le prime due
+  esistono stub (`types-bleach`, `types-openpyxl`), che sarebbero dipendenze
+  nuove — da decidere (Tid).
+- **Registro e cancello** (S4): `backend/mypy.baseline.json` (620 rilievi in 144
+  file) e `scripts/check_mypy_baseline.py` (`--aggiorna` toglie soltanto,
+  `--rigenera` riscrive da zero). Provato per mutazione: rilievo nuovo → rosso;
+  voce sanata e non tolta → rosso, e `--aggiorna` la toglie; plugin che non
+  parte → rosso «illeggibile» (uscita 2); `--aggiorna` con un rilievo nuovo →
+  rifiuta; ambiente Django non caricato → rosso «illeggibile».
+- **CI** (S6): passo «Type checker (mypy, a cricchetto)» in `ci-validate.yaml`,
+  dopo `check --deploy`; `requirements-dev.txt` nella cache pip del job.
+- **Documenti**: `sicurezza-e-qualita-statica.md` §mypy (sede), `AGENTS.md`
+  (fonte unica dei requisiti dev, riga «Sicurezza e qualità statica»),
+  `PROJECT_CONTEXT.md` (la riga dell'`assert`), `api.md` §Test, registro
+  migliorie (D2-b in §9).
+
+⚠️ Il registro è stato generato sul working tree del 2026-10-09, che conteneva
+anche modifiche di un lavoro in parallelo (anagrafiche, contratti, offerte,
+preventivi). Se quel lavoro si committa diverso, il cancello lo dirà: rilievi
+nuovi o voci sanate. Si allinea con `--aggiorna` (voci sanate) o correggendo il
+codice (rilievi nuovi).
+
+### 5.2 ✅ L2 fatto — 2026-10-09
+
+Tutti i rilievi delle cinque categorie di L2 (`attr-defined`,
+`func-returns-value`, `return`, `union-attr`, `index`), **56** al 2026-10-09,
+giudicati uno per uno. Il registro scende da 620 a **558** (−62: alcune
+correzioni hanno sanato anche rilievi di altre categorie sullo stesso punto).
+
+**Esito del giudizio: nessuno dei 56 era un errore a runtime oggi** — il
+difetto vero di questa famiglia era `test_resolver`, già chiuso in L0. Erano
+annotazioni imprecise o forme che il checker non sa seguire:
+
+| Forma | Correzione | Dove |
+| --- | --- | --- |
+| `assert x is not None` mancante dopo `ErrorManager.require` (la regola di `PROJECT_CONTEXT.md`) | aggiunto | `definizioni_service` (3), `multi_veste_token_serializer`, `_helpers.sql_order_clause`, `listini_service`, `titoli_iva_service`, `preventivi_views`, `views_ordini` |
+| Sentinella `MISSING` confrontata con `is` (mypy non restringe) | `isinstance(…, MissingType)` | `catalogo_service` (2) |
+| Attributi dichiarativi delle view impostati dalle fabbriche (`area_funzionale`, `model_permission`, `<metodo>_permission`) | **annotazioni senza valore** su `DomainAPIView`: a runtime la classe non li ha, e `getattr(…, None)` / il fail-closed restano identici; `make_note_views` restituisce `type[DomainAPIView]` | `base_views`, `partitioned_note_views` (sanano 16 rilievi in 9 file) |
+| Attributi dinamici su request ed eccezione | `setattr` con `# noqa: B010` e il motivo (ruff vuole il punto, mypy lo rifiuta) | `request_context_middleware`, `user_language_middleware`, `pipeline_step_executor` |
+| Dedup con `set.add` dentro una comprehension | `list(dict.fromkeys(ids))` | `gestione_service`, `vendite_service` |
+| Lambda che costruisce una lista di `None` per i suoi effetti | funzione `_delete_files` | `email_outbox_service` |
+| Funzione che solleva sempre annotata `-> None` | `-> NoReturn` | `template_versioni_admin_service._raise_invalid_margin` |
+| Mixin che usa il contratto di `SimpleRateThrottle` senza ereditarlo | eredita da `SimpleRateThrottle` (MRO invariato: il suo `get_ident` vince ancora) | `throttling._ClientIpIdentMixin` |
+| Serializer della porta tipato come `BaseSerializer` | `_serializer_porta()` → `type[MultiVesteTokenSerializer]` (lo garantisce il guard di `post`); import locale ridondante tolto | `auth_views` |
+| Produttori di dict eterogenei annotati `dict[str, object]` | `dict[str, Any]` (solo i quattro di L2; la convenzione generale è L3) | `fn_dash_*` (3), `numera_lotto` |
+| Nome che esiste in Django ma non negli stub | `# type: ignore[attr-defined]` col motivo | `user_language_middleware` |
+
+🔴 **Trovato strada facendo, e un `# type: ignore` che non ignorava niente:** in
+`user_language_middleware` c'era `# type: ignore[attr-defined]` su una **riga
+propria**, cioè su nessuna istruzione. Tolto con la correzione.
+
+🟡 **Una divergenza di regola, NON corretta (Tid):** `catalogo_service.
+_validate_date_interval` rifiuta `valido_al <= valido_dal` (pretende `>`), mentre
+il guard comune del DB `script.trgfn_guard_date_validita` rifiuta solo
+`valido_al < valido_dal`. Un periodo di **un giorno solo** passa il DB e lo
+rifiuta il backend, sulle tabelle del catalogo che usano quel controllo (4
+chiamate). Due copie della stessa regola, già divergenti: la sede è il DB, e la
+copia nel service andrebbe tolta — è una decisione sul modello.
+
+**Verifiche**: `ruff` pulito; cancello verde a 558; suite backend intera
+(6.315 test) verde tranne due test sul DB vero che falliscono identici anche su
+`HEAD` (provato in un worktree pulito), quindi non dipendono da L2. Verificati il
+2026-10-09 (⚠️ la prima lettura, «un test che cerca i soggetti nei dati», era
+**sbagliata**):
+
+- `test_resi_create_db` — la fixture costruiva l'ordine già CONFERMATO e poi gli
+  aggiungeva la riga: dal `20261008-90` (lock fuori bozza sulle righe d'ordine,
+  applicato su dbdev la notte del 2026-10-08, non ancora nel branch) il DB lo
+  rifiuta. `ORD2026-0000001` era l'ordine del test stesso. ✅ Corretta la
+  fixture: bozza → riga → transizione DRAFT → CONFERMATO della matrice, una
+  forma valida con e senza il lock nuovo.
+- `test_giornale_trasversale_perimetro` 1 — **difetto vero del backend**, non del
+  test: il filtro per giorno del giornale confronta un `timestamptz` con
+  `%s::date`, e la sessione di Django è UTC. Il «giorno» è quindi il giorno
+  UTC: fra le 00:00 e le 02:00 italiane «oggi» non contiene gli eventi appena
+  scritti. Il test era rosso perché lanciato a mezzanotte e mezza. È la stessa
+  famiglia che `script.fn_data_operativa` ha chiuso sul DB per la data
+  documento: vedi
+  [brief-be-db-giorno-nel-fuso-aziendale.md](brief-be-db-giorno-nel-fuso-aziendale.md).
 
 ⭐ L'ordine L2 → L3 è sulla **natura** del rilievo, non sul conteggio: un
 `[attr-defined]` è quasi sempre un 500 in attesa, un `[arg-type]` quasi sempre

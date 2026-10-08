@@ -680,6 +680,9 @@ def sql_order_clause(
                 sql_order_direction(order_dir, default_desc=default_desc)
             )
             return f"{default_clause}, {tiebreak} {verso}"
+        # Il controllo «uno dei due» qui sopra garantisce `default` non None
+        # quando `default_clause` lo e'.
+        assert default is not None
         colonna = default
         direzione = sql_order_direction(order_dir, default_desc=default_desc)
     else:

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1004, di cui 103 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1008, di cui 104 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -178,6 +178,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_BA_ADMIN_GLOBALE_VIETATO": "NON_PERMESSO",
     # Un billing account che ha gia' un documento NUMERATO su un registro non cambia emittente fiscale. ⭐ CONFLITTO_STATO e non DATO_ERRATO, e lo decide la descrizione della classe: «non c'e' un campo da correggere, e' la situazione che non lo consente» - l'emittente scelto non e' sbagliato, e' la storia gia' scritta che non lo ammette. Stesso ragionamento con cui E_EMITTENTE_NON_MODIFICABILE e' passato da 400 a 409 il 2026-08-06. Ne discende che nel contesto non va la chiave `campo`. ⏸️ Niente `bersaglio`: in testa andrebbe il billing account, che non e' a catalogo in config.tipi_entita - metterci una FATTURA violerebbe l'ordine, che e' portante. ⭐ rev 2026-08-31: la definizione di «storia» non e' piu' «fatture e commesse» ma si DERIVA da vendite.famiglie_documento - ogni famiglia che si numera su un registro blocca, perche' il numero e' una copia dell'emittente che nessuno riscrivera' piu'. ⚠️ Il messaggio e' passato da quattro segnaposto a TRE (cliente, emittente, elenco): con cinque famiglie una frase che ne nomina due manderebbe a cercare fatture a un cliente bloccato da un DDT. Piano: brief-db-billing-account-cambio-emittente, M4; e brief-db-registri-di-numerazione-emittente-e-trasloco, C2-17.
     "E_BA_EMITTENTE_CON_STORIA": "CONFLITTO_STATO",
+    # Lock di colonna (dbops.automation_lock_columns, script.trgfn_lock_columns) su anagrafiche.billing_account.istanza_utility_id e .utility_id - decisione di Tid del 2026-10-08: la coppia (istanza, utility) e' l'IDENTITA' del billing account. Spostarlo su un'altra istanza lascerebbe quella di partenza senza billing account (la regola E_ISTANZA_SENZA_BA) e i documenti che lo nominano con la coppia vecchia. CONFLITTO_STATO come gli altri lock (E_ORD_CLIENTE_IMMUTABILE, E_MAG_UBICAZIONE_MAGAZZINO_IMMUTABILE). Il VARIADIC porta il nome della colonna, come nella famiglia dei lock. Non si e' riusato CODICE_NON_MODIFICABILE: e' obsoleto_dal 2026-08-05. Brief: brief-db-istanza-nasce-col-ba (R-1).
+    "E_BA_ISTANZA_IMMUTABILE": "CONFLITTO_STATO",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "DATO_ERRATO",
     # Difetto di programmazione, non condizione di dominio: 500.
     "E_BATCH_ARRAY_DISALLINEATI": "TECNICO",
@@ -738,6 +740,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_INVALID_SNAPSHOT": "TECNICO",
     "E_INVITO_OPERATORE": "DATO_ERRATO",
     "E_INVITO_PORTALE": "DATO_ERRATO",
+    # Guard anagrafiche.fn_guard_istanza_ba_emittente: due billing account della stessa istanza risolvono a emittenti fiscali diversi. Regola di Tid del 2026-10-08 (D-4): un'istanza ha billing account di un solo emittente, cosi' la regola di scope «un'istanza e' dell'emittente del suo BA» ha una risposta sola. L'emittente confrontato e' quello RISOLTO, con la stessa check del guard dell'albero (anagrafiche.fn_check_ba_coppia_emittente_omogenea). CONFLITTO_STATO e non DATO_ERRATO come il gemello sull'albero (E_ALBERO_EMITTENTE_MISTO): li' c'e' un campo da correggere (parent_account_id), qui no - e' l'operazione (creare il BA sotto un'altra azienda, spostarne il collegamento) a non essere ammessa. Nessun campo nel contesto. Il VARIADIC porta i codici dei due billing account e quello dell'istanza. Brief: brief-db-istanza-nasce-col-ba (R-7).
+    "E_ISTANZA_EMITTENTI_DIVERSI": "CONFLITTO_STATO",
+    # Guard anagrafiche.fn_guard_istanza_ha_ba, chiamato al COMMIT da due constraint trigger: alla nascita dell'istanza (trg_istanze_utilities_z90_require_utility_dichiarata_ins) e alla cancellazione di un billing account (trg_billing_account_z90_require_istanza_ha_ba_dlt). Regola di Tid del 2026-10-08: istanza e billing account nascono insieme, e un'istanza non resta mai senza billing account. CONFLITTO_STATO come il codice che sostituisce (E_ISTANZA_UTILITY_SENZA_UTILITY): non c'e' un campo da correggere, e' l'operazione a lasciare il dato fuori regola. Nessun campo nel contesto. Il VARIADIC porta il codice dell'istanza, che l'operatore riconosce. Brief: brief-db-istanza-nasce-col-ba (R-1).
+    "E_ISTANZA_SENZA_BA": "CONFLITTO_STATO",
+    # Ritirato il 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): la regola «almeno un satellite fra billing account, dati precontrattuali e cliente» non esiste piu'. Un'istanza vive col suo billing account e il constraint trigger anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata solleva E_ISTANZA_SENZA_BA. Nessun punto del database lo solleva piu'.
+    # ⚠️ RITIRATO il 2026-10-08
     "E_ISTANZA_UTILITY_SENZA_UTILITY": "CONFLITTO_STATO",
     "E_IVA_CONTO_ACQ_ERR": "DATO_ERRATO",
     "E_IVA_CONTO_VEN_ERR": "DATO_ERRATO",
@@ -1030,6 +1038,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PRATICA_QUERY": "TECNICO",
     "E_PRATICA_SORGENTE_TIPO_INVALIDO": "DATO_ERRATO",
     "E_PRATICA_VALIDATION": "DATO_ERRATO",
+    # Regola 5 di pratiche.trgfn_pratiche_guard_contesto (2026-10-08, brief-db-istanza-nasce-col-ba R-8 / D-9): il billing account della pratica deve essere del ruolo della pratica (pratiche.soggetto_ruolo_id = billing_account.soggetto_ruolo_id). La pratica porta billing_account_id come aggancio a grana fine del CLIENTE (un ruolo CL ha un BA per ogni coppia istanza/utility); per gli altri ruoli basta soggetto_ruolo_id. DATO_ERRATO come le quattro regole gemelle (E_PRATICHE_RUOLO_NON_COERENTE, E_PRATICHE_ISTANZA_NON_COERENTE), campo billing_account_id nel contesto. Il VARIADIC porta il codice del billing account.
+    "E_PRATICHE_BA_NON_COERENTE": "DATO_ERRATO",
     # <- PRATICHE_CHIUSURA_FLUSSI_APERTI  (vivo)
     "E_PRATICHE_CHIUSURA_FLUSSI_APERTI": "CONFLITTO_STATO",
     # <- PRATICHE_CHIUSURA_FLUSSI_OBBLIGATORI_MANCANTI  (vivo)
@@ -1717,6 +1727,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA",
         "E_FONTE_QUANTITA_NON_VALIDA",
         "E_INVALID_SNAPSHOT",
+        "E_ISTANZA_UTILITY_SENZA_UTILITY",
         "E_KIT_QUANTITA_DISOMOGENEE",
         "E_NUMERAZIONE_IMMUTABILE",
         "E_ONERE_CAUSALE_NON_VALIDA",

@@ -12,8 +12,9 @@
 > sempre così»*. Decisioni D-1…D-4 di Tid del 2026-10-08 (§6.1).
 > **Stato:** ✅ DB **chiuso** il 2026-10-08: R-1/R-2/R-7 (`20261008-50…-62`, §6.10), R-8/R-9
 > (`-63…-73`, §6.12) e la RLS dei dati precontrattuali (`-74…-76`, §6.13) **applicati da Tid**,
-> pgTAP senza regressioni. ⏳ Resta il lato BE/FE (§5, §6.10.5, §6.12.4). Decisioni D-1…D-9 prese
-> (§6.1). R-3 non si fa.
+> pgTAP senza regressioni. ✅ BE/FE fatti il 2026-10-08 (§7, non committati); ⏳ restano il
+> collaudo a video (§7.4) e i debiti del §7.5. Decisioni D-1…D-9 prese (§6.1), D-10 (§7.1).
+> R-3 non si fa.
 
 ## 1. La regola
 
@@ -634,6 +635,67 @@ preventivo; `fn_get_billing_account_by_istanza` in ritiro (quando il BE legge la
 pratica); `uq_gestori_singleton` che non vincola niente; la copia del BA nella pratica da flusso e lo
 spostamento del gestore globale senza un pgTAP.
 
+## 7. Consegna BE/FE (2026-10-08, `dev/backend-tid`)
+
+### 7.1 La decisione presa nel giro — D-10 (Tid, 2026-10-08)
+
+**La pratica sceglie la fornitura, cioe' il BA.** Il lookup istanze
+(`/anagrafiche/istanze-utility/lookup/`) da' **una riga per billing account**, cioe' per coppia
+(istanza, utility), e il drawer della pratica manda il `billing_account_id` della riga; l'istanza la
+ricava il backend dal BA. Ruolo e forniture si legano dal BA (`ba.soggetto_ruolo_id`), non da
+`clienti`. Le alternative scartate: istanza + scelta della utility nel form (un campo in piu', e la
+riga del lookup avrebbe continuato a mostrare un BA solo), o solo BE col FE in un giro a se'.
+
+### 7.2 Che cosa e' cambiato
+
+| Richiesta | Dove | Che cosa |
+| --- | --- | --- |
+| §6.10.5 codici | `error_policies_generated.py` (rigenerato), `error_messages_fallback.py` | `E_ISTANZA_SENZA_BA`, `E_ISTANZA_EMITTENTI_DIVERSI`, `E_BA_ISTANZA_IMMUTABILE`, `E_PRATICHE_BA_NON_COERENTE` con la frase di ripiego; `E_ISTANZA_UTILITY_SENZA_UTILITY` ritirato (resta, come ogni codice ritirato, per leggere `dbops.error_log`) |
+| §6.10.5 FK | `offerte_service`, `contratti_service` | `fk_offerte_commerciali_ba_coppia`, `fk_contratti_ba_coppia` → `E_VENDITE_FK` sul campo `billing_account_id` |
+| R-2 preventivo | `preventivi_service._risolvi_cliente_preventivo` | il cliente e' la coppia col suo BA, letto dal lato che il payload porta: col BA l'istanza e' la sua, con la sola istanza il BA della coppia (`BillingAccountRepository.get_id_by_coppia`, una chiave, non una scelta). Vale in creazione **e** in modifica. `fk_preventivi_ba_coppia` → `E_VENDITE_FK`. Il wrapper `check_utility_istanza_coerenza` e' ritirato (nessun chiamante) |
+| §6.12.4 pratica | `pratiche_repository`, `pratiche_service.crea_pratica`, view, approvazioni prezzo | dettaglio e flussi leggono `p.billing_account_id` (zero consumatori di `script.fn_get_billing_account_by_istanza`); la creazione accetta `billing_account_id` (col solo BA l'istanza e' la sua; BA e istanza discordi → `E_PRATICA_VALIDATION` sul campo); la pratica di approvazione prezzo nasce col BA del documento |
+| D-10 lookup | `istanze_utility_repository`, `soggetti_repository` | una riga per BA; il restore per id resta l'istanza, coi campi del BA solo se e' uno; il lookup soggetto+ruolo conta i BA del ruolo (`n_billing_account`, `billing_account_unico_id/_codice` al posto di `n_istanze`, `istanza_unica_*`) |
+| §6.12.4 clienti | `clienti_service` | `uq_clienti_billing_account` → «Esiste gia' un cliente per questo billing account» |
+| §5 FE | `IstanzaUtilityLookup`, `SoggettoRuoloLookup`, `PraticaDrawer`, `PreventiviDrawer`/`Form` | via il badge «Solo istanza» e la chiave; il drawer della pratica sceglie la «Fornitura»; via il restore del preventivo «prospect senza BA»; commenti riscritti sulla regola |
+
+### 7.3 Trovato nel giro, corretto
+
+**Creare un cliente su un'istanza esistente era un 500.** `ClientiRepository.get_istanza` chiedeva
+`istanze_utilities.utility_id`, che non esiste, e il service confrontava la utility dell'istanza.
+I test mockavano il repository con quella colonna: verdi per costruzione. Ora la utility si
+controlla sul BA indicato (la coppia e' la sua identita'), e su un'istanza la cui utility ha gia' il
+BA la creazione risponde `E_ANAG_DUPLICATO` (`uq_billing_instance_utility`) invece di un 500. E' la
+strada che R-8 apre: un secondo cliente sulla stessa istanza.
+
+**Prove:** suite BE intera verde (5996); sul DB vero (opt-in E2E) i nuovi
+`anagrafiche/tests/db/test_lookup_forniture_per_ba_db.py` (4: un'istanza con due utility da' due
+righe, il filtro utility tiene la coppia, il ruolo conta i suoi BA, il restore non sceglie fra due
+BA), `pratiche/tests/db/test_pratica_billing_account_db.py` (2) e
+`anagrafiche/tests/db/test_clienti_repository_db.py` (2); FE: eslint, guard e vitest verdi.
+
+### 7.4 Collaudo a video (Tid)
+
+* Pratica nuova su un cliente con un BA solo: «Fornitura … derivata»; con piu' BA (anche
+  un'istanza con due utility): la tendina mostra una riga per fornitura, con la utility nel testo.
+* Pratica su un soggetto senza ruoli o con un ruolo non cliente: nessun campo fornitura.
+* Preventivo nuovo scegliendo l'istanza invece del BA: al salvataggio il BA compare, bloccato.
+* Dal flusso di una pratica col BA: offerta e contratto si aprono col cliente ereditato.
+
+### 7.5 Debiti e segnalazioni, aperti
+
+* **Ordini e DDT hanno ancora `billing_account_id` nullable**, senza FK di coppia: e' la stessa
+  asimmetria che R-2 ha chiuso su preventivo, offerta e contratto (il BE ha ancora i commenti
+  «ordine prospect con BA NULL», `ordini_repository`, `_indirizzi_repo_mixin`, `ddt_repository`,
+  `ordine_document_context_builder`). Decisione di Tid: se aprire un brief DB.
+* `script.fn_get_billing_account_by_istanza` non ha piu' consumatori nel BE: il team DB puo'
+  ritirarla (§6.12.3).
+* Il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT`: la chiave
+  `vendite.preventivi.push_commessa_reason.senza_billing_account` esce dai locales quando il DB
+  ritira il ramo (§6.10.3).
+* ⚠️ Fuori da questo brief: su dbdev `vendite/tests/db/test_resi_create_db` e' rosso perche' la
+  sua fixture aggiunge righe a un ordine CONFERMATO, che il lock di D-1 di
+  `brief-db-righe-e-componenti-debiti-residui` ora rifiuta. Quel giro e' **applicato su dbdev ma
+  non ancora pushato** (2026-10-08); il test va rivisto con quel giro.
 ### 6.15 Trovato dopo il merge (2026-10-09): lo scope di storico dei dati precontrattuali
 
 Il runner di Tid ha dato due rossi fuori dai pgTAP del giro, tutti e due conseguenza del giro:

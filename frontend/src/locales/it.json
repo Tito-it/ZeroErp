@@ -2079,7 +2079,7 @@
     "search_placeholder": "Cerca per ragione sociale, CF o P.IVA...",
     "no_results": "Nessun soggetto trovato",
     "senza_ruolo": "Senza ruolo",
-    "n_istanze": "{n} istanze",
+    "n_forniture": "{n} forniture",
     "refine_hint": "Mostrati {shown} di {total}. Affina la ricerca per vedere altri risultati."
   },
   "istanza_utility": {
@@ -2088,7 +2088,6 @@
     "refine_hint": "Mostrate {shown} di {total}. Affina la ricerca per vedere altri risultati.",
     "ba_label": "BA",
     "pdp_label": "PDP",
-    "solo_istanza_badge": "Solo istanza",
     "fittizia_badge": "Fittizia",
     "indirizzo_label": "Indirizzo"
   },
@@ -5250,10 +5249,9 @@
     "select_priorita": "Seleziona priorita'...",
     "field_descrizione": "Descrizione",
     "field_contesto": "Soggetto / ruolo",
-    "field_istanza": "Istanza utility",
-    "istanza_hint": "Opzionale — aggancia la pratica a una specifica istanza (pre-contrattuale)",
-    "istanza_derivata": "Istanza {codice} derivata automaticamente dal cliente",
-    "istanza_scegli_fornitura": "Il cliente ha {n} istanze: scegli la fornitura a cui si riferisce la pratica",
+    "field_fornitura": "Fornitura",
+    "fornitura_derivata": "Fornitura {codice} derivata automaticamente dal cliente",
+    "fornitura_scegli": "Il cliente ha {n} forniture: scegli quella a cui si riferisce la pratica",
     "nuovo_soggetto": "Nuovo soggetto",
     "section_soggetto": "Soggetto",
     "section_dati": "Dati pratica",

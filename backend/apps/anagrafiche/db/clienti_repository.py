@@ -231,9 +231,14 @@ class ClientiRepository:
     # =================================================================
 
     # Scopo: Valida che un'istanza esista e appartenga al soggetto.
+    # ⛔ Fino al 2026-10-08 leggeva anche `utility_id`, che su
+    #    `istanze_utilities` NON esiste: la creazione di un cliente su un'istanza
+    #    esistente rispondeva con un errore SQL (500), e i test col repository
+    #    mockato non potevano vederlo. La utility e' del billing account: un'istanza
+    #    ne ha uno per ogni utility (brief-db-istanza-nasce-col-ba, D-5).
     def get_istanza(self, istanza_utility_id: int) -> dict[str, Any] | None:
         sql = """
-            SELECT id, soggetto_id, utility_id, fittizia, indirizzo_dettaglio_id
+            SELECT id, soggetto_id, fittizia, indirizzo_dettaglio_id
               FROM anagrafiche.istanze_utilities
              WHERE id = %s
         """
