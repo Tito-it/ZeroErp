@@ -96,11 +96,17 @@ SELECT a.id
 -- Nota: CREATE TEMP TABLE ... AS WITH ins AS (INSERT ... RETURNING)
 --       è la forma corretta per catturare l'RETURNING in PG.
 -- -------------------------------------------------------
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo). Le due copie
+--   del primo listino prendono la utility del CLIENTE (che ne ammette la tipologia
+--   per costruzione, vedi tmp_bozza_cli) e l'emittente di chi agisce, a cui il z90
+--   ha legato il cliente; prima ricopiavano utility ed emittente del listino dei dati.
 CREATE TEMP TABLE tmp_lst_bozza_only AS
 WITH ins AS (
     INSERT INTO vendite.listini(codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
     SELECT 'PGTAP_BO_' || substr(gen_random_uuid()::text, 1, 8),
-           'Test BOZZA-only', l.utility_id, l.tipologia_id, l.emittente_soggetto_ruolo_id
+           'Test BOZZA-only', (SELECT utility_id FROM tmp_bozza_ctx), l.tipologia_id,
+           script.fn_pgtap_emittente_sr_operatore()
       FROM vendite.listini l WHERE l.attivo = TRUE ORDER BY l.id LIMIT 1
     RETURNING id
 )
@@ -127,7 +133,8 @@ CREATE TEMP TABLE tmp_lst_mixed AS
 WITH ins AS (
     INSERT INTO vendite.listini(codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
     SELECT 'PGTAP_MX_' || substr(gen_random_uuid()::text, 1, 8),
-           'Test BOZZA+ATTIVA', l.utility_id, l.tipologia_id, l.emittente_soggetto_ruolo_id
+           'Test BOZZA+ATTIVA', (SELECT utility_id FROM tmp_bozza_ctx), l.tipologia_id,
+           script.fn_pgtap_emittente_sr_operatore()
       FROM vendite.listini l WHERE l.attivo = TRUE ORDER BY l.id LIMIT 1
     RETURNING id
 )

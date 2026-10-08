@@ -113,6 +113,12 @@ Per la matrice completa e la semantica di ogni valore vedi la documentazione di
   `trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd` →
   `script.trgfn_qta_from_operativa('true','false','quantita','fonte_quantita_attesa')`
   (stessa configurazione di `contratti_righe`).
+  ⭐ **Dal 2026-10-08 è calcolata per intero**: con una fonte a valle
+  (`script.fn_fonte_porta_quantita` = false: MANUALE, LETTURE, TIMESHEET) il trigger la
+  porta a NULL a ogni INSERT e UPDATE, e nessun client la scrive. Il rifiuto
+  `E_RIGA_QUANTITA_CON_FONTE_A_VALLE` (guard `script.trgfn_righe_guard_quantita_per_fonte`)
+  resta sull'input, `qta_operativa`. Rete: `chk_offerte_eccezioni_quantita_per_fonte`.
+  Brief `brief-db-offerta-emissione-ed-erogazione` §F.1.
 - Vincolo `chk_offerte_eccezioni_qta_operativa_nonzero` (`qta_operativa IS NULL OR
   qta_operativa <> 0`): negativi ammessi, zero vietato.
 

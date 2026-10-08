@@ -198,6 +198,8 @@ non sono la stessa cosa e non vanno letti insieme ai due sopra.
 - ⏳ **Magazzino, Lotto 3-bis — carico da reso cliente**
   (`work-in-progress/brief-db-magazzino-lotto-3-bis-carico-da-reso.md`): DB applicato; restano
   R-1…R-5 a BE/FE.
+- 📝 **Magazzino: tutte le scritture dal verbo**
+  (`work-in-progress/brief-db-magazzino-tutte-le-scritture-dal-verbo.md`): bozza, cinque decisioni di Tid (§3).
 - **`acquisti`**: le due date di `acquisti.ordini_righe` sono a DB **senza consumatore** (nessun
   repository di righe, nessuna chiave i18n).
 
@@ -249,15 +251,28 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   archiviato il 2026-10-06): `tipo_erogazione` obbligatoria su OVERRIDE/AGGIUNTA di contratto e offerta
   (`20261004-30…-33`, codice `E_RIGA_EROGAZIONE_OBBLIGATORIA`), BE/FE in `dda5bda1d`. L'ultimo avviso l'ha chiuso
   `brief-db-righe-esclusione-solo-non-si-vende` (`20261004-40`).
-- **L'esclusione è solo «non si vende», contratto e offerta con le stesse regole**
-  (`work-in-progress/brief-db-righe-esclusione-solo-non-si-vende.md`, decisione di Tid del 2026-10-04): DB
+- **L'esclusione è solo «non si vende», contratto e offerta con le stesse regole: chiuso**
+  (`work-done/brief-db-righe-esclusione-solo-non-si-vende.md`, decisione di Tid del 2026-10-04): DB
   applicato (`20261004-40…-49`, `-70…-76`), pgTAP verdi. BE/FE primo giro fatto il 2026-10-04 (§9). Secondo giro
   DB **scritto** il 2026-10-05 (§10: `20261005-10…-19`, lista `vendite.offerta_righe` 106; la revisione copia i
   componenti, gemelle con gli stessi tipi, lock «solo in bozza» sui componenti col building block a livello RIGA —
   i rientri del reso ritirano la loro copia), applicato il 2026-10-05. BE/FE secondo giro fatto il 2026-10-05 (§11):
   endpoint della lista 106, drawer dell'offerta sui verbi del DB col BB `RigheEccezioniDrawer` condiviso col
-  contratto (regola del 2, ok Tid), niente toggle «attivo». ⏳ Da decidere l'archiviazione (§11.4: i trovati DB
-  del §10.8 vogliono una sede).
+  contratto (regola del 2, ok Tid), niente toggle «attivo». Archiviato il 2026-10-08 (§14): i trovati DB del
+  §10.8 sono il brief `work-in-progress/brief-db-righe-e-componenti-le-altre-famiglie.md`; il ricollaudo di
+  C5/C3 è il §D.5 di `brief-db-offerta-emissione-ed-erogazione`.
+- **Righe e componenti di preventivo, ordine e DDT allineati a contratto e offerta: aperto**
+  (`work-in-progress/brief-db-righe-e-componenti-le-altre-famiglie.md`, 2026-10-08): revisione del preventivo
+  (attende la decisione di Tid D-1 sui componenti spenti), lock «solo in bozza» sui componenti, `user_update NOT
+  NULL`, rinomina di `chk_contrighe_comp_quantita_pos`. Non iniziato.
+- ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
+  collaudo del drawer del 2026-10-07): DB giri 1 e 2 applicati e verdi, BE/FE in parte. Serve il terzo giro DB (§F:
+  F-1 quantità calcolata, F-2 listino del documento), poi il resto del BE/FE, il collaudo a video §D.5 e l'archivio.
+- ⏳ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca**
+  (`work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md`, richiesta BE del 2026-10-08, voci E-4/E-5/E-10
+  dell'analisi della doc API core): da fare.
+- 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
+  proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
   il 2026-10-05): sotto RLS la lineage si ricalcolava per ogni riga della lista. `20261005-20` (lineage calcolata una
   volta per query) e `-21` (archi: tre letture una volta sola), applicati: le sette liste ~0,18 s la pagina (preventivi
@@ -317,7 +332,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (pezzi mancanti in silenzio per un cambio di forma) lo chiude già
   `versione_contesto`; questo è il raffinamento per variabile. Sede naturale: la
   pubblicazione, la stessa della verifica degli asset citati
-  (`brief-be-documenti-risorse-esterne-render-pdf.md` §5.3). Con la stessa
+  (`work-done/brief-be-documenti-risorse-esterne-render-pdf.md` §5.3). Con la stessa
   chiusura, facoltativa al team DB: la colonna «Forma dei dati»
   (`versione_contesto`) nella lista configurabile `documenti.template_versioni`
   (88) — il campo viaggia già nelle righe (§12.1 del brief).

@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# DUE FUNZIONI CHE RESTITUISCONO UNA RIGA LO DICHIARANO: ROWS 1
+#   vendite.fn_resolve_registro_documento(bigint, bigint, bigint)
+#   vendite.fn_get_sorgente_documento_ref(bigint, text)
+#   Nasce dal pgTAP vendite/test-registro-documento-previsto-v1.sql, lento (2026-10-08),
+#   insieme a 20261008-20 (fn_data_operativa).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Sono funzioni RETURNS TABLE, cioe' set-returning, senza la clausola ROWS:
+#   il pianificatore le stima a 1000 righe ciascuna. Restituiscono invece UNA
+#   riga su ogni ramo, per costruzione (fn_resolve_registro_documento chiude
+#   con un solo RETURN QUERY sulle sue variabili; fn_get_sorgente_documento_ref
+#   esce sempre con un RETURN NEXT seguito da RETURN).
+#   ⚠️ In vendite.vw_dash_competenza_gruppi stanno in LATERAL, una dentro
+#   l'altra: la stima si moltiplica (18.857 x 1000 = 18,7 milioni di righe) e
+#   il costo della vista arriva a ~356 milioni. Sopra 100.000 (jit_above_cost)
+#   PostgreSQL compila la query col JIT, con inlining e ottimizzazione sopra
+#   500.000: misurato su dbdev il 2026-10-08, 951 ms di compilazione (192
+#   funzioni) per 20 ms di esecuzione vera. Con la stima giusta la vista costa
+#   ~20 ms.
+#
+# ── ⭐ PERCHE' SUL MODELLO E NON SUL JIT ────────────────────────────
+#   Spegnere il JIT (per ruolo o per database) nasconderebbe il sintomo e
+#   lascerebbe sbagliata la stima, che governa anche la scelta dei join. La
+#   cardinalita' e' una proprieta' della funzione: si dichiara dove la funzione
+#   e' definita.
+#
+# ── ⛔ ROWS E' UNA PROPRIETA' INVISIBILE NEL CORPO ────────────────────
+#   Come security_invoker sulle viste: un CREATE OR REPLACE FUNCTION che non la
+#   ripete la RIPORTA A 1000, senza errore. Per questo la presidia il pgTAP
+#   vendite/test-srf-una-riga-rows-v1.sql, e chi riscrive una delle due
+#   funzioni deve ripetere `ROWS 1` nella definizione.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firma, corpo, risultati. Cambia solo la stima del pianificatore. Nessun
+#   lavoro BE/FE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261008-21-alter-srf-una-riga-rows-1-mctit.yaml
+
+  - changeSet:
+      id: 20261008-21-alter-srf-una-riga-rows-1
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        ROWS 1 su vendite.fn_resolve_registro_documento e vendite.fn_get_sorgente_documento_ref:
+        restituiscono una riga per costruzione, e la stima di default (1000) in LATERAL
+        moltiplicava il costo di vw_dash_competenza_gruppi fino a far scattare il JIT
+        (951 ms di compilazione per 20 ms di esecuzione).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proretset
+                 AND (   (p.proname = 'fn_resolve_registro_documento'
+                          AND pg_get_function_identity_arguments(p.oid)
+                              = 'p_billing_account_id_riga bigint, p_tipo_doc_fiscale_id bigint, p_natura_doc_id bigint')
+                      OR (p.proname = 'fn_get_sorgente_documento_ref'
+                          AND pg_get_function_identity_arguments(p.oid)
+                              = 'p_sorgente_tipo_id bigint, p_sorgente_uid text'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ ROWS si perde a ogni CREATE OR REPLACE che non lo ripete:
+              --    presidio in vendite/test-srf-una-riga-rows-v1.sql.
+              ALTER FUNCTION vendite.fn_resolve_registro_documento(bigint, bigint, bigint) ROWS 1;
+              ALTER FUNCTION vendite.fn_get_sorgente_documento_ref(bigint, text) ROWS 1;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION vendite.fn_resolve_registro_documento(bigint, bigint, bigint) ROWS 1000;
+              ALTER FUNCTION vendite.fn_get_sorgente_documento_ref(bigint, text) ROWS 1000;

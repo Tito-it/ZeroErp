@@ -8,6 +8,9 @@
 --       (MANUALE, LETTURE, TIMESHEET) restano vuote.
 --       Brief brief-db-offerta-emissione-ed-erogazione §D.4 punto 2, §E (decisione di
 --       Tid del 2026-10-07: «DB, rifiuto»), changeSet 20261007-28 … -30.
+--       Terzo giro (§F.1, decisione di Tid del 2026-10-08, changeSet 20261008-10 … -12):
+--       quantita e' CALCOLATA. Con una fonte a valle la porta a NULL il DB
+--       (trgfn_qta_from_operativa); il rifiuto resta sull'input, qta_operativa.
 --       Prima la regola la applicava solo il backend, solo sul contratto, azzerando
 --       in silenzio (`_apply_fonte_quantita_logic`).
 --
@@ -17,14 +20,15 @@
 --     M  MERCE                 UNA_TANTUM/FISSA*, UNA_TANTUM/MANUALE
 --     R  SERVIZIO_RICORRENTE   CANONE/FISSA*, CONSUMO/MANUALE
 --     K  MERCE, composito      + UNA_TANTUM/DERIVATA_COMPONENTI
+--     N  MERCE                 come M (una riga sola per articolo: uq AGGIUNTA)
 -- ⚠️ I codici si leggono dai canali dell'eccezione (CONSTRAINT = codice, COLUMN =
 --   campo), non dalla frase. Il test 12 legge il catalogo dei codici: rosso nella
 --   prova pre-apply (il CSV si carica in 80_data), verde dopo l'apply.
 --
--- Indice test (1..12):
+-- Indice test (1..15):
 --   L'INSERT
 --    1) fonte a valle con qta_operativa: rifiutata, campo qta_operativa
---    2) fonte a valle con la sola quantita: rifiutata, campo quantita
+--    2) fonte a valle con la sola quantita: ammessa, quantita la svuota il DB (F-1.2)
 --    3) fonte a valle senza quantita': ammessa
 --    4) FISSA con la quantita': ammessa
 --    5) DERIVATA_COMPONENTI con la quantita': ammessa
@@ -33,20 +37,25 @@
 --    7) cambia l'erogazione e un altro trigger riallinea la fonte a MANUALE: la
 --       quantita' rimasta e' rifiutata (UPDATE senza colonne)
 --    8) una fonte fuori perimetro: parla prima il perimetro, non la quantita'
---    9) FISSA → MANUALE con la quantita': rifiutata; svuotandola nello stesso
---       UPDATE: ammessa
+--    9) FISSA → MANUALE con la quantita': rifiutata; mandando la sola
+--       qta_operativa = NULL (come il form): ammessa, e quantita resta NULL (F-1.4)
 --   La forma
---   10) i due CHECK (la rete) e il guard dicono lo stesso elenco di fonti
+--   10) i due CHECK (la rete) dicono le fonti di script.fn_fonte_porta_quantita, e
+--       il guard e il calcolo della quantita' la chiamano (F-1.3)
 --   11) il guard sulle due tabelle: BEFORE INSERT OR UPDATE, senza colonne, dopo
 --       il perimetro
 --   12) il codice a catalogo, DATO_ERRATO
+--   Il terzo giro (§F.1)
+--   13) DERIVATA_COMPONENTI → MANUALE senza toccare quantita': ammessa, quantita NULL
+--   14) l'offerta: FISSA → MANUALE con la sola qta_operativa = NULL, quantita NULL
+--   15) MANUALE con qta_operativa sull'UPDATE: rifiutata col campo qta_operativa
 -- ------------------------------------------------------------
 
 BEGIN;
 SET CONSTRAINTS ALL IMMEDIATE;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(12);
+SELECT plan(15);
 
 -- Scopo: canali strutturati di uno statement che deve fallire: «codice / campo».
 CREATE OR REPLACE FUNCTION pg_temp.canali(p_sql text)
@@ -73,7 +82,7 @@ SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
 
 CREATE TEMP TABLE tmp_qpf_art AS
 SELECT v.sigla, dbops.fn_pgtap_crea_articolo('PGTAP-QPF-' || v.sigla) AS id
-  FROM (VALUES ('M'), ('R'), ('K')) AS v(sigla);
+  FROM (VALUES ('M'), ('R'), ('K'), ('N')) AS v(sigla);
 
 CREATE OR REPLACE FUNCTION pg_temp.art(p_sigla text)
 RETURNS uuid LANGUAGE sql STABLE AS $fx$
@@ -109,10 +118,11 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
                   (SELECT id FROM tmp_qpf_ctr), pg_temp.art(p_sigla), p_qta_op, p_qta, p_erog, p_fonte);
 $fx$;
 
--- Scopo: la riga del contratto per l'articolo, «EROG/FONTE/QTA_OPERATIVA».
+-- Scopo: la riga del contratto per l'articolo, «EROG/FONTE/QTA_OPERATIVA/QUANTITA».
 CREATE OR REPLACE FUNCTION pg_temp.riga(p_sigla text)
 RETURNS text LANGUAGE sql STABLE AS $fx$
     SELECT r.tipo_erogazione || '/' || r.fonte_quantita_attesa || '/' || coalesce(r.qta_operativa::text, '-')
+           || '/' || coalesce(r.quantita::text, '-')
       FROM vendite.contratti_righe r
      WHERE r.contratto_id = (SELECT id FROM tmp_qpf_ctr) AND r.articolo_id = pg_temp.art(p_sigla);
 $fx$;
@@ -124,11 +134,16 @@ SELECT is(pg_temp.canali(pg_temp.agg('M', 'UNA_TANTUM', 'MANUALE', 1)),
     'E_RIGA_QUANTITA_CON_FONTE_A_VALLE / qta_operativa',
     '1) fonte a valle (MANUALE) con qta_operativa: rifiutata, campo qta_operativa');
 
-SELECT is(pg_temp.canali(pg_temp.agg('M', 'UNA_TANTUM', 'MANUALE', NULL, 1)),
-    'E_RIGA_QUANTITA_CON_FONTE_A_VALLE / quantita',
-    '2) fonte a valle con la sola quantita: rifiutata, campo quantita');
+-- quantita e' calcolata: chi la manda con una fonte a valle non viene rifiutato,
+-- la svuota il DB (F-1.2). La lettura in un'istruzione a parte (snapshot).
+CREATE TEMP TABLE tmp_qpf_2 AS
+SELECT pg_temp.canali(pg_temp.agg('M', 'UNA_TANTUM', 'MANUALE', NULL, 1)) AS esito;
 
-SELECT is(pg_temp.canali(pg_temp.agg('M', 'UNA_TANTUM', 'MANUALE', NULL)), 'NESSUN ERRORE',
+SELECT is((SELECT esito FROM tmp_qpf_2) || ' | ' || pg_temp.riga('M'),
+    'NESSUN ERRORE | UNA_TANTUM/MANUALE/-/-',
+    '2) fonte a valle con la sola quantita: ammessa, la quantita'' la svuota il DB');
+
+SELECT is(pg_temp.canali(pg_temp.agg('N', 'UNA_TANTUM', 'MANUALE', NULL)), 'NESSUN ERRORE',
     '3) fonte a valle senza quantita'': ammessa');
 
 SELECT is(pg_temp.canali(pg_temp.agg('R', 'CANONE', 'FISSA', 2)), 'NESSUN ERRORE',
@@ -189,7 +204,7 @@ SELECT is(pg_temp.canali(format(
     'E_RIGA_EROGAZIONE_FUORI_PERIMETRO / fonte_quantita_attesa',
     '8) CANONE/MANUALE e'' fuori perimetro per R: parla prima il perimetro («guard_e» < «guard_q»)');
 
--- M ha una riga UNA_TANTUM/MANUALE senza quantita' (test 3): si porta a FISSA con
+-- M ha una riga UNA_TANTUM/MANUALE senza quantita' (test 2): si porta a FISSA con
 -- la quantita', poi di nuovo a MANUALE.
 UPDATE vendite.contratti_righe SET fonte_quantita_attesa = 'FISSA', qta_operativa = 3
  WHERE contratto_id = (SELECT id FROM tmp_qpf_ctr) AND articolo_id = pg_temp.art('M');
@@ -202,22 +217,25 @@ SELECT pg_temp.canali(format(
               WHERE contratto_id = %s AND articolo_id = %L$$,
            (SELECT id FROM tmp_qpf_ctr), pg_temp.art('M'))) AS solo_fonte;
 ALTER TABLE tmp_qpf_89 ADD COLUMN svuotata text;
+-- ⭐ Come il form (F-1.4): la sola qta_operativa = NULL, quantita non si manda.
 UPDATE tmp_qpf_89 SET svuotata = pg_temp.canali(format(
            $$UPDATE vendite.contratti_righe
-                SET fonte_quantita_attesa = 'MANUALE', qta_operativa = NULL, quantita = NULL
+                SET fonte_quantita_attesa = 'MANUALE', qta_operativa = NULL
               WHERE contratto_id = %s AND articolo_id = %L$$,
            (SELECT id FROM tmp_qpf_ctr), pg_temp.art('M')));
 
 SELECT is(
     (SELECT solo_fonte || ' | ' || svuotata FROM tmp_qpf_89) || ' | ' || pg_temp.riga('M'),
-    'E_RIGA_QUANTITA_CON_FONTE_A_VALLE / qta_operativa | NESSUN ERRORE | UNA_TANTUM/MANUALE/-',
-    '9) FISSA → MANUALE con la quantita'': rifiutata; svuotandola nello stesso UPDATE: ammessa');
+    'E_RIGA_QUANTITA_CON_FONTE_A_VALLE / qta_operativa | NESSUN ERRORE | UNA_TANTUM/MANUALE/-/-',
+    '9) FISSA → MANUALE con la quantita'': rifiutata; con la sola qta_operativa = NULL: ammessa, quantita NULL');
 
 -- ============================================================
 -- 10-12) La forma
 -- ============================================================
--- I CHECK e il guard: lo stesso elenco di fonti (reference: un CHECK e il guard
--- della funzione sono due elenchi, nessun cancello li confronta da solo).
+-- L'elenco delle fonti che portano la quantita' sta in script.fn_fonte_porta_quantita
+-- (F-1.3). I CHECK (la rete) ne tengono una copia: i loro letterali devono essere
+-- le fonti del vocabolario per cui la funzione dice true. Il guard e il calcolo
+-- della quantita' la CHIAMANO (commenti tolti: un nome nella prosa non conta).
 SELECT is(
     (SELECT string_agg(DISTINCT x.elenco, ' | ')
        FROM (SELECT (SELECT string_agg(m[1], ',' ORDER BY m[1])
@@ -226,18 +244,23 @@ SELECT is(
               WHERE c.conname IN ('chk_contrighe_quantita_per_fonte',
                                   'chk_offerte_eccezioni_quantita_per_fonte')
              UNION ALL
-             SELECT (SELECT string_agg(m[1], ',' ORDER BY m[1])
-                       FROM regexp_matches(
-                                substring(p.prosrc FROM 'c_fonti_con_quantita CONSTANT text\[\] := ARRAY\[([^]]*)\]'),
-                                '''([A-Z_]+)''', 'g') AS m)
-               FROM pg_proc p
-              WHERE p.proname = 'trgfn_righe_guard_quantita_per_fonte') x)
+             SELECT string_agg(DISTINCT ef.fonte_quantita_attesa, ',' ORDER BY ef.fonte_quantita_attesa)
+               FROM config.erogazioni_fonti ef
+              WHERE script.fn_fonte_porta_quantita(ef.fonte_quantita_attesa)) x)
     || ' #' || (SELECT count(*) FROM pg_constraint c
                  WHERE c.conname IN ('chk_contrighe_quantita_per_fonte',
                                      'chk_offerte_eccezioni_quantita_per_fonte')
-                   AND c.contype = 'c' AND c.convalidated),
-    'DERIVATA_COMPONENTI,FISSA #2',
-    '10) i due CHECK (validati) e il guard dicono le stesse fonti che portano la quantita''');
+                   AND c.contype = 'c' AND c.convalidated)
+    || ' ' || (SELECT string_agg(p.proname || '=' ||
+                         (regexp_replace(p.prosrc, '--[^\n]*', '', 'g')
+                            ~ 'script\.fn_fonte_porta_quantita\s*\(')::text
+                         || (CASE WHEN p.prosrc ~ 'c_fonti_con_quantita' THEN '+costante' ELSE '' END),
+                         ' ' ORDER BY p.proname)
+                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'script'
+                  AND p.proname IN ('trgfn_righe_guard_quantita_per_fonte', 'trgfn_qta_from_operativa')),
+    'DERIVATA_COMPONENTI,FISSA #2 trgfn_qta_from_operativa=true trgfn_righe_guard_quantita_per_fonte=true',
+    '10) i due CHECK (validati) dicono le fonti di fn_fonte_porta_quantita; guard e calcolo la chiamano');
 
 -- tgtype: bit 1 ROW, bit 2 BEFORE, bit 4 INSERT, bit 16 UPDATE; tgattr vuoto = nessun OF.
 SELECT is(
@@ -258,6 +281,56 @@ SELECT is(
       WHERE ce.codice = 'E_RIGA_QUANTITA_CON_FONTE_A_VALLE'),
     'E_RIGA_QUANTITA_CON_FONTE_A_VALLE=DATO_ERRATO',
     '12) il codice a catalogo, DATO_ERRATO');
+
+-- ============================================================
+-- 13-15) Il terzo giro (§F.1): quantita e' calcolata
+-- ============================================================
+-- K e' DERIVATA_COMPONENTI con qta_operativa 1 (test 5). Il caso del brief: la
+-- riga composita senza qta_operativa ma con quantita (la tiene: DERIVATA la porta).
+UPDATE vendite.contratti_righe SET qta_operativa = NULL
+ WHERE contratto_id = (SELECT id FROM tmp_qpf_ctr) AND articolo_id = pg_temp.art('K');
+
+CREATE TEMP TABLE tmp_qpf_13 AS
+SELECT pg_temp.riga('K') AS prima,
+       pg_temp.canali(format(
+           $$UPDATE vendite.contratti_righe SET fonte_quantita_attesa = 'MANUALE'
+              WHERE contratto_id = %s AND articolo_id = %L$$,
+           (SELECT id FROM tmp_qpf_ctr), pg_temp.art('K'))) AS esito;
+
+SELECT is(
+    (SELECT prima || ' | ' || esito FROM tmp_qpf_13) || ' | ' || pg_temp.riga('K'),
+    'UNA_TANTUM/DERIVATA_COMPONENTI/-/1.000000 | NESSUN ERRORE | UNA_TANTUM/MANUALE/-/-',
+    '13) DERIVATA_COMPONENTI → MANUALE senza toccare quantita'': ammessa, la quantita'' la svuota il DB');
+
+-- L'offerta: stessa regola. M nasce FISSA con la quantita', poi passa a MANUALE
+-- mandando la sola qta_operativa = NULL, come il form.
+INSERT INTO vendite.offerte_commerciali_eccezioni (offerta_id, articolo_id, tipo_eccezione,
+       prezzo_unitario, qta_operativa, tipo_erogazione, fonte_quantita_attesa)
+VALUES ((SELECT id FROM tmp_qpf_off), pg_temp.art('M'), 'AGGIUNTA', 10, 2, 'UNA_TANTUM', 'FISSA');
+
+CREATE TEMP TABLE tmp_qpf_14 AS
+SELECT pg_temp.canali(format(
+           $$UPDATE vendite.offerte_commerciali_eccezioni
+                SET fonte_quantita_attesa = 'MANUALE', qta_operativa = NULL
+              WHERE offerta_id = %s AND articolo_id = %L$$,
+           (SELECT id FROM tmp_qpf_off), pg_temp.art('M'))) AS esito;
+
+SELECT is(
+    (SELECT esito FROM tmp_qpf_14) || ' | ' ||
+    (SELECT e.fonte_quantita_attesa || '/' || coalesce(e.qta_operativa::text, '-') || '/'
+            || coalesce(e.quantita::text, '-')
+       FROM vendite.offerte_commerciali_eccezioni e
+      WHERE e.offerta_id = (SELECT id FROM tmp_qpf_off) AND e.articolo_id = pg_temp.art('M')),
+    'NESSUN ERRORE | MANUALE/-/-',
+    '14) l''offerta: FISSA → MANUALE con la sola qta_operativa = NULL, ammessa e quantita NULL');
+
+-- Il rifiuto resta sull'input: una qta_operativa su una riga MANUALE.
+SELECT is(pg_temp.canali(format(
+    $$UPDATE vendite.offerte_commerciali_eccezioni SET qta_operativa = 4
+       WHERE offerta_id = %s AND articolo_id = %L$$,
+    (SELECT id FROM tmp_qpf_off), pg_temp.art('M'))),
+    'E_RIGA_QUANTITA_CON_FONTE_A_VALLE / qta_operativa',
+    '15) MANUALE con qta_operativa sull''UPDATE: rifiutata col campo qta_operativa');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -20,7 +20,10 @@
 > dei due lettori della testata. ✅ Applicata, pgTAP verdi (Tid).
 > ⚠️ **Collaudo a video del 2026-10-07** (§13): due difetti BE/FE trovati e corretti, uno di
 > modello passato a un brief nuovo. ⏳ Ricollaudo del cambio prezzo, poi archiviazione (§11.4).
-> **Da leggere per primo:** §13, poi §12, §11 (consegna BE/FE del secondo giro), §10.7 e §6.
+> ✅ **Archiviato il 2026-10-08** (§14, decisione di Tid): i trovati DB del §10.8 sono il brief
+> **`brief-db-righe-e-componenti-le-altre-famiglie`** (in `work-in-progress/`); il ricollaudo di C5 e C3 è il §D.5 di
+> `brief-db-offerta-emissione-ed-erogazione`, che ne ha preso il modello.
+> **Da leggere per primo:** §14, poi §13, §12, §11 (consegna BE/FE del secondo giro), §10.7 e §6.
 
 ## 1. La regola
 
@@ -625,6 +628,9 @@ componenti, ma le verifica solo la corsa su dbdev.
 
 ### 10.8 Trovato nel giro, non corretto qui
 
+> ➡️ **Passato il 2026-10-08 al brief `brief-db-righe-e-componenti-le-altre-famiglie`** (§14): lo
+> stato di questi quattro punti si legge lì, non qui.
+
 * 🟡 **`fn_crea_revisione_preventivo` copia solo i componenti attivi**, e rimappa le righe con un
   `ROW_NUMBER` che si affida all'ordine di assegnazione degli id. La revisione dell'offerta ora fa
   diversamente su entrambi i punti (§10.3). Da allineare quando si tocca il preventivo, con una
@@ -693,7 +699,7 @@ Verifica: vedi §11.5.
 
 ### 11.4 Da decidere
 
-* **Archiviare il brief.** §6 e §10.7 sono chiusi. Restano i trovati del team DB, che non sono del
+* ✅ **Archiviare il brief: fatto il 2026-10-08** (§14). §6 e §10.7 sono chiusi. Restano i trovati del team DB, che non sono del
   BE/FE e senza una sede si perderebbero con l'archiviazione: §10.8 (revisione del preventivo,
   `user_update` nullable, componenti di preventivo/ordine/DDT senza lock, il nome di
   `chk_contrighe_comp_quantita_pos`).
@@ -771,3 +777,15 @@ tranne due rossi estranei — la divergenza delle policy (il DB di sviluppo è a
 `brief-db-veste-utilizzabile`, non si rigenera) e un deadlock casuale in
 `test_email_bozza_invio_db` (rilanciato da solo: verde). FE: vitest 723/723, eslint, 13 guard e
 build puliti. ⏳ Resta da ricollaudare il punto 5 a video.
+
+## 14. Archiviazione (2026-10-08, team DB, decisione di Tid)
+
+Il lavoro del brief è chiuso in tutti i giri: DB (§5, §10, §12) applicato con i pgTAP verdi, BE/FE
+(§9, §11, i fix del collaudo §13). Prima di archiviarlo, quello che restava aperto ha una sede che
+non si archivia con lui:
+
+| Che cosa restava | Dove sta ora |
+| --- | --- |
+| I quattro trovati DB del §10.8 (revisione del preventivo, lock dei componenti di preventivo/ordine/DDT, `user_update` nullable, il nome di `chk_contrighe_comp_quantita_pos`) | Il brief **`work-in-progress/brief-db-righe-e-componenti-le-altre-famiglie.md`**. Riverificati il 2026-10-08: nessun changeSet dopo il 2026-10-05 li tocca |
+| C5 («Emetti» spento per la versione di listino) e C3 (erogazione da utility a contatore su una utility BASE) del §13 | Il loro modello è in `brief-db-offerta-emissione-ed-erogazione` (§A, §B); il ricollaudo a video è il suo §D.5, che li copre entrambi |
+

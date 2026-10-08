@@ -11,7 +11,7 @@ CREATE FUNCTION fn_resolve_registro_documento(p_billing_account_id_riga bigint, 
 CREATE OR REPLACE FUNCTION vendite.fn_resolve_registro_documento(p_billing_account_id_riga bigint, p_tipo_doc_fiscale_id bigint, p_natura_doc_id bigint DEFAULT NULL::bigint)
  RETURNS TABLE(ba_fatturazione_id bigint, utility_id integer, emittente_soggetto_ruolo_id bigint, registro_id bigint, serie character varying, politica_data_documento character varying)
  LANGUAGE plpgsql
- STABLE
+ STABLE ROWS 1
 AS $function$
 DECLARE
     v_ba_fattura_id anagrafiche.billing_account.id%TYPE;

@@ -44,11 +44,17 @@ SELECT
     ba.categoria_cliente_id     AS categoria_id,
     ba.istanza_utility_id       AS istanza_utility_id,
     ba.utility_id               AS utility_id,
-    (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-       WHERE attivo IS TRUE ORDER BY id LIMIT 1)                       AS emittente_srid,
-    a.id                        AS articolo_id,
-    a.uom_id                    AS uom_id,
-    a.listino_tipologia_id      AS tipologia_id,
+    -- 2026-10-08 (§F.2): l'emittente del BA, non il primo per id.
+    (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id))                       AS emittente_srid,
+    -- 2026-10-08 (§F.2): l'articolo si costruisce qui sotto, con la prima tipologia
+    --   che la utility del BA ammette (come fn_pgtap_crea_listino).
+    NULL::uuid                  AS articolo_id,
+    NULL::bigint                AS uom_id,
+    (SELECT ltu.tipologia_id FROM config.listini_tipologie_utilities ltu
+       JOIN config.listini_tipologie lt ON lt.id = ltu.tipologia_id AND lt.attivo
+      WHERE ltu.utility_id = ba.utility_id AND ltu.attivo
+      ORDER BY lt.ordinamento, lt.id LIMIT 1) AS tipologia_id,
     -- Classe dichiarata sul contratto (coerente con la utility del BA).
     (SELECT cu.id
        FROM config.classi_utenze cu
@@ -61,14 +67,23 @@ SELECT
       WHERE tu.utility_id = ba.utility_id
       ORDER BY cu.id LIMIT 1)                                          AS tipo_utenza_id
   FROM anagrafiche.billing_account ba
-  JOIN catalogo.articoli a
-    ON a.attivo IS TRUE
-   AND a.listino_tipologia_id IS NOT NULL
  WHERE ba.categoria_cliente_id IS NOT NULL
    AND EXISTS (
        SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
    )
- ORDER BY ba.id, a.id
+   -- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+   --   contratto e' della sua utility e del suo emittente (guard nuovo). Listino e
+   --   articolo si COSTRUISCONO qui sotto, con una tipologia che la utility del BA
+   --   ammette (guard trgfn_listini_guard_tipologia_utility).
+   --   ⚠️ Due stesure dello stesso giorno, entrambe rosse su dbdev: prima si cercava
+   --   fra i dati un listino gia' coerente, poi un articolo dei dati con una tipologia
+   --   della utility del BA. Nessuno dei due c'era. L'articolo non e' il soggetto del
+   --   test (lo e' la classe letta dal contratto): si costruisce.
+   AND EXISTS (
+       SELECT 1 FROM config.listini_tipologie_utilities ltu
+        WHERE ltu.utility_id = ba.utility_id AND ltu.attivo
+   )
+ ORDER BY ba.id
  LIMIT 1;
 
 -- 1) Precondizione con dimensione
@@ -79,12 +94,26 @@ SELECT isnt(
 );
 
 -- Listino con versione attiva e riga (riusa struttura esistente o crea in-TX).
+-- L'articolo del caso: costruito, con la tipologia del contesto.
+UPDATE tmp_ctx_wd SET articolo_id = dbops.fn_pgtap_crea_articolo('PGTAP-V5B-WD');
+UPDATE catalogo.articoli a
+   SET listino_tipologia_id = t.tipologia_id
+  FROM tmp_ctx_wd t
+ WHERE a.id = t.articolo_id;
+UPDATE tmp_ctx_wd t
+   SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = t.articolo_id);
+
+-- 2026-10-08 (§F.2): il listino si COSTRUISCE, della tipologia dell'articolo, della
+--   utility e dell'emittente del BA. Prima era il primo listino di quella tipologia,
+--   di qualunque utility ed emittente.
 CREATE TEMP TABLE tmp_ctx_wd_listino AS
-SELECT l.id AS listino_id
-  FROM vendite.listini l, tmp_ctx_wd t
- WHERE l.tipologia_id = t.tipologia_id
-   AND l.attivo       = TRUE
- ORDER BY l.id LIMIT 1;
+WITH ins AS (
+    INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
+    SELECT 'PGTAP_V5B_WD_' || substr(md5(clock_timestamp()::text || random()::text), 1, 12),
+           'Fixture pgTAP: classe da contratto WD', t.utility_id, t.tipologia_id, t.emittente_srid
+      FROM tmp_ctx_wd t
+    RETURNING id)
+SELECT id AS listino_id FROM ins;
 
 INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
 SELECT l.listino_id, 'PGTAP_V5B_VER', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE
@@ -158,22 +187,37 @@ SELECT
     ba.categoria_cliente_id     AS categoria_id,
     ba.istanza_utility_id       AS istanza_utility_id,
     ba.utility_id               AS utility_id,
-    (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-       WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS emittente_srid,
-    a.id                        AS articolo_id,
-    a.uom_id                    AS uom_id,
-    a.listino_tipologia_id      AS tipologia_id,
+    -- 2026-10-08 (§F.2): l'emittente del BA, non il primo per id.
+    (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)) AS emittente_srid,
+    -- 2026-10-08 (§F.2): l'articolo si costruisce qui sotto, con la prima tipologia
+    --   che la utility del BA ammette (come fn_pgtap_crea_listino).
+    NULL::uuid                  AS articolo_id,
+    NULL::bigint                AS uom_id,
+    (SELECT ltu.tipologia_id FROM config.listini_tipologie_utilities ltu
+       JOIN config.listini_tipologie lt ON lt.id = ltu.tipologia_id AND lt.attivo
+      WHERE ltu.utility_id = ba.utility_id AND ltu.attivo
+      ORDER BY lt.ordinamento, lt.id LIMIT 1) AS tipologia_id,
     -- Classe fittizia passata come parametro input (non esiste nel contratto).
     (SELECT id FROM config.classi_utenze ORDER BY id LIMIT 1) AS classe_input_id
   FROM anagrafiche.billing_account ba
-  JOIN catalogo.articoli a
-    ON a.attivo IS TRUE
-   AND a.listino_tipologia_id IS NOT NULL
  WHERE ba.categoria_cliente_id IS NOT NULL
    AND NOT EXISTS (
        SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
    )
- ORDER BY ba.id, a.id
+   -- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+   --   contratto e' della sua utility e del suo emittente (guard nuovo). Listino e
+   --   articolo si COSTRUISCONO qui sotto, con una tipologia che la utility del BA
+   --   ammette (guard trgfn_listini_guard_tipologia_utility).
+   --   ⚠️ Due stesure dello stesso giorno, entrambe rosse su dbdev: prima si cercava
+   --   fra i dati un listino gia' coerente, poi un articolo dei dati con una tipologia
+   --   della utility del BA. Nessuno dei due c'era. L'articolo non e' il soggetto del
+   --   test (lo e' la classe letta dal contratto): si costruisce.
+   AND EXISTS (
+       SELECT 1 FROM config.listini_tipologie_utilities ltu
+        WHERE ltu.utility_id = ba.utility_id AND ltu.attivo
+   )
+ ORDER BY ba.id
  LIMIT 1;
 
 -- 3) Precondizione no-dim
@@ -183,12 +227,26 @@ SELECT isnt(
     '(precondizione) BA su utility senza dimensione tipo/classe disponibile'
 );
 
+-- L'articolo del caso: costruito, con la tipologia del contesto.
+UPDATE tmp_ctx_nd SET articolo_id = dbops.fn_pgtap_crea_articolo('PGTAP-V5B-ND');
+UPDATE catalogo.articoli a
+   SET listino_tipologia_id = t.tipologia_id
+  FROM tmp_ctx_nd t
+ WHERE a.id = t.articolo_id;
+UPDATE tmp_ctx_nd t
+   SET uom_id = (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = t.articolo_id);
+
+-- 2026-10-08 (§F.2): il listino si COSTRUISCE, della tipologia dell'articolo, della
+--   utility e dell'emittente del BA. Prima era il primo listino di quella tipologia,
+--   di qualunque utility ed emittente.
 CREATE TEMP TABLE tmp_ctx_nd_listino AS
-SELECT l.id AS listino_id
-  FROM vendite.listini l, tmp_ctx_nd t
- WHERE l.tipologia_id = t.tipologia_id
-   AND l.attivo       = TRUE
- ORDER BY l.id LIMIT 1;
+WITH ins AS (
+    INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
+    SELECT 'PGTAP_V5B_ND_' || substr(md5(clock_timestamp()::text || random()::text), 1, 12),
+           'Fixture pgTAP: classe da contratto ND', t.utility_id, t.tipologia_id, t.emittente_srid
+      FROM tmp_ctx_nd t
+    RETURNING id)
+SELECT id AS listino_id FROM ins;
 
 INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
 SELECT l.listino_id, 'PGTAP_V5B_VER_ND', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE

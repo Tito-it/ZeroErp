@@ -508,9 +508,11 @@ errore.
 > diventato rosso da solo (2026-09-23).
 >
 > ⭐ **D17 è nata dalla valutazione qualitativa del 2026-10-04** (§2-bis.8), e
-> **D18** dal censimento `UPDATE OF` di D17 (2026-10-05).
+> **D18** dal censimento `UPDATE OF` di D17 (2026-10-05). **D19** dal debito
+> che `brief-db-righe-esclusione-solo-non-si-vende` (§10.8) ha lasciato
+> all'archiviazione (2026-10-08).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D19.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -912,6 +914,20 @@ dalla stessa data), con un commento sul perché.
   valutare dopo il censimento: senza sapere quali regole sono temporali, il
   presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
 
+### 🟡 D19 — Righe e componenti di preventivo, ordine e DDT: non hanno le regole di contratto e offerta
+
+Trovata il 2026-10-05 da `brief-db-righe-esclusione-solo-non-si-vende` (§10.8),
+che ha messo contratto e offerta sotto le stesse regole e ha lasciato fuori, per
+perimetro, le famiglie vicine. Quattro punti: la revisione del preventivo copia
+solo i componenti attivi e rimappa le righe per ordine di id; i componenti di
+preventivo, ordine e DDT non hanno il lock «solo in bozza»; `user_update` può
+essere NULL su righe e componenti; il nome di `chk_contrighe_comp_quantita_pos`
+dice «positiva» ma il vincolo vieta solo lo zero.
+
+Dettaglio e stato nel brief
+[brief-db-righe-e-componenti-le-altre-famiglie.md](brief-db-righe-e-componenti-le-altre-famiglie.md).
+Una decisione aperta per Tid (D-1: il componente spento in una revisione).
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1103,6 +1119,8 @@ D6 e il registro dei rossi in CI.
 * [ ] **D16** — censire le regole del DB che leggono `current_date` e i pgTAP
       che le attraversano con una data scritta a mano; poi decidere se serve un
       guardrail statico.
+* [ ] **D19** — allineare righe e componenti di preventivo, ordine e DDT a
+      contratto e offerta: brief `brief-db-righe-e-componenti-le-altre-famiglie`.
 
 ---
 

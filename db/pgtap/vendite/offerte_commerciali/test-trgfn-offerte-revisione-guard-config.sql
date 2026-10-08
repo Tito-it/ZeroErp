@@ -52,22 +52,31 @@ SELECT plan(4);
 -- ============================================================
 -- 1) Fixture: un'offerta portata in EMESSA, pronta a essere revisionata.
 -- ============================================================
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza
+--   tipi_utenze, legato dal z90 all'emittente di chi agisce; listino e
+--   versione ATTIVA dal builder, sulla stessa utility; emittente di chi agisce.
+--   ⛔ Cio' che i builder scrivono si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_gc_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'revisione guard config',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_gc_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino(
+    (SELECT utility_id FROM tmp_gc_cli), 'revisione guard config');
+
 CREATE TEMP TABLE tmp_gc_ctx AS
 SELECT
-    (SELECT ba.id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS billing_account_id,
-    (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-    (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS utility_id,
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-      ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
-    (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA'
-      ORDER BY lv.id LIMIT 1) AS listino_versione_id,
+    (SELECT billing_account_id FROM tmp_gc_cli) AS billing_account_id,
+    (SELECT istanza_utility_id FROM tmp_gc_cli) AS istanza_utility_id,
+    (SELECT utility_id FROM tmp_gc_cli) AS utility_id,
+    script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
+    (SELECT listino_id FROM tmp_gc_listino) AS listino_id,
+    (SELECT listino_versione_id FROM tmp_gc_listino) AS listino_versione_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA') AS stato_accettata_id,

@@ -26,9 +26,17 @@
 -- 21) Ordinamento DESC non lancia errore
 -- 22) Chiamata senza ordinamento (default) funziona come prima
 -- 23) Filtro emittente NULL non cambia risultato (fn_search)
--- 24) Filtro emittente array vuoto esclude tutto per CL (fn_search)
+-- 24) p_emittente_ids '{}' == NULL per CL: parametro superato (fn_search)
 -- 25) fn_get_search_detail con p_emittente_ids NULL non lancia errore
--- 26) fn_get_search_detail con p_emittente_ids array vuoto CL: righe vuote
+-- 26) p_emittente_ids '{}' == NULL per CL: parametro superato (detail)
+--
+-- Rev 2026-10-08 (brief-db-codici-non-trovato-email-e-permessi §5, R-4): il
+--   perimetro dei clienti lo fa la RLS e p_emittente_ids non e' piu' letto.
+--   24 e 26 pinnavano «'{}' esclude tutto»: ora pinnano che il parametro NON
+--   decide. Il soggetto pescato deve essere VISIBILE (fn_check_soggetto_ruolo_visibile):
+--   un CL fuori perimetro ha ora dettaglio NULL, e 12-15 leggerebbero NULL.
+--   Il perimetro e il «non c'e'» li prova, coi soggetti costruiti,
+--   script/test-search-scope-interno-v1.
 -- ------------------------------------------------------------
 
 -- ⚠️ Transazione, e non e' una formalita'. Il cleanup di questo file sta in
@@ -79,6 +87,10 @@ WHERE sr.tipo_ruolo_id = (SELECT tipo_ruolo_id FROM tmp_ctx)
   AND s.attivo = true
   AND s.ragione_sociale_completa IS NOT NULL
   AND length(s.ragione_sociale_completa) >= 3
+  -- Rev 2026-10-08: solo un soggetto-ruolo che chi guarda vede (per CL, con
+  -- almeno un cliente restituito dalla RLS): il dettaglio di uno fuori
+  -- perimetro e' NULL.
+  AND script.fn_check_soggetto_ruolo_visibile(sr.id)
 ORDER BY sr.id
 LIMIT 1;
 
@@ -432,21 +444,22 @@ SELECT lives_ok(
   'Filtro emittente NULL non cambia risultato (nessuna restrizione)'
 );
 
--- 24) p_emittente_ids = '{}' (array vuoto) per CL esclude tutto
-SELECT ok(
-  CASE
-    WHEN (SELECT count(*) FROM tmp_cl_ctx) = 0 THEN true
-    ELSE (
-      SELECT count(*) = 0
-      FROM script.fn_search_soggetti_universale(
-        (SELECT termine FROM tmp_search),
-        (SELECT tipo_ruolo_id FROM tmp_cl_ctx),
-        '{}'::bigint[],
-        10, 0
-      )
-    )
-  END,
-  'Filtro emittente array vuoto per CL esclude tutto'
+-- 24) p_emittente_ids = '{}' per CL: SUPERATO (rev 2026-10-08), non decide
+--     piu' — stesso risultato di NULL. Il perimetro lo fa la RLS.
+SELECT is(
+  (SELECT count(*)
+     FROM script.fn_search_soggetti_universale(
+       (SELECT termine FROM tmp_search),
+       (SELECT tipo_ruolo_id FROM tmp_cl_ctx),
+       '{}'::bigint[],
+       10, 0)),
+  (SELECT count(*)
+     FROM script.fn_search_soggetti_universale(
+       (SELECT termine FROM tmp_search),
+       (SELECT tipo_ruolo_id FROM tmp_cl_ctx),
+       NULL,
+       10, 0)),
+  'p_emittente_ids ''{}'' per CL: stesso risultato di NULL (parametro superato, perimetro dalla RLS)'
 );
 
 -- =========================================================
@@ -463,22 +476,21 @@ SELECT lives_ok(
   'fn_get_search_detail con p_emittente_ids NULL non lancia errore'
 );
 
--- 26) fn_get_search_detail CL con '{}' emittente: righe vuote
+-- 26) fn_get_search_detail CL con '{}': SUPERATO (rev 2026-10-08), stesso
+--     risultato di NULL.
 SELECT ok(
-  CASE
-    WHEN (SELECT count(*) FROM tmp_cl_ctx) = 0 THEN true
-    ELSE (
-      SELECT jsonb_array_length(
-        (SELECT script.fn_get_search_detail(
-          (SELECT soggetto_id FROM tmp_soggetto),
-          (SELECT tipo_ruolo_id FROM tmp_cl_ctx),
-          NULL,
-          '{}'::bigint[]
-        ))->'righe'
-      ) = 0
-    )
-  END,
-  'fn_get_search_detail CL con emittente array vuoto: righe vuote'
+  script.fn_get_search_detail(
+    (SELECT soggetto_id FROM tmp_soggetto),
+    (SELECT tipo_ruolo_id FROM tmp_cl_ctx),
+    NULL,
+    '{}'::bigint[])
+  IS NOT DISTINCT FROM
+  script.fn_get_search_detail(
+    (SELECT soggetto_id FROM tmp_soggetto),
+    (SELECT tipo_ruolo_id FROM tmp_cl_ctx),
+    NULL,
+    NULL),
+  'fn_get_search_detail CL con p_emittente_ids ''{}'': stesso risultato di NULL (parametro superato)'
 );
 
 SELECT * FROM finish();

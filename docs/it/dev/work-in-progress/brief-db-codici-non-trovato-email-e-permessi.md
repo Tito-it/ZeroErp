@@ -7,7 +7,7 @@
 > La parte che si poteva chiudere coi codici già a catalogo è fatta lato backend
 > (2026-10-08, righe E-4/E-5 dell'analisi). Restano i punti per cui **nessun codice
 > esistente dice la cosa giusta**: servono righe nuove nel catalogo.
-> **Stato:** ⏳ da fare.
+> **Stato:** ✅ DB applicato il 2026-10-08, pgTAP verdi (Tid). ⏳ Resta il giro BE (§6, con le correzioni di §8.6).
 > **Da leggere per primo:** §1, poi §2.
 
 ## 1. Cosa si chiede
@@ -256,4 +256,119 @@ presenti):
 
 ## 8. Consegne
 
-*(da compilare dal team DB)*
+*(team DB, 2026-10-08)* — **applicato da Tid il 2026-10-08, pgTAP verdi** (compreso `script/test-search-soggetti-universale`, che pre-apply non era provabile: §8.4).
+
+### 8.1 Cosa c'è
+
+| Richiesta | Dove | Note |
+| --- | --- | --- |
+| R-1, R-2, R-3 | `80_data/sql/config/codici_errore.csv` e `messaggi_errore.csv` (id 1211-1221) | undici righe in coda, causa e soluzione scritte; nessun changeSet nuovo, li rilegge il mirror |
+| R-4 (BB) | `20_code/script/20261008-01-create-fn-check-soggetto-ruolo-visibile` | la regola «il soggetto-ruolo si mostra a chi guarda», una volta sola |
+| R-4 (b) + (a) | `20_code/script/20261008-02-update-fn-get-search-detail-non-trovato` | NULL nei casi 1-3, perimetro dalla RLS |
+| R-4 (a), gemella | `20_code/script/20261008-03-update-fn-search-soggetti-universale-perimetro-rls` | stesso filtro di riga del dettaglio, perimetro dalla RLS |
+| pgTAP | `script/test-search-scope-interno-v1` (riscritto, 21 test), `script/test-search-soggetti-universale` (24, 26 e la scelta del soggetto) | vedi §8.4 |
+| Doc | `dbzero/script/manual/fn_get_search_detail.md`, `fn_search_soggetti_universale.md` | |
+
+### 8.2 Le scelte che il brief lasciava al team DB
+
+* **Un nome cambiato.** `E_EMAIL_BOZZA_NON_DRAFT` è diventato **`E_EMAIL_NON_BOZZA`**:
+  «bozza» e «DRAFT» sono la stessa parola, e i fratelli si chiamano già
+  `E_EMAIL_ALLEGATO_NON_BOZZA` e `E_RIGA_DOC_NON_BOZZA`. **Il BE usi questo nome.**
+  Frase: «Questa mail non è più in bozza: non si può più modificare, inviare o
+  annullare.» (copre i tre verbi dei tre punti di `email_outbox_service.py`).
+  Gli altri dieci nomi e tutte le classi sono quelli proposti.
+* **R-3 l'ho fatto nello stesso giro**, come proponeva il §4: Tid ha detto «da
+  eseguire» sul brief intero. Se preferisce separarlo, le due righe si tolgono dai
+  CSV prima dell'apply e R-1/R-2 non ne risentono.
+* **NULL e non un raise** per il «non c'è» (§5 ⭐), scritto nel `COMMENT`.
+* **`p_emittente_ids` resta in firma, superato e non letto.** La regola di casa: un
+  parametro che non serve più non si toglie cambiando la firma; si dichiara, e il
+  ritiro lo decide Tid col backend. Così **nessuna ricaduta obbligata sul BE in
+  questo giro**: le firme sono byte-identiche (provato), il repository può
+  continuare a passarlo. Il ritiro, quando Tid lo decide, è un `DROP` + `CREATE`
+  delle due firme nello stesso giro in cui il BE smette di passarlo (§5,
+  «Ricaduta sul backend»).
+* **Regola del 2.** Lista e dettaglio devono dire la stessa cosa su chi si vede, e
+  il brief lo chiedeva anche come test. Invece di due `EXISTS` scritti in due
+  funzioni, la regola sta in `script.fn_check_soggetto_ruolo_visibile` (SQL,
+  `SECURITY INVOKER`, così la RLS vale con l'identità di chi chiama): la lista la
+  usa come filtro di riga, il dettaglio come verifica d'esistenza. Il perimetro
+  vero resta nella policy; la check chiede solo «ne resta almeno uno?».
+
+### 8.3 La verifica del perimetro (il ⚠️ del §5)
+
+Letta sul corpo delle funzioni, non su un conteggio.
+
+* **Operatore con whitelist, super admin, emittente attivo: stesso perimetro.** Il
+  filtro a mano era `fn_check_ba_visible_for_emittenti(ba, fn_get_emittenti_scope_sr_ids(utente) ∩ p_emittente_ids)`;
+  la policy `rls_clienti_ef_whitelist` è `fn_scope_ef_whitelist_via_efba(utente, ba)`,
+  che chiama la **stessa** `fn_check_ba_visible_for_emittenti` sullo **stesso**
+  `fn_get_emittenti_scope_sr_ids` (NULL → tutto, `'{}'` → niente). L'emittente
+  attivo restringe dentro `fn_get_emittenti_scope_pk_ids`, per tutte e due. E il
+  backend passava come `p_emittente_ids` proprio `fn_get_emittenti_scope_sr_ids(utente)`
+  (`PermissionResolver.get_emittenti_sr_ids`): l'intersezione non toglieva niente.
+* **Batch senza utente** con veste OPERATORE: niente, prima e dopo.
+* **Due differenze, tutte e due dalla parte del modello:**
+  - `CLIENTE_PORTALE` e `SHOP_CUSTOMER`: prima niente (nessuna identità
+    OPERATORE → `'{}'`), ora i clienti del proprio billing account, come su ogni
+    tabella protetta. L'endpoint della ricerca è dell'operatore, quindi oggi non
+    si vede;
+  - proprietario e `BYPASSRLS`: prima niente (utente vuoto), ora tutto.
+* **La colonna `emittente_ragione_sociale`** della lista: cade la condizione sullo
+  scope nella `ON`. Il suo compito (chi vede solo A legge «A», non «A, B») lo fa la
+  RLS sulla `LEFT JOIN` di `clienti`, ed è equivalente per costruzione: la policy
+  ammette un cliente se `fn_get_ba_emittente_sr_id(ba)` sta nello scope, e la
+  colonna è proprio `fn_get_ba_emittente_sr_id` di quel billing account.
+
+⛔ **Un effetto collaterale, dichiarato.** Un soggetto-ruolo CL senza **nessun**
+cliente prima compariva al super admin nella lista (con scope NULL il filtro non
+si accendeva) e il dettaglio rispondeva righe vuote; ora non compare a nessuno, e
+il dettaglio è NULL. È la regola del §5 (b) applicata senza eccezioni: «per CL,
+almeno un cliente visibile».
+
+### 8.4 Prove fatte (pre-apply, scratch `zeroerp_ci`, SQL estratto dagli YAML)
+
+| Prova | Esito |
+| --- | --- |
+| SQL estratto dei tre changeSet in transazione annullata | ✅ passa; una funzione per nome; `pg_get_function_identity_arguments` e `pg_get_function_result` **identici** al vivo (nessun overload, nessun cambio di contratto); `zeroerp_app` ha `EXECUTE` sul BB |
+| `plpgsql_check` sulle due funzioni | ✅ zero `error`; restano i warning già presenti (`PERFORM` VOLATILE del log errori) e `unused parameter "p_emittente_ids"`, che è il superato dichiarato |
+| `script/test-search-scope-interno-v1` | ✅ **21/21 con** l'SQL estratto; **16/21 senza** (rossi 9, 11, 12, 13, 19): i test nuovi distinguono il comportamento vecchio dal nuovo |
+| `script/test-ba-emittente-risoluzione-v1`, `script/test-scope-emittenti-fail-closed-v1` | ✅ 14/14 e 12/12, prima e dopo |
+| `dbops/test-riferimenti-morti-v1`, `dbops/test-postura-proprietario-rls-v1` | ✅ 9/9 e 6/6, prima e dopo |
+| Upsert **completo** dei due CSV (tutte le righe) in transazione, poi `config/test-codici-errore-identita`, `config/test-codici-errore-obsoleto-dal`, `dbops/test-vw-codici-errore-motivo-nominato`, `script/test-catalogo-messaggi-errore-completo`, `config/test-costanti-catalogo-citate-dal-codice-v1`, `script/test-fn-get-messaggio-fallback-lingua` | ✅ tutti verdi; nessuna riga dei CSV rifiuta (il mirror è risvegliabile) |
+| Guardrail statici (letterali, `runOnChange`, preCondition/seed, trigger d'automazione, grant batch, preambolo pgTAP) | ✅ |
+
+⚠️ **`script/test-search-soggetti-universale` non è provato pre-apply.** Pesca i
+soggetti dai dati: sullo scratch muore al test 7 sia prima sia dopo
+(`ERRORE_FIXTURE` già in `baseline-rossi-scratch.tsv` e `baseline-rossi-ci.tsv`),
+e su dbdev non posso creare funzioni. Le modifiche: 24 e 26 ora pinnano che il
+parametro superato non decide; il soggetto pescato deve passare
+`fn_check_soggetto_ruolo_visibile` (un CL fuori perimetro ha ora dettaglio NULL,
+e 12-15 leggerebbero NULL). Il file usa il BB nuovo, quindi prima dell'apply muore
+su «la funzione non esiste»: va lanciato **dopo** l'apply, su dbdev.
+
+⚠️ `test-search-scope-interno-v1` resta `pgtap-runner: owner` (per la fixture),
+ma accende `FORCE ROW LEVEL SECURITY` su `anagrafiche.clienti` dentro la propria
+transazione prima delle asserzioni sulle ricerche (con `lock_timeout`), così
+l'owner subisce le policy come l'app. Il `ROLLBACK` lo spegne.
+
+### 8.5 Residui dichiarati
+
+* **`script.fn_get_emittenti_scope_sr_effettivo` resta senza chiamanti.** Era nata
+  per queste due ricerche (rev 2026-08-18) e nessun'altra funzione, né il backend,
+  la usa. La provano ancora `test-search-scope-interno-v1` (test 1-7) e
+  `test-scope-emittenti-fail-closed-v1` (10-11). Non l'ho ritirata: si decide
+  insieme al ritiro di `p_emittente_ids`, che è la stessa storia. Domanda a Tid.
+* **`p_emittente_ids` in firma, superato** (§8.2): ritiro da decidere con il BE.
+* La lista filtra `s.attivo = true`, il dettaglio no. Non è perimetro e non era
+  chiesto: lo segnalo solo, un soggetto disattivo si apre ancora dal dettaglio se
+  qualcuno ne conosce l'id.
+
+### 8.6 Per il backend, dopo l'apply
+
+Il §6 vale com'è, con due correzioni:
+
+* al punto 3, il codice della bozza non più in bozza è **`E_EMAIL_NON_BOZZA`**;
+* al punto 7, **la firma non cambia**: repository e view possono continuare a
+  passare `p_emittente_ids` (non è letto). Il test sul DB vero per i casi 1, 2 e 4
+  resta da fare: oggi il 404 è provato solo col repository finto.

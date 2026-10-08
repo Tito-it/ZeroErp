@@ -410,3 +410,14 @@ di nessun documento esistente**.
 {% include-markdown "signature-core.md" %}
 
 ---
+
+### Il listino del documento (dal 2026-10-08)
+
+Il contratto si riferisce solo a un listino della **sua utility** e del **suo emittente**. Lo dice la
+check pura `script.fn_check_listino_documento(listino, utility, emittente_fiscale_id)`, che il guard
+`script.trgfn_doc_guard_listino_documento` solleva all'INSERT e quando cambiano `listino_id`,
+`utility_id` o `emittente_fiscale_id` (`E_DOC_LISTINO_UTILITY_DIVERSA`,
+`E_DOC_LISTINO_EMITTENTE_DIVERSO`, campo `listino_id`). I documenti già scritti non si
+rigiudicano. La tendina del form legge la stessa check da `vendite.fn_listini_selezionabili(utility,
+emittente_fiscale_id)`. Brief `brief-db-offerta-emissione-ed-erogazione` §F.2.
+

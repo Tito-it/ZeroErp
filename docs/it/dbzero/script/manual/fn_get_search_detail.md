@@ -53,7 +53,7 @@ La funzione **`script.fn_get_search_detail`** implementa il **livello 2** della 
 | `p_soggetto_id`   | `UUID`     | Si           | —       | UUID del soggetto da `anagrafiche.soggetti`                                  |
 | `p_tipo_ruolo_id` | `INTEGER`  | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)                                   |
 | `p_utility_id`    | `INTEGER`  | No           | `NULL`  | Filtra righe CL per utility; passato a `fn_get_entita_ruolo_detail` per ELSE |
-| `p_emittente_ids` | `BIGINT[]` | No           | `NULL`  | Scope emittente: soggetto_ruolo_id emittenti (solo CL)                       |
+| `p_emittente_ids` | `BIGINT[]` | No           | `NULL`  | ⚠️ **Superato dal 2026-10-08**: non è più letto (il perimetro lo fa la RLS). Resta in firma finché non se ne decide il ritiro col backend |
 
 **Guard**: `p_soggetto_id` e `p_tipo_ruolo_id` validati tramite `script.fn_log_and_raise_error` con codice `E_PARAMETRO_INVALIDO`. Se il `tipo_ruolo_id` non esiste in `config.tipi_ruoli`, viene lanciato `E_TIPO_RUOLO_NON_TROVATO` (fix 2026-04-10, era `E_GENERICO`).
 
@@ -61,7 +61,20 @@ La funzione **`script.fn_get_search_detail`** implementa il **livello 2** della 
 
 ### Valore di Ritorno
 
-La funzione restituisce un singolo valore **JSONB** con struttura fissa:
+⭐ **`NULL` vuol dire «non c'è»** (dal 2026-10-08). La funzione restituisce `NULL`
+quando il soggetto, con quel ruolo, non risulta a chi guarda:
+
+1. il soggetto non esiste;
+2. il soggetto esiste ma non ha quel ruolo;
+3. *(solo CL)* il ruolo c'è, ma nessuno dei suoi clienti è nel perimetro di chi
+   guarda.
+
+Il backend traduce `NULL` in 404 `E_SEARCH_NOT_FOUND`. Inesistente e fuori
+perimetro escono **uguali, di proposito**: il 404 non rivela che esiste un
+cliente di un altro emittente. `NULL` e non un errore sollevato: una lettura non
+scrive nel diario errori a ogni id sbagliato.
+
+Quando il soggetto c'è, la funzione restituisce un singolo valore **JSONB** con struttura fissa:
 
 ```json
 {
@@ -123,15 +136,42 @@ Ordinamento: `utility_codice`, `stato_descrizione`. Filtrato da `p_utility_id` s
 
 Il campo `entita_detail` contiene i dati specifici dell'entita' (EF, VT, GE, BANK_B, RIS_UMANA, ecc.) restituiti da `fn_get_entita_ruolo_detail`.
 
-Se nessuna riga corrisponde, `righe` e' un array vuoto `[]`.
+Se il soggetto c'è ma il filtro `p_utility_id` non trova righe, `righe` è un array vuoto `[]`: è un risultato vero (la cosa c'è, il filtro restringe a zero), non un «non trovato».
 
 ---
 
-### Strategia di Join (CL)
+### Verifica d'esistenza e perimetro
+
+Prima del `CASE` la funzione chiede se il soggetto-ruolo risulta a chi guarda, con
+[`script.fn_check_soggetto_ruolo_visibile`](/dbzero/script/funzioni/fn_check_soggetto_ruolo_visibile):
+la **stessa** check che la lista ([`fn_search_soggetti_universale`](/dbzero/script/funzioni/fn_search_soggetti_universale))
+usa come filtro di riga, quindi lista e dettaglio non possono dissentire su chi si vede.
+
+* esiste una riga di `soggetti_ruoli` per (`p_soggetto_id`, `p_tipo_ruolo_id`);
+* per CL, almeno un cliente di quel soggetto-ruolo è restituito dalla **RLS** di
+  `anagrafiche.clienti`.
+
+La verifica **non** applica il filtro `p_utility_id`: quello restringe le righe, non
+decide se il soggetto c'è.
+
+**Il perimetro dei clienti lo fa la RLS** (dal 2026-10-08). La funzione è
+`SECURITY INVOKER`, quindi le policy di `anagrafiche.clienti` valgono dentro di lei:
+`rls_clienti_ef_whitelist` per l'operatore, che risale dal billing account con la
+stessa regola della testata (mapping specifico, poi riserva: vedi
+[`script.fn_check_ba_visible_for_emittenti`](/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti)).
+Fino a quel giorno il ramo CL ripeteva quella regola con un filtro a mano, scritto
+quando `clienti` non aveva RLS: una seconda copia, che è stata tolta.
+
+FO e gli altri ruoli non portano un emittente nel modello (`soggetti`,
+`soggetti_ruoli`, `fornitori`), quindi non si filtrano per emittente: è una scelta
+di modello.
+
+⚠️ Un soggetto-ruolo CL senza **nessun** cliente risponde `NULL` per tutti, anche
+per il super admin.
 
 ```text
 soggetti_ruoli sr
-  INNER JOIN clienti cl                 ON cl.soggetto_ruolo_id = sr.id
+  INNER JOIN clienti cl                 ON cl.soggetto_ruolo_id = sr.id   -- sotto RLS
   INNER JOIN stati_cliente sc           ON sc.id = cl.stato_cliente_id
   LEFT  JOIN billing_account ba         ON ba.id = cl.billing_account_id
   LEFT  JOIN istanze_utilities iu       ON iu.id = cl.istanza_utility_id
@@ -142,22 +182,7 @@ soggetti_ruoli sr
 WHERE sr.soggetto_id = p_soggetto_id
   AND sr.tipo_ruolo_id = p_tipo_ruolo_id
   AND (p_utility_id IS NULL OR cl.utility_id = p_utility_id)
-  AND (p_emittente_ids IS NULL
-       OR script.fn_check_ba_visible_for_emittenti(
-            cl.billing_account_id, p_emittente_ids
-          )
-  )
 ```
-
-Il filtro scope emittente si applica solo nel ramo CL. Per FO e ELSE il parametro `p_emittente_ids` viene ignorato. Semantica: `NULL` = nessuna restrizione, array = filtra, `'{}'` = zero risultati.
-
-> **Logica a 3 livelli (fix 2026-04-10)**: il filtro scope emittente e' delegato a [`script.fn_check_ba_visible_for_emittenti`](/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti) che opera con precedenza:
->
-> 1. **Mapping specifico**: il BA del cliente ha una riga in `emittenti_fiscali_billing_account` collegata a uno degli emittenti autorizzati → il cliente e' visibile.
-> 2. **Riserva** per un BA senza mapping (dal 2026-09-13, D13): in sessione e' l'emittente dell'operatore che sta agendo, senza sessione e' l'emittente `is_default = true` (gestore globale) — e il cliente e' visibile se quell'emittente e' fra gli autorizzati. La regola vive nel lettore `script.fn_get_ba_emittente_sr_id`, che il check interroga.
-> 3. Se ne' il mapping specifico ne' la riserva cadono fra gli autorizzati, il cliente e' escluso.
->
-> Allineamento a `clienti_repository.list_clienti` lato Python. Stessa funzione usata anche da `fn_search_soggetti_universale`.
 
 ---
 
@@ -191,7 +216,8 @@ SELECT script.fn_get_search_detail(
 
 ### Caratteristiche Tecniche
 
-* **Volatilita'**: `STABLE` + `PARALLEL SAFE` — non modifica dati.
+* **Volatilita'**: `STABLE` — non modifica dati. Non `PARALLEL SAFE`: la RLS di `clienti` passa da funzioni che non lo sono.
+* **Sicurezza**: `SECURITY INVOKER`, così la RLS vale con l'identità di chi chiama.
 * **Linguaggio**: PL/pgSQL
 * **Tipi parametri**: `%TYPE` per allineamento automatico ai tipi delle tabelle sorgente.
 * **Error handling**: guard tramite `script.fn_log_and_raise_error` (log persistente + raise).

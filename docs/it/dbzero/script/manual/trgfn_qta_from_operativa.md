@@ -16,6 +16,13 @@ Calcolare e garantire la **coerenza della quantità in UoM base (`NEW.qta`)** a 
 
 > Nei DDT di vendita si raccomanda di mantenere `qta` **positiva**; il segno del movimento è demandato alla **causale** di testata.
 
+> ⭐ **Rev 2026-10-08** (`20261008-12`, brief `brief-db-offerta-emissione-ed-erogazione` §F.1).
+> Gli argomenti oggi sono due: `[0] fill_factor_to_base`, `[1] fonte_nullability_col` (la tabella
+> qui sotto è quella di prima del 2026-08-04). Con la colonna della fonte e una fonte a valle
+> (`script.fn_fonte_porta_quantita` = false) il trigger porta `quantita` a NULL a **ogni** INSERT e
+> UPDATE, prima del short-circuit: `quantita` è calcolata, e con quelle fonti arriva a valle.
+> `qta_operativa` valorizzata la rifiuta prima `script.trgfn_righe_guard_quantita_per_fonte`.
+
 ### Contesto di utilizzo
 
 * **Trigger / tabelle consumatrici** (BEFORE INSERT/UPDATE):

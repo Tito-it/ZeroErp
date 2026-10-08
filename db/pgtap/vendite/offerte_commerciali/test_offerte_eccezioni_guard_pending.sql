@@ -47,20 +47,31 @@ SET CONSTRAINTS ALL IMMEDIATE;
 CREATE TEMP TABLE tmp_ofc_pnd_art AS
 SELECT dbops.fn_pgtap_crea_articolo('PGT-OFCPND-1') AS a1;
 
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza
+--   tipi_utenze, legato dal z90 all'emittente di chi agisce; listino sulla stessa
+--   utility. L'emittente resta derivato dal BA, come prima.
+CREATE TEMP TABLE tmp_ofc_pnd_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'guard pending offerte',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_ofc_pnd_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_ofc_pnd_cli), 'guard pending offerte');
+
 CREATE TEMP TABLE tmp_ofc_pnd_ctx AS
 SELECT
-    anagrafiche.fn_get_emittente_fiscale_pk(ba.id)            AS emittente_fiscale_id,
-    ba.id                AS ba_id,
-    ba.istanza_utility_id,
-    ba.utility_id,
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1)
-                                                               AS listino_id,
+    anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS emittente_fiscale_id,
+    c.billing_account_id AS ba_id,
+    c.istanza_utility_id,
+    c.utility_id,
+    (SELECT listino_id FROM tmp_ofc_pnd_listino)              AS listino_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA') AS id_bozza,
     (SELECT a1 FROM tmp_ofc_pnd_art)                          AS articolo_id
-  FROM anagrafiche.billing_account ba
- WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
- ORDER BY ba.id
- LIMIT 1;
+  FROM tmp_ofc_pnd_cli c;
 
 -- Fixture: offerta BOZZA + eccezione AGGIUNTA non composita (prezzo valorizzato).
 CREATE TEMP TABLE tmp_ofc_pnd_ids (

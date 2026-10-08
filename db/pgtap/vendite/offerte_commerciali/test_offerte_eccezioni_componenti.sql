@@ -176,10 +176,36 @@ SELECT
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')
         AS stato_emessa_id;
 
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo). Qui gli
+--   articoli (composito, semplice) e i loro prezzi vengono dai dati, quindi il
+--   fixture non si ricostruisce: si FILTRA. L'emittente si deriva dal BA (il
+--   guard emittente/cliente lo pretendeva gia'), il listino e' il primo attivo
+--   della utility e dell'emittente del BA, la versione la prima ATTIVA di QUEL
+--   listino (prima era la prima ATTIVA di un listino qualsiasi). Senza un
+--   listino cosi' il fixture salta, come senza BA.
+UPDATE tmp_oce_ctx c
+   SET emittente_fiscale_id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
+       emittente_sr_id = (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id))
+ -- Senza BA il fixture salta: fn_get_emittente_fiscale_pk rifiuta un id NULL.
+ WHERE c.billing_account_id IS NOT NULL;
+UPDATE tmp_oce_ctx c
+   SET listino_id = (SELECT l.id FROM vendite.listini l
+                      WHERE l.attivo IS TRUE
+                        AND l.utility_id = c.utility_id
+                        AND l.emittente_soggetto_ruolo_id = c.emittente_sr_id
+                      ORDER BY l.id LIMIT 1);
+UPDATE tmp_oce_ctx c
+   SET listino_versione_id = (SELECT lv.id FROM vendite.listini_versioni lv
+                               WHERE lv.listino_id = c.listino_id AND lv.stato = 'ATTIVA'
+                               ORDER BY lv.id LIMIT 1);
+
 -- Flag: dati composito disponibili?
 CREATE TEMP TABLE tmp_oce_has_composito AS
 SELECT (articolo_composito_id IS NOT NULL
         AND billing_account_id IS NOT NULL
+        AND listino_id IS NOT NULL
         AND emittente_sr_id IS NOT NULL) AS disponibile
   FROM tmp_oce_ctx;
 
@@ -204,6 +230,7 @@ BEGIN
 
     IF v_ctx.billing_account_id IS NULL
        OR v_ctx.emittente_fiscale_id IS NULL
+       OR v_ctx.listino_id IS NULL
     THEN RETURN; END IF;
 
     -- Offerta in BOZZA: le righe si scrivono solo li' (rev 2026-10-04, R5a).

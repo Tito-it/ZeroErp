@@ -15,9 +15,8 @@ CREATE OR REPLACE FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tip
 AS $function$
 DECLARE
   v_tipo_ruolo_codice  config.tipi_ruoli.codice_interno%TYPE;
+  -- Il dettaglio composto: nessuna colonna di cui sia il riflesso.
   v_result             jsonb;
-  -- Scope emittente EFFETTIVO (rev 2026-08-18, vedi sotto)
-  v_scope              bigint[];
 BEGIN
   IF p_soggetto_id IS NULL THEN
     PERFORM script.fn_log_and_raise_error(
@@ -48,31 +47,37 @@ BEGIN
   END IF;
 
   -- =========================================================
-  -- Scope emittente EFFETTIVO (rev 2026-08-18, brief §11.6).
+  -- «Non c'e'» (rev 2026-10-08, R-4).
   --
-  -- ⚠️ PRIMA il ramo CL scriveva:
-  --     (p_emittente_ids IS NULL OR fn_check_ba_visible_...)
-  --   cioe' NULL = passa tutto. E NULL e' cio' in cui Python
-  --   appiattisce la lista vuota, che nella convenzione
-  --   significa l'opposto: nessun accesso.
-  --
-  --   Ora lo scope lo risolve il database, dalla GUC, e
-  --   p_emittente_ids puo' solo RESTRINGERE.
-  --
-  -- ⚠️ Il perimetro CL-only NON cambia ed e' preesistente: i
-  --   rami FO e ELSE non hanno mai avuto un filtro emittente,
-  --   perche' non hanno un billing account da cui derivarlo.
-  --   Residuo dichiarato nel brief, non chiuso qui.
+  -- Il soggetto, con quel ruolo, risulta a chi guarda? Stesso
+  -- perimetro delle righe ma SENZA il filtro utility, con la
+  -- stessa check della lista (fn_search_soggetti_universale):
+  --   * il soggetto-ruolo esiste;
+  --   * per CL, almeno un suo cliente e' restituito dalla RLS.
+  -- Altrimenti NULL: il backend risponde 404 E_SEARCH_NOT_FOUND.
+  -- ⚠️ Inesistente e fuori perimetro escono uguali, di
+  --   proposito: il 404 non rivela un cliente di un altro
+  --   emittente.
+  -- ⚠️ Il filtro utility resta FUORI: «c'e', ma l'utility non
+  --   ne trova» e' un risultato vero, righe = [].
   -- =========================================================
-  v_scope := script.fn_get_emittenti_scope_sr_effettivo(
-               NULLIF(current_setting('app.current_user_id', true), '')::integer,
-               p_emittente_ids
-             );
+  IF NOT EXISTS (
+    SELECT 1
+      FROM anagrafiche.soggetti_ruoli sr
+     WHERE sr.soggetto_id = p_soggetto_id
+       AND sr.tipo_ruolo_id = p_tipo_ruolo_id
+       AND script.fn_check_soggetto_ruolo_visibile(sr.id)
+  ) THEN
+    RETURN NULL;
+  END IF;
 
   -- Dettaglio per codice_interno del tipo ruolo (immutabile).
   CASE v_tipo_ruolo_codice
 
   WHEN 'CL' THEN
+    -- ⚠️ Il perimetro dei clienti lo applica la RLS di
+    --   anagrafiche.clienti (rev 2026-10-08): fino a quel giorno
+    --   qui c'era un filtro a mano che ne era una seconda copia.
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', COALESCE(jsonb_agg(row_detail ORDER BY row_detail->>'utility_codice_interno', row_detail->>'stato_descrizione'), '[]'::jsonb)
@@ -114,8 +119,6 @@ BEGIN
       WHERE sr.soggetto_id = p_soggetto_id
         AND sr.tipo_ruolo_id = p_tipo_ruolo_id
         AND (p_utility_id IS NULL OR cl.utility_id = p_utility_id)
-        AND (v_scope IS NULL
-             OR script.fn_check_ba_visible_for_emittenti(cl.billing_account_id, v_scope))
     ) sub;
 
   WHEN 'FO' THEN
@@ -168,12 +171,14 @@ BEGIN
 
   END CASE;
 
-  RETURN COALESCE(v_result, jsonb_build_object('tipo_ruolo', v_tipo_ruolo_codice, 'righe', '[]'::jsonb));
+  -- Arrivati qui il soggetto-ruolo c'e' (verifica sopra): niente
+  -- COALESCE, v_result e' sempre valorizzato.
+  RETURN v_result;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer, p_emittente_ids bigint[])
-IS 'Dettaglio ricerca per tipo_ruolo (CASE su codice_interno). Branch CL: espone utility_codice_interno (codice_interno, logica) + utility_codice (codice, display) e stato_codice_interno (codice_interno); stato_macro = stati_cliente.codice. rev 2026-06-28 (naming stato). Rev 2026-08-18 (brief perimetro-emittente Q2/C): lo scope emittente si risolve QUI, dalla GUC app.current_user_id via fn_get_emittenti_scope_sr_effettivo. p_emittente_ids resta in firma ma puo'' solo RESTRINGERE. Prima il ramo CL scriveva «p_emittente_ids IS NULL OR ...», cioe'' NULL = passa tutto: e NULL e'' cio'' in cui Python appiattisce la lista vuota, che significa l''opposto. Rami FO/ELSE senza filtro emittente (perimetro preesistente: non hanno billing account). PARALLEL SAFE rimosso: la catena dello scope e'' STABLE e basta.';
+IS 'Dettaglio della ricerca universale per tipo_ruolo (CASE su codice_interno). ⭐ NULL = «non c''e''» (rev 2026-10-08, brief-db-codici-non-trovato-email-e-permessi R-4, decisione di Tid): il soggetto non esiste, non ha quel ruolo, o per CL nessuno dei suoi clienti e'' visibile a chi guarda — la verifica e'' script.fn_check_soggetto_ruolo_visibile, la stessa della lista, sullo stesso perimetro delle righe ma senza il filtro utility. Il backend risponde 404 E_SEARCH_NOT_FOUND. Inesistente e fuori perimetro escono uguali, di proposito. NULL e non un raise: una lettura non scrive nel diario errori a ogni id sbagliato. La struttura {tipo_ruolo, righe} (righe anche vuota) solo quando il soggetto c''e'': righe = [] vuol dire che il filtro p_utility_id non ne trova. Perimetro: per CL lo fa la RLS di anagrafiche.clienti (dal 2026-10-08; prima un filtro a mano che ne era una seconda copia); FO e altri ruoli non portano un emittente nel modello, quindi non si filtrano per emittente (scelta di modello). ⚠️ p_emittente_ids SUPERATO dal 2026-10-08: resta in firma e non e'' letto, il ritiro lo decide Tid col backend. Ramo CL: utility_codice_interno (logica) + utility_codice (display), stato_codice_interno; stato_macro = stati_cliente.codice. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
 ```
 
 ---

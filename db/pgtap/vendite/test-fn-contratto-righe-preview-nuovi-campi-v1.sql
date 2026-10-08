@@ -55,24 +55,30 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ============================================================
 
 -- Contesto base: un billing_account, UoM, e stati doc
+-- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la tipologia
+--   degli articoli del listino dev'essere fra quelle della utility del cliente.
+-- 2026-10-08 (stesso brief, §F.2): il listino del documento e' della sua utility e del
+--   suo emittente (guard nuovo). Il cliente si COSTRUISCE sulla prima utility che ammette
+--   la tipologia del listino copiato (il primo attivo), legato dal z90 all'emittente di
+--   chi agisce; prima era il primo billing account di quella utility fra i dati, con
+--   l'emittente che i dati gli davano.
+CREATE TEMP TABLE tmp_prv_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'preview nuovi campi',
+    (SELECT ltu.utility_id FROM config.listini_tipologie_utilities ltu
+      WHERE ltu.attivo
+        AND ltu.tipologia_id = (SELECT l.tipologia_id FROM vendite.listini l
+                                 WHERE l.attivo = TRUE ORDER BY l.id LIMIT 1)
+      ORDER BY ltu.utility_id LIMIT 1));
+
 CREATE TEMP TABLE tmp_prv_ctx AS
 SELECT
-    ba.id                   AS ba_id,
-    ba.istanza_utility_id,
-    ba.utility_id,
+    c.billing_account_id    AS ba_id,
+    c.istanza_utility_id,
+    c.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT' LIMIT 1) AS id_draft,
     (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
-FROM anagrafiche.billing_account ba
--- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la tipologia
---   degli articoli del listino dev'essere fra quelle della utility del cliente: il cliente
---   e' il primo la cui utility ammette la tipologia del listino copiato (il primo attivo).
-WHERE EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
-               WHERE ltu.utility_id = ba.utility_id
-                 AND ltu.attivo
-                 AND ltu.tipologia_id = (SELECT l.tipologia_id FROM vendite.listini l
-                                          WHERE l.attivo = TRUE ORDER BY l.id LIMIT 1))
-ORDER BY ba.id
-LIMIT 1;
+FROM tmp_prv_cli c;
 
 -- 4 articoli standalone distinti (non compositi)
 -- ⚠️ Rev 2026-10-07 (giro B3): seq 1-2 stanno nel listino, quindi hanno la sua tipologia
@@ -106,7 +112,8 @@ CREATE TEMP TABLE tmp_prv_listino AS
 WITH ins AS (
     INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
     SELECT 'PGTAP_PRV_' || substr(gen_random_uuid()::text, 1, 8),
-           'Test preview nuovi campi', l.utility_id, l.tipologia_id, l.emittente_soggetto_ruolo_id
+           'Test preview nuovi campi', (SELECT utility_id FROM tmp_prv_ctx), l.tipologia_id,
+           script.fn_pgtap_emittente_sr_operatore()
       FROM vendite.listini l
      WHERE l.attivo = TRUE
      ORDER BY l.id

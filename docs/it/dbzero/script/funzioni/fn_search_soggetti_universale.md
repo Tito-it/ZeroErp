@@ -14,6 +14,9 @@ CREATE OR REPLACE FUNCTION script.fn_search_soggetti_universale(p_search_term te
  STABLE
 AS $function$
 DECLARE
+  -- ⚠️ Tipi espliciti DICHIARATI: pattern, paginazione e frammenti
+  --   di SQL dinamico sono valori di lavoro, nessuna colonna di cui
+  --   siano il riflesso. Ancorate le due che leggono tipi_ruoli.
   -- Pattern ILIKE costruito dal termine di ricerca
   v_search_pattern    text;
   -- Limiti paginazione normalizzati
@@ -24,15 +27,9 @@ DECLARE
   -- Riferimento tabella entita' da tipi_ruoli (nullable)
   v_entita_tabella    config.tipi_ruoli.entita_tabella%TYPE;
   -- Colonna codice nella tabella entita' (default 'codice')
-  v_entita_colonna    text;
-  -- Codice interno tipo ruolo (CL, FO, EF, ...)
-  v_tipo_ruolo_codice config.tipi_ruoli.codice_interno%TYPE;
+  v_entita_colonna    config.tipi_ruoli.entita_colonna_codice%TYPE;
   -- Frammento SQL EXISTS dinamico (vuoto se nessuna tabella)
   v_exists_clause     text := '';
-  -- Frammento SQL filtro emittente (vuoto se non CL o scope aperto)
-  v_emittente_clause  text := '';
-  -- Scope emittente EFFETTIVO (rev 2026-08-18, vedi sotto)
-  v_scope             bigint[];
   -- Colonne ordinabili (whitelist)
   c_allowed_order_cols constant text[] := ARRAY[
     'ragione_sociale_completa',
@@ -120,13 +117,11 @@ BEGIN
   -- Prepara pattern ILIKE con wildcards
   v_search_pattern := '%' || btrim(p_search_term) || '%';
 
-  -- Recupera codice_interno e riferimento tabella entita'
-  -- per il tipo ruolo. codice_interno serve per sapere se
-  -- applicare il filtro emittente (solo CL).
-  SELECT tr.codice_interno,
-         tr.entita_tabella,
+  -- Recupera il riferimento alla tabella entita' per il tipo
+  -- ruolo (ricerca sul codice dell'entita').
+  SELECT tr.entita_tabella,
          COALESCE(tr.entita_colonna_codice, 'codice')
-    INTO v_tipo_ruolo_codice, v_entita_tabella, v_entita_colonna
+    INTO v_entita_tabella, v_entita_colonna
   FROM config.tipi_ruoli tr
   WHERE tr.id = p_tipo_ruolo_id;
 
@@ -143,61 +138,29 @@ BEGIN
   END IF;
 
   -- =========================================================
-  -- Scope emittente EFFETTIVO (rev 2026-08-18, brief §11.6).
+  -- Perimetro (rev 2026-10-08, R-4).
   --
-  -- ⚠️ PRIMA questa funzione si fidava di p_emittente_ids: il
-  --   filtro si accendeva su `p_emittente_ids IS NOT NULL`,
-  --   quindi NULL voleva dire «nessuna restrizione». E NULL e'
-  --   esattamente cio' in cui Python appiattisce la lista
-  --   vuota — che nella convenzione significa l'opposto,
-  --   «nessun accesso». I due estremi collassavano, e
-  --   collassavano dalla parte che apre.
-  --
-  --   Ora lo scope lo risolve il database, dalla GUC, e
-  --   p_emittente_ids puo' solo RESTRINGERE. Nessun valore
-  --   passato dal chiamante puo' piu' allargare.
-  --
-  -- ⚠️ Il perimetro CL-only NON cambia ed e' preesistente: il
-  --   filtro si applica solo al tipo ruolo CL, perche' e'
-  --   l'unico che ha un billing account da cui derivare
-  --   l'emittente. Non e' un difetto chiuso qui — e' un
-  --   residuo dichiarato nel brief.
+  -- Il filtro di riga e' script.fn_check_soggetto_ruolo_visibile,
+  -- la STESSA check della verifica d'esistenza di
+  -- fn_get_search_detail: per CL almeno un cliente restituito
+  -- dalla RLS di anagrafiche.clienti, per gli altri ruoli vera.
+  -- ⚠️ Fino al 2026-10-08 qui c'era un filtro a mano sullo scope
+  --   emittente (fn_get_emittenti_scope_sr_effettivo +
+  --   fn_check_ba_visible_for_emittenti, rev 2026-08-18), scritto
+  --   quando clienti non aveva RLS: una seconda copia della
+  --   regola della policy. p_emittente_ids, che poteva solo
+  --   restringere, non e' piu' letto.
   -- =========================================================
-  v_scope := script.fn_get_emittenti_scope_sr_effettivo(
-               NULLIF(current_setting('app.current_user_id', true), '')::integer,
-               p_emittente_ids
-             );
-
-  -- Costruisci frammento filtro scope emittente.
-  -- Delega la logica a 3 livelli (mapping specifico, fallback
-  -- default, non visibile) a script.fn_check_ba_visible_for_emittenti
-  -- per evitare duplicazione con fn_get_search_detail.
-  -- ⚠️ La condizione e' su v_scope, non su p_emittente_ids: con
-  --   scope '{}' (nessun accesso) il filtro si ACCENDE e
-  --   fn_check_ba_visible_for_emittenti risponde false per ogni
-  --   BA -> zero risultati. Fail-closed.
-  -- $5 = v_scope (passato via USING)
-  IF v_tipo_ruolo_codice = 'CL' AND v_scope IS NOT NULL THEN
-    v_emittente_clause := '
-        AND EXISTS (
-          SELECT 1
-            FROM anagrafiche.clienti cl_scope
-           WHERE cl_scope.soggetto_ruolo_id = sr.id
-             AND script.fn_check_ba_visible_for_emittenti(
-                   cl_scope.billing_account_id, $5
-                 )
-        )';
-  END IF;
 
   -- Query principale con paginazione e conteggio totale.
   -- $1 = p_tipo_ruolo_id, $2 = v_search_pattern,
-  -- $3 = v_limit, $4 = v_offset, $5 = v_scope
+  -- $3 = v_limit, $4 = v_offset
   RETURN QUERY EXECUTE format('
     WITH filtered AS (
       -- CTE 1: soggetti con ruolo richiesto e match sul termine.
       -- Cerca su ragione_sociale, id_fiscale, codice soggetto
       -- e codice entita'' (dinamico da tipi_ruoli.entita_tabella).
-      -- Filtro scope emittente applicato solo per CL.
+      -- Perimetro: fn_check_soggetto_ruolo_visibile (RLS per CL).
       SELECT
         s.id                             AS soggetto_id,
         sr.id                            AS soggetto_ruolo_id,
@@ -216,7 +179,7 @@ BEGIN
           OR s.codice ILIKE $2
           %s
         )
-        %s
+        AND script.fn_check_soggetto_ruolo_visibile(sr.id)
       LIMIT %s
     ),
     with_utility AS (
@@ -237,22 +200,20 @@ BEGIN
                    ORDER BY s_ef.ragione_sociale_completa::text)
           AS emittente_ragione_sociale
       FROM filtered f
+        -- ⚠️ La RLS di anagrafiche.clienti filtra QUI la join
+        --   (rev 2026-10-08): un cliente fuori perimetro non entra,
+        --   e quindi nemmeno il suo emittente. Chi ha in whitelist
+        --   il solo A, su un soggetto cliente di A e di B, legge
+        --   «A» e non «A, B»: la colonna non rivela emittenti fuori
+        --   perimetro. Fino al 2026-10-08 lo diceva una condizione
+        --   sullo scope nella ON di sr_ef, seconda copia della
+        --   policy; e'' caduta.
         LEFT JOIN anagrafiche.clienti cl
           ON cl.soggetto_ruolo_id = f.soggetto_ruolo_id
         LEFT JOIN config.utilities u
           ON u.id = cl.utility_id
-        -- ⚠️ Il filtro sullo scope sta QUI, nella ON, e non e''
-        --   ridondante col filtro di riga: la riga si vede se e''
-        --   visibile per ALMENO un emittente autorizzato, ma la
-        --   colonna deve elencare SOLO quelli autorizzati. Senza
-        --   questa riga, un soggetto cliente di A e di B
-        --   mostrerebbe «A, B» anche a chi ha in whitelist il
-        --   solo A — rivelando l''esistenza di B. Con scope NULL
-        --   (super admin) il filtro non morde: e'' il caso per
-        --   cui la colonna e'' stata chiesta.
         LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
           ON sr_ef.id = script.fn_get_ba_emittente_sr_id(cl.billing_account_id)
-         AND ($5::bigint[] IS NULL OR sr_ef.id = ANY($5::bigint[]))
         LEFT JOIN anagrafiche.soggetti s_ef
           ON s_ef.id = sr_ef.soggetto_id
       GROUP BY
@@ -282,13 +243,13 @@ BEGIN
       p.utility_list,
       p.emittente_ragione_sociale
     FROM paged p
-  ', v_exists_clause, v_emittente_clause, c_hard_cap, v_order_clause)
-  USING p_tipo_ruolo_id, v_search_pattern, v_limit, v_offset, v_scope;
+  ', v_exists_clause, c_hard_cap, v_order_clause)
+  USING p_tipo_ruolo_id, v_search_pattern, v_limit, v_offset;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_search_soggetti_universale(p_search_term text, p_tipo_ruolo_id integer, p_emittente_ids bigint[], p_limit integer, p_offset integer, p_order_by text, p_order_dir text)
-IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000. Rev 2026-08-18 (brief perimetro-emittente Q2/C): lo scope emittente si risolve QUI, dalla GUC app.current_user_id via fn_get_emittenti_scope_sr_effettivo. p_emittente_ids resta in firma ma puo'' solo RESTRINGERE: nessun valore passato dal chiamante puo'' allargare cio'' che la funzione mostra. Prima il filtro si accendeva su p_emittente_ids IS NOT NULL, quindi lo scope vuoto — in cui Python appiattisce [] — valeva «nessuna restrizione». Filtro applicato solo per tipo ruolo CL (unico con billing account): perimetro preesistente, non ampliato qui. PARALLEL SAFE rimosso: la catena dello scope e'' STABLE e basta. ⭐ Rev 2026-08-18 (R-5, Fase E): espone `emittente_ragione_sociale` in coda. AGGREGATA (string_agg), non moltiplicata: la riga resta UNA per soggetto perche'' un soggetto NON ha un emittente — il legame e'' transitivo via billing account (guide/soggetti-e-ruoli-anagrafici §5a-bis). Una riga per emittente spezzerebbe anche total_count, che conta soggetti. ⚠️ La colonna e'' FILTRATA dallo scope effettivo: chi ha in whitelist il solo A, su un soggetto cliente di A e di B legge «A», non «A, B» — una colonna nata per disambiguare non deve rivelare emittenti fuori perimetro. ⚠️ NULL sui rami non-CL: un fornitore non ha billing account, quindi non ha emittente. E'' la risposta giusta, non un buco. ⚠️ NON ordinabile: e'' un aggregato, ordinarci sopra ordinerebbe per la stringa concatenata.';
+IS 'Ricerca universale soggetti per tipo ruolo (livello 1). Cerca su ragione_sociale_completa, id_fiscale_univoco_cf_piva, codice soggetto e codice entita'' dinamico. Ordinamento dinamico: p_order_by (whitelist), p_order_dir (ASC/DESC). Paginazione LIMIT/OFFSET + COUNT(*) OVER(). Hard cap 10.000. ⭐ Perimetro (rev 2026-10-08, brief-db-codici-non-trovato-email-e-permessi R-4): il filtro di riga e'' script.fn_check_soggetto_ruolo_visibile, la stessa check della verifica d''esistenza di fn_get_search_detail — per CL almeno un cliente restituito dalla RLS di anagrafiche.clienti, per gli altri ruoli nessun perimetro (soggetti, soggetti_ruoli e fornitori non portano un emittente nel modello: scelta di modello). Lista e dettaglio non possono dissentire su chi si vede; un soggetto-ruolo CL senza nessun cliente non compare a nessuno. Fino al 2026-10-08 un filtro a mano sullo scope emittente (rev 2026-08-18), seconda copia della policy, scritto quando clienti non aveva RLS. ⚠️ p_emittente_ids SUPERATO dal 2026-10-08: resta in firma e non e'' letto, il ritiro lo decide Tid col backend. ⭐ emittente_ragione_sociale in coda (R-5, 2026-08-18): AGGREGATA (string_agg), una riga per soggetto, perche'' un soggetto non ha un emittente — il legame e'' transitivo via billing account; total_count conta soggetti. ⚠️ La colonna elenca solo gli emittenti dei clienti che la RLS restituisce: chi ha in whitelist il solo A, su un soggetto cliente di A e di B, legge «A». NULL sui rami non-CL (un fornitore non ha billing account). NON ordinabile: e'' un aggregato. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
 ```
 
 ---

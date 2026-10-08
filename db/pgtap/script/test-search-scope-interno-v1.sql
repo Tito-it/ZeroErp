@@ -5,17 +5,18 @@
 --   billing account legato alla prima: come `zeroerp_app` l'INSERT del BA
 --   muore al RETURNING quando l'emittente di chi agisce non e' quello di
 --   default (la policy di lettura risolve il BA non ancora mappato sul
---   default; il legame lo scrive un trigger AFTER). Il perimetro che qui si
---   misura lo applicano LE FUNZIONI DI RICERCA (scope esplicito, risolto da
---   `app.current_user_id`), non una policy: il ruolo di connessione non cambia
---   cio' che rispondono.
+--   default; il legame lo scrive un trigger AFTER). Dal 2026-10-08 il
+--   perimetro dei clienti lo applica la RLS di anagrafiche.clienti, non piu'
+--   un filtro dentro le funzioni: le asserzioni sulle ricerche girano dopo
+--   `ALTER TABLE anagrafiche.clienti FORCE ROW LEVEL SECURITY`, dentro questa
+--   transazione, cosi' l'owner subisce le policy come l'app.
 -- pgTAP test per Zero ERP
 --
 -- Passo 1 del cantiere «perimetro emittente» (decisione Q2/C):
 -- la ricerca universale risolve lo scope emittente DA SE'.
 -- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md
 --
--- Elenco test (plan 15):
+-- Elenco test (plan 21):
 --    0) PRECONDIZIONE: il contesto pgTAP e' un operatore con scope proprio
 --   script.fn_get_emittenti_scope_sr_effettivo
 --    1) restrizione assente (NULL) -> NON e' NULL           ⭐ la correzione
@@ -25,16 +26,29 @@
 --    5) restrizione = proprio scope-> scope di diritto
 --    6) attore nullo + nessuna restrizione -> '{}' (rev 2026-10-04, Q-1: era NULL)
 --    7) attore nullo + restrizione -> '{}' (rev 2026-10-04, Q-1: era la restrizione)
---   script.fn_search_soggetti_universale
---    8) il parametro non decide piu': NULL == proprio scope (conteggio)
---    9) restrizione fuori scope -> zero risultati
---   script.fn_get_search_detail
---   10) il parametro non decide piu': NULL == proprio scope
---   11) restrizione fuori scope -> righe vuote
+--   le due ricerche, con FORCE ROW LEVEL SECURITY su anagrafiche.clienti
+--    8) lista: p_emittente_ids NULL == proprio scope (parametro superato)
+--    9) lista: restrizione fuori scope == NULL (superato: non e' piu' letto)
+--   10) dettaglio: NULL == proprio scope
+--   11) dettaglio: restrizione fuori scope == NULL (superato)
+--   «non c'e'» del dettaglio (rev 2026-10-08, R-4, decisione di Tid)
+--   12) soggetto inesistente -> NULL
+--   13) soggetto senza quel ruolo -> NULL
+--   14) cliente visibile, nessun filtro -> righe presenti
+--   15) cliente visibile, utility che non ha -> righe = [], NON NULL
+--   16) ramo ELSE (EF) con soggetto-ruolo esistente -> una riga
 --   fixture a DUE emittenti
---   12) PRECONDIZIONE: il cliente di prova, oggi, la ricerca lo TROVA
---   13) * spostato il suo BA sull'altro emittente, il cliente SPARISCE
---   14)   per lo scope-universo c'e' ancora: sparito dal perimetro, non dai dati
+--   17) PRECONDIZIONE: il cliente di prova, oggi, la ricerca lo TROVA
+--   18) * spostato il suo BA sull'altro emittente, la lista non lo mostra (RLS)
+--   19) * e il dettaglio risponde NULL: stesso perimetro della lista
+--   20)   per lo scope-universo c'e' ancora: sparito dal perimetro, non dai dati
+--
+-- Rev 2026-10-08 (brief-db-codici-non-trovato-email-e-permessi §5, R-4): il
+--   perimetro dei clienti passa alla RLS (cade il filtro a mano delle due
+--   funzioni) e il dettaglio dice «non c'e'». I test 9 e 11 erano «restrizione
+--   fuori scope -> zero/righe vuote (fail-closed)»: il parametro e' superato e
+--   non si legge piu', quindi pinnano ora che NON decide. La sparizione del
+--   cliente fuori perimetro la provano 18 e 19, ed e' la RLS a farla.
 --
 -- Scopo:
 --  - verificare che NESSUN valore passato dal chiamante possa ALLARGARE
@@ -65,7 +79,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(15);
+SELECT plan(21);
 
 -- ============================================================
 -- Fixture: il mondo
@@ -203,10 +217,10 @@ SELECT is(
 -- ============================================================
 -- Asserzioni — le due funzioni di ricerca
 -- ============================================================
--- Serve il tipo ruolo CL (l'unico a cui si applica il filtro emittente) e un
--- termine che matchi almeno una riga: senza, il confronto sarebbe vacuo
--- (0 = 0) e il file diventerebbe verde per sottrazione. Il termine e' quello
--- del cliente costruito, che matcha lui e nessun altro.
+-- Serve il tipo ruolo CL e un termine che matchi almeno una riga: senza, il
+-- confronto sarebbe vacuo (0 = 0) e il file diventerebbe verde per
+-- sottrazione. Il termine e' quello del cliente costruito, che matcha lui e
+-- nessun altro.
 CREATE TEMP TABLE _t_cl ON COMMIT DROP AS
 SELECT tr.id AS tipo_ruolo_id
   FROM config.tipi_ruoli tr
@@ -215,6 +229,17 @@ SELECT tr.id AS tipo_ruolo_id
 CREATE TEMP TABLE _t_cl_sog ON COMMIT DROP AS
 SELECT c.soggetto_id, c.termine FROM _t_cliente c;
 
+-- ⭐ Da qui in poi l'owner subisce la RLS di anagrafiche.clienti, come l'app
+--   (rev 2026-10-08): il perimetro dei clienti lo fa la policy, e un owner
+--   senza FORCE la salterebbe. Il ROLLBACK finale lo spegne.
+-- ⚠️ lock_timeout: e' DDL su una tabella condivisa, meglio un errore leggibile
+--   che un'attesa muta dietro un'altra sessione.
+SET LOCAL lock_timeout = '5s';
+ALTER TABLE anagrafiche.clienti FORCE ROW LEVEL SECURITY;
+RESET lock_timeout;
+
+-- 8-11) Il parametro p_emittente_ids e' SUPERATO (2026-10-08): non si legge
+--   piu', quindi qualunque valore da' lo stesso risultato di NULL.
 SELECT is(
     (SELECT count(*) FROM script.fn_search_soggetti_universale(
         (SELECT termine FROM _t_cl_sog),
@@ -224,7 +249,7 @@ SELECT is(
         (SELECT termine FROM _t_cl_sog),
         (SELECT tipo_ruolo_id FROM _t_cl),
         (SELECT sr_ids FROM _t_scope))),
-    '8. ricerca CL: passare NULL o il proprio scope da lo stesso risultato (il parametro non decide piu'')'
+    '8. ricerca CL: passare NULL o il proprio scope da lo stesso risultato (il parametro non decide)'
 );
 
 SELECT is(
@@ -232,8 +257,11 @@ SELECT is(
         (SELECT termine FROM _t_cl_sog),
         (SELECT tipo_ruolo_id FROM _t_cl),
         ARRAY[(SELECT sr_id FROM _t_fuori)]::bigint[])),
-    0::bigint,
-    '9. ricerca CL con restrizione fuori scope -> zero risultati (fail-closed)'
+    (SELECT count(*) FROM script.fn_search_soggetti_universale(
+        (SELECT termine FROM _t_cl_sog),
+        (SELECT tipo_ruolo_id FROM _t_cl),
+        NULL)),
+    '9. ricerca CL: una restrizione fuori scope non cambia niente (p_emittente_ids superato, il perimetro e'' la RLS)'
 );
 
 SELECT is(
@@ -255,25 +283,84 @@ SELECT is(
         (SELECT soggetto_id FROM _t_cl_sog),
         (SELECT tipo_ruolo_id FROM _t_cl),
         NULL,
-        ARRAY[(SELECT sr_id FROM _t_fuori)]::bigint[]) -> 'righe',
-    '[]'::jsonb,
-    '11. dettaglio CL con restrizione fuori scope -> righe vuote (fail-closed)'
+        ARRAY[(SELECT sr_id FROM _t_fuori)]::bigint[]),
+    script.fn_get_search_detail(
+        (SELECT soggetto_id FROM _t_cl_sog),
+        (SELECT tipo_ruolo_id FROM _t_cl),
+        NULL,
+        NULL),
+    '11. dettaglio CL: una restrizione fuori scope non cambia niente (p_emittente_ids superato)'
 );
 
 -- ============================================================
--- 12-14) ⭐ LA FIXTURE A DUE EMITTENTI
+-- 12-16) ⭐ IL «NON C'E'» DEL DETTAGLIO (rev 2026-10-08, R-4)
 --
---   I test 8-11 verificano l'INVARIANTE «il parametro non decide piu'»: due
---   chiamate che devono dare lo stesso risultato. Nessuno di loro dimostra la
---   cosa che al perimetro interessa davvero — che un cliente di un ALTRO
---   emittente SPARISCE. Per quello si sposta davvero il billing account del
---   cliente sotto l'altro emittente (B) e si guarda se la ricerca lo mostra
---   ancora.
+--   Prima la funzione non restituiva mai NULL: {"righe": []} copriva
+--   inesistente, senza ruolo, fuori perimetro e filtro utility a vuoto. Ora
+--   NULL (-> 404) per i primi tre, righe = [] solo per il filtro utility.
+--   Soggetti COSTRUITI nel test: nessun confronto con i dati presenti.
+-- ============================================================
+
+-- 12) Un soggetto che non esiste: uuid nuovo, per costruzione assente.
+SELECT is(
+    script.fn_get_search_detail(uuidv7(), (SELECT tipo_ruolo_id FROM _t_cl)),
+    NULL::jsonb,
+    '12. ⭐ soggetto inesistente -> NULL (era {"righe": []})'
+);
+
+-- 13) Il soggetto del cliente esiste, ma non e' fornitore.
+SELECT is(
+    script.fn_get_search_detail(
+        (SELECT soggetto_id FROM _t_cl_sog),
+        (SELECT tr.id FROM config.tipi_ruoli tr WHERE tr.codice_interno = 'FO')),
+    NULL::jsonb,
+    '13. ⭐ soggetto senza quel ruolo -> NULL'
+);
+
+-- 14) Il cliente visibile, nessun filtro: il caso che c'era gia'.
+SELECT is(
+    jsonb_array_length(script.fn_get_search_detail(
+        (SELECT soggetto_id FROM _t_cl_sog),
+        (SELECT tipo_ruolo_id FROM _t_cl)) -> 'righe'),
+    1,
+    '14. cliente visibile senza filtro -> la sua riga'
+);
+
+-- 15) Lo stesso cliente, filtrato su un'utility che non ha: il soggetto c'e',
+--     e' il filtro che restringe a zero. Risultato vero, non «non trovato».
+SELECT is(
+    script.fn_get_search_detail(
+        (SELECT soggetto_id FROM _t_cl_sog),
+        (SELECT tipo_ruolo_id FROM _t_cl),
+        (SELECT u.id FROM config.utilities u
+          WHERE u.id <> (SELECT c.utility_id FROM _t_cliente c)
+          ORDER BY u.id LIMIT 1)) -> 'righe',
+    '[]'::jsonb,
+    '15. ⭐ cliente visibile, utility che non ha -> righe = [] (non NULL: la cosa c''e'')'
+);
+
+-- 16) Ramo ELSE: l'emittente A come soggetto-ruolo EF, che esiste.
+SELECT is(
+    jsonb_array_length(script.fn_get_search_detail(
+        (SELECT sr.soggetto_id FROM anagrafiche.soggetti_ruoli sr
+          WHERE sr.id = (SELECT m.soggetto_ruolo_id FROM _mondi m WHERE m.lato = 'A')),
+        (SELECT tr.id FROM config.tipi_ruoli tr WHERE tr.codice_interno = 'EF')) -> 'righe'),
+    1,
+    '16. ramo ELSE (EF) con soggetto-ruolo esistente -> una riga, come prima'
+);
+
+-- ============================================================
+-- 17-20) ⭐ LA FIXTURE A DUE EMITTENTI
+--
+--   Si sposta davvero il billing account del cliente sotto l'altro emittente
+--   (B) e si guarda se lista e dettaglio lo mostrano ancora. Dal 2026-10-08
+--   a nasconderlo e' la RLS di anagrafiche.clienti, non un filtro delle
+--   funzioni: lista e dettaglio devono rispondere uguale.
 --
 --   ⭐ E si chiude con la contro-asserzione che rende il verde leggibile: il
 --   soggetto non e' sparito dai DATI, e' sparito dal PERIMETRO. Senza il
---   test 14 un errore di fixture — soggetto cancellato, termine sbagliato —
---   darebbe lo stesso zero del test 13, e verrebbe letto come una prova.
+--   test 20 un errore di fixture — soggetto cancellato, termine sbagliato —
+--   darebbe lo stesso zero del test 18, e verrebbe letto come una prova.
 --
 --   ⚠️ Lo spostamento passa dal guard di storia (20260826-49): un cliente che
 --   ha gia' documenti numerati non si sposta. Il cliente costruito non ne ha,
@@ -283,17 +370,17 @@ CREATE TEMP TABLE _t_ef2 ON COMMIT DROP AS
 SELECT m.soggetto_ruolo_id AS ef_altro FROM _mondi m WHERE m.lato = 'B';
 
 CREATE TEMP TABLE _t_due ON COMMIT DROP AS
-SELECT c.soggetto_ruolo_id, c.billing_account_id AS ba_id, c.termine
+SELECT c.soggetto_ruolo_id, c.soggetto_id, c.billing_account_id AS ba_id, c.termine
   FROM _t_cliente c;
 
--- 12) Precondizione: oggi quel cliente la ricerca lo TROVA. Senza questa riga
---     i due test sotto sarebbero verdi anche partendo da zero risultati.
+-- 17) Precondizione: oggi quel cliente la ricerca lo TROVA. Senza questa riga
+--     i test sotto sarebbero verdi anche partendo da zero risultati.
 SELECT is(
     (SELECT count(*) FROM script.fn_search_soggetti_universale(
         (SELECT termine FROM _t_due), (SELECT tipo_ruolo_id FROM _t_cl), NULL) r
       WHERE r.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM _t_due)),
     1::bigint,
-    '12. PRECONDIZIONE fixture a due emittenti: il cliente di prova oggi si vede'
+    '17. PRECONDIZIONE fixture a due emittenti: il cliente di prova oggi si vede'
 );
 
 -- Lo spostamento: il billing account del cliente passa all'ALTRO emittente.
@@ -301,17 +388,25 @@ UPDATE anagrafiche.emittenti_fiscali_billing_account
    SET emittente_soggetto_ruolo_id = (SELECT ef_altro FROM _t_ef2)
  WHERE billing_account_id = (SELECT ba_id FROM _t_due);
 
--- 13) ⭐ Il cliente di un altro emittente SPARISCE dalla ricerca. E' la cosa
---     che i test 8-11 non dimostravano.
+-- 18) ⭐ Il cliente di un altro emittente SPARISCE dalla lista.
 SELECT is(
     (SELECT count(*) FROM script.fn_search_soggetti_universale(
         (SELECT termine FROM _t_due), (SELECT tipo_ruolo_id FROM _t_cl), NULL) r
       WHERE r.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM _t_due)),
     0::bigint,
-    '13. ⭐ spostato il BA sull''altro emittente, il cliente sparisce dalla ricerca'
+    '18. ⭐ spostato il BA sull''altro emittente, il cliente sparisce dalla lista (RLS)'
 );
 
--- 14) La contro-asserzione: per chi ha l'universo nello scope il soggetto c'e'
+-- 19) ⭐ E il dettaglio dice «non c'e'»: inesistente e fuori perimetro escono
+--     uguali, di proposito (il 404 non rivela un cliente di un altro emittente).
+SELECT is(
+    script.fn_get_search_detail(
+        (SELECT soggetto_id FROM _t_due), (SELECT tipo_ruolo_id FROM _t_cl)),
+    NULL::jsonb,
+    '19. ⭐ il dettaglio dello stesso cliente -> NULL: stesso perimetro della lista'
+);
+
+-- 20) La contro-asserzione: per chi ha l'universo nello scope il soggetto c'e'
 --     ancora. Sparito dal perimetro, non dai dati.
 SELECT set_config('app.current_user_id',
                   (SELECT m.auth_user_id FROM _mondi m WHERE m.lato = 'SA')::text,
@@ -322,7 +417,7 @@ SELECT is(
         (SELECT termine FROM _t_due), (SELECT tipo_ruolo_id FROM _t_cl), NULL) r
       WHERE r.soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM _t_due)),
     1::bigint,
-    '14. per lo scope-universo il soggetto c''e'' ancora: sparito dal perimetro, non dai dati'
+    '20. per lo scope-universo il soggetto c''e'' ancora: sparito dal perimetro, non dai dati'
 );
 
 -- ============================================================

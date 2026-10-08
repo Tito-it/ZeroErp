@@ -10,7 +10,10 @@
 --  1) fixture: due registri di prova (OGGI e FINE_MESE_COMPETENZA) + una fattura
 --  2) fn_data_operativa risponde nel fuso DELL'AZIENDA, non in quello di sessione
 --  3) fn_data_operativa: parametro VUOTO -> solleva
---  4) fn_data_operativa: fuso NON riconosciuto -> solleva, e la frase nomina il valore
+--  4) fuso NON riconosciuto -> rifiutato ALLA SCRITTURA dal registro (rev 2026-10-08)
+--  4b) ... anche una stringa POSIX che AT TIME ZONE accetterebbe ('UTC+1')
+--  4c) rete di sicurezza: valore passato col registro spento -> la funzione
+--      solleva, e la frase nomina il valore
 --  5) fn_data_operativa: parametro ASSENTE -> solleva
 --  6) fn_calcola_data_documento, politica OGGI
 --  7) fn_calcola_data_documento, FINE_MESE_COMPETENZA -> ultimo del mese di competenza
@@ -54,7 +57,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   quello dell'azienda, il test 2 lo vedrebbe.
 SET LOCAL TimeZone = 'UTC';
 
-SELECT plan(15);
+SELECT plan(17);
 
 -- ============================================================
 -- 1) Fixture
@@ -132,11 +135,36 @@ SELECT throws_ok(
   'P0001', NULL,
   '3) fn_data_operativa: parametro VUOTO -> solleva (nessun ripiego a UTC)');
 
+-- ⭐ rev 2026-10-08 (20261008-20): il fuso si VALIDA QUANDO SI SCRIVE, dal
+--   registro config.parameter_fk_surrogate (riga 7 -> pg_timezone_names), non
+--   piu' a ogni chiamata della funzione (~8 ms, per riga nelle viste).
+UPDATE config.parameters SET default_value = 'Europe/Rome' WHERE code = 'SYSTEM_FUSO_ORARIO';
+SELECT throws_like(
+  $$ UPDATE config.parameters SET default_value = 'Europe/Roma'
+      WHERE code = 'SYSTEM_FUSO_ORARIO' $$,
+  '%Europe/Roma%',
+  '4) fuso non riconosciuto -> rifiutato alla scrittura, e la frase nomina il valore');
+
+-- ⛔ E' il caso per cui la validazione NON puo' stare in un EXCEPTION attorno ad
+--   AT TIME ZONE: 'UTC+1' e' una stringa POSIX che AT TIME ZONE accetta (col
+--   segno rovesciato: vuol dire UTC-1), cioe' una data plausibile e sbagliata.
+SELECT throws_like(
+  $$ UPDATE config.parameters SET default_value = 'UTC+1'
+      WHERE code = 'SYSTEM_FUSO_ORARIO' $$,
+  '%UTC+1%',
+  '4b) una stringa POSIX (UTC+1) e'' rifiutata alla scrittura, anche se AT TIME ZONE la accetterebbe');
+
+-- La rete di sicurezza della funzione: un valore che il sistema non riconosce
+-- (qui passato spegnendo la riga del registro) solleva l'errore di DOMINIO,
+-- non un 22023 grezzo. Si riaccende subito.
+UPDATE config.parameter_fk_surrogate SET enabled = false WHERE code_pattern = 'SYSTEM_FUSO_ORARIO';
 UPDATE config.parameters SET default_value = 'Europe/Roma' WHERE code = 'SYSTEM_FUSO_ORARIO';
 SELECT throws_like(
   $$ SELECT script.fn_data_operativa() $$,
   '%Europe/Roma%',
-  '4) fn_data_operativa: fuso non riconosciuto -> solleva, e la frase nomina il valore');
+  '4c) rete di sicurezza: fuso non riconosciuto dal sistema -> errore di dominio che nomina il valore');
+UPDATE config.parameters SET default_value = 'Europe/Rome' WHERE code = 'SYSTEM_FUSO_ORARIO';
+UPDATE config.parameter_fk_surrogate SET enabled = true WHERE code_pattern = 'SYSTEM_FUSO_ORARIO';
 
 DELETE FROM config.parameters WHERE code = 'SYSTEM_FUSO_ORARIO';
 SELECT throws_ok(
