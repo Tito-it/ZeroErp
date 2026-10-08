@@ -146,6 +146,8 @@ SELECT id FROM ins;
 --   rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): un'ESCLUSIONE
 --   nasce VUOTA — nessun dato di vendita, ne' quantita' ne' fonte: con la regola
 --   nuova la quantita' 1 e la fonte FISSA di prima sarebbero rifiutate.
+--   ⚠️ L'erogazione passata e' sempre NULL (la riga eredita): la quantita' segue la
+--   fonte di default dell'articolo (rev 2026-10-07, §D.4 punto 2).
 CREATE OR REPLACE FUNCTION pg_temp.ins_riga(p_tabella text, p_sigla text, p_tipo text,
                                             p_erogazione text)
 RETURNS text LANGUAGE sql STABLE AS $fx$
@@ -157,8 +159,14 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
       ELSE
       $$INSERT INTO vendite.%I (%I, articolo_id, tipo_eccezione, prezzo_unitario,
                tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
-        SELECT %s, a.id, %L::vendite.tipo_eccezione_contratto, %s, %L, NULL, 1, 1, a.uom_id
-          FROM catalogo.articoli a WHERE a.id = %L$$
+        SELECT %s, a.id, %L::vendite.tipo_eccezione_contratto, %s, %L, NULL, q.qta, q.qta, a.uom_id
+          FROM catalogo.articoli a
+          -- rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): la quantita' solo se la
+          -- fonte ereditata (il default dell'articolo) la porta; a valle resta vuota.
+          CROSS JOIN LATERAL (
+              SELECT (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                       WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA') AS qta) q
+         WHERE a.id = %L$$
       END,
       CASE p_tabella WHEN 'contratto' THEN 'contratti_righe' ELSE 'offerte_commerciali_eccezioni' END,
       CASE p_tabella WHEN 'contratto' THEN 'contratto_id' ELSE 'offerta_id' END,

@@ -233,7 +233,13 @@ INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario,
 SELECT c.id, t.articolo_id, 42,
        -- rev 2026-10-07 (giro B3): erogazione VUOTA, la riga la eredita dalla tipologia
        --   dell'articolo (era CANONE scritto a mano).
-       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE, 1, NULL
+       -- rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): la quantita' solo se la fonte
+       --   ereditata la porta (FISSA); con una fonte a valle (es. le LETTURE di un
+       --   articolo CONSUMO) resta vuota. L'articolo viene dai dati: si chiede alla sede unica.
+       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE,
+       (SELECT 1 FROM vendite.fn_articolo_erogazioni(t.articolo_id) e
+         WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA'),
+       NULL
   FROM vendite.contratti c, tmp_ctx t
  WHERE c.numero = 'PGTAP_V5_CONTR';
 

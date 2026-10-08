@@ -156,10 +156,12 @@ WITH ins AS (
 INSERT INTO tmp_norm_fonte SELECT 12, fonte_quantita_attesa FROM ins;
 
 -- Test 13: CONSUMO + fonte NULL → aspettato LETTURE (articolo seq=2)
+-- ⚠️ Rev 2026-10-07 (20261007-28/-30, §D.4 punto 2): LETTURE e' una fonte a valle,
+--   la riga non porta quantita' → qta_operativa NULL.
 WITH ins AS (
     INSERT INTO vendite.contratti_righe
         (contratto_id, articolo_id, tipo_eccezione, tipo_erogazione, prezzo_unitario, qta_operativa)
-    SELECT c.id, na.articolo_id, 'AGGIUNTA', 'CONSUMO', 100, 1
+    SELECT c.id, na.articolo_id, 'AGGIUNTA', 'CONSUMO', 100, NULL
       FROM vendite.contratti c, tmp_norm_arts na
      WHERE c.numero = 'PGTAP_FONTE_CNT' AND na.seq = 2
     RETURNING fonte_quantita_attesa
@@ -190,9 +192,12 @@ WITH ins AS (
 )
 INSERT INTO tmp_riga_15 SELECT id FROM ins;
 
+-- ⚠️ Rev 2026-10-07 (§D.4 punto 2): la fonte riallineata (MANUALE) e' a valle, e la
+--   quantita' della FISSA si svuota nello stesso UPDATE (altrimenti
+--   E_RIGA_QUANTITA_CON_FONTE_A_VALLE: lo prova test-righe-quantita-per-fonte-v1).
 WITH upd AS (
     UPDATE vendite.contratti_righe
-       SET tipo_erogazione = 'CONSUMO'
+       SET tipo_erogazione = 'CONSUMO', qta_operativa = NULL, quantita = NULL
      WHERE id IN (SELECT id FROM tmp_riga_15)
     RETURNING fonte_quantita_attesa
 )

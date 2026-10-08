@@ -143,8 +143,14 @@ UPDATE catalogo.articoli
                              WHERE codice_interno = 'SERVIZIO_UNA_TANTUM')
  WHERE id = pg_temp.art('Y');
 
+-- ⚠️ Rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): B eredita la combinazione di
+--   default della tipologia del listino (quella del builder). La quantita' solo se la
+--   fonte ereditata la porta (FISSA): con una fonte a valle resta vuota. Si chiede
+--   alla sede unica; l'UdM operativa, soggetto del test, resta U1 in ogni caso.
 CREATE TEMP TABLE tmp_cru_righe AS
-SELECT 'B' AS sigla, pg_temp.riga('B', 'OVERRIDE', 80.00, NULL, NULL, 1,
+SELECT 'B' AS sigla, pg_temp.riga('B', 'OVERRIDE', 80.00, NULL, NULL,
+                                  (SELECT 1 FROM vendite.fn_articolo_erogazioni(pg_temp.art('B')) e
+                                    WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA'),
                                   (SELECT u1 FROM tmp_cru_uom), 20::smallint) AS id
 UNION ALL
 SELECT 'X', pg_temp.riga('X', 'AGGIUNTA', 40.00, 'UNA_TANTUM', 'FISSA', 2,

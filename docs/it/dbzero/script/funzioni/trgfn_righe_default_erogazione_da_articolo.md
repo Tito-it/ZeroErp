@@ -37,6 +37,10 @@ AS $function$
 --   matrice generica di trgfn_righe_default_fonte_qta, col default del
 --   vocabolario e non con quello dell'articolo: un servizio CANONE -> CONSUMO
 --   prendeva LETTURE, fuori dal suo perimetro).
+-- Ordine: ogni scelta prende la PRIMA combinazione utile secondo
+--   ae.ordine, il rango che il BB dichiara (default, poi erogazione, poi
+--   DERIVATA_COMPONENTI per ultima). Lo stesso ordine della lista del form
+--   (vendite.fn_documento_riga_erogazioni): §D.4 punto 1, 20261007-66.
 DECLARE
     v_scelta record;
 BEGIN
@@ -56,9 +60,7 @@ BEGIN
             SELECT ae.fonte_quantita_attesa INTO v_scelta
               FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
              WHERE ae.tipo_erogazione = NEW.tipo_erogazione
-             ORDER BY ae.e_default DESC,
-                      (ae.fonte_quantita_attesa = 'DERIVATA_COMPONENTI'),
-                      ae.fonte_quantita_attesa
+             ORDER BY ae.ordine
              LIMIT 1;
             IF FOUND THEN
                 NEW.fonte_quantita_attesa := v_scelta.fonte_quantita_attesa;
@@ -70,7 +72,7 @@ BEGIN
                   FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
                  WHERE ae.tipo_erogazione = 'CANONE'
                    AND ae.generazione_canone IS NOT NULL
-                 ORDER BY ae.e_default DESC
+                 ORDER BY ae.ordine
                  LIMIT 1);
         END IF;
         RETURN NEW;
@@ -86,8 +88,7 @@ BEGIN
          WHERE ae.e_default
             OR ae.fonte_quantita_attesa = NEW.fonte_quantita_attesa
          ORDER BY (ae.fonte_quantita_attesa IS NOT DISTINCT FROM NEW.fonte_quantita_attesa) DESC,
-                  ae.e_default DESC,
-                  ae.tipo_erogazione
+                  ae.ordine
          LIMIT 1;
         IF FOUND THEN
             NEW.tipo_erogazione := v_scelta.tipo_erogazione;
@@ -100,9 +101,7 @@ BEGIN
           INTO v_scelta
           FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
          WHERE ae.tipo_erogazione = NEW.tipo_erogazione
-         ORDER BY ae.e_default DESC,
-                  (ae.fonte_quantita_attesa = 'DERIVATA_COMPONENTI'),
-                  ae.fonte_quantita_attesa
+         ORDER BY ae.ordine
          LIMIT 1;
         IF FOUND THEN
             NEW.fonte_quantita_attesa := v_scelta.fonte_quantita_attesa;
@@ -115,7 +114,7 @@ BEGIN
               FROM vendite.fn_articolo_erogazioni(NEW.articolo_id) ae
              WHERE ae.tipo_erogazione = 'CANONE'
                AND ae.generazione_canone IS NOT NULL
-             ORDER BY ae.e_default DESC
+             ORDER BY ae.ordine
              LIMIT 1);
     END IF;
 
@@ -124,7 +123,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_righe_default_erogazione_da_articolo()
-IS 'Trigger generico (vendite.contratti_righe, vendite.offerte_commerciali_eccezioni), BEFORE INSERT OR UPDATE OF tipo_erogazione WHEN tipo_eccezione <> ESCLUSIONE. Su UPDATE: se cambia la sola erogazione e la coppia esce dal perimetro dell''articolo, la fonte diventa quella che l''articolo ammette per la nuova erogazione (se l''operatore ha cambiato anche la fonte non si tocca). Su INSERT la riga eredita dall''articolo come si eroga, riempiendo solo i campi vuoti (la scelta dell''operatore vince, il perimetro lo giudica script.trgfn_righe_guard_erogazione_perimetro). Erogazione vuota: la combinazione di default dell''articolo (erogazione; fonte se vuota); con la fonte già indicata, un''erogazione che l''articolo ammette con quella fonte, default per primo (altrimenti il default, e il guard rifiuta la fonte). Erogazione indicata e fonte vuota: la fonte che l''articolo ammette per quell''erogazione (il default se lo è, mai DERIVATA_COMPONENTI se c''è un''altra); se non la ammette resta vuota, la riempie trgfn_righe_default_fonte_qta e il guard rifiuta la riga. CANONE senza generazione_canone: quella dell''articolo. Fonte: vendite.fn_articolo_erogazioni (tipologia, altrimenti natura). Decisione B-R2 di Tid del 2026-10-07. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3).';
+IS 'Trigger generico (vendite.contratti_righe, vendite.offerte_commerciali_eccezioni), BEFORE INSERT OR UPDATE OF tipo_erogazione WHEN tipo_eccezione <> ESCLUSIONE. Su UPDATE: se cambia la sola erogazione e la coppia esce dal perimetro dell''articolo, la fonte diventa quella che l''articolo ammette per la nuova erogazione (se l''operatore ha cambiato anche la fonte non si tocca). Su INSERT la riga eredita dall''articolo come si eroga, riempiendo solo i campi vuoti (la scelta dell''operatore vince, il perimetro lo giudica script.trgfn_righe_guard_erogazione_perimetro). Erogazione vuota: la combinazione di default dell''articolo (erogazione; fonte se vuota); con la fonte già indicata, un''erogazione che l''articolo ammette con quella fonte, default per primo (altrimenti il default, e il guard rifiuta la fonte). Erogazione indicata e fonte vuota: la fonte che l''articolo ammette per quell''erogazione (il default se lo è, mai DERIVATA_COMPONENTI se c''è un''altra); se non la ammette resta vuota, la riempie trgfn_righe_default_fonte_qta e il guard rifiuta la riga. CANONE senza generazione_canone: quella dell''articolo. Fonte: vendite.fn_articolo_erogazioni (tipologia, altrimenti natura). Ogni scelta prende la prima combinazione utile nell''ordine che il BB dichiara (colonna ordine: default, poi erogazione, DERIVATA_COMPONENTI per ultima), lo stesso della lista del form vendite.fn_documento_riga_erogazioni. Decisione B-R2 di Tid del 2026-10-07. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.7 (B3); ordine dal 20261007-67 (§D.4 punto 1).';
 ```
 
 ---
