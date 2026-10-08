@@ -16,7 +16,6 @@ import AppDialog from '../../../core/components/AppDialog.vue'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
-import Select from 'primevue/select'
 import Tab from 'primevue/tab'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
@@ -42,7 +41,6 @@ import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLo
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
-import { useGlobalLookup } from '../../../core/composables/useGlobalLookup'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useFooterDocumento } from '../../../core/composables/useFooterDocumento'
@@ -57,7 +55,7 @@ import { displayDate, parseIsoDate, toDateString } from '../../../core/utils/dat
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { getOffertaFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
-import { lookupListiniSelezionabiliContratto } from '../../api/lookup'
+import ListinoDocumentoSelect from '../../components/ListinoDocumentoSelect.vue'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
 import {
   STATI_OFFERTA_SEGNALA_SCADENZA,
@@ -161,20 +159,6 @@ provide(READONLY_KEY, isReadonly)
 const isStatoTerminale = computed(
   () => STATI_OFFERTA_TERMINALI.includes(stato.value),
 )
-
-// Lookup listini "selezionabili come riferimento contrattuale" — stesso
-// pattern del contratto (refactor 2026-05-18 §4.4). L'offerta congela la
-// versione del listino all'emissione: serve solo un listino che abbia
-// almeno una versione ATTIVA al momento.
-const listiniLookup = useGlobalLookup(
-  'vendite.listini_selezionabili_contratto',
-  lookupListiniSelezionabiliContratto,
-  { immediate: true, transform: (r) => r.data.data },
-)
-function formatListinoOption(item) {
-  if (!item) return ''
-  return item.codice ? `${item.descrizione} (${item.codice})` : item.descrizione
-}
 
 // Defaults da profilo operatore (pattern identico a preventivi/contratti):
 // - Emittente fiscale: derivato dal profilo (1-a-1 operatore->emittente
@@ -1000,15 +984,16 @@ const footerDrawer = useFooterDocumento({
           <h4>{{ t('vendite.offerte.section_listino') }}</h4>
           <div class="form-field">
             <label>{{ t('vendite.offerte.field_listino') }} <span v-if="!isEdit">*</span></label>
-            <Select
+            <!-- I listini della utility e dell'emittente del form, dal DB: la
+                 tendina non propone cio' che il salvataggio rifiuterebbe (F-2).
+                 Niente piu' filtro «almeno una versione ATTIVA»: un'offerta
+                 senza versione in vigore la rifiuta l'emissione (A-D1). -->
+            <ListinoDocumentoSelect
               v-model="form.listino_id"
-              :options="listiniLookup.items.value"
-              :option-label="formatListinoOption"
-              option-value="id"
-              :loading="listiniLookup.loading.value"
+              :utility-id="form.utility_id"
+              :emittente-fiscale-id="form.emittente_fiscale_id"
+              :record="detail"
               :placeholder="t('vendite.offerte.select_listino')"
-              show-clear
-              filter
               :disabled="isReadonly"
               @update:model-value="onListinoChange"
               :invalid="campiErrati.includes('listino_id')"

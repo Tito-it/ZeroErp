@@ -31,6 +31,7 @@ from apps.core.api.payload_validators import (
     qp_str_upper,
 )
 from apps.core.api.success_responses import success_response
+from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
 from apps.vendite.api.dash_export_helpers import build_dash_export_response
 from apps.vendite.services.vendite_service import (
     fn_dash_aperto_documenti,
@@ -185,7 +186,10 @@ class ApiDashboardApertoDocumenti(DomainAPIView):
         # Strict (presente-ma-non-numerico -> 400); assente/vuoto -> None ->
         # nessuna soglia. La guardia intero > 0 (E_VENDITE_VALIDATION) e' nel
         # service, unica definizione.
-        ritardo_giorni = qp_int_optional(qp.get("ritardo_giorni"), "ritardo_giorni")
+        ritardo_giorni = qp_int_optional(
+            qp.get("ritardo_giorni"), "ritardo_giorni",
+            min_val=INTEGER_MIN, max_val=INTEGER_MAX,
+        )
         # Ordinamento (convenzione order_by/order_dir): whitelist + direzione
         # validate nel service (unica definizione, fail-fast 400).
         order_by = qp_str(qp.get("order_by"))
@@ -248,6 +252,7 @@ class ApiDashboardApertoDocumentiExport(DomainAPIView):
                 "fase": qp_str_upper(qp.get("fase")),
                 "ritardo_giorni": qp_int_optional(
                     qp.get("ritardo_giorni"), "ritardo_giorni",
+                    min_val=INTEGER_MIN, max_val=INTEGER_MAX,
                 ),
                 "order_by": qp_str(qp.get("order_by")),
                 "order_dir": qp_str(qp.get("order_dir")),

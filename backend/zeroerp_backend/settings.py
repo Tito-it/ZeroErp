@@ -509,6 +509,16 @@ MAILERS = {
     "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"},
 }
 
+# ⛔ `mail.E001` (`check --deploy`: «backend di posta da sviluppo») e' SILENZIATO
+#    PER PROGETTO, non per comodita': la console qui sopra vale in TUTTI gli
+#    ambienti, produzione compresa, perche' Django non spedisce posta in
+#    ZeroErp. Configurargli uno SMTP vero aprirebbe un secondo canale accanto a
+#    `config.email_account`, fuori dal modello. Deciso da Tid il 2026-10-08
+#    (D3-b di migliorie-generali-BE-FE): e' cio' che permette alla CI di girare
+#    `check --deploy` COMPLETO, e non il solo `--tag security`.
+#    Si toglie il giorno in cui Django dovesse spedire posta per davvero.
+SILENCED_SYSTEM_CHECKS = ["mail.E001"]
+
 # --- Proxy HTTPS/Nginx + cookie sicuri ---
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'header di Nginx
 

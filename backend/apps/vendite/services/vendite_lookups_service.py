@@ -78,13 +78,19 @@ def fn_list_ambiti_contratto() -> list[dict[str, object]]:
     return _to_payload(_AMBITI_CONTRATTO)
 
 
-# Scopo: lista listini "selezionabili come riferimento contrattuale".
-#        Solo listini attivi con almeno una versione ATTIVA oggi
-#        (decisione 2026-05-18 §4.4 refactor-contratti-modalita).
-#        Forma payload uniforme `{id, codice, descrizione}` compatibile col
-#        pattern lookup generico (LookupSelect / lookupCodici): swap
-#        trasparente con `rel='vendite.listini'`. Delega al repository.
-def fn_list_listini_selezionabili_contratti() -> list[dict[str, object]]:
+# Scopo: i listini che un contratto o un'offerta di questa utility e di questo
+#        emittente (`emittente_fiscale_id`) puo' scegliere: la lettura del DB
+#        (`vendite.fn_listini_selezionabili`), che usa lo stesso predicato del
+#        guard del documento. Forma `{id, codice, descrizione}`. Delega al
+#        repository. ⛔ Il filtro «almeno una versione ATTIVA» (§4.4 del
+#        2026-05-18) e' ritirato: la regola vera e' «non si attiva/emette senza
+#        una versione in vigore», del DB (D.4.3 di
+#        brief-db-offerta-emissione-ed-erogazione).
+def fn_list_listini_selezionabili(
+    utility_id: int | None, emittente_fiscale_id: int | None,
+) -> list[dict[str, object]]:
     from apps.vendite.db.listini_repository import ListiniRepository
 
-    return ListiniRepository().list_lookup_selezionabili_contratti()
+    return ListiniRepository().list_lookup_selezionabili(
+        utility_id, emittente_fiscale_id,
+    )

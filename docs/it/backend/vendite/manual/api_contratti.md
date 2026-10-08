@@ -208,6 +208,16 @@ Note (refactor 2026-05-15):
 - `utility` (sub-payload opzionale): se presente, crea la riga utility 1:1
   nello stesso round-trip. `istanza_utility_id` e `utility_id` sono
   derivati dalla testata, NON dal sub-payload.
+- **Il listino e' della utility e dell'emittente del contratto** (dal
+  2026-10-08, F-2 di brief-db-offerta-emissione-ed-erogazione): uno di un'altra
+  utility → `E_DOC_LISTINO_UTILITY_DIVERSA`, di un'altra azienda →
+  `E_DOC_LISTINO_EMITTENTE_DIVERSO` (400, campo `listino_id`), all'INSERT e
+  quando cambiano listino, utility o emittente (guard
+  `script.trgfn_doc_guard_listino_documento`; i contratti gia' scritti restano
+  come sono). Il form li sceglie da `GET /vendite/lookup/listini-selezionabili/`
+  ([api_vendite_lookups](api_vendite_lookups.md)). Un listino **senza versione in
+  vigore** si sceglie in DRAFT: lo rifiuta l'attivazione
+  (`E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO`).
 - **Niente piu' "modalita"**: `listino_id` e variazione globale sono campi
   opzionali liberi. Forma "senza_listino" → omettere `listino_id`; la
   variazione e' comunque ammessa (anche se il suo effetto sara' visibile
@@ -439,13 +449,30 @@ CHECK `chk_contrighe_fonte_per_tipo_eccezione`, dal 2026-10-04)
 dichiara da dove arriva la quantita' che il motore di fatturazione applichera'
 in fase di push periodico verso le commesse. 5 valori CHECK DB:
 
-| Valore | Semantica | `qta_operativa` lato BE |
+| Valore | Semantica | Quantita' sulla riga |
 | --- | --- | --- |
-| `FISSA` | Quantita' contrattualizzata, snapshot in riga | Obbligatoria > 0 |
-| `MANUALE` | Definita di volta in volta sul documento downstream | Forzata a NULL (anche se inviata) |
-| `TIMESHEET` | Da rendicontazione ore (modulo timesheet futuro) | Forzata a NULL |
-| `LETTURE` | Da letture utility | Forzata a NULL |
-| `DERIVATA_COMPONENTI` | Per padre composito: scritta automaticamente dal trigger `z90_propaga_qta_componenti` post-INSERT figli BoM | Lasciata vuota (gestita dal DB) |
+| `FISSA` | Quantita' contrattualizzata, snapshot in riga | `qta_operativa` obbligatoria e diversa da zero (`E_QTA_MISSING`, `chk_contrighe_qta_operativa_nonzero`) |
+| `MANUALE` | Definita di volta in volta sul documento downstream | Vuota: una `qta_operativa` valorizzata e' rifiutata |
+| `TIMESHEET` | Da rendicontazione ore (modulo timesheet futuro) | Vuota, come sopra |
+| `LETTURE` | Da letture utility | Vuota, come sopra |
+| `DERIVATA_COMPONENTI` | Per padre composito | Ammessa (⚠️ chi la calcola e' una domanda aperta: §F.4.3 di brief-db-offerta-emissione-ed-erogazione) |
+
+⭐ **La quantita' per fonte la decide il DB** (dal 2026-10-08,
+brief-db-offerta-emissione-ed-erogazione F-1). L'elenco delle fonti che portano
+la quantita' sta in `script.fn_fonte_porta_quantita` (FISSA,
+DERIVATA_COMPONENTI). Con una fonte a valle:
+
+- `quantita` e' **calcolata**: la svuota il DB (`script.trgfn_qta_from_operativa`),
+  all'INSERT e a ogni UPDATE, anche passando da DERIVATA_COMPONENTI a una fonte a
+  valle. Il client non la manda;
+- una `qta_operativa` valorizzata e' rifiutata: `E_RIGA_QUANTITA_CON_FONTE_A_VALLE`
+  (400, campo `qta_operativa` in `error.fields`), guard
+  `script.trgfn_righe_guard_quantita_per_fonte`; rete `chk_contrighe_quantita_per_fonte`.
+
+Il form, al passaggio a una fonte a valle, manda `qta_operativa = null`.
+⛔ Il service non normalizza: fino al 2026-10-08 `_apply_fonte_quantita_logic`
+azzerava in silenzio `quantita`/`qta_operativa` (e solo sul contratto),
+ritirato con `_FONTI_QUANTITA_DOWNSTREAM`.
 
 ⭐ **Come si eroga una riga lo dice l'articolo, dal DB** (dal 2026-10-07,
 brief-db-offerta-emissione-ed-erogazione B-R1…B-R4). Le combinazioni
@@ -474,11 +501,8 @@ ha tipologia (`config.nature_vendita_erogazioni`); un composito ammette in più
 
 ⛔ Il service **non ne tiene una copia**: fino al 2026-10-07 `contratti_service`
 ricopiava la matrice (`_FONTE_VIETATE_PER_TIPO_EROGAZIONE`) e i default
-(`_FONTE_DEFAULT_PER_TIPO_EROGAZIONE`), ritirati. `_apply_fonte_quantita_logic`
-fa solo la normalizzazione di `quantita` per fonte della tabella qui sopra.
-
-Combinazione vietata → `E_VENDITE_VALIDATION` con detail "Combinazione vietata:
-tipo_erogazione='...' non e' compatibile con fonte_quantita_attesa='...'".
+(`_FONTE_DEFAULT_PER_TIPO_EROGAZIONE`), ritirati. Una combinazione vietata la
+rifiuta il DB (`E_RIGA_EROGAZIONE_FUORI_PERIMETRO`, sopra).
 
 Riferimento doc dominio:
 [docs/it/dev/work-done/refactor-contratti-fonte-quantita.md](../../../dev/work-done/refactor-contratti-fonte-quantita.md).
@@ -934,6 +958,9 @@ alle righe di contratto via `target_riga_id`.
 | `E_RIGA_EROGAZIONE_OBBLIGATORIA` | 400 | DB P0001 (2026-10-04) — PATCH che toglie `tipo_erogazione` a una riga OVERRIDE/AGGIUNTA (in create, dal 2026-10-07, la riga la eredita dall'articolo). Campo `tipo_erogazione` in `error.fields`. Stesso codice sulle eccezioni dell'offerta | `script.trgfn_righe_guard_erogazione_obbligatoria` |
 | `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` | 400 | DB P0001 (2026-10-07) — combinazione `(tipo_erogazione, fonte_quantita_attesa)` che l'articolo non ammette. Campo in `error.fields`. Stesso codice sull'offerta | `script.trgfn_righe_guard_erogazione_perimetro` |
 | `E_RIGA_TIPOLOGIA_FUORI_UTILITY` | 400 | DB P0001 (2026-10-07) — articolo con una tipologia di listino che la utility del contratto non prevede. Campo `articolo_id`. Stesso codice sull'offerta | `script.trgfn_righe_guard_erogazione_perimetro` |
+| `E_RIGA_QUANTITA_CON_FONTE_A_VALLE` | 400 | DB P0001 (2026-10-07, rivisto 2026-10-08) — `qta_operativa` valorizzata con una fonte a valle (MANUALE, LETTURE, TIMESHEET). Campo `qta_operativa`. `quantita` la svuota il DB, non e' materia del rifiuto. Stesso codice sull'offerta | `script.trgfn_righe_guard_quantita_per_fonte` |
+| `E_DOC_LISTINO_UTILITY_DIVERSA` | 400 | DB P0001 (2026-10-08) — il listino e' di un'altra utility. Campo `listino_id`. Stesso codice sull'offerta | `script.trgfn_doc_guard_listino_documento` |
+| `E_DOC_LISTINO_EMITTENTE_DIVERSO` | 400 | DB P0001 (2026-10-08) — il listino e' di un'altra azienda emittente (anche uno che chi agisce non legge, per RLS). Campo `listino_id`. Stesso codice sull'offerta | `script.trgfn_doc_guard_listino_documento` |
 | `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` | 409 | DB P0001 (2026-10-07, A-D2) — attivazione di un contratto con listino che non ha una versione in vigore oggi | `trgfn_contratti_freeze_listino_versione` |
 | `E_RIGA_ESCLUSIONE_CON_DATI` | 400 | DB P0001 (2026-10-04) — INSERT di un'ESCLUSIONE con un dato di fatturazione valorizzato. Campo (il primo valorizzato) in `error.fields`. Stesso codice sull'offerta | `script.trgfn_righe_guard_esclusione_senza_dati` |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |

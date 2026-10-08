@@ -46,7 +46,14 @@ _SIGNED_INT_RE = re.compile(r"^-?\d+$")
 SMALLINT_MIN = -32768
 SMALLINT_MAX = 32767
 SMALLINT_UNSIGNED_MIN = 0
+# Range di integer (INT4) e bigint (INT8) PostgreSQL. ⚠️ Un intero Python fuori
+# dal tipo di un PARAMETRO di funzione o di un cast non e' un «nessun risultato»:
+# psycopg lo manda come bigint (o numeric) e la chiamata fallisce a DB, un 500.
+# Li usa `qp_int_optional` (payload_validators) per il tetto del parametro.
+INTEGER_MIN = -2_147_483_648
 INTEGER_MAX = 2_147_483_647
+BIGINT_MIN = -9_223_372_036_854_775_808
+BIGINT_MAX = 9_223_372_036_854_775_807
 
 
 # Sentinel per distinguere "chiave assente" (non aggiornare) da "valore None

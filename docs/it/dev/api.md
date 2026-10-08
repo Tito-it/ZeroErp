@@ -414,12 +414,19 @@ I filtri opzionali da query string si normalizzano con gli helper di
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `qp_str(raw)`                                                       | stringa o `None` se assente/vuota (strip)                                                               |
 | `qp_int(raw, default)`                                              | int con default; fallback silenzioso al default se non numerico                                         |
-| `qp_int_strict(raw, name, default)`                                 | int con default; **400** se presente ma non numerico                                                    |
-| `qp_int_optional(raw, name)`                                        | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico                              |
+| `qp_int_strict(raw, name, default)`                                 | int con default; **400** se presente ma non numerico o fuori da `bigint`                                |
+| `qp_int_optional(raw, name, *, min_val, max_val)`                   | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico o fuori range (default `bigint`) |
 | `qp_bool(raw, default=True)`                                        | bool con default (False solo su `0/false/no/n/off`)                                                     |
 | `qp_bool_optional(raw, name)`                                       | bool **opzionale strict**: `None` se assente/vuoto, `True/False` sui token, **400** se non riconosciuto |
 | `qp_iso_date_optional(raw, name)`                                   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata                             |
 | `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` per liste **offset-based**                         |
+
+⚠️ **Il tetto di un intero è il tipo DOVE ARRIVA** (dal 2026-10-08): un confronto
+`col = %s` regge qualunque intero, un **parametro di funzione** `integer` o un cast
+`::integer` no — `3000000000` parte come `bigint`, la funzione non si risolve, e
+la risposta è un **500** al posto di un 400. Il default di `qp_int_optional` è
+`bigint` (oltre, nessun intero PG); chi passa il valore a un parametro `integer`
+dichiara `min_val=INTEGER_MIN, max_val=INTEGER_MAX` (`apps.core.services.payload_helpers`).
 
 **Contratto degli helper `*_optional` (dal 2026-06-04):**
 

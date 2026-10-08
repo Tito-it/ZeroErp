@@ -32,6 +32,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "DEFINIZIONE_TRANSIZIONE_NON_AMMESSA": "Transizione di stato dell'edizione non ammessa.",
     "ERRORE_PARAMETRI": "Parametri obbligatori mancanti o non validi.",
     "ERRORE_PARAMETRI_TABELLA": "Parametro non trovato nella tabella di configurazione.",
+    "E_ACCESSO_RISERVATO_ADMIN": "Accesso riservato agli amministratori.",
+    "E_ACCESSO_RISERVATO_PORTALE": "Accesso riservato agli utenti portale.",
+    "E_ACCESSO_RISERVATO_SHOP": "Accesso riservato ai clienti shop.",
     "E_ACCREDITO_ANNULLO_INCOMPLETO": "Annullo dell'accredito interrotto: alcune rettifiche non sono visibili nel perimetro corrente. Ripetere con un utente che veda l'intero accredito.",
     "E_ACCREDITO_ANNULLO_NON_AMMESSO": "Accredito non annullabile: una o piu' rettifiche sono gia' emesse. Se il documento non e' ancora numerato la strada e' il reset del lotto, che pero' rigenera la nota di credito al giro successivo.",
     "E_ACCREDITO_ATTIVITA_NON_FATTURATA": "La merce resa non risulta mai finita in una fattura: non c'e' un prezzo da cui accreditare.",
@@ -311,6 +314,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DELETE_RIGA_DOC_REFERENZIATA": "Questa riga e' gia' stata usata in un reso o in una riconsegna: non si puo' togliere.",
     "E_DIAGNOSTICA_NON_REGISTRATA": "Una scrittura di diagnosi non e' andata a buon fine: il lavoro e' proseguito lo stesso.",
     "E_DISSOCIAZIONE_PARENT_CON_ATTIVITA": "Parent non rimovibile: esistono attivita' non fatturate sul billing account.",
+    "E_DOC_LISTINO_EMITTENTE_DIVERSO": "Il listino scelto e' di un'altra azienda: il documento puo' usare solo un listino della sua azienda emittente.",
+    "E_DOC_LISTINO_UTILITY_DIVERSA": "Il listino scelto e' di un'altra utility: il documento puo' usare solo un listino della sua utility.",
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "Eliminazione asset non consentita. Disattivare l'asset impostando valido_al.",
     "E_DOCUMENTI_ASSET_FILE_IMMUTABILE": "File asset immutabile: storage_key/sha256/file_size/mime/file_name non modificabili. Crea un nuovo asset.",
     "E_DOCUMENTI_DENIED": "Operazione documentale non consentita.",
@@ -347,11 +352,16 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_RIGHE_LOCK_MONTAGGIO": "Il controllo sulle righe del documento e' configurato male nel database: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_DOC_TIPO_NON_GESTITO": "Tipo di documento non gestito dal controllo di cancellazione: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_EMAIL": "Errore configurazione email.",
+    "E_EMAIL_ACCOUNT_NON_CONFIGURATO": "Nessun account email configurato.",
+    "E_EMAIL_ACCOUNT_NOT_FOUND": "Account email non trovato.",
     "E_EMAIL_ADMIN": "Operazione sulla configurazione email non riuscita.",
+    "E_EMAIL_ALLEGATO_FILE_MANCANTE": "File dell'allegato non disponibile.",
     "E_EMAIL_ALLEGATO_NON_BOZZA": (
         "La mail non e' piu' in bozza: i suoi allegati si possono aggiungere, "
         "modificare o togliere solo finche' e' in bozza."
     ),
+    "E_EMAIL_ALLEGATO_NOT_FOUND": "Allegato non trovato.",
+    "E_EMAIL_BOZZA_NOT_FOUND": "Bozza non trovata.",
     "E_EMAIL_LOG_INESISTENTE": (
         "Impossibile registrare l'esito dell'invio: l'email indicata non esiste."
     ),
@@ -359,7 +369,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Impossibile registrare l'esito dell'invio: l'email indicata non e' di "
         "sistema. Va chiusa dal perimetro a cui appartiene, non da questa porta."
     ),
+    "E_EMAIL_LOG_NOT_FOUND": "Log email non trovato.",
+    "E_EMAIL_NON_BOZZA": "Questa mail non e' piu' in bozza: non si puo' piu' modificare, inviare o annullare.",
     "E_EMAIL_OP": "Operazione email non riuscita.",
+    "E_EMAIL_TEMPLATE_NOT_FOUND": "Template email non trovato.",
     "E_EMITTENTE_ATTIVO_NON_VALIDO": "Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",
     "E_EMITTENTE_ATTIVO_TOKEN": "Refresh token richiesto per applicare il cambio di emittente.",
     "E_EMITTENTE_CODICE_FORMA_NON_VALIDA": "Sigla dell'emittente non valida: sono ammesse solo lettere maiuscole e cifre, da 2 a 10 caratteri. La sigla entra nel codice delle commesse, che si legge separandolo sui trattini.",

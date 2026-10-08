@@ -24,13 +24,16 @@ export function lookupAmbitiContratto() {
   return api.get(`${BASE}/ambiti-contratto/`)
 }
 
-// Refactor 2026-05-18 §4.4: lookup dinamico dei listini selezionabili come
-// riferimento contrattuale. Filtra `vendite.listini` per esistenza di una
-// versione ATTIVA (cf. backend ListiniRepository.list_lookup_selezionabili_contratti).
-// Payload `{id, codice, descrizione}` compatibile col pattern lookup generico
-// — sostituisce `LookupSelect rel='vendite.listini'` nel ContrattoDrawer.
-export function lookupListiniSelezionabiliContratto() {
-  return api.get(`${BASE}/listini-selezionabili-contratto/`)
+// I listini che un contratto o un'offerta di questa utility e di questo
+// emittente puo' scegliere: la lettura del DB (`vendite.fn_listini_selezionabili`),
+// lo stesso predicato del guard del documento, quindi la tendina non propone cio'
+// che il salvataggio rifiuterebbe (F-2 di brief-db-offerta-emissione-ed-erogazione).
+// Sui valori del FORM: in creazione il documento non esiste. Envelope dei lookup
+// `{"results": [{id, codice, descrizione}]}`. Consumer: `ListinoDocumentoSelect`.
+export function lookupListiniSelezionabili(utilityId, emittenteFiscaleId) {
+  return api.get(`${BASE}/listini-selezionabili/`, {
+    params: { utility_id: utilityId, emittente_fiscale_id: emittenteFiscaleId },
+  })
 }
 
 // Refactor modalita 2026-05-15: il lookup `modalita-pricing-contratto` (A/B/C)

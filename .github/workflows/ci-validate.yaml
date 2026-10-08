@@ -641,17 +641,24 @@ jobs:
           source .venv/bin/activate
           python manage.py check
 
-      - name: Django check --deploy (sicurezza)
+      - name: Django check --deploy (completo)
         working-directory: ./backend
         # I controlli di Django sulla configurazione di produzione (cookie,
-        # HSTS, SSL, SECRET_KEY, DEBUG, X-Frame-Options, ...).
-        # ⚠️ `--tag security`: gli avvisi drf-spectacular (a ZERO dal
-        #    2026-09-26) li tiene a zero un altro cancello, il registro a
-        #    cricchetto `apps/core/tests/test_schema_openapi_registro.py`, che
-        #    gira con la suite Django. Senza il tag resterebbe `mail.E001`.
-        # ⚠️ Un rilievo `security.*` e' un AVVISO: `check` esce 0 comunque.
-        #    Il cancello lo fa il grep qui sotto, con l'elenco a cricchetto dei
-        #    rilievi ACCETTATI. Si toglie una voce quando si chiude, mai si
+        # HSTS, SSL, SECRET_KEY, DEBUG, X-Frame-Options, ...) e quelli che
+        # ogni app o libreria aggancia al ramo `--deploy` (drf-spectacular).
+        # ⭐ COMPLETO dal 2026-10-08 (D3-b di migliorie-generali-BE-FE): fino ad
+        #    allora girava `--tag security`, e un controllo di produzione nuovo
+        #    portato da una libreria o da un aggiornamento di Django non
+        #    l'avrebbe visto nessuno. `mail.E001`, che lo impediva, e'
+        #    silenziato in `settings.py` PER PROGETTO (Django non spedisce
+        #    posta in ZeroErp): il perche' sta accanto a `SILENCED_SYSTEM_CHECKS`.
+        # ⚠️ drf-spectacular e' a ZERO dal 2026-09-26 e lo tiene a zero anche
+        #    il registro a cricchetto `apps/core/tests/test_schema_openapi_registro.py`,
+        #    che e' piu' fine di questo passo (confronta i rilievi PER NOME).
+        # ⚠️ Un AVVISO (`W`) non cambia l'uscita di `check`, un errore (`E`)
+        #    si'. Il cancello sugli avvisi lo fa il grep qui sotto, su
+        #    QUALUNQUE famiglia, con l'elenco a cricchetto dei rilievi
+        #    ACCETTATI. Si toglie una voce quando si chiude, mai si
         #    aggiunge per far passare una PR.
         #    - W005 (HSTS senza sottodomini) e W021 (HSTS senza preload):
         #      spenti PER SCELTA (brief-be-fe-sicurezza-header-token-mfa
@@ -668,12 +675,12 @@ jobs:
           export DJANGO_DEBUG=0
           export DJANGO_SECURE_HSTS_SECONDS=31536000
           export DJANGO_SECURE_SSL_REDIRECT=1
-          out="$(python manage.py check --deploy --tag security 2>&1)" || { echo "$out"; exit 1; }
+          out="$(python manage.py check --deploy 2>&1)" || { echo "$out"; exit 1; }
           echo "$out"
-          nuovi="$(grep -oE '\(security\.[EW][0-9]+\)' <<<"$out" \
+          nuovi="$(grep -oE '\([a-z_]+\.[EW][0-9]+\)' <<<"$out" \
                    | grep -vE 'security\.(W005|W021)\)' || true)"
           if [ -n "$nuovi" ]; then
-            echo "::error::check --deploy: rilievi di sicurezza non accettati: $nuovi"
+            echo "::error::check --deploy: rilievi non accettati: $nuovi"
             exit 1
           fi
 

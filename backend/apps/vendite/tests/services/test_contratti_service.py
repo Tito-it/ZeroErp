@@ -2219,107 +2219,64 @@ class ContrattiServiceComponentiTests(TestCase):
 
 
 class ContrattiServiceFonteQuantitaTests(TestCase):
-    """Normalizzazione di `quantita` in base alla fonte, in
-    `_apply_fonte_quantita_logic`.
+    """La quantita' per fonte la decide il DB: il service la trasporta com'e'.
 
-    ⛔ Dal 2026-10-07 il service NON giudica la coppia (tipo_erogazione,
-    fonte_quantita_attesa) e NON sceglie una fonte di default: lo fa il DB
-    dall'articolo (`vendite.fn_articolo_erogazioni`, eredita' + guard del
-    perimetro, brief-db-offerta-emissione-ed-erogazione B-R2/B-R3). La copia
-    Python della matrice (`_FONTE_VIETATE_PER_TIPO_EROGAZIONE`) e' ritirata.
-
-    Riferimento: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
+    ⛔ Dal 2026-10-08 (brief-db-offerta-emissione-ed-erogazione F-1) il service
+    non azzera `quantita`/`qta_operativa` sulle fonti a valle e non pretende una
+    quantita' sulla FISSA: il DB svuota `quantita` con una fonte a valle
+    (`script.trgfn_qta_from_operativa`), rifiuta una `qta_operativa` valorizzata
+    col campo (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`) e la FISSA senza quantita'
+    (`E_QTA_MISSING`). La copia Python (`_apply_fonte_quantita_logic`) azzerava
+    in silenzio, e solo sul contratto. Dal 2026-10-07 non giudica nemmeno la
+    coppia (tipo_erogazione, fonte) ne' sceglie una fonte di default
+    (`vendite.fn_articolo_erogazioni`).
 
     Indice test:
-    1) test_nessun_giudizio_sulla_coppia_ne_default — la coppia la decide il DB
-    2) test_fonte_fissa_richiede_quantita_positiva
-    3) test_fonte_downstream_forza_quantita_null — 3 sub-test (MANUALE/TIMESHEET/LETTURE)
-    4) test_fonte_downstream_forza_qta_operativa_anche_se_assente_dal_payload
-       (regressione bug 2026-05-19 asimmetria normalizzazione)
-    5) test_fonte_derivata_componenti_non_normalizza_quantita
+    1) test_fonte_a_valle_la_quantita_arriva_al_db_com_e — niente azzeramento silenzioso
+    2) test_fonte_fissa_senza_quantita_non_e_un_rifiuto_python — lo dice il DB
+    3) test_nessun_giudizio_sulla_coppia_ne_default — la coppia la decide il DB
     """
 
     def _service(self):
-        # Service stateless rispetto a _apply_fonte_quantita_logic. Niente mock.
+        # `_build_data_riga` in update non legge il DB. Niente mock.
         from apps.vendite.services.contratti_service import ContrattiService
         return ContrattiService()
+
+    def test_fonte_a_valle_la_quantita_arriva_al_db_com_e(self):
+        svc = self._service()
+        for fonte in ("MANUALE", "TIMESHEET", "LETTURE"):
+            with self.subTest(fonte=fonte):
+                data = svc._build_data_riga(
+                    {"fonte_quantita_attesa": fonte, "qta_operativa": "3"},
+                    for_create=False,
+                )
+                # Il rifiuto col campo `qta_operativa` e' del DB: qui nessuno
+                # svuota in silenzio.
+                self.assertEqual(data["qta_operativa"], Decimal("3"))
+                # Ne' si inventa una `quantita`: la svuota il DB.
+                self.assertNotIn("quantita", data)
+
+    def test_fonte_fissa_senza_quantita_non_e_un_rifiuto_python(self):
+        svc = self._service()
+        data = svc._build_data_riga(
+            {"tipo_erogazione": "canone", "fonte_quantita_attesa": "fissa"},
+            for_create=False,
+        )
+        self.assertEqual(data["fonte_quantita_attesa"], "FISSA")
+        self.assertNotIn("qta_operativa", data)
 
     def test_nessun_giudizio_sulla_coppia_ne_default(self):
         svc = self._service()
         # Una coppia che la vecchia matrice vietava passa: la giudica il guard
         # del perimetro a DB, sull'articolo.
-        data = {"tipo_erogazione": "CONSUMO", "fonte_quantita_attesa": "TIMESHEET"}
-        svc._apply_fonte_quantita_logic(data)
+        data = svc._build_data_riga(
+            {"tipo_erogazione": "CONSUMO", "fonte_quantita_attesa": "TIMESHEET"},
+            for_create=False,
+        )
+        self.assertEqual(data["fonte_quantita_attesa"], "TIMESHEET")
         # Erogazione senza fonte: nessun default inventato qui, la eredita il DB.
-        data = {"tipo_erogazione": "CANONE"}
-        svc._apply_fonte_quantita_logic(data)
+        data = svc._build_data_riga({"tipo_erogazione": "CANONE"}, for_create=False)
         self.assertNotIn("fonte_quantita_attesa", data)
-
-    # -- Normalizzazione quantita ---------------------------------------
-
-    def test_fonte_fissa_richiede_quantita_positiva(self):
-        svc = self._service()
-        data = {
-            "tipo_erogazione": "CANONE",
-            "fonte_quantita_attesa": "FISSA",
-            # nessuna quantita ne' qta_operativa
-        }
-        with self.assertRaises(ServiceError) as ctx:
-            svc._apply_fonte_quantita_logic(data)
-        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
-        self.assertIn("diversa da zero", ctx.exception.detail or "")
-
-    def test_fonte_downstream_forza_quantita_null(self):
-        svc = self._service()
-        fonti_downstream = [
-            ("CANONE", "MANUALE"),    # rara ma ammessa
-            ("ORARIO", "TIMESHEET"),  # naturale
-            ("CONSUMO", "LETTURE"),   # naturale
-        ]
-        for tipo, fonte in fonti_downstream:
-            with self.subTest(tipo=tipo, fonte=fonte):
-                data = {
-                    "tipo_erogazione": tipo,
-                    "fonte_quantita_attesa": fonte,
-                    "quantita": Decimal("5"),  # ignorata
-                    "qta_operativa": Decimal("3"),  # ignorata
-                }
-                svc._apply_fonte_quantita_logic(data)
-                self.assertIsNone(data["quantita"])
-                self.assertIsNone(data["qta_operativa"])
-
-    def test_fonte_downstream_forza_qta_operativa_anche_se_assente_dal_payload(self):
-        # Regressione bug 2026-05-19: in update parziale `{fonte_quantita_attesa:
-        # 'MANUALE'}` (l'utente cambia solo la fonte da FISSA a MANUALE), il
-        # service deve forzare a NULL ENTRAMBI `quantita` e `qta_operativa` nel
-        # `data`, anche se il payload non contiene `qta_operativa`. Altrimenti
-        # il trigger DB `trgfn_qta_from_operativa` riscrive `quantita` =
-        # `qta_operativa` post-UPDATE, vanificando il NULL.
-        svc = self._service()
-        data = {
-            "tipo_erogazione": "CANONE",
-            "fonte_quantita_attesa": "MANUALE",
-            # nessuna quantita/qta_operativa nel data
-        }
-        # Payload vuoto (simula update parziale senza qta).
-        svc._apply_fonte_quantita_logic(data)
-        self.assertIsNone(data.get("quantita"))
-        self.assertIsNone(data.get("qta_operativa"))
-
-    def test_fonte_derivata_componenti_non_normalizza_quantita(self):
-        # DERIVATA_COMPONENTI: il trigger DB z90_propaga_qta_componenti scrive
-        # `quantita` post-INSERT figli. Il service NON deve toccarla
-        # (ne' forzare NULL, ne' validare > 0). Lascia passare il valore del
-        # payload o NULL se assente.
-        svc = self._service()
-        data = {
-            "tipo_erogazione": "CANONE",
-            "fonte_quantita_attesa": "DERIVATA_COMPONENTI",
-            # nessuna quantita: il trigger DB la calcola
-        }
-        # Non deve sollevare ne' settare quantita.
-        svc._apply_fonte_quantita_logic(data)
-        self.assertNotIn("quantita", data)
 
 
 class ContrattiServicePricingGateTests(TestCase):

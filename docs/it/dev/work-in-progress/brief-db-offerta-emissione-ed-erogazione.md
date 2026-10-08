@@ -18,6 +18,10 @@
 > da Tid su dbdev, pgTAP verdi; pgTAP nuovo e 25 fixture corretti (§F.4.6). **⏳ Restano** il giro
 > BE/FE del §F.4.5, i tre trovati del §F.4.3 da decidere (il primo: la quantità DERIVATA), il
 > collaudo a video e l'archiviazione.
+> **✅ Terzo giro BE/FE fatto (§G, 2026-10-08).** ✅ I 14 file pgTAP sono usciti dai registri dei
+> rossi di CI (Tid, 2026-10-08). **⏳ Restano** i tre trovati del §F.4.3 (il primo, la quantità
+> DERIVATA_COMPONENTI, torna al team DB dopo la decisione di Tid; con lui `quantita` nel payload
+> di riga: §G.1), poi il collaudo a video (§D.5 + §G.4, dopo, per scelta di Tid) e l'archiviazione.
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
 > **Le decisioni** (di Tid, 2026-10-07) stanno in §C.5 e in coda al §C.7: A-D1 chiusa dal modello,
 > A-D2 il contratto non si attiva senza versione in vigore, A-D3 la revisione congela alla sua
@@ -1316,4 +1320,75 @@ cliente ammette una tipologia, quindi il builder del listino non si ferma.
 listini su `vendite.fn_listini_selezionabili`, policy dei codici 1222-1223); i tre trovati del
 §F.4.3, da decidere; l'uscita dei 14 file dai registri dei rossi di CI dopo la corsa come app; il
 collaudo a video e l'archiviazione.
+
+## G. Terzo giro BE/FE (`dev/backend-tid`, 2026-10-08)
+
+> Esegue il §F.4.5 (e con lui il resto del §E.5). Non committato: lo decide Tid.
+
+### G.1 F-1, la quantità
+
+* **Ritirati** `ContrattiService._apply_fonte_quantita_logic` e `_FONTI_QUANTITA_DOWNSTREAM`: il
+  service trasporta `quantita`/`qta_operativa` come arrivano. Con una fonte a valle il DB svuota
+  `quantita` e rifiuta `qta_operativa` col campo (1210); la FISSA senza quantità la rifiuta il DB
+  (`E_QTA_MISSING`). Il ramo FISSA del metodo era un 400 `E_VENDITE_VALIDATION` nostro: non c'è più.
+* La suite `ContrattiServiceFonteQuantitaTests` è riscritta sul verso nuovo: con una fonte a valle
+  la `qta_operativa` arriva al DB com'è (nessuno svuota in silenzio), la FISSA senza quantità non è
+  un rifiuto Python, la coppia non la giudica il service.
+* **`quantita` resta fra le chiavi ammesse del payload di riga** (decisione di Tid, 2026-10-08):
+  si toglie quando è deciso il primo trovato del §F.4.3. Su DERIVATA_COMPONENTI oggi nessuno la
+  calcola, quindi toglierla prima lascerebbe quelle righe senza quantità.
+* FE: niente da cambiare (manda già `qta_operativa = null` fuori dalla FISSA, §F.4.5).
+
+### G.2 F-2, il listino del documento
+
+* **BE**: il lookup è `GET /vendite/lookup/listini-selezionabili/?utility_id=&emittente_fiscale_id=`
+  (`ApiListiniSelezionabiliLookup`), che legge `vendite.fn_listini_selezionabili` dal BB
+  `ListiniRepository.list_lookup_selezionabili`. Ritirati `list_lookup_selezionabili_contratti`,
+  `fn_list_listini_selezionabili_contratti` e la rotta `listini-selezionabili-contratto/` (il nome
+  diceva «contratto» e la serviva anche l'offerta). ⭐ Envelope dei lookup `{"results": [...]}`: la
+  vecchia rotta tornava la lista nuda, e i due drawer passavano il transform a mano (api.md
+  §«L'ENVELOPE DI UN LOOKUP»). Parametri `qp_int_optional`: assenti → nessun listino (lo dice il
+  DB), non numerici → 400.
+* **Policy**: `genera_error_policies` rigenerato, 1222 e 1223 `DATO_ERRATO` col loro ripiego senza
+  `%s`. Nessun override di `ui_action`, come i codici gemelli del perimetro di riga (il campo lo
+  accende `campiErrati`). La rigenerazione porta anche gli 11 codici di
+  `brief-db-codici-non-trovato-email-e-permessi` (1211-1221, già nel CSV committato): i loro
+  ripieghi li ho scritti qui (§G.3); i punti che li sollevano restano il giro BE di quel brief.
+* **FE — regola del 2 (ok Tid, 2026-10-08)**: la tendina era scritta due volte, identica, in
+  `ContrattoDrawer` e `OffertaDrawer`. Ora è il BB `ListinoDocumentoSelect`
+  (`src/vendite/components/`): chiede i listini per utility ed emittente **del form**, si ricarica
+  quando cambiano (guard di versione), senza uno dei due non chiede e il segnaposto lo dice. Riceve
+  il dettaglio (`:record="detail"`): il listino già scritto sul documento resta fra le opzioni
+  (F-2.4). Quando utility o emittente cambiano, un listino già scelto che il DB non propone più si
+  **azzera** (resterebbe nel form senza vedersi, e il salvataggio lo rifiuterebbe su un campo vuoto
+  a video); su una risposta in errore no, perché la lista vuota allora non è un «no». Registrato
+  nel catalogo BB frontend.
+* i18n: chiave nuova `vendite.listini.selezionabili_utility_emittente_first`; il segnaposto
+  dell'offerta non dice più «con versione attiva».
+
+### G.3 Test
+
+* **BE unitari**: `test_lookups_api` (envelope `results`, parametri al service, assenti → `None`,
+  non numerici → 400), `test_vendite_lookups_service`, la suite della fonte riscritta.
+* **BE sul DB vero**, nuovo `tests/db/test_listini_selezionabili_db.py` (mondo costruito: azienda
+  e operatore, due utility, un listino per utility, un cliente): il binding della lettura (ordine
+  dei parametri provato **per mutazione**: scambiati, il test va rosso) e il **trasporto** del
+  rifiuto 1222 col campo `listino_id` dal PATCH di contratto **e** di offerta.
+* **FE**: `ListinoDocumentoSelect.spec.js` (montato, 6 test: anche l'azzeramento al cambio di
+  utility e la scelta che resta su una risposta in errore), provato per mutazione su tre punti
+  (guard di versione, listino corrente fra le opzioni, contesto incompleto); vitest 734/734,
+  `npm run guards`, eslint, `check_i18n_keys`, build verdi.
+* **Suite BE completa** con i presidi su DB: 6285 test, un solo rosso
+  (`test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`, gli 11 codici email/accessi), chiuso
+  scrivendo i loro ripieghi dalle frasi del catalogo (richiesta di Tid, 2026-10-08).
+
+### G.4 Collaudo a video (Tid), in aggiunta al §D.5
+
+* **Contratto e offerta nuovi**: la tendina del listino è vuota finché utility ed emittente non
+  ci sono, col segnaposto che lo dice; scelti, propone i soli listini di quella utility e di
+  quell'azienda; cambiata la utility (o il cliente), la tendina si ricarica.
+* **Un documento esistente** con un listino che oggi non si sceglierebbe: in modifica il listino
+  si legge ancora.
+* **Una riga d'offerta FISSA → MANUALE** dal drawer: si salva, e la quantità sparisce (prima del
+  §F era un errore sul campo `quantita`, che il form non ha). Lo stesso sul contratto.
 
