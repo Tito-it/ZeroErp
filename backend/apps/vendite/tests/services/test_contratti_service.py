@@ -230,9 +230,8 @@ class ContrattiServiceTests(TestCase):
 
     # --- create contratto ---------------------------------------------
 
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_contratto_modalita_A_ok(self, repo_cls, listini_cls):
+    def test_create_contratto_modalita_A_ok(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -240,8 +239,6 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        # Decisione 2026-05-18: listino_id richiede versione ATTIVA.
-        listini_cls.return_value.has_versione_attiva.return_value = True
 
         result = ContrattiService().create_contratto({
             "billing_account_id": 10,
@@ -311,17 +308,13 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(testata["tipo_variazione_globale"], "PERCENTUALE")
         self.assertNotIn("listino_id", testata)
 
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_variazione_coppia_incompleta_fallisce(
-        self, repo_cls, listini_cls,
+        self, repo_cls,
     ):
         # Resta valido il vincolo strutturale: tipo+valore devono essere
         # coppia coerente (entrambi NULL o entrambi NOT NULL).
-        # Listini mockata → guard listino-versione-attiva passa.
         from apps.vendite.services.contratti_service import ContrattiService
-
-        listini_cls.return_value.has_versione_attiva.return_value = True
 
         with self.assertRaises(ServiceError) as ctx:
             ContrattiService().create_contratto({
@@ -840,15 +833,13 @@ class ContrattiServiceTests(TestCase):
             ContrattiService().update_contratto(1, {})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_ok_variazione(self, repo_cls, listini_cls):
+    def test_update_contratto_ok_variazione(self, repo_cls):
         """Update happy path: variazione globale PERCENTUALE accettata sulla testata.
 
         Refactor 2026-05-18: VALORE_FISSO non e' piu' ammesso come variazione
         globale (decisione di dominio: resta solo per OVERRIDE su singola
         riga). Vedi `test_update_contratto_variazione_valore_fisso_rifiutata`.
-        Decisione 2026-05-18 §4.4: listino_id richiede versione ATTIVA.
         """
         from apps.vendite.services.contratti_service import ContrattiService
 
@@ -859,7 +850,6 @@ class ContrattiServiceTests(TestCase):
         repo.list_righe.return_value = []
         # Lock listino_id richiede 0 righe attive (refactor 2026-05-20).
         repo.count_righe_attive.return_value = 0
-        listini_cls.return_value.has_versione_attiva.return_value = True
 
         ContrattiService().update_contratto(1, {
             "listino_id": 200,
@@ -915,10 +905,9 @@ class ContrattiServiceTests(TestCase):
         self.assertIn("tipo_variazione_globale", args[1])
         self.assertIsNone(args[1]["tipo_variazione_globale"])
 
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_ambito_fuori_vocabolario_nomina_il_campo(
-        self, repo_cls, listini_cls,
+        self, repo_cls,
     ):
         """`ambito` (BB `require_enum`, 2026-09-18): il vocabolario resta del
         dominio, il rifiuto porta il campo — anche quando il valore non e'
@@ -930,7 +919,6 @@ class ContrattiServiceTests(TestCase):
         repo = repo_cls.return_value
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        listini_cls.return_value.has_versione_attiva.return_value = True
         base = {
             "billing_account_id": 10, "istanza_utility_id": 20, "utility_id": 3,
             "valido_dal": "2026-01-01", "valido_al": "2026-12-31", "listino_id": 100,
@@ -943,40 +931,34 @@ class ContrattiServiceTests(TestCase):
                 self.assertEqual(ctx.exception.context["field"], "ambito")
         repo.create_contratto_atomico.assert_not_called()
 
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_contratto_listino_senza_versione_attiva_rifiutato(
-        self, repo_cls, listini_cls,
-    ):
-        """Decisione 2026-05-18 §4.4: listino senza versione ATTIVA non selezionabile.
+    def test_create_contratto_non_giudica_le_versioni_del_listino(self, repo_cls):
+        """D.4.3 di brief-db-offerta-emissione-ed-erogazione (Tid, 2026-10-07).
 
-        Caso classico: l'operatore prova ad associare un contratto a un
-        listino BOZZA (nessuna versione mai attivata). Il guard pre-save
-        solleva `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (422) con
-        messaggio parlante. Il listino non puo' essere riferito perche'
-        non ci sarebbero righe da applicare.
+        Un listino senza versione in vigore si sceglie in DRAFT, come
+        sull'offerta: la regola vera è «non si attiva senza una versione in
+        vigore», e la dice il DB all'attivazione
+        (`E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO`). Il service non
+        legge più le versioni del listino e passa la scrittura al DB.
         """
+        from apps.vendite.services import contratti_service
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        listini_cls.return_value.has_versione_attiva.return_value = False
+        repo.create_contratto_atomico.return_value = 1
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().create_contratto({
-                "billing_account_id": 10,
-                "istanza_utility_id": 20,
-                "utility_id": 3,
-                "valido_dal": "2026-01-01",
-                "listino_id": 100,
-                "tipo_variazione_globale": "PERCENTUALE",
-                "valore_variazione_globale": "-10",
-            })
-        self.assertEqual(
-            ctx.exception.code, "E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA",
-        )
-        # Il create non deve essere stato chiamato (early fail nel build).
-        repo.create_contratto.assert_not_called()
-        listini_cls.return_value.has_versione_attiva.assert_called_once_with(100)
+        ContrattiService().create_contratto({
+            "billing_account_id": 10,
+            "istanza_utility_id": 20,
+            "utility_id": 3,
+            "valido_dal": "2026-01-01",
+            "listino_id": 100,
+        })
+        repo.create_contratto_atomico.assert_called_once()
+        self.assertFalse(hasattr(contratti_service, "ListiniRepository"))
 
     # Scopo: refactor 2026-05-15. update_riga non puo' settare prezzo NULL
     # su riga OVERRIDE esistente (la coerenza tipo/prezzo va salvaguardata).
@@ -2745,9 +2727,8 @@ class ContrattiFatturazioneImmediataTests(TestCase):
     """
 
     # 1) CREATE: il flag arriva al dict che va alla fn madre.
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_porta_il_flag_alla_fn_madre(self, repo_cls, listini_cls):
+    def test_create_porta_il_flag_alla_fn_madre(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -2755,7 +2736,6 @@ class ContrattiFatturazioneImmediataTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        listini_cls.return_value.has_versione_attiva.return_value = True
 
         ContrattiService().create_contratto({
             "billing_account_id": 1,
@@ -2770,9 +2750,8 @@ class ContrattiFatturazioneImmediataTests(TestCase):
     # 2) CREATE senza la chiave: NON deve finire nel dict — la fn madre filtra
     #    sulla PRESENZA, e mandarla a None darebbe 23502 su colonna NOT NULL
     #    invece del DEFAULT false (contratto §C4 del brief DB).
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_senza_chiave_non_la_inventa(self, repo_cls, listini_cls):
+    def test_create_senza_chiave_non_la_inventa(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -2780,7 +2759,6 @@ class ContrattiFatturazioneImmediataTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        listini_cls.return_value.has_versione_attiva.return_value = True
 
         ContrattiService().create_contratto({
             "billing_account_id": 1,
@@ -2793,9 +2771,8 @@ class ContrattiFatturazioneImmediataTests(TestCase):
 
     # 3) CREATE con la chiave a `null`: si OMETTE, non si propaga None (che sulla
     #    colonna NOT NULL diventerebbe un 23502 opaco per l'operatore).
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_chiave_nulla_viene_omessa(self, repo_cls, listini_cls):
+    def test_create_chiave_nulla_viene_omessa(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -2803,7 +2780,6 @@ class ContrattiFatturazioneImmediataTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        listini_cls.return_value.has_versione_attiva.return_value = True
 
         ContrattiService().create_contratto({
             "billing_account_id": 1,
@@ -3090,9 +3066,8 @@ class ContrattiCatenaUpdateTests(TestCase):
 
     # 2) ⭐ Anello 1 → 2: ogni chiave accettata ATTRAVERSA il mapper e arriva al
     #    repository. È il test che sarebbe stato rosso sul difetto reale.
-    @patch("apps.vendite.services.contratti_service.ListiniRepository")
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_ogni_chiave_attraversa_il_mapper(self, repo_cls, listini_cls) -> None:
+    def test_ogni_chiave_attraversa_il_mapper(self, repo_cls) -> None:
         from apps.vendite.services.contratti_service import (
             UPDATE_KEYS_TESTATA,
             ContrattiService,
@@ -3104,7 +3079,6 @@ class ContrattiCatenaUpdateTests(TestCase):
         repo.list_righe.return_value = []
         repo.count_righe_attive.return_value = 0
         repo.count_eccezioni_bloccanti.return_value = {}
-        listini_cls.return_value.has_versione_attiva.return_value = True
 
         for chiave in sorted(UPDATE_KEYS_TESTATA):
             with self.subTest(chiave=chiave):

@@ -71,7 +71,6 @@ from apps.vendite.db._documento_eccezioni_repo import (
     list_erogazioni_riga,
     listino_versione_operativa,
 )
-from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
     normalize_componenti_overrides,
@@ -1921,7 +1920,6 @@ class ContrattiService:
         self._apply_optional_positive_int(
             payload, data, "listino_id", message=_MESSAGE,
         )
-        self._guard_listino_ha_versione_attiva(data.get("listino_id"))
         self._apply_variazione_globale(payload, data)
         self._validate_variazione_globale_coppia_coerente(data, existing=None)
         # Snapshot categoria cliente: opzionale, nullable. Se fornito
@@ -2032,13 +2030,6 @@ class ContrattiService:
         self._apply_optional_positive_int(
             payload, data, "listino_id", message=_MESSAGE,
         )
-        # Gate listino selezionabile (decisione 2026-05-18 §4.4): se il PATCH
-        # cambia il listino_id (NULL o nuovo id), il listino deve avere almeno
-        # una versione ATTIVA. Skip se `listino_id` non e' nel patch (non
-        # vogliamo invalidare contratti gia' creati su listini che potrebbero
-        # essere stati chiusi in seguito — quello e' lock post-attivazione DB).
-        if "listino_id" in data:
-            self._guard_listino_ha_versione_attiva(data["listino_id"])
         self._apply_variazione_globale(payload, data)
         # Valida coerenza coppia variazione globale sulla foto post-update merge
         # (delta data + existing). Se il patch tocca listino_id o una delle 2
@@ -2120,30 +2111,6 @@ class ContrattiService:
             valore_variazione=data["valore_variazione_globale"],
             function_name="contratti_service._check_limite_variazione_globale",
             ba_id=existing.get("billing_account_id"),
-        )
-
-    # Scopo: Gate selezionabilita' listino come riferimento contratto
-    #        (decisione 2026-05-18 §4.4 refactor-contratti-modalita).
-    #        Un listino senza versione ATTIVA non e' selezionabile: non
-    #        avrebbe righe da applicare e il contratto sarebbe formalmente
-    #        "con listino" ma operativamente vuoto. Skip se listino_id=None
-    #        (forma `senza_listino` legittima).
-    def _guard_listino_ha_versione_attiva(self, listino_id: int | None) -> None:
-        if listino_id is None:
-            return
-        ha_versione = ListiniRepository().has_versione_attiva(int(listino_id))
-        ErrorManager.require(
-            ha_versione,
-            code="E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA",
-            message=(
-                "Listino non selezionabile: nessuna versione ATTIVA."
-            ),
-            detail=(
-                f"Il listino_id={listino_id} non ha versioni in stato ATTIVA. "
-                "Solo listini con una versione pubblicata e attiva possono "
-                "essere associati a un contratto."
-            ),
-            context={"listino_id": listino_id},
         )
 
     # Scopo: Verifica coerenza della coppia variazione globale (tipo + valore).
