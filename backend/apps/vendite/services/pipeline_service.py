@@ -425,7 +425,7 @@ def numera_lotto(
     lotto_id: int,
     auth_user_id: int | None = None,
     data_documento: date | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     _get_lotto_in_stato(
         lotto_id=lotto_id,
         auth_user_id=auth_user_id,
@@ -471,7 +471,9 @@ def numera_lotto(
     #    e' decorazione: `saltate_numerate` e `rate_rigenerate` sono le due
     #    conseguenze che l'operatore non si aspetta — un lotto numerato a meta'
     #    e delle scadenze che si sono spostate. Chi non le mostra le nasconde.
-    if esito_data is not None:
+    # `esito_data` c'e' solo se c'e' `data_documento` (sopra): le due condizioni
+    # sono la stessa, scritte entrambe per il type checker.
+    if esito_data is not None and data_documento is not None:
         esito = {**esito, "data_documento": data_documento.isoformat(), **esito_data}
     return esito
 

@@ -35,6 +35,7 @@ from apps.core.api.refresh_cookie import (
 )
 from apps.core.api.multi_veste_token_serializer import (
     AdminTokenSerializer,
+    MultiVesteTokenSerializer,
     PortaleTokenSerializer,
     ShopTokenSerializer,
     VesteNonAttivaError,
@@ -232,9 +233,6 @@ class AuditTokenObtainPairView(TokenObtainPairView):
         # (o subclass). Previene regressione silente: senza questa subclass
         # i claim JWT non conterrebbero identita_id/ruolo_applicativo e l'intero
         # flusso multi-face auth risulterebbe disallineato.
-        from apps.core.api.multi_veste_token_serializer import (
-            MultiVesteTokenSerializer,
-        )
         if self.serializer_class is None or not issubclass(
             self.serializer_class, MultiVesteTokenSerializer
         ):
@@ -413,7 +411,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             return None
         # Senza contesto: i campi non ne dipendono, e cosi' il metodo non
         # chiede che `dispatch` abbia gia' impostato `self.request`.
-        serializer = self.get_serializer_class()()
+        serializer = self._serializer_porta()()
         campo = serializer.fields[serializer.username_field]
         try:
             return campo.run_validation(dati.get(serializer.username_field, empty))
@@ -430,7 +428,15 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     # cioe' senza controllare il blocco dell'admin — mentre `authenticate`
     # poteva far entrare. Fail-closed: l'errore sale e il login si ferma.
     def _find_user(self, nome: str) -> User | None:
-        return self.get_serializer_class().trova_credenziale(nome)
+        return self._serializer_porta().trova_credenziale(nome)
+
+    # Scopo: la classe del serializer della porta col tipo che questa view usa
+    #        (`username_field`, `trova_credenziale`). Lo garantisce il guard di
+    #        `post`, che rifiuta una porta senza `MultiVesteTokenSerializer`.
+    def _serializer_porta(self) -> type[MultiVesteTokenSerializer]:
+        classe = self.get_serializer_class()
+        assert issubclass(classe, MultiVesteTokenSerializer)
+        return classe
 
     @staticmethod
     # Scopo: Estrae user_id e sid dal refresh token nella response (no query DB extra).

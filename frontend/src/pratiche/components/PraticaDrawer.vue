@@ -76,63 +76,65 @@ function defaultForm() {
 }
 
 // Selezione contesto anagrafico (solo creazione): lookup ricco a una riga
-// per soggetto+ruolo (+ riga "senza ruolo" per i prospect puri) + istanza
-// utility opzionale a valle. Modello a due rami (brief
-// brief-db-pratiche-guard-contesto-istanza): il ruolo CL nasce col BA, le
-// pratiche pre-contrattuali si agganciano a soggetto+istanza senza ruolo.
+// per soggetto+ruolo (+ riga "senza ruolo" per i soggetti privi di ruoli) +
+// la FORNITURA a valle per il cliente. La fornitura e' il billing account,
+// cioe' la coppia istanza+utility: e' il cliente a grana fine di cui la
+// pratica parla (D-9 di brief-db-istanza-nasce-col-ba). L'istanza la ricava
+// il backend dal BA.
 const resolverVisible = ref(false)
 const contestoSelezionato = ref(null)
-const istanzaSelezionata = ref(null)
+// Riga del lookup forniture (IstanzaUtilityLookup, una riga per BA).
+const fornituraSelezionata = ref(null)
 
 // Modifiche non salvate: fotografia a form popolato (apertura, ricarica,
 // salvataggio), chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
-// In creazione contesto e istanza scelti stanno fuori dal form: il confronto
+// In creazione contesto e fornitura scelti stanno fuori dal form: il confronto
 // ne raccoglie gli id. Dopo i loro ref: il computed li legge subito (TDZ).
 const formSalvato = computed(() => ({
   ...form.value,
   contesto_soggetto_id: contestoSelezionato.value?.soggetto_id ?? null,
   contesto_soggetto_ruolo_id: contestoSelezionato.value?.soggetto_ruolo_id ?? null,
-  istanza_id: istanzaSelezionata.value?.id ?? null
+  fornitura_ba_id: fornituraSelezionata.value?.billing_account_id ?? null
 }))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
-// Solo il ruolo CLIENTE ha istanze (la catena istanza -> BA -> cliente vive
-// sul ramo CL); per gli altri ruoli il campo istanza non ha senso.
+// Solo il ruolo CLIENTE ha forniture (il BA e' del ruolo CL); per gli altri
+// ruoli, e per la riga "senza ruolo", il campo non ha senso: la pratica
+// accetta un BA solo dal suo ruolo (E_PRATICHE_BA_NON_COERENTE).
 const TIPO_RUOLO_CLIENTE = 'CL'
 
-// Istanza auto-derivata (pattern preventivi "istanza da BA"): cliente con
-// UNA sola istanza -> niente picker, hint informativo, payload automatico.
-const istanzaDerivata = computed(() => {
+// Fornitura auto-derivata: cliente con UN solo BA -> niente picker, hint
+// informativo, payload automatico.
+const baDerivato = computed(() => {
   const c = contestoSelezionato.value
-  return (c?.ruolo_codice === TIPO_RUOLO_CLIENTE && c?.istanza_unica_id) || null
+  return (c?.ruolo_codice === TIPO_RUOLO_CLIENTE && c?.billing_account_unico_id) || null
 })
 
-// Picker istanza visibile solo quando la scelta e' davvero dell'operatore:
-// - ruolo diverso da CL -> mai (solo il cliente ha istanze);
-// - CL con istanza unica -> mai (auto-derivata, vedi hint);
-// - CL multi-istanza o prospect "senza ruolo" -> visibile se ne possiede.
-const mostraCampoIstanza = computed(() => {
+// Picker fornitura visibile solo quando la scelta e' davvero dell'operatore:
+// - ruolo diverso da CL o riga "senza ruolo" -> mai;
+// - CL con un BA solo -> mai (auto-derivato, vedi hint);
+// - CL con piu' BA (piu' istanze, o un'istanza con piu' utility) -> visibile.
+const mostraCampoFornitura = computed(() => {
   const c = contestoSelezionato.value
-  if (!c) return false
-  if (c.ruolo_codice && c.ruolo_codice !== TIPO_RUOLO_CLIENTE) return false
-  if (istanzaDerivata.value) return false
-  return (c.n_istanze ?? 0) > 0
+  if (c?.ruolo_codice !== TIPO_RUOLO_CLIENTE) return false
+  if (baDerivato.value) return false
+  return (c.n_billing_account ?? 0) > 0
 })
 
-// Cambio contesto (soggetto O ruolo) → reset istanza: quella selezionata
+// Cambio contesto (soggetto O ruolo) → reset fornitura: quella selezionata
 // apparteneva alla riga precedente e con ruolo non-CL il campo sparisce ma
 // NON deve restare nel payload.
 watch(contestoSelezionato, (next, prev) => {
   if (next?.soggetto_id !== prev?.soggetto_id
       || next?.soggetto_ruolo_id !== prev?.soggetto_ruolo_id) {
-    istanzaSelezionata.value = null
+    fornituraSelezionata.value = null
   }
 })
 
 // Scopo: dopo creazione/selezione soggetto dal resolver (percorso secondario,
 // es. soggetto nuovo non ancora in anagrafica), ricostruisce la riga lookup
 // via restore by-id: per un soggetto appena creato e' la riga "senza ruolo"
-// con n_istanze reale.
+// (nessuna fornitura).
 async function onSoggettoRicevuto(data) {
   resolverVisible.value = false
   if (!data?.id) return
@@ -145,7 +147,7 @@ function resetForm() {
   detail.value = null
   form.value = defaultForm()
   contestoSelezionato.value = null
-  istanzaSelezionata.value = null
+  fornituraSelezionata.value = null
 }
 
 function populateFormFromDetail(d) {
@@ -360,9 +362,10 @@ async function onSave() {
         : null,
       soggetto_id: contestoSelezionato.value?.soggetto_id || null,
       soggetto_ruolo_id: contestoSelezionato.value?.soggetto_ruolo_id || null,
-      // Priorita': scelta esplicita dell'operatore, poi l'auto-derivata
-      // (cliente con istanza unica, picker nascosto).
-      istanza_utility_id: istanzaSelezionata.value?.id || istanzaDerivata.value || null,
+      // Il cliente a grana fine: scelta esplicita dell'operatore, poi
+      // l'auto-derivata (un BA solo, picker nascosto). L'istanza la ricava il
+      // backend dal BA.
+      billing_account_id: fornituraSelezionata.value?.billing_account_id || baDerivato.value || null,
     }
     const result = await execute(
       () => store.create(payload),
@@ -428,33 +431,29 @@ const footerDrawer = useFooterDocumento({
           text size="small" @click="resolverVisible = true" />
       </div>
 
-      <!-- Istanza utility: visibile solo quando la scelta e' dell'operatore
-           (CL multi-istanza o prospect senza ruolo). Cliente con istanza
-           unica -> auto-derivata con hint (pattern preventivi "istanza da
-           BA"); ruoli non-CL -> nessuna istanza. -->
-      <div v-if="mostraCampoIstanza" class="form-field">
-        <label>{{ t('pratiche.field_istanza') }}</label>
-        <!-- Con ruolo selezionato (CL multi-istanza) la combo e' ristretta
-             alle sole forniture del cliente; per il prospect senza ruolo
-             resta filtrata sul soggetto. -->
+      <!-- Fornitura (il BA): visibile solo quando la scelta e' dell'operatore
+           (cliente con piu' BA). Cliente con un BA solo -> auto-derivato con
+           hint; ruoli non-CL e riga "senza ruolo" -> nessuna fornitura. -->
+      <div v-if="mostraCampoFornitura" class="form-field">
+        <label>{{ t('pratiche.field_fornitura') }}</label>
+        <!-- La combo e' ristretta alle forniture del ruolo selezionato: una
+             riga per BA, cioe' per coppia istanza+utility. -->
         <IstanzaUtilityLookup
-          v-model="istanzaSelezionata"
+          v-model="fornituraSelezionata"
           :soggetto-id="contestoSelezionato.soggetto_id"
           :soggetto-ruolo-id="contestoSelezionato.soggetto_ruolo_id"
         />
-        <!-- Hint contestuale: per il cliente multi-istanza la scelta
-             della fornitura e' il punto, non un opzionale generico. -->
+        <!-- Hint contestuale: con piu' forniture la scelta e' il punto, non
+             un opzionale generico. -->
         <small class="app-text-muted">
-          {{ contestoSelezionato.ruolo_codice === TIPO_RUOLO_CLIENTE
-            ? t('pratiche.istanza_scegli_fornitura', { n: contestoSelezionato.n_istanze })
-            : t('pratiche.istanza_hint') }}
+          {{ t('pratiche.fornitura_scegli', { n: contestoSelezionato.n_billing_account }) }}
         </small>
       </div>
-      <div v-else-if="istanzaDerivata" class="form-field">
-        <label>{{ t('pratiche.field_istanza') }}</label>
+      <div v-else-if="baDerivato" class="form-field">
+        <label>{{ t('pratiche.field_fornitura') }}</label>
         <div class="app-field-hint">
           <i :class="MANAGE_ICONS.DERIVATO" style="margin-right: 0.4rem;"></i>
-          {{ t('pratiche.istanza_derivata', { codice: contestoSelezionato.istanza_unica_codice }) }}
+          {{ t('pratiche.fornitura_derivata', { codice: contestoSelezionato.billing_account_unico_codice }) }}
         </div>
       </div>
 

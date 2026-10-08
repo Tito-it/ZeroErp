@@ -175,18 +175,20 @@ export function lookupRisorseUmane(params = {}) {
   return api.get('/anagrafiche/risorse-umane/lookup/', { params })
 }
 
-// --- Istanze utility lookup (preventivi prospect senza BA, future utility-aware flows) ---
+// --- Istanze utility lookup: le forniture (preventivo, pratica) ---
 
-// Scopo: Cerca istanze_utilities per autocomplete.
+// Scopo: Cerca le forniture per autocomplete: una riga per billing account,
+//        cioe' per coppia istanza+utility (`id` = istanza, `billing_account_id`).
 //        Backend: GET /api/v1/anagrafiche/istanze-utility/lookup/
 //        Ricerca multi-campo (codice istanza, ragione sociale, indirizzo).
-//        Filtri utility (strict post Strategia C) e soggetto opzionali.
-//        Scope emittente automatico lato backend (via BA collegato all'istanza).
+//        Filtri utility, soggetto e ruolo opzionali.
+//        Scope emittente automatico lato backend (sul BA della riga).
 export function lookupIstanzeUtility(params = {}) {
   return api.get('/anagrafiche/istanze-utility/lookup/', { params })
 }
 
-// Scopo: Restituisce una singola istanza arricchita per restore AutoComplete in edit.
+// Scopo: Restituisce una singola istanza arricchita per restore AutoComplete
+//        (i campi del BA solo se l'istanza ne ha uno).
 //        Backend: GET /api/v1/anagrafiche/istanze-utility/{id}/lookup/
 export function getIstanzaUtilityLookupById(id) {
   return api.get(`/anagrafiche/istanze-utility/${id}/lookup/`)
@@ -195,7 +197,7 @@ export function getIstanzaUtilityLookupById(id) {
 // --- Soggetti-ruoli lookup (selezione contesto pratica) ---
 
 // Scopo: Cerca soggetti-ruoli per autocomplete: una riga per soggetto_ruolo
-//        + riga "senza ruolo" per i prospect puri (solo istanze, nessun ruolo).
+//        + riga "senza ruolo" per i soggetti privi di ruoli (senza istanze).
 //        Backend: GET /api/v1/anagrafiche/soggetti-ruoli/lookup/
 //        Ricerca su ragione sociale, CF, P.IVA. Scope emittente sul ruolo CL.
 export function lookupSoggettiRuoli(params = {}) {

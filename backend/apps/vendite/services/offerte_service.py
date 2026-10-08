@@ -187,9 +187,17 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # FK constraints catalogati (best-effort: i nomi corrispondono a quelli
 # emessi da Postgres su violazione FK).
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_offerte_commerciali_billing_account": (
         E_VENDITE_FK, "Billing account non trovato.",
+    ),
+    # FK composta (billing_account_id, istanza_utility_id, utility_id) verso il
+    # BA della coppia, dal 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): la
+    # semplice qui sopra resta accanto, e dice solo «non esiste».
+    "fk_offerte_commerciali_ba_coppia": (
+        E_VENDITE_FK,
+        "Il billing account non e' quello dell'istanza e della utility dell'offerta.",
+        "billing_account_id",
     ),
     "fk_offerte_commerciali_emittente_fiscale": (
         E_VENDITE_FK, "Emittente fiscale non trovato.",

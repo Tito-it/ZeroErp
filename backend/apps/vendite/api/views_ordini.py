@@ -119,6 +119,7 @@ def _parse_righe_evasione(
         detail=f"righe={righe!r}",
         function_name="apps.vendite.api.views_ordini._parse_righe_evasione",
     )
+    assert isinstance(righe, list)
     out: list[dict[str, Any]] = []
     for r in righe:
         ErrorManager.require(

@@ -1322,7 +1322,10 @@ class PreventiviRepository(
                 anagrafiche.fn_get_emittente_fiscale_pk(p.billing_account_id)
                     AS emittente_fiscale_id,
                 sr.soggetto_id::text AS soggetto_id,
-                ba.soggetto_ruolo_id
+                ba.soggetto_ruolo_id,
+                -- Il cliente a grana fine della pratica (D-9 di
+                -- brief-db-istanza-nasce-col-ba): il BA del documento.
+                ba.id AS billing_account_id
             FROM vendite.preventivi p
             JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
             JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id

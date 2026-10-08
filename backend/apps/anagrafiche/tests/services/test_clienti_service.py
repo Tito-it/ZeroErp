@@ -21,10 +21,12 @@ Indice test eseguiti:
  8) test_crea_cliente_con_istanza_e_ba_preesistenti — riusa istanza + BA da pratiche
  9) test_crea_cliente_istanza_soggetto_mismatch — istanza di altro soggetto → errore
 10) test_crea_cliente_ba_istanza_mismatch — BA di altra istanza → errore
+10b) test_crea_cliente_ba_altra_utility — BA di altra utility → errore
+10c) test_crea_cliente_coppia_con_ba_esistente — la coppia ha gia' il BA → E_ANAG_DUPLICATO
 11) test_crea_cliente_missing_soggetto — soggetto_id mancante → errore
 12) test_crea_cliente_missing_utility — utility_id mancante → errore
 13) test_crea_cliente_utility_non_trovata — utility inesistente → errore
-14) test_crea_cliente_duplicato_istanza — IntegrityError UNIQUE istanza → E_ANAG_DUPLICATO
+14) test_crea_cliente_duplicato_billing_account — IntegrityError UNIQUE BA (un cliente per BA) → E_ANAG_DUPLICATO
 15) test_update_cliente_ok — aggiorna campi editabili
 16) test_update_cliente_not_found — id inesistente → E_ANAG_NOT_FOUND
 17) test_update_cliente_no_fields — nessun campo → E_ANAG_VALIDAZIONE
@@ -63,13 +65,16 @@ def _utility_manifatturiero():
 def _utility_gas():
     return {"id": 1, "descrizione": "Gas", "codice": "GAS", "richiede_pdp": True}
 
-def _istanza(soggetto_id=FAKE_UUID, utility_id=10):
-    return {"id": 100, "soggetto_id": soggetto_id, "utility_id": utility_id,
+# ⚠️ La forma di `ClientiRepository.get_istanza`: niente `utility_id`, che su
+#    `istanze_utilities` non esiste (la utility e' del BA). Fino al 2026-10-08 il
+#    mock la portava e il repository la chiedeva al DB: 500 vero, test verde.
+def _istanza(soggetto_id=FAKE_UUID):
+    return {"id": 100, "soggetto_id": soggetto_id,
             "fittizia": True, "indirizzo_dettaglio_id": None}
 
-def _billing_account(istanza_utility_id=100):
+def _billing_account(istanza_utility_id=100, utility_id=10):
     return {"id": 200, "istanza_utility_id": istanza_utility_id,
-            "soggetto_ruolo_id": 50, "utility_id": 10, "codice": "BA-001"}
+            "soggetto_ruolo_id": 50, "utility_id": utility_id, "codice": "BA-001"}
 
 def _base_payload(**overrides):
     # F3-FE-04: ba_categoria_cliente_id obbligatorio quando si crea un nuovo
@@ -292,7 +297,7 @@ class TestCreaClientePreesistenti(TestCase):
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
         repo.get_or_create_ruolo_cliente.return_value = 50
-        repo.get_istanza.return_value = _istanza(utility_id=1)
+        repo.get_istanza.return_value = _istanza()
         repo.create_billing_account.return_value = 200
         repo.create_cliente.return_value = 1
         from apps.anagrafiche.services.clienti_service import ClientiService
@@ -309,8 +314,8 @@ class TestCreaClientePreesistenti(TestCase):
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
         repo.get_or_create_ruolo_cliente.return_value = 50
-        repo.get_istanza.return_value = _istanza(utility_id=1)
-        repo.get_billing_account.return_value = _billing_account()
+        repo.get_istanza.return_value = _istanza()
+        repo.get_billing_account.return_value = _billing_account(utility_id=1)
         repo.create_cliente.return_value = 1
         from apps.anagrafiche.services.clienti_service import ClientiService
         result = ClientiService().crea_cliente(
@@ -349,7 +354,7 @@ class TestCreaClienteValidazione(TestCase):
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_gas()
         repo.get_or_create_ruolo_cliente.return_value = 50
-        repo.get_istanza.return_value = _istanza(utility_id=1)
+        repo.get_istanza.return_value = _istanza()
         repo.get_billing_account.return_value = _billing_account(istanza_utility_id=999)
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
@@ -357,6 +362,42 @@ class TestCreaClienteValidazione(TestCase):
                 _base_payload(utility_id=1, istanza_utility_id=100, billing_account_id=200))
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         self.assertIn("billing account", ctx.exception.message)
+
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_crea_cliente_ba_altra_utility(self, mock_repo, _tx):
+        """BA della stessa istanza ma di un'altra utility → errore: la coppia
+        (istanza, utility) e' l'identita' del BA."""
+        repo = mock_repo.return_value
+        repo.get_utility.return_value = _utility_gas()
+        repo.get_or_create_ruolo_cliente.return_value = 50
+        repo.get_istanza.return_value = _istanza()
+        repo.get_billing_account.return_value = _billing_account(utility_id=7)
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().crea_cliente(
+                _base_payload(utility_id=1, istanza_utility_id=100, billing_account_id=200))
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        self.assertIn("utility", ctx.exception.message)
+        repo.create_cliente.assert_not_called()
+
+    @patch(TX_ATOMIC)
+    @patch(CLI_REPO)
+    def test_crea_cliente_coppia_con_ba_esistente(self, mock_repo, _tx):
+        """Istanza esistente la cui utility ha gia' il suo BA, senza indicarlo:
+        uq_billing_instance_utility → E_ANAG_DUPLICATO, non un 500."""
+        repo = mock_repo.return_value
+        repo.get_utility.return_value = _utility_gas()
+        repo.get_or_create_ruolo_cliente.return_value = 50
+        repo.get_istanza.return_value = _istanza()
+        repo.create_billing_account.side_effect = IntegrityError("uq_billing_instance_utility")
+        from apps.anagrafiche.services.clienti_service import ClientiService
+        with self.assertRaises(ServiceError) as ctx:
+            ClientiService().crea_cliente(
+                _base_payload(utility_id=1, istanza_utility_id=100))
+        self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+        repo.create_cliente.assert_not_called()
 
 
 # =================================================================
@@ -400,14 +441,14 @@ class TestCreaClienteDuplicato(TestCase):
 
     @patch(TX_ATOMIC)
     @patch(CLI_REPO)
-    def test_crea_cliente_duplicato_istanza(self, mock_repo, _tx):
-        """UNIQUE istanza violato → E_ANAG_DUPLICATO."""
+    def test_crea_cliente_duplicato_billing_account(self, mock_repo, _tx):
+        """UNIQUE billing account violato (un cliente per BA, R-8) → E_ANAG_DUPLICATO."""
         repo = mock_repo.return_value
         repo.get_utility.return_value = _utility_manifatturiero()
         repo.get_or_create_ruolo_cliente.return_value = 50
         repo.create_istanza_fittizia.return_value = 100
         repo.create_billing_account.return_value = 200
-        repo.create_cliente.side_effect = IntegrityError("uq_clienti_istanza_utility")
+        repo.create_cliente.side_effect = IntegrityError("uq_clienti_billing_account")
         from apps.anagrafiche.services.clienti_service import ClientiService
         with self.assertRaises(ServiceError) as ctx:
             ClientiService().crea_cliente(_base_payload())

@@ -410,6 +410,7 @@ Effetti:
 * aggiorna `prezzo_snapshot = nuovo_prezzo`
 * imposta `prezzo_bloccato = TRUE` (d'ora in poi il riallineamento salta la riga)
 * appende una entry a `meta.variazioni_eccezionali` con `data`, `prezzo_precedente`, `prezzo_nuovo`, `motivo`, `stato_commessa`, `listino_versione_id_riferimento`
+* scrive `origine_prezzo = 'MANUALE'` e azzera la provenienza da listino (`listino_versione_id`, `prezzo_base_snapshot`, variazione, promo, contratto, categoria, classe utenza): un prezzo deciso dall'operatore non ha una base di listino
 
 Precondizioni: commessa `modificabile`, riga non fatturata. Il servizio non invoca il resolver: il prezzo è deciso dall'operatore.
 
@@ -423,9 +424,11 @@ Service: `fn_riallinea_prezzo`
 Flusso:
 
 1. Guard: se `prezzo_bloccato = TRUE` → errore `E_COMMESSA_VALIDATION` (per ricalcolare bisogna prima sbloccare — §7.4).
-2. Invoca il resolver sul contesto originale della riga (articolo, uom, data, BA, utility, emittente).
+2. Invoca il resolver (`PricingService.resolve_prezzo`) sul contesto della riga: articolo, uom, data (`data_attivita`, o `competenza_mese` se manca), BA, utility, emittente, e il kit di cui la riga è componente (`meta.componente_di`). È lo stesso contesto che usa il push sorgente → commessa: lo costruisce un building block solo (`prezzo_riga_commessa`).
 3. Se la **versione listino** è cambiata rispetto allo snapshot e il payload non contiene `conferma_versione_diversa=true`, ritorna un body di pre-conferma con `versione_originale_id`, `versione_attuale_id`, `prezzo_attuale`, `prezzo_ricalcolato`, `richiede_conferma=true`: l'UI chiede conferma all'operatore prima di procedere.
-4. In caso di conferma (o versione invariata): aggiorna `prezzo_snapshot` con il nuovo valore, tiene `prezzo_bloccato = FALSE`, appende a `meta.riallineamenti` la storia del cambio (`data`, `prezzo_precedente`, `prezzo_nuovo`, `listino_versione_id_precedente`, `listino_versione_id_nuovo`).
+4. In caso di conferma (o versione invariata): aggiorna `prezzo_snapshot` con il nuovo valore e, insieme, la sua provenienza (`listino_versione_id`, `prezzo_base_snapshot`, `origine_prezzo` e gli altri campi di audit), tiene `prezzo_bloccato = FALSE`, appende a `meta.riallineamenti` la storia del cambio (`data`, `prezzo_precedente`, `prezzo_nuovo`, `listino_versione_id_precedente`, `listino_versione_id_nuovo`). Poiché la versione si aggiorna, il riallineamento successivo non chiede più conferma.
+
+La versione «dello snapshot» è quella che il push registra sulla riga quando la crea: la versione da cui, alla data della riga, verrebbe il prezzo.
 
 Il flag `prezzo_da_riallineare` viene azzerato come side-effect: la riga è allineata.
 
@@ -440,7 +443,7 @@ Effetti:
 
 * guard: errore `E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO` se la riga non è bloccata
 * ricalcola dal resolver (come §7.3 ma senza guard versione)
-* imposta `prezzo_snapshot = ricalcolato`, `prezzo_bloccato = FALSE`
+* imposta `prezzo_snapshot = ricalcolato`, `prezzo_bloccato = FALSE`, e riscrive la provenienza dal resolver
 * appende a `meta.sblocchi_prezzo` (`data`, `prezzo_bloccato_precedente`, `prezzo_ricalcolato`, `motivo`)
 
 Motivo obbligatorio come per il blocco.

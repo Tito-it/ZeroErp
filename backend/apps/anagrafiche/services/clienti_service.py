@@ -321,8 +321,7 @@ class ClientiService:
 
         # Step 2: Istanza utility
         if istanza_utility_id is not None:
-            istanza_utility_id = self._validate_istanza(
-                istanza_utility_id, soggetto_id, utility_id)
+            istanza_utility_id = self._validate_istanza(istanza_utility_id, soggetto_id)
         else:
             istanza_utility_id = self._repo.create_istanza_fittizia(
                 soggetto_id=soggetto_id,
@@ -331,19 +330,30 @@ class ClientiService:
         # Step 3: Billing account
         if billing_account_id is not None:
             billing_account_id = self._validate_billing_account(
-                billing_account_id, istanza_utility_id)
+                billing_account_id, istanza_utility_id, utility_id)
         else:
             # Pricing v5 STADIO 2: categoria_cliente_id e' obbligatoria; la
             # validazione e' gia' stata effettuata in crea_cliente (no default
             # implicito). La FK e' validata dal DB.
             assert ba_categoria_cliente_id is not None
-            billing_account_id = self._repo.create_billing_account(
-                istanza_utility_id=istanza_utility_id,
-                soggetto_ruolo_id=soggetto_ruolo_id,
-                utility_id=utility_id,
-                fatturazione_ordini=ba_fatturazione_ordini,
-                parent_account_id=ba_parent_account_id,
-                categoria_cliente_id=ba_categoria_cliente_id)
+            # Su un'istanza esistente la utility puo' avere gia' il suo BA (la
+            # coppia ne ha uno, `uq_billing_instance_utility`): allora il
+            # cliente si aggancia a quello, che il chiamante deve indicare.
+            billing_account_id = create_with_constraint_mapping(
+                lambda: self._repo.create_billing_account(
+                    istanza_utility_id=istanza_utility_id,
+                    soggetto_ruolo_id=soggetto_ruolo_id,
+                    utility_id=utility_id,
+                    fatturazione_ordini=ba_fatturazione_ordini,
+                    parent_account_id=ba_parent_account_id,
+                    categoria_cliente_id=ba_categoria_cliente_id),
+                {
+                    "uq_billing_instance_utility": (
+                        "L'istanza ha gia' il billing account di questa utility: "
+                        "indicarlo invece di crearne uno nuovo."
+                    ),
+                },
+            )
 
         # Step 4: Cliente — passa dati obbligatori + opzionali dal payload
         cliente_id = create_with_constraint_mapping(
@@ -353,10 +363,14 @@ class ClientiService:
                 soggetto_ruolo_id=soggetto_ruolo_id,
                 **cliente_data,
             ),
+            # Un cliente per billing account (R-8 di brief-db-istanza-nasce-col-ba,
+            # 2026-10-08): un'istanza ha tanti clienti quanti BA. Il campo e' il
+            # BA scelto dall'operatore (chiave del payload); quando il BA nasce
+            # qui il vincolo non puo' scattare.
             {
-                "uq_clienti_istanza_utility": (
-                    "Esiste gia' un cliente per questa istanza.",
-                    "istanza_utility_id",
+                "uq_clienti_billing_account": (
+                    "Esiste gia' un cliente per questo billing account.",
+                    "billing_account_id",
                 ),
             },
         )
@@ -382,11 +396,12 @@ class ClientiService:
     # Step interni — validazione entita' pre-esistenti
     # =================================================================
 
-    # Scopo: Valida istanza pre-esistente: deve esistere, appartenere al soggetto
-    #        e alla utility indicata.
-    def _validate_istanza(
-        self, istanza_utility_id: int, soggetto_id: str, utility_id: int,
-    ) -> int:
+    # Scopo: Valida istanza pre-esistente: deve esistere e appartenere al soggetto.
+    #        La utility non e' dell'istanza ma del suo billing account (un'istanza
+    #        ne ha uno per utility): la coppia la controlla
+    #        `_validate_billing_account`, o il vincolo `uq_billing_instance_utility`
+    #        quando il BA si crea qui.
+    def _validate_istanza(self, istanza_utility_id: int, soggetto_id: str) -> int:
         istanza = self._repo.get_istanza(istanza_utility_id)
         ErrorManager.require(istanza is not None, code=E_ANAG_NOT_FOUND,
                              message="Istanza utility non trovata.")
@@ -394,15 +409,12 @@ class ClientiService:
         ErrorManager.require(
             str(istanza["soggetto_id"]) == str(soggetto_id), code=E_ANAG_VALIDAZIONE,
             message="L'istanza non appartiene al soggetto indicato.")
-        ErrorManager.require(
-            istanza["utility_id"] == utility_id, code=E_ANAG_VALIDAZIONE,
-            message="L'istanza non corrisponde alla utility indicata.")
         return istanza_utility_id
 
     # Scopo: Valida billing account pre-esistente: deve esistere e appartenere
-    #        all'istanza indicata.
+    #        alla coppia indicata, cioe' all'istanza e alla utility.
     def _validate_billing_account(
-        self, billing_account_id: int, istanza_utility_id: int,
+        self, billing_account_id: int, istanza_utility_id: int, utility_id: int,
     ) -> int:
         ba = self._repo.get_billing_account(billing_account_id)
         ErrorManager.require(ba is not None, code=E_ANAG_NOT_FOUND,
@@ -411,5 +423,8 @@ class ClientiService:
         ErrorManager.require(
             ba["istanza_utility_id"] == istanza_utility_id, code=E_ANAG_VALIDAZIONE,
             message="Il billing account non appartiene all'istanza indicata.")
+        ErrorManager.require(
+            ba["utility_id"] == utility_id, code=E_ANAG_VALIDAZIONE,
+            message="Il billing account non e' della utility indicata.")
         return billing_account_id
 

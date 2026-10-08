@@ -31,8 +31,9 @@ class RequestContextMiddleware(MiddlewareMixin):
     def process_request(self, request: HttpRequest) -> None:
         request_id = _request_id_dal_client(request) or str(uuid4())
         idempotency_key = get_idempotency_key(request)
-        request.request_id = request_id
-        request.idempotency_key = idempotency_key
+        # Attributi DINAMICI sulla request (HttpRequest non li dichiara).
+        setattr(request, "request_id", request_id)  # noqa: B010 — attributo dinamico: assegnato col punto, mypy lo rifiuta (il tipo non lo dichiara)
+        setattr(request, "idempotency_key", idempotency_key)  # noqa: B010 — attributo dinamico: assegnato col punto, mypy lo rifiuta (il tipo non lo dichiara)
         set_request_context(request_id=request_id, idempotency_key=idempotency_key)
 
     # Scopo: Gestisce `process_response` nel flusso applicativo del modulo.

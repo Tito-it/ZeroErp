@@ -30,6 +30,23 @@ from apps.vendite.types import (
     GruppoEsitoGiro,
 )
 
+# Le colonne di PROVENIENZA del prezzo di una riga di commessa, che
+# `update_attivita_prezzo` scrive con il prezzo. ⭐ Sede unica: il building
+# block `apps/vendite/services/prezzo_riga_commessa.py` le importa da qui
+# (`CAMPI_PROVENIENZA`). Le prime otto esistono anche su
+# `attivita_fatturabili`; `listino_versione_id` solo sulla riga di commessa.
+COLONNE_PROVENIENZA_PREZZO: tuple[str, ...] = (
+    "prezzo_base_snapshot",
+    "origine_prezzo",
+    "tipo_variazione_applicata",
+    "valore_variazione_applicata",
+    "promo_id",
+    "contratto_id",
+    "categoria_cliente_id_snapshot",
+    "classe_utenza_id_snapshot",
+    "listino_versione_id",
+)
+
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
 
 
@@ -1877,6 +1894,9 @@ class CommesseRepository(EventLogRepositoryMixin):
                     ca.articolo_id,
                     ca.uom_id,
                     ca.data_attivita,
+                    -- Il ripiego della data per il listino quando manca
+                    -- `data_attivita` (BB `prezzo_riga_commessa`, come nel push).
+                    ca.competenza_mese,
                     ca.meta,
                     -- Identita' e stato della riga: servono ai guard
                     -- dell'annullamento riga manuale (brief-annullamento-righe-
@@ -1911,14 +1931,39 @@ class CommesseRepository(EventLogRepositoryMixin):
             return row_to_dict(cursor)
 
     # Scopo: Aggiorna prezzo snapshot su commessa_attivita + prezzo_unitario su
-    #        attivita_fatturabili. Caller gestisce transazione.
+    #        attivita_fatturabili, e con il prezzo la sua PROVENIENZA
+    #        (`provenienza`: le colonne di `COLONNE_PROVENIENZA_PREZZO`, dal
+    #        building block `prezzo_riga_commessa`).
+    #        ⭐ Dal 2026-10-08 prezzo e provenienza si scrivono INSIEME: prima si
+    #        scriveva il solo prezzo, e la riga riallineata diceva un prezzo
+    #        nuovo con la versione di listino, l'origine e la base del prezzo
+    #        vecchio. Le otto colonne che `attivita_fatturabili` ha in comune si
+    #        propagano con il prezzo, alle stesse condizioni (riga non ancora
+    #        in fattura).
+    #        ⛔ `provenienza` deve avere ESATTAMENTE quelle colonne: una chiave
+    #        in meno lascerebbe in piedi un pezzo della provenienza vecchia
+    #        senza che nessuno se ne accorga, quindi si rifiuta.
     def update_attivita_prezzo(
         self,
         attivita_id: int,
         prezzo: str,
         prezzo_bloccato: bool,
         meta: dict[str, Any] | None,
+        *,
+        provenienza: dict[str, Any],
     ) -> None:
+        if set(provenienza) != set(COLONNE_PROVENIENZA_PREZZO):
+            raise ValueError(
+                "update_attivita_prezzo: provenienza con colonne "
+                f"{sorted(provenienza)}, attese {sorted(COLONNE_PROVENIENZA_PREZZO)}"
+            )
+        parametri = {
+            **provenienza,
+            "att_id": attivita_id,
+            "prezzo": prezzo,
+            "bloccato": prezzo_bloccato,
+            "meta": json.dumps(meta) if meta else None,
+        }
         # Guardrail atomicità (review 2026-07-08): 2 UPDATE sequenziali (commesse_attivita
         # + attivita_fatturabili) resi self-atomici. Il docstring dichiarava "caller gestisce
         # transazione": ora e' self-safe (nested=savepoint se il caller ha gia' un atomic).
@@ -1929,16 +1974,20 @@ class CommesseRepository(EventLogRepositoryMixin):
                    SET prezzo_snapshot = %(prezzo)s::numeric,
                        prezzo_bloccato = %(bloccato)s,
                        prezzo_da_riallineare = FALSE,
+                       prezzo_base_snapshot = %(prezzo_base_snapshot)s,
+                       origine_prezzo = %(origine_prezzo)s,
+                       tipo_variazione_applicata = %(tipo_variazione_applicata)s,
+                       valore_variazione_applicata = %(valore_variazione_applicata)s,
+                       promo_id = %(promo_id)s,
+                       contratto_id = %(contratto_id)s,
+                       categoria_cliente_id_snapshot = %(categoria_cliente_id_snapshot)s,
+                       classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
+                       listino_versione_id = %(listino_versione_id)s,
                        meta = %(meta)s::jsonb,
                        data_update = now()
                  WHERE id = %(att_id)s
                 """,
-                {
-                    "att_id": attivita_id,
-                    "prezzo": prezzo,
-                    "bloccato": prezzo_bloccato,
-                    "meta": json.dumps(meta) if meta else None,
-                },
+                parametri,
             )
             # Propaga su attivita_fatturabili (se esiste la riga collegata)
             cursor.execute(
@@ -1946,15 +1995,19 @@ class CommesseRepository(EventLogRepositoryMixin):
                 UPDATE vendite.attivita_fatturabili
                    SET prezzo_unitario = %(prezzo)s::numeric,
                        prezzo_bloccato = %(bloccato)s,
+                       prezzo_base_snapshot = %(prezzo_base_snapshot)s,
+                       origine_prezzo = %(origine_prezzo)s,
+                       tipo_variazione_applicata = %(tipo_variazione_applicata)s,
+                       valore_variazione_applicata = %(valore_variazione_applicata)s,
+                       promo_id = %(promo_id)s,
+                       contratto_id = %(contratto_id)s,
+                       categoria_cliente_id_snapshot = %(categoria_cliente_id_snapshot)s,
+                       classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
                        data_update = now()
                  WHERE commessa_attivita_id = %(att_id)s
                    AND fattura_riga_id IS NULL
                 """,
-                {
-                    "att_id": attivita_id,
-                    "prezzo": prezzo,
-                    "bloccato": prezzo_bloccato,
-                },
+                parametri,
             )
 
     # --- Gruppo 6: Event log ---

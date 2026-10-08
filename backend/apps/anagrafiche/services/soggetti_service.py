@@ -374,8 +374,10 @@ class SoggettiService:
         return self._repo.get_soggetto_ruoli(soggetto_id, emittente_ids)
 
     # Scopo: Lookup ricco contesto pratica — una riga per soggetto_ruolo +
-    #        riga "senza ruolo" per i prospect puri (solo istanze, nessun
-    #        ruolo). Mirror del pattern BillingAccountService.search_lookup.
+    #        riga "senza ruolo" per i soggetti privi di qualunque ruolo (senza
+    #        istanze: il ruolo CLIENTE nasce con la prima, D-3 di
+    #        brief-db-istanza-nasce-col-ba). Mirror del pattern
+    #        BillingAccountService.search_lookup.
     def search_ruoli_lookup(
         self,
         *,

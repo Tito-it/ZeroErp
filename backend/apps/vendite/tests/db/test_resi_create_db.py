@@ -38,6 +38,11 @@ _META = {"test_scope": "be_create_reso_db", "annidato": {"n": 1, "lista": [1, 2]
 # ⚠️ Padre e figlio in istruzioni SEPARATE (mai nella stessa CTE): una policy
 #    che risolve il perimetro dal padre non vede le righe scritte dallo stesso
 #    comando e nega fail-closed.
+# ⚠️ L'ordine nasce in BOZZA, prende la riga, POI si conferma (transizione
+#    DRAFT -> CONFERMATO della matrice): le righe di un ordine si scrivono solo
+#    in bozza (`trgfn_doc_righe_lock_fuori_bozza`, dal `20261008-90`). Fino al
+#    2026-10-09 l'ordine nasceva gia' CONFERMATO e la riga gli si aggiungeva
+#    dopo — la forma che quel lock rifiuta.
 _FIXTURE: tuple[str, ...] = (
     "CREATE TEMP TABLE _mondo AS SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('create reso db')",
     "CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('RSART-' || %(sfx)s, false) AS articolo_id",
@@ -45,6 +50,7 @@ _FIXTURE: tuple[str, ...] = (
     CREATE TEMP TABLE _refs AS
     SELECT (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
            (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
+           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo) AS ord_draft,
            (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO' AND s.attivo) AS ord_conf,
            (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'EMESSO' AND s.attivo) AS ddt_emesso,
            (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'SPEDITO' AND s.attivo) AS ddt_spedito,
@@ -57,7 +63,7 @@ _FIXTURE: tuple[str, ...] = (
     WITH ins AS (
         INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
             valuta_id, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-        SELECT m.cliente_soggetto_ruolo_id, m.billing_account_id, r.ord_conf, r.valuta_id,
+        SELECT m.cliente_soggetto_ruolo_id, m.billing_account_id, r.ord_draft, r.valuta_id,
                'CONSEGNATO', m.emittente_fiscale_id, false, '{"test_scope": "be_create_reso_db"}'::jsonb
           FROM _mondo m, _refs r
         RETURNING id
@@ -71,6 +77,7 @@ _FIXTURE: tuple[str, ...] = (
            '{"test_scope": "be_create_reso_db"}'::jsonb
       FROM _ord o, _art a, _refs r
     """,
+    "UPDATE vendite.ordini SET stato_doc_ordine_id = (SELECT ord_conf FROM _refs) WHERE id = (SELECT ordine_id FROM _ord)",
     "CREATE TEMP TABLE _ddt AS SELECT vendite.fn_genera_ddt_da_ordine((SELECT ordine_id FROM _ord)) AS ddt_id",
     """
     INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)

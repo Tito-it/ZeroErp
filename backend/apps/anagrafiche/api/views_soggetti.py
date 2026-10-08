@@ -263,9 +263,9 @@ class SoggettiRuoliLookupView(DomainAPIView):
 
     Una riga per soggetto_ruolo ("Rossi Srl — Cliente", "Rossi Srl —
     Fornitore") + una riga "senza ruolo" per i soggetti privi di qualunque
-    ruolo (prospect puri: hanno solo istanze, il ruolo CL nasce col BA —
-    guide/generazione-cliente.md). `n_istanze` per riga pilota il campo
-    istanza nel drawer pratiche.
+    ruolo (non hanno istanze: il ruolo CLIENTE nasce con la prima —
+    brief-db-istanza-nasce-col-ba, D-3). `n_billing_account` per riga pilota
+    la scelta della fornitura (il BA) nel drawer pratiche.
     """
 
     # Lookup cross-dominio: consumato dal drawer pratiche. Stesso pattern dei

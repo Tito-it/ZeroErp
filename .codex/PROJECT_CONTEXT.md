@@ -136,7 +136,7 @@ from apps.core.services.error_manager import ErrorManager, ServiceError
 
 # Guard su valori richiesti:
 ErrorManager.require(value is not None, "CODICE_ERRORE", "messaggio")
-assert value is not None  # sempre dopo require, per il type checker
+assert value is not None  # sempre dopo require, per il type checker (mypy, in CI dal 2026-10-08)
 
 # In views: NON catturare Exception generici
 # Il middleware apps/core/middleware/api_exception_middleware.py gestisce il fallback
@@ -276,8 +276,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md`, richiesta BE del 2026-10-08, voci E-4/E-5/E-10
   dell'analisi della doc API core): da fare.
 - ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
-  decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); resta il BE/FE
-  (§5, §6.10.5, §6.12.4).
+  decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); BE/FE fatti il
+  2026-10-08 (§7, non committati: la pratica sceglie la fornitura, cioe' il BA — D-10). Restano il collaudo a video e
+  i debiti del §7.5 (ordini e DDT col BA ancora nullable: da decidere).
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

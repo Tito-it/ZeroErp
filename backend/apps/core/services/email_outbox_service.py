@@ -13,6 +13,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
+from collections.abc import Iterable
 from typing import Any
 
 from django.conf import settings
@@ -279,7 +280,7 @@ class EmailOutboxService:
         with transaction.atomic():
             file_paths = self._repo.delete_allegati_by_outbox(outbox_id)
             self._repo.update_outbox_stato(outbox_id, "CANCELLED")
-            transaction.on_commit(lambda: [_delete_file(p) for p in file_paths])
+            transaction.on_commit(lambda: _delete_files(file_paths))
 
         return self._repo.get_outbox(outbox_id) or {}
 
@@ -388,3 +389,10 @@ def _delete_file(rel_path: str | None) -> None:
         os.remove(abs_path)
     except OSError:
         pass
+
+
+# Scopo: cancella i file di una lista di percorsi (dopo il commit della
+#        cancellazione delle righe), uno per uno e best-effort come `_delete_file`.
+def _delete_files(rel_paths: Iterable[str | None]) -> None:
+    for rel_path in rel_paths:
+        _delete_file(rel_path)

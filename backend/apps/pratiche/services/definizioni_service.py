@@ -72,6 +72,7 @@ def get_definizione_dettaglio(definizione_id: int) -> dict[str, Any]:
         code="E_DEFINIZIONE_NOT_FOUND",
         message=f"Definizione workflow {definizione_id} non trovata",
     )
+    assert header is not None
     header["drift"] = {k: header.pop(k, None) for k in _DRIFT_KEYS}
     steps = repo.list_steps_definizione(definizione_id)
 
@@ -193,6 +194,7 @@ def create_step(definizione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         code="E_DEFINIZIONE_NOT_FOUND",
         message=f"Definizione workflow {definizione_id} non trovata",
     )
+    assert header is not None
     data = _clean_writable(STEP_CORE_FIELDS, payload)
     ErrorManager.require(
         bool(data.get("codice")) and bool(data.get("descrizione")),
@@ -353,6 +355,7 @@ def create_arco(definizione_id: int, edge_kind: str, payload: dict[str, Any]) ->
         code="E_DEFINIZIONE_NOT_FOUND",
         message=f"Definizione workflow {definizione_id} non trovata",
     )
+    assert header is not None
     data = _clean_writable(spec.writable, payload)
     _require_fields(data, spec.required, edge_kind)
     _valida_endpoint_in_def(definizione_id, edge_kind, data)

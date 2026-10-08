@@ -67,6 +67,7 @@ def _parse_righe_ids(payload: dict[str, object]) -> list[int] | None:
         detail=f"righe_ids={righe_ids!r}",
         function_name="apps.vendite.api.preventivi_views._parse_righe_ids",
     )
+    assert isinstance(righe_ids, list)
     return [int(r) for r in righe_ids]
 
 

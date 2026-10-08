@@ -89,40 +89,39 @@ _RUOLO_CL_SCOPE_SQL = """(
                  )
                )"""
 
-# Scopo: info istanze per le righe lookup contesto pratica (search +
-#        restore by-id ne condividono la proiezione): conteggio + istanza
-#        "unica" derivabile (id/codice valorizzati SOLO se il conteggio e' 1
-#        — pattern preventivi "istanza auto-derivata"). Perimetro per riga:
-#        - riga "senza ruolo" ({sr_ref} NULL): tutte le istanze del soggetto;
-#        - riga con ruolo: SOLO le istanze legate a quel ruolo via clienti
-#          (le forniture del cliente/BA) — coerente col filtro
-#          `soggetto_ruolo_id` del lookup istanze, evita derivazioni/scelte
-#          su istanze estranee al rapporto. Per i ruoli non-CL il conteggio
-#          e' 0 (clienti vive solo sul ramo CL).
-#        `{soggetto_ref}` / `{sr_ref}` = espressioni del contesto chiamante
-#        (es. "s.id"/"sr.id", "m.soggetto_id"/"m.soggetto_ruolo_id",
-#        "s.id"/"NULL::bigint"). Da usare come
-#        `LEFT JOIN LATERAL ({tpl}) ist ON true` + `_ISTANZE_INFO_SELECT`.
-_ISTANZE_INFO_LATERAL_TPL = """(
-                   SELECT COUNT(*)::int AS n_istanze,
-                          MAX(iu.id) AS _unica_id,
-                          MAX(iu.codice) AS _unica_codice
-                     FROM anagrafiche.istanze_utilities iu
-                    WHERE iu.soggetto_id = {soggetto_ref}
-                      AND (
-                            {sr_ref} IS NULL
-                         OR EXISTS (
-                              SELECT 1
-                                FROM anagrafiche.clienti cl
-                               WHERE cl.istanza_utility_id = iu.id
-                                 AND cl.soggetto_ruolo_id = {sr_ref}
-                            )
-                          )
+# Scopo: le forniture del ruolo per le righe lookup contesto pratica (search +
+#        restore by-id ne condividono la proiezione): conteggio dei billing
+#        account del ruolo + il BA «unico» derivabile (id/codice valorizzati
+#        SOLO se il conteggio e' 1 — il form non chiede niente). Il BA e' il
+#        cliente a grana fine di cui la pratica parla (D-9 di
+#        brief-db-istanza-nasce-col-ba): un ruolo CLIENTE ne ha uno per ogni
+#        coppia (istanza, utility).
+#        Perimetro per riga:
+#        - riga con ruolo: i BA di quel ruolo (`ba.soggetto_ruolo_id`), con o
+#          senza la riga cliente — coerente col filtro `soggetto_ruolo_id` del
+#          lookup istanze. Per i ruoli non-CL il conteggio e' 0;
+#        - riga "senza ruolo" ({sr_ref} NULL): 0. Un BA e' sempre di un ruolo e
+#          la pratica lo accetta solo dal suo ruolo (regola 5,
+#          E_PRATICHE_BA_NON_COERENTE); e un soggetto senza ruoli non ha
+#          istanze (D-3: il ruolo CLIENTE nasce con la prima).
+#        ⚠️ Fino al 2026-10-08 si contavano le ISTANZE legate al ruolo via
+#        `clienti`: un ruolo col BA e senza la riga cliente (la fase del
+#        preventivo) risultava senza forniture, e un'istanza con due utility
+#        contava uno.
+#        `{sr_ref}` = espressione del contesto chiamante ("sr.id",
+#        "m.soggetto_ruolo_id", "NULL::bigint"). Da usare come
+#        `LEFT JOIN LATERAL {tpl} forn ON true` + `_FORNITURE_SELECT`.
+_FORNITURE_LATERAL_TPL = """(
+                   SELECT COUNT(*)::int AS n_billing_account,
+                          MAX(ba.id) AS _unico_id,
+                          MAX(ba.codice) AS _unico_codice
+                     FROM anagrafiche.billing_account ba
+                    WHERE ba.soggetto_ruolo_id = {sr_ref}
                )"""
 
-_ISTANZE_INFO_SELECT = """ist.n_istanze,
-       CASE WHEN ist.n_istanze = 1 THEN ist._unica_id END AS istanza_unica_id,
-       CASE WHEN ist.n_istanze = 1 THEN ist._unica_codice END AS istanza_unica_codice"""
+_FORNITURE_SELECT = """forn.n_billing_account,
+       CASE WHEN forn.n_billing_account = 1 THEN forn._unico_id END AS billing_account_unico_id,
+       CASE WHEN forn.n_billing_account = 1 THEN forn._unico_codice END AS billing_account_unico_codice"""
 
 # ⛔ `MIN_SEARCH_LENGTH_SOGGETTI` non c'e' piu' (2026-09-26, brief-db-be-fe-
 #    ricerca-soglia-per-lista §6 b, decisione di Tid): la soglia del resolver
@@ -725,9 +724,10 @@ class SoggettiRepository:
 
     # Scopo: Lookup ricco per la selezione contesto pratica — una riga per
     #        soggetto_ruolo + una riga "senza ruolo" per i soggetti privi di
-    #        qualunque ruolo (prospect puri: hanno solo istanze, il ruolo CL
-    #        nasce col BA — vedi guide/generazione-cliente.md). `n_istanze`
-    #        permette al FE di decidere se proporre il campo istanza.
+    #        qualunque ruolo (per esempio appena censiti: non hanno istanze,
+    #        il ruolo CLIENTE nasce con la prima — D-3 di
+    #        brief-db-istanza-nasce-col-ba). `n_billing_account` permette al FE
+    #        di decidere se proporre la scelta della fornitura.
     def search_ruoli_lookup(
         self,
         *,
@@ -785,9 +785,9 @@ class SoggettiRepository:
         count_sql = cte + "SELECT COUNT(*) FROM matches"  # noqa: S608
         data_sql = cte + f"""
             SELECT m.*,
-                   {_ISTANZE_INFO_SELECT}
+                   {_FORNITURE_SELECT}
               FROM matches m
-              LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="m.soggetto_id", sr_ref="m.soggetto_ruolo_id")} ist ON true
+              LEFT JOIN LATERAL {_FORNITURE_LATERAL_TPL.format(sr_ref="m.soggetto_ruolo_id")} forn ON true
              ORDER BY m.ragione_sociale_completa ASC NULLS LAST,
                       m.ruolo_codice ASC NULLS FIRST,
                       m.soggetto_ruolo_id ASC NULLS FIRST
@@ -843,11 +843,11 @@ class SoggettiRepository:
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
                        s.codice AS soggetto_codice,
-                       {_ISTANZE_INFO_SELECT}
+                       {_FORNITURE_SELECT}
                   FROM anagrafiche.soggetti_ruoli sr
                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
                   JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
-                  LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="s.id", sr_ref="sr.id")} ist ON true
+                  LEFT JOIN LATERAL {_FORNITURE_LATERAL_TPL.format(sr_ref="sr.id")} forn ON true
                  WHERE sr.id = %s
                    AND {_RUOLO_CL_SCOPE_SQL}
             """  # noqa: S608
@@ -861,9 +861,9 @@ class SoggettiRepository:
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
                        s.codice AS soggetto_codice,
-                       {_ISTANZE_INFO_SELECT}
+                       {_FORNITURE_SELECT}
                   FROM anagrafiche.soggetti s
-                  LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="s.id", sr_ref="NULL::bigint")} ist ON true
+                  LEFT JOIN LATERAL {_FORNITURE_LATERAL_TPL.format(sr_ref="NULL::bigint")} forn ON true
                  WHERE s.id = %s::uuid
                    AND NOT EXISTS (
                        SELECT 1

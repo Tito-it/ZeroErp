@@ -273,7 +273,7 @@ def _get_priorita_default_id() -> int:
 #        best-effort all'approver, ritorna pratica_id. Per preventivi/contratti
 #        i caller pubblici `crea_richiesta_approvazione` e
 #        `crea_richiesta_approvazione_contratto` arrivano qui con il proprio
-#        `contesto` (emittente + soggetto + istanza_utility), il numero
+#        `contesto` (emittente + soggetto + ruolo + BA del documento), il numero
 #        documento per la descrizione, e `riga_id` per il meta.
 #        Riga_id puo' essere None per preventivi (in create_riga il riga
 #        non e' ancora noto; link_riga_a_pratica completa poi); per contratti
@@ -321,6 +321,7 @@ def _crea_richiesta_approvazione_impl(
         soggetto_id=contesto["soggetto_id"],
         soggetto_ruolo_id=contesto["soggetto_ruolo_id"],
         istanza_utility_id=istanza_utility_id,
+        billing_account_id=contesto["billing_account_id"],
         priorita_id=_get_priorita_default_id(),
         descrizione=descrizione,
         meta=meta,

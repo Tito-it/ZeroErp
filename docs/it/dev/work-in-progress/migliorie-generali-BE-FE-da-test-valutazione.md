@@ -67,7 +67,10 @@
 > **completo** in CI, con `mail.E001` silenziato per progetto (Django non
 > spedisce posta). In §3 restano **D2-b, D9-a, D10-bis, D12**.
 > ⭐ Su **D2-b** Tid ha deciso **sì**, a cricchetto: piano in
-> [piano-be-type-checker.md](piano-be-type-checker.md), da approvare.
+> [piano-be-type-checker.md](piano-be-type-checker.md).
+> ✅ **Riallineato il 2026-10-09**: **D2-b chiude** (§9) — `mypy` col plugin
+> Django in CI, a cricchetto. In §3 restano **D9-a, D10-bis, D12**. Lo
+> smaltimento del registro (lotti L2, L3+) vive nel piano, non qui.
 
 ---
 
@@ -149,8 +152,8 @@ i file `.spec.js` in git sono **57**, e otto accendono il DOM; al
 Selezione `F`, `E9`, `T20`, `C4`, `A`, `PIE`, `G`, `LOG`; ogni gruppo acceso a
 **registro zero** dopo aver misurato e sanato. ⭐ Le regole **non** accese (`E`,
 `B`, `B904`) e il formattatore **spento** sono decisioni scritte con il perché
-dentro `ruff.toml`: quella è la sede, non questo documento. Manca il **type
-checker** (D2-b).
+dentro `ruff.toml`: quella è la sede, non questo documento. Il **type
+checker** (`mypy`, a cricchetto) c'è dal 2026-10-08 (D2-b, §9).
 
 ### 2.3 Il contratto del codice errore, lato backend, è chiuso a chiave
 
@@ -232,13 +235,13 @@ testa al suo file in `frontend/scripts/`, e la tabella dice solo cosa tiene.
 > ✅ **Le voci chiuse non stanno qui**: sono in **§9 «Attività svolte»**, con la
 > data e il rimando. La tabella dice riga per riga **che cosa resta in §3** e
 > **che cosa è passato in §9** — e quando una voce ha due facce il suo numero
-> compare in tutti e due i posti: `D2`, `D9`, `D10` (`D7` fino al 26-09, `D1` e `D3` fino all'08-10).
+> compare in tutti e due i posti: `D9`, `D10` (`D7` fino al 26-09, `D1` e `D3` fino all'08-10, `D2` fino al 09-10).
 > Le voci aperte, in ordine di ritorno, sono elencate anche in §8.
 
 |     | Difetto                                                                | Stato                                                                                           |
 | --- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | D1  | Il frontend non ha nessun cancello                                     | ✅ 09-09, D1-d-bis 23-09 e D1-f 08-10 — **in §9**                                                |
-| D2  | Backend senza analisi statica                                          | ✅ 09-09/10 — **in §9** · resta **D2-b** (type checker)                                          |
+| D2  | Backend senza analisi statica                                          | ✅ 09-09/10 e D2-b 10-08 (`mypy` in CI) — **in §9**                                          |
 | D3  | Lo schema OpenAPI si dichiara anonimo; `check --deploy` fuori dalla CI | ✅ D3-a 09-09, D3-c 28-09, D3-b 08-10 (`check --deploy` completo in CI) — **in §9** |
 | D4  | `hint` trasportato e mai reso a video                                  | ✅ 09-09 — **in §9**                                                                             |
 | D5  | `area_funzionale = "ai_assistant"` non a catalogo                      | ✅ 09-25 — **in §9**                                                                             |
@@ -252,22 +255,6 @@ testa al suo file in `frontend/scripts/`, e la tabella dice solo cosa tiene.
 | D13 | Job notturno rotto da quattro notti                                    | ✅ 09-09 · D13-bis 09-11 · D13-quater 09-26 — **in §9**                                          |
 | D14 | «Inviata» detto di una mail mai partita                                | ✅ 09-11 — **in §9**                                                                             |
 | D15 | `skip_area_check` è **muto** su 15 view; sei scrivono senza permesso   | ✅ 09-12, tutte e 15 — **in §9**                                                                 |
-
-### D2 — 258.000 righe di Python senza analisi statica — chiusa il 09-10 (§9), resta D2-b
-
-⭐ **Deciso il 2026-10-08 (Tid): sì**, `mypy` col plugin Django, a cricchetto —
-piano in [piano-be-type-checker.md](piano-be-type-checker.md). La misura del
-piano ha già trovato un 500 vero, nascosto da un test mockato (§4 del piano).
-Il testo che segue è la domanda com'era posta.
-
-**Aperto — D2-b**: decidere **se** il progetto vuole un type checker. Se sì,
-`python.analysis.typeCheckingMode` nel repo o `mypy --follow-imports=skip` sui
-soli `apps/*/services/`; se no, togliere da `PROJECT_CONTEXT.md` §«Error
-handling» la riga `assert value is not None  # sempre dopo require, per il type
-checker`, che oggi chiede un lavoro a beneficio di nessuno. (Fino al 28-09 qui
-c'era scritto `AGENTS.md`, dove la riga non c'è.)
-⚠️ È la metà che vedrebbe i difetti di giuntura che una suite mockata (D9) non
-può vedere.
 
 ### D9 — La suite è larga e poco profonda, e il livello profondo nessuno lo lancia — D9-b chiuso l'11-09 (§9), resta D9-a
 
@@ -372,7 +359,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | Area                                    | Peso    | Voto       | Cosa regge il voto                                                                                                                                                                                                     |
 | --------------------------------------- | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Catena di verifica — frontend**       | 🔴 alto  | **7/10**   | Cancello in CI dal 09-09 (§2.1), test di componente dal 23-09 (D1-d-bis). `npm audit` dal 08-10 (D1-f)                                                                                                                      |
-| **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). Manca il type checker (D2-b)                                                                                                                                                  |
+| **Analisi statica — backend**           | 🔴 alto  | **6,5/10** | `ruff` a registro zero dal 09-09 (§2.2). `mypy` a cricchetto dal 10-08 (D2-b): voto da rivedere                                                                                                                                                  |
 | **Catena di verifica — backend**        | 🔴 alto  | **8/10**   | Cancello duro, 4.560 test verdi, sette guardrail, `plpgsql_check`. Manca la profondità (D9); `check --deploy` completo in CI dal 08-10 (D3-b)                                                                                                |
 | **Contratto API pubblicato**            | 🟠 medio | **9/10**   | `securitySchemes` e `security:` su 815 operazioni (D3-a). `W002` e collisioni a zero con cricchetto per nome, schemi dei corpi letti dal contratto del service (26-09: era 7, fermo su quei due registri). `check --deploy` completo in CI dal 08-10 (D3-b): voto da rivedere |
 | **Contratto d'errore — lato backend**   | 🟠 medio | **9/10**   | 763 codici vivi, zero senza ripiego, zero orfani (§2.3)                                                                                                                                                                |
@@ -396,7 +383,7 @@ backend senza nessuna analisi statica — erano economiche e sono chiuse.
 ⚠️ **La frase sulla «production-readiness» non cambia**: un cancello di build
 prova che il codice si compila, non che faccia la cosa giusta. Resta aperto ciò
 che è **cantiere** e non configurazione — la profondità della suite backend e
-gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D2-b, D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
+gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D10-bis). E il perimetro dei dati — D2 e D3 del gemello — è roba di là.
 
 ### Lezioni di metodo, in quattro righe
 
@@ -443,9 +430,9 @@ gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D2-b, D10-bis). 
 ### 🔴 Il backend
 
 * [x] **D2-a** — ✅ 2026-09-09 (`F,E9`) e 2026-09-10 (allargamento): `ruff.toml`.
-* [ ] **D2-b** — decidere **se** il progetto vuole un type checker; se no,
-      togliere da `PROJECT_CONTEXT.md` la riga sull'`assert` «per il type checker».
-      ⭐ 2026-10-08: **sì** (Tid) — [piano](piano-be-type-checker.md), si chiude con L1.
+* [x] **D2-b** — ✅ 2026-10-08: **sì** (Tid), `mypy` col plugin Django in CI, a
+      cricchetto ([piano](piano-be-type-checker.md), L1). La riga sull'`assert`
+      di `PROJECT_CONTEXT.md` resta, e ora serve a qualcuno.
 
 ### 🟠 Il contratto verso chi consuma
 
@@ -570,7 +557,7 @@ gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D2-b, D10-bis). 
 
 | #   | Cosa                                               | Perché sta qui                                                                                      |
 | --- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 1   | **D2-b** — type checker                            | Deciso **sì** il 08-10: [piano](piano-be-type-checker.md) da approvare, poi L0/L1                  |
+| —   | *nessuna*: le voci aperte che restano sono cantieri (qui sotto) o il cantiere dei portali (D12) | D2-b chiusa il 10-08 (§9)                                                                           |
 
 ### ⛔ Sembrano facili e non lo sono — sono cantieri veri
 
@@ -634,6 +621,20 @@ PrimeVue. Impalcatura in `frontend/test/montaggio.js`, DOM acceso **per file**
 `B017` (due `assertRaises(Exception)`, ora pretendono tipo **e** codice) e
 `PIE794` (`stato_codice_interno` dichiarato due volte in `OffertaRow`). Rimosso
 `_check_fn_tmp.py` (ok di Tid).
+
+✅ **D2-b — il type checker — 2026-10-08** (decisione di Tid: sì, a cricchetto).
+`mypy` con i plugin Django e DRF su tutto `apps/` e `zeroerp_backend/` (esclusi
+test e migration), `check_untyped_defs`, librerie senza tipi elencate per nome
+(`backend/mypy.ini`). Dipendenze in `backend/requirements-dev.in/.txt`, fuori
+dall'immagine Docker. Registro per nome `backend/mypy.baseline.json` (620
+rilievi alla nascita) e cancello `scripts/check_mypy_baseline.py`, nel passo
+«Type checker» di `ci-validate.yaml`: rosso su un rilievo nuovo, su una voce
+sanata e non tolta, su un'uscita illeggibile — provato per mutazione.
+⭐ Prima ancora di accenderlo, la misura ha trovato un **500 vero**: riallinea e
+sblocca prezzo di commessa chiamavano un metodo tolto da sei mesi, con il test
+mockato verde. Chiuso nello stesso giro (L0 del piano). Lo smaltimento del
+registro è nel [piano](piano-be-type-checker.md) (L2, L3+). Sede:
+[sicurezza-e-qualita-statica.md](../sicurezza-e-qualita-statica.md) §mypy.
 
 ### ✅ D3-a — Lo schema OpenAPI si dichiara — 2026-09-09
 

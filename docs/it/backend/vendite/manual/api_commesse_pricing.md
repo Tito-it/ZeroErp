@@ -33,8 +33,10 @@ Le API richiedono JWT (`Authorization: Bearer <token>`) e usano l'envelope stand
 | **URL** | `/api/v1/vendite/commesse/{commessa_id}/attivita/{att_id}/riallinea-prezzo/` |
 
 Ricalcola il prezzo di un'attivita` non ancora fatturata e non bloccata manualmente,
-invocando il resolver listino (`fn_resolve_prezzo_listino`) con il contesto originale
-dell'attivita` (BA, utility, emittente dalla commessa padre).
+invocando il resolver listino (`PricingService.resolve_prezzo` →
+`vendite.fn_resolve_prezzo_listino_v2`) con il contesto dell'attivita`. Cosa si chiede
+al resolver e cosa si scrive della risposta lo decide il building block
+`apps/vendite/services/prezzo_riga_commessa.py`, lo stesso del push sorgente → commessa.
 
 ### Body JSON
 
@@ -81,15 +83,30 @@ Il frontend mostra un dialog di conferma e ripete la chiamata con
 - Guard: commessa in stato `LIBERO` o `CONFERMATO`
 - Guard: `fattura_riga_id IS NULL` (non ancora fatturata)
 - Guard: `prezzo_bloccato == FALSE` (non override manuale — per riallineare prima sbloccare)
-- Il resolver riceve il contesto completo dalla commessa padre:
-  `billing_account_id`, `utility_id`, `emittente_soggetto_ruolo_id`
+- Il resolver riceve il contesto completo:
+  - dalla riga: articolo, unita' di misura, data (`data_attivita`, o `competenza_mese` se
+    manca), e il kit di cui la riga e' componente (`meta.componente_di`, stadio BUNDLE del
+    resolver: il componente prende il prezzo che ha dentro il kit, non quello sciolto);
+  - dalla commessa padre: `billing_account_id`, `utility_id`, `emittente_soggetto_ruolo_id`.
+- Il prezzo e' `prezzo_finale` del resolver; con il prezzo si riscrive la sua
+  **provenienza**: `listino_versione_id`, `prezzo_base_snapshot`, `origine_prezzo`,
+  variazione applicata, promo, contratto, categoria e classe utenza. L'origine dello stadio
+  kit (`LISTINO_BUNDLE`) non e' fra quelle ammesse dal CHECK della colonna e resta `NULL`.
+- La versione confrontata e' quella registrata sulla riga (dal push, o dall'ultimo
+  riallineamento): dopo un riallineamento confermato la riga porta la versione nuova, e il
+  successivo non chiede piu' conferma.
 - Lock `FOR UPDATE` su `commesse_attivita` dentro la transazione
 - Audit in `commesse_attivita.meta.riallineamenti[]`
-- Propaga prezzo su `attivita_fatturabili.prezzo_unitario` (solo righe non fatturate)
+- Propaga prezzo e provenienza su `attivita_fatturabili` (solo righe non fatturate;
+  `listino_versione_id` sta solo sulla riga di commessa)
 
 ### Errori tipici
 
-- `400` `E_COMMESSA_VALIDATION`: prezzo bloccato, commessa non trovata
+- `400` `E_COMMESSA_VALIDATION`: prezzo bloccato, commessa non trovata, riga o commessa
+  senza un dato che il listino chiede (articolo, unita' di misura, data, cliente, utility,
+  emittente)
+- Gli errori del resolver (`E_VENDITE_PRICING_FAILED` o il codice originale del DB, per
+  esempio `E_PREZZO_LISTINO_RIGA_NON_TROVATA`): il listino non sa dare un prezzo alla riga
 - `409` `E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA`: stato commessa non ammesso, riga fatturata
 
 ---
@@ -130,11 +147,14 @@ Override manuale del prezzo su un'attivita` di commessa. Imposta `prezzo_bloccat
 - Guard: commessa in stato `LIBERO` o `CONFERMATO`
 - Guard: `fattura_riga_id IS NULL` (non ancora fatturata)
 - Imposta `prezzo_bloccato = TRUE` dopo la modifica
-- Conserva `listino_versione_id` originale per audit comparativo
+- Il prezzo dichiara di essere scritto a mano: `origine_prezzo = 'MANUALE'`, e la
+  provenienza da listino (`listino_versione_id`, `prezzo_base_snapshot`, variazione, promo,
+  contratto, categoria, classe utenza) torna `NULL`. La versione di riferimento resta
+  nell'audit (`listino_versione_id_riferimento`)
 - Lock `FOR UPDATE` su `commesse_attivita` dentro la transazione
 - Audit in `commesse_attivita.meta.variazioni_eccezionali[]` con data, operatore,
   prezzo precedente/nuovo, motivo, stato commessa, listino_versione_id di riferimento
-- Propaga prezzo su `attivita_fatturabili.prezzo_unitario` (solo righe non fatturate)
+- Propaga prezzo e provenienza su `attivita_fatturabili` (solo righe non fatturate)
 
 ### Errori tipici
 
@@ -179,15 +199,18 @@ variazione richiede interventi manuali sul DB.
 - Guard: commessa in stato `LIBERO` o `CONFERMATO`
 - Guard: `fattura_riga_id IS NULL` (non ancora fatturata)
 - Guard: `prezzo_bloccato == TRUE` (nulla da sbloccare se gia` libero)
-- Ricalcola prezzo invocando il resolver con contesto completo dalla commessa
+- Ricalcola prezzo e provenienza come il riallineamento (§1: stesso contesto, stesso
+  building block), senza il guard sulla versione
 - Imposta `prezzo_bloccato = FALSE`
 - Lock `FOR UPDATE` su `commesse_attivita` dentro la transazione
 - Audit in `commesse_attivita.meta.sblocchi_prezzo[]`
-- Propaga prezzo su `attivita_fatturabili.prezzo_unitario` (solo righe non fatturate)
+- Propaga prezzo e provenienza su `attivita_fatturabili` (solo righe non fatturate)
 
 ### Errori tipici
 
-- `400` `E_COMMESSA_VALIDATION`: motivo mancante o troppo lungo
+- `400` `E_COMMESSA_VALIDATION`: motivo mancante o troppo lungo, riga o commessa senza un
+  dato che il listino chiede
+- Gli errori del resolver, come per il riallineamento
 - `409` `E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO`: prezzo non bloccato
 - `409` `E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA`: stato commessa non ammesso, riga fatturata
 

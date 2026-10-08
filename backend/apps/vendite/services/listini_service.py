@@ -350,6 +350,7 @@ def _extract_payload_uuid(
         function_name=function_name,
         log_to_db=True,
     )
+    assert isinstance(value, str)
     try:
         return str(UUID(value.strip()))
     except ValueError as exc:

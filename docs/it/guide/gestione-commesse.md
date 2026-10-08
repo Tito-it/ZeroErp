@@ -602,7 +602,8 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
 4. Riallineamento su conferma esplicita (N5)
    POST .../riallinea-prezzo/ ricalcola dal resolver alla data originale
    - Se la versione listino e cambiata: richiede conferma esplicita
-   - Aggiorna prezzo_snapshot + prezzo_unitario su attivita_fatturabili
+   - Aggiorna prezzo_snapshot + prezzo_unitario su attivita_fatturabili,
+     e con il prezzo la sua provenienza (versione listino, origine, base)
    - Azzera prezzo_da_riallineare
    - prezzo_bloccato resta FALSE
 
@@ -610,10 +611,11 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
    POST .../variazione-prezzo-eccezionale/ con prezzo manuale + motivo
    - Imposta prezzo_bloccato = TRUE (il resolver non ricalcolera piu)
    - Il prezzo manuale prevale su qualsiasi listino
+   - origine_prezzo = MANUALE, provenienza da listino azzerata
 
 6. Sblocco (N7-sblocco) — reversibilita di N7
    POST .../sblocca-prezzo/ ricalcola dal resolver e sblocca
-   - Imposta prezzo_bloccato = FALSE
+   - Imposta prezzo_bloccato = FALSE e riscrive la provenienza dal resolver
 
 7. Conversione in ordine
    Se il preventivo non e stato riallineato (prezzo_da_riallineare = TRUE),

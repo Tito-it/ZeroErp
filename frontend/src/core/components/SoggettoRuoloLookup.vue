@@ -2,11 +2,13 @@
 // Scopo: Autocomplete soggetto+ruolo server-side riutilizzabile cross-dominio
 // (selezione contesto pratica e futuri picker per-ruolo). Una opzione per
 // soggetto_ruolo ("Rossi Srl — Cliente", "Rossi Srl — Fornitore") + opzione
-// "senza ruolo" per i prospect puri (solo istanze, il ruolo CL nasce col BA —
-// guide/generazione-cliente.md). Display dropdown a 3 righe: ragione sociale
-// + badge ruolo (primary), codice soggetto (secondary), id fiscale + count
-// istanze (meta). Scope emittente sul ruolo CL applicato lato backend.
-// `n_istanze` sull'oggetto selezionato pilota il campo istanza del chiamante.
+// "senza ruolo" per i soggetti privi di ruoli (non hanno istanze: il ruolo
+// CLIENTE nasce con la prima — brief-db-istanza-nasce-col-ba, D-3). Display
+// dropdown a 3 righe: ragione sociale + badge ruolo (primary), codice soggetto
+// (secondary), id fiscale + numero di forniture (meta). Scope emittente sul
+// ruolo CL applicato lato backend.
+// `n_billing_account` sull'oggetto selezionato (le forniture del ruolo, un BA
+// per coppia istanza+utility) pilota la scelta della fornitura del chiamante.
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
 import { useLookupDisplayModel } from '../composables/useLookupDisplayModel'
@@ -20,7 +22,8 @@ const { t } = useI18n()
 const props = defineProps({
   // Oggetto riga lookup completo {soggetto_id, soggetto_ruolo_id|null,
   // ruolo_codice|null, ruolo_descrizione|null, ragione_sociale_completa,
-  // id_fiscale, soggetto_codice, n_istanze}
+  // id_fiscale, soggetto_codice, n_billing_account, billing_account_unico_id,
+  // billing_account_unico_codice}
   modelValue: { type: Object, default: null },
   // Filtro codice tipo ruolo (CL, FO, ...). Esclude le righe "senza ruolo".
   tipoRuolo: { type: String, default: null },
@@ -101,9 +104,9 @@ function onClear() {
         </div>
         <div class="app-lookup-option__meta">
           <span v-if="option.id_fiscale">{{ option.id_fiscale }}</span>
-          <span v-if="option.n_istanze > 0">
+          <span v-if="option.n_billing_account > 0">
             <i :class="MANAGE_ICONS.UTILITY"></i>
-            {{ t('soggetto_ruolo_lookup.n_istanze', { n: option.n_istanze }) }}
+            {{ t('soggetto_ruolo_lookup.n_forniture', { n: option.n_billing_account }) }}
           </span>
         </div>
       </div>

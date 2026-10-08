@@ -106,7 +106,9 @@ una scelta che non aveva effetto.
 | `E_ANAG_VALIDAZIONE` | 400 | `soggetto_id`/`utility_id`/`ba_categoria_cliente_id` mancanti; utility con PDP in creazione manuale |
 | `E_ANAG_NOT_FOUND` | 404 | `istanza_utility_id`/`billing_account_id` pre-esistenti non trovati |
 | `E_BA_ADMIN_GLOBALE_VIETATO` | 403 | Creazione BA senza un emittente fiscale di lavoro (super admin in «Tutti gli emittenti») con emittenti presenti: scegliere l'emittente in alto |
-| `E_ANAG_DUPLICATO` | 409 | Esiste già un cliente per l'istanza (`uq_clienti_istanza_utility`) |
+| `E_ANAG_DUPLICATO` | 409 | Esiste già un cliente per il billing account (`uq_clienti_billing_account`, dal 2026-10-08: un cliente per BA, un'istanza ha tanti clienti quanti BA) |
+| `E_ANAG_DUPLICATO` | 409 | Istanza pre-esistente la cui utility ha già il suo billing account, senza indicarlo (`uq_billing_instance_utility`): il cliente si aggancia a quel BA, passandone l'id |
+| `E_ANAG_VALIDAZIONE` | 400 | Billing account pre-esistente di un'altra istanza o di un'altra utility: la coppia istanza+utility è l'identità del BA |
 
 Risposta `200`: `{ id, istanza_utility_id, billing_account_id, soggetto_ruolo_id }`.
 

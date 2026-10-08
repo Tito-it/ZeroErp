@@ -39,6 +39,7 @@ from apps.catalogo.db.catalogo_uom_repository import (
 )
 from apps.core.db._helpers import resolve_config_id_by_codice_interno
 from apps.core.db.lock_columns_repository import LockColumnsRepository
+from apps.core.services.db_error_fields import db_error_code
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
@@ -489,7 +490,7 @@ def _extract_enum_string(
         nullable=nullable,
         message=message,
     )
-    if value is _MISSING or value is None:
+    if isinstance(value, _MissingType) or value is None:
         return value
     upper_value = value.upper()
     ErrorManager.require(
@@ -502,27 +503,6 @@ def _extract_enum_string(
         log_to_db=True,
     )
     return upper_value
-
-
-# Scopo: Valida coerenza intervallo date inclusivo dal/al.
-def _validate_date_interval(
-    *,
-    valido_dal: date | None | _MissingType,
-    valido_al: date | None | _MissingType,
-    function_name: str,
-    payload_name: str,
-) -> None:
-    if valido_dal is _MISSING or valido_al is _MISSING or valido_dal is None or valido_al is None:
-        return
-    ErrorManager.require(
-        valido_al > valido_dal,
-        code="E_CATALOGO_VALIDATION",
-        message=f"Payload {payload_name} non valido.",
-        detail="valido_al deve essere successivo a valido_dal.",
-        context={"valido_dal": valido_dal.isoformat(), "valido_al": valido_al.isoformat()},
-        function_name=function_name,
-        log_to_db=True,
-    )
 
 
 # Scopo: Estrae i campi scrivibili di un articolo con una sola regola condivisa.
@@ -844,12 +824,11 @@ def _extract_uom_operativa_payload(
         data["valido_dal"] = valido_dal
     if valido_al is not _MISSING:
         data["valido_al"] = valido_al
-    _validate_date_interval(
-        valido_dal=valido_dal,
-        valido_al=valido_al,
-        function_name=function_name,
-        payload_name="UoM operativa",
-    )
+    # L'ordine delle date lo giudica il DB: guard comune
+    # `script.trgfn_guard_date_validita`, E_DATA_AL_MINORE_DAL col campo
+    # `valido_al`. ⚠️ Fino al 2026-10-09 qui c'era una copia della regola, gia'
+    # DIVERGENTE: pretendeva `valido_al > valido_dal` e rifiutava il periodo di
+    # un giorno solo, che il DB ammette.
 
     meta = _extract_meta(payload, function_name=function_name, message=payload_message)
     if meta is not _MISSING:
@@ -980,19 +959,13 @@ def _extract_componente_payload(
         message=payload_message,
     )
     # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
-    # Applicato prima di _validate_date_interval cosi' la coerenza temporale
-    # con valido_al e' verificata sul valore effettivo (today), non `_MISSING`.
     valido_dal = _apply_valido_dal_default(valido_dal, for_create=not for_update)
     if valido_dal is not _MISSING:
         data["valido_dal"] = valido_dal
     if valido_al is not _MISSING:
         data["valido_al"] = valido_al
-    _validate_date_interval(
-        valido_dal=valido_dal,
-        valido_al=valido_al,
-        function_name=function_name,
-        payload_name="componente",
-    )
+    # L'ordine delle date lo giudica il DB (guard comune
+    # `script.trgfn_guard_date_validita`): vedi `_extract_uom_operativa_payload`.
 
     for field_name in (
         "obbligatorio",
@@ -2322,7 +2295,8 @@ def fn_create_conversione(payload: dict[str, Any]) -> dict[str, object]:
     valido_al = _extract_payload_date(payload, "valido_al", function_name=function_name, nullable=True, message="Payload conversione non valido.")
     # Fase 4 (BE-only): centralizzato in `_apply_valido_dal_default`.
     valido_dal = _apply_valido_dal_default(valido_dal, for_create=True)
-    _validate_date_interval(valido_dal=valido_dal, valido_al=valido_al, function_name=function_name, payload_name="conversione")
+    # L'ordine delle date lo giudica il DB (guard comune
+    # `script.trgfn_guard_date_validita`): vedi `_extract_uom_operativa_payload`.
 
     data: dict[str, Any] = {
         "uom_from_id": uom_from_id,
@@ -2358,7 +2332,8 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, ob
     valido_al = _extract_payload_date(payload, "valido_al", function_name=function_name, nullable=True, message="Payload conversione non valido.")
     if valido_al is not _MISSING:
         data["valido_al"] = valido_al
-    _validate_date_interval(valido_dal=valido_dal, valido_al=valido_al, function_name=function_name, payload_name="conversione")
+    # L'ordine delle date lo giudica il DB (guard comune
+    # `script.trgfn_guard_date_validita`): vedi `_extract_uom_operativa_payload`.
     attivo = _extract_present_bool(payload, "attivo", function_name=function_name, message="Payload conversione non valido.")
     if attivo is not _MISSING:
         data["attivo"] = attivo
@@ -2384,6 +2359,19 @@ def fn_update_conversione(conv_id: int, payload: dict[str, Any]) -> dict[str, ob
 
 # Scopo: Traduce errori di integrita' DB per conversioni in messaggi utente.
 def _translate_conversione_integrity_error(exc: DatabaseError, *, function_name: str) -> None:
+    # ⭐ Un rifiuto del DB col suo codice di catalogo PASSA INTATTO: il
+    #    chiamante rilancia l'eccezione (`raise`), e il traduttore del middleware
+    #    la rende con codice, frase e campo del catalogo. 🔴 Fino al 2026-10-09
+    #    il ripiego qui sotto ingoiava anche quelli: il guard comune delle date
+    #    (`E_DATA_AL_MINORE_DAL`, campo `valido_al`) arrivava al client come
+    #    «Dati conversione non validi.» senza campo da evidenziare — trovato
+    #    togliendo la copia della regola dal service
+    #    (`test_date_validita_guard_comune_db` 7).
+    #    ⚠️ `E_GENERICO` resta qui: non distingue niente, ed e' cio' che solleva
+    #    il guard delle tipologie, a cui il ramo sotto da' una frase propria.
+    codice = db_error_code(exc)
+    if codice is not None and codice != "E_GENERICO":
+        return
     msg = str(exc).lower()
     if "tipologia diversa" in msg or "same-type" in msg:
         ErrorManager.raise_error(

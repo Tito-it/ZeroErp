@@ -512,6 +512,7 @@ class TitoliIvaService:
             detail=f"Ammessi: {', '.join(sorted(_LIVELLI_AMBITO))}.",
             context={"field": "livello"},
         )
+        assert isinstance(livello, str)
         colonna = _LIVELLI_AMBITO[livello]
         valore = payload.get(colonna)
         ErrorManager.require(

@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: API view lookup istanze_utilities — endpoint dedicato di ricerca
-#        ricca per autocomplete cross-dominio (preventivi prospect senza BA,
-#        future utility-aware flows). View sottile: parsing query params +
-#        scope emittente + delega a service.
+# Scopo: API view lookup delle forniture (istanze_utilities, una riga per
+#        billing account) — endpoint dedicato di ricerca ricca per
+#        autocomplete cross-dominio (preventivo, pratica). View sottile:
+#        parsing query params + scope emittente + delega a service.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -32,10 +32,10 @@ _LOOKUP_RESPONSE = inline_serializer(
 
 
 class IstanzaUtilityLookupView(DomainAPIView):
-    """GET lookup ricco istanze_utilities per autocomplete UI."""
+    """GET lookup ricco delle forniture (una riga per BA) per autocomplete UI."""
 
-    # Lookup cross-dominio: preventivi prospect (senza BA) lo usano dal
-    # dominio vendite. Stesso pattern di BillingAccountLookupView.
+    # Lookup cross-dominio: lo usano il preventivo (vendite) e la pratica
+    # (pratiche). Stesso pattern di BillingAccountLookupView.
     skip_area_check = True
     is_search_endpoint = True
 
@@ -58,9 +58,8 @@ class IstanzaUtilityLookupView(DomainAPIView):
                 type=int,
                 required=False,
                 description=(
-                    "Filtra per utility specifica (gas/ee/idrico). Strict: "
-                    "post Strategia C ogni istanza ha utility dichiarata via "
-                    "BA, dati_precontrattuali o clienti."
+                    "Filtra per utility specifica (gas/ee/idrico): la "
+                    "utility del billing account della riga."
                 ),
             ),
             OpenApiParameter(
@@ -74,8 +73,8 @@ class IstanzaUtilityLookupView(DomainAPIView):
                 type=int,
                 required=False,
                 description=(
-                    "Filtra le sole istanze legate a quel ruolo via clienti "
-                    "(forniture del cliente/BA selezionato)."
+                    "Filtra i billing account di quel ruolo (le forniture "
+                    "del cliente), con o senza la riga cliente."
                 ),
             ),
             OpenApiParameter(

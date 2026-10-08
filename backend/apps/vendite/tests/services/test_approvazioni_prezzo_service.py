@@ -61,6 +61,7 @@ class CreaRichiestaApprovazioneTests(TestCase):
             "emittente_fiscale_id": 11,
             "soggetto_id": "soggetto-uuid",
             "soggetto_ruolo_id": 22,
+            "billing_account_id": 33,
         }
         mock_repo_cls.return_value = repo
         mock_crea_pratica.return_value = 12345
@@ -87,6 +88,8 @@ class CreaRichiestaApprovazioneTests(TestCase):
         self.assertEqual(crea_kwargs["priorita_id"], 2)
         self.assertEqual(crea_kwargs["soggetto_id"], "soggetto-uuid")
         self.assertEqual(crea_kwargs["istanza_utility_id"], 99)
+        # Il cliente a grana fine della pratica e' il BA del documento (D-9).
+        self.assertEqual(crea_kwargs["billing_account_id"], 33)
         # La pratica nasce gia' APERTA da crea_pratica: nessun transito esplicito.
         mock_cambia_stato.assert_not_called()
         # Email best-effort invocata (non solleva nemmeno se fallisce).

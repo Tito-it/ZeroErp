@@ -172,11 +172,12 @@ class PraticheRepository:
     _PRATICA_SELECT = """
         p.id, p.emittente_fiscale_id, p.tipo_prestazione_id,
         p.soggetto_id, p.soggetto_ruolo_id, p.istanza_utility_id,
-        -- Cliente (BA) derivato dall'istanza: presente se cliente attivo, NULL se
-        -- prospect. Single source of truth a DB (script.fn_get_billing_account_by_istanza),
-        -- nessuna derivazione lato FE. Alimenta pre-fill+lock e gating documenti
-        -- (offerta/contratto richiedono BA) aprendo un documento dal flusso.
-        script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS billing_account_id,
+        -- Il cliente di cui parla la pratica, a grana fine: colonna della pratica
+        -- dal 2026-10-08 (brief-db-istanza-nasce-col-ba, D-9), non piu' derivato
+        -- dall'istanza (un'istanza ha un BA per utility). NULL = pratica di un
+        -- altro ruolo, interna, o senza istanza. Alimenta pre-fill+lock e gating
+        -- documenti (offerta/contratto richiedono BA) aprendo un documento dal flusso.
+        p.billing_account_id,
         p.stato_id, p.priorita_id,
         p.risorsa_umana_id, p.unita_organizzativa_id,
         p.pratica_padre_id, p.flusso_origine_id, p.canale_origine_id,
@@ -355,12 +356,12 @@ class PraticheRepository:
         sql = """
             INSERT INTO pratiche.pratiche (
                 emittente_fiscale_id, tipo_prestazione_id, soggetto_id,
-                soggetto_ruolo_id, istanza_utility_id,
+                soggetto_ruolo_id, istanza_utility_id, billing_account_id,
                 stato_id, priorita_id, risorsa_umana_id,
                 unita_organizzativa_id, canale_origine_id,
                 descrizione, data_scadenza, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id
         """
@@ -370,6 +371,7 @@ class PraticheRepository:
             data.get("soggetto_id"),
             data.get("soggetto_ruolo_id"),
             data.get("istanza_utility_id"),
+            data.get("billing_account_id"),
             data["stato_id"],
             data["priorita_id"],
             data.get("risorsa_umana_id"),
@@ -472,7 +474,7 @@ class PraticheRepository:
         p.codice AS pratica_codice,
         p.data_apertura AS pratica_data_apertura,
         p.istanza_utility_id AS pratica_istanza_utility_id,
-        script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS pratica_billing_account_id,
+        p.billing_account_id AS pratica_billing_account_id,
         s.ragione_sociale_completa AS pratica_soggetto_display,
         s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale,
         -- Assegnazione del singolo step (20260618): operatore + reparto con

@@ -544,7 +544,7 @@ class TestSearchRuoliLookup(TestCase):
                 "ruolo_codice": "CL", "ruolo_descrizione": "Cliente",
                 "ragione_sociale_completa": "Rossi Mario",
                 "id_fiscale": "RSSMRA80A01H501U", "soggetto_codice": "SOG-1",
-                "n_istanze": 2,
+                "n_billing_account": 2,
             }],
             1,
         )
@@ -589,7 +589,7 @@ class TestGetRuoliLookupById(TestCase):
         repo = mock_repo.return_value
         repo.get_ruolo_lookup_by_id.return_value = {
             "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": 165,
-            "ruolo_codice": "CL", "n_istanze": 1,
+            "ruolo_codice": "CL", "n_billing_account": 1,
         }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=165, emittente_ids=[7])
@@ -605,7 +605,7 @@ class TestGetRuoliLookupById(TestCase):
         repo = mock_repo.return_value
         repo.get_ruolo_lookup_by_id.return_value = {
             "soggetto_id": FAKE_UUID, "soggetto_ruolo_id": None,
-            "ruolo_codice": None, "n_istanze": 2,
+            "ruolo_codice": None, "n_billing_account": 0,
         }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         result = SoggettiService().get_ruoli_lookup_by_id(soggetto_id=FAKE_UUID, emittente_ids=None)

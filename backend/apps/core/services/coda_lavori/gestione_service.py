@@ -569,8 +569,8 @@ def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
         context={"field": "ids"},
         function_name=function_name,
     )
-    visti: set[int] = set()
-    return [i for i in ids if not (i in visti or visti.add(i))]
+    # Dedup con ordine preservato: le chiavi di un dict tengono l'ordine.
+    return list(dict.fromkeys(ids))
 
 
 # Scopo: il giro di archiviazione su N righe, comune alle due code — l'unica

@@ -252,7 +252,7 @@ const nonEditableFields = computed(() => {
   if (hasDetail.value) return [...base, 'billing_account_id', 'istanza_utility_id']
   // Aperto da pratica: blocca SOLO i campi effettivamente ereditati (passati,
   // non-null) dal contesto — "se passati da esterno → valorizzati e non
-  // modificabili". Un campo assente (es. prospect senza BA) resta editabile:
+  // modificabili". Un campo assente (es. pratica senza BA) resta editabile:
   // niente lock a vuoto che impedirebbe il salvataggio.
   const ctx = props.praticaContext
   if (ctx) {
@@ -302,9 +302,10 @@ function defaultForm() {
     billing_account_obj: null,
     istanza_utility_id: null,
     // _obj per IstanzaUtilityLookup AutoComplete (pattern restore lookup ricco).
-    // Popolato da onIstanzaSelected (FE) o da loadDetail() via
-    // getIstanzaUtilityLookupById in edit (solo se BA assente: con BA presente
-    // l'istanza e' derivata e il picker e' nascosto).
+    // Popolato da onIstanzaSelected (FE) o da prefillFromPratica() via
+    // getIstanzaUtilityLookupById (pratica senza BA). Un preventivo salvato ha
+    // sempre il BA (brief-db-istanza-nasce-col-ba, R-2): l'istanza e' derivata
+    // e il picker e' nascosto.
     istanza_utility_obj: null,
     valuta_id: null,
     termine_pagamento_id: null,
@@ -407,7 +408,7 @@ async function loadDetail(id = null) {
     billing_account_id: data.billing_account_id,
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
     istanza_utility_id: data.istanza_utility_id,
-    istanza_utility_obj: null,  // popolato sotto via getIstanzaUtilityLookupById (no BA)
+    istanza_utility_obj: null,  // il BA c'e' sempre: l'istanza e' derivata, picker nascosto
     valuta_id: data.valuta_id,
     termine_pagamento_id: data.termine_pagamento_id,
     validita_dal: data.validita_dal ? new Date(data.validita_dal + 'T00:00:00') : null,
@@ -422,7 +423,10 @@ async function loadDetail(id = null) {
   _suspendDateRecalc.value = false
   // Restore BillingAccountLookup _obj per visualizzazione ricca (codice, ragione
   // sociale, id fiscale, PDP). Best-effort: in caso di failure il drawer mostra
-  // l'autocomplete vuoto e l'operatore puo' ri-selezionare. Skip se BA assente.
+  // l'autocomplete vuoto e l'operatore puo' ri-selezionare.
+  // ⚠️ Il ramo «preventivo prospect senza BA», che ripristinava il picker
+  //    istanza, e' stato tolto il 2026-10-08: il BA e' NOT NULL
+  //    (brief-db-istanza-nasce-col-ba, R-2).
   if (data.billing_account_id) {
     try {
       const res = await getBillingAccountLookupById(data.billing_account_id)
@@ -430,16 +434,6 @@ async function loadDetail(id = null) {
       if (ba) form.value.billing_account_obj = ba
     } catch {
       // Resto: form parte senza _obj, l'utente puo' rieseguire la ricerca.
-    }
-  } else if (data.istanza_utility_id) {
-    // Restore IstanzaUtilityLookup _obj solo per preventivi prospect senza BA:
-    // il picker istanza e' visibile solo in quel caso. Best-effort.
-    try {
-      const res = await getIstanzaUtilityLookupById(data.istanza_utility_id)
-      const iu = res?.data?.data
-      if (iu) form.value.istanza_utility_obj = iu
-    } catch {
-      // Resto: il picker mostra solo l'id risolto al prossimo focus.
     }
   }
   // Riepilogo IVA aggregato: il trigger DB lo mantiene in sync con le righe
@@ -451,15 +445,16 @@ async function loadDetail(id = null) {
 
 // Scopo: in CREATE da pratica, pre-compila cliente/istanza dal contesto pratica
 // e ne ripristina gli _obj per i lookup (stesso restore di loadDetail). I campi
-// sono già bloccati da nonEditableFields (props.praticaContext). istanza sempre
-// presente dalla pratica; BA presente solo se cliente attivo (prospect → solo
-// istanza, picker istanza visibile ma disabilitato).
+// sono già bloccati da nonEditableFields (props.praticaContext). La pratica
+// porta il BA quando parla di un cliente (D-9 di brief-db-istanza-nasce-col-ba);
+// una pratica con la sola istanza (nata prima, o su un'istanza con piu' BA)
+// passa l'istanza, e il BA lo risolve il backend dalla coppia istanza+utility.
 async function prefillFromPratica() {
   const ctx = props.praticaContext
   if (!ctx) return
   if (ctx.istanzaUtilityId) form.value.istanza_utility_id = ctx.istanzaUtilityId
   if (ctx.billingAccountId) {
-    // Cliente attivo: BA-first, istanza derivata dal BA (picker istanza nascosto).
+    // BA-first, istanza derivata dal BA (picker istanza nascosto).
     form.value.billing_account_id = ctx.billingAccountId
     try {
       const res = await getBillingAccountLookupById(ctx.billingAccountId)
@@ -467,7 +462,7 @@ async function prefillFromPratica() {
       if (ba) form.value.billing_account_obj = ba
     } catch { /* best-effort: il campo resta col solo id, comunque bloccato */ }
   } else if (ctx.istanzaUtilityId) {
-    // Prospect: nessun BA, istanza diretta (picker istanza visibile, disabilitato).
+    // Pratica con la sola istanza: picker istanza visibile, disabilitato.
     try {
       const res = await getIstanzaUtilityLookupById(ctx.istanzaUtilityId)
       const iu = res?.data?.data
@@ -619,10 +614,11 @@ const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({
   },
 })
 
-// In CREATE servono utility e istanza (regola di dominio post brief DB rev2:
-// preventivo deve essere collegato a un'istanza utility, derivabile dal BA o
-// selezionata standalone per prospect). In EDIT l'istanza e' gia' persistita
-// e il backend non richiede di rispedirla.
+// In CREATE servono utility e istanza: il cliente del preventivo e' la coppia
+// istanza+utility col suo BA (brief-db-istanza-nasce-col-ba, R-2). L'istanza
+// arriva dal BA scelto o dal picker delle forniture; il BA della coppia lo
+// risolve il backend. In EDIT l'istanza e' gia' persistita e il backend non
+// richiede di rispedirla.
 // Defense-in-depth: anche se il FormFooter e' nascosto da
 // `v-if="canEditTestataEffective && !isReadonly"`, includiamo isReadonly qui
 // cosi' qualsiasi consumer futuro del computed (shortcut tastiera, save
