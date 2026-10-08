@@ -51,7 +51,7 @@ La funzione **`script.fn_search_soggetti_universale`** implementa il **livello 1
 | ----------------- | ---------- | ------------ | ------- | ------------------------------------------------------ |
 | `p_search_term`   | `TEXT`     | Si           | —       | Testo di ricerca (minimo 3 caratteri)                  |
 | `p_tipo_ruolo_id` | `INTEGER`  | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)             |
-| `p_emittente_ids` | `BIGINT[]` | No           | `NULL`  | Scope emittente: soggetto_ruolo_id emittenti (solo CL) |
+| `p_emittente_ids` | `BIGINT[]` | No           | `NULL`  | ⚠️ **Superato dal 2026-10-08**: non è più letto (il perimetro lo fa la RLS) |
 | `p_limit`         | `INTEGER`  | No           | `50`    | Righe per pagina (max 200, cap automatico)             |
 | `p_offset`        | `INTEGER`  | No           | `0`     | Offset paginazione                                     |
 | `p_order_by`      | `TEXT`     | No           | `NULL`  | Colonna di ordinamento (whitelist, vedi sotto)         |
@@ -103,15 +103,15 @@ filtered (CTE 1)
          OR id_fiscale ILIKE $2
          OR codice ILIKE $2
          <v_exists_clause>)       -- dinamico
+    AND fn_check_soggetto_ruolo_visibile(sr.id)   -- perimetro (2026-10-08)
   LIMIT 10.000  (hard cap)
 
 with_utility (CTE 2)
   filtered f
-    LEFT JOIN clienti cl        ON cl.soggetto_ruolo_id = f.soggetto_ruolo_id
+    LEFT JOIN clienti cl        ON cl.soggetto_ruolo_id = f.soggetto_ruolo_id   -- sotto RLS
     LEFT JOIN utilities u       ON u.id = cl.utility_id
     LEFT JOIN soggetti_ruoli sr_ef                       -- R-5 (18-08-2026)
            ON sr_ef.id = fn_get_ba_emittente_sr_id(cl.billing_account_id)
-          AND ($5 IS NULL OR sr_ef.id = ANY($5))         -- <- filtrata dallo scope
     LEFT JOIN soggetti s_ef     ON s_ef.id = sr_ef.soggetto_id
   GROUP BY (tutti i campi filtered)
   -- string_agg su utility_list E su emittente_ragione_sociale
@@ -144,43 +144,30 @@ Per aggiungere un nuovo tipo ruolo con ricerca codice: INSERT/UPDATE su `tipi_ru
 
 ---
 
-### Filtro Scope Emittente
+### Perimetro: la RLS dei clienti *(dal 2026-10-08)*
 
-Il parametro `p_emittente_ids` filtra i risultati in base agli emittenti fiscali autorizzati. Si applica **solo per tipo ruolo CL** (clienti).
+Il filtro di riga è [`script.fn_check_soggetto_ruolo_visibile`](/dbzero/script/funzioni/fn_check_soggetto_ruolo_visibile),
+la **stessa** check con cui il dettaglio ([`fn_get_search_detail`](/dbzero/script/funzioni/fn_get_search_detail))
+decide se un soggetto c'è. Lista e dettaglio non possono dissentire su chi si vede.
 
-⚠️ **Dal 2026-08-18 il parametro NON decide piu' da solo.** La funzione risolve
-lo scope **da se'**, dalla GUC `app.current_user_id` via
-`script.fn_get_emittenti_scope_sr_effettivo`, e `p_emittente_ids` puo' solo
-**RESTRINGERE**: nessun valore passato dal chiamante puo' allargare cio' che la
-funzione mostra. Prima il filtro si accendeva su `p_emittente_ids IS NOT NULL`,
-quindi `NULL` valeva «nessuna restrizione» — ed e' cio' in cui Python appiattisce
-la lista vuota, che significa l'opposto.
+* **CL**: il soggetto-ruolo si mostra se ha almeno un cliente che la **RLS** di
+  `anagrafiche.clienti` restituisce a chi guarda. La policy dell'operatore
+  (`rls_clienti_ef_whitelist`) risale dal billing account con la stessa regola
+  della testata: mapping specifico, poi riserva — vedi
+  [`script.fn_check_ba_visible_for_emittenti`](/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti).
+  Il super admin vede tutti gli emittenti; l'emittente attivo restringe.
+* **Altri ruoli** (FO, EF, VT, ...): nessun perimetro. `soggetti`, `soggetti_ruoli`
+  e `fornitori` non portano un emittente nel modello: è una scelta di modello.
 
-* **`NULL`** = nessuna restrizione **richiesta dal chiamante** (vale lo scope di
-  diritto: universo per il super admin, la sua whitelist per l'operatore)
-* **Array valorizzato** = mostra solo clienti il cui billing_account e' collegato a uno degli emittenti autorizzati
-* **`'{}'::bigint[]`** = nessun accesso (zero risultati)
+⚠️ Un soggetto-ruolo CL senza **nessun** cliente non compare a nessuno, nemmeno al
+super admin: il dettaglio lo direbbe «non trovato».
 
-I valori sono `soggetto_ruolo_id` degli emittenti fiscali, come ritornati da `script.fn_get_emittenti_scope_sr_ids(auth_user_id)`.
-
-La catena di join per il filtro:
-
-```text
-soggetti_ruoli.id
-  → clienti.soggetto_ruolo_id
-  → clienti.billing_account_id
-  → script.fn_check_ba_visible_for_emittenti(ba_id, p_emittente_ids)
-```
-
-> **Logica a 3 livelli (fix 2026-04-10)**: il filtro scope emittente e' delegato a [`script.fn_check_ba_visible_for_emittenti`](/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti) che opera con precedenza:
->
-> 1. **Mapping specifico**: il BA ha una riga in `emittenti_fiscali_billing_account` collegata a uno degli emittenti autorizzati → visibile.
-> 2. **Fallback default**: un emittente autorizzato ha `is_default = true` (gestore globale) **E** il BA non ha alcun mapping specifico → visibile.
-> 3. Altrimenti non visibile.
->
-> Stessa funzione usata anche da `fn_get_search_detail`. Allineamento a `clienti_repository.list_clienti` lato Python.
-
-Per ruoli non-CL (FO, EF, VT, ...) il parametro viene ignorato.
+**Com'era prima.** Dal 2026-08-18 al 2026-10-08 la funzione risolveva lo scope da
+sé (`fn_get_emittenti_scope_sr_effettivo`) e filtrava i clienti a mano con
+`fn_check_ba_visible_for_emittenti`: era nato quando `clienti` non aveva RLS, e
+con la RLS armata (2026-09-10) era diventato una seconda copia della regola della
+policy. `p_emittente_ids`, che poteva solo restringere, non è più letto: il
+backend passava comunque il diritto pieno dell'utente.
 
 ---
 
@@ -214,7 +201,7 @@ Su una riga-soggetto quella colonna mostra una **relazione**, non un attributo.
 Chiamarla «Emittente» insegnerebbe un modello falso: *«Emittenti presso cui è
 cliente»*, o simile. È una scelta di frontend, ma nasce da un vincolo di dominio.
 
-#### ⚠️ La colonna è filtrata dallo scope, non solo la riga
+#### ⚠️ La colonna è filtrata dal perimetro, non solo la riga
 
 È il punto meno ovvio. Non basta che la **riga** sia visibile: se un soggetto è
 cliente di A e di B, e chi guarda ha in whitelist il solo A, la riga si vede (via
@@ -222,8 +209,10 @@ A) ma la colonna deve dire **«A»**, non «A, B». Altrimenti una colonna nata 
 disambiguare finirebbe per rivelare l'esistenza di un emittente **fuori
 perimetro**.
 
-Con scope `NULL` (super admin) il filtro non morde e si vedono tutti: è
-esattamente il caso per cui la colonna è stata chiesta.
+Dal 2026-10-08 lo fa la RLS di `anagrafiche.clienti` sulla `LEFT JOIN`: un
+cliente fuori perimetro non entra nella join, e quindi nemmeno il suo emittente
+entra nell'aggregato. Il super admin vede tutti gli emittenti: è esattamente il
+caso per cui la colonna è stata chiesta.
 
 #### `NULL` sui rami non-CL è la risposta giusta
 
@@ -317,11 +306,10 @@ SELECT * FROM script.fn_search_soggetti_universale(
 
 ### Caratteristiche Tecniche
 
-* **Volatilita'**: `STABLE`. ⚠️ `PARALLEL SAFE` è stato **tolto il 18-08-2026**: la
-  funzione chiama `fn_get_emittenti_scope_sr_effettivo`, che è `STABLE` e basta —
-  tenerla `SAFE` sarebbe stata una dichiarazione falsa al planner. Il costo reale è
-  ~zero: la query dinamica interna resta parallelizzabile, perché lo scope si
-  risolve **prima**, in una variabile, e non dentro la query.
+* **Volatilita'**: `STABLE`, non `PARALLEL SAFE` (tolto il 18-08-2026: la catena
+  dello scope non lo è).
+* **Sicurezza**: `SECURITY INVOKER`, così la RLS di `clienti` vale con l'identità di
+  chi chiama.
 * **Linguaggio**: PL/pgSQL
 * **SQL dinamico**: `RETURN QUERY EXECUTE` con `format()` per il frammento EXISTS. La tabella e' validata come `regclass` dal trigger guard su `tipi_ruoli`.
 * **Tipi colonne**: `%TYPE` per allineamento automatico ai tipi delle tabelle sorgente.
