@@ -267,7 +267,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   di preventivo, ordine e DDT solo in bozza; `user_update NOT NULL` su righe e componenti; CHECK `_nz`.
 - ⏳ **Righe e componenti: i tre debiti rimasti** (`work-in-progress/brief-db-righe-e-componenti-debiti-residui.md`,
   D20, 2026-10-08): righe d'ordine e di preventivo ancora aperte fuori bozza; `user_update` nullable altrove e
-  senza presidio; componente spento in attesa copiato nella revisione. Tre decisioni di Tid. Non iniziato.
+  senza presidio; componente spento in attesa copiato nella revisione. Decisi da Tid il 2026-10-08 (D-1 lock a tre porte, sull'ordine aperta la sola `data_consegna_confermata` negli stati da evadere; D-2 un giro solo col presidio; D-3 lo spento in attesa si copia senza marca). Sviluppo non iniziato.
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1 e 2 applicati e verdi, BE/FE in parte. Serve il terzo giro DB (§F:
   F-1 quantità calcolata, F-2 listino del documento), poi il resto del BE/FE, il collaudo a video §D.5 e l'archivio.
@@ -275,8 +275,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md`, richiesta BE del 2026-10-08, voci E-4/E-5/E-10
   dell'analisi della doc API core): da fare.
 - ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
-  decisioni di Tid del 2026-10-08): DB scritto e provato (`20261008-50…-62`, §6.10), da applicare; poi BE/FE (§5,
-  §6.10.5). Decisi anche R-8 «un BA, un cliente» (BA sulla pratica) e R-9 (UNIQUE gestori): si scrivono nello stesso giro, ⏸ al via di Tid.
+  decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); resta il BE/FE
+  (§5, §6.10.5, §6.12.4).
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

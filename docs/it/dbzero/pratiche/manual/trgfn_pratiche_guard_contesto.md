@@ -91,3 +91,16 @@ RETURNS trigger LANGUAGE plpgsql
 ---
 
 {% include-markdown "signature-core.md" %}
+
+---
+
+### Regola 5 — il billing account della pratica e' del suo ruolo (dal 2026-10-08)
+
+Con `billing_account_id` valorizzato, il ruolo del billing account deve essere il
+`soggetto_ruolo_id` della pratica (un ruolo assente e' incoerente quanto uno diverso):
+`E_PRATICHE_BA_NON_COERENTE`, campo `billing_account_id`. Il legame BA ↔ istanza lo tiene la FK
+composta, la presenza dell'istanza il CHECK. Il trigger scatta anche su `billing_account_id`.
+
+⚠️ Il commento di testa parlava di «prospect puro»: un'istanza agganciata senza ruolo perche' il
+ruolo CLIENTE arrivava dopo, col BA. Non e' piu' cosi': l'istanza nasce col BA, e il ruolo con
+lui. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).

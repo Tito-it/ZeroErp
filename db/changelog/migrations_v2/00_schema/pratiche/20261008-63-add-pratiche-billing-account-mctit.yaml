@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PRATICA SA DI QUALE CLIENTE PARLA
+#   pratiche.pratiche.billing_account_id (nullable)
+#   + CHECK chk_pratiche_ba_con_istanza
+#   + FK fk_pratiche_billing_account_istanza (billing_account_id, istanza_utility_id)
+#     verso anagrafiche.billing_account (id, istanza_utility_id).
+#   Brief: brief-db-istanza-nasce-col-ba (R-8, D-7 e D-9 di Tid del 2026-10-08)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Un'istanza puo' avere piu' utility, ognuna col suo BA (D-5), e un BA ha un
+#   solo cliente (D-6): «il cliente dell'istanza» non e' piu' una domanda con
+#   una risposta. La pratica portava solo l'istanza, e il backend ne ricavava
+#   il BA con script.fn_get_billing_account_by_istanza (ORDER BY ... LIMIT 1).
+#   La pratica porta ora l'aggancio a grana fine del CLIENTE, il BA (D-9). Per
+#   gli altri ruoli (fornitori, vettori, ...) basta soggetto_ruolo_id: le loro
+#   specializzazioni sono uniche per ruolo.
+#
+# -- LA FORMA -------------------------------------------------------
+#   * nullable: pratiche di fornitori e altri ruoli, pratiche interne, pratiche
+#     che nascono prima dell'istanza (allaccio da pratica);
+#   * CHECK: un BA solo con l'istanza — la FK composta con un NULL non
+#     scatterebbe (MATCH SIMPLE), e un BA senza istanza sfuggirebbe;
+#   * FK composta verso (id, istanza_utility_id): il BA e' quello dell'istanza
+#     della pratica. Destinazione: uq_billing_account_id_istanza_utility,
+#     esiste gia'. Istanza e utility della pratica discendono dal BA.
+#   «Il BA e' del ruolo della pratica» lo controlla il guard di contesto
+#   (regola 5, 20261008-66).
+#   L'indice della FK lo crea la policy (80_data, 20261008-73), non questo file.
+#
+# -- LE PRATICHE GIA' SCRITTE --------------------------------------
+#   Si valorizza solo cio' che e' univoco: pratica con istanza, l'istanza ha UN
+#   solo BA, e quel BA e' del ruolo della pratica. Le altre restano NULL. Su un
+#   database da zero non tocca nessuna riga.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pratiche/20261008-63-add-pratiche-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20261008-63-add-pratiche-billing-account
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        pratiche.pratiche.billing_account_id nullable, con CHECK (solo con l'istanza) e FK
+        composta verso il BA dell'istanza; le pratiche gia' scritte si valorizzano solo dove il
+        BA e' univoco e del ruolo della pratica. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pratiche.pratiche
+                ADD COLUMN billing_account_id bigint;
+
+              ALTER TABLE pratiche.pratiche
+                ADD CONSTRAINT chk_pratiche_ba_con_istanza
+                CHECK (billing_account_id IS NULL OR istanza_utility_id IS NOT NULL);
+
+              ALTER TABLE pratiche.pratiche
+                ADD CONSTRAINT fk_pratiche_billing_account_istanza
+                FOREIGN KEY (billing_account_id, istanza_utility_id)
+                REFERENCES anagrafiche.billing_account (id, istanza_utility_id);
+
+              COMMENT ON COLUMN pratiche.pratiche.billing_account_id
+              IS 'Il cliente di cui parla la pratica, a grana fine: il billing account (un ruolo CLIENTE ha un BA per ogni coppia istanza/utility). NULL per pratiche di fornitori e altri ruoli (basta soggetto_ruolo_id), interne, o nate prima dell''istanza. Il BA e'' quello dell''istanza della pratica (fk_pratiche_billing_account_istanza) e del suo ruolo (regola 5 di trgfn_pratiche_guard_contesto). Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).';
+
+              -- Le pratiche gia' scritte: solo dove il BA e' univoco e coerente.
+              UPDATE pratiche.pratiche p
+                 SET billing_account_id = ba.id
+                FROM anagrafiche.billing_account ba
+               WHERE p.billing_account_id IS NULL
+                 AND ba.istanza_utility_id = p.istanza_utility_id
+                 AND ba.soggetto_ruolo_id  = p.soggetto_ruolo_id
+                 AND (SELECT count(*)
+                        FROM anagrafiche.billing_account b2
+                       WHERE b2.istanza_utility_id = p.istanza_utility_id) = 1;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pratiche.pratiche DROP CONSTRAINT fk_pratiche_billing_account_istanza;
+              ALTER TABLE pratiche.pratiche DROP CONSTRAINT chk_pratiche_ba_con_istanza;
+              ALTER TABLE pratiche.pratiche DROP COLUMN billing_account_id;

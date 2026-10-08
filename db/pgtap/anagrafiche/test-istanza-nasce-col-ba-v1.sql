@@ -21,7 +21,9 @@
 --    2) istanza + BA nella stessa transazione -> vive
 --    3) cancellare l'ultimo BA di un'istanza che resta -> E_ISTANZA_SENZA_BA
 --    4) cancellare istanza e BA insieme -> vive
---    5) dati precontrattuali su una coppia senza BA -> fk_idp_billing_account_coppia
+--    5) struttura: i dati precontrattuali hanno la FK composta verso la coppia
+--       del BA (fk_idp_billing_account_coppia). Sul catalogo e non per INSERT:
+--       sotto RLS il WITH CHECK della policy parla prima della FK (42501)
 --    6) dati precontrattuali sulla coppia del BA -> vive
 --    7) secondo BA della stessa istanza, stesso emittente -> vive
 --    8) preventivo col BA di un'altra coppia -> fk_preventivi_ba_coppia
@@ -165,12 +167,27 @@ SELECT lives_ok(
 -- ============================================================
 -- 5) Dati precontrattuali su una coppia senza BA -> FK composta
 -- ============================================================
+-- ⛔ Sulla STRUTTURA, non per INSERT. La tabella ha RLS, e il WITH CHECK
+--   della policy (script.fn_scope_ef_whitelist_via_coppia) vede la coppia
+--   solo attraverso un suo BA: PostgreSQL valuta il WITH CHECK all'INSERT,
+--   PRIMA della FK, quindi col runner una coppia senza BA esce 42501 e la
+--   FK non si raggiunge mai (come owner, senza RLS, darebbe 23503). Pinnare
+--   il 42501 sarebbe pinnare il sintomo: la regola e' la FK, e la FK si
+--   legge dal catalogo, come il test 12.
+-- ⚠️ Colonne per NOME da pg_attribute e non pg_get_constraintdef: quella
+--   stampa lo schema secondo il search_path di chi legge.
 SELECT is(
-    pg_temp.esito($sql$
-        INSERT INTO anagrafiche.istanze_dati_precontrattuali (istanza_utility_id, utility_id)
-        SELECT w.istanza_utility_id, v.utility_2 FROM t_w w, t_v v $sql$),
-    '23503 fk_idp_billing_account_coppia',
-    '5. Dati precontrattuali su una coppia senza billing account: fk_idp_billing_account_coppia'
+    (SELECT string_agg(a.attname || '->' || ra.attname, ',' ORDER BY k.ord)
+       FROM pg_constraint c
+       CROSS JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY AS k(col, rcol, ord)
+       JOIN pg_attribute a  ON a.attrelid  = c.conrelid  AND a.attnum  = k.col
+       JOIN pg_attribute ra ON ra.attrelid = c.confrelid AND ra.attnum = k.rcol
+      WHERE c.contype   = 'f'
+        AND c.conrelid  = 'anagrafiche.istanze_dati_precontrattuali'::regclass
+        AND c.confrelid = 'anagrafiche.billing_account'::regclass
+        AND c.conname   = 'fk_idp_billing_account_coppia'),
+    'istanza_utility_id->istanza_utility_id,utility_id->utility_id',
+    '5. Dati precontrattuali solo su una coppia con billing account: FK composta fk_idp_billing_account_coppia'
 );
 
 -- ============================================================

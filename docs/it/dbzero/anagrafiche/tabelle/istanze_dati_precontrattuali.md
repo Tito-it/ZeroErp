@@ -25,6 +25,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| FOREIGN KEY | fk_idp_billing_account_coppia | istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_idp_classi_utenze | classe_utenza_id |
 | FOREIGN KEY | fk_idp_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_idp_utilities | utility_id |

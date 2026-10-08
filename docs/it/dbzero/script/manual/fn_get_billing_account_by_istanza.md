@@ -2,59 +2,35 @@
 
 ### Scopo
 
-Resolver di **lettura** (no raise) che, data un'istanza utility, restituisce il `billing_account_id` del **cliente attivo** su quell'istanza. `NULL` se l'istanza non ha un cliente (prospect puro) o se l'input non e' valido.
+⚠️ **In ritiro** (2026-10-08). Resolver di **lettura** (no raise): il billing account di
+un'istanza utility, **se l'istanza ne ha uno solo**. `NULL` se ne ha piu' d'uno o se l'input non
+e' valido. Mai un `LIMIT 1`: con piu' BA la domanda non ha una risposta, e la funzione non ne
+sceglie uno.
 
-Serve alla pratica per **esporre il contesto cliente** ai documenti che si aprono dal proprio flusso (preventivo / offerta / contratto): il backend proietta il campo nel dettaglio pratica senza fare alcuna derivazione di dominio, e il frontend precompila/blocca `billing_account_id` dal contesto.
+## Perche' e' in ritiro
 
-Introdotta 2026-06-15 (brief contesto cliente pratica). Specchio di [`fn_get_stato_cliente_by_istanza`](/dbzero/script/funzioni/fn_get_stato_cliente_by_istanza): stesso schema, stessa forma `_by_istanza`, stessa derivazione via `anagrafiche.clienti`.
-
-## Schema
-
-`script` (convention progetto: funzioni di lettura riusabili cross-dominio in `script`).
-
-## Firma
-
-```sql
-script.fn_get_billing_account_by_istanza(
-    p_istanza_id  anagrafiche.istanze_utilities.id%TYPE
-) RETURNS anagrafiche.clienti.billing_account_id%TYPE
-LANGUAGE plpgsql STABLE
-```
-
-Tipi ancorati con `%TYPE` alle colonne sorgente: il parametro segue il tipo della PK istanza, il ritorno il tipo del BA in `clienti`.
+Serviva al dettaglio pratica per esporre «il cliente della pratica» ai documenti aperti dal
+flusso. Dal 2026-10-08 un'istanza puo' avere piu' utility, ognuna col suo BA, e un BA ha un solo
+cliente: «il cliente dell'istanza» non e' piu' una domanda con una risposta. La pratica porta ora
+il suo BA in una colonna (`pratiche.pratiche.billing_account_id`, D-9), e il backend deve leggere
+quella. Quando nessuno la chiama piu', la funzione si cancella con questa pagina.
 
 ## Logica
 
-1. **Guard input** (resolver di lettura): `p_istanza_id` `NULL` o `<= 0` → ritorna `NULL`, **senza raise**.
-2. Cerca in `anagrafiche.clienti` la riga con `istanza_utility_id = p_istanza_id` (`ORDER BY id DESC LIMIT 1`, difensivo: `clienti` ha `UNIQUE(istanza_utility_id)` → al piu' 1 riga) e ne ritorna `billing_account_id`.
-3. Nessun cliente per quell'istanza → `NULL` (prospect).
+1. `p_istanza_id` `NULL` o `<= 0` → `NULL`, senza errore.
+2. Conta i BA dell'istanza in `anagrafiche.billing_account`: se e' **uno**, ritorna quello;
+   altrimenti `NULL`.
 
-### Semantica NULL (non raise) — deroga consapevole
+## Note di migrazione
 
-La regola generale "parametro ID `NULL`/`<=0` → errore" vale per i **punti di mutazione**. Qui la funzione e' un **resolver di lettura** e "manca il billing account" e' una risposta **legittima** (prospect, oppure istanza assente): ritornare `NULL` e' corretto, non un bug da intercettare. Comportamento allineato al fratello `fn_get_stato_cliente_by_istanza`.
-
-### Coerenza `(istanza, BA)` garantita strutturalmente
-
-Il BA ritornato appartiene **per costruzione** all'istanza richiesta: la FK composta `fk_clienti_billing_account (billing_account_id, istanza_utility_id)` su `anagrafiche.clienti` lega il cliente al proprio BA sulla stessa istanza. Quindi la coppia esposta dalla pratica e' **sempre** una coppia che il documento accetterebbe — **non** serve invocare [`fn_check_utility_istanza_coerenza`](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza).
-
-## Performance
-
-`STABLE` + singolo lookup su `clienti` per `istanza_utility_id` (UNIQUE): O(log n). Sicura da chiamare in `SELECT` di dettaglio/lista.
+* **2026-06-15**: nasce. Leggeva il BA del **cliente** dell'istanza (`ORDER BY id DESC LIMIT 1`),
+  contando su «un cliente per istanza»; `NULL` per il «prospect» senza cliente.
+* **2026-10-08** (`20261008-71`, brief-db-istanza-nasce-col-ba R-8): legge `billing_account`,
+  ritorna il BA solo se e' uno. Il prospect senza BA non esiste piu' (il BA nasce con l'istanza);
+  i clienti sono uno per BA (`uq_clienti_billing_account`). La gemella
+  `fn_get_stato_cliente_by_istanza` e' ritirata (D-8).
 
 ## Caller attuali
 
-* Dettaglio pratica (backend): proiezione `script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS billing_account_id`.
-
-## Caller candidati futuri
-
-* Qualsiasi consumatore che, partendo da un'istanza utility, debba risolvere il BA del cliente attivo (preventivo/offerta/contratto aperti dal flusso pratica).
-
-## Dipendenze
-
-Nessuna fn esterna. Solo lookup su `anagrafiche.clienti`.
-
-## Vedi anche
-
-* [`script.fn_get_stato_cliente_by_istanza`](/dbzero/script/funzioni/fn_get_stato_cliente_by_istanza) — funzione gemella (stato cliente per istanza), stesso pattern.
-* [`script.fn_check_utility_istanza_coerenza`](/dbzero/script/funzioni/fn_check_utility_istanza_coerenza) — coerenza coppia `(istanza, utility)` applicata dal guard preventivi.
-* [`anagrafiche.clienti`](/dbzero/anagrafiche/tabelle/clienti) — fonte della derivazione (`UNIQUE(istanza_utility_id)`, FK `(billing_account_id, istanza_utility_id)`).
+* Dettaglio pratica (backend, `pratiche_repository`): da sostituire con
+  `pratiche.pratiche.billing_account_id`.

@@ -151,7 +151,11 @@ BEGIN
     -- Costante su tutte le attivita' che aggregano insieme, perche'
     -- il BA padre e' gia' elemento di chiave: questo livello non puo'
     -- spaccare una fattura. Deterministico grazie a
-    -- uq_clienti_istanza_utility: una riga sola, non un LIMIT 1.
+    -- uq_clienti_billing_account: un cliente per BA, una riga sola,
+    -- non un LIMIT 1. ⚠️ rev 2026-10-08: fino a quel giorno il cliente
+    -- si agganciava per ISTANZA, contando su «un cliente per istanza»;
+    -- con piu' BA per istanza (D-5/D-6) avrebbe preso un cliente
+    -- qualunque. Si aggancia per BA.
     -- ⚠️ La JOIN e' inner: un BA padre senza riga cliente da ZERO
     -- righe, e leggere qui dentro le variabili di stato le
     -- azzererebbe (vedi nota in testa).
@@ -160,7 +164,7 @@ BEGIN
           INTO v_liv_termine, v_liv_modalita
           FROM anagrafiche.billing_account ba
           JOIN anagrafiche.clienti cl
-            ON cl.istanza_utility_id = ba.istanza_utility_id
+            ON cl.billing_account_id = ba.id
          WHERE ba.id = v_ba_fattura_id;
         v_termine  := COALESCE(v_termine,  v_liv_termine);
         v_modalita := COALESCE(v_modalita, v_liv_modalita);
@@ -181,7 +185,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_resolve_termini_pagamento(p_attivita_id bigint)
-IS 'Catena unica condizioni di pagamento per attivita'' (C-13): ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento sorgente -> COMMESSA (D-R) -> cliente del BA padre -> default TP_1RATA sul solo termine. I due campi scendono in modo indipendente: il preventivo porta il termine ma non la modalita''. rev 2026-08-03 (T.2): il livello 1 risolve la SORGENTE EFFETTIVA. Il pull riscrive sorgente = COMMESSA sull''attivita'' generata, quindi il livello 1 non scattava MAI su cio'' che arriva in fattura (misurato: 35 attivita'' su 35). Il documento vero si ritrova da commessa_attivita_id -> commesse_attivita.sorgente_tipo_id/sorgente_uid, perche'' attivita_fatturabili conserva il TIPO d''origine ma non l''UID. Copre due strade: attivita'' inserita direttamente con sorgente documento (invariata) e attivita'' dal pull. La sovrascrittura avviene solo se la sorgente risolve: un SELECT INTO senza righe azzera, e azzerare perderebbe la prima strada. Ogni livello legge in variabili proprie e la fusione avviene con COALESCE in codice.';
+IS 'Catena unica condizioni di pagamento per attivita'' (C-13): ritorna la coppia (termine_pagamento_id, modalita_pagamento_id) scendendo documento sorgente -> COMMESSA (D-R) -> cliente del BA padre -> default TP_1RATA sul solo termine. I due campi scendono in modo indipendente: il preventivo porta il termine ma non la modalita''. rev 2026-08-03 (T.2): il livello 1 risolve la SORGENTE EFFETTIVA. Il pull riscrive sorgente = COMMESSA sull''attivita'' generata, quindi il livello 1 non scattava MAI su cio'' che arriva in fattura (misurato: 35 attivita'' su 35). Il documento vero si ritrova da commessa_attivita_id -> commesse_attivita.sorgente_tipo_id/sorgente_uid, perche'' attivita_fatturabili conserva il TIPO d''origine ma non l''UID. Copre due strade: attivita'' inserita direttamente con sorgente documento (invariata) e attivita'' dal pull. La sovrascrittura avviene solo se la sorgente risolve: un SELECT INTO senza righe azzera, e azzerare perderebbe la prima strada. Ogni livello legge in variabili proprie e la fusione avviene con COALESCE in codice. rev 2026-10-08 (20261008-70): il livello 3 aggancia il cliente per BA (uq_clienti_billing_account), non piu'' per istanza: un''istanza ha tanti clienti quanti BA. Brief: brief-db-istanza-nasce-col-ba (R-8, D-6).';
 ```
 
 ---

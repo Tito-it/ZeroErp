@@ -45,6 +45,7 @@
 | CHECK | chk_offerte_tipo_variazione_globale |  |
 | CHECK | chk_offerte_validita_date |  |
 | CHECK | chk_offerte_variazione_globale_coerenza |  |
+| FOREIGN KEY | fk_offerte_commerciali_ba_coppia | billing_account_id, istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_offerte_commerciali_billing_account | billing_account_id |
 | FOREIGN KEY | fk_offerte_commerciali_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_offerte_commerciali_istanza_utility | istanza_utility_id |

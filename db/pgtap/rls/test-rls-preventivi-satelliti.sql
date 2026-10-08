@@ -65,13 +65,19 @@ SELECT 'B' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 CREATE TEMP TABLE _clienti AS
 SELECT m.lato, m.emittente_fiscale_id, c.*
   FROM _mondi m
-  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS preventivi ' || m.lato) c;
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba(
+        'RLS preventivi ' || m.lato, NULL, m.soggetto_ruolo_id) c;
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): il preventivo ha
+--   sempre il BA della sua coppia, e il guard dell'emittente pretende che il
+--   BA sia dell'emittente del preventivo: il BA si lega ESPLICITAMENTE
+--   all'emittente del suo lato (terzo parametro), non a chi agisce.
 
 CREATE TEMP TABLE _preventivi AS
 WITH prev AS (
     INSERT INTO vendite.preventivi
-        (numero, istanza_utility_id, utility_id, stato_doc_preventivo_id, emittente_fiscale_id)
+        (numero, billing_account_id, istanza_utility_id, utility_id, stato_doc_preventivo_id, emittente_fiscale_id)
     SELECT 'PGTAPRLS-' || c.lato,
+           c.billing_account_id,
            c.istanza_utility_id,
            c.utility_id,
            (SELECT st.id FROM config.stati_doc_preventivi st ORDER BY st.id LIMIT 1),

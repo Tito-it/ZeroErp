@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DATI PRECONTRATTUALI SEGUONO IL PERIMETRO DEL LORO BILLING ACCOUNT
+#   CREATE POLICY rls_istanze_dati_precontrattuali_ef_whitelist
+#     ON anagrafiche.istanze_dati_precontrattuali — veste OPERATORE, FOR ALL con
+#     WITH CHECK, come i satelliti delle testate.
+#   INERTE: l'armamento e' il 20261008-76.
+#   Brief: brief-db-istanza-nasce-col-ba (§6.13, opzione A di Tid del 2026-10-08)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il presidio del perimetro RLS ha segnalato la tabella come
+#   FIGLIA_DI_TABELLA_PROTETTA non dichiarata: la FK del 20261008-51 la lega al
+#   BA della coppia, che ha la RLS per azienda. I dati precontrattuali sono di
+#   un cliente di un'azienda: un'altra azienda non li vede ne' li scrive.
+#   ⚠️ istanze_utilities resta senza RLS (decisione esistente, fuori da qui):
+#   l'istanza e' il luogo, i dati precontrattuali sono del cliente.
+#
+# -- LA FORMA -------------------------------------------------------
+#   Come rls_clienti_ef_whitelist e i satelliti dell'offerta: FOR ALL, USING =
+#   WITH CHECK, condizionata alla veste OPERATORE (senza veste: niente). Il
+#   WITH CHECK impedisce di scrivere dati precontrattuali sulla coppia di un
+#   cliente di un'altra azienda. Lo scope e' script.fn_scope_ef_whitelist_via_coppia
+#   (20261008-74).
+#   Le altre vesti (portale, shop) non leggono questa tabella: nessuna policy
+#   per loro, quindi nessun accesso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261008-75-create-policy-istanze-dati-precontrattuali-mctit.yaml
+
+  - changeSet:
+      id: 20261008-75-create-policy-istanze-dati-precontrattuali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Policy della veste OPERATORE su anagrafiche.istanze_dati_precontrattuali: la riga si vede
+        e si scrive se si vede il BA della sua coppia. INERTE: l'armamento e' il 20261008-76.
+        Brief: brief-db-istanza-nasce-col-ba (§6.13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_scope_ef_whitelist_via_coppia'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE POLICY rls_istanze_dati_precontrattuali_ef_whitelist
+                  ON anagrafiche.istanze_dati_precontrattuali
+                  FOR ALL
+                  USING (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_coppia(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              istanza_utility_id,
+                              utility_id)
+                  )
+                  WITH CHECK (
+                      current_setting('app.ruolo_applicativo', true) = 'OPERATORE'
+                      AND script.fn_scope_ef_whitelist_via_coppia(
+                              NULLIF(current_setting('app.current_user_id', true), '')::integer,
+                              istanza_utility_id,
+                              utility_id)
+                  );
+
+              COMMENT ON POLICY rls_istanze_dati_precontrattuali_ef_whitelist
+                  ON anagrafiche.istanze_dati_precontrattuali
+              IS 'Veste OPERATORE: la riga si vede e si scrive se l''operatore vede il billing account della sua coppia (istanza, utility). I dati precontrattuali sono di un cliente di un''azienda (FK fk_idp_billing_account_coppia). Brief: brief-db-istanza-nasce-col-ba (§6.13).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP POLICY IF EXISTS rls_istanze_dati_precontrattuali_ef_whitelist ON anagrafiche.istanze_dati_precontrattuali;

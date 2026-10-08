@@ -50,7 +50,7 @@ Il significato funzionale e' identico (FK verso `config.utilities.id`) e ora anc
 >
 > ⭐ **Non erano un gruppo solo**, ed e' il motivo per cui se ne sono andate in tre
 > direzioni diverse: stavano tutte su `clienti` perche' questa e' l'unica tabella «per
-> fornitura» (`UNIQUE uq_clienti_istanza_utility`), ma rispondono a **tre domande con tre
+> fornitura» (allora `UNIQUE uq_clienti_istanza_utility`; dal 2026-10-08 `uq_clienti_billing_account`, un cliente per BA), ma rispondono a **tre domande con tre
 > padroni**:
 >
 > * `cliente_pa` e `split_payment` → [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti).
@@ -75,7 +75,8 @@ Il significato funzionale e' identico (FK verso `config.utilities.id`) e ora anc
 
 ### Vantaggi Operativi
 
-* **Univocità del collegamento** tra cliente e istanza, garantita da `istanza_utility_id NOT NULL`.
+* **Un cliente per billing account** (`uq_clienti_billing_account`, dal 2026-10-08): un'istanza ha tanti clienti quanti BA, uno per utility. Fino a quel giorno il vincolo era `uq_clienti_istanza_utility`, un cliente per istanza.
+* ⚠️ **Nessun vincolo di unicita' sul ruolo**, ed e' voluto: un soggetto con un solo ruolo CLIENTE ha un cliente per ogni sua fornitura (gas a casa, luce in ufficio). E' l'eccezione fra le specializzazioni dei ruoli.
 * **Flessibilità di fatturazione**: possibilità di gestire PA, split payment e modalità diverse.
 * **Validazioni integrate** riducono errori in fase di inserimento.
 

@@ -116,11 +116,11 @@ Un'istanza può avere **più utility** (GAS, ENERGIA, ecc.), ognuna col **suo** 
 | ------------------------------ | ------------------------------------------- | ------------------------------------------- |
 | `billing_account`              | `UNIQUE(istanza_utility_id, utility_id)`    | Dalla nascita dell'istanza, una riga per utility |
 | `istanze_dati_precontrattuali` | `UNIQUE(istanza_utility_id, utility_id)`    | Solo per una utility che ha il suo BA            |
-| `clienti`                      | `UNIQUE(istanza_utility_id)` + `utility_id` | Dopo creazione cliente                           |
+| `clienti`                      | `UNIQUE(billing_account_id)` + `utility_id` | Dopo creazione cliente, uno per BA               |
 
 I vincoli UNIQUE garantiscono che, **per una data utility**, l'istanza abbia al massimo un billing account e una riga di dati precontrattuali. Non limitano il numero di utility: un'istanza ne puo' avere piu' d'una.
 
-⚠️ Il **cliente** invece e' uno solo per istanza (`UNIQUE(istanza_utility_id)`), qualunque sia il numero di utility.
+Il **cliente** e' uno per billing account (`UNIQUE(billing_account_id)`, decisione del 2026-10-08): un'istanza ha tanti clienti quanti billing account, cioe' uno per utility.
 
 **Ordine cronologico di disponibilità:**
 
@@ -176,9 +176,9 @@ L'istanza può essere collegata a un punto di prelievo già esistente:
 
 ### Cliente associato
 
-L'istanza ospita **al massimo un cliente** (vincolo `uq_clienti_istanza_utility`, UNIQUE su `istanza_utility_id`). L'associazione avviene tramite `clienti.istanza_utility_id`. Il cliente assume utility, billing account e indirizzo dall'istanza (o derivazioni).
+L'istanza ospita **un cliente per ciascun suo billing account** (vincolo `uq_clienti_billing_account`, UNIQUE su `billing_account_id`): con due utility, due billing account e fino a due clienti. Fino al 2026-10-08 il vincolo era un cliente per istanza. L'associazione avviene tramite `clienti.billing_account_id` e `clienti.istanza_utility_id`. Il cliente assume utility e billing account dal suo BA, l'indirizzo dall'istanza.
 
-Quando un cliente viene chiuso e un nuovo intestatario subentra, il sistema crea una **nuova istanza** per il nuovo cliente. L'istanza precedente resta come record storico, collegata alla nuova tramite `parent_istanza_id`. In questo modo la relazione istanza → cliente è sempre 1:1 (o 1:0 se l'istanza è precontrattuale).
+Quando un cliente viene chiuso e un nuovo intestatario subentra, il sistema crea una **nuova istanza** per il nuovo cliente. L'istanza precedente resta come record storico, collegata alla nuova tramite `parent_istanza_id`. In questo modo la relazione billing account → cliente è sempre 1:1 (o 1:0 finché il contratto non arriva).
 
 ---
 
@@ -264,8 +264,8 @@ Gli altri stati cliente (sospeso, annullato, ecc.) non modificano lo stato del P
 
 * Non può essere creato senza istanza
 * L'attivazione del cliente modifica lo stato del PDP
-* Il vincolo UNIQUE su `istanza_utility_id` garantisce un solo cliente per istanza, sia per istanze reali che fittizie
-* Il vincolo di esclusione `ex_clienti_no_overlap_stesso_pdp` (su `pdp_id, periodo`) aggiunge una seconda protezione: impedisce periodi sovrapposti sullo stesso PDP **tra istanze diverse**. Per le istanze fittizie (senza PDP) questa seconda protezione non scatta, ma non serve: il UNIQUE su istanza basta
+* Il vincolo UNIQUE su `billing_account_id` garantisce un solo cliente per billing account, sia per istanze reali che fittizie; un'istanza con più utility ha un cliente per ciascuna
+* Il vincolo di esclusione `ex_clienti_no_overlap_stesso_pdp` (su `pdp_id, periodo`) aggiunge una seconda protezione: impedisce periodi sovrapposti sullo stesso PDP **tra istanze diverse**. Per le istanze fittizie (senza PDP) questa seconda protezione non scatta, ma non serve: il UNIQUE sul billing account basta
 
 ---
 
@@ -303,7 +303,8 @@ Per i dettagli su subentro e disdetta: [Guida Generazione Cliente – Appendici]
 ```mermaid
 erDiagram
     indirizzi_dettaglio ||--o{ istanze_utilities : situato_a
-    istanze_utilities ||--o| clienti : serve
+    istanze_utilities ||--o{ clienti : serve
+    billing_account ||--o| clienti : fattura
     istanze_utilities ||--o{ catasto_unita_immobiliari : puo_avere
     istanze_utilities ||--o{ billing_account : genera
 

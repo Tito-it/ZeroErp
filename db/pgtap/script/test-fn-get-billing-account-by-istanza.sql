@@ -3,9 +3,14 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_get_billing_account_by_istanza(istanza_utility_id)
--- Resolver di lettura (no raise): billing_account_id del cliente attivo
--- per l'istanza, NULL se prospect / input non valido.
--- Specchio di fn_get_stato_cliente_by_istanza.
+-- Resolver di lettura (no raise): il billing account dell'istanza SE e' uno,
+-- NULL se l'istanza ne ha piu' d'uno o l'input non e' valido.
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-8): leggeva il BA del
+--   cliente dell'istanza (LIMIT 1) e dava NULL al «prospect senza cliente»;
+--   ora il BA nasce con l'istanza e i clienti sono uno per BA. La funzione e'
+--   in ritiro (il backend passa a pratiche.billing_account_id); la gemella
+--   fn_get_stato_cliente_by_istanza e' ritirata. Il caso «due BA -> NULL» e'
+--   costruito in anagrafiche/test-un-ba-un-cliente-v1.sql.
 --
 -- Indice test (1..7):
 --    1. param NULL              -> NULL
@@ -14,7 +19,8 @@
 --    4. istanza inesistente     -> NULL
 --    5. istanza con cliente     -> billing_account_id del cliente
 --    6. coerenza: il BA ritornato appartiene a quella istanza
---    7. istanza prospect (senza cliente) -> NULL
+--    7. istanza senza cliente -> il suo BA se e' uno, NULL altrimenti
+--       (il «prospect senza BA» non esiste piu': rev 2026-10-08)
 --
 -- 5/6/7 sono data-dependent: skip-safe via OR (no fixture manuale,
 -- usa i dati seed/esistenti, pattern test-fn-check-utility-istanza-coerenza).
@@ -128,14 +134,19 @@ SELECT ok(
 );
 
 -- ============================================================
--- 7) istanza prospect (senza cliente) -> NULL
+-- 7) istanza senza cliente -> il suo BA se e' uno, NULL altrimenti
+--    rev 2026-10-08: il «prospect senza BA» non esiste piu' (il BA nasce con
+--    l'istanza), quindi un'istanza senza cliente ha comunque il suo BA.
 -- ============================================================
 SELECT ok(
     (SELECT count(*) FROM _t_prospect) = 0
     OR script.fn_get_billing_account_by_istanza(
            (SELECT istanza_utility_id FROM _t_prospect)
-       ) IS NULL,
-    '7. istanza prospect (senza cliente) -> NULL (skip se nessuna istanza prospect)'
+       ) IS NOT DISTINCT FROM (
+           SELECT min(ba.id) FROM anagrafiche.billing_account ba
+            WHERE ba.istanza_utility_id = (SELECT istanza_utility_id FROM _t_prospect)
+           HAVING count(*) = 1),
+    '7. istanza senza cliente -> il suo BA se e'' uno, NULL altrimenti (skip se nessuna)'
 );
 
 SELECT * FROM finish();

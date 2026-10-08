@@ -35,14 +35,6 @@ BEGIN
             NULL::uuid, VARIADIC ARRAY[p_preventivo_id::text]);
     END IF;
 
-    IF v_billing_id IS NULL THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', 'vendite.fn_genera_pratica_da_preventivo',
-            'E_PREV_VALIDAZIONE',
-            jsonb_build_object('preventivo_id', p_preventivo_id),
-            NULL::uuid, VARIADIC ARRAY[p_preventivo_id::text]);
-    END IF;
-
     -- Emittente (PK) + soggetto/ruolo dal billing account.
     v_emittente_id := anagrafiche.fn_get_emittente_fiscale_pk(v_billing_id);
     SELECT sr.soggetto_id, ba.soggetto_ruolo_id
@@ -65,6 +57,8 @@ BEGIN
     END IF;
 
     -- 1) Crea la pratica (figlia condivisa).
+    --    Il BA del preventivo e' il cliente di cui parla la pratica
+    --    (D-9): la sorgente glielo passa.
     v_pratica_id := pratiche.fn_crea_pratica(
         p_emittente_fiscale_id := v_emittente_id,
         p_tipo_prestazione_id  := p_tipo_prestazione_id,
@@ -72,7 +66,8 @@ BEGIN
         p_soggetto_ruolo_id    := v_soggetto_ruolo,
         p_istanza_utility_id   := v_istanza_id,
         p_priorita_id          := p_priorita_id,
-        p_descrizione          := p_descrizione
+        p_descrizione          := p_descrizione,
+        p_billing_account_id   := v_billing_id
     );
 
     -- 2) Link ROOT preventivo -> pratica.
@@ -87,7 +82,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_pratica_da_preventivo(p_preventivo_id bigint, p_tipo_prestazione_id integer, p_priorita_id integer, p_descrizione text)
-IS 'Funzione madre atomica: crea la pratica (via figlia pratiche.fn_crea_pratica) e il link ROOT preventivo->pratica in un''unica statement (o tutto o rollback). SECURITY INVOKER. Ritorna pratica_id. Il check stato ACCETTATO resta pre-check del service. Piano: analisi-fix-transazioni Classe A #3.';
+IS 'Funzione madre atomica: crea la pratica (via figlia pratiche.fn_crea_pratica) e il link ROOT preventivo->pratica in un''unica statement (o tutto o rollback). SECURITY INVOKER. Ritorna pratica_id. Il check stato ACCETTATO resta pre-check del service. Piano: analisi-fix-transazioni Classe A #3. rev 2026-10-08 (20261008-68): la pratica nasce col BA del preventivo (la sorgente e'' il cliente di cui parla); via il ramo «preventivo senza BA», irraggiungibile dal 20261008-52. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).';
 ```
 
 ---

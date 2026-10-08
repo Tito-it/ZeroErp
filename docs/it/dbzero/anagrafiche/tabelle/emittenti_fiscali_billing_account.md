@@ -38,14 +38,17 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
-| trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
 | trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
-| trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()` |
+| trg_emittenti_fiscali_ba_a10_default_guard_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_default_guard()` |
 | trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()` |
+| trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()` |
 | trg_emittenti_fiscali_ba_a10_guard_storia_emittente_ins_upd_dlt | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_storia_emittente()` |
 | trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
-| trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
 | trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
+| trg_emittenti_fiscali_ba_z95_guard_albero_emittente_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_albero_emittente()` |
+| trg_emittenti_fiscali_ba_z95_guard_istanza_ef_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()` |
+| trg_emittenti_fiscali_ba_z95_guard_istanza_ef_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()` |
+| trg_emittenti_fiscali_ba_z95_guard_istanza_ef_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION anagrafiche.trgfn_efba_guard_istanza_emittente()` |
 | trg_emittenti_fiscali_billing_account_a10_emittenti_fisc_5f60fb | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_soggetto_ruolo_id', 'soggetto_ruolo_id')` |
 | trg_emittenti_fiscali_billing_account_a10_emittenti_fisc_5f60fb | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_soggetto_ruolo_id', 'soggetto_ruolo_id')` |
 | trg_emittenti_fiscali_billing_account_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

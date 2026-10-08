@@ -1,8 +1,11 @@
 {% include-markdown "it/dbzero/anagrafiche/manual/vw_istanze_dati_precontrattuali_dettaglio.md" %}
 # 🔍 View `vw_istanze_dati_precontrattuali_dettaglio`
 
+> 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
+
 ```sql
-CREATE OR REPLACE VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio AS
+CREATE OR REPLACE VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio
+WITH (security_invoker=on) AS
 SELECT idp.id AS istanza_dati_precontrattuali_id,
     idp.istanza_utility_id,
     idp.utility_id AS istanza_dati_utility_id,

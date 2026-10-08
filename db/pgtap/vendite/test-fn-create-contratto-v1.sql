@@ -76,38 +76,25 @@ SELECT plan(15);
 -- `trgfn_contratti_snapshot_precontrattuali`, che creerebbe da solo una riga
 -- `contratti_utilities` e falserebbe i casi 5-7.
 --
--- ⚠️ La prima stesura cercava un billing_account **senza** precontrattuali. Non
---    e' piu' soddisfacibile: tutti i BA ne hanno (verificato 2026-07-27, 42/42),
---    e il test era rosso da fixture — non da codice. Il trigger pero' non
---    guarda il BA: guarda la coppia (istanza_utility_id, utility_id) del
---    contratto, che arriva dal payload. Quindi si sceglie la prima utility
---    **libera da precontrattuali** per l'istanza del BA, preferendo quella del
---    BA stesso quando gia' lo e' (`ORDER BY (u.id = ba.utility_id) DESC`): il
---    caso realistico resta il primo candidato, la variante subentra solo
---    quando serve. La `CROSS JOIN LATERAL` scarta i BA per cui nessuna utility
---    e' libera, cosi' la coppia scelta e' garantita, non sperata.
+-- Storia: la prima stesura cercava un billing_account senza precontrattuali;
+--   dal 2026-07-27 tutti i BA di dbdev ne avevano, e si era ripiegato su una
+--   utility «libera» diversa da quella del BA. Vedi la nota qui sotto.
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2 e D-2): il cliente si
+--   COSTRUISCE con dbops.fn_pgtap_crea_cliente_ba, che da' un BA nuovo, sulla
+--   sua utility e SENZA dati precontrattuali (il builder non li scrive): la
+--   coppia (istanza, utility) del contratto e' quella del suo BA. Fino a quel
+--   giorno si pescava un BA e, siccome tutti i BA di dbdev avevano gia' i loro
+--   dati precontrattuali (42/42 dal 2026-07-27), si sceglieva una utility
+--   «libera» DIVERSA da quella del BA: un contratto col BA di un'altra coppia,
+--   che fk_contratti_ba_coppia (20261008-54) ora rifiuta. ⛔ Il builder scrive;
+--   si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_cli_cc AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('create contratto');
+
 CREATE TEMP TABLE tmp_ba AS
-SELECT ba.id AS billing_account_id, ba.istanza_utility_id,
-       libera.utility_id,
-       ef.id AS emittente_fiscale_id
-FROM anagrafiche.billing_account ba
-JOIN anagrafiche.emittenti_fiscali_billing_account efba
-       ON efba.billing_account_id = ba.id
-JOIN anagrafiche.emittenti_fiscali ef
-       ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
-CROSS JOIN LATERAL (
-    SELECT u.id AS utility_id
-      FROM config.utilities u
-     WHERE NOT EXISTS (
-             SELECT 1
-               FROM anagrafiche.istanze_dati_precontrattuali idp
-              WHERE idp.istanza_utility_id = ba.istanza_utility_id
-                AND idp.utility_id         = u.id)
-     ORDER BY (u.id = ba.utility_id) DESC, u.id
-     LIMIT 1
-) AS libera
-ORDER BY ba.id
-LIMIT 1;
+SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id,
+       anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS emittente_fiscale_id
+  FROM tmp_cli_cc c;
 
 SELECT is((SELECT count(*)::int FROM tmp_ba), 1,
           'Precondizione: BA con emittente + coppia (istanza,utility) senza precontrattuali');

@@ -517,7 +517,7 @@ erDiagram
 
     soggetti               ||--o{ istanze_utilities         : ha
 
-    istanze_utilities      ||--o| clienti                   : assegnato_a
+    istanze_utilities      ||--o{ clienti                   : assegnato_a
     istanze_utilities      ||--o{ billing_account           : genera
     istanze_utilities      ||--o{ catasto_unita_immobiliari : puo_avere
 

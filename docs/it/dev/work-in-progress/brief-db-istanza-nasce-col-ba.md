@@ -10,12 +10,10 @@
 > **solo** se un'istanza può esistere senza BA. Il DB oggi lo ammette.
 > **Decisione:** di Tid, 2026-10-08 — *«la regola giusta è che nascono insieme e deve essere
 > sempre così»*. Decisioni D-1…D-4 di Tid del 2026-10-08 (§6.1).
-> **Stato:** ⏳ DB **scritto e provato** il 2026-10-08 (§6.10: tredici changeSet `20261008-50…-62`,
-> registri in `80_data`, pgTAP, documentazione), **non applicato**: l'apply e la corsa dei pgTAP
-> sono di Tid. Poi BE/FE (§5). R-3 (codice del BA differito) **non si fa** (D-1 rivista). Aperta
-> Decisioni D-1…D-9 prese (§6.1). R-8 («un BA, un cliente», con `billing_account_id` sulla pratica)
-> e R-9 (`UNIQUE` sui gestori) decisi, **non ancora scritti**: si scrivono nello **stesso giro** di
-> R-1/R-2/R-7, prima dell'apply, quando Tid da' il via.
+> **Stato:** ✅ DB **chiuso** il 2026-10-08: R-1/R-2/R-7 (`20261008-50…-62`, §6.10), R-8/R-9
+> (`-63…-73`, §6.12) e la RLS dei dati precontrattuali (`-74…-76`, §6.13) **applicati da Tid**,
+> pgTAP senza regressioni. ⏳ Resta il lato BE/FE (§5, §6.10.5, §6.12.4). Decisioni D-1…D-9 prese
+> (§6.1). R-3 non si fa.
 
 ## 1. La regola
 
@@ -116,7 +114,7 @@ codice differito: dicono solo che il codice si genera in automatico all'inserime
 | **D-8** | `fn_get_stato_cliente_by_istanza` e `view_clienti_istanza_states`? | **Si ritirano** (nessun consumatore applicativo) |
 | **D-9** | Sulla pratica utility o BA? | **`billing_account_id`** nullable al posto di `utility_id` (§6.11.7-8): per gli altri ruoli basta `soggetto_ruolo_id`, che individua gia' il record specializzato |
 | **R-9** | `gestori` senza `UNIQUE (soggetto_ruolo_id)` | **Si mette** il vincolo, come le altre specializzazioni (§6.11.8) |
-| **Giro** | Un giro o due? | **Un giro unico**: R-8 e R-9 si scrivono numerati dopo i `-62` e si applicano insieme a R-1, R-2, R-7. ⏸ **Non iniziare finche' Tid non da' il via** (2026-10-08) |
+| **Giro** | Un giro o due? | **Un giro unico**: R-8 e R-9 numerati dopo i `-62`, si applicano insieme a R-1, R-2, R-7. Via di Tid il 2026-10-08: scritti (§6.12) |
 
 ### 6.2 R-1 — la forma
 
@@ -267,7 +265,7 @@ le famiglie (preventivo, offerta, contratto, ordine, DDT). Non fa parte di quest
 `work-in-progress/` (con la voce-rimando nel registro delle migliorie): non va in archivio
 come nota.
 
-### 6.10 Consegna DB (2026-10-08) — scritto e provato, non applicato
+### 6.10 Consegna DB (2026-10-08) — applicata
 
 #### 6.10.1 ChangeSet
 
@@ -509,3 +507,129 @@ porta **`billing_account_id`** nullable al posto di `utility_id`:
   c'e' e non ci deve essere un `UNIQUE (soggetto_ruolo_id)`.
 * **Guida «Soggetti & Ruoli» corretta il 2026-10-08**: «un solo record specializzato per ruolo»
   vale per tutti tranne il CLIENTE (un cliente per BA); per i gestori il vincolo arriva con R-9.
+
+### 6.12 Consegna DB di R-8 e R-9 (2026-10-08) — applicata
+
+#### 6.12.1 ChangeSet
+
+| # | File | Cosa |
+| --- | --- | --- |
+| -63 | `00_schema/pratiche/…-add-pratiche-billing-account` | `pratiche.billing_account_id` nullable; CHECK «solo con l'istanza»; FK composta `(billing_account_id, istanza_utility_id)` verso il BA. Le pratiche gia' scritte si valorizzano solo dove l'istanza ha UN BA ed e' del ruolo della pratica |
+| -64 | `00_schema/anagrafiche/…-alter-clienti-uno-per-billing-account` | `uq_clienti_billing_account` al posto di `uq_clienti_istanza_utility` (preCondition: nessun BA con due clienti) |
+| -65 | `00_schema/anagrafiche/…-add-uq-gestori-soggetto-ruolo` | R-9: `uq_gestori_soggetto_ruolo` |
+| -66 | `20_code/pratiche/…-update-trgfn-pratiche-guard-contesto-ba` | regola 5 del guard di contesto: il BA e' del ruolo della pratica (`E_PRATICHE_BA_NON_COERENTE`); il trigger scatta anche su `billing_account_id` |
+| -67 | `20_code/pratiche/…-update-fn-crea-pratica-billing-account` | `p_billing_account_id` in coda (firma vecchia tolta: niente overload) |
+| -68 | `20_code/vendite/…-update-fn-genera-pratica-da-preventivo-billing-account` | la pratica nasce col BA del preventivo (la sorgente); via il ramo «preventivo senza BA» |
+| -69 | `20_code/pratiche/…-update-fn-genera-pratica-da-flusso-billing-account` | la figlia copia il BA dalla madre |
+| -70 | `20_code/vendite/…-update-fn-resolve-termini-pagamento-cliente-per-ba` | livello 3: il cliente si aggancia per BA, non per istanza |
+| -71 | `20_code/script/…-update-fn-get-billing-account-by-istanza-solo-se-univoco` | il BA dell'istanza solo se e' uno (letto da `billing_account`); **in ritiro** |
+| -72 | `20_code/script/…-drop-view-clienti-istanza-states` | D-8: ritirate vista e `fn_get_stato_cliente_by_istanza` |
+| -73 | `80_data/changelog/…-upsert-fk-index-policy-istanza-nasce-col-ba` | CSV dedicato della policy indici FK: indice sulla FK clienti → istanze (persa la copertura del vincolo vecchio), indice parziale sulla FK pratica → BA, indice dedicato dei gestori sul ruolo a `false` (lo copre il UNIQUE) |
+
+Registri: `E_PRATICHE_BA_NON_COERENTE` (1227, `DATO_ERRATO`, campo `billing_account_id`). Le
+funzioni lunghe (-66, -69, -70) partono dal corpo **vivo** del DB (`pg_get_functiondef`,
+verificato che l'ultimo changeSet di ciascuna fosse applicato), con le sole modifiche dichiarate e
+la firma ancorata dove l'originale l'aveva.
+
+#### 6.12.2 Come e' stato provato
+
+SQL estratto da `-50…-72`, come owner, in transazioni annullate; preCondition `-64` e `-65` a zero
+su dbdev; `plpgsql_check` sulle sei funzioni cambiate: nessuna segnalazione nuova (due avvisi
+STABLE/VOLATILE su `fn_resolve_termini_pagamento`, righe 33 e 55, **gia' presenti** sulla funzione
+viva); le righe della policy passano `chk_fk_index_policy_dll_command_forma`.
+
+pgTAP — 71 file (i 62 che nominano gli oggetti toccati, piu' quelli del primo giro), corpo
+concatenato all'SQL estratto: **69 verdi**. I due rossi sono **preesistenti**, identici sugli
+originali: `rls/test-rls-billing-account-returning-secondo-emittente` test 6 (l'owner salta la
+RLS) e `anagrafiche/test-indirizzi-fallback` test 8 e 10 (tipo di ritorno di
+`vw_indirizzi_resolved_soggetto`, fuori da questo brief).
+
+| File | Che cosa e' cambiato |
+| --- | --- |
+| `anagrafiche/test-un-ba-un-cliente-v1.sql` (**nuovo**, 13/13) | R-8 e R-9: due clienti sulla stessa istanza su due BA (su due utility senza PDP del catalogo); secondo cliente sullo stesso BA rifiutato; pratica col BA del preventivo; regola 5, CHECK, FK composta della pratica; resolver per istanza; ritiri D-8; vincolo dei gestori; forma del join dei termini |
+| `script/test-fn-get-billing-account-by-istanza.sql` | test 7: istanza senza cliente → il suo BA se e' uno (il «prospect senza BA» non esiste piu') |
+| `pratiche/test-guida-avanza-esito-proiettato.sql`, `pratiche/test-reconcile-tie-break-flusso-origine.sql`, `rls/test-rls-preventivi-satelliti.sql` | ⚠️ **buco del censimento del primo giro**, trovato qui: creavano preventivi senza BA (il grep di allora non li vedeva). Ora il cliente e' costruito col BA legato all'emittente del preventivo |
+
+⚠️ Non provato da un pgTAP: la copia del BA nella pratica generata da un flusso (-69) — serve un
+flusso completato con una regola di generazione. Provato solo da `plpgsql_check`.
+
+#### 6.12.3 Debiti e osservazioni
+
+* `script.fn_get_billing_account_by_istanza` e' **in ritiro**: resta finche' il backend la chiama
+  (dettaglio pratica), poi si cancella con la sua pagina `manual/`.
+* `uq_gestori_singleton`, nonostante il nome, e' un indice **GiST non unico** su `id`: non vincola
+  niente. Fuori da questo brief: o va ritirato, o doveva essere un vincolo (un solo gestore nel
+  sistema?). Da decidere.
+
+#### 6.12.4 Al BE/FE (aggiunge al §5 e al §6.10.5)
+
+* **Dettaglio pratica** (`pratiche_repository`, due punti): leggere `p.billing_account_id` al posto
+  di `script.fn_get_billing_account_by_istanza(p.istanza_utility_id)`. Il «prospect» (BA NULL perche'
+  manca il cliente) non esiste piu': il BA NULL ora significa pratica di un altro ruolo o senza
+  istanza.
+* **Creazione della pratica** (`create_pratica` e il suo form): passare `billing_account_id` quando la
+  pratica parla di un cliente; nuovo codice `E_PRATICHE_BA_NON_COERENTE` (policy e frase).
+* **Clienti**: il nome del vincolo cambia (`uq_clienti_billing_account`): la frase mappata in
+  `clienti_service` diventa «Esiste gia' un cliente per questo billing account». Un'istanza ora
+  ammette piu' clienti: le schermate che danno per scontato «il cliente dell'istanza» vanno
+  riviste.
+
+### 6.13 La RLS dei dati precontrattuali (2026-10-08) — applicata
+
+**Il trovato.** Dopo l'apply del giro `-50…-73`, la corsa di Tid ha dato rosso
+`rls/test-rls-perimetro-scoperto` test 2: `NON_DICHIARATO FIGLIA_DI_TABELLA_PROTETTA
+anagrafiche.istanze_dati_precontrattuali`. La FK `fk_idp_billing_account_coppia` (-51) l'aveva resa
+figlia del BA, che ha la RLS per azienda, e il presidio chiede una decisione.
+
+**Decisione di Tid: opzione A, la RLS segue il BA della coppia** (l'alternativa era una riga nel
+registro `rls_perimetro_debito`). I dati precontrattuali sono di un cliente di un'azienda.
+
+| # | File | Cosa |
+| --- | --- | --- |
+| -74 | `20_code/script/…-create-fn-scope-ef-whitelist-via-coppia` | scope «vedo la riga se vedo il BA della sua coppia», delega a `fn_scope_ef_whitelist_via_efba`; BA invisibile o assente: false |
+| -75 | `00_schema/anagrafiche/…-create-policy-istanze-dati-precontrattuali` | `rls_istanze_dati_precontrattuali_ef_whitelist`, veste OPERATORE, FOR ALL con WITH CHECK, come i satelliti delle testate. Inerte |
+| -76 | `00_schema/anagrafiche/…-arm-rls-istanze-dati-precontrattuali` | `ENABLE ROW LEVEL SECURITY` (niente FORCE) e `vw_istanze_dati_precontrattuali_dettaglio` resa `security_invoker`: non lo era, e con la RLS accesa sarebbe stata una porta laterale (nessun consumatore oggi) |
+
+`istanze_utilities` resta senza RLS: l'istanza e' il luogo, i dati precontrattuali sono del cliente.
+
+**Prove** (SQL estratto di `-74…-76` sul DB vivo, transazioni annullate):
+
+* `rls/test-rls-istanze-dati-precontrattuali-v1.sql` (**nuovo**, 8/8): struttura (policy, RLS
+  accesa, vista invoker), l'operatore A vede i suoi e non quelli di B, non scrive sulla coppia di
+  un cliente di B, senza veste niente, e il presidio non elenca piu' la tabella;
+* `rls/test-rls-perimetro-scoperto` 8/8;
+* 64 pgTAP che toccano la tabella o creano contratti e offerte: 62 verdi. Restano rossi
+  `anagrafiche/test-istanze-dati-precontrattuali` (la pulizia iniziale tocca righe di dbdev gia'
+  fotografate in un contratto) e — fino alla correzione sotto — tre file dei contratti.
+
+**⚠️ Tre fixture dei contratti, trovate qui** (il censimento di R-2 aveva guardato i preventivi,
+non i contratti). Erano gia' nel registro dei rossi di CI (`baseline-rossi-ci.tsv`):
+
+| File | Che cosa era | Ora |
+| --- | --- | --- |
+| `vendite/test-fn-create-contratto-v1.sql` | dal 2026-07-27 (42/42 BA con dati precontrattuali) sceglieva una utility «libera» **diversa** da quella del BA: un contratto col BA di un'altra coppia, che `fk_contratti_ba_coppia` ora rifiuta | cliente costruito, verde |
+| `vendite/test-fatture-atti-v1.sql` | idem per i due contratti della fixture | cliente costruito, verde |
+| `vendite/test-contratti-utilities-snapshot.sql` | pescava un BA senza dati precontrattuali: non ce n'e' piu' nessuno su dbdev | cliente costruito sulla utility della classe d'utenza scelta, 12/12 |
+
+⚠️ I tre file, verdi, restano elencati in `baseline-rossi-ci.tsv`: il registro si riallinea alla
+prossima corsa di riferimento.
+
+### 6.14 Esito dell'apply (2026-10-08)
+
+Tid ha applicato l'intero giro `20261008-50…-76` e lanciato i pgTAP: **nessuna regressione**
+(dopo la correzione del §6.13, il presidio `rls/test-rls-perimetro-scoperto` e' verde).
+
+Restano aperti, e non sono del lato DB:
+
+* il lato **BE/FE**: §5, §6.10.5 e §6.12.4 (codici nuovi da mappare, FK nuove da tradurre, dettaglio e
+  creazione della pratica sul `billing_account_id`, piu' clienti per istanza, commenti sul
+  «prospect»);
+* `baseline-rossi-ci.tsv` elenca ancora come rossi `test-fn-create-contratto-v1`,
+  `test-fatture-atti-v1` e `test-contratti-utilities-snapshot`, ora verdi: si riallinea alla
+  prossima corsa di riferimento.
+
+Debiti dichiarati, da portare in brief propri all'archiviazione (§6.9, §6.10.3, §6.12.3): il BA di un
+documento chiuso si riscrive; il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT` nelle capability del
+preventivo; `fn_get_billing_account_by_istanza` in ritiro (quando il BE legge la colonna della
+pratica); `uq_gestori_singleton` che non vincola niente; la copia del BA nella pratica da flusso e lo
+spostamento del gestore globale senza un pgTAP.

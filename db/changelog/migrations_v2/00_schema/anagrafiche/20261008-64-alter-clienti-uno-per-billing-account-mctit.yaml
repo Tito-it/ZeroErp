@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN BILLING ACCOUNT, UN CLIENTE — UN'ISTANZA, TANTI CLIENTI QUANTI BA
+#   anagrafiche.clienti: UNIQUE (billing_account_id) al posto di
+#   uq_clienti_istanza_utility = UNIQUE (istanza_utility_id).
+#   Brief: brief-db-istanza-nasce-col-ba (R-8, D-6 di Tid del 2026-10-08)
+#
+# -- PERCHE' --------------------------------------------------------
+#   D-5: un'istanza puo' avere piu' utility, ognuna col suo BA. D-6: «un BA ha
+#   un solo cliente, quindi un'istanza ha piu' BA e tanti clienti quanti i BA».
+#   Il vincolo di oggi diceva il contrario (un cliente per istanza).
+#   Con la FK composta fk_clienti_billing_account (billing_account_id,
+#   istanza_utility_id), un cliente per BA implica al massimo un cliente per
+#   coppia (istanza, utility). ex_clienti_no_overlap_stesso_pdp (un cliente
+#   attivo per PDP nel periodo) non cambia.
+#
+# -- I LETTORI ----------------------------------------------------
+#   Chi leggeva «il cliente dell'istanza» contando su questo vincolo e' censito
+#   nel brief §6.11.3 e sistemato nello stesso giro: fn_resolve_termini_pagamento
+#   (-70), fn_get_billing_account_by_istanza (-71), fn_get_stato_cliente_by_istanza
+#   e view_clienti_istanza_states (ritirate, -72).
+#   ⚠️ Il backend mappa il nome uq_clienti_istanza_utility a una frase
+#   (clienti_service): il nome nuovo e' uq_clienti_billing_account.
+#
+# -- L'INDICE SULL'ISTANZA -------------------------------------------
+#   Il vincolo vecchio copriva la FK fk_clienti_istanze_utilities. Togliendolo
+#   la FK resta scoperta: l'indice lo crea la policy (80_data, 20261008-73),
+#   non questo file (linee-guida-sql §8.7, «mai a mano»).
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   preCondition: nessun BA con due clienti (expectedResult 0).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261008-64-alter-clienti-uno-per-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20261008-64-alter-clienti-uno-per-billing-account
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.clienti: un cliente per billing account (uq_clienti_billing_account) al posto
+        di un cliente per istanza (uq_clienti_istanza_utility). Brief: brief-db-istanza-nasce-col-ba
+        (R-8, D-6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM (SELECT c.billing_account_id
+                        FROM anagrafiche.clienti c
+                       GROUP BY c.billing_account_id
+                      HAVING count(*) > 1) d;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.clienti
+                DROP CONSTRAINT uq_clienti_istanza_utility;
+
+              ALTER TABLE anagrafiche.clienti
+                ADD CONSTRAINT uq_clienti_billing_account UNIQUE (billing_account_id);
+
+              COMMENT ON CONSTRAINT uq_clienti_billing_account ON anagrafiche.clienti
+              IS 'Un billing account ha un solo cliente; un''istanza ha tanti clienti quanti BA (decisione di Tid del 2026-10-08, D-6). Fino a quel giorno il vincolo era uq_clienti_istanza_utility, un cliente per istanza. Brief: brief-db-istanza-nasce-col-ba (R-8).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.clienti DROP CONSTRAINT uq_clienti_billing_account;
+              ALTER TABLE anagrafiche.clienti ADD CONSTRAINT uq_clienti_istanza_utility UNIQUE (istanza_utility_id);

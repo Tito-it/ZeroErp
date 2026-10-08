@@ -206,9 +206,9 @@ I ruoli **REFERENTE** (RE), **VENDITORE** (VE), **DISTRIBUTORE** (DI) e **BANCA*
 
 Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → soggetti_ruoli.id`. I dati appartengono solo al ruolo pertinente — le condizioni di pagamento del cliente non si mescolano con quelle del fornitore, anche se il soggetto e lo stesso.
 
-Per quasi tutti i ruoli il collegamento ha un vincolo UNIQUE: **un solo record specializzato per ruolo assegnato** (fornitori, vettori, PSP, risorse umane, emittenti fiscali; per i gestori il vincolo e deciso il 2026-10-08 e arriva col prossimo rilascio del database).
+Per quasi tutti i ruoli il collegamento ha un vincolo UNIQUE: **un solo record specializzato per ruolo assegnato** (fornitori, vettori, PSP, risorse umane, emittenti fiscali; per i gestori dal 2026-10-08).
 
-⚠️ **L'eccezione e il CLIENTE.** Un cliente non e «la persona come cliente», ma **una sua fornitura**: un soggetto con un solo ruolo CLIENTE puo avere il gas a casa e la luce in ufficio, cioe due billing account e due clienti, tutti sullo stesso ruolo. Su `anagrafiche.clienti` non c'e — e non ci deve essere — un vincolo di unicita sul ruolo: la regola e **un cliente per ogni billing account** (decisa il 2026-10-08; il vincolo che la impone arriva col prossimo rilascio del database, al posto di quello di oggi «un cliente per istanza») (vedi [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)).
+⚠️ **L'eccezione e il CLIENTE.** Un cliente non e «la persona come cliente», ma **una sua fornitura**: un soggetto con un solo ruolo CLIENTE puo avere il gas a casa e la luce in ufficio, cioe due billing account e due clienti, tutti sullo stesso ruolo. Su `anagrafiche.clienti` non c'e — e non ci deve essere — un vincolo di unicita sul ruolo: la regola e **un cliente per ogni billing account** (decisa il 2026-10-08, vincolo `uq_clienti_billing_account`, al posto del vecchio «un cliente per istanza») (vedi [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)).
 
 ---
 
@@ -564,7 +564,7 @@ erDiagram
         bigint soggetto_ruolo_id FK
     }
 
-    soggetti_ruoli ||--o| clienti : "specializza"
+    soggetti_ruoli ||--o{ clienti : "specializza"
     soggetti_ruoli ||--o| fornitori : "specializza"
     soggetti_ruoli ||--o| gestori : "specializza"
     soggetti_ruoli ||--o| risorse_umane : "specializza"

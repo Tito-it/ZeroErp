@@ -127,26 +127,23 @@ SELECT * FROM ins;
 -- esistenti passa a vuoto su un database ricostruito da zero, che e' la CI.
 -- ⚠️ Si passa dalla funzione madre, che e' il percorso vero: un INSERT diretto
 --   dovrebbe replicare a mano numero, stato e i default di ventiquattro trigger.
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2 e D-2): il cliente si
+--   COSTRUISCE con dbops.fn_pgtap_crea_cliente_ba, che da' un BA nuovo, sulla
+--   sua utility e SENZA dati precontrattuali (il builder non li scrive): la
+--   coppia (istanza, utility) del contratto e' quella del suo BA. Fino a quel
+--   giorno si pescava un BA e, siccome tutti i BA di dbdev avevano gia' i loro
+--   dati precontrattuali (42/42 dal 2026-07-27), si sceglieva una utility
+--   «libera» DIVERSA da quella del BA: un contratto col BA di un'altra coppia,
+--   che fk_contratti_ba_coppia (20261008-54) ora rifiuta. ⛔ Il builder scrive;
+--   si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_at_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('fatture atti contratti');
+
 CREATE TEMP TABLE tmp_at_contr AS
 WITH cfg AS (
-  SELECT ba.id AS billing_account_id, ba.istanza_utility_id,
-         libera.utility_id, ef.id AS emittente_fiscale_id
-    FROM anagrafiche.billing_account ba
-    JOIN anagrafiche.emittenti_fiscali_billing_account efba
-           ON efba.billing_account_id = ba.id
-    JOIN anagrafiche.emittenti_fiscali ef
-           ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
-    CROSS JOIN LATERAL (
-        SELECT u.id AS utility_id
-          FROM config.utilities u
-         WHERE NOT EXISTS (
-                 SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali idp
-                  WHERE idp.istanza_utility_id = ba.istanza_utility_id
-                    AND idp.utility_id         = u.id)
-         ORDER BY (u.id = ba.utility_id) DESC, u.id
-         LIMIT 1) AS libera
-   ORDER BY ba.id
-   LIMIT 1
+  SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id,
+         anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS emittente_fiscale_id
+    FROM tmp_at_cli c
 )
 SELECT 1 AS n, c.contratto_id, c.numero FROM cfg,
   LATERAL vendite.fn_create_contratto(
@@ -158,24 +155,9 @@ SELECT 1 AS n, c.contratto_id, c.numero FROM cfg,
 
 INSERT INTO tmp_at_contr(n, contratto_id, numero)
 SELECT 2, c.contratto_id, c.numero
-  FROM (SELECT ba.id AS billing_account_id, ba.istanza_utility_id,
-               libera.utility_id, ef.id AS emittente_fiscale_id
-          FROM anagrafiche.billing_account ba
-          JOIN anagrafiche.emittenti_fiscali_billing_account efba
-                 ON efba.billing_account_id = ba.id
-          JOIN anagrafiche.emittenti_fiscali ef
-                 ON ef.soggetto_ruolo_id = efba.emittente_soggetto_ruolo_id
-          CROSS JOIN LATERAL (
-              SELECT u.id AS utility_id
-                FROM config.utilities u
-               WHERE NOT EXISTS (
-                       SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali idp
-                        WHERE idp.istanza_utility_id = ba.istanza_utility_id
-                          AND idp.utility_id         = u.id)
-               ORDER BY (u.id = ba.utility_id) DESC, u.id
-               LIMIT 1) AS libera
-         ORDER BY ba.id
-         LIMIT 1) AS cfg,
+  FROM (SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id,
+               anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS emittente_fiscale_id
+          FROM tmp_at_cli c) AS cfg,
        LATERAL vendite.fn_create_contratto(
            jsonb_build_object(
                'billing_account_id',   cfg.billing_account_id,

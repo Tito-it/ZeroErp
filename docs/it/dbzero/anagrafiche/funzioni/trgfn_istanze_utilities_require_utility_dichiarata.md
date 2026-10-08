@@ -13,40 +13,16 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_d
  LANGUAGE plpgsql
 AS $function$
 BEGIN
-  -- Almeno 1 satellite tra BA, IDP, clienti deve esistere
-  -- per l'istanza appena inserita (NEW.id).
-  IF NOT EXISTS (
-    SELECT 1 FROM anagrafiche.billing_account
-     WHERE istanza_utility_id = NEW.id
-    UNION ALL
-    SELECT 1 FROM anagrafiche.istanze_dati_precontrattuali
-     WHERE istanza_utility_id = NEW.id
-    UNION ALL
-    SELECT 1 FROM anagrafiche.clienti
-     WHERE istanza_utility_id = NEW.id
-  ) THEN
-    -- Ultimo arg = valore per il %s del messaggio CSV
-    -- (E_ISTANZA_UTILITY_SENZA_UTILITY: %s = breve contesto).
-    PERFORM script.fn_log_and_raise_error(
-      'anagrafiche',
-      'trgfn_istanze_utilities_require_utility_dichiarata',
-      'E_ISTANZA_UTILITY_SENZA_UTILITY',
-      jsonb_build_object(
-        'detail', 'Istanza senza satellite (BA/IDP/cliente) al COMMIT',
-        'istanza_utility_id', NEW.id,
-        'soggetto_id', NEW.soggetto_id
-      ),
-      NULL::uuid,
-      concat('istanza_utility_id=', NEW.id::text)
-    );
-  END IF;
-
+  -- Constraint trigger al COMMIT: l'istanza appena inserita
+  -- deve avere il suo billing account. Prima e dopo l'INSERT
+  -- dell'istanza, nella stessa transazione, l'ordine e' libero.
+  PERFORM anagrafiche.fn_guard_istanza_ha_ba(NEW.id);
   RETURN NULL;
 END
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata()
-IS 'Constraint trigger function (DEFERRABLE) che valida al COMMIT la presenza di almeno 1 satellite (billing_account, istanze_dati_precontrattuali, clienti) per la nuova istanza. Lista satelliti allineata a script.fn_check_utility_istanza_coerenza.';
+IS 'Constraint trigger function (DEFERRABLE INITIALLY DEFERRED, AFTER INSERT su anagrafiche.istanze_utilities): al COMMIT l''istanza appena nata deve avere almeno un billing account. Delega ad anagrafiche.fn_guard_istanza_ha_ba (E_ISTANZA_SENZA_BA), lo stesso guard del constraint trigger sulla cancellazione del BA. ⚠️ rev 2026-10-08: fino a quel giorno bastava uno fra tre satelliti (billing_account, istanze_dati_precontrattuali, clienti) e con la sola riga precontrattuale l''istanza nasceva senza BA. Regola di Tid: istanza e BA nascono insieme, sempre. Il nome resta: la utility e'' dichiarata dal billing account di quella utility. Brief: brief-db-istanza-nasce-col-ba (R-1).';
 ```
 
 ---

@@ -9,7 +9,6 @@ Approfondimento tabelle:
 Approfondimento funzioni e view:
 >
 [script.trgfn_lock_columns](/dbzero/script/funzioni/trgfn_lock_columns)
-> [script.view_clienti_istanza_states](/dbzero/script/views/view_clienti_istanza_states)
 
 ---
 ### 🎯 Scopo Principale
@@ -22,7 +21,7 @@ La tabella `config.stati_cliente` definisce i possibili **stati funzionali** di 
 | Campo                   | Riferimento                            | Azione                                        |
 | ----------------------- | -------------------------------------- | --------------------------------------------- |
 | `id`                    | PK                                     | Identificatore unico dello stato cliente      |
-| Utilizzo in client view | `view_clienti_istanza_states.stato_id` | Join per descrizione stato di istanza/cliente |
+| `anagrafiche.clienti.stato_cliente_id` | FK | Lo stato e' del cliente, cioe' del suo billing account (la vista `view_clienti_istanza_states`, «stato per istanza», e' ritirata dal 2026-10-08: un'istanza ha tanti clienti quanti BA) |
 
 ---
 

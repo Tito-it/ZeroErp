@@ -53,19 +53,30 @@ CREATE TEMP TABLE tmp_costanti_cu AS
 SELECT
     'pgtap_contratti_utilities'::text AS test_scope;
 
--- 0.1: Seleziona un billing_account con istanza/utility senza precontrattuali
+-- 0.1: Un billing_account con istanza/utility senza precontrattuali, COSTRUITO
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2 e D-2): il cliente si
+--   COSTRUISCE con dbops.fn_pgtap_crea_cliente_ba, che da' un BA nuovo, sulla
+--   sua utility e SENZA dati precontrattuali (il builder non li scrive): la
+--   coppia (istanza, utility) del contratto e' quella del suo BA. Fino a quel
+--   giorno si pescava un BA e, siccome tutti i BA di dbdev avevano gia' i loro
+--   dati precontrattuali (42/42 dal 2026-07-27), si sceglieva una utility
+--   «libera» DIVERSA da quella del BA: un contratto col BA di un'altra coppia,
+--   che fk_contratti_ba_coppia (20261008-54) ora rifiuta. ⛔ Il builder scrive;
+--   si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_cli_cu AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'contratti utilities snapshot',
+    -- La utility della prima classe d'utenza (la stessa che sceglie il passo
+    -- 0.2): trgfn_contratti_utilities_guard_tipo_classe vuole la classe della
+    -- utility del contratto.
+    (SELECT tu.utility_id
+       FROM config.classi_utenze cl
+       JOIN config.tipi_utenze tu ON tu.id = cl.tipo_utenza_id
+      ORDER BY cl.id LIMIT 1));
+
 CREATE TEMP TABLE tmp_ba AS
-SELECT
-    ba.id AS billing_account_id,
-    ba.istanza_utility_id,
-    ba.utility_id
-FROM anagrafiche.billing_account ba
-LEFT JOIN anagrafiche.istanze_dati_precontrattuali idp
-  ON idp.istanza_utility_id = ba.istanza_utility_id
- AND idp.utility_id = ba.utility_id
-WHERE idp.id IS NULL
-ORDER BY ba.id
-LIMIT 1;
+SELECT c.billing_account_id, c.istanza_utility_id, c.utility_id
+  FROM tmp_cli_cu c;
 
 SELECT is(
     (SELECT count(*)::int FROM tmp_ba),

@@ -66,3 +66,11 @@ vendite.fn_genera_pratica_da_preventivo(
   (read-only) del service: non attiene all'atomicità (la causa del finding).
 * Il tipo sorgente è risolto per `codice_interno` senza filtrare `attivo`:
   l'attività è imposta dal trigger `require_attivo` sul link (unica autorità).
+
+---
+
+### Note di migrazione
+
+* **2026-10-08** (`20261008-68`): la pratica nasce col **billing account del preventivo** — la
+  sorgente dice di quale cliente parla la pratica. Tolto il ramo «preventivo senza BA», non piu'
+  raggiungibile (il preventivo ha sempre il BA). Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).
