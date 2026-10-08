@@ -25,6 +25,7 @@ from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import qp_int_optional, qp_int_strict, qp_str, qp_str_upper
 from apps.core.api.success_responses import success_response
+from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
 from apps.vendite.api.dash_export_helpers import build_dash_export_response
 from apps.vendite.services.vendite_service import (
     fn_dash_backlog_documenti,
@@ -173,7 +174,10 @@ class ApiDashboardBacklogDocumenti(DomainAPIView):
         area = qp_str_upper(qp.get("area"))
         # Filtro "fermo da oltre N giorni" (strict: non numerico -> 400). Solo
         # sul drill-down; le card per classe restano la fotografia completa.
-        ritardo_giorni = qp_int_optional(qp.get("ritardo_giorni"), "ritardo_giorni")
+        ritardo_giorni = qp_int_optional(
+            qp.get("ritardo_giorni"), "ritardo_giorni",
+            min_val=INTEGER_MIN, max_val=INTEGER_MAX,
+        )
         # Ordinamento (convenzione order_by/order_dir): whitelist + direzione
         # validate nel service (unica definizione, fail-fast 400).
         order_by = qp_str(qp.get("order_by"))
@@ -238,6 +242,7 @@ class ApiDashboardBacklogDocumentiExport(DomainAPIView):
                 "area": qp_str_upper(qp.get("area")),
                 "ritardo_giorni": qp_int_optional(
                     qp.get("ritardo_giorni"), "ritardo_giorni",
+                    min_val=INTEGER_MIN, max_val=INTEGER_MAX,
                 ),
                 "order_by": qp_str(qp.get("order_by")),
                 "order_dir": qp_str(qp.get("order_dir")),

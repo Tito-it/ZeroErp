@@ -257,35 +257,26 @@ class ListiniRepository:
             )
             return row_to_dict(cursor)
 
-    # Scopo: Lista lookup dei listini "selezionabili come riferimento
-    #        contrattuale": listino attivo + esiste almeno una versione
-    #        ATTIVA (oggi). ⚠️ Il guard pre-save che diceva la stessa regola
-    #        (`_guard_listino_ha_versione_attiva`) e' ritirato (D.4.3 di
-    #        brief-db-offerta-emissione-ed-erogazione): questo filtro resta
-    #        finche' il DB non consegna la lettura dei listini sceglibili per
-    #        utility ed emittente del documento (§F.2), che lo sostituisce.
-    #        Lo leggono i drawer di contratto e offerta. Forma payload uniforme
-    #        `{id, codice, descrizione}` compatibile col pattern lookup
-    #        generico (zero adattamenti FE rispetto al precedente
-    #        `LookupSelect rel="vendite.listini"`). Single round-trip via
-    #        EXISTS subquery, ordinamento alfabetico su descrizione +
-    #        tiebreaker id.
-    def list_lookup_selezionabili_contratti(self) -> list[dict[str, Any]]:
+    # Scopo: I listini che un contratto o un'offerta di questa utility e di
+    #        questo emittente (`emittente_fiscale_id`, PK) puo' scegliere, per la
+    #        tendina del form: `vendite.fn_listini_selezionabili`, il predicato
+    #        del guard del documento (`script.fn_check_listino_documento`),
+    #        quindi la tendina non propone cio' che il DB rifiuta (F-2 di
+    #        brief-db-offerta-emissione-ed-erogazione). Sui VALORI del form: in
+    #        creazione il documento non esiste. Non filtra sulla versione (in
+    #        bozza un listino senza versione in vigore si sceglie: lo rifiutano
+    #        attivazione ed emissione). Utility o emittente `None`: nessun
+    #        listino. Forma `{id, codice, descrizione}`, ordinata dal DB.
+    def list_lookup_selezionabili(
+        self, utility_id: int | None, emittente_fiscale_id: int | None,
+    ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT l.id, l.codice, l.descrizione
-                  FROM vendite.listini l
-                 WHERE l.attivo IS TRUE
-                   AND EXISTS (
-                       SELECT 1
-                         FROM vendite.listini_versioni v
-                        WHERE v.listino_id = l.id
-                          AND v.stato = 'ATTIVA'
-                          AND v.attivo IS TRUE
-                   )
-                 ORDER BY l.descrizione, l.id
-                """
+                SELECT id, codice, descrizione
+                  FROM vendite.fn_listini_selezionabili(%s, %s)
+                """,
+                [utility_id, emittente_fiscale_id],
             )
             return [
                 {"id": int(row[0]), "codice": row[1], "descrizione": row[2]}

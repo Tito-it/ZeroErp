@@ -37,6 +37,7 @@ from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE, A
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS
 from apps.core.services.coda_lavori.scope import scope_operatore_da_request
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import INTEGER_MAX
 from apps.core.services.processi_service import ProcessiService
 from apps.core.services.tracciamento_service import fn_list_error_logs
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -877,9 +878,9 @@ class PermessiRiepilogoView(AdminAPIView):
 #        un operatore senza chip. Nessun id e' un 400 (il parametro e'
 #        obbligatorio): una chiamata senza operatori e' un chiamante rotto.
 # ⚠️ Il pezzo lo legge `optional_int` (cifre ASCII); qui si aggiunge il tetto
-#    di un `integer` PG (`auth_user.id`, argomento `integer[]` della funzione):
-#    oltre, il cast fallirebbe a DB — un 500 al posto di un 400.
-_PG_INT_MAX = 2_147_483_647
+#    di un `integer` PG (`auth_user.id`, argomento `integer[]` della funzione,
+#    `INTEGER_MAX` di payload_helpers): oltre, il cast fallirebbe a DB — un 500
+#    al posto di un 400.
 
 
 def _parse_auth_user_ids(raw: str | None) -> list[int]:
@@ -892,7 +893,7 @@ def _parse_auth_user_ids(raw: str | None) -> list[int]:
         except ValueError:
             valore = None
         ErrorManager.require(
-            valore is not None and 0 < valore <= _PG_INT_MAX,
+            valore is not None and 0 < valore <= INTEGER_MAX,
             code=E_AMM_VALIDAZIONE,
             message="auth_user_ids: attesi id interi positivi separati da virgola.",
             context={"field": "auth_user_ids"},

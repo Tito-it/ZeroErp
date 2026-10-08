@@ -82,6 +82,40 @@ valorizzato (con o senza variazione globale) = *con listino*, `listino_id` NULL 
 stato sostituito da due campi opzionali (Listino + Variazione globale) e da un
 badge «forma derivata» che mostra l'esito dopo il salvataggio.
 
+### I listini che un documento può scegliere `GET /api/v1/vendite/lookup/listini-selezionabili/`
+
+Dal 2026-10-08 (F-2 di brief-db-offerta-emissione-ed-erogazione): l'unico lookup
+**dinamico** del modulo, la tendina del listino di **contratto e offerta**.
+Prende il posto di `lookup/listini-selezionabili-contratto/`, che proponeva ogni
+listino con «almeno una versione ATTIVA», di qualunque utility (filtro ritirato
+col D.4.3: in bozza un listino senza versione in vigore si sceglie, lo rifiutano
+attivazione ed emissione).
+
+| Query param | Tipo | Note |
+| --- | --- | --- |
+| `utility_id` | int | La utility del **form**. Assente: nessun listino |
+| `emittente_fiscale_id` | int | L'emittente fiscale del **form** (id di `anagrafiche.emittenti_fiscali`). Assente: nessun listino |
+
+Sui valori del form e non sull'id del documento, perché in creazione il
+documento non esiste. Un valore non numerico → 400 `E_VALIDATION_INPUT`.
+
+```json
+{ "data": { "results": [ { "id": 100, "codice": "LST-GAS-2026", "descrizione": "Gas 2026" } ] } }
+```
+
+⭐ Envelope **normale** dei lookup (`{"results": [...]}`), non l'eccezione dei tre
+enum statici sopra. ⛔ Il backend la trasporta, non la deduce: è
+`vendite.fn_listini_selezionabili(utility, emittente_fiscale_id)`, i listini
+attivi su cui `script.fn_check_listino_documento` non ha motivi — lo stesso
+predicato del guard che al salvataggio rifiuta un listino di un'altra utility
+(`E_DOC_LISTINO_UTILITY_DIVERSA`) o di un'altra azienda
+(`E_DOC_LISTINO_EMITTENTE_DIVERSO`). La tendina non propone ciò che il DB
+rifiuterebbe. Sotto RLS: chi agisce vede i listini del suo perimetro.
+
+Consumer FE: `ListinoDocumentoSelect` (in `ContrattoDrawer.vue` e
+`OffertaDrawer.vue`), che si ricarica al cambio di utility o emittente e tiene
+fra le opzioni il listino già scritto sul documento.
+
 ### Nota PREZZO_FISSO
 
 `PREZZO_FISSO` è ammesso **solo** per le promo articoli (resolver STADIO 0).
@@ -106,11 +140,12 @@ detail (vedi WIP §A3).
 
 ## Errori
 
-Gli endpoint non sollevano errori di dominio (sono read-only su strutture
-in memoria). Errori possibili:
+Gli endpoint non sollevano errori di dominio (gli enum sono read-only su
+strutture in memoria; i listini sono una lettura). Errori possibili:
 
 | HTTP | Codice | Quando |
 | --- | --- | --- |
+| 400 | `E_VALIDATION_INPUT` | `utility_id` o `emittente_fiscale_id` non numerico (solo listini sceglibili) |
 | 401 | — | JWT mancante o invalido |
 | 403 | `E_PERMESSO_NEGATO` | Utente con `vendite = BLOCCATO` |
 | 429 | — | Rate limit (improbabile su endpoint stabili) |
@@ -120,7 +155,8 @@ in memoria). Errori possibili:
 | Tipo | File | Cosa verifica |
 | --- | --- | --- |
 | Service | `apps/vendite/tests/services/test_vendite_lookups_service.py` | Coverage `lookup.codici == service.whitelist` (CI guard contro drift) |
-| API | `apps/vendite/tests/api/test_lookups_api.py` | Smoke 200 per i 4 endpoint, JWT mocked, codici minimi presenti, 401 senza auth |
+| API | `apps/vendite/tests/api/test_lookups_api.py` | Smoke 200 sugli enum statici, JWT mocked, codici minimi presenti, 401 senza auth; listini sceglibili: envelope `results`, parametri passati al service, assenti → `None`, non numerici → 400 |
+| DB | `apps/vendite/tests/db/test_listini_selezionabili_db.py` | Binding reale di `vendite.fn_listini_selezionabili` sul mondo costruito (ordine dei parametri provato per mutazione) e trasporto del rifiuto 1222 col campo `listino_id` dai PATCH di contratto e offerta |
 
 ## Riferimenti
 
@@ -128,6 +164,6 @@ in memoria). Errori possibili:
 - Backend views: `apps/vendite/api/views_lookups.py`
 - Backend routes: `apps/vendite/api/urls_v1.py` (`# --- Lookup statici ---`)
 - Frontend client: `frontend/src/vendite/api/lookup.js`
-- Frontend wrapper: `frontend/src/vendite/components/{TipoVariazioneSelect,AmbitoContrattoSelect}.vue`
+- Frontend wrapper: `frontend/src/vendite/components/{TipoVariazioneSelect,AmbitoContrattoSelect,ListinoDocumentoSelect}.vue`
 - Catalogo BB backend: vedi `vendite_lookups_service` + `Api*Lookup`
 - Catalogo BB frontend: vedi `lookupTipiVariazione*`, `TipoVariazioneSelect`, `AmbitoContrattoSelect`

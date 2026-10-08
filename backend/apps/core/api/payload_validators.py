@@ -10,6 +10,7 @@ from rest_framework.exceptions import ParseError
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.request_parsers import oggetto_json, parse_iso_date
+from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN
 from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Validator centralizzati payload API (riusabili cross-domain).
@@ -119,29 +120,49 @@ def qp_int(raw: str | None, default: int) -> int:
         return default
 
 
-# Scopo: Converte parametro intero da query string; solleva ValueError se non numerico.
+# Scopo: Converte parametro intero da query string; solleva ValueError se non
+#        numerico o fuori da bigint (oltre, nessun intero PG lo regge: un 500).
 def qp_int_strict(raw: str | None, name: str, default: int) -> int:
     if raw is None:
         return default
     try:
-        return int(raw.strip())
+        valore = int(raw.strip())
     except (ValueError, AttributeError):
         raise ValueError(f"{name}_invalid") from None
+    if not BIGINT_MIN <= valore <= BIGINT_MAX:
+        raise ValueError(f"{name}_invalid")
+    return valore
 
 
 # Scopo: Parametro intero OPZIONALE da query string: None se assente o vuoto;
-#        solleva ValueError(f"{name}_invalid") se presente ma non numerico.
-#        Variante "optional" di qp_int_strict (che invece richiede un default).
-def qp_int_optional(raw: str | None, name: str) -> int | None:
+#        solleva ValueError(f"{name}_invalid") se presente ma non numerico, o
+#        fuori da [min_val, max_val]. Variante "optional" di qp_int_strict.
+# ⚠️ Il tetto e' il TIPO DOVE IL VALORE ARRIVA, non la colonna: un confronto
+#    `col = %s` regge qualunque intero (int4 = int8 si confronta), un PARAMETRO
+#    di funzione `integer` o un cast `::integer` no — 3000000000 diventa un
+#    bigint, la funzione non si risolve e la risposta e' un 500 al posto di un
+#    400. Default: bigint, sempre corretto (oltre, nessun intero PG). Chi passa
+#    il valore a un parametro `integer` dichiara `max_val=INTEGER_MAX` (e
+#    `min_val=INTEGER_MIN`), da `apps.core.services.payload_helpers`.
+def qp_int_optional(
+    raw: str | None,
+    name: str,
+    *,
+    min_val: int = BIGINT_MIN,
+    max_val: int = BIGINT_MAX,
+) -> int | None:
     if raw is None:
         return None
     cleaned = raw.strip()
     if cleaned == "":
         return None
     try:
-        return int(cleaned)
+        valore = int(cleaned)
     except ValueError as exc:
         raise ValueError(f"{name}_invalid") from exc
+    if not min_val <= valore <= max_val:
+        raise ValueError(f"{name}_invalid")
+    return valore
 
 
 # Scopo: Data ISO OPZIONALE da query string: None se assente o vuota;

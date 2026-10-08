@@ -269,8 +269,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   D20, 2026-10-08): righe d'ordine e di preventivo ancora aperte fuori bozza; `user_update` nullable altrove e
   senza presidio; componente spento in attesa copiato nella revisione. Decisi da Tid il 2026-10-08 (D-1 lock a tre porte, sull'ordine aperta la sola `data_consegna_confermata` negli stati da evadere; D-2 un giro solo col presidio; D-3 lo spento in attesa si copia senza marca). Sviluppo non iniziato.
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
-  collaudo del drawer del 2026-10-07): DB giri 1 e 2 applicati e verdi, BE/FE in parte. Serve il terzo giro DB (§F:
-  F-1 quantità calcolata, F-2 listino del documento), poi il resto del BE/FE, il collaudo a video §D.5 e l'archivio.
+  collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
+  BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
+  il collaudo a video (§D.5 + §G.4) e l'archivio.
 - ⏳ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca**
   (`work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md`, richiesta BE del 2026-10-08, voci E-4/E-5/E-10
   dell'analisi della doc API core): da fare.

@@ -94,7 +94,7 @@ from apps.vendite.api.views_fondi_fattura import (
 )
 from apps.vendite.api.views_lookups import (
     ApiAmbitiContrattoLookup,
-    ApiListiniSelezionabiliContrattoLookup,
+    ApiListiniSelezionabiliLookup,
     ApiTipiVariazioneContrattoLookup,
     ApiTipiVariazionePromoLookup,
 )
@@ -591,13 +591,12 @@ urlpatterns = [
         ApiAmbitiContrattoLookup.as_view(),
         name="vendite-lookup-ambiti-contratto",
     ),
-    # Lookup dinamico listini selezionabili come riferimento contrattuale
-    # (filtra per esistenza di una versione ATTIVA — decisione 2026-05-18
-    # §4.4 refactor-contratti-modalita). Sostituisce LookupSelect generico
-    # `rel=vendite.listini` nel ContrattoDrawer.
+    # I listini che un contratto o un'offerta puo' scegliere, per utility ed
+    # emittente del form: la lettura del DB, lo stesso predicato del guard del
+    # documento (F-2 di brief-db-offerta-emissione-ed-erogazione).
     path(
-        "lookup/listini-selezionabili-contratto/",
-        ApiListiniSelezionabiliContrattoLookup.as_view(),
-        name="vendite-lookup-listini-selezionabili-contratto",
+        "lookup/listini-selezionabili/",
+        ApiListiniSelezionabiliLookup.as_view(),
+        name="vendite-lookup-listini-selezionabili",
     ),
 ]

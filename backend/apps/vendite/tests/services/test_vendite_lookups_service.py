@@ -15,7 +15,7 @@ Indice test:
 2) test_tipi_variazione_promo_coverage     — codici lookup == promo._TIPI_VARIAZIONE
 3) test_ambiti_contratto_coverage          — codici lookup == _AMBITI_VALIDI
 4) test_payload_shape                       — codice/descrizione/ordering presenti
-5) test_listini_selezionabili_delega_repository — fn delega senza trasformazioni a ListiniRepository.list_lookup_selezionabili_contratti
+5) test_listini_selezionabili_delega_repository — fn delega utility ed emittente, senza trasformazioni, a ListiniRepository.list_lookup_selezionabili
 """
 
 from unittest import TestCase
@@ -30,7 +30,7 @@ from apps.vendite.services.promo_articoli_service import (
 )
 from apps.vendite.services.vendite_lookups_service import (
     fn_list_ambiti_contratto,
-    fn_list_listini_selezionabili_contratti,
+    fn_list_listini_selezionabili,
     fn_list_tipi_variazione_contratto,
     fn_list_tipi_variazione_promo,
 )
@@ -71,21 +71,20 @@ class TestVenditeLookupsService(TestCase):
                 self.assertTrue(row["descrizione"])
                 self.assertIsInstance(row["ordering"], int)
 
-    # Scopo: fn_list_listini_selezionabili_contratti e' thin wrapper sul
-    #        repository (delega + zero trasformazioni). Test mock-based per
-    #        compat CI senza DB. Verifica anche shape payload uniforme
-    #        {id, codice, descrizione} per swap trasparente FE.
+    # Scopo: fn_list_listini_selezionabili e' thin wrapper sul repository:
+    #        passa utility ed emittente del form com'erano e non trasforma
+    #        niente. La regola la dice il DB (`vendite.fn_listini_selezionabili`).
     @patch(
         "apps.vendite.db.listini_repository.ListiniRepository."
-        "list_lookup_selezionabili_contratti",
+        "list_lookup_selezionabili",
         return_value=[
             {"id": 1, "codice": "STD", "descrizione": "Listino standard"},
             {"id": 2, "codice": "PREM", "descrizione": "Listino premium"},
         ],
     )
     def test_listini_selezionabili_delega_repository(self, mock_repo):
-        result = fn_list_listini_selezionabili_contratti()
-        mock_repo.assert_called_once_with()
+        result = fn_list_listini_selezionabili(3, 41)
+        mock_repo.assert_called_once_with(3, 41)
         self.assertEqual(len(result), 2)
         self.assertEqual(set(result[0].keys()), {"id", "codice", "descrizione"})
         self.assertEqual([r["codice"] for r in result], ["STD", "PREM"])

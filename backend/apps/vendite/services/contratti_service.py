@@ -366,17 +366,6 @@ _TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA
 # Alternativa B (L1 sempre, L2/L3 condizionali al resolver).
 _TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
 
-# Fonti per cui `quantita` non e' inserita dall'utente sulla riga contratto:
-# il valore reale arriva downstream (manuale su documento / timesheet /
-# letture utility). Il BE forza NULL su `quantita` per evitare snapshot
-# fuorvianti. `DERIVATA_COMPONENTI` e' fuori da questo set: la `quantita`
-# del padre composito viene scritta automaticamente dal trigger DB
-# `z90_propaga_qta_componenti` post-INSERT figli (vedi piano §1.d).
-_FONTI_QUANTITA_DOWNSTREAM: frozenset[str] = frozenset({
-    "MANUALE", "TIMESHEET", "LETTURE",
-})
-
-
 # Utility 1:1: chiavi ammesse in create/update. istanza_utility_id e
 # utility_id sono derivati dal contratto in create; immutabili in update.
 # Utility 1:1: istanza_utility_id e utility_id derivano dalla testata,
@@ -2243,73 +2232,21 @@ class ContrattiService:
                     assert isinstance(raw, str)
                     data[field] = raw.strip().upper()
 
-        # Normalizzazione di `quantita` in base alla fonte. ⛔ Quali coppie
-        # (tipo_erogazione, fonte_quantita_attesa) sono ammesse, e quali valori
-        # una riga eredita quando non li indica, lo dice il DB dall'articolo
-        # (`vendite.fn_articolo_erogazioni`: eredita' e guard del perimetro,
-        # brief-db-offerta-emissione-ed-erogazione B-R2/B-R3): qui non se ne
-        # tiene una copia.
-        self._apply_fonte_quantita_logic(data)
+        # ⛔ La quantita' per fonte non si normalizza qui: con una fonte a valle
+        # (MANUALE, LETTURE, TIMESHEET) il DB svuota `quantita` da solo
+        # (`script.trgfn_qta_from_operativa`) e rifiuta una `qta_operativa`
+        # valorizzata col campo (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`); la FISSA
+        # senza quantita' la rifiuta il DB (`E_QTA_MISSING`). Quali coppie
+        # (tipo_erogazione, fonte) sono ammesse, e cosa eredita una riga che non
+        # le indica, lo dice il DB dall'articolo (`vendite.fn_articolo_erogazioni`).
+        # La copia Python (`_apply_fonte_quantita_logic`) azzerava in silenzio, e
+        # solo sul contratto: ritirata (brief-db-offerta-emissione-ed-erogazione F-1).
 
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
                 data["meta"] = meta
         return data
-
-    # Scopo: Normalizza `quantita` sul `data` gia' costruito da _build_data_riga,
-    #        in base alla fonte che la riga dichiara:
-    #         - fonti downstream (MANUALE/TIMESHEET/LETTURE): forzata a NULL;
-    #         - FISSA: serve una quantita' diversa da zero;
-    #         - DERIVATA_COMPONENTI: lasciata al trigger DB z90_propaga_qta_componenti.
-    #        ⛔ Non giudica la coppia (tipo_erogazione, fonte) e non sceglie una
-    #        fonte di default: li decide il DB dall'articolo (eredita' + guard
-    #        del perimetro, 2026-10-07). Fonte assente → niente da normalizzare:
-    #        la eredita il DB.
-    #        Riferimenti: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
-    def _apply_fonte_quantita_logic(self, data: dict[str, Any]) -> None:
-        tipo = data.get("tipo_erogazione")
-        fonte = data.get("fonte_quantita_attesa")
-
-        # Normalizzazione `quantita`:
-        #    - fonti downstream → forza NULL (il valore arrivera' downstream).
-        #    - FISSA → richiede quantita <> 0 (guard esplicita, oltre al CHECK
-        #      `qta_operativa <> 0`: zero vietato, negativi ammessi es. resi).
-        #    - DERIVATA_COMPONENTI → no-op (trigger DB z90_propaga_qta_componenti
-        #      scrive il valore corretto post-INSERT figli BoM).
-        #    - None → lascia passare (tipo/fonte non risolti, validazione
-        #      delegata al DB; succede solo in update parziali atipici).
-        if fonte in _FONTI_QUANTITA_DOWNSTREAM:
-            # Sovrascrivi anche se il payload portava un valore: la fonte e'
-            # il driver semantico, qualsiasi quantita inviata e' fuorviante.
-            # Simmetria obbligata su entrambi: `qta_operativa` alimenta il
-            # trigger `trgfn_qta_from_operativa` che deriverebbe `quantita`
-            # a partire da essa post-INSERT/UPDATE — se non azzeriamo
-            # qta_operativa, il trigger riscriverebbe quantita = qta_operativa,
-            # vanificando il NULL. Bug riscontrato in update parziale
-            # `{fonte: FISSA -> MANUALE}` senza payload qta.
-            data["quantita"] = None
-            data["qta_operativa"] = None
-        elif fonte == "FISSA":
-            qta = data.get("quantita")
-            qta_op = data.get("qta_operativa")
-            # Almeno uno tra quantita e qta_operativa deve essere diverso da zero
-            # (CHECK DB `qta_operativa <> 0`: negativi ammessi). Il trigger
-            # `trgfn_qta_from_operativa` deriva l'una dall'altra post-INSERT.
-            # Validazione lax: il CHECK DB ha l'ultima parola.
-            ErrorManager.require(
-                (qta is not None and qta != 0) or (qta_op is not None and qta_op != 0),
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail=(
-                    "fonte_quantita_attesa='FISSA' richiede una quantita diversa "
-                    "da zero (campo `quantita` o `qta_operativa`)."
-                ),
-                context={
-                    "tipo_erogazione": tipo,
-                    "fonte_quantita_attesa": fonte,
-                },
-            )
 
     # =================================================================
     # Helpers privati — utility 1:1

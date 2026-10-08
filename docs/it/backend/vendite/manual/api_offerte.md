@@ -846,11 +846,16 @@ Vincoli (CHECK DB `chk_offerte_eccezioni_*` + UNIQUE):
   vietata, tipo immutabile (lock di colonna). I codici dicono «CONTRATTO» per storia,
   i messaggi sono neutri
 - **Quantità**: la sorgente è `qta_operativa` (UoM operativa). La colonna base
-  `quantita` è **derivata dal trigger** `trgfn_qta_from_operativa`
+  `quantita` è **calcolata** dal trigger `trgfn_qta_from_operativa`
   (`quantita = qta_operativa × factor_to_base`) e non va inviata. `qta_operativa`
   obbligatoria per `fonte = FISSA` (CHECK `qta_operativa <> 0`: zero vietato,
-  negativi ammessi); ammessa NULL per le altre fonti (la qta arriva downstream).
-  Allineato a contratti/preventivi (refactor 2026-05-31)
+  negativi ammessi). Con una fonte a valle (MANUALE, LETTURE, TIMESHEET) la
+  quantità arriva downstream: `quantita` la svuota il DB (anche passando da
+  DERIVATA_COMPONENTI), una `qta_operativa` valorizzata è rifiutata con
+  `E_RIGA_QUANTITA_CON_FONTE_A_VALLE` (400, campo `qta_operativa`). Le stesse
+  regole del contratto (dal 2026-10-08, F-1 di
+  brief-db-offerta-emissione-ed-erogazione: prima il solo backend del contratto
+  azzerava, in silenzio)
 - **`tipo_erogazione` obbligatoria sulle righe che si fatturano**: OVERRIDE e AGGIUNTA si fatturano e devono dire come si erogano
   (canone, una tantum, a ore, a consumo); l'ESCLUSIONE no. CHECK
   `chk_offerte_eccezioni_erogazione_per_tipo_eccezione` + guard
@@ -1030,6 +1035,9 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
 | `E_RIGA_EROGAZIONE_FUORI_PERIMETRO`                 | 400                 | DB P0001 (2026-10-07) — combinazione `(tipo_erogazione, fonte_quantita_attesa)` che l'articolo non ammette. Campo `tipo_erogazione` o `fonte_quantita_attesa` in `error.fields`. Stesso codice sul contratto | `script.trgfn_righe_guard_erogazione_perimetro` |
 | `E_RIGA_TIPOLOGIA_FUORI_UTILITY`                    | 400                 | DB P0001 (2026-10-07) — articolo con una tipologia di listino che la utility dell'offerta non prevede. Campo `articolo_id`. Stesso codice sul contratto | `script.trgfn_righe_guard_erogazione_perimetro` |
 | `E_RIGA_ESCLUSIONE_CON_DATI`                        | 400                 | DB P0001 (2026-10-04) — INSERT di un'ESCLUSIONE con un dato di fatturazione. Campo in `error.fields`. Stesso codice sul contratto | `script.trgfn_righe_guard_esclusione_senza_dati` |
+| `E_RIGA_QUANTITA_CON_FONTE_A_VALLE`                 | 400                 | DB P0001 (2026-10-07, rivisto 2026-10-08) — `qta_operativa` valorizzata con una fonte a valle. Campo `qta_operativa`. Stesso codice sul contratto | `script.trgfn_righe_guard_quantita_per_fonte` |
+| `E_DOC_LISTINO_UTILITY_DIVERSA`                     | 400                 | DB P0001 (2026-10-08) — il listino è di un'altra utility. Campo `listino_id`. Stesso codice sul contratto | `script.trgfn_doc_guard_listino_documento` |
+| `E_DOC_LISTINO_EMITTENTE_DIVERSO`                   | 400                 | DB P0001 (2026-10-08) — il listino è di un'altra azienda emittente. Campo `listino_id`. Stesso codice sul contratto | `script.trgfn_doc_guard_listino_documento` |
 | `E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO`        | 409                 | DB P0001 — `BOZZA -> EMESSA` su un listino che non ha una versione in vigore oggi (dal 2026-10-07: prima «versione NULL», che il guard ora congela da sé) | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA`   | 409                 | DB P0001 — `BOZZA -> EMESSA` con una versione già fissata che non è più `ATTIVA`                         | `trgfn_offerte_commerciali_guard_transizione`        |
 | `E_OFFERTA_TRANSIZIONE_NON_AMMESSA`                 | 409                 | DB P0001 — transizione non presente in `config.stati_doc_offerte_transizioni` (es. EMESSA -> ANNULLATA, EMESSA -> BOZZA, qualsiasi uscita da stato terminale) | `trgfn_offerte_commerciali_guard_transizione`        |

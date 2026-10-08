@@ -33,8 +33,7 @@ import DocumentoIndirizziSection from '../_shared/indirizzi/DocumentoIndirizziSe
 import DocumentoCollegamentiBar from '../_shared/lineage/DocumentoCollegamentiBar.vue'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
-import { lookupListiniSelezionabiliContratto } from '../api/lookup'
+import ListinoDocumentoSelect from './ListinoDocumentoSelect.vue'
 import BillingAccountLookup from '../../core/components/BillingAccountLookup.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
@@ -57,7 +56,6 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
-import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Message from 'primevue/message'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -168,28 +166,6 @@ const mostraFooterSalva = computed(
   () => (!isReadonly.value && (!detail.value || detail.value.stato_codice_interno === 'DRAFT'))
     || codiciAttoEditabili.value,
 )
-
-// Lookup dinamico listini "selezionabili come riferimento contrattuale"
-// (refactor 2026-05-18 §4.4): filtra `vendite.listini` per esistenza di una
-// versione ATTIVA. Cache modulo-level via useGlobalLookup (chiave stabile
-// `vendite.listini_selezionabili_contratto`): primo consumer fa la fetch,
-// successivi riusano. Single source of truth lato BE: endpoint dedicato
-// `/vendite/lookup/listini-selezionabili-contratto/`, condiviso con l'offerta.
-// ⚠️ Il guard che rifiutava al salvataggio un listino senza versione ATTIVA
-// e' ritirato (D.4.3 di brief-db-offerta-emissione-ed-erogazione): la regola
-// vera e' «non si attiva senza una versione in vigore», del DB. Il filtro della
-// tendina resta finche' il DB non da' i listini sceglibili per utility ed
-// emittente del documento (§F.2), che lo sostituiscono.
-const listiniLookup = useGlobalLookup(
-  'vendite.listini_selezionabili_contratto',
-  lookupListiniSelezionabiliContratto,
-  { immediate: true, transform: (r) => r.data.data },
-)
-// Label dropdown: "descrizione (codice)" come `LookupSelect show-code`.
-function formatListinoOption(item) {
-  if (!item) return ''
-  return item.codice ? `${item.descrizione} (${item.codice})` : item.descrizione
-}
 
 // Sub-drawer
 const righeVisible = ref(false)
@@ -1087,19 +1063,14 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
 
   <div class="form-field">
     <label>{{ t('vendite.contratti.field_listino') }}</label>
-    <!-- Refactor 2026-05-18 §4.4: lookup dedicato che esclude i listini
-         senza versione ATTIVA. Pattern useGlobalLookup + Select, cache
-         modulo-level. Niente piu' LookupSelect generico per non far
-         apparire scelte che il save rifiuterebbe. -->
-    <Select v-model="form.listino_id"
-      :options="listiniLookup.items.value"
-      :option-label="formatListinoOption"
-      option-value="id"
-      :loading="listiniLookup.loading.value"
+    <!-- I listini della utility e dell'emittente del form, dal DB: la tendina
+         non propone cio' che il salvataggio rifiuterebbe (F-2). -->
+    <ListinoDocumentoSelect v-model="form.listino_id"
+      :utility-id="form.utility_id"
+      :emittente-fiscale-id="form.emittente_fiscale_id"
+      :record="detail"
       :placeholder="t('vendite.contratti.select_listino_opzionale')"
       :invalid="campiErrati.includes('listino_id')"
-      show-clear
-      filter
       @update:model-value="onListinoChange"
       :disabled="isEdit && (isLocked('listino_id') || righeCount > 0)" />
     <small v-if="isEdit && righeCount > 0 && !isLocked('listino_id')"

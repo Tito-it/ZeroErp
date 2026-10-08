@@ -30,6 +30,7 @@ from apps.core.api.success_responses import success_response
 from apps.core.db.parameter_repository import MAX_CODES
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.parameter_service import ParameterService
+from apps.core.services.payload_helpers import SMALLINT_MAX, SMALLINT_MIN
 
 # Regex per int firmato stretto: rifiuta degenerazioni come "--5", "++1", "1.0".
 # Coerente con _SIGNED_INT_RE di payload_helpers.py.
@@ -256,8 +257,11 @@ class ParameterSettingsView(DomainAPIView):
         # sotto: un query string malformato e' un dato di input (api.md
         # §Query params), non un valore di parametro di configurazione
         # (`E_PARAMETER_VALIDATION`, che restava qui fino al 2026-10-08).
+        # ⚠️ Tetto smallint: il valore arriva al `%s::smallint` di
+        # `script.fn_list_parameters_for_user` (oltre, un 500).
         categoria_cliente_id = qp_int_optional(
             qp.get("categoria_cliente_id"), "categoria_cliente_id",
+            min_val=SMALLINT_MIN, max_val=SMALLINT_MAX,
         )
         if categoria_cliente_id is not None:
             if categoria_cliente_id <= 0:

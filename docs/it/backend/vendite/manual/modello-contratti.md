@@ -256,6 +256,12 @@ non lo sceglie l'operatore da zero: **lo dice l'articolo**.
   (`GET …/righe/erogazioni/`). Il push offerta → contratto ricopia i valori
   della riga, quindi quelli ereditati.
 
+- **La quantita' segue la fonte** (2026-10-08, F-1): solo FISSA e
+  DERIVATA_COMPONENTI portano una quantita' sulla riga
+  (`script.fn_fonte_porta_quantita`). Con una fonte a valle `quantita` la svuota
+  il DB (`trgfn_qta_from_operativa`) e una `qta_operativa` valorizzata e'
+  rifiutata (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, campo `qta_operativa`).
+
 Stesse regole sull'offerta: le due tabelle di riga hanno gli stessi trigger.
 
 ## 9. Glossario refactor 2026-05-15 (aggiornato 2026-05-18)
@@ -275,7 +281,7 @@ Stesse regole sull'offerta: le due tabelle di riga hanno gli stessi trigger.
 | **VALORE_FISSO globale (vietato)** | Tipo variazione testata non ammesso dal 2026-05-18. Whitelist `_TIPI_VARIAZIONE_GLOBALE_AMMESSI = frozenset({"PERCENTUALE"})` in `contratti_service`; lookup FE `tipi-variazione-contratto` ritorna solo PERCENTUALE. |
 | **Contesto pricing** | Endpoint readonly `/contratti/<id>/contesto-pricing/` che ritorna forma + listino + versione fissata + versione corrente (drift detection) + variazione globale + categoria cliente. Alimenta il banner header del drawer righe. Mutuato dal pattern preventivi. |
 | **Permesso "variare prezzi"** | Label UX della azione di processo. Codename DB stabile: `prezzo_override_manuale` (decisione 2026-05-18: rename solo della label, codename invariato per non rompere il binding). Richiesto da L1 per qualunque OVERRIDE/AGGIUNTA su riga contratto, dalla creazione preventivi con prezzo manuale, e dalle azioni componenti BoM con override prezzo. |
-| **Listino selezionabile (versione ATTIVA)** | Decisione 2026-05-18 §4.4: un listino senza alcuna versione ATTIVA non e' selezionabile come riferimento contrattuale. Guard service `_guard_listino_ha_versione_attiva` solleva `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (422) in CREATE e in UPDATE quando `listino_id` e' nel patch. Senza versione attiva il contratto sarebbe formalmente "con listino" ma operativamente vuoto. Filtro lookup FE: open task minore (brief DB). |
+| **Listino selezionabile** | Dal 2026-10-08 (F-2 di brief-db-offerta-emissione-ed-erogazione): il listino di un contratto o di un'offerta è della **stessa utility e dello stesso emittente** del documento. La regola sta in `script.fn_check_listino_documento`, letta dal guard della testata (`E_DOC_LISTINO_UTILITY_DIVERSA`, `E_DOC_LISTINO_EMITTENTE_DIVERSO`, campo `listino_id`) e dalla tendina del form (`vendite.fn_listini_selezionabili`, `GET /vendite/lookup/listini-selezionabili/`). ⛔ La versione non c'entra più: la decisione 2026-05-18 §4.4 («senza versione ATTIVA non si seleziona», guard Python `_guard_listino_ha_versione_attiva`, codice `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA`) è ritirata col D.4.3 del 2026-10-07: in DRAFT un listino senza versione in vigore si sceglie, lo rifiuta l'attivazione (`E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO`). |
 | **Richiesta approvazione (L3)** | Workflow di escalation Sprint E quando un OVERRIDE/AGGIUNTA viola L2: il payload riga puo' includere `richiesta_approvazione=true` e il service crea una pratica APPROVAZIONE_PREZZO + salva la riga con `stato_approvazione_prezzo='PENDING'` + FK alla pratica. Trigger DB blocca modifiche struttura sulle righe PENDING (allowlist: workflow + meta + audit). **Cablato sia su preventivi che su contratti dal 2026-05-19** (migrations DB `20260518-01/02` per simmetria contratti_righe + cablaggio BE in `ContrattiService.create_riga`/`update_riga` + endpoint `/righe-contratto/<id>/approva-prezzo/` e `/rifiuta-prezzo/`). Il service di esito (`approvazioni_prezzo_service.approva/rifiuta`) e' sorgente-agnostico con parametro `sorgente='preventivo'` o `'contratto'` che fa dispatch su tabella e repository corretti via `_SORGENTE_CONFIG`. |
 
 ## Riferimenti
