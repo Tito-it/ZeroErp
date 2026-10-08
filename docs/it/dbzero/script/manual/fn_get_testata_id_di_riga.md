@@ -4,7 +4,7 @@
 >
 > [script.fn_get_stato_testata_documento](/dbzero/script/funzioni/fn_get_stato_testata_documento) — il gemello: dalla testata allo stato
 > [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza) — il building block che la chiama, a livello RIGA
-> [vendite.contratti_righe_componenti](/dbzero/vendite/tabelle/contratti_righe_componenti) · [vendite.offerte_commerciali_eccezioni_componenti](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni_componenti) · [vendite.resi_righe_rientri](/dbzero/vendite/tabelle/resi_righe_rientri) — le tabelle nipoti che la usano
+> [vendite.contratti_righe_componenti](/dbzero/vendite/tabelle/contratti_righe_componenti) · [vendite.offerte_commerciali_eccezioni_componenti](/dbzero/vendite/tabelle/offerte_commerciali_eccezioni_componenti) · [vendite.preventivi_righe_componenti](/dbzero/vendite/tabelle/preventivi_righe_componenti) · [vendite.ordini_righe_componenti](/dbzero/vendite/tabelle/ordini_righe_componenti) · [vendite.ddt_righe_componenti](/dbzero/vendite/tabelle/ddt_righe_componenti) · [vendite.resi_righe_rientri](/dbzero/vendite/tabelle/resi_righe_rientri) — le tabelle nipoti che la usano
 
 ---
 
@@ -14,7 +14,7 @@
 
 Le righe di un documento si toccano solo finché il documento è in bozza. Per le
 righe la regola guarda la testata direttamente: la riga porta il suo
-`contratto_id`, `offerta_id`, `reso_id`. Ma alcune tabelle stanno **un livello
+`contratto_id`, `offerta_id`, `ordine_id`… Ma alcune tabelle stanno **un livello
 più sotto** — i componenti di una riga di kit, i rientri di una riga di reso —
 e conoscono solo la **riga** a cui appartengono. Per sapere se il documento è
 ancora in bozza bisogna prima risalire dalla riga alla testata: è questo passo
@@ -46,6 +46,9 @@ Tipi ammessi, ciascuno con la **sua** tabella di righe:
 | `CONTRATTO` | `vendite.contratti_righe` | `contratto_id` |
 | `OFFERTA` | `vendite.offerte_commerciali_eccezioni` | `offerta_id` |
 | `RESO` | `vendite.resi_righe` | `reso_id` |
+| `PREVENTIVO` | `vendite.preventivi_righe` | `preventivo_id` |
+| `ORDINE` | `vendite.ordini_righe` | `ordine_id` |
+| `DDT` | `vendite.ddt_righe` | `ddt_id` |
 
 Qualunque altro valore non è un dato sbagliato, è un **chiamante rotto**:
 `E_DOC_TIPO_NON_GESTITO`, classe `TECNICO`, come per il gemello. Un tipo nuovo
@@ -67,7 +70,7 @@ proprietario delle tabelle di righe (chi migra possiede entrambe: un pgTAP lo
 verifica, perché è una coincidenza da sorvegliare, non una garanzia).
 
 ⚠️ Il perimetro è stretto apposta: legge **una colonna** di **una riga**, da un
-elenco **chiuso** di tre tabelle scelto dal tipo di documento. Nessun nome di
+elenco **chiuso** di sei tabelle scelto dal tipo di documento. Nessun nome di
 tabella arriva dal chiamante e non c'è SQL costruito a runtime: una funzione con
 privilegi che leggesse «la tabella che le dici» sarebbe una porta su tutto il
 database.
@@ -81,7 +84,10 @@ argomento `'RIGA'` (dal 2026-10-05):
 
 * `vendite.contratti_righe_componenti` — tipo `CONTRATTO`;
 * `vendite.offerte_commerciali_eccezioni_componenti` — tipo `OFFERTA`;
-* `vendite.resi_righe_rientri` — tipo `RESO`.
+* `vendite.resi_righe_rientri` — tipo `RESO`;
+* dal 2026-10-08: `vendite.preventivi_righe_componenti` — tipo `PREVENTIVO`,
+  `vendite.ordini_righe_componenti` — tipo `ORDINE`,
+  `vendite.ddt_righe_componenti` — tipo `DDT`.
 
 ---
 
@@ -90,3 +96,7 @@ argomento `'RIGA'` (dal 2026-10-05):
 * **2026-10-05** — nasce (`20261005-15`), con il livello RIGA del building block
   delle righe. Brief: `brief-db-righe-esclusione-solo-non-si-vende` (§8.2 B3).
   Presidio: `db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 5-7).
+* **2026-10-08** — impara `PREVENTIVO`, `ORDINE` e `DDT` (`20261008-33`), per il
+  lock dei componenti delle tre famiglie. Brief:
+  `brief-db-righe-e-componenti-le-altre-famiglie` (§2.2). Presidio:
+  `db/pgtap/vendite/test-righe-e-componenti-le-altre-famiglie-v1.sql` (test 1-2).

@@ -20,6 +20,8 @@ DECLARE
   v_new_id              vendite.preventivi.id%TYPE;
   v_new_rev             vendite.preventivi.rev%TYPE;
   v_has_draft           boolean;
+  v_riga                vendite.preventivi_righe%ROWTYPE;
+  v_new_riga_id         vendite.preventivi_righe.id%TYPE;
 BEGIN
   -- ==========================================================
   -- Scopo:
@@ -34,8 +36,8 @@ BEGIN
   --   - non deve esistere gia' una revisione DRAFT per lo stesso numero
   --   - la nuova revisione ha rev = max(rev)+1, stato DRAFT
   --   - righe copiate: solo attive con quantita > 0, ORDER BY ordine, id
-  --   - componenti BoM: copiati con FK remap old→new riga_id
-  --     via ROW_NUMBER su (ordine, id); solo attivi
+  --   - componenti BoM delle righe copiate: TUTTI, anche gli opzionali
+  --     spenti, rimappati sulla riga nuova per identita' (rev 2026-10-08)
   --   - indirizzi: tutti copiati
   --
   -- Parametri:
@@ -85,6 +87,27 @@ BEGIN
   --   (framework), id/data_insert/data_update (identity e audit). Il
   --   presidio che pretende l'elenco COMPLETO o la dichiarazione e'
   --   db/pgtap/vendite/test-fn-crea-revisione-preventivo-riga-completa-v1.
+  --
+  -- NOTE i componenti (rev 2026-10-08, 20261008-35, D-1 di Tid):
+  --   brief-db-righe-e-componenti-le-altre-famiglie §2.1, la forma di
+  --   fn_crea_revisione_offerta (20261005-19). Due cambi:
+  --   * si copiano TUTTI i componenti delle righe copiate, anche gli
+  --     opzionali spenti. Spegnere un opzionale e' una scelta del
+  --     preventivo, e la revisione e' lo stesso documento: non portarlo la
+  --     cancellava, e nella rev N+1 non si poteva piu' riaccendere. Non
+  --     cambia cosa si vende: il push a ordine porta solo gli attivi;
+  --   * la riga nuova si lega alla vecchia per IDENTITA': una riga alla
+  --     volta, col suo RETURNING, e i componenti sull'id restituito. Prima
+  --     un ROW_NUMBER su (ordine, id) dei due insiemi, che regge solo finche'
+  --     gli id nuovi nascono nell'ordine della SELECT — una proprieta'
+  --     dell'esecuzione, non un contratto di SQL.
+  --   I trigger del componente lavorano come alla nascita: m50 ricalcola la
+  --   quantita' dalla riga; z90 il prezzo della riga dai componenti ATTIVI,
+  --   cioe' lo stesso della rev N. La revisione e' in DRAFT: il lock «fuori
+  --   bozza» dei componenti (20261008-34) la lascia passare.
+  --   ⚠️ I totali: il trigger STATEMENT su preventivi_righe ora scatta una
+  --   volta per riga invece che una volta sola. L'ultimo passaggio vede
+  --   tutte le righe: il risultato e' lo stesso.
   -- ==========================================================
 
   -- Guard: parametro obbligatorio
@@ -186,8 +209,9 @@ BEGIN
    WHERE p.numero = v_numero;
 
   -- Crea nuova testata (copia campi dal preventivo originale).
-  -- Totali a 0: il trigger STATEMENT su preventivi_righe li ricalcolera'
-  -- dopo l'INSERT bulk delle righe copiate (una sola invocazione).
+  -- Totali a 0: il trigger STATEMENT su preventivi_righe li ricalcola
+  -- dopo ogni INSERT delle righe copiate (una riga alla volta dal
+  -- 2026-10-08: l'ultimo passaggio vede tutte le righe).
   INSERT INTO vendite.preventivi (
     numero, rev, emittente_fiscale_id,
     billing_account_id, istanza_utility_id, utility_id,
@@ -211,81 +235,66 @@ BEGIN
   WHERE p.id = p_preventivo_id
   RETURNING id INTO v_new_id;
 
-  -- Copia righe attive.
-  -- ORDER BY ordine, id: ordine deterministico necessario per il
-  -- remap FK componenti tramite ROW_NUMBER (vedi blocco successivo).
-  INSERT INTO vendite.preventivi_righe (
-    preventivo_id, articolo_id, descrizione,
-    quantita, prezzo_unitario, sconto_percentuale,
-    iva_id, ordine, attivo,
-    qta_operativa, uom_operativa_id, factor_to_base,
-    data_consegna_richiesta_cliente,
-    stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
-    meta,
-    user_insert, user_update
-  )
-  SELECT
-    v_new_id, pr.articolo_id, pr.descrizione,
-    pr.quantita, pr.prezzo_unitario, pr.sconto_percentuale,
-    pr.iva_id, pr.ordine, pr.attivo,
-    pr.qta_operativa, pr.uom_operativa_id, pr.factor_to_base,
-    pr.data_consegna_richiesta_cliente,
-    pr.stato_approvazione_prezzo, pr.pratica_approvazione_prezzo_id,
-    pr.meta,
-    COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
-  FROM vendite.preventivi_righe pr
-  WHERE pr.preventivo_id = p_preventivo_id
-    AND pr.attivo IS TRUE
-    AND pr.quantita > 0
-  ORDER BY pr.ordine, pr.id;
-
-  -- Copia componenti BoM per le righe padre composite.
-  -- FK remap old_riga_id → new_riga_id via ROW_NUMBER su (ordine, id):
-  -- la SELECT righe usa ORDER BY ordine, id → i nuovi id (IDENTITY
-  -- sequenziale) sono assegnati nello stesso ordine → RN allineati 1:1.
-  -- Il trigger trgfn_componenti_calcola_quantita (BEFORE INSERT)
-  -- ricalcola quantita/qta_operativa da coeff_qta_snapshot: i valori
-  -- copiati vengono sovrascritti correttamente.
-  WITH old_righe AS (
-      SELECT id AS old_riga_id,
-             ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
-        FROM vendite.preventivi_righe
-       WHERE preventivo_id = p_preventivo_id
-         AND attivo IS TRUE
-         AND quantita > 0
-  ),
-  new_righe AS (
-      SELECT id AS new_riga_id,
-             ROW_NUMBER() OVER (ORDER BY ordine, id) AS rn
-        FROM vendite.preventivi_righe
-       WHERE preventivo_id = v_new_id
-  ),
-  riga_map AS (
-      SELECT old_r.old_riga_id, new_r.new_riga_id
-        FROM old_righe old_r
-        JOIN new_righe new_r USING (rn)
-  )
-  INSERT INTO vendite.preventivi_righe_componenti (
-      riga_preventivo_id, articolo_componente_id, componente_id,
-      coeff_qta_snapshot, quantita, prezzo_unitario, iva_id,
-      origine_prezzo, prezzo_resolver_context,
+  -- Copia righe attive, e per ciascuna i suoi componenti BoM.
+  -- Una riga alla volta, con RETURNING (rev 2026-10-08): la
+  -- corrispondenza vecchia -> nuova e' quella dell'INSERT, non un ordine
+  -- di assegnazione degli id dato per scontato.
+  FOR v_riga IN
+      SELECT pr.*
+        FROM vendite.preventivi_righe pr
+       WHERE pr.preventivo_id = p_preventivo_id
+         AND pr.attivo IS TRUE
+         AND pr.quantita > 0
+       ORDER BY pr.ordine, pr.id
+  LOOP
+    INSERT INTO vendite.preventivi_righe (
+      preventivo_id, articolo_id, descrizione,
+      quantita, prezzo_unitario, sconto_percentuale,
+      iva_id, ordine, attivo,
+      qta_operativa, uom_operativa_id, factor_to_base,
+      data_consegna_richiesta_cliente,
       stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
-      uom_operativa_id, factor_to_base, qta_operativa,
-      ordine, attivo, meta,
+      meta,
       user_insert, user_update
-  )
-  SELECT
-      rm.new_riga_id,
-      prc.articolo_componente_id, prc.componente_id,
-      prc.coeff_qta_snapshot, prc.quantita, prc.prezzo_unitario, prc.iva_id,
-      prc.origine_prezzo, prc.prezzo_resolver_context,
-      prc.stato_approvazione_prezzo, prc.pratica_approvazione_prezzo_id,
-      prc.uom_operativa_id, prc.factor_to_base, prc.qta_operativa,
-      prc.ordine, prc.attivo, prc.meta,
+    )
+    VALUES (
+      v_new_id, v_riga.articolo_id, v_riga.descrizione,
+      v_riga.quantita, v_riga.prezzo_unitario, v_riga.sconto_percentuale,
+      v_riga.iva_id, v_riga.ordine, v_riga.attivo,
+      v_riga.qta_operativa, v_riga.uom_operativa_id, v_riga.factor_to_base,
+      v_riga.data_consegna_richiesta_cliente,
+      v_riga.stato_approvazione_prezzo, v_riga.pratica_approvazione_prezzo_id,
+      v_riga.meta,
       COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
-    FROM vendite.preventivi_righe_componenti prc
-    JOIN riga_map rm ON rm.old_riga_id = prc.riga_preventivo_id
-   WHERE prc.attivo IS TRUE;
+    )
+    RETURNING id INTO v_new_riga_id;
+
+    -- I componenti si copiano TUTTI, attivi e no (D-1 di Tid, 2026-10-08).
+    -- Il trigger trgfn_componenti_calcola_quantita (BEFORE INSERT)
+    -- ricalcola quantita/qta_operativa da coeff_qta_snapshot: i valori
+    -- copiati vengono sovrascritti correttamente.
+    INSERT INTO vendite.preventivi_righe_componenti (
+        riga_preventivo_id, articolo_componente_id, componente_id,
+        coeff_qta_snapshot, quantita, prezzo_unitario, iva_id,
+        origine_prezzo, prezzo_resolver_context,
+        stato_approvazione_prezzo, pratica_approvazione_prezzo_id,
+        uom_operativa_id, factor_to_base, qta_operativa,
+        ordine, attivo, meta,
+        user_insert, user_update
+    )
+    SELECT
+        v_new_riga_id,
+        prc.articolo_componente_id, prc.componente_id,
+        prc.coeff_qta_snapshot, prc.quantita, prc.prezzo_unitario, prc.iva_id,
+        prc.origine_prezzo, prc.prezzo_resolver_context,
+        prc.stato_approvazione_prezzo, prc.pratica_approvazione_prezzo_id,
+        prc.uom_operativa_id, prc.factor_to_base, prc.qta_operativa,
+        prc.ordine, prc.attivo, prc.meta,
+        COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
+      FROM vendite.preventivi_righe_componenti prc
+     WHERE prc.riga_preventivo_id = v_riga.id
+     ORDER BY prc.ordine, prc.id;
+  END LOOP;
 
   -- Copia indirizzi
   INSERT INTO vendite.preventivi_indirizzi (
@@ -307,7 +316,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_crea_revisione_preventivo(p_preventivo_id bigint, p_user text)
-IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (FK remap) e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1. rev 2026-09-15 (20260915-41, D3 di Tid): la TESTATA copia emittente_fiscale_id dalla rev N — prima lo riempiva il default di sessione, e per un super admin su un altro emittente attivo la rev N+1 nasceva incoerente col BA (rifiutata dal guard). Brief: brief-db-emittente-di-default-un-bb-solo, sezione 7.1. rev 2026-09-24 (20260924-34, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (righe e componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione». Una riga in attesa ricopiata restava legata alla pratica della rev N e sulla rev N+1 non si esitava piu''''. Approvato e rifiutato continuano a ricopiarsi (azzerarli farebbe passare un prezzo rifiutato). Brief: brief-db-preventivi-congelamento-pricing §10.';
+IS 'Crea revisione DRAFT da preventivo EMESSO: copia testata, righe attive, componenti BoM (tutti, anche gli spenti, rimappati per identita'') e indirizzi. Stato corrente e risoluzione DRAFT per codice_interno (immutabile). rev 2026-06-28: analisi-hardcoded-codice §3a #2. rev 2026-08-05 (20260805-25): codici rinominati con prefisso E_ — E_PREV_REVISIONE_STATO_NON_AMMESSO (850), E_PREV_REVISIONE_BOZZA_ESISTENTE (851), E_PREV_STATO_CORRENTE_NON_TROVATO (852); i vecchi nomi restano a catalogo ritirati con obsoleto_dal. rev 2026-09-14 (20260914-13): le righe copiate portano data_consegna_richiesta_cliente — la data chiesta dal cliente sopravvive alla revisione come sopravvive al push (20260913-20); firma e RETURNS TABLE di nuovo ancorati con %TYPE, SECURITY INVOKER esplicito. Brief: brief-db-modifiche-certe-ciclo-vendita-e-articolo, sezione 6-quinquies. rev 2026-09-14 (20260914-14, D di Tid): le righe copiate portano anche le marche di approvazione prezzo — stato_approvazione_prezzo + pratica_approvazione_prezzo_id 1:1, come i componenti e come fn_crea_revisione_offerta (invariante: prezzo fuori policy sempre marcato; ciclo di vita della pratica su rev superata: dominio approvazioni, refactor-prezzi 4.7). Presidio: test-fn-crea-revisione-preventivo-riga-completa-v1. rev 2026-09-15 (20260915-41, D3 di Tid): la TESTATA copia emittente_fiscale_id dalla rev N — prima lo riempiva il default di sessione, e per un super admin su un altro emittente attivo la rev N+1 nasceva incoerente col BA (rifiutata dal guard). Brief: brief-db-emittente-di-default-un-bb-solo, sezione 7.1. rev 2026-09-24 (20260924-34, decisione di Tid): nessuna revisione con un prezzo IN ATTESA — guard sul primo motivo di script.fn_check_prezzi_in_attesa (righe e componenti attivi PENDING), lo stesso con cui la capability spegne «Crea revisione». Una riga in attesa ricopiata restava legata alla pratica della rev N e sulla rev N+1 non si esitava piu''''. Approvato e rifiutato continuano a ricopiarsi (azzerarli farebbe passare un prezzo rifiutato). Brief: brief-db-preventivi-congelamento-pricing §10. rev 2026-10-08 (20261008-35, brief-db-righe-e-componenti-le-altre-famiglie §2.1, D-1 di Tid): i componenti delle righe copiate si copiano TUTTI, anche gli opzionali spenti (la revisione e'' lo stesso documento: non portarli li cancellava, e nella rev N+1 non si potevano piu'' riaccendere), e si rimappano per identita'', una riga alla volta col suo RETURNING, invece che con un ROW_NUMBER sui due insiemi. Forma di fn_crea_revisione_offerta (20261005-19).';
 ```
 
 ---

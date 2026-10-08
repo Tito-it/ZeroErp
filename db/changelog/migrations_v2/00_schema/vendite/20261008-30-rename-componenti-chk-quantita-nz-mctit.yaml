@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL NOME DEL CHECK DICE LA REGOLA: «NON ZERO», NON «POSITIVA»
+#   vendite.preventivi_righe_componenti: chk_prevrighe_comp_quantita_pos -> chk_prevrighe_comp_quantita_nz
+#   vendite.ordini_righe_componenti:     chk_ordrighe_comp_quantita_pos  -> chk_ordrighe_comp_quantita_nz
+#   vendite.ddt_righe_componenti:        chk_ddtrighe_comp_quantita_pos  -> chk_ddtrighe_comp_quantita_nz
+#   vendite.contratti_righe_componenti:  chk_contrighe_comp_quantita_pos -> chk_contrighe_comp_quantita_nz
+#   Brief: brief-db-righe-e-componenti-le-altre-famiglie (§2.4)
+#
+# -- PERCHE' --------------------------------------------------------
+#   I quattro vincoli sono CHECK (quantita <> 0): vietano lo zero e
+#   ammettono il negativo (un componente di una riga di storno). Il nome
+#   «_pos» dice «positiva», cioe' una regola che non c'e'. Il gemello
+#   dell'offerta si chiama gia' chk_oce_comp_quantita_nz.
+#   Il brief nominava solo il contratto; letto dal catalogo, il nome
+#   sbagliato ce l'hanno tutti e quattro: stesso difetto, stesso giro.
+#
+# -- COSA NON CAMBIA ----------------------------------------------------
+#   La definizione. Nessun dato toccato, nessuna validazione rifatta:
+#   RENAME CONSTRAINT cambia solo il nome nel catalogo. BE e FE non
+#   nominano questi vincoli (verificato il 2026-10-08).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261008-30-rename-componenti-chk-quantita-nz-mctit.yaml
+
+  - changeSet:
+      id: 20261008-30-rename-componenti-chk-quantita-nz
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I quattro CHECK (quantita <> 0) dei componenti di preventivo, ordine, DDT e contratto si
+        chiamano _nz e non _pos, come il gemello dell'offerta. Brief:
+        brief-db-righe-e-componenti-le-altre-famiglie (§2.4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "4"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint c
+               WHERE (c.conrelid, c.conname) IN (
+                       ('vendite.preventivi_righe_componenti'::regclass, 'chk_prevrighe_comp_quantita_pos'),
+                       ('vendite.ordini_righe_componenti'::regclass,     'chk_ordrighe_comp_quantita_pos'),
+                       ('vendite.ddt_righe_componenti'::regclass,        'chk_ddtrighe_comp_quantita_pos'),
+                       ('vendite.contratti_righe_componenti'::regclass,  'chk_contrighe_comp_quantita_pos'))
+                 AND c.contype = 'c';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  RENAME CONSTRAINT chk_prevrighe_comp_quantita_pos TO chk_prevrighe_comp_quantita_nz;
+              ALTER TABLE vendite.ordini_righe_componenti
+                  RENAME CONSTRAINT chk_ordrighe_comp_quantita_pos TO chk_ordrighe_comp_quantita_nz;
+              ALTER TABLE vendite.ddt_righe_componenti
+                  RENAME CONSTRAINT chk_ddtrighe_comp_quantita_pos TO chk_ddtrighe_comp_quantita_nz;
+              ALTER TABLE vendite.contratti_righe_componenti
+                  RENAME CONSTRAINT chk_contrighe_comp_quantita_pos TO chk_contrighe_comp_quantita_nz;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe_componenti
+                  RENAME CONSTRAINT chk_contrighe_comp_quantita_nz TO chk_contrighe_comp_quantita_pos;
+              ALTER TABLE vendite.ddt_righe_componenti
+                  RENAME CONSTRAINT chk_ddtrighe_comp_quantita_nz TO chk_ddtrighe_comp_quantita_pos;
+              ALTER TABLE vendite.ordini_righe_componenti
+                  RENAME CONSTRAINT chk_ordrighe_comp_quantita_nz TO chk_ordrighe_comp_quantita_pos;
+              ALTER TABLE vendite.preventivi_righe_componenti
+                  RENAME CONSTRAINT chk_prevrighe_comp_quantita_nz TO chk_prevrighe_comp_quantita_pos;

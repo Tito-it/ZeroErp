@@ -12,7 +12,7 @@
 --   5)  FK fk_ddtrighe_comp_articolo_componente esiste
 --   6)  FK fk_ddtrighe_comp_componente esiste
 --   7)  UNIQUE uq_ddtrighe_comp_riga_art_comp esiste
---   8)  CHECK chk_ddtrighe_comp_quantita_pos esiste
+--   8)  CHECK chk_ddtrighe_comp_quantita_nz: nome e definizione (quantita <> 0)
 --   9)  CHECK chk_ddtrighe_comp_prezzo_nonneg esiste
 --   10) CHECK chk_ddtrighe_comp_origine esiste
 --   11) FK fk_ddtrighe_comp_riga coperta da un indice
@@ -110,9 +110,17 @@ SELECT has_unique(
 -- =========================================================
 -- 8) CHECK quantita <> 0
 -- =========================================================
-SELECT has_check(
-    'vendite', 'ddt_righe_componenti',
-    '8) CHECK chk_ddtrighe_comp_quantita_pos esiste'
+-- ⚠️ Rev. 2026-10-08 (20261008-30): il vincolo si chiama _nz, non _pos — vieta
+--    lo zero, non il negativo. Prima qui c'era has_check(schema, tabella,
+--    descrizione), che verifica che esista UN check qualunque: il nome stava
+--    solo nella descrizione. Ora si leggono nome e definizione dal catalogo.
+SELECT is(
+    (SELECT pg_get_constraintdef(c.oid)
+       FROM pg_constraint c
+      WHERE c.conrelid = 'vendite.ddt_righe_componenti'::regclass
+        AND c.conname  = 'chk_ddtrighe_comp_quantita_nz'),
+    'CHECK ((quantita <> (0)::numeric))',
+    '8) CHECK chk_ddtrighe_comp_quantita_nz: quantita <> 0'
 );
 
 -- =========================================================
@@ -152,21 +160,23 @@ SELECT ok(
 );
 
 -- =========================================================
--- 12) Trigger registrati sulla tabella (14 attesi)
+-- 12) Trigger registrati sulla tabella (15 attesi)
 --     +2 da modello unificato 20260513: prezzo_obbligatorio + guard_obbligatorio
 --     +1 dal 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt): il block_deact
 --        che ci_apply genera per vendite.ddt_righe_prelievi, figlia via
 --        ddt_riga_componente_id — un componente con dei prelievi non si spegne.
 --     ⚠️ E' un numero esatto: sale a ogni figlia nuova con FK verso i componenti,
 --        e va aggiornato guardando QUALE trigger e' arrivato.
+--     +1 dal 2026-10-08 (20261008-34): trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt,
+--        il lock «solo in bozza» (building block a livello RIGA).
 -- =========================================================
 SELECT is(
     (SELECT COUNT(DISTINCT trigger_name)::integer
        FROM information_schema.triggers
       WHERE event_object_schema = 'vendite'
         AND event_object_table  = 'ddt_righe_componenti'),
-    14,
-    '12) 14 trigger registrati su ddt_righe_componenti'
+    15,
+    '12) 15 trigger registrati su ddt_righe_componenti'
 );
 
 -- =========================================================
@@ -262,10 +272,17 @@ SELECT pass('19) CASCADE DELETE: struttura FK CASCADE verificata da constraint D
 
 -- =========================================================
 -- 20) CHECK origine_prezzo: valore non ammesso -> errore
+-- ⚠️ Rev. 2026-10-08 — solo documenti in DRAFT: fuori bozza dal 20261008-34
+--    parla prima il lock (fascia _a05_), e l'asserzione '%' passerebbe per
+--    il lock invece che per la regola in esame. Brief:
+--    brief-db-righe-e-componenti-le-altre-famiglie §4.
 -- =========================================================
 SELECT CASE
     WHEN NOT EXISTS (
-        SELECT 1 FROM vendite.ddt_righe LIMIT 1
+        SELECT 1 FROM vendite.ddt_righe r
+          JOIN vendite.ddt d ON d.id = r.ddt_id
+          JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+         WHERE s.codice_interno = 'DRAFT'
     )
     THEN skip('20) nessuna riga ddt disponibile per test CHECK origine')
     ELSE throws_like(
@@ -273,7 +290,11 @@ SELECT CASE
                 riga_ddt_id, articolo_componente_id, componente_id,
                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id
             ) VALUES (
-                (SELECT id FROM vendite.ddt_righe LIMIT 1),
+                (SELECT r.id FROM vendite.ddt_righe r
+                   JOIN vendite.ddt d ON d.id = r.ddt_id
+                   JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+                  WHERE s.codice_interno = 'DRAFT'
+                  ORDER BY r.id LIMIT 1),
                 (SELECT id FROM catalogo.articoli_componenti LIMIT 1),
                 (SELECT componente_id FROM catalogo.articoli_componenti LIMIT 1),
                 1, 1, 1, 'VALORE_NON_VALIDO', (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = (SELECT componente_id FROM catalogo.articoli_componenti LIMIT 1))
@@ -294,12 +315,19 @@ SELECT has_trigger(
 
 -- =========================================================
 -- 22) Guard pending: UPDATE struttura su PENDING -> raise
+-- ⚠️ Rev. 2026-10-08 — solo documenti in DRAFT: fuori bozza dal 20261008-34
+--    parla prima il lock (fascia _a05_), e l'asserzione '%' passerebbe per
+--    il lock invece che per la regola in esame. Brief:
+--    brief-db-righe-e-componenti-le-altre-famiglie §4.
 -- =========================================================
 SELECT CASE
     WHEN NOT EXISTS (
-        SELECT 1 FROM vendite.ddt_righe_componenti
-         WHERE stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
-         LIMIT 1
+        SELECT 1 FROM vendite.ddt_righe_componenti c
+          JOIN vendite.ddt_righe r ON r.id = c.riga_ddt_id
+          JOIN vendite.ddt d ON d.id = r.ddt_id
+          JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+         WHERE c.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
+           AND s.codice_interno = 'DRAFT'
     )
     THEN skip('22) nessun componente PENDING disponibile per test guard L3')
     ELSE throws_like(
@@ -307,9 +335,13 @@ SELECT CASE
         UPDATE vendite.ddt_righe_componenti
            SET prezzo_unitario = prezzo_unitario + 0.01
          WHERE stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
-           AND id = (SELECT id FROM vendite.ddt_righe_componenti
-                      WHERE stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
-                      LIMIT 1)
+           AND id = (SELECT c.id FROM vendite.ddt_righe_componenti c
+                       JOIN vendite.ddt_righe r ON r.id = c.riga_ddt_id
+                       JOIN vendite.ddt d ON d.id = r.ddt_id
+                       JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+                      WHERE c.stato_approvazione_prezzo = 'PENDING'::config.stato_approvazione_prezzo
+                        AND s.codice_interno = 'DRAFT'
+                      ORDER BY c.id LIMIT 1)
         $q$,
         '%',
         '22) guard_pending blocca UPDATE struttura su componente PENDING'

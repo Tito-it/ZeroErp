@@ -501,7 +501,7 @@ errore.
 
 > ✅ **Le voci chiuse non stanno qui**: sono in **§7 «Attività svolte»**, con la
 > data e il rimando al brief — chiuse **per intero** D1, D2, D3, D4, D5, D10,
-> D13, D14; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
+> D13, D14, D19; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
 > registri calati), D12 (la quantità), D17 (tutto tranne Q-2).
 >
 > ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
@@ -510,9 +510,10 @@ errore.
 > ⭐ **D17 è nata dalla valutazione qualitativa del 2026-10-04** (§2-bis.8), e
 > **D18** dal censimento `UPDATE OF` di D17 (2026-10-05). **D19** dal debito
 > che `brief-db-righe-esclusione-solo-non-si-vende` (§10.8) ha lasciato
-> all'archiviazione (2026-10-08).
+> all'archiviazione (2026-10-08), chiusa lo stesso giorno; **D20** da ciò che
+> la sua chiusura ha trovato.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D19.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D20.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -914,19 +915,19 @@ dalla stessa data), con un commento sul perché.
   valutare dopo il censimento: senza sapere quali regole sono temporali, il
   presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
 
-### 🟡 D19 — Righe e componenti di preventivo, ordine e DDT: non hanno le regole di contratto e offerta
+### 🟡 D20 — Righe e componenti: tre debiti rimasti dalla chiusura di D19
 
-Trovata il 2026-10-05 da `brief-db-righe-esclusione-solo-non-si-vende` (§10.8),
-che ha messo contratto e offerta sotto le stesse regole e ha lasciato fuori, per
-perimetro, le famiglie vicine. Quattro punti: la revisione del preventivo copia
-solo i componenti attivi e rimappa le righe per ordine di id; i componenti di
-preventivo, ordine e DDT non hanno il lock «solo in bozza»; `user_update` può
-essere NULL su righe e componenti; il nome di `chk_contrighe_comp_quantita_pos`
-dice «positiva» ma il vincolo vieta solo lo zero.
+Trovati il 2026-10-08 chiudendo D19 (`brief-db-righe-e-componenti-le-altre-famiglie`, §5). Tre
+punti:
+* righe d'ordine e di preventivo si cambiano ancora fuori bozza a DB (ora una riga kit no, una
+  semplice sì);
+* `user_update` nullable su circa 140 tabelle, e nessun presidio che fermi una tabella nuova;
+* un componente spento in attesa di approvazione passa nella revisione, legato alla pratica
+  della rev N (preventivo e offerta).
 
 Dettaglio e stato nel brief
-[brief-db-righe-e-componenti-le-altre-famiglie.md](brief-db-righe-e-componenti-le-altre-famiglie.md).
-Una decisione aperta per Tid (D-1: il componente spento in una revisione).
+[brief-db-righe-e-componenti-debiti-residui.md](brief-db-righe-e-componenti-debiti-residui.md).
+Una decisione di Tid per punto (D-1, D-2, D-3).
 
 ---
 
@@ -1119,8 +1120,9 @@ D6 e il registro dei rossi in CI.
 * [ ] **D16** — censire le regole del DB che leggono `current_date` e i pgTAP
       che le attraversano con una data scritta a mano; poi decidere se serve un
       guardrail statico.
-* [ ] **D19** — allineare righe e componenti di preventivo, ordine e DDT a
-      contratto e offerta: brief `brief-db-righe-e-componenti-le-altre-famiglie`.
+* [x] **D19** — allineare righe e componenti di preventivo, ordine e DDT a
+      contratto e offerta: chiusa il 2026-10-08 (§7).
+* [ ] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`.
 
 ---
 
@@ -1501,6 +1503,19 @@ due codici in `error_policies_generated.py` + ripieghi) chiusa il 2026-10-04
 (`63deeb194`). Resta Q-2 (§3).
 
 ---
+
+### ✅ D19 — Righe e componenti di preventivo, ordine e DDT come contratto e offerta — chiusa il 2026-10-08
+
+Brief `work-done/brief-db-righe-e-componenti-le-altre-famiglie.md`, changeSet `20261008-30` … `-35`,
+applicati da Tid il 2026-10-08 (pgTAP verdi, nessuna regressione). Che cosa è cambiato nel sistema:
+* la revisione del preventivo porta **tutti** i componenti, anche gli opzionali spenti (D-1 di Tid),
+  e li lega alla riga nuova per identità, come quella dell'offerta;
+* i componenti di preventivo, ordine e DDT si toccano solo in bozza (building block a livello RIGA);
+  i due lettori DEFINER conoscono le sei famiglie;
+* `user_update NOT NULL` su righe e componenti dei documenti di vendita;
+* i CHECK della quantità dei componenti si chiamano `_nz`, come dice la regola.
+Ciò che la chiusura ha trovato è **D20**.
+
 
 *Valutazione 2026-09-08 — perimetro DB. Le misure sono letture di struttura sul
 database di sviluppo `zeroerp` (PostgreSQL 18.6) e sul repo al commit `89d36ad1b`,
