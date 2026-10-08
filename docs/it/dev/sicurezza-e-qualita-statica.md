@@ -46,8 +46,9 @@ al primo aggiornamento.
 | **ruff** | Python: difetti e sicurezza (bandit) | ✅ hook `ruff-check` | ✅ via pre-commit (`ci-validate`) | `ruff check .` |
 | **gitleaks** | segreti nei commit | ✅ hook `gitleaks` (staged) | ✅ via pre-commit, sui commit del range | vedi sotto |
 | **pip-audit** | dipendenze Python con CVE note | — | ✅ `ci-validate`, passo dedicato | vedi sotto |
+| **npm audit** | dipendenze JavaScript, `high`/`critical` | — | ✅ `ci-frontend`, dal 2026-10-08 | `npm audit --audit-level=high` |
 | **Trivy** | immagine Docker (OS + librerie), HIGH/CRITICAL | — | ✅ `ci.yaml` | — |
-| **`check --deploy`** | configurazione Django di produzione | — | ✅ `ci-validate`, con cricchetto | vedi sotto |
+| **`check --deploy`** | configurazione Django di produzione | — | ✅ `ci-validate`, completo dal 2026-10-08, con cricchetto | vedi sotto |
 | **oxlint + eslint** | JavaScript/Vue | — | ✅ `ci-frontend` (`npm run lint`) | `npm run lint` |
 | **guard frontend** | 9 regole del progetto (`guard:*`) | — | ✅ `ci-frontend` (`npm run guards`) | `npm run guards` |
 | **header licenza, chiavi i18n, classi morte** | file nuovi, locales, CSS | ✅ hook locali | ✅ via pre-commit | `pre-commit run <id>` |
@@ -179,24 +180,35 @@ gitleaks git --redact .
 * **Trivy** — `ci.yaml`, sull'immagine Docker costruita: fallisce su vulnerabilità HIGH/CRITICAL
   che hanno una correzione disponibile (`ignore-unfixed`).
 * **npm** — le correzioni di sicurezza di dipendenze transitive si fissano in
-  `frontend/package.json` → `overrides`. `npm audit` a mano; in CI non c'è ancora (vedi «Aperto»).
+  `frontend/package.json` → `overrides`. **`npm audit --audit-level=high`** in `ci-frontend.yaml`
+  dal 2026-10-08 (D1-f), acceso a zero, dopo `npm ci`: il gemello di `pip-audit`. Ferma solo
+  `high`/`critical`, dipendenze di sviluppo comprese. Come `pip-audit`, un avviso su un lock che
+  non cambia non arriva qui (il workflow gira sulle push che toccano `frontend/**`).
 
 ---
 
 ## `manage.py check --deploy` — la configurazione di produzione
 
 Django ha un insieme di controlli sulla configurazione di produzione (cookie `Secure`, HSTS,
-redirect HTTPS, lunghezza della `SECRET_KEY`, `DEBUG`, X-Frame-Options…). In `ci-validate` il
-passo «Django check --deploy (sicurezza)» li esegue così:
+redirect HTTPS, lunghezza della `SECRET_KEY`, `DEBUG`, X-Frame-Options…), e ogni app o libreria
+può agganciarne di suoi (drf-spectacular lo fa). In `ci-validate` il passo «Django check --deploy
+(completo)» li esegue così:
 
-* `--tag security`: solo i controlli di sicurezza (gli avvisi di drf-spectacular sono un altro
-  registro);
+* **completo**, senza `--tag security`, dal 2026-10-08 (D3-b): un controllo di produzione nuovo,
+  portato da una libreria o da un aggiornamento di Django, fa rosso senza che nessuno lo debba
+  accendere. drf-spectacular è a zero, e lo tiene a zero anche il registro per nome
+  `apps/core/tests/test_schema_openapi_registro.py`;
+* **`mail.E001` è silenziato** in `settings.py` (`SILENCED_SYSTEM_CHECKS`), **per progetto**:
+  Django non spedisce posta in ZeroErp — tutta la posta passa dal servizio email e da
+  `config.email_account` — e la console di `MAILERS` vale in ogni ambiente, produzione compresa.
+  Configurare a Django uno SMTP vero aprirebbe un secondo canale fuori dal modello. Il
+  silenziamento si toglie il giorno in cui Django dovesse spedire per davvero;
 * la `SECRET_KEY` si **genera** nel passo, come in produzione: un segnaposto corto farebbe
   scattare `security.W009`, giustamente;
 * HSTS e redirect si impostano ai valori di **produzione** (un anno, redirect acceso): se un
   giorno si spegnessero, `W004`/`W008` tornerebbero rossi;
-* un rilievo `security.*` è un **avviso**, e `check` uscirebbe comunque con 0: il cancello lo fa
-  un `grep` con l'elenco dei rilievi **accettati**. Oggi sono `W005` (HSTS senza sottodomini) e
+* un **avviso** (`W`), di qualunque famiglia, non cambia l'uscita di `check` (un errore `E` sì):
+  il cancello lo fa un `grep` con l'elenco dei rilievi **accettati**. Oggi sono `W005` (HSTS senza sottodomini) e
   `W021` (HSTS senza preload), spenti **per scelta** e non debito: riguardano il dominio intero,
   non ZeroErp, e il preload è di fatto irreversibile (brief sicurezza §1.3). `W004`/`W008` sono
   chiusi dal 2026-09-28. Quell'elenco si **accorcia**, non si allunga per far passare una PR.
@@ -227,7 +239,7 @@ A mano, con l'ambiente della macchina caricato:
 
 ```bash
 cd backend && set -a && . ./.env && set +a
-python manage.py check --deploy --tag security
+python manage.py check --deploy
 ```
 
 ---
@@ -394,7 +406,8 @@ Qui l'elenco di ciò che, in tema sicurezza, oggi **non** c'è.
 | --- | --- |
 | **Rotazione dei segreti** rimasti nella storia del repo (`backend/.env`, e la chiave che era commentata in `settings.py`) | non urgente, decisione di Tid del 2026-09-26: il repo è privato. La chiave di cifratura è separata dal 2026-09-28 (brief §3.5): la `SECRET_KEY` si può ruotare dopo la migrazione dei dati cifrati, sezione [Le chiavi dei dati cifrati](#le-chiavi-dei-dati-cifrati) |
 | **CSP** e header di pagina (`Referrer-Policy`, `Permissions-Policy`) in Nginx | ✅ applicata su `backend-dev` il 2026-09-28 dopo il collaudo in `Report-Only` — brief [sicurezza: header, token, MFA](work-done/brief-be-fe-sicurezza-header-token-mfa.md) §1.6, registro voce D3-c. In produzione va la politica senza le due eccezioni di Vite, scritta accanto nel vhost documentato |
-| `npm audit` in CI, Dependabot | da decidere — registro, voce D1-f |
+| `npm audit` in CI | ✅ 2026-10-08 (D1-f): passo in `ci-frontend.yaml`, sezione [Dipendenze e immagine](#dipendenze-e-immagine) |
+| Dependabot (nessun `.github/dependabot.yml` nel repo) | da decidere |
 | Token JWT fuori da `localStorage` | ✅ fatto il 2026-09-28 (brief §2): refresh in cookie `HttpOnly`/`SameSite=Strict` (BB `apps/core/api/refresh_cookie.py`), access di 10 minuti solo in memoria (`frontend/src/core/sessione.js`), rinnovo coordinato fra schede. Resta il collaudo a video su `backend-dev` |
 | Autenticazione a due fattori | stesso brief, §3 |
 | Nessun filtro che oscuri i dati sensibili nei log | proposto |
