@@ -81,9 +81,13 @@ class IstanzeUtilityService:
 
     # Scopo: Recupera una singola istanza_utility per restore dell'AutoComplete
     #        in modalita' edit (evita round-trip aggiuntivi nel frontend).
-    # Perimetro: sola lettura. Solleva E_ANAG_NOT_FOUND se inesistente.
+    # Perimetro: sola lettura, nello scope emittente del chiamante (lo stesso
+    #        della ricerca). Solleva E_ANAG_NOT_FOUND se inesistente O fuori
+    #        scope: un id fuori perimetro non rivela di esistere.
     # Risultato: dict riga arricchita pronta per success_response.
-    def get_lookup_by_id(self, istanza_utility_id: int) -> dict[str, Any]:
+    def get_lookup_by_id(
+        self, istanza_utility_id: int, *, emittente_ids: list[int] | None,
+    ) -> dict[str, Any]:
         function_name = "anagrafiche.istanze_utility_service.get_lookup_by_id"
         # Esclude bool (sottoclasse di int in Python).
         valid_id = (
@@ -101,12 +105,14 @@ class IstanzeUtilityService:
             log_to_db=False,
         )
         repository = IstanzeUtilityRepository()
-        result = repository.get_lookup_by_id(istanza_utility_id)
+        result = repository.get_lookup_by_id(
+            istanza_utility_id, emittente_ids=emittente_ids,
+        )
         ErrorManager.require(
             result is not None,
             code="E_ANAG_NOT_FOUND",
             message="Istanza utility non trovata.",
-            detail=f"Nessuna istanza_utility con id={istanza_utility_id}.",
+            detail=f"Nessuna istanza_utility con id={istanza_utility_id} nel perimetro dell'utente.",
             context={"istanza_utility_id": istanza_utility_id},
             function_name=function_name,
             log_to_db=False,

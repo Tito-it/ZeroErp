@@ -25,8 +25,8 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.anagrafiche.tests.db.test_ricerca_liste_db import _Annulla, _mondo_cliente
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.anagrafiche.tests.db.test_ricerca_liste_db import _mondo_cliente
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 
 class LookupIstanzeQVuotaDbTests(unittest.TestCase):
@@ -57,8 +57,8 @@ class LookupIstanzeQVuotaDbTests(unittest.TestCase):
                     cli["istanza_utility_id"],
                     self._cerca("", cli["soggetto_ruolo_id"]),
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. La guardia non spegne il filtro: un termine che non c'e' non trova.
@@ -70,6 +70,6 @@ class LookupIstanzeQVuotaDbTests(unittest.TestCase):
                 self.assertEqual(
                     set(), self._cerca("zzqq-nessuna-istanza-cosi", cli["soggetto_ruolo_id"]),
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

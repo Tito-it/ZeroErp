@@ -33,15 +33,11 @@ from django.core.management.base import CommandError
 from django.db import connection, transaction
 from django.test import override_settings
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 _NUOVA = Fernet.generate_key().decode()
 _VECCHIA = Fernet.generate_key().decode()
 _SECRET_KEY = "secret-key-di-prova-per-la-migrazione"
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 # Scopo: Inserisce un account email con il token dato, ritorna l'id.
@@ -130,8 +126,8 @@ class RicifraCampiCifratiDbTests(unittest.TestCase):
                 account_id = _account(cur, "RICIFRA1", Fernet(_VECCHIA).encrypt(b"pw").decode())
                 call_command("ricifra_campi_cifrati", stdout=io.StringIO())
                 self.assertEqual(Fernet(_NUOVA).decrypt(_token(cur, account_id).encode()), b"pw")
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. ⭐ Migrazione: il token com'era prima del 2026-09-28 (chiave derivata
@@ -150,8 +146,8 @@ class RicifraCampiCifratiDbTests(unittest.TestCase):
                 self.assertEqual(
                     Fernet(_NUOVA).decrypt(_token(cur, account_id).encode()), b"legacy",
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. ⛔ Tutto o niente: un token illeggibile fa fallire il comando, e
@@ -169,8 +165,8 @@ class RicifraCampiCifratiDbTests(unittest.TestCase):
                     call_command("ricifra_campi_cifrati", stdout=io.StringIO())
                 self.assertIn(f"id={id_rotto}", str(ctx.exception))
                 self.assertEqual(_token(cur, id_buono), buono)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 4. Il dry-run apre i token ma non scrive.
@@ -182,8 +178,8 @@ class RicifraCampiCifratiDbTests(unittest.TestCase):
                 account_id = _account(cur, "RICIFRA4", vecchio)
                 call_command("ricifra_campi_cifrati", "--dry-run", stdout=io.StringIO())
                 self.assertEqual(_token(cur, account_id), vecchio)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 5. Il segreto del secondo fattore ruota come gli altri, ma la tabella e'
@@ -200,8 +196,8 @@ class RicifraCampiCifratiDbTests(unittest.TestCase):
                 cur.execute("SELECT stato FROM script.fn_get_totp_device(%s)", [uid])
                 self.assertEqual(cur.fetchone()[0], "DA_CONFERMARE")
                 self.assertIn("config.auth_totp_device.secret_encrypted", out.getvalue())
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 6. Il segreto cambiato fra la lettura e la scrittura (device
@@ -221,6 +217,6 @@ class RicifraCampiCifratiDbTests(unittest.TestCase):
                     _riscrivi(campo, uid, letto_prima, Fernet(_NUOVA).encrypt(b"vecchio").decode())
                 )
                 self.assertEqual(_token_device(cur, uid), attuale)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

@@ -13,7 +13,7 @@
 #       .codex/AGENTS.md): su un database ricostruito dai changelog le
 #       anagrafiche sono a zero, e una prova che «cerca» una riga esistente
 #       uscirebbe vuota. Le righe nascono dai builder `dbops.fn_pgtap_crea_*`,
-#       in transazione ANNULLATA (`_Annulla`) e col contesto operatore.
+#       in transazione ANNULLATA (`Annulla`) e col contesto operatore.
 #       ⚠️ Opt-in `ZEROERP_TEST_DB_E2E=1` (acceso in CI).
 #       ⚠️ Le tre liste senza `vista_sql` (soggetti, matrice, operatori) sono
 #       esercitate SOLO qui: `test_ricerca_full_db` nomina questi test in
@@ -33,14 +33,11 @@ import unittest
 from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import (
+    Annulla,
     apri_contesto_operatore,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 # Scopo: il mondo minimo di un cliente — azienda con operatore, contesto, e un
@@ -124,8 +121,8 @@ class RicercaListeAnagraficheDbTests(unittest.TestCase):
                     # prova la ricerca e non lo scope.
                     lambda t: ClientiRepository().list_clienti(search=t, emittente_ids=None, limit=500)[0],
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_soggetti_trova_ogni_colonna_accesa(self):
@@ -146,8 +143,8 @@ class RicercaListeAnagraficheDbTests(unittest.TestCase):
                     {"ragione_sociale_completa": "ricragsog", "id_fiscale_univoco_cf_piva": id_fiscale},
                     lambda t: SoggettiRepository().list_soggetti(search=t, limit=500)[0],
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_categorie_clienti_listini_trova_ogni_colonna_accesa(self):
@@ -191,8 +188,8 @@ class RicercaListeAnagraficheDbTests(unittest.TestCase):
                 # ⭐ Da un carattere (matrice di configurazione, Tid 2026-09-24):
                 #    con la soglia di default il termine sarebbe ignorato.
                 self.assertEqual(CategorieClientiListiniRepository().list_matrice(search="§", limit=200)[0], [])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     def test_operatori_trova_ogni_colonna_accesa(self):
@@ -227,6 +224,6 @@ class RicercaListeAnagraficheDbTests(unittest.TestCase):
                     lambda t: AmmSoftwareRepository().list_operatori(search=t, limit=500)[0],
                     chiave="auth_user_id",
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

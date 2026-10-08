@@ -33,6 +33,7 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
+from apps.core.tests._helpers.richiedente_mockato import RichiedenteMockatoMixin
 
 # ⚠️ Dal 2026-09-28 la pagina passa da `fetch_paged_with_total`: si sostituisce
 #    la `connection` del BB, e il cursore porta i NOMI delle colonne, come il
@@ -284,7 +285,7 @@ class PermissionsAuditRepositoryOggettiTests(TestCase):
         )
 
 
-class ApiPermessiAuditViewTests(TestCase):
+class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
     """Test per la view ApiPermessiAudit (authorization check)."""
 
     # Scopo: ADMIN puo' vedere audit di un altro utente.
@@ -294,7 +295,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_admin_can_view_other_user(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
         mock_resolver.get_unita_organizzativa_id.return_value = 10
 
         target = MagicMock()
@@ -322,7 +323,7 @@ class ApiPermessiAuditViewTests(TestCase):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
         DoesNotExist = type("DoesNotExist", (Exception,), {})
         mock_get_user.return_value.DoesNotExist = DoesNotExist
         mock_get_user.return_value.objects.get.side_effect = DoesNotExist
@@ -340,7 +341,6 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_operativo_can_view_self(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_unita_organizzativa_id.return_value = None
 
         target = MagicMock()
@@ -358,14 +358,14 @@ class ApiPermessiAuditViewTests(TestCase):
         response = view.get(request, user_id=5)
 
         self.assertEqual(response.status_code, 200)
+        # I propri dati: il BB non chiede nemmeno se e' amministratore.
+        self.resolver_richiedente.is_super_admin.assert_not_called()
 
     # Scopo: OPERATIVO non puo' vedere audit di altri utenti.
     @patch("apps.core.api.views.PermissionResolver")
     def test_operativo_denied_other_user(self, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
-
-        mock_resolver.is_super_admin.return_value = False
 
         request = _mock_request(user_id=5)
         view = ApiPermessiAudit()
@@ -374,6 +374,8 @@ class ApiPermessiAuditViewTests(TestCase):
             view.get(request, user_id=99)
 
         self.assertEqual(ctx.exception.code, "E_PERMESSO_NEGATO")
+        # Il diniego viene dalla domanda sul richiedente, non da un caso.
+        self.resolver_richiedente.is_super_admin.assert_called_once()
 
     # Scopo: Tabella non valida restituisce errore di validazione.
     @patch("apps.core.api.views.PermissionResolver")
@@ -382,7 +384,7 @@ class ApiPermessiAuditViewTests(TestCase):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
 
         target = MagicMock()
         target.id = 5
@@ -404,7 +406,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_page_zero_rifiutata(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
         target = MagicMock()
         target.id = 5
         mock_get_user.return_value.objects.get.return_value = target
@@ -422,7 +424,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_page_size_capped_at_200(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
         mock_resolver.get_unita_organizzativa_id.return_value = None
 
         target = MagicMock()

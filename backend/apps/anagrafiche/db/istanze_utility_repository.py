@@ -41,7 +41,29 @@ from apps.core.db._helpers import row_to_dict, rows_to_list, pattern_contiene
 #   era piu' lasco e col gestore default in scope mostrava anche istanze di BA
 #   mappati ad altri emittenti). Le istanze totalmente orfane (no BA) restano
 #   visibili solo ad admin globale / superuser.
-_LOOKUP_WHERE = """
+# Scopo: clausola scope emittente dell'istanza, condivisa fra la ricerca e il
+#        restore per id (regola del 2): un'istanza e' visibile se e' visibile
+#        un suo BA. Richiede l'alias `iu`. 2 parametri posizionali:
+#        emittente_ids, emittente_ids (NULL = bypass, admin globale/superuser).
+# ⛔ Fino al 2026-10-08 il restore per id NON la applicava («l'autorizzazione
+#    va gestita dall'endpoint chiamante») e l'endpoint, con `skip_area_check`,
+#    non la gestiva: con un id si leggeva qualunque istanza di qualunque
+#    emittente (D10-bis di migliorie-generali-BE-FE-da-test-valutazione).
+# ⭐ Regola di modello (Tid, 2026-10-08): istanza e BA nascono INSIEME, sempre.
+#    Un'istanza senza BA non e' un caso da rendere visibile: e' un dato fuori
+#    regola (brief-db-istanza-nasce-col-ba).
+_SCOPE_EMITTENTE_SQL = """(
+            %s::bigint[] IS NULL
+         OR EXISTS (
+              SELECT 1
+                FROM anagrafiche.billing_account ba_s
+               WHERE ba_s.istanza_utility_id = iu.id
+                 AND script.fn_check_ba_visible_for_emittenti(
+                       ba_s.id, %s::bigint[])
+            )
+          )"""
+
+_LOOKUP_WHERE = f"""
     WHERE (
             %s::text IS NULL
          OR iu.codice ILIKE %s
@@ -62,17 +84,8 @@ _LOOKUP_WHERE = """
                  AND cl.soggetto_ruolo_id = %s
             )
           )
-      AND (
-            %s::bigint[] IS NULL
-         OR EXISTS (
-              SELECT 1
-                FROM anagrafiche.billing_account ba_s
-               WHERE ba_s.istanza_utility_id = iu.id
-                 AND script.fn_check_ba_visible_for_emittenti(
-                       ba_s.id, %s::bigint[])
-            )
-          )
-"""
+      AND {_SCOPE_EMITTENTE_SQL}
+"""  # noqa: S608 — frammenti costanti di modulo, i valori viaggiano nei params
 
 # Scopo: JOIN comuni a count e data del lookup istanze.
 # - soggetti: ragione sociale per display + ricerca
@@ -208,18 +221,25 @@ class IstanzeUtilityRepository:
     # Scopo: Restituisce la singola istanza arricchita per restore lato client.
     #        Usato in edit quando il form ha solo l'id e deve ricostruire il _obj
     #        dell'AutoComplete senza doppio round-trip.
-    # Perimetro: sola lettura. Non applica scope emittente: l'id e' gia' noto
-    #        e l'autorizzazione va gestita dall'endpoint chiamante.
-    # Risultato: dict con gli stessi campi di search_lookup, o None se non trovato.
-    def get_lookup_by_id(self, istanza_utility_id: int) -> dict[str, Any] | None:
+    # Perimetro: sola lettura, con lo STESSO scope emittente della ricerca
+    #        (`_SCOPE_EMITTENTE_SQL`): il restore risponde solo su cio' che la
+    #        ricerca avrebbe potuto proporre. `emittente_ids` e' obbligatorio
+    #        di proposito — None e' il bypass, e va detto dal chiamante.
+    # Risultato: dict con gli stessi campi di search_lookup, o None se non
+    #        trovato O fuori scope (indistinguibili per chi chiama: un id
+    #        fuori perimetro non rivela di esistere).
+    def get_lookup_by_id(
+        self, istanza_utility_id: int, *, emittente_ids: list[int] | None,
+    ) -> dict[str, Any] | None:
         sql = f"""
             SELECT
             {_LOOKUP_SELECT_COLUMNS}
             {_LOOKUP_FROM}
              WHERE iu.id = %s
+               AND {_SCOPE_EMITTENTE_SQL}
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [istanza_utility_id])
+            cursor.execute(sql, [istanza_utility_id, emittente_ids, emittente_ids])
             row = row_to_dict(cursor)
         return row or None
 

@@ -38,13 +38,9 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
 from apps.vendite.db.registri_repository import RegistriRepository
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 class RifiutoChiaviRegistriFamiglieTests(unittest.TestCase):
@@ -133,8 +129,8 @@ class ScritturaRegistriFamiglieDbTests(unittest.TestCase):
                 self.assertEqual(cur.fetchone(), (" B-", "Nuova"))
                 # Niente da aggiornare: niente UPDATE (sarebbe SQL non valido).
                 self.assertEqual(repo.update_registro(registro["id"], None, {}), 0)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. Famiglia: update di una famiglia seed, prefisso_default LETTERALE.
@@ -156,6 +152,6 @@ class ScritturaRegistriFamiglieDbTests(unittest.TestCase):
                 self.assertEqual(cur.fetchone(), ("FT ", "Famiglia scrittura BB"))
                 self.assertEqual(repo.update_famiglia(famiglia_id, {}), 0)
                 self.assertEqual(repo.update_famiglia(-1, {"descrizione": "X"}), 0)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

@@ -40,7 +40,7 @@ from collections.abc import Callable
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 from apps.vendite.services.contratti_service import ContrattiService
 from apps.vendite.services.offerte_service import OfferteService
 # ⚠️ Il MODULO, non la classe: una classe di test importata qui verrebbe
@@ -63,10 +63,6 @@ _contratto = _gemello.RigheErogazioneObbligatoriaDbTests._contratto
 _offerta = _gemello.RigheErogazioneObbligatoriaDbTests._offerta
 
 
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
-
-
 # Scopo: il payload di «Escludi»: l'articolo e il tipo, nient'altro.
 def _escludi(cur) -> dict:
     cur.execute("SELECT id FROM _a")
@@ -86,8 +82,8 @@ class EsclusioneSoloNonSiVendeDbTests(unittest.TestCase):
                 for sql in _FIXTURE:
                     cur.execute(sql)
                 esito = azione(cur)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
         return esito
 

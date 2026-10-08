@@ -37,7 +37,7 @@ from datetime import date
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 from apps.vendite.db.offerte_repository import OfferteRepository
 from apps.vendite.services.contratti_service import ContrattiService
 from apps.vendite.services.offerte_service import OfferteService
@@ -109,10 +109,6 @@ _EREDITATA = (
 )
 
 
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
-
-
 # Scopo: il payload di una riga OVERRIDE senza erogazione e senza fonte: le
 #        eredita dall'articolo (B-R2).
 def _override_senza_erogazione(cur) -> dict:
@@ -139,8 +135,8 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
                     cur.execute(sql)
                 with self.assertRaises(ServiceError) as ctx:
                     azione(cur)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
         return ctx.exception
 
@@ -155,8 +151,8 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
                 riga_id = azione(cur)
                 cur.execute(_EREDITATA.format(tabella=tabella), [riga_id])
                 esito = cur.fetchone()
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
         return esito
 

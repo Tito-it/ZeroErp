@@ -339,6 +339,10 @@ class SoggettiRuoliLookupByIdView(DomainAPIView):
 
     # Lookup cross-dominio (restore): stesso ragionamento della search.
     # Solo lettura di un record gia' selezionato in precedenza.
+    # ⛔ Con lo skip la catena non guarda piu' niente: il perimetro e' lo
+    #    scope emittente, lo stesso della search. Fino al 2026-10-08 qui non
+    #    c'era, e con un id si leggevano nome e CF di soggetti di qualunque
+    #    emittente (D10-bis).
     skip_area_check = True
 
     @extend_schema(
@@ -372,9 +376,11 @@ class SoggettiRuoliLookupByIdView(DomainAPIView):
             soggetto_ruolo_id = qp_int_optional(raw_sr_id, "soggetto_ruolo_id")
         soggetto_id = request.query_params.get("soggetto_id") or None
 
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache={})
         result = SoggettiService().get_ruoli_lookup_by_id(
             soggetto_ruolo_id=soggetto_ruolo_id,
             soggetto_id=soggetto_id,
+            emittente_ids=emittente_ids,
         )
         return success_response(result)
 

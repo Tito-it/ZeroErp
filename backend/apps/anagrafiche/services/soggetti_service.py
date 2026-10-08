@@ -418,11 +418,16 @@ class SoggettiService:
     # Scopo: Restore by-id del lookup contesto pratica
     #        (feedback_autocomplete_restore). Esattamente UNA delle due chiavi:
     #        soggetto_ruolo_id (riga ruolo) o soggetto_id (riga "senza ruolo").
+    # Perimetro: lo scope emittente del chiamante, con la stessa regola della
+    #        ricerca (sulla riga «senza ruolo» piu' larga, di proposito: vedi
+    #        `SoggettiRepository.get_ruolo_lookup_by_id`); fuori scope e'
+    #        E_ANAG_NOT_FOUND come un id inesistente.
     def get_ruoli_lookup_by_id(
         self,
         *,
         soggetto_ruolo_id: int | None = None,
         soggetto_id: str | None = None,
+        emittente_ids: list[int] | None,
     ) -> dict[str, Any]:
         function_name = "anagrafiche.soggetti_service.get_ruoli_lookup_by_id"
         ErrorManager.require(
@@ -469,6 +474,7 @@ class SoggettiService:
         result = self._repo.get_ruolo_lookup_by_id(
             soggetto_ruolo_id=soggetto_ruolo_id,
             soggetto_id=soggetto_id,
+            emittente_ids=emittente_ids,
         )
         ErrorManager.require(
             result is not None,

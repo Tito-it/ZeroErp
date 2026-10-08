@@ -53,7 +53,7 @@ from django.db import connection, transaction
 from apps.catalogo.db.catalogo_bom_repository import CatalogoBomRepository
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.catalogo.db.catalogo_uom_repository import CatalogoUomRepository
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 _FIXTURE: tuple[str, ...] = (
     """
@@ -62,10 +62,6 @@ _FIXTURE: tuple[str, ...] = (
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 # Scopo: costruisce il mondo (azienda, operatore, contesto) sul cursore.
@@ -162,8 +158,8 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 self.assertEqual(_json(riga["meta"]), {"v": 2})
 
                 self.assertFalse(repo.update_articolo(art, {}))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. Componente BoM: padre dal path, ownership nel WHERE dell'UPDATE.
@@ -208,8 +204,8 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 """, [riga_id])
                 self.assertEqual(riga["valido_al"], chiusura)
                 self.assertEqual(_json(riga["meta"]), {"k": "w"})
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 4. Nota articolo: partizione e padre dal repository.
@@ -243,8 +239,8 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 self.assertFalse(bom.update_nota(nota_id, "ARTICOLI_COMPONENTI", {"testo": "no"}))
                 riga = _riga(cur, "SELECT testo, seq FROM catalogo.note WHERE target_tipo = 'ARTICOLI' AND id = %s", [nota_id])
                 self.assertEqual((riga["testo"], riga["seq"]), ("Aggiornata", 2))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 5. UoM operativa: SET sulla riga base che il trigger ha seminato.
@@ -270,8 +266,8 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 self.assertEqual(riga["gtin"], "8001234567895")
                 self.assertEqual(riga["tipo_meta"], "object")
                 self.assertFalse(uom.update_uom_operativa(art, base[0], {}))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 6. Le tre UPDATE che erano SET da tuple letterali (uom_tipi,
@@ -304,6 +300,6 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 self.assertEqual(riga["fattore"], Decimal("12"))
                 self.assertEqual(riga["valido_al"], date(2026, 12, 31))
                 self.assertFalse(repo.update_conversione(conv, {}))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

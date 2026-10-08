@@ -33,7 +33,11 @@ from uuid import uuid4
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto, verifica_ricerca_colonna_per_colonna
+from apps.core.tests.db_e2e import (
+    Annulla,
+    richiedi_db_provvisto,
+    verifica_ricerca_colonna_per_colonna,
+)
 from apps.vendite.db.contratti_repository import ContrattoRigheListaRepository
 from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
 from apps.vendite.db.listini_repository import ListiniRepository
@@ -260,10 +264,6 @@ _FIXTURE: tuple[str, ...] = (
 )
 
 
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
-
-
 class RicercaListeVenditeDbTests(unittest.TestCase):
     """Le cinque liste di vendite del passo 7 (brief-be-ricerca-full-liste-
     residue §7-bis e §3.5 del brief DB): ogni colonna che il catalogo accende
@@ -373,6 +373,6 @@ class RicercaListeVenditeDbTests(unittest.TestCase):
                     {"codice": f"RVFAM-{sfx}", "descrizione": "ricdescfam", "prefisso_default": "RVX/"},
                     lambda t: FamiglieDocumentoRepository().list_famiglie(search=t, limit=200)[0],
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

@@ -592,10 +592,11 @@ class TestGetRuoliLookupById(TestCase):
             "ruolo_codice": "CL", "n_istanze": 1,
         }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
-        result = SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=165)
+        result = SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=165, emittente_ids=[7])
         self.assertEqual(result["ruolo_codice"], "CL")
+        # Lo scope arriva al repository: e' li' che decide (D10-bis).
         repo.get_ruolo_lookup_by_id.assert_called_once_with(
-            soggetto_ruolo_id=165, soggetto_id=None,
+            soggetto_ruolo_id=165, soggetto_id=None, emittente_ids=[7],
         )
 
     @patch(SOGG_REPO)
@@ -607,7 +608,7 @@ class TestGetRuoliLookupById(TestCase):
             "ruolo_codice": None, "n_istanze": 2,
         }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
-        result = SoggettiService().get_ruoli_lookup_by_id(soggetto_id=FAKE_UUID)
+        result = SoggettiService().get_ruoli_lookup_by_id(soggetto_id=FAKE_UUID, emittente_ids=None)
         self.assertIsNone(result["soggetto_ruolo_id"])
 
     @patch(SOGG_REPO)
@@ -615,11 +616,11 @@ class TestGetRuoliLookupById(TestCase):
         """Zero o due chiavi → E_ANAG_VALIDAZIONE (esattamente una richiesta)."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
-            SoggettiService().get_ruoli_lookup_by_id()
+            SoggettiService().get_ruoli_lookup_by_id(emittente_ids=None)
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         with self.assertRaises(ServiceError):
             SoggettiService().get_ruoli_lookup_by_id(
-                soggetto_ruolo_id=1, soggetto_id=FAKE_UUID,
+                soggetto_ruolo_id=1, soggetto_id=FAKE_UUID, emittente_ids=None,
             )
         mock_repo.return_value.get_ruolo_lookup_by_id.assert_not_called()
 
@@ -628,15 +629,15 @@ class TestGetRuoliLookupById(TestCase):
         """soggetto_id non-UUID → E_ANAG_VALIDAZIONE prima del repo."""
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
-            SoggettiService().get_ruoli_lookup_by_id(soggetto_id="non-un-uuid")
+            SoggettiService().get_ruoli_lookup_by_id(soggetto_id="non-un-uuid", emittente_ids=None)
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.get_ruolo_lookup_by_id.assert_not_called()
 
     @patch(SOGG_REPO)
     def test_by_id_not_found(self, mock_repo):
-        """Record inesistente → E_ANAG_NOT_FOUND."""
+        """Record inesistente o fuori scope → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_ruolo_lookup_by_id.return_value = None
         from apps.anagrafiche.services.soggetti_service import SoggettiService
         with self.assertRaises(ServiceError) as ctx:
-            SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=999)
+            SoggettiService().get_ruoli_lookup_by_id(soggetto_ruolo_id=999, emittente_ids=[7])
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")

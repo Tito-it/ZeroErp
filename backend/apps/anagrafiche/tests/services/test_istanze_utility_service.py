@@ -199,17 +199,19 @@ class TestIstanzeUtilityGetLookupById(TestCase):
         repo = mock_repo.return_value
         repo.get_lookup_by_id.return_value = _FAKE_ROW
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
-        result = IstanzeUtilityService().get_lookup_by_id(900)
+        result = IstanzeUtilityService().get_lookup_by_id(900, emittente_ids=[7])
         self.assertEqual(result["id"], 900)
+        # Lo scope arriva al repository: e' li' che decide (D10-bis).
+        repo.get_lookup_by_id.assert_called_once_with(900, emittente_ids=[7])
         self.assertEqual(result["codice"], "IU-000900")
 
     @patch(_REPO)
     def test_get_lookup_by_id_not_found(self, mock_repo):
-        """Istanza inesistente → E_ANAG_NOT_FOUND."""
+        """Istanza inesistente o fuori scope → E_ANAG_NOT_FOUND."""
         mock_repo.return_value.get_lookup_by_id.return_value = None
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
         with self.assertRaises(ServiceError) as ctx:
-            IstanzeUtilityService().get_lookup_by_id(99999)
+            IstanzeUtilityService().get_lookup_by_id(99999, emittente_ids=[7])
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
 
     @patch(_REPO)
@@ -218,7 +220,7 @@ class TestIstanzeUtilityGetLookupById(TestCase):
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
         for bad_id in (0, -1, -99):
             with self.assertRaises(ServiceError) as ctx:
-                IstanzeUtilityService().get_lookup_by_id(bad_id)
+                IstanzeUtilityService().get_lookup_by_id(bad_id, emittente_ids=None)
             self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.get_lookup_by_id.assert_not_called()
 
@@ -227,6 +229,6 @@ class TestIstanzeUtilityGetLookupById(TestCase):
         """bool e' sottoclasse di int in Python: deve essere rifiutato."""
         from apps.anagrafiche.services.istanze_utility_service import IstanzeUtilityService
         with self.assertRaises(ServiceError) as ctx:
-            IstanzeUtilityService().get_lookup_by_id(True)  # type: ignore[arg-type]
+            IstanzeUtilityService().get_lookup_by_id(True, emittente_ids=None)  # type: ignore[arg-type]
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.get_lookup_by_id.assert_not_called()

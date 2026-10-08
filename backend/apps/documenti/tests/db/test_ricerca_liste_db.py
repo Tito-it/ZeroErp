@@ -34,6 +34,7 @@ import unittest
 from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import (
+    Annulla,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
@@ -45,10 +46,6 @@ _FIXTURE: tuple[str, ...] = (
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 class RicercaListeDocumentiDbTests(unittest.TestCase):
@@ -127,8 +124,8 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                 #    ignorato e uscirebbe almeno la riga costruita.
                 self.assertEqual(cerca_template("§"), [])
                 self.assertEqual(cerca_asset("§"), [])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. Versioni di un template e documenti generati di una sorgente (liste
@@ -210,6 +207,6 @@ class RicercaListeDocumentiDbTests(unittest.TestCase):
                     {"titolo": "rictitdoc", "nome_file": "ricfiledoc"},
                     cerca_documenti,
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

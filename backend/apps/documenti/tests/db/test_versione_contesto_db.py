@@ -41,7 +41,7 @@ from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 
 from apps.core.services.error_translator import ErrorTranslator
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 _FIXTURE: tuple[str, ...] = (
     """
@@ -53,10 +53,6 @@ _FIXTURE: tuple[str, ...] = (
 
 # Il builder vero del template: la pubblicazione lo risolve dal registry.
 _BUILDER = "CONTRATTO"
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 class VersioneContestoDbTests(unittest.TestCase):
@@ -139,8 +135,8 @@ class VersioneContestoDbTests(unittest.TestCase):
                 self.assertIn(f"nella forma {forma},", api.message)
                 self.assertIn(f"nella forma {forma + 1}", api.message)
                 self.assertIn(template["descrizione"], api.message)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. La pubblicazione passa al verbo la forma del builder del template:
@@ -169,8 +165,8 @@ class VersioneContestoDbTests(unittest.TestCase):
                 pubblicata = svc.pubblica_versione(user, tid, vid, dict(payload))
                 self.assertEqual(pubblicata["stato"], "PUBBLICATA")
                 self.assertEqual(pubblicata["versione_contesto"], forma)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. Formato del sorgente, formato e orientamento della pagina: il
@@ -214,6 +210,6 @@ class VersioneContestoDbTests(unittest.TestCase):
                         self.assertEqual(api.code, "E_DOCUMENTI_VALIDATION")
                         self.assertEqual(ErrorTranslator.get_http_status(api), 400)
                         self.assertEqual(tuple(api.fields or ()), (campo,))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
