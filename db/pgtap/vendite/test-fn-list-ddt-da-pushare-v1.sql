@@ -97,6 +97,11 @@ SELECT
     WHERE s.codice = 'CONFERMATO' AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_ordine_confermato_id,
+  (SELECT s.id
+     FROM config.stati_doc_ordini s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
+    LIMIT 1
+  ) AS stato_ordine_draft_id,
   -- Stati DDT
   (SELECT s.id
      FROM config.stati_doc_ddt s
@@ -183,7 +188,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_ordine_confermato_id, r.valuta_id, DATE '2026-07-01',
+    r.stato_ordine_draft_id, r.valuta_id, DATE '2026-07-01',
     r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
   FROM tmp_refs_ddt r
@@ -202,17 +207,25 @@ CREATE TEMP TABLE tmp_ordine_a_riga AS
 WITH ins AS (
   INSERT INTO vendite.ordini_righe (
     ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
     storicizza, meta
   )
   SELECT
     o.id, 1, r.articolo_id, 'Riga test DDT caso A',
-    10.000000, 10.000000, 30.000000, true,
+    -- iva_id (rev 2026-10-08, D-1): la conferma rifiuta «un prezzo senza aliquota»
+    10.000000, 10.000000, 30.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
   FROM tmp_ordine_a o, tmp_refs_ddt r
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_a), 'CONFERMATO');
+END $x$;
 
 -- 3. Crea DDT con stato SPEDITO (senza billing_account proprio)
 CREATE TEMP TABLE tmp_ddt_a AS
@@ -322,7 +335,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_ordine_confermato_id, r.valuta_id, DATE '2026-07-01',
+    r.stato_ordine_draft_id, r.valuta_id, DATE '2026-07-01',
     r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
   FROM tmp_refs_ddt r
@@ -335,17 +348,25 @@ CREATE TEMP TABLE tmp_ordine_conf_riga AS
 WITH ins AS (
   INSERT INTO vendite.ordini_righe (
     ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
     storicizza, meta
   )
   SELECT
     o.id, 1, r.articolo_id, 'Riga ordine test conf',
-    5.000000, 5.000000, 20.000000, true,
+    -- iva_id (rev 2026-10-08, D-1): la conferma rifiuta «un prezzo senza aliquota»
+    5.000000, 5.000000, 20.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
   FROM tmp_ordine_conf o, tmp_refs_ddt r
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_conf), 'CONFERMATO');
+END $x$;
 
 CREATE TEMP TABLE tmp_ddt_conf AS
 WITH ins AS (

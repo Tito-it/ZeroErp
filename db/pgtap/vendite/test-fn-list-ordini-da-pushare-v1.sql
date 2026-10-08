@@ -112,7 +112,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_confermato_id, r.valuta_id, DATE '2026-06-15',
+    r.stato_bozza_id, r.valuta_id, DATE '2026-06-15',
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord')
   FROM tmp_refs_ord r
   RETURNING id, uid
@@ -123,17 +123,25 @@ CREATE TEMP TABLE tmp_ordine_riga AS
 WITH ins AS (
   INSERT INTO vendite.ordini_righe (
     ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
     storicizza, meta
   )
   SELECT
     o.id, 1, r.articolo_id, 'Riga test pgtap',
-    10.000000, 10.000000, 25.500000, true,
+    10.000000, 10.000000, 25.500000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord')
   FROM tmp_ordine o, tmp_refs_ord r
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90). La riga porta l'aliquota: la conferma rifiuta
+-- «un prezzo senza aliquota».
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine), 'CONFERMATO');
+END $x$;
 
 -- Verifica che il trigger ha impostato CONFERMATO
 -- (prerequisito per il test funzionale)
@@ -185,7 +193,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_confermato_id, r.valuta_id, DATE '2026-06-15',
+    r.stato_bozza_id, r.valuta_id, DATE '2026-06-15',
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'spedito')
   FROM tmp_refs_ord r
   RETURNING id, uid
@@ -200,14 +208,22 @@ WHERE id = (SELECT id FROM tmp_ordine_spedito);
 
 INSERT INTO vendite.ordini_righe (
   ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, attivo,
+  qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
   storicizza, meta
 )
 SELECT
   o.id, 1, r.articolo_id, 'Riga test spedito',
-  10.000000, 10.000000, 25.500000, true,
+  10.000000, 10.000000, 25.500000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
   false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'spedito')
 FROM tmp_ordine_spedito o, tmp_refs_ord r;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90). La riga porta l'aliquota: la conferma rifiuta
+-- «un prezzo senza aliquota».
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_spedito), 'CONFERMATO');
+END $x$;
 
 SELECT ok(
   NOT EXISTS (
@@ -230,7 +246,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_confermato_id, r.valuta_id, DATE '2026-06-15',
+    r.stato_bozza_id, r.valuta_id, DATE '2026-06-15',
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'consegnato')
   FROM tmp_refs_ord r
   RETURNING id, uid
@@ -243,14 +259,22 @@ WHERE id = (SELECT id FROM tmp_ordine_consegnato);
 
 INSERT INTO vendite.ordini_righe (
   ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, attivo,
+  qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
   storicizza, meta
 )
 SELECT
   o.id, 1, r.articolo_id, 'Riga test consegnato',
-  10.000000, 10.000000, 25.500000, true,
+  10.000000, 10.000000, 25.500000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
   false, jsonb_build_object('test_scope', 'pgtap_fn_list_ord', 'case', 'consegnato')
 FROM tmp_ordine_consegnato o, tmp_refs_ord r;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90). La riga porta l'aliquota: la conferma rifiuta
+-- «un prezzo senza aliquota».
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_consegnato), 'CONFERMATO');
+END $x$;
 
 SELECT ok(
   NOT EXISTS (

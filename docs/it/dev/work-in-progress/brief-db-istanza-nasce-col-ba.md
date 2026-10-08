@@ -633,3 +633,34 @@ documento chiuso si riscrive; il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT` n
 preventivo; `fn_get_billing_account_by_istanza` in ritiro (quando il BE legge la colonna della
 pratica); `uq_gestori_singleton` che non vincola niente; la copia del BA nella pratica da flusso e lo
 spostamento del gestore globale senza un pgTAP.
+
+### 6.15 Trovato dopo il merge (2026-10-09): lo scope di storico dei dati precontrattuali
+
+Il runner di Tid ha dato due rossi fuori dai pgTAP del giro, tutti e due conseguenza del giro:
+
+* **`dbops/test-security-definer-search-path-v1` test 4** (20 contro la soglia 17, «può solo
+  calare»): le tre DEFINER nuove `fn_guard_istanza_ha_ba` (`-55`), `fn_guard_istanza_ba_emittente`
+  (`-59`) e `fn_guard_istanza_ba_gestore_globale` (`-60`) erano nate col `search_path` senza `pg_temp`,
+  per copia dalle gemelle del gestore globale. Sanate da **`20261008-95`** (`ALTER FUNCTION … SET
+  search_path`, corpo invariato, forma del `20261005-27`).
+* **`dbops/test-storico-scope-policy-v1` test 4 e 29**: la RLS accesa su
+  `anagrafiche.istanze_dati_precontrattuali` (§6.13) ha reso «protetta» una madre che la mappa dello
+  storico dichiarava `NESSUNO` — la sua ragione diceva proprio «quando entrerà in RLS il presidio
+  segnalerà questa riga». Nessun modo sapeva dirla: la policy la vede attraverso il BA della COPPIA
+  (istanza, utility), una chiave composta, e i modi leggevano una colonna sola.
+  ✅ **Decisione di Tid (2026-10-09): un modo nuovo, `COPPIA`** — `colonna` dichiara i due nomi,
+  il resolver trova il BA della coppia e ne prende l'emittente come nel modo `BA`, la strada della
+  policy `via_coppia`. ChangeSet **`20261009-01`** (i due CHECK della mappa), **`20261009-02`** (il
+  ramo nel resolver), la riga 19 del CSV della mappa (`80_data`, da `NESSUNO` a `COPPIA`). Il nome è
+  senza trattino basso: il test 10 del presidio legge i modi dal CHECK con `'([A-Z]+)'`.
+  pgTAP: `test-storico-scope-policy-v1` +3 (6-bis coerenza della FK composta col catalogo, 28-ter e
+  28-quater il resolver sui valori, con un mondo costruito), test 9 conta `COPPIA` fra i terminali.
+  Prova (dev, owner, transazione annullata, seed simulato con un UPDATE: il loader vero lo prova il
+  migrate): 36/36, `plpgsql_check` a zero, la shadow `storico.istanze_dati_precontrattuali` armata
+  dalla convergenza di `90_end`; mutazione senza il ramo: rosso il test 10 e il file si ferma al 28-ter.
+  ⚠️ Le versioni già archiviate della madre hanno `origine_schema` valorizzata e scope `NULL`: il
+  backfill non le riprende e, con la shadow armata, restano invisibili. È il fail-closed del modello
+  («versione precedente non attribuibile»), dichiarato.
+  ✅ **Applicato il 2026-10-09** (`20261008-95` alle 00:01, `20261009-01`/`-02` alle 00:08), pgTAP
+  verdi col runner di Tid.
+

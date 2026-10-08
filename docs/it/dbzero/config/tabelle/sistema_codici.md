@@ -14,7 +14,7 @@
 | data_insert | timestamp with time zone | YES | now() |
 | user_insert | text | YES | CURRENT_USER |
 | data_update | timestamp with time zone | YES | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | schema_tabella | text | YES |  |
 | nome_tabella | text | YES |  |

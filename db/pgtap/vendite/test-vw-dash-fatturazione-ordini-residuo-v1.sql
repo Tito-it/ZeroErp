@@ -77,6 +77,7 @@ SELECT
   (SELECT id FROM config.tipi_indirizzi WHERE codice_interno='CON')     AS tipo_ind_con_id;
 
 -- Ordine (10 pz @25) con trigger parametrico.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
 CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_trigger varchar)
 RETURNS TABLE(ordine_id bigint, ordine_riga_id bigint) AS $$
 DECLARE r RECORD; v_ord bigint; v_orr bigint;
@@ -84,7 +85,9 @@ BEGIN
   SELECT * INTO r FROM tmp_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id,
+          (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
+          r.valuta_id,
           DATE '2026-07-15', p_trigger, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_residuo'))
   RETURNING id INTO v_ord;
@@ -95,6 +98,7 @@ BEGIN
   VALUES (v_ord, 1, r.articolo_id, 'Riga residuo', 10, 10, 25, r.iva_id, true, false,
           jsonb_build_object('test_scope','pgtap_residuo'))
   RETURNING id INTO v_orr;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
   RETURN QUERY SELECT v_ord, v_orr;
 END $$ LANGUAGE plpgsql;
 

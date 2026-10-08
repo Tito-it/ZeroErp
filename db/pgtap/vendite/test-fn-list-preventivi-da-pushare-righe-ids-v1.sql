@@ -54,6 +54,8 @@ SELECT
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS stato_bozza_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
     ORDER BY u.id LIMIT 1) AS uom_id,
@@ -81,6 +83,7 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp
  WHERE id = (SELECT art_serv_id FROM tmp_ri_refs);
 
 -- Preventivo ACCETTATO: servizio A + servizio B + merce.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le tre righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_ri_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -88,7 +91,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-RIGHE-IDS', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_list_righe_ids'), r.emittente_fiscale_id
     FROM tmp_ri_refs r
@@ -118,6 +121,8 @@ WITH ins AS (
     FROM tmp_ri_prev p, tmp_ri_refs r
   RETURNING id)
 SELECT * FROM ins;
+
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ri_prev), 'ACCETTATO'); END $porta$;
 
 -- ============================================================
 -- 1) p_righe_ids=[A] -> solo la riga A

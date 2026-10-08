@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE D'ORDINE SI TOCCANO SOLO IN BOZZA, SALVO LA PROMESSA DI CONSEGNA
+#   vendite.ordini_righe:
+#     - trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt     (tolto)
+#     + trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+#       -> vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id', 'DRAFT',
+#          'TESTATA', 'data_consegna_confermata', 'CONFERMATO,PARZIALMENTE_EVASO')
+#   Brief: brief-db-righe-e-componenti-debiti-residui (§1, D-1 di Tid, 2026-10-08)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il 20260922-04 aveva montato il building block sul solo DELETE, e
+#   dichiarato perche': data_consegna_confermata si decide alla conferma e puo'
+#   cambiare dopo, e montare le tre porte l'avrebbe chiusa. Ma per lasciare
+#   aperta UNA colonna restavano aperte tutte: quantita', prezzo, una riga
+#   nuova su un ordine confermato. Il backend lo impediva gia'
+#   (richiedi_righe_in_bozza): la regola c'era, da un lato solo. Su una riga
+#   kit il cambio lo respingeva il lock dei componenti (20261008-34), su una
+#   semplice no — «un effetto, non una regola».
+#
+# -- LA DECISIONE (D-1 di Tid, 2026-10-08) ----------------------------------
+#   Tre porte chiuse fuori bozza. Resta scrivibile la sola
+#   data_consegna_confermata, e solo negli stati da evadere: CONFERMATO e
+#   PARZIALMENTE_EVASO. In EVASO, ANNULLATO, FATTURATO e negli altri e' chiusa
+#   anche lei. ⚠️ Il verbo che la cambia dopo la conferma e' del backend: oggi
+#   richiedi_righe_in_bozza chiude anche lei (richiesta al team nel brief).
+#
+# -- CHI SCRIVE LE RIGHE D'ORDINE (censito il 2026-10-08) -----------------
+#   * vendite.fn_push_preventivo_a_ordine: l'ordine nasce DRAFT;
+#   * nessuna funzione DB le modifica dopo la nascita (zero UPDATE nei corpi);
+#   * script.fn_ricalcola_prezzo_padre_da_componenti: dal componente, che
+#     fuori bozza e' gia' chiuso;
+#   * il backend: solo in DRAFT (richiedi_righe_in_bozza);
+#   * la cancellazione della testata: cascade, padre assente, passa.
+#
+# -- NOMI E ORDINE ------------------------------------------------------
+#   Fascia _a05_ come prima, nome con le tre porte come ddt_righe,
+#   contratti_righe e resi_righe. «a05» < «a10» e «audit»: parla prima dei
+#   guard sui legami (trg_ordini_righe_a10_block_dlt, fulfillment, figli).
+#   59 caratteri. Il trigger vecchio e' scritto a mano (20260922-04), non
+#   da ci_apply: la DDL su di lui e' lecita (linee-guida-sql §11.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261008-90-create-trigger-ordini-righe-lock-fuori-bozza-tre-porte-mctit.yaml
+
+  - changeSet:
+      id: 20261008-90-create-trigger-ordini-righe-lock-fuori-bozza-tre-porte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini_righe: il building block «solo in bozza» sulle tre porte, con aperta la sola
+        data_consegna_confermata in CONFERMATO e PARZIALMENTE_EVASO. Brief: brief-db-righe-e-componenti-debiti-residui (§1, D-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgrelid = 'vendite.ordini_righe'::regclass
+                 AND t.tgname = 'trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt
+                  ON vendite.ordini_righe;
+
+              CREATE TRIGGER trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.ordini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'ORDINE', 'ordine_id', 'DRAFT', 'TESTATA',
+                      'data_consegna_confermata', 'CONFERMATO,PARZIALMENTE_EVASO');
+
+              COMMENT ON TRIGGER trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                  ON vendite.ordini_righe IS
+                  'Le righe d''ordine si aggiungono, modificano e tolgono solo con l''ordine in DRAFT (building block '
+                  'vendite.trgfn_doc_righe_lock_fuori_bozza, E_RIGA_DOC_NON_BOZZA). Eccezione dichiarata nel montaggio:'
+                  ' un UPDATE della sola data_consegna_confermata con l''ordine CONFERMATO o PARZIALMENTE_EVASO (la '
+                  'promessa di consegna si decide alla conferma e puo'' cambiare finche'' c''e'' da evadere). Fascia '
+                  '_a05_: parla prima dei guard sui legami. Brief: brief-db-righe-e-componenti-debiti-residui (§1, D-1 '
+                  'di Tid).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                  ON vendite.ordini_righe;
+              CREATE TRIGGER trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt
+                  BEFORE DELETE ON vendite.ordini_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id');

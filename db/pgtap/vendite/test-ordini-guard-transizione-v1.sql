@@ -157,11 +157,12 @@ SELECT o.id, 1, r.articolo_id, 'riga D', 3.0, 3.0, 10.0, r.iva_id, true, false, 
 FROM tmp_gt_d o, tmp_refs_gt r;
 
 -- Slot E: CONFERMATO con riga (test 6 CONFERMATO->ANNULLATO disabilitata)
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
 CREATE TEMP TABLE tmp_gt_e AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
       stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,r.stato_conf_id, r.valuta_id,
+  SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,r.stato_draft_id, r.valuta_id,
          DATE '2026-06-15', false, '{"test_scope":"pgtap_guard_transizione","slot":"E"}'::jsonb
   FROM tmp_refs_gt r RETURNING id
 ) SELECT id FROM ins;
@@ -169,6 +170,9 @@ INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
     qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
 SELECT o.id, 1, r.articolo_id, 'riga E', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
 FROM tmp_gt_e o, tmp_refs_gt r;
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_gt_e), 'CONFERMATO');
+END $x$;
 
 -- ============================================================
 -- 1) trigger esiste

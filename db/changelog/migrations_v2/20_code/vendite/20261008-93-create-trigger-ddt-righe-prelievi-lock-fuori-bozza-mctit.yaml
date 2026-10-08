@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I PRELIEVI DELLA BOLLA SI TOCCANO SOLO IN BOZZA, SALVO L'UBICAZIONE DI ARRIVO
+#   vendite.ddt_righe_prelievi:
+#     + trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt
+#       -> vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT',
+#          'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')
+#   Brief: brief-db-righe-e-componenti-debiti-residui (§1, regola del 2)
+#
+# -- PERCHE' --------------------------------------------------------
+#   E' la regola che il 20260928-70 aveva scritto a mano nel guard dei
+#   prelievi (D-L3-c: l'arrivo si compila fino al CONSEGNATO), che 20261008-92
+#   ritira. Stesso codice (E_RIGA_DOC_NON_BOZZA), stessa frase, stessi stati.
+#
+# -- NOMI E ORDINE ------------------------------------------------------
+#   Fra i BEFORE ROW parla prima il nome minore: «a05_doc» < «a05_guard»,
+#   quindi il rifiuto di stato precede la regola del kit, come quando stava
+#   in testa allo stesso corpo. Livello RIGA: la FK ddt_riga_id punta a
+#   vendite.ddt_righe, e la testata la da' script.fn_get_testata_id_di_riga
+#   (SECURITY DEFINER). ⚠️ Il vecchio ramo leggeva la riga sotto RLS e, fuori
+#   perimetro, passava al WITH CHECK della policy; il lettore DEFINER vede la
+#   testata anche li', e il rifiuto di stato arriva prima: piu' stretto, non
+#   piu' largo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261008-93-create-trigger-ddt-righe-prelievi-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261008-93-create-trigger-ddt-righe-prelievi-lock-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ddt_righe_prelievi: il building block «solo in bozza» a livello RIGA, con aperta la
+        sola ubicazione_arrivo_id in EMESSO e SPEDITO. Brief: brief-db-righe-e-componenti-debiti-residui (§1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgrelid = 'vendite.ddt_righe_prelievi'::regclass
+                 AND t.tgname = 'trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.ddt_righe_prelievi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'DDT', 'ddt_riga_id', 'DRAFT', 'RIGA',
+                      'ubicazione_arrivo_id', 'EMESSO,SPEDITO');
+
+              COMMENT ON TRIGGER trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.ddt_righe_prelievi IS
+                  'I prelievi di una riga di DDT si aggiungono, modificano e tolgono solo con la bolla in DRAFT '
+                  '(building block vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA, E_RIGA_DOC_NON_BOZZA). '
+                  'Eccezione dichiarata nel montaggio: un UPDATE della sola ubicazione_arrivo_id con la bolla EMESSO o '
+                  'SPEDITO (D-L3-c, l''arrivo si compila fino al CONSEGNATO). Prima stava scritta a mano in '
+                  'vendite.trgfn_ddt_righe_prelievi_guard. Brief: brief-db-righe-e-componenti-debiti-residui (§1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.ddt_righe_prelievi;

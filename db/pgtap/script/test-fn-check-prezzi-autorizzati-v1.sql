@@ -26,6 +26,7 @@
 --  13) EMESSO con un prezzo rifiutato dopo l'emissione: «Accetta» spento
 --  14) EMESSO -> ACCETTATO con un prezzo rifiutato: BLOCCA
 --  15) EMESSO -> ANNULLATO con un prezzo rifiutato: PASSA
+--      ⚠️ 13-15 SKIP motivato dal 2026-10-08: caso non costruibile (20261008-91)
 --  16) il vecchio trigger a10 non c'e' piu'
 --  Contratto (D-4)
 --  17) una RIGA con prezzo in attesa (prima non contava): un motivo
@@ -67,6 +68,7 @@
 --  40) ... e la madre fn_crea_revisione_preventivo rifiuta
 --  41) col prezzo RIFIUTATO la revisione si crea (il rifiutato non blocca)
 --  42) ... e la riga della revisione porta il REJECTED: la copia resta
+--      ⚠️ 39-42 SKIP motivato dal 2026-10-08: caso non costruibile (20261008-91)
 --  43) offerta EMESSA: un componente non torna in attesa (righe fuori bozza)
 --  44) ... e «Crea revisione» e' acceso: i prezzi sono quelli dell'emissione
 --      (rev 2026-10-04, R5a: prima «componente tornato in attesa: Crea
@@ -322,36 +324,22 @@ SELECT lives_ok(
     '12) DRAFT -> EMESSO con prezzi autorizzati: PASSA (controllo dell''11)'
 );
 
--- ⭐ Il modello lo ammette: nessun guard vieta di scrivere lo stato di
---   approvazione sulla riga di un preventivo gia' emesso. E' il caso che il
---   blocco verso ACCETTATO esiste a coprire.
-UPDATE vendite.preventivi_righe
-   SET stato_approvazione_prezzo = 'REJECTED'
- WHERE id = (SELECT riga_id FROM _p WHERE tag = 'emesso');
-
-SELECT is(
-    (SELECT a ->> 'reason_key'
-       FROM jsonb_array_elements(script.fn_available_actions_preventivo(
-              (SELECT prev_id FROM _p WHERE tag = 'emesso')) -> 'available_actions') a
-      WHERE a ->> 'target_state' = 'ACCETTATO' AND (a ->> 'enabled')::boolean IS FALSE),
-    'common.azione_reason.prezzo_rifiutato',
-    '13) EMESSO con un prezzo rifiutato: «Accetta» spento col motivo'
-);
-
-SELECT throws_like(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'ACCETTATO'),
-           (SELECT prev_id FROM _p WHERE tag = 'emesso')),
-    '%prezzi rifiutati dal responsabile%',
-    '14) EMESSO -> ACCETTATO con un prezzo rifiutato: BLOCCA'
-);
-
-SELECT lives_ok(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'ANNULLATO'),
-           (SELECT prev_id FROM _p WHERE tag = 'emesso')),
-    '15) EMESSO -> ANNULLATO con un prezzo rifiutato: PASSA (via d''uscita)'
-);
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §4.5, decisione
+--   di Tid): SKIP MOTIVATO dei test 13-15. Il caso si costruiva scrivendo
+--   REJECTED sulla riga del preventivo gia' EMESSO («il modello lo ammette»):
+--   da 20261008-91 le righe del preventivo fuori bozza non si scrivono, e dalla
+--   bozza si esce solo coi prezzi autorizzati (11-12). «EMESSO con un prezzo
+--   rifiutato» non nasce piu' da nessuna porta. Il blocco verso ACCETTATO
+--   (Regola 3 del guard di transizione) e la reason della capability RESTANO
+--   come difesa in profondita'. ⚠️ Non e' la forma dei test 25-26 (offerta) e
+--   31 (ordine), che il 2026-10-04 erano stati riscritti nel rifiuto del lock:
+--   per il preventivo Tid ha scelto lo skip, che non cambia il soggetto del test.
+SELECT skip(
+    'preventivo EMESSO con un prezzo rifiutato dopo l''emissione («Accetta» spento, '
+    'ACCETTATO bloccato, ANNULLATO ammesso): caso non costruibile dalle porte del '
+    'modello da 20261008-91 (righe del preventivo solo in bozza); i controlli '
+    'restano come difesa in profondita''',
+    3);
 
 SELECT hasnt_trigger('vendite', 'preventivi',
     'trg_preventivi_a10_guard_transizione_approvazione_upd',
@@ -814,55 +802,31 @@ UPDATE vendite.preventivi
    SET stato_doc_preventivo_id = (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO')
  WHERE id = (SELECT prev_id FROM _p WHERE tag = 'rev');
 
--- Il prezzo passa in attesa dopo l'emissione: il modello lo ammette.
-UPDATE vendite.preventivi_righe
-   SET stato_approvazione_prezzo = 'PENDING'
- WHERE id = (SELECT riga_id FROM _p WHERE tag = 'rev');
-
-SELECT is(
-    (SELECT (a ->> 'enabled') || ' / ' || (a ->> 'reason_key')
-       FROM jsonb_array_elements(script.fn_available_actions_preventivo(
-              (SELECT prev_id FROM _p WHERE tag = 'rev')) -> 'available_actions') a
-      WHERE a ->> 'key' = 'crea_revisione'),
-    'false / common.azione_reason.prezzo_pendente',
-    '39) preventivo EMESSO con un prezzo in attesa: «Crea revisione» c''e'', spento col motivo'
-);
-
-SELECT throws_like(
-    format('SELECT * FROM vendite.fn_crea_revisione_preventivo(%s, ''pgtap'')',
-           (SELECT prev_id FROM _p WHERE tag = 'rev')),
-    '%prezzi ancora in attesa di approvazione%',
-    '40) ... e la madre fn_crea_revisione_preventivo rifiuta: prima l''esito, poi la revisione'
-);
-
--- L'esito arriva: il responsabile rifiuta.
-UPDATE vendite.preventivi_righe
-   SET stato_approvazione_prezzo = 'REJECTED'
- WHERE id = (SELECT riga_id FROM _p WHERE tag = 'rev');
-
-SELECT lives_ok(
-    format('SELECT * FROM vendite.fn_crea_revisione_preventivo(%s, ''pgtap'')',
-           (SELECT prev_id FROM _p WHERE tag = 'rev')),
-    '41) col prezzo RIFIUTATO la revisione si crea: il rifiutato non blocca la revisione'
-);
-
-SELECT is(
-    (SELECT r.stato_approvazione_prezzo::text
-       FROM vendite.preventivi p
-       JOIN vendite.preventivi_righe r ON r.preventivo_id = p.id
-      WHERE p.numero = (SELECT p0.numero FROM vendite.preventivi p0
-                         WHERE p0.id = (SELECT prev_id FROM _p WHERE tag = 'rev'))
-        AND p.id <> (SELECT prev_id FROM _p WHERE tag = 'rev')),
-    'REJECTED',
-    '42) ... e la riga della revisione porta il REJECTED: la copia resta (azzerarla farebbe passare il prezzo rifiutato)'
-);
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §4.5, decisione
+--   di Tid): SKIP MOTIVATO dei test 39-42. Il caso si costruiva scrivendo
+--   PENDING, poi REJECTED, sulla riga del preventivo gia' EMESSO («il modello lo
+--   ammette»). Da 20261008-91 le righe del preventivo fuori bozza non si
+--   scrivono, e dalla bozza si esce solo coi prezzi autorizzati (test 11-12):
+--   un preventivo EMESSO con una riga attiva in attesa o rifiutata non nasce
+--   piu' da nessuna porta. Il gate «prima l'esito, poi la revisione»
+--   (script.fn_check_prezzi_in_attesa nella madre e nella capability) e la
+--   copia 1:1 del rifiutato RESTANO nel codice come difesa in profondita'.
+--   Della copia resta provato il ramo raggiungibile: il componente SPENTO
+--   rifiutato, in vendite/test-righe-e-componenti-debiti-residui-v1 (22, 24).
+SELECT skip(
+    'revisione di un preventivo EMESSO con una riga in attesa o rifiutata: caso non '
+    'costruibile dalle porte del modello da 20261008-91 (righe del preventivo solo in '
+    'bozza, uscita dalla bozza solo coi prezzi autorizzati); gate e copia restano '
+    'come difesa in profondita''',
+    4);
 
 -- Offerta: l'eccezione-kit e' EMESSA (test 24).
 -- ⚠️ rev 2026-10-04 (R5a, «lock pieno»): un componente non torna in attesa dopo
 --   l'emissione — la nuova richiesta passa da una revisione, che nasce in BOZZA.
 --   Il caso che qui si costruiva con un UPDATE non ha piu' una strada; il gate
---   «prezzo in attesa» di fn_crea_revisione_offerta resta come rete (lo prova sul
---   preventivo il test 40, stesso building block).
+--   «prezzo in attesa» di fn_crea_revisione_offerta resta come rete (lo provava sul
+--   preventivo il test 40, stesso building block: dal 2026-10-08 nemmeno li' il
+--   caso si costruisce, e il 40 e' uno skip motivato).
 SELECT throws_like(
     format($$UPDATE vendite.offerte_commerciali_eccezioni_componenti
                 SET stato_approvazione_prezzo = 'PENDING' WHERE id = %s$$,

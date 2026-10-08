@@ -14,6 +14,7 @@
 -- 5) ⭐ DRAFT->CONFERMATO con riga senza aliquota -> BLOCCA
 -- 6) controllo: la stessa transizione con l'aliquota -> PASSA
 -- 7) ⭐ il perimetro: EVASO->CONFERMATO con riga senza aliquota -> BLOCCA
+--    ⚠️ SKIP motivato dal 2026-10-08: il caso non si costruisce piu' (righe d'ordine solo in bozza)
 --
 -- Scopo:
 --   Il difetto che I9 chiude e' SILENZIOSO: vendite.vw_ordini_righe_iva_base
@@ -266,21 +267,19 @@ SELECT lives_ok(
 -- ⛔ Con un perimetro copiato dalla Regola 2 — che guarda solo
 --   DRAFT->CONFERMATO — questa transizione passerebbe, e il riepilogo sarebbe
 --   storto per la via di servizio.
-UPDATE vendite.ordini
-   SET stato_doc_ordine_id = (SELECT stato_evaso_id FROM tmp_oi_refs)
- WHERE id = (SELECT id FROM tmp_oi_ordine);
-
-UPDATE vendite.ordini_righe
-   SET iva_id = NULL
- WHERE ordine_id = (SELECT id FROM tmp_oi_ordine);
-
-SELECT throws_like(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT stato_conf_id FROM tmp_oi_refs),
-           (SELECT id FROM tmp_oi_ordine)),
-    '%prezzo ma nessuna aliquota IVA%',
-    'EVASO->CONFERMATO con una riga senza aliquota: BLOCCA anche al rientro'
-  );
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §4.5, decisione
+--   di Tid): SKIP MOTIVATO. Il caso si costruiva togliendo l'aliquota a una
+--   riga dell'ordine EVASO; da 20261008-90 le righe d'ordine fuori bozza non si
+--   scrivono (E_RIGA_DOC_NON_BOZZA), e in bozza il caso non si prepara: una riga
+--   senza aliquota non passa DRAFT->CONFERMATO (test 5 e 6). «EVASO con una riga
+--   senza aliquota» non nasce piu' da nessuna porta del modello. La Regola 4 sul
+--   rientro RESTA nel guard, come difesa in profondita': il test lo dichiara
+--   invece di fingere un caso che il modello non produce, e non passa a vuoto.
+SELECT skip(
+    'EVASO->CONFERMATO con una riga senza aliquota: caso non costruibile dalle porte '
+    'del modello da 20261008-90 (righe d''ordine solo in bozza); la Regola 4 sul '
+    'rientro resta nel guard come difesa in profondita''',
+    1);
 
 SELECT * FROM finish();
 ROLLBACK;

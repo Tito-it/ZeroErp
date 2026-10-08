@@ -35,6 +35,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(5);
 
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): le testate nascono DRAFT, prendono la riga, poi passano ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_refs AS
 SELECT
   (SELECT ba.id FROM anagrafiche.billing_account ba
@@ -50,6 +51,8 @@ SELECT
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS stato_bozza_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
     ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
@@ -71,13 +74,14 @@ WITH ins AS (
     validita_dal, validita_al, competenza_mese, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-COMP-NOVAL', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         NULL, NULL, NULL, r.valuta_id, r.stato_accettato_id, DATE '2080-06-10',
+         NULL, NULL, NULL, r.valuta_id, r.stato_bozza_id, DATE '2080-06-10',
          false, false, jsonb_build_object('test_scope','pgtap_competenza'), r.emittente_fiscale_id
     FROM tmp_refs r
   RETURNING id)
 SELECT * FROM ins;
 INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
 SELECT p.id, r.art_serv_id, 1.000000, 10.000000, r.iva_id, true FROM tmp_noval p, tmp_refs r;
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_noval), 'ACCETTATO'); END $porta$;
 
 -- ============================================================
 -- Preventivo 2: DIFFERITA. competenza_mese policy = 2080-09-01 (primo del mese),
@@ -90,13 +94,14 @@ WITH ins AS (
     validita_dal, validita_al, competenza_mese, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-COMP-DIFF', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-06-15', DATE '2080-06-20', DATE '2080-09-01', r.valuta_id, r.stato_accettato_id, DATE '2080-06-10',
+         DATE '2080-06-15', DATE '2080-06-20', DATE '2080-09-01', r.valuta_id, r.stato_bozza_id, DATE '2080-06-10',
          false, false, jsonb_build_object('test_scope','pgtap_competenza'), r.emittente_fiscale_id
     FROM tmp_refs r
   RETURNING id)
 SELECT * FROM ins;
 INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
 SELECT p.id, r.art_serv_id, 1.000000, 10.000000, r.iva_id, true FROM tmp_diff p, tmp_refs r;
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_diff), 'ACCETTATO'); END $porta$;
 
 -- ============================================================
 -- Preventivo 3: PREGRESSO. competenza_mese NULL, validita_dal = 2080-06-15.
@@ -109,13 +114,14 @@ WITH ins AS (
     validita_dal, validita_al, competenza_mese, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-COMP-PREG', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-06-15', DATE '2080-06-20', NULL, r.valuta_id, r.stato_accettato_id, DATE '2080-06-10',
+         DATE '2080-06-15', DATE '2080-06-20', NULL, r.valuta_id, r.stato_bozza_id, DATE '2080-06-10',
          false, false, jsonb_build_object('test_scope','pgtap_competenza'), r.emittente_fiscale_id
     FROM tmp_refs r
   RETURNING id)
 SELECT * FROM ins;
 INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
 SELECT p.id, r.art_serv_id, 1.000000, 10.000000, r.iva_id, true FROM tmp_preg p, tmp_refs r;
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_preg), 'ACCETTATO'); END $porta$;
 
 -- ============================================================
 -- Preventivo 5 (edge): validita_dal NULL + validita_al SET. Insert protetto da
@@ -130,13 +136,14 @@ BEGIN
     validita_dal, validita_al, competenza_mese, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-COMP-EDGE', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         NULL, DATE '2080-07-15', DATE '2080-09-01', r.valuta_id, r.stato_accettato_id, DATE '2080-06-10',
+         NULL, DATE '2080-07-15', DATE '2080-09-01', r.valuta_id, r.stato_bozza_id, DATE '2080-06-10',
          false, false, jsonb_build_object('test_scope','pgtap_competenza'), r.emittente_fiscale_id
     FROM tmp_refs r
   RETURNING id INTO v_prev;
 
   INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
   SELECT v_prev, r.art_serv_id, 1.000000, 10.000000, r.iva_id, true FROM tmp_refs r;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', v_prev, 'ACCETTATO');
 
   INSERT INTO tmp_edge VALUES (v_prev, true);
 EXCEPTION WHEN check_violation THEN

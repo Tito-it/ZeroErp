@@ -17,7 +17,7 @@
 | valido_al | date | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | tx_id | uuid | YES |  |

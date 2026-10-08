@@ -98,6 +98,11 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp
  WHERE id = (SELECT art_serv_id FROM tmp_rc_refs);
 
 -- Preventivo MISTO ACCETTATO (BA ok): 1 riga servizio + 1 riga merce.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): i
+--   preventivi ACCETTATO di questo file (misto, solo merce, i tre dei casi
+--   10-12) nascono DRAFT, prendono le righe, poi passano ad ACCETTATO con
+--   dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu'
+--   (20261008-91).
 CREATE TEMP TABLE tmp_rc_misto AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -105,7 +110,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-RC-MISTO', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_residuo_commessa'), r.emittente_fiscale_id
     FROM tmp_rc_refs r
@@ -124,6 +129,10 @@ INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa,
 SELECT p.id, r.art_merce_id, 1.000000, 50.000000, r.iva_id, true
   FROM tmp_rc_misto p, tmp_rc_refs r;
 
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rc_misto), 'ACCETTATO');
+END $x$;
+
 -- Preventivo SOLO MERCE ACCETTATO (BA ok).
 CREATE TEMP TABLE tmp_rc_merce AS
 WITH ins AS (
@@ -132,7 +141,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-RC-MERCE', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_residuo_commessa_merce'), r.emittente_fiscale_id
     FROM tmp_rc_refs r
@@ -142,6 +151,10 @@ SELECT * FROM ins;
 INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
 SELECT p.id, r.art_merce_id, 1.000000, 50.000000, r.iva_id, true
   FROM tmp_rc_merce p, tmp_rc_refs r;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rc_merce), 'ACCETTATO');
+END $x$;
 
 -- Preventivo DRAFT con riga servizio (per reason non_accettato).
 CREATE TEMP TABLE tmp_rc_draft AS
@@ -341,7 +354,7 @@ BEGIN
             fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
         VALUES (
             caso.numero, 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-            DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+            DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
             DATE '2080-01-01', false, false,
             jsonb_build_object('test_scope', caso.scope), r.emittente_fiscale_id)
         RETURNING id, uid INTO v_prev_id, v_prev_uid;
@@ -351,6 +364,9 @@ BEGIN
             (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
         VALUES (v_prev_id, r.art_serv_id, 1.000000, 25.000000, r.iva_id, true)
         RETURNING id INTO v_riga_id;
+
+        -- 3) Poi la transizione: in bozza la riga, fuori bozza piu' niente.
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', v_prev_id, 'ACCETTATO');
 
         EXECUTE format('INSERT INTO %I VALUES ($1, $2, $3)', caso.tabella)
           USING v_prev_id, v_prev_uid, v_riga_id;

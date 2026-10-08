@@ -17,7 +17,7 @@
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | user_insert | text | YES | CURRENT_USER |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | YES | now() |
 | storicizza | boolean | NO | false |

@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.tipi_doc_fiscale: user_update NOT NULL — la tabella che dbdev non mostrava
+#   Brief: brief-db-righe-e-componenti-debiti-residui (§2, D-2; §4.7)
+#
+# -- IL CASO --------------------------------------------------------
+#   Il 20261008-83 ha chiuso user_update sulle tabelle di config che dbdev
+#   mostrava nullable. Su zeroerp_ci, ricostruito da zero, il presidio
+#   dbops/test-user-update-not-null-v1 (test 1) ne ha trovata una in piu':
+#   config.tipi_doc_fiscale, con le quattro colonne di audit del v1
+#   (migrations/00_bootstrap/20250912-01, changeSet 20250912-02: user_update
+#   VARCHAR(80) DEFAULT CURRENT_USER, nullable) e il trigger di audit.
+#   ⚠️ Su dbdev la tabella NON HA quelle quattro colonne, anche se il suo
+#   databasechangelog dice 20250912-02 EXECUTED (2025-09-15): una deriva di
+#   dev, che nessun changelog spiega. E' il motivo per cui il presidio e' un
+#   invariante sul catalogo e non un elenco preso da dev.
+#
+# -- COME, e perche' cosi' -------------------------------------------------
+#   * ADD COLUMN IF NOT EXISTS delle quattro colonne di audit con la forma del
+#     v1 (e di linee-guida-sql §7): su zeroerp_ci e da zero non fa niente, su
+#     dbdev riporta la tabella al modello. Idempotente per costruzione: niente
+#     preCondition col MARK_RAN, che segnerebbe «fatto» un lavoro non fatto.
+#   * poi SET NOT NULL su user_update. Niente preCondition «zero NULL»: su dbdev
+#     la colonna prima non esiste, e la query fallirebbe per un'altra ragione.
+#     Il vincolo stesso e' il guardiano: una riga NULL fa fallire il migrate
+#     con 23502, e si guarda a mano (nessun valore scelto dal migrate).
+#   * il trigger di audit lo generano le automazioni (ci_apply, job notturno),
+#     come per ogni tabella: qui non si tocca (linee-guida-sql §11.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261009-03-alter-tipi-doc-fiscale-user-update-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261009-03-alter-tipi-doc-fiscale-user-update-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.tipi_doc_fiscale: le quattro colonne di audit del v1 se mancano (deriva di dbdev),
+        poi user_update NOT NULL. La tabella che il 20261008-83 non vedeva perche' dbdev non la
+        mostrava. Brief: brief-db-righe-e-componenti-debiti-residui (§2, D-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_doc_fiscale
+                  ADD COLUMN IF NOT EXISTS data_insert timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_insert varchar(80) NOT NULL DEFAULT CURRENT_USER,
+                  ADD COLUMN IF NOT EXISTS data_update timestamptz NOT NULL DEFAULT now(),
+                  ADD COLUMN IF NOT EXISTS user_update varchar(80) DEFAULT CURRENT_USER;
+
+              ALTER TABLE config.tipi_doc_fiscale ALTER COLUMN user_update SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le colonne aggiunte su dbdev non si tolgono: sono il modello.
+              ALTER TABLE config.tipi_doc_fiscale ALTER COLUMN user_update DROP NOT NULL;

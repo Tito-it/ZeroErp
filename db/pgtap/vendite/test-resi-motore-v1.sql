@@ -99,7 +99,10 @@ SELECT
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)              AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
+  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+  --   righe non si scrivono piu' (20261008-90).
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
@@ -127,7 +130,7 @@ CREATE TEMP TABLE tmp_ord_a AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-10', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_resi')
   FROM tmp_refs r RETURNING id, uid, billing_account_id, emittente_fiscale_id)
@@ -142,6 +145,8 @@ WITH ins AS (
   FROM tmp_ord_a o, tmp_refs r RETURNING id)
 SELECT * FROM ins;
 
+-- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_a), 'CONFERMATO'); END $x$;
 CREATE TEMP TABLE tmp_ddt_a AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_a)) AS ddt_id;
 
@@ -295,7 +300,7 @@ CREATE TEMP TABLE tmp_ord_b AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-11', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_resi')
   FROM tmp_refs r RETURNING id, uid)
@@ -304,6 +309,8 @@ INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
   qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
 SELECT (SELECT id FROM tmp_ord_b), 1, r.articolo_id, 'Riga reso B', 5, 5, 25, r.iva_id, true, false,
        jsonb_build_object('test_scope','pgtap_resi') FROM tmp_refs r;
+-- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_b), 'CONFERMATO'); END $x$;
 CREATE TEMP TABLE tmp_ddt_b AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_b)) AS ddt_id;
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
@@ -377,7 +384,7 @@ CREATE TEMP TABLE tmp_ord_c AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
          DATE '2026-07-12', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_resi')
   FROM tmp_refs r RETURNING id)
@@ -386,6 +393,8 @@ INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
   qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
 SELECT (SELECT id FROM tmp_ord_c), 1, r.articolo_id, 'Riga C', 5, 5, 25, r.iva_id, true, false,
        jsonb_build_object('test_scope','pgtap_resi') FROM tmp_refs r;
+-- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_c), 'CONFERMATO'); END $x$;
 -- DDT resta in DRAFT (non consegnato).
 CREATE TEMP TABLE tmp_ddt_c AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_c)) AS ddt_id;
@@ -413,7 +422,7 @@ CREATE TEMP TABLE tmp_ord_d AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-13', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_resi')
   FROM tmp_refs r RETURNING id)
@@ -423,6 +432,8 @@ INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
 SELECT (SELECT id FROM tmp_ord_d), 1, r.articolo_id, 'Riga reso D', 10, 10, 25, r.iva_id, true, false,
        jsonb_build_object('test_scope','pgtap_resi') FROM tmp_refs r;
 
+-- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_d), 'CONFERMATO'); END $x$;
 CREATE TEMP TABLE tmp_ddt_d AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_d)) AS ddt_id;
 INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)

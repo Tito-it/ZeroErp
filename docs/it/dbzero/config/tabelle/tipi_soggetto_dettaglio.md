@@ -17,7 +17,7 @@
 | formato_piva | character varying(20) | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
-| user_update | text | YES |  |
+| user_update | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | YES |  |
 | stato_id | bigint | YES |  |
 | dati_societari_policy | config.dati_societari_policy_enum | NO | 'NONE'::config.dati_societari_policy_enum |

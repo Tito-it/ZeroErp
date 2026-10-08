@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# TRE DEFINER NUOVE CHIUDONO IL search_path CON pg_temp
+#   anagrafiche.fn_guard_istanza_ha_ba(bigint)              (20261008-55)
+#   anagrafiche.fn_guard_istanza_ba_emittente(bigint)       (20261008-59)
+#   anagrafiche.fn_guard_istanza_ba_gestore_globale()       (20261008-60)
+#   search_path: pg_catalog, public  ->  pg_catalog, public, pg_temp
+#   Corpo invariato.
+#
+# -- PERCHE' --------------------------------------------------------
+#   D6-bis: una SECURITY DEFINER il cui search_path non nomina pg_temp lo
+#   cerca PER PRIMO, e un oggetto temporaneo di chi chiama puo' ombreggiare
+#   un nome della funzione. Il presidio
+#   db/pgtap/dbops/test-security-definer-search-path-v1 (test 4) tiene il
+#   debito a soglia, «puo' solo calare» (17): le tre DEFINER nate col
+#   cantiere brief-db-istanza-nasce-col-ba l'hanno portato a 20 (rosso del
+#   runner di Tid, 2026-10-08). Sono nate cosi' per copia dalle gemelle del
+#   gestore globale, che il debito lo hanno gia'. La forma e' quella del
+#   20261005-27, che ha sanato il caso identico (due lettori DEFINER nati
+#   senza pg_temp): pg_temp IN CODA, dopo pg_catalog e public.
+#
+# -- COME ----------------------------------------------------------------
+#   ALTER FUNCTION ... SET search_path, non un CREATE OR REPLACE: il corpo
+#   non cambia, e i changeSet -55/-59/-60 sono gia' mergiati (non si
+#   toccano). Un prossimo CREATE OR REPLACE dovra' ridichiarare il
+#   search_path nuovo: lo azzera a quello che scrive.
+#   La preCondition pretende che le tre esistano DEFINER con quella firma.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261008-95-update-guard-istanza-ba-search-path-pg-temp-mctit.yaml
+
+  - changeSet:
+      id: 20261008-95-update-guard-istanza-ba-search-path-pg-temp
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_guard_istanza_ha_ba, fn_guard_istanza_ba_emittente e
+        fn_guard_istanza_ba_gestore_globale (SECURITY DEFINER) elencano pg_temp in coda al
+        search_path: pg_catalog, public, pg_temp. Corpo invariato. D6-bis; brief-db-istanza-nasce-col-ba.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.prosecdef
+                 AND (p.proname, pg_catalog.pg_get_function_identity_arguments(p.oid)) IN (
+                       ('fn_guard_istanza_ha_ba',              'p_istanza_utility_id bigint'),
+                       ('fn_guard_istanza_ba_emittente',       'p_billing_account_id bigint'),
+                       ('fn_guard_istanza_ba_gestore_globale', ''));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION anagrafiche.fn_guard_istanza_ha_ba(bigint)
+                SET search_path TO 'pg_catalog', 'public', 'pg_temp';
+
+              ALTER FUNCTION anagrafiche.fn_guard_istanza_ba_emittente(bigint)
+                SET search_path TO 'pg_catalog', 'public', 'pg_temp';
+
+              ALTER FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
+                SET search_path TO 'pg_catalog', 'public', 'pg_temp';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER FUNCTION anagrafiche.fn_guard_istanza_ha_ba(bigint)
+                SET search_path TO 'pg_catalog', 'public';
+
+              ALTER FUNCTION anagrafiche.fn_guard_istanza_ba_emittente(bigint)
+                SET search_path TO 'pg_catalog', 'public';
+
+              ALTER FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
+                SET search_path TO 'pg_catalog', 'public';
