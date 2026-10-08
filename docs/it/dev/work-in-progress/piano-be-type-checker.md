@@ -3,7 +3,8 @@
 > Nato il **2026-10-08** dalla decisione di Tid su **D2-b** di
 > [migliorie-generali-BE-FE-da-test-valutazione.md](migliorie-generali-BE-FE-da-test-valutazione.md):
 > il progetto **vuole** un type checker, acceso **a cricchetto**.
-> Stato: 🟡 **piano da approvare**. Niente è ancora nel repo: nessuna
+> Stato: 🟡 **piano in approvazione** — S2 e le tre dipendenze approvate il
+> 2026-10-08; L0 (§4.2) in attesa di Tid. Niente è ancora nel repo: nessuna
 > dipendenza installata nella venv del backend, nessun file di configurazione.
 
 ## 1. Perché
@@ -36,7 +37,7 @@ settings e i modelli, quindi conosce l'ORM (`objects`, i campi, i manager) e la
 Django 6.1): si aggiornano **insieme** a loro, ed è un vincolo da scrivere nel
 file dei requisiti, accanto al pin.
 
-### S2 — Dove stanno le dipendenze **(Tid)**
+### S2 — Dove stanno le dipendenze ✅ approvata da Tid il 2026-10-08
 
 Il plugin **importa** le settings e il codice del progetto, quindi `mypy` deve
 girare nella **venv del backend**, non in quella degli strumenti
@@ -51,7 +52,7 @@ backend e nel job CI; il `Dockerfile` non lo vede. Va registrato nella tabella
 «Fonte unica» di `.codex/AGENTS.md` e nei `paths:` di `ci-validate.yaml`.
 
 Dipendenze nuove: `mypy`, `django-stubs` (porta con sé `django-stubs-ext`),
-`djangorestframework-stubs`. ⛔ Regola di casa: entrano solo con l'ok di Tid.
+`djangorestframework-stubs`. ✅ Ok di Tid il 2026-10-08 (la regola di casa lo chiede per ogni dipendenza nuova).
 
 ### S3 — Il perimetro: tutto il codice applicativo, dal primo giorno ⭐
 
@@ -154,16 +155,82 @@ Il test `test_commesse_service.py` è **verde per costruzione**: patcha
 `mock_list_repo.return_value.test_resolver.return_value = {…}`, cioè fabbrica
 il metodo che manca. È esattamente il difetto che §1 descrive.
 
-⛔ **Non si ripara dentro questo piano.** Il prezzo passa dal `PricingService`
-(regola di casa: mai lookup diretti sui listini), e scegliere con cosa
-sostituire `test_resolver` è una decisione sul modello del prezzo: lotto L0,
-con l'ok di Tid sul merito.
+### 4.1 Letto il codice intorno: il metodo mancante è il primo di cinque difetti
+
+Ricostruito il 2026-10-08 sul codice e sulla doc auto-generata
+(`fn_resolve_prezzo_listino_v2`, `commesse_attivita`). Gli endpoint sono vivi
+anche a video: `CommessaGestioneDrawer.vue` (righe 696 e 742).
+
+| # | Difetto | Conseguenza |
+| --- | --- | --- |
+| **P1** | `test_resolver` non esiste più | 500 su riallinea e sblocca |
+| **P2** | Anche con il metodo giusto il codice legge `resolver_result["prezzo"]`, ma il resolver restituisce **`prezzo_finale`** | sostituire il solo metodo darebbe un `KeyError`: un altro 500 |
+| **P3** | Riallinea e sblocca scrivono il **solo prezzo**: lo snapshot di provenienza (`listino_versione_id`, `listino_riga_id`, `prezzo_base_snapshot`, `origine_prezzo`, variazione, promo, contratto, categoria, classe utenza) resta quello **vecchio** | la riga dice un prezzo nuovo con la provenienza del prezzo vecchio. E, poiché `listino_versione_id` non si aggiorna, la domanda «la versione è cambiata, confermi?» si ripresenterebbe **a ogni** riallineamento |
+| **P4** | Il push sorgente → commessa **non scrive** `listino_versione_id` (né `listino_riga_id`): `CommessaAttivitaInput` ha il campo, `_build_attivita_input` non lo passa, anche se il resolver lo restituisce | sulle righe nate da un push la versione originale è `NULL`, quindi il guard «versione cambiata» di riallinea è **morto**: non scatta mai |
+| **P5** | Riallinea e sblocca chiamano il resolver **senza** `articolo_padre_contesto`; il push lo passa (dal `meta` della riga, `componente_di`). E la data: il push usa `data_attivita` **o** `competenza_mese`, riallinea solo `data_attivita` | il componente di un kit verrebbe riprezzato come articolo **sciolto**, cioè col prezzo sbagliato; una riga senza `data_attivita` non si riallineerebbe |
+
+⭐ Il motivo comune di P3, P4 e P5 è uno: **due percorsi che fanno la stessa
+cosa** (dare un prezzo a una riga di commessa dal resolver), scritti due volte
+e divergenti. È la regola del 2.
+
+### 4.2 La proposta (L0)
+
+**A — Un building block, due consumatori (regola del 2, da approvare).**
+In `apps/vendite/services/` una funzione sola che, data una riga di commessa,
+**costruisce gli argomenti** del resolver (articolo, uom, data con il fallback
+`data_attivita` → `competenza_mese`, BA, utility, emittente, contesto kit dal
+`meta`) e **traduce il risultato** nei campi snapshot della riga (prezzo più i
+dieci campi di provenienza). La usano il push (`_resolve_pricing_audit`) e
+riallinea/sblocca. Le due letture attuali si ritirano nello stesso giro.
+
+**B — Riallinea e sblocca passano dal `PricingService`.**
+`resolve_prezzo` (quello che solleva: un prezzo non risolvibile qui è un errore,
+non un'assenza), con gli argomenti costruiti da A. Chiude P1, P2 e P5.
+
+**C — Lo snapshot si riscrive intero.**
+`update_attivita_prezzo` accetta i campi di provenienza e li scrive con il
+prezzo, sia sulla riga sia, per prezzo e blocco, su `attivita_fatturabili` come
+oggi. Chiude P3: dopo un riallineamento la riga dice da dove viene il prezzo
+nuovo, e la versione registrata è quella nuova.
+
+**D — Il push scrive la versione listino.**
+`_build_attivita_input` passa `listino_versione_id` e `listino_riga_id` dal
+risultato del resolver. Chiude P4: il guard «versione cambiata» torna vivo.
+⚠️ Sul `listino_riga_id` c'è il trigger che vuole la riga di listino
+**attiva**: il resolver restituisce solo righe attive, quindi è coerente, ma va
+provato nel test.
+
+**Test, sul DB vero (`richiedi_db_provvisto`).**
+- La riga di commessa con un prezzo da listino, il listino che cambia versione,
+  il riallineamento: prima chiede conferma, poi scrive il prezzo **e** la
+  versione nuova; un secondo riallineamento non chiede più niente.
+- Lo sblocco di una riga bloccata: prezzo ricalcolato e snapshot riscritto.
+- Il componente di un kit: prezzo del kit, non quello sciolto.
+- Il test mockato attuale smette di fabbricare `test_resolver`.
+
+⚠️ I soggetti del test (listino, versioni, commessa, riga) vanno
+**fabbricati** dal test, non cercati nei dati esistenti (regola del verde per
+sottrazione).
+
+### 4.3 Due domande che la proposta non decide (Tid)
+
+1. **La variazione eccezionale** (`fn_variazione_prezzo_eccezionale`) blocca un
+   prezzo scritto a mano ma lascia lo snapshot di provenienza del listino: la
+   riga dice «origine: CATEGORIA» con un prezzo che il listino non ha mai dato.
+   Il set di `origine_prezzo` prevede `MANUALE`. Va scritto `MANUALE` (e
+   azzerata la provenienza da listino) quando si varia a mano?
+2. **Dove sta la regola.** Oggi il prezzo di una riga di commessa si scrive con
+   una `UPDATE` diretta dal repository (lo dice anche il commento del trigger
+   `trgfn_commesse_attivita_guard_prezzo_rettifica`). La proposta resta così,
+   lato backend. Se invece il riallineamento deve diventare una funzione DB
+   (`fn_riallinea_prezzo_attivita`, DB-first), è un brief al team DB e il
+   lotto L0 lo aspetta.
 
 ## 5. Lotti
 
 | Lotto | Cosa | Prova |
 | --- | --- | --- |
-| **L0** | Il difetto di §4: `fn_riallinea_prezzo`/`fn_sblocca_prezzo` sul resolver vero. Il test smette di fabbricare il metodo, e se ne aggiunge uno sul DB vero (`richiedi_db_provvisto`) che la chiamata la fa davvero | il test nuovo rosso prima del fix, verde dopo |
+| **L0** | Il difetto di §4, nella forma di §4.2 (A-D) | i test sul DB vero di §4.2 rossi prima, verdi dopo |
 | **L1** | Accensione: `requirements-dev.in/.txt` (S2), `backend/mypy.ini` (S1/S5), `scripts/check_mypy_baseline.py` + `backend/mypy.baseline.json` (S4), passo CI (S6), documentazione (§6) | tre mutazioni, tre rossi: un rilievo nuovo, una voce sanata e non tolta, un'uscita illeggibile |
 | **L2** | Smaltimento dei rilievi che sono **difetti di per sé**, qualunque sia il file: chiamate ad attributi inesistenti (`[attr-defined]`), uso del valore di una funzione che non restituisce niente (`[func-returns-value]`), funzioni che possono uscire senza `return` (`[return]`), `None` non gestito (`[union-attr]`, `[index]`) | il registro scende; per ogni difetto vero un test che lo costruisce |
 | **L3+** | Il resto, **per app**, partendo da quelle con i service più centrali (vendite, core). Ogni voce si giudica: difetto (si corregge il codice) o annotazione sbagliata (si corregge la firma) | il registro scende |
