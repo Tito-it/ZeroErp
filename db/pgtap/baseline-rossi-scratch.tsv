@@ -30,19 +30,6 @@ db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql	ASSERZIONE
 db/pgtap/script/test-vw-giornale-entita.sql	ERRORE_FIXTURE
 db/pgtap/ui/test-lista-competenza-gruppi-colonna-emittente-v1.sql	ASSERZIONE
 db/pgtap/vendite/contratti/test_fn_successione_contratti.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_fn_crea_revisione_offerta.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_fn_push_offerta_a_contratto.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_fn_push_offerta_successione.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test-offerte-commerciali-codice-lock.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_offerte_commerciali_codice.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_offerte_commerciali_end_to_end.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_offerte_commerciali_revisione_trigger.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_offerte_commerciali_state_machine.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_offerte_eccezioni_qta_from_operativa.sql	ASSERZIONE
-db/pgtap/vendite/offerte_commerciali/test-offerte-rientro-padre-revisione-annullata.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test_push_offerta_fissa_qta_operativa.sql	ASSERZIONE
-db/pgtap/vendite/offerte_commerciali/test-trgfn-offerte-revisione-guard-config.sql	ERRORE_FIXTURE
-db/pgtap/vendite/offerte_commerciali/test-vw-offerte-lista-superata-vs-abortito.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-accredito-kit-meta-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-af-emit-batch-marchio-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-annulla-accredito-riga-reso-v1.sql	ERRORE_FIXTURE
@@ -65,7 +52,6 @@ db/pgtap/vendite/test-commesse-stati-commessa-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-commesse-transizioni-stati-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-contratti-overlap-draft-escluso-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-schema-step22-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-contratti-step23-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-utilities-snapshot.sql	ASSERZIONE
 db/pgtap/vendite/test-data-documento-v1.sql	ERRORE_FIXTURE

@@ -11,7 +11,7 @@ CREATE FUNCTION fn_get_sorgente_documento_ref(p_sorgente_tipo_id bigint, p_sorge
 CREATE OR REPLACE FUNCTION vendite.fn_get_sorgente_documento_ref(p_sorgente_tipo_id bigint, p_sorgente_uid text)
  RETURNS TABLE(documento_id bigint, documento_numero text)
  LANGUAGE plpgsql
- STABLE
+ STABLE ROWS 1
 AS $function$
 DECLARE
     -- ⭐ rev 2026-10-05 (20261005-26): la chiave si riconosce con i building

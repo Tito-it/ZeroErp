@@ -1,0 +1,221 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_data_operativa — IL FUSO SI VALIDA QUANDO SI SCRIVE, NON A OGNI LETTURA
+#   Nasce dal pgTAP vendite/test-registro-documento-previsto-v1.sql, lento (2026-10-08).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   La funzione controllava il fuso con `EXISTS (… FROM pg_timezone_names …)`
+#   a OGNI chiamata. pg_timezone_names non e' una tabella: e' una funzione che
+#   rilegge dal disco l'intero archivio dei fusi del sistema operativo. Costa
+#   ~8 ms a interrogazione, qualunque sia il nome cercato e qualunque sia il
+#   volume dei dati.
+#   ⚠️ Ed e' un costo PER RIGA dove la funzione sta dentro una vista:
+#   fn_calcola_data_documento la chiama due volte (direttamente e dentro
+#   fn_get_pavimento_emissione), e le due viste della dashboard di competenza
+#   la chiamano per ogni attivita'. Misurato su dbdev il 2026-10-08, come app
+#   col contesto operatore: vw_dash_competenza_gruppi letta per intero 1,3 s
+#   su 84 gruppi, dei quali ~1,15 s in questo controllo; 58 chiamate di
+#   fn_data_operativa = 432 ms.
+#
+# ── ⭐ LA CORREZIONE STA SUL MODELLO ────────────────────────────────
+#   Il fuso e' un DATO di config.parameters: la sua validita' si decide quando
+#   lo si SCRIVE, una volta, non ogni volta che lo si legge. Il meccanismo c'e'
+#   gia' ed e' generico: il registro config.parameter_fk_surrogate («il valore
+#   di questo codice deve esistere in schema.tabella.colonna»), controllato dai
+#   trigger di config.parameters e config.parameter_overrides, e sorvegliato
+#   ogni settimana dal presidio dbops.vw_parameter_fk_surrogate_dangling. La
+#   riga 7 di parameter_fk_surrogate.csv (stesso giro) lo punta su
+#   pg_catalog.pg_timezone_names.name: un fuso che non esiste viene RIFIUTATO
+#   alla scrittura con E_PARAMETER_DEFAULT_VALUE_INVALID.
+#
+# ── ⛔ PERCHE' NON BASTA CATTURARE L'ERRORE DI `AT TIME ZONE` ─────────
+#   `AT TIME ZONE` accetta PIU' di pg_timezone_names: stringhe POSIX come
+#   'UTC+1' (col segno ROVESCIATO: vuol dire UTC-1), offset come '+02',
+#   abbreviazioni. Un controllo fatto solo con l'EXCEPTION lascerebbe passare
+#   'UTC+1' e darebbe una data PLAUSIBILE e SBAGLIATA — il difetto che questa
+#   funzione esiste per chiudere. Quel caso lo ferma il registro, alla
+#   scrittura (pgTAP vendite/test-data-documento-v1, test 4b).
+#
+# ── LA RETE DI SICUREZZA CHE RESTA ──────────────────────────────────
+#   Un nome che il sistema operativo non riconosce piu' (archivio dei fusi
+#   aggiornato), o un valore scritto con la riga del registro spenta: `AT TIME
+#   ZONE` alza 22023 e il blocco EXCEPTION lo traduce nello STESSO errore di
+#   dominio di prima (E_CONFIG_MANCANTE, frase che nomina il valore). Il
+#   contratto «P0001 + CONSTRAINT = errore di dominio» resta intatto. Costo:
+#   una sottotransazione, microsecondi.
+#   ⚠️ Parametro assente e parametro vuoto restano controllati qui, come prima:
+#   il registro ammette il vuoto per tutti i parametri (20260831-36).
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firma, volatilita', SECURITY INVOKER, il default NUDO (niente
+#   fn_get_parameter_full), il codice errore e le frasi. Nessun lavoro BE/FE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261008-20-update-fn-data-operativa-fuso-validato-in-scrittura-mctit.yaml
+
+  - changeSet:
+      id: 20261008-20-update-fn-data-operativa-fuso-validato-in-scrittura
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_data_operativa: il fuso non si cerca piu' in pg_timezone_names a ogni
+        chiamata (~8 ms, per riga nelle viste della dashboard di competenza). La validita'
+        si decide alla scrittura del parametro, dal registro config.parameter_fk_surrogate
+        (riga 7); qui resta una rete di sicurezza EXCEPTION che traduce il 22023 nello
+        stesso E_CONFIG_MANCANTE.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_data_operativa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_data_operativa()
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  -- ⚠️ %TYPE e non `text` nudo: il tipo lo decide la colonna
+                  --    che lo contiene, non questa funzione.
+                  v_fuso config.parameters.default_value%TYPE;
+                  v_oggi date;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La data di oggi NEL FUSO DELL'AZIENDA, non in quello
+                  --   della sessione. Sostituisce current_date sul percorso
+                  --   della data documento.
+                  --
+                  -- Regole:
+                  --   - il fuso e' un DATO (config.parameters), mai una
+                  --     costante nel codice;
+                  --   - il fuso si VALIDA QUANDO SI SCRIVE (registro
+                  --     config.parameter_fk_surrogate ->
+                  --     pg_timezone_names): qui non lo si rilegge a ogni
+                  --     chiamata, perche' costa ~8 ms e questa funzione sta
+                  --     dentro viste lette per riga;
+                  --   - fail-loud su tutte e tre le forme di guasto: assente,
+                  --     vuoto, non riconosciuto. Mai un ripiego a UTC.
+                  -- =========================================================
+
+                  -- ⛔ Si legge il default NUDO e non script.fn_get_parameter_full:
+                  --    la cascata di override (utente/gruppo/sessione/emittente)
+                  --    farebbe dare alla STESSA fattura date diverse a seconda di
+                  --    chi la genera, cioe' il difetto che questa funzione chiude.
+                  SELECT p.default_value
+                    INTO v_fuso
+                    FROM config.parameters p
+                   WHERE p.code = 'SYSTEM_FUSO_ORARIO';
+
+                  -- 1) Assente, oppure presente e vuoto.
+                  --    ⚠️ Il vuoto passa il registro (che lo ammette per tutti i
+                  --    parametri, 20260831-36): si ferma qui.
+                  IF v_fuso IS NULL OR btrim(v_fuso) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_data_operativa', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('code', 'SYSTEM_FUSO_ORARIO',
+                                             'valore', v_fuso),
+                          NULL::uuid,
+                          'SYSTEM_FUSO_ORARIO');
+                  END IF;
+
+                  v_fuso := btrim(v_fuso);
+
+                  -- 2) C'e' ed e' pieno, ma il sistema non lo riconosce.
+                  --    ⭐ Rete di sicurezza, non il controllo principale: la
+                  --    validita' la decide il registro alla scrittura. Qui
+                  --    arriva solo un nome sparito dall'archivio dei fusi del
+                  --    sistema operativo, o un valore scritto con la riga del
+                  --    registro spenta.
+                  --    ⛔ Senza, `AT TIME ZONE` alza un 22023 grezzo: il
+                  --    contratto «P0001 + CONSTRAINT = errore di dominio» salta
+                  --    e il guasto arriva al backend come 500 non tradotto.
+                  BEGIN
+                      -- ℹ️ now() e' l'istante di inizio transazione: dentro la
+                      --    stessa transazione la risposta e' per costruzione
+                      --    identica, ed e' il motivo per cui la funzione e' STABLE.
+                      v_oggi := (now() AT TIME ZONE v_fuso)::date;
+                  EXCEPTION
+                      WHEN invalid_parameter_value THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_data_operativa', 'E_CONFIG_MANCANTE',
+                              jsonb_build_object('code', 'SYSTEM_FUSO_ORARIO',
+                                                 'valore', v_fuso),
+                              NULL::uuid,
+                              concat('SYSTEM_FUSO_ORARIO = ', quote_literal(v_fuso),
+                                     ' (fuso orario non riconosciuto)'));
+                  END;
+
+                  RETURN v_oggi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_data_operativa()
+                IS 'La data di oggi NEL FUSO DELL''AZIENDA (config.parameters.SYSTEM_FUSO_ORARIO), non in quello della sessione. ⛔ Sostituisce current_date sul percorso della data documento: current_date segue il fuso della SESSIONE, e la sessione di Django e'' UTC (USE_TZ senza TIME_ZONE in DATABASES) mentre psql e pgAgent sono Europe/Rome — lo stesso oggetto dava due date diverse secondo il canale, e ogni documento nato fra mezzanotte e le 02:00 locali portava la data del giorno prima (misurato 2026-08-25: 7 fatture su 18 sfasate). ⭐ IL FUSO SI VALIDA QUANDO SI SCRIVE (rev 2026-10-08, 20261008-20): il registro config.parameter_fk_surrogate (riga 7) vuole il valore in pg_timezone_names e lo rifiuta alla scrittura con E_PARAMETER_DEFAULT_VALUE_INVALID. Qui non lo si rilegge piu'' a ogni chiamata: pg_timezone_names rilegge dal disco l''archivio dei fusi (~8 ms), e questa funzione sta dentro viste lette per riga (dashboard di competenza: 1,3 s su 84 gruppi). ⛔ Non basterebbe catturare l''errore di AT TIME ZONE: accetta anche stringhe POSIX come UTC+1 (segno rovesciato), cioe'' una data plausibile e sbagliata — quel caso lo ferma il registro. ⛔ FAIL-LOUD su tre condizioni, tutte con E_CONFIG_MANCANTE: parametro assente, valore vuoto (il registro ammette il vuoto), valore che il sistema non riconosce (rete di sicurezza EXCEPTION sul 22023: nome sparito dall''archivio dei fusi o scritto col registro spento). La domanda «riuso o conio un codice?» si risponde su CHI PUO'' RIMEDIARE (sempre chi amministra la configurazione, classe TECNICO) e a distinguere i casi e'' la frase. Nessun ripiego a UTC o a current_date. ⛔ NON usa script.fn_get_parameter_full: la sua cascata di override farebbe portare ALLA STESSA fattura date diverse a seconda di chi la genera. ℹ️ STABLE perche'' now() e'' l''istante di inizio transazione. Brief di origine: brief-db-numerazione-data-documento-e-sequenza §4 DB-2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: torna al controllo per chiamata su pg_timezone_names
+              -- (stato 20260825-02).
+              CREATE OR REPLACE FUNCTION script.fn_data_operativa()
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_fuso config.parameters.default_value%TYPE;
+              BEGIN
+                  SELECT p.default_value
+                    INTO v_fuso
+                    FROM config.parameters p
+                   WHERE p.code = 'SYSTEM_FUSO_ORARIO';
+
+                  IF v_fuso IS NULL OR btrim(v_fuso) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_data_operativa', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('code', 'SYSTEM_FUSO_ORARIO',
+                                             'valore', v_fuso),
+                          NULL::uuid,
+                          'SYSTEM_FUSO_ORARIO');
+                  END IF;
+
+                  v_fuso := btrim(v_fuso);
+
+                  IF NOT EXISTS (SELECT 1 FROM pg_timezone_names tz
+                                  WHERE tz.name = v_fuso) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_data_operativa', 'E_CONFIG_MANCANTE',
+                          jsonb_build_object('code', 'SYSTEM_FUSO_ORARIO',
+                                             'valore', v_fuso),
+                          NULL::uuid,
+                          concat('SYSTEM_FUSO_ORARIO = ', quote_literal(v_fuso),
+                                 ' (fuso orario non riconosciuto)'));
+                  END IF;
+
+                  RETURN (now() AT TIME ZONE v_fuso)::date;
+              END;
+              $function$;

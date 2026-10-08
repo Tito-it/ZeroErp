@@ -63,10 +63,28 @@ La funzione **si ferma e lo dice** in tre casi, tutti con `E_CONFIG_MANCANTE`:
 2. il parametro c'è ma è **vuoto** — caso reale, non teorico:
    `config.parameters.default_value` è `NOT NULL` ma non ha nessun vincolo di
    non-vuoto, e a catalogo ci sono già parametri a stringa vuota;
-3. il valore c'è ma **non è un fuso orario** (non compare in
-   `pg_timezone_names`) — senza questo controllo `AT TIME ZONE` alzerebbe un
-   errore grezzo `22023`, e il guasto arriverebbe al backend come 500 non
-   tradotto invece che come errore di dominio.
+3. il valore c'è ma **il sistema non lo riconosce come fuso orario** — senza
+   questo controllo `AT TIME ZONE` alzerebbe un errore grezzo `22023`, e il
+   guasto arriverebbe al backend come 500 non tradotto invece che come errore
+   di dominio.
+
+⭐ **Il fuso si valida quando lo si scrive, non a ogni lettura** (dal
+2026-10-08, changeSet `20261008-20`). Il registro
+`config.parameter_fk_surrogate` vuole il valore di `SYSTEM_FUSO_ORARIO` in
+`pg_timezone_names` e rifiuta un fuso sbagliato già quando qualcuno lo scrive
+(`E_PARAMETER_DEFAULT_VALUE_INVALID`). Prima la funzione lo cercava in
+`pg_timezone_names` a ogni chiamata: quella vista rilegge dal disco l'intero
+archivio dei fusi (~8 ms), e la funzione sta dentro le viste della dashboard di
+competenza, cioè si pagava per ogni riga mostrata.
+
+Il caso 3 resta come **rete di sicurezza**: scatta solo per un nome sparito
+dall'archivio dei fusi del sistema operativo, o scritto mentre la riga del
+registro era spenta.
+
+⛔ La validazione **non** può stare solo nella rete di sicurezza: `AT TIME
+ZONE` accetta anche forme che non sono fusi IANA, come `UTC+1` (stringa POSIX
+col segno rovesciato: significa UTC−1). Passerebbe, e darebbe una data
+plausibile e sbagliata. Lo ferma il registro, alla scrittura.
 
 ⛔ **Non esiste un ripiego a UTC o a `current_date`.** Sarebbe la scelta
 apparentemente prudente, ed è invece esattamente il difetto di partenza: darebbe
@@ -97,7 +115,7 @@ che la funzione chiude. Si legge il `default_value` **nudo**, apposta.
   della colonna `vendite.fatture.data`. `CURRENT_DATE` resta in **25 tabelle e 67
   funzioni**: sostituirlo ovunque è un cantiere a sé, non un effetto collaterale
   di questo.
-* Brief: `docs/it/dev/work-in-progress/brief-db-numerazione-data-documento-e-sequenza.md` §4 DB-2.
+* Brief: `docs/it/dev/work-done/brief-db-numerazione-data-documento-e-sequenza.md` §4 DB-2.
 
 ---
 
