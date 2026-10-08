@@ -41,31 +41,30 @@ SELECT plan(10);
 -- ============================================================
 -- Setup fixture: contesti di riferimento
 -- ============================================================
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza
+--   tipi_utenze (evita il guard tipo/classe sui satelliti utilities), legato
+--   dal z90 all'emittente di chi agisce (contesto gia' aperto); listino, con la
+--   sua versione ATTIVA da oggi, sulla stessa utility.
+CREATE TEMP TABLE tmp_sm_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'state machine offerte',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_sm_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_sm_cli), 'state machine offerte');
+
 CREATE TEMP TABLE tmp_sm_ctx AS
 SELECT
-    -- BA senza tipi_utenze (evita guard tipo/classe al push)
-    (SELECT ba.id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-      ORDER BY ba.id LIMIT 1) AS billing_account_id,
-    (SELECT ba.istanza_utility_id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-    (SELECT ba.utility_id
-       FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (
-          SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
-      )
-      ORDER BY ba.id LIMIT 1) AS utility_id,
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
-    (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA'  ORDER BY lv.id LIMIT 1) AS listino_versione_id_attiva,
-    (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato <> 'ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id_non_attiva,
+    (SELECT billing_account_id FROM tmp_sm_cli) AS billing_account_id,
+    (SELECT istanza_utility_id FROM tmp_sm_cli) AS istanza_utility_id,
+    (SELECT utility_id FROM tmp_sm_cli) AS utility_id,
+    script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
+    (SELECT listino_id FROM tmp_sm_listino) AS listino_id,
+    (SELECT listino_versione_id FROM tmp_sm_listino) AS listino_versione_id_attiva,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA') AS stato_accettata_id,
@@ -97,17 +96,24 @@ WITH ins AS (
 )
 INSERT INTO tmp_sm_ids SELECT 'A', id FROM ins;
 
--- Slot B: BOZZA, versione NON ATTIVA (test 3; solo se esiste)
+-- Slot B: BOZZA, versione NON ATTIVA (test 3). 2026-10-08 (§F.2): la versione
+--   CHIUSA si costruisce: e' quella del listino scaduto dello slot A, chiusa qui
+--   (ATTIVA -> CHIUSA e' ammessa perche' valido_al e' passato). Prima era «la
+--   prima versione non ATTIVA di un listino qualsiasi», scollegata dal listino.
+--   Lo slot A non cambia esito: il listino resta senza versione in vigore.
+UPDATE vendite.listini_versioni SET stato = 'CHIUSA'
+ WHERE id = (SELECT listino_versione_id FROM tmp_sm_listino_scaduto);
+
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
         listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
     )
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id, ctx.utility_id,
-           ctx.listino_id, ctx.listino_versione_id_non_attiva,
+           (SELECT listino_id FROM tmp_sm_listino_scaduto),
+           (SELECT listino_versione_id FROM tmp_sm_listino_scaduto),
            DATE '2083-01-01', ctx.stato_bozza_id
       FROM tmp_sm_ctx ctx
-     WHERE ctx.listino_versione_id_non_attiva IS NOT NULL
     RETURNING id
 )
 INSERT INTO tmp_sm_ids SELECT 'B', id FROM ins;

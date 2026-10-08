@@ -393,6 +393,44 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_df_offerte (slot text, offerta_id bigint);
 
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo). Le offerte
+--   del fixture sono dell'emittente A e del primo BA dei dati: il listino si
+--   COSTRUISCE con A e con la utility del BA (tipologia: la prima che la utility
+--   ammette, come fn_pgtap_crea_listino), con una versione ATTIVA da oggi. Qui e'
+--   scritto a mano perche' il builder prende l'emittente di chi agisce, e il
+--   passaggio all'operatore di A viene dopo; il file gira da owner (marcatore in
+--   testa), quindi il guard di scope dei listini non scatta.
+--   ⚠️ Prima stesura dello stesso giorno: si cercava fra i dati un listino di A
+--   sulla utility del BA, e su dbdev non c'era (offerta con listino NULL).
+--   Listino e versione in due istruzioni: i trigger della versione rileggono il
+--   listino, e nella stessa istruzione non lo vedrebbero.
+CREATE TEMP TABLE tmp_df_listino AS
+WITH l AS (
+    INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
+    SELECT 'PGTAP_DF_' || substr(md5(clock_timestamp()::text || random()::text), 1, 12),
+           'Fixture pgTAP: dash fatturazione', r.utility_id,
+           (SELECT ltu.tipologia_id FROM config.listini_tipologie_utilities ltu
+              JOIN config.listini_tipologie lt ON lt.id = ltu.tipologia_id AND lt.attivo
+             WHERE ltu.utility_id = r.utility_id AND ltu.attivo
+             ORDER BY lt.ordinamento, lt.id LIMIT 1),
+           r.ef_a_sr
+      FROM tmp_df_refs r
+    RETURNING id
+)
+SELECT l.id AS listino_id, NULL::bigint AS listino_versione_id FROM l;
+
+WITH v AS (
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
+    SELECT listino_id, 'PGTAP_DF_V1', CURRENT_DATE, 'ATTIVA' FROM tmp_df_listino
+    RETURNING id
+)
+UPDATE tmp_df_listino SET listino_versione_id = (SELECT id FROM v);
+
+UPDATE tmp_df_refs r
+   SET listino_id          = (SELECT listino_id FROM tmp_df_listino),
+       listino_versione_id = (SELECT listino_versione_id FROM tmp_df_listino);
+
 WITH ins AS (
   INSERT INTO vendite.offerte_commerciali (
     emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,

@@ -64,9 +64,17 @@ su INSERT e resetta la fonte se il cambio di `tipo_erogazione` rende la combinaz
 | `LETTURE` | Quantita da letture utility | No — tag "Da letture utility" |
 | `DERIVATA_COMPONENTI` | Quantita calcolata dai componenti BoM del padre composito | No — tag "Derivata dai componenti" |
 
-Per `DERIVATA_COMPONENTI`: la colonna `quantita` viene **scritta automaticamente** dal trigger
-`trg_contratti_righe_z90_propaga_qta_componenti_upd` a partire dai componenti — non e’ editabile dall’utente
-ma non e’ vuota nel DB.
+⚠️ **Per `DERIVATA_COMPONENTI` questa pagina diceva** che `quantita` la scrive
+`trg_contratti_righe_z90_propaga_qta_componenti_upd` a partire dai componenti. **Non è così**
+(verificato il 2026-10-08): quel trigger propaga la quantità dal padre **ai** componenti. Sulla
+riga DERIVATA nessuno calcola `quantita`: resta quella mandata o rimasta da una FISSA. Domanda
+aperta in `brief-db-offerta-emissione-ed-erogazione` §F.4.3.
+
+⭐ **`quantita` è calcolata** (dal 2026-10-08): con una fonte a valle (MANUALE, LETTURE,
+TIMESHEET; `script.fn_fonte_porta_quantita` = false) `script.trgfn_qta_from_operativa` la porta a
+NULL a ogni INSERT e UPDATE; il guard `script.trgfn_righe_guard_quantita_per_fonte` rifiuta solo
+`qta_operativa` (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, campo `qta_operativa`). Rete:
+`chk_contrighe_quantita_per_fonte`. Brief `brief-db-offerta-emissione-ed-erogazione` §F.1.
 
 #### Matrice coerenza (legenda: ✅ default · 🟢 secondaria · 🟡 rara/edge · ❌ vietata)
 

@@ -1,0 +1,478 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_qta_from_operativa: CON UNA FONTE A VALLE LA QUANTITA' LA
+# SVUOTA IL DB
+#   Brief: brief-db-offerta-emissione-ed-erogazione §F.1 (F-1.1, decisione di
+#   Tid del 2026-10-08: «quantita e' calcolata, la scrive solo il DB»).
+#
+# -- IL DIFETTO ---------------------------------------------------------
+#   FISSA -> MANUALE: il form manda qta_operativa = NULL. Il trigger, con
+#   qta_operativa NULL e fonte <> FISSA, usciva senza toccare quantita, e la
+#   quantita rimasta finiva rifiutata dal guard (campo quantita, che il form
+#   non ha). DERIVATA_COMPONENTI -> MANUALE: qta_operativa era gia' NULL, e il
+#   short-circuit dell'UPDATE usciva ancora prima.
+#
+# -- COSA CAMBIA ---------------------------------------------------------
+#   · i parametri si leggono PRIMA del short-circuit, e con loro la fonte;
+#   · con una fonte a valle (script.fn_fonte_porta_quantita = false, -10):
+#     NEW.quantita := NULL e RETURN, a ogni INSERT e UPDATE. qta_operativa
+#     valorizzata l'ha gia' rifiutata il guard (-11), che gira prima
+#     («guard_q» < «qta_»); il CHECK chk_*_quantita_per_fonte resta la rete;
+#   · il resto e' invariato: E_QTA_MISSING su FISSA, DERIVATA_COMPONENTI senza
+#     qta_operativa esce senza toccare quantita, calcolo su FISSA;
+#   · le altre quattro tabelle (preventivi, ordini, DDT, resi) non passano
+#     TG_ARGV[1]: per loro nessun cambio;
+#   · DECLARE ancorati con %TYPE dove c'e' una colonna d'origine
+#     (v_factor_used resta numeric: resi_righe.factor_to_base non ha scala).
+#   ⚠️ I componenti del kit (z90_propaga_qta_componenti) seguono il padre: con
+#   quantita NULL trgfn_componenti_calcola_quantita usa COALESCE(padre, 1),
+#   quindi il NOT NULL di *_componenti.quantita regge.
+#
+# Corpo di partenza: la doc auto-generata (il 20260921-48 lo aveva ritoccato
+# per sostituzione, quindi nessuno YAML porta il corpo vivo intero).
+# Ritorno indietro: il corpo vivo e il suo COMMENT, alla lettera.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261008-12-update-trgfn-qta-from-operativa-fonte-a-valle-mctit.yaml
+
+  - changeSet:
+      id: 20261008-12-update-trgfn-qta-from-operativa-fonte-a-valle
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.trgfn_qta_from_operativa: con una fonte a valle porta quantita a NULL a ogni
+        INSERT e UPDATE. Brief: brief-db-offerta-emissione-ed-erogazione §F.1 (F-1.1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_fonte_porta_quantita'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- Parametri. Tipi nudi DICHIARATI: un interruttore del trigger e il NOME
+                -- di una colonna, nessuna colonna di cui siano il riflesso.
+                v_fill_factor_to_base boolean := false;
+                v_fonte_col           text    := NULL;
+                -- Il valore della fonte: la colonna fonte_quantita_attesa (gemella su
+                -- offerte_commerciali_eccezioni, stesso tipo).
+                v_fonte_val           vendite.contratti_righe.fonte_quantita_attesa%TYPE := NULL;
+
+                -- Mapping/policy
+                v_factor_map   catalogo.articoli_uom_operativa.factor_to_base%TYPE;
+                v_qty_step     catalogo.articoli_uom_operativa.qty_step%TYPE;
+                v_max_dec      catalogo.articoli_uom_operativa.max_decimals%TYPE;
+                v_forbid_frac  catalogo.articoli_uom_operativa.forbid_fraction%TYPE;
+
+                -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente).
+                -- numeric nudo DICHIARATO: arriva dal factor_to_base della riga, che su
+                -- sei tabelle ha scale diverse (resi_righe e' numeric senza scala): un
+                -- ancoraggio a numeric(18,6) lo arrotonderebbe in silenzio.
+                v_factor_used  numeric := 1;
+
+                BEGIN
+
+                -- ------------------------------------------------------------
+                -- script.trgfn_qta_from_operativa()
+                -- Sorgente unica: UoM/quantità OPERATIVA.
+                -- Su INSERT: calcola sempre quantita da qta_operativa.
+                -- Su UPDATE: short-circuit se nessun input operativo è cambiato.
+                --
+                -- TG_ARGV (opzionali):
+                --   [0] fill_factor_to_base :: boolean  (default FALSE)
+                --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
+                --   [1] fonte_nullability_col :: text   (default NULL)
+                --       Nome colonna della fonte della quantita' (fonte_quantita_attesa,
+                --       su contratti_righe e offerte_commerciali_eccezioni), letta via
+                --       to_jsonb(NEW). Con una fonte a valle (fn_fonte_porta_quantita =
+                --       false) quantita := NULL, sempre. Con qta_operativa NULL e una fonte
+                --       diversa da 'FISSA' (cioe' DERIVATA_COMPONENTI) -> RETURN NEW senza raise.
+                --
+                -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
+                --   e i due parametri che li governavano:
+                --     · [1] fill_uom_id_base -> scriveva NEW.uom_id. Nessuna delle sei
+                --       tabelle agganciate ha una colonna `uom_id`, e tutti e sei i
+                --       trigger passavano 'false': il ramo non era raggiungibile, e se
+                --       lo si fosse acceso avrebbe fatto fallire ogni riga.
+                --     · [2] target_col = 'quantita_fissa' -> `quantita_fissa` non
+                --       esiste in **nessuna** tabella del database, e tutti e sei i
+                --       trigger passavano 'quantita'. Un parametro con un solo valore
+                --       lecito e' una bugia nella firma.
+                --   Gli argomenti scalano: fonte_nullability_col era [3], ora e' [1].
+                --   Precedente: 20260804-29 (stesso ragionamento su p_scope).
+                -- ------------------------------------------------------------
+
+                -- 0) Parametri. Letti PRIMA del short-circuit (rev 2026-10-08): la fonte
+                --    serve anche su un UPDATE che non tocca gli input operativi.
+                IF TG_NARGS >= 1 THEN
+                  v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
+                END IF;
+                IF TG_NARGS >= 2 AND TG_ARGV[1] IS NOT NULL AND TG_ARGV[1] <> '' THEN
+                  v_fonte_col := TG_ARGV[1];
+                  v_fonte_val := to_jsonb(NEW) ->> v_fonte_col;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- Fonte a valle: quantita e' calcolata, e qui vale NULL (rev 2026-10-08,
+                -- brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).
+                -- Con una fonte che non porta la quantita' (script.fn_fonte_porta_quantita:
+                -- MANUALE, LETTURE, TIMESHEET) la quantita' arriva a valle: il DB porta
+                -- quantita a NULL a ogni INSERT e a ogni UPDATE, anche quando gli input
+                -- operativi non cambiano (DERIVATA_COMPONENTI -> MANUALE: qta_operativa era
+                -- gia' vuota, e il short-circuit qui sotto la lasciava). qta_operativa e'
+                -- l'input: se e' valorizzata la rifiuta il guard
+                -- trgfn_righe_guard_quantita_per_fonte, che gira prima di questo trigger.
+                --------------------------------------------------------------------
+                IF v_fonte_val IS NOT NULL
+                   AND NOT script.fn_fonte_porta_quantita(v_fonte_val) THEN
+                  NEW.quantita := NULL;
+                  RETURN NEW;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- short-circuit: solo su UPDATE dove nessun input operativo è cambiato.
+                -- Su INSERT: calcola sempre (qta_operativa + uom → quantita).
+                --------------------------------------------------------------------
+                IF TG_OP = 'UPDATE'
+                   AND NEW.qta_operativa    IS NOT DISTINCT FROM OLD.qta_operativa
+                   AND NEW.uom_operativa_id IS NOT DISTINCT FROM OLD.uom_operativa_id
+                   AND NEW.factor_to_base   IS NOT DISTINCT FROM OLD.factor_to_base THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'.
+                -- Le fonti a valle sono gia' uscite sopra: qui arriva solo una fonte che
+                -- porta la quantita' senza che la scriva l'operatore (DERIVATA_COMPONENTI).
+                IF NEW.qta_operativa IS NULL THEN
+                  IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    'application',
+                    'script.trgfn_qta_from_operativa',
+                    'E_QTA_MISSING',
+                    jsonb_build_object(
+                      'campo', 'qta_operativa',
+                      'schema', TG_TABLE_SCHEMA,
+                      'table',  TG_TABLE_NAME,
+                      'qualified_table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id
+                    ),
+                    NULL::uuid,
+                    'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'column', 'qta_operativa'
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 1) UoM operativa: se manca, fallback a UoM base articolo
+                --------------------------------------------------------------------
+                IF NEW.uom_operativa_id IS NULL THEN
+                  SELECT a.uom_id
+                    INTO NEW.uom_operativa_id
+                  FROM catalogo.articoli a
+                  WHERE a.id = NEW.articolo_id;
+                END IF;
+
+                IF NEW.uom_operativa_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'application','script.trgfn_qta_from_operativa',
+                    'E_UOM_MISSING',
+                    jsonb_build_object('campo', 'uom_operativa_id', 'articolo_id', NEW.articolo_id),
+                    NULL::uuid,
+                    'articolo_id', COALESCE(NEW.articolo_id::text, 'NULL')
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 2) Mapping factor/policy
+                --------------------------------------------------------------------
+                SELECT aum.factor_to_base,
+                      aum.qty_step,
+                      COALESCE(aum.max_decimals,6),
+                      aum.forbid_fraction
+                  INTO v_factor_map, v_qty_step, v_max_dec, v_forbid_frac
+                FROM catalogo.articoli_uom_operativa aum
+                WHERE aum.articolo_id = NEW.articolo_id
+                  AND aum.uom_id      = NEW.uom_operativa_id
+                  AND aum.attivo      = TRUE
+                  AND (aum.valido_dal IS NULL OR aum.valido_dal <= CURRENT_DATE)
+                  AND (aum.valido_al  IS NULL OR aum.valido_al  >= CURRENT_DATE)
+                LIMIT 1;
+
+                v_factor_map := COALESCE(v_factor_map, 1);
+
+                v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
+
+                IF v_fill_factor_to_base THEN
+                  IF NEW.factor_to_base IS NULL THEN
+                    NEW.factor_to_base := v_factor_used;
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 3) Policy su quantità operativa
+                --------------------------------------------------------------------
+                IF v_forbid_frac IS TRUE AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database','script.trgfn_qta_from_operativa',
+                    'E_QTA_OPERATIVA_NON_INTERA',
+                    jsonb_build_object(
+                      'campo', 'qta_operativa',
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id,
+                      'qta_operativa', NEW.qta_operativa
+                    ),
+                    NULL::uuid,
+                    'articolo_id', NEW.articolo_id::text,
+                    'uom_operativa_id', NEW.uom_operativa_id::text
+                  );
+                END IF;
+
+                IF v_qty_step IS NOT NULL AND v_qty_step > 0 THEN
+                  IF abs(NEW.qta_operativa / v_qty_step - ROUND(NEW.qta_operativa / v_qty_step)) > 1e-9 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','script.trgfn_qta_from_operativa',
+                      'E_QTA_OPER_STEP_INVALIDO',
+                      jsonb_build_object(
+                        'campo', 'qta_operativa',
+                        'articolo_id', NEW.articolo_id,
+                        'uom_operativa_id', NEW.uom_operativa_id,
+                        'qta_operativa', NEW.qta_operativa,
+                        'qty_step', v_qty_step
+                      ),
+                      NULL::uuid,
+                      'articolo_id',NEW.articolo_id::text,
+                      'uom_operativa_id',NEW.uom_operativa_id::text
+                    );
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 4) Calcolo finale della quantita' base
+                --------------------------------------------------------------------
+                NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
+              IS 'Calcola quantita (UoM base) da qta_operativa * fattore: quantita è una colonna CALCOLATA, la scrive solo questo trigger. TG_ARGV[0] = fill_factor_to_base (snapshot del fattore in factor_to_base se NULL); TG_ARGV[1] = colonna della fonte della quantità (fonte_quantita_attesa, su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni). Con una fonte a valle (script.fn_fonte_porta_quantita = false: MANUALE, LETTURE, TIMESHEET) porta quantita a NULL a ogni INSERT e UPDATE, anche se gli input operativi non cambiano; qta_operativa valorizzata la rifiuta prima il guard script.trgfn_righe_guard_quantita_per_fonte. Con qta_operativa NULL: E_QTA_MISSING, salvo una fonte diversa da FISSA (DERIVATA_COMPONENTI). Short-circuit su UPDATE senza variazioni agli input operativi; su INSERT calcola sempre. Rev 2026-05-27 (short-circuit), 2026-08-04 (rami morti), 2026-10-08 (fonte a valle: brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- Parametri
+                v_fill_factor_to_base boolean := false;
+                v_fonte_col           text    := NULL;
+                v_fonte_val           text    := NULL;
+
+                -- Mapping/policy
+                v_factor_map   numeric;
+                v_qty_step     numeric;
+                v_max_dec      int;
+                v_forbid_frac  boolean;
+
+                -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente)
+                v_factor_used  numeric := 1;
+
+                BEGIN
+
+                -- ------------------------------------------------------------
+                -- script.trgfn_qta_from_operativa()
+                -- Sorgente unica: UoM/quantità OPERATIVA.
+                -- Su INSERT: calcola sempre quantita da qta_operativa.
+                -- Su UPDATE: short-circuit se nessun input operativo è cambiato.
+                --
+                -- TG_ARGV (opzionali):
+                --   [0] fill_factor_to_base :: boolean  (default FALSE)
+                --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
+                --   [1] fonte_nullability_col :: text   (default NULL)
+                --       Nome colonna che governa la nullabilita' di qta_operativa.
+                --       Se valorizzato e qta_operativa IS NULL: legge il valore di quella colonna
+                --       via to_jsonb(NEW). Se != 'FISSA' (e non NULL) -> RETURN NEW senza raise.
+                --       Usare per tabelle con fonte_quantita_attesa (es. contratti_righe).
+                --
+                -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
+                --   e i due parametri che li governavano:
+                --     · [1] fill_uom_id_base -> scriveva NEW.uom_id. Nessuna delle sei
+                --       tabelle agganciate ha una colonna `uom_id`, e tutti e sei i
+                --       trigger passavano 'false': il ramo non era raggiungibile, e se
+                --       lo si fosse acceso avrebbe fatto fallire ogni riga.
+                --     · [2] target_col = 'quantita_fissa' -> `quantita_fissa` non
+                --       esiste in **nessuna** tabella del database, e tutti e sei i
+                --       trigger passavano 'quantita'. Un parametro con un solo valore
+                --       lecito e' una bugia nella firma.
+                --   Gli argomenti scalano: fonte_nullability_col era [3], ora e' [1].
+                --   Precedente: 20260804-29 (stesso ragionamento su p_scope).
+                -- ------------------------------------------------------------
+
+                --------------------------------------------------------------------
+                -- short-circuit: solo su UPDATE dove nessun input operativo è cambiato.
+                -- Su INSERT: calcola sempre (qta_operativa + uom → quantita).
+                --------------------------------------------------------------------
+                IF TG_OP = 'UPDATE'
+                   AND NEW.qta_operativa    IS NOT DISTINCT FROM OLD.qta_operativa
+                   AND NEW.uom_operativa_id IS NOT DISTINCT FROM OLD.uom_operativa_id
+                   AND NEW.factor_to_base   IS NOT DISTINCT FROM OLD.factor_to_base THEN
+                  RETURN NEW;
+                END IF;
+
+                -- 0) Parametri
+                IF TG_NARGS >= 1 THEN
+                  v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
+                END IF;
+                IF TG_NARGS >= 2 AND TG_ARGV[1] IS NOT NULL AND TG_ARGV[1] <> '' THEN
+                  v_fonte_col := TG_ARGV[1];
+                END IF;
+
+                -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'
+                IF NEW.qta_operativa IS NULL THEN
+                  IF v_fonte_col IS NOT NULL THEN
+                    v_fonte_val := to_jsonb(NEW) ->> v_fonte_col;
+                    IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
+                      RETURN NEW;
+                    END IF;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    'application',
+                    'script.trgfn_qta_from_operativa',
+                    'E_QTA_MISSING',
+                    jsonb_build_object(
+                      'campo', 'qta_operativa',
+                      'schema', TG_TABLE_SCHEMA,
+                      'table',  TG_TABLE_NAME,
+                      'qualified_table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id
+                    ),
+                    NULL::uuid,
+                    'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'column', 'qta_operativa'
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 1) UoM operativa: se manca, fallback a UoM base articolo
+                --------------------------------------------------------------------
+                IF NEW.uom_operativa_id IS NULL THEN
+                  SELECT a.uom_id
+                    INTO NEW.uom_operativa_id
+                  FROM catalogo.articoli a
+                  WHERE a.id = NEW.articolo_id;
+                END IF;
+
+                IF NEW.uom_operativa_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'application','script.trgfn_qta_from_operativa',
+                    'E_UOM_MISSING',
+                    jsonb_build_object('campo', 'uom_operativa_id', 'articolo_id', NEW.articolo_id),
+                    NULL::uuid,
+                    'articolo_id', COALESCE(NEW.articolo_id::text, 'NULL')
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 2) Mapping factor/policy
+                --------------------------------------------------------------------
+                SELECT aum.factor_to_base,
+                      aum.qty_step,
+                      COALESCE(aum.max_decimals,6),
+                      aum.forbid_fraction
+                  INTO v_factor_map, v_qty_step, v_max_dec, v_forbid_frac
+                FROM catalogo.articoli_uom_operativa aum
+                WHERE aum.articolo_id = NEW.articolo_id
+                  AND aum.uom_id      = NEW.uom_operativa_id
+                  AND aum.attivo      = TRUE
+                  AND (aum.valido_dal IS NULL OR aum.valido_dal <= CURRENT_DATE)
+                  AND (aum.valido_al  IS NULL OR aum.valido_al  >= CURRENT_DATE)
+                LIMIT 1;
+
+                v_factor_map := COALESCE(v_factor_map, 1);
+
+                v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
+
+                IF v_fill_factor_to_base THEN
+                  IF NEW.factor_to_base IS NULL THEN
+                    NEW.factor_to_base := v_factor_used;
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 3) Policy su quantità operativa
+                --------------------------------------------------------------------
+                IF v_forbid_frac IS TRUE AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database','script.trgfn_qta_from_operativa',
+                    'E_QTA_OPERATIVA_NON_INTERA',
+                    jsonb_build_object(
+                      'campo', 'qta_operativa',
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id,
+                      'qta_operativa', NEW.qta_operativa
+                    ),
+                    NULL::uuid,
+                    'articolo_id', NEW.articolo_id::text,
+                    'uom_operativa_id', NEW.uom_operativa_id::text
+                  );
+                END IF;
+
+                IF v_qty_step IS NOT NULL AND v_qty_step > 0 THEN
+                  IF abs(NEW.qta_operativa / v_qty_step - ROUND(NEW.qta_operativa / v_qty_step)) > 1e-9 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','script.trgfn_qta_from_operativa',
+                      'E_QTA_OPER_STEP_INVALIDO',
+                      jsonb_build_object(
+                        'campo', 'qta_operativa',
+                        'articolo_id', NEW.articolo_id,
+                        'uom_operativa_id', NEW.uom_operativa_id,
+                        'qta_operativa', NEW.qta_operativa,
+                        'qty_step', v_qty_step
+                      ),
+                      NULL::uuid,
+                      'articolo_id',NEW.articolo_id::text,
+                      'uom_operativa_id',NEW.uom_operativa_id::text
+                    );
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 4) Calcolo finale della quantita' base
+                --------------------------------------------------------------------
+                NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
+              IS 'Calcola quantita (base) da qta_operativa * factor. TG_ARGV[0]=fill_factor_to_base, [1]=fill_uom_id_base, [2]=target_col (default quantita). TG_ARGV[3]=fonte_nullability_col: se valorizzato e qta_operativa IS NULL, legge il valore di quella colonna; se != FISSA -> RETURN NEW senza raise. Short-circuit limitato a UPDATE senza variazioni agli input operativi: su INSERT calcola sempre quantita da qta_operativa (fix bug INSERT FISSA). Rev 2026-05-27.';

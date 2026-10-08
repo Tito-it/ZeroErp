@@ -43,8 +43,11 @@ SELECT
     ba.categoria_cliente_id     AS categoria_id,
     ba.istanza_utility_id       AS istanza_utility_id,
     ba.utility_id               AS utility_id,
-    (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-       WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS emittente_srid,
+    -- 2026-10-08 (§F.2): l'emittente e' quello del BA, non il primo per id: il
+    --   listino del contratto dev'essere del suo emittente (guard nuovo), e la riga
+    --   della matrice categorie_clienti_listini con lui.
+    (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)) AS emittente_srid,
     a.id                        AS articolo_id,
     a.uom_id                    AS uom_id,
     a.listino_tipologia_id      AS tipologia_id
@@ -77,8 +80,8 @@ SELECT
        SELECT 1
          FROM config.utilities_tipi_ruolo utr
          JOIN anagrafiche.soggetti_ruoli sr
-           ON sr.id = (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-                        WHERE attivo IS TRUE ORDER BY id LIMIT 1)
+           ON sr.id = (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+                        WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id))
         WHERE utr.utility_id = ba.utility_id
           AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
           AND utr.attivo IS TRUE
@@ -95,19 +98,34 @@ SELECT
        SELECT 1 FROM vendite.contratti c
         WHERE c.istanza_utility_id = ba.istanza_utility_id
    )
+   -- 2026-10-08 (§F.2): e un listino della tipologia dell'articolo, della utility e
+   --   dell'emittente del BA (quello che tmp_ctx_listino sceglie qui sotto).
+   AND EXISTS (
+       SELECT 1 FROM vendite.listini l
+         JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+        WHERE l.attivo IS TRUE
+          AND l.tipologia_id = a.listino_tipologia_id
+          AND l.utility_id   = ba.utility_id
+          AND ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+   )
  ORDER BY ba.id, a.id
  LIMIT 1;
 
--- Listino di test: richiede solo tipologia coerente con l'articolo (il guard
+-- Listino di test: tipologia coerente con l'articolo (il guard
 -- trgfn_listini_righe_guard_tipologia verifica articolo.listino_tipologia_id =
--- listino.tipologia_id, non l'utility). L'utility del listino puo' essere
--- qualsiasi: nella matrice categorie_clienti_listini il listino e' un
--- "ponte" selezionato per (categoria, utility-del-BA, emittente, classe).
+-- listino.tipologia_id).
+-- ⚠️ 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: qui c'era scritto
+--   «l'utility del listino puo' essere qualsiasi». Non e' piu' vero: il listino di
+--   un contratto e' della sua utility e del suo emittente (guard nuovo). Articolo e
+--   tipologia vengono dai dati e sono il soggetto del test, quindi si FILTRA invece
+--   di ricostruire: stessa utility ed emittente del BA.
 CREATE TEMP TABLE tmp_ctx_listino AS
 SELECT l.id AS listino_id
   FROM vendite.listini l, tmp_ctx t
  WHERE l.tipologia_id = t.tipologia_id
    AND l.attivo       = TRUE
+   AND l.utility_id   = t.utility_id
+   AND l.emittente_soggetto_ruolo_id = t.emittente_srid
  ORDER BY l.id
  LIMIT 1;
 

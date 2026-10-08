@@ -41,23 +41,27 @@ SELECT plan(10);
 -- ============================================================
 -- Setup fixture
 -- ============================================================
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza tipi_utenze,
+--   legato dal z90 all'emittente di chi agisce; listino sulla stessa utility. Un
+--   cliente nuovo non ha contratti: niente sovrapposizioni con quelli dei dati.
 CREATE TEMP TABLE tmp_ctx_ba AS
-SELECT ba.id AS billing_account_id,
-       ba.istanza_utility_id,
-       ba.utility_id
-  FROM anagrafiche.billing_account ba
- WHERE NOT EXISTS (
-     SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
- )
- ORDER BY ba.id
- LIMIT 1;
+SELECT c.billing_account_id,
+       c.istanza_utility_id,
+       c.utility_id
+  FROM dbops.fn_pgtap_crea_cliente_ba(
+           'schema step21',
+           (SELECT u.id FROM config.utilities u
+             WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+             ORDER BY u.id LIMIT 1)) c;
 
 CREATE TEMP TABLE tmp_ctx_stati AS
 SELECT
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT') AS id_draft;
 
 CREATE TEMP TABLE tmp_ctx_listino AS
-SELECT id AS listino_id FROM vendite.listini WHERE attivo IS TRUE ORDER BY id LIMIT 1;
+SELECT listino_id FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_ctx_ba), 'schema step21');
 
 -- ============================================================
 -- 1) Colonna listino_versione_id presente

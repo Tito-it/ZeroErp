@@ -41,17 +41,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- Setup fixture
 -- ============================================================
 
-CREATE TEMP TABLE tmp_esc_ctx AS
-SELECT
-    ba.id                   AS ba_id,
-    ba.istanza_utility_id,
-    ba.utility_id,
-    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
-    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
-  FROM anagrafiche.billing_account ba
- ORDER BY ba.id
- LIMIT 1;
-
 -- Trova un bundle con componenti attivi in una versione operativa.
 -- Se non esiste alcun bundle nel DB, i test 3-5 vengono skippati.
 CREATE TEMP TABLE tmp_esc_bundle AS
@@ -67,8 +56,34 @@ SELECT
    AND lv.attivo   = TRUE
    AND lv.stato    IN ('ATTIVA', 'CHIUSA')
    AND lv.validita @> CURRENT_DATE
+   -- 2026-10-08 (§F.2): un bundle di un listino dell'emittente di chi agisce, perche'
+   --   il contratto del fixture e' suo.
+   AND EXISTS (SELECT 1 FROM vendite.listini l
+                WHERE l.id = lv.listino_id
+                  AND l.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore())
  ORDER BY lrc.id
  LIMIT 1;
+
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo). Il listino e'
+--   quello del bundle trovato nei dati (il soggetto del test), quindi il CLIENTE si
+--   costruisce sulla sua utility, legato dal z90 all'emittente di chi agisce; prima
+--   era il primo billing account in assoluto. Senza bundle la utility e' NULL, il
+--   builder prende la prima, e il contratto non nasce comunque.
+CREATE TEMP TABLE tmp_esc_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'esclusione figlio bundle',
+    (SELECT l.utility_id FROM vendite.listini l
+      WHERE l.id = (SELECT listino_id FROM tmp_esc_bundle LIMIT 1)));
+
+CREATE TEMP TABLE tmp_esc_ctx AS
+SELECT
+    c.billing_account_id    AS ba_id,
+    c.istanza_utility_id,
+    c.utility_id,
+    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
+    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
+  FROM tmp_esc_cli c;
 
 -- Articolo standalone nel listino del bundle (non è figlio di bundle)
 CREATE TEMP TABLE tmp_esc_standalone AS

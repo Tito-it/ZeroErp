@@ -110,48 +110,39 @@ SELECT (SELECT m.articolo_id FROM catalogo.articoli_uom_operativa m
                      WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
       LIMIT 1) AS articolo_f6_id;
 
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. La utility e' la prima che ammette la
+--   tipologia dell'articolo f6 (lo stesso predicato del giro B3, prima sul BA);
+--   il cliente, legato dal z90 all'emittente di chi agisce, e il listino nascono
+--   su di lei.
+CREATE TEMP TABLE tmp_oe_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'qta from operativa offerte',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id = (SELECT articolo_f6_id FROM tmp_oe_f6)
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = u.id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
+        AND EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                     WHERE ltu.utility_id = u.id AND ltu.attivo)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_oe_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_oe_cli), 'qta from operativa offerte');
+
 CREATE TEMP TABLE tmp_oe_ctx AS
 SELECT
-    (SELECT ba.id FROM anagrafiche.billing_account ba
-      WHERE TRUE AND ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-        -- rev 2026-10-07 (giro B3): la utility ammette la tipologia dell'articolo f6
-        AND NOT EXISTS (
-            SELECT 1 FROM catalogo.articoli a
-             WHERE a.id = (SELECT articolo_f6_id FROM tmp_oe_f6)
-               AND a.listino_tipologia_id IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
-                                WHERE ltu.utility_id = ba.utility_id
-                                  AND ltu.tipologia_id = a.listino_tipologia_id
-                                  AND ltu.attivo))
-      ORDER BY ba.id LIMIT 1) AS billing_account_id,
-    (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-      WHERE TRUE AND ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-        -- rev 2026-10-07 (giro B3): la utility ammette la tipologia dell'articolo f6
-        AND NOT EXISTS (
-            SELECT 1 FROM catalogo.articoli a
-             WHERE a.id = (SELECT articolo_f6_id FROM tmp_oe_f6)
-               AND a.listino_tipologia_id IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
-                                WHERE ltu.utility_id = ba.utility_id
-                                  AND ltu.tipologia_id = a.listino_tipologia_id
-                                  AND ltu.attivo))
-      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-    (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-      WHERE TRUE AND ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-        -- rev 2026-10-07 (giro B3): la utility ammette la tipologia dell'articolo f6
-        AND NOT EXISTS (
-            SELECT 1 FROM catalogo.articoli a
-             WHERE a.id = (SELECT articolo_f6_id FROM tmp_oe_f6)
-               AND a.listino_tipologia_id IS NOT NULL
-               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
-                                WHERE ltu.utility_id = ba.utility_id
-                                  AND ltu.tipologia_id = a.listino_tipologia_id
-                                  AND ltu.attivo))
-      ORDER BY ba.id LIMIT 1) AS utility_id,
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
-      ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
-    (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato='ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id,
+    (SELECT billing_account_id FROM tmp_oe_cli) AS billing_account_id,
+    (SELECT istanza_utility_id FROM tmp_oe_cli) AS istanza_utility_id,
+    (SELECT utility_id FROM tmp_oe_cli) AS utility_id,
+    script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
+    (SELECT listino_id FROM tmp_oe_listino) AS listino_id,
+    (SELECT listino_versione_id FROM tmp_oe_listino) AS listino_versione_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno='BOZZA') AS stato_bozza_id,
     (SELECT articolo_f6_id FROM tmp_oe_f6) AS articolo_f6_id;
 

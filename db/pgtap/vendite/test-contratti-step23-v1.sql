@@ -51,17 +51,31 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- Setup fixture
 -- ============================================================
 
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza tipi_utenze,
+--   legato dal z90 all'emittente di chi agisce; listino (versione ATTIVA da oggi)
+--   sulla stessa utility. Effetto: il test 6 non va piu' in skip. Un cliente nuovo
+--   non ha contratti che si sovrappongano a quelli del fixture.
+CREATE TEMP TABLE tmp_s23_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'step23',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_s23_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_s23_cli), 'step23');
+
 CREATE TEMP TABLE tmp_s23_ctx AS
 SELECT
-    ba.id                                                          AS ba_id,
-    ba.istanza_utility_id,
-    ba.utility_id,
+    c.billing_account_id                                           AS ba_id,
+    c.istanza_utility_id,
+    c.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO' LIMIT 1) AS id_attivo,
-    (SELECT id FROM vendite.listini WHERE attivo = TRUE ORDER BY id LIMIT 1)             AS listino_id
-  FROM anagrafiche.billing_account ba
- ORDER BY ba.id
- LIMIT 1;
+    (SELECT listino_id FROM tmp_s23_listino)                                             AS listino_id
+  FROM tmp_s23_cli c;
 
 -- 3 articoli per i test righe
 CREATE TEMP TABLE tmp_s23_arts AS
@@ -255,10 +269,14 @@ END;
 
 -- ============================================================
 -- 7) UPDATE listino_id su contratto ATTIVO -> bloccato
+--    2026-10-08 (§F.2): il listino nuovo e' quello coerente del fixture. Uno
+--    qualunque dei dati lo rifiuterebbe prima il guard del listino del documento
+--    («guard_l» < «lock_p»), con lo stesso SQLSTATE: il test sarebbe verde per il
+--    motivo sbagliato.
 -- ============================================================
 SELECT throws_ok(
     $$UPDATE vendite.contratti
-         SET listino_id = (SELECT id FROM vendite.listini WHERE attivo = TRUE ORDER BY id LIMIT 1)
+         SET listino_id = (SELECT listino_id FROM tmp_s23_ctx)
        WHERE numero = 'PGTAP_S23_ATT'$$,
     'P0001',
     NULL,

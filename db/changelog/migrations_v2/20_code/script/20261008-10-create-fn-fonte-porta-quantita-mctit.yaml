@@ -1,0 +1,89 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE script.fn_fonte_porta_quantita: QUALI fonti portano la quantita'
+# sulla riga. Building block letto dal guard della quantita' per fonte (-11) e
+# dal calcolo della quantita' (-12).
+#
+# -- PERCHE' UN BUILDING BLOCK -----------------------------------------
+#   L'elenco «FISSA, DERIVATA_COMPONENTI» stava in due sedi: i CHECK
+#   chk_*_quantita_per_fonte (20261007-28, la rete) e la costante
+#   c_fonti_con_quantita del guard (20261007-29), confrontati da un pgTAP.
+#   Il terzo giro (brief §F, F-1.1) da' al DB anche lo SVUOTAMENTO di quantita
+#   con una fonte a valle, dentro script.trgfn_qta_from_operativa: sarebbe
+#   stata una terza copia (F-1.3). Il guard e il calcolo leggono questa
+#   funzione; il CHECK resta com'e' (F-1.2: «invariato») e il pgTAP confronta
+#   il suo elenco con la risposta di questa funzione su tutto il vocabolario.
+#
+# -- PERCHE' NON UN DATO ----------------------------------------------
+#   F-1.3 suggeriva una colonna su un vocabolario delle fonti. Un CHECK non
+#   legge tabelle, quindi la rete avrebbe tenuto comunque un elenco suo: il
+#   dato avrebbe tolto una copia e ne avrebbe aggiunta un'altra. Un vocabolario
+#   delle sole fonti oggi non esiste (config.erogazioni_fonti e' per coppia).
+#
+# -- LA FORMA ----------------------------------------------------------
+#   LANGUAGE sql IMMUTABLE, sui valori: si inlinea. Parametro ancorato con
+#   %TYPE a contratti_righe.fonte_quantita_attesa (la gemella d'offerta ha lo
+#   stesso tipo, varchar(32)). Non STRICT: una fonte
+#   NULL da' NULL, e i chiamanti la escludono prima (la riga senza fonte la
+#   giudicano il guard d'obbligo e il CHECK dell'esclusione).
+#   Una fonte nuova del vocabolario nasce «a valle» finche' qualcuno non la
+#   aggiunge qui E nei due CHECK.
+#
+# Brief: brief-db-offerta-emissione-ed-erogazione §F.1 (F-1.3).
+# Ritorno indietro: DROP (dopo il rollback di -11 e -12, che la leggono).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261008-10-create-fn-fonte-porta-quantita-mctit.yaml
+
+  - changeSet:
+      id: 20261008-10-create-fn-fonte-porta-quantita
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce script.fn_fonte_porta_quantita: le fonti che portano la quantita' sulla riga
+        (FISSA, DERIVATA_COMPONENTI). Brief: brief-db-offerta-emissione-ed-erogazione §F.1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_fonte_porta_quantita(
+                  p_fonte vendite.contratti_righe.fonte_quantita_attesa%TYPE)
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- FISSA: la quantita' e' quella della riga (qta_operativa -> quantita).
+                  -- DERIVATA_COMPONENTI: la riga composita la porta.
+                  -- Ogni altra fonte (MANUALE, LETTURE, TIMESHEET) la porta a valle.
+                  SELECT p_fonte IN ('FISSA', 'DERIVATA_COMPONENTI');
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_fonte_porta_quantita(character varying) IS
+                  'Building block: true se la fonte (fonte_quantita_attesa) porta la quantita'' sulla '
+                  'riga (FISSA, DERIVATA_COMPONENTI), false se la quantita'' arriva a valle (MANUALE, '
+                  'LETTURE, TIMESHEET, e ogni fonte nuova finche'' non la si aggiunge qui), NULL su fonte '
+                  'NULL. Lettori: script.trgfn_righe_guard_quantita_per_fonte (rifiuta qta_operativa con '
+                  'una fonte a valle) e script.trgfn_qta_from_operativa (con una fonte a valle porta '
+                  'quantita a NULL). I CHECK chk_contrighe_quantita_per_fonte e '
+                  'chk_offerte_eccezioni_quantita_per_fonte (la rete) tengono lo stesso elenco: un pgTAP '
+                  'li confronta (test-righe-quantita-per-fonte-v1). Nasce il 2026-10-08, '
+                  'brief-db-offerta-emissione-ed-erogazione §F.1 (F-1.3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_fonte_porta_quantita(character varying);

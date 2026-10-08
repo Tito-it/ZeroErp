@@ -14,6 +14,10 @@
 > `20261007-28 → -30` e `-66 → -68` applicati da Tid il 2026-10-08, pgTAP verdi su dbdev.
 > **⏳ Secondo giro BE/FE (§E.5) in parte fatto; serve un terzo giro DB (§F: F-1 la quantità
 > calcolata, F-2 il listino del documento), poi il resto del BE/FE, il collaudo e l'archiviazione.**
+> **✅ Terzo giro DB chiuso (§F.4, 2026-10-08):** `20261008-10 → -16` e codici 1222-1223 applicati
+> da Tid su dbdev, pgTAP verdi; pgTAP nuovo e 25 fixture corretti (§F.4.6). **⏳ Restano** il giro
+> BE/FE del §F.4.5, i tre trovati del §F.4.3 da decidere (il primo: la quantità DERIVATA), il
+> collaudo a video e l'archiviazione.
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
 > **Le decisioni** (di Tid, 2026-10-07) stanno in §C.5 e in coda al §C.7: A-D1 chiusa dal modello,
 > A-D2 il contratto non si attiva senza versione in vigore, A-D3 la revisione congela alla sua
@@ -1108,3 +1112,208 @@ aspetta F-2.3); policy rigenerate (1210 nuovo, 632 ritirato) e ripiego del 1210;
 prima fonte dell'erogazione); il fixture di `test_ricerca_liste_db` (quantità solo se la fonte di
 default è FISSA). Restano dopo il terzo giro DB: il ritiro di `_apply_fonte_quantita_logic` (F-1),
 il lookup dei listini (F-2), la doc e il collaudo a video.
+
+### F.4 Consegna del terzo giro DB (`dev/db-tid`, 2026-10-08)
+
+> Numerazione da `20261008-10` (il `-01` è di un altro cantiere). **✅ Applicato da Tid** su
+> `zeroerp_ci` (16:33) e su dbdev; pgTAP verdi su dbdev il 2026-10-08, dopo le due correzioni di
+> fixture in coda al §F.4.6.
+
+#### F.4.1 ChangeSet
+
+| ChangeSet | Oggetto | Cosa |
+| --- | --- | --- |
+| `20_code/script/20261008-10` | `script.fn_fonte_porta_quantita(fonte)` (nuova) | **l'elenco delle fonti che portano la quantità** (FISSA, DERIVATA_COMPONENTI), `LANGUAGE sql IMMUTABLE`, parametro `%TYPE` (F-1.3) |
+| `20_code/script/20261008-11` | `script.trgfn_righe_guard_quantita_per_fonte` | rifiuta **solo** `qta_operativa` (campo `qta_operativa`); l'elenco lo legge da `-10`; il contesto perde `colonne` (F-1.2) |
+| `20_code/script/20261008-12` | `script.trgfn_qta_from_operativa` | con una fonte a valle `quantita := NULL` a **ogni** INSERT e UPDATE, prima del short-circuit (il caso DERIVATA → MANUALE); `DECLARE` ancorati `%TYPE` (F-1.1) |
+| `20_code/script/20261008-13` | `script.fn_check_listino_documento(listino, utility, emittente_fiscale_id)` (nuova) | check pura sui valori, due motivi col campo `listino_id`: `LISTINO_UTILITY_DIVERSA`, `LISTINO_EMITTENTE_DIVERSO`. La traduzione PK → `soggetto_ruolo_id` sta qui (F-2.1) |
+| `20_code/script/20261008-14` | `script.trgfn_doc_guard_listino_documento()` (nuova) | solleva il primo motivo con `fn_raise_primo_motivo_se_presente`, una funzione per le due testate (F-2.2) |
+| `20_code/vendite/20261008-15` | 4 trigger su `vendite.contratti` e `vendite.offerte_commerciali` | `…_a10_guard_listino_documento_ins` (ogni INSERT, anche push e revisione) e `…_upd` (`WHEN` cambiano listino, utility o emittente: F-2.4). Dopo `a10_default_emittente` e `a10_guard_emittente_ba` |
+| `20_code/vendite/20261008-16` | `vendite.fn_listini_selezionabili(utility, emittente_fiscale_id)` (nuova) | la lettura per il form, `{id, codice, descrizione}` ordinata per descrizione e id: i listini attivi senza motivi della **stessa** check. Utility o emittente NULL: nessuno (F-2.3) |
+
+**Codici** (CSV): `E_DOC_LISTINO_UTILITY_DIVERSA` (**1222**) ed `E_DOC_LISTINO_EMITTENTE_DIVERSO`
+(**1223**), DATO_ERRATO, frase chiusa. Gli id 1211-1221 li ha già presi il cantiere dei codici
+email e permessi, non ancora committato. La nota di `E_RIGA_QUANTITA_CON_FONTE_A_VALLE` (1210) è
+riscritta: il campo è sempre `qta_operativa`.
+
+#### F.4.2 Le scelte, e perché
+
+* **F-1.3, l'elenco come funzione e non come dato.** Un CHECK non legge tabelle: con una colonna su
+  un vocabolario delle fonti, la rete avrebbe tenuto comunque un elenco suo, e il dato avrebbe tolto
+  una copia per aggiungerne un'altra. Un vocabolario delle sole fonti oggi non c'è
+  (`config.erogazioni_fonti` è per coppia). Il CHECK resta invariato, come chiede F-1.2. Il pgTAP
+  confronta i suoi letterali con le fonti del vocabolario per cui la funzione dice `true`, e
+  verifica che guard e calcolo la **chiamino**.
+* **F-1.1 in `trgfn_qta_from_operativa`.** È l'unico scrittore di `quantita`, e conosceva già la
+  colonna della fonte. Le altre quattro tabelle (preventivi, ordini, DDT, resi) non passano
+  l'argomento della fonte, quindi per loro non cambia niente. L'ordine regge per nome: il guard
+  (`a10_guard_q…`) gira prima del calcolo (`a10_qta…`), quindi giudica l'input e lascia al calcolo
+  lo svuotamento; il CHECK vede la riga finale.
+* **I componenti del kit.** Quando il DB svuota la quantità del padre, `z90_propaga_qta_componenti`
+  riscrive i figli. `trgfn_componenti_calcola_quantita` usa `COALESCE(qta_padre, 1)`, quindi il
+  `NOT NULL` di `*_componenti.quantita` regge. Era già il percorso del BE che azzerava.
+* **F-2, il listino che non si legge.** Sotto RLS un listino di un emittente fuori dal perimetro di
+  chi agisce non si legge. Il documento invece sta nel perimetro (guard `emittente_scope`), quindi
+  quel listino è di un altro emittente: motivo `LISTINO_EMITTENTE_DIVERSO`, senza dire altro. Da
+  owner si legge, e il motivo è lo stesso.
+* **F-2.3, `attivo`.** La lettura propone solo listini attivi: un listino spento lo rifiuta il
+  `require_attivo` del framework. Non filtra sulla versione (D.4.3).
+* **F-2.4.** Nessuna `preCondition` che conti i documenti incoerenti già scritti: il guard scatta
+  solo all'INSERT e sui cambi, come B-D6.
+
+#### F.4.3 Trovati scrivendo, non toccati (da decidere)
+
+* **DERIVATA_COMPONENTI: chi scrive la quantità del padre?** Il commento del CHECK
+  `chk_*_quantita_per_fonte`, il manuale di `contratti_righe` e la nota del 1210 dicono «la scrive
+  il DB dai componenti (`z90_propaga_qta_componenti`)». **È falso**: quel trigger propaga dal padre
+  **ai** figli. Su una riga DERIVATA nessuno calcola `quantita`: resta quella che il client manda,
+  oppure quella rimasta da una FISSA (FISSA → DERIVATA con `qta_operativa = NULL`). La decisione F-1
+  («`quantita` la scrive solo il DB») su DERIVATA oggi non vale. Domanda per Tid: la riga DERIVATA
+  deve portare una quantità (e allora chi la calcola), o è «a valle» anche lei? Nel secondo caso
+  basta toglierla da `fn_fonte_porta_quantita` e dai due CHECK.
+* **FISSA, `quantita` scritta a mano.** Un UPDATE che scrive la sola `quantita` su una riga FISSA
+  passa dal short-circuit e resta. È la migliorìa 2 del manuale di `trgfn_qta_from_operativa`,
+  aperta da prima; tocca anche le altre quattro tabelle. Non chiesta.
+* **Ordine fra il guard del listino e il lock del contratto attivo.** Su un contratto ATTIVO un
+  cambio di listino incoerente risponde «listino di un'altra utility/azienda» prima di «campi
+  bloccati» (`a10_guard_listino…` < `a10_lock_post_attivazione`). L'operatore corregge il listino
+  e poi trova il lock. Se conta, il lock va in `_a05_` (linee-guida-trigger), cantiere a sé.
+
+#### F.4.4 pgTAP e prova (2026-10-08, prima dell'apply)
+
+* **Nuovo** `vendite/test-doc-listino-documento-v1` (12, tutto costruito: due aziende con
+  `fn_pgtap_crea_emittente_operatore`, tre listini). Copre la check sui valori, i rifiuti col campo
+  su offerta e contratto, l'UPDATE del listino, la `WHEN` (un altro campo non giudica), la lettura
+  per il form, il push offerta → contratto, la forma dei trigger, i codici a catalogo.
+* **Aggiornato** `vendite/test-righe-quantita-per-fonte-v1` (12 → 15): il 2 ora è «la sola
+  `quantita` con una fonte a valle passa e la svuota il DB»; il 9 manda la sola
+  `qta_operativa = NULL`, come il form (F-1.4); il 10 confronta i CHECK con
+  `fn_fonte_porta_quantita` e pretende che guard e calcolo la chiamino; nuovi 13 (DERIVATA →
+  MANUALE), 14 (l'offerta), 15 (rifiuto sull'input all'UPDATE).
+* `script/test-rubinetto-primo-motivo-v1` test 5: da 34 a 35 (il guard del listino è un sito nuovo
+  dell'helper). ⚠️ Se il cantiere del `20261008-01` aggiunge anche lui un sito, i due numeri vanno
+  sommati al merge.
+
+**Prova** su `zeroerp_ci`, come owner, in transazione annullata con l'SQL **estratto** dai sette
+YAML:
+
+* compila tutto; `plpgsql_check` sulle funzioni toccate dà solo l'avviso già esistente
+  `v_max_dec` mai letto; una firma sola per funzione (i `%TYPE` non creano overload);
+* i corpi vivi sullo scratch coincidono con quelli dei rollback (md5 / diff);
+* cancelli statici della CI verdi (letterali, `runOnChange`, preCondition/seed, trigger
+  d'automazione, timestamp, GRANT batch);
+* **regressione su 61 pgTAP**, prima e dopo: si muovono solo i tre file del giro, rossi senza i
+  changeSet e verdi con (il 12 del file nuovo legge il catalogo: verde solo dopo l'apply del CSV).
+  ⚠️ **Cieca sui fixture presi dai dati** (lezione del §C.6.5): 25 file muoiono sullo scratch
+  identici prima e dopo, perché scelgono listino e cliente fra i dati della macchina. Sono quelli
+  che il guard F-2 colpisce su dbdev se il primo listino per id non è della utility e
+  dell'emittente del primo BA: censiti e corretti al §F.4.6.
+
+⚠️ Non provati: l'apply vero (loader del CSV), la corsa come app (il ramo «listino che non si
+legge» lo vede solo l'app; da owner il motivo è lo stesso).
+
+#### F.4.5 Richieste al BE/FE, a apply fatto
+
+* **BE, F-1**: ritirare `_apply_fonte_quantita_logic` e `_FONTI_QUANTITA_DOWNSTREAM` (§E.5).
+  Valutare di togliere `quantita` dalle chiavi ammesse del payload di riga (contratto e offerta):
+  è calcolata, e il DB la svuota comunque con una fonte a valle. Il contesto di
+  `E_RIGA_QUANTITA_CON_FONTE_A_VALLE` non porta più `colonne`, e il campo è sempre `qta_operativa`.
+* **BE, F-2**: il lookup dei listini di contratto **e** offerta legge
+  `SELECT id, codice, descrizione FROM vendite.fn_listini_selezionabili(%s, %s)` con utility ed
+  emittente del form; si ritira `ListiniRepository.list_lookup_selezionabili_contratti`. Policy dei
+  codici 1222 e 1223 (DATO_ERRATO, campo `listino_id` nel canale COLUMN, ripieghi senza `%s`):
+  finché mancano, il guardrail dei codici del DB senza policy è rosso, per il lato BE.
+* **FE**: il form manda utility ed emittente al lookup (cambiano la tendina); niente da cambiare per
+  F-1 (manda già `qta_operativa = NULL` fuori dalla FISSA).
+* Test Django sul DB: `test_ricerca_liste_db` e `test_righe_erogazione_obbligatoria_db` costruiscono
+  listino e cliente coi builder, quindi sono coerenti per costruzione.
+
+#### F.4.6 I 25 pgTAP che pescavano listino e cliente dai dati (2026-10-08)
+
+Censiti da tre letture statiche in parallelo (43 file che scrivono testate con un listino): **18
+coerenti per costruzione** (builder, o listino NULL), **25 presi dai dati** («primo BA», «primo
+emittente», «primo listino per id», «prima versione ATTIVA di un listino qualsiasi»), nessuno
+rotto per costruzione e nessuno che volesse un documento incoerente. Tutti gli INSERT presi dai dati
+stavano nel **fixture**: su dbdev il guard F-2 avrebbe fatto morire il file. Correzioni, autorizzate
+da Tid:
+
+| Forma | File |
+| --- | --- |
+| **Costruiti** (cliente `fn_pgtap_crea_cliente_ba` dopo il contesto, legato dal z90 a chi agisce; listino `fn_pgtap_crea_listino` sulla stessa utility; emittente dell'operatore; versione del builder) | offerte: `codice-lock`, `rientro-padre-revisione-annullata`, `revisione-guard-config`, `lista-superata-vs-abortito`, `crea_revisione_offerta`, `push_offerta_a_contratto`, `push_offerta_successione`, `commerciali_codice`, `end_to_end`, `revisione_trigger`, `state_machine` (slot B: la versione CHIUSA si costruisce chiudendo quella del listino scaduto), `eccezioni_guard_pending`, `eccezioni_qta_from_operativa` (utility che ammette la tipologia dell'articolo f6), `push_offerta_fissa_qta_operativa`; contratti: `schema-step21`, `step23` |
+| **Cliente costruito, listino copiato** sulla sua utility e col suo emittente | `bozza-non-operativa-e-preview-contratto`, `fn-contratto-righe-preview-nuovi-campi`, `guard-esclusione-figlio-bundle` (cliente sulla utility del listino del bundle, bundle dell'emittente di chi agisce) |
+| **Filtrati** (articoli, prezzi o emittente A dei dati sono il soggetto): listino della utility e dell'emittente del BA, versione di QUEL listino | `schema-step22`, `resolve-prezzo-listino-v2` e `…-classe-da-contratto` (emittente dal BA anche per la matrice, e il BA scelto solo se il listino coerente esiste), `eccezioni_componenti` (salta senza listino), `vw-dash-backlog`, `vw-dash-fatturazione` |
+
+⚠️ `step23` test 7 aggiorna il listino di un contratto ATTIVO per provare il lock: ora usa il listino
+coerente del fixture. Con uno qualunque dei dati lo avrebbe rifiutato prima il guard del listino
+(stesso `P0001`, e `throws_ok` col messaggio NULL): verde per il motivo sbagliato. Restano
+`throws_ok(..., NULL)` anche in `revisione-guard-config` (3-4) e in `push_offerta_successione`:
+non distinguono il codice. Non toccati, da stringere se servirà.
+
+**Esito su `zeroerp_ci`, col giro applicato da Tid** (come owner):
+
+* **15 file passano da morti nel fixture (o rossi) a verdi pieni**: i 14 qui sopra che stanno in
+  `baseline-rossi-ci.tsv` / `baseline-rossi-scratch.tsv` come `ERRORE_FIXTURE` o `ASSERZIONE`
+  (`codice-lock`, `rientro-padre`, `revisione-guard-config`, `lista-superata`, `crea_revisione`,
+  `push_a_contratto`, `push_successione`, `commerciali_codice`, `end_to_end`, `revisione_trigger`,
+  `state_machine`, `qta_from_operativa`, `push_fissa`, `step23`) più il test nuovo. ⏳ Escono dai
+  registri dopo la corsa di Tid come app.
+* I sei filtrati restano rossi sullo scratch **come prima**: lì i dati che filtrano non ci sono. Su
+  dbdev il filtro li tiene coerenti; se un giorno svuotasse i candidati lo dice la loro
+  precondizione, non un errore nel fixture.
+* Regressione larga (61 file) sullo stato applicato contro la prova pre-apply: **nessun altro file
+  si muove**.
+* Una regressione mia trovata e corretta nel giro: `eccezioni_componenti`, senza BA nei dati,
+  chiamava `fn_get_emittente_fiscale_pk(NULL)` e moriva (era 27/27 in skip): ora l'aggiornamento
+  dell'emittente salta senza BA, e torna 27/27.
+
+**Corsa di Tid su dbdev (2026-10-08, sera): tre regressioni, mie.** Erano tre dei file
+**filtrati**: su dbdev il filtro non trovava un listino della utility e dell'emittente del BA.
+`classe-da-contratto` restava senza candidati (resolver coi parametri NULL), e i due cruscotti
+scrivevano l'offerta con il listino NULL. ⚠️ La lezione: un filtro sui dati scambia «la fixture
+è coerente» con «la fixture c'è», e la prova sullo scratch, senza dati, non vede la differenza.
+Corretti costruendo il listino invece di cercarlo:
+
+* `resolve-prezzo-listino-v2-classe-da-contratto` (runner app): il listino si scrive con la
+  tipologia dell'articolo, la utility e l'emittente del BA (che sotto RLS è nel perimetro di chi
+  agisce). Il BA si sceglie solo se la sua utility ammette quella tipologia;
+* `vw-dash-backlog` (runner app): `fn_pgtap_crea_listino` sulla utility del BA, **dopo** il
+  passaggio all'operatore whitelistato su A, quindi con l'emittente A;
+* `vw-dash-fatturazione` (runner owner): le offerte nascono prima del passaggio d'operatore, quindi
+  listino e versione si scrivono a mano con A e con la utility del BA, in due istruzioni (i trigger
+  della versione rileggono il listino).
+
+Sullo scratch i tre danno gli stessi conteggi della baseline (mancano i dati che scelgono). Il
+verdetto è la prossima corsa su dbdev. Gli altri tre filtrati (`schema-step22`,
+`resolve-prezzo-listino-v2`, `eccezioni_componenti`) non sono fra le regressioni della corsa.
+
+**Seconda corsa di Tid (stessa sera): `classe-da-contratto` ancora rosso**, precondizione 1 a 0
+candidati. Il secondo criterio («un articolo dei dati con una tipologia che la utility del BA
+ammette») su dbdev non trova niente insieme a un cliente con dimensione. L'articolo non è il
+soggetto del test: lo è la classe letta dal contratto. Ora il cliente si sceglie come in origine
+(dimensione e categoria) più «la sua utility ammette almeno una tipologia di listino»; articolo e
+listino si costruiscono con la prima tipologia ammessa. Letto su dbdev come app col contesto del
+runner, in sola lettura, solo per escludere un altro insieme vuoto: candidati presenti in tutti e
+due i blocchi (con e senza dimensione). Stessa lettura per `vw-dash-backlog`: la utility del primo
+cliente ammette una tipologia, quindi il builder del listino non si ferma.
+
+#### F.4.7 Chiusura del terzo giro DB (2026-10-08)
+
+**Applicato da Tid su dbdev, pgTAP verdi.**
+
+| Richiesta | Esito |
+| --- | --- |
+| F-1.1 con una fonte a valle il DB porta `quantita` a NULL | ✅ `trgfn_qta_from_operativa`, a ogni INSERT e UPDATE (anche DERIVATA → MANUALE) |
+| F-1.2 il rifiuto sulla sola `qta_operativa` | ✅ `trgfn_righe_guard_quantita_per_fonte`; i CHECK invariati |
+| F-1.3 l'elenco delle fonti in un posto | ✅ `script.fn_fonte_porta_quantita`, letto da guard e calcolo; il pgTAP confronta i CHECK |
+| F-1.4 pgTAP | ✅ `test-righe-quantita-per-fonte-v1` (15) |
+| F-2.1 check pura sui valori | ✅ `script.fn_check_listino_documento` |
+| F-2.2 il guard su contratto e offerta | ✅ `script.trgfn_doc_guard_listino_documento`, 4 trigger, codici 1222-1223 |
+| F-2.3 la lettura per il form | ✅ `vendite.fn_listini_selezionabili(utility, emittente_fiscale_id)` |
+| F-2.4 le righe già scritte | ✅ nessuna bonifica: il guard scatta all'INSERT e sui cambi |
+| F-2.5 pgTAP | ✅ `test-doc-listino-documento-v1` (12) |
+
+**Cosa resta**: il giro BE/FE del §F.4.5 (ritiro di `_apply_fonte_quantita_logic`, lookup dei
+listini su `vendite.fn_listini_selezionabili`, policy dei codici 1222-1223); i tre trovati del
+§F.4.3, da decidere; l'uscita dei 14 file dai registri dei rossi di CI dopo la corsa come app; il
+collaudo a video e l'archiviazione.
+

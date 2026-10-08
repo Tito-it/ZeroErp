@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE vendite.fn_listini_selezionabili: i listini che un contratto o
+# un'offerta di questa utility e di questo emittente puo' scegliere.
+#   Brief: brief-db-offerta-emissione-ed-erogazione §F.2 (F-2.3).
+#
+# -- PERCHE' --------------------------------------------------------------
+#   Prende il posto dell'SQL scritto in Python di
+#   ListiniRepository.list_lookup_selezionabili_contratti (lookup
+#   `lookup/listini-selezionabili-contratto/`, usato da contratto E offerta),
+#   che col D.4.3 perde il filtro «almeno una versione ATTIVA» e senza questo
+#   proporrebbe ogni listino attivo, di ogni utility. In DRAFT/BOZZA un
+#   listino senza versione in vigore si sceglie: lo rifiuta l'attivazione o
+#   l'emissione (A-D2), non la tendina.
+#
+# -- LA FORMA -----------------------------------------------------------
+#   · sui VALORI (utility, emittente_fiscale_id del form): in creazione il
+#     documento non esiste;
+#   · il predicato e' script.fn_check_listino_documento (-13), lo stesso del
+#     guard (-14): tendina e DB non possono dissentire;
+#   · in piu' il solo listino attivo: un listino spento lo rifiuta il
+#     require_attivo del framework, e una tendina non propone cio' che il DB
+#     rifiuta;
+#   · forma {id, codice, descrizione}, ordine descrizione, id (quella del
+#     lookup che sostituisce);
+#   · utility o emittente NULL: nessun listino (la check li dice diversi);
+#   · LANGUAGE sql STABLE, SECURITY INVOKER: sotto RLS, come il guard.
+#
+# Ritorno indietro: DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261008-16-create-fn-listini-selezionabili-mctit.yaml
+
+  - changeSet:
+      id: 20261008-16-create-fn-listini-selezionabili
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce vendite.fn_listini_selezionabili: i listini attivi che la check
+        script.fn_check_listino_documento ammette per (utility, emittente) del documento.
+        Brief: brief-db-offerta-emissione-ed-erogazione §F.2 (F-2.3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_listino_documento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_listini_selezionabili(
+                  p_utility_id           vendite.listini.utility_id%TYPE,
+                  p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE)
+              RETURNS TABLE (
+                  id          vendite.listini.id%TYPE,
+                  codice      vendite.listini.codice%TYPE,
+                  descrizione vendite.listini.descrizione%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- Il predicato e' quello del guard del documento: la check pura
+                  -- sui valori del form. In piu' il solo listino attivo.
+                  SELECT l.id, l.codice, l.descrizione
+                    FROM vendite.listini l
+                   WHERE l.attivo
+                     AND script.fn_check_listino_documento(l.id, p_utility_id, p_emittente_fiscale_id)
+                         = jsonb_build_array()
+                   ORDER BY l.descrizione, l.id;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_listini_selezionabili(
+                  vendite.listini.utility_id%TYPE,
+                  anagrafiche.emittenti_fiscali.id%TYPE)
+              IS 'Lettura per il form di contratto e offerta (richiesta F-2.3): i listini attivi che un documento di questa utility e di questo emittente (emittente_fiscale_id) può scegliere, {id, codice, descrizione}, ordinati per descrizione e id. Sui valori del form, perché in creazione il documento non esiste. Il predicato è script.fn_check_listino_documento, lo stesso del guard script.trgfn_doc_guard_listino_documento: la tendina non propone ciò che il DB rifiuta. Non filtra sulla versione: in DRAFT/BOZZA un listino senza versione in vigore si sceglie, lo rifiutano attivazione ed emissione. Utility o emittente NULL: nessun listino. Sotto RLS (SECURITY INVOKER). Prende il posto dell''SQL di ListiniRepository.list_lookup_selezionabili_contratti (backend). Nasce il 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_listini_selezionabili(
+                  vendite.listini.utility_id%TYPE,
+                  anagrafiche.emittenti_fiscali.id%TYPE);

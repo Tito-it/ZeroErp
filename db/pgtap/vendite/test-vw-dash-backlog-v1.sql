@@ -181,6 +181,20 @@ SELECT o.user_id, r.emittente_fiscale_id,
 SELECT set_config('app.current_user_id',
     (SELECT user_id::text FROM tmp_bl_op), true);
 
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo). Le offerte
+--   del fixture sono dell'emittente A e del primo BA dei dati: il listino si
+--   COSTRUISCE qui, dopo il passaggio all'operatore whitelistato su A, quindi il
+--   builder gli da' l'emittente A, sulla utility del BA. Prima era il primo listino
+--   per id, di qualunque utility ed emittente.
+--   ⚠️ Prima stesura dello stesso giorno: si cercava fra i dati un listino di A
+--   sulla utility del BA, e su dbdev non c'era (offerta con listino NULL).
+CREATE TEMP TABLE tmp_bl_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_bl_refs), 'dash backlog');
+UPDATE tmp_bl_refs r
+   SET listino_id          = (SELECT listino_id FROM tmp_bl_listino),
+       listino_versione_id = (SELECT listino_versione_id FROM tmp_bl_listino);
+
 -- ============================================================
 -- Fixture PREVENTIVO ACCETTATO misto (pattern test-vw-dash-fatturazione):
 -- merce 1x50 a ordine, servizio 2x30 emesso in commessa, servizio 3x10

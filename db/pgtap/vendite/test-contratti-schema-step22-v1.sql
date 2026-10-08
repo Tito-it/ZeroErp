@@ -62,7 +62,16 @@ SELECT
     ba.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO' LIMIT 1) AS id_attivo,
-    (SELECT id FROM vendite.listini WHERE attivo = TRUE ORDER BY id LIMIT 1)             AS listino_id
+    -- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+    --   documento e' della sua utility e del suo emittente (guard nuovo). I test 14-17
+    --   leggono le righe di un listino dei dati, quindi qui si FILTRA invece di
+    --   ricostruire: il primo listino attivo della utility e dell'emittente del BA.
+    --   Senza, i contratti B e C non nascono e i test 14-17 vanno in skip, come prima.
+    (SELECT l.id FROM vendite.listini l
+       JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+      WHERE l.attivo = TRUE AND l.utility_id = ba.utility_id
+        AND ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+      ORDER BY l.id LIMIT 1)                                                         AS listino_id
   FROM anagrafiche.billing_account ba
  ORDER BY ba.id
  LIMIT 1;
