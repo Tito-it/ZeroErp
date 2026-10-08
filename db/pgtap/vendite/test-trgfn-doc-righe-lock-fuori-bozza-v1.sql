@@ -6,8 +6,9 @@
 --   finche' il documento e' in bozza — il building block
 --   vendite.trgfn_doc_righe_lock_fuori_bozza e i suoi undici adottanti (il reso dal 2026-09-29, l'offerta dal 2026-10-04,
 --   dal 2026-10-05 tre tabelle nipoti a livello RIGA: componenti di contratto e offerta, rientri del reso;
---   dal 2026-10-08 altre tre: componenti di preventivo, ordine e DDT)
---   (ddt_righe, ordini_righe sul solo DELETE, contratti_righe).
+--   dal 2026-10-08 altre tre: componenti di preventivo, ordine e DDT; e poi
+--   righe del preventivo, prelievi del DDT, righe d'ordine sulle tre porte)
+--   (ddt_righe, ordini_righe, contratti_righe).
 --   changeSet 20260922-01 … -06.
 -- ------------------------------------------------------------
 -- COSA PRESIDIA, e perche' non esisteva
@@ -43,7 +44,7 @@
 --
 -- Indice test (1..21)
 --   1) Forma: il BB esiste, plpgsql, non SECURITY DEFINER
---   2) Forma: gli otto trigger (cinque a livello TESTATA, tre a livello RIGA) sono montati in fascia _a05_ con gli argomenti giusti
+--   2) Forma: i tredici trigger (sei a livello TESTATA, sette a livello RIGA) sono montati in fascia _a05_ con gli argomenti giusti
 --   3) Forma: la copia dei contratti (funzione e trigger) non esiste piu'
 --   4) Forma: trgfn_dlt_block_ordrig_ddtrig non nomina piu' il codice ritirato
 --   5) Catalogo: i due codici nuovi con la classe giusta, il vecchio ritirato
@@ -55,7 +56,7 @@
 --  11) DDT in bozza: la testata si elimina e le righe la seguono (il cascade non e' fermato dal BB)
 --  12) Ordine in bozza: DELETE di riga PASSA
 --  13) Ordine confermato: DELETE di riga -> E_RIGA_DOC_NON_BOZZA, verbo «togliere»
---  14) Ordine confermato: UPDATE di riga PASSA (porta aperta di proposito: data_consegna_confermata)
+--  14) Ordine confermato: UPDATE di riga (non la data confermata) -> rifiutato, verbo «modificare» (rev 2026-10-08)
 --  15) Contratto in bozza: INSERT di riga PASSA
 --  16) Contratto ATTIVO: INSERT -> rifiutato con «Contratto …»
 --  17) Contratto ATTIVO: UPDATE e DELETE -> rifiutati
@@ -103,6 +104,13 @@ SELECT is(
 -- ⭐ 2026-10-08: altri tre a livello RIGA, i componenti di preventivo, ordine e
 --   DDT (20261008-34, brief-db-righe-e-componenti-le-altre-famiglie §2.2). Il
 --   comportamento e' provato in vendite/test-righe-e-componenti-le-altre-famiglie-v1.
+-- ⭐ 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): le righe
+--   d'ordine passano alle tre porte con l'eccezione della sola
+--   data_consegna_confermata in CONFERMATO e PARZIALMENTE_EVASO (20261008-90),
+--   quelle del preventivo alle tre porte senza eccezioni (-91), e i prelievi del
+--   DDT adottano il BB a livello RIGA con l'eccezione dell'ubicazione d'arrivo
+--   (-93), ritirando la copia scritta a mano nel loro guard (-92). Il
+--   comportamento e' provato in vendite/test-righe-e-componenti-debiti-residui-v1.
 -- ⚠️ La fascia e' parte del contratto: con _a10_ il nome verrebbe DOPO
 --   block_ddt_dlt e i block_deact, e l'operatore leggerebbe un rimedio che
 --   non e' il rimedio (test 9).
@@ -116,14 +124,16 @@ SELECT is(
 vendite.contratti_righe_componenti:trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'riga_contratto_id', 'DRAFT', 'RIGA')
 vendite.ddt_righe:trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_id')
 vendite.ddt_righe_componenti:trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'riga_ddt_id', 'DRAFT', 'RIGA')
+vendite.ddt_righe_prelievi:trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA', 'ubicazione_arrivo_id', 'EMESSO,SPEDITO')
 vendite.offerte_commerciali_eccezioni:trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'offerta_id', 'BOZZA')
 vendite.offerte_commerciali_eccezioni_componenti:trg_oce_comp_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('OFFERTA', 'eccezione_offerta_id', 'BOZZA', 'RIGA')
-vendite.ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id')
+vendite.ordini_righe:trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'ordine_id', 'DRAFT', 'TESTATA', 'data_consegna_confermata', 'CONFERMATO,PARZIALMENTE_EVASO')
 vendite.ordini_righe_componenti:trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'riga_ordine_id', 'DRAFT', 'RIGA')
+vendite.preventivi_righe:trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'preventivo_id')
 vendite.preventivi_righe_componenti:trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'riga_preventivo_id', 'DRAFT', 'RIGA')
 vendite.resi_righe:trg_resi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'reso_id')
 vendite.resi_righe_rientri:trg_resi_righe_rientri_a05_doc_bozza_ins_upd_dlt:EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('RESO', 'resi_riga_id', 'DRAFT', 'RIGA')$atteso$,
-  '2) Gli undici adottanti (cinque a livello TESTATA, sei a livello RIGA) sono montati in fascia _a05_ con gli argomenti giusti');
+  '2) I tredici adottanti (sei a livello TESTATA, sette a livello RIGA) sono montati in fascia _a05_ con gli argomenti giusti');
 
 SELECT is(
   (SELECT count(*)::int
@@ -195,19 +205,26 @@ RETURNS TABLE(ordine_id bigint, ordine_riga_id bigint) AS $$
 DECLARE r RECORD; v_ord bigint; v_orr bigint;
 BEGIN
   SELECT * INTO r FROM tmp_refs_lr;
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): l'ordine
+  --   nasce DRAFT, prende la riga, poi passa allo stato chiesto per le
+  --   transizioni (dbops.fn_pgtap_porta_a_stato). Fino a quel giorno nasceva
+  --   gia' nello stato e la riga entrava lo stesso, perche' il BB sugli ordini
+  --   era montato sul solo DELETE; da 20261008-90 le porte sono tre.
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, p_stato_id, r.valuta_id,
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
           DATE '2026-08-05', r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_lock_righe'))
   RETURNING id INTO v_ord;
-  -- ⚠️ La riga d'ordine entra anche su un ordine confermato: il BB sugli
-  --   ordini e' montato sul solo DELETE (porta aperta di proposito).
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
     qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
   VALUES (v_ord, 1, r.articolo_id, 'Riga lock pgTAP', p_qta, p_qta, 20, r.iva_id,
           true, false, jsonb_build_object('test_scope','pgtap_lock_righe'))
   RETURNING id INTO v_orr;
+  IF p_stato_id <> r.stato_ord_draft_id THEN
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord,
+              (SELECT s.codice_interno FROM config.stati_doc_ordini s WHERE s.id = p_stato_id));
+  END IF;
   RETURN QUERY SELECT v_ord, v_orr;
 END $$ LANGUAGE plpgsql;
 
@@ -560,14 +577,18 @@ SELECT CASE
     '13) Ordine confermato: DELETE di riga -> E_RIGA_DOC_NON_BOZZA, verbo «togliere», etichetta «Ordine …»')
 END;
 
--- ⚠️ Pinna una porta APERTA: se un giorno si allarga il trigger degli
---   ordini a INSERT/UPDATE (quando data_consegna_confermata avra' il suo
---   verbo), questo test diventa rosso e la scelta e' deliberata.
+-- ⭐ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1 di Tid):
+--   fino a quel giorno questo test pinnava la porta APERTA («se un giorno si
+--   allarga il trigger degli ordini, diventa rosso e la scelta e'
+--   deliberata»). La scelta e' stata fatta: tre porte chiuse, aperta la sola
+--   data_consegna_confermata negli stati da evadere (20261008-90). L'UPDATE di
+--   un'altra colonna e' ora rifiutato; l'eccezione della data e' provata in
+--   vendite/test-righe-e-componenti-debiti-residui-v1 (test 5, 6, 9).
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_esito WHERE caso = '14_ord_conf_upd')
     THEN skip('fixture ordine confermato non costruita', 1)
-  ELSE is((SELECT COALESCE(righe::text, sqlstate || ' ' || messaggio) FROM tmp_esito WHERE caso = '14_ord_conf_upd'), '1',
-    '14) Ordine confermato: UPDATE di riga PASSA — porta aperta di proposito (PROJECT_CONTEXT, promessa di consegna)')
+  ELSE ok(pg_temp.lr_rifiuto('14_ord_conf_upd', 'modificare'),
+    '14) Ordine confermato: UPDATE di una colonna che non e'' la data confermata -> E_RIGA_DOC_NON_BOZZA, verbo «modificare»')
 END;
 
 -- ============================================================

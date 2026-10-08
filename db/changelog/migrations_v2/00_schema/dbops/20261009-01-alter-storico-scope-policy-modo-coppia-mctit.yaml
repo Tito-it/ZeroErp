@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO SCOPE DI STORICO IMPARA LA COPPIA (istanza, utility)
+#   dbops.storico_scope_policy: modo nuovo COPPIA
+#     chk_storico_scope_policy_modo  : + 'COPPIA'
+#     chk_storico_scope_policy_forma : COPPIA vuole colonna = «<istanza>,<utility>»
+#                                      (due nomi separati da virgola) e niente padre
+#   Brief: brief-db-istanza-nasce-col-ba (trovato post-merge, decisione di Tid del 2026-10-09)
+#
+# -- PERCHE' --------------------------------------------------------
+#   28d9beeb6 ha acceso la RLS su anagrafiche.istanze_dati_precontrattuali.
+#   La sua riga nella mappa era NESSUNO, con la ragione «quando entrera' in
+#   RLS il presidio segnalera' questa riga e il modo andra' dichiarato», e
+#   il presidio (test-storico-scope-policy-v1, test 4 e 29) l'ha segnalata.
+#   Ma nessun modo sapeva dirla: la sua policy vede la riga attraverso il BA
+#   della COPPIA (istanza_utility_id, utility_id) — una chiave composta,
+#   FK fk_idp_billing_account_coppia — mentre EF, SR e BA leggono una
+#   colonna sola, e PADRE verso istanze_utilities non ha dove arrivare
+#   (niente RLS, niente storico, niente riga di mappa).
+#
+# -- IL MODO (decisione di Tid, 2026-10-09) ------------------------------
+#   COPPIA: la colonna dichiara DUE nomi, «<colonna istanza>,<colonna
+#   utility>», nell'ordine della chiave di anagrafiche.billing_account
+#   (istanza_utility_id, utility_id). Il resolver trova il BA della coppia
+#   e da li' l'emittente come il modo BA: la stessa strada della policy
+#   (script.fn_scope_ef_whitelist_via_coppia). Ramo nel resolver: 20261009-02.
+#   ⚠️ Il nome e' senza trattino basso di proposito: il test 10 del presidio
+#   legge i modi dal CHECK con '([A-Z]+)', e un 'BA_COPPIA' gli sfuggirebbe.
+#
+# -- COME ----------------------------------------------------------------
+#   DROP + ADD dei due CHECK, nella stessa istruzione di ALTER TABLE. Le
+#   righe di oggi soddisfano il vincolo nuovo (e' piu' largo); la riga della
+#   madre passa a COPPIA dal CSV (80_data), dopo questo changeSet.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261009-01-alter-storico-scope-policy-modo-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261009-01-alter-storico-scope-policy-modo-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.storico_scope_policy: modo COPPIA (il BA della coppia istanza/utility), nei due CHECK.
+        Brief: brief-db-istanza-nasce-col-ba.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'dbops.storico_scope_policy'::regclass
+                 AND conname IN ('chk_storico_scope_policy_modo', 'chk_storico_scope_policy_forma');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.storico_scope_policy
+                  DROP CONSTRAINT chk_storico_scope_policy_modo,
+                  DROP CONSTRAINT chk_storico_scope_policy_forma,
+                  ADD CONSTRAINT chk_storico_scope_policy_modo
+                      CHECK (modo = ANY (ARRAY['EF', 'SR', 'PADRE', 'BA', 'COPPIA', 'NESSUNO'])),
+                  ADD CONSTRAINT chk_storico_scope_policy_forma
+                      CHECK (
+                          (modo = ANY (ARRAY['EF', 'SR', 'BA']) AND colonna IS NOT NULL
+                           AND padre_schema IS NULL AND padre_tabella IS NULL)
+                       OR (modo = 'PADRE' AND colonna IS NOT NULL
+                           AND padre_schema IS NOT NULL AND padre_tabella IS NOT NULL)
+                       -- COPPIA: due nomi di colonna, «<istanza>,<utility>», e niente padre.
+                       OR (modo = 'COPPIA' AND colonna ~ '^[a-z_][a-z0-9_]*,[a-z_][a-z0-9_]*$'
+                           AND padre_schema IS NULL AND padre_tabella IS NULL)
+                       OR (modo = 'NESSUNO' AND colonna IS NULL
+                           AND padre_schema IS NULL AND padre_tabella IS NULL));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.storico_scope_policy
+                  DROP CONSTRAINT chk_storico_scope_policy_modo,
+                  DROP CONSTRAINT chk_storico_scope_policy_forma,
+                  ADD CONSTRAINT chk_storico_scope_policy_modo
+                      CHECK (modo = ANY (ARRAY['EF', 'SR', 'PADRE', 'BA', 'NESSUNO'])),
+                  ADD CONSTRAINT chk_storico_scope_policy_forma
+                      CHECK (((modo = ANY (ARRAY['EF'::text, 'SR'::text, 'BA'::text])) AND (colonna IS NOT NULL) AND (padre_schema IS NULL) AND (padre_tabella IS NULL)) OR ((modo = 'PADRE'::text) AND (colonna IS NOT NULL) AND (padre_schema IS NOT NULL) AND (padre_tabella IS NOT NULL)) OR ((modo = 'NESSUNO'::text) AND (colonna IS NULL) AND (padre_schema IS NULL) AND (padre_tabella IS NULL)));

@@ -102,6 +102,7 @@ SELECT
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   script.fn_pgtap_emittente_operatore()                                    AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO'  AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'       AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_ddt_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='EMESSO'       AND s.attivo LIMIT 1) AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='SPEDITO'      AND s.attivo LIMIT 1) AS stato_ddt_spedito_id,
@@ -132,7 +133,7 @@ CREATE TEMP TABLE tmp_ord AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, CURRENT_DATE, 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
   FROM tmp_ref r RETURNING id, uid)
@@ -147,6 +148,13 @@ WITH ins AS (
          true, false, jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
   FROM tmp_ord o, tmp_ref r RETURNING id)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord), 'CONFERMATO');
+END $x$;
 
 CREATE TEMP TABLE tmp_ddt_ord AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord)) AS ddt_id;

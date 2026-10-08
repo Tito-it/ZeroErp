@@ -67,6 +67,8 @@ SELECT
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ordini s                           -- rev 2026-10-08 (D-1)
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s
     WHERE s.codice_interno = 'EMESSO' AND s.attivo IS TRUE LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT ct.id FROM config.causali_trasporto ct
@@ -79,12 +81,15 @@ SELECT ok(
   '1) riferimenti minimi disponibili');
 
 -- Ordine CONFERMATO + riga, poi evasione full -> DDT in DRAFT.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+--   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+--   righe non si scrivono piu' (20261008-90).
 CREATE TEMP TABLE tmp_ord_pdf AS
 WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-05', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_pdf_capability')
   FROM tmp_refs_pdf r
@@ -100,6 +105,10 @@ SELECT o.id, 1, r.articolo_id, 'Riga pdf capability',
        jsonb_build_object('test_scope','pgtap_pdf_capability')
 FROM tmp_ord_pdf o, tmp_refs_pdf r
 WHERE EXISTS (SELECT 1 FROM tmp_ord_pdf);
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_pdf o;
+END $x$;
 
 CREATE TEMP TABLE tmp_ddt_pdf AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_pdf)) AS ddt_id

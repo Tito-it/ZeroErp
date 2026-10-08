@@ -1,0 +1,107 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI HA TOCCATO PER ULTIMO UNA RIGA SI SA SEMPRE — schema anagrafiche
+#   user_update SET NOT NULL su 11 tabelle:
+#     anagrafiche.conti_bancari
+#     anagrafiche.emittenti_fiscali
+#     anagrafiche.fornitori
+#     anagrafiche.istanze_dati_precontrattuali
+#     anagrafiche.resellers
+#     anagrafiche.soggetti_conti_bancari
+#     anagrafiche.soggetti_ruoli_conti_bancari
+#     anagrafiche.soggetti_titoli_iva
+#     anagrafiche.soggetti_titoli_iva_ambiti
+#     anagrafiche.soggetti_titoli_iva_movimenti
+#     anagrafiche.vettori
+#   Brief: brief-db-righe-e-componenti-debiti-residui (§2, D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   linee-guida-sql §7: le colonne di audit sono NOT NULL. Il 20261008-31
+#   ha chiuso righe e componenti dei documenti di vendita; qui il resto,
+#   uno schema per changeSet (D-2 di Tid, 2026-10-08: un giro solo, col
+#   presidio dbops/test-user-update-not-null-v1).
+#
+# -- CHE COSA CAMBIA PER CHI SCRIVE -------------------------------------
+#   Niente. Ognuna ha script.trgfn_audit_data_user_generic (BEFORE INSERT
+#   OR UPDATE), che scrive user_update a ogni scrittura da app.jwt_user o
+#   CURRENT_USER: il vincolo dice nel DDL cio' che il trigger gia' fa.
+#   ⚠️ Il trigger lo generano le automazioni (ci_apply, o il job notturno):
+#   su un database da zero, alla prima passata, i seed di 80_data entrano
+#   PRIMA che esista. Per questo dove manca si mette anche il DEFAULT
+#   CURRENT_USER di §7 — senza, il seed scriverebbe NULL. Un seed con la
+#   cella vuota non e' un rischio: i loader con nullValue "" scrivono ''
+#   sulle colonne STRING (misurato su magazzino.causali.user_insert).
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero NULL (expectedResult 0: un DB da zero la
+#   soddisfa, linee-guida-sql §11.4), come il 20261008-31. Se ce ne sono il
+#   migrate si ferma e si guardano a mano: nessun valore scelto dal migrate.
+#   Fatto datato (2026-10-08, dev): zero NULL su tutte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261008-81-alter-anagrafiche-user-update-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261008-81-alter-anagrafiche-user-update-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        user_update NOT NULL sullo schema anagrafiche (11 tabelle),
+        come vuole linee-guida-sql §7. Brief: brief-db-righe-e-componenti-debiti-residui (§2, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT (SELECT count(*) FROM anagrafiche.conti_bancari                 WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.emittenti_fiscali             WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.fornitori                     WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.istanze_dati_precontrattuali  WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.resellers                     WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.soggetti_conti_bancari        WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.soggetti_ruoli_conti_bancari  WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva           WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva_ambiti    WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva_movimenti WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM anagrafiche.vettori                       WHERE user_update IS NULL);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.conti_bancari                 ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.emittenti_fiscali             ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.fornitori                     ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.istanze_dati_precontrattuali  ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.resellers                     ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_conti_bancari        ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari  ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva           ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_ambiti    ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE anagrafiche.vettori                       ALTER COLUMN user_update SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.vettori                       ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_ambiti    ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva           ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_ruoli_conti_bancari  ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.soggetti_conti_bancari        ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.resellers                     ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.istanze_dati_precontrattuali  ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.fornitori                     ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.emittenti_fiscali             ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE anagrafiche.conti_bancari                 ALTER COLUMN user_update DROP NOT NULL;

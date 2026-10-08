@@ -83,6 +83,7 @@ SELECT
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT' AND s.attivo LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno='ORDINE_VENDITA' AND s.attivo LIMIT 1) AS src_ordine_id;
 
 -- ============================================================
@@ -112,7 +113,10 @@ BEGIN
   SELECT * INTO r FROM tmp_gi_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+  --   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza
+  --   le righe non si scrivono piu' (20261008-90).
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
           DATE '2026-07-19', 'CONFERMATO', r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope', 'pgtap_gia_inviato_' || p_tag))
   RETURNING id, uid INTO v_ord, v_uid;
@@ -121,6 +125,7 @@ BEGIN
   VALUES (v_ord, 1, r.articolo_id, 'Riga push ' || p_tag, 10, 10, 25, r.iva_id, true, false,
           jsonb_build_object('test_scope', 'pgtap_gia_inviato_' || p_tag))
   RETURNING id INTO v_riga;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
   RETURN QUERY SELECT v_ord, v_uid, v_riga;
 END $$ LANGUAGE plpgsql;
 

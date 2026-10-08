@@ -60,6 +60,8 @@ SELECT
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS stato_accettato_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS stato_bozza_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE
     ORDER BY u.id LIMIT 1) AS uom_id,
@@ -88,6 +90,7 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp
 
 -- Preventivo MISTO ACCETTATO: merce + servizio (da emettere) + servizio
 -- residuo + riga natura NULL (pregresso).
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le quattro righe (e la natura NULL), poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato prima del push — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_vs_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -95,7 +98,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-VS-MISTO', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_vw_smistamento'), r.emittente_fiscale_id
     FROM tmp_vs_refs r
@@ -154,6 +157,7 @@ SET LOCAL zeroerp.allow_lock_columns_override = 'on';
 UPDATE vendite.preventivi_righe SET natura_vendita_id = NULL
  WHERE id = (SELECT id FROM tmp_vs_riga_null);
 SET LOCAL zeroerp.allow_lock_columns_override = 'off';
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_vs_prev), 'ACCETTATO'); END $porta$;
 
 -- Push reale del ramo merce: crea ordine + riga ordine (A_ORDINE).
 SELECT vendite.fn_push_preventivo_a_ordine((SELECT id FROM tmp_vs_prev));

@@ -20,7 +20,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | aliquota_iva | numeric(5,2) | YES |  |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | false |

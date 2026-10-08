@@ -124,6 +124,9 @@ SELECT
   (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE
     ORDER BY a.data_insert DESC NULLS LAST, a.id LIMIT 1) AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  -- ⚠️ rev 2026-10-08 (D-1): lo stato di nascita e l'aliquota della riga, che la conferma pretende.
+  (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT'      LIMIT 1) AS stato_draft_id,
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'CONFERMATO' LIMIT 1) AS stato_conf_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'EVASO'      LIMIT 1) AS stato_evaso_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO'  LIMIT 1) AS stato_ann_id;
@@ -135,17 +138,24 @@ WITH ins AS (
     stato_doc_ordine_id, valuta_id, data, storicizza, meta
   )
   SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
-         r.stato_conf_id, r.valuta_id, DATE '2026-06-15', false,
+         r.stato_draft_id, r.valuta_id, DATE '2026-06-15', false,
          '{"test_scope":"pgtap_ordine_evaso"}'::jsonb
   FROM tmp_refs_ev r
   RETURNING id
 )
 SELECT id FROM ins;
 
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+--   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+--   righe non si scrivono piu' (20261008-90).
 INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo, storicizza, meta)
-SELECT o.id, 1, r.articolo_id, 'riga evaso', 3.0, 3.0, 10.0, true, false, '{}'::jsonb
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+SELECT o.id, 1, r.articolo_id, 'riga evaso', 3.0, 3.0, 10.0, r.iva_id, true, false, '{}'::jsonb
 FROM tmp_ord_ev o, tmp_refs_ev r;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_ev), 'CONFERMATO');
+END $x$;
 
 -- ============================================================
 -- TEST 5) Guard: CONFERMATO -> EVASO ammessa (lives)

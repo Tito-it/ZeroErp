@@ -100,6 +100,8 @@ SELECT
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS prev_accettato_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS prev_bozza_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'EVASO' AND s.attivo IS TRUE LIMIT 1) AS prev_evaso_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.esito = 'NEGATIVO' AND s.attivo IS TRUE
@@ -196,6 +198,7 @@ SELECT is(
 -- ============================================================
 
 -- Preventivo ACCETTATO con 1 riga residua (emittente A) -> stock aperto.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_ap_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -203,7 +206,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-AP-PREV', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_aperto'), r.emittente_fiscale_id
     FROM tmp_ap_refs r
@@ -213,10 +216,12 @@ SELECT * FROM ins;
 INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
 SELECT p.id, r.articolo_id, 2.000000, 25.000000, r.iva_id, true
   FROM tmp_ap_prev p, tmp_ap_refs r;
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ap_prev), 'ACCETTATO'); END $porta$;
 
 -- Caso (b): preventivo EVASO (fase CHIUSO, esito POSITIVO -> NON abortito) con
 -- riga residua (transitata=false di default -> is_transitato=false). Deve
 -- essere presente in union ma FUORI dallo stock, tolto SOLO da fase<>CHIUSO.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi cammina fino a EVASO (DRAFT->EMESSO->ACCETTATO->EVASO) con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_ap_prev_evaso AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -224,7 +229,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-AP-PREVASO', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_evaso_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_aperto'), r.emittente_fiscale_id
     FROM tmp_ap_refs r
@@ -234,6 +239,7 @@ SELECT * FROM ins;
 INSERT INTO vendite.preventivi_righe (preventivo_id, articolo_id, qta_operativa, prezzo_unitario, iva_id, attivo)
 SELECT p.id, r.articolo_id, 1.000000, 10.000000, r.iva_id, true
   FROM tmp_ap_prev_evaso p, tmp_ap_refs r;
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_ap_prev_evaso), 'EVASO'); END $porta$;
 
 -- Preventivo ABORTITO (stato con esito NEGATIVO, emittente A) -> fuori stock.
 CREATE TEMP TABLE tmp_ap_prev_neg AS

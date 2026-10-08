@@ -25,7 +25,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | character varying(80) | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying(80) | YES | CURRENT_USER |
+| user_update | character varying(80) | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

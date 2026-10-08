@@ -6,7 +6,8 @@
 > [script.fn_get_testata_id_di_riga](/dbzero/script/funzioni/fn_get_testata_id_di_riga) — il lettore `SECURITY DEFINER` riga → testata, per il livello RIGA (dal 2026-10-05)
 > [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — la stessa regola, sulla testata
 > [vendite.trgfn_dlt_block_ordrig_ddtrig](/dbzero/vendite/funzioni/trgfn_dlt_block_ordrig_ddtrig) — il traduttore dei legami a valle, che parla dopo
-> [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe) · [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe) · [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe) — gli adottanti
+> [vendite.ddt_righe](/dbzero/vendite/tabelle/ddt_righe) · [vendite.ordini_righe](/dbzero/vendite/tabelle/ordini_righe) · [vendite.preventivi_righe](/dbzero/vendite/tabelle/preventivi_righe) · [vendite.contratti_righe](/dbzero/vendite/tabelle/contratti_righe) — gli adottanti
+> [dbops.fn_pgtap_porta_a_stato](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato) — l'helper di fixture: nei pgTAP la testata nasce in bozza, prende le righe, poi cambia stato
 > [dbops.trgfn_prevent_deactivate_if_children](/dbzero/dbops/funzioni/trgfn_prevent_deactivate_if_children) — lo stampo dei building block parametrizzati
 
 ---
@@ -22,7 +23,7 @@ pricing in vigore. Le correzioni passano da documenti di rettifica — reso,
 ri-consegna, nota — non da una riga che cambia.
 
 È un **building block**: una sola funzione, montata su ogni tabella di righe
-con due argomenti obbligatori e due facoltativi.
+con due argomenti obbligatori e quattro facoltativi.
 
 | `TG_ARGV` | Cosa | Esempio |
 | --- | --- | --- |
@@ -30,6 +31,8 @@ con due argomenti obbligatori e due facoltativi.
 | `[1]` | colonna della riga che porta l'id del padre | `'ddt_id'` |
 | `[2]` (opz.) | `codice_interno` dello stato «bozza», default `DRAFT` | `'BOZZA'` per l'offerta |
 | `[3]` (opz., dal 2026-10-05) | **livello** del padre: `TESTATA` (default) se la colonna punta alla testata, `RIGA` se punta a una riga del documento (tabelle *nipoti*) | `'RIGA'` per i componenti |
+| `[4]` (opz., dal 2026-10-08) | le **colonne che un UPDATE può cambiare fuori bozza**, separate da virgola | `'data_consegna_confermata'` per l'ordine |
+| `[5]` (opz., dal 2026-10-08; obbligatorio con `[4]`) | gli **stati** (`codice_interno`, separati da virgola) in cui le colonne `[4]` si cambiano | `'CONFERMATO,PARZIALMENTE_EVASO'` |
 
 ```sql
 CREATE TRIGGER trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
@@ -83,12 +86,13 @@ per rifiutare*.
 
 ---
 
-### Gli adottanti, e una porta lasciata aperta di proposito
+### Gli adottanti, e le colonne che restano aperte
 
 | Tabella | Trigger | Porte |
 | --- | --- | --- |
 | `vendite.ddt_righe` | `trg_ddt_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` | INSERT, UPDATE, DELETE |
-| `vendite.ordini_righe` | `trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_dlt` | **solo DELETE** |
+| `vendite.ordini_righe` | `trg_ordini_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` (tre porte dal 2026-10-08; prima solo DELETE) | INSERT, UPDATE, DELETE — **aperta la sola `data_consegna_confermata` in `CONFERMATO` e `PARZIALMENTE_EVASO`** |
+| `vendite.preventivi_righe` | `trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` (dal 2026-10-08, tipo `PREVENTIVO`) | INSERT, UPDATE, DELETE |
 | `vendite.contratti_righe` | `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt` | INSERT, UPDATE, DELETE |
 | `vendite.offerte_commerciali_eccezioni` | `trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-04; stato bozza `BOZZA`, terzo argomento) | INSERT, UPDATE, DELETE |
 | `vendite.contratti_righe_componenti` | `trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05, livello `RIGA`) | INSERT, UPDATE, DELETE |
@@ -97,27 +101,40 @@ per rifiutare*.
 | `vendite.preventivi_righe_componenti` | `trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-08, livello `RIGA`, tipo `PREVENTIVO`) | INSERT, UPDATE, DELETE |
 | `vendite.ordini_righe_componenti` | `trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-08, livello `RIGA`) | INSERT, UPDATE, DELETE |
 | `vendite.ddt_righe_componenti` | `trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-08, livello `RIGA`) | INSERT, UPDATE, DELETE |
+| `vendite.ddt_righe_prelievi` | `trg_ddt_righe_prelievi_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-08, livello `RIGA`) | INSERT, UPDATE, DELETE — **aperta la sola `ubicazione_arrivo_id` in `EMESSO` e `SPEDITO`** |
 
-⚠️ **Sugli ordini `INSERT` e `UPDATE` restano aperti, ed è una decisione**
-(Tid, 14 settembre, voce «la promessa di consegna dopo la conferma» in
-`PROJECT_CONTEXT`): `data_consegna_confermata` si decide alla conferma e può
-cambiare dopo, e il verbo che la governa non esiste ancora. Montare le tre
-porte chiuderebbe quella colonna prima del verbo. Il pgTAP del BB pinna
-questa apertura (test 14), così un allargamento futuro sarà deliberato: è un
-`CREATE OR REPLACE TRIGGER`, non un guard nuovo.
+⭐ **Le colonne che il dominio cambia dopo** (dal 2026-10-08, D-1 di Tid in
+`brief-db-righe-e-componenti-debiti-residui`). Fino a quel giorno le righe
+d'ordine avevano il lock sul solo `DELETE`, perché `data_consegna_confermata` si
+decide alla conferma e può cambiare dopo: per lasciare aperta una colonna
+restavano aperte tutte, e a DB si cambiava la quantità di un ordine confermato.
+Ora le porte sono tre, e il montaggio dichiara l'eccezione con gli argomenti
+`[4]` e `[5]`: un `UPDATE` con il documento in uno degli stati `[5]` passa se,
+tolte le colonne `[4]` e quelle tecniche (`data_update`, `user_update`,
+`tx_id`), la riga è identica a com'era. È un elenco di colonne **ammesse**, non
+di colonne vietate: una colonna nuova nasce chiusa. `INSERT` e `DELETE` non hanno
+eccezioni. Colonne senza stati, o una colonna che la riga non ha, sono un errore
+di montaggio (`E_DOC_RIGHE_LOCK_MONTAGGIO`).
 
-I **preventivi** sono il candidato successivo (`_STATI_RIGHE_MODIFICABILI =
-{DRAFT}` anche lì), ma non in questo giro: il flusso di approvazione prezzo
-scrive `stato_approvazione_prezzo` sulle righe, e va censito prima di chiudere
-la porta. I loro **componenti** invece sono chiusi dal 2026-10-08: il flusso di
-approvazione non li scrive (censimento del BE, `brief-db-righe-e-componenti-le-altre-famiglie` §3.1).
+Gli stati si dicono per `codice_interno`, come lo stato bozza: un flag di
+catalogo che dica «da evadere» non c'è (`fase = IN_CORSO` comprende anche
+`SPEDITO` e `CONSEGNATO`).
 
-⚠️ **Il prezzo delle porte aperte sulle righe** (2026-10-08). Sulle righe d'ordine e
-su quelle del preventivo la quantità a DB si cambia anche fuori bozza; sui
-componenti no. Su una riga **kit** il cambio lo respinge quindi il lock del
-componente, attraverso la propagazione della quantità; su una riga semplice
-passa. Il lock dei componenti è giusto, il debito è sulle righe: §1 di
-`brief-db-righe-e-componenti-debiti-residui`.
+I **preventivi** hanno le tre porte chiuse senza eccezioni: le marche di
+approvazione prezzo si scrivono in bozza, perché un prezzo in attesa o rifiutato
+su una riga attiva ferma l'uscita dalla bozza.
+
+#### La terza copia ritirata: i prelievi della bolla
+
+La forma «fuori bozza tutto chiuso, salvo queste colonne in questi stati»
+esisteva già, scritta a mano, in
+[`vendite.trgfn_ddt_righe_prelievi_guard`](/dbzero/vendite/funzioni/trgfn_ddt_righe_prelievi_guard):
+in `EMESSO` e `SPEDITO` si compila la sola ubicazione d'arrivo. Il 2026-10-05 era
+rimasta fuori, «un'altra regola, non una copia», perché il building block non
+sapeva dire l'eccezione. Con le righe d'ordine la stessa forma è comparsa la
+seconda volta: il building block l'ha imparata, e la copia dei prelievi si è
+ritirata nello stesso giro (`20261008-92`, `-93`). La regola del kit resta nel
+guard dei prelievi.
 
 ---
 
@@ -161,7 +178,7 @@ del documento emesso.
 | Codice | Classe | Quando | Valori |
 | --- | --- | --- | --- |
 | `E_RIGA_DOC_NON_BOZZA` | `CONFLITTO_STATO` | il documento non è più in bozza | etichetta del documento, stato, verbo (`aggiungere` / `modificare` / `togliere`) |
-| `E_DOC_RIGHE_LOCK_MONTAGGIO` | `TECNICO` | argomenti mancanti, colonna FK che la riga non ha, o un livello che non è `TESTATA` né `RIGA` | trigger, tabella, nota |
+| `E_DOC_RIGHE_LOCK_MONTAGGIO` | `TECNICO` | argomenti mancanti, colonna FK che la riga non ha, un livello che non è `TESTATA` né `RIGA`, colonne ammesse senza stati (o il contrario), una colonna ammessa che la riga non ha | trigger, tabella, nota |
 | `E_DOC_TIPO_NON_GESTITO` | `TECNICO` | tipo di documento sconosciuto al lettore (lo solleva il lettore) | il tipo ricevuto |
 
 * La frase è **una per tre porte**, ed è il verbo a dire quale: *«DDT 0023456
@@ -170,6 +187,8 @@ del documento emesso.
   lo stesso giorno (`obsoleto_dal`, messaggio conservato per il diario).
 * Nessuna chiave `campo` nel contesto: su un `CONFLITTO_STATO` non c'è nessun
   campo da accendere — è la situazione a non consentire l'operazione.
+* Con le colonne ammesse (`[4]`/`[5]`) nel contesto entrano anche
+  `colonne_ammesse` e `stati_ammessi`, per chi diagnostica.
 
 ---
 
@@ -181,6 +200,9 @@ del documento emesso.
   esattamente ciò che il BB chiude. Cinque file sono stati riscritti così il
   22 settembre; la ricetta è in `test-fn-partite-merce-chiusura-v1`
   (`fn_genera_ddt_da_ordine`, causale, indirizzo CON, transizioni contigue).
+  Dal 2026-10-08 vale anche per ordini e preventivi, e la transizione la fa
+  [`dbops.fn_pgtap_porta_a_stato`](/dbzero/dbops/funzioni/fn_pgtap_porta_a_stato):
+  circa cinquanta file sono stati riscritti così.
 * Il rimedio, quando rifiuta, **non è insistere**: si agisce sul documento
   intero con il verbo che il suo stato ammette, o con un documento di rettifica.
 * Presidio: `db/pgtap/vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1.sql`
@@ -229,8 +251,23 @@ dell'errore, per questi, c'è anche `riga_documento_id`.
   «nipote». È stata ritirata nello stesso giro, e quel guard tiene solo la
   coerenza del prelievo (fascia `_a10_`).
 * **I prelievi della bolla no**: la loro regola, in `EMESSO` e `SPEDITO`,
-  ammette il cambio della sola ubicazione d'arrivo. È un'altra regola, non una
-  copia, e resta in `vendite.trgfn_ddt_righe_prelievi_guard`.
+  ammette il cambio della sola ubicazione d'arrivo, e il building block non
+  sapeva ancora dirlo. ⚠️ Superato il 2026-10-08: con le colonne ammesse la
+  forma è la stessa, e i prelievi hanno adottato il building block (sopra, «La
+  terza copia ritirata»).
 
 > 📎 changeSet `20261005-15 … -18`. Presidio:
 > `db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 8-18, 23-26).
+
+### 🔄 rev 2026-10-08 — le colonne che restano aperte (brief-db-righe-e-componenti-debiti-residui, D-1)
+
+Due argomenti facoltativi in coda, `[4]` e `[5]`: le colonne che un `UPDATE` può
+cambiare fuori bozza e gli stati in cui lo può fare (sopra, «Le colonne che il
+dominio cambia dopo»). Le righe d'ordine passano alle tre porte con aperta la sola
+data di consegna confermata negli stati da evadere, le righe del preventivo alle
+tre porte senza eccezioni, i prelievi della bolla adottano il building block e
+ritirano la loro copia.
+
+> 📎 changeSet `20261008-89 … -94`. Presidio:
+> `db/pgtap/vendite/test-righe-e-componenti-debiti-residui-v1.sql` (test 4-20) e
+> `test-trgfn-doc-righe-lock-fuori-bozza-v1.sql` (test 2, 14).

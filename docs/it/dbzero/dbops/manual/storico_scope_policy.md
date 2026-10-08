@@ -39,10 +39,11 @@ Brief: `brief-db-rls-storico-scope-congelato`, §4b (decisione D3).
 | `SR` | la riga ha il soggetto-ruolo dell'emittente: si converte nel suo emittente fiscale (è 1 a 1) | `vendite.fatture.emittente_soggetto_ruolo_id` |
 | `PADRE` | la riga è un satellite: `colonna` è la chiave verso il padre, e si **continua sulla riga di mappa del padre** — anche per più salti | `fatture_righe.fattura_id → fatture` (poi `SR`) |
 | `BA` | la riga porta un billing account: un billing account ha **esattamente un** emittente, e lo si prende da lì | `anagrafiche.clienti.billing_account_id` |
+| `COPPIA` | la riga porta la **coppia** (istanza, utility) di un billing account: `colonna` dichiara i due nomi, «<istanza>,<utility>», e si prende l'emittente del BA della coppia (dal 2026-10-09) | `anagrafiche.istanze_dati_precontrattuali` (`istanza_utility_id,utility_id`) |
 | `NESSUNO` | la tabella non è protetta: la sua storia non si arma, e la `ragione` dice perché | `catalogo.articoli` |
 
-⭐ Il valore che si congela è sempre uno solo, un `emittenti_fiscali.id`: i cinque
-modi sono cinque **modi di arrivarci**, non cinque cose diverse.
+⭐ Il valore che si congela è sempre uno solo, un `emittenti_fiscali.id`: i sei
+modi sono sei **modi di arrivarci**, non cinque cose diverse.
 
 ---
 

@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_istanza_ha_ba(p_istanza_utility_
  RETURNS void
  LANGUAGE plpgsql
  SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public'
+ SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
 DECLARE
     v_codice anagrafiche.istanze_utilities.codice%TYPE;

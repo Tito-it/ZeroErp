@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE RIGHE DEL PREVENTIVO SI TOCCANO SOLO IN BOZZA
+#   vendite.preventivi_righe:
+#     + trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+#       -> vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'preventivo_id')
+#   Brief: brief-db-righe-e-componenti-debiti-residui (§1, D-1 di Tid, 2026-10-08)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Le righe del preventivo non avevano nessun lock: a DB la quantita' di un
+#   preventivo emesso si cambiava, e ci si aggiungeva una riga. Lo impediva il
+#   backend (richiedi_righe_in_bozza): la regola da un lato solo. Dal
+#   20261008-34 i componenti sono chiusi fuori bozza, e lo sono le righe di
+#   contratto e offerta: il preventivo era l'ultimo.
+#
+# -- LA DECISIONE (D-1 di Tid, 2026-10-08): nessuna colonna aperta ----------
+#   Le marche di approvazione NON chiedono un'eccezione (istruttoria sulla
+#   struttura): una riga PENDING e' congelata da script.trgfn_righe_guard_pending
+#   (anche `attivo`: non si spegne), e un PENDING/REJECTED su una riga attiva
+#   ferma emissione, accettazione e revisione (fn_check_prezzi_autorizzati,
+#   fn_check_prezzi_in_attesa). L'esito arriva quindi in bozza. Resta fuori il
+#   preventivo ANNULLATO dalla bozza con una riga in attesa: l'esito ora e'
+#   respinto, ed e' il ciclo di vita della pratica (refactor-prezzi.md §4.7,
+#   backend) — dichiarato nel brief.
+#
+# -- CHI SCRIVE LE RIGHE DEL PREVENTIVO (censito il 2026-10-08) -----------
+#   * vendite.fn_crea_revisione_preventivo: la rev N+1 nasce DRAFT;
+#   * nessuna funzione DB le modifica dopo la nascita (zero UPDATE nei corpi);
+#   * il backend: in DRAFT (richiedi_righe_in_bozza), e il flusso L3
+#     (approva/rifiuta) sulle righe PENDING, che sono solo in bozza.
+#
+# -- NOMI E ORDINE ------------------------------------------------------
+#   Fascia _a05_: prima di a10_guard_pending, a10_lock_columns (natura),
+#   a10_qta_from_operativa e dei block_deact. Tipo PREVENTIVO: lo conoscono i
+#   lettori DEFINER dal 20261008-32/-33. 63 caratteri esatti: il limite di
+#   PostgreSQL, verificato (il nome non si tronca).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261008-91-create-trigger-preventivi-righe-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261008-91-create-trigger-preventivi-righe-lock-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.preventivi_righe: il building block «solo in bozza» sulle tre porte, senza eccezioni.
+        Brief: brief-db-righe-e-componenti-debiti-residui (§1, D-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgrelid = 'vendite.preventivi_righe'::regclass
+                 AND t.tgname = 'trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.preventivi_righe
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'preventivo_id');
+
+              COMMENT ON TRIGGER trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                  ON vendite.preventivi_righe IS
+                  'Le righe del preventivo si aggiungono, modificano e tolgono solo con il preventivo in DRAFT '
+                  '(building block vendite.trgfn_doc_righe_lock_fuori_bozza, E_RIGA_DOC_NON_BOZZA), senza eccezioni: le'
+                  ' marche di approvazione prezzo si scrivono in bozza, perche'' un prezzo in attesa o rifiutato ferma '
+                  'l''uscita dalla bozza. Fascia _a05_: parla prima dei guard della riga. Brief: '
+                  'brief-db-righe-e-componenti-debiti-residui (§1, D-1 di Tid).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt
+                  ON vendite.preventivi_righe;

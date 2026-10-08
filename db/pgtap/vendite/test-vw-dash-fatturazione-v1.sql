@@ -91,6 +91,8 @@ SELECT
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS prev_accettato_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS prev_bozza_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS ord_confermato_id,
   (SELECT s.id FROM config.stati_doc_offerte s
@@ -209,6 +211,7 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tm
 UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp_df_refs)
  WHERE id = (SELECT art_serv_id FROM tmp_df_refs);
 
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le tre righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato prima del push — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_df_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -216,7 +219,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-DF-PREV', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_fatturazione'), r.emittente_fiscale_id
     FROM tmp_df_refs r
@@ -246,6 +249,7 @@ WITH ins AS (
     FROM tmp_df_prev p, tmp_df_refs r
   RETURNING id)
 SELECT * FROM ins;
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_df_prev), 'ACCETTATO'); END $porta$;
 
 -- Push reale del ramo merce: crea ordine DRAFT + riga ordine.
 SELECT vendite.fn_push_preventivo_a_ordine((SELECT id FROM tmp_df_prev));

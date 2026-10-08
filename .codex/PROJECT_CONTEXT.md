@@ -265,9 +265,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-done/brief-db-righe-e-componenti-le-altre-famiglie.md`, `20261008-30` … `-35`, applicati, pgTAP verdi):
   la revisione del preventivo porta anche i componenti spenti (D-1 di Tid) e li lega per identità; componenti
   di preventivo, ordine e DDT solo in bozza; `user_update NOT NULL` su righe e componenti; CHECK `_nz`.
-- ⏳ **Righe e componenti: i tre debiti rimasti** (`work-in-progress/brief-db-righe-e-componenti-debiti-residui.md`,
+- ⏳ (BE) **Righe e componenti: i tre debiti rimasti** (`work-in-progress/brief-db-righe-e-componenti-debiti-residui.md`,
   D20, 2026-10-08): righe d'ordine e di preventivo ancora aperte fuori bozza; `user_update` nullable altrove e
-  senza presidio; componente spento in attesa copiato nella revisione. Decisi da Tid il 2026-10-08 (D-1 lock a tre porte, sull'ordine aperta la sola `data_consegna_confermata` negli stati da evadere; D-2 un giro solo col presidio; D-3 lo spento in attesa si copia senza marca). Sviluppo non iniziato.
+  senza presidio; componente spento in attesa copiato nella revisione. Decisi da Tid il 2026-10-08 (D-1 lock a tre porte, sull'ordine aperta la sola `data_consegna_confermata` negli stati da evadere; D-2 un giro solo col presidio; D-3 lo spento in attesa si copia senza marca). DB scritto lo stesso giorno (`20261008-80` … `-94`, helper di fixture `dbops.fn_pgtap_porta_a_stato`, ~55 fixture pgTAP in forma bozza → righe → transizione), applicato su dev, pgTAP verdi anche su `zeroerp_ci` (2026-10-09, con `20261009-03` per `config.tipi_doc_fiscale`, la tabella che dev non mostrava); tre test non più costruibili come skip motivati (§4.5). ✅ Lato DB chiuso; ⏳ restano le richieste al BE (§4.4).
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),

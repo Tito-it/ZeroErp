@@ -12,7 +12,7 @@
 | descrizione | character varying(100) | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
-| user_update | text | YES |  |
+| user_update | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | YES |  |
 | natura_soggetto | config.natura_soggetto_enum | NO |  |
 

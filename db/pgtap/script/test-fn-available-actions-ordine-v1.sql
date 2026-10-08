@@ -77,6 +77,8 @@ SELECT
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1
   ) AS stato_draft_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+  -- rev 2026-10-08 (D-1): l'aliquota che la conferma pretende sulla riga.
+  (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   -- BA pushabile (utility/istanza valorizzate, fatturazione CONFERMATO,
   -- emittente risolvibile): rende l'ordine CONFERMATO eleggibile al push.
   (SELECT ba.id FROM anagrafiche.billing_account ba
@@ -114,6 +116,9 @@ SELECT
 FROM tmp_ord_draft o, tmp_refs_aao r;
 
 -- Ordine CONFERMATO con una riga pushabile (fixture test 9-10).
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+--   prende la riga (con l'aliquota), poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato —
+--   fuori bozza le righe non si scrivono piu' (20261008-90).
 -- BA reale + emittente coerente; trgfn_ordini_normalize eredita
 -- fatturazione_trigger=CONFERMATO dal BA su INSERT.
 CREATE TEMP TABLE tmp_ord_conf AS
@@ -125,7 +130,7 @@ WITH ins AS (
   SELECT
     r.soggetto_ruolo_id, r.push_ba_id,
     anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-    r.stato_confermato_id, r.valuta_id, DATE '2026-06-15',
+    r.stato_draft_id, r.valuta_id, DATE '2026-06-15',
     false, jsonb_build_object('test_scope', 'pgtap_fn_aa_ordine', 'stato', 'conf')
   FROM tmp_refs_aao r
   WHERE r.push_ba_id IS NOT NULL
@@ -135,13 +140,17 @@ SELECT * FROM ins;
 
 INSERT INTO vendite.ordini_righe (
   ordine_id, riga_nr, articolo_id, descrizione,
-  qta_operativa, quantita, prezzo_unitario, attivo, storicizza, meta
+  qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta
 )
 SELECT
   o.id, 1, r.articolo_id, 'Riga test pgtap conf',
-  5.000000, 5.000000, 12.000000, true, false,
+  5.000000, 5.000000, 12.000000, r.iva_id, true, false,
   jsonb_build_object('test_scope', 'pgtap_fn_aa_ordine')
 FROM tmp_ord_conf o, tmp_refs_aao r;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_conf o;
+END $x$;
 
 -- ============================================================
 -- TEST 1) Ordine inesistente -> NULL

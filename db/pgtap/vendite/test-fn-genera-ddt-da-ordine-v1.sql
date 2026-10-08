@@ -113,7 +113,7 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-01', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_genera_ddt')
   FROM tmp_refs r
@@ -132,6 +132,13 @@ WITH ins AS (
   FROM tmp_ord_a o, tmp_refs r
   RETURNING id)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_a), 'CONFERMATO');
+END $x$;
 
 -- Chiamata madre: evade tutto il residuo
 CREATE TEMP TABLE tmp_ddt_a AS
@@ -262,7 +269,7 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-02', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_genera_ddt')
   FROM tmp_refs r
@@ -281,6 +288,13 @@ WITH ins AS (
   FROM tmp_ord_b o, tmp_refs r
   RETURNING id)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_b), 'CONFERMATO');
+END $x$;
 
 -- Evasione parziale: 4 su 10
 CREATE TEMP TABLE tmp_ddt_b1 AS

@@ -15,6 +15,10 @@
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | codice_interno | character varying(32) | NO |  |
+| data_insert | timestamp with time zone | NO | now() |
+| user_insert | character varying(80) | NO | CURRENT_USER |
+| data_update | timestamp with time zone | NO | now() |
+| user_update | character varying(80) | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -44,6 +48,8 @@
 | trg_tipi_doc_fiscale_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_tipi_doc_fiscale_a10_sorgenti_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'sorgenti', 'tipo_doc_fiscale_id', 'id', 'attivo')` |
 | trg_tipi_doc_fiscale_a10_tipi_doc_fiscale_registri_block_482259 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'tipi_doc_fiscale_registri', 'tipo_doc_fiscale_id', 'id', 'attivo')` |
+| trg_tipi_doc_fiscale_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_tipi_doc_fiscale_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 
 ---
 {% include-markdown "signature-core.md" %}
