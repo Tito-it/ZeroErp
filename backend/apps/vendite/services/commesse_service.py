@@ -30,7 +30,7 @@ from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import (
-    MISSING as _MISSING,
+    MissingType as _MissingType,
     PayloadValidator,
     translate_db_errors,
 )
@@ -540,7 +540,7 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
     descrizione = _V_TESTATA.extract_optional_string(
         payload, "descrizione", nullable=True, function_name=function_name,
     )
-    if descrizione is not _MISSING:
+    if not isinstance(descrizione, _MissingType):
         ErrorManager.require(
             descrizione is None or len(descrizione) <= _DESCRIZIONE_MAX,
             code="E_COMMESSA_VALIDATION",
@@ -1265,7 +1265,7 @@ def fn_riallinea_prezzo(
     commessa_id: int,
     attivita_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.commesse_service.fn_riallinea_prezzo"
 
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
@@ -1345,7 +1345,7 @@ def fn_variazione_prezzo_eccezionale(
     commessa_id: int,
     attivita_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.commesse_service.fn_variazione_prezzo_eccezionale"
 
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
@@ -1409,7 +1409,7 @@ def fn_sblocca_prezzo(
     commessa_id: int,
     attivita_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.commesse_service.fn_sblocca_prezzo"
 
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
@@ -1580,7 +1580,7 @@ def fn_commessa_registro(
     commessa_attivita_id: int | None = None,
     limit: int = DEFAULT_LIMIT_EVENTI,
     offset: int = 0,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         1 <= int(limit) <= _REGISTRO_MAX_LIMIT,
         code="E_COMMESSA_VALIDATION",
@@ -1621,7 +1621,7 @@ def annulla_attivita_manuale(
     commessa_id: int,
     attivita_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.commesse_service.annulla_attivita_manuale"
 
     # Scoping riga<->commessa: la `WHERE` di get_attivita_pricing filtra su

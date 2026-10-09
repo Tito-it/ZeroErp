@@ -23,6 +23,7 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.lookup_repository import LookupRepository
+from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 
 class LookupTipiSoggettoDettaglioView(DomainAPIView):
@@ -200,7 +201,7 @@ class LookupUtilitiesPerEmittenteView(DomainAPIView):
         # Se None (es. super-admin cross-emittente), si delega alla repo che
         # ritorna tutte le utility EF (eventualmente filtrate per ruolo).
         svc = ParameterService()
-        emittente_fiscale_id = svc.get_emittente_fiscale_id_for_user(request.user.id)
+        emittente_fiscale_id = svc.get_emittente_fiscale_id_for_user(utente_autenticato_id(request))
 
         repo = LookupRepository()
         results = repo.list_utilities_per_emittente(emittente_fiscale_id, ruolo)

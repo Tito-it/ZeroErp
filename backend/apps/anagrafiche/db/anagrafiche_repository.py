@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.db import connection, transaction
 
 from apps.core.db._helpers import fetchone_scalar, rows_to_list, pattern_contiene
@@ -79,7 +81,7 @@ class AnagraficheRepository:
         self, *, search: str | None = None, solo_attive: bool = True,
     ) -> list[dict]:
         condizioni: list[str] = []
-        params: list[object] = []
+        params: list[Any] = []
         if solo_attive:
             condizioni.append("v.risorsa_umana_attivo = true")
         # La guardia legge il PATTERN, non il termine grezzo: «  » e' un
@@ -114,7 +116,7 @@ class AnagraficheRepository:
     # ⚠️ `condizioni` sono letterali di questa classe, i VALORI viaggiano in
     #        `params`: la forma di `conta_con_perimetro`.
     def _risorse_umane_lookup(
-        self, condizioni: list[str], params: list[object],
+        self, condizioni: list[str], params: list[Any],
     ) -> list[dict]:
         where = f"WHERE {' AND '.join(condizioni)}" if condizioni else ""
         sql = f"""

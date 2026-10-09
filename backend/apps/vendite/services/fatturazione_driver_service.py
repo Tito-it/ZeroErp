@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 from typing import Any, Callable
 
@@ -73,7 +74,7 @@ _MODALITA_SCHEDULABILI: frozenset[str] = frozenset(_MODALITA) - {MODALITA_MIRATA
 # Callback opzionale di progresso per-terna: (lane, esito, errore) — esito
 # valorizzato su successo, errore (ServiceError) su fallimento. Serve al
 # command per il log progressivo su stdout; l'endpoint non la usa.
-OnLaneEsito = Callable[[dict[str, Any], dict[str, Any] | None, ServiceError | None], None]
+OnLaneEsito = Callable[[Mapping[str, Any], dict[str, Any] | None, ServiceError | None], None]
 
 # Callback opzionale post-discovery: riceve il summary di testata (lane,
 # senza_emittente, corsia...) PRIMA dell'esecuzione delle terne — il command

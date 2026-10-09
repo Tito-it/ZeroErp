@@ -139,6 +139,23 @@ class TestResolve(_BaseApiTest):
         )
         self.assertEqual(resp.status_code, 400)
 
+    # Scopo: `data_riferimento` vuota e' come assente: 400 col campo, senza
+    #        arrivare al resolver. Fino al 2026-10-09 il controllo era sul valore
+    #        grezzo, e `""` passava (trovato da mypy).
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    @patch("apps.vendite.api.views_pricing.PricingService")
+    def test_resolve_data_riferimento_vuota_400(self, svc_cls, perm, _auth):
+        perm.get_emittenti_sr_ids.return_value = [42]
+        resp = self.client.post(
+            _BASE,
+            data=json.dumps(self._payload(data_riferimento="")),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("data_riferimento", resp.json()["error"].get("fields") or [])
+        svc_cls.return_value.resolve_prezzo.assert_not_called()
+
     # Scopo: user senza emittenti autorizzati e senza override -> 400 parlante.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM)

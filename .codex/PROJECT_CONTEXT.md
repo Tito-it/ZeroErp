@@ -217,6 +217,16 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- **Type checker del backend (D2-b): L0-L3 chiusi, committati** (`work-in-progress/piano-be-type-checker.md`;
+  `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
+  `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`
+  §mypy). Registro **620 → 2** il 2026-10-09; gli envelope JSON sono `dict[str, Any]`; BB
+  `utente_autenticato`/`utente_autenticato_id`. Trovati e corretti difetti veri (fra cui i 500 di riallinea/sblocca
+  prezzo e l'alert scadenze listini sempre in 400). Restano tre brief al team DB, il BE attende:
+  `brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C, la generazione si ferma),
+  `brief-db-riga-listino-propagata-dalla-commessa`, `brief-be-db-giorno-nel-fuso-aziendale` (i filtri per giorno
+  usano il giorno UTC: `test_giornale_trasversale_perimetro` è rosso fra le 00:00 e le 02:00). Da decidere: gli
+  stub `types-bleach`/`types-openpyxl`.
 - **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,
   archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su
   `dbops.presidi`; il pannello mostra azione → significato → a chi tocca, il digest raggruppa per chi agisce.
@@ -278,7 +288,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
   decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); BE/FE fatti il
   2026-10-08 (§7, non committati: la pratica sceglie la fornitura, cioe' il BA — D-10). Restano il collaudo a video e
-  i debiti del §7.5 (ordini e DDT col BA ancora nullable: da decidere).
+  i debiti del §7.5.
+- 📝 **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto**
+  (`work-in-progress/brief-db-esecutivi-ba-coppia.md`, D21, 2026-10-09): BA nullable, copie di utility e ruolo
+  non legate al BA, lock del BA solo sull'ordine; un esecutivo fatturabile senza BA esce dal push in silenzio.
+  Bozza, cinque decisioni di Tid.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

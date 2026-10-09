@@ -99,7 +99,7 @@ CODICE_DIAGNOSTICA_FALLITA = "E_DIAGNOSTICA_NON_REGISTRATA"
 #    fallimenti dello stesso telaio. Ci vanno le COORDINATE (quale lotto,
 #    quale commessa, quale fattura), non una frase.
 def diagnostica_best_effort(
-    azione: Callable[[], None],
+    azione: Callable[[], object],
     *,
     contesto: dict[str, Any],
     function_name: str,

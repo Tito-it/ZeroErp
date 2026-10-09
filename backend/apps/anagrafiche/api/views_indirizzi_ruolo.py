@@ -99,9 +99,12 @@ class RuoloIndirizziView(DomainAPIView):
         from django.db import connection
         from apps.core.db._helpers import rows_to_list
 
-        from apps.core.api.payload_validators import qp_int_strict
-        raw_istanza = request.query_params.get("istanza_utility_id")
-        istanza_utility_id = qp_int_strict(raw_istanza, "istanza_utility_id", None) if raw_istanza else None
+        from apps.core.api.payload_validators import qp_int_optional
+        # BB `qp_int_optional`, come la gemella `RuoloContattiView`: vuoto =
+        # assente, un non intero e' un 400. Niente default fittizio da passare.
+        istanza_utility_id = qp_int_optional(
+            request.query_params.get("istanza_utility_id"), "istanza_utility_id",
+        )
 
         with connection.cursor() as cursor:
             soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)

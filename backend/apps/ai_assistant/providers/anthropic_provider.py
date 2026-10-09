@@ -9,12 +9,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 
 from apps.ai_assistant.providers.base import AIProvider
 from apps.ai_assistant.types import ProviderResponse, ToolCall, TokenUsage
+
+if TYPE_CHECKING:
+    import anthropic
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +30,7 @@ class AnthropicProvider(AIProvider):
     """
 
     def __init__(self) -> None:
-        self._client = None
+        self._client: anthropic.Anthropic | None = None
 
     # Scopo: Inizializza il client Anthropic lazy, solo al primo uso.
     def _get_client(self):

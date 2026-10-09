@@ -22,7 +22,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato_id
 from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
@@ -74,7 +74,7 @@ class ClientiInvitaPortaleView(DomainAPIView):
             return fn(
                 cliente_id=cliente_id,
                 email=email,
-                invitato_da_user_id=request.user.id,
+                invitato_da_user_id=utente_autenticato_id(request),
             )
 
         return handle_post_json(request, handler=_handler)
@@ -132,7 +132,7 @@ class ClientiInvitaShopView(DomainAPIView):
             return fn(
                 cliente_id=cliente_id,
                 email=email,
-                invitato_da_user_id=request.user.id,
+                invitato_da_user_id=utente_autenticato_id(request),
             )
 
         return handle_post_json(request, handler=_handler)
@@ -173,7 +173,7 @@ class FornitoriInvitaPortaleView(DomainAPIView):
             return fn(
                 fornitore_id=fornitore_id,
                 email=email,
-                invitato_da_user_id=request.user.id,
+                invitato_da_user_id=utente_autenticato_id(request),
             )
 
         return handle_post_json(request, handler=_handler)
@@ -239,7 +239,7 @@ class ClientiDisattivaPortaleView(DomainAPIView):
             return service.disattiva_veste_cliente(
                 cliente_id=cliente_id,
                 ruolo_applicativo=RUOLO_APPLICATIVO_CLIENTE_PORTALE,
-                disattivato_da_user_id=request.user.id,
+                disattivato_da_user_id=utente_autenticato_id(request),
             )
 
         return handle_post_json(request, handler=_handler)
@@ -266,7 +266,7 @@ class ClientiDisattivaShopView(DomainAPIView):
             return service.disattiva_veste_cliente(
                 cliente_id=cliente_id,
                 ruolo_applicativo=RUOLO_APPLICATIVO_SHOP_CUSTOMER,
-                disattivato_da_user_id=request.user.id,
+                disattivato_da_user_id=utente_autenticato_id(request),
             )
 
         return handle_post_json(request, handler=_handler)
@@ -292,7 +292,7 @@ class FornitoriDisattivaPortaleView(DomainAPIView):
         def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return service.disattiva_veste_fornitore(
                 fornitore_id=fornitore_id,
-                disattivato_da_user_id=request.user.id,
+                disattivato_da_user_id=utente_autenticato_id(request),
             )
 
         return handle_post_json(request, handler=_handler)

@@ -54,14 +54,17 @@ def o_not_found(
     detail: str | None = None,
     function_name: str | None = None,
 ) -> T:
+    # Senza `function_name` resta il default di ErrorManager: non si
+    # inventa un nome per un chiamante che non lo dichiara.
+    nome_funzione: dict[str, Any] = (
+        {"function_name": function_name} if function_name else {}
+    )
     ErrorManager.require(
         entita is not None,
         code=code,
         message=message,
         detail=detail,
-        # Senza `function_name` resta il default di ErrorManager: non si
-        # inventa un nome per un chiamante che non lo dichiara.
-        **({"function_name": function_name} if function_name else {}),
+        **nome_funzione,
     )
     assert entita is not None
     return entita

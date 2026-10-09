@@ -85,16 +85,20 @@ Campi di ogni riga per ramo:
 | `FO` | `fornitore_id`, `soggetto_ruolo_id`, `codice`, `attivo`, `stato_descrizione` (`ATTIVO`/`INATTIVO`), `indirizzo`, `comune` |
 | altri | una riga con `soggetto_ruolo_id`, `soggetto_id`, `indirizzo`, `comune`; in piu' `entita_detail` a livello radice (da `fn_get_entita_ruolo_detail`) |
 
-Se il soggetto non ha righe per quel tipo ruolo (o non esiste, o e' fuori scope) la
-risposta e' comunque **200** con `righe: []`.
+**«Non c'e'» e lista vuota sono due risposte diverse** (contratto deciso da Tid il
+2026-10-08, in servizio dal DB il 2026-10-08):
 
-> ⚠️ Difetto noto ([E-10](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)): la view prevede `E_SEARCH_NOT_FOUND` (404) quando la
-> funzione DB non restituisce nulla, ma `fn_get_search_detail` restituisce sempre
-> `{tipo_ruolo, righe}`: il 404 oggi non esce mai.
-> Contratto deciso il 2026-10-08: **404** quando il soggetto, con quel ruolo, non
-> risulta (inesistente, senza quel ruolo, o cliente fuori scope); `righe: []` solo
-> quando c'è ma il filtro `utility_id` non trova righe. In attesa del giro DB (R-4 del
-> [brief](../../../dev/work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md)).
+* **404 `E_SEARCH_NOT_FOUND`** quando il soggetto, con quel ruolo, non risulta a
+  chi guarda: non esiste, non ha quel ruolo, o — per `CL` — nessuno dei suoi
+  clienti e' nel perimetro. Inesistente e fuori perimetro escono uguali, di
+  proposito: il 404 non rivela un cliente di un'altra azienda;
+* **200 con `righe: []`** solo quando il soggetto c'e' e il filtro `utility_id` non
+  trova righe.
+
+Il perimetro dei clienti lo fa la **RLS** di `anagrafiche.clienti`, la stessa
+verifica per lista e dettaglio (`script.fn_check_soggetto_ruolo_visibile`). `FO`
+e gli altri ruoli non portano un'azienda nel modello: non si filtrano per
+emittente. Prova sul DB vero: `core/tests/db/test_search_detail_non_trovato_db.py`.
 
 Esempio per CL:
 
@@ -206,7 +210,7 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 | Codice | HTTP | Causa |
 |---|---|---|
 | `E_SEARCH_VALIDATION` | 400 | Parametro mancante, troppo corto (< 3 caratteri), tipo ruolo non visibile, paginazione fuori range |
-| `E_SEARCH_NOT_FOUND` | 404 | Previsto per dettaglio non trovato, oggi mai emesso: vedi [E-10](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md) |
+| `E_SEARCH_NOT_FOUND` | 404 | Dettaglio: soggetto inesistente, senza quel ruolo, o (per `CL`) senza clienti nel perimetro |
 | `E_VALIDATION_INPUT` | 400 | Parametro numerico non valido (page/page_size non numerici) |
 
 ## Dipendenze DB
@@ -214,11 +218,10 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 | Oggetto | Schema | Tipo |
 |---|---|---|
 | `fn_search_soggetti_universale` | `script` | Funzione — ricerca livello 1 (7 parametri: p_search_term, p_tipo_ruolo_id, p_emittente_ids, p_limit, p_offset, p_order_by, p_order_dir) |
-| `fn_get_search_detail` | `script` | Funzione — dettaglio livello 2 (4 parametri: soggetto_id, tipo_ruolo_id, utility_id opzionale, emittente_ids opzionale) |
+| `fn_get_search_detail` | `script` | Funzione — dettaglio livello 2 (4 parametri: soggetto_id, tipo_ruolo_id, utility_id opzionale, emittente_ids opzionale e **superato**). NULL = «non c'e'» |
+| `fn_check_soggetto_ruolo_visibile` | `script` | Funzione — «il soggetto-ruolo si mostra a chi guarda?»: filtro di riga della lista e verifica d'esistenza del dettaglio (dal 2026-10-08) |
 | `fn_get_indirizzo` | `script` | Funzione — risoluzione indirizzo con catena fallback (usata nel livello 2) |
 | `tipi_ruoli` | `config` | Tabella — colonna `ricerca_visibile` |
-| `fn_get_emittenti_scope_sr_effettivo` | `script` | Funzione — scope emittente EFFETTIVO, risolto dalla GUC `app.current_user_id` dentro `fn_search_soggetti_universale` (dal 2026-08-18): `p_emittente_ids` può solo **restringere**, mai allargare |
-| `fn_check_ba_visible_for_emittenti` | `script` | Funzione — filtro di visibilità del billing account per il ramo `CL` |
 | `fn_get_ba_emittente_sr_id` | `script` | Funzione — «quale emittente fattura questo billing account»; alimenta la colonna `emittente_ragione_sociale` del livello 1 (dal 2026-08-18) |
 
 ## File backend
@@ -230,6 +233,7 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 | `apps/core/api/urls_v1.py` | Routing — `search/`, `search/<uuid>/detail/`, `lookup/tipi-ruoli/` |
 | `apps/core/services/error_policies_generated.py` | Classi errori — `E_SEARCH_VALIDATION`, `E_SEARCH_NOT_FOUND` |
 | `apps/core/tests/api/test_search_view.py` | Test unitari (mock DB) |
+| `apps/core/tests/db/test_search_detail_non_trovato_db.py` | Dettaglio sul DB vero: NULL per inesistente e senza ruolo, `righe: []` col filtro utility (opt-in `ZEROERP_TEST_DB_E2E`) |
 | `scripts/tests/smoke-test-core.sh` | Smoke test (sezioni 14-17) |
 
 ## Note di migrazione
@@ -239,6 +243,7 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 - Le funzioni DB `fn_search_soggetti_universale` e `fn_get_search_detail` devono essere
   presenti nello schema `script` (Fase 1, step 1.3 e 1.4)
 - `fn_search_soggetti_universale` ha signature a 7 parametri (`p_search_term`, `p_tipo_ruolo_id`, `p_emittente_ids`, `p_limit`, `p_offset`, `p_order_by`, `p_order_dir`). I 2 nuovi parametri di ordinamento sono opzionali (default `ragione_sociale_completa ASC`)
-- `fn_get_search_detail` ha 4 parametri (`p_soggetto_id`, `p_tipo_ruolo_id`, `p_utility_id` opzionale, `p_emittente_ids` opzionale, che puo' solo restringere lo scope). Restituisce `codice` nel JSONB per CL e FO
+- `fn_get_search_detail` ha 4 parametri (`p_soggetto_id`, `p_tipo_ruolo_id`, `p_utility_id` opzionale, `p_emittente_ids` opzionale). Restituisce `codice` nel JSONB per CL e FO
+- ⚠️ `p_emittente_ids` delle due funzioni e' **superato dal 2026-10-08 e non letto**: il perimetro lo fa la RLS. Dal 2026-10-09 il backend non lo passa piu' (repository e view); il ritiro dalla firma e' chiesto al team DB (R-5 del brief-db-codici-non-trovato-email-e-permessi)
 - Lo smoke test sezione 14 gestisce gracefully il caso in cui la funzione DB non sia
   ancora disponibile

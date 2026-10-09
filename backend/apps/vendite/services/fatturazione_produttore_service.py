@@ -23,7 +23,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import date
 from typing import Any
 
@@ -66,7 +66,7 @@ def accoda_giri_fatturazione(
     fino_a_stato: str | None = None,
     processi_repo: ProcessiRepository | None = None,
     coda_repo: CodaLavoriRepository | None = None,
-    on_emittente: Callable[[dict[str, Any], int | None, Exception | None], None] | None = None,
+    on_emittente: Callable[[Mapping[str, Any], int | None, Exception | None], None] | None = None,
 ) -> dict[str, Any]:
     processi_repo = processi_repo or ProcessiRepository()
     coda_repo = coda_repo or CodaLavoriRepository()

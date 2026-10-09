@@ -686,7 +686,8 @@ BA), `pratiche/tests/db/test_pratica_billing_account_db.py` (2) e
 * **Ordini e DDT hanno ancora `billing_account_id` nullable**, senza FK di coppia: e' la stessa
   asimmetria che R-2 ha chiuso su preventivo, offerta e contratto (il BE ha ancora i commenti
   «ordine prospect con BA NULL», `ordini_repository`, `_indirizzi_repo_mixin`, `ddt_repository`,
-  `ordine_document_context_builder`). Decisione di Tid: se aprire un brief DB.
+  `ordine_document_context_builder`). → Brief aperto il 2026-10-09 su richiesta di Tid:
+  [brief-db-esecutivi-ba-coppia.md](brief-db-esecutivi-ba-coppia.md) (D21 del registro DB).
 * `script.fn_get_billing_account_by_istanza` non ha piu' consumatori nel BE: il team DB puo'
   ritirarla (§6.12.3).
 * Il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT`: la chiave

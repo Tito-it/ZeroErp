@@ -569,7 +569,8 @@ class AmmSoftwareRepository:
         codice_fiscale: str | None = None,
         unita_organizzativa_id: int | None = None,
         data_nascita: str | None = None,
-        sesso: str = "M",
+        # None solo col soggetto esistente: per il nuovo lo pretende il service.
+        sesso: str | None = None,
         is_super_admin: bool = False,
         valido_dal: str | None = None,
         valido_al: str | None = None,

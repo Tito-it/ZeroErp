@@ -354,7 +354,7 @@ class BaseSourceHandler(ABC):
     # senza compositi o con override completo di `_expand_rows`, es. consumi).
     # È una staticmethod (non import top-level) perche' i *_repository importano
     # i types del dominio vendite → import locale evita cicli.
-    _componenti_repo_factory = None
+    _componenti_repo_factory: Callable[[], Any] | None = None
 
     def __init__(
         self,
@@ -495,7 +495,7 @@ class BaseSourceHandler(ABC):
             # resta esposto da `PushableRow`: le `fn_list_*_da_pushare`
             # continuano a calcolarlo e serve altrove. Cambia solo chi lo
             # ri-passa.
-            dimensioni_commessa = {
+            dimensioni_commessa: dict[str, Any] = {
                 "billing_account_id": row.billing_account_id,
                 "utility_id": row.utility_id,
                 "tipo_commessa": tipo_commessa,

@@ -22,7 +22,7 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection
 
@@ -929,7 +929,7 @@ class PagamentiRepository:
         data_a: date | None = None,
         search: str | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[DistintaRow], int]:
@@ -980,7 +980,7 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(row) for row in rows], total
+        return [cast(DistintaRow, self._shape(row)) for row in rows], total
 
     # Scopo: Dettaglio di una distinta (testata + display + totali derivati).
     # Risultato: None se non esiste — o se il perimetro non la lascia vedere,
@@ -1012,7 +1012,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None
+        return cast(DistintaDettaglioRow, self._shape(rows[0])) if rows else None
 
     # ══════════════════════════════════════════════════════════════
     #  Distinte — scrittura
@@ -1159,7 +1159,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
-        return [self._shape(row) for row in rows]
+        return [cast(RigaContabileRow, self._shape(row)) for row in rows]
 
     # Scopo: Le righe attive di una distinta come LISTA — pagina + totale in
     #        una valutazione, ordinamento dalla whitelist.
@@ -1221,7 +1221,7 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(row) for row in rows], total
+        return [cast(RigaContabileRow, self._shape(row)) for row in rows], total
 
     # Scopo: QUANTE righe attive di una distinta stanno in uno stato — il numero
     #        accanto a «Mostra scartate (N)» (BE-2, la forma di
@@ -1254,7 +1254,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None
+        return cast(RigaContabileRow, self._shape(rows[0])) if rows else None
 
     # Scopo: Crea una riga sotto una distinta — coi fatti E la destinazione.
     # ⚠️ Lo stato si risolve dal catalogo per codice: gli id sono smallint
@@ -1790,7 +1790,7 @@ class PagamentiRepository:
         data_a: date | None = None,
         search: str | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[RigaCodaRow], int]:
@@ -1835,7 +1835,7 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(row) for row in rows], total
+        return [cast(RigaCodaRow, self._shape(row)) for row in rows], total
 
     # Scopo: L'elenco delle rate uscite dalla banda di capienza.
     # ⭐ Senza questo elenco la forzatura sarebbe «un modo per nascondere, non
@@ -1851,7 +1851,7 @@ class PagamentiRepository:
         billing_account_id: int | None = None,
         search: str | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -1904,7 +1904,7 @@ class PagamentiRepository:
         centro_riscossione_id: int | None = None,
         attivo: bool | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -2087,7 +2087,7 @@ class PagamentiRepository:
         billing_account_id: int | None = None,
         search: str | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:

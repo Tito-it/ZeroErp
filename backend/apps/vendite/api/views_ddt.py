@@ -496,9 +496,9 @@ _DdtRigheLista, _DdtRigheListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiDdtRigheListaView(_DdtRigheLista):
+class ApiDdtRigheListaView(_DdtRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.ddt_righe"
 
 
-class ApiDdtRigheListaExportView(_DdtRigheListaExport):
+class ApiDdtRigheListaExportView(_DdtRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.ddt_righe"

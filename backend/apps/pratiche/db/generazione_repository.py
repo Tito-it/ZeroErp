@@ -7,13 +7,13 @@
 #        lookup pratiche generate da un flusso.
 # ------------------------------------------------------------
 
-from typing import Any
+from typing import cast
 
 from django.db import connection
 
 from apps.core.db._helpers import rows_to_list
 from apps.core.services.error_manager import ErrorManager
-from apps.pratiche.types import RegolaGenerazioneRow
+from apps.pratiche.types import PraticaRow, RegolaGenerazioneRow
 
 
 class GenerazioneRepository:
@@ -35,10 +35,10 @@ class GenerazioneRepository:
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [template_flusso_id])
-            return rows_to_list(cursor)
+            return cast("list[RegolaGenerazioneRow]", rows_to_list(cursor))
 
     # Scopo: Restituisce le pratiche generate da un flusso (via flusso_origine_id).
-    def get_pratiche_generate_da_flusso(self, flusso_id: int) -> list[dict[str, Any]]:
+    def get_pratiche_generate_da_flusso(self, flusso_id: int) -> list[PraticaRow]:
         from apps.pratiche.db.pratiche_repository import PraticheRepository
         sql = f"""
             SELECT {PraticheRepository.pratica_select_sql()}
@@ -49,7 +49,7 @@ class GenerazioneRepository:
         """  # noqa: S608 — proiezione/join dalle costanti di PraticheRepository, valori come parametri
         with connection.cursor() as cursor:
             cursor.execute(sql, [flusso_id])
-            return rows_to_list(cursor)
+            return cast("list[PraticaRow]", rows_to_list(cursor))
 
     # Scopo: Invoca fn_genera_pratica_da_flusso per generazione manuale.
     # Obiettivo: generazione esplicita per regole con auto=false.

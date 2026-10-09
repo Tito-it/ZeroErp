@@ -10,6 +10,8 @@
 # ------------------------------------------------------------
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -88,7 +90,7 @@ class ApiDefinizioneFork(AdminAPIView):
         )},
     )
     def post(self, request: Request, definizione_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.fork_definizione(
                 definizione_id, int(payload.get("emittente_fiscale_id") or 0),
             )
@@ -104,7 +106,7 @@ class ApiDefinizioneNuovaVersione(AdminAPIView):
         fields={"data": serializers.DictField()},
     )})
     def post(self, request: Request, definizione_id: int) -> JsonResponse:
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.nuova_versione_definizione(definizione_id)
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
@@ -118,7 +120,7 @@ class ApiDefinizionePubblica(AdminAPIView):
         fields={"data": serializers.DictField()},
     )})
     def post(self, request: Request, definizione_id: int) -> JsonResponse:
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.pubblica_definizione(definizione_id)
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
 
@@ -147,7 +149,7 @@ class ApiDefinizioneSteps(AdminAPIView):
         name="PraticheStepCreateResp", fields={"data": serializers.DictField()},
     )})
     def post(self, request: Request, definizione_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.create_step(definizione_id, dict(payload))
         return handle_post_json(request, handler=_handler)
 
@@ -160,7 +162,7 @@ class ApiDefinizioneStepDetail(AdminAPIView):
         name="PraticheStepUpdateResp", fields={"data": serializers.DictField()},
     )})
     def patch(self, request: Request, definizione_id: int, step_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.update_step(definizione_id, step_id, dict(payload))
         return handle_post_json(request, handler=_handler)
 
@@ -188,7 +190,7 @@ class ApiDefinizioneStepFigli(AdminAPIView):
     )})
     def post(self, request: Request, definizione_id: int, step_id: int,
              child_kind: str) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.create_step_figlio(
                 definizione_id, step_id, child_kind, dict(payload))
         return handle_post_json(request, handler=_handler)
@@ -203,7 +205,7 @@ class ApiDefinizioneStepFiglioDetail(AdminAPIView):
     )})
     def patch(self, request: Request, definizione_id: int, step_id: int,
               child_kind: str, row_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.update_step_figlio(
                 definizione_id, step_id, child_kind, row_id, dict(payload))
         return handle_post_json(request, handler=_handler)
@@ -233,7 +235,7 @@ class ApiDefinizioneArchi(AdminAPIView):
         name="PraticheArcoCreateResp", fields={"data": serializers.DictField()},
     )})
     def post(self, request: Request, definizione_id: int, edge_kind: str) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.create_arco(definizione_id, edge_kind, dict(payload))
         return handle_post_json(request, handler=_handler)
 
@@ -247,7 +249,7 @@ class ApiDefinizioneArcoDetail(AdminAPIView):
     )})
     def patch(self, request: Request, definizione_id: int, edge_kind: str,
               row_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return definizioni_service.update_arco(definizione_id, edge_kind, row_id, dict(payload))
         return handle_post_json(request, handler=_handler)
 

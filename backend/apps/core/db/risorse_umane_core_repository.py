@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.db import connection
 
 from apps.core.db._helpers import fetchone_scalar
@@ -50,7 +52,7 @@ class RisorseUmaneCoreRepository:
                 p_attivo                 := %s
             )
         """
-        params = [
+        params: list[Any] = [
             soggetto_id, qualifica_id, unita_organizzativa_id,
             valido_dal, valido_al, auth_user_id,
             is_super_admin, attivo,

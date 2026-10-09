@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any, Callable
 
@@ -81,6 +82,7 @@ def check_permesso_override_prezzo(
         detail="Chiamata senza contesto utente — override bloccato conservativamente.",
         function_name=function_name,
     )
+    assert auth_user_id is not None
     user_model = get_user_model()
     try:
         user = user_model.objects.get(pk=auth_user_id)
@@ -431,7 +433,7 @@ _PRICE_COMPARE_QUANTIZE = Decimal("0.0001")
 #          - `richiesta_approvazione`: flag L3 escalation (Sprint E).
 def resolve_or_check_override_prezzo(
     *,
-    testata: dict[str, Any],
+    testata: Mapping[str, Any],
     articolo_id: Any,
     uom_id: Any,
     payload_prezzo: Any,

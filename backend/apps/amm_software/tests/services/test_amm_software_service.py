@@ -34,6 +34,7 @@ Indice test eseguiti:
 11b) test_disabilita_operatore_ultimo_super_admin_dbtrigger — race condition trigger 384
 12) test_create_operatore_rifiuta_ruolo_sistema_legacy — guard fail-fast su payload legacy
 12a) test_create_operatore_is_super_admin_passato_al_repo — Fase 7: bool al repo (no enum)
+12b) test_create_operatore_senza_sesso_rifiutato — soggetto nuovo senza sesso: rifiuto, niente default «M»
 12) test_put_override_aree_invalidates_cache — invalida cache dopo save
 13) test_put_override_azioni_invalidates_cache — invalida cache dopo save
 14) test_put_emittenti_scope_invalidates_cache — invalida cache dopo save
@@ -107,7 +108,7 @@ class TestCreateOperatore(TestCase):
 
     _PAYLOAD = {
         "cognome": "Rossi", "nome": "Mario", "codice_fiscale": "RSSMRA80A01H501Z",
-        "username": "mrossi", "email": "m@test.it", "qualifica_id": 1,
+        "sesso": "M", "username": "mrossi", "email": "m@test.it", "qualifica_id": 1,
     }
 
     def _repo(self, mock_repo_cls, *, riusata=False):
@@ -133,6 +134,19 @@ class TestCreateOperatore(TestCase):
         kwargs = mock_repo.crea_operatore.call_args.kwargs
         self.assertFalse(is_password_usable(kwargs["password_hash"]))
         self.assertNotIn("attivo", kwargs)
+
+    # Scopo: Soggetto nuovo senza sesso: rifiuto, nessuna scrittura. Il form lo
+    # propone a video; il backend non lo inventa (decisione di Tid, 2026-10-09).
+    @patch(REPO)
+    def test_create_operatore_senza_sesso_rifiutato(self, mock_repo_cls):
+        from apps.amm_software.services.amm_software_service import AmmSoftwareService
+        mock_repo = self._repo(mock_repo_cls)
+        payload = dict(self._PAYLOAD)
+        payload.pop("sesso")
+        with self.assertRaises(ServiceError) as ctx:
+            AmmSoftwareService().create_operatore(payload)
+        self.assertEqual(ctx.exception.code, "E_AMM_VALIDAZIONE")
+        mock_repo.crea_operatore.assert_not_called()
 
     # Scopo: Email di una credenziale esistente (D-6): la risposta lo dice,
     # perche' il pannello avvisi l'admin.

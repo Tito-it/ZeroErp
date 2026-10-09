@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 from datetime import date
+from collections.abc import Mapping
 from typing import Any, Callable
 
 from apps.core.services.error_manager import ErrorManager
@@ -44,12 +45,12 @@ __all__ = [
 #    una voce, ed e' lo stesso stampo di `_SORGENTE_CONFIG` in
 #    `approvazioni_prezzo_service`. ⛔ E' anche il cancello: un `tipo` fuori
 #    elenco non arriva mai a comporre un nome di tabella.
-_LOADER: dict[str, Callable[[int], dict[str, Any] | None]] = {}
+_LOADER: dict[str, Callable[[int], Mapping[str, Any] | None]] = {}
 
 
 # Scopo: registra i tre loader con import LOCALI, per non creare cicli fra i
 #        service di dominio e questo modulo (che loro importano).
-def _registry() -> dict[str, Callable[[int], dict[str, Any] | None]]:
+def _registry() -> dict[str, Callable[[int], Mapping[str, Any] | None]]:
     if not _LOADER:
         from apps.vendite.db.ddt_repository import DdtRepository
         from apps.vendite.db.ordini_repository import OrdiniRepository

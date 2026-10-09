@@ -1,3 +1,4 @@
+from typing import Any
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_POST
 
@@ -11,7 +12,7 @@ from apps.core.api.request_parsers import parse_iso_date
 @require_POST
 def example_domain_endpoint(request: HttpRequest) -> JsonResponse:
     # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-    def _handler(payload: dict[str, object]) -> dict[str, object]:
+    def _handler(payload: dict[str, Any]) -> dict[str, Any]:
         # Esempio campi tipici da payload.
         competenza_mese = parse_iso_date(payload.get("competenza_mese"))
         dry_run = bool(payload.get("dry_run", False))

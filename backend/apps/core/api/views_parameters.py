@@ -23,7 +23,7 @@ import re
 
 from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato, utente_autenticato_id
 from apps.core.api.payload_validators import qp_int_optional
 from apps.core.api.permissions import IsAdminZeroERP
 from apps.core.api.success_responses import success_response
@@ -66,7 +66,7 @@ def _require_admin_emittente_id(request: Request, svc: ParameterService) -> int:
         code="E_PERMISSION_DENIED",
         message="Solo gli amministratori possono operare sugli override a livello emittente.",
     )
-    emittente_fiscale_id = svc.get_emittente_fiscale_id_for_user(request.user.id)
+    emittente_fiscale_id = svc.get_emittente_fiscale_id_for_user(utente_autenticato_id(request))
     ErrorManager.require(
         emittente_fiscale_id is not None,
         code="E_PARAMETER_VALIDATION",
@@ -129,7 +129,7 @@ def _parse_scope(raw: str | None) -> str:
 #        `get_scope_user_id` (apps/core/api/endpoint_helpers.py) che
 #        applica il bypass superuser.
 def get_user_context(request: Request, svc: ParameterService) -> dict:
-    user = request.user
+    user = utente_autenticato(request)
     return {
         "django_user_id": user.id,
         "group_ids": list(user.groups.values_list("id", flat=True)),
@@ -246,8 +246,8 @@ class ParameterSettingsView(DomainAPIView):
         qp = request.query_params
 
         # Fallback per superuser: risolve sempre user e emittente reali.
-        django_user_id = ctx["django_user_id"] or request.user.id
-        emittente_fiscale_id = ctx["emittente_fiscale_id"] or svc.get_emittente_fiscale_id_for_user(request.user.id)
+        django_user_id = ctx["django_user_id"] or utente_autenticato_id(request)
+        emittente_fiscale_id = ctx["emittente_fiscale_id"] or svc.get_emittente_fiscale_id_for_user(utente_autenticato_id(request))
 
         # Risoluzione categoria_cliente_id: esplicito > derivato da BA.
         # Guard `> 0`: rifiuta 0/negativi invece di passarli in silenzio al DB
@@ -360,7 +360,7 @@ class ParameterOverrideView(DomainAPIView):
             else:
                 override_id = svc.upsert_user_override(
                     parameter_code=parameter_code,
-                    django_user_id=request.user.id,
+                    django_user_id=utente_autenticato_id(request),
                     value=value,
                 )
 
@@ -433,7 +433,7 @@ class ParameterOverrideDeleteView(DomainAPIView):
         else:
             svc.delete_user_override(
                 override_id=override_id,
-                django_user_id=request.user.id,
+                django_user_id=utente_autenticato_id(request),
             )
 
         return success_response({"deleted": True, "scope": scope})

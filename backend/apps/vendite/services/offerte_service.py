@@ -159,7 +159,7 @@ _STATI_TERMINALI: frozenset[str] = frozenset(
 
 # UNIQUE constraints catalogati per mappare violazioni IntegrityError.
 # Formato richiesto da `map_integrity_error`: tuple[error_code, message].
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_offerte_commerciali_codice": (
         E_VENDITE_DUPLICATO,
         "Codice offerta gia' esistente.",
@@ -1616,6 +1616,7 @@ def _load_offerta_context_for_pricing(
     # vigore oggi (`vendite.fn_documento_listino_operativo`).
     listino_versione_id_preferito = listino_versione_operativa("OFFERTA", offerta_id)
 
+    assert ba_id_raw is not None and utility_id_raw is not None
     return {
         "testata": testata,
         "ba_id": int(ba_id_raw),

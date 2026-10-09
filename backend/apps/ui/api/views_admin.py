@@ -43,6 +43,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
@@ -212,7 +214,7 @@ class ApiAdminPresetListView(DomainAPIView):
     )
     # Scopo: Crea un nuovo preset per la lista. lista_id viene dal path.
     def post(self, request: Request, lista_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             data = dict(payload)
             data["lista_id"] = lista_id
             return ListaPresetAdminService().create_preset(
@@ -335,7 +337,7 @@ class ApiAdminPermessoCreateView(DomainAPIView):
     )
     # Scopo: UPSERT permesso colonna su (colonna_id, profilo_accesso_id).
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return ListaColonnaPermessoAdminService().upsert_permesso(
                 request.user, dict(payload),
             )
@@ -394,7 +396,7 @@ class ApiAdminListaDefinizioneAdminView(AdminAPIView):
     # Scopo: Crea una nuova definizione lista. Idempotency-Key
     #        obbligatoria (UNIQUE codice mappato lato service).
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return ListaDefinizioneAdminService().create_definizione(
                 request.user, dict(payload),
             )
@@ -467,7 +469,7 @@ class ApiAdminListaColonnaListView(AdminAPIView):
     # Scopo: Crea una nuova colonna nella lista indicata. Idempotency-Key
     #        obbligatoria (UNIQUE lista_id+codice mappato lato service).
     def post(self, request: Request, lista_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return ListaColonnaAdminService().create_colonna(
                 request.user, lista_id, dict(payload),
             )

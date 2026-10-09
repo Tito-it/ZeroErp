@@ -22,6 +22,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from collections.abc import Callable, Iterable, Mapping
 
 from drf_spectacular.utils import inline_serializer
@@ -35,35 +37,35 @@ Tipi = Mapping[str, tuple[Fabbrica, bool]]
 # Scopo: fabbriche dei campi, parametriche su `required` / `allow_null`: un
 #        campo DRF e' legato al serializer che lo contiene, quindi se ne crea
 #        uno per uso.
-def intero(**kw: object) -> serializers.Field:
+def intero(**kw: Any) -> serializers.Field:
     return serializers.IntegerField(**kw)
 
 
-def decimale(**kw: object) -> serializers.Field:
+def decimale(**kw: Any) -> serializers.Field:
     return serializers.DecimalField(max_digits=22, decimal_places=10, **kw)
 
 
-def data(**kw: object) -> serializers.Field:
+def data(**kw: Any) -> serializers.Field:
     return serializers.DateField(**kw)
 
 
-def testo(**kw: object) -> serializers.Field:
+def testo(**kw: Any) -> serializers.Field:
     return serializers.CharField(**kw)
 
 
-def json(**kw: object) -> serializers.Field:
+def json(**kw: Any) -> serializers.Field:
     return serializers.JSONField(**kw)
 
 
-def booleano(**kw: object) -> serializers.Field:
+def booleano(**kw: Any) -> serializers.Field:
     return serializers.BooleanField(**kw)
 
 
-def uuid(**kw: object) -> serializers.Field:
+def uuid(**kw: Any) -> serializers.Field:
     return serializers.UUIDField(**kw)
 
 
-def lista_di_testi(**kw: object) -> serializers.Field:
+def lista_di_testi(**kw: Any) -> serializers.Field:
     return serializers.ListField(child=serializers.CharField(), **kw)
 
 

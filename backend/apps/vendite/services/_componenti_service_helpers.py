@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -206,7 +208,7 @@ def resolve_emittente_sr_id_safe(auth_user_id: int | None) -> int | None:
 # tipicamente `repo.get_emittente_sr_id_by_fiscale_id` come riferimento al
 # metodo del repository sorgente.
 def resolve_emittente_sr_id_for_testata(
-    testata: dict[str, Any],
+    testata: Mapping[str, Any],
     auth_user_id: int | None,
     *,
     repo_get_sr_id_by_fiscale_id,

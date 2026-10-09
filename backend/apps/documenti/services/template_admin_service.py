@@ -80,7 +80,7 @@ _MAX_FILE_NAME_PATTERN_LEN = 200
 # Mapping UNIQUE/partial-unique constraint -> codice + messaggio applicativo.
 # I nomi dei vincoli devono matchare quelli del DDL Fase A (changeset
 # 20260429-53). map_integrity_error fa match case-insensitive su frammento.
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_template_documenti_emittente_sorgente_codice": (
         E_VALIDATION,
         "Esiste gia' un template con questo codice per emittente e sorgente.",
@@ -100,7 +100,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # Mapping FK -> codice + messaggio. Il match avviene sul nome del vincolo
 # generato da Postgres (es. `template_documenti_tipo_documento_output_id_fkey`).
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "tipo_documento_output_id_fkey": (
         E_VALIDATION,
         "tipo_documento_output_id non valido (FK su documenti.tipi_documento_output).",

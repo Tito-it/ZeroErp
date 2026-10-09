@@ -16,12 +16,12 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.payload_validators import paginated_envelope, qp_int_strict, qp_str
+from apps.core.api.payload_validators import paginated_envelope, qp_int_optional, qp_int_strict, qp_str
 from apps.core.api.search_validators import require_min_search_length, validate_order_params
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.db.search_repository import SearchRepository
-from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
 from apps.core.services.service_errors import ServiceError
 
 # Ricerca universale soggetti — endpoint a due livelli.
@@ -167,7 +167,7 @@ class SearchUniversaleView(DomainAPIView):
         },
     )
     # Scopo: Gestisce la richiesta GET di ricerca universale soggetti (livello 1).
-    # Valida parametri, applica scope emittente, delega al repository DB e
+    # Valida parametri, delega al repository DB e
     # restituisce risultati paginati nell'envelope standard.
     def get(self, request: Request) -> JsonResponse:
         # Validazione q: prima obbligatorieta', poi lunghezza minima
@@ -208,18 +208,10 @@ class SearchUniversaleView(DomainAPIView):
             qp_str(request.query_params.get("order_dir")),
         )
 
-        # Scope emittente — sr_ids perche' la funzione SQL filtra su
-        # emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
-        cache: dict = {}
-        emittente_ids = PermissionResolver.get_emittenti_sr_ids(
-            request.user, cache=cache
-        )
-
         offset = (page - 1) * page_size
         results, total_count = repo.search_soggetti(
             search_term=q,
             tipo_ruolo_id=tipo_ruolo_id,
-            emittente_ids=emittente_ids,
             limit=page_size,
             offset=offset,
             order_by=order_by,
@@ -264,26 +256,23 @@ class SearchDetailView(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta GET di dettaglio soggetto per tipo ruolo (livello 2).
     # Carica lazy il dettaglio specifico per tipo ruolo tramite fn_get_search_detail.
-    # Valida tipo_ruolo_id, verifica ricerca_visibile e applica scope emittente.
+    # Valida tipo_ruolo_id, verifica ricerca_visibile; il perimetro dei clienti lo fa la RLS.
     def get(self, request: Request, soggetto_id: str) -> JsonResponse:
         repo = SearchRepository()
         tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)
 
         # utility_id opzionale — filtra dettaglio CLIENTE per utility specifica
-        raw_utility = request.query_params.get("utility_id")
-        utility_id = qp_int_strict(raw_utility, "utility_id", None) if raw_utility else None
-
-        # Scope emittente — sr_ids, stesso filtro della search list
-        cache: dict = {}
-        emittente_ids = PermissionResolver.get_emittenti_sr_ids(
-            request.user, cache=cache
+        # ⚠️ Tetto `integer`: il valore va a `p_utility_id integer` di
+        #    `fn_get_search_detail`, e un bigint li' e' un 500, non un 400.
+        utility_id = qp_int_optional(
+            request.query_params.get("utility_id"), "utility_id",
+            min_val=INTEGER_MIN, max_val=INTEGER_MAX,
         )
 
         result = repo.get_search_detail(
             soggetto_id=str(soggetto_id),
             tipo_ruolo_id=tipo_ruolo_id,
             utility_id=utility_id,
-            emittente_ids=emittente_ids,
         )
 
         if result is None:

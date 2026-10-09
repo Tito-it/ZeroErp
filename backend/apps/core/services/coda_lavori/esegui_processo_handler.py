@@ -203,7 +203,8 @@ def _lancia(argv: list[str], env: dict[str, str]) -> subprocess.CompletedProcess
         if isinstance(exc, subprocess.TimeoutExpired):
             # Ripresa dopo l'uccisione: `communicate` non perde l'output gia'
             # letto, chiude i pipe e raccoglie il figlio.
-            exc.stdout, exc.stderr = proc.communicate()
+            # Lo stub tipizza i campi come `bytes`; con `text=True` sono `str`.
+            exc.stdout, exc.stderr = proc.communicate()  # type: ignore[assignment]
         else:
             proc.wait()
         raise

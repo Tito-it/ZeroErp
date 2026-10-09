@@ -11,7 +11,7 @@
 
 import json
 from datetime import date
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection
 
@@ -330,7 +330,7 @@ class PreventiviRepository(
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
-        return results, total_count
+        return cast("list[PreventivoListRow]", results), total_count
 
     # Scopo: Restituisce dettaglio singolo preventivo con tutte le decodifiche.
     # Usa query diretta (non vista lista) per includere campi extra (meta, storicizza, audit).
@@ -433,7 +433,7 @@ class PreventiviRepository(
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            return row_to_dict(cursor)
+            return cast("PreventivoDetailRow | None", row_to_dict(cursor))
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Righe (via vista vw_preventivi_righe_dettaglio)
@@ -1163,7 +1163,7 @@ class PreventiviRepository(
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            return row_to_dict(cursor)
+            return cast("PreventivoSmistamentoRow | None", row_to_dict(cursor))
 
     # Scopo: Righe del Pannello Smistamento — una per riga attiva del preventivo,
     #        con natura, destinazione effettiva e `stato_smistamento` autorevole
@@ -1378,7 +1378,7 @@ class PreventiviRepository(
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            return rows_to_list(cursor)
+            return cast("list[PreventivoPraticaRow]", rows_to_list(cursor))
 
     # ══════════════════════════════════════════════════════════
     #  LOOKUP — Risoluzione config per creazione

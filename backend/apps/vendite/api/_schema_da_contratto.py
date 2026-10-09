@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from collections.abc import Iterable, Mapping
 
 from rest_framework import serializers
@@ -34,7 +36,7 @@ from apps.core.api.schema_da_contratto import (
 
 # Scopo: le due mappe dei componenti BoM di una riga composita (chiavi del
 #        contratto che non sono colonne): prezzi manuali e attivazioni.
-def _mappa_prezzi(**kw: object) -> serializers.Field:
+def _mappa_prezzi(**kw: Any) -> serializers.Field:
     return serializers.DictField(
         help_text=(
             "Mappa {componente_id: prezzo} per prezzi manuali sui componenti "
@@ -44,7 +46,7 @@ def _mappa_prezzi(**kw: object) -> serializers.Field:
     )
 
 
-def _mappa_attivazioni(**kw: object) -> serializers.Field:
+def _mappa_attivazioni(**kw: Any) -> serializers.Field:
     return serializers.DictField(
         child=serializers.BooleanField(),
         help_text=(

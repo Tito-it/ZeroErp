@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from typing import Any, overload
+
 from collections.abc import Collection
 
 from apps.core.api.constants import MAX_LIMIT
@@ -28,6 +30,29 @@ from apps.core.services.error_manager import ErrorManager
 #        che ha semantica diversa (normalizza maiuscole, ritorna tupla opzionale,
 #        nessun error_code di dominio). Questo opera nei service con rigore
 #        fail-fast e codice errore parametrico.
+# ⭐ Il contratto per il type checker (2026-10-09): con un `order_by` presente
+#    la colonna torna presente; solo un `order_by` assente (con `nullable`) puo'
+#    tornare `None`.
+@overload
+def validate_order_params(
+    order_by: str,
+    order_dir: str | None,
+    *,
+    allowed_columns: Collection[str],
+    error_code: str,
+    function_name: str,
+    nullable: bool = False,
+) -> tuple[str, str | None]: ...
+@overload
+def validate_order_params(
+    order_by: str | None,
+    order_dir: str | None,
+    *,
+    allowed_columns: Collection[str],
+    error_code: str,
+    function_name: str,
+    nullable: bool = False,
+) -> tuple[str | None, str | None]: ...
 def validate_order_params(
     order_by: str | None,
     order_dir: str | None,
@@ -164,5 +189,5 @@ def validate_pagination(
 # valore dell'estrazione non e' la riga risparmiata — e' che il NOME dica di
 # quale delle due nature si tratta, perche' era proprio l'averle servite dallo
 # stesso helper a rendere la forma sbagliata indistinguibile da quella giusta.
-def collezione_completa(results: list[dict[str, object]]) -> dict[str, object]:
+def collezione_completa(results: list[dict[str, Any]]) -> dict[str, Any]:
     return {"count": len(results), "results": results}

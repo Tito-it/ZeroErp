@@ -141,7 +141,7 @@ class ListiniRepository:
         attivo: bool | None,
         search: str | None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -693,7 +693,7 @@ class ListiniRepository:
         utility_id: int | None = None,
         attivo: bool | None = True,
         order_by: str = "articolo_descrizione",
-        order_dir: str = "asc",
+        order_dir: str | None = "asc",
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:

@@ -40,7 +40,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection
 
@@ -503,7 +503,7 @@ class MagazzinoRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(r) for r in rows], total  # type: ignore[return-value]
+        return [cast(DocumentoInternoRow, self._shape(r)) for r in rows], total
 
     # Scopo: La testata, o `None` se non esiste / non e' visibile.
     def get_documento(
@@ -682,7 +682,7 @@ class MagazzinoRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(r) for r in rows], total  # type: ignore[return-value]
+        return [cast(RigaDocumentoInternoRow, self._shape(r)) for r in rows], total
 
     # Scopo: Una riga DELLA testata indicata: la coppia (documento, riga) e'
     #        la risorsa dell'URL, e una riga di un altro documento non c'e'.

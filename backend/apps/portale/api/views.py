@@ -26,7 +26,7 @@ from apps.core.api.attivazione_veste_views import (
     AttivazioneVesteView,
 )
 from apps.core.api.base_views import PortaleAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato_id
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_CLIENTE_PORTALE,
@@ -162,7 +162,7 @@ class ProfileActivateShopView(PortaleAPIView):
                     identita_id = int(existing["identita_id"])
                     _auth_repo.attiva_identita(
                         identita_id,
-                        auth_user_id=request.user.id,
+                        auth_user_id=utente_autenticato_id(request),
                         ruoli_applicativi=(RUOLO_APPLICATIVO_SHOP_CUSTOMER,),
                     )
                 else:
@@ -170,7 +170,7 @@ class ProfileActivateShopView(PortaleAPIView):
                     # `attivo=True`: la password e' quella gia' usata sul
                     # portale (stesso auth_user, modello SSO multi-veste).
                     identita_id = _portale_repo.create_identita_portale(
-                        auth_user_id=request.user.id,
+                        auth_user_id=utente_autenticato_id(request),
                         soggetto_ruolo_id=soggetto_ruolo_id,
                         ruolo_applicativo=RUOLO_APPLICATIVO_SHOP_CUSTOMER,
                         attivo=True,

@@ -128,7 +128,7 @@ class SessionAuditRepository:
             VALUES
                 (%s, %s, %s, %s::inet, %s, %s::uuid, %s::jsonb)
         """
-        params = [
+        params: list[Any] = [
             auth_user_id,
             evento,
             jti,

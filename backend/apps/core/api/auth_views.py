@@ -163,7 +163,9 @@ def chiudi_accesso_riuscito(
     # serializer PRIMA del controllo della veste, cioe' anche per chi ha la
     # password giusta e nessun accesso a questa porta (E_VESTE_NON_ATTIVA) —
     # e, col secondo fattore, prima del codice.
-    update_last_login(None, user)
+    # Lo stub vuole il `sender` del segnale; il ricevitore non lo usa e
+    # SimpleJWT stesso passa None.
+    update_last_login(None, user)  # type: ignore[arg-type]
 
     # Il login NON passa dalla DRF auth chain (l'utente non e' ancora
     # autenticato a authenticate() time), quindi JwtAuditAuthentication NON
@@ -223,7 +225,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     # `serializer_class = None` + guard in post() rendono la base effettivamente
     # astratta: chiamare `AuditTokenObtainPairView.as_view()` direttamente
     # senza override di serializer_class solleva RuntimeError subito.
-    serializer_class = None  # type: ignore[assignment]
+    serializer_class: type[MultiVesteTokenSerializer] | None = None  # type: ignore[assignment]
 
     @extend_schema(summary="Login JWT con audit e blocco utente", responses={200: dict})
     # Scopo: Esegue il login JWT con check blocco utente e registrazione tentativi.

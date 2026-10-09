@@ -151,7 +151,7 @@ class LottoPipelineRunner:
     # ⚠️ Ingoia QUALUNQUE eccezione di proposito: qui si sta gia' gestendo un
     #    fallimento, e il secondo non ha diritto di prendere il posto del primo.
     def _diagnostica_best_effort(
-        self, azione: Callable[[], None], *, contesto: dict[str, Any]
+        self, azione: Callable[[], object], *, contesto: dict[str, Any]
     ) -> None:
         diagnostica_best_effort(
             azione,

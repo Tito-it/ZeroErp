@@ -143,14 +143,11 @@ _FALLBACK_KWARGS = ("fallback_code",)
 # Verso 2: un codice con un'altra `ui_action` i cui siti mandano TUTTI il
 #          campo, e la scelta e' confermata. Il verso non blocca (decisione 1),
 #          ma la riga viene RITIRATA se smette di essere vera.
-_ESENZIONI: dict[tuple[str, int], str] = {
-    ("E_EMITTENTE_NON_RISOLTO", 2): (
-        "banner e non campo, per scelta (error_ui_overrides, 15-09): il rimedio "
-        "e' la combo dell'emittente in alto, non un campo del form; il DB manda "
-        "`campo` e l'input si accende comunque — la promessa non decide, e va "
-        "bene cosi'."
-    ),
-}
+# ⭐ Vuoto dal 2026-10-09: l'unica riga (`E_EMITTENTE_NON_RISOLTO`, verso 2)
+#    si e' ritirata da sola quando la bozza email ha preso quel codice senza
+#    campo — il rimedio e' la combo dell'emittente in alto, non un input
+#    (brief-db-codici-non-trovato-email-e-permessi §9.2).
+_ESENZIONI: dict[tuple[str, int], str] = {}
 
 
 @dataclass(frozen=True)

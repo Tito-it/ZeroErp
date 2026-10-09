@@ -5,7 +5,8 @@
 
 from __future__ import annotations
 
-from typing import Any, NoReturn
+from collections.abc import Callable
+from typing import Any, NoReturn, TypeVar
 
 from django.db import IntegrityError
 
@@ -69,23 +70,23 @@ def extract_optional_fields(
     """
     data: dict[str, Any] = {}
     for key in ints:
-        val = optional_int(payload, key)
-        if val is not None:
-            data[key] = val
+        val_int = optional_int(payload, key)
+        if val_int is not None:
+            data[key] = val_int
     for key in bools:
         if key in payload and payload[key] is not None:
             data[key] = optional_bool(payload, key)
     for key in strings:
-        val = optional_str(payload, key)
-        if val is not None:
-            data[key] = val
+        val_str = optional_str(payload, key)
+        if val_str is not None:
+            data[key] = val_str
     for key in numeric:
         if key in payload and payload[key] is not None:
             data[key] = payload[key]
     for key in dates:
-        val = optional_iso_date(payload, key)
-        if val is not None:
-            data[key] = val
+        val_data = optional_iso_date(payload, key)
+        if val_data is not None:
+            data[key] = val_data
     return data
 
 
@@ -130,7 +131,12 @@ def rifiuto_integrita(exc: IntegrityError, duplicate_message: str) -> NoReturn:
     )
 
 
-def create_with_dedup(fn: Any, duplicate_message: str) -> dict:
+_T = TypeVar("_T")
+
+
+# ⚠️ Restituisce cio' che restituisce `fn` (l'id creato: uno `str` o un `int`),
+#    non un dict: fino al 2026-10-09 l'annotazione diceva `-> dict`.
+def create_with_dedup(fn: Callable[[], _T], duplicate_message: str) -> _T:
     """Esegue fn (create); un IntegrityError lo traduce `rifiuto_integrita`."""
     try:
         return fn()

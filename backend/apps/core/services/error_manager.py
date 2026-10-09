@@ -68,7 +68,9 @@ class ErrorManager:
     # Scopo: Valida una condizione e in caso negativo genera ServiceError coerente con policy core.
     @staticmethod
     def require(
-        condition: bool,
+        # `object` e non `bool`: la condizione si valuta per VERITA' (`if
+        # condition:`), e i chiamanti passano anche valori, non solo booleani.
+        condition: object,
         *,
         code: str,
         message: str,
@@ -168,8 +170,11 @@ class ErrorManager:
                 break
         if matched_code is None and fallback_code is None:
             raise exc
+        codice = matched_code or fallback_code
+        # Garantito dal guard qui sopra (un codice del catalogo non e' mai vuoto).
+        assert codice is not None
         ErrorManager.raise_error(
-            code=matched_code or fallback_code,
+            code=codice,
             message=frase_del_db or (
                 message
                 if matched_code is not None or fallback_message is None

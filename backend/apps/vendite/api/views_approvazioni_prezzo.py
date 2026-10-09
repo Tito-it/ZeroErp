@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
@@ -89,7 +91,7 @@ class ApprovaPrezzoView(DomainAPIView):
     def post(self, request: Request, riga_id: int):
         auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return approvazioni_prezzo_service.approva(
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
@@ -118,7 +120,7 @@ class RifiutaPrezzoView(DomainAPIView):
     def post(self, request: Request, riga_id: int):
         auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             motivazione = payload.get("motivazione")
             return approvazioni_prezzo_service.rifiuta(
                 riga_id=riga_id,
@@ -151,7 +153,7 @@ class ApprovaPrezzoContrattoView(DomainAPIView):
     def post(self, request: Request, riga_id: int):
         auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return approvazioni_prezzo_service.approva(
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
@@ -181,7 +183,7 @@ class RifiutaPrezzoContrattoView(DomainAPIView):
     def post(self, request: Request, riga_id: int):
         auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             motivazione = payload.get("motivazione")
             return approvazioni_prezzo_service.rifiuta(
                 riga_id=riga_id,
@@ -214,7 +216,7 @@ class ApprovaPrezzoOffertaView(DomainAPIView):
     def post(self, request: Request, riga_id: int):
         auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return approvazioni_prezzo_service.approva(
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
@@ -244,7 +246,7 @@ class RifiutaPrezzoOffertaView(DomainAPIView):
     def post(self, request: Request, riga_id: int):
         auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             motivazione = payload.get("motivazione")
             return approvazioni_prezzo_service.rifiuta(
                 riga_id=riga_id,

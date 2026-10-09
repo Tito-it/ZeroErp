@@ -616,7 +616,7 @@ class ApiResoGeneraDdtRiconsegna(DomainAPIView):
     )
     # Scopo: Genera il DDT di ri-consegna (parziale/multiplo) dal reso.
     def post(self, request: Request, reso_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return resi_service.genera_ddt_riconsegna(
                 int(reso_id),
                 payload.get("righe"),
@@ -645,7 +645,7 @@ class ApiResoChiudiRiconsegna(DomainAPIView):
     )
     # Scopo: Chiude la ri-consegna (rinuncia parziale/totale) sul reso.
     def post(self, request: Request, reso_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return resi_service.chiudi_riconsegna(
                 int(reso_id),
                 payload.get("righe"),
@@ -846,9 +846,9 @@ _ResoRigheLista, _ResoRigheListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiResoRigheListaView(_ResoRigheLista):
+class ApiResoRigheListaView(_ResoRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.reso_righe"
 
 
-class ApiResoRigheListaExportView(_ResoRigheListaExport):
+class ApiResoRigheListaExportView(_ResoRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.reso_righe"

@@ -247,14 +247,14 @@ class CategorieClientiService:
             )
             data["partecipa_promo"] = value
         if "ordinamento" in payload:
-            value = self._v.optional_smallint(payload, "ordinamento")
+            ordinamento = self._v.optional_smallint(payload, "ordinamento")
             ErrorManager.require(
-                value is not None,
+                ordinamento is not None,
                 code=E_ANAG_VALIDAZIONE,
                 message="Il campo 'ordinamento' non puo' essere NULL.",
                 context={"field": "ordinamento"},
             )
-            data["ordinamento"] = value
+            data["ordinamento"] = ordinamento
         if "attivo" in payload:
             value = self._v.optional_bool(payload, "attivo")
             ErrorManager.require(

@@ -533,7 +533,7 @@ class ApiAttivitaRiportaDaEmettere(DomainAPIView):
     )
     # Scopo: Riporta «da emettere» le attivita' indicate (elenco di id).
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return fn_riporta_attivita_da_emettere(
                 attivita_fatturabili_ids=payload.get("attivita_fatturabili_ids"),  # type: ignore[arg-type]
             )
@@ -590,7 +590,7 @@ class ApiAttivitaRiportabili(DomainAPIView):
     )
     # Scopo: Restituisce i motivi che impediscono il riporto, senza tentarlo.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return fn_check_attivita_riportabili(
                 attivita_fatturabili_ids=payload.get("attivita_fatturabili_ids"),  # type: ignore[arg-type]
             )

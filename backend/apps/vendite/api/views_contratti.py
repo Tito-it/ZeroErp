@@ -442,11 +442,11 @@ _ContrattoRigheLista, _ContrattoRigheListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiContrattoRigheListaView(_ContrattoRigheLista):
+class ApiContrattoRigheListaView(_ContrattoRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.contratto_righe"
 
 
-class ApiContrattoRigheListaExportView(_ContrattoRigheListaExport):
+class ApiContrattoRigheListaExportView(_ContrattoRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.contratto_righe"
 
 
@@ -572,7 +572,7 @@ class ApiContrattoRigaPreviewComponenti(DomainAPIView):
         # accesso a membri privati dal caller.
         auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
+        def _handler(payload: dict[str, Any]) -> list[dict[str, Any]]:
             articolo_id = str(payload.get("articolo_id") or "")
             uom_raw = payload.get("uom_operativa_id")
             uom_operativa_id = int(uom_raw) if uom_raw not in (None, "") else None

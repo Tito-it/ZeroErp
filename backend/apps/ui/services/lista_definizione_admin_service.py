@@ -91,7 +91,7 @@ _MAX_NOTE_LEN = 4000
 # 20260506-02 (UNIQUE codice) e alle FK con RESTRICT default sulle
 # tabelle che referenziano lista_definizione (lista_colonna,
 # lista_preset, lista_preferenza_utente).
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_ui_lista_definizione_codice": (
         E_DEFINIZIONE_VALIDATION,
         "Esiste gia' una definizione con questo codice.",
@@ -102,7 +102,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 # FK RESTRICT (NO ACTION default): la cancellazione fallisce se ci
 # sono righe figlie. La tabella padre e' lista_definizione, quindi
 # l'errore e' "in uso" -> 409.
-_FK_RESTRICT_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_RESTRICT_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_lista_colonna_lista_definizione": (
         E_DEFINIZIONE_IN_USE,
         "Definizione in uso da colonne del catalogo: rimuovere prima le colonne.",

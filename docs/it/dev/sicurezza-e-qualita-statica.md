@@ -162,6 +162,10 @@ mesi un metodo che non esisteva più, e il test lo fabbricava col mock.
 sanarlo prima avrebbe rimandato di mesi la protezione del codice nuovo. Il registro deve
 **scendere**: la sede del suo smaltimento è il piano (lotti L2, L3+).
 
+* **Stato**: **2** rilievi al 2026-10-09 (erano 620 alla nascita, il 2026-10-08), entrambi il
+  valore NaN/infinito nella formattazione dei documenti, che attende un codice d'errore dal team DB
+  ([brief](work-in-progress/brief-db-valore-numerico-non-finito-nei-documenti.md)). Il codice
+  nuovo non aggiunge voci: nasce pulito.
 * La chiave è **per nome**: file + codice (`[arg-type]`) + messaggio, con un conteggio. Mai il
   numero di riga, che cambia a ogni modifica sopra il punto.
 * Il cancello è **rosso** su: un rilievo nuovo; una voce del registro che non c'è più (sanata e

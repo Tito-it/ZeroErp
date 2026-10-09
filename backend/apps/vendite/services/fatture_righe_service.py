@@ -144,6 +144,7 @@ class FattureRigheService:
             context={"attivita_id": row.attivita_id},
             function_name=function_name,
         )
+        assert emittente_id is not None
         resolver = IvaResolverService()
         parte = resolver.risolvi_anteprima(
             articolo_id=str(row.articolo_id),

@@ -84,10 +84,11 @@ con cui una permission dice **perché** nega: DRF trasforma il suo attributo
 `E_REPARTO_SENZA_PROFILO` (403) per l'operatore il cui reparto non ha un
 profilo applicabile all'area (dal 2026-10-08).
 
-> ⚠️ Difetto noto (E-5, residuo): «Accesso riservato agli amministratori / agli
-> utenti portale / ai clienti shop» (`IsAdminZeroERP`, `PortaleBasePermission`,
-> `ShopBasePermission`) escono ancora come `E_PERMISSION_DENIED` col messaggio
-> generico: manca il codice a catalogo. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+Allo stesso modo le tre porte «riservate» dicono a chi lo sono (dal
+2026-10-09): `IsAdminZeroERP` → `E_ACCESSO_RISERVATO_ADMIN`,
+`PortaleBasePermission` → `E_ACCESSO_RISERVATO_PORTALE`, `ShopBasePermission` →
+`E_ACCESSO_RISERVATO_SHOP`, tutti 403. Prova sul percorso DRF intero:
+`core/tests/api/test_email_e_permessi_codici_mirati.py`.
 
 ## Dipendenze DB
 

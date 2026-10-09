@@ -75,7 +75,7 @@ def _rendi(d: Decimal, *, thousands: bool) -> str:
         segno = ""
         if int_part.startswith("-"):
             segno, int_part = "-", int_part[1:]
-        gruppi = []
+        gruppi: list[str] = []
         while len(int_part) > 3:
             gruppi.insert(0, int_part[-3:])
             int_part = int_part[:-3]

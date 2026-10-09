@@ -17,7 +17,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
-from apps.core.api.payload_validators import corpo_oggetto
+from apps.core.api.payload_validators import corpo_oggetto, qp_int_optional
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db._helpers import resolve_soggetto_id
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
@@ -54,7 +54,9 @@ class RuoloContattiView(DomainAPIView):
         from django.db import connection
         from apps.core.db._helpers import rows_to_list
         istanza_str = request.query_params.get("istanza_utility_id")
-        istanza_utility_id = int(istanza_str) if istanza_str and istanza_str.strip() else None
+        # BB `qp_int_optional`: vuoto = assente, un non intero e' un 400 (fino al
+        # 2026-10-09 `int()` grezzo, cioe' un 500).
+        istanza_utility_id = qp_int_optional(istanza_str, "istanza_utility_id")
         with connection.cursor() as cursor:
             soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
         _COLS = """c.id, c.nominativo, c.email, c.telefono, c.cellulare,
@@ -71,7 +73,7 @@ class RuoloContattiView(DomainAPIView):
         _JOIN = """LEFT JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id"""
         with connection.cursor() as cursor:
             results = []
-            tipi_coperti = set()
+            tipi_coperti: set[int] = set()
             # Livello 1: contatti ruolo + istanza specifica
             if istanza_utility_id is not None:
                 sql_ist = f"""

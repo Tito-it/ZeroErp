@@ -261,13 +261,13 @@ with transaction.atomic():
 
         cur.execute(
             """
-            SELECT uid::text, istanza_utility_id, utility_id, stato_doc_preventivo_id
+            SELECT uid::text, utility_id, stato_doc_preventivo_id
               FROM vendite.preventivi
              WHERE emittente_fiscale_id = %s ORDER BY id LIMIT 1
             """,
             [emittente_casa],
         )
-        uid_casa, istanza_id, utility_id, stato_prev_id = riga_obbligatoria(
+        uid_casa, utility_id, stato_prev_id = riga_obbligatoria(
             cur, f"nessun preventivo sull'emittente {emittente_casa}."
         )
 
@@ -288,35 +288,57 @@ with transaction.atomic():
         #    decidere restano solo `risolto` (che dipende da chi legge) e
         #    `ruolo_link`. Con uno stato diverso potrebbe vincere il criterio 2,
         #    e il test misurerebbe la terminalita' invece del perimetro.
-        # ⚠️ La riga clonata tiene anche `istanza_utility_id`/`utility_id` e
-        #    cambia SOLO l'emittente: e' proprio l'incoerenza che il modello
-        #    ammette, riprodotta in laboratorio. `billing_account_id` resta NULL,
-        #    cosi' il guard emittente/BA non entra in gioco — qui si prova
-        #    l'ancora, non quel guard.
+        # ⚠️ Il documento estraneo e' un preventivo VERO del suo emittente: dal
+        #    2026-10-08 (brief-db-istanza-nasce-col-ba, R-2) `billing_account_id`
+        #    e' NOT NULL e legato alla coppia (istanza, utility), e il guard
+        #    emittente/BA lo confronta con l'emittente del documento. ⇒ Il cliente
+        #    si COSTRUISCE sull'emittente estraneo (builder `fn_pgtap_crea_cliente_ba`,
+        #    terzo parametro = l'emittente a cui legare il BA), sulla stessa
+        #    utility del preventivo di casa. Fino al 2026-10-09 qui si clonava la
+        #    riga di casa cambiando il solo emittente, con il BA a NULL: il vincolo
+        #    nuovo lo rifiuta, ed e' giusto. L'incoerenza che il test prova resta
+        #    la stessa — una pratica che punta a un documento di UN ALTRO emittente.
         cur.execute(
             """
-            SELECT id FROM anagrafiche.emittenti_fiscali
+            SELECT id, soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
              WHERE attivo AND id <> %s ORDER BY id LIMIT 1
             """,
             [emittente_casa],
         )
-        emittente_estraneo = riga_obbligatoria(
+        emittente_estraneo, emittente_estraneo_sr = riga_obbligatoria(
             cur,
             "un solo emittente fiscale attivo — su un'installazione "
             "mono-emittente il caso non e' costruibile.",
-        )[0]
+        )
+
+        # ⚠️ Il BA si crea DENTRO un emittente (`trgfn_billing_account_guard_admin_globale`:
+        #    con «Tutti gli emittenti» non si sa a quale associarlo). Il perimetro
+        #    torna largo subito dopo l'INSERT del preventivo.
+        seleziona_emittente(cur, emittente_estraneo)
+        cur.execute(
+            """
+            SELECT billing_account_id, istanza_utility_id, utility_id
+              FROM dbops.fn_pgtap_crea_cliente_ba('smoke ancora cross-emittente', %s, %s)
+            """,
+            [utility_id, emittente_estraneo_sr],
+        )
+        ba_estraneo, istanza_estranea, utility_estranea = riga_obbligatoria(
+            cur, "il builder non ha restituito il cliente dell'emittente estraneo.",
+        )
 
         cur.execute(
             """
             INSERT INTO vendite.preventivi
-                   (istanza_utility_id, utility_id, stato_doc_preventivo_id,
-                    emittente_fiscale_id)
-            VALUES (%s, %s, %s, %s)
+                   (billing_account_id, istanza_utility_id, utility_id,
+                    stato_doc_preventivo_id, emittente_fiscale_id)
+            VALUES (%s, %s, %s, %s, %s)
             RETURNING uid::text
             """,
-            [istanza_id, utility_id, stato_prev_id, emittente_estraneo],
+            [ba_estraneo, istanza_estranea, utility_estranea, stato_prev_id,
+             emittente_estraneo],
         )
         uid_estraneo = riga_obbligatoria(cur, "l'INSERT non ha restituito l'uid.")[0]
+        seleziona_emittente(cur, None)
         check(
             "materia costruita", True,
             f"pratiche {pratica_a} e {pratica_b} (emittente {emittente_casa}), "

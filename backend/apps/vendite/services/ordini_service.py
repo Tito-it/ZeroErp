@@ -220,7 +220,7 @@ def list_ordini(
     page_size: int = DEFAULT_LIMIT,
     order_by: str = "data",
     order_dir: str = "desc",
-) -> dict[str, object]:
+) -> dict[str, Any]:
     safe_page = max(1, int(page))
     safe_size = max(1, min(int(page_size), MAX_LIMIT))
     offset = (safe_page - 1) * safe_size
@@ -265,7 +265,7 @@ def resolve_filtri_export_label(
 
 
 # Scopo: Dettaglio testata ordine (righe lette a parte via /righe/).
-def get_ordine(ordine_id: int) -> dict[str, object]:
+def get_ordine(ordine_id: int) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="get_ordine")
     righe_count = repo.count_righe(ordine_id)
@@ -308,7 +308,7 @@ def list_righe_pagina(ordine_id: int, **opzioni: Any) -> tuple[list[dict[str, An
 # Scopo: risolve l'ordine COLLEGATO a una pratica (per gli step a valle del
 # percorso: CONFERMA_ORDINE / INVIO_COMMESSA aprono l'OrdiniDrawer su quell'ordine).
 # Ritorna {"ordine_id": <id|null>}.
-def get_ordine_per_pratica(pratica_id: int) -> dict[str, object]:
+def get_ordine_per_pratica(pratica_id: int) -> dict[str, Any]:
     ErrorManager.require(
         pratica_id > 0,
         code="E_PRATICA_ID_INVALIDO",
@@ -838,11 +838,13 @@ def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
 #        il service non duplica il grafo. La conferma (DRAFT->CONFERMATO) ha un
 #        endpoint dedicato (`conferma`) per le sue precondizioni; questa copre le
 #        altre transizioni manuali esposte.
-def cambia_stato(ordine_id: int, stato_codice: str) -> dict[str, Any]:
+def cambia_stato(ordine_id: int, stato_codice: str | None) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="cambia_stato")
     stato_prec = testata.get("stato_codice_interno")
-    target = (stato_codice or "").strip()
+    # Un valore non testuale (un numero nel JSON) e' «stato mancante», un 400:
+    # fino al 2026-10-09 `.strip()` su un int era un 500.
+    target = stato_codice.strip() if isinstance(stato_codice, str) else ""
     ErrorManager.require(
         bool(target),
         code="E_ORD_VALIDAZIONE",
@@ -1275,6 +1277,7 @@ def _resolve_emittente_sr_id(repo: OrdiniRepository, testata: dict[str, Any]) ->
         message="Ordine senza emittente fiscale: impossibile risolvere i componenti.",
         function_name=f"{_FN}._resolve_emittente_sr_id",
     )
+    assert fiscale_id is not None
     sr_id = repo.get_emittente_sr_id_by_fiscale_id(int(fiscale_id))
     ErrorManager.require(
         sr_id is not None,
@@ -1357,6 +1360,7 @@ def _resolve_prezzo_riga(
         function_name=fn,
     )
     emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
+    assert uom_id is not None
     result = PricingService().resolve_prezzo(
         articolo_id=articolo_id,
         uom_id=int(uom_id),
