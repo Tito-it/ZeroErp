@@ -7,8 +7,8 @@
 > ha reso `billing_account_id` NOT NULL e legato alla coppia (istanza, utility) su preventivo,
 > offerta e contratto. Chiudendo il lato BE/FE e' emerso che i documenti **esecutivi** di vendita
 > (ordine, DDT, reso) sono rimasti fuori: e' la stessa asimmetria, un livello piu' in basso.
-> **Stato:** 📝 **bozza** — decise da Tid il 2026-10-09 **D-1, D-2 (b), D-3, D-6, D-7** (D-7 con
-> l'istruttoria del §4.1); aperte **D-4, D-5** e **D-2-bis** (quali causali vogliono il cliente).
+> **Stato:** 📝 **decisioni chiuse** — tutte e otto decise da Tid il 2026-10-09 (§4; D-7 con
+> l'istruttoria del §4.1). Tocca al team DB: forma (§5) e righe fuori regola (§6).
 > **Nel registro dei difetti DB:** voce **D21** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -106,10 +106,10 @@ non ce n'e' nessuna (AGENTS.md, regola zero).
 | --- | --- | --- | --- |
 | **D-1** | L'**ordine** ha sempre il BA? | **Si'.** L'ordine e' gia' legato a un ruolo (`soggetto_ruolo_id` NOT NULL) e ne blocca il BA; nasce dal preventivo o dall'offerta, che il BA lo hanno sempre, o standalone su un cliente. Un ordine senza fornitura non si sa a chi si fattura. ⚠️ **Conseguenza da accettare:** dopo [brief-db-istanza-nasce-col-ba](brief-db-istanza-nasce-col-ba.md) l'istanza nasce col BA, quindi un ruolo CLIENTE **senza fornitura non riceve ordini**. L'ordine «prospect» sparisce: e' voluto? | ✅ **Si'** (2026-10-09), conseguenza sul prospect compresa |
 | **D-2** | Su quali **DDT** il BA e' obbligatorio? | Il modello ha gia' il discriminante, la causale (§2.2), e la diagnosi gia' mette `SOLO_TRASPORTO` prima di `SENZA_BA`. Resta da scegliere il perimetro: **(a)** solo causale `fatturabile` (`VENDITA`); **(b)** ogni causale che manda merce **al cliente** (`SCARICO_VEN`: anche `OMAGGIO` e `CAMPIONATURA`, che non si fatturano ma escono verso un cliente). Proposta del team DB: **(b)** — omaggio e campionatura sono consegne a un cliente, e il cliente a grana fine e' il BA; il «fatturabile» decide il push, non chi e' la controparte. ⚠️ Il criterio va scritto in una colonna del vocabolario delle causali (non per codice), e la diagnosi resta com'e' | ✅ **(b)** (2026-10-09): il BA serve su ogni DDT che manda merce a un cliente. Quali causali: D-2-bis |
-| **D-2-bis** | Con (b), **quali causali** vogliono il cliente? | Non si deriva da `causale_magazzino = 'SCARICO_VEN'`: il conto visione manda merce a un cliente e non ha causale di magazzino, quindi resterebbe fuori. Serve una colonna nuova in `config.causali_trasporto` (nome di lavoro `richiede_cliente boolean NOT NULL`), valorizzata nel CSV. Proposta per il seed: **si'** `VENDITA`, `OMAGGIO`, `CAMPIONATURA`, `CONTO_VISIONE`; **no** `TRASFERIMENTO` (deposito nostro), `CONTO_LAVORO` e `RIPARAZIONE` (terzista); **da dire** `RESO` (un DDT con causale reso porta merce a chi? se e' il rientro verso un fornitore, no) | ⏳ aperta |
+| **D-2-bis** | Con (b), **quali causali** vogliono il cliente? | Non si deriva da `causale_magazzino = 'SCARICO_VEN'`: il conto visione manda merce a un cliente e non ha causale di magazzino, quindi resterebbe fuori. Serve una colonna nuova in `config.causali_trasporto` (nome di lavoro `richiede_cliente boolean NOT NULL`), valorizzata nel CSV. Proposta per il seed: **si'** `VENDITA`, `OMAGGIO`, `CAMPIONATURA`, `CONTO_VISIONE`; **no** `TRASFERIMENTO` (deposito nostro), `CONTO_LAVORO` e `RIPARAZIONE` (terzista); **da dire** `RESO` (un DDT con causale reso porta merce a chi? se e' il rientro verso un fornitore, no) | ✅ **Come proposto** (2026-10-09): si' `VENDITA`, `OMAGGIO`, `CAMPIONATURA`, `CONTO_VISIONE`; no `TRASFERIMENTO`, `CONTO_LAVORO`, `RIPARAZIONE`, `RESO`. ⚠️ La causale di trasporto `RESO` e' la bolla **nostra verso un fornitore** (commento di `20260928-60`, Lotto 4); il reso **del cliente** e' un'altra cosa, il documento `vendite.resi`, e segue D-3 (BA del suo DDT). La riconsegna al cliente dopo un reso eredita la causale del DDT d'origine (`fn_genera_ddt_riconsegna`) |
 | **D-3** | Il **reso** ha il BA? | **Il BA del suo DDT, sempre.** Il reso non e' mai standalone (§2.1): la regola non e' «obbligatorio» ma «uguale a quello del DDT sorgente», NULL compreso — un reso da un conto visione senza BA resta senza BA. Non e' una decisione autonoma: segue D-2 | ✅ **Si'** (2026-10-09) |
-| **D-4** | Il **destinatario** di DDT e reso e' sempre il ruolo del BA, o puo' essere un altro soggetto? | Se il BA c'e', proposta: **si'**, la stessa FK dell'ordine. La consegna a terzi si scrive negli indirizzi (`ddt_indirizzi`), non cambiando la controparte del documento. Dove il BA manca per D-2 (trasferimento, conto lavoro, riparazione) il destinatario resta libero: e' il terzista o il deposito, non un cliente | ⏳ aperta |
-| **D-5** | Le due copie (`utility_id`, ruolo di testata) si **legano** al BA o si **ritirano**? | Legarle, come R-2 sul preventivo: ritirarle costerebbe tutti i lettori (liste, filtri, indici `ix_ddt_vendita_dest_stato_data`, push), e la FK composta rende la copia innocua | ⏳ aperta |
+| **D-4** | Il **destinatario** di DDT e reso e' sempre il ruolo del BA, o puo' essere un altro soggetto? | Se il BA c'e', proposta: **si'**, la stessa FK dell'ordine. La consegna a terzi si scrive negli indirizzi (`ddt_indirizzi`), non cambiando la controparte del documento. Dove il BA manca per D-2 (trasferimento, conto lavoro, riparazione) il destinatario resta libero: e' il terzista o il deposito, non un cliente | ✅ **Come proposto** (2026-10-09): con il BA, il destinatario e' il ruolo del BA; senza BA resta libero; la consegna a terzi passa dagli indirizzi |
+| **D-5** | Le due copie (`utility_id`, ruolo di testata) si **legano** al BA o si **ritirano**? | Legarle, come R-2 sul preventivo: ritirarle costerebbe tutti i lettori (liste, filtri, indici `ix_ddt_vendita_dest_stato_data`, push), e la FK composta rende la copia innocua | ✅ **Legarle** (2026-10-09) |
 | **D-6** | Gli anelli della catena hanno **lo stesso BA**? (§3, terzo punto) | **Si'.** Regola: *un esecutivo derivato ha il BA della sua sorgente.* Riga di DDT che evade una riga d'ordine → stesso BA della testata d'ordine; reso → stesso BA del DDT. Quando il BA del DDT e' obbligatorio (D-2), la seconda fonte nella diagnosi (`COALESCE` col BA dell'ordine) diventa superflua e si ritira | ✅ **Si'** (2026-10-09) |
 | **D-7** | `billing_account.soggetto_ruolo_id` fa parte dell'**identita'** del BA? | **Si'**, come istanza e utility (R-1 del brief d'origine). Oggi non e' bloccato (il lock copre `codice`, `istanza_utility_id`, `utility_id`). Una FK composta `(billing_account_id, soggetto_ruolo_id)` lo bloccherebbe comunque, ma **di nascosto**: con `NO ACTION` il cambio di ruolo di un BA gia' usato fallisce con un 23503 grezzo, senza codice registrato; con `CASCADE` riscrive l'ordine e sbatte su `E_ORD_CLIENTE_IMMUTABILE`. Va bloccato in modo dichiarato, riga in `dbops.automation_lock_columns` col suo codice | ✅ **Si'** (2026-10-09), nella forma del §4.1: istanza, BA e cliente non cambiano intestatario; la fornitura sul soggetto sbagliato si annulla e si ricrea |
 
@@ -269,12 +269,14 @@ Lo stampo e' R-2 di `brief-db-istanza-nasce-col-ba` (§6.3), con una differenza 
   * il **lock del BA fuori bozza**, gemello di `trgfn_ddt_guard_causale_immutabile` (si guarda lo
     stato VECCHIO: l'`UPDATE` che porta DRAFT → EMESSO scegliendo il BA e' legittimo). Non il lock
     assoluto dell'ordine: vieterebbe di scegliere il BA su una bozza, cioe' il caso giusto;
-* `(billing_account_id, utility_id)` con `MATCH FULL` («tutti e due o nessuno»), cosi' la utility
-  non resta NULL accanto a un BA; con `MATCH SIMPLE` la FK non scatta su una utility NULL;
-* il ruolo di testata legato al BA secondo D-4. Siccome qui il BA puo' mancare, la FK a tre colonne
-  `MATCH FULL` non va (il destinatario e' NOT NULL anche senza BA): o una FK `(billing_account_id,
-  destinatario_soggetto_ruolo_id)` `MATCH SIMPLE`, che con BA NULL non scatta — ed e' il
-  comportamento voluto — o un guard;
+* utility e destinatario legati al BA (D-4, D-5) con la **stessa** FK a tre colonne dell'ordine e
+  del cliente, `(billing_account_id, destinatario_soggetto_ruolo_id, utility_id)` →
+  `billing_account (id, soggetto_ruolo_id, utility_id)`, in `MATCH SIMPLE`: con il BA NULL non
+  scatta, ed e' il comportamento voluto — senza cliente il destinatario resta libero (terzista,
+  deposito). ⚠️ `MATCH SIMPLE` salta anche quando e' NULL la sola utility: la chiude un CHECK
+  `(billing_account_id IS NULL) = (utility_id IS NULL)` («tutti e due o nessuno»). Cosi' un solo
+  indice unico sul BA serve ordine, cliente, DDT e reso; `MATCH FULL` non va, perche' il
+  destinatario e' NOT NULL anche senza BA;
 * D-6: guard su `ordini_righe_fulfillment` (BA della testata d'ordine = BA della testata del DDT),
   accanto ai controlli di articolo e UoM di `trgfn_ordini_ful_guard_consistenza`; e
   `trgfn_ddt_normalize` che **rifiuta** un BA esplicito diverso da quello dell'ordine sorgente invece
@@ -284,7 +286,7 @@ Lo stampo e' R-2 di `brief-db-istanza-nasce-col-ba` (§6.3), con una differenza 
 
 * il BA **uguale** a quello del DDT sorgente, NULL compreso: guard (o `trgfn_resi_normalize` che
   rifiuta un valore esplicito diverso) — non un NOT NULL;
-* utility e destinatario come sul DDT (`MATCH FULL`, FK secondo D-4);
+* utility e destinatario come sul DDT (FK a tre colonne `MATCH SIMPLE` + CHECK «tutti e due o nessuno»);
 * il lock del BA fuori bozza, come sul DDT.
 
 ### 5.4 Comune
@@ -329,6 +331,12 @@ che non passerebbero. Il modo (a mano o changeSet) si decide con Tid. Le righe d
 * clienti col ruolo diverso da quello del loro BA (D-7, punto 4).
 
 ⛔ Il loro numero entra solo come fatto datato, mai come motivo.
+
+**Fatto datato (dbdev `zeroerp`, 2026-10-09, letto da owner, RLS non forzata):** tutte le regole sopra
+a zero tranne una, tre DDT col BA e senza utility (61 `DDT0000034` CONSEGNATO, 82 `DDT0000041` e 91
+`DDT0000043` ANNULLATI, tutti `VENDITA`). Su dbdev la correzione e' a mano (la utility presa dal BA),
+decisa da Tid: non serve su altri database, quindi nessun changeSet di bonifica. La `preCondition` dei
+changeSet dei vincoli resta comunque, per i database che non sono dbdev.
 
 ## 7. Ricaduta BE/FE (dopo la consegna DB)
 
