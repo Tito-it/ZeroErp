@@ -225,8 +225,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   prezzo e l'alert scadenze listini sempre in 400). Chiuso il 2026-10-09
   `work-done/brief-db-riga-listino-propagata-dalla-commessa` (la riga di listino che ha dato il prezzo a una
   commessa è «propagata», e la regola ha una sede sola, il guard DB; il seguito D-3 in
-  `brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA` in
-  `brief-db-ritiro-codice-riga-gia-propagata`; e — decisione B di Tid, 2026-10-09 — la riga di listino si cita solo
+  `brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA`, chiuso, in
+  `work-done/brief-db-ritiro-codice-riga-gia-propagata`; e — decisione B di Tid, 2026-10-09 — la riga di listino si cita solo
   se il prezzo viene davvero da lì: il push non la scrive più, la provenienza dovrà viaggiare col prezzo dal
   documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Chiuso il 2026-10-09
   `work-done/brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C, la generazione

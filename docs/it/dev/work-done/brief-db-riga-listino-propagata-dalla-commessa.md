@@ -199,4 +199,4 @@ guard rifiuta con `E_RIGA_LISTINO_PROPAGATA` (o `E_RIGA_LISTINO_VERSIONE_CHIUSA`
 `ErrorManager.raise_from_database_error` porta il codice al chiamante. Il test 4
 lo prova sul DB vero. L'override UI (toast) è passato al codice del DB. Il ritiro
 del codice vecchio dal catalogo è chiesto al team DB:
-[brief-db-ritiro-codice-riga-gia-propagata](../work-in-progress/brief-db-ritiro-codice-riga-gia-propagata.md).
+[brief-db-ritiro-codice-riga-gia-propagata](brief-db-ritiro-codice-riga-gia-propagata.md).
