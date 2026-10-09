@@ -44,7 +44,7 @@ import { useNotify } from '../../core/composables/useNotify'
 import { spazioSaldo } from './useSaldi'
 import { useSelezioneConValore } from '../../core/composables/useSelezioneConValore'
 import { useSelezioneLista } from '../../core/composables/useSelezioneLista'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, oggiAziendale } from '../../core/utils/date'
 import { creaRigheDaRate } from '../api/pagamenti'
 
 const ROW_KEY = 'scadenza_id'
@@ -62,7 +62,7 @@ export function rataEsaurita(riga) {
 //        nasce OGGI (si sta digitando il denaro di giornata) — come nel form
 //        della riga singola, e per la stessa ragione.
 function fattiIniziali() {
-  return { data_pagamento: new Date(), data_valuta: null, riferimento_ente: '' }
+  return { data_pagamento: oggiAziendale(), data_valuta: null, riferimento_ente: '' }
 }
 
 // Params:

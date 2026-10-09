@@ -28,7 +28,7 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { DATE_FORMAT } from '../../core/constants'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, oggiAziendale } from '../../core/utils/date'
 import { correggiDistinta } from '../api/pagamenti'
 import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
@@ -50,7 +50,7 @@ const motivo = ref('')
 
 watch(() => props.visible, (aperto) => {
   if (!aperto) return
-  dataContabile.value = new Date()
+  dataContabile.value = oggiAziendale()
   motivo.value = ''
 })
 

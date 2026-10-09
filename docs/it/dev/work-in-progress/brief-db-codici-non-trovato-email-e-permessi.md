@@ -432,14 +432,12 @@ toccati.
   lista. Va misurato con EXPLAIN se la regola si applica per riga o una volta
   per ruolo.
 * **La riga di `anagrafiche.clienti` nei test sul DB vero si scrive a mano**, dopo
-  `dbops.fn_pgtap_crea_cliente_ba`, in almeno nove file di test (con questo).
+  `dbops.fn_pgtap_crea_cliente_ba`, in più file di test (con questo).
   Un builder che arrivi fino al cliente sarebbe un lavoro del team DB.
 
 ### 9.3 Decisioni ancora aperte (Tid)
 
-* La lista filtra `s.attivo`, il dettaglio no (§8.5).
-* Le due condizioni vicine del §9.2 («Template non trovato» della bozza,
-  «Path allegato non valido»).
+Tutte raccolte, con proposta, nel §12.
 
 ## 10. R-5 — Ritiro di `p_emittente_ids` e di `fn_get_emittenti_scope_sr_effettivo`
 
@@ -536,3 +534,97 @@ un ruolo senza `entita_tabella` → presente; CL invariato (i casi 12-20 di
 **Ricaduta sul backend:** nessuna nel codice (NULL → 404 c'è già). Dopo
 l'apply si aggiunge a `core/tests/db/test_search_detail_non_trovato_db.py` il
 caso FO senza fornitore, e si aggiorna `api_search_universale.md`.
+
+## 12. Tutto ciò che resta, in un posto solo
+
+*(sessione backend, 2026-10-09: elenco completo delle voci nate da questo
+brief, ciascuna con la proposta. Prima stavano sparse in fondo ai messaggi.)*
+
+### 12.1 Fatte dal BE il 2026-10-09 (codici già a catalogo)
+
+* «Nessun account email configurato» nella **preparazione** di una bozza e in
+  ogni mail di sistema (`EmailDispatchService.resolve_and_render`, sotto
+  `E_OUTBOX` / `E_EMAIL`, 400) → `E_EMAIL_ACCOUNT_NON_CONFIGURATO` (500), lo
+  stesso codice dell'invio di una bozza: è la stessa condizione;
+* «Account non trovato» del test SMTP (`EmailDispatchService.test_connection`,
+  `E_EMAIL`, 400) → `E_EMAIL_ACCOUNT_NOT_FOUND` (404), come il dettaglio
+  dell'account.
+
+Test: `test_email_service` n. 6 e 8b.
+
+### 12.2 R-7 — Tre codici nuovi a catalogo (team DB, seed `80_data`) — ✅ approvato da Tid il 2026-10-09
+
+Restano sotto gli accumulatori tre condizioni che non sono dati errati:
+
+| Codice proposto | Classe | Frase proposta | Dove, oggi |
+| --- | --- | --- | --- |
+| `E_EMAIL_TEMPLATE_NON_CONFIGURATO` | `TECNICO` | Nessun template email configurato per questo invio. | `email_service.resolve_and_render` («Template email '…' non trovato», `E_EMAIL` / `E_OUTBOX`, 400): mail di sistema (reset password, inviti, approvazioni prezzo) e preparazione della bozza |
+| `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO` | `TECNICO` | Percorso dell'allegato non valido. | `email_allegati_storage.percorso_allegato` («Path allegato non valido», `E_EMAIL_OP`, 400): download, invio SMTP; la cancellazione lo scrive nel log e prosegue |
+| `E_EMAIL_ALLEGATI_LIMITE` | `CONFLITTO_STATO` | La mail ha già il numero massimo di allegati: togline uno per aggiungerne un altro. | `email_outbox_service.add_attachment` («Numero massimo allegati raggiunto», `E_OUTBOX`, 400) |
+
+Motivi, sul modello:
+
+* **template**: il codice del template lo sceglie il **programma** (le mail di
+  sistema lo scrivono nel codice; la preparazione della bozza non ha un
+  chiamante nel frontend). La risoluzione ha già il suo ripiego (reparto →
+  sistema, lingua): se non trova niente, manca la configurazione, e chi chiede
+  la mail non può rimediare. Stesso ragionamento di
+  `E_EMAIL_ACCOUNT_NON_CONFIGURATO`. ⚠️ Non è `E_EMAIL_TEMPLATE_NOT_FOUND`
+  (404): quello è l'id che l'amministratore sceglie dal pannello;
+* **percorso**: il `file_path` arriva dal **database**, non da una persona. Un
+  percorso che esce dalla radice è un dato corrotto o manomesso: un guasto, e
+  un evento da guardare. ⚠️ Non è `E_EMAIL_ALLEGATO_FILE_MANCANTE`: quello è un
+  file che manca, questo un percorso che non deve esistere;
+* **limite allegati**: il file che l'operatore manda va bene; è la mail a essere
+  piena. Non c'è un campo da correggere, c'è uno stato (api.md, «Scegliere fra
+  409 e 400»). Gli altri due rifiuti dell'upload (tipo e dimensione del file)
+  sono invece dati errati e restano `E_OUTBOX`.
+
+**Dopo l'apply (BE):** i tre punti passano ai codici nuovi. Con template e
+account dotati del loro codice, il parametro `error_code` di
+`resolve_and_render` non serve più e si toglie. Un test per codice.
+
+### 12.3 R-8 — `attivo` del soggetto: lista e dettaglio dicano la stessa cosa (team DB) — ✅ approvato da Tid il 2026-10-09
+
+`fn_search_soggetti_universale` filtra `s.attivo = true`, mentre
+`fn_get_search_detail` non lo fa (§8.5): un soggetto disattivato non compare in
+lista, ma il suo dettaglio si apre se se ne conosce l'id. Il dettaglio lo
+chiama un solo consumatore, il drawer della ricerca, e sempre da una riga della
+lista.
+
+⇒ **Proposta:** la condizione `attivo` entra in
+`script.fn_check_soggetto_ruolo_visibile`, la sede unica di «chi si vede» per
+lista e dettaglio, ed esce dal `WHERE` della lista. Un soggetto disattivato dà
+404 anche nel dettaglio. Si fa nello stesso giro di R-6, che riscrive la stessa
+check. pgTAP: soggetto disattivato → assente dalla lista e dettaglio NULL.
+
+### 12.4 R-9 — Un builder pgTAP che arrivi fino al cliente (team DB) — ✅ approvato da Tid il 2026-10-09
+
+`dbops.fn_pgtap_crea_cliente_ba` si ferma al billing account. La riga di
+`anagrafiche.clienti` la scrive a mano ogni test che serve un cliente: più
+file Python sul DB vero (`test_ricerca_liste_db`,
+`test_search_detail_non_trovato_db`, …), più i pgTAP (es.
+`test-search-scope-interno-v1`). Le copie sono già diverse fra loro: stato `PR`
+in una, `AT` più la data di attivazione in un'altra (con `AT` senza data il
+trigger rifiuta).
+
+⇒ **Proposta (regola del 2):** `dbops.fn_pgtap_crea_cliente(...)`, che chiama
+`fn_pgtap_crea_cliente_ba` e scrive la riga di `clienti` con uno stato ammesso,
+e ritorna anche `cliente_id`. Il ritiro delle copie nei test Python lo fa poi il
+BE, nello stesso giro.
+
+### 12.5 Regola del 2 sull'account di invio — ✅ fatto il 2026-10-09 (ok Tid)
+
+«Risolvi l'account, o 500 `E_EMAIL_ACCOUNT_NON_CONFIGURATO`» era scritto in due
+punti, `resolve_and_render` e `confirm_and_send`. Ora la sede è una sola,
+`EmailDispatchService.account_di_invio(unita_organizzativa_id)`, registrata nel
+catalogo BB. Il rilancio batch (`send_pending_emails`) non la usa, di
+proposito: lui non rifiuta, segna la mail `FAILED` e prosegue. Il test
+«senza account la bozza resta DRAFT» ora gira col dispatcher **vero**, per
+provare la regola invece di un rifiuto fabbricato dal mock.
+
+### 12.6 In attesa del team DB (già richieste)
+
+* **R-5** (§10): ritiro di `p_emittente_ids` e di
+  `fn_get_emittenti_scope_sr_effettivo`. Il BE ha già smesso di passarlo.
+* **R-6** (§11): regola unica su `entita_tabella`, insieme a R-8.

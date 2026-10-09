@@ -34,12 +34,12 @@ Indice test eseguiti (opt-in `ZEROERP_TEST_DB_E2E=1`):
 from __future__ import annotations
 
 import unittest
-from datetime import date
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
@@ -154,7 +154,7 @@ class VersioneContestoDbTests(unittest.TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 user, template, versione = self._bozza(cur, forma + 1)
                 tid, vid = template["id"], versione["id"]
-                payload = {"valido_dal": date.today().isoformat()}
+                payload = {"valido_dal": oggi_aziendale().isoformat()}
 
                 api = self._rifiuto(lambda: svc.pubblica_versione(user, tid, vid, dict(payload)))
                 self.assertEqual(api.code, "E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA")

@@ -322,3 +322,10 @@ rifiutato col campo, PR con `X`, DI con P.IVA e senza sesso, PG con sesso rifiut
 vuoto → `NULL`, policy nel lookup); unit test di service e operatore riallineati;
 `useSoggettoForm.spec.js` (proposta, ritiro, `NONE`, modifica, reset).
 
+Smoke `backend/scripts/tests/smoke-test-soggetti.sh` (2026-10-09, **20 OK / 0 FAIL**): sesso
+esplicito nei passi 4 e 14 (il guard rifiutava il privato senza sesso), passi nuovi 15 (privato
+senza sesso → `400 E_SESSO_OBBLIGATORIO` col campo) e 16 (ditta individuale con P.IVA e senza
+sesso → nasce DI). Per farlo girare ho corretto due rotture che c'erano già prima e non
+dipendono da questo cantiere: il contatto senza `tipo_contatto_id` (`E_CONTATTO_INCOMPLETO`) e il
+contatto aggiuntivo con lo stesso tipo del principale.
+

@@ -322,7 +322,7 @@ GET /api/v1/amm-software/email-log/{id}/
 ```
 
 Admin vede tutti gli ambiti. Filtri: `search`, `stato`, `ambito`, `pratica_id`,
-`unita_organizzativa_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`, `offset`,
+`unita_organizzativa_id`, `data_da`/`data_a` (`YYYY-MM-DD`, giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09), `data_a` incluso; malformate → 400), `limit`, `offset`,
 `order_by` (default `data_insert`), `order_dir` (default `desc`). Risposta paginata
 come le altre liste admin. `search`: le colonne le decide il catalogo della lista
 `config.email_log`; sotto 3 caratteri il termine non filtra (e' un registro, non
@@ -529,7 +529,7 @@ Il perimetro **non** e' un filtro della view: lo applica la RLS su
 `config.email_log` per **ambito** ed **emittente** (§Ambito e visibilita'); in piu'
 il processo `send_pending_emails` vede le mail del suo perimetro, per poterle
 ritentare.
-Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`,
+Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`, giorni dell'azienda come sopra), `limit`,
 `offset`. `search` e' la ricerca della lista `config.email_log` (stessa query): le
 colonne le decide il suo catalogo, e sotto 3 caratteri il termine non filtra.
 

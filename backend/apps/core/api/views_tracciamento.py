@@ -152,8 +152,8 @@ class ApiAuditLog(DomainAPIView):
         data = fn_list_audit_logs(
             status=status,
             function_name=qp_str(qp.get("function_name")),
-            date_from=qp_str(qp.get("date_from")),
-            date_to=qp_str(qp.get("date_to")),
+            date_from=qp_iso_date_optional(qp.get("date_from"), "date_from"),
+            date_to=qp_iso_date_optional(qp.get("date_to"), "date_to"),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
             page_size=_parse_page_size(qp),
@@ -369,8 +369,8 @@ class ApiJobRuns(DomainAPIView):
         data = fn_list_job_runs(
             jobname=qp_str(qp.get("jobname")),
             ok=ok,
-            date_from=qp_str(qp.get("date_from")),
-            date_to=qp_str(qp.get("date_to")),
+            date_from=qp_iso_date_optional(qp.get("date_from"), "date_from"),
+            date_to=qp_iso_date_optional(qp.get("date_to"), "date_to"),
             search=qp_str(qp.get("search")),
             page=qp_int(qp.get("page"), 1),
             page_size=_parse_page_size(qp),

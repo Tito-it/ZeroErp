@@ -79,7 +79,7 @@ from pathlib import Path
 from typing import Any
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from apps.core.management.comando_aziendale import ComandoAziendale
 
 from apps.core.api.rotte import rotte_servite
 
@@ -310,7 +310,7 @@ def matcher_copertura(
     return coperta
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = "Copertura della documentazione API: rotte scoperte e path fantasma."
 
     def add_arguments(self, parser: Any) -> None:

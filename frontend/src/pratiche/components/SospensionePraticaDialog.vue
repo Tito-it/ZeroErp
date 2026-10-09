@@ -14,7 +14,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePraticheStore } from '../stores/pratiche'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { toTimestampString, toDateString } from '../../core/utils/date'
+import { toTimestampString, toDateString, istanteComeOraAziendale, oraAziendaleComeIstante, adesso } from '../../core/utils/date'
 import AppDialog from '../../core/components/AppDialog.vue'
 import Textarea from 'primevue/textarea'
 import DatePicker from 'primevue/datepicker'
@@ -46,9 +46,13 @@ const dataRiattivazionePrevista = ref(null)
 const maxDate = ref(null)
 
 // All'apertura: reset + precarica ora attuale nel campo pertinente al modo.
+// ⭐ L'ora che l'operatore legge e digita e' quella dell'AZIENDA, non del PC
+//    (T-1, F-4): il DatePicker porta l'orologio dell'azienda nei campi locali
+//    (`istanteComeOraAziendale`) e al salvataggio si torna all'istante
+//    (`oraAziendaleComeIstante`).
 watch(() => props.visible, (open) => {
   if (!open) return
-  const now = new Date()
+  const now = istanteComeOraAziendale(adesso())
   maxDate.value = now
   motivo.value = ''
   dataRiattivazionePrevista.value = null
@@ -80,11 +84,11 @@ async function onSave() {
   const action = isSospendi.value
     ? () => store.sospendi(props.praticaId, {
         motivo: motivo.value.trim(),
-        data_inizio: toTimestampString(dataInizio.value),
+        data_inizio: toTimestampString(oraAziendaleComeIstante(dataInizio.value)),
         data_riattivazione_prevista: toDateString(dataRiattivazionePrevista.value),
       })
     : () => store.riattiva(props.praticaId, {
-        data_fine: toTimestampString(dataFine.value),
+        data_fine: toTimestampString(oraAziendaleComeIstante(dataFine.value)),
       })
   const successMessage = isSospendi.value
     ? t('pratiche.sosp_sospesa_ok')

@@ -36,7 +36,7 @@ import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 // usare destructured + nome callback `onAccept` (non `accept`) per
 // evitare dialog silente.
 import { MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
-import { parseIsoDate, toDateString } from '../../core/utils/date'
+import { parseIsoDate, toDateString, oggiAziendale } from '../../core/utils/date'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
@@ -192,7 +192,7 @@ function openPubblicaDialog(row) {
   pubblicaTargetId.value = row.id
   pubblicaFormaVersione.value = row.versione_contesto ?? null
   pubblicaForm.value = {
-    valido_dal: parseIsoDate(row.valido_dal) || new Date(),
+    valido_dal: parseIsoDate(row.valido_dal) || oggiAziendale(),
     valido_al: parseIsoDate(row.valido_al),
   }
   pubblicaDialog.value = true

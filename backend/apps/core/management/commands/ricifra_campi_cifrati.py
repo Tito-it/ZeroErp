@@ -23,7 +23,8 @@ import base64
 import hashlib
 
 from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
+from apps.core.management.comando_aziendale import ComandoAziendale
 from django.db import connection, transaction
 
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -80,7 +81,7 @@ def _riscrivi(campo: CampoCifrato, chiave: int, atteso: str, nuovo: str) -> bool
     return True
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
         "Ri-cifra con la prima chiave di DJANGO_FIELD_ENCRYPTION_KEYS tutti i "
         "segreti salvati nel DB. Tutto o niente."

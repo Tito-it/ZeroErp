@@ -2,10 +2,10 @@ from typing import Any
 from datetime import date
 
 from django.http import HttpResponse, JsonResponse
-from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
@@ -1124,7 +1124,7 @@ class ApiLottiMensile(DomainAPIView):
     )
     # Scopo: Restituisce i 12 conteggi lotti/mese dell'anno per la sidebar.
     def get(self, request: Request) -> JsonResponse:
-        anno = qp_int_strict(request.query_params.get("anno"), "anno", timezone.localdate().year)
+        anno = qp_int_strict(request.query_params.get("anno"), "anno", oggi_aziendale().year)
         auth_user_id = get_scope_user_id(request)
         data = fn_lotti_mensile(
             anno=anno,

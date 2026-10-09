@@ -29,7 +29,6 @@ from apps.core.db.lookup_repository import LookupRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
-    E_CONTATTO_INCOMPLETO,
 )
 from apps.anagrafiche.services._validators import (
     create_with_dedup,
@@ -40,12 +39,17 @@ from apps.anagrafiche.services._validators import (
 )
 from apps.anagrafiche.services.cf_validator_it import genera_cf_it, valida_cf_congruenza_it
 from apps.anagrafiche.services.contatti_service import (
-    classify_contatto_payload,
-    missing_required_fields,
+    crea_contatto_validato,
+    richiedi_contatto_valido,
 )
 from apps.core.services.payload_helpers import PayloadValidator
-from apps.core.services.service_errors import ServiceError
 
+
+# Ruoli che hanno un flusso di creazione proprio, per CODICE INTERNO (la chiave
+# stabile, bloccata dal DB): `assign_ruolo` li rifiuta. Cio' che l'utente legge
+# (codice e descrizione) viene da `config.tipi_ruoli`, non da qui. Vedi la nota
+# su `assign_ruolo`.
+_RUOLI_CON_FLUSSO_DEDICATO: frozenset[str] = frozenset({"CL", "FO", "EF", "RIS_UMANA"})
 
 # Limiti lookup contesto pratica (mirror billing_account_service).
 _LOOKUP_MIN_QUERY_LENGTH = 2
@@ -259,19 +263,27 @@ class SoggettiService:
         return self._repo.get_soggetto_contatti(soggetto_id)
 
     # Scopo: Crea contatto per un soggetto con validazione.
+    # ⚠️ Fino al 2026-10-09 non pretendeva il tipo contatto e non traduceva
+    #    l'unicita' per tipo: tutti e due arrivavano come `E_DATABASE` (BB
+    #    `crea_contatto_validato`, regola del 2).
     def create_contatto(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         self._require_soggetto_exists(soggetto_id)
-        nominativo = require_str(payload, "nominativo", "Nominativo contatto obbligatorio.")
-        return self._repo.crea_contatto(
-            soggetto_id,
-            nominativo=nominativo,
-            email=optional_str(payload, "email"),
-            telefono=optional_str(payload, "telefono"),
-            cellulare=optional_str(payload, "cellulare"),
-            pec=optional_str(payload, "pec"),
-            tipo_contatto_id=optional_int(payload, "tipo_contatto_id"),
-            unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
-            note=optional_str(payload, "note"),
+        return crea_contatto_validato(self._repo, soggetto_id, payload)
+
+    # Scopo: Crea un contatto del RUOLO (eventualmente per un'istanza).
+    #        Fino al 2026-10-09 la creazione stava nella view
+    #        `RuoloContattiView.post`, senza la regola del contatto valido.
+    def create_contatto_ruolo(self, soggetto_ruolo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        from django.db import connection
+
+        from apps.anagrafiche.db._helpers import resolve_soggetto_id
+
+        with connection.cursor() as cursor:
+            soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
+        return crea_contatto_validato(
+            self._repo, soggetto_id, payload,
+            soggetto_ruolo_id=soggetto_ruolo_id,
+            istanza_utility_id=optional_int(payload, "istanza_utility_id"),
         )
 
     # Scopo: Aggiorna contatto esistente con verifica ownership.
@@ -497,13 +509,50 @@ class SoggettiService:
         return result
 
     # Scopo: Assegna ruolo a soggetto (idempotente).
+    # ⛔ I ruoli con un FLUSSO DEDICATO non nascono da qui (decisione di Tid,
+    #    2026-10-09): il ruolo e' solo il primo anello della loro catena.
+    #    Un CL nasce con la prima istanza e il suo billing account (flusso
+    #    Clienti): creato «nudo» da qui non aveva clienti, e un operatore con
+    #    emittente non lo vedeva nemmeno (scope CL). Stesso discorso per FO
+    #    (condizioni d'acquisto), EF (emittente fiscale) e RIS_UMANA (rapporto
+    #    di lavoro, operatore).
+    # ⛔ Gli indirizzi obbligatori di un ruolo (matrice
+    #    `config.tipi_ruolo_tipi_indirizzo`, es. SEDELEG e FATT per GE) sono
+    #    indirizzi DEL RUOLO, non del soggetto: li pretende il guard differito
+    #    `trgfn_soggetti_ruoli_guard_indirizzi_required` al COMMIT. Fino al
+    #    2026-10-09 questo endpoint non li accettava, e un ruolo che ne ha di
+    #    obbligatori non poteva nascere. Stessa catena dei flussi
+    #    clienti/fornitori: ruolo, poi `create_indirizzi_ruolo` (auto-clone del
+    #    primo per gli obbligatori mancanti), una transazione.
     def assign_ruolo(self, soggetto_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        from django.db import transaction
+
         self._require_soggetto_exists(soggetto_id)
         codice_ruolo = require_str(payload, "codice_ruolo", "Codice ruolo obbligatorio.")
-        ruolo_id = create_with_dedup(
-            lambda: self._repo.assign_ruolo(soggetto_id, codice_ruolo),
-            "Ruolo gia' assegnato.",
-        )
+        # `CLIENTE` o `CL`: la chiave e' il codice interno (None = sconosciuto,
+        # lo rifiuta la funzione DB col suo codice).
+        tipo = self._repo.resolve_tipo_ruolo(codice_ruolo)
+        codice_interno = str(tipo["codice_interno"]) if tipo else None
+        if tipo and codice_interno in _RUOLI_CON_FLUSSO_DEDICATO:
+            ErrorManager.raise_error(
+                code=E_ANAG_VALIDAZIONE,
+                message=(
+                    f"Il ruolo {tipo['descrizione']} non si assegna da qui: "
+                    "ha un flusso di creazione dedicato."
+                ),
+                context={"field": "codice_ruolo", "codice_ruolo": tipo["codice"]},
+            )
+        indirizzi = self._collect_indirizzi(payload)
+        with transaction.atomic():
+            ruolo_id = create_with_dedup(
+                lambda: self._repo.assign_ruolo(soggetto_id, codice_interno or codice_ruolo),
+                "Ruolo gia' assegnato.",
+            )
+            if indirizzi:
+                assert codice_interno is not None  # il ruolo e' appena nato
+                self.create_indirizzi_ruolo(
+                    ruolo_id, indirizzi, tipo_ruolo_codice=codice_interno,
+                )
         return {"id": ruolo_id}
 
     # =================================================================
@@ -619,23 +668,6 @@ class SoggettiService:
     # Metodi interni
     # =================================================================
 
-    # Scopo: Valida che il payload contatto inline al create soggetto sia
-    # VALID (obbligatorio sempre per soggetto). Solleva E_CONTATTO_INCOMPLETO
-    # sia per EMPTY (contatto mancante) sia per PARTIAL (campi obbligatori
-    # mancanti). Centralizza la regola usata in _create_pf e _create_pg.
-    def _require_contatto_valid(self, contatto: dict[str, Any]) -> None:
-        status = classify_contatto_payload(contatto)
-        if status != "VALID":
-            missing = missing_required_fields(contatto)
-            raise ServiceError(
-                code=E_CONTATTO_INCOMPLETO,
-                message="Contatto obbligatorio: nominativo e tipo contatto richiesti.",
-                context={"missing": missing},
-                # Stesso canale di `crea_contatto_inline_se_valido`: i campi
-                # mancanti sono quelli da accendere (presidio C2, §3-ter).
-                fields=tuple(missing),
-            )
-
     # Scopo: Crea soggetto PF (privato PR o ditta individuale DI) via building
     #        block DB, con la natura di dettaglio SCELTA e la partita IVA.
     #        Include validazione congruenza CF con dati anagrafici (data, sesso, comune).
@@ -661,7 +693,7 @@ class SoggettiService:
         # Regola unificata via classify_contatto_payload (Fase 5): per il
         # soggetto il contatto e' obbligatorio (sempre VALID richiesto),
         # quindi sia EMPTY che PARTIAL → errore esplicito.
-        self._require_contatto_valid(contatto)
+        richiedi_contatto_valido(contatto)
         email_addr = optional_str(contatto, "email") or ""
 
         soggetto_id = create_with_dedup(
@@ -692,7 +724,7 @@ class SoggettiService:
         contatto = payload.get("contatto") or {}
         # Regola unificata via classify_contatto_payload (Fase 5): per il
         # soggetto il contatto e' obbligatorio (sempre VALID richiesto).
-        self._require_contatto_valid(contatto)
+        richiedi_contatto_valido(contatto)
         email_addr = optional_str(contatto, "email") or ""
 
         dati_soc = payload.get("dati_societari") or {}
@@ -813,8 +845,6 @@ class SoggettiService:
         self, soggetto_ruolo_id: int, indirizzi_data: list[dict[str, Any]],
         tipo_ruolo_codice: str = "FO",
     ) -> None:
-        from apps.core.db.lookup_repository import LookupRepository
-
         if not indirizzi_data:
             return
         # Copia locale: l'auto-clone fa append, non mutare la lista del chiamante.
@@ -824,7 +854,7 @@ class SoggettiService:
         existing_tipo_ids = self._repo.get_existing_tipo_indirizzo_ids(soggetto_ruolo_id)
 
         # Auto-clone: clona il primo indirizzo per i tipi obbligatori mancanti
-        matrice = LookupRepository().list_matrice_indirizzi_ruolo(tipo_ruolo_codice)
+        matrice = self._lookup.list_matrice_indirizzi_ruolo(tipo_ruolo_codice)
         tipi_presenti = {ind.get("tipo_indirizzo_codice") for ind in indirizzi_data if isinstance(ind, dict)}
         primo = indirizzi_data[0]
         for m in matrice:

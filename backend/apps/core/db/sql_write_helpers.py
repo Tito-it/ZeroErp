@@ -179,7 +179,7 @@ def sql_set_clause(
 #        `_verifica_casts`. `letterali`: colonne le cui stringhe NON si
 #        strippano.
 #        `espressioni` (dal 2026-09-26): colonna -> espressione SQL LETTERALE
-#        del chiamante (`CURRENT_DATE`, una sottoquery su un codice fisso), il
+#        del chiamante (`fn_data_operativa()`, una sottoquery su un codice fisso), il
 #        gemello di `extra_set` dell'UPDATE. Mai input: entra nel testo SQL.
 #        La colonna passa la stessa whitelist dei valori, e una colonna sia in
 #        `values` sia in `espressioni` e' `RuntimeError` (due risposte alla

@@ -1,9 +1,5 @@
 {
   "_scopo": "Registro a cricchetto del type checker (mypy) del backend: i rilievi ACCETTATI, per file, chiave «[codice] messaggio» e conteggio. Deve solo scendere. Lo legge e lo riscrive scripts/check_mypy_baseline.py; il perche' sta in docs/it/dev/sicurezza-e-qualita-statica.md §mypy.",
-  "totale": 2,
-  "rilievi": {
-    "apps/documenti/services/context_builders/_number_formatting.py": {
-      "[operator] Unsupported operand type for unary - (\"Literal['n', 'N', 'F'] | int\")": 2
-    }
-  }
+  "totale": 0,
+  "rilievi": {}
 }

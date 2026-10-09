@@ -51,7 +51,7 @@ import {
 import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, DATE_FORMAT } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import { extractApiError, extractApiErrorCode } from '../../../core/utils/apiError'
-import { displayDate, parseIsoDate, toDateString } from '../../../core/utils/date'
+import { displayDate, parseIsoDate, toDateString, oggiAziendaleString } from '../../../core/utils/date'
 import { statoOffertaSeverity } from '../../../core/utils/severity'
 import { getOffertaFormDefaults } from '../../api/formDefaults'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
@@ -230,7 +230,7 @@ function defaultForm() {
     valuta_id: null,
     tipo_variazione_globale: null,
     valore_variazione_globale: null,
-    validita_dal: toDateString(new Date()),
+    validita_dal: oggiAziendaleString(),
     validita_al: null,
     // Sezione utility inline (mirror contratti_utilities)
     utility_tipo_utenza_id: null,

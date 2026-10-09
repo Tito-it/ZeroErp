@@ -19,3 +19,10 @@ mypy>=2.4
 #    `requirements.in` alza Django o DRF, si alzano anche questi.
 django-stubs>=6.1,<6.2
 djangorestframework-stubs>=3.18,<3.19
+
+# Stub delle librerie senza tipi propri (ok di Tid, 2026-10-09): stessa regola
+# degli stub qui sopra, il tetto segue la versione della libreria che
+# descrivono (bleach 6.4, openpyxl 3.1.5 nel lock del backend). Con lo stub la
+# voce `ignore_missing_imports` di `mypy.ini` si toglie. `weasyprint` non ne ha.
+types-bleach>=6.4,<6.5
+types-openpyxl>=3.1.5,<3.1.6

@@ -917,24 +917,39 @@ class SoggettiRepository:
             return row_to_dict(cursor)
 
     # Scopo: Assegna ruolo a soggetto (get or create, idempotente).
-    # codice_ruolo puo' essere il campo `codice` o `codice_interno` di config.tipi_ruoli.
-    # La funzione DB accetta codice_interno: risolviamo con un sub-select.
-    def assign_ruolo(self, soggetto_id: str, codice_ruolo: str) -> int:
-        sql = """
-            SELECT script.fn_get_or_create_soggetto_ruolo(
-                %s::uuid,
-                COALESCE(
-                    (SELECT codice_interno FROM config.tipi_ruoli
-                     WHERE codice = %s OR codice_interno = %s LIMIT 1),
-                    %s
-                )
-            )
-        """
+    #        `codice_interno` e' gia' risolto dal chiamante
+    #        (`resolve_tipo_ruolo`, sede unica della risoluzione); un
+    #        codice sconosciuto passa com'e' e lo rifiuta la funzione DB col suo codice.
+    def assign_ruolo(self, soggetto_id: str, codice_interno: str) -> int:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id, codice_ruolo, codice_ruolo, codice_ruolo])
+            cursor.execute(
+                "SELECT script.fn_get_or_create_soggetto_ruolo(%s::uuid, %s)",
+                [soggetto_id, codice_interno],
+            )
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # Scopo: Il TIPO RUOLO dal codice del payload, che puo' essere il codice
+    #        (`CLIENTE`) o gia' il codice interno (`CL`): `{codice_interno,
+    #        codice, descrizione}`, o None se sconosciuto. Il codice interno e'
+    #        la chiave che il codice usa; codice e descrizione sono cio' che si
+    #        mostra all'utente.
+    # ⚠️ `codice` e `codice_interno` sono UNIQUE ciascuno, non fra loro: il
+    #    codice di una riga puo' essere il codice interno di un'altra. Vince il
+    #    `codice` (e' il campo del payload), e l'ORDER BY rende la scelta
+    #    deterministica invece di lasciarla al `LIMIT 1`.
+    def resolve_tipo_ruolo(self, codice_ruolo: str) -> dict[str, Any] | None:
+        sql = """
+            SELECT codice_interno, codice, descrizione
+              FROM config.tipi_ruoli
+             WHERE codice = %s OR codice_interno = %s
+             ORDER BY (codice = %s) DESC
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [codice_ruolo, codice_ruolo, codice_ruolo])
+            return row_to_dict(cursor)
 
     # =================================================================
     # Dati societari
@@ -969,8 +984,8 @@ class SoggettiRepository:
               JOIN config.tipi_soggetto ts ON ts.id = trna.tipo_soggetto_id
              WHERE trna.tipo_ruolo_id = %s
                AND trna.attivo = true
-               AND (trna.valido_dal IS NULL OR trna.valido_dal <= CURRENT_DATE)
-               AND (trna.valido_al IS NULL OR trna.valido_al >= CURRENT_DATE)
+               AND (trna.valido_dal IS NULL OR trna.valido_dal <= (SELECT script.fn_data_operativa()))
+               AND (trna.valido_al IS NULL OR trna.valido_al >= (SELECT script.fn_data_operativa()))
         """
         # 3. Tipi soggetto dettaglio filtrati per nature ammesse
         # ⛔ `varchar[]`, non `bigint[]`: `config.tipi_soggetto.id` e' un codice

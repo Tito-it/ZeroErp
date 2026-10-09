@@ -55,6 +55,7 @@ from decimal import Decimal
 
 from django.db import DatabaseError, connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.error_manager import ServiceError
 from apps.core.services.error_policies import ErrorPolicyRegistry
@@ -208,7 +209,7 @@ class ColonneTests(_DbTestCase):
                     p_origine               := %s)
                 """,
                 [
-                    1, date.today(), None, None,
+                    1, oggi_aziendale(), None, None,
                     pagamenti_service.STATO_DISTINTA_INIZIALE, "{}",
                     pagamenti_service.ORIGINE_MANUALE,
                 ],
@@ -539,9 +540,9 @@ class NumerazioneSulRegistroTests(_DbTestCase):
     #        `DIS-<sigla>-<anno>-<7 cifre>` sul SUO registro, e la testata lo
     #        racconta nelle tre forme. E' il percorso dell'operatore normale.
     def test_senza_emittente_la_distinta_e_della_sessione_e_numerata(self):
-        # ⚠️ Una data sola per tutto il test: `date.today()` chiamata due volte
+        # ⚠️ Una data sola per tutto il test: `oggi_aziendale()` chiamata due volte
         #    a cavallo della mezzanotte darebbe due anni.
-        oggi = date.today()
+        oggi = oggi_aziendale()
 
         def _prova(cur):
             sigla, ef_id = self._mondo(cur)
@@ -568,7 +569,7 @@ class NumerazioneSulRegistroTests(_DbTestCase):
             sigla, ef_id = self._mondo(cur)
             base = {
                 "centro_riscossione_id": self._centro_cassa(cur),
-                "data_contabile": date.today().isoformat(),
+                "data_contabile": oggi_aziendale().isoformat(),
                 "meta": {"test_scope": "be_numerazione"},
             }
             prima = pagamenti_service.crea_distinta({**base, "emittente_fiscale_id": ef_id})

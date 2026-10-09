@@ -28,7 +28,7 @@ import {
 import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
-import { displayDate, toDateString } from '../../../core/utils/date'
+import { displayDate, toDateString, oggiAziendale, parseIsoDate } from '../../../core/utils/date'
 import { getOrdineFormDefaults } from '../../api/formDefaults'
 import { createOrdine } from '../api/ordiniApi'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
@@ -230,7 +230,7 @@ function defaultForm() {
     fatturazione_trigger: null,
     // Corsia di instradamento: default differita (il DB ha DEFAULT false).
     fatturazione_immediata: false,
-    data: new Date(),
+    data: oggiAziendale(),
   }
 }
 
@@ -272,7 +272,7 @@ async function loadDetail(id = null) {
     termine_pagamento_id: data.termine_pagamento_id ?? null,
     fatturazione_trigger: data.fatturazione_trigger ?? null,
     fatturazione_immediata: data.fatturazione_immediata ?? false,
-    data: data.data ? new Date(data.data + 'T00:00:00') : null,
+    data: parseIsoDate(data.data),
   }
   // Fissa la baseline e ripristina il non-salvato che la sostituzione
   // avrebbe cancellato (BB useDrawerFormPreserve).

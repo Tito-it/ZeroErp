@@ -9,7 +9,7 @@ import { useConversioniUomStore } from '../stores/conversioniUom'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
-import { parseIsoDate, toDateString } from '../../core/utils/date'
+import { parseIsoDate, toDateString, oggiAziendale } from '../../core/utils/date'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
@@ -65,9 +65,6 @@ function resetForm() {
   fissa()
 }
 
-function todayLocalDate() {
-  return parseIsoDate(toDateString(new Date()))
-}
 
 async function loadDetail() {
   if (!props.convId) return
@@ -105,7 +102,7 @@ watch(selectedFromTipoId, (tipoId) => {
 
 watch(() => form.value.valido_dal_sempre, (sempre) => {
   if (isEdit.value) return
-  form.value.valido_dal = sempre ? parseIsoDate(ALWAYS_VALID_FROM) : todayLocalDate()
+  form.value.valido_dal = sempre ? parseIsoDate(ALWAYS_VALID_FROM) : oggiAziendale()
 })
 
 const canSave = computed(() =>

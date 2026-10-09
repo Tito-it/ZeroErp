@@ -53,6 +53,7 @@ from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError, IntegrityError
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 
 
@@ -71,7 +72,7 @@ def _testata_default() -> dict[str, object]:
         "utility_id": 3,
         "stato_doc_contratto_id": 1,
         "stato_codice_interno": "DRAFT",
-        "valido_dal": date.today() - timedelta(days=1),
+        "valido_dal": oggi_aziendale() - timedelta(days=1),
         "listino_id": 100,
         "tipo_variazione_globale": "PERCENTUALE",
         "valore_variazione_globale": Decimal("-10"),
@@ -690,7 +691,7 @@ class ContrattiServiceTests(TestCase):
     def test_cambia_stato_cessazione_immediata_data_passata(self, repo_cls, _atomic):
         from apps.vendite.services.contratti_service import ContrattiService
 
-        ieri = date.today() - timedelta(days=1)
+        ieri = oggi_aziendale() - timedelta(days=1)
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 5  # CESSATO id
         repo.update_contratto.return_value = True
@@ -719,7 +720,7 @@ class ContrattiServiceTests(TestCase):
     def test_cambia_stato_cessazione_programmata_data_futura(self, repo_cls, _atomic):
         from apps.vendite.services.contratti_service import ContrattiService
 
-        domani = date.today() + timedelta(days=1)
+        domani = oggi_aziendale() + timedelta(days=1)
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 5
         repo.update_contratto.return_value = True
@@ -748,7 +749,7 @@ class ContrattiServiceTests(TestCase):
     def test_cambia_stato_cessazione_data_oggi_e_immediata(self, repo_cls, _atomic):
         from apps.vendite.services.contratti_service import ContrattiService
 
-        oggi = date.today()
+        oggi = oggi_aziendale()
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 5
         repo.update_contratto.return_value = True

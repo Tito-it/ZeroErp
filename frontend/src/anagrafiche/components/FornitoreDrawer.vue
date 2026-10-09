@@ -15,7 +15,7 @@ import { useCodiceField } from '../../core/composables/useCodiceField'
 import { DRAWER_WIDTH, TIPO_RUOLO, MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { statoFornitoreSeverity } from '../../core/utils/severity'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, parseIsoDate } from '../../core/utils/date'
 import SoggettoResolver from './SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import SoggettoPreviewBadges from './SoggettoPreviewBadges.vue'
@@ -108,7 +108,7 @@ function populateFormFromDetail(d) {
     canale_fe: d.canale_fe,
     pec_email: d.pec_email,
     rating: d.rating,
-    qualifica_scadenza: d.qualifica_scadenza ? new Date(d.qualifica_scadenza) : null,
+    qualifica_scadenza: parseIsoDate(d.qualifica_scadenza),
     note: d.note,
     stato_fornitore_id: d.stato_fornitore_id
   }

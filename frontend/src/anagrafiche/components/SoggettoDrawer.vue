@@ -21,7 +21,7 @@ import { lookupFormeGiuridiche } from '../../core/apiCore'
 import { lookupProvince } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, parseIsoDate } from '../../core/utils/date'
 import SoggettoForm from './SoggettoForm.vue'
 import ContattoForm from './ContattoForm.vue'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
@@ -177,14 +177,6 @@ watch(() => soggetto.showDatiSocietari.value, (show) => {
   }
 })
 
-// Scopo: Converte stringa ISO date (YYYY-MM-DD) in Date object per DatePicker.
-function parseDate(val) {
-  if (!val) return null
-  if (val instanceof Date) return val
-  const d = new Date(val)
-  return isNaN(d.getTime()) ? null : d
-}
-
 // Popola il drawer con i dati del soggetto in edit mode.
 function populateFromDetail(data) {
   soggetto.form.tipo_soggetto_dettaglio_id = data.tipo_soggetto_dettaglio_id
@@ -195,7 +187,10 @@ function populateFromDetail(data) {
   soggetto.form.partita_iva = data.partita_iva || ''
   // ⛔ Mai `|| 'M'`: un sesso che il DB non ha non si inventa a video.
   soggetto.form.sesso = data.sesso?.trim() || ''
-  soggetto.form.data_nascita = parseDate(data.data_nascita)
+  // ⚠️ `parseIsoDate` e non `new Date('YYYY-MM-DD')` (mezzanotte UTC): nei
+  //    fusi negativi la data di nascita si mostrava — e si risalvava — un
+  //    giorno prima (fino al 2026-10-09).
+  soggetto.form.data_nascita = parseIsoDate(data.data_nascita)
   soggetto.form.comune_nascita_id = data.comune_nascita_id || null
   // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
   //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.

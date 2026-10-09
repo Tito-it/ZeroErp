@@ -23,7 +23,7 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import { statoResoSeverity } from '../../../core/utils/severity'
-import { displayDate, toDateString } from '../../../core/utils/date'
+import { displayDate, toDateString, parseIsoDate } from '../../../core/utils/date'
 import { DRAWER_WIDTH } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
 import AppDrawer from '../../../core/components/AppDrawer.vue'
@@ -117,7 +117,7 @@ async function loadDetail() {
   detail.value = data
   form.value = {
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
-    data: data.data ? new Date(data.data + 'T00:00:00') : null,
+    data: parseIsoDate(data.data),
   }
   applica()
 }

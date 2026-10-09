@@ -202,13 +202,13 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
             },
             "agente_denominazione": testata.get("agente_denominazione"),
             "totali": {
-                "imponibile": format_importo(testata.get("imponibile_tot")),
-                "sconto": format_importo(testata.get("sconto_tot")),
-                "iva": format_importo(testata.get("iva_tot")),
-                "documento": format_importo(testata.get("totale_doc")),
+                "imponibile": format_importo(testata.get("imponibile_tot"), campo="imponibile_tot"),
+                "sconto": format_importo(testata.get("sconto_tot"), campo="sconto_tot"),
+                "iva": format_importo(testata.get("iva_tot"), campo="iva_tot"),
+                "documento": format_importo(testata.get("totale_doc"), campo="totale_doc"),
                 "valuta_codice": testata.get("valuta_codice"),
                 # Misura, non denaro (vedi gemello in fattura).
-                "tasso_cambio": format_misura(testata.get("tasso_cambio")),
+                "tasso_cambio": format_misura(testata.get("tasso_cambio"), campo="tasso_cambio"),
             },
             "meta": testata.get("meta") or {},
         }

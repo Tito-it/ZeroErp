@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: il runner dei test del progetto. Spegne `ERROR_LOG_DB_ENABLED`,
+# Scopo: il runner dei test del progetto. Legge il fuso dell'azienda prima
+#        della suite (vedi `setup_test_environment`). Spegne `ERROR_LOG_DB_ENABLED`,
 #        cioe' impedisce alla suite di scrivere nel diario tecnico
 #        `dbops.error_log`, e il redirect HTTPS (`SECURE_SSL_REDIRECT`), che
 #        manderebbe in 301 il client di test.
@@ -41,7 +42,10 @@
 from __future__ import annotations
 
 from django.conf import settings
+from django.db import connection
 from django.test.runner import DiscoverRunner
+
+from apps.core.services.fuso_aziendale import fuso_aziendale
 
 
 class ZeroErpTestRunner(DiscoverRunner):
@@ -58,3 +62,17 @@ class ZeroErpTestRunner(DiscoverRunner):
         # niente. Chi prova il redirect lo riaccende con `override_settings`
         # (`apps/core/tests/api/test_https_header.py`).
         settings.SECURE_SSL_REDIRECT = False
+        # Il fuso dell'azienda si legge QUI, una volta, dal database configurato
+        # (BB `fuso_aziendale`, cache di processo). Dentro un `SimpleTestCase`
+        # la prima lettura sarebbe un `DatabaseOperationForbidden`: il
+        # middleware e ogni formattatore lo chiedono. Il valore e' quello vero
+        # del parametro, cosi' l'«oggi» di Python e `fn_data_operativa()` dei
+        # test sul DB vero coincidono. ⛔ Nessun ripiego: senza database la
+        # suite si ferma qui, con il motivo. Un test che asserisce un'ora o un
+        # giorno dichiara il proprio fuso con `fuso_aziendale_forzato`.
+        fuso_aziendale()
+        # ⚠️ E si richiude la connessione: la suite parte come prima, senza
+        #    connessione aperta. I middleware che azzerano lo stato di una
+        #    connessione RIUSATA (`JwtAuditMiddleware`) si accendono solo se ce
+        #    n'e' una, e dentro un `SimpleTestCase` toccarla e' vietato.
+        connection.close()

@@ -2,17 +2,18 @@
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§4), che **attende** la consegna DB.
-> **Origine:** L3 di [piano-be-type-checker.md](piano-be-type-checker.md) §5.3 — mypy
+> **Origine:** L3 di [piano-be-type-checker.md](../work-done/piano-be-type-checker.md) §5.3 — mypy
 > ha segnalato in `apps/documenti/services/context_builders/_number_formatting.py`
 > (righe 96 e 101) un'operazione che su NaN/Infinity va in `TypeError`.
 > **Decisione:** di Tid, 2026-10-09 — **opzione C**: se un valore numerico di un
 > documento è NaN o infinito, la generazione si **ferma** con un errore chiaro; non si
 > stampa «NaN» e non lo si nasconde con un trattino.
-> **Stato:** 🟡 D-1…D-3 decise da Tid il 2026-10-09 come da raccomandazione (§5.4).
-> ✅ **DB chiuso il 2026-10-09** (§6): `20261009-10` … `-18` applicati su dev e su
-> `zeroerp_ci`, codice nuovo nel catalogo, pgTAP verdi (corsa di Tid). ⏳ Resta la
-> ricaduta BE (§4, con la correzione del §6.3).
-> **Da leggere per primo:** §6.
+> **Stato:** ✅ **Chiuso il 2026-10-09**, DB e BE. D-1…D-3 decise da Tid come da
+> raccomandazione (§5.4). DB (§6): `20261009-10` … `-18` applicati su dev e su
+> `zeroerp_ci`, codice nuovo nel catalogo, pgTAP verdi (corsa di Tid). BE (§7): i
+> formattatori dei documenti fermano NaN e infiniti col codice nuovo, registro mypy
+> a **zero**.
+> **Da leggere per primo:** §6 e §7.
 
 ## 1. Il difetto
 
@@ -200,3 +201,18 @@ giusto per chi diagnostica.
    (§6.3). Da sapere: con i CHECK una scrittura con `NaN` esce come `23514` col nome del
    vincolo `chk_…_finito`, cioè un errore tecnico. È voluto (D-1): il BB dei payload
    dovrebbe averla già fermata prima.
+
+## 7. Consegna BE (2026-10-09) — ✅ chiuso
+
+| Punto del §4 | Cosa |
+| --- | --- |
+| 4.1 | Policy generata (`TECNICO`) e frase di ripiego senza segnaposto, rigenerate dopo il pull della consegna DB |
+| 4.2 | `_number_formatting.py`: `format_misura` e `format_importo` passano da `_to_decimal_finito`, che su un `Decimal` non finito solleva `E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO` (log a DB, come ogni invariante rotta) con `context.field` = il campo, `context.valore` e il `detail` che li nomina (§6.3). ⭐ Il `campo` è un argomento **obbligatorio** (keyword): `formatta_campi` passa la chiave della proiezione, le 22 chiamate dirette dei builder (fattura, preventivo, ordine, DDT, offerta) la colonna della testata. L'esponente si legge da `_esponente`, tipato `int`: i 2 rilievi mypy sono sanati alla radice e il registro è a **0** |
+| 4.3 | `apps/documenti/tests/services/test_number_formatting.py`: `ValoreNonFinitoTests` (4 test) — NaN, `sNaN`, `Infinity`, `-Infinity` come `Decimal`, stringa (il `context_json` della ristampa) e `float`, su misura e importo → il codice col campo; `formatta_campi` nomina la chiave; un numero normale e un non numerico passano invariati, senza log |
+
+Verifiche, 2026-10-09: `check_mypy_baseline.py` verde a **0** rilievi; `ruff` pulito;
+371 test dei builder documentali e dell'app `documenti` verdi.
+
+Sulla domanda del §5.4 (l'envelope JSON e i letterali `NaN`/`Infinity`): il BB dei
+payload li rifiuta (§5.1), e con i CHECK del §6 un percorso che ci sfuggisse esce
+comunque come `23514` dal DB. Non resta niente di aperto qui.

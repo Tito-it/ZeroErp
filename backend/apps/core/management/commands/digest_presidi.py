@@ -32,7 +32,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from apps.core.management.comando_aziendale import ComandoAziendale
 
 from apps.core.db.presidi_repository import CADENZA_GIORNALIERA
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
@@ -73,7 +73,7 @@ INVIO_NON_CONFIGURATO = "NON_CONFIGURATO"
 INVIO_ACCODATO = "ACCODATO"
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
         "Digest dei presidi: legge dbops.presidi, conta le righe che chiedono "
         "un intervento e le manda al destinatario configurato."

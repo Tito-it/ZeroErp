@@ -1,6 +1,7 @@
 # Template systemd — timer del digest settimanale dei presidi.
-# Placeholder per-host: __ONCALENDAR__ (cadenza, default `Mon *-*-* 07:30`,
-# dichiarato in `backend/deploy/sveglie.json`).
+# Placeholder per-host: __ONCALENDAR__ (sveglia, default `*:00`, dichiarato in
+# `backend/deploy/sveglie.json`). Dal 2026-10-09 il lavoro lo fa l'ExecCondition
+# del .service il lunedi' alle 07:30 AZIENDALI, una volta a settimana (`dovuto`).
 #
 # ⭐ Mezz'ora dopo la giornaliera del lunedì, e non alla stessa ora: le due corse
 # leggono lo stesso catalogo e scrivono sullo stesso giornale, e accavallarle

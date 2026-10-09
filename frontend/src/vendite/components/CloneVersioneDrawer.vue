@@ -11,7 +11,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { cloneVersione } from '../api/listini'
 import { getVersioneCloneDefaults } from '../api/formDefaults'
-import { toDateString, displayDate, addDaysToToday } from '../../core/utils/date'
+import { toDateString, displayDate, addDaysToToday, giornoDi, oggiAziendale, parseIsoDate } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import InputText from 'primevue/inputtext'
@@ -55,8 +55,8 @@ async function loadDefaults() {
   if (res === null) return
   form.value = {
     codice_versione: res.default_codice_versione || '',
-    valido_dal: res.default_valido_dal ? new Date(res.default_valido_dal + 'T00:00:00') : null,
-    valido_al: res.default_valido_al ? new Date(res.default_valido_al + 'T00:00:00') : null,
+    valido_dal: parseIsoDate(res.default_valido_dal),
+    valido_al: parseIsoDate(res.default_valido_al),
   }
 }
 
@@ -77,10 +77,8 @@ const canSave = computed(() =>
 // deve essere consapevole che le fatturazioni successive non saranno corrette.
 const isRetroattivo = computed(() => {
   if (!form.value.valido_dal) return false
-  const target = new Date(form.value.valido_dal)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return target < today
+  const target = giornoDi(form.value.valido_dal)
+  return target !== null && target < oggiAziendale()
 })
 
 async function handleSave() {

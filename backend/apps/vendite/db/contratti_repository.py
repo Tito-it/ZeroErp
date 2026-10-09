@@ -554,7 +554,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                        OR
                        (cnt.listino_versione_id IS NULL
                             AND lv.stato IN ('ATTIVA','CHIUSA')
-                            AND lv.validita @> CURRENT_DATE)
+                            AND lv.validita @> (SELECT script.fn_data_operativa()))
                    )
                  ORDER BY (lv.stato = 'ATTIVA') DESC
                  LIMIT 1
@@ -573,7 +573,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                   JOIN cnt ON cnt.listino_id = lv.listino_id
                  WHERE lv.attivo = TRUE
                    AND lv.stato = 'ATTIVA'
-                   AND lv.validita @> CURRENT_DATE
+                   AND lv.validita @> (SELECT script.fn_data_operativa())
                  LIMIT 1
             )
             SELECT

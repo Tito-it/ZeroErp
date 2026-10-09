@@ -16,7 +16,7 @@ import { useI18n } from 'vue-i18n'
 import AppDialog from '../../../../core/components/AppDialog.vue'
 import ToggleSwitch from 'primevue/toggleswitch'
 import DatePicker from 'primevue/datepicker'
-import { toDateString } from '../../../../core/utils/date'
+import { toDateString, oggiAziendale } from '../../../../core/utils/date'
 import { MONTH_FORMAT } from '../../../../core/constants'
 import { useFotografiaDialog } from '../../../../core/composables/useFotografiaDialog'
 
@@ -30,10 +30,11 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'confirm'])
 const { t } = useI18n()
 
-// Helper: primo giorno del mese corrente (snapshot tx-time, allineato BE).
+// Helper: primo giorno del mese corrente dell'AZIENDA (allineato BE).
 function _firstOfCurrentMonth() {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1)
+  const oggi = oggiAziendale()
+  oggi.setDate(1)
+  return oggi
 }
 
 const form = ref({

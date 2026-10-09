@@ -89,15 +89,25 @@ Restituisce i contatti del ruolo con cascata per `tipo_contatto_id`.
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `nominativo` | string | No | Nome contatto |
+| `nominativo` | string | Si | Nome contatto |
 | `email` | string | No | Email |
 | `telefono` | string | No | Telefono |
 | `cellulare` | string | No | Cellulare |
 | `pec` | string | No | PEC |
-| `tipo_contatto_id` | int | Si` | Tipo contatto (NOT NULL) |
-| `unita_organizzativa_id` | int | No | Unita` organizzativa |
+| `tipo_contatto_id` | int | Si | Tipo contatto (uno per tipo sul ruolo, o sul ruolo per istanza) |
+| `unita_organizzativa_id` | int | No | Unita' organizzativa |
 | `istanza_utility_id` | int | No | Se presente, contatto specifico per istanza |
 | `note` | string | No | Note |
+
+La logica sta in `SoggettiService.create_contatto_ruolo` (fino al 2026-10-09
+era scritta nella view).
+
+> **Rifiuti (dal 2026-10-09, BB `crea_contatto_validato`)**: il contatto deve
+> essere valido (`nominativo` + `tipo_contatto_id`), altrimenti
+> `400 E_CONTATTO_INCOMPLETO` con i campi mancanti in `error.fields`. Un
+> contatto per tipo: un secondo contatto con lo stesso tipo risponde
+> `409 E_ANAG_DUPLICATO` col campo `tipo_contatto_id`. Fino a quella data
+> entrambi uscivano come `400 E_DATABASE` generico.
 
 ---
 

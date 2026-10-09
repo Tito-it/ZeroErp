@@ -32,10 +32,10 @@ from __future__ import annotations
 
 import unittest
 from collections.abc import Callable
-from datetime import date
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 from apps.vendite.db.offerte_repository import OfferteRepository
@@ -190,7 +190,7 @@ class RigheErogazioneObbligatoriaDbTests(unittest.TestCase):
             "istanza_utility_id": istanza,
             "utility_id": utility,
             "listino_id": cur.fetchone()[0],
-            "validita_dal": date.today(),
+            "validita_dal": oggi_aziendale(),
             "stato_doc_offerta_id": repo.get_stato_id_by_codice("BOZZA"),
         })
 

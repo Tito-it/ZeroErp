@@ -35,6 +35,7 @@ import { getPresidiConteggi } from '../api/presidi'
 import { useRefreshPeriodico } from './useRefreshPeriodico'
 import { statoPallino } from '../utils/pallinoPresidi'
 import { creaSegnale } from '../segnale'
+import { adesso } from '../utils/date'
 
 // ⭐ 300 s e NON 60 come il badge code — deciso sul modello, non su una misura:
 //    quello segue il drenatore (~1/min); qui la sorgente piu' rapida a catalogo
@@ -76,7 +77,7 @@ export function usePresidiPolling({ ammesso = () => true } = {}) {
 
   function adotta(nuova) {
     testata.value = nuova
-    lettoAlle.value = new Date()
+    lettoAlle.value = adesso()
   }
 
   const { avvia, ferma } = useRefreshPeriodico(

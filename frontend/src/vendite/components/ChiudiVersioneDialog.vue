@@ -9,7 +9,7 @@ import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { updateVersione } from '../api/listini'
 import { getVersioneCloseDefaults } from '../api/formDefaults'
-import { displayDate, toDateString, addDaysToToday } from '../../core/utils/date'
+import { displayDate, toDateString, giornoDi, parseIsoDate, oggiAziendale } from '../../core/utils/date'
 import AppDialog from '../../core/components/AppDialog.vue'
 import DatePicker from 'primevue/datepicker'
 import Button from 'primevue/button'
@@ -34,7 +34,8 @@ const haGiaChiusura = computed(() => props.versione?.valido_al != null)
 
 const dataDopoLabel = computed(() => {
   if (!dataChiusura.value) return '?'
-  const d = new Date(dataChiusura.value)
+  const d = giornoDi(dataChiusura.value)
+  if (!d) return '?'
   d.setDate(d.getDate() + 1)
   return displayDate(d)
 })
@@ -50,14 +51,10 @@ async function loadDefaults() {
   )
   if (res === null) {
     // Fallback resiliente: se il BE fallisce, parti da oggi.
-    dataChiusura.value = props.versione?.valido_al
-      ? new Date(props.versione.valido_al + 'T00:00:00')
-      : addDaysToToday(0)
+    dataChiusura.value = parseIsoDate(props.versione?.valido_al) ?? oggiAziendale()
     return
   }
-  dataChiusura.value = res.default_valido_al
-    ? new Date(res.default_valido_al + 'T00:00:00')
-    : addDaysToToday(0)
+  dataChiusura.value = parseIsoDate(res.default_valido_al) ?? oggiAziendale()
 }
 
 watch(() => props.visible, async (v) => {
@@ -119,7 +116,7 @@ const fotografia = useFotografiaDialog(() => ({ dataChiusura: dataChiusura.value
       <div class="form-field">
         <label>{{ t('vendite.listini.chiudi_versione_data') }}</label>
         <DatePicker v-model="dataChiusura" :date-format="DATE_FORMAT"
-          show-icon show-button-bar :min-date="new Date()" />
+          show-icon show-button-bar :min-date="oggiAziendale()" />
       </div>
     </div>
 

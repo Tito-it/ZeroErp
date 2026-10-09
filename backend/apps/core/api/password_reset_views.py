@@ -17,6 +17,7 @@ from typing import Any
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.http import JsonResponse
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.permissions import AllowAny
@@ -38,6 +39,7 @@ from apps.core.services.credenziale_ingresso import credenziale_per_email, crede
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.invito_veste import nome_visualizzato
+from apps.core.services.locale_formatters import format_datetime
 from apps.core.services.request_context import get_client_ip, richiesta_django
 from apps.core.services.token_service import TokenService
 
@@ -224,14 +226,15 @@ class PasswordResetConfirmView(APIView):
             # Invia email conferma
             uo_id = _auth_repo.get_unita_organizzativa_id(auth_user_id)
             try:
-                from datetime import datetime, timezone
                 _email_service.send_email(
                     codice_template=_TEMPLATE_CONFERMA,
                     destinatario=user.email,
                     variabili={
                         "nome": nome_visualizzato(user.id, _auth_repo),
                         "azienda": NOME_SISTEMA_EMAIL,
-                        "data_cambio": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M"),
+                        # Ora dell'AZIENDA, formato del BB: fino al 2026-10-09
+                        # l'email scriveva l'ora UTC (B-6).
+                        "data_cambio": format_datetime(timezone.now()),
                     },
                     unita_organizzativa_id=uo_id,
                     ambito="SISTEMA",

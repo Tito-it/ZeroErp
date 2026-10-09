@@ -15,6 +15,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.catalogo.db.catalogo_bom_repository import (
     COMPONENTE_WRITE_COLUMNS,
@@ -159,11 +160,11 @@ def _compute_non_editable_fields(
 # Scopo: in create, applica il default `valido_dal=today` se il campo manca
 # o e' None. Centralizza la regola Fase 4 (BE-only) per i 3 service create
 # (componente, uom_operativa, conversione): il DDL DB non ha
-# `DEFAULT CURRENT_DATE` (DB declined), il fallback vive qui.
+# un `DEFAULT` (DB declined), il fallback vive qui — nel giorno dell'azienda.
 # Restituisce sempre un `date | _MissingType` coerente per il chiamante.
 def _apply_valido_dal_default(valido_dal, *, for_create: bool):
     if for_create and (valido_dal is _MISSING or valido_dal is None):
-        return date.today()
+        return oggi_aziendale()
     return valido_dal
 
 

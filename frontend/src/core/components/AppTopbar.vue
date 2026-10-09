@@ -15,7 +15,7 @@ import { useUiStore } from '../../stores/ui'
 import { useContextStore } from '../../stores/context'
 import { DOMAINS, NAV_ICONS } from '../navigation'
 import { getAIStatus } from '../api/ai-api'
-import { setAppLanguage, SUPPORTED_LOCALES } from '../i18n'
+import { setAppLanguage, SUPPORTED_LOCALES, intlLocale } from '../i18n'
 import { MANAGE_ICONS, READONLY_DOMAINS, STATUS_ICONS } from '../constants'
 import SearchDrawer from './SearchDrawer.vue'
 import AiAssistantDrawer from './AiAssistantDrawer.vue'
@@ -26,7 +26,7 @@ import { menuItemClass } from '../utils/rowActions'
 import { useNavigationFavorites } from '../composables/useNavigationFavorites'
 import { useQueueCountsPolling } from '../composables/useQueueCountsPolling'
 import { usePresidiPolling } from '../composables/usePresidiPolling'
-import { displayTime } from '../utils/date'
+import { displayTime, displayOggiEsteso } from '../utils/date'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -81,14 +81,8 @@ const areaDominio = computed(() => {
 // esso: l'admin globale ora sceglie un emittente vero, non ne guarda uno
 // informativo che non corrispondeva a cio' che stava usando.
 
-const formattedDate = computed(() => {
-  const now = new Date()
-  return now.toLocaleDateString(locale.value === 'it' ? 'it-IT' : 'en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  })
-})
+// La data di OGGI dell'azienda, non del PC (T-1): la sede e' `date.js`.
+const formattedDate = computed(() => displayOggiEsteso(intlLocale(locale.value)))
 
 // Iniziali utente (max 2 caratteri) per il badge non-admin
 const userInitials = computed(() => {

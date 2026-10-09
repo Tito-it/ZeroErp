@@ -16,6 +16,8 @@ from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
 from apps.core.api.payload_validators import (
+    optional_istante,
+    qp_iso_date_optional,
     corpo_oggetto,
     optional_int,
     paginated_envelope,
@@ -93,8 +95,8 @@ class ApiPraticheList(DomainAPIView):
         # sempre, ma la view non li leggeva (filtri silenziosamente ignorati).
         priorita_id = optional_int({"v": qp.get("priorita_id")}, "v")
         risorsa_umana_id = optional_int({"v": qp.get("risorsa_umana_id")}, "v")
-        data_da = qp_str(qp.get("data_da"))
-        data_a = qp_str(qp.get("data_a"))
+        data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
+        data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")
 
         items, total = pratiche_service.cerca_pratiche(
             emittente_fiscale_id=emittente_fiscale_id,
@@ -772,7 +774,7 @@ class ApiPraticaSospendi(DomainAPIView):
                 pratica_id,
                 str(payload.get("motivo", "")),
                 data_riattivazione_prevista=payload.get("data_riattivazione_prevista") or None,
-                data_inizio=payload.get("data_inizio") or None,
+                data_inizio=optional_istante(payload, "data_inizio"),
             )
             return {"sospensione_id": sospensione_id, "status": "ok"}
 
@@ -805,7 +807,7 @@ class ApiPraticaRiattiva(DomainAPIView):
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.riattiva_pratica(
                 pratica_id,
-                data_fine=payload.get("data_fine") or None,
+                data_fine=optional_istante(payload, "data_fine"),
             )
             return {"status": "ok"}
 

@@ -58,7 +58,7 @@ class LookupRepository:
                         WHERE m.tipo_ruolo_id = tr.id
                           AND m.tipo_soggetto_id = %s
                           AND m.attivo = true
-                          AND (m.validita IS NULL OR m.validita @> CURRENT_DATE)
+                          AND (m.validita IS NULL OR m.validita @> (SELECT script.fn_data_operativa()))
                    ))
              ORDER BY tr.descrizione
         """
@@ -182,7 +182,7 @@ class LookupRepository:
                     AND o.{overrides_fk_column} = %s
              WHERE COALESCE(tr.codice_interno, tr.codice) = %s
                AND utr.attivo = true
-               AND (utr.validita IS NULL OR utr.validita @> CURRENT_DATE)
+               AND (utr.validita IS NULL OR utr.validita @> (SELECT script.fn_data_operativa()))
              ORDER BY u.descrizione
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -239,7 +239,7 @@ class LookupRepository:
               JOIN config.tipi_ruoli tr            ON tr.id = utr.tipo_ruolo_id
              WHERE COALESCE(tr.codice_interno, tr.codice) = %s
                AND utr.attivo = true
-               AND (utr.validita IS NULL OR utr.validita @> CURRENT_DATE)
+               AND (utr.validita IS NULL OR utr.validita @> (SELECT script.fn_data_operativa()))
              ORDER BY u.descrizione
         """
         with connection.cursor() as cursor:
@@ -315,7 +315,7 @@ class LookupRepository:
               JOIN config.utilities_tipi_ruolo utr_ef
                 ON utr_ef.utility_id = u.id
                AND utr_ef.attivo = true
-               AND (utr_ef.validita IS NULL OR utr_ef.validita @> CURRENT_DATE)
+               AND (utr_ef.validita IS NULL OR utr_ef.validita @> (SELECT script.fn_data_operativa()))
               JOIN config.tipi_ruoli tr_ef
                 ON tr_ef.id = utr_ef.tipo_ruolo_id
                AND COALESCE(tr_ef.codice_interno, tr_ef.codice) = 'EF'
@@ -344,7 +344,7 @@ class LookupRepository:
               JOIN config.utilities_tipi_ruolo utr_sogg
                 ON utr_sogg.utility_id = u.id
                AND utr_sogg.attivo = true
-               AND (utr_sogg.validita IS NULL OR utr_sogg.validita @> CURRENT_DATE)
+               AND (utr_sogg.validita IS NULL OR utr_sogg.validita @> (SELECT script.fn_data_operativa()))
               JOIN config.tipi_ruoli tr_sogg
                 ON tr_sogg.id = utr_sogg.tipo_ruolo_id
                AND COALESCE(tr_sogg.codice_interno, tr_sogg.codice) = %s

@@ -35,10 +35,18 @@ sqlparse==0.6.0
     # via
     #   -c ../requirements.txt
     #   django
+types-bleach==6.4.0.20260728
+    # via -r ../requirements-dev.in
+types-html5lib==1.1.11.20260518
+    # via types-bleach
+types-openpyxl==3.1.5.20260827
+    # via -r ../requirements-dev.in
 types-pyyaml==6.0.12.20260906
     # via
     #   django-stubs
     #   djangorestframework-stubs
+types-webencodings==0.6.0.20260907
+    # via types-html5lib
 typing-extensions==4.16.0
     # via
     #   -c ../requirements.txt

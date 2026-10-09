@@ -42,6 +42,7 @@ from typing import Any
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from apps.core.services.locale_formatters import in_ora_locale
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.locale_formatters import format_for_export
 
@@ -109,10 +110,10 @@ class ListaExportService:
 
         colonne_export = self._filter_colonne_esportabili(colonne)
         filtri = filtri_applicati or {}
-        # ⚠️ Ora LOCALE di `TIME_ZONE`, non dell'host: il nome del file deve
-        #    dire la stessa ora delle celle che contiene (2026-09-14), e su
-        #    un'unit systemd `TZ` puo' non esserci.
-        timestamp = timezone.localtime().strftime("%Y%m%d-%H%M%S")
+        # ⚠️ Ora DELL'AZIENDA, non dell'host ne' del processo: il nome del file
+        #    deve dire la stessa ora delle celle che contiene (2026-09-14), e
+        #    la stessa sede la converte (`in_ora_locale`).
+        timestamp = in_ora_locale(timezone.now()).strftime("%Y%m%d-%H%M%S")
         # Filename safe: caratteri speciali del codice rimpiazzati con `_`.
         # Pattern es. `anagrafiche.clienti` -> `anagrafiche_clienti`.
         safe_codice = lista_codice.replace(".", "_").replace(":", "_")

@@ -1,17 +1,20 @@
 # Piano — type checker del backend (D2-b)
 
 > Nato il **2026-10-08** dalla decisione di Tid su **D2-b** di
-> [migliorie-generali-BE-FE-da-test-valutazione.md](migliorie-generali-BE-FE-da-test-valutazione.md):
+> [migliorie-generali-BE-FE-da-test-valutazione.md](../work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md):
 > il progetto **vuole** un type checker, acceso **a cricchetto**.
-> Stato: ✅ **L0-L3 chiusi e committati** (`0ffe7b7c3` L0-L2, `ebc54fc56` L3). S2 e le tre
-> dipendenze approvate il 2026-10-08. Resta solo il caso NaN (sotto), che attende il team DB.
+> Stato: ✅ **Piano chiuso il 2026-10-09.** L0-L3 chiusi e committati (`0ffe7b7c3` L0-L2,
+> `ebc54fc56` L3). S2 e le tre dipendenze approvate il 2026-10-08. ✅ Il caso NaN è chiuso:
+> registro a **0** il 2026-10-09. ✅ Gli stub `types-bleach`/`types-openpyxl` installati lo
+> stesso giorno (ok di Tid, §5.1). ✅ La divergenza di `catalogo_service` era già chiusa
+> (§5.2).
 > ✅ **L0 chiuso il 2026-10-08** (§4.5). ✅ **L1 chiuso il 2026-10-09** (§5.1):
 > mypy acceso in CI, registro alla nascita **620** rilievi. ✅ **L2 chiuso il
 > 2026-10-09** (§5.2): registro a **558**. ✅ **L3 chiuso il 2026-10-09**
 > (§5.3): registro a **2**, entrambi il caso NaN di `_number_formatting`: deciso
-> da Tid il 2026-10-09 (opzione C, la generazione si ferma), in attesa del codice
-> d'errore dal team DB —
-> [brief-db-valore-numerico-non-finito-nei-documenti.md](brief-db-valore-numerico-non-finito-nei-documenti.md).
+> da Tid il 2026-10-09 (opzione C, la generazione si ferma). ✅ **Chiuso lo stesso
+> giorno**, DB e BE: registro a **0** —
+> [brief-db-valore-numerico-non-finito-nei-documenti.md](../work-done/brief-db-valore-numerico-non-finito-nei-documenti.md) §7.
 
 ## 1. Perché
 
@@ -235,7 +238,7 @@ la regola resta nel service, con la `UPDATE` del repository.
    (`fn_riallinea_prezzo_attivita`, DB-first), è un brief al team DB e il
    lotto L0 lo aspetta.
 
-### 4.4 Un punto aperto, trovato facendo L0 🟡 (Tid)
+### 4.4 Un punto aperto, trovato facendo L0 ✅ (Tid)
 
 `commesse_attivita.listino_riga_id` resta **fuori** dalla provenienza, e non per
 dimenticanza. Su quella colonna il guard `trgfn_listini_righe_guard_stato`
@@ -304,7 +307,13 @@ Il seguito BE sta in quel brief (§5), non in questo piano. ✅ **Chiuso il
 - **Configurazione** (S1, S3, S5): `backend/mypy.ini`. Le librerie senza tipi
   elencate per nome sono `bleach`, `openpyxl`, `weasyprint`: per le prime due
   esistono stub (`types-bleach`, `types-openpyxl`), che sarebbero dipendenze
-  nuove — da decidere (Tid).
+  nuove — da decidere (Tid). ✅ **Ok di Tid il 2026-10-09**: entrano in
+  `requirements-dev.in` col tetto della versione della libreria (bleach 6.4,
+  openpyxl 3.1.5; portano con sé `types-html5lib` e `types-webencodings`), e le
+  due voci di `mypy.ini` sono tolte. Registro invariato a 0; provato per
+  mutazione che mypy ora legge gli stub (un argomento inesistente di
+  `openpyxl.Workbook` e il tipo di ritorno di `bleach.clean` sono rilievi).
+  `weasyprint` resta esentato: non ha stub.
 - **Registro e cancello** (S4): `backend/mypy.baseline.json` (620 rilievi in 144
   file) e `scripts/check_mypy_baseline.py` (`--aggiorna` toglie soltanto,
   `--rigenera` riscrive da zero). Provato per mutazione: rilievo nuovo → rosso;
@@ -349,7 +358,12 @@ annotazioni imprecise o forme che il checker non sa seguire:
 `user_language_middleware` c'era `# type: ignore[attr-defined]` su una **riga
 propria**, cioè su nessuna istruzione. Tolto con la correzione.
 
-🟡 **Una divergenza di regola, NON corretta (Tid):** `catalogo_service.
+✅ **Una divergenza di regola — chiusa** (la nota qui sotto è lo stato al
+momento di L2): la copia del service è stata **ritirata** nello stesso
+`0ffe7b7c3`, la regola ha una sede sola (il guard comune del DB), e
+`core/tests/db/test_date_validita_guard_comune_db` (caso 7) prova sia il rifiuto
+sia il periodo di un giorno solo. Verificato il 2026-10-09.
+Com'era: `catalogo_service.
 _validate_date_interval` rifiuta `valido_al <= valido_dal` (pretende `>`), mentre
 il guard comune del DB `script.trgfn_guard_date_validita` rifiuta solo
 `valido_al < valido_dal`. Un periodo di **un giorno solo** passa il DB e lo
@@ -376,7 +390,7 @@ copia nel service andrebbe tolta — è una decisione sul modello.
   scritti. Il test era rosso perché lanciato a mezzanotte e mezza. È la stessa
   famiglia che `script.fn_data_operativa` ha chiuso sul DB per la data
   documento: vedi
-  [brief-be-db-fe-un-solo-fuso-aziendale.md](brief-be-db-fe-un-solo-fuso-aziendale.md).
+  [brief-be-db-fe-un-solo-fuso-aziendale.md](../work-in-progress/brief-be-db-fe-un-solo-fuso-aziendale.md).
 
 ### 5.3 ✅ L3 — 2026-10-09: da 557 a 2
 
@@ -428,7 +442,7 @@ l'helper `_data_riferimento_obbligatoria` (regola del 2), che ora nomina il camp
 anche in `diagnose`. Test per ciascuno. Registro **47 → 2**; suite intera verde
 (6.340 test).
 
-🟡 **Difetti trovati (lo stato è nel paragrafo sopra; resta aperto solo il primo):**
+✅ **Difetti trovati (lo stato è nel paragrafo sopra; il primo chiuso il 2026-10-09 dal brief NaN, §7):**
 
 - `documenti/services/context_builders/_number_formatting.py` (righe 96, 101):
   `-d.as_tuple().exponent` su NaN/Infinity è una stringa → `TypeError` (500) se
@@ -446,7 +460,7 @@ anche in `diagnose`. Test per ciascuno. Registro **47 → 2**; suite intera verd
   «`data_riferimento` obbligatoria» sono identici — regola del 2, estrazione da
   approvare.
 
-⏳ **Restavano 47 rilievi nel registro** (stato prima del seguito qui sopra):
+✅ **Restavano 47 rilievi nel registro** (stato prima del seguito qui sopra):
 
 - **45** sono `request.user.id` / `request.user` (`int | None`, `User |
   AnonymousUser`) passati dove serve l'utente autenticato. A runtime l'utente
@@ -455,7 +469,7 @@ anche in `diagnose`. Test per ciascuno. Registro **47 → 2**; suite intera verd
   `apps/core/api/endpoint_helpers.py`, `utente_autenticato(request) -> User` e
   `utente_autenticato_id(request) -> int`, che solleva `NotAuthenticated` (401)
   sull'anonimo invece di lasciar passare `None`; le sedi (12 file) passano al BB.
-- **2** sono il difetto NaN qui sopra.
+- **2** sono il difetto NaN qui sopra (✅ sanati il 2026-10-09: registro a 0).
 
 **Verifiche**: cancello verde a 47; `ruff` pulito; suite backend intera (6.327
 test) verde tranne il rosso notturno noto del giornale (brief sul fuso).

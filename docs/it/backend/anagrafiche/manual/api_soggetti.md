@@ -404,9 +404,16 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | `telefono` | string | No | Telefono |
 | `cellulare` | string | No | Cellulare |
 | `pec` | string | No | PEC |
-| `tipo_contatto_id` | int | No | ID tipo contatto |
+| `tipo_contatto_id` | int | Si | ID tipo contatto (uno per tipo sul soggetto) |
 | `unita_organizzativa_id` | int | No | ID unita' organizzativa |
 | `note` | string | No | Note |
+
+> **Rifiuti (dal 2026-10-09, BB `crea_contatto_validato`)**: il contatto deve
+> essere valido (`nominativo` + `tipo_contatto_id`), altrimenti
+> `400 E_CONTATTO_INCOMPLETO` con i campi mancanti in `error.fields`. Un
+> contatto per tipo: un secondo contatto con lo stesso tipo risponde
+> `409 E_ANAG_DUPLICATO` col campo `tipo_contatto_id`. Fino a quella data
+> entrambi uscivano come `400 E_DATABASE` generico.
 
 ### Risposta (200)
 
@@ -730,7 +737,27 @@ assegnato, non viene duplicato.
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `codice_ruolo` | string | Si | Codice del ruolo da assegnare (es. `CLI`, `FOR`, `VET`) |
+| `codice_ruolo` | string | Si | Codice (`GESTORE`) o codice interno (`GE`) del tipo ruolo |
+| `indirizzi` | array | Secondo il ruolo | Indirizzi **del ruolo**, stessa forma della creazione soggetto. Necessari per i ruoli con indirizzi obbligatori (`config.tipi_ruolo_tipi_indirizzo`, es. GE) |
+
+> **Ruoli con un flusso dedicato (dal 2026-10-09)**: `CL`, `FO`, `EF` e
+> `RIS_UMANA` non si assegnano da qui: `400 E_ANAG_VALIDAZIONE` sul campo
+> `codice_ruolo`, con il rimando al flusso (Clienti, Fornitori, Emittenti
+> fiscali, Risorse umane). Il ruolo è solo il primo anello della loro catena:
+> un CL nasce con la prima istanza e il suo billing account, e creato «nudo»
+> da qui non aveva clienti né era visibile a un operatore con emittente.
+
+> **Indirizzi del ruolo (dal 2026-10-09)**: gli obbligatori del ruolo (per GE
+> la sede legale `SEDELEG` e la fatturazione `FATT`) sono indirizzi del **ruolo**, non
+> del soggetto: li pretende il guard differito
+> `anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required` al commit. Ruolo e
+> indirizzi nascono nella stessa transazione, con `create_indirizzi_ruolo`
+> (come nei flussi clienti e fornitori): il primo indirizzo viene clonato per
+> ogni obbligatorio mancante. Senza `indirizzi`, un ruolo che ne ha di
+> obbligatori risponde `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` (prima di questa
+> data l'endpoint non li accettava, quindi per quei ruoli rispondeva sempre
+> così). Ogni indirizzo deve essere ammesso anche per il tipo soggetto
+> (`config.tipi_soggetto_dettaglio_tipi_indirizzo`).
 
 ### Risposta (200)
 
@@ -748,7 +775,7 @@ assegnato, non viene duplicato.
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../ruoli/" \
-  -d '{"codice_ruolo": "FOR"}'
+  -d '{"codice_ruolo": "GESTORE", "indirizzi": [{"tipo_indirizzo_codice": "SEDELEG", "indirizzo_dettaglio_id": 123}]}'
 ```
 
 ### 9.3 Lookup ricco soggetti-ruoli (selezione contesto pratica)

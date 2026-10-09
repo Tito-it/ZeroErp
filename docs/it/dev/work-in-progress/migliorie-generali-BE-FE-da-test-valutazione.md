@@ -67,7 +67,7 @@
 > **completo** in CI, con `mail.E001` silenziato per progetto (Django non
 > spedisce posta). In §3 restano **D2-b, D9-a, D10-bis, D12**.
 > ⭐ Su **D2-b** Tid ha deciso **sì**, a cricchetto: piano in
-> [piano-be-type-checker.md](piano-be-type-checker.md).
+> [piano-be-type-checker.md](../work-done/piano-be-type-checker.md).
 > ✅ **Riallineato il 2026-10-09**: **D2-b chiude** (§9) — `mypy` col plugin
 > Django in CI, a cricchetto. In §3 restano **D9-a, D10-bis, D12**. Lo
 > smaltimento del registro (lotti L2, L3+) vive nel piano, non qui.
@@ -431,7 +431,7 @@ gli smoke in CI (D9-a) — più ciò che aspetta una decisione (D10-bis). E il p
 
 * [x] **D2-a** — ✅ 2026-09-09 (`F,E9`) e 2026-09-10 (allargamento): `ruff.toml`.
 * [x] **D2-b** — ✅ 2026-10-08: **sì** (Tid), `mypy` col plugin Django in CI, a
-      cricchetto ([piano](piano-be-type-checker.md), L1). La riga sull'`assert`
+      cricchetto ([piano](../work-done/piano-be-type-checker.md), L1). La riga sull'`assert`
       di `PROJECT_CONTEXT.md` resta, e ora serve a qualcuno.
 
 ### 🟠 Il contratto verso chi consuma
@@ -633,8 +633,9 @@ sanata e non tolta, su un'uscita illeggibile — provato per mutazione.
 ⭐ Prima ancora di accenderlo, la misura ha trovato un **500 vero**: riallinea e
 sblocca prezzo di commessa chiamavano un metodo tolto da sei mesi, con il test
 mockato verde. Chiuso nello stesso giro (L0 del piano). Lo smaltimento del
-registro è nel [piano](piano-be-type-checker.md): ✅ **L2 e L3 fatti il 2026-10-09**, registro
-**620 → 2** (i 2 attendono un codice d'errore dal team DB), con altri difetti veri trovati e
+registro è nel [piano](../work-done/piano-be-type-checker.md): ✅ **L2 e L3 fatti il 2026-10-09**, registro
+**620 → 0** (gli ultimi 2, il caso NaN dei documenti, chiusi il 2026-10-09 da
+`work-done/brief-db-valore-numerico-non-finito-nei-documenti`), con altri difetti veri trovati e
 corretti strada facendo (alert scadenze listini sempre in 400, numero del preventivo nella pratica
 di approvazione prezzo, data vuota nel pricing, `int()` grezzi). Committato in `0ffe7b7c3` e
 `ebc54fc56`. Sede:

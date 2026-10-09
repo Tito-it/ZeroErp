@@ -1713,7 +1713,8 @@ Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
 {
   "unit": "zeroerp-digest-presidi-settimanale", "forma": "timer",
   "comando": ["digest_presidi", "--cadenza", "settimanale"],
-  "oncalendar": "Mon *-*-* 07:30", "abilita": true, "avvio_manuale": true,
+  "oncalendar": "*:00", "dovuto": {"ogni": "settimana", "giorno": 0, "dalle": "07:30"},
+  "abilita": true, "avvio_manuale": true,
   "nota": "…",
   "can_esegui_ora": false,
   "can_esegui_ora_reason": "E_PROCESSO_AVVIO_GIA_IN_CODA",
@@ -1724,6 +1725,8 @@ Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
 
 | Campo | Significato |
 | --- | --- |
+| `oncalendar` | la **sveglia** del timer (`null` per un servizio). ⚠️ Su una sveglia calendariale e' `*:00`, ogni ora: la cadenza del lavoro e' `dovuto` |
+| `dovuto` | dal 2026-10-09, solo sulle sveglie calendariali: `{ogni: giorno\|settimana\|mese, giorno, dalle}` — una volta per giorno/settimana/mese **aziendale**, dal `giorno` (0 = lunedi'; o del mese) alle `dalle` (`HH:MM`, fuso dell'azienda). La decide l'`ExecCondition` `e_dovuto` (brief un-solo-fuso-aziendale T-9). `null` = il timer lavora a ogni sveglia |
 | `can_esegui_ora` | **derivato** dal motivo (`reason is None`), mai calcolato a parte |
 | `can_esegui_ora_reason` | il codice macchina del **primo** motivo, o `null` |
 | `can_esegui_ora_reason_key` | la chiave i18n del tooltip — una per motivo, fissata nei locales del client |

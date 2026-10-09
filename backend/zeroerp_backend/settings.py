@@ -311,6 +311,8 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'apps.core.middleware.request_context_middleware.RequestContextMiddleware',
+    # Fuso dell'azienda attivo per la richiesta (BB core/services/fuso_aziendale).
+    'apps.core.middleware.fuso_aziendale_middleware.FusoAziendaleMiddleware',
     'apps.core.middleware.api_exception_middleware.ApiExceptionMiddleware',
     'apps.core.middleware.user_language_middleware.UserLanguageMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -411,7 +413,16 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'it-it'
 
-TIME_ZONE = 'Europe/Rome'
+# ⛔ 'UTC' e' un valore NEUTRO, non il fuso dell'azienda (decisione T-2 di
+#    brief-be-db-fe-un-solo-fuso-aziendale). Il fuso dell'azienda e' un dato,
+#    `config.parameters.SYSTEM_FUSO_ORARIO`: lo legge il BB
+#    `apps.core.services.fuso_aziendale` e lo attivano `FusoAziendaleMiddleware`
+#    (richieste) e `ComandoAziendale` (management command). Fino al 2026-10-09
+#    qui c'era 'Europe/Rome', una seconda copia del parametro che sarebbe
+#    divergita in silenzio al primo cambio. Cio' che resta legato al fuso del
+#    processo (un `date.today()` sfuggito) cosi' si vede, invece di funzionare
+#    per coincidenza.
+TIME_ZONE = 'UTC'
 
 USE_I18N = True
 
@@ -628,7 +639,11 @@ LOGGING = {
         },
     },
     "formatters": {
+        # ⭐ `asctime` in UTC, ISO 8601 con `Z` (T-3, brief un-solo-fuso-aziendale):
+        #    un log si confronta con altri log, e un'ora senza offset non dice
+        #    in che fuso e' scritta.
         "verbose": {
+            "class": "apps.core.logging_formatters.FormatterUtcIso",
             "format": (
                 "%(asctime)s %(levelname)s %(name)s [%(process)d] "
                 "req=%(request_id)s %(message)s"

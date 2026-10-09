@@ -13,7 +13,7 @@ import { useListaConfigurabilePage } from '../../core/composables/useListaConfig
 import { useTabFreshness } from '../../core/composables/useTabFreshness'
 import { exportContratti } from '../api/contratti'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
-import { defaultFiltroDataDa } from '../../core/utils/date'
+import { defaultFiltroDataDa, toMeseString, oggiAziendale } from '../../core/utils/date'
 import { MONTH_FORMAT } from '../../core/constants'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
@@ -86,8 +86,7 @@ const scadenzaMeseFilter = computed({
       store.filters.scadenza_mese = null
       return
     }
-    const d = val instanceof Date ? val : new Date(val)
-    store.filters.scadenza_mese = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    store.filters.scadenza_mese = toMeseString(val)
   },
 })
 
@@ -215,7 +214,7 @@ onMounted(() => {
           <DatePicker v-model="scadenzaMeseFilter" :placeholder="t('vendite.contratti.filtro_scadenza_mese')"
             class="app-filter-w-sm"
             view="month" :date-format="MONTH_FORMAT" show-icon show-button-bar
-            :min-date="new Date()"
+            :min-date="oggiAziendale()"
             @update:modelValue="onScadenzaMeseChange" />
         </FiltriLista>
         <PageActionsBar :actions="pageActions">

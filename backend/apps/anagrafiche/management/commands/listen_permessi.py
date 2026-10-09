@@ -19,7 +19,8 @@ import os
 import socket
 from typing import Any
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
+from apps.core.management.comando_aziendale import ComandoAziendale
 
 from apps.anagrafiche.services.notify_listener import (
     CANALI,
@@ -32,7 +33,7 @@ from apps.core.services.processi import PROCESSO_LISTEN_PERMESSI
 logger = logging.getLogger(__name__)
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
         f"Avvia il listener LISTEN/NOTIFY sui canali {', '.join(CANALI)}. "
         "Invalida la cache permessi quando un utente cambia reparto e quando "

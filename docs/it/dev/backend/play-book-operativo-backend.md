@@ -385,13 +385,22 @@ in due posti prima o poi dissente.
 | `zeroerp-coda-lavori` | `draina_coda_lavori` | timer | `*:0/1` | ✅ |
 | `zeroerp-coda-stampa` | `draina_coda_stampa` | timer | `*:0/2` | ✅ |
 | `zeroerp-fatturazione-immediata` | `run_fatturazione_batch --modalita immediata` | timer | `*:0/2` | ⛔ emette documenti |
-| `zeroerp-fatturazione-differita` | `run_fatturazione_batch --modalita differita` | timer | `*-*-01 02:00` | ⛔ idem |
+| `zeroerp-fatturazione-differita` | `run_fatturazione_batch --modalita differita` | timer | `*:00` + dovuto: il 1° dalle 00:00 aziendali | ⛔ idem |
 | `zeroerp-send-pending-emails` | `send_pending_emails` | timer | `*:0/5` | ✅ |
-| `zeroerp-digest-presidi-giornaliero` | `digest_presidi --cadenza giornaliera` | timer | `*-*-* 07:00` | ✅ |
-| `zeroerp-digest-presidi-settimanale` | `digest_presidi --cadenza settimanale` | timer | `Mon *-*-* 07:30` | ✅ |
+| `zeroerp-digest-presidi-giornaliero` | `digest_presidi --cadenza giornaliera` | timer | `*:00` + dovuto: ogni giorno dalle 07:00 aziendali | ✅ |
+| `zeroerp-digest-presidi-settimanale` | `digest_presidi --cadenza settimanale` | timer | `*:00` + dovuto: il lunedi' dalle 07:30 aziendali | ✅ |
 | `zeroerp-listen-permessi` | `listen_permessi` | **servizio** | — | ✅ |
 
 La fonte è il JSON: questa tabella lo descrive, non lo sostituisce.
+
+⭐ **Le sveglie calendariali** (dal 2026-10-09, brief un-solo-fuso-aziendale T-4/T-9): il timer
+si sveglia ogni ora (`*:00`, nel fuso dell'host, che non conta) e il `.service` porta
+`ExecCondition=… run-command.sh e_dovuto <unit>`, che esce 0 se il periodo **aziendale** è
+cominciato e la corsia non ha ancora una corsa riuscita, 1 (salta, senza errore) altrimenti,
+255 (unit fallita) su un guasto. Per vedere cosa ha deciso: `journalctl -u <unit>` (la riga
+«dovuto dal …» / «non ancora dovuto» / «già fatto dal …»). «Esegui ora» lancia il `comando`
+e non passa dall'`ExecCondition`: esegue sempre. ⚠️ Dopo l'aggiornamento serve
+`sudo backend/bin/install-timers.sh` per rendere i template nuovi.
 
 Lo presidia il backend:
 `apps/core/tests/services/test_sveglie.py::test_ogni_processo_del_backend_ha_una_sveglia`

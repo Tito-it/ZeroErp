@@ -210,6 +210,17 @@ def capability_esegui_ora(
     }
 
 
+# Scopo: `dovuto` come viaggia al client — `ogni`, `giorno` (indice della
+#        settimana, 0 = lunedi', o giorno del mese; None per ogni giorno) e
+#        `dalle` (`HH:MM`, fuso dell'azienda) — o None se la sveglia lavora a
+#        ogni sveglia.
+def _dovuto_per_il_client(sveglia: Sveglia) -> dict[str, Any] | None:
+    d = sveglia.dovuto
+    if d is None:
+        return None
+    return {"ogni": d.ogni, "giorno": d.giorno, "dalle": d.dalle.strftime("%H:%M")}
+
+
 # Scopo: la riga di una sveglia come viaggia in `sveglie[]` del dettaglio del
 #        processo (piano §2.5): il dichiarato di deploy — quello che il client
 #        MOSTRA — piu' la capability — quella su cui il client DECIDE.
@@ -224,6 +235,11 @@ def riga_sveglia(
         "forma": sveglia.forma,
         "comando": list(sveglia.comando),
         "oncalendar": sveglia.oncalendar,
+        # ⭐ Sulle sveglie calendariali `oncalendar` e' la SVEGLIA (ogni ora),
+        #    non la cadenza del lavoro: quella e' `dovuto`, nel fuso
+        #    dell'azienda (brief un-solo-fuso-aziendale T-9). Mostrare il solo
+        #    `oncalendar` direbbe «ogni ora» a un digest settimanale.
+        "dovuto": _dovuto_per_il_client(sveglia),
         "abilita": sveglia.abilita,
         "avvio_manuale": sveglia.avvio_manuale,
         "nota": sveglia.nota,

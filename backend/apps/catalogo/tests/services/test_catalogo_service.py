@@ -73,6 +73,7 @@ from unittest.mock import patch
 
 from django.db import IntegrityError
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 
 
@@ -1008,12 +1009,11 @@ class CatalogoServiceTests(TestCase):
     # =================================================================
 
     # Scopo: payload create componente senza valido_dal -> service applica
-    # date.today() prima del repository call. Il DDL DB non ha
+    # oggi_aziendale() prima del repository call. Il DDL DB non ha
     # DEFAULT CURRENT_DATE, il fallback vive nel service (Fase 4 BE-only).
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
     def test_fn_create_componente_valido_dal_fallback_today(self, mock_repo_cls, mock_bom_repo_cls):
-        from datetime import date
 
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
@@ -1029,13 +1029,12 @@ class CatalogoServiceTests(TestCase):
         )
 
         args = bom_repo.create_componente.call_args.args
-        self.assertEqual(args[1]["valido_dal"], date.today())
+        self.assertEqual(args[1]["valido_dal"], oggi_aziendale())
 
     # Scopo: payload create UoM operativa senza valido_dal -> service applica today.
     @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
     def test_fn_create_uom_operativa_valido_dal_fallback_today(self, mock_repo_cls, mock_uom_repo_cls):
-        from datetime import date
 
         from apps.catalogo.services.catalogo_service import fn_create_uom_operativa
 
@@ -1048,12 +1047,11 @@ class CatalogoServiceTests(TestCase):
         fn_create_uom_operativa("art-1", {"uom_id": 1, "factor_to_base": "1"})
 
         args = uom_repo.create_uom_operativa.call_args.args
-        self.assertEqual(args[1]["valido_dal"], date.today())
+        self.assertEqual(args[1]["valido_dal"], oggi_aziendale())
 
     # Scopo: payload create conversione UoM senza valido_dal -> service applica today.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
     def test_fn_create_conversione_valido_dal_fallback_today(self, mock_repo_cls):
-        from datetime import date
 
         from apps.catalogo.services.catalogo_service import fn_create_conversione
 
@@ -1065,7 +1063,7 @@ class CatalogoServiceTests(TestCase):
         fn_create_conversione({"uom_from_id": 1, "uom_to_id": 2, "fattore": "10"})
 
         args = repo.create_conversione.call_args.args
-        self.assertEqual(args[0]["valido_dal"], date.today())
+        self.assertEqual(args[0]["valido_dal"], oggi_aziendale())
 
     # =================================================================
     # Fase 5 — non_editable_fields nei detail (cross-vista DB + gap Python)

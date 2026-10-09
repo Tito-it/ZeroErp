@@ -29,10 +29,11 @@ Indice test eseguiti:
 from __future__ import annotations
 
 import unittest
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import (
     richiedi_db_provvisto,
@@ -197,7 +198,7 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
     #    delta con `data_scadenza: null` la toglie.
     def test_lotti_dell_articolo_e_la_scadenza(self):
         def _prova(cur, m):
-            oggi = date.today()
+            oggi = oggi_aziendale()
             lotto = svc.crea_lotto({"articolo_id": m.art_l, "codice": "L-01", "data_arrivo": oggi.isoformat(),
                                     "data_scadenza": (oggi + timedelta(days=30)).isoformat()})
             self.assertEqual((lotto["codice"], lotto["data_arrivo"], lotto["data_scadenza"]), ("L-01", oggi, oggi + timedelta(days=30)))
@@ -263,7 +264,7 @@ class AnagraficheMagazzinoDbTests(unittest.TestCase):
     #    vero (`test_ricerca_full_db` lo nomina).
     def test_la_ricerca_trova_ogni_colonna_accesa(self):
         def _prova(cur, m):
-            oggi = date.today().isoformat()
+            oggi = oggi_aziendale().isoformat()
             svc.aggiorna_magazzino(m.mag_a, {"descrizione": "Deposito ricdescmag"})
             ubi = svc.crea_ubicazione(m.mag_u, {"codice": "RICCODUBI", "descrizione": "Scaffale ricdescubi", "tipo_id": m.tipo_ubi})
             lotto = svc.crea_lotto({"articolo_id": m.art_l, "codice": "RICCODLOT", "data_arrivo": oggi})

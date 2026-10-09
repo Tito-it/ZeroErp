@@ -27,6 +27,7 @@ from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     limiti_pagina,
     conta_con_perimetro,
     corsa_conclusa,
@@ -563,8 +564,8 @@ class CodaLavoriRepository:
     #        (operatore → solo le proprie; None = tutte, per l'admin `code_manage`);
     #        `caller_scope_key` serve SOLO a calcolare `is_mio` (resta la chiave del
     #        chiamante anche quando vede tutto). Filtri opzionali stato/job_type/
-    #        intervallo `data_insert` (`data_a` bound ESCLUSIVO: il chiamante
-    #        passa già il giorno+1). Ritorna `{items, total, archiviate}` via BB
+    #        intervallo `data_insert` (giorni dell'AZIENDA, `data_a` incluso:
+    #        BB `predicato_giorno_operativo`). Ritorna `{items, total, archiviate}` via BB
     #        `fetch_paged_with_total` (fallback pagina-stantia: le code si
     #        auto-svuotano sotto l'utente — mai «0 risultati» a offset alto).
     #
@@ -596,8 +597,8 @@ class CodaLavoriRepository:
         caller_scope_key: str | None = None,
         stati: list[str] | None = None,
         job_type: str | None = None,
-        data_da: Any = None,
-        data_a: Any = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
         includi_archiviate: bool = False,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
@@ -618,12 +619,9 @@ class CodaLavoriRepository:
         if job_type is not None:
             base_conditions.append("job_type = %s")
             base_params.append(str(job_type))
-        if data_da is not None:
-            base_conditions.append("data_insert >= %s")
-            base_params.append(data_da)
-        if data_a is not None:
-            base_conditions.append("data_insert < %s")
-            base_params.append(data_a)
+        giorno_sql, giorno_params = predicato_giorno_operativo("data_insert", data_da, data_a)
+        base_conditions.append(giorno_sql)
+        base_params.extend(giorno_params)
         conditions = list(base_conditions)
         where_params = list(base_params)
         if not includi_archiviate:

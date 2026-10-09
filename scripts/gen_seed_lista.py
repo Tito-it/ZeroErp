@@ -1399,7 +1399,7 @@ def main() -> int:
                         "(gli id restano nuovi: serve solo per ripartire da capo)")
     args = p.parse_args()
     if not args.data:
-        args.data = f"{date.today().isoformat()} 00:00:00"
+        args.data = f"{date.today().isoformat()} 00:00:00"  # noqa: DTZ011 — strumento fuori da Django e senza DB: la data del seed e' quella di chi lo genera
 
     # Prima di aprire la connessione: questo controllo legge solo CSV e sorgenti
     # e deve poter girare anche dove il DB non e' raggiungibile (CI, server BE).

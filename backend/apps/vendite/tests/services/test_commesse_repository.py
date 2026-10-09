@@ -44,7 +44,7 @@ Indice test eseguiti:
 29) DiagnosticaGruppiTernePronteTests.test_terne_pronte_gia_lista_passa_intatta
 """
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
 from decimal import Decimal
 from inspect import signature
 from unittest import TestCase
@@ -606,14 +606,14 @@ class CommesseRepositoryUnitTests(TestCase):
             date(2026, 2, 1), date(2026, 2, 1), date(2026, 2, 28),
             Decimal("22.50"), True, False,
             "APPROVATA", "NON_EMESSA", 3,
-            "PREVENTIVO", {"note": "test"}, datetime(2026, 2, 26, 10, 0, 0),
+            "PREVENTIVO", {"note": "test"}, datetime(2026, 2, 26, 10, 0, 0, tzinfo=UTC),
             True,  # fatturata (in coda, changeset 20260724-07)
             # Sette colonne del changeSet 20260816-04, nell'ordine della
             # RETURNS TABLE. ⚠️ `fatturata_il` e' un istante DIVERSO dal
             # `data_update` qui sopra, ed e' il punto della colonna: e'
             # `fatture_righe.data_insert`, che nessuna modifica successiva
             # all'attivita' puo' spostare.
-            datetime(2026, 3, 2, 9, 30, 0),      # fatturata_il
+            datetime(2026, 3, 2, 9, 30, 0, tzinfo=UTC),      # fatturata_il
             77, 210, "DEFINITIVA",               # fattura_id, _numero, _stato
             "019fc716-7386-7b0d-9c26-0a4d30f3a022",  # sorgente_uid
             "ORDINI", 100,                       # sorgente_area, _documento_id
@@ -656,7 +656,7 @@ class CommesseRepositoryUnitTests(TestCase):
         # `fatturata_il` serializzata come le altre date (isoformat) e DISTINTA
         # da `data_update`: se un giorno qualcuno la ricablasse su quest'ultima
         # il test lo direbbe, che e' l'unico modo di accorgersene.
-        self.assertEqual(row["fatturata_il"], "2026-03-02T09:30:00")
+        self.assertEqual(row["fatturata_il"], "2026-03-02T09:30:00+00:00")
         self.assertNotEqual(row["fatturata_il"], row["data_update"])
         self.assertEqual(row["fattura_id"], 77)
         self.assertEqual(row["fattura_numero"], 210)

@@ -44,3 +44,14 @@ class CoreRepository:
             if isinstance(result, str):
                 result = json.loads(result)
             return result
+
+    # Scopo: Il NOME del fuso dell'azienda (IANA, es. 'Europe/Rome') dalla sede
+    #        unica del DB, `script.fn_fuso_operativo()`. Il fail-loud (parametro
+    #        assente, vuoto o sconosciuto -> E_CONFIG_MANCANTE) e' della funzione:
+    #        qui non si duplica e non si ripiega su niente.
+    def get_fuso_operativo(self) -> str:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT script.fn_fuso_operativo()")
+            row = cursor.fetchone()
+        assert row is not None
+        return str(row[0])

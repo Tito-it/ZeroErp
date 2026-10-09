@@ -211,9 +211,9 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
                 "descrizione": testata.get("termine_pagamento_descrizione"),
             },
             "totali": {
-                "imponibile": format_importo(testata.get("totale_imponibile")),
-                "iva": format_importo(testata.get("totale_iva")),
-                "documento": format_importo(testata.get("totale_documento")),
+                "imponibile": format_importo(testata.get("totale_imponibile"), campo="totale_imponibile"),
+                "iva": format_importo(testata.get("totale_iva"), campo="totale_iva"),
+                "documento": format_importo(testata.get("totale_documento"), campo="totale_documento"),
                 "valuta_id": testata.get("valuta_id"),
                 "valuta_codice": testata.get("valuta_codice"),
             },

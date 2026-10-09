@@ -67,8 +67,8 @@ Tutte le risposte usano l'envelope standard:
 | `voce_utility` | bool | No | Filtro articoli utility |
 | `tipo_voce_id` | int | No | Filtro tipologia |
 | `gruppo_voce_id` | int | No | Filtro gruppo |
-| `data_da` | date | No | Filtro data insert da |
-| `data_a` | date | No | Filtro data insert a |
+| `data_da` | date | No | Filtro data insert da (giorno dell'azienda: vedi sotto) |
+| `data_a` | date | No | Filtro data insert a, giorno incluso. I giorni sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09) (fino ad allora `data_insert::date`, il giorno della sessione e niente indice) |
 | `page` | int | No | Numero pagina, default `1` |
 | `page_size` | int | No | Righe per pagina, default `25`, max `200` |
 | `order_by` | string | No | `codice`, `descrizione`, `uom_codice`, `data_insert`, `data_update` |

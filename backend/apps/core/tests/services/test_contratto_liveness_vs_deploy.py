@@ -17,7 +17,9 @@
 
 1. test_ogni_timer_rispetta_il_contratto_del_suo_processo
    Per ogni sveglia di forma `timer` il cui processo ha un contratto nel seed,
-   l'intervallo massimo dell'`OnCalendar` e' ≤ `tolleranza_minuti`.
+   l'intervallo massimo fra due corse e' ≤ `tolleranza_minuti`: quello
+   dell'`OnCalendar`, o — per le sveglie calendariali (`dovuto`, dal
+   2026-10-09) — il periodo aziendale piu' il passo della sveglia.
 2. test_segno_di_vita_sessione_e_forma_servizio_si_implicano
    Un processo con `segno_di_vita = SESSIONE` ha SOLO sveglie di forma
    `servizio`, e un `servizio` sempre acceso ha SOLO contratti `SESSIONE`: il
@@ -29,9 +31,10 @@
    Ogni `OnCalendar` in uso e' una forma che il parser sa leggere — se il
    test 1 salta una sveglia perche' non la capisce, e' qui che si vede.
 5. test_il_parser_fa_i_conti_giusti_e_rifiuta_cio_che_non_sa
-   L'aritmetica del parser sui casi che ingannano: `*:0/90` gira ogni ORA
-   (solo il minuto 0 combacia), non ogni 90 minuti; `*-*-31` salta i mesi
-   corti e non e' «un mese»; una forma ignota solleva, non stima.
+   L'aritmetica del parser sui casi che ingannano: `*:0/90` systemd lo
+   RIFIUTA (passo dei minuti >= 60: il timer non parte — fino al 2026-10-09
+   qui si diceva «gira ogni ora»); `*-*-31` salta i mesi corti e non e' «un
+   mese»; una forma ignota solleva, non stima.
 
 ⚠️ SUL LIMITE che il test 1 NON copre, e va detto: il contratto ha la grana
    del PROCESSO, la sveglia quella della CORSIA. Su `digest_presidi` (due
@@ -48,6 +51,7 @@ from apps.core.tests._contratto_processi import (
     CANALE_COMMAND,
     SEGNO_SESSIONE,
     intervallo_massimo_minuti,
+    intervallo_massimo_sveglia,
     leggi_contratti_dal_seed,
 )
 
@@ -73,7 +77,7 @@ class ContrattoLivenessVsDeployTests(SimpleTestCase):
                 continue
             assert s.oncalendar is not None  # e_timer lo garantisce
             with self.subTest(unit=s.unit):
-                intervallo = intervallo_massimo_minuti(s.oncalendar)
+                intervallo = intervallo_massimo_sveglia(s.oncalendar, s.dovuto)
                 self.assertLessEqual(
                     intervallo, contratto["tolleranza_minuti"],
                     f"{s.unit}: OnCalendar {s.oncalendar!r} lascia passare fino "
@@ -136,7 +140,8 @@ class ContrattoLivenessVsDeployTests(SimpleTestCase):
             "*:0/1": 1,
             "*:0/7": 7,            # non divide 60: il gap massimo resta 7
             "*:0/45": 45,          # minuti 0 e 45: gap 45 e 15
-            "*:0/90": 60,          # combacia solo il minuto 0 → ogni ora
+            "*:00": 60,            # la sveglia oraria delle sveglie calendariali
+            "*:30": 60,
             "*-*-* 07:00": 1440,
             "Mon *-*-* 07:30": 10080,
             "*-*-01 02:00": 44640, # lug→ago: 31 giorni
@@ -145,7 +150,10 @@ class ContrattoLivenessVsDeployTests(SimpleTestCase):
         for oncalendar, atteso in casi.items():
             with self.subTest(oncalendar=oncalendar):
                 self.assertEqual(intervallo_massimo_minuti(oncalendar), atteso)
-        for ignota in ("*-*-29 02:00", "*-*-31 02:00", "*:0/0", "*:0/5,30", "Mon 07:30", ""):
+        # ⛔ `*:0/60` e `*:0/90`: systemd li rifiuta (verificato su systemd 257),
+        #    quindi il parser pure — non «ogni ora».
+        for ignota in ("*-*-29 02:00", "*-*-31 02:00", "*:0/0", "*:0/60", "*:0/90", "*:0/5,30",
+                       "*:60", "Mon 07:30", ""):
             with self.subTest(oncalendar=ignota):
                 with self.assertRaises(ValueError):
                     intervallo_massimo_minuti(ignota)

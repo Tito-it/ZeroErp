@@ -7,12 +7,14 @@
 # ------------------------------------------------------------
 
 import json
+from datetime import date, datetime
 from typing import Any
 
 from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
@@ -250,8 +252,8 @@ class PraticheRepository:
         priorita_id: int | None = None,
         risorsa_umana_id: int | None = None,
         search: str | None = None,
-        data_da: str | None = None,
-        data_a: str | None = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
         limit: int,
         offset: int,
         order_by: str = "data_insert",
@@ -297,12 +299,10 @@ class PraticheRepository:
         if risorsa_umana_id is not None:
             conditions.append("p.risorsa_umana_id = %s")
             params.append(risorsa_umana_id)
-        if data_da:
-            conditions.append("p.data_insert >= %s::date")
-            params.append(data_da)
-        if data_a:
-            conditions.append("p.data_insert < (%s::date + INTERVAL '1 day')")
-            params.append(data_a)
+        # Giorni dell'AZIENDA, `data_a` incluso (BB, brief un-solo-fuso-aziendale B-4).
+        giorno_sql, giorno_params = predicato_giorno_operativo("p.data_insert", data_da, data_a)
+        conditions.append(giorno_sql)
+        params.extend(giorno_params)
         add_ricerca_full_condition(conditions, params, search, _RICERCA_PRATICHE)
 
         where_clause = "WHERE " + " AND ".join(conditions)
@@ -1064,7 +1064,7 @@ class PraticheRepository:
         *,
         flusso_id: int | None = None,
         data_riattivazione_prevista: str | None = None,
-        data_inizio: str | None = None,
+        data_inizio: datetime | None = None,
     ) -> int:
         sql = """
             INSERT INTO pratiche.sospensioni (
@@ -1102,7 +1102,7 @@ class PraticheRepository:
         self,
         sospensione_id: int,
         *,
-        data_fine: str | None = None,
+        data_fine: datetime | None = None,
     ) -> None:
         sql = """
             UPDATE pratiche.sospensioni

@@ -19,7 +19,7 @@ Indice test eseguiti:
  9) test_update_soggetto_ok — aggiorna campi
 10) test_update_soggetto_not_found — id inesistente → E_ANAG_NOT_FOUND
 11) test_create_contatto_ok — crea contatto
-12) test_create_contatto_missing_nominativo — nominativo vuoto → E_ANAG_VALIDAZIONE
+12) test_create_contatto_incompleto — nominativo o tipo mancanti → E_CONTATTO_INCOMPLETO col campo
 13) test_update_contatto_not_found — contatto inesistente → E_ANAG_NOT_FOUND
 14) test_create_indirizzo_soggetto_ok — crea indirizzo
 15) test_create_indirizzo_missing_tipo — tipo mancante → E_ANAG_VALIDAZIONE
@@ -42,6 +42,8 @@ Indice test eseguiti:
 32) test_create_soggetto_pf_senza_sesso_non_lo_inventa — sesso assente → None al repository: lo giudica il guard DB
 33) test_create_soggetto_pf_passa_dettaglio_e_piva — DI: dettaglio scelto e P.IVA arrivano al repository
 34) test_genera_cf_con_sesso_x_rifiutato — il CF codifica solo M/F: con X niente calcolo
+35) test_assign_ruolo_con_indirizzi_del_ruolo — gli indirizzi vanno al RUOLO, con la matrice del suo codice interno
+36) test_assign_ruolo_con_flusso_dedicato_rifiutato — CL/FO/EF/RIS_UMANA → E_ANAG_VALIDAZIONE, rimando al flusso
 35) test_update_soggetto_sesso_stessa_forma_della_creazione — «x» → «X», vuoto → None
 36) test_create_soggetto_pf_congruenza_cf_legge_il_sesso_normalizzato — « f » su CF maschile → E_ANAG_VALIDAZIONE
 """
@@ -410,17 +412,30 @@ class TestSoggettiContatti(TestCase):
         repo.exists_soggetto.return_value = True
         repo.crea_contatto.return_value = {"id": 10, "nominativo": "Luigi Verdi"}
         from apps.anagrafiche.services.soggetti_service import SoggettiService
-        result = SoggettiService().create_contatto(FAKE_UUID, {"nominativo": "Luigi Verdi"})
+        result = SoggettiService().create_contatto(
+            FAKE_UUID, {"nominativo": "Luigi Verdi", "tipo_contatto_id": 2},
+        )
         self.assertEqual(result["nominativo"], "Luigi Verdi")
+        self.assertEqual(repo.crea_contatto.call_args.kwargs["tipo_contatto_id"], 2)
 
     @patch(SOGG_REPO)
-    def test_create_contatto_missing_nominativo(self, mock_repo):
-        """Nominativo vuoto → E_ANAG_VALIDAZIONE."""
-        mock_repo.return_value.exists_soggetto.return_value = True
+    def test_create_contatto_incompleto(self, mock_repo):
+        """Nominativo o tipo mancanti → E_CONTATTO_INCOMPLETO col campo da
+        accendere, prima del DB (fino al 2026-10-09 il tipo mancante arrivava
+        al NOT NULL e usciva `E_DATABASE`)."""
+        repo = mock_repo.return_value
+        repo.exists_soggetto.return_value = True
         from apps.anagrafiche.services.soggetti_service import SoggettiService
-        with self.assertRaises(ServiceError) as ctx:
-            SoggettiService().create_contatto(FAKE_UUID, {"nominativo": ""})
-        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        for payload, campo in (
+            ({"nominativo": "", "tipo_contatto_id": 2}, "nominativo"),
+            ({"nominativo": "Luigi Verdi"}, "tipo_contatto_id"),
+        ):
+            with self.subTest(campo=campo):
+                with self.assertRaises(ServiceError) as ctx:
+                    SoggettiService().create_contatto(FAKE_UUID, payload)
+                self.assertEqual(ctx.exception.code, "E_CONTATTO_INCOMPLETO")
+                self.assertIn(campo, ctx.exception.fields)
+        repo.crea_contatto.assert_not_called()
 
     @patch(SOGG_REPO)
     def test_update_contatto_not_found(self, mock_repo):
@@ -469,9 +484,68 @@ class TestSoggettiRuoli(TestCase):
         repo = mock_repo.return_value
         repo.exists_soggetto.return_value = True
         repo.assign_ruolo.return_value = 5
+        repo.resolve_tipo_ruolo.return_value = {
+            "codice_interno": "VT", "codice": "VETTORE", "descrizione": "Vettore",
+        }
         from apps.anagrafiche.services.soggetti_service import SoggettiService
-        result = SoggettiService().assign_ruolo(FAKE_UUID, {"codice_ruolo": "CLIENTE"})
+        result = SoggettiService().assign_ruolo(FAKE_UUID, {"codice_ruolo": "VETTORE"})
         self.assertEqual(result["id"], 5)
+        # Al DB arriva il codice interno gia' risolto: la risoluzione ha una sede sola.
+        repo.assign_ruolo.assert_called_once_with(FAKE_UUID, "VT")
+        repo.crea_indirizzo_ruolo.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_assign_ruolo_con_flusso_dedicato_rifiutato(self, mock_repo):
+        """I ruoli con un flusso dedicato non nascono dall'endpoint generico
+        (decisione di Tid, 2026-10-09): rifiuto sul campo, nessuna scrittura."""
+        repo = mock_repo.return_value
+        repo.exists_soggetto.return_value = True
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        for codice in ("CL", "FO", "EF", "RIS_UMANA"):
+            with self.subTest(codice=codice):
+                # Codice e descrizione finti e diversi dal codice interno: il
+                # messaggio mostra cio' che viene dal DB, non la chiave.
+                repo.resolve_tipo_ruolo.return_value = {
+                    "codice_interno": codice, "codice": f"COD_{codice}",
+                    "descrizione": f"Descr {codice}",
+                }
+                with self.assertRaises(ServiceError) as ctx:
+                    SoggettiService().assign_ruolo(FAKE_UUID, {"codice_ruolo": codice})
+                self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+                self.assertEqual(ctx.exception.context.get("field"), "codice_ruolo")
+                self.assertEqual(ctx.exception.context.get("codice_ruolo"), f"COD_{codice}")
+                self.assertIn(f"Descr {codice}", ctx.exception.message)
+        repo.assign_ruolo.assert_not_called()
+
+    @patch(LOOKUP_REPO)
+    @patch(SOGG_REPO)
+    def test_assign_ruolo_con_indirizzi_del_ruolo(self, mock_repo, mock_lookup):
+        """Gli indirizzi del payload diventano indirizzi DEL RUOLO, e la
+        matrice si legge col codice interno (GE), non con quello del payload
+        (GESTORE): l'obbligatorio mancante (FATT) e' clonato dal primo. Fino al
+        2026-10-09 l'endpoint non li accettava."""
+        repo = mock_repo.return_value
+        repo.exists_soggetto.return_value = True
+        repo.assign_ruolo.return_value = 5
+        repo.resolve_tipo_ruolo.return_value = {
+            "codice_interno": "GE", "codice": "GESTORE", "descrizione": "Gestore",
+        }
+        repo.get_existing_tipo_indirizzo_ids.return_value = set()
+        repo.resolve_tipo_indirizzo_id.side_effect = {"SEDELEG": 3, "FATT": 8}.get
+        mock_lookup.return_value.list_matrice_indirizzi_ruolo.return_value = [
+            {"codice": "FATT", "obbligatorio": True},
+        ]
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().assign_ruolo(FAKE_UUID, {
+            "codice_ruolo": "GESTORE",
+            "indirizzi": [{"tipo_indirizzo_codice": "SEDELEG", "indirizzo_dettaglio_id": 77}],
+        })
+        mock_lookup.return_value.list_matrice_indirizzi_ruolo.assert_called_once_with("GE")
+        creati = [
+            (c.args[0], c.kwargs["tipo_indirizzo_id"], c.kwargs["indirizzo_dettaglio_id"])
+            for c in repo.crea_indirizzo_ruolo.call_args_list
+        ]
+        self.assertEqual(creati, [(5, 3, 77), (5, 8, 77)])
 
     @patch(SOGG_REPO)
     def test_assign_ruolo_missing_codice(self, mock_repo):

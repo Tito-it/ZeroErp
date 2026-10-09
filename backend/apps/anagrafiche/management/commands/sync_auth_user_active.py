@@ -32,7 +32,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
+from apps.core.management.comando_aziendale import ComandoAziendale
 
 from apps.anagrafiche.db.anagrafiche_repository import AnagraficheRepository
 from apps.core.services.permissions_cache import invalidate_user
@@ -40,7 +41,7 @@ from apps.core.services.permissions_cache import invalidate_user
 logger = logging.getLogger(__name__)
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
         "Riallinea auth_user.is_active alle vesti utilizzabili oggi (spegne e accende). "
         "Wrapper per anagrafiche.fn_sync_auth_user_expired() con invalidazione "

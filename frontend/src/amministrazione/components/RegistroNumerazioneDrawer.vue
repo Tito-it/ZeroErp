@@ -40,7 +40,7 @@ import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { motivoBloccoRiga } from '../../core/utils/bloccoMotivo'
 // ⛔ Mai formattare una data inline: la sede è unica
 //    (`feedback_locale_formatters_centralizzato`).
-import { displayDate } from '../../core/utils/date'
+import { displayDate, oggiAziendale } from '../../core/utils/date'
 import { useLookup } from '../../core/composables/useLookup'
 import { DRAWER_WIDTH, FIELD_LENGTH, MANAGE_ICONS } from '../../core/constants'
 import {
@@ -237,7 +237,7 @@ const anteprima = computed(() => {
   // ⚠️ L'anno e' quello CORRENTE perche' l'anteprima parla del prossimo numero;
   //    il numero vero prende l'anno del DOCUMENTO, che puo' differire su un
   //    documento retrodatato.
-  const anno = form.value.anno_nel_numero ? `${new Date().getFullYear()}-` : ''
+  const anno = form.value.anno_nel_numero ? `${oggiAziendale().getFullYear()}-` : ''
   return `${form.value.prefisso || ''}${anno}${'1'.padStart(cifre, '0')}${form.value.suffisso || ''}`
 })
 

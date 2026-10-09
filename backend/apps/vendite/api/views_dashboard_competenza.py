@@ -24,6 +24,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full
@@ -89,7 +90,7 @@ class ApiDashboardCompetenza(DomainAPIView):
     #        fattura sul FATTURATA + conteggio errori vivi per mese).
     def get(self, request: Request) -> JsonResponse:
         anno = qp_int_strict(
-            request.query_params.get("anno"), "anno", date.today().year
+            request.query_params.get("anno"), "anno", oggi_aziendale().year
         )
         data = fn_dash_competenza_mensile(anno=anno)
         return success_response(data)

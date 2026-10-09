@@ -10,7 +10,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { displayDate, toDateString } from '../../core/utils/date'
+import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
 import { statoPraticaSeverity, prioritaPraticaSeverity } from '../../core/utils/severity'
 import { DRAWER_WIDTH, MANAGE_ICONS, STATO_PRATICA, STATI_PRATICA_TERMINALI, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
@@ -155,7 +155,7 @@ function populateFormFromDetail(d) {
     tipo_prestazione_id: d.tipo_prestazione_id,
     priorita_id: d.priorita_id,
     descrizione: d.descrizione || '',
-    data_scadenza: d.data_scadenza ? new Date(d.data_scadenza) : null
+    data_scadenza: parseIsoDate(d.data_scadenza)
   }
 }
 

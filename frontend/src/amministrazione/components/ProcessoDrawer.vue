@@ -29,6 +29,7 @@
 //    diventa una lista vera con `useDrawerTabLista` — non prima.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { intlLocale } from '../../core/i18n'
 import Tabs from 'primevue/tabs'
 import TabList from 'primevue/tablist'
 import Tab from 'primevue/tab'
@@ -54,6 +55,7 @@ import {
   eseguiOraProcesso,
 } from '../api/amministrazione'
 import { displayTimestamp } from '../../core/utils/date'
+import { descriviDovuto as descriviDovutoSveglia } from '../dovutoSveglia'
 
 
 
@@ -69,7 +71,12 @@ const emit = defineEmits(['update:visible', 'identita-creata'])
 //    divergono al primo che si tocca.
 const CORSE_MOSTRATE = 50
 
-const { t, te } = useI18n()
+const { t, te, locale } = useI18n()
+
+// Scopo: la cadenza del lavoro di una sveglia calendariale, in parole (T-9).
+function descriviDovuto(dovuto) {
+  return descriviDovutoSveglia(dovuto, t, intlLocale(locale.value))
+}
 const { execute } = useApiHandler()
 const notify = useNotify()
 const { confirmAction } = useConfirmAction()
@@ -496,7 +503,11 @@ async function eseguiOra(sveglia) {
                     />
                   </td>
                   <td>
-                    <code v-if="s.oncalendar" class="app-proc-mono">{{ s.oncalendar }}</code>
+                    <!-- ⭐ Sulle sveglie calendariali `oncalendar` e' solo la
+                         sveglia oraria: la cadenza del LAVORO e' `dovuto`, nel
+                         fuso dell'azienda (brief un-solo-fuso-aziendale T-9). -->
+                    <span v-if="s.dovuto">{{ descriviDovuto(s.dovuto) }}</span>
+                    <code v-else-if="s.oncalendar" class="app-proc-mono">{{ s.oncalendar }}</code>
                     <span v-else>{{ t('amministrazione.processi.sveglia_sempre_accesa') }}</span>
                   </td>
                   <!-- «Spenta» è una scelta del deploy, non un guasto: grigio,

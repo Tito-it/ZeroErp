@@ -20,6 +20,7 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.testata_guard import testata_o_not_found
@@ -457,7 +458,7 @@ class PromoArticoliService:
     #        per costruzione. Coerente con la decisione DB nel trigger
     #        trgfn_promo_articoli_guard_data_driven.
     def _assert_create_non_retroattiva(self, data: dict[str, Any]) -> None:
-        today = date.today()
+        today = oggi_aziendale()
         ErrorManager.require(
             data["valido_dal"] > today,
             code=E_PROMO_RETROATTIVA,
@@ -484,7 +485,7 @@ class PromoArticoliService:
         current: dict[str, Any],
         data: dict[str, Any],
     ) -> None:
-        today = date.today()
+        today = oggi_aziendale()
         cur_dal = current["valido_dal"]
         cur_al = current["valido_al"]
 

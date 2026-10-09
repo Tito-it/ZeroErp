@@ -63,7 +63,7 @@ _RICERCA_CLIENTI = RicercaFull(
 # `execute_dynamic_insert` (2026-09-26).
 # ⚠️ `stato_cliente_id` e `data_attivazione` ci sono perche' il BB fa passare
 #    la whitelist anche alle colonne delle `espressioni`: le scrivono le
-#    espressioni di `create_cliente` (AT, `CURRENT_DATE`), e se arrivassero
+#    espressioni di `create_cliente` (AT, `fn_data_operativa()`), e se arrivassero
 #    ANCHE fra i valori il BB rifiuterebbe (due risposte alla stessa domanda)
 #    — non puo' sceglierle il chiamante.
 # ⛔ Sei chiavi tolte il 2026-08-29 (I0/I8 del brief
@@ -206,7 +206,7 @@ class ClientiRepository:
     #        default o un trigger per i campi NOT NULL rimanenti.
     #        ⭐ BB core `execute_dynamic_insert` (2026-09-26): stato AT e data
     #        di attivazione sono `espressioni` letterali (sottoquery su un
-    #        codice fisso, `CURRENT_DATE`), le altre colonne passano la
+    #        codice fisso, `fn_data_operativa()`), le altre colonne passano la
     #        whitelist RIGIDA `_CLIENTE_CREATE_ALLOWED` — fuori lista e'
     #        `RuntimeError`, prima era uno scarto silenzioso. Le chiavi le
     #        sceglie il service per NOME (`crea_cliente`), non il client.
@@ -221,7 +221,7 @@ class ClientiRepository:
                 "stato_cliente_id": (
                     "(SELECT id FROM config.stati_cliente WHERE codice_interno = 'AT')"
                 ),
-                "data_attivazione": "CURRENT_DATE",
+                "data_attivazione": "(SELECT script.fn_data_operativa())",
             },
         )
         return riga["id"]

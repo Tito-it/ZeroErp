@@ -221,7 +221,7 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # Guard DB transizione stato contratti (trgfn_contratti_a10_guard_
     # transizione_stato, landed 2026-04-26). Rifiuta transizioni non
     # ammesse: DRAFT->ATTIVO consentita; ATTIVO->CESSATO consentita
-    # SOLO con valido_al < CURRENT_DATE; CESSATO terminale; altre vietate.
+    # SOLO con valido_al < oggi; CESSATO terminale; altre vietate.
     # Il service applicativo ha la stessa regola fail-safe data-driven:
     # se l'utente sceglie data futura nel dialog "Cessa contratto", il
     # service NON chiama update_stato (cessazione programmata) — il job

@@ -17,6 +17,21 @@ import { registerUserScopedResetter } from './pinia-plugins/auto-reset'
 export const SUPPORTED_LOCALES = ['it', 'en']
 export const DEFAULT_LOCALE = 'it'
 
+// La locale `Intl` (BCP 47) di ogni lingua UI: quella che si passa a
+// `toLocaleDateString` e `Intl.DateTimeFormat` per nomi di giorni e mesi.
+// Estratta il 2026-10-09 (regola del 2, ok Tid): `AppTopbar` e `ProcessoDrawer`
+// scrivevano ognuno `locale === 'it' ? 'it-IT' : 'en-GB'`. Una lingua nuova in
+// `SUPPORTED_LOCALES` si aggiunge anche qui.
+const _INTL_LOCALE = { it: 'it-IT', en: 'en-GB' }
+
+/**
+ * @param {string} lingua - lingua UI (`locale.value` di vue-i18n), es. 'it'
+ * @returns {string} - es. 'it-IT'; la lingua di default se non e' nota
+ */
+export function intlLocale(lingua) {
+  return _INTL_LOCALE[lingua] ?? _INTL_LOCALE[DEFAULT_LOCALE]
+}
+
 // userId corrente per la risoluzione delle chiavi user-scoped. Aggiornato
 // da `syncUserLanguage(userId)` al login. Null = "device default".
 let _currentUserId = null

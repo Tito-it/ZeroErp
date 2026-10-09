@@ -20,7 +20,7 @@ import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useLookupCodici } from '../../core/composables/useLookupCodici'
 import { createConversioneUom, updateConversioneUom } from '../api/catalogo'
 import { useUomConversioniStore } from '../stores/uomConversioni'
-import { parseIsoDate, toDateString } from '../../core/utils/date'
+import { parseIsoDate, toDateString, oggiAziendale } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import AttivoTag from '../../core/components/AttivoTag.vue'
@@ -123,12 +123,8 @@ watch(currentTipoUomId, (tipoId) => {
   }
 })
 
-function todayLocalDate() {
-  return parseIsoDate(toDateString(new Date()))
-}
-
 watch(() => form.value.valido_dal_sempre, (sempre) => {
-  form.value.valido_dal = sempre ? parseIsoDate(ALWAYS_VALID_FROM) : todayLocalDate()
+  form.value.valido_dal = sempre ? parseIsoDate(ALWAYS_VALID_FROM) : oggiAziendale()
 })
 
 // --- Inserimento nuova conversione ---

@@ -207,7 +207,7 @@ class ConfirmAndSendTests(TestCase):
         repo = MockRepo.return_value
         dispatch = MockDispatch.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
-        repo.resolve_account.return_value = _MOCK_ACCOUNT
+        dispatch.account_di_invio.return_value = _MOCK_ACCOUNT
         repo.update_outbox_stato.return_value = True
         repo.update_log_outbox_link.return_value = None
         repo.copy_allegati_to_log.return_value = 0
@@ -240,7 +240,7 @@ class ConfirmAndSendTests(TestCase):
         repo = MockRepo.return_value
         dispatch = MockDispatch.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
-        repo.resolve_account.return_value = _MOCK_ACCOUNT
+        dispatch.account_di_invio.return_value = _MOCK_ACCOUNT
         repo.update_outbox_stato.return_value = True
         repo.copy_allegati_to_log.return_value = 0
         dispatch.send_raw.return_value = (99, True)
@@ -267,7 +267,7 @@ class ConfirmAndSendTests(TestCase):
             **_MOCK_OUTBOX_DRAFT, "ambito": "OPERATORE", "creato_da_user_id": 42,
             "emittente_fiscale_id": 7, "allegati": allegati,
         }
-        repo.resolve_account.return_value = _MOCK_ACCOUNT
+        dispatch.account_di_invio.return_value = _MOCK_ACCOUNT
         dispatch.send_raw.return_value = (99, True)
         dispatch.canale_invio.return_value = CANALE_SMTP
 
@@ -282,13 +282,14 @@ class ConfirmAndSendTests(TestCase):
     # ⛔ READY si committa subito e `cancel_draft` accetta solo DRAFT: con
     #    l'account cercato dopo READY la bozza restava bloccata, ne' rinviabile
     #    ne' annullabile. Il rifiuto deve arrivare prima di toccare lo stato.
-    @patch(_DISPATCH)
+    # ⭐ Il dispatcher qui e' VERO (finto solo il suo repository): si prova la
+    #    regola di `account_di_invio`, non un rifiuto fabbricato dal mock.
+    @patch("apps.core.services.email_service.EmailRepository")
     @patch(_REPO)
-    def test_senza_account_la_bozza_resta_draft(self, MockRepo, MockDispatch):
+    def test_senza_account_la_bozza_resta_draft(self, MockRepo, MockDispatchRepo):
         repo = MockRepo.return_value
-        dispatch = MockDispatch.return_value
         repo.get_outbox.return_value = _MOCK_OUTBOX_DRAFT
-        repo.resolve_account.return_value = None
+        MockDispatchRepo.return_value.resolve_account.return_value = None
 
         with self.assertRaises(ServiceError) as ctx:
             EmailOutboxService().confirm_and_send(10)
@@ -297,7 +298,7 @@ class ConfirmAndSendTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_EMAIL_ACCOUNT_NON_CONFIGURATO")
         self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 500)
         repo.update_outbox_stato.assert_not_called()
-        dispatch.send_raw.assert_not_called()
+        MockDispatchRepo.return_value.insert_log.assert_not_called()
 
     # Scopo: Verifica che conferma di bozza non-DRAFT lanci errore.
     @patch(_DISPATCH)

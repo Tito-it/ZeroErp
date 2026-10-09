@@ -402,6 +402,9 @@ class SoggettiRuoliView(DomainAPIView):
     @extend_schema(
         request=inline_serializer(name="RuoloAssignReq", fields={
             "codice_ruolo": serializers.CharField(),
+            # Indirizzi DEL RUOLO (stessa forma della creazione soggetto): per i
+            # ruoli con indirizzi obbligatori (CL, FO, GE) sono necessari.
+            "indirizzi": serializers.ListField(child=serializers.DictField(), required=False),
         }),
         responses={200: inline_serializer(name="RuoloAssignResp", fields={"data": serializers.DictField()})},
     )

@@ -47,7 +47,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.core.api.payload_validators import corpo_oggetto, optional_int, parse_list_params
+from apps.core.api.payload_validators import corpo_oggetto, optional_int, parse_list_params, qp_iso_date_optional
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_allegati_storage import E_EMAIL_OP, percorso_allegato
@@ -450,8 +450,8 @@ class EmailLogOperatoreListView(DomainAPIView):
             search=p["search"],
             stato=qp.get("stato") or None,
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
-            data_da=qp.get("data_da") or None,
-            data_a=qp.get("data_a") or None,
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],

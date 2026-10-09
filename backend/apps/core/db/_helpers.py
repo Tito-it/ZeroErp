@@ -7,6 +7,7 @@ import logging
 import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
+from datetime import date
 from types import MappingProxyType
 from typing import Any
 
@@ -105,6 +106,43 @@ def jsonb_out(value: Any) -> Any:
     if isinstance(value, str):
         return json.loads(value)
     return value
+
+
+# Il nome di colonna (con alias facoltativo) che `predicato_giorno_operativo`
+# accetta: finisce interpolato nell'SQL, quindi si ferma qui tutto il resto.
+_COLONNA_ISTANTE = re.compile(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?")
+
+
+# Scopo: IL FILTRO PER GIORNO su una colonna ISTANTE (`timestamptz`): «la
+#        colonna cade nei giorni da `da` ad `a`, inclusi» — nel fuso
+#        dell'AZIENDA, non della sessione. Ritorna `(sql, params)`: un
+#        frammento da mettere in AND e i suoi parametri, nell'ordine.
+#        Brief un-solo-fuso-aziendale B-4 (decisione di Tid, 2026-10-09).
+#
+#        ⭐ I confini li calcola il DB (`script.fn_inizio_giorno_operativo`,
+#        sede unica del fuso): `col >= inizio(da) AND col < inizio(a + 1)`.
+#        La funzione sta sui CONFINI e non sulla colonna, cosi' il predicato
+#        resta servito dall'indice sulla colonna.
+#        ⭐ UNA forma per ogni sede: l'SQL e' costante (non dipende da quali
+#        filtri ci sono), con la guardia `%s::date IS NULL OR …`. Django lega i
+#        parametri lato client, quindi il planner vede un letterale e la
+#        guardia si semplifica: col valore resta il solo confronto (indice),
+#        senza valore il ramo sparisce.
+#        ⛔ MAI `col >= %s::date` (la mezzanotte della SESSIONE, UTC), mai
+#        `col::date` (il giorno della sessione, e niente indice), mai il `+1
+#        giorno` calcolato in Python: sono le quattro forme che questo BB ritira.
+# ⚠️ Per una colonna `date` confrontata con una data non serve: non ha il
+#    difetto (decisione 2 del brief). Serve dove la colonna e' un istante.
+def predicato_giorno_operativo(
+    colonna: str, da: date | None, a: date | None,
+) -> tuple[str, list[date | None]]:
+    if not _COLONNA_ISTANTE.fullmatch(colonna):
+        raise ValueError(f"colonna non ammessa nel filtro per giorno: {colonna!r}")
+    sql = (
+        f"(%s::date IS NULL OR {colonna} >= script.fn_inizio_giorno_operativo(%s::date))"
+        f" AND (%s::date IS NULL OR {colonna} < script.fn_inizio_giorno_operativo(%s::date + 1))"
+    )
+    return sql, [da, da, a, a]
 
 
 def escape_ilike(value: str) -> str:

@@ -18,6 +18,7 @@
 #   5. [DB vero] una lettura reale: JOIN col catalogo, colonne per nome,
 #      `context` dict, `tx_id` stringa
 # ------------------------------------------------------------
+from datetime import date
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -99,7 +100,8 @@ class ErrorLogRepositoryComposizioneTests(SimpleTestCase):
         filtri = [
             "vendite", "vendite", None, None, "E_X", "E_X",
             "123e4567-e89b-12d3-a456-426614174000", "123e4567-e89b-12d3-a456-426614174000",
-            "2026-09-01", "2026-09-01", "2026-09-19", "2026-09-19",
+            # Le date arrivano ISO e vanno al BB del giorno aziendale come `date`.
+            date(2026, 9, 1), date(2026, 9, 1), date(2026, 9, 19), date(2026, 9, 19),
         ]
         # La PAGINA e' la prima execute.
         sql, params = cursor.execute.call_args_list[0].args

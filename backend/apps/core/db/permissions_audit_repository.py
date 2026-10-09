@@ -9,10 +9,11 @@
 from __future__ import annotations
 
 import math
+from datetime import date
 from typing import Any
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.db._helpers import fetch_paged_with_total
+from apps.core.db._helpers import fetch_paged_with_total, predicato_giorno_operativo
 
 
 # Sub-query "indiretta" per filtrare profili_accesso_aree/_azioni storici per
@@ -89,8 +90,8 @@ class PermissionsAuditRepository:
         *,
         auth_user_id: int,
         uo_id: int | None = None,
-        data_da: str | None = None,
-        data_a: str | None = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
         tabella: str | None = None,
         page: int = 1,
         page_size: int = DEFAULT_LIMIT,
@@ -139,15 +140,12 @@ class PermissionsAuditRepository:
         sql += "snapshot, tx_id, COUNT(*) OVER() AS total_count "
         sql += "FROM events WHERE true "
 
-        # Intervallo `[da, a + 1 giorno)`: `data_a` e' un GIORNO e lo include
-        # tutto. Il confronto `<= a::timestamptz` si fermava alla mezzanotte
-        # d'inizio, e gli eventi del giorno indicato sparivano (F-4).
-        if data_da:
-            sql += "AND valid_from >= %s::date "
-            params.append(data_da)
-        if data_a:
-            sql += "AND valid_from < %s::date + interval '1 day' "
-            params.append(data_a)
+        # `data_a` e' un GIORNO e lo include tutto (il `<= a::timestamptz` si
+        # fermava alla mezzanotte d'inizio, F-4); e i giorni sono quelli
+        # dell'AZIENDA, non della sessione (BB, dal 2026-10-09).
+        giorno_sql, giorno_params = predicato_giorno_operativo("valid_from", data_da, data_a)
+        sql += f"AND {giorno_sql} "
+        params.extend(giorno_params)
 
         sql += "ORDER BY valid_from DESC, tx_id DESC "
 

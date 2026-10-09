@@ -42,7 +42,7 @@ import { STATUS_ICONS } from '../../core/constants'
 import { listAreeFunzionali, listAzioniProcesso, getModelOverridesLookup } from '../api/amministrazione'
 import { LIVELLO_ACCESSO, buildLivelloOptions, getLivelloLabel, getLivelloSeverity } from '../constants'
 import { areaConsenteAzione, livelloConTettoArea } from '../tettoArea'
-import { toDateString } from '../../core/utils/date'
+import { oggiAziendaleString } from '../../core/utils/date'
 import MatriceOverride from '../../core/components/MatriceOverride.vue'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
 import Select from 'primevue/select'
@@ -252,7 +252,7 @@ const senzaAnteprima = computed(() =>
 // CURRENT_DATE` a DB). Le date arrivano `YYYY-MM-DD`: il confronto fra
 // stringhe e' quello fra date.
 function _validoOggi(o) {
-  const oggi = toDateString(new Date())
+  const oggi = oggiAziendaleString()
   return (!o.valido_dal || o.valido_dal <= oggi) && (!o.valido_al || o.valido_al >= oggi)
 }
 

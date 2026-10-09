@@ -10,6 +10,7 @@
 #        funzioni per creare/gestire pratiche legate ai propri eventi.
 # ------------------------------------------------------------
 
+from datetime import date, datetime
 from typing import Any, NoReturn
 
 from django.db import DatabaseError, IntegrityError, transaction
@@ -516,8 +517,8 @@ def cerca_pratiche(
     priorita_id: int | None = None,
     risorsa_umana_id: int | None = None,
     search: str | None = None,
-    data_da: str | None = None,
-    data_a: str | None = None,
+    data_da: date | None = None,
+    data_a: date | None = None,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str = "data_insert",
@@ -1129,7 +1130,7 @@ def sospendi_pratica(
     motivo: str,
     *,
     data_riattivazione_prevista: str | None = None,
-    data_inizio: str | None = None,
+    data_inizio: datetime | None = None,
 ) -> int:
     ErrorManager.require(
         pratica_id > 0,
@@ -1186,7 +1187,7 @@ def sospendi_pratica(
 #   Il trigger DB ripristina gli stati dei flussi, cambia stato pratica ad APERTA
 #   e registra nel giornale.
 @transaction.atomic()
-def riattiva_pratica(pratica_id: int, *, data_fine: str | None = None) -> None:
+def riattiva_pratica(pratica_id: int, *, data_fine: datetime | None = None) -> None:
     ErrorManager.require(
         pratica_id > 0,
         code="E_INVALID_ID",

@@ -47,7 +47,7 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { useNotify } from '../../core/composables/useNotify'
 import { DATE_FORMAT } from '../../core/constants'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, oggiAziendale } from '../../core/utils/date'
 import { creaDistinta } from '../api/pagamenti'
 import { useCanaliIncasso } from '../composables/useCanaliIncasso'
 import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
@@ -92,7 +92,7 @@ function defaultForm() {
     // ⚠️ Non e' una scelta di riga: e' l'emittente della sessione, pre-popolato
     //    come in ogni drawer documento (`ContrattoDrawer`, `OrdiniDrawer`…).
     emittente_fiscale_id: defaultEmittenteId.value ?? null,
-    data_contabile: new Date(),
+    data_contabile: oggiAziendale(),
     importo_dichiarato: null,
     note: '',
   }

@@ -37,8 +37,9 @@ per restituire dati pronti per la UI con display fields. La POST delega a
     prima inviato dalla dashboard ma ignorato dalla view)
   - `risorsa_umana_id` (int, opzionale) — filtro operatore assegnato
   - `search` (string, opzionale) — ricerca ILIKE su codice, descrizione, ragione_sociale soggetto
-  - `data_da` (string ISO date, opzionale) — filtro data inserimento da (>=)
-  - `data_a` (string ISO date, opzionale) — filtro data inserimento a (<= fine giorno)
+  - `data_da` (string ISO date, opzionale) — filtro data inserimento, dal giorno indicato
+  - `data_a` (string ISO date, opzionale) — filtro data inserimento, fino al giorno indicato **incluso**
+  - i giorni sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09); una data malformata e' `400 E_VALIDATION_INPUT` (prima arrivava al DB come stringa: `500`)
   - `limit` (int, opzionale) — righe per pagina, default `50`, max `200`
   - `offset` (int, opzionale) — offset paginazione, default `0`
   - `order_by` (string, opzionale) — colonna ordinamento, default `data_insert`

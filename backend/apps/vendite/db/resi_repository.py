@@ -624,7 +624,7 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         # BB `execute_dynamic_insert`: `data` None si omette (`skip_none`) e
-        # vale il DEFAULT CURRENT_DATE; chiavi letterali del metodo.
+        # vale il DEFAULT `fn_data_operativa()`; chiavi letterali del metodo.
         return execute_dynamic_insert(
             "vendite.resi",
             {
@@ -770,7 +770,7 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
     ) -> int:
         sql = (
             "SELECT vendite.fn_genera_ddt_riconsegna("
-            "%s, %s::jsonb, COALESCE(%s, CURRENT_DATE))"
+            "%s, %s::jsonb, COALESCE(%s, (SELECT script.fn_data_operativa())))"
         )
         return self._chiama_madre_riconsegna(
             sql, reso_id, righe, extra=[data],

@@ -188,7 +188,7 @@ class TipiRuoloTipiIndirizzoRepository:
         # ⭐ BB core `execute_dynamic_insert` (2026-09-26). `allowed=None`
         #    perche' le chiavi sono i kwargs LETTERALI di questo metodo;
         #    `skip_none=True` omette gli opzionali None (DEFAULT del DB, come
-        #    prima); `valido_dal` e' l'espressione letterale `CURRENT_DATE`.
+        #    prima); `valido_dal` e' l'espressione letterale dell'oggi aziendale (`fn_data_operativa()`).
         riga = execute_dynamic_insert(
             "config.tipi_ruolo_tipi_indirizzo",
             {
@@ -200,7 +200,7 @@ class TipiRuoloTipiIndirizzoRepository:
             },
             allowed=None,
             skip_none=True,
-            espressioni={"valido_dal": "CURRENT_DATE"},
+            espressioni={"valido_dal": "(SELECT script.fn_data_operativa())"},
         )
         return int(riga["id"])
 
@@ -219,7 +219,7 @@ class TipiRuoloTipiIndirizzoRepository:
         if "attivo" in fields:
             extra_set = (
                 "valido_al = NULL" if bool(fields["attivo"])
-                else "valido_al = CURRENT_DATE"
+                else "valido_al = (SELECT script.fn_data_operativa())"
             )
         return execute_dynamic_update(
             "config.tipi_ruolo_tipi_indirizzo", record_id, fields,

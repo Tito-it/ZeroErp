@@ -648,7 +648,7 @@ class DdtRepository(
         righe_json = json.dumps(righe) if righe is not None else None
         sql = (
             "SELECT vendite.fn_genera_ddt_da_ordine("
-            "%s, %s::jsonb, COALESCE(%s, CURRENT_DATE))"
+            "%s, %s::jsonb, COALESCE(%s, (SELECT script.fn_data_operativa())))"
         )
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(ordine_id), righe_json, data])

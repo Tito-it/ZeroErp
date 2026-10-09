@@ -21,6 +21,7 @@ Indice test eseguiti:
 9) ConfirmTests.test_empty_password_raises
 10) HelperTests.test_get_user_uo_id
 11) ConfirmViewTests.test_reset_riuscito_azzera_i_tentativi_nella_transazione
+12) ConfirmViewTests.test_l_email_di_conferma_scrive_l_ora_dell_azienda — B-6 un-solo-fuso-aziendale
 """
 
 from unittest import TestCase
@@ -238,6 +239,48 @@ class ConfirmViewTests(TestCase):
         mock_repo.azzera_tentativi_credenziale.assert_called_once_with(42)
         nomi = [c[0] for c in ordine.mock_calls]
         self.assertEqual(nomi[:4], ["entra", "apply", "azzera", "esce"])
+
+    # Scopo: B-6. L'ora del cambio nell'email e' quella dell'AZIENDA: le 23:30
+    # UTC del 14 settembre sono le 01:30 del 15 a Roma. Fino al 2026-10-09
+    # l'email scriveva l'ora UTC.
+    @patch("apps.core.api.throttling.ConfermaTokenRateThrottle.allow_request", return_value=True)
+    @patch("apps.core.api.password_reset_views.transaction")
+    @patch("apps.core.api.password_reset_views.apply_new_password")
+    @patch("apps.core.services.auth_helpers.validate_password")
+    @patch("apps.core.api.password_reset_views.validate_and_extract_token", return_value=(42, {}))
+    @patch(_USER_MODEL)
+    @patch(_EMAIL_SVC)
+    @patch(_AUTH_REPO)
+    @patch(_GET_IP, return_value="192.168.1.1")
+    @patch(_TOKEN_SVC)
+    def test_l_email_di_conferma_scrive_l_ora_dell_azienda(
+        self, _token, _ip, mock_repo, mock_email, MockUser, _validate_token,
+        _validate_pw, _apply, _tx, _thr,
+    ):
+        from datetime import UTC, datetime
+
+        from rest_framework.test import APIRequestFactory
+
+        from apps.core.api.password_reset_views import PasswordResetConfirmView
+        from apps.core.services.fuso_aziendale import fuso_aziendale_forzato
+
+        MockUser.objects.filter.return_value.first.return_value = MagicMock(
+            id=42, email="m@x.it", first_name="M", username="m",
+        )
+        mock_repo.get_unita_organizzativa_id.return_value = None
+        request = APIRequestFactory().post(
+            "/api/v1/auth/password-reset-confirm/",
+            {"token": "tok", "new_password": "Nuova-2026!x", "new_password_confirm": "Nuova-2026!x"},
+            format="json",
+        )
+        with fuso_aziendale_forzato("Europe/Rome"), patch(
+            "django.utils.timezone.now", return_value=datetime(2026, 9, 14, 23, 30, tzinfo=UTC),
+        ):
+            response = PasswordResetConfirmView.as_view()(request)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        variabili = mock_email.send_email.call_args.kwargs["variabili"]
+        self.assertEqual(variabili["data_cambio"], "15-09-2026 01:30")
 
 
 class HelperTests(TestCase):

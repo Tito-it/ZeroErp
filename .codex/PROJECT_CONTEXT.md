@@ -217,10 +217,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
-- **Type checker del backend (D2-b): L0-L3 chiusi, committati** (`work-in-progress/piano-be-type-checker.md`;
+- **Type checker del backend (D2-b): chiuso il 2026-10-09** (`work-done/piano-be-type-checker.md`;
   `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
   `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`
-  §mypy). Registro **620 → 2** il 2026-10-09; gli envelope JSON sono `dict[str, Any]`; BB
+  §mypy). Registro **620 → 0** il 2026-10-09; gli envelope JSON sono `dict[str, Any]`; BB
   `utente_autenticato`/`utente_autenticato_id`. Trovati e corretti difetti veri (fra cui i 500 di riallinea/sblocca
   prezzo e l'alert scadenze listini sempre in 400). Chiuso il 2026-10-09
   `work-done/brief-db-riga-listino-propagata-dalla-commessa` (la riga di listino che ha dato il prezzo a una
@@ -228,15 +228,17 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA` in
   `brief-db-ritiro-codice-riga-gia-propagata`; e — decisione B di Tid, 2026-10-09 — la riga di listino si cita solo
   se il prezzo viene davvero da lì: il push non la scrive più, la provenienza dovrà viaggiare col prezzo dal
-  documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Restano due brief
-  al team DB, il BE attende: `brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C,
-  la generazione si ferma; ✅ DB chiuso il 2026-10-09 (applicato, pgTAP verdi): CHECK «finito» su tutte le 170
-  colonne numeric, `20261009-10…-18`, codice TECNICO `E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO`),
+  documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Chiuso il 2026-10-09
+  `work-done/brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C, la generazione
+  si ferma: CHECK «finito» su tutte le 170 colonne numeric, `20261009-10…-18`; il BE solleva il codice TECNICO
+  `E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO` col campo, registro mypy a 0). Resta aperto
   `brief-be-db-fe-un-solo-fuso-aziendale` (un solo fuso, quello dell'azienda; ✅ lato DB applicato il
   2026-10-09, pgTAP verdi: `fn_fuso_operativo`, confini del giorno, «oggi» aziendale ovunque, fase
-  `70_dati_sistema`; restano BE e FE: i filtri per giorno usano ancora il giorno UTC e
-  `test_giornale_trasversale_perimetro` è rosso fra le 00:00 e le 02:00). Da decidere: gli
-  stub `types-bleach`/`types-openpyxl`.
+  `70_dati_sistema`; BE L1-L4 fatti il 2026-10-09: BB `fuso_aziendale`, `TIME_ZONE = 'UTC'`, filtri per giorno
+  col BB `predicato_giorno_operativo`, niente `CURRENT_DATE`/`date.today()` nel BE, log in UTC con `Z`, ruff
+  `DTZ`; timer systemd con ExecCondition (T-9); FE L5 fatto lo stesso giorno: `date.js` nel fuso dell'azienda, vitest a
+  Pago Pago; resta T-5 lato Django, da concordare col team DB). Stub `types-bleach`/`types-openpyxl`
+  installati il 2026-10-09 (ok di Tid): mypy controlla anche le chiamate a quelle due librerie.
 - **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,
   archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su
   `dbops.presidi`; il pannello mostra azione → significato → a chi tocca, il digest raggruppa per chi agisce.
@@ -439,12 +441,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `vendite/tests/db/test_ricerca_liste_db` costruisce solo la riga standalone
   (la fixture di una BoM con prezzo bundle è pesante). Su quella gamba la
   ricerca non ha un rosso che la presidi
-- **Il giornale trasversale filtra la data nel fuso della connessione (UTC)**
-  (BE, stessa origine, §10): `vendite_repository.list_giornale_trasversale`
-  scrive `quando >= %s::date`, quindi un evento fra mezzanotte e le 2 ora
-  italiana finisce sotto il giorno prima, e
-  `test_il_giornale_mostra_solo_l_emittente_di_chi_legge` va rosso se gira in
-  quella fascia. Da decidere se e dove aprirlo
 - **La matrice di `stato_lotto` in due sedi che dissentono** (BE + DB,
   ereditata il 2026-09-23 dalla chiusura di
   `work-done/brief-db-annullamento-chiude-la-vita.md`, §9.3): il BE ammette

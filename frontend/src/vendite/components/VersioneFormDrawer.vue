@@ -10,7 +10,7 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { useListiniStore } from '../stores/listini'
 import { createVersione } from '../api/listini'
 import { getVersioneNewDefaults } from '../api/formDefaults'
-import { toDateString, addDaysToToday } from '../../core/utils/date'
+import { toDateString, addDaysToToday, parseIsoDate } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import InputText from 'primevue/inputtext'
@@ -57,8 +57,8 @@ async function loadDefaults() {
   // execute() ritorna body.data unwrappato.
   form.value = {
     codice_versione: res.default_codice_versione || '',
-    valido_dal: res.default_valido_dal ? new Date(res.default_valido_dal + 'T00:00:00') : null,
-    valido_al: res.default_valido_al ? new Date(res.default_valido_al + 'T00:00:00') : null,
+    valido_dal: parseIsoDate(res.default_valido_dal),
+    valido_al: parseIsoDate(res.default_valido_al),
   }
   beExistingDrafts.value = Array.isArray(res.existing_drafts) ? res.existing_drafts : []
 }

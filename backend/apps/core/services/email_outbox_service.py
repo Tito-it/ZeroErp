@@ -53,7 +53,6 @@ E_EMAIL_ALLEGATO_NON_BOZZA = "E_EMAIL_ALLEGATO_NON_BOZZA"
 #    bozze degli altri.
 E_EMAIL_BOZZA_NOT_FOUND = "E_EMAIL_BOZZA_NOT_FOUND"
 E_EMAIL_NON_BOZZA = "E_EMAIL_NON_BOZZA"
-E_EMAIL_ACCOUNT_NON_CONFIGURATO = "E_EMAIL_ACCOUNT_NON_CONFIGURATO"
 
 ALLOWED_MIME_TYPES = frozenset({
     "application/pdf",
@@ -203,16 +202,7 @@ class EmailOutboxService:
         #    Fino al 2026-09-28 l'ordine era inverso, e una bozza senza account
         #    restava READY — ne' rinviabile ne' annullabile (analisi difetti
         #    doc API core, F-1).
-        account = self._repo.resolve_account(outbox.get("unita_organizzativa_id"))
-        # ⚠️ 500, non 400: manca un pezzo di configurazione e chi invia non
-        #    puo' rimediare (brief-db-codici-non-trovato-email-e-permessi §4).
-        ErrorManager.require(
-            account is not None,
-            code=E_EMAIL_ACCOUNT_NON_CONFIGURATO,
-            message=USER_MESSAGE_FALLBACK[E_EMAIL_ACCOUNT_NON_CONFIGURATO],
-            detail=f"unita_organizzativa_id={outbox.get('unita_organizzativa_id')}",
-        )
-        assert account is not None
+        account = self._dispatch.account_di_invio(outbox.get("unita_organizzativa_id"))
 
         # Porta a READY
         self._repo.update_outbox_stato(outbox_id, "READY")

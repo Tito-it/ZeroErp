@@ -39,6 +39,7 @@
 23. test_senza_testo_resta_la_sola_nota
 24. test_i_presidi_accesi_si_raggruppano_per_chi_agisce   ⭐ 06-10
 25. test_ogni_chi_agisce_ha_il_suo_titolo
+26. RigaCompattaTests.test_un_istante_della_riga_si_scrive_nell_ora_dell_azienda   B-6 un-solo-fuso
 """
 
 from __future__ import annotations
@@ -47,8 +48,7 @@ import re
 from typing import Any
 from unittest.mock import patch
 
-from django.test import SimpleTestCase, override_settings
-from django.utils import timezone
+from django.test import SimpleTestCase
 
 from apps.core.db.presidi_repository import (
     CADENZA_GIORNALIERA,
@@ -65,6 +65,8 @@ from apps.core.db.presidi_repository import (
     RigaPresidio,
 )
 from apps.core.services import presidi_digest
+from apps.core.services.fuso_aziendale import fuso_aziendale_forzato
+from apps.core.services.locale_formatters import in_ora_locale
 from apps.core.services.presidi_digest import (
     TITOLI_CHI_AGISCE,
     TITOLO_CHI_AGISCE_ASSENTE,
@@ -641,9 +643,9 @@ class PresidiDigestTests(SimpleTestCase):
     # 20. La testata era in ora locale e le corse in UTC («cosmesi» nella nota
     #     del team DB): il giornale risponde nel fuso della connessione, cioe'
     #     UTC. Ora tutte le date del messaggio passano dallo stesso punto, nel
-    #     fuso di `TIME_ZONE` — non in quello dell'host, che su un'unit systemd
-    #     puo' mancare.
-    @override_settings(TIME_ZONE="Europe/Rome")
+    #     fuso dell'azienda — non in quello dell'host, che su un'unit systemd
+    #     puo' mancare, ne' in `TIME_ZONE` ('UTC', neutro dal 2026-10-09).
+    @fuso_aziendale_forzato("Europe/Rome")
     def test_le_date_delle_corse_sono_in_ora_locale_come_la_testata(self) -> None:
         repo = _RepoFinto(
             [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
@@ -664,7 +666,7 @@ class PresidiDigestTests(SimpleTestCase):
             self.assertNotIn("05:00:12", corpo)
         # E la testata: stesso fuso, senza secondi (e' un'ora di lettura, non
         # una corsa da distinguere).
-        testata = timezone.localtime(digest.quando).strftime("%d-%m-%Y %H:%M")
+        testata = in_ora_locale(digest.quando).strftime("%d-%m-%Y %H:%M")
         self.assertIn(testata, testo)
 
     # 21. `job_run_log.ok` e' nullable e nessun CHECK lo lega a `ended_at`: una
@@ -768,3 +770,19 @@ class PresidiDigestTests(SimpleTestCase):
     #     CHECK (`test_presidi_catalogo`).
     def test_ogni_chi_agisce_ha_il_suo_titolo(self) -> None:
         self.assertEqual(set(TITOLI_CHI_AGISCE), set(CHI_AGISCE))
+
+
+class RigaCompattaTests(SimpleTestCase):
+    """Le righe di esempio di una vista nel messaggio (B-6)."""
+
+    # 26. Un istante della riga si scrive nell'ora dell'azienda e nel formato
+    #     del BB, come il resto del messaggio: fino al 2026-10-09 era `str()`,
+    #     cioe' UTC con `+00:00`.
+    @fuso_aziendale_forzato("Europe/Rome")
+    def test_un_istante_della_riga_si_scrive_nell_ora_dell_azienda(self) -> None:
+        from datetime import UTC, datetime
+
+        riga = {"id": 7, "quando": datetime(2026, 9, 14, 23, 30, 5, tzinfo=UTC), "nota": None}
+        self.assertEqual(
+            presidi_digest._riga_compatta(riga), "id=7, quando=15-09-2026 01:30:05, nota=—",
+        )
