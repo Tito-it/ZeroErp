@@ -5,7 +5,8 @@
 > **Origine:** revisione del codice non committato del 2026-10-08 (tetto di
 > intervallo in `qp_int_optional`, `api.md` §Query params). **Decisione di Tid
 > (2026-10-08):** il limite è un parametro di configurazione, valore `2020-01-01`.
-> **Stato:** ⏳ da applicare a DB. Il BE (§3) parte quando il parametro c'è.
+> **Stato:** ✅ R-1 applicato a DB il 2026-10-09 (§5), pgTAP verde. ⏳ Tocca al BE
+> (§4): il parametro c'è.
 
 ## 1. Cosa si chiede
 
@@ -60,3 +61,48 @@ di dominio. Per questo va in configurazione e non in una costante nel codice.
   Fuori da questo → `E_VENDITE_VALIDATION`, con un detail che nomina la data minima.
 * Il tetto `integer` già messo in `qp_int_optional` resta: è il tipo, non il dominio.
 * Test: il caso sopra il pavimento dà 400, e il caso esattamente sul pavimento passa.
+
+## 5. Esito DB (2026-10-09, `dev/db-tid`)
+
+**Cosa è stato scritto.**
+
+* Riga **id 60** `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA = 2020-01-01` in coda a
+  `80_data/sql/config/parameters_vendite_defaults.csv`. Il codice proposto resta:
+  segue la convenzione della famiglia (`VENDITE_<area>_<cosa>`).
+  Nessun changeSet nuovo: il mirror `20260430-62-upsert-parameters-vendite-defaults`
+  è `runOnChange` + `validCheckSums: ANY` e si risveglia al cambio del file.
+* pgTAP `db/pgtap/config/test-parameter-vendite-dashboard-ritardo-data-minima-v1.sql`
+  (3 test): la riga c'è, il valore è in forma ISO ed è una data valida.
+
+**Le due decisioni del §3.**
+
+* **D-1 — Nessun override.** È un limite tecnico di consultazione, uguale per
+  tutti: la descrizione lo dichiara come per `SYSTEM_FUSO_ORARIO`. ⚠️ **Per il BE:**
+  si legge il **default** (`config.parameters.default_value`), non la cascata di
+  `script.fn_get_parameter_full`. Nessun guard DB impedisce oggi una riga in
+  `config.parameter_overrides` su questo codice: leggendo il default, una riga
+  del genere resta senza effetto, e la regola regge senza un guard.
+* **D-2 — Nessun guard sul formato del valore.** Non esiste un guard per i
+  parametri di tipo data (su `config.parameters` c'è solo il dispatcher
+  FK-surrogata, che su questo codice non fa niente), e costruirne uno per un solo
+  codice non si giustifica. Il formato lo presidiano il pgTAP sul seed e il
+  lettore BE, che deve rifiutare un valore non ISO con un errore di
+  configurazione parlante, non con un 500 generico.
+
+**Prova pre-apply (dev, come `zeroerp_app`, in `ROLLBACK`).** Il CSV intero
+(13 righe) caricato in una tabella temporanea e riscritto con l'upsert per `id`:
+passa, e `default_value::date` dà `2020-01-01`. Id 60 libero sia nei CSV del repo
+(massimo 59, `login_attesa_max_secondi`) sia sul DB.
+
+⚠️ **Cosa cambia su dev al risveglio del mirror, oltre alla riga nuova.** Le 12
+righe sorelle hanno `storicizza = t` nel CSV e `f` sul DB: il mirror le riporta a
+`t`. Codice, valore e descrizione sono identici. È sicuro: il difetto per cui un
+UPDATE su un parametro con `storicizza = t` moriva nel trigger di storico
+(`parameters_id` contro `parameter_id`) è chiuso dal 2026-09-25
+(`brief-db-storico-colonna-fk-dei-trigger`). Il trigger del DB di sviluppo e
+`storico.parameters` usano tutti e due `parameters_id`, e l'upsert di prova è passato.
+
+**Applicato (2026-10-09, Tid).** Su dev il mirror `20260430-62` risulta `RERAN`
+in `databasechangelog`. La riga id 60 c'è, e le 12 sorelle sono a `storicizza = t`
+come previsto. Il pgTAP è verde. Lato DB non resta niente: il brief resta aperto
+solo per il §4 (BE).
