@@ -1,0 +1,108 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# dbops: LE VISTE LEGGONO IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3 (CURRENT_DATE) e D-5
+#   (istante -> giorno).
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   - CURRENT_DATE -> (SELECT script.fn_data_operativa()): la sottoquery
+#     scalare e' valutata una volta per istruzione, non per riga;
+#   - un timestamptz portato a giorno (::date, date_trunc) -> 
+#     script.fn_giorno_operativo(istante), nel fuso di SYSTEM_FUSO_ORARIO.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Colonne, nomi, tipi e ordine (le viste a valle non se ne accorgono).
+#   ⛔ security_invoker NON fa parte del corpo (pg_get_viewdef non lo
+#   stampa) e un CREATE OR REPLACE VIEW che non lo ripete lo AZZERA: ogni
+#   vista lo ripete com'e' oggi, anche nel rollback. Il corpo e' quello vivo,
+#   da pg_get_viewdef su zeroerp_ci il 2026-10-09, con le sole sostituzioni
+#   dette sopra.
+#
+# ── VISTE (1) ──────────────────────────────────────────────────
+#     - dbops.vw_bersagli_non_dichiarati (security_invoker=true)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261009-53-update-viste-giorno-dal-fuso-aziendale-dbops-mctit.yaml
+
+  - changeSet:
+      id: 20261009-53-update-viste-giorno-dal-fuso-aziendale-dbops
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        dbops: 1 viste leggono il giorno dell'azienda (fn_data_operativa,
+        fn_giorno_operativo) invece di quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: |
+              SELECT (SELECT count(*) FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind = 'v'
+                         AND n.nspname || '.' || c.relname IN ('dbops.vw_bersagli_non_dichiarati'))
+                   + (SELECT count(*) FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script'
+                         AND p.proname IN ('fn_data_operativa', 'fn_giorno_operativo'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_bersagli_non_dichiarati WITH (security_invoker=true) AS
+               SELECT m.m[1] AS tipo,
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END AS motivo,
+                  count(DISTINCT p.oid) AS n_funzioni,
+                  string_agg(DISTINCT (((n.nspname)::text || '.'::text) || (p.proname)::text), ', '::text ORDER BY (((n.nspname)::text || '.'::text) || (p.proname)::text)) AS funzioni
+                 FROM (((pg_proc p
+                   JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
+                   CROSS JOIN LATERAL regexp_matches(regexp_replace(p.prosrc, '--[^\n]*'::text, ''::text, 'g'::text), '''tipo''\s*,\s*''([A-Z][A-Z0-9_]{0,30})'''::text, 'g'::text) m(m))
+                   LEFT JOIN config.tipi_entita te ON ((te.codice = m.m[1])))
+                WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
+                         FROM pg_language
+                        WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~~ '%bersaglio%'::text) AND ((te.codice IS NULL) OR (te.obsoleto_dal <= (SELECT script.fn_data_operativa()))))
+                GROUP BY m.m[1],
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_bersagli_non_dichiarati WITH (security_invoker=true) AS
+               SELECT m.m[1] AS tipo,
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END AS motivo,
+                  count(DISTINCT p.oid) AS n_funzioni,
+                  string_agg(DISTINCT (((n.nspname)::text || '.'::text) || (p.proname)::text), ', '::text ORDER BY (((n.nspname)::text || '.'::text) || (p.proname)::text)) AS funzioni
+                 FROM (((pg_proc p
+                   JOIN pg_namespace n ON ((n.oid = p.pronamespace)))
+                   CROSS JOIN LATERAL regexp_matches(regexp_replace(p.prosrc, '--[^\n]*'::text, ''::text, 'g'::text), '''tipo''\s*,\s*''([A-Z][A-Z0-9_]{0,30})'''::text, 'g'::text) m(m))
+                   LEFT JOIN config.tipi_entita te ON ((te.codice = m.m[1])))
+                WHERE ((n.nspname <> ALL (ARRAY['pg_catalog'::name, 'information_schema'::name])) AND (p.prolang = ( SELECT pg_language.oid
+                         FROM pg_language
+                        WHERE (pg_language.lanname = 'plpgsql'::name))) AND (p.prosrc ~~ '%bersaglio%'::text) AND ((te.codice IS NULL) OR (te.obsoleto_dal <= CURRENT_DATE)))
+                GROUP BY m.m[1],
+                      CASE
+                          WHEN (te.codice IS NULL) THEN 'ASSENTE'::text
+                          ELSE 'OBSOLETO'::text
+                      END;

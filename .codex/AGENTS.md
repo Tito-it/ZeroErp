@@ -190,7 +190,7 @@ e muore in CI. Il perché e i casi reali sono in
 | --- | --- | --- |
 | `runOnChange: true` in `00_schema`/`20_code` (e `validCheckSums` al plurale) | 11.1 | `guardrail_run_on_change.py` |
 | cambiare un dato di `80_data` con un `UPDATE` invece che dal CSV | 11.2 | — |
-| una `preCondition` di `00_schema`/`20_code` sul contenuto di `80_data` | 11.4 | `guardrail_precondition_seed.py` |
+| una `preCondition` di `00_schema`/`20_code`/`70_dati_sistema` sul contenuto di `80_data` | 11.4 | `guardrail_precondition_seed.py` |
 | DDL o `preCondition` su un trigger generato da `ci_apply` | 11.5 | `guardrail_ddl_su_trigger_automazione.py` |
 | `GRANT` a un ruolo batch in un changeSet | 11.6 | `guardrail_grant_ruolo_batch.py` |
 | un seed di macchina non dichiarato (`context: dati_macchina`) | 11.7 | — |

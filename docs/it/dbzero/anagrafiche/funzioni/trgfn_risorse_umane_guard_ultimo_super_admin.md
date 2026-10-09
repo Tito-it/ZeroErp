@@ -34,7 +34,7 @@ BEGIN
 
     IF NOT (   (OLD.attivo AND NOT NEW.attivo)
             OR (OLD.valido_al IS NULL AND NEW.valido_al IS NOT NULL)
-            OR (OLD.valido_dal <= CURRENT_DATE AND NEW.valido_dal > CURRENT_DATE)
+            OR (OLD.valido_dal <= (SELECT script.fn_data_operativa()) AND NEW.valido_dal > (SELECT script.fn_data_operativa()))
             OR (OLD.soggetto_ruolo_id IS DISTINCT FROM NEW.soggetto_ruolo_id))
     THEN
         RETURN NULL;

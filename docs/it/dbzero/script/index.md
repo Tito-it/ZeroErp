@@ -90,6 +90,7 @@
 - [fn_esigibilita_iva](funzioni/fn_esigibilita_iva.md)
 - [fn_esigibilita_iva_documento](funzioni/fn_esigibilita_iva_documento.md)
 - [fn_fonte_porta_quantita](funzioni/fn_fonte_porta_quantita.md)
+- [fn_fuso_operativo](funzioni/fn_fuso_operativo.md)
 - [fn_generate_codice](funzioni/fn_generate_codice.md) — (latest review 04-02-26) * **Generazione di codici configurabili**   Costruisce un codice concatenando un **prefisso**, un **separatore** e una **parte numerica** formattata, letti da **`config.sistema_codici`** in base al `codice_interno` passato in input.
 - [fn_get_auth_user_id_for_email](funzioni/fn_get_auth_user_id_for_email.md)
 - [fn_get_auth_user_id_for_risorsa_umana](funzioni/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
@@ -144,6 +145,7 @@
 - [fn_get_user_permissions_map](funzioni/fn_get_user_permissions_map.md)
 - [fn_get_user_profile](funzioni/fn_get_user_profile.md) — - **Profilo utente completo in una chiamata** - **Payload JSONB stabile ed estendibile** - **Riuso delle funzioni di dominio** per soggetto e mappe permessi - **Riduzione query interne**: dalla revisione `20260410-16` la lettura di   `auth_user + identita_digitali + risorse_umane + lookup qualifica/UO`   viene eseguita in una sola `SELECT`
 - [fn_get_vie_discendenti](funzioni/fn_get_vie_discendenti.md) — (rev 2026-08-21)
+- [fn_giorno_operativo](funzioni/fn_giorno_operativo.md)
 - [fn_gruppi_di_commessa_nel_lotto](funzioni/fn_gruppi_di_commessa_nel_lotto.md) — (latest review 2026-09-08)
 - [fn_gruppi_trascinati_da_uscita](funzioni/fn_gruppi_trascinati_da_uscita.md) — (latest review 2026-09-08)
 - [fn_guard_azione](funzioni/fn_guard_azione.md) — (scritta il 24-09-2026)
@@ -159,6 +161,7 @@
 - [fn_imposta_deve_cambiare_password](funzioni/fn_imposta_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_imposta_totp_obbligatorio](funzioni/fn_imposta_totp_obbligatorio.md) — (scritta il 29-09-2026)
 - [fn_indirizzi_obbligatori_mancanti](funzioni/fn_indirizzi_obbligatori_mancanti.md) — (rev 2026-07-11)
+- [fn_inizio_giorno_operativo](funzioni/fn_inizio_giorno_operativo.md)
 - [fn_is_proprietario_tabella](funzioni/fn_is_proprietario_tabella.md) — (scritta il 25-09-2026)
 - [fn_is_super_admin](funzioni/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)
 - [fn_is_super_admin_account](funzioni/fn_is_super_admin_account.md) — (scritta il 29-09-2026)

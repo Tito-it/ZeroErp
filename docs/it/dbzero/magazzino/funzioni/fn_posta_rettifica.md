@@ -95,7 +95,7 @@ BEGIN
             p_lotto_id         => v_riga.lotto_id,
             p_asset_id         => v_riga.asset_id,
             p_ubicazione_id    => v_riga.ubicazione_id,
-            p_data_mov         => v_data::timestamptz);
+            p_data_mov         => script.fn_inizio_giorno_operativo(v_data));
         riga_id := v_riga.id;
         qta     := v_riga.qta_delta;
         RETURN NEXT;

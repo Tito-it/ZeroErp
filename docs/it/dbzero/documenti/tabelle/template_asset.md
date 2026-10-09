@@ -19,7 +19,7 @@
 | storage_key | text | NO |  |
 | sha256 | character varying(64) | NO |  |
 | emittente_fiscale_id | bigint | NO |  |
-| valido_dal | date | NO | CURRENT_DATE |
+| valido_dal | date | NO | script.fn_data_operativa() |
 | valido_al | date | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |

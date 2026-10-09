@@ -78,8 +78,8 @@ BEGIN
             WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
               AND m.tipo_indirizzo_id = v_current_tipo_id
               AND m.attivo = TRUE
-              AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-              AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+              AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+              AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
             LIMIT 1;
             IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
 
@@ -125,8 +125,8 @@ BEGIN
         WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
           AND m.tipo_indirizzo_id = v_current_tipo_id
           AND m.attivo = TRUE
-          AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-          AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+          AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+          AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
         LIMIT 1;
         IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
 

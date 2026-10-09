@@ -34,7 +34,7 @@ SELECT ac.id,
             ELSE NULL::date
         END AS data_min_chiusura,
         CASE
-            WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, CURRENT_DATE)
+            WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, ( SELECT script.fn_data_operativa() AS fn_data_operativa))
             ELSE NULL::date
         END AS data_default_chiusura,
         CASE

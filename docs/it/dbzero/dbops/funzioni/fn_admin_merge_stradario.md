@@ -8,7 +8,7 @@ CREATE FUNCTION fn_admin_merge_stradario(p_id_orig integer, p_id_target integer,
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_admin_merge_stradario(p_id_orig integer, p_id_target integer, p_event_type character DEFAULT 'F'::bpchar, p_event_date date DEFAULT CURRENT_DATE, p_note text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION dbops.fn_admin_merge_stradario(p_id_orig integer, p_id_target integer, p_event_type character DEFAULT 'F'::bpchar, p_event_date date DEFAULT script.fn_data_operativa(), p_note text DEFAULT NULL::text)
  RETURNS void
  LANGUAGE plpgsql
 AS $function$

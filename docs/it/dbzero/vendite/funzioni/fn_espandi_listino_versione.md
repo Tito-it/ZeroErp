@@ -66,7 +66,7 @@ BEGIN
             FROM vendite.listini_righe_componenti lrc_p
            WHERE lrc_p.listino_versione_id = p_listino_versione_id
              AND lrc_p.attivo              = TRUE
-             AND lrc_p.validita           @> CURRENT_DATE
+             AND lrc_p.validita           @> (SELECT script.fn_data_operativa())
       ) padri
       JOIN catalogo.articoli a
         ON a.id           = padri.articolo_padre_id
@@ -81,7 +81,7 @@ BEGIN
            WHERE lrc2.listino_versione_id = p_listino_versione_id
              AND lrc2.articolo_padre_id   = a.id
              AND lrc2.attivo              = TRUE
-             AND lrc2.validita           @> CURRENT_DATE
+             AND lrc2.validita           @> (SELECT script.fn_data_operativa())
       ) bsum
       CROSS JOIN LATERAL (
           SELECT jsonb_agg(jsonb_build_object(
@@ -106,7 +106,7 @@ BEGIN
            WHERE lrc.listino_versione_id = p_listino_versione_id
              AND lrc.articolo_padre_id   = a.id
              AND lrc.attivo              = TRUE
-             AND lrc.validita           @> CURRENT_DATE
+             AND lrc.validita           @> (SELECT script.fn_data_operativa())
       ) bcomp;
 END;
 $function$

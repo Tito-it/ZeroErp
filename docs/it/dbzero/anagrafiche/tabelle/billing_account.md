@@ -14,7 +14,7 @@
 | utility_id | integer | NO |  |
 | parent_account_id | bigint | YES |  |
 | codice | character varying(30) | NO |  |
-| valido_dal | date | YES | CURRENT_DATE |
+| valido_dal | date | YES | script.fn_data_operativa() |
 | valido_al | date | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

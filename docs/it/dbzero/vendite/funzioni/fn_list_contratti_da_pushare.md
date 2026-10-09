@@ -109,7 +109,7 @@ BEGIN
   JOIN catalogo.articoli a ON a.id = cr.articolo_id
   WHERE c.billing_account_id IS NOT NULL
     AND (v_stato_attivo_id IS NULL OR c.stato_doc_contratto_id = v_stato_attivo_id)
-    AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, CURRENT_DATE))
+    AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa())))
     AND (p_competenza_mese IS NULL
          OR date_trunc('month', COALESCE(c.valido_dal, c.data))::date = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)

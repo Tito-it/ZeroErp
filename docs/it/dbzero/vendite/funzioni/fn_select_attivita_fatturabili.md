@@ -8,7 +8,7 @@ CREATE FUNCTION fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_do
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_lock boolean DEFAULT false, p_data_fatturazione date DEFAULT CURRENT_DATE, p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_valuta_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_area_geografica_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_gruppi text[] DEFAULT NULL::text[])
+CREATE OR REPLACE FUNCTION vendite.fn_select_attivita_fatturabili(p_competenza_mese date, p_tipo_doc_fiscale_id bigint, p_lock_batch_id uuid DEFAULT NULL::uuid, p_lock boolean DEFAULT false, p_data_fatturazione date DEFAULT script.fn_data_operativa(), p_billing_account_id bigint DEFAULT NULL::bigint, p_utility_id integer DEFAULT NULL::integer, p_valuta_id integer DEFAULT NULL::integer, p_emittente_soggetto_ruolo_id bigint DEFAULT NULL::bigint, p_area_geografica_id bigint DEFAULT NULL::bigint, p_limit integer DEFAULT NULL::integer, p_gruppi text[] DEFAULT NULL::text[])
  RETURNS SETOF vendite.attivita_fatturabili
  LANGUAGE plpgsql
 AS $function$
@@ -21,8 +21,8 @@ AS $function$
 --        filtrano le AF GIA' ESISTENTI, che il filtro sul pull
 --        (fn_emit_attivita_fatturabili_da_commessa) non puo' vedere.
 DECLARE
-    v_competenza DATE;
-    v_data_fatturazione DATE;
+    v_competenza vendite.attivita_fatturabili.competenza_mese%TYPE;
+    v_data_fatturazione vendite.fatture.data%TYPE;
     v_where TEXT;
     v_join TEXT;
     v_limit TEXT;
@@ -42,7 +42,7 @@ BEGIN
     END IF;
 
     v_competenza := date_trunc('month', p_competenza_mese)::DATE;
-    v_data_fatturazione := COALESCE(p_data_fatturazione, CURRENT_DATE);
+    v_data_fatturazione := COALESCE(p_data_fatturazione, script.fn_data_operativa());
 
     v_where := ' WHERE a.approvato IS TRUE AND a.fatturato IS FALSE AND a.sospesa IS FALSE AND COALESCE(a.lock_in_fatturazione, false) IS FALSE'
         || ' AND (a.posticipa_al IS NULL OR a.posticipa_al <= ' || quote_literal(v_data_fatturazione) || ')'

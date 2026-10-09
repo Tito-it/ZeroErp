@@ -60,7 +60,7 @@ BEGIN
         validita_dal, validita_al, valuta_id,
         stato_doc_preventivo_id, emittente_fiscale_id, meta)
     VALUES (v_ba_id, v_ist_id, v_utility,
-            CURRENT_DATE, CURRENT_DATE + 30, v_valuta_id,
+            (SELECT script.fn_data_operativa()), (SELECT script.fn_data_operativa()) + 30, v_valuta_id,
             v_stato_id, v_ef_id,
             jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
     RETURNING id, uid INTO v_preventivo, v_uid;

@@ -8,7 +8,7 @@ CREATE FUNCTION fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigin
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date DEFAULT CURRENT_DATE, p_ente_incasso_id bigint DEFAULT NULL::bigint, p_lotto_id bigint DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta jsonb DEFAULT '{}'::jsonb, p_origine character varying DEFAULT 'GENERATA'::character varying, p_emittente_fiscale_id bigint DEFAULT NULL::bigint)
+CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id bigint, p_data_contabile date, p_data_registrazione date DEFAULT script.fn_data_operativa(), p_ente_incasso_id bigint DEFAULT NULL::bigint, p_lotto_id bigint DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta jsonb DEFAULT '{}'::jsonb, p_origine character varying DEFAULT 'GENERATA'::character varying, p_emittente_fiscale_id bigint DEFAULT NULL::bigint)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -186,7 +186,7 @@ BEGIN
     );
   END IF;
 
-  v_data_registrazione := COALESCE(p_data_registrazione, current_date);
+  v_data_registrazione := COALESCE(p_data_registrazione, script.fn_data_operativa());
 
   -- =========================================================
   -- Rev 2026-09-15 — DI CHI E' LA DISTINTA, PRIMA DI CERCARLA.

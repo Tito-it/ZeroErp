@@ -12,7 +12,7 @@
 | uid | uuid | NO | uuidv7() |
 | anno | smallint | YES |  |
 | numero | character varying(32) | YES |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | stato_doc_reso_id | bigint | NO |  |
 | sorgente_tipo_id | bigint | NO |  |
 | sorgente_uid | uuid | NO |  |

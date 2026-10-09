@@ -1,0 +1,732 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# timestamp-senza-fuso: ammesso — in vw_dash_competenza_attivita `date_trunc('month', giorno::timestamp)::date` tronca al mese un giorno GIA' aziendale (fn_giorno_operativo) senza ripassare dal fuso della sessione; il timestamp non esce dall'espressione.
+# vendite: LE VISTE LEGGONO IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3 (CURRENT_DATE) e D-5
+#   (istante -> giorno).
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   - CURRENT_DATE -> (SELECT script.fn_data_operativa()): la sottoquery
+#     scalare e' valutata una volta per istruzione, non per riga;
+#   - un timestamptz portato a giorno (::date, date_trunc) -> 
+#     script.fn_giorno_operativo(istante), nel fuso di SYSTEM_FUSO_ORARIO.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Colonne, nomi, tipi e ordine (le viste a valle non se ne accorgono).
+#   ⛔ security_invoker NON fa parte del corpo (pg_get_viewdef non lo
+#   stampa) e un CREATE OR REPLACE VIEW che non lo ripete lo AZZERA: ogni
+#   vista lo ripete com'e' oggi, anche nel rollback. Il corpo e' quello vivo,
+#   da pg_get_viewdef su zeroerp_ci il 2026-10-09, con le sole sostituzioni
+#   dette sopra.
+#
+# ── VISTE (4) ──────────────────────────────────────────────────
+#     - vendite.vw_dash_backlog_documenti (security_invoker=on)
+#     - vendite.vw_dash_competenza_attivita (security_invoker=on)
+#         D-5: il mese di data_insert (timestamptz) si calcola dal giorno
+#         aziendale (fn_giorno_operativo), non con date_trunc nel fuso
+#         della sessione: un'attivita' nata il 1o del mese fra mezzanotte
+#         e le 02:00 di Roma risultava del mese prima, e il confronto con
+#         la competenza sbagliava.
+#     - vendite.vw_dash_fatturazione_offerte (security_invoker=on)
+#         D-5: data_emissione e data_insert (timestamptz) diventano un
+#         giorno con script.fn_giorno_operativo, non piu' con ::date nel
+#         fuso della sessione: competenza_mese e data_riferimento di
+#         un'offerta emessa fra la mezzanotte dell'azienda e quella della
+#         sessione cadevano nel giorno (e a fine mese nel MESE) sbagliato.
+#     - vendite.vw_offerte_commerciali_lista (security_invoker=on)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-54-update-viste-giorno-dal-fuso-aziendale-vendite-mctit.yaml
+
+  - changeSet:
+      id: 20261009-54-update-viste-giorno-dal-fuso-aziendale-vendite
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite: 4 viste leggono il giorno dell'azienda (fn_data_operativa,
+        fn_giorno_operativo) invece di quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 6
+            sql: |
+              SELECT (SELECT count(*) FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind = 'v'
+                         AND n.nspname || '.' || c.relname IN ('vendite.vw_dash_backlog_documenti', 'vendite.vw_dash_competenza_attivita', 'vendite.vw_dash_fatturazione_offerte', 'vendite.vw_offerte_commerciali_lista'))
+                   + (SELECT count(*) FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script'
+                         AND p.proname IN ('fn_data_operativa', 'fn_giorno_operativo'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_backlog_documenti WITH (security_invoker=on) AS
+               WITH base AS (
+                       SELECT d.area,
+                          d.competenza_mese,
+                          d.documento_id,
+                          d.documento_uid,
+                          d.codice,
+                          d.cliente_display,
+                          d.emittente_fiscale_id,
+                          d.emittente_soggetto_ruolo_id,
+                          (d.valore_totale - d.valore_transitato) AS valore_fermo,
+                          (d.unita_totali - d.unita_transitate) AS unita_ferme,
+                          d.motivo_fermo,
+                          d.data_riferimento,
+                          d.stato_codice_interno,
+                          d.stato_codice,
+                          d.fase
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE (d.motivo_fermo IS NOT NULL)
+                      UNION ALL
+                       SELECT 'RESI'::character varying AS area,
+                          (date_trunc('month'::text, (q.data)::timestamp with time zone))::date AS competenza_mese,
+                          q.reso_id AS documento_id,
+                          (q.reso_uid)::text AS documento_uid,
+                          (q.reso_numero)::text AS codice,
+                          q.destinatario_denominazione AS cliente_display,
+                          q.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          (count(*))::integer AS unita_ferme,
+                          'RICONSEGNA_NON_ESEGUITA'::character varying AS motivo_fermo,
+                          q.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM ((vendite.vw_resi_da_riconsegnare q
+                           JOIN vendite.resi r2 ON ((r2.id = q.reso_id)))
+                           JOIN config.stati_doc_reso sdr ON ((sdr.id = r2.stato_doc_reso_id)))
+                        GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data, q.destinatario_denominazione, q.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      UNION ALL
+                       SELECT 'RESI'::character varying AS area,
+                          (date_trunc('month'::text, (a.data)::timestamp with time zone))::date AS competenza_mese,
+                          a.reso_id AS documento_id,
+                          (a.reso_uid)::text AS documento_uid,
+                          (a.reso_numero)::text AS codice,
+                          a.destinatario_denominazione AS cliente_display,
+                          a.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          (count(*))::integer AS unita_ferme,
+                          'MERCE_RESA_GIA_FATTURATA'::character varying AS motivo_fermo,
+                          a.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM ((vendite.vw_resi_da_accreditare a
+                           JOIN vendite.resi r3 ON ((r3.id = a.reso_id)))
+                           JOIN config.stati_doc_reso sdr ON ((sdr.id = r3.stato_doc_reso_id)))
+                        WHERE ((a.etichetta)::text = 'DOVUTA'::text)
+                        GROUP BY a.reso_id, a.reso_uid, a.reso_numero, a.data, a.destinatario_denominazione, a.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      )
+               SELECT b.area,
+                  b.competenza_mese,
+                  b.documento_id,
+                  b.documento_uid,
+                  b.codice,
+                  b.cliente_display,
+                  b.emittente_fiscale_id,
+                  b.emittente_soggetto_ruolo_id,
+                  b.valore_fermo,
+                  b.unita_ferme,
+                  b.motivo_fermo,
+                  COALESCE(mf.classe, 'ANOMALIA'::character varying) AS classe,
+                  mf.azione,
+                  b.data_riferimento,
+                  ((SELECT script.fn_data_operativa()) - b.data_riferimento) AS anzianita_giorni,
+                  b.stato_codice_interno,
+                  b.stato_codice,
+                  b.fase,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM ((((base b
+                   LEFT JOIN config.motivi_fermo mf ON ((((mf.codice_interno)::text = (b.motivo_fermo)::text) AND (mf.attivo IS TRUE))))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = b.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = COALESCE(b.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id))))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                WHERE ((COALESCE(mf.classe, 'ANOMALIA'::character varying))::text <> 'FISIOLOGICO'::text);
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita WITH (security_invoker=on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, (script.fn_giorno_operativo(af.data_insert))::timestamp without time zone))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN
+                          CASE
+                              WHEN (EXISTS ( SELECT 1
+                                 FROM vendite.vw_lotti_fase lfase
+                                WHERE ((lfase.lotto_id = fl.id) AND lfase.in_gioco))) THEN 'GIRO_IN_CORSO'::text
+                              ELSE 'RESIDUO'::text
+                          END
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione,
+                  COALESCE(((cae.classe_emittibilita)::text = 'TRATTENUTA'::text), false) AS emissione_trattenuta,
+                      CASE
+                          WHEN ((cae.classe_emittibilita)::text = 'TRATTENUTA'::text) THEN cae.trattenuta_da_lotti
+                          ELSE NULL::bigint[]
+                      END AS emissione_trattenuta_da_lotti
+                 FROM (((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = COALESCE(af.lock_batch_id, af.emit_batch_id))))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                   LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_offerte WITH (security_invoker=on) AS
+               SELECT 'OFFERTE'::character varying AS area,
+                  (date_trunc('month'::text, (COALESCE(o.validita_dal, script.fn_giorno_operativo(o.data_emissione), script.fn_giorno_operativo(o.data_insert)))::timestamp with time zone))::date AS competenza_mese,
+                  o.id AS documento_id,
+                  (o.uid)::text AS documento_uid,
+                  o.codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                      CASE
+                          WHEN (((ct.id IS NOT NULL) AND (NOT ct.is_abortito_snapshot)) OR ((fo.ordine_id IS NOT NULL) AND ((fo.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))) THEN 1
+                          ELSE 0
+                      END AS unita_transitate,
+                  (((ct.id IS NOT NULL) AND (NOT ct.is_abortito_snapshot)) OR ((fo.ordine_id IS NOT NULL) AND ((fo.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))) AS is_transitato,
+                  COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
+                  (
+                      CASE
+                          WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
+                          WHEN (((ct.id IS NOT NULL) AND (NOT ct.is_abortito_snapshot)) OR ((fo.ordine_id IS NOT NULL) AND ((fo.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))) THEN NULL::text
+                          WHEN ((ct.id IS NOT NULL) OR (fo.ordine_id IS NOT NULL)) THEN 'FIGLIO_ABORTITO'::text
+                          WHEN ((sdo.codice_interno)::text = 'BOZZA'::text) THEN 'DOC_BOZZA'::text
+                          WHEN ((sdo.codice_interno)::text = 'EMESSA'::text) THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'SENZA_FIGLIO'::text
+                      END)::character varying AS motivo_fermo,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  COALESCE(script.fn_giorno_operativo(o.data_emissione), o.validita_dal, script.fn_giorno_operativo(o.data_insert)) AS data_riferimento
+                 FROM (((((vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
+                   LEFT JOIN vendite.contratti ct ON ((ct.offerta_id = o.id)))
+                   LEFT JOIN LATERAL ( SELECT od.id AS ordine_id,
+                          sdor.esito
+                         FROM (vendite.ordini od
+                           JOIN config.stati_doc_ordini sdor ON ((sdor.id = od.stato_doc_ordine_id)))
+                        WHERE (((od.documento_origine_tipo)::text = 'OFFERTA'::text) AND (od.documento_origine_id = o.id))
+                       LIMIT 1) fo ON (true))
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_lista WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  ((NOT sdo.is_superato) AND (NOT sdo.is_abortito)) AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE (figlio.revisione_padre_id = o.id))) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  ((o.validita_al IS NOT NULL) AND (o.validita_al < (SELECT script.fn_data_operativa()))) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno,
+                  o.revisione_radice_id
+                 FROM ((((((((((((vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = o.billing_account_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = o.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.utilities u ON ((u.id = o.utility_id)))
+                   LEFT JOIN vendite.listini l ON ((l.id = o.listino_id)))
+                   LEFT JOIN vendite.listini_versioni lv ON ((lv.id = o.listino_versione_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = o.valuta_id)))
+                   LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE (((sorgenti.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (o.uid)::text))));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_backlog_documenti WITH (security_invoker=on) AS
+               WITH base AS (
+                       SELECT d.area,
+                          d.competenza_mese,
+                          d.documento_id,
+                          d.documento_uid,
+                          d.codice,
+                          d.cliente_display,
+                          d.emittente_fiscale_id,
+                          d.emittente_soggetto_ruolo_id,
+                          (d.valore_totale - d.valore_transitato) AS valore_fermo,
+                          (d.unita_totali - d.unita_transitate) AS unita_ferme,
+                          d.motivo_fermo,
+                          d.data_riferimento,
+                          d.stato_codice_interno,
+                          d.stato_codice,
+                          d.fase
+                         FROM vendite.vw_dash_fatturazione_documenti d
+                        WHERE (d.motivo_fermo IS NOT NULL)
+                      UNION ALL
+                       SELECT 'RESI'::character varying AS area,
+                          (date_trunc('month'::text, (q.data)::timestamp with time zone))::date AS competenza_mese,
+                          q.reso_id AS documento_id,
+                          (q.reso_uid)::text AS documento_uid,
+                          (q.reso_numero)::text AS codice,
+                          q.destinatario_denominazione AS cliente_display,
+                          q.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          (count(*))::integer AS unita_ferme,
+                          'RICONSEGNA_NON_ESEGUITA'::character varying AS motivo_fermo,
+                          q.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM ((vendite.vw_resi_da_riconsegnare q
+                           JOIN vendite.resi r2 ON ((r2.id = q.reso_id)))
+                           JOIN config.stati_doc_reso sdr ON ((sdr.id = r2.stato_doc_reso_id)))
+                        GROUP BY q.reso_id, q.reso_uid, q.reso_numero, q.data, q.destinatario_denominazione, q.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      UNION ALL
+                       SELECT 'RESI'::character varying AS area,
+                          (date_trunc('month'::text, (a.data)::timestamp with time zone))::date AS competenza_mese,
+                          a.reso_id AS documento_id,
+                          (a.reso_uid)::text AS documento_uid,
+                          (a.reso_numero)::text AS codice,
+                          a.destinatario_denominazione AS cliente_display,
+                          a.emittente_fiscale_id,
+                          NULL::bigint AS emittente_soggetto_ruolo_id,
+                          NULL::numeric AS valore_fermo,
+                          (count(*))::integer AS unita_ferme,
+                          'MERCE_RESA_GIA_FATTURATA'::character varying AS motivo_fermo,
+                          a.data AS data_riferimento,
+                          sdr.codice_interno AS stato_codice_interno,
+                          sdr.codice AS stato_codice,
+                          sdr.fase
+                         FROM ((vendite.vw_resi_da_accreditare a
+                           JOIN vendite.resi r3 ON ((r3.id = a.reso_id)))
+                           JOIN config.stati_doc_reso sdr ON ((sdr.id = r3.stato_doc_reso_id)))
+                        WHERE ((a.etichetta)::text = 'DOVUTA'::text)
+                        GROUP BY a.reso_id, a.reso_uid, a.reso_numero, a.data, a.destinatario_denominazione, a.emittente_fiscale_id, sdr.codice_interno, sdr.codice, sdr.fase
+                      )
+               SELECT b.area,
+                  b.competenza_mese,
+                  b.documento_id,
+                  b.documento_uid,
+                  b.codice,
+                  b.cliente_display,
+                  b.emittente_fiscale_id,
+                  b.emittente_soggetto_ruolo_id,
+                  b.valore_fermo,
+                  b.unita_ferme,
+                  b.motivo_fermo,
+                  COALESCE(mf.classe, 'ANOMALIA'::character varying) AS classe,
+                  mf.azione,
+                  b.data_riferimento,
+                  (CURRENT_DATE - b.data_riferimento) AS anzianita_giorni,
+                  b.stato_codice_interno,
+                  b.stato_codice,
+                  b.fase,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale
+                 FROM ((((base b
+                   LEFT JOIN config.motivi_fermo mf ON ((((mf.codice_interno)::text = (b.motivo_fermo)::text) AND (mf.attivo IS TRUE))))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = b.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = COALESCE(b.emittente_soggetto_ruolo_id, ef.soggetto_ruolo_id))))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                WHERE ((COALESCE(mf.classe, 'ANOMALIA'::character varying))::text <> 'FISIOLOGICO'::text);
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_competenza_attivita WITH (security_invoker=on) AS
+               SELECT ca.competenza_mese,
+                  co.id AS commessa_id,
+                  (co.codice)::text AS commessa_codice,
+                  ca.id AS commessa_attivita_id,
+                  co.emittente_soggetto_ruolo_id,
+                  s.ragione_sociale_completa AS cliente_display,
+                  ca.articolo_id,
+                  ca.data_attivita,
+                  ca.quantita,
+                  ca.stato_approvazione,
+                  ca.stato_emissione,
+                  st.stadio,
+                  (COALESCE(ca.prezzo_snapshot, (0)::numeric) * ca.quantita) AS valore,
+                  af.data_insert AS data_emissione,
+                      CASE
+                          WHEN (af.id IS NULL) THEN NULL::boolean
+                          ELSE ((date_trunc('month'::text, af.data_insert))::date > ca.competenza_mese)
+                      END AS emessa_in_ritardo,
+                  af.sospesa,
+                  af.posticipa_al,
+                  f.id AS fattura_id,
+                  af.fattura_riga_id,
+                  f.anno AS fattura_anno,
+                  f.serie AS fattura_serie,
+                  f.numero AS fattura_numero,
+                  sdf.codice_interno AS stato_fattura_codice_interno,
+                  sdf.codice AS stato_fattura_codice,
+                  (
+                      CASE
+                          WHEN (fr.id IS NULL) THEN NULL::numeric
+                          WHEN (COALESCE(fr.qta, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+                          ELSE ((fr.imponibile_riga * af.quantita) / fr.qta)
+                      END)::numeric(18,6) AS valore_fatturato,
+                  COALESCE(f.critical, false) AS fattura_critical,
+                  lf.lotto_id,
+                  ca.sorgente_tipo_id,
+                  ca.sorgente_uid,
+                  ca.tipo_movimento,
+                  vendite.fn_build_gruppo_fatturabile_key(ca.sorgente_tipo_id, ca.sorgente_uid, ca.commessa_id) AS gruppo_key,
+                  sc.emittibile AS commessa_emittibile,
+                  sc.codice_interno AS commessa_stato_codice_interno,
+                  COALESCE(sc.descrizione, sc.codice) AS commessa_stato_descrizione,
+                  co.billing_account_id,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  reg.registro_id,
+                  rf.codice AS registro_codice,
+                  reg.politica_data_documento,
+                      CASE
+                          WHEN (reg.registro_id IS NOT NULL) THEN vendite.fn_calcola_data_documento(p_registro_id => reg.registro_id, p_competenza_mese => ca.competenza_mese, p_serie => reg.serie, p_data_dichiarata => NULL::date)
+                          ELSE NULL::date
+                      END AS data_documento_prevista,
+                  af.id AS attivita_fatturabile_id,
+                  COALESCE(af.lock_in_fatturazione, false) AS lock_in_fatturazione,
+                  af.stato_esecuzione,
+                  (
+                      CASE
+                          WHEN ((st.stadio)::text <> 'EMESSA_NON_FATTURATA'::text) THEN NULL::text
+                          WHEN (af.id IS NULL) THEN 'SENZA_ATTIVITA_FATTURABILE'::text
+                          WHEN (NOT COALESCE(af.lock_in_fatturazione, false)) THEN
+                          CASE
+                              WHEN (EXISTS ( SELECT 1
+                                 FROM vendite.vw_lotti_fase lfase
+                                WHERE ((lfase.lotto_id = fl.id) AND lfase.in_gioco))) THEN 'GIRO_IN_CORSO'::text
+                              ELSE 'RESIDUO'::text
+                          END
+                          WHEN ((af.stato_esecuzione)::text IS DISTINCT FROM ('COMPLETED'::character varying)::text) THEN 'GIRO_IN_CORSO'::text
+                          ELSE 'RESIDUO'::text
+                      END)::character varying AS motivo_non_fatturata,
+                  fl.id AS lotto_provenienza_id,
+                  fl.codice AS lotto_provenienza_codice,
+                  art.codice AS articolo_codice,
+                  art.descrizione AS articolo_descrizione,
+                  COALESCE(((cae.classe_emittibilita)::text = 'TRATTENUTA'::text), false) AS emissione_trattenuta,
+                      CASE
+                          WHEN ((cae.classe_emittibilita)::text = 'TRATTENUTA'::text) THEN cae.trattenuta_da_lotti
+                          ELSE NULL::bigint[]
+                      END AS emissione_trattenuta_da_lotti
+                 FROM (((((((((((((((((((vendite.commesse co
+                   JOIN vendite.stati_commessa sc ON ((sc.id = co.stato_commessa_id)))
+                   JOIN vendite.commesse_attivita ca ON ((ca.commessa_id = co.id)))
+                   LEFT JOIN vendite.attivita_fatturabili af ON ((af.commessa_attivita_id = ca.id)))
+                   LEFT JOIN vendite.fatture_righe fr ON ((fr.id = af.fattura_riga_id)))
+                   LEFT JOIN vendite.fatture f ON ((f.id = fr.fattura_id)))
+                   LEFT JOIN config.stati_doc_fiscale sdf ON ((sdf.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = co.billing_account_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = ba.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = co.emittente_soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN LATERAL ( SELECT flf.lotto_id
+                         FROM vendite.fatturazione_lotti_fatture flf
+                        WHERE (flf.fattura_id = f.id)
+                        ORDER BY flf.lotto_id DESC
+                       LIMIT 1) lf ON (true))
+                   LEFT JOIN LATERAL vendite.fn_resolve_registro_documento(p_billing_account_id_riga => co.billing_account_id, p_tipo_doc_fiscale_id => ca.tipo_doc_fiscale_id, p_natura_doc_id => ca.natura_doc_id) reg(ba_fatturazione_id, utility_id, emittente_soggetto_ruolo_id, registro_id, serie, politica_data_documento) ON ((af.fattura_riga_id IS NULL)))
+                   LEFT JOIN vendite.registri_fatturazione rf ON ((rf.id = reg.registro_id)))
+                   LEFT JOIN vendite.fatturazione_lotti fl ON ((fl.lock_batch_id = COALESCE(af.lock_batch_id, af.emit_batch_id))))
+                   LEFT JOIN catalogo.articoli art ON ((art.id = ca.articolo_id)))
+                   CROSS JOIN LATERAL ( SELECT (
+                              CASE
+                                  WHEN (((ca.stato_emissione)::text <> 'EMESSA'::text) AND ((ca.stato_approvazione)::text <> 'APPROVATA'::text)) THEN 'DA_APPROVARE'::text
+                                  WHEN ((ca.stato_emissione)::text <> 'EMESSA'::text) THEN 'DA_EMETTERE'::text
+                                  WHEN (af.fattura_riga_id IS NULL) THEN 'EMESSA_NON_FATTURATA'::text
+                                  ELSE 'FATTURATA'::text
+                              END)::character varying AS stadio) st)
+                   CROSS JOIN LATERAL ( SELECT script.fn_get_emittenti_scope_sr_ids((NULLIF(current_setting('app.current_user_id'::text, true), ''::text))::integer) AS sr_ids) escope)
+                   LEFT JOIN vendite.vw_commesse_attivita_emittibilita cae ON ((cae.commessa_attivita_id = ca.id)))
+                WHERE (((escope.sr_ids IS NULL) OR (co.emittente_soggetto_ruolo_id = ANY (escope.sr_ids))) AND ((sc.codice_interno)::text <> 'ANNULLATA'::text) AND ((ca.stato_emissione)::text <> 'ANNULLATA'::text) AND (((ca.stato_approvazione)::text <> 'RIFIUTATA'::text) OR ((ca.stato_emissione)::text = 'EMESSA'::text)));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_offerte WITH (security_invoker=on) AS
+               SELECT 'OFFERTE'::character varying AS area,
+                  (date_trunc('month'::text, (COALESCE(o.validita_dal, (o.data_emissione)::date, (o.data_insert)::date))::timestamp with time zone))::date AS competenza_mese,
+                  o.id AS documento_id,
+                  (o.uid)::text AS documento_uid,
+                  o.codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                      CASE
+                          WHEN (((ct.id IS NOT NULL) AND (NOT ct.is_abortito_snapshot)) OR ((fo.ordine_id IS NOT NULL) AND ((fo.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))) THEN 1
+                          ELSE 0
+                      END AS unita_transitate,
+                  (((ct.id IS NOT NULL) AND (NOT ct.is_abortito_snapshot)) OR ((fo.ordine_id IS NOT NULL) AND ((fo.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))) AS is_transitato,
+                  COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
+                  (
+                      CASE
+                          WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
+                          WHEN (((ct.id IS NOT NULL) AND (NOT ct.is_abortito_snapshot)) OR ((fo.ordine_id IS NOT NULL) AND ((fo.esito)::text IS DISTINCT FROM 'NEGATIVO'::text))) THEN NULL::text
+                          WHEN ((ct.id IS NOT NULL) OR (fo.ordine_id IS NOT NULL)) THEN 'FIGLIO_ABORTITO'::text
+                          WHEN ((sdo.codice_interno)::text = 'BOZZA'::text) THEN 'DOC_BOZZA'::text
+                          WHEN ((sdo.codice_interno)::text = 'EMESSA'::text) THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'SENZA_FIGLIO'::text
+                      END)::character varying AS motivo_fermo,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  COALESCE((o.data_emissione)::date, o.validita_dal, (o.data_insert)::date) AS data_riferimento
+                 FROM (((((vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
+                   LEFT JOIN vendite.contratti ct ON ((ct.offerta_id = o.id)))
+                   LEFT JOIN LATERAL ( SELECT od.id AS ordine_id,
+                          sdor.esito
+                         FROM (vendite.ordini od
+                           JOIN config.stati_doc_ordini sdor ON ((sdor.id = od.stato_doc_ordine_id)))
+                        WHERE (((od.documento_origine_tipo)::text = 'OFFERTA'::text) AND (od.documento_origine_id = o.id))
+                       LIMIT 1) fo ON (true))
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_offerte_commerciali_lista WITH (security_invoker=on) AS
+               SELECT o.id,
+                  o.uid,
+                  o.codice,
+                  o.revisione_numero,
+                  o.revisione_padre_id,
+                  ((NOT sdo.is_superato) AND (NOT sdo.is_abortito)) AS is_attiva,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.offerte_commerciali figlio
+                        WHERE (figlio.revisione_padre_id = o.id))) AS has_next_revisione,
+                  o.stato_doc_offerta_id,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.descrizione AS stato_descrizione,
+                  o.billing_account_id,
+                  ba.codice AS ba_codice,
+                  s.id AS soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  o.emittente_fiscale_id,
+                  ef.codice AS emittente_fiscale_codice,
+                  o.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  o.istanza_utility_id,
+                  iu.codice AS istanza_utility_codice,
+                  o.listino_id,
+                  l.codice AS listino_codice,
+                  o.listino_versione_id,
+                  lv.codice_versione AS listino_versione_codice,
+                  o.tipo_variazione_globale,
+                  o.valore_variazione_globale,
+                  o.valuta_id,
+                  v_val.codice AS valuta_codice,
+                  o.validita_dal,
+                  o.validita_al,
+                  ((o.validita_al IS NOT NULL) AND (o.validita_al < CURRENT_DATE)) AS is_scaduta,
+                  o.data_emissione,
+                  o.data_accettazione,
+                  o.data_rifiuto,
+                  o.data_annullamento,
+                  o.data_insert,
+                  o.user_insert,
+                  s_ef.ragione_sociale_completa AS emittente_ragione_sociale,
+                  sdo.fase,
+                  lin.pratica_id,
+                  lin.pratica_numero,
+                  lin.n_pratiche,
+                  lin.frontiera_tipo_id,
+                  lin.frontiera_codice,
+                  lin.frontiera_stato_codice_interno,
+                  lin.frontiera_fase,
+                  lin.n_discendenti_attivi,
+                  lin.is_transitato,
+                  sdo.is_superato AS is_superata,
+                  sdo.is_abortito,
+                  lin.frontiera_natura_doc_codice_interno,
+                  lin.frontiera_tipo_codice_interno,
+                  o.revisione_radice_id
+                 FROM ((((((((((((vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)))
+                   LEFT JOIN anagrafiche.billing_account ba ON ((ba.id = o.billing_account_id)))
+                   LEFT JOIN anagrafiche.emittenti_fiscali ef ON ((ef.id = o.emittente_fiscale_id)))
+                   LEFT JOIN anagrafiche.soggetti_ruoli sr_ef ON ((sr_ef.id = ef.soggetto_ruolo_id)))
+                   LEFT JOIN anagrafiche.soggetti s_ef ON ((s_ef.id = sr_ef.soggetto_id)))
+                   LEFT JOIN config.utilities u ON ((u.id = o.utility_id)))
+                   LEFT JOIN vendite.listini l ON ((l.id = o.listino_id)))
+                   LEFT JOIN vendite.listini_versioni lv ON ((lv.id = o.listino_versione_id)))
+                   LEFT JOIN config.valute v_val ON ((v_val.id = o.valuta_id)))
+                   LEFT JOIN vendite.vw_documento_lineage lin ON (((lin.tipo_id = ( SELECT sorgenti.id
+                         FROM config.sorgenti
+                        WHERE (((sorgenti.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (sorgenti.attivo IS TRUE)))) AND (lin.uid = (o.uid)::text))));

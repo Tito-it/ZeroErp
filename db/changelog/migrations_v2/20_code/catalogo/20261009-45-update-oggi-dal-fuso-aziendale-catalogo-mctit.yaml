@@ -1,0 +1,420 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo: «OGGI» E' IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   CURRENT_DATE e' il giorno nel fuso della SESSIONE che esegue, e le
+#   sessioni non hanno tutte lo stesso fuso: il backend si connette in UTC,
+#   psql/Liquibase/pgAgent nel fuso del server. Fra la mezzanotte dell'azienda
+#   e quella della sessione, la stessa funzione risponde un giorno diverso
+#   secondo chi la chiama: una data documento di ieri, un guard di validita'
+#   che scatta o non scatta. Non dipende dai dati: e' la struttura, e vale per
+#   ogni installazione il cui fuso non coincide con quello della sessione.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Ogni CURRENT_DATE di codice diventa script.fn_data_operativa() (il giorno
+#   nel fuso di SYSTEM_FUSO_ORARIO, letto dalla sede unica
+#   script.fn_fuso_operativo, 20261009-40/41). Tre forme, scelte dal posto:
+#   - in un'istruzione SQL (WHERE, SELECT, VALUES, SQL dinamico):
+#     `(SELECT script.fn_data_operativa())` — la sottoquery scalare e'
+#     valutata UNA volta per istruzione, non per riga (misurato su
+#     zeroerp_ci il 2026-10-09: 20.000 righe, 122 ms per riga contro 2 ms);
+#   - in un'espressione PL/pgSQL (`:=`, IF, RETURN) la chiamata diretta,
+#     valutata una volta;
+#   - nel DEFAULT di un parametro la chiamata diretta: li' una sottoquery non
+#     e' ammessa.
+#   I commenti che citano CURRENT_DATE restano: raccontano la regola di prima.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firme, tipi, volatilita', sicurezza, commenti e GRANT delle funzioni (il
+#   CREATE OR REPLACE li conserva). Il corpo e' quello vivo, preso da
+#   pg_get_functiondef su zeroerp_ci il 2026-10-09 e confrontato con la doc
+#   auto-generata (identici), con la sola sostituzione di CURRENT_DATE.
+#
+# ── %TYPE: FIRMA, RETURNS TABLE, DECLARE ───────────────────────────
+#   Il corpo vivo (pg_get_functiondef) scioglie i %TYPE della firma: quelli
+#   gia' scritti nell'ultimo changeSet di ogni funzione sono stati RIPRESI
+#   (anche nel rollback), e in questo giro si sono ancorati i parametri, le
+#   colonne di RETURNS TABLE e le variabili che riflettono una colonna.
+#   Verificato in transazione annullata su zeroerp_ci: argomenti e risultato
+#   di ogni funzione restano byte-identici (nessun overload, nessun chiamante
+#   rotto). Restano a TIPO ESPLICITO, perche' non sono il riflesso di nessuna
+#   colonna, le voci elencate sotto per funzione: contatori, interruttori del
+#   chiamante, jsonb e testi di lavoro, valori calcolati o costanti tipizzate,
+#   chiavi polimorfe, il giorno operativo.
+#
+# ── FUNZIONI (2) ──────────────────────────────────────────────
+#     - catalogo.fn_get_uom_factor — tutto ancorato
+#     - catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva — tipo
+#         esplicito: v_ha_figli_attivi, v_e_figlio_attivo
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261009-45-update-oggi-dal-fuso-aziendale-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261009-45-update-oggi-dal-fuso-aziendale-catalogo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        catalogo: CURRENT_DATE -> script.fn_data_operativa() in 2 funzioni, perche'
+        «oggi» e' il giorno dell'azienda (SYSTEM_FUSO_ORARIO) e non quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname = 'catalogo' AND p.proname IN ('fn_get_uom_factor', 'trgfn_articoli_guard_flags_struttura_bom_attiva'))
+                  OR (n.nspname = 'script' AND p.proname = 'fn_fuso_operativo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_factor(p_articolo_id catalogo.articoli.id%TYPE, p_uom_id catalogo.unita_misura.id%TYPE)
+               RETURNS numeric
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_uom_base_id catalogo.unita_misura.id%TYPE;
+                v_factor      catalogo.articoli_uom_operativa.factor_to_base%TYPE;
+                v_conv        catalogo.unita_misura_conversioni.fattore%TYPE;
+              BEGIN
+
+                /*
+                Restituisce il fattore di conversione tra l''UoM base dell''articolo e l''UoM richiesta.
+                 Cerca prima nella mappatura operativa attiva e valida temporalmente.
+                 Se non trovata, cerca nella tabella di conversioni globali tra UoM (catalogo.unita_misura_conversioni).
+                 Se non trovata, cerca la conversione inversa e restituisce il reciproco.
+                 Restituisce NULL se non trovata.
+
+                Parametri:
+                  p_articolo_id: UUID dell'articolo
+                  p_uom_id:     ID della unita' di misura richiesta (bigint)    
+                */  
+
+                -- Base dall'articolo
+                v_uom_base_id := catalogo.fn_get_uom_base(p_articolo_id);
+
+                IF v_uom_base_id IS NULL THEN
+                  RETURN NULL; -- chiamante/trigger gestira' fallback/errore
+                END IF;
+
+                -- Se la UoM richiesta e' la base, fattore 1
+                IF p_uom_id = v_uom_base_id THEN
+                  RETURN 1;
+                END IF;
+
+                -- 1) Cerca fattore nella mappatura operativa attiva e valida temporalmente
+                SELECT auo.factor_to_base
+                  INTO v_factor
+                FROM catalogo.articoli_uom_operativa auo
+                WHERE auo.articolo_id = p_articolo_id
+                  AND auo.uom_id      = p_uom_id
+                  AND auo.attivo      = TRUE
+                  AND (auo.valido_dal IS NULL OR auo.valido_dal <= (SELECT script.fn_data_operativa()))
+                  AND (auo.valido_al  IS NULL OR auo.valido_al  >= (SELECT script.fn_data_operativa()))
+                LIMIT 1;
+
+                IF v_factor IS NOT NULL AND v_factor > 0 THEN
+                  RETURN v_factor;
+                END IF;
+
+                -- 2) Fallback: conversione globale UoM (p_uom_id -> base)
+                SELECT c.fattore
+                  INTO v_conv
+                FROM catalogo.unita_misura_conversioni c
+                WHERE c.uom_from_id = p_uom_id
+                  AND c.uom_to_id   = v_uom_base_id
+                  AND c.attivo      = TRUE
+                  AND c.fattore     > 0
+                  AND (c.valido_dal IS NULL OR c.valido_dal <= (SELECT script.fn_data_operativa()))
+                  AND (c.valido_al   IS NULL OR c.valido_al   >= (SELECT script.fn_data_operativa()))
+                LIMIT 1;
+
+                IF v_conv IS NOT NULL THEN
+                  RETURN v_conv;
+                END IF;
+
+                -- 3) Fallback inverso (base -> p_uom_id)
+                SELECT c.fattore
+                  INTO v_conv
+                FROM catalogo.unita_misura_conversioni c
+                WHERE c.uom_from_id = v_uom_base_id
+                  AND c.uom_to_id   = p_uom_id
+                  AND c.attivo      = TRUE
+                  AND c.fattore     > 0
+                  AND (c.valido_dal IS NULL OR c.valido_dal <= (SELECT script.fn_data_operativa()))
+                  AND (c.valido_al   IS NULL OR c.valido_al   >= (SELECT script.fn_data_operativa()))
+                LIMIT 1;
+
+                IF v_conv IS NOT NULL THEN
+                  RETURN 1 / v_conv;
+                END IF;
+
+                RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca modifiche ai flag di struttura (is_composito,
+              -- is_solo_componente, requires_serial) quando esiste una BoM attiva
+              -- che renderebbe il cambio semanticamente incoerente.
+              --
+              -- Due IF distinti per semantiche diverse:
+              --   - is_composito / requires_serial: cerca su prodotto_id (padre)
+              --   - is_solo_componente: cerca su componente_id (figlio)
+              -- Se il valore non cambia (IS NOT DISTINCT FROM) la query EXISTS non viene eseguita.
+              DECLARE
+                  v_ha_figli_attivi  boolean;
+                  v_e_figlio_attivo  boolean;
+              BEGIN
+                  -- Check 1: is_composito e/o requires_serial cambiano.
+                  -- Blocca se l'articolo e' padre di una BoM attiva.
+                  IF OLD.is_composito IS DISTINCT FROM NEW.is_composito
+                     OR OLD.requires_serial IS DISTINCT FROM NEW.requires_serial THEN
+
+                      SELECT EXISTS (
+                          SELECT 1 FROM catalogo.articoli_componenti
+                           WHERE prodotto_id = NEW.id
+                             AND attivo IS TRUE
+                             AND validita @> (SELECT script.fn_data_operativa())
+                      ) INTO v_ha_figli_attivi;
+
+                      IF v_ha_figli_attivi THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'is_composito e requires_serial non modificabili: '
+                                       || 'articolo padre di una BoM attiva.'
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Check 2: is_solo_componente cambia.
+                  -- Blocca se l'articolo e' figlio in una BoM attiva.
+                  IF OLD.is_solo_componente IS DISTINCT FROM NEW.is_solo_componente THEN
+
+                      SELECT EXISTS (
+                          SELECT 1 FROM catalogo.articoli_componenti
+                           WHERE componente_id = NEW.id
+                             AND attivo IS TRUE
+                             AND validita @> (SELECT script.fn_data_operativa())
+                      ) INTO v_e_figlio_attivo;
+
+                      IF v_e_figlio_attivo THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'is_solo_componente non modificabile: '
+                                       || 'articolo figlio in una BoM attiva.'
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.fn_get_uom_factor(p_articolo_id uuid, p_uom_id bigint)
+               RETURNS numeric
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_uom_base_id catalogo.unita_misura.id%TYPE;
+                v_factor      catalogo.articoli_uom_operativa.factor_to_base%TYPE;
+                v_conv        catalogo.unita_misura_conversioni.fattore%TYPE;
+              BEGIN
+
+                /*
+                Restituisce il fattore di conversione tra l''UoM base dell''articolo e l''UoM richiesta.
+                 Cerca prima nella mappatura operativa attiva e valida temporalmente.
+                 Se non trovata, cerca nella tabella di conversioni globali tra UoM (catalogo.unita_misura_conversioni).
+                 Se non trovata, cerca la conversione inversa e restituisce il reciproco.
+                 Restituisce NULL se non trovata.
+
+                Parametri:
+                  p_articolo_id: UUID dell'articolo
+                  p_uom_id:     ID della unita' di misura richiesta (bigint)    
+                */  
+
+                -- Base dall'articolo
+                v_uom_base_id := catalogo.fn_get_uom_base(p_articolo_id);
+
+                IF v_uom_base_id IS NULL THEN
+                  RETURN NULL; -- chiamante/trigger gestira' fallback/errore
+                END IF;
+
+                -- Se la UoM richiesta e' la base, fattore 1
+                IF p_uom_id = v_uom_base_id THEN
+                  RETURN 1;
+                END IF;
+
+                -- 1) Cerca fattore nella mappatura operativa attiva e valida temporalmente
+                SELECT auo.factor_to_base
+                  INTO v_factor
+                FROM catalogo.articoli_uom_operativa auo
+                WHERE auo.articolo_id = p_articolo_id
+                  AND auo.uom_id      = p_uom_id
+                  AND auo.attivo      = TRUE
+                  AND (auo.valido_dal IS NULL OR auo.valido_dal <= CURRENT_DATE)
+                  AND (auo.valido_al  IS NULL OR auo.valido_al  >= CURRENT_DATE)
+                LIMIT 1;
+
+                IF v_factor IS NOT NULL AND v_factor > 0 THEN
+                  RETURN v_factor;
+                END IF;
+
+                -- 2) Fallback: conversione globale UoM (p_uom_id -> base)
+                SELECT c.fattore
+                  INTO v_conv
+                FROM catalogo.unita_misura_conversioni c
+                WHERE c.uom_from_id = p_uom_id
+                  AND c.uom_to_id   = v_uom_base_id
+                  AND c.attivo      = TRUE
+                  AND c.fattore     > 0
+                  AND (c.valido_dal IS NULL OR c.valido_dal <= CURRENT_DATE)
+                  AND (c.valido_al   IS NULL OR c.valido_al   >= CURRENT_DATE)
+                LIMIT 1;
+
+                IF v_conv IS NOT NULL THEN
+                  RETURN v_conv;
+                END IF;
+
+                -- 3) Fallback inverso (base -> p_uom_id)
+                SELECT c.fattore
+                  INTO v_conv
+                FROM catalogo.unita_misura_conversioni c
+                WHERE c.uom_from_id = v_uom_base_id
+                  AND c.uom_to_id   = p_uom_id
+                  AND c.attivo      = TRUE
+                  AND c.fattore     > 0
+                  AND (c.valido_dal IS NULL OR c.valido_dal <= CURRENT_DATE)
+                  AND (c.valido_al   IS NULL OR c.valido_al   >= CURRENT_DATE)
+                LIMIT 1;
+
+                IF v_conv IS NOT NULL THEN
+                  RETURN 1 / v_conv;
+                END IF;
+
+                RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION catalogo.trgfn_articoli_guard_flags_struttura_bom_attiva()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: blocca modifiche ai flag di struttura (is_composito,
+              -- is_solo_componente, requires_serial) quando esiste una BoM attiva
+              -- che renderebbe il cambio semanticamente incoerente.
+              --
+              -- Due IF distinti per semantiche diverse:
+              --   - is_composito / requires_serial: cerca su prodotto_id (padre)
+              --   - is_solo_componente: cerca su componente_id (figlio)
+              -- Se il valore non cambia (IS NOT DISTINCT FROM) la query EXISTS non viene eseguita.
+              DECLARE
+                  v_ha_figli_attivi  boolean;
+                  v_e_figlio_attivo  boolean;
+              BEGIN
+                  -- Check 1: is_composito e/o requires_serial cambiano.
+                  -- Blocca se l'articolo e' padre di una BoM attiva.
+                  IF OLD.is_composito IS DISTINCT FROM NEW.is_composito
+                     OR OLD.requires_serial IS DISTINCT FROM NEW.requires_serial THEN
+
+                      SELECT EXISTS (
+                          SELECT 1 FROM catalogo.articoli_componenti
+                           WHERE prodotto_id = NEW.id
+                             AND attivo IS TRUE
+                             AND validita @> CURRENT_DATE
+                      ) INTO v_ha_figli_attivi;
+
+                      IF v_ha_figli_attivi THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'is_composito e requires_serial non modificabili: '
+                                       || 'articolo padre di una BoM attiva.'
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Check 2: is_solo_componente cambia.
+                  -- Blocca se l'articolo e' figlio in una BoM attiva.
+                  IF OLD.is_solo_componente IS DISTINCT FROM NEW.is_solo_componente THEN
+
+                      SELECT EXISTS (
+                          SELECT 1 FROM catalogo.articoli_componenti
+                           WHERE componente_id = NEW.id
+                             AND attivo IS TRUE
+                             AND validita @> CURRENT_DATE
+                      ) INTO v_e_figlio_attivo;
+
+                      IF v_e_figlio_attivo THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              TG_NAME::text,
+                              'E_BOM_MODIFICA_VIETATA',
+                              jsonb_build_object(
+                                  'articolo_id', NEW.id,
+                                  'hint', 'is_solo_componente non modificabile: '
+                                       || 'articolo figlio in una BoM attiva.'
+                              ),
+                              NEW.tx_id,
+                              NEW.id::text
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

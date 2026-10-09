@@ -28,7 +28,7 @@
 | competenza_mese | date | YES |  |
 | fatturazione_immediata | boolean | YES | false |
 | stato_doc_preventivo_id | bigint | NO |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | termine_pagamento_id | bigint | YES |  |
 | uid | uuid | NO | uuidv7() |
 | storicizza | boolean | NO | true |

@@ -65,7 +65,7 @@ BEGIN
       JOIN config.aree_funzionali af ON af.id = uoa.area_id
      WHERE uoa.auth_user_id = p_auth_user_id
        AND af.schema_db = p_area_schema_db
-       AND uoa.validita @> CURRENT_DATE;
+       AND uoa.validita @> (SELECT script.fn_data_operativa());
 
     IF FOUND THEN
         RETURN v_livello;

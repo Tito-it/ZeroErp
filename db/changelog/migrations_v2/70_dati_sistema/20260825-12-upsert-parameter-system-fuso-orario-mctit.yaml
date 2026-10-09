@@ -6,6 +6,18 @@
 # Rilasciato sotto GNU GPLv3 o versione successiva.
 # Vedi LICENSE.md per il testo completo della licenza.
 # ------------------------------------------------------------
+# ⭐ SPOSTATO il 2026-10-09 da 80_data/changelog/ a 70_dati_sistema/
+#   (brief-be-db-fe-un-solo-fuso-aziendale, T-8). Il codice di 20_code legge
+#   questo parametro (script.fn_fuso_operativo, fn_data_operativa: trigger,
+#   DEFAULT, guard), e su un database da zero girava PRIMA del parametro: un
+#   seed di 80_data anteriore a questo, che passasse da uno di quei trigger,
+#   avrebbe fermato la creazione del database con E_CONFIG_MANCANTE. La fase
+#   70_dati_sistema gira dopo il codice e prima di tutto 80_data.
+#   ⚠️ Il logicalFilePath resta quello vecchio: e' l'identita' del changeSet,
+#   e su ogni database gia' migrato risulta eseguito. Cambia solo il percorso
+#   del CSV (relativo al file): il checksum cambia, e con runOnChange il
+#   changeSet rigira una volta — un upsert della stessa riga, nessun dato
+#   cambia. Il CSV resta in 80_data/sql/config/, sede unica del valore.
 # DB-1 — SEED DEL PARAMETRO SYSTEM_FUSO_ORARIO (id 54)
 #   Piano: brief-db-numerazione-data-documento-e-sequenza.md §4 DB-1
 #
@@ -94,7 +106,7 @@ databaseChangeLog:
       changes:
         - loadUpdateData:
             relativeToChangelogFile: true
-            file: ../sql/config/parameters_sistema.csv
+            file: ../80_data/sql/config/parameters_sistema.csv
             tableName: parameters
             schemaName: config
             separator: ","

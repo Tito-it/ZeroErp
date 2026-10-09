@@ -14,7 +14,7 @@
 | istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | ambito | character varying(24) | YES | 'COMMODITY'::character varying |
-| valido_dal | date | NO | CURRENT_DATE |
+| valido_dal | date | NO | script.fn_data_operativa() |
 | valido_al | date | YES |  |
 | parent_contratto_id | bigint | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -23,7 +23,7 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | stato_doc_contratto_id | bigint | NO |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | uid | uuid | NO | uuidv7() |
 | listino_id | bigint | YES |  |
 | tipo_variazione_globale | character varying(16) | YES |  |

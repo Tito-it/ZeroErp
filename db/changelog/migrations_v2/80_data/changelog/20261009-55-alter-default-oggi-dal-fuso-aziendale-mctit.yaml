@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I DEFAULT «OGGI» DELLE COLONNE SONO IL GIORNO DELL'AZIENDA
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-4.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   DEFAULT CURRENT_DATE scrive il giorno nel fuso della SESSIONE che
+#   inserisce: dal backend (UTC) un documento, una validita' o una
+#   registrazione nati fra la mezzanotte dell'azienda e quella della sessione
+#   portano la data del giorno prima. Stessa famiglia gia' chiusa su
+#   vendite.fatture.data (20260825-08) e vendite.commesse.data_apertura
+#   (20260913-15).
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   SET DEFAULT script.fn_data_operativa() sulle 25 colonne che oggi hanno
+#   DEFAULT CURRENT_DATE (lette dal catalogo di zeroerp_ci il 2026-10-09).
+#   SET DEFAULT non valuta l'espressione: la valutera' il primo INSERT senza
+#   valore. Nessun dato esistente cambia.
+#
+# ── PERCHE' IN 80_data ──────────────────────────────────────────────
+#   fn_data_operativa legge SYSTEM_FUSO_ORARIO ed e' fail-loud se manca. Su
+#   un database da zero il parametro nasce in 70_dati_sistema (20260825-12,
+#   spostato li' nello stesso giro, T-8), cioe' prima di tutto 80_data: qui
+#   il DEFAULT e' attivo solo quando il fuso esiste gia'. E' la forma di
+#   20260913-15.
+#
+# ── FUORI ───────────────────────────────────────────────────────────
+#   storico.comuni / storico.indirizzi_dettaglio / storico.indirizzi
+#   .valid_from: tabelle ombra dello storico, nate e mantenute
+#   dall'automazione; si trattano col trigger generico dello storico
+#   (brief D-5/D-6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261009-55-alter-default-oggi-dal-fuso-aziendale-mctit.yaml
+
+  - changeSet:
+      id: 20261009-55-alter-default-oggi-dal-fuso-aziendale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        SET DEFAULT script.fn_data_operativa() al posto di CURRENT_DATE su 25 colonne:
+        «oggi» e' il giorno dell'azienda (SYSTEM_FUSO_ORARIO), non quello della sessione.
+        In 80_data, dopo il seed del parametro (20260825-12). Nessun dato cambia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 26
+            sql: |
+              SELECT (SELECT count(*)
+                        FROM pg_attribute a
+                        JOIN pg_class c ON c.oid = a.attrelid
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE (n.nspname = 'acquisti' AND c.relname = 'ddt' AND a.attname = 'data')
+                          OR (n.nspname = 'acquisti' AND c.relname = 'ordini' AND a.attname = 'data')
+                          OR (n.nspname = 'anagrafiche' AND c.relname = 'billing_account' AND a.attname = 'valido_dal')
+                          OR (n.nspname = 'anagrafiche' AND c.relname = 'identita_digitali' AND a.attname = 'valido_dal')
+                          OR (n.nspname = 'anagrafiche' AND c.relname = 'resellers_billing_account' AND a.attname = 'valido_dal')
+                          OR (n.nspname = 'config' AND c.relname = 'user_override_aree' AND a.attname = 'valido_dal')
+                          OR (n.nspname = 'config' AND c.relname = 'user_override_azioni' AND a.attname = 'valido_dal')
+                          OR (n.nspname = 'config' AND c.relname = 'user_override_oggetti' AND a.attname = 'valido_dal')
+                          OR (n.nspname = 'dbops' AND c.relname = 'codici_errore_senza_policy' AND a.attname = 'data_registrazione')
+                          OR (n.nspname = 'dbops' AND c.relname = 'messaggi_errore_codici_legacy' AND a.attname = 'data_registrazione')
+                          OR (n.nspname = 'dbops' AND c.relname = 'riferimenti_morti_esenzioni' AND a.attname = 'data_registrazione')
+                          OR (n.nspname = 'dbops' AND c.relname = 'rls_perimetro_debito' AND a.attname = 'data_registrazione')
+                          OR (n.nspname = 'dbops' AND c.relname = 'stati_check_dichiarazioni' AND a.attname = 'data_registrazione')
+                          OR (n.nspname = 'dbops' AND c.relname = 'storico_scope_policy' AND a.attname = 'data_registrazione')
+                          OR (n.nspname = 'documenti' AND c.relname = 'template_asset' AND a.attname = 'valido_dal')
+                          OR (n.nspname = 'magazzino' AND c.relname = 'inventari' AND a.attname = 'data')
+                          OR (n.nspname = 'magazzino' AND c.relname = 'rettifiche' AND a.attname = 'data')
+                          OR (n.nspname = 'magazzino' AND c.relname = 'trasferimenti' AND a.attname = 'data')
+                          OR (n.nspname = 'shop' AND c.relname = 'ricevute' AND a.attname = 'data_emissione')
+                          OR (n.nspname = 'vendite' AND c.relname = 'contratti' AND a.attname = 'data')
+                          OR (n.nspname = 'vendite' AND c.relname = 'contratti' AND a.attname = 'valido_dal')
+                          OR (n.nspname = 'vendite' AND c.relname = 'ddt' AND a.attname = 'data')
+                          OR (n.nspname = 'vendite' AND c.relname = 'ordini' AND a.attname = 'data')
+                          OR (n.nspname = 'vendite' AND c.relname = 'preventivi' AND a.attname = 'data')
+                          OR (n.nspname = 'vendite' AND c.relname = 'resi' AND a.attname = 'data'))
+                   + (SELECT count(*) FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script' AND p.proname = 'fn_data_operativa'
+                         AND p.pronargs = 0);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE acquisti.ddt ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE acquisti.ordini ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE anagrafiche.billing_account ALTER COLUMN valido_dal SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE anagrafiche.identita_digitali ALTER COLUMN valido_dal SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE anagrafiche.resellers_billing_account ALTER COLUMN valido_dal SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE config.user_override_aree ALTER COLUMN valido_dal SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE config.user_override_azioni ALTER COLUMN valido_dal SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE config.user_override_oggetti ALTER COLUMN valido_dal SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE dbops.codici_errore_senza_policy ALTER COLUMN data_registrazione SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE dbops.messaggi_errore_codici_legacy ALTER COLUMN data_registrazione SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE dbops.riferimenti_morti_esenzioni ALTER COLUMN data_registrazione SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE dbops.rls_perimetro_debito ALTER COLUMN data_registrazione SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE dbops.stati_check_dichiarazioni ALTER COLUMN data_registrazione SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE dbops.storico_scope_policy ALTER COLUMN data_registrazione SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE documenti.template_asset ALTER COLUMN valido_dal SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE magazzino.inventari ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE magazzino.rettifiche ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE magazzino.trasferimenti ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE shop.ricevute ALTER COLUMN data_emissione SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE vendite.contratti ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE vendite.contratti ALTER COLUMN valido_dal SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE vendite.ddt ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE vendite.ordini ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE vendite.preventivi ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+              ALTER TABLE vendite.resi ALTER COLUMN data SET DEFAULT script.fn_data_operativa();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE acquisti.ddt ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE acquisti.ordini ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE anagrafiche.billing_account ALTER COLUMN valido_dal SET DEFAULT CURRENT_DATE;
+              ALTER TABLE anagrafiche.identita_digitali ALTER COLUMN valido_dal SET DEFAULT CURRENT_DATE;
+              ALTER TABLE anagrafiche.resellers_billing_account ALTER COLUMN valido_dal SET DEFAULT CURRENT_DATE;
+              ALTER TABLE config.user_override_aree ALTER COLUMN valido_dal SET DEFAULT CURRENT_DATE;
+              ALTER TABLE config.user_override_azioni ALTER COLUMN valido_dal SET DEFAULT CURRENT_DATE;
+              ALTER TABLE config.user_override_oggetti ALTER COLUMN valido_dal SET DEFAULT CURRENT_DATE;
+              ALTER TABLE dbops.codici_errore_senza_policy ALTER COLUMN data_registrazione SET DEFAULT CURRENT_DATE;
+              ALTER TABLE dbops.messaggi_errore_codici_legacy ALTER COLUMN data_registrazione SET DEFAULT CURRENT_DATE;
+              ALTER TABLE dbops.riferimenti_morti_esenzioni ALTER COLUMN data_registrazione SET DEFAULT CURRENT_DATE;
+              ALTER TABLE dbops.rls_perimetro_debito ALTER COLUMN data_registrazione SET DEFAULT CURRENT_DATE;
+              ALTER TABLE dbops.stati_check_dichiarazioni ALTER COLUMN data_registrazione SET DEFAULT CURRENT_DATE;
+              ALTER TABLE dbops.storico_scope_policy ALTER COLUMN data_registrazione SET DEFAULT CURRENT_DATE;
+              ALTER TABLE documenti.template_asset ALTER COLUMN valido_dal SET DEFAULT CURRENT_DATE;
+              ALTER TABLE magazzino.inventari ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE magazzino.rettifiche ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE magazzino.trasferimenti ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE shop.ricevute ALTER COLUMN data_emissione SET DEFAULT CURRENT_DATE;
+              ALTER TABLE vendite.contratti ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE vendite.contratti ALTER COLUMN valido_dal SET DEFAULT CURRENT_DATE;
+              ALTER TABLE vendite.ddt ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE vendite.ordini ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE vendite.preventivi ALTER COLUMN data SET DEFAULT CURRENT_DATE;
+              ALTER TABLE vendite.resi ALTER COLUMN data SET DEFAULT CURRENT_DATE;

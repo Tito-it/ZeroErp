@@ -376,7 +376,7 @@ copia nel service andrebbe tolta — è una decisione sul modello.
   scritti. Il test era rosso perché lanciato a mezzanotte e mezza. È la stessa
   famiglia che `script.fn_data_operativa` ha chiuso sul DB per la data
   documento: vedi
-  [brief-be-db-giorno-nel-fuso-aziendale.md](brief-be-db-giorno-nel-fuso-aziendale.md).
+  [brief-be-db-fe-un-solo-fuso-aziendale.md](brief-be-db-fe-un-solo-fuso-aziendale.md).
 
 ### 5.3 ✅ L3 — 2026-10-09: da 557 a 2
 

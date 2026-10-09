@@ -19,7 +19,12 @@ DECLARE
     v_job_id    dbops.coda_lavori.id%TYPE;
     v_accodati  integer := 0;
     v_falliti   integer := 0;
+    v_saltati   integer := 0;
     v_dettaglio jsonb   := '[]'::jsonb;
+    -- ⭐ Il GIORNO AZIENDALE, letto una volta: la chiave del lavoro e il
+    --   controllo «gia' fatto oggi» devono parlare dello stesso giorno.
+    v_oggi      date    := script.fn_data_operativa();
+    v_chiave    dbops.coda_lavori.idempotency_key%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo:
@@ -40,6 +45,22 @@ BEGIN
          -- L'ordine lo da' gia' la vista: qui non si ri-ordina,
          -- o sarebbero due posti che decidono la stessa cosa.
     LOOP
+        v_chiave := v_job_type || ':' || v_riga.emittente_codice || ':' || v_oggi::text;
+
+        -- ⭐ UNA VOLTA PER GIORNO AZIENDALE (brief-be-db-fe-un-solo-fuso-aziendale,
+        --   T-4): la sveglia e' oraria, e il giorno lo decide il fuso
+        --   dell'azienda, non l'orario dell'host. La chiave idempotente di
+        --   fn_accoda_lavoro protegge solo i lavori VIVI (PENDING/IN_CORSO): un
+        --   lavoro gia' FATTO oggi per questa azienda chiude il giorno e non si
+        --   riaccoda. Uno in ERRORE o ANNULLATO no: la sveglia dopo ci riprova.
+        IF EXISTS (SELECT 1 FROM dbops.coda_lavori cl
+                    WHERE cl.job_type = v_job_type
+                      AND cl.idempotency_key = v_chiave
+                      AND cl.stato = 'FATTO') THEN
+            v_saltati := v_saltati + 1;
+            CONTINUE;
+        END IF;
+
         BEGIN
             v_job_id := dbops.fn_accoda_lavoro(
                 p_job_type => v_job_type,
@@ -66,9 +87,7 @@ BEGIN
                 -- ⚠️ Per (azienda, GIORNO), senza l'ora: due
                 --   sveglie nello stesso giorno sono la stessa
                 --   intenzione, non due.
-                p_idempotency_key => v_job_type || ':' ||
-                                     v_riga.emittente_codice || ':' ||
-                                     CURRENT_DATE::text,
+                p_idempotency_key => v_chiave,
                 p_origine  => 'CRON');
 
             v_accodati := v_accodati + 1;
@@ -92,6 +111,7 @@ BEGIN
         '_processo',    v_processo,
         '_accodati',    v_accodati,
         '_falliti',     v_falliti,
+        '_saltati',     v_saltati,
         '_dettaglio',   v_dettaglio,
         '_executed_at', now());
 END

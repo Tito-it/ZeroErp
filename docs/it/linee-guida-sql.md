@@ -1655,11 +1655,14 @@ peggio di uno assente.
 
 ### 11.4 ⛔ Una `preCondition` di `00_schema`/`20_code` non interroga il CONTENUTO di `80_data`
 
-Presidiato da `scripts/guardrail_precondition_seed.py` in CI.
+Presidiato da `scripts/guardrail_precondition_seed.py` in CI. Vale anche per
+`70_dati_sistema` (dal 2026-10-09), che gira anch'essa prima di `80_data`: è la fase
+dei dati di sistema che il codice legge (oggi il fuso dell'azienda), vedi
+[liquibase-setup-workflow](liquibase-setup-workflow.md).
 
 **Il meccanismo.** `changelog-master-v2.yaml` esegue in quest'ordine: vecchia
 storia → `changelog-autogen.yaml` (`00_schema` e `20_code`, mescolati per
-numero) → `80_data` → `85_pgagent` → `90_end`. Quindi un `sqlCheck` che chiede
+numero) → `70_dati_sistema` → `80_data` → `85_pgagent` → `90_end`. Quindi un `sqlCheck` che chiede
 _«esiste già la riga `RESO_VENDITA` in `config.sorgenti`?»_ dentro `20_code`
 viene valutato **quando `80_data` non è ancora passato**.
 

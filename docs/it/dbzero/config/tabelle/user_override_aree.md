@@ -14,7 +14,7 @@
 | area_id | integer | NO |  |
 | livello | config.livello_accesso | NO |  |
 | motivo | text | YES |  |
-| valido_dal | date | YES | CURRENT_DATE |
+| valido_dal | date | YES | script.fn_data_operativa() |
 | valido_al | date | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |

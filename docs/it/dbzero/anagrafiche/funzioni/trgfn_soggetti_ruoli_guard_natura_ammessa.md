@@ -21,7 +21,7 @@ DECLARE
     v_tipo_soggetto_dettaglio_id  config.tipi_soggetto_dettaglio.id%TYPE;
     v_tipo_soggetto_id            config.tipi_soggetto.id%TYPE;
     v_has_matrix                  boolean;
-    v_today                       date := current_date;
+    v_today                       date := script.fn_data_operativa();
     v_error_ctx                   jsonb;
 BEGIN
     -- DELETE: nessun controllo

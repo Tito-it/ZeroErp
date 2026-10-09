@@ -232,8 +232,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   al team DB, il BE attende: `brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C,
   la generazione si ferma; ✅ DB chiuso il 2026-10-09 (applicato, pgTAP verdi): CHECK «finito» su tutte le 170
   colonne numeric, `20261009-10…-18`, codice TECNICO `E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO`),
-  `brief-be-db-giorno-nel-fuso-aziendale` (i filtri per giorno
-  usano il giorno UTC: `test_giornale_trasversale_perimetro` è rosso fra le 00:00 e le 02:00). Da decidere: gli
+  `brief-be-db-fe-un-solo-fuso-aziendale` (un solo fuso, quello dell'azienda; ✅ lato DB applicato il
+  2026-10-09, pgTAP verdi: `fn_fuso_operativo`, confini del giorno, «oggi» aziendale ovunque, fase
+  `70_dati_sistema`; restano BE e FE: i filtri per giorno usano ancora il giorno UTC e
+  `test_giornale_trasversale_perimetro` è rosso fra le 00:00 e le 02:00). Da decidere: gli
   stub `types-bleach`/`types-openpyxl`.
 - **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,
   archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su

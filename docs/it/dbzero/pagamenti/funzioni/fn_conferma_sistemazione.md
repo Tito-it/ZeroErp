@@ -264,7 +264,7 @@ BEGIN
             v_centro_id,
             CASE WHEN v_atto.destinazione = 'RIMBORSO' THEN p_ente_incasso_id END,
             v_atto.emittente_soggetto_ruolo_id,
-            current_date, current_date, v_stato_bozza_id, 'GENERATA',
+            (SELECT script.fn_data_operativa()), (SELECT script.fn_data_operativa()), v_stato_bozza_id, 'GENERATA',
             jsonb_build_object('origine', 'SISTEMAZIONE',
                                'sistemazione_id', v_atto.id,
                                'destinazione', v_atto.destinazione)
@@ -281,7 +281,7 @@ BEGIN
         ) VALUES (
             v_contabile_id,
             concat('SIS_', v_atto.id, '_ORIGINE'),
-            current_date,
+            (SELECT script.fn_data_operativa()),
             v_importo_riga,
             v_atto.fattura_origine_id,
             v_fattura.billing_account_id,
@@ -298,7 +298,7 @@ BEGIN
             )
             SELECT v_contabile_id,
                    concat('SIS_', v_atto.id, '_DESTINAZIONE'),
-                   current_date,
+                   (SELECT script.fn_data_operativa()),
                    - v_importo_riga,
                    f.id,
                    f.billing_account_id,

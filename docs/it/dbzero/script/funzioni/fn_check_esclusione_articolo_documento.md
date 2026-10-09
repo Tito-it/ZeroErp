@@ -47,7 +47,7 @@ BEGIN
          WHERE lrc.listino_versione_id = v_listino_versione_id
            AND lrc.articolo_figlio_id  = p_articolo_id
            AND lrc.attivo              = TRUE
-           AND lrc.validita           @> CURRENT_DATE
+           AND lrc.validita           @> (SELECT script.fn_data_operativa())
     ) INTO v_e_figlio_bundle;
 
     -- ---- MOTIVO 1 — e' un componente di un bundle ------------------

@@ -14,7 +14,7 @@
 | serie | character varying(8) | YES |  |
 | numero | character varying(20) | YES |  |
 | anno | smallint | YES |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | stato_doc_ordine_id | bigint | NO |  |
 | sorgente_tipo_id | bigint | YES |  |
 | valuta_id | integer | YES |  |

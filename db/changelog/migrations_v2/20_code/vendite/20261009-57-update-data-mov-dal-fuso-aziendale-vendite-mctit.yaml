@@ -1,0 +1,474 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite: UN MOVIMENTO DATATO D NASCE ALLA MEZZANOTTE DELL'AZIENDA
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-6.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Le funzioni di registrazione scrivevano in magazzino.movimenti.data_mov
+#   (timestamptz) la data del documento castata con `data::timestamptz`: la
+#   mezzanotte nel fuso della SESSIONE. Dal backend (UTC) un movimento del
+#   5 ottobre nasceva alle 02:00 di Roma del 5, da psql alle 00:00: lo stesso
+#   documento dava due istanti secondo chi lo registrava, e chi rilegge il
+#   giorno di data_mov nel fuso dell'azienda poteva trovarlo nel giorno prima
+#   (in un fuso a ovest di UTC).
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   `data::timestamptz` -> script.fn_inizio_giorno_operativo(data): l'inizio
+#   del giorno D nel fuso dell'azienda (SYSTEM_FUSO_ORARIO). Stessa
+#   semantica di prima («il movimento e' del giorno D, a inizio giornata»),
+#   ma un istante solo, qualunque sia il fuso di chi registra.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firme, tipi, volatilita', sicurezza, commenti e GRANT. Il corpo e' quello
+#   vivo (pg_get_functiondef su zeroerp_ci il 2026-10-09) con la sola
+#   sostituzione del cast. I movimenti gia' scritti non si toccano (brief §7).
+#
+# ── %TYPE: FIRMA, RETURNS TABLE, DECLARE ───────────────────────────
+#   Il corpo vivo (pg_get_functiondef) scioglie i %TYPE della firma: quelli
+#   gia' scritti nell'ultimo changeSet di ogni funzione sono stati RIPRESI
+#   (anche nel rollback), e in questo giro si sono ancorati i parametri, le
+#   colonne di RETURNS TABLE e le variabili che riflettono una colonna.
+#   Verificato in transazione annullata su zeroerp_ci: argomenti e risultato
+#   di ogni funzione restano byte-identici (nessun overload, nessun chiamante
+#   rotto). Restano a TIPO ESPLICITO, perche' non sono il riflesso di nessuna
+#   colonna, le voci elencate sotto per funzione: contatori, interruttori del
+#   chiamante, jsonb e testi di lavoro, valori calcolati o costanti tipizzate,
+#   chiavi polimorfe, il giorno operativo.
+#
+# ── FUNZIONI (2) ──────────────────────────────────────────────
+#     - vendite.fn_posta_ddt — tipo esplicito: p_fase
+#     - vendite.fn_posta_reso — tutto ancorato
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-57-update-data-mov-dal-fuso-aziendale-vendite-mctit.yaml
+
+  - changeSet:
+      id: 20261009-57-update-data-mov-dal-fuso-aziendale-vendite
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite: data_mov di un movimento datato D = inizio del giorno D nel fuso dell'azienda
+        (fn_inizio_giorno_operativo) in 2 funzioni, non la mezzanotte della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname = 'vendite' AND p.proname IN ('fn_posta_ddt', 'fn_posta_reso'))
+                  OR (n.nspname = 'script' AND p.proname = 'fn_inizio_giorno_operativo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_posta_ddt(p_ddt_id vendite.ddt.id%TYPE, p_fase text)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, prelievo_id vendite.ddt_righe_prelievi.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: scrivere i movimenti di una bolla, uno per prelievo, nella
+              --   fase chiesta — USCITA all'emissione, ARRIVO alla consegna di una
+              --   bolla di trasferimento. Non ricontrolla: la primitiva e' la rete.
+              -- ⚠️ p_fase e' text e non %TYPE: e' un selettore (USCITA | ARRIVO)
+              --   senza colonna-vocabolario, validato qui sotto.
+              DECLARE
+                  v_ddt         vendite.ddt%ROWTYPE;
+                  v_causale     config.causali_trasporto.causale_magazzino%TYPE;
+                  v_sorgente_id config.sorgenti.id%TYPE;
+                  v_prel        record;
+              BEGIN
+                  IF p_ddt_id IS NULL OR p_ddt_id <= 0
+                     OR p_fase IS NULL OR p_fase NOT IN ('USCITA', 'ARRIVO') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'bolla maggiore di zero, fase USCITA o ARRIVO',
+                                             'p_ddt_id', p_ddt_id, 'p_fase', p_fase),
+                          NULL::uuid, 'vendite.fn_posta_ddt',
+                          'p_ddt_id (obbligatorio, maggiore di zero), p_fase (USCITA | ARRIVO)');
+                  END IF;
+
+                  SELECT d.* INTO v_ddt FROM vendite.ddt d WHERE d.id = p_ddt_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+                          'E_DDT_NOT_FOUND', jsonb_build_object('ddt_id', p_ddt_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  v_causale := vendite.fn_ddt_causale_magazzino(v_ddt);
+                  -- L'arrivo esiste solo per la bolla di trasferimento: una chiamata
+                  -- diversa e' un chiamante rotto, non un dato.
+                  IF v_causale IS NULL OR (p_fase = 'ARRIVO' AND v_causale <> 'TRASF_OUT') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'la bolla non muove merce in questa fase',
+                                             'ddt_id', p_ddt_id, 'p_fase', p_fase, 'causale_magazzino', v_causale),
+                          NULL::uuid, 'vendite.fn_posta_ddt',
+                          'una bolla che muove merce (ARRIVO: solo la bolla di trasferimento)');
+                  END IF;
+
+                  SELECT s.id INTO v_sorgente_id
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO' AND s.attivo;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.sorgenti.DDT_VENDITA_PRELIEVO'),
+                          NULL::uuid, VARIADIC ARRAY['sorgente DDT_VENDITA_PRELIEVO (config.sorgenti, attiva)']);
+                  END IF;
+
+                  FOR v_prel IN
+                      SELECT p.id, p.qta AS p_qta, p.lotto_id, p.asset_id,
+                             p.ubicazione_id, p.ubicazione_arrivo_id,
+                             COALESCE(drc.componente_id, dr.articolo_id) AS articolo_id
+                        FROM vendite.ddt_righe_prelievi p
+                        JOIN vendite.ddt_righe dr ON dr.id = p.ddt_riga_id
+                        LEFT JOIN vendite.ddt_righe_componenti drc ON drc.id = p.ddt_riga_componente_id
+                       WHERE dr.ddt_id = p_ddt_id
+                         AND dr.attivo
+                       ORDER BY dr.riga_nr, dr.id, p.ddt_riga_componente_id NULLS FIRST, p.id
+                  LOOP
+                      IF p_fase = 'USCITA' THEN
+                          movimento_id := magazzino.fn_scrivi_movimento(
+                              p_magazzino_id     => v_ddt.magazzino_id,
+                              p_articolo_id      => v_prel.articolo_id,
+                              p_causale          => v_causale,
+                              p_qta              => -v_prel.p_qta,
+                              p_sorgente_tipo_id => v_sorgente_id,
+                              p_sorgente_riga    => v_prel.id,
+                              p_lotto_id         => v_prel.lotto_id,
+                              p_asset_id         => v_prel.asset_id,
+                              p_ubicazione_id    => v_prel.ubicazione_id,
+                              p_data_mov         => script.fn_inizio_giorno_operativo(v_ddt.data),
+                              p_transfer_uid     => CASE WHEN v_causale = 'TRASF_OUT' THEN v_ddt.uid END);
+                          qta := -v_prel.p_qta;
+                      ELSE
+                          movimento_id := magazzino.fn_scrivi_movimento(
+                              p_magazzino_id     => v_ddt.magazzino_arrivo_id,
+                              p_articolo_id      => v_prel.articolo_id,
+                              p_causale          => 'TRASF_IN',
+                              p_qta              => v_prel.p_qta,
+                              p_sorgente_tipo_id => v_sorgente_id,
+                              p_sorgente_riga    => v_prel.id,
+                              p_lotto_id         => v_prel.lotto_id,
+                              p_asset_id         => v_prel.asset_id,
+                              p_ubicazione_id    => v_prel.ubicazione_arrivo_id,
+                              p_data_mov         => now(),
+                              p_transfer_uid     => v_ddt.uid);
+                          qta := v_prel.p_qta;
+                      END IF;
+                      prelievo_id := v_prel.id;
+                      RETURN NEXT;
+                  END LOOP;
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_posta_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, rientro_id vendite.resi_righe_rientri.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: scrivere i carichi di un reso, uno per rientro, alla conferma.
+              --   Non ricontrolla: la primitiva e' la rete, la check della merce ha gia'
+              --   parlato. Non crea rientri, non guarda lo stato: QUANDO lo decide il verbo.
+              DECLARE
+                  v_reso        vendite.resi%ROWTYPE;
+                  v_sorgente_id config.sorgenti.id%TYPE;
+                  v_prel_src_id config.sorgenti.id%TYPE;
+                  v_costo       magazzino.movimenti.costo_unitario%TYPE;
+                  v_rientro     record;
+              BEGIN
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'reso maggiore di zero', 'p_reso_id', p_reso_id),
+                          NULL::uuid, 'vendite.fn_posta_reso', 'p_reso_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT r.* INTO v_reso FROM vendite.resi r WHERE r.id = p_reso_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
+                          'E_RESO_NOT_FOUND', jsonb_build_object('reso_id', p_reso_id), NULL::uuid,
+                          p_reso_id::text);
+                  END IF;
+
+                  SELECT s.id INTO v_sorgente_id
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'RESO_VENDITA_RIENTRO' AND s.attivo;
+                  SELECT s.id INTO v_prel_src_id
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO';
+                  IF v_sorgente_id IS NULL OR v_prel_src_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.sorgenti.RESO_VENDITA_RIENTRO / DDT_VENDITA_PRELIEVO'),
+                          NULL::uuid, VARIADIC ARRAY['sorgenti RESO_VENDITA_RIENTRO (attiva) e DDT_VENDITA_PRELIEVO (config.sorgenti)']);
+                  END IF;
+
+                  FOR v_rientro IN
+                      SELECT x.id, x.qta AS x_qta, x.ubicazione_id,
+                             p.id AS prelievo_id, p.lotto_id, p.asset_id,
+                             COALESCE(drc.componente_id, dr.articolo_id) AS articolo_id
+                        FROM vendite.resi_righe_rientri x
+                        JOIN vendite.resi_righe rr          ON rr.id = x.resi_riga_id
+                        JOIN vendite.ddt_righe_prelievi p   ON p.id = x.ddt_riga_prelievo_id
+                        JOIN vendite.ddt_righe dr           ON dr.id = p.ddt_riga_id
+                        LEFT JOIN vendite.ddt_righe_componenti drc ON drc.id = p.ddt_riga_componente_id
+                       WHERE rr.reso_id = p_reso_id
+                         AND rr.attivo
+                       ORDER BY rr.riga_nr, rr.id, p.ddt_riga_componente_id NULLS FIRST, x.id
+                  LOOP
+                      -- Il costo dell'USCITA d'origine (D-3b-e): la merce rientra al valore al
+                      -- quale era uscita, e la media non si sposta per un andata-e-ritorno.
+                      -- Uscita senza costo (NULL) -> NULL, e vale la media: regola della primitiva.
+                      SELECT m.costo_unitario INTO v_costo
+                        FROM magazzino.movimenti m
+                       WHERE m.sorgente_tipo_id = v_prel_src_id
+                         AND m.sorgente_riga = v_rientro.prelievo_id
+                         AND m.qta < 0
+                         AND m.storno_di_movimento_id IS NULL
+                       ORDER BY m.id
+                       LIMIT 1;
+
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_reso.magazzino_id,
+                          p_articolo_id      => v_rientro.articolo_id,
+                          p_causale          => 'CARICO_RESO_VEN',
+                          p_qta              => v_rientro.x_qta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_riga    => v_rientro.id,
+                          p_costo_unitario   => v_costo,
+                          p_lotto_id         => v_rientro.lotto_id,
+                          p_asset_id         => v_rientro.asset_id,
+                          p_ubicazione_id    => v_rientro.ubicazione_id,
+                          p_data_mov         => script.fn_inizio_giorno_operativo(v_reso.data));
+                      rientro_id := v_rientro.id;
+                      qta        := v_rientro.x_qta;
+                      RETURN NEXT;
+                  END LOOP;
+                  RETURN;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_posta_ddt(p_ddt_id vendite.ddt.id%TYPE, p_fase text)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, prelievo_id vendite.ddt_righe_prelievi.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: scrivere i movimenti di una bolla, uno per prelievo, nella
+              --   fase chiesta — USCITA all'emissione, ARRIVO alla consegna di una
+              --   bolla di trasferimento. Non ricontrolla: la primitiva e' la rete.
+              -- ⚠️ p_fase e' text e non %TYPE: e' un selettore (USCITA | ARRIVO)
+              --   senza colonna-vocabolario, validato qui sotto.
+              DECLARE
+                  v_ddt         vendite.ddt%ROWTYPE;
+                  v_causale     config.causali_trasporto.causale_magazzino%TYPE;
+                  v_sorgente_id config.sorgenti.id%TYPE;
+                  v_prel        record;
+              BEGIN
+                  IF p_ddt_id IS NULL OR p_ddt_id <= 0
+                     OR p_fase IS NULL OR p_fase NOT IN ('USCITA', 'ARRIVO') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'bolla maggiore di zero, fase USCITA o ARRIVO',
+                                             'p_ddt_id', p_ddt_id, 'p_fase', p_fase),
+                          NULL::uuid, 'vendite.fn_posta_ddt',
+                          'p_ddt_id (obbligatorio, maggiore di zero), p_fase (USCITA | ARRIVO)');
+                  END IF;
+
+                  SELECT d.* INTO v_ddt FROM vendite.ddt d WHERE d.id = p_ddt_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+                          'E_DDT_NOT_FOUND', jsonb_build_object('ddt_id', p_ddt_id), NULL::uuid,
+                          VARIADIC ARRAY[]::text[]);
+                  END IF;
+
+                  v_causale := vendite.fn_ddt_causale_magazzino(v_ddt);
+                  -- L'arrivo esiste solo per la bolla di trasferimento: una chiamata
+                  -- diversa e' un chiamante rotto, non un dato.
+                  IF v_causale IS NULL OR (p_fase = 'ARRIVO' AND v_causale <> 'TRASF_OUT') THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'la bolla non muove merce in questa fase',
+                                             'ddt_id', p_ddt_id, 'p_fase', p_fase, 'causale_magazzino', v_causale),
+                          NULL::uuid, 'vendite.fn_posta_ddt',
+                          'una bolla che muove merce (ARRIVO: solo la bolla di trasferimento)');
+                  END IF;
+
+                  SELECT s.id INTO v_sorgente_id
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO' AND s.attivo;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_ddt',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.sorgenti.DDT_VENDITA_PRELIEVO'),
+                          NULL::uuid, VARIADIC ARRAY['sorgente DDT_VENDITA_PRELIEVO (config.sorgenti, attiva)']);
+                  END IF;
+
+                  FOR v_prel IN
+                      SELECT p.id, p.qta AS p_qta, p.lotto_id, p.asset_id,
+                             p.ubicazione_id, p.ubicazione_arrivo_id,
+                             COALESCE(drc.componente_id, dr.articolo_id) AS articolo_id
+                        FROM vendite.ddt_righe_prelievi p
+                        JOIN vendite.ddt_righe dr ON dr.id = p.ddt_riga_id
+                        LEFT JOIN vendite.ddt_righe_componenti drc ON drc.id = p.ddt_riga_componente_id
+                       WHERE dr.ddt_id = p_ddt_id
+                         AND dr.attivo
+                       ORDER BY dr.riga_nr, dr.id, p.ddt_riga_componente_id NULLS FIRST, p.id
+                  LOOP
+                      IF p_fase = 'USCITA' THEN
+                          movimento_id := magazzino.fn_scrivi_movimento(
+                              p_magazzino_id     => v_ddt.magazzino_id,
+                              p_articolo_id      => v_prel.articolo_id,
+                              p_causale          => v_causale,
+                              p_qta              => -v_prel.p_qta,
+                              p_sorgente_tipo_id => v_sorgente_id,
+                              p_sorgente_riga    => v_prel.id,
+                              p_lotto_id         => v_prel.lotto_id,
+                              p_asset_id         => v_prel.asset_id,
+                              p_ubicazione_id    => v_prel.ubicazione_id,
+                              p_data_mov         => v_ddt.data::timestamptz,
+                              p_transfer_uid     => CASE WHEN v_causale = 'TRASF_OUT' THEN v_ddt.uid END);
+                          qta := -v_prel.p_qta;
+                      ELSE
+                          movimento_id := magazzino.fn_scrivi_movimento(
+                              p_magazzino_id     => v_ddt.magazzino_arrivo_id,
+                              p_articolo_id      => v_prel.articolo_id,
+                              p_causale          => 'TRASF_IN',
+                              p_qta              => v_prel.p_qta,
+                              p_sorgente_tipo_id => v_sorgente_id,
+                              p_sorgente_riga    => v_prel.id,
+                              p_lotto_id         => v_prel.lotto_id,
+                              p_asset_id         => v_prel.asset_id,
+                              p_ubicazione_id    => v_prel.ubicazione_arrivo_id,
+                              p_data_mov         => now(),
+                              p_transfer_uid     => v_ddt.uid);
+                          qta := v_prel.p_qta;
+                      END IF;
+                      prelievo_id := v_prel.id;
+                      RETURN NEXT;
+                  END LOOP;
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_posta_reso(p_reso_id vendite.resi.id%TYPE)
+               RETURNS TABLE(movimento_id magazzino.movimenti.id%TYPE, rientro_id vendite.resi_righe_rientri.id%TYPE, qta magazzino.movimenti.qta%TYPE)
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- Scopo: scrivere i carichi di un reso, uno per rientro, alla conferma.
+              --   Non ricontrolla: la primitiva e' la rete, la check della merce ha gia'
+              --   parlato. Non crea rientri, non guarda lo stato: QUANDO lo decide il verbo.
+              DECLARE
+                  v_reso        vendite.resi%ROWTYPE;
+                  v_sorgente_id config.sorgenti.id%TYPE;
+                  v_prel_src_id config.sorgenti.id%TYPE;
+                  v_costo       magazzino.movimenti.costo_unitario%TYPE;
+                  v_rientro     record;
+              BEGIN
+                  IF p_reso_id IS NULL OR p_reso_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('detail', 'reso maggiore di zero', 'p_reso_id', p_reso_id),
+                          NULL::uuid, 'vendite.fn_posta_reso', 'p_reso_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  SELECT r.* INTO v_reso FROM vendite.resi r WHERE r.id = p_reso_id;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
+                          'E_RESO_NOT_FOUND', jsonb_build_object('reso_id', p_reso_id), NULL::uuid,
+                          p_reso_id::text);
+                  END IF;
+
+                  SELECT s.id INTO v_sorgente_id
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'RESO_VENDITA_RIENTRO' AND s.attivo;
+                  SELECT s.id INTO v_prel_src_id
+                    FROM config.sorgenti s
+                   WHERE s.codice_interno = 'DDT_VENDITA_PRELIEVO';
+                  IF v_sorgente_id IS NULL OR v_prel_src_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error('vendite', 'vendite.fn_posta_reso',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.sorgenti.RESO_VENDITA_RIENTRO / DDT_VENDITA_PRELIEVO'),
+                          NULL::uuid, VARIADIC ARRAY['sorgenti RESO_VENDITA_RIENTRO (attiva) e DDT_VENDITA_PRELIEVO (config.sorgenti)']);
+                  END IF;
+
+                  FOR v_rientro IN
+                      SELECT x.id, x.qta AS x_qta, x.ubicazione_id,
+                             p.id AS prelievo_id, p.lotto_id, p.asset_id,
+                             COALESCE(drc.componente_id, dr.articolo_id) AS articolo_id
+                        FROM vendite.resi_righe_rientri x
+                        JOIN vendite.resi_righe rr          ON rr.id = x.resi_riga_id
+                        JOIN vendite.ddt_righe_prelievi p   ON p.id = x.ddt_riga_prelievo_id
+                        JOIN vendite.ddt_righe dr           ON dr.id = p.ddt_riga_id
+                        LEFT JOIN vendite.ddt_righe_componenti drc ON drc.id = p.ddt_riga_componente_id
+                       WHERE rr.reso_id = p_reso_id
+                         AND rr.attivo
+                       ORDER BY rr.riga_nr, rr.id, p.ddt_riga_componente_id NULLS FIRST, x.id
+                  LOOP
+                      -- Il costo dell'USCITA d'origine (D-3b-e): la merce rientra al valore al
+                      -- quale era uscita, e la media non si sposta per un andata-e-ritorno.
+                      -- Uscita senza costo (NULL) -> NULL, e vale la media: regola della primitiva.
+                      SELECT m.costo_unitario INTO v_costo
+                        FROM magazzino.movimenti m
+                       WHERE m.sorgente_tipo_id = v_prel_src_id
+                         AND m.sorgente_riga = v_rientro.prelievo_id
+                         AND m.qta < 0
+                         AND m.storno_di_movimento_id IS NULL
+                       ORDER BY m.id
+                       LIMIT 1;
+
+                      movimento_id := magazzino.fn_scrivi_movimento(
+                          p_magazzino_id     => v_reso.magazzino_id,
+                          p_articolo_id      => v_rientro.articolo_id,
+                          p_causale          => 'CARICO_RESO_VEN',
+                          p_qta              => v_rientro.x_qta,
+                          p_sorgente_tipo_id => v_sorgente_id,
+                          p_sorgente_riga    => v_rientro.id,
+                          p_costo_unitario   => v_costo,
+                          p_lotto_id         => v_rientro.lotto_id,
+                          p_asset_id         => v_rientro.asset_id,
+                          p_ubicazione_id    => v_rientro.ubicazione_id,
+                          p_data_mov         => v_reso.data::timestamptz);
+                      rientro_id := v_rientro.id;
+                      qta        := v_rientro.x_qta;
+                      RETURN NEXT;
+                  END LOOP;
+                  RETURN;
+              END;
+              $function$;

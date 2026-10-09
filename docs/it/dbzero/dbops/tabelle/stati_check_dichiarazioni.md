@@ -15,7 +15,7 @@
 | valore | text | NO |  |
 | canale | text | NO |  |
 | ragione | text | NO |  |
-| data_registrazione | date | NO | CURRENT_DATE |
+| data_registrazione | date | NO | script.fn_data_operativa() |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |

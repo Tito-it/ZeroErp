@@ -17,6 +17,13 @@ databaseChangeLog:
         - include:
                   file: migrations_v2/changelog-autogen.yaml
                   relativeToChangelogFile: true
+        # 3-bis) Dati di SISTEMA senza cui il codice non gira (es. il fuso
+        #   dell'azienda, che leggono trigger e DEFAULT): subito dopo il
+        #   codice, PRIMA di qualunque seed. Esclusa dall'autogen.
+        #   brief-be-db-fe-un-solo-fuso-aziendale, T-8 (2026-10-09).
+        - includeAll:
+                  path: migrations_v2/70_dati_sistema
+                  relativeToChangelogFile: true
         # 4) Dati/config + job + step finali
         - includeAll:
                   path: migrations_v2/80_data

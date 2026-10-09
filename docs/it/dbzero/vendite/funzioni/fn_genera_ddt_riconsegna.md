@@ -8,7 +8,7 @@ CREATE FUNCTION fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb, p_data
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb DEFAULT NULL::jsonb, p_data date DEFAULT CURRENT_DATE)
+CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb DEFAULT NULL::jsonb, p_data date DEFAULT script.fn_data_operativa())
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -30,7 +30,7 @@ DECLARE
     v_residuo_ric    numeric;
     v_qta_ric        numeric;
     v_qta_op         numeric;
-    v_riga_nr        integer := 0;
+    v_riga_nr        vendite.ddt_righe.riga_nr%TYPE := 0;
     v_n              integer := 0;
 BEGIN
     -- 1) Guard input.
@@ -197,7 +197,7 @@ BEGIN
         mittente_soggetto_ruolo_id, vettore_soggetto_ruolo_id,
         fatturazione_immediata)
     VALUES (
-        COALESCE(p_data, CURRENT_DATE), v_stato_draft_id,
+        COALESCE(p_data, (SELECT script.fn_data_operativa())), v_stato_draft_id,
         v_orig.destinatario_soggetto_ruolo_id,
         v_sorgente_tipo_id, v_sorgente_uid, v_orig.billing_account_id,
         v_orig.utility_id, v_orig.valuta_id, v_orig.emittente_fiscale_id,

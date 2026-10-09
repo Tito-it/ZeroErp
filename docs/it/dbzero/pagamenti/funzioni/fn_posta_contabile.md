@@ -313,7 +313,7 @@ BEGIN
                v_data_registrazione,
                v_data_contabile,
                cr.data_valuta,
-               current_date,
+               (SELECT script.fn_data_operativa()),
                cr.importo,
                v_centro_id,
                jsonb_build_object('origine', 'POSTING', 'contabile_codice', v_codice)

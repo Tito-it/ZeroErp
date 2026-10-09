@@ -160,8 +160,8 @@ DECLARE
   WHERE aum.articolo_id = NEW.articolo_id
     AND aum.uom_id      = NEW.uom_operativa_id
     AND aum.attivo      = TRUE
-    AND (aum.valido_dal IS NULL OR aum.valido_dal <= CURRENT_DATE)
-    AND (aum.valido_al  IS NULL OR aum.valido_al  >= CURRENT_DATE)
+    AND (aum.valido_dal IS NULL OR aum.valido_dal <= (SELECT script.fn_data_operativa()))
+    AND (aum.valido_al  IS NULL OR aum.valido_al  >= (SELECT script.fn_data_operativa()))
   LIMIT 1;
 
   v_factor_map := COALESCE(v_factor_map, 1);

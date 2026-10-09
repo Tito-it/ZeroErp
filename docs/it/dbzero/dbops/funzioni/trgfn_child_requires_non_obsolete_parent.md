@@ -141,7 +141,7 @@ BEGIN
     END IF;
 
     -- Obsoleto se obsoleto_dal valorizzata e raggiunta. NULL o futura = ok.
-    IF v_obsoleto_dal IS NOT NULL AND v_obsoleto_dal <= CURRENT_DATE THEN
+    IF v_obsoleto_dal IS NOT NULL AND v_obsoleto_dal <= script.fn_data_operativa() THEN
       PERFORM script.fn_log_and_raise_error(
         'database',
         TG_NAME,
