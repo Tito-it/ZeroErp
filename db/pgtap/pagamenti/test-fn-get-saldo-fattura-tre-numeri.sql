@@ -132,7 +132,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, 300.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
@@ -156,8 +156,8 @@ SELECT is(
 CREATE TEMP TABLE tmp_contabile_banca AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa(),
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -170,7 +170,7 @@ WITH ins AS (
       (contabile_id, riferimento_ente, data_pagamento, data_valuta, importo,
        fattura_id, billing_account_id, stato_id, meta)
   SELECT (SELECT contabile_id FROM tmp_contabile_banca), 'PGTAP_SALDO_A',
-         current_date, current_date, 100.00,
+         script.fn_data_operativa(), script.fn_data_operativa(), 100.00,
          (SELECT id FROM tmp_fattura), r.billing_account_id, r.stato_abbinata_id,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
@@ -277,8 +277,8 @@ SELECT is(
 CREATE TEMP TABLE tmp_contabile_fondo AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_fondo_id FROM tmp_refs),
-    p_data_contabile        => current_date,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa(),
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'GENERATA'
@@ -288,7 +288,7 @@ INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, data_valuta, importo,
      fattura_id, billing_account_id, stato_id, meta)
 SELECT (SELECT contabile_id FROM tmp_contabile_fondo), 'PGTAP_SALDO_B',
-       current_date, current_date, 50.00,
+       script.fn_data_operativa(), script.fn_data_operativa(), 50.00,
        (SELECT id FROM tmp_fattura), r.billing_account_id, r.stato_abbinata_id,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_refs r;

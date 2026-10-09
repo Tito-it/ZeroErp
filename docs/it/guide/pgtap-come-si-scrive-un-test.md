@@ -230,6 +230,28 @@ un cancello: metà delle occorrenze sono su temp table del test stesso, dove il
 `LIMIT` non sceglie niente. Un cancello con quel tasso di falsi positivi si
 impara a disattivare.
 
+### «Oggi» è il giorno dell'azienda, non quello della sessione
+
+Il codice legge il giorno dal fuso dell'azienda (`script.fn_data_operativa()`), e
+il test deve costruire lo **stesso** giorno:
+
+| serve | si scrive |
+| --- | --- |
+| oggi | `script.fn_data_operativa()` |
+| il giorno di un istante (`data_mov`, `data_insert`, …) | `script.fn_giorno_operativo(<istante>)` |
+| l'istante in cui comincia un giorno | `script.fn_inizio_giorno_operativo(<data>)` |
+
+⛔ `CURRENT_DATE`, `LOCALTIMESTAMP`, `now()::date` e un `::date` su un istante
+danno il giorno della **sessione**, e la sessione dei test gira apposta in un
+fuso il cui giorno è **diverso** da quello dell'azienda: `scripts/testpgtap.sh`
+sceglie, file per file, fra +14 e −11 quello che adesso cade in un altro giorno.
+Così un test che confonde i due giorni è rosso a ogni ora, non solo di notte.
+La prima metà della regola la presidia `scripts/guardrail_pgtap_preambolo.py`;
+un'eccezione si dichiara con `-- pgtap-oggi: escluso — <perché>`.
+
+⭐ Un rosso da riprodurre nel fuso dell'azienda: `PGTZ=Europe/Rome
+scripts/testpgtap.sh …` (il runner rispetta un `PGTZ` già impostato).
+
 ### Le chiavi generate devono essere larghe
 
 Un suffisso di **due caratteri esadecimali** sono 256 valori. Con 64 righe

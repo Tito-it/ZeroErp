@@ -199,7 +199,7 @@ WITH f AS (
   --   coincidenza (vendite.trgfn_fatture_guard_registro_emittente).
   SELECT script.fn_pgtap_registro_fattura(
            anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_refs_lcf))),
-         current_date,
+         script.fn_data_operativa(),
          anagrafiche.fn_get_emittente_fiscale_id((SELECT billing_account_id FROM tmp_refs_lcf)),
          (SELECT billing_account_id FROM tmp_refs_lcf),
          jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata')
@@ -212,7 +212,7 @@ WITH r AS (
                                      prezzo_unitario, meta, competenza_dal, competenza_al)
   SELECT (SELECT fattura_id FROM tmp_fattura_lcf), 1, 'Riga di test',
          1::numeric, 10::numeric,
-         jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata'), CURRENT_DATE, CURRENT_DATE
+         jsonb_build_object('test_scope', 'pgtap_lista_commessa_attivita_fatturata'), script.fn_data_operativa(), script.fn_data_operativa()
   RETURNING id
 )
 UPDATE tmp_fattura_lcf SET riga_id = (SELECT id FROM r);

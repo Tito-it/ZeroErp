@@ -122,7 +122,7 @@ WITH ins AS (
            m.billing_account_id, m.istanza_utility_id, m.utility_id,
            (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
            (SELECT listino_id FROM tmp_crl_listino),
-           CURRENT_DATE, CURRENT_DATE + 365
+           script.fn_data_operativa(), script.fn_data_operativa() + 365
       FROM tmp_crl_mondo m
     RETURNING id
 )

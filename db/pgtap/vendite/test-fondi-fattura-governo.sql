@@ -127,7 +127,7 @@ CREATE TEMP TABLE tmp_src_pos AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          TRUE, 100.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -144,7 +144,7 @@ CREATE TEMP TABLE tmp_src_neg AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          TRUE, -80.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -160,7 +160,7 @@ CREATE TEMP TABLE tmp_src_ann AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_annullata_id,
          TRUE, 50.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -176,7 +176,7 @@ CREATE TEMP TABLE tmp_src_term AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       termine_pagamento_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          r.termine_pagamento_id, TRUE, 40.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -194,7 +194,7 @@ CREATE TEMP TABLE tmp_src_zero AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          FALSE, 0.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -207,7 +207,7 @@ CREATE TEMP TABLE tmp_figlia AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, FALSE, 200.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
     FROM tmp_refs_ffg r
@@ -575,7 +575,7 @@ CREATE TEMP TABLE tmp_src_c_prop AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          TRUE, 120.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -592,7 +592,7 @@ CREATE TEMP TABLE tmp_src_c_nc AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          TRUE, 50.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -607,7 +607,7 @@ CREATE TEMP TABLE tmp_src_c_noutil AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.stato_definitiva_id,
          TRUE, 90.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -623,7 +623,7 @@ CREATE TEMP TABLE tmp_src_c_cap AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          TRUE, 100.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -640,7 +640,7 @@ CREATE TEMP TABLE tmp_src_c_ctrl AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          TRUE, 70.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffg))
@@ -682,7 +682,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
          p_centro_riscossione_id => (
            SELECT c.id FROM pagamenti.centri_riscossione c
             WHERE c.attivo IS TRUE ORDER BY c.id LIMIT 1),
-         p_data_contabile => current_date
+         p_data_contabile => script.fn_data_operativa()
        ) AS contabile_id;
 
 CREATE TEMP TABLE tmp_righe_ffg AS WITH ins AS (

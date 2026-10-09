@@ -94,9 +94,9 @@ SELECT (SELECT art_base_id FROM tmp_seed), uom_operativa_id, false, 6, true
 --   la seconda non si nomina.
 INSERT INTO catalogo.unita_misura_conversioni
     (uom_from_id, uom_to_id, fattore, valido_dal, attivo)
-SELECT uom_conv_id, uom_base_id, 2, CURRENT_DATE, true FROM tmp_uom
+SELECT uom_conv_id, uom_base_id, 2, script.fn_data_operativa(), true FROM tmp_uom
 UNION ALL
-SELECT uom_base_id, uom_operativa_id, 4, CURRENT_DATE, true FROM tmp_uom;
+SELECT uom_base_id, uom_operativa_id, 4, script.fn_data_operativa(), true FROM tmp_uom;
 
 -- =========================================================
 -- 1-2) fn_get_uom_base risponde la UoM dell'articolo

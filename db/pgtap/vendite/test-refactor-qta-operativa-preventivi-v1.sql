@@ -125,8 +125,8 @@ SELECT
        JOIN catalogo.articoli a ON a.id = m.articolo_id
       WHERE m.uom_id = 2 AND m.factor_to_base = 6 AND m.attivo IS TRUE
         AND a.attivo IS TRUE
-        AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-        AND (m.valido_al  IS NULL OR m.valido_al  >= CURRENT_DATE)
+        AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+        AND (m.valido_al  IS NULL OR m.valido_al  >= script.fn_data_operativa())
       LIMIT 1) AS articolo_f6_id,
     (SELECT s.id FROM config.stati_doc_preventivi s
       WHERE s.codice='DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_draft_id,

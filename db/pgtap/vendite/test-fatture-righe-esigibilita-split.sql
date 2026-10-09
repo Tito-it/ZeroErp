@@ -128,7 +128,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture
       (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
        tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
-  SELECT (SELECT id FROM tmp_es_reg), current_date,
+  SELECT (SELECT id FROM tmp_es_reg), script.fn_data_operativa(),
          r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.stato_doc_fiscale_id, r.valuta_id, r.utility_id,
          jsonb_build_object('test_scope', 'pgtap_esigibilita')
@@ -144,7 +144,7 @@ UPDATE anagrafiche.soggetti SET split_payment = 'N'
 
 INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_es_fatt), 1, 'Riga non scissa', 1, 100, r.iva_id,
-       jsonb_build_object('test_scope', 'pgtap_esigibilita'), CURRENT_DATE, CURRENT_DATE
+       jsonb_build_object('test_scope', 'pgtap_esigibilita'), script.fn_data_operativa(), script.fn_data_operativa()
   FROM tmp_es_refs r;
 
 SELECT is(
@@ -163,7 +163,7 @@ UPDATE anagrafiche.soggetti SET split_payment = 'S'
 
 INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_es_fatt), 2, 'Riga scissa', 1, 100, r.iva_id,
-       jsonb_build_object('test_scope', 'pgtap_esigibilita'), CURRENT_DATE, CURRENT_DATE
+       jsonb_build_object('test_scope', 'pgtap_esigibilita'), script.fn_data_operativa(), script.fn_data_operativa()
   FROM tmp_es_refs r;
 
 SELECT is(
@@ -189,7 +189,7 @@ UPDATE anagrafiche.soggetti SET split_payment = 'N'
 INSERT INTO vendite.fatture_righe
     (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, esigibilita, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_es_fatt), 3, 'Riga differita', 1, 100, r.iva_id, 'D',
-       jsonb_build_object('test_scope', 'pgtap_esigibilita'), CURRENT_DATE, CURRENT_DATE
+       jsonb_build_object('test_scope', 'pgtap_esigibilita'), script.fn_data_operativa(), script.fn_data_operativa()
   FROM tmp_es_refs r;
 
 SELECT is(
@@ -210,7 +210,7 @@ UPDATE anagrafiche.soggetti SET split_payment = 'S'
 INSERT INTO vendite.fatture_righe
     (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, esigibilita, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_es_fatt), 4, 'Riga differita ma scissa', 1, 100, r.iva_id, 'D',
-       jsonb_build_object('test_scope', 'pgtap_esigibilita'), CURRENT_DATE, CURRENT_DATE
+       jsonb_build_object('test_scope', 'pgtap_esigibilita'), script.fn_data_operativa(), script.fn_data_operativa()
   FROM tmp_es_refs r;
 
 SELECT is(

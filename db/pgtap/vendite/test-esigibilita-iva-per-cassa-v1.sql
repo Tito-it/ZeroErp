@@ -111,7 +111,7 @@ CREATE OR REPLACE FUNCTION pg_temp.fx_riga(p_nr integer, p_iva integer, p_esig c
 RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario,
                                      iva_id, esigibilita, competenza_dal, competenza_al)
-  SELECT (SELECT fattura_id FROM tmp_ec), p_nr, 'Riga ' || p_nr, 1, 100, p_iva, p_esig, CURRENT_DATE, CURRENT_DATE
+  SELECT (SELECT fattura_id FROM tmp_ec), p_nr, 'Riga ' || p_nr, 1, 100, p_iva, p_esig, script.fn_data_operativa(), script.fn_data_operativa()
   RETURNING id;
 $fx$;
 
@@ -253,7 +253,7 @@ UPDATE catalogo.articoli SET iva_id = (SELECT iva_ord FROM tmp_ec_iva)
 SELECT is(
   (SELECT COALESCE(r.esigibilita::text, 'NULL') || '/' || COALESCE(r.split_payment::text, 'NULL')
      -- ⚠️ p_imponibile NULL (l'anteprima): dal 20261004-15 un importo e' rifiutato.
-     FROM vendite.fn_resolve_iva_riga((SELECT articolo_id FROM tmp_ec_art), current_date, NULL,
+     FROM vendite.fn_resolve_iva_riga((SELECT articolo_id FROM tmp_ec_art), script.fn_data_operativa(), NULL,
                                       NULL, NULL,
                                       (SELECT cliente_soggetto_id FROM tmp_ec_iva),
                                       (SELECT emittente_fiscale_id FROM tmp_ec)) r),

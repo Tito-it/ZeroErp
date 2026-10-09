@@ -65,8 +65,8 @@ SELECT is(
 SELECT is(
     (SELECT c.competenza_dal::text || '/' || c.competenza_al::text
        FROM vendite.commesse c WHERE c.id = (SELECT commessa_id FROM t_c1)),
-    date_trunc('month', CURRENT_DATE)::date::text || '/'
-        || (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date::text,
+    date_trunc('month', script.fn_data_operativa())::date::text || '/'
+        || (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date::text,
     'la competenza e'' il mese corrente: le attivita'' del builder gemello ci cadono dentro'
 );
 

@@ -175,7 +175,7 @@ WITH o AS (
             utility_id, listino_id, listino_versione_id, validita_dal, validita_al, stato_doc_offerta_id)
     SELECT 'PGTAP-RG2-' || substr(gen_random_uuid()::text, 1, 8),
            m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id,
-           m.utility_id, l.listino_id, l.listino_versione_id, CURRENT_DATE, CURRENT_DATE + 365,
+           m.utility_id, l.listino_id, l.listino_versione_id, script.fn_data_operativa(), script.fn_data_operativa() + 365,
            (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'BOZZA')
       FROM tmp_rg2_mondo m, tmp_rg2_listino l
     RETURNING id

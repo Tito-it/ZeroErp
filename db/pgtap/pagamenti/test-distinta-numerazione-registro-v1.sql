@@ -69,7 +69,7 @@ SELECT plan(19);
 -- ============================================================
 CREATE TEMP TABLE tmp_costanti AS
 SELECT 'pgtap_distinta_numerazione_registro'::text AS test_scope,
-       extract(year FROM current_date)::int         AS anno_corrente;
+       extract(year FROM script.fn_data_operativa())::int         AS anno_corrente;
 
 CREATE TEMP TABLE tmp_ab AS
 SELECT (SELECT emittente_fiscale_id FROM _mondi WHERE lato = 'A') AS a_ef,
@@ -228,8 +228,8 @@ SELECT is(
 CREATE TEMP TABLE tmp_dist_b1 AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
-           p_data_contabile        => current_date,
-           p_data_registrazione    => current_date,
+           p_data_contabile        => script.fn_data_operativa(),
+           p_data_registrazione    => script.fn_data_operativa(),
            p_ente_incasso_id       => (SELECT ente_b FROM tmp_enti),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
@@ -256,8 +256,8 @@ SELECT is(
 CREATE TEMP TABLE tmp_dist_b2 AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
-           p_data_contabile        => current_date - 1,
-           p_data_registrazione    => current_date,
+           p_data_contabile        => script.fn_data_operativa() - 1,
+           p_data_registrazione    => script.fn_data_operativa(),
            p_ente_incasso_id       => (SELECT ente_b FROM tmp_enti),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
@@ -279,8 +279,8 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 CREATE TEMP TABLE tmp_dist_a1 AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
-           p_data_contabile        => current_date,
-           p_data_registrazione    => current_date,
+           p_data_contabile        => script.fn_data_operativa(),
+           p_data_registrazione    => script.fn_data_operativa(),
            p_ente_incasso_id       => (SELECT ente_a FROM tmp_enti),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
@@ -309,7 +309,7 @@ CREATE TEMP TABLE tmp_dist_anni AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
            p_data_contabile        => make_date((SELECT anno_corrente FROM tmp_costanti) - 1, 12, 31),
-           p_data_registrazione    => current_date,
+           p_data_registrazione    => script.fn_data_operativa(),
            p_ente_incasso_id       => (SELECT ente_b FROM tmp_enti),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
@@ -317,7 +317,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
        pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
            p_data_contabile        => make_date((SELECT anno_corrente FROM tmp_costanti), 1, 2),
-           p_data_registrazione    => current_date,
+           p_data_registrazione    => script.fn_data_operativa(),
            p_ente_incasso_id       => (SELECT ente_b FROM tmp_enti),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
@@ -340,7 +340,7 @@ CREATE TEMP TABLE tmp_dist_b_cassa AS
 WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
       (centro_riscossione_id, data_contabile, data_registrazione, stato_id, origine, meta)
-  SELECT ab.centro_cassa, current_date, current_date, ab.stato_bozza, 'MANUALE',
+  SELECT ab.centro_cassa, script.fn_data_operativa(), script.fn_data_operativa(), ab.stato_bozza, 'MANUALE',
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_ab ab
   RETURNING id, emittente_soggetto_ruolo_id, codice
@@ -365,7 +365,7 @@ SELECT throws_like(
   format(
     $sql$INSERT INTO pagamenti.vendite_contabili
             (centro_riscossione_id, data_contabile, data_registrazione, stato_id, origine)
-         VALUES (%s, current_date, current_date, %s, 'MANUALE')$sql$,
+         VALUES (%s, script.fn_data_operativa(), script.fn_data_operativa(), %s, 'MANUALE')$sql$,
     (SELECT centro_cassa FROM tmp_ab), (SELECT stato_bozza FROM tmp_ab)),
   '%indicare l''emittente%',
   '9) Senza canale e senza emittente in sessione: E_CONTABILE_EMITTENTE_OBBLIGATORIO, con la frase per il form'
@@ -382,7 +382,7 @@ SELECT throws_like(
     $sql$INSERT INTO pagamenti.vendite_contabili
             (centro_riscossione_id, emittente_soggetto_ruolo_id, ente_incasso_id,
              data_contabile, data_registrazione, stato_id, origine)
-         VALUES (%s, %s, %s, current_date, current_date, %s, 'MANUALE')$sql$,
+         VALUES (%s, %s, %s, script.fn_data_operativa(), script.fn_data_operativa(), %s, 'MANUALE')$sql$,
     (SELECT centro_banca FROM tmp_ab), (SELECT a_sr FROM tmp_ab),
     (SELECT ente_b FROM tmp_enti), (SELECT stato_bozza FROM tmp_ab)),
   '%non di %',
@@ -396,7 +396,7 @@ CREATE TEMP TABLE tmp_dist_ko AS
 WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
       (codice, centro_riscossione_id, data_contabile, data_registrazione, stato_id, origine, meta)
-  SELECT 'PGTAP-DIS-KO', ab.centro_cassa, current_date, current_date, ab.stato_bozza, 'MANUALE',
+  SELECT 'PGTAP-DIS-KO', ab.centro_cassa, script.fn_data_operativa(), script.fn_data_operativa(), ab.stato_bozza, 'MANUALE',
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_ab ab
   RETURNING id, codice, registro_id, anno, emittente_soggetto_ruolo_id

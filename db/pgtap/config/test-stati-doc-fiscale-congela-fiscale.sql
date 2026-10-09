@@ -196,7 +196,7 @@ WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
   SELECT (SELECT id FROM tmp_cf_reg),
-         current_date,
+         script.fn_data_operativa(),
          (SELECT emittente_soggetto_ruolo_id FROM tmp_cf_refs),
          (SELECT billing_account_id          FROM tmp_cf_refs),
          (SELECT tipo_doc_fiscale_id         FROM tmp_cf_refs),

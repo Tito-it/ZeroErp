@@ -173,7 +173,7 @@ SELECT b.soggetto_ruolo_id, ti.fatt_id, b.istanza_utility_id,
 -- ============================================================
 CREATE TEMP TABLE tmp_lotto_sil AS
 SELECT vendite.fn_create_fatturazione_lotto(
-    p_competenza_mese             => date_trunc('month', current_date)::date,
+    p_competenza_mese             => date_trunc('month', script.fn_data_operativa())::date,
     p_tipo_doc_fiscale_id         => (SELECT tipo_doc_fiscale_id FROM tmp_base_sil),
     p_utility_id                  => (SELECT utility_id FROM tmp_ba_sil WHERE rn = 1),
     p_billing_account_id          => (SELECT billing_account_id FROM tmp_ba_sil WHERE rn = 1),
@@ -201,7 +201,7 @@ WITH casi AS (
     registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
     tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
   )
-  SELECT bs.registro_id, current_date, c.emittente_soggetto_ruolo_id,
+  SELECT bs.registro_id, script.fn_data_operativa(), c.emittente_soggetto_ruolo_id,
          c.billing_account_id, bs.tipo_doc_fiscale_id, c.stato_id, bs.valuta_id,
          jsonb_build_object('test', 'pgtap_snapshot_indirizzi_lotto', 'caso', c.caso)
     FROM casi c, tmp_base_sil bs

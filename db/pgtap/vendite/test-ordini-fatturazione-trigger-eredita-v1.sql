@@ -117,7 +117,7 @@ BEGIN
     INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id,
       stato_doc_ordine_id, valuta_id, data, emittente_fiscale_id, storicizza, meta)
     VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-      r.valuta_id, CURRENT_DATE,
+      r.valuta_id, script.fn_data_operativa(),
       anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id), false,
       jsonb_build_object('test_scope', 'pgtap_fatt_trigger'))
     RETURNING id INTO v_ord;
@@ -126,7 +126,7 @@ BEGIN
       stato_doc_ordine_id, valuta_id, data, fatturazione_trigger,
       emittente_fiscale_id, storicizza, meta)
     VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-      r.valuta_id, CURRENT_DATE, p_trigger::varchar,
+      r.valuta_id, script.fn_data_operativa(), p_trigger::varchar,
       anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id), false,
       jsonb_build_object('test_scope', 'pgtap_fatt_trigger'))
     RETURNING id INTO v_ord;

@@ -98,7 +98,7 @@ SELECT script.fn_pgtap_registro_fattura() AS registro_id,
 
 CREATE TEMP TABLE tmp_lotto_ge AS
 SELECT vendite.fn_create_fatturazione_lotto(
-  p_competenza_mese             => date_trunc('month', current_date)::date,
+  p_competenza_mese             => date_trunc('month', script.fn_data_operativa())::date,
   p_tipo_doc_fiscale_id         => (SELECT tipo_doc_fiscale_id FROM tmp_refs_ge),
   p_utility_id                  => (SELECT utility_id FROM tmp_refs_ge),
   p_billing_account_id          => NULL,
@@ -116,7 +116,7 @@ WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       totale_doc, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
          r.billing_account_id, r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          r.stato_draft_id, 10.00, 10.00,
          jsonb_build_object('test_scope', 'pgtap_giornale')

@@ -95,10 +95,10 @@ AS $$ SELECT auth_user_id FROM _t_op WHERE sigla = p_sigla $$;
 CREATE FUNCTION pg_temp.area(p_user integer, p_schema text, p_livello text) RETURNS void LANGUAGE sql
 AS $$
     INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
-    SELECT p_user, af.id, p_livello::config.livello_accesso, 'Fixture pgTAP', CURRENT_DATE, NULL
+    SELECT p_user, af.id, p_livello::config.livello_accesso, 'Fixture pgTAP', script.fn_data_operativa(), NULL
       FROM config.aree_funzionali af WHERE af.schema_db = p_schema
     ON CONFLICT ON CONSTRAINT uq_user_override_aree_user_area
-    DO UPDATE SET livello = EXCLUDED.livello, valido_dal = CURRENT_DATE, valido_al = NULL
+    DO UPDATE SET livello = EXCLUDED.livello, valido_dal = script.fn_data_operativa(), valido_al = NULL
 $$;
 
 -- Un override sull'oggetto di fixture (upsert).
@@ -347,7 +347,7 @@ SELECT is(pg_temp.ogg(pg_temp.op('B'), 'pgtap_tetto'), 'BLOCCATO/BLOCCATO/true',
     '20) (c) override sull''oggetto TUTTO sotto l''area BLOCCATO: BLOCCATO, limitato');
 
 UPDATE config.user_override_aree uoa
-   SET valido_dal = CURRENT_DATE - 30, valido_al = CURRENT_DATE - 1
+   SET valido_dal = script.fn_data_operativa() - 30, valido_al = script.fn_data_operativa() - 1
   FROM config.aree_funzionali af
  WHERE af.id = uoa.area_id AND af.schema_db = 'vendite'
    AND uoa.auth_user_id = pg_temp.op('B');

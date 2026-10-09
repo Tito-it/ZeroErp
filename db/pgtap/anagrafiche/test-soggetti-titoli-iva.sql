@@ -456,7 +456,7 @@ RETURNS bigint LANGUAGE sql AS $fx$
          qta, prezzo_unitario, iva_id, competenza_dal, competenza_al)
   SELECT (SELECT id FROM tmp_tiva_fattura), p_nr, r.articolo_id, 'Riga ' || p_nr,
          (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1),
-         1, p_imp, r.iva_id, CURRENT_DATE, CURRENT_DATE
+         1, p_imp, r.iva_id, script.fn_data_operativa(), script.fn_data_operativa()
     FROM tmp_tiva_refs r
   RETURNING id;
 $fx$;

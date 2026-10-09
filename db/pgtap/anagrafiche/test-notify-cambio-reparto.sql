@@ -109,7 +109,7 @@ SELECT o.risorsa_umana_id AS id FROM _t_operatore o;
 -- Assicura stato pulito: attiva, prima uo
 UPDATE anagrafiche.risorse_umane
    SET attivo = true,
-       valido_dal = CURRENT_DATE,
+       valido_dal = script.fn_data_operativa(),
        valido_al = NULL,
        unita_organizzativa_id = (SELECT uo_id FROM _t_uo LIMIT 1)
  WHERE id = (SELECT id FROM _t_risorsa);

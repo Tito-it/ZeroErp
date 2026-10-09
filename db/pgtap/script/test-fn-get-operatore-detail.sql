@@ -270,7 +270,7 @@ SELECT is(
 
 -- Il rapporto di c4 riceve una data di fine: permesso, c1 non scade.
 UPDATE anagrafiche.risorse_umane ru
-   SET valido_al = CURRENT_DATE + 30
+   SET valido_al = script.fn_data_operativa() + 30
   FROM anagrafiche.identita_digitali idg
  WHERE idg.id = (SELECT id_id FROM _t_c4)
    AND ru.soggetto_ruolo_id = idg.soggetto_ruolo_id;

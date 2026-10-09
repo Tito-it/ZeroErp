@@ -115,7 +115,7 @@ WITH ins AS (
   )
   SELECT
     'PGT_T2_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-    CURRENT_DATE,
+    script.fn_data_operativa(),
     (SELECT stato_id FROM _t_stato),
     (SELECT ba_id FROM _t_ba),
     (SELECT istanza_utility_id FROM _t_ba),
@@ -142,7 +142,7 @@ WITH ins AS (
   )
   SELECT
     'PGT_T3_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-    CURRENT_DATE,
+    script.fn_data_operativa(),
     (SELECT stato_id FROM _t_stato),
     (SELECT ba_id FROM _t_ba),
     (SELECT istanza_utility_id FROM _t_ba),
@@ -169,7 +169,7 @@ SELECT lives_ok(
       numero, data, stato_doc_preventivo_id, billing_account_id,
       istanza_utility_id, utility_id
     ) VALUES (
-      %L, CURRENT_DATE, %s, %s, %s, %s
+      %L, script.fn_data_operativa(), %s, %s, %s, %s
     )
   $SQL$,
     'PGT_T4_' || substring(md5(clock_timestamp()::text) from 1 for 8),
@@ -212,7 +212,7 @@ SELECT throws_like(
       numero, data, stato_doc_preventivo_id, billing_account_id,
       istanza_utility_id, utility_id
     ) VALUES (
-      %L, CURRENT_DATE, %s, %s, %s, %s
+      %L, script.fn_data_operativa(), %s, %s, %s, %s
     )
   $SQL$,
     'PGT_T5_' || substring(md5(clock_timestamp()::text) from 1 for 8),
@@ -239,7 +239,7 @@ SELECT throws_ok(
       numero, data, stato_doc_preventivo_id, billing_account_id,
       istanza_utility_id, utility_id
     ) VALUES (
-      %L, CURRENT_DATE, %s, %s, %s, 9999
+      %L, script.fn_data_operativa(), %s, %s, %s, 9999
     )
   $SQL$,
     'PGT_T6_' || substring(md5(clock_timestamp()::text) from 1 for 8),

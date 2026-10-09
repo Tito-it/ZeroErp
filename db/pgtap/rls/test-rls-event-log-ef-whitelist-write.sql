@@ -62,8 +62,8 @@ WITH c AS (
         (codice, billing_account_id, utility_id, competenza_dal, competenza_al)
     SELECT 'PGTAP-EV-' || cl.billing_account_id,
            cl.billing_account_id, cl.utility_id,
-           date_trunc('month', CURRENT_DATE)::date,
-           (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date
+           date_trunc('month', script.fn_data_operativa())::date,
+           (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date
       FROM _cliente cl
     RETURNING id, emittente_soggetto_ruolo_id
 )

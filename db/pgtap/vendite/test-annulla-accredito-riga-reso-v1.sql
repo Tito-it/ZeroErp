@@ -223,7 +223,7 @@ BEGIN
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
       uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
   VALUES (v_fatt, 1, r.articolo_id, 'Riga fattura pgTAP', r.uom_id, p_qta, p_prezzo,
-      r.iva_id, p_qta * p_prezzo, CURRENT_DATE, CURRENT_DATE)
+      r.iva_id, p_qta * p_prezzo, script.fn_data_operativa(), script.fn_data_operativa())
   RETURNING id INTO v_riga;
 
   UPDATE vendite.attivita_fatturabili
@@ -462,7 +462,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
       uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
   SELECT fr.fattura_id, 2, r.articolo_id, 'Seconda riga fattura pgTAP', r.uom_id, 5, 25,
-         r.iva_id, 125, CURRENT_DATE, CURRENT_DATE
+         r.iva_id, 125, script.fn_data_operativa(), script.fn_data_operativa()
     FROM vendite.fatture_righe fr, tmp_refs_ann r
    WHERE fr.id = (SELECT fattura_riga_id FROM tmp_pb_fattura)
   RETURNING id)

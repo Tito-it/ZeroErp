@@ -67,7 +67,7 @@ CREATE TEMP TABLE tmp_tipo AS
 SELECT tp.id
 FROM pratiche.tipi_prestazione tp
 WHERE tp.attivo IS TRUE
-  AND (tp.obsoleto_dal IS NULL OR tp.obsoleto_dal > CURRENT_DATE)
+  AND (tp.obsoleto_dal IS NULL OR tp.obsoleto_dal > script.fn_data_operativa())
   AND pratiche.fn_risolvi_definizione(tp.id, NULL) IS NOT NULL
 ORDER BY tp.id
 LIMIT 1;

@@ -282,8 +282,8 @@ WITH ins AS (
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-AP-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         (date_trunc('month', CURRENT_DATE) - interval '2 months')::date, NULL,
-         r.contr_attivo_id, (date_trunc('month', CURRENT_DATE) - interval '2 months')::date,
+         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date, NULL,
+         r.contr_attivo_id, (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
          jsonb_build_object('test_scope','pgtap_dash_aperto')

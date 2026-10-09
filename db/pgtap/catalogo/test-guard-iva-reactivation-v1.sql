@@ -102,7 +102,7 @@ BEGIN
     )
     VALUES (
         v_p, v_f, 1, TRUE,
-        (CURRENT_DATE - INTERVAL '1 day')::date, NULL, TRUE
+        (script.fn_data_operativa() - INTERVAL '1 day')::date, NULL, TRUE
     )
     RETURNING id INTO v_l;
 

@@ -140,13 +140,13 @@ SELECT u.attivita_id
          p_istanza_utility_id            => (SELECT ba.istanza_utility_id
                                                FROM anagrafiche.billing_account ba
                                               WHERE ba.id = r.billing_account_id),
-         p_data_attivita                 => CURRENT_DATE,
+         p_data_attivita                 => script.fn_data_operativa(),
          p_uom_id                        => (SELECT uom_id FROM catalogo.articoli
                                               WHERE id = r.articolo_id),
          p_quantita                      => r.consegnato,
-         p_competenza_mese               => date_trunc('month', CURRENT_DATE)::date,
-         p_competenza_dal                => CURRENT_DATE,
-         p_competenza_al                 => CURRENT_DATE,
+         p_competenza_mese               => date_trunc('month', script.fn_data_operativa())::date,
+         p_competenza_dal                => script.fn_data_operativa(),
+         p_competenza_al                 => script.fn_data_operativa(),
          p_prezzo_snapshot               => 10.0000000000,
          p_prezzo_base_snapshot          => NULL,
          p_origine_prezzo                => NULL,
@@ -178,8 +178,8 @@ INSERT INTO vendite.attivita_fatturabili (
 SELECT r.articolo_id,
        (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
          WHERE ba.id = r.billing_account_id),
-       CURRENT_DATE, r.consegnato,
-       date_trunc('month', CURRENT_DATE)::date, CURRENT_DATE, CURRENT_DATE,
+       script.fn_data_operativa(), r.consegnato,
+       date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(),
        (SELECT uom_id FROM catalogo.articoli WHERE id = r.articolo_id),
        10.000000,
        (SELECT id FROM config.tipi_doc_fiscale WHERE attivo ORDER BY id LIMIT 1),

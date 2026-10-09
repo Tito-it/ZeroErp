@@ -104,8 +104,8 @@ CREATE TEMP TABLE tmp_oe_f6 AS
 SELECT (SELECT m.articolo_id FROM catalogo.articoli_uom_operativa m
        JOIN catalogo.articoli a ON a.id=m.articolo_id
       WHERE m.uom_id=2 AND m.factor_to_base=6 AND m.attivo IS TRUE AND a.attivo IS TRUE
-        AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-        AND (m.valido_al  IS NULL OR m.valido_al  >= CURRENT_DATE)
+        AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+        AND (m.valido_al  IS NULL OR m.valido_al  >= script.fn_data_operativa())
         AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
                      WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
       LIMIT 1) AS articolo_f6_id;

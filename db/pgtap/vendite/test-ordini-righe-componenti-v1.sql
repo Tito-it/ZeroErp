@@ -187,7 +187,7 @@ SELECT has_trigger(
 -- 14) fn_ordine_riga_componenti_init: p_riga_id NULL -> raise
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_ordine_riga_componenti_init(NULL, 1, current_date) $$,
+    $$ SELECT vendite.fn_ordine_riga_componenti_init(NULL, 1, script.fn_data_operativa()) $$,
     '%Parametro non valido%',
     '14) fn_ordine_riga_componenti_init: p_riga_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -196,7 +196,7 @@ SELECT throws_like(
 -- 15) fn_ordine_riga_componenti_init: p_emittente_sr_id NULL -> raise
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_ordine_riga_componenti_init(1, NULL, current_date) $$,
+    $$ SELECT vendite.fn_ordine_riga_componenti_init(1, NULL, script.fn_data_operativa()) $$,
     '%Parametro non valido%',
     '15) fn_ordine_riga_componenti_init: p_emittente_sr_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -210,7 +210,7 @@ SELECT throws_like(
 --    Il pattern SALTA l'id interpolato — il messaggio 900 e'
 --    `Riga ordine %s non trovata.` — altrimenti si rompe al primo id diverso.
 SELECT throws_like(
-    $$ SELECT vendite.fn_ordine_riga_componenti_init(2147483647, 1, current_date) $$,
+    $$ SELECT vendite.fn_ordine_riga_componenti_init(2147483647, 1, script.fn_data_operativa()) $$,
     '%Riga ordine %non trovata%',
     '16) fn_ordine_riga_componenti_init: riga inesistente -> raise E_ORDINE_RIGA_NON_TROVATA'
 );
@@ -235,7 +235,7 @@ SELECT CASE
               WHERE NOT COALESCE(a.is_composito, FALSE)
               LIMIT 1),
             1,
-            current_date
+            script.fn_data_operativa()
         )),
         0,
         '17) fn_ordine_riga_componenti_init: articolo non composito -> RETURN 0'
@@ -254,7 +254,7 @@ SELECT CASE
         (SELECT vendite.fn_ordine_riga_componenti_init(
             (SELECT riga_ordine_id FROM vendite.ordini_righe_componenti LIMIT 1),
             1,
-            current_date
+            script.fn_data_operativa()
         )),
         0,
         '18) fn_ordine_riga_componenti_init: idempotenza -> 0 alla seconda chiamata'

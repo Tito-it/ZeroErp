@@ -122,8 +122,8 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
--- Versione ATTIVA con valido_dal nel passato → validita @> CURRENT_DATE = TRUE
--- Necessario perché fn_contratto_righe_preview fa lookup con validita @> CURRENT_DATE.
+-- Versione ATTIVA con valido_dal nel passato → validita @> script.fn_data_operativa() = TRUE
+-- Necessario perché fn_contratto_righe_preview fa lookup con validita @> script.fn_data_operativa().
 CREATE TEMP TABLE tmp_prv_ver AS
 WITH ins AS (
     INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)

@@ -224,7 +224,7 @@ SELECT ok(
 -- 16) fn_contratto_riga_componenti_init: p_riga_id NULL -> raise
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_contratto_riga_componenti_init(NULL, 1, current_date) $$,
+    $$ SELECT vendite.fn_contratto_riga_componenti_init(NULL, 1, script.fn_data_operativa()) $$,
     '%Parametro non valido%',
     '16) fn_contratto_riga_componenti_init: p_riga_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -233,7 +233,7 @@ SELECT throws_like(
 -- 17) fn_contratto_riga_componenti_init: p_emittente_sr_id NULL -> raise
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_contratto_riga_componenti_init(1, NULL, current_date) $$,
+    $$ SELECT vendite.fn_contratto_riga_componenti_init(1, NULL, script.fn_data_operativa()) $$,
     '%Parametro non valido%',
     '17) fn_contratto_riga_componenti_init: p_emittente_sr_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -247,7 +247,7 @@ SELECT throws_like(
 --    Il pattern SALTA l'id interpolato — il messaggio 897 e'
 --    `Riga contratto %s non trovata.` — altrimenti si rompe al primo id diverso.
 SELECT throws_like(
-    $$ SELECT vendite.fn_contratto_riga_componenti_init(2147483647, 1, current_date) $$,
+    $$ SELECT vendite.fn_contratto_riga_componenti_init(2147483647, 1, script.fn_data_operativa()) $$,
     '%Riga contratto %non trovata%',
     '18) fn_contratto_riga_componenti_init: riga inesistente -> raise E_CONTRATTO_RIGA_NON_TROVATA'
 );
@@ -270,7 +270,7 @@ SELECT CASE
               WHERE NOT COALESCE(a.is_composito, FALSE)
               LIMIT 1),
             1,
-            current_date
+            script.fn_data_operativa()
         )),
         0,
         '19) fn_contratto_riga_componenti_init: articolo non composito -> RETURN 0'
@@ -291,7 +291,7 @@ SELECT CASE
         (SELECT vendite.fn_contratto_riga_componenti_init(
             (SELECT id FROM vendite.contratti_righe WHERE quantita IS NULL LIMIT 1),
             1,
-            current_date
+            script.fn_data_operativa()
         )),
         0,
         '20) fn_contratto_riga_componenti_init: quantita NULL -> RETURN 0 (riga a consumo)'
@@ -310,7 +310,7 @@ SELECT CASE
         (SELECT vendite.fn_contratto_riga_componenti_init(
             (SELECT riga_contratto_id FROM vendite.contratti_righe_componenti LIMIT 1),
             1,
-            current_date
+            script.fn_data_operativa()
         )),
         0,
         '21) fn_contratto_riga_componenti_init: idempotenza -> 0 alla seconda chiamata'

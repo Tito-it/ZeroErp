@@ -142,7 +142,7 @@ SELECT ok(
 
 -- Data base futura per evitare conflitti con dati esistenti
 CREATE TEMP TABLE tmp_dis_base AS
-SELECT (current_date + 60)::date AS d0;
+SELECT (script.fn_data_operativa() + 60)::date AS d0;
 
 -- Chiusura preventiva eventuale cliente attivo sul PDP alla data test
 CREATE TEMP TABLE tmp_dis_subentro_pre AS
@@ -221,7 +221,7 @@ BEGIN
         istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
         categoria_cliente_id
     ) VALUES (
-        v_istanza_id, v_soggetto_ruolo_id, v_utility_id::integer, CURRENT_DATE,
+        v_istanza_id, v_soggetto_ruolo_id, v_utility_id::integer, script.fn_data_operativa(),
         (SELECT cc.id FROM anagrafiche.categorie_clienti cc
           WHERE cc.attivo IS TRUE ORDER BY cc.id LIMIT 1)
     ) RETURNING id INTO v_ba_id;

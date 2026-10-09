@@ -255,7 +255,7 @@ SELECT lives_ok(
     $$INSERT INTO pratiche.sospensioni
         (pratica_id, flusso_id, data_inizio, data_fine, data_riattivazione_prevista, motivo)
       VALUES (%s, NULL, now() - interval '40 days', now() - interval '38 days',
-              (CURRENT_DATE + 30), 'test prevista futura')$$,
+              (script.fn_data_operativa() + 30), 'test prevista futura')$$,
     (SELECT pratica_id FROM tmp_so_pratica)),
   '9. data_riattivazione_prevista nel futuro -> ammessa (previsione, non bloccata)'
 );

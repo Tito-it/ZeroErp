@@ -426,7 +426,7 @@ SELECT l.id AS listino_id, NULL::bigint AS listino_versione_id FROM l;
 
 WITH v AS (
     INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
-    SELECT listino_id, 'PGTAP_DF_V1', CURRENT_DATE, 'ATTIVA' FROM tmp_df_listino
+    SELECT listino_id, 'PGTAP_DF_V1', script.fn_data_operativa(), 'ATTIVA' FROM tmp_df_listino
     RETURNING id
 )
 UPDATE tmp_df_listino SET listino_versione_id = (SELECT id FROM v);
@@ -485,7 +485,7 @@ INSERT INTO vendite.contratti (
   emittente_fiscale_id, meta)
 SELECT 'PGTAP-DF-CV-' || substr(md5(clock_timestamp()::text), 1, 8),
        r.billing_account_id, r.istanza_utility_id, r.utility_id,
-       CURRENT_DATE, NULL, r.contr_draft_id, CURRENT_DATE,
+       script.fn_data_operativa(), NULL, r.contr_draft_id, script.fn_data_operativa(),
        (SELECT offerta_id FROM tmp_df_offerte WHERE slot = 'ACC_FIGLIO_VIVO'),
        COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                 r.emittente_fiscale_id),
@@ -501,7 +501,7 @@ WITH ins AS (
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-DF-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         CURRENT_DATE, NULL, r.contr_annullato_id, CURRENT_DATE,
+         script.fn_data_operativa(), NULL, r.contr_annullato_id, script.fn_data_operativa(),
          (SELECT offerta_id FROM tmp_df_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO'),
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
@@ -557,8 +557,8 @@ WITH ins AS (
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-DF-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         (date_trunc('month', CURRENT_DATE) - interval '2 months')::date, NULL,
-         r.contr_attivo_id, (date_trunc('month', CURRENT_DATE) - interval '2 months')::date,
+         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date, NULL,
+         r.contr_attivo_id, (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
          jsonb_build_object('test_scope','pgtap_dash_fatturazione')
@@ -576,7 +576,7 @@ SELECT ok(
       AND bool_and(v.motivo_fermo IS NULL)
       AND bool_and(v.unita_totali = 1)
       AND bool_and(v.competenza_mese IS NULL)
-      AND bool_and(v.data_riferimento = (date_trunc('month', CURRENT_DATE) - interval '2 months')::date)
+      AND bool_and(v.data_riferimento = (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date)
      FROM vendite.vw_dash_fatturazione_contratti v
     WHERE v.documento_id = (SELECT id FROM tmp_df_contratto)),
   '12. Contratto ATTIVO multi-mese: 1 SOLA riga (de-esploso), giudizio sospeso (transito/motivo NULL), data_riferimento = valido_dal'
@@ -595,11 +595,11 @@ INSERT INTO vendite.commesse_attivita (
 SELECT
   (SELECT id FROM tmp_df_commessa),
   'CONTR:' || (SELECT uid FROM tmp_df_contratto)::text || ':R:0:M:'
-           || to_char(date_trunc('month', CURRENT_DATE)::date, 'YYYY-MM'),
-  r.art_serv_id, r.istanza_utility_id, CURRENT_DATE, r.uom_id, 1,
-  date_trunc('month', CURRENT_DATE)::date,
-  date_trunc('month', CURRENT_DATE)::date,
-  (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date,
+           || to_char(date_trunc('month', script.fn_data_operativa())::date, 'YYYY-MM'),
+  r.art_serv_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+  date_trunc('month', script.fn_data_operativa())::date,
+  date_trunc('month', script.fn_data_operativa())::date,
+  (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
   r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
   'FIXED', 'APPROVATA', 'EMESSA',
   r.sorg_contratto_id, (SELECT uid FROM tmp_df_contratto)::text

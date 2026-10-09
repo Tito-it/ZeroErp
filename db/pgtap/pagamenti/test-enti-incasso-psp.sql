@@ -144,8 +144,8 @@ JOIN config.tipi_ruoli tr
   ON tr.id = m.tipo_ruolo_id
  AND tr.codice_interno = 'PSP'
 WHERE m.attivo IS TRUE
-  AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-  AND (m.valido_al  IS NULL OR m.valido_al  >= current_date);
+  AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+  AND (m.valido_al  IS NULL OR m.valido_al  >= script.fn_data_operativa());
 
 CREATE TEMP TABLE tmp_soggetto_ok AS
 SELECT s.id AS soggetto_id

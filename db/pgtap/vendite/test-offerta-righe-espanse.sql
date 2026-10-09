@@ -66,7 +66,7 @@ SELECT id FROM ins;
 CREATE TEMP TABLE tmp_ole_ver AS
 WITH ins AS (
     INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, stato)
-    SELECT id, 'PGTAP-OLE-V1', CURRENT_DATE, 'ATTIVA'
+    SELECT id, 'PGTAP-OLE-V1', script.fn_data_operativa(), 'ATTIVA'
       FROM tmp_ole_lst
     RETURNING id
 )

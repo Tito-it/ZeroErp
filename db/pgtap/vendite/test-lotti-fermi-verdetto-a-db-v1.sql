@@ -92,7 +92,7 @@ WITH ins AS (
         (codice, tipo_doc_fiscale_id, competenza_mese,
          emittente_soggetto_ruolo_id, stato_doc_fiscale_id, meta)
     SELECT 'PGTAP-FERMO-A-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
-           date_trunc('month', CURRENT_DATE)::date, r.emittente_sr_id,
+           date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
            r.stato_draft_id, jsonb_build_object('test_scope', 'pgtap_lotti_fermi')
       FROM _rif r
     RETURNING id
@@ -107,7 +107,7 @@ WITH ins AS (
         (codice, tipo_doc_fiscale_id, competenza_mese,
          emittente_soggetto_ruolo_id, stato_doc_fiscale_id, meta)
     SELECT 'PGTAP-FERMO-D-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
-           date_trunc('month', CURRENT_DATE)::date, r.emittente_sr_id,
+           date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
            r.stato_definitiva_id, jsonb_build_object('test_scope', 'pgtap_lotti_fermi')
       FROM _rif r
     RETURNING id
@@ -121,7 +121,7 @@ WITH ins AS (
     INSERT INTO vendite.fatture
         (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
          tasso_cambio, natura_doc_id, stato_doc_fiscale_id, meta)
-    SELECT r.registro_id, CURRENT_DATE, r.emittente_sr_id, r.billing_account_id,
+    SELECT r.registro_id, script.fn_data_operativa(), r.emittente_sr_id, r.billing_account_id,
            1, r.natura_fattura_id, r.stato_draft_id,
            jsonb_build_object('test_scope', 'pgtap_lotti_fermi')
       FROM _rif r

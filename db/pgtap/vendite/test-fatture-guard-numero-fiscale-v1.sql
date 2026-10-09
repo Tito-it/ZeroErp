@@ -105,7 +105,7 @@ SELECT lives_ok(
 -- NULL. Il WHEN del trigger la lascia fuori.
 SELECT lives_ok(
     $$UPDATE vendite.fatture
-         SET anno   = EXTRACT(YEAR FROM CURRENT_DATE)::smallint,
+         SET anno   = EXTRACT(YEAR FROM script.fn_data_operativa())::smallint,
              numero = 987654321
        WHERE id = (SELECT numerata FROM _f)$$,
     '3) la numerazione (numero e anno da NULL) passa'

@@ -136,7 +136,7 @@ WITH ins AS (
 ) SELECT id FROM ins;
 
 INSERT INTO anagrafiche.soggetti_conti_bancari (soggetto_id, conto_bancario_id, uso, predefinito, valido_dal, verificato, bloccato, meta)
-SELECT g.soggetto_id, c.id, 'INCASSO', TRUE, CURRENT_DATE, FALSE, FALSE, '{}'::jsonb
+SELECT g.soggetto_id, c.id, 'INCASSO', TRUE, script.fn_data_operativa(), FALSE, FALSE, '{}'::jsonb
 FROM tmp_g g, tmp_cb_sogg c;
 
 SELECT ok((SELECT count(*)::int FROM tmp_cb_sogg) = 1, '3) Conto INCASSO soggetto creato');
@@ -152,7 +152,7 @@ WITH ins AS (
 ) SELECT id FROM ins;
 
 INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, conto_bancario_id, uso, predefinito, istanza_utility_id, valido_dal, verificato, bloccato, meta)
-SELECT g.soggetto_ruolo_id, c.id, 'INCASSO', TRUE, NULL, CURRENT_DATE, FALSE, FALSE, '{}'::jsonb
+SELECT g.soggetto_ruolo_id, c.id, 'INCASSO', TRUE, NULL, script.fn_data_operativa(), FALSE, FALSE, '{}'::jsonb
 FROM tmp_g g, tmp_cb_ruolo_gen c;
 
 SELECT ok((SELECT count(*)::int FROM tmp_cb_ruolo_gen) = 1, '4) Conto INCASSO ruolo generico creato');
@@ -168,7 +168,7 @@ WITH ins AS (
 ) SELECT id FROM ins;
 
 INSERT INTO anagrafiche.soggetti_ruoli_conti_bancari (soggetto_ruolo_id, conto_bancario_id, uso, predefinito, istanza_utility_id, valido_dal, verificato, bloccato, meta)
-SELECT g.soggetto_ruolo_id, c.id, 'INCASSO', TRUE, g.istanza_utility_id, CURRENT_DATE, FALSE, FALSE, '{}'::jsonb
+SELECT g.soggetto_ruolo_id, c.id, 'INCASSO', TRUE, g.istanza_utility_id, script.fn_data_operativa(), FALSE, FALSE, '{}'::jsonb
 FROM tmp_g g, tmp_cb_ruolo_ist c;
 
 SELECT ok((SELECT count(*)::int FROM tmp_cb_ruolo_ist) = 1, '5) Conto INCASSO ruolo+istanza creato');
@@ -210,7 +210,7 @@ SELECT throws_ok(
     )
     SELECT g.soggetto_ruolo_id,
            (SELECT id FROM tmp_cb_ruolo_gen),
-           'INCASSO', TRUE, g.istanza_utility_id, CURRENT_DATE, FALSE, FALSE, '{}'::jsonb
+           'INCASSO', TRUE, g.istanza_utility_id, script.fn_data_operativa(), FALSE, FALSE, '{}'::jsonb
     FROM tmp_g g;
     $$,
     '23505',

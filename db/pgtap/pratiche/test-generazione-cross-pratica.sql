@@ -263,11 +263,11 @@ SELECT ok(
 --     non in BOZZA. data_apertura impostata dal trigger INSERT.
 -- =========================================================
 SELECT ok(
-    (SELECT sp.codice_interno = 'APERTA' AND p.data_apertura = CURRENT_DATE
+    (SELECT sp.codice_interno = 'APERTA' AND p.data_apertura = script.fn_data_operativa()
        FROM pratiche.pratiche p
        JOIN config.stati_pratiche sp ON sp.id = p.stato_id
       WHERE p.id = (SELECT pratica_id FROM tmp_gen_pratica_target)),
-    '5b. Figlia: nasce APERTA con data_apertura = CURRENT_DATE'
+    '5b. Figlia: nasce APERTA con data_apertura = script.fn_data_operativa()'
 );
 -- =========================================================
 -- 6) Figlia: contesto soggetto_ruolo_id propagato (fix-4)

@@ -116,12 +116,12 @@ WITH ins AS (
 SELECT id AS listino_id FROM ins;
 
 INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_V5B_VER', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE
+SELECT l.listino_id, 'PGTAP_V5B_VER', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
   FROM tmp_ctx_wd_listino l
  WHERE NOT EXISTS (
      SELECT 1 FROM vendite.listini_versioni lv
       WHERE lv.listino_id = l.listino_id AND lv.attivo = TRUE
-        AND lv.validita @> CURRENT_DATE
+        AND lv.validita @> script.fn_data_operativa()
  );
 
 CREATE TEMP TABLE tmp_ctx_wd_versione AS
@@ -129,7 +129,7 @@ SELECT lv.id AS versione_id, lv.listino_id
   FROM vendite.listini_versioni lv, tmp_ctx_wd_listino l
  WHERE lv.listino_id = l.listino_id
    AND lv.attivo IS TRUE
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
  ORDER BY lv.id DESC LIMIT 1;
 
 INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
@@ -143,7 +143,7 @@ INSERT INTO vendite.contratti(
     valido_dal, valido_al, listino_id)
 SELECT 'PGTAP_V5B_CONTR_WD', t.ba_id, t.istanza_utility_id, t.utility_id,
        (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
-       CURRENT_DATE, CURRENT_DATE + 365, v.listino_id
+       script.fn_data_operativa(), script.fn_data_operativa() + 365, v.listino_id
   FROM tmp_ctx_wd t, tmp_ctx_wd_versione v;
 
 -- Il trigger snapshot precontrattuali potrebbe aver creato la riga gia'.
@@ -166,7 +166,7 @@ SELECT is(
        FROM vendite.fn_resolve_prezzo_listino_v2(
            (SELECT articolo_id FROM tmp_ctx_wd),
            (SELECT uom_id FROM tmp_ctx_wd),
-           CURRENT_DATE,
+           script.fn_data_operativa(),
            (SELECT ba_id FROM tmp_ctx_wd),
            (SELECT utility_id FROM tmp_ctx_wd),
            (SELECT emittente_srid FROM tmp_ctx_wd),
@@ -249,12 +249,12 @@ WITH ins AS (
 SELECT id AS listino_id FROM ins;
 
 INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_V5B_VER_ND', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE
+SELECT l.listino_id, 'PGTAP_V5B_VER_ND', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
   FROM tmp_ctx_nd_listino l
  WHERE NOT EXISTS (
      SELECT 1 FROM vendite.listini_versioni lv
       WHERE lv.listino_id = l.listino_id AND lv.attivo = TRUE
-        AND lv.validita @> CURRENT_DATE
+        AND lv.validita @> script.fn_data_operativa()
  );
 
 CREATE TEMP TABLE tmp_ctx_nd_versione AS
@@ -262,7 +262,7 @@ SELECT lv.id AS versione_id, lv.listino_id
   FROM vendite.listini_versioni lv, tmp_ctx_nd_listino l
  WHERE lv.listino_id = l.listino_id
    AND lv.attivo IS TRUE
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
  ORDER BY lv.id DESC LIMIT 1;
 
 INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
@@ -276,7 +276,7 @@ INSERT INTO vendite.contratti(
     valido_dal, valido_al, listino_id)
 SELECT 'PGTAP_V5B_CONTR_ND', t.ba_id, t.istanza_utility_id, t.utility_id,
        (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
-       CURRENT_DATE, CURRENT_DATE + 365, v.listino_id
+       script.fn_data_operativa(), script.fn_data_operativa() + 365, v.listino_id
   FROM tmp_ctx_nd t, tmp_ctx_nd_versione v;
 
 -- Garantisco esistenza riga contratti_utilities con classe NULL
@@ -298,7 +298,7 @@ SELECT is(
        FROM vendite.fn_resolve_prezzo_listino_v2(
            (SELECT articolo_id FROM tmp_ctx_nd),
            (SELECT uom_id FROM tmp_ctx_nd),
-           CURRENT_DATE,
+           script.fn_data_operativa(),
            (SELECT ba_id FROM tmp_ctx_nd),
            (SELECT utility_id FROM tmp_ctx_nd),
            (SELECT emittente_srid FROM tmp_ctx_nd),

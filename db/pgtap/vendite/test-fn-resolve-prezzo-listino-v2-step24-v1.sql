@@ -108,7 +108,7 @@ SELECT
   FROM vendite.listini_versioni lv
   JOIN vendite.listini_righe lr ON lr.listino_versione_id = lv.id
  WHERE lv.listino_id = (SELECT listino_id FROM tmp_v2_ctx LIMIT 1)
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
    AND lv.attivo = TRUE
    AND lr.articolo_id = (SELECT id FROM tmp_v2_arts WHERE rn = 3)
    AND lr.uom_id = (SELECT uom_id FROM tmp_v2_ctx LIMIT 1)
@@ -351,7 +351,7 @@ END;
 -- ============================================================
 SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
-        gen_random_uuid(), 1, CURRENT_DATE, NULL, 1, 1, NULL::integer, NULL::uuid
+        gen_random_uuid(), 1, script.fn_data_operativa(), NULL, 1, 1, NULL::integer, NULL::uuid
     )$$,
     'P0001',
     NULL,
@@ -363,7 +363,7 @@ SELECT throws_ok(
 -- ============================================================
 SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
-        gen_random_uuid(), 0, CURRENT_DATE, 1, 1, 1, NULL::integer, NULL::uuid
+        gen_random_uuid(), 0, script.fn_data_operativa(), 1, 1, 1, NULL::integer, NULL::uuid
     )$$,
     'P0001',
     NULL,

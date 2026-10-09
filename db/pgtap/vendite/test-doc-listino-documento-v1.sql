@@ -128,7 +128,7 @@ RETURNS text LANGUAGE sql STABLE AS $fx$
     SELECT format($$INSERT INTO vendite.offerte_commerciali (
                         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
                         listino_id, validita_dal, stato_doc_offerta_id)
-                    VALUES (%s, %s, %s, %s, %s, CURRENT_DATE,
+                    VALUES (%s, %s, %s, %s, %s, script.fn_data_operativa(),
                             (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA'))$$,
                   script.fn_pgtap_emittente_operatore(), c.billing_account_id, c.istanza_utility_id,
                   c.utility_id, pg_temp.lst(p_sigla))
@@ -210,7 +210,7 @@ SELECT is(
 -- guard. Lo si prova sulla WHEN: con il guard spento per le colonne giudicate,
 -- la riga non verrebbe giudicata comunque. Qui basta che un cambio di data passi.
 SELECT is(pg_temp.canali(format(
-    $$UPDATE vendite.offerte_commerciali SET validita_al = CURRENT_DATE + 30
+    $$UPDATE vendite.offerte_commerciali SET validita_al = script.fn_data_operativa() + 30
        WHERE billing_account_id = %s AND listino_id = %s$$,
     (SELECT billing_account_id FROM tmp_dl_cli), pg_temp.lst('MIO'))),
     'NESSUN ERRORE',
@@ -245,7 +245,7 @@ WITH ins AS (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
         listino_id, validita_dal, stato_doc_offerta_id)
     SELECT script.fn_pgtap_emittente_operatore(), c.billing_account_id, c.istanza_utility_id,
-           c.utility_id, pg_temp.lst('MIO'), CURRENT_DATE,
+           c.utility_id, pg_temp.lst('MIO'), script.fn_data_operativa(),
            (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
       FROM tmp_dl_cli2 c
     RETURNING id)

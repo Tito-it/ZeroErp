@@ -175,7 +175,7 @@ WITH link AS (
         c.id,
         k.uso_test,
         TRUE,                       -- predefinito per INCASSO a livello soggetto
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         NULL,
         NULL,
         FALSE,

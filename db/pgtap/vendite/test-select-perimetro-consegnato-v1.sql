@@ -136,7 +136,7 @@ SELECT
     WHERE sc.attivo IS TRUE AND sc.emittibile IS TRUE ORDER BY sc.id LIMIT 1) AS stato_ok,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE) AS sorgente_id,
-  date_trunc('month', CURRENT_DATE)::date                    AS mese;
+  date_trunc('month', script.fn_data_operativa())::date                    AS mese;
 
 CREATE TEMP TABLE tmp_commessa_sel (id bigint);
 

@@ -94,7 +94,7 @@ SELECT a.fattura_id                  AS fattura_a,
 --   compare nell'elenco delle eccedenze.
 INSERT INTO pagamenti.vendite_movimenti
     (fattura_id, billing_account_id, data_effettiva, data_registrazione, importo, meta)
-SELECT r.fattura_a, r.ba_a, current_date, current_date, r.totale_a + 100,
+SELECT r.fattura_a, r.ba_a, script.fn_data_operativa(), script.fn_data_operativa(), r.totale_a + 100,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_ref r;
 

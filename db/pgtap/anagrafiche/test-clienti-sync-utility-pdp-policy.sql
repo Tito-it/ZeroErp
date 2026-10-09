@@ -169,7 +169,7 @@ SELECT id FROM anagrafiche.categorie_clienti WHERE codice_interno = 'STANDARD';
 
 -- Data base per evitare conflitti con dati gia' presenti nel DB di test
 CREATE TEMP TABLE tmp_date_base AS
-SELECT (current_date + 30)::date AS d0;
+SELECT (script.fn_data_operativa() + 30)::date AS d0;
 
 -- Chiusura preventiva eventuale cliente attivo sul PDP alla data test
 CREATE TEMP TABLE tmp_subentro_pre AS

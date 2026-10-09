@@ -154,8 +154,8 @@ SELECT
             FROM config.forme_giuridiche_tipi_soggetto_dettaglio fgtsd
             WHERE fgtsd.tipo_soggetto_dettaglio_id = tsd.id
               AND fgtsd.attivo = true
-              AND (fgtsd.valido_dal IS NULL OR fgtsd.valido_dal <= CURRENT_DATE)
-              AND (fgtsd.valido_al IS NULL OR fgtsd.valido_al >= CURRENT_DATE)
+              AND (fgtsd.valido_dal IS NULL OR fgtsd.valido_dal <= script.fn_data_operativa())
+              AND (fgtsd.valido_al IS NULL OR fgtsd.valido_al >= script.fn_data_operativa())
             ORDER BY fgtsd.forma_giuridica_id
             LIMIT 1
         ),
@@ -221,8 +221,8 @@ indirizzi AS (
       ON ti.id = m.tipo_indirizzo_id
     WHERE m.obbligatorio = true
       AND m.attivo = true
-      AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-      AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+      AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+      AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa())
 )
 SELECT soggetto_id FROM sogg;
 
@@ -270,8 +270,8 @@ indirizzi AS (
       ON ti.id = m.tipo_indirizzo_id
     WHERE m.obbligatorio = true
       AND m.attivo = true
-      AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-      AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+      AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+      AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa())
 )
 SELECT soggetto_id FROM sogg;
 
@@ -436,7 +436,7 @@ BEGIN
     INSERT INTO anagrafiche.billing_account (
         istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
         categoria_cliente_id)
-    VALUES (v_istanza_id, v_soggetto_ruolo_id, v_utility_id, CURRENT_DATE,
+    VALUES (v_istanza_id, v_soggetto_ruolo_id, v_utility_id, script.fn_data_operativa(),
         v_categoria_cliente_id)
     RETURNING id INTO v_ba_id;
 

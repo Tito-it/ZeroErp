@@ -254,7 +254,7 @@ SELECT is(
 -- 13) fn_preventivo_riga_componenti_init: p_riga_id NULL
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_preventivo_riga_componenti_init(NULL::bigint, 1::bigint, CURRENT_DATE) $$,
+    $$ SELECT vendite.fn_preventivo_riga_componenti_init(NULL::bigint, 1::bigint, script.fn_data_operativa()) $$,
     '%p_riga_id%',
     '13) fn_init: p_riga_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -263,7 +263,7 @@ SELECT throws_like(
 -- 14) fn_preventivo_riga_componenti_init: p_emittente_sr_id NULL
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_preventivo_riga_componenti_init(1::bigint, NULL::bigint, CURRENT_DATE) $$,
+    $$ SELECT vendite.fn_preventivo_riga_componenti_init(1::bigint, NULL::bigint, script.fn_data_operativa()) $$,
     '%p_emittente_sr_id%',
     '14) fn_init: p_emittente_sr_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -277,7 +277,7 @@ SELECT throws_like(
 --    Il pattern SALTA l'id interpolato — il messaggio 901 e'
 --    `Riga preventivo %s non trovata.` — altrimenti si rompe al primo id diverso.
 SELECT throws_like(
-    $$ SELECT vendite.fn_preventivo_riga_componenti_init(2147483647::bigint, 1::bigint, CURRENT_DATE) $$,
+    $$ SELECT vendite.fn_preventivo_riga_componenti_init(2147483647::bigint, 1::bigint, script.fn_data_operativa()) $$,
     '%Riga preventivo %non trovata%',
     '15) fn_init: riga_id inesistente -> raise E_PREVENTIVO_RIGA_NON_TROVATA'
 );
@@ -300,7 +300,7 @@ SELECT is(
                 SELECT vendite.fn_preventivo_riga_componenti_init(
                     (SELECT riga_id FROM nc),
                     1::bigint,
-                    CURRENT_DATE
+                    script.fn_data_operativa()
                 )
             )
         END
@@ -325,7 +325,7 @@ SELECT is(
                 SELECT vendite.fn_preventivo_riga_componenti_init(
                     (SELECT riga_id FROM comp),
                     1::bigint,
-                    CURRENT_DATE
+                    script.fn_data_operativa()
                 )
             )
         END

@@ -118,7 +118,7 @@ SELECT
     WHERE sc.attivo IS TRUE AND sc.emittibile IS FALSE
       AND sc.codice_interno <> 'ANNULLATA'
     ORDER BY sc.id LIMIT 1)                                    AS stato_ko,
-  date_trunc('month', CURRENT_DATE)::date                      AS mese;
+  date_trunc('month', script.fn_data_operativa())::date                      AS mese;
 
 SELECT ok(
   (SELECT r.emittente_sr IS NOT NULL AND r.billing_account_id IS NOT NULL

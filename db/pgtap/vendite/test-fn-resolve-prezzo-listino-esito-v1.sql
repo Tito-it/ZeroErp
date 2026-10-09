@@ -97,17 +97,17 @@ SELECT l.id AS listino_id
  ORDER BY l.id LIMIT 1;
 
 INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_ESITO_VER', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE
+SELECT l.listino_id, 'PGTAP_ESITO_VER', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
   FROM tmp_listino l
  WHERE NOT EXISTS (
      SELECT 1 FROM vendite.listini_versioni lv
-      WHERE lv.listino_id = l.listino_id AND lv.attivo = TRUE AND lv.validita @> CURRENT_DATE)
+      WHERE lv.listino_id = l.listino_id AND lv.attivo = TRUE AND lv.validita @> script.fn_data_operativa())
 ON CONFLICT DO NOTHING;
 
 CREATE TEMP TABLE tmp_versione AS
 SELECT lv.id AS versione_id, lv.listino_id
   FROM vendite.listini_versioni lv, tmp_listino l
- WHERE lv.listino_id = l.listino_id AND lv.attivo IS TRUE AND lv.validita @> CURRENT_DATE
+ WHERE lv.listino_id = l.listino_id AND lv.attivo IS TRUE AND lv.validita @> script.fn_data_operativa()
  ORDER BY lv.id DESC LIMIT 1;
 
 INSERT INTO vendite.listini_righe(listino_versione_id, articolo_id, uom_id, prezzo)
@@ -120,7 +120,7 @@ INSERT INTO anagrafiche.categorie_clienti_listini(
     classe_utenza_id, listino_id, tipo_variazione, valore_variazione,
     valido_dal, valido_al)
 SELECT t.categoria_id, t.utility_id, t.emittente_srid, NULL, v.listino_id,
-       'VALORE_FISSO', -5, CURRENT_DATE, CURRENT_DATE + 365
+       'VALORE_FISSO', -5, script.fn_data_operativa(), script.fn_data_operativa() + 365
   FROM tmp_ctx t, tmp_versione v;
 
 -- Emittente NON mappato: un soggetto_ruolo che nella matrice non compare per
@@ -147,11 +147,11 @@ SELECT has_function(
 -- ============================================================
 CREATE TEMP TABLE tmp_ok_nucleo AS
 SELECT * FROM tmp_ctx t, LATERAL vendite.fn_resolve_prezzo_listino_v2_esito(
-    t.articolo_id, t.uom_id, CURRENT_DATE, t.ba_id, t.utility_id, t.emittente_srid) r;
+    t.articolo_id, t.uom_id, script.fn_data_operativa(), t.ba_id, t.utility_id, t.emittente_srid) r;
 
 CREATE TEMP TABLE tmp_ok_guscio AS
 SELECT * FROM tmp_ctx t, LATERAL vendite.fn_resolve_prezzo_listino_v2(
-    t.articolo_id, t.uom_id, CURRENT_DATE, t.ba_id, t.utility_id, t.emittente_srid) r;
+    t.articolo_id, t.uom_id, script.fn_data_operativa(), t.ba_id, t.utility_id, t.emittente_srid) r;
 
 -- 3) Stesso prezzo. 100 - 5 = 95: il valore atteso e' scritto, non dedotto dal
 --    risultato, altrimenti il test confermerebbe qualunque cosa esca.
@@ -180,7 +180,7 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_ko AS
 SELECT * FROM tmp_ctx t, tmp_no_map m, LATERAL vendite.fn_resolve_prezzo_listino_v2_esito(
-    t.articolo_id, t.uom_id, CURRENT_DATE, t.ba_id, t.utility_id, m.srid) r;
+    t.articolo_id, t.uom_id, script.fn_data_operativa(), t.ba_id, t.utility_id, m.srid) r;
 
 -- 6) UNA riga, non zero. ⚠️ Non e' pedanteria: il guscio fa SELECT INTO, e
 --    SELECT INTO senza righe non solleva — azzera le variabili e prosegue.
@@ -204,7 +204,7 @@ SELECT ok(
 --    caso che deve prendere.
 SELECT throws_ok(
     format('SELECT prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2(%L::uuid, %s, %L::date, %s, %s, %s)',
-           (SELECT articolo_id FROM tmp_ctx), (SELECT uom_id FROM tmp_ctx), CURRENT_DATE,
+           (SELECT articolo_id FROM tmp_ctx), (SELECT uom_id FROM tmp_ctx), script.fn_data_operativa(),
            (SELECT ba_id FROM tmp_ctx), (SELECT utility_id FROM tmp_ctx), (SELECT srid FROM tmp_no_map)),
     'P0001',
     NULL,
@@ -219,7 +219,7 @@ DO $arita$
 DECLARE v_msg text;
 BEGIN
     PERFORM prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2(
-        (SELECT articolo_id FROM tmp_ctx), (SELECT uom_id FROM tmp_ctx), CURRENT_DATE,
+        (SELECT articolo_id FROM tmp_ctx), (SELECT uom_id FROM tmp_ctx), script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx), (SELECT utility_id FROM tmp_ctx), (SELECT srid FROM tmp_no_map));
 EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
@@ -236,7 +236,7 @@ SELECT is(
 -- ============================================================
 SELECT throws_ok(
     format('SELECT prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2_esito(%L::uuid, -1, %L::date, %s, %s, %s)',
-           (SELECT articolo_id FROM tmp_ctx), CURRENT_DATE,
+           (SELECT articolo_id FROM tmp_ctx), script.fn_data_operativa(),
            (SELECT ba_id FROM tmp_ctx), (SELECT utility_id FROM tmp_ctx), (SELECT emittente_srid FROM tmp_ctx)),
     'P0001',
     NULL,
@@ -272,7 +272,7 @@ BEGIN
     SELECT count(*) INTO v_n
       FROM generate_series(1, 20) g, tmp_ctx t, tmp_no_map m,
            LATERAL vendite.fn_resolve_prezzo_listino_v2_esito(
-               t.articolo_id, t.uom_id, CURRENT_DATE, t.ba_id, t.utility_id, m.srid) r
+               t.articolo_id, t.uom_id, script.fn_data_operativa(), t.ba_id, t.utility_id, m.srid) r
      WHERE r.esito_codice IS NOT NULL;
     IF v_n <> 20 THEN
         RAISE EXCEPTION 'fixture test 11: attese 20 risoluzioni fallite, ottenute %', v_n;

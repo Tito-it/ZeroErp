@@ -136,7 +136,7 @@ BEGIN
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
         listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id)
     SELECT ctx.emittente_fiscale_id, ctx.billing_account_id, ctx.istanza_utility_id,
-           ctx.utility_id, p_listino, p_versione, CURRENT_DATE, ctx.stato_bozza_id
+           ctx.utility_id, p_listino, p_versione, script.fn_data_operativa(), ctx.stato_bozza_id
       FROM tmp_cl_ctx ctx
     RETURNING id INTO v_id;
     INSERT INTO tmp_cl_off VALUES (p_slot, v_id);

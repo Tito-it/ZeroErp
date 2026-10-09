@@ -338,5 +338,43 @@ case "$PGTAP_RUNNER" in
     ;;
 esac
 
+# --- fuso della sessione: OSTILE a quello dell'azienda -----------------------
+# (brief-be-db-fe-un-solo-fuso-aziendale, T-5.) Il giorno dell'applicazione e'
+# quello dell'azienda (`script.fn_data_operativa()`), non quello della sessione.
+# Se il test gira in una sessione che ha lo stesso giorno dell'azienda, un
+# `CURRENT_DATE` o un `::date` su un istante che sfugge da' la risposta giusta
+# per coincidenza: e' rosso solo nella finestra notturna, cioe' quasi mai.
+#
+# ⭐ Quindi la sessione gira in un fuso il cui giorno DIFFERISCE da quello
+#   dell'azienda, scelto file per file fra due estremi:
+#     Pacific/Kiritimati (+14)  se adesso il suo giorno non e' quello aziendale,
+#     Pacific/Pago_Pago  (−11)  altrimenti.
+#   Per qualunque fuso aziendale uno dei due differisce SEMPRE: con l'azienda a
+#   offset o e l'ora aziendale h, Kiritimati ha lo stesso giorno solo per
+#   h < 10+o, Pago Pago solo per h >= 11+o — le due condizioni non stanno
+#   insieme. Un fuso fisso (+14 e basta) sarebbe ostile per mezza giornata:
+#   il rosso dipenderebbe dall'ora della corsa.
+# ⚠️ Si sceglie a ogni file, non una volta per corsa: una suite che attraversa
+#   la mezzanotte aziendale cambia estremo a meta' strada.
+# ⚠️ La domanda si fa al DATABASE, che e' la sede del fuso aziendale: una copia
+#   del parametro qui divergerebbe al primo cambio.
+# ⭐ `PGTZ` gia' impostato vince (per esempio `PGTZ=Europe/Rome` per riprodurre
+#   un rosso nel fuso dell'azienda): libpq lo manda all'avvio della sessione, e
+#   vince anche su un `ALTER ROLE … SET timezone`.
+if [ -z "${PGTZ:-}" ]; then
+  PGTZ=$(psql --no-psqlrc -X -A -t -v ON_ERROR_STOP=1 -c \
+    "SELECT CASE WHEN (now() AT TIME ZONE 'Pacific/Kiritimati')::date
+                      <> script.fn_data_operativa()
+                 THEN 'Pacific/Kiritimati' ELSE 'Pacific/Pago_Pago' END" \
+    2>/dev/null) || PGTZ=""
+  if [ -z "$PGTZ" ]; then
+    # Database senza il fuso aziendale, o irraggiungibile: il test fallira'
+    # comunque per conto suo; qui si resta ostili alla meta' piu' probabile.
+    PGTZ="Pacific/Kiritimati"
+    echo "⚠️  fuso aziendale non leggibile: sessione su $PGTZ" >&2
+  fi
+  export PGTZ
+fi
+
 # pg_prove con path assoluto (funziona da qualsiasi CWD)
 pg_prove "$FULL_PATH"

@@ -126,7 +126,7 @@ WITH ins AS (
   )
   SELECT
     'PGT_V2_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-    CURRENT_DATE,
+    script.fn_data_operativa(),
     (SELECT stato_id FROM _t_stato),
     (SELECT ba_id FROM _t_ba),
     (SELECT istanza_utility_id FROM _t_ba),
@@ -156,7 +156,7 @@ WITH ins AS (
   )
   SELECT
     'PGT_V3_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-    CURRENT_DATE,
+    script.fn_data_operativa(),
     (SELECT stato_id FROM _t_stato),
     (SELECT ba_id FROM _t_ba),
     (SELECT istanza_utility_id FROM _t_ba),
@@ -185,7 +185,7 @@ WITH ins AS (
   )
   SELECT
     'PGT_V4_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-    CURRENT_DATE,
+    script.fn_data_operativa(),
     (SELECT stato_id FROM _t_stato),
     (SELECT ba_id FROM _t_ba),
     (SELECT istanza_utility_id FROM _t_ba),
@@ -215,7 +215,7 @@ WITH ins AS (
   )
   SELECT
     'PGT_V5_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-    CURRENT_DATE,
+    script.fn_data_operativa(),
     (SELECT stato_id FROM _t_stato),
     (SELECT ba_id FROM _t_ba),
     (SELECT istanza_utility_id FROM _t_ba),

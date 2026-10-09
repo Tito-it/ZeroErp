@@ -50,7 +50,7 @@ SELECT ok(
 CREATE TEMP TABLE tmp_g AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti
     (lock_batch_id, competenza_mese, tipo_doc_fiscale_id, utility_id, billing_account_id, emittente_soggetto_ruolo_id, stato_doc_fiscale_id, tipo_lotto)
-  SELECT uuidv7(), date_trunc('month', current_date)::date, tdf, util, ba, emit, draft, 'GIORNALIERO' FROM tmp_r
+  SELECT uuidv7(), date_trunc('month', script.fn_data_operativa())::date, tdf, util, ba, emit, draft, 'GIORNALIERO' FROM tmp_r
   RETURNING id
 ) SELECT * FROM ins;
 
@@ -65,7 +65,7 @@ SELECT lives_ok(
 CREATE TEMP TABLE tmp_g2 AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti
     (lock_batch_id, competenza_mese, tipo_doc_fiscale_id, utility_id, billing_account_id, emittente_soggetto_ruolo_id, stato_doc_fiscale_id, tipo_lotto)
-  SELECT uuidv7(), date_trunc('month', current_date)::date, tdf, util, ba, emit, draft, 'GIORNALIERO' FROM tmp_r
+  SELECT uuidv7(), date_trunc('month', script.fn_data_operativa())::date, tdf, util, ba, emit, draft, 'GIORNALIERO' FROM tmp_r
   RETURNING id
 ) SELECT * FROM ins;
 

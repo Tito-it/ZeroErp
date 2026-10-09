@@ -61,7 +61,7 @@ WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       lock_batch_id, competenza_mese, tipo_doc_fiscale_id, utility_id,
       billing_account_id, stato_doc_fiscale_id, emittente_soggetto_ruolo_id)
-  SELECT gen_random_uuid(), date_trunc('month', current_date)::date,
+  SELECT gen_random_uuid(), date_trunc('month', script.fn_data_operativa())::date,
          f.tipo_doc_fiscale_id, f.utility_id, f.billing_account_id,
          f.stato_doc_fiscale_id, f.emittente_soggetto_ruolo_id
     FROM vendite.fatture f

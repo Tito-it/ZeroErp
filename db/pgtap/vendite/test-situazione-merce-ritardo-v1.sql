@@ -51,9 +51,9 @@
 --   un DDT VERO: vendite.fn_genera_ddt_da_ordine + causale VENDITA + stati
 --   fino a CONSEGNATO, come in test-vw-situazione-merce-ordine-v1.
 --
--- ⚠️ CURRENT_DATE anche qui: la vista conta con la data della sessione (e'
---   un indicatore, non una data documento), e il test calcola l'attesa con la
---   stessa data, nella stessa transazione.
+-- ⚠️ script.fn_data_operativa() anche qui: la vista conta i giorni dal giorno
+--   dell'azienda (e' un indicatore, non una data documento), e il test calcola
+--   l'attesa con lo stesso giorno, nella stessa transazione.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -140,7 +140,7 @@ BEGIN
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, utility_id, stato_doc_ordine_id,
                               valuta_id, data, fatturazione_trigger, emittente_fiscale_id, meta)
   SELECT c.soggetto_ruolo_id, c.billing_account_id, c.utility_id, r.stato_ord_draft_id,
-         r.valuta_id, CURRENT_DATE - 10, 'SPEDITO', m.emittente_fiscale_id,
+         r.valuta_id, script.fn_data_operativa() - 10, 'SPEDITO', m.emittente_fiscale_id,
          jsonb_build_object('test_scope', 'pgtap_situazione_merce_ritardo')
     FROM _cliente c, _mondo m, _refs r
   RETURNING id INTO v_ord;
@@ -191,14 +191,14 @@ SELECT is(
 --   nasce con la richiesta a -5 scritta IN BOZZA e poi e' confermata; la promessa
 --   (5-7) resta un UPDATE su CONFERMATO, l'eccezione ammessa.
 CREATE TEMP TABLE _a2 AS
-SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10, CURRENT_DATE - 5);
+SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10, script.fn_data_operativa() - 5);
 
 SELECT is(
     (SELECT s.giorni_ritardo FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a2)),
     5,
     '4) solo la richiesta del cliente, 5 giorni fa: 5 giorni di ritardo');
 
-UPDATE vendite.ordini_righe SET data_consegna_confermata = CURRENT_DATE - 3
+UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() - 3
  WHERE id = (SELECT ordine_riga_id FROM _a2);
 
 SELECT is(
@@ -206,7 +206,7 @@ SELECT is(
     3,
     '5) con la promessa a -3 accanto alla richiesta a -5: 3 — la promessa vince (decisione 2026-09-14)');
 
-UPDATE vendite.ordini_righe SET data_consegna_confermata = CURRENT_DATE + 2
+UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 2
  WHERE id = (SELECT ordine_riga_id FROM _a2);
 
 SELECT is(
@@ -215,7 +215,7 @@ SELECT is(
     '6) promessa fra 2 giorni: 0 — c''e'' da spedire e NON e'' tardi (non NULL)');
 
 SELECT is(
-    (SELECT (s.data_consegna_richiesta_cliente = CURRENT_DATE - 5)::text || '/' || (s.data_consegna_confermata = CURRENT_DATE + 2)::text
+    (SELECT (s.data_consegna_richiesta_cliente = script.fn_data_operativa() - 5)::text || '/' || (s.data_consegna_confermata = script.fn_data_operativa() + 2)::text
        FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a2)),
     'true/true',
     '7) le due date della riga escono dalla vista tali e quali');
@@ -226,7 +226,7 @@ SELECT is(
 CREATE TEMP TABLE _b AS
 SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_draft_id FROM _refs), 10);
 
-UPDATE vendite.ordini_righe SET data_consegna_richiesta_cliente = CURRENT_DATE - 30
+UPDATE vendite.ordini_righe SET data_consegna_richiesta_cliente = script.fn_data_operativa() - 30
  WHERE id = (SELECT ordine_riga_id FROM _b);
 
 SELECT is(
@@ -241,7 +241,7 @@ SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10)
 -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la promessa si
 --   scrive PRIMA della spedizione, a ordine CONFERMATO (l'eccezione di 20261008-90):
 --   spedito per intero l'ordine e' EVASO e la riga non si tocca piu'.
-UPDATE vendite.ordini_righe SET data_consegna_confermata = CURRENT_DATE - 3
+UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() - 3
  WHERE id = (SELECT ordine_riga_id FROM _c);
 CREATE TEMP TABLE _c_ddt AS
 SELECT pg_temp.mk_spedizione((SELECT ordine_id FROM _c), (SELECT ordine_riga_id FROM _c), 10) AS ddt_id;

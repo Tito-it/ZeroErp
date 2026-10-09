@@ -13,7 +13,7 @@
 --   5) ATTIVO -> CESSATO con valido_al passato VIETATO (E_CONTRATTO_VALIDO_AL_RETROATTIVO) [invertito]
 --   6) CESSATO -> ATTIVO vietato (stato terminale)
 --   7) ATTIVO -> ATTIVO no-op ammesso (WHEN distinct filter)
---   8) ATTIVO -> CESSATO con valido_al = CURRENT_DATE ammesso  [nuovo]
+--   8) ATTIVO -> CESSATO con valido_al = script.fn_data_operativa() ammesso  [nuovo]
 --   9) Job automatico (GUC app.cessazione_automatica=true): valido_al passato ammesso [nuovo]
 --
 -- Strategia fixture:
@@ -80,7 +80,7 @@ SELECT listino_id FROM dbops.fn_pgtap_crea_listino(
 --   _C   ATTIVO 2020-01-01..2020-12-31 (test 5: valido_al passato; test 9: GUC bypass)
 --   _D   CESSATO 2019-01-01..2019-12-31 (test 6: terminale)
 --   _E   ATTIVO 2082-01-01..2082-12-31 (test 7: no-op)
---   _F   ATTIVO CURRENT_DATE-30..CURRENT_DATE (test 8: valido_al = oggi)
+--   _F   ATTIVO script.fn_data_operativa()-30..script.fn_data_operativa() (test 8: valido_al = oggi)
 -- ============================================================
 
 INSERT INTO vendite.contratti(
@@ -139,7 +139,7 @@ INSERT INTO vendite.contratti(
     listino_id, tipo_variazione_globale, valore_variazione_globale
 )
 SELECT 'PGTAP_GUARD_F', ba.billing_account_id, ba.istanza_utility_id, ba.utility_id,
-       s.id_attivo, CURRENT_DATE - 30, CURRENT_DATE,
+       s.id_attivo, script.fn_data_operativa() - 30, script.fn_data_operativa(),
        l.listino_id, 'PERCENTUALE', -10
   FROM tmp_ctx_ba ba, tmp_ctx_stati s, tmp_ctx_listino l;
 
@@ -181,7 +181,7 @@ SELECT throws_ok(
 -- ============================================================
 -- 4) ATTIVO -> CESSATO con valido_al futuro AMMESSO
 --    (PGTAP_GUARD_B ha valido_al = 2081-12-31 nel futuro)
---    Regola post-fix: valido_al >= CURRENT_DATE ammessa.
+--    Regola post-fix: valido_al >= script.fn_data_operativa() ammessa.
 --    La cessazione e' immediata; il contratto risulta CESSATO con
 --    data fine futura (informativa).
 -- ============================================================
@@ -230,15 +230,15 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- 8) ATTIVO -> CESSATO con valido_al = CURRENT_DATE ammesso
---    (PGTAP_GUARD_F ha valido_al = CURRENT_DATE)
+-- 8) ATTIVO -> CESSATO con valido_al = script.fn_data_operativa() ammesso
+--    (PGTAP_GUARD_F ha valido_al = script.fn_data_operativa())
 --    Caso "cesso il contratto oggi": valido_al = oggi >= oggi.
 -- ============================================================
 SELECT lives_ok(
     $$UPDATE vendite.contratti
          SET stato_doc_contratto_id = (SELECT id_cessato FROM tmp_ctx_stati)
        WHERE numero = 'PGTAP_GUARD_F'$$,
-    '8) ATTIVO -> CESSATO con valido_al = CURRENT_DATE ammesso (cessazione immediata oggi)'
+    '8) ATTIVO -> CESSATO con valido_al = script.fn_data_operativa() ammesso (cessazione immediata oggi)'
 );
 
 -- ============================================================

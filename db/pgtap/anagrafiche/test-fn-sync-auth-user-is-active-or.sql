@@ -8,7 +8,7 @@
 -- Semantica attesa post 20-04-2026:
 --   auth_user.is_active = true SE ESISTE almeno una identita con
 --     - attivo = true
---     - CURRENT_DATE in [valido_dal, valido_al]
+--     - script.fn_data_operativa() in [valido_dal, valido_al]
 --     - soggetto parent attivo
 --   Altrimenti auth_user.is_active = false.
 --   ⚠️ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): fino a quel

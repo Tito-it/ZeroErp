@@ -74,9 +74,9 @@ BEGIN
     v_sem := dbops.fn_pgtap_crea_articolo('PGT-L3BK-SEMPLICE',   true, false, false);
     UPDATE catalogo.articoli SET is_composito = true WHERE id = v_k;
     INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, valido_dal)
-    VALUES (v_k, v_cs, 2, CURRENT_DATE - 30), (v_k, v_cl, 3, CURRENT_DATE - 30);
+    VALUES (v_k, v_cs, 2, script.fn_data_operativa() - 30), (v_k, v_cl, 3, script.fn_data_operativa() - 30);
 
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_cl, 'PGT-L3BK-A', CURRENT_DATE - 10) RETURNING id INTO v_la;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_cl, 'PGT-L3BK-A', script.fn_data_operativa() - 10) RETURNING id INTO v_la;
     INSERT INTO magazzino.assets (articolo_id, seriale, stato_id, ownership_id, emittente_fiscale_id)
     VALUES (v_ser, 'PGT-L3BK-SN1',
             (SELECT s.id FROM config.stati_assets s WHERE s.attivo ORDER BY s.id LIMIT 1),
@@ -108,7 +108,7 @@ BEGIN
                                      'OMAGGIO', (SELECT mag FROM _fix));
     INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa, quantita)
     SELECT v_ddt, 1, kit, 'kit', 2, 2 FROM _fix RETURNING id INTO v_rk;
-    PERFORM vendite.fn_ddt_riga_componenti_init(v_rk, (SELECT emittente_soggetto_ruolo_id FROM _m), CURRENT_DATE);
+    PERFORM vendite.fn_ddt_riga_componenti_init(v_rk, (SELECT emittente_soggetto_ruolo_id FROM _m), script.fn_data_operativa());
     INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa, quantita)
     SELECT v_ddt, 2, ser, 'seriale', 1, 1 FROM _fix RETURNING id INTO v_rser;
     INSERT INTO vendite.ddt_righe (ddt_id, riga_nr, articolo_id, descrizione, qta_operativa, quantita)

@@ -153,7 +153,7 @@ BEGIN
             'pgtap_appr_' || v_caso.sigla || '_'
                 || substring(md5(clock_timestamp()::text) from 1 for 6),
             c.stato_draft_id, c.utility_id, c.istanza_utility_id,
-            c.billing_account_id, CURRENT_DATE, c.emittente_fiscale_id
+            c.billing_account_id, script.fn_data_operativa(), c.emittente_fiscale_id
         )
         RETURNING id INTO v_prev_id;
 

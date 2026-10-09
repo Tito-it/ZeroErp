@@ -223,7 +223,7 @@ BEGIN
       INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
           uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
       VALUES (v_fatt, v_nr, v_af.articolo_id, 'Riga kit pgTAP', r.uom_id,
-              v_af.quantita, 2.50, r.iva_id, v_af.quantita * 2.50, CURRENT_DATE, CURRENT_DATE)
+              v_af.quantita, 2.50, r.iva_id, v_af.quantita * 2.50, script.fn_data_operativa(), script.fn_data_operativa())
       RETURNING id INTO v_riga;
 
       UPDATE vendite.attivita_fatturabili

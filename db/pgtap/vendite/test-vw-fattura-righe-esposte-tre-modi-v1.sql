@@ -106,7 +106,7 @@ RETURNS bigint LANGUAGE sql AS $fx$
          (SELECT iva_id FROM tmp_e3m_iva),
          p_kit, p_modo,
          CASE WHEN p_kit IS NOT NULL THEN (SELECT padre_id FROM tmp_e3m_art) END,
-         CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END, CURRENT_DATE, CURRENT_DATE,
+         CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END, script.fn_data_operativa(), script.fn_data_operativa(),
          -- un kit per riga di componente (rev 2026-10-02: la quantita' del kit
          -- viene dalla riga padre del documento, non piu' dalla media)
          CASE WHEN p_kit IS NOT NULL THEN 1 END

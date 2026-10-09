@@ -83,7 +83,7 @@ SELECT is(
 );
 
 -- Il tipo c'e' ma e' ritirato: motivo diverso, perche' il rimedio e' diverso.
-UPDATE config.tipi_entita SET obsoleto_dal = CURRENT_DATE - 1 WHERE codice = 'FATTURA';
+UPDATE config.tipi_entita SET obsoleto_dal = script.fn_data_operativa() - 1 WHERE codice = 'FATTURA';
 
 SELECT is(
     (SELECT string_agg(v.tipo || ':' || v.motivo, ',' ORDER BY v.tipo)

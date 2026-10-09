@@ -169,10 +169,10 @@ WITH ins AS (
     stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_commessa_ef),
          'PGTAP-EF-SEG-A-' || substr(md5(clock_timestamp()::text), 1, 12),
-         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-         date_trunc('month', current_date)::date,
-         date_trunc('month', current_date)::date,
-         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+         date_trunc('month', script.fn_data_operativa())::date,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
          'BOZZA', 'EMESSA', NULL, NULL
     FROM tmp_refs_ef r
@@ -187,10 +187,10 @@ WITH ins AS (
     stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_commessa_ef),
          'PGTAP-EF-SEG-B-' || substr(md5(clock_timestamp()::text), 1, 12),
-         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-         date_trunc('month', current_date)::date,
-         date_trunc('month', current_date)::date,
-         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+         date_trunc('month', script.fn_data_operativa())::date,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
          'BOZZA', 'EMESSA', NULL, NULL
     FROM tmp_refs_ef r
@@ -204,7 +204,7 @@ WITH ins AS (
       lock_batch_id, competenza_mese, tipo_doc_fiscale_id, utility_id,
       billing_account_id, stato_doc_fiscale_id, emittente_soggetto_ruolo_id)
   SELECT (SELECT lock_batch_id FROM tmp_cost_ef),
-         date_trunc('month', current_date)::date,
+         date_trunc('month', script.fn_data_operativa())::date,
          r.tipo_doc_fiscale_id, r.utility_id, r.billing_account_id,
          r.stato_draft_id, (SELECT emittente_sr_id FROM tmp_cost_ef)
     FROM tmp_refs_ef r
@@ -220,7 +220,7 @@ WITH ins AS (
                                valuta_id, stato_doc_fiscale_id, data)
   SELECT r.registro_id, (SELECT emittente_sr_id FROM tmp_cost_ef),
          r.billing_account_id, r.utility_id, r.tipo_doc_fiscale_id,
-         r.valuta_id, r.stato_draft_id, current_date
+         r.valuta_id, r.stato_draft_id, script.fn_data_operativa()
     FROM tmp_refs_ef r
   RETURNING id)
 INSERT INTO tmp_fatture_ef(slot, fattura_id) SELECT 'A', id FROM ins;
@@ -231,7 +231,7 @@ WITH ins AS (
                                valuta_id, stato_doc_fiscale_id, data)
   SELECT r.registro_id, (SELECT emittente_sr_id FROM tmp_cost_ef),
          r.billing_account_id, r.utility_id, r.tipo_doc_fiscale_id,
-         r.valuta_id, r.stato_draft_id, current_date
+         r.valuta_id, r.stato_draft_id, script.fn_data_operativa()
     FROM tmp_refs_ef r
   RETURNING id)
 INSERT INTO tmp_fatture_ef(slot, fattura_id) SELECT 'B', id FROM ins;
@@ -244,7 +244,7 @@ SELECT (SELECT id FROM tmp_lotto_ef), f.fattura_id, (SELECT stato_draft_id FROM 
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
                                      qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
-  SELECT f.fattura_id, 1, 'Riga PGTAP EF A', 1, 10, 10, CURRENT_DATE, CURRENT_DATE
+  SELECT f.fattura_id, 1, 'Riga PGTAP EF A', 1, 10, 10, script.fn_data_operativa(), script.fn_data_operativa()
     FROM tmp_fatture_ef f WHERE f.slot = 'A'
   RETURNING id)
 UPDATE tmp_fatture_ef t SET riga_id = (SELECT id FROM ins) WHERE t.slot = 'A';
@@ -252,7 +252,7 @@ UPDATE tmp_fatture_ef t SET riga_id = (SELECT id FROM ins) WHERE t.slot = 'A';
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
                                      qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
-  SELECT f.fattura_id, 1, 'Riga PGTAP EF B', 1, 10, 10, CURRENT_DATE, CURRENT_DATE
+  SELECT f.fattura_id, 1, 'Riga PGTAP EF B', 1, 10, 10, script.fn_data_operativa(), script.fn_data_operativa()
     FROM tmp_fatture_ef f WHERE f.slot = 'B'
   RETURNING id)
 UPDATE tmp_fatture_ef t SET riga_id = (SELECT id FROM ins) WHERE t.slot = 'B';
@@ -268,10 +268,10 @@ WITH ins AS (
       sospesa, tipo_doc_fiscale_id, valuta_id, commessa_id,
       commessa_attivita_id, uom_id, prezzo_unitario, lock_in_fatturazione,
       lock_batch_id, fattura_riga_id, stato_esecuzione, meta)
-  SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id, current_date,
-         date_trunc('month', current_date)::date,
-         date_trunc('month', current_date)::date,
-         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+  SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id, script.fn_data_operativa(),
+         date_trunc('month', script.fn_data_operativa())::date,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          1, true, false, r.tipo_doc_fiscale_id, r.valuta_id,
          (SELECT id FROM tmp_commessa_ef),
          (SELECT attivita_id FROM tmp_ca_ef WHERE slot = 'A'),
@@ -291,10 +291,10 @@ WITH ins AS (
       sospesa, tipo_doc_fiscale_id, valuta_id, commessa_id,
       commessa_attivita_id, uom_id, prezzo_unitario, lock_in_fatturazione,
       lock_batch_id, fattura_riga_id, stato_esecuzione, meta)
-  SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id, current_date,
-         date_trunc('month', current_date)::date,
-         date_trunc('month', current_date)::date,
-         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+  SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id, script.fn_data_operativa(),
+         date_trunc('month', script.fn_data_operativa())::date,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          1, true, false, r.tipo_doc_fiscale_id, r.valuta_id,
          (SELECT id FROM tmp_commessa_ef),
          (SELECT attivita_id FROM tmp_ca_ef WHERE slot = 'B'),

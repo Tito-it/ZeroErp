@@ -75,7 +75,7 @@ SELECT ok(
 CREATE TEMP TABLE tmp_lotto_gocl AS
 SELECT vendite.fn_get_or_create_lotto(
   p_lotto_id => NULL,
-  p_competenza_mese => date_trunc('month', current_date)::date,
+  p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
   p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
   p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
   p_billing_account_id => NULL,
@@ -110,7 +110,7 @@ UPDATE vendite.fatturazione_lotti
 SELECT is(
   vendite.fn_get_or_create_lotto(
     p_lotto_id => (SELECT lotto_id FROM tmp_lotto_gocl),
-    p_competenza_mese => date_trunc('month', current_date)::date,
+    p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
     p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
     p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
     p_billing_account_id => NULL,
@@ -133,7 +133,7 @@ UPDATE vendite.fatturazione_lotti
 SELECT is(
   vendite.fn_get_or_create_lotto(
     p_lotto_id => (SELECT lotto_id FROM tmp_lotto_gocl),
-    p_competenza_mese => date_trunc('month', current_date)::date,
+    p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
     p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
     p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
     p_billing_account_id => NULL,
@@ -157,7 +157,7 @@ SELECT throws_ok(
   $$
   SELECT vendite.fn_get_or_create_lotto(
     p_lotto_id => (SELECT lotto_id FROM tmp_lotto_gocl),
-    p_competenza_mese => date_trunc('month', current_date)::date,
+    p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
     p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
     p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
     p_billing_account_id => NULL,
@@ -183,7 +183,7 @@ SELECT throws_ok(
   $$
   SELECT vendite.fn_get_or_create_lotto(
     p_lotto_id => (SELECT lotto_id FROM tmp_lotto_gocl),
-    p_competenza_mese => date_trunc('month', current_date)::date,
+    p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
     p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
     p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
     p_billing_account_id => NULL,
@@ -202,7 +202,7 @@ SELECT throws_ok(
   $$
   SELECT vendite.fn_get_or_create_lotto(
     p_lotto_id => NULL,
-    p_competenza_mese => date_trunc('month', current_date)::date,
+    p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
     p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
     p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
     p_billing_account_id => NULL,
@@ -225,7 +225,7 @@ SELECT uuidv7() AS lock_batch_id;
 
 CREATE TEMP TABLE tmp_lotto_lock_gocl AS
 SELECT vendite.fn_create_fatturazione_lotto(
-  p_competenza_mese => date_trunc('month', current_date)::date,
+  p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
   p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
   p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
   p_billing_account_id => NULL,
@@ -244,7 +244,7 @@ UPDATE vendite.fatturazione_lotti
 SELECT is(
   vendite.fn_get_or_create_lotto(
     p_lotto_id => NULL,
-    p_competenza_mese => date_trunc('month', current_date)::date,
+    p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
     p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
     p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
     p_billing_account_id => NULL,
@@ -268,7 +268,7 @@ SELECT throws_ok(
   $$
   SELECT vendite.fn_get_or_create_lotto(
     p_lotto_id => NULL,
-    p_competenza_mese => date_trunc('month', current_date)::date,
+    p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
     p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_gocl),
     p_utility_id => (SELECT utility_id FROM tmp_refs_gocl),
     p_billing_account_id => NULL,

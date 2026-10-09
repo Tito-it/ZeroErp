@@ -79,7 +79,7 @@ AS $$ SELECT auth_user_id FROM _t_op WHERE sigla = p_sigla $$;
 
 -- Un override d'area, con la sua finestra.
 CREATE FUNCTION pg_temp.area(p_user integer, p_schema text, p_livello text,
-                             p_dal date DEFAULT CURRENT_DATE, p_al date DEFAULT NULL)
+                             p_dal date DEFAULT script.fn_data_operativa(), p_al date DEFAULT NULL)
 RETURNS void LANGUAGE sql
 AS $$
     INSERT INTO config.user_override_aree (auth_user_id, area_id, livello, motivo, valido_dal, valido_al)
@@ -120,7 +120,7 @@ END $$ LANGUAGE plpgsql;
 --    vendite; area magazzino LETTURA SCADUTA (l'area torna BLOCCATO) + oggetto TUTTO
 --    => 1 voce limitata in magazzino. Quattro override scritti.
 SELECT pg_temp.area(pg_temp.op('A'), 'vendite', 'BLOCCATO');
-SELECT pg_temp.area(pg_temp.op('A'), 'magazzino', 'LETTURA', CURRENT_DATE - 10, CURRENT_DATE - 5);
+SELECT pg_temp.area(pg_temp.op('A'), 'magazzino', 'LETTURA', script.fn_data_operativa() - 10, script.fn_data_operativa() - 5);
 SELECT pg_temp.azione(pg_temp.op('A'));
 INSERT INTO config.user_override_oggetti (auth_user_id, app_label, model_name, livello, motivo)
 VALUES (pg_temp.op('A'), 'pgtap_app', 'pgtap_riep', 'TUTTO', 'Fixture pgTAP');
@@ -183,7 +183,7 @@ SELECT is(
        JOIN config.user_override_aree uoa ON uoa.id = v.override_id
       WHERE v.tipo = 'AREA'
         AND v.auth_user_id = pg_temp.op('A')
-        AND NOT uoa.validita @> CURRENT_DATE),
+        AND NOT uoa.validita @> script.fn_data_operativa()),
     1,
     '5) D-2: l''override d''area scaduto resta contato (scritto, non in vigore)');
 

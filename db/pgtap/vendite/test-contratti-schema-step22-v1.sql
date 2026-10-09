@@ -125,7 +125,7 @@ SELECT
     ) AS art_fuori_listino_id
   FROM vendite.listini_versioni lv
  WHERE lv.listino_id = (SELECT listino_id FROM tmp_s22_ctx LIMIT 1)
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
    AND lv.attivo = TRUE
  LIMIT 1;
 

@@ -111,7 +111,7 @@ RETURNS bigint LANGUAGE sql AS $fx$
          kit_key, kit_esposizione, kit_articolo_padre_id, kit_descrizione_padre,
          kit_qta, kit_uom_id)
   SELECT p_fattura, p_nr, p_art, 'Riga ' || p_nr, r.uom_id,
-         p_qta, p_prezzo, r.iva_id, CURRENT_DATE, CURRENT_DATE,
+         p_qta, p_prezzo, r.iva_id, script.fn_data_operativa(), script.fn_data_operativa(),
          p_kit,
          CASE WHEN p_kit IS NOT NULL THEN 'VALORIZZATO' END,
          CASE WHEN p_kit IS NOT NULL THEN r.padre END,
@@ -152,7 +152,7 @@ WITH p AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, uom_id,
          qta, prezzo_unitario, iva_id, competenza_dal, competenza_al, riga_capofila_id)
   SELECT (SELECT f5 FROM tmp_cpr_fatt), 2, r.c3, 'Parte', r.uom_id, 1, 5, r.iva_id,
-         CURRENT_DATE, CURRENT_DATE, (SELECT id FROM tmp_cpr_righe WHERE caso = 'L')
+         script.fn_data_operativa(), script.fn_data_operativa(), (SELECT id FROM tmp_cpr_righe WHERE caso = 'L')
     FROM tmp_cpr_refs r
   RETURNING id)
 SELECT id FROM p;

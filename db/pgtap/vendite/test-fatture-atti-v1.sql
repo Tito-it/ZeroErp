@@ -115,7 +115,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture
       (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
        tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
-  SELECT (SELECT id FROM tmp_at_reg), current_date,
+  SELECT (SELECT id FROM tmp_at_reg), script.fn_data_operativa(),
          r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.stato_doc_fiscale_id, r.valuta_id, r.utility_id,
          jsonb_build_object('test_scope', 'pgtap_fatture_atti', 'n', n)
@@ -199,7 +199,7 @@ INSERT INTO vendite.fatture_righe
      fattura_atto_id, meta, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_at_fatt WHERE n = 1), k.n,
        'Riga atto ' || k.n, 1, 100, (SELECT iva_id FROM tmp_at_refs),
-       a.id, jsonb_build_object('test_scope', 'pgtap_fatture_atti'), CURRENT_DATE, CURRENT_DATE
+       a.id, jsonb_build_object('test_scope', 'pgtap_fatture_atti'), script.fn_data_operativa(), script.fn_data_operativa()
   FROM tmp_at_contr k
   JOIN vendite.fatture_atti a
          ON a.fattura_id   = (SELECT id FROM tmp_at_fatt WHERE n = 1)
@@ -222,7 +222,7 @@ SELECT is(
 SELECT throws_ok(
   format($$INSERT INTO vendite.fatture_atti
               (fattura_id, contratto_id, id_documento, data_documento)
-           VALUES (%s, %s, 'DOPPIONE', current_date)$$,
+           VALUES (%s, %s, 'DOPPIONE', script.fn_data_operativa())$$,
          (SELECT id FROM tmp_at_fatt WHERE n = 1),
          (SELECT contratto_id FROM tmp_at_contr WHERE n = 1)),
   '23505',
@@ -238,7 +238,7 @@ SELECT throws_ok(
 SELECT throws_ok(
   format($$INSERT INTO vendite.fatture_atti
               (fattura_id, contratto_id, id_documento, data_documento)
-           VALUES (%s, NULL, 'SENZA-ATTO', current_date)$$,
+           VALUES (%s, NULL, 'SENZA-ATTO', script.fn_data_operativa())$$,
          (SELECT id FROM tmp_at_fatt WHERE n = 1)),
   '23502',
   NULL::text,
@@ -256,7 +256,7 @@ SELECT throws_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
                fattura_atto_id, competenza_dal, competenza_al)
-           VALUES (%s, 90, 'Riga con atto altrui', 1, 10, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
+           VALUES (%s, 90, 'Riga con atto altrui', 1, 10, %s, %s, script.fn_data_operativa(), script.fn_data_operativa())$$,
          (SELECT id FROM tmp_at_fatt WHERE n = 2),
          (SELECT iva_id FROM tmp_at_refs),
          (SELECT a.id FROM vendite.fatture_atti a
@@ -273,13 +273,13 @@ INSERT INTO vendite.fatture_atti
     (fattura_id, contratto_id, id_documento, data_documento)
 SELECT (SELECT id FROM tmp_at_fatt WHERE n = 2),
        (SELECT contratto_id FROM tmp_at_contr WHERE n = 1),
-       'ATTO-F2', current_date;
+       'ATTO-F2', script.fn_data_operativa();
 
 SELECT lives_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
                fattura_atto_id, competenza_dal, competenza_al)
-           VALUES (%s, 91, 'Riga con atto proprio', 1, 10, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
+           VALUES (%s, 91, 'Riga con atto proprio', 1, 10, %s, %s, script.fn_data_operativa(), script.fn_data_operativa())$$,
          (SELECT id FROM tmp_at_fatt WHERE n = 2),
          (SELECT iva_id FROM tmp_at_refs),
          (SELECT a.id FROM vendite.fatture_atti a
@@ -320,7 +320,7 @@ UPDATE config.stati_doc_fiscale SET congela_fiscale = true
 SELECT throws_like(
   format($$INSERT INTO vendite.fatture_atti
               (fattura_id, contratto_id, id_documento, data_documento)
-           VALUES (%s, %s, 'OLTRE-SOGLIA', current_date)$$,
+           VALUES (%s, %s, 'OLTRE-SOGLIA', script.fn_data_operativa())$$,
          (SELECT id FROM tmp_at_fatt WHERE n = 2),
          (SELECT contratto_id FROM tmp_at_contr WHERE n = 2)),
   '%non e'' piu'' modificabile%',

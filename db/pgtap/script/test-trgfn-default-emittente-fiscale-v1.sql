@@ -239,7 +239,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_
 CREATE TEMP TABLE _ord ON COMMIT DROP AS
 WITH ins AS (
     INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-    SELECT f.ba_sr, f.ba, f.stato_ord, f.valuta, CURRENT_DATE, false, '{}'::jsonb FROM _fix f
+    SELECT f.ba_sr, f.ba, f.stato_ord, f.valuta, script.fn_data_operativa(), false, '{}'::jsonb FROM _fix f
     RETURNING id, uid, emittente_fiscale_id)
 SELECT * FROM ins;
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m WHERE lato = 'S')); END $ctx$;
@@ -247,7 +247,7 @@ CREATE TEMP TABLE _r13 ON COMMIT DROP AS
 WITH ins AS (
         INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, data, sorgente_tipo_id, sorgente_uid,
                                  causale_trasporto_id, storicizza, meta)
-        SELECT f.ba_sr, f.stato_ddt_draft, CURRENT_DATE, f.sorg_ordine, (SELECT uid FROM _ord), f.causale, false, '{}'::jsonb
+        SELECT f.ba_sr, f.stato_ddt_draft, script.fn_data_operativa(), f.sorg_ordine, (SELECT uid FROM _ord), f.causale, false, '{}'::jsonb
           FROM _fix f
     RETURNING emittente_fiscale_id)
 SELECT emittente_fiscale_id FROM ins;
@@ -284,7 +284,7 @@ CREATE TEMP TABLE _r16 ON COMMIT DROP AS
 WITH ins AS (
         INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, billing_account_id, stato_doc_ddt_id, data,
                                  causale_trasporto_id, storicizza, meta)
-        SELECT f.ba_sr, f.ba, f.stato_ddt_draft, CURRENT_DATE, f.causale, false, '{}'::jsonb FROM _fix f
+        SELECT f.ba_sr, f.ba, f.stato_ddt_draft, script.fn_data_operativa(), f.causale, false, '{}'::jsonb FROM _fix f
     RETURNING emittente_fiscale_id)
 SELECT emittente_fiscale_id FROM ins;
 SELECT is(
@@ -312,7 +312,7 @@ WITH ins AS (
                                     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
                                     emittente_fiscale_id, storicizza, meta)
     SELECT 'PGT-DE-' || substr(md5(clock_timestamp()::text), 1, 8), 0, f.ba, f.ba_istanza, f.ba_utility,
-           CURRENT_DATE, CURRENT_DATE + 30, f.valuta, f.stato_prev_emesso, CURRENT_DATE,
+           script.fn_data_operativa(), script.fn_data_operativa() + 30, f.valuta, f.stato_prev_emesso, script.fn_data_operativa(),
            (SELECT emittente_fiscale_id FROM _m WHERE lato = 'A'), false, '{}'::jsonb
       FROM _fix f
     RETURNING id)

@@ -111,7 +111,7 @@ BEGIN
      AND EXISTS (SELECT 1 FROM catalogo.articoli_componenti ac
                   WHERE ac.prodotto_id = a.id
                     AND COALESCE(ac.attivo, TRUE)
-                    AND ac.validita @> CURRENT_DATE)
+                    AND ac.validita @> script.fn_data_operativa())
    ORDER BY a.id LIMIT 1;
 
   -- Emittente FUORI dalla matrice: e' cio' che rende i prezzi non risolvibili.
@@ -135,7 +135,7 @@ BEGIN
     INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
                              billing_account_id, utility_id, valuta_id,
                              emittente_fiscale_id, storicizza, meta)
-    VALUES (CURRENT_DATE, v_draft, v_sr, v_ba, v_utility, v_val, v_ef, false,
+    VALUES (script.fn_data_operativa(), v_draft, v_sr, v_ba, v_utility, v_val, v_ef, false,
             jsonb_build_object('test_scope','pgtap_kit_senza_prezzo'))
     RETURNING id INTO v_ddt;
 
@@ -148,7 +148,7 @@ BEGIN
     -- ⭐ IL CUORE DEL TEST: prima della slice questa chiamata SOLLEVAVA e la
     --   riga-kit non nasceva affatto. Se torna a sollevare, la fixture resta
     --   vuota e i test 2..6 si skippano — cioe' il file lo dice, non tace.
-    PERFORM vendite.fn_ddt_riga_componenti_init(v_riga, v_sr_nomap, CURRENT_DATE);
+    PERFORM vendite.fn_ddt_riga_componenti_init(v_riga, v_sr_nomap, script.fn_data_operativa());
 
     SELECT count(*) INTO v_n FROM vendite.ddt_righe_componenti
      WHERE riga_ddt_id = v_riga;

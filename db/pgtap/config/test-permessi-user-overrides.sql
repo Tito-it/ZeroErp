@@ -11,7 +11,7 @@
 --  2) Riferimento aree_funzionali presente
 --  3) Riferimento azioni_processo presente
 --  4) user_override_aree: INSERT valido accettato
---  5) user_override_aree: default valido_dal = CURRENT_DATE
+--  5) user_override_aree: default valido_dal = script.fn_data_operativa()
 --  6) user_override_aree: UQ (user, area) duplicato bloccato
 --  7) user_override_aree: CHECK valido_dal <= valido_al
 --  8) user_override_oggetti: INSERT valido accettato
@@ -137,8 +137,8 @@ SELECT ok(
 
 SELECT is(
     (SELECT valido_dal FROM tmp_uoa_ins),
-    CURRENT_DATE,
-    'user_override_aree: default valido_dal = CURRENT_DATE'
+    script.fn_data_operativa(),
+    'user_override_aree: default valido_dal = script.fn_data_operativa()'
 );
 
 -- UQ (auth_user_id, area_id)

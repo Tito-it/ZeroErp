@@ -93,7 +93,7 @@ SELECT ok(
 CREATE TEMP TABLE tmp_lotto_ffl AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, meta)
-  SELECT date_trunc('month', current_date)::date,
+  SELECT date_trunc('month', script.fn_data_operativa())::date,
          r.tipo_doc_fiscale_id, r.emittente_soggetto_ruolo_id,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl))
     FROM tmp_refs_ffl r
@@ -105,7 +105,7 @@ CREATE TEMP TABLE tmp_figlie_ffl AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, v.utility_id, FALSE, v.totale,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl),
                             'ruolo', v.ruolo)
@@ -130,7 +130,7 @@ CREATE TEMP TABLE tmp_sorgenti_ffl AS WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          TRUE, v.totale,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl),
@@ -148,7 +148,7 @@ CREATE TEMP TABLE tmp_sorgenti_ffl AS WITH ins AS (
 CREATE TEMP TABLE tmp_lotto_vuoto_ffl AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, meta)
-  SELECT date_trunc('month', current_date)::date,
+  SELECT date_trunc('month', script.fn_data_operativa())::date,
          r.tipo_doc_fiscale_id, r.emittente_soggetto_ruolo_id,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl))
     FROM tmp_refs_ffl r
@@ -162,7 +162,7 @@ CREATE TEMP TABLE tmp_lotto_vuoto_ffl AS WITH ins AS (
 CREATE TEMP TABLE tmp_lotto_bad_ffl AS WITH ins AS (
   INSERT INTO vendite.fatturazione_lotti (
       competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id, meta)
-  SELECT date_trunc('month', current_date)::date,
+  SELECT date_trunc('month', script.fn_data_operativa())::date,
          r.tipo_doc_fiscale_id, r.emittente_soggetto_ruolo_id,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl))
     FROM tmp_refs_ffl r
@@ -173,7 +173,7 @@ CREATE TEMP TABLE tmp_figlia_bad_ffl AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, FALSE, 250.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl))
     FROM tmp_refs_ffl r
@@ -186,7 +186,7 @@ CREATE TEMP TABLE tmp_figlia_sana_bad_ffl AS WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, FALSE, 150.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_cost_ffl))
     FROM tmp_refs_ffl r

@@ -119,7 +119,7 @@ INSERT INTO anagrafiche.clienti
      stato_cliente_id, data_attivazione)
 SELECT c.istanza_utility_id, c.billing_account_id, c.soggetto_ruolo_id,
        (SELECT sc.id FROM config.stati_cliente sc WHERE sc.codice_interno = 'AT'),
-       CURRENT_DATE
+       script.fn_data_operativa()
   FROM _t_cliente c;
 
 DO $ctx$

@@ -137,7 +137,7 @@ WITH a AS (SELECT dbops.fn_pgtap_crea_articolo('PGTAP-2EF-ART') AS id),
          qta, prezzo_unitario, iva_id, competenza_dal, competenza_al)
   SELECT (SELECT id FROM tmp_2ef_fattura), v.nr, (SELECT id FROM a), 'Riga ' || v.nr,
          (SELECT id FROM u), 1, v.imp, (SELECT iva_id FROM tmp_2ef_refs),
-         CURRENT_DATE, CURRENT_DATE
+         script.fn_data_operativa(), script.fn_data_operativa()
     FROM (VALUES (1, 400.00), (2, 1000.00)) v(nr, imp)
   RETURNING id, riga_nr)
 SELECT max(id) FILTER (WHERE riga_nr = 1) AS r400,

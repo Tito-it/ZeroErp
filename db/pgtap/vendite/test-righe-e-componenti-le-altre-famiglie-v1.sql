@@ -112,9 +112,9 @@ UPDATE catalogo.articoli SET is_composito = true
 
 INSERT INTO catalogo.articoli_componenti
     (prodotto_id, componente_id, coeff_qta, valido_dal, esposizione_in_fattura, obbligatorio)
-SELECT a.kit_a, a.cmp_a_obb, 1, CURRENT_DATE - 30, 'DESCRITTIVO', true  FROM _a a UNION ALL
-SELECT a.kit_a, a.cmp_a_fac, 2, CURRENT_DATE - 30, 'DESCRITTIVO', false FROM _a a UNION ALL
-SELECT a.kit_b, a.cmp_b_obb, 1, CURRENT_DATE - 30, 'DESCRITTIVO', true  FROM _a a;
+SELECT a.kit_a, a.cmp_a_obb, 1, script.fn_data_operativa() - 30, 'DESCRITTIVO', true  FROM _a a UNION ALL
+SELECT a.kit_a, a.cmp_a_fac, 2, script.fn_data_operativa() - 30, 'DESCRITTIVO', false FROM _a a UNION ALL
+SELECT a.kit_b, a.cmp_b_obb, 1, script.fn_data_operativa() - 30, 'DESCRITTIVO', true  FROM _a a;
 
 -- Una riga per componente della distinta: kit, componente, riga BoM, UoM.
 CREATE TEMP TABLE _bom AS
@@ -162,7 +162,7 @@ BEGIN
         ('PGT-RAF-' || substring(md5(clock_timestamp()::text) FOR 6),
          (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'DRAFT'),
          c.utility_id, c.istanza_utility_id, c.billing_account_id,
-         CURRENT_DATE, c.emittente_fiscale_id)
+         script.fn_data_operativa(), c.emittente_fiscale_id)
     RETURNING id INTO v_id;
 
     INSERT INTO vendite.preventivi_righe
@@ -200,7 +200,7 @@ BEGIN
     VALUES
         (c.cliente_soggetto_ruolo_id, c.billing_account_id,
          (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-         'SPEDITO', c.emittente_fiscale_id, CURRENT_DATE)
+         'SPEDITO', c.emittente_fiscale_id, script.fn_data_operativa())
     RETURNING id INTO v_id;
 
     INSERT INTO vendite.ordini_righe

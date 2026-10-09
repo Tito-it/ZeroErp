@@ -104,7 +104,7 @@ WITH o AS (
         (codice, emittente_fiscale_id, billing_account_id, istanza_utility_id,
          utility_id, listino_id, validita_dal, stato_doc_offerta_id)
     SELECT 'PGTAPOFF-' || c.lato, c.emittente_fiscale_id, c.billing_account_id,
-           c.istanza_utility_id, c.utility_id, l.listino_id, CURRENT_DATE,
+           c.istanza_utility_id, c.utility_id, l.listino_id, script.fn_data_operativa(),
            (SELECT st.id FROM config.stati_doc_offerte st WHERE st.codice_interno = 'BOZZA')
       FROM _clienti c JOIN _listini l ON l.lato = c.lato
     RETURNING id, emittente_fiscale_id
