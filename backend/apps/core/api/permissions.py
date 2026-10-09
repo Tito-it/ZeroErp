@@ -207,6 +207,11 @@ class IsAdminZeroERP(BasePermission):
             "security.admin_denied user_id=%s path=%s",
             user.id, request.path,
         )
+        # ⭐ Il codice viaggia con `self.code` fino all'envelope (E-5, come
+        #    `E_REPARTO_SENZA_PROFILO`): senza, usciva `E_PERMISSION_DENIED`
+        #    e la frase mirata non arrivava (brief-db-codici-non-trovato-
+        #    email-e-permessi R-2).
+        self.code = "E_ACCESSO_RISERVATO_ADMIN"
         self.message = "Accesso riservato agli amministratori."
         return False
 
@@ -256,6 +261,10 @@ class ZeroERPPermission(BasePermission):
       livello si chiede su quell'oggetto e sulla sua area; ``None`` ricade
       sull'area della classe. Valutata sulla classe, senza richiesta, nega
     """
+
+    # Codice del 403, scritto a ogni diniego (DRF lo legge con getattr):
+    # solo annotazione, nessun valore di classe.
+    code: str | None
 
     # Mapping azione ViewSet -> tipo di accesso CRUD richiesto
     ACTION_REQUIRES: dict[str, str] = {
@@ -637,6 +646,8 @@ class PortaleBasePermission(BasePermission):
             "security.portale_denied user_id=%s ruolo=%s path=%s",
             user.id, ruolo, request.path,
         )
+        # Codice nell'envelope: vedi `IsAdminZeroERP` (R-2).
+        self.code = "E_ACCESSO_RISERVATO_PORTALE"
         self.message = "Accesso riservato agli utenti portale."
         return False
 
@@ -670,5 +681,7 @@ class ShopBasePermission(BasePermission):
             "security.shop_denied user_id=%s ruolo=%s path=%s",
             user.id, ruolo, request.path,
         )
+        # Codice nell'envelope: vedi `IsAdminZeroERP` (R-2).
+        self.code = "E_ACCESSO_RISERVATO_SHOP"
         self.message = "Accesso riservato ai clienti shop."
         return False

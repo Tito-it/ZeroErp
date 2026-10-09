@@ -8,6 +8,7 @@
 #        brief-be-fe-gestione-code-lavori-stampa, FASE BE).
 # ------------------------------------------------------------
 
+from typing import Any
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -682,7 +683,7 @@ class ApiCodaLavoriAnnulla(DomainAPIView):
     )
     # Scopo: Annulla il job (guard ownership+stato nel service).
     def post(self, request: Request, job_id: int) -> JsonResponse:
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return gestione_service.annulla_job(request.user, int(job_id))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -707,7 +708,7 @@ class ApiCodaLavoriRequeue(DomainAPIView):
     #        di `extra_tentativi` vive SOLO nel service (fonte unica): qui si
     #        passa il kwarg solo se il client l'ha fornito.
     def post(self, request: Request, job_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             extra = optional_int(payload, "extra_tentativi")
             kwargs = {} if extra is None else {"extra_tentativi": extra}
             return gestione_service.requeue_job(
@@ -786,7 +787,7 @@ class _ArchiviazioneCodaBaseView(DomainAPIView):
     # Scopo: esegue il verbo sulle righe indicate. La implementa la
     #        sottoclasse, che sa a quale coda appartengono e in che direzione
     #        va la bandiera.
-    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+    def esegui(self, request: Request, ids: object) -> dict[str, Any]:
         raise NotImplementedError
 
     @extend_schema(
@@ -801,7 +802,7 @@ class _ArchiviazioneCodaBaseView(DomainAPIView):
     #        database ha rifiutato sta in `falliti`, col suo codice e la sua
     #        frase: chi legge deve guardare `esito`, non lo status.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return self.esegui(request, payload.get("ids"))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -813,7 +814,7 @@ class ApiCodaLavoriArchivia(_ArchiviazioneCodaBaseView):
     `E_CODA_ARCHIVIAZIONE_NON_AMMESSA` dal trigger."""
 
     # Scopo: alza la bandiera sui job indicati.
-    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+    def esegui(self, request: Request, ids: object) -> dict[str, Any]:
         return gestione_service.imposta_archiviazione_job(
             request.user, ids, archiviato=True,
         )
@@ -823,7 +824,7 @@ class ApiCodaLavoriRipristina(_ArchiviazioneCodaBaseView):
     """Rimette in elenco un job archiviato della coda lavori."""
 
     # Scopo: abbassa la bandiera sui job indicati.
-    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+    def esegui(self, request: Request, ids: object) -> dict[str, Any]:
         return gestione_service.imposta_archiviazione_job(
             request.user, ids, archiviato=False,
         )
@@ -837,7 +838,7 @@ class ApiCodaStampaArchivia(_ArchiviazioneCodaBaseView):
     → 404, indistinguibile da inesistente."""
 
     # Scopo: alza la bandiera sulle righe di coda stampa indicate.
-    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+    def esegui(self, request: Request, ids: object) -> dict[str, Any]:
         return gestione_service.imposta_archiviazione_stampa(
             request.user, ids, archiviato=True,
             auth_user_id=get_scope_user_id(request),
@@ -848,7 +849,7 @@ class ApiCodaStampaRipristina(_ArchiviazioneCodaBaseView):
     """Rimette in elenco una riga archiviata della coda stampa."""
 
     # Scopo: abbassa la bandiera sulle righe di coda stampa indicate.
-    def esegui(self, request: Request, ids: object) -> dict[str, object]:
+    def esegui(self, request: Request, ids: object) -> dict[str, Any]:
         return gestione_service.imposta_archiviazione_stampa(
             request.user, ids, archiviato=False,
             auth_user_id=get_scope_user_id(request),

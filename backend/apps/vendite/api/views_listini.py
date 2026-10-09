@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -17,7 +19,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.endpoint_helpers import handle_post_json
-from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_bool_optional, qp_int_strict, qp_str
+from apps.core.api.payload_validators import corpo_oggetto, paginated_envelope, parse_list_params, qp_bool_optional, qp_int_optional, qp_int_strict, qp_str
 from apps.core.api.success_responses import success_response
 from apps.vendite.services.listini_service import (
     fn_alert_scadenze,
@@ -204,11 +206,10 @@ class ApiListiniList(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         p = parse_list_params(qp, default_order="codice")
-        raw_utility_id = qp_str(qp.get("utility_id"))
-        raw_tipologia_id = qp_str(qp.get("tipologia_id"))
+        # BB `qp_int_optional`: vuoto = assente, un non intero e' un 400.
         results, total = fn_list_listini(
-            utility_id=qp_int_strict(raw_utility_id, "utility_id", 0) if raw_utility_id else None,
-            tipologia_id=qp_int_strict(raw_tipologia_id, "tipologia_id", 0) if raw_tipologia_id else None,
+            utility_id=qp_int_optional(qp.get("utility_id"), "utility_id"),
+            tipologia_id=qp_int_optional(qp.get("tipologia_id"), "tipologia_id"),
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             search=p["search"],
             order_by=p["order_by"],
@@ -426,8 +427,8 @@ class ApiListinoVersioneRigheList(DomainAPIView):
             listino_id,
             ver_id,
             search=p["search"],
-            billing_account_id=qp_int_strict(qp.get("billing_account_id"), "billing_account_id", 0) if qp.get("billing_account_id") else None,
-            utility_id=qp_int_strict(qp.get("utility_id"), "utility_id", 0) if qp.get("utility_id") else None,
+            billing_account_id=qp_int_optional(qp.get("billing_account_id"), "billing_account_id"),
+            utility_id=qp_int_optional(qp.get("utility_id"), "utility_id"),
             attivo=qp_bool_optional(request.query_params.get("attivo"), "attivo"),
             order_by=p["order_by"],
             order_dir=p["order_dir"],
@@ -519,7 +520,10 @@ class ApiListiniAlertScadenze(DomainAPIView):
     )
     # Scopo: Restituisce versioni ATTIVE in scadenza senza successore.
     def get(self, request: Request) -> JsonResponse:
-        giorni = qp_int_strict(request, "giorni", default=15)
+        # ⚠️ Il VALORE del parametro, non la request: fino al 2026-10-09 qui si
+        #    passava `request`, e l'endpoint rispondeva 400 `giorni_invalid` a ogni
+        #    chiamata (il badge di AlertScadenzeWidget non si accendeva mai).
+        giorni = qp_int_strict(request.query_params.get("giorni"), "giorni", default=15)
         return success_response(fn_alert_scadenze(giorni))
 
 
@@ -651,7 +655,7 @@ class ApiListinoVersioneBundleDetail(DomainAPIView):
     def post(
         self, request: Request, listino_id: int, ver_id: int, padre_id: str,
     ) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             rows_raw = payload.get("rows") or []
             if not isinstance(rows_raw, list):
                 from apps.core.services.error_manager import ErrorManager

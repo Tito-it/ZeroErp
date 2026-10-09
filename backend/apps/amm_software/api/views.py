@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -579,11 +581,11 @@ _IDEMPOTENCY_HEADER_PARAM = OpenApiParameter(
     location=OpenApiParameter.HEADER, required=True,
     description="Chiave idempotenza obbligatoria per endpoint write.",
 )
-_IDENTITA_REQ_FIELDS = {"emittente_codice": serializers.CharField()}
+_IDENTITA_REQ_FIELDS: dict[str, serializers.Field] = {"emittente_codice": serializers.CharField()}
 
 
 def _post_verbo_identita(request: Request, codice: str, verbo) -> JsonResponse:
-    def _handler(payload: dict[str, object]) -> dict[str, object]:
+    def _handler(payload: dict[str, Any]) -> dict[str, Any]:
         return verbo(codice, emittente_codice=str(payload.get("emittente_codice") or ""))
 
     return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -665,7 +667,7 @@ class ProcessiEseguiOraView(AdminAPIView):
     # Scopo: Accoda «Esegui ora» sulla sveglia indicata, con lo scope di chi
     #        preme catturato dalla richiesta (terna rifiutata PRIMA di accodare).
     def post(self, request: Request, codice: str) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             # Lo scope si cattura QUI, dalla richiesta, con il BB della coda:
             # e' cio' con cui il drenatore ripropone l'identita' di chi ha
             # premuto, minuti dopo e senza token. Senza `identita_id` il BB
@@ -739,7 +741,7 @@ _PARAMS_FILTRI_ERROR_LOG = [
 #        e NORMALIZZATI: date ISO strict (400 se malformate), `tx_id` uuid
 #        (400 se non lo e' — un `%s::uuid` su una stringa qualunque sarebbe
 #        un 500), testi strip. Una sede per la lista e per l'export.
-def _filtri_error_log(qp) -> dict[str, object]:
+def _filtri_error_log(qp) -> dict[str, Any]:
     tx_id = optional_uuid({"tx_id": qp_str(qp.get("tx_id"))}, "tx_id")
     data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
     data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")

@@ -35,7 +35,9 @@ from apps.vendite.types import (
     AnnullaLottoDaDraftResult,
     EliminaFatturaDaLottoResult,
     EsclusioneDocumentoDaGiroResult,
+    EsitoDataDocumento,
     GroupAttivitaKey,
+    LottoListRow,
     LottoPipelineMeta,
     LottoTaskRunRow,
     RiportaLottoADraftResult,
@@ -164,7 +166,7 @@ def run_lotto_pipeline_until_done(
     fino_a_stato: str | None = None,
     gruppi: tuple[str, ...] | None = None,
     data_documento: date | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Entrypoint servizio Python per eseguire la catena lotto fino a conclusione.
 
     `fino_a_stato` (C-1, gate fiscale D-1): codice_interno di
@@ -234,7 +236,7 @@ def run_lotto_pipeline_until_done(
 #    con un 409 sarebbe una risposta a un'altra domanda.
 def _get_lotto_visibile(
     *, lotto_id: int, auth_user_id: int | None,
-) -> dict[str, object]:
+) -> LottoListRow:
     from apps.vendite.db.vendite_repository import VenditeRepository
 
     lotto = VenditeRepository().get_lotto(lotto_id=lotto_id, auth_user_id=auth_user_id)
@@ -291,7 +293,7 @@ def finestra_numerazione(
     competenza_mese: date | None = None,
     lotti_ids: list[int] | None = None,
     auth_user_id: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     # Esattamente uno dei tre: senza perimetro la domanda non ha risposta, con
     # piu' di uno ne avrebbe due e non si saprebbe quale si e' ottenuta.
     # ⭐ Il terzo — `lotti_ids` — e' la SELEZIONE della lista lotti, e su di
@@ -316,7 +318,7 @@ def finestra_numerazione(
 
     # Scopo: la risposta, in UNA forma sola per i due perimetri — cosi' una
     #        chiave nuova si aggiunge in un posto e non in due.
-    def _risposta(*, minima, corrente, data_documento=None, n_lotti=None) -> dict[str, object]:
+    def _risposta(*, minima, corrente, data_documento=None, n_lotti=None) -> dict[str, Any]:
         return {
             "lotto_id": lotto_id,
             "competenza_mese": competenza_mese.isoformat() if competenza_mese else None,
@@ -356,7 +358,7 @@ def finestra_numerazione(
         message="Stato EMESSA non configurato in config.stati_doc_fiscale.",
     )
     assert emessa_id is not None
-    perimetro = {"competenza_mese": competenza_mese, "lotti_ids": lotti_ids}
+    perimetro: dict[str, Any] = {"competenza_mese": competenza_mese, "lotti_ids": lotti_ids}
     return _risposta(
         minima=repo.get_data_minima_numerabile_perimetro(
             stato_doc_fiscale_id=emessa_id, **perimetro,
@@ -387,7 +389,7 @@ def _get_lotto_in_stato(
     stato_codice: str,
     error_code: str,
     error_message: str,
-) -> dict[str, object]:
+) -> LottoListRow:
     lotto = _get_lotto_visibile(lotto_id=lotto_id, auth_user_id=auth_user_id)
 
     stato_id = VenditePipelineRepository().get_stato_doc_fiscale_id(stato_codice)
@@ -456,7 +458,7 @@ def numera_lotto(
     #    butterebbe via. E' invece il motivo per cui l'esito porta
     #    `aggiornate`/`rate_rigenerate` ANCHE quando il giro si ferma — chi
     #    legge deve poter sapere che la data si e' mossa lo stesso.
-    esito_data: dict[str, int] | None = None
+    esito_data: EsitoDataDocumento | None = None
     if data_documento is not None:
         esito_data = VenditePipelineRepository().imposta_data_documento_lotto(
             lotto_id=lotto_id, data_documento=data_documento,
@@ -502,7 +504,7 @@ def fn_list_lotto_segnalazioni(
     order_by: str | None = None,
     order_dir: str = "desc",
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_PIPELINE_VALIDATION",
@@ -572,7 +574,7 @@ def fn_list_lotto_segnalazioni(
 #        lotto fuori scope/inesistente → 404.
 def ristampa_lotto(
     *, lotto_id: int, auth_user_id: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     _get_lotto_in_stato(
         lotto_id=lotto_id,
         auth_user_id=auth_user_id,
@@ -671,7 +673,7 @@ def esiti_fatturazione(
     auth_user_id: int | None = None,
     competenza_mese: date | None = None,
     user: Any = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     from apps.core.db.maintenance_repository import MaintenanceRepository
     from apps.core.services.coda_lavori.gestione_service import (
         scope_key_operatore,
@@ -964,7 +966,7 @@ def _parse_gruppo_keys(raw: Any) -> tuple[str, ...]:
 
 
 # Scopo: Restituisce riepilogo segnalazioni del lotto con regola di blocco step successivo.
-def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, object]:
+def fn_get_lotto_segnalazioni_summary(*, lotto_id: int) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_PIPELINE_VALIDATION",
@@ -998,7 +1000,7 @@ def fn_get_lotto_task_runs(
     solo_giro_corrente: bool = False,
     task_stato: list[str] | None = None,
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_PIPELINE_VALIDATION",

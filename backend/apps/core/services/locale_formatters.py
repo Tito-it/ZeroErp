@@ -225,7 +225,7 @@ def _format_decimal(
         if int_part.startswith("-"):
             sign = "-"
             int_part = int_part[1:]
-        groups = []
+        groups: list[str] = []
         while len(int_part) > 3:
             groups.insert(0, int_part[-3:])
             int_part = int_part[:-3]

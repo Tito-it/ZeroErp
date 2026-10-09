@@ -2632,6 +2632,8 @@ class VenditeRepository:
         if not respinte:
             return
         for r in righe:
+            if r["commessa_id"] is None:
+                continue
             trovata = respinte.get(r["commessa_id"])
             if trovata is None:
                 continue

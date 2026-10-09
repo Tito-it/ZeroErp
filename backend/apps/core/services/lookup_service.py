@@ -7,6 +7,7 @@
 
 # Espone fn_list_lookup_codici come punto unico di accesso per tutte le lookup config.
 
+from typing import Any
 import math
 
 from django.db import DatabaseError
@@ -49,7 +50,7 @@ def fn_list_lookup_codici(
     includi_obsoleti: bool = True,
     page: int = 1,
     page_size: int = DEFAULT_LIMIT,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         page >= 1,
         code="E_CORE_VALIDATION",
@@ -72,13 +73,15 @@ def fn_list_lookup_codici(
     #    c'era un secondo insieme `{asc, desc}` confrontato case-sensitive, per
     #    cui `DESC` era un 400 sulla lookup e passava sulle liste. La direzione
     #    torna normalizzata (`asc`/`desc`), e l'SQL la vuole maiuscola.
-    order_col, order_dir = validate_order_params(
+    order_col, direzione = validate_order_params(
         order_col,
         order_dir,
         allowed_columns=_ORDER_COL_VALIDI,
         error_code="E_CORE_VALIDATION",
         function_name="core.lookup_service.fn_list_lookup_codici",
     )
+    # Senza `nullable` il BB rifiuta (require) la direzione assente.
+    assert direzione is not None
 
     offset = (page - 1) * page_size
     repository = DbopsRepository()
@@ -87,7 +90,7 @@ def fn_list_lookup_codici(
             rel=rel,
             search=search,
             order_col=order_col,
-            order_dir=order_dir.upper(),
+            order_dir=direzione.upper(),
             attivo_only=attivo_only,
             includi_obsoleti=includi_obsoleti,
             limit=page_size,

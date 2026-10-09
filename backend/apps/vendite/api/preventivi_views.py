@@ -5,6 +5,7 @@
 # Scopo: API views per preventivi vendita (lista, dettaglio, righe, stato, integrazione).
 # ------------------------------------------------------------
 
+from typing import Any
 from datetime import date
 
 from django.http import HttpResponse, JsonResponse
@@ -55,7 +56,7 @@ _LISTA_CODICE_PREVENTIVI = "vendite.preventivi"
 #        righe eleggibili (None). Lista vuota = errore esplicito: NON deve
 #        degradare silenziosamente a "tutte" (un client che intende "nessuna
 #        riga" otterrebbe il push completo).
-def _parse_righe_ids(payload: dict[str, object]) -> list[int] | None:
+def _parse_righe_ids(payload: dict[str, Any]) -> list[int] | None:
     righe_ids = payload.get("righe_ids")
     if righe_ids is None:
         return None
@@ -183,7 +184,7 @@ class ApiPreventiviList(DomainAPIView):
     )
     # Scopo: Crea un nuovo preventivo vendita via POST.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return preventivi_service.crea_preventivo(payload)
         return handle_post_json(request, handler=_handler)
 
@@ -338,7 +339,7 @@ class ApiPreventivoDetail(DomainAPIView):
 #        `optional_bool(default=False)` non distingue, quindi lookup raw. Estratto
 #        (regola del 2) da ApiPreventivoStato + ApiPreventivoStatoDaPratica.
 def _parse_cambio_stato_payload(
-    payload: dict[str, object],
+    payload: dict[str, Any],
 ) -> tuple[str, bool | None, date | None]:
     nuovo_stato = str(payload.get("nuovo_stato", ""))
     raw_fi = payload.get("fatturazione_immediata")
@@ -376,7 +377,7 @@ class ApiPreventivoStato(DomainAPIView):
     )
     # Scopo: Cambia stato preventivo via POST.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             nuovo_stato, fatturazione_immediata, competenza_mese = (
                 _parse_cambio_stato_payload(payload)
             )
@@ -420,7 +421,7 @@ class ApiPreventivoStatoDaPratica(DomainAPIView):
     )
     # Scopo: Cambia stato del preventivo ROOT della pratica via POST.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             nuovo_stato, fatturazione_immediata, competenza_mese = (
                 _parse_cambio_stato_payload(payload)
             )
@@ -449,7 +450,7 @@ class ApiPreventivoRevisione(DomainAPIView):
     )
     # Scopo: Crea nuova revisione preventivo via POST.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return preventivi_service.crea_revisione(preventivo_id)
         return handle_post_json(request, handler=_handler)
 
@@ -476,7 +477,7 @@ class ApiPreventivoGeneraOrdine(DomainAPIView):
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         from apps.vendite.services import ordini_service
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return ordini_service.crea_ordine_da_preventivo(
                 preventivo_id, righe_ids=_parse_righe_ids(payload),
             )
@@ -522,7 +523,7 @@ class ApiPreventivoCollegaPratica(DomainAPIView):
         )},
     )
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             flusso_raw = payload.get("flusso_id")
             return preventivi_service.collega_pratica(
                 preventivo_id,
@@ -687,7 +688,7 @@ class ApiPreventivoRigheList(DomainAPIView):
     #        al service per risolvere emittente + verificare permesso.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
         auth_user_id = get_actor_user_id(request)
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return preventivi_service.gestisci_riga(
                 preventivo_id, payload, auth_user_id=auth_user_id,
             )
@@ -777,7 +778,7 @@ class ApiPreventivoRigaPreviewComponenti(DomainAPIView):
     def post(
         self, request: Request, preventivo_id: int,
     ) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
+        def _handler(payload: dict[str, Any]) -> list[dict[str, Any]]:
             auth_user_id = get_actor_user_id(request)
             articolo_id = str(payload.get("articolo_id") or "")
             uom_id = optional_int(payload, "uom_operativa_id")
@@ -940,7 +941,7 @@ class ApiPreventivoRigaSuggerisciPrezzo(DomainAPIView):
         )},
     )
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             articolo_id = payload.get("articolo_id")
             uom_id = payload.get("uom_id")
             auth_user_id = get_actor_user_id(request)
@@ -1069,7 +1070,7 @@ class ApiPreventivoPushCommessa(DomainAPIView):
     # righe_pushable (diagnostico pre-push). Idempotency-Key obbligatoria
     # (write-once: evita doppio push su retry/click multipli).
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return preventivi_service.push_a_commessa(
                 preventivo_id, righe_ids=_parse_righe_ids(payload),
             )
@@ -1129,7 +1130,7 @@ class ApiPreventivoCompletaSmistamento(DomainAPIView):
     )
     # Scopo: Completa lo step SMISTAMENTO con esito di ramo calcolato dal dominio.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return preventivi_service.completa_smistamento(
                 preventivo_id,
                 user=getattr(request.user, "username", None) or None,
@@ -1163,7 +1164,7 @@ class ApiPreventivoGeneraPratica(DomainAPIView):
     )
     # Scopo: Genera pratica esecutiva da preventivo via POST.
     def post(self, request: Request, preventivo_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return preventivi_service.genera_pratica(
                 preventivo_id,
                 tipo_prestazione_id=int(payload["tipo_prestazione_id"]),
@@ -1193,9 +1194,9 @@ _PreventivoRigheLista, _PreventivoRigheListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiPreventivoRigheListaView(_PreventivoRigheLista):
+class ApiPreventivoRigheListaView(_PreventivoRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.preventivo_righe"
 
 
-class ApiPreventivoRigheListaExportView(_PreventivoRigheListaExport):
+class ApiPreventivoRigheListaExportView(_PreventivoRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.preventivo_righe"

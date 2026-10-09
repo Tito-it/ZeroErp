@@ -233,7 +233,7 @@ class CategorieClientiListiniService:
     #        Niente DB: enum tecnico fisso (CHECK constraint), 2 codici.
     #        L'invariante "descrizioni copre l'enum" e' garantita dal test
     #        `test_list_tipi_variazione_coverage` (CI), non a runtime.
-    def list_tipi_variazione(self) -> list[dict[str, object]]:
+    def list_tipi_variazione(self) -> list[dict[str, Any]]:
         return [
             {"codice": codice, "descrizione": descrizione, "ordering": ordering}
             for codice, descrizione, ordering in _TIPI_VARIAZIONE_DESCRIZIONI

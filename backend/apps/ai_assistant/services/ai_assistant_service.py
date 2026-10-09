@@ -451,7 +451,7 @@ def _execute_confirmation(
     # dal TTL della cache. Scope enforcement: la chiave include owner_user_id +
     # owner_identita_id → un chiamante con scope diverso calcola una chiave diversa e
     # la conferma resta "invisibile" (impedisce takeover di scrittura altrui).
-    scope = {
+    scope: dict[str, Any] = {
         "conversation_id": conversation_id,
         "owner_user_id": owner_user_id,
         "owner_identita_id": owner_identita_id,
@@ -553,7 +553,7 @@ def _cancel_confirmation(
     owner_user_id: int,
     owner_identita_id: int | None,
 ) -> AIQueryResult:
-    scope = {
+    scope: dict[str, Any] = {
         "conversation_id": conversation_id,
         "owner_user_id": owner_user_id,
         "owner_identita_id": owner_identita_id,

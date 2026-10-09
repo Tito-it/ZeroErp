@@ -96,7 +96,7 @@ _PUBBLICA_KEYS: frozenset[str] = frozenset({
 
 
 # Mapping vincoli DB -> codici applicativi parlanti.
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_template_documenti_versioni_template_versione": (
         E_VALIDATION,
         "Numero versione gia' presente per il template (race condition: riprovare).",
@@ -139,7 +139,7 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str, str]] = {
 
 
 # Mapping CHECK constraint del DDL -> codici applicativi (frammento case-insensitive).
-_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "chk_template_documenti_versioni_versione_pos": (
         E_VALIDATION,
         "Il numero versione deve essere positivo.",

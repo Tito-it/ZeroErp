@@ -344,7 +344,7 @@ from apps.core.api.endpoint_helpers import handle_post_json
 class ApiPraticaStato(APIView):
     # Scopo: Gestisce la richiesta HTTP POST per cambiare stato pratica.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.cambia_stato_pratica(pratica_id, str(payload["nuovo_stato"]))
             return {"status": "ok"}
 
@@ -799,7 +799,7 @@ Usato quando un'entita` ammette modifica di campi specifici senza che questo cos
 class ApiPraticaDetail(APIView):
     # Scopo: Gestisce la richiesta HTTP PATCH per aggiornare una pratica.
     def patch(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.aggiorna_pratica(pratica_id, dict(payload))
             return {"status": "ok"}
 

@@ -11,6 +11,7 @@ import json
 import re
 from collections.abc import Collection, Mapping
 from typing import Any
+from uuid import UUID
 
 from django.db import connection
 
@@ -251,7 +252,8 @@ def execute_dynamic_insert(
 #        rowcount > 0.
 def execute_dynamic_update(
     table: str,
-    row_id: int,
+    # `int` o UUID (anche come testo): passa come parametro SQL, la PK la decide la tabella.
+    row_id: int | str | UUID,
     values: Mapping[str, Any],
     *,
     allowed: Collection[str] | None = None,

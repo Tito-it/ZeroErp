@@ -1,3 +1,4 @@
+from django.urls import URLPattern, URLResolver
 
 
-urlpatterns = []
+urlpatterns: list[URLPattern | URLResolver] = []

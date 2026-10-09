@@ -320,8 +320,9 @@ class SoggettiRepository:
     #        Obiettivo: INSERT soggetto + contatto default, tutto in funzione PG.
     def crea_soggetto_pf(
         self, *, cognome: str, nome: str, codice_fiscale: str, email: str,
-        data_nascita: str | None = None, sesso: str = "M",
-        stato_iso2: str = "IT",
+        sesso: str, data_nascita: str | None = None,
+        # None = il default di `config.parameters`, risolto dalla funzione DB.
+        stato_iso2: str | None = None,
         comune_nascita_id: int | None = None,
         tipo_contatto_id: int | None = None,
     ) -> str:
@@ -353,12 +354,14 @@ class SoggettiRepository:
     def crea_soggetto_pg(
         self, *, ragione_sociale: str, tipo_soggetto_dettaglio_id: int,
         email: str, codice_fiscale: str | None = None,
-        partita_iva: str | None = None, stato_iso2: str = "IT",
+        partita_iva: str | None = None, stato_iso2: str | None = None,
         forma_giuridica_id: int | None = None,
         id_prov_iscri_rea: int | None = None,
         iscrizione_rea: str | None = None,
         capitale_sociale: float | None = None,
-        socio_unico: str = "SU", liquidazione: str = "LN",
+        # None = i default di `config.parameters` (fn_crea_soggetto_pg): fino al
+        # 2026-10-09 qui c'erano "IT"/"SU"/"LN" cablati, una copia del dato.
+        socio_unico: str | None = None, liquidazione: str | None = None,
         destinatario_fe: str | None = None,
         pec_fatturazione: str | None = None,
         codice_sdi: str | None = None,

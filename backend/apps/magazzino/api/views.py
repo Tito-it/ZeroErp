@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
@@ -486,19 +487,19 @@ VISTE_RETTIFICHE = build_documento_interno_views(FAMIGLIE["rettifiche"])
 #    il controllo sotto le tiene inchiodate alla config (una stringa ripetuta e'
 #    gia' divergente il giorno in cui una delle due cambia).
 
-class ApiInventariList(VISTE_INVENTARI["lista"]):
+class ApiInventariList(VISTE_INVENTARI["lista"]):  # type: ignore[valid-type, misc, name-defined]  # base costruita da una fabbrica
     lista_codice = "magazzino.inventari"
 
 
-class ApiInventarioRigheList(VISTE_INVENTARI["righe"]):
+class ApiInventarioRigheList(VISTE_INVENTARI["righe"]):  # type: ignore[valid-type, misc, name-defined]  # base costruita da una fabbrica
     lista_codice = "magazzino.inventario_righe"
 
 
-class ApiRettificheList(VISTE_RETTIFICHE["lista"]):
+class ApiRettificheList(VISTE_RETTIFICHE["lista"]):  # type: ignore[valid-type, misc, name-defined]  # base costruita da una fabbrica
     lista_codice = "magazzino.rettifiche"
 
 
-class ApiRettificaRigheList(VISTE_RETTIFICHE["righe"]):
+class ApiRettificaRigheList(VISTE_RETTIFICHE["righe"]):  # type: ignore[valid-type, misc, name-defined]  # base costruita da una fabbrica
     lista_codice = "magazzino.rettifica_righe"
 
 
@@ -622,7 +623,7 @@ class ApiAssetsLookup(DomainAPIView):
 # Scopo: i filtri della disponibilita', per magazzino e per articolo.
 def _filtri_disponibilita(qp, *, con_magazzino: bool) -> dict:
     search = qp_str(qp.get("search"))
-    filtri = {
+    filtri: dict[str, Any] = {
         "articolo_id": qp_str(qp.get("articolo_id")),
         "solo_negativa": bool(qp_bool_optional(qp.get("solo_negativa"), "solo_negativa")),
         "solo_con_giacenza": bool(qp_bool_optional(qp.get("solo_con_giacenza"), "solo_con_giacenza")),

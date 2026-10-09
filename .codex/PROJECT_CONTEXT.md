@@ -278,7 +278,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
   decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); BE/FE fatti il
   2026-10-08 (§7, non committati: la pratica sceglie la fornitura, cioe' il BA — D-10). Restano il collaudo a video e
-  i debiti del §7.5 (ordini e DDT col BA ancora nullable: da decidere).
+  i debiti del §7.5.
+- 📝 **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto**
+  (`work-in-progress/brief-db-esecutivi-ba-coppia.md`, D21, 2026-10-09): BA nullable, copie di utility e ruolo
+  non legate al BA, lock del BA solo sull'ordine; un esecutivo fatturabile senza BA esce dal push in silenzio.
+  Bozza, cinque decisioni di Tid.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

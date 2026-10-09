@@ -26,6 +26,8 @@ Indice test eseguiti:
 16) UpdateDraftTests.test_update_draft_chiave_estranea_rifiutata
 17) UpdateDraftTests.test_update_draft_cc_non_lista_rifiutato
 18) ConfirmAndSendTests.test_senza_account_la_bozza_resta_draft
+19) CodiciNonTrovatoEStatoTests.test_bozza_inesistente_e_404_per_ogni_verbo
+20) CodiciNonTrovatoEStatoTests.test_mail_non_in_bozza_e_409_per_i_tre_verbi
 """
 
 import os
@@ -36,6 +38,7 @@ from unittest.mock import MagicMock, patch
 from apps.core.services.email_outbox_service import EmailOutboxService, _delete_file
 from apps.core.services.email_service import CANALE_CONSOLE, CANALE_SMTP
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.error_policies import ErrorPolicyRegistry
 
 _REPO = "apps.core.services.email_outbox_service.EmailRepository"
 _DISPATCH = "apps.core.services.email_outbox_service.EmailDispatchService"
@@ -290,7 +293,9 @@ class ConfirmAndSendTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             EmailOutboxService().confirm_and_send(10)
 
-        self.assertEqual(ctx.exception.code, "E_OUTBOX")
+        # Manca un pezzo di configurazione: 500, non un dato errato (R-3).
+        self.assertEqual(ctx.exception.code, "E_EMAIL_ACCOUNT_NON_CONFIGURATO")
+        self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 500)
         repo.update_outbox_stato.assert_not_called()
         dispatch.send_raw.assert_not_called()
 
@@ -459,3 +464,59 @@ class DeleteFileTests(TestCase):
                 )
         mock_delete.assert_called_once()
         self.assertTrue(mock_delete.call_args.args[0].endswith(".pdf"))
+
+
+# brief-db-codici-non-trovato-email-e-permessi §2 e §4: le condizioni che
+# `E_OUTBOX` accumulava escono col loro codice, e lo status lo dice la classe.
+class CodiciNonTrovatoEStatoTests(TestCase):
+
+    # Scopo: Bozza inesistente (o fuori perimetro RLS: il repository risponde
+    #        None uguale) → 404 `E_EMAIL_BOZZA_NOT_FOUND` da ogni verbo e dalla
+    #        lettura: la sede e' una sola, `get_bozza`.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_bozza_inesistente_e_404_per_ogni_verbo(self, MockRepo, MockDispatch):
+        MockRepo.return_value.get_outbox.return_value = None
+        service = EmailOutboxService()
+        verbi = {
+            "get_bozza": lambda: service.get_bozza(10),
+            "update_draft": lambda: service.update_draft(10, oggetto="x"),
+            "confirm_and_send": lambda: service.confirm_and_send(10),
+            "cancel_draft": lambda: service.cancel_draft(10),
+            "add_attachment": lambda: service.add_attachment(
+                outbox_id=10, file_name="a.pdf", file_content=b"x",
+                mime_type="application/pdf",
+            ),
+        }
+        for nome, chiama in verbi.items():
+            with self.subTest(verbo=nome):
+                with self.assertRaises(ServiceError) as ctx:
+                    chiama()
+                self.assertEqual(ctx.exception.code, "E_EMAIL_BOZZA_NOT_FOUND")
+                self.assertEqual(
+                    ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 404,
+                )
+
+    # Scopo: Mail che non e' piu' in bozza → 409 `E_EMAIL_NON_BOZZA` da
+    #        modifica, invio e annullo, prima di scrivere qualunque cosa.
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_mail_non_in_bozza_e_409_per_i_tre_verbi(self, MockRepo, MockDispatch):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "stato": "SENT"}
+        service = EmailOutboxService()
+        verbi = {
+            "update_draft": lambda: service.update_draft(10, oggetto="x"),
+            "confirm_and_send": lambda: service.confirm_and_send(10),
+            "cancel_draft": lambda: service.cancel_draft(10),
+        }
+        for nome, chiama in verbi.items():
+            with self.subTest(verbo=nome):
+                with self.assertRaises(ServiceError) as ctx:
+                    chiama()
+                self.assertEqual(ctx.exception.code, "E_EMAIL_NON_BOZZA")
+                self.assertEqual(
+                    ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 409,
+                )
+        repo.update_outbox.assert_not_called()
+        repo.update_outbox_stato.assert_not_called()

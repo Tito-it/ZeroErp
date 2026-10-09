@@ -511,9 +511,10 @@ errore.
 > **D18** dal censimento `UPDATE OF` di D17 (2026-10-05). **D19** dal debito
 > che `brief-db-righe-esclusione-solo-non-si-vende` (§10.8) ha lasciato
 > all'archiviazione (2026-10-08), chiusa lo stesso giorno; **D20** da ciò che
-> la sua chiusura ha trovato.
+> la sua chiusura ha trovato. **D21** dal lato BE/FE di
+> `brief-db-istanza-nasce-col-ba` (2026-10-09).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D20.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D20, D21.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -931,6 +932,17 @@ Decisi da Tid il 2026-10-08; DB scritto lo stesso giorno (`20261008-80` … `-94
 verdi anche su `zeroerp_ci` (2026-10-09); tre test non più costruibili sono skip motivati (§4.5).
 ✅ **Chiuso lato DB**; restano le richieste al BE del §4.4 del brief.
 
+### 🟠 D21 — Ordine, DDT e reso: il cliente puo' mancare, e le sue copie non sono legate
+
+Trovato il 2026-10-09 chiudendo il lato BE/FE di `brief-db-istanza-nasce-col-ba` (§7.5): R-2 ha reso
+`billing_account_id` NOT NULL e legato alla coppia su preventivo, offerta e contratto, e la fattura lo
+aveva gia'. Ordine, DDT e reso no: BA nullable, `utility_id` e ruolo di testata che nessun vincolo
+lega al BA, lock del BA solo sull'ordine. Un esecutivo fatturabile senza BA esce dalle liste di push
+(`JOIN` interna) senza errore.
+
+Dettaglio, cinque decisioni di Tid e forma proposta nel brief
+[brief-db-esecutivi-ba-coppia.md](brief-db-esecutivi-ba-coppia.md). 📝 Bozza.
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1125,6 +1137,8 @@ D6 e il registro dei rossi in CI.
 * [x] **D19** — allineare righe e componenti di preventivo, ordine e DDT a
       contratto e offerta: chiusa il 2026-10-08 (§7).
 * [ ] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`.
+* [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
+      `brief-db-esecutivi-ba-coppia` (cinque decisioni di Tid).
 
 ---
 

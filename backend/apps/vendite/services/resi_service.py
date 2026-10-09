@@ -206,7 +206,7 @@ def resolve_filtri_export_label(
 
 # Scopo: Dettaglio testata reso + capability data-driven (righe a parte via
 #        /righe/). Mirror get_ddt.
-def get_reso(reso_id: int) -> dict[str, object]:
+def get_reso(reso_id: int) -> dict[str, Any]:
     repo = ResiRepository()
     testata = _get_testata_or_raise(repo, reso_id, op="get_reso")
     # Capability da script.fn_available_actions_reso (matrice
@@ -912,6 +912,7 @@ def _crea_riga(
         message="qta_operativa obbligatoria (quantita' resa in unita' operativa).",
         function_name=fn,
     )
+    assert qta_operativa is not None
 
     if riga_nr is None:
         riga_nr = repo.next_riga_nr(reso_id)

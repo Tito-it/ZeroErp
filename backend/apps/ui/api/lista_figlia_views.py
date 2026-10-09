@@ -205,6 +205,8 @@ def build_lista_figlia_views(
 
     class _Export(DomainAPIView):
         is_search_endpoint = True
+        # Lo scrive il dominio nella sottoclasse, come letterale (⭐ in testa).
+        lista_codice: str
 
         @extend_schema(
             operation_id=f"{operation_id}_export",

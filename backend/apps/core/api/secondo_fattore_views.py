@@ -27,7 +27,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.cancello_obblighi import OBBLIGO_SECONDO_FATTORE
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato, utente_autenticato_id
 from apps.core.api.success_responses import success_response
 from apps.core.db.secondo_fattore_repository import STATI_DEVICE
 from apps.core.services.request_context import provenienza_obbligatoria, richiesta_django
@@ -80,7 +80,7 @@ class SecondoFattoreStatoView(_SecondoFattoreProprioView):
     @extend_schema(responses={200: _STATO}, summary="Secondo fattore: lo stato del proprio accesso")
     # Scopo: Lo stato del proprio secondo fattore.
     def get(self, request: Request) -> JsonResponse:
-        return success_response(SecondoFattoreService().stato(request.user.id))
+        return success_response(SecondoFattoreService().stato(utente_autenticato_id(request)))
 
 
 class SecondoFattoreRegistraView(_SecondoFattoreProprioView):
@@ -90,7 +90,7 @@ class SecondoFattoreRegistraView(_SecondoFattoreProprioView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return SecondoFattoreService().avvia_configurazione(
-                request.user, payload.get("password"), request=request,
+                utente_autenticato(request), payload.get("password"), request=request,
             )
 
         return handle_post_json(request, handler=_handler)
@@ -101,7 +101,7 @@ class SecondoFattoreConfermaView(_SecondoFattoreProprioView):
     # Scopo: Chiude la configurazione col primo codice dell'app.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            return SecondoFattoreService().conferma_configurazione(request.user, payload.get("codice"))
+            return SecondoFattoreService().conferma_configurazione(utente_autenticato(request), payload.get("codice"))
 
         return handle_post_json(request, handler=_handler)
 
@@ -112,7 +112,7 @@ class SecondoFattoreCodiciRecuperoView(_SecondoFattoreProprioView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return SecondoFattoreService().rigenera_codici_recupero(
-                request.user, payload.get("codice"), provenienza=provenienza_obbligatoria(request),
+                utente_autenticato(request), payload.get("codice"), provenienza=provenienza_obbligatoria(request),
             )
 
         return handle_post_json(request, handler=_handler)
@@ -125,7 +125,7 @@ class SecondoFattoreDisattivaView(_SecondoFattoreProprioView):
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return SecondoFattoreService().disattiva_propria(
-                request.user,
+                utente_autenticato(request),
                 codice=payload.get("codice"),
                 codice_recupero=payload.get("codice_recupero"),
                 provenienza=provenienza_obbligatoria(request),

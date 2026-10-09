@@ -379,7 +379,10 @@ def crea_richiesta_approvazione(
         sorgente=SORGENTE_PREVENTIVO,
         documento_id=preventivo_id,
         riga_id=None,  # popolato dopo da link_riga_a_pratica
-        numero_documento=testata.get("numero_documento"),
+        # ⚠️ La testata del preventivo ha `numero` (`PreventivoDetailRow`), non
+        #    `numero_documento`: fino al 2026-10-09 si leggeva la chiave che non
+        #    esiste, e la pratica si descriveva con l'id interno (trovato da mypy).
+        numero_documento=testata.get("numero"),
         articolo_id=articolo_id,
         contesto=contesto,
         istanza_utility_id=testata.get("istanza_utility_id"),

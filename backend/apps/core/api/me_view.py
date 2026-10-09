@@ -23,6 +23,7 @@ from apps.core.services.auth_constants import (
     JWT_CLAIM_IDENTITA_ID,
 )
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
+from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 
 class UserProfileView(DomainAPIView):
@@ -156,7 +157,8 @@ class UserProfileView(DomainAPIView):
     # sta usando l'utente tra le N attive possibili).
     def get(self, request: Request):
         repo = CoreRepository()
-        profile = repo.get_user_profile(request.user.id)
+        user_id = utente_autenticato_id(request)
+        profile = repo.get_user_profile(user_id)
         # `is_super_admin` e `ruolo_applicativo` arrivano SEMPRE dal top-level
         # di `script.fn_get_user_profile` (GUC-aware dal 20260421-03/-05), e
         # `ruolo_sistema` non viene emesso dalla Fase 7 (29-04-2026).
@@ -184,14 +186,14 @@ class UserProfileView(DomainAPIView):
         # dichiarerebbe `is_super_admin` in un campo e lo contraddirebbe
         # nell'altro. Una domanda, una risposta.
         profile["emittente_attivo"] = EmittenteAttivoService().descrivi(
-            request.user.id, self._emittente_attivo_del_jwt(request),
+            user_id, self._emittente_attivo_del_jwt(request),
             user=request.user,
             cache={"is_super_admin": bool(profile.get("is_super_admin"))},
         )
         # Gli obblighi che il cancello fa rispettare, nell'ordine (brief
         # sicurezza §3.4-bis, T-4): il guard del frontend porta alla pagina
         # che chiude il primo. La regola e' una, quella del cancello.
-        profile["obblighi_pendenti"] = list(obblighi_in_vigore(request.user.id))
+        profile["obblighi_pendenti"] = list(obblighi_in_vigore(user_id))
         return success_response(profile)
 
     # Scopo: Legge `emittente_attivo_id` dal JWT validato. Claim assente =
@@ -221,7 +223,7 @@ class UserProfileView(DomainAPIView):
             return None
         return AuthRepository().get_identita_dettaglio(
             identita_id=int(identita_id),
-            auth_user_id=int(request.user.id),
+            auth_user_id=utente_autenticato_id(request),
         )
 
     # Scopo: Calcola il flag is_admin_globale dal profilo. Regola Q1 del

@@ -36,6 +36,7 @@ import csv
 import io
 import json
 from django.utils import timezone
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from openpyxl import Workbook
@@ -79,7 +80,7 @@ class ListaExportService:
         *,
         lista_codice: str,
         colonne: list[dict[str, Any]],
-        righe: list[dict[str, Any]],
+        righe: Sequence[Mapping[str, Any]],
         filtri_applicati: dict[str, Any] | None,
         formato: str,
     ) -> tuple[bytes, str, str]:
@@ -230,7 +231,7 @@ class ListaExportService:
     def _render_csv(
         self,
         colonne: list[dict[str, Any]],
-        righe: list[dict[str, Any]],
+        righe: Sequence[Mapping[str, Any]],
         filtri: dict[str, Any],
     ) -> bytes:
         buffer = io.StringIO()
@@ -261,7 +262,7 @@ class ListaExportService:
     def _render_xlsx(
         self,
         colonne: list[dict[str, Any]],
-        righe: list[dict[str, Any]],
+        righe: Sequence[Mapping[str, Any]],
         filtri: dict[str, Any],
     ) -> bytes:
         wb = Workbook()
@@ -316,8 +317,11 @@ class ListaExportService:
     #        v2 (rinviato): override per emittente/utente via
     #        `config.parameters` LOCALE_*.
     @staticmethod
-    def _format_cell(riga: dict[str, Any], colonna: dict[str, Any]) -> Any:
-        value = riga.get(colonna.get("campo_sorgente"), "")
+    def _format_cell(riga: Mapping[str, Any], colonna: dict[str, Any]) -> Any:
+        # `campo_sorgente` e' nullable (ui.lista_colonna): senza campo la
+        # cella e' vuota, come la lettura di una chiave assente.
+        campo = colonna.get("campo_sorgente")
+        value = riga.get(campo, "") if campo is not None else ""
         return format_for_export(
             value,
             tipo_dato=colonna.get("tipo_dato"),

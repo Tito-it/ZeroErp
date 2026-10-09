@@ -586,6 +586,7 @@ class SoggettiService:
             code=E_ANAG_VALIDAZIONE,
             message="Data di nascita obbligatoria.",
         )
+        assert data_nascita_raw is not None
         if isinstance(data_nascita_raw, str):
             data_nascita = _date.fromisoformat(data_nascita_raw)
         else:
@@ -629,6 +630,10 @@ class SoggettiService:
         cognome = require_str(payload, "cognome", "Cognome obbligatorio.")
         nome = require_str(payload, "nome", "Nome obbligatorio.")
         codice_fiscale = require_str(payload, "codice_fiscale", "Codice fiscale obbligatorio.")
+        # ⛔ Obbligatorio, mai un default silenzioso (decisione di Tid,
+        #    2026-10-09): il form puo' PROPORRE «M», ma a video; un sesso che
+        #    nessuno ha visto non si scrive. Fino a quel giorno qui c'era `"M"`.
+        sesso = require_str(payload, "sesso", "Sesso obbligatorio.")
 
         # Validazione congruenza CF con dati anagrafici
         self._valida_cf_congruenza(payload, codice_fiscale)
@@ -645,7 +650,7 @@ class SoggettiService:
                 cognome=cognome, nome=nome, codice_fiscale=codice_fiscale,
                 email=email_addr,
                 data_nascita=optional_str(payload, "data_nascita"),
-                sesso=payload.get("sesso", "M") or "M",
+                sesso=sesso,
                 stato_iso2=optional_str(payload, "stato_iso2"),
                 comune_nascita_id=optional_int(payload, "comune_nascita_id"),
                 tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),

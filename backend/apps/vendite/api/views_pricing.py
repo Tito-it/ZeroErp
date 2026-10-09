@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from datetime import date
 from typing import Any
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
@@ -116,6 +117,28 @@ def _resolve_emittente_sr(request: Request, override: int | None) -> int:
     return int(emittenti[0])
 
 
+# Scopo: la `data_riferimento` del corpo, OBBLIGATORIA, come `date`. Una per
+#        resolve e diagnose (regola del 2, ok Tid 2026-10-09).
+# ⚠️ L'obbligo si giudica sulla data CONVERTITA: `""` passa un controllo sul
+#    valore grezzo e `parse_iso_date` lo rende None. Fino al 2026-10-09 il
+#    controllo era sul grezzo, e una data vuota arrivava al resolver (trovato
+#    da mypy). Il campo si nomina in entrambi i percorsi.
+def _data_riferimento_obbligatoria(payload: dict[str, Any]) -> date:
+    data_riferimento_raw = payload.get("data_riferimento")
+    data_riferimento = (
+        parse_iso_date(str(data_riferimento_raw))
+        if data_riferimento_raw is not None else None
+    )
+    ErrorManager.require(
+        data_riferimento is not None,
+        code="E_VENDITE_VALIDATION",
+        message="data_riferimento obbligatoria.",
+        context={"field": "data_riferimento"},
+    )
+    assert data_riferimento is not None
+    return data_riferimento
+
+
 class PricingResolveView(DomainAPIView):
     """POST /api/v1/vendite/pricing/resolve/ — resolver pricing v5 diagnostico.
 
@@ -147,14 +170,7 @@ class PricingResolveView(DomainAPIView):
                 message="articolo_id obbligatorio.",
                 context={"field": "articolo_id"},
             )
-            data_riferimento_raw = payload.get("data_riferimento")
-            ErrorManager.require(
-                data_riferimento_raw is not None,
-                code="E_VENDITE_VALIDATION",
-                message="data_riferimento obbligatoria.",
-                context={"field": "data_riferimento"},
-            )
-            data_riferimento = parse_iso_date(str(data_riferimento_raw))
+            data_riferimento = _data_riferimento_obbligatoria(payload)
 
             emittente_sr = _resolve_emittente_sr(
                 request, payload.get("emittente_soggetto_ruolo_id"),
@@ -258,13 +274,7 @@ class PricingDiagnoseView(DomainAPIView):
                 code="E_VENDITE_VALIDATION",
                 message="articolo_id obbligatorio.",
             )
-            data_riferimento_raw = payload.get("data_riferimento")
-            ErrorManager.require(
-                data_riferimento_raw is not None,
-                code="E_VENDITE_VALIDATION",
-                message="data_riferimento obbligatoria.",
-            )
-            data_riferimento = parse_iso_date(str(data_riferimento_raw))
+            data_riferimento = _data_riferimento_obbligatoria(payload)
 
             emittente_sr = _resolve_emittente_sr(
                 request, payload.get("emittente_soggetto_ruolo_id"),

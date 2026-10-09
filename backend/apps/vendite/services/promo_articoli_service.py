@@ -117,7 +117,7 @@ _MESSAGE = "Payload promo non valido."
 
 
 # Mapping vincoli DB -> codici errore applicativi (word boundary match).
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_promo_articoli_codice": (
         E_VENDITE_DUPLICATO,
         "Esiste gia' una promo con questo codice.",
@@ -128,7 +128,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Esiste gia' una promo attiva per questo (articolo, uom) nel periodo indicato.",
     ),
 }
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_promo_articoli_articolo": (
         E_VENDITE_FK,
         "Articolo inesistente.",
@@ -408,6 +408,7 @@ class PromoArticoliService:
     ) -> Decimal | None:
         # La coercizione (bool e NaN rifiutati) e' del BB `PayloadValidator`;
         # qui resta la coerenza col tipo, che e' di dominio.
+        value: Decimal | None
         if required:
             value = self._v.require_decimal(payload, "valore_variazione", message=_MESSAGE)
         else:

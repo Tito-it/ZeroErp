@@ -740,7 +740,7 @@ class CommessaRegistroEventoRow(TypedDict):
     evento: str
     # Il payload dell'evento, COM'E'. La forma cambia per evento e appiattirla
     # nel backend vorrebbe dire rifarlo a ogni evento nuovo.
-    dettaglio: dict[str, object]
+    dettaglio: dict[str, Any]
     # ⭐ Estratto a parte perche' e' l'unica chiave che piu' eventi condividono
     # ed e' la frase che l'operatore sta cercando.
     motivo: str | None

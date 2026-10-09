@@ -12,6 +12,7 @@
 #       la parola che l'operatore legge sulla schermata.
 # ------------------------------------------------------------
 
+from typing import Any
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -237,7 +238,7 @@ class ApiDistinteList(DomainAPIView):
     #    entrarci in silenzio e' il modo in cui si registra due volte credendo
     #    di cominciare.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return pagamenti_service.crea_distinta(dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -298,7 +299,7 @@ class ApiDistintaStato(DomainAPIView):
     # ⛔ `CHIUSA` non e' fra i valori ammessi: la chiusura e' una CONSEGUENZA
     #    del registrare, non un gesto a parte.
     def post(self, request: Request, contabile_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return pagamenti_service.cambia_stato_distinta(contabile_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -405,7 +406,7 @@ class ApiDistintaRighe(DomainAPIView):
     #    `DA_ABBINARE`, che sulla manuale e' l'eccezione che l'operatore
     #    dichiara, non il default.
     def post(self, request: Request, contabile_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return pagamenti_service.crea_riga(contabile_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -513,7 +514,7 @@ class ApiDistintaRigheDaRate(DomainAPIView):
     # ⚠️ Lo status e' 200 anche su `PARZIALE`/`ERRORE`: chi legge guarda `esito`
     #    e `falliti[]`, ciascuno col suo errore intero (`ui_action` compresa).
     def post(self, request: Request, contabile_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return pagamenti_service.crea_righe_da_rate(contabile_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -603,7 +604,7 @@ class ApiRigaStato(DomainAPIView):
     #    senza dire perche' lascia la riga in una coda dove il prossimo che la
     #    guarda non sa che cosa si era gia' capito.
     def post(self, request: Request, riga_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return pagamenti_service.cambia_stato_riga(riga_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -660,7 +661,7 @@ class ApiDistintaRegistra(DomainAPIView):
     # ⛔ L'esito risale INTATTO: `NULLA_DA_POSTARE` non e' un errore, e il
     #    backend non lo trasforma in uno. La frase la sceglie il frontend.
     def post(self, request: Request, contabile_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return dict(
                 pagamenti_service.registra_distinta(contabile_id, dict(payload))
             )
@@ -700,7 +701,7 @@ class ApiDistintaCorreggi(DomainAPIView):
     # ⛔ `NULLA_DA_CORREGGERE` risale INTATTO: e' un esito, non un errore.
     # ⛔ E non si chiama «storno»: `STORNATA` e' fuori dal catalogo dal 21/08.
     def post(self, request: Request, contabile_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return pagamenti_service.correggi_distinta(contabile_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -738,7 +739,7 @@ class ApiRigaAbbina(DomainAPIView):
     #    rifiuto dall'`ui_action` `confirm_and_retry`, non da un elenco di
     #    codici cablato.
     def post(self, request: Request, riga_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return pagamenti_service.abbina_riga(riga_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -777,7 +778,7 @@ class ApiRigaRegistra(DomainAPIView):
     # ⛔ Non un esito «nulla da postare»: una tardiva che non si puo' fare e' un
     #    rifiuto (`E_RIGA_CONTABILE_TARDIVA_*`, 409) con la sua frase.
     def post(self, request: Request, riga_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return pagamenti_service.registra_riga_tardiva(riga_id, dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -1232,7 +1233,7 @@ class ApiSistemazioni(DomainAPIView):
     # 🔴 Cliente ed emittente NON si passano: li deriva il backend dalla fattura
     #    di origine, perché non sono una scelta di chi compila.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return sistemazioni_service.crea_sistemazione(dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -1365,7 +1366,7 @@ class ApiSistemazioneConferma(DomainAPIView):
     # ⚠️ Il **canale del rimborso** si chiede QUI e non alla registrazione: da
     #    quale conto esce il bonifico è una decisione del momento in cui si paga.
     def post(self, request: Request, sistemazione_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return sistemazioni_service.conferma_sistemazione(
                 sistemazione_id, dict(payload)
             )
@@ -1390,7 +1391,7 @@ class ApiSistemazioneAnnulla(DomainAPIView):
     # ⚠️ Il motivo è obbligatorio se l'atto non ne aveva già uno: lo dice il
     #    guard del database, che sa se ce n'era uno — il backend non lo replica.
     def post(self, request: Request, sistemazione_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return sistemazioni_service.annulla_sistemazione(
                 sistemazione_id, dict(payload)
             )
@@ -1493,7 +1494,7 @@ class ApiEntiIncasso(DomainAPIView):
     #    canale senza conto produrrebbe una coda di denaro che nessuno vede — e
     #    il conto è il punto da cui il database ricava di chi sono i soldi.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return enti_incasso_service.crea_ente_incasso(dict(payload))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)

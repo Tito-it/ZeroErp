@@ -19,6 +19,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
@@ -118,7 +120,7 @@ class ApiDashboardPreferenzaView(DomainAPIView):
     # Scopo: UPSERT preferenza utente. Idempotency-Key obbligatoria,
     #        come per le liste (pattern api.md su retry FE).
     def put(self, request: Request, codice: str) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return DashboardPreferenzaService().upsert(
                 request.user, codice, dict(payload),
             )
@@ -151,7 +153,7 @@ class ApiDashboardIgnorePresetUpdateView(DomainAPIView):
     @extend_schema(request=None, responses={200: _DATA_RESPONSE})
     # Scopo: Setta il tombstone "ignore" del banner per (user, dashboard).
     def post(self, request: Request, codice: str) -> JsonResponse:
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return DashboardPreferenzaService().ignore_preset_update(
                 request.user, codice,
             )

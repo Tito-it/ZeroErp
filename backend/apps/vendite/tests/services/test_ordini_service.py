@@ -190,6 +190,17 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
         repo.update_stato.assert_not_called()
 
+    # Un numero nel JSON al posto del codice e' un 400 (stato mancante), non un
+    # 500 da `.strip()` su un int (2026-10-09, trovato da mypy).
+    @patch(_REPO)
+    def test_cambia_stato_codice_non_testo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"stato_codice_interno": "DRAFT"}
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_stato(7, 5)  # type: ignore[arg-type]
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.update_stato.assert_not_called()
+
     @patch(_REPO)
     def test_elimina_ordine_con_righe_rifiutato(self, repo_cls) -> None:
         # Niente hard-delete di dati reali (allineato a preventivi): un ordine

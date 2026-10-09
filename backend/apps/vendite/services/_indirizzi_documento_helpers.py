@@ -362,6 +362,7 @@ def upsert_indirizzo_documento(
             )
             origine_soggetto_ruolo_id = int(origine_soggetto_ruolo_id)
 
+    assert tipo_indirizzo_id is not None
     with _db_errors(cfg, op):
         return repo.upsert_indirizzo(
             documento_id=documento_id,

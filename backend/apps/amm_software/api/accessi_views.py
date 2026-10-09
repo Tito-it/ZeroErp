@@ -42,7 +42,7 @@ from apps.amm_software.db.accessi_repository import (
 from apps.amm_software.services.accessi_service import AccessiService
 from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE
 from apps.core.api.base_views import AdminAPIView
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import handle_post_json, utente_autenticato_id
 from apps.core.api.openapi_params import descrizione_order_by, param_ricerca_full
 from apps.core.api.payload_validators import (
     paginated_envelope,
@@ -364,7 +364,7 @@ class CredenzialeSecondoFattoreDisattivaView(AdminAPIView):
             return SecondoFattoreService().disattiva_da_admin(
                 auth_user_id,
                 motivo=payload.get("motivo"),
-                chi_agisce=request.user.id,
+                chi_agisce=utente_autenticato_id(request),
                 request=richiesta_django(request),
             )
 

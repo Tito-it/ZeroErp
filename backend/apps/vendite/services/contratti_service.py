@@ -1351,6 +1351,7 @@ class ContrattiService:
                     valido_dal_raw if isinstance(valido_dal_raw, date)
                     else date.fromisoformat(str(valido_dal_raw))
                 )
+                assert emittente_sr_id is not None  # garantito dal require sopra
                 self._repo.init_componenti_riga(
                     riga_id=new_id,
                     emittente_soggetto_ruolo_id=emittente_sr_id,
@@ -2452,6 +2453,7 @@ def _load_contratto_context_for_pricing(
     # Doc DB: cfr. nota team `dev/db-tid` sul 9° arg di fn_resolve_prezzo_listino_v2.
     listino_versione_id_preferito = listino_versione_operativa("CONTRATTO", contratto_id)
 
+    assert ba_id_raw is not None and utility_id_raw is not None
     return {
         "testata": testata,
         "ba_id": int(ba_id_raw),

@@ -210,7 +210,7 @@ async function onValidaPIVA() {
       </div>
       <div class="form-row-inline">
         <div class="form-field" style="flex: 0 0 8rem;">
-          <label>{{ t('common.sesso') }}</label>
+          <label>{{ t('common.sesso') }} *</label>
           <Select v-model="form.sesso" :options="sessoOptions"
             option-label="label" option-value="value" :disabled="disabled" />
         </div>

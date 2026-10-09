@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 # ⭐ `SISTEMA` non e' un ambito come gli altri, ed e' il motivo per cui ha una
 #    costante sua: e' il ramo su cui la policy RLS di `config.email_log` e
@@ -63,7 +65,7 @@ STATI_EMAIL_LOG: frozenset[str] = frozenset(c for c, _d, _o in STATI_EMAIL_LOG_D
 
 
 # Scopo: Gli stati del log come righe di lookup, nell'ordine dichiarato.
-def elenco_stati_email_log() -> list[dict[str, object]]:
+def elenco_stati_email_log() -> list[dict[str, Any]]:
     return [
         {"codice": codice, "descrizione": descrizione, "ordering": ordering}
         for codice, descrizione, ordering in STATI_EMAIL_LOG_DESCRIZIONI

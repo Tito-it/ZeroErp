@@ -790,6 +790,7 @@ class ApiAssetMiniatura(DomainAPIView):
             request.user, int(asset_id),
             etag_noti=parse_etags(request.headers.get("If-None-Match", "")),
         )
+        response: HttpResponse
         if result["file_bytes"] is None:
             response = HttpResponseNotModified()
         else:

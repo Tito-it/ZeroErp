@@ -6,7 +6,11 @@
 > Stato: 🟡 **in corso** — S2 e le tre dipendenze approvate il 2026-10-08.
 > ✅ **L0 chiuso il 2026-10-08** (§4.5). ✅ **L1 chiuso il 2026-10-09** (§5.1):
 > mypy acceso in CI, registro alla nascita **620** rilievi. ✅ **L2 chiuso il
-> 2026-10-09** (§5.2): registro a **558**. Prossimo: L3+.
+> 2026-10-09** (§5.2): registro a **558**. ✅ **L3 chiuso il 2026-10-09**
+> (§5.3): registro a **2**, entrambi il caso NaN di `_number_formatting`: deciso
+> da Tid il 2026-10-09 (opzione C, la generazione si ferma), in attesa del codice
+> d'errore dal team DB —
+> [brief-db-valore-numerico-non-finito-nei-documenti.md](brief-db-valore-numerico-non-finito-nei-documenti.md).
 
 ## 1. Perché
 
@@ -375,6 +379,88 @@ copia nel service andrebbe tolta — è una decisione sul modello.
   famiglia che `script.fn_data_operativa` ha chiuso sul DB per la data
   documento: vedi
   [brief-be-db-giorno-nel-fuso-aziendale.md](brief-be-db-giorno-nel-fuso-aziendale.md).
+
+### 5.3 ✅ L3 — 2026-10-09: da 557 a 2
+
+**Convenzione decisa nel giro** (la maggioranza del codice, 2.242 usi contro
+245): gli envelope JSON sono `dict[str, Any]`, non `dict[str, object]`. I 41 file
+della minoranza sono stati allineati, con gli esempi di `api.md`.
+
+**Correzioni alla radice** (un punto condiviso, molti rilievi):
+`ErrorManager.require(condition: object)` (la condizione si valuta per verità);
+`success_response` e l'`handler` di `handle_post_json`/`handle_detail_patch`
+accettano `Mapping` (un `TypedDict` non è un `dict[str, Any]`) e `success_response`
+anche lista e `None`; `validate_order_params` con `@overload` (con un `order_by`
+presente la colonna torna presente); `create_with_dedup` generica;
+`order_dir: str | None` nei repository di pagamenti e listini (`sql_order_clause`
+accetta già `None`); `execute_dynamic_update(row_id: int | str | UUID)`;
+`get_handler(handler_code: str | None)`; `cast(<Row>, …)` al confine dei
+repository; `Mapping[str, Any]` sui parametri che solo leggono una riga tipata;
+`GroupAttivitaInput`/`AttivitaDaFatturare` allineati al DB (`NOT NULL`); classi
+derivate da basi costruite da fabbriche: `# type: ignore[valid-type, misc,
+name-defined]` motivato sulla sola riga `class`.
+
+**Il resto**, file per file, in quattro lotti paralleli (catalogo e listini;
+core; servizi di vendite; il resto) con le stesse regole: niente cambi di
+comportamento, i difetti si segnalano. Due `# type: ignore` preesistenti avevano
+il **codice sbagliato** (magazzino, commesse) e non ignoravano niente.
+
+🔴 **Difetti veri trovati, e corretti** (con test, provati per mutazione):
+
+- `vendite/api/views_listini.py` `ApiListiniAlertScadenze`: passava la `request`
+  a `qp_int_strict` invece del valore → 400 `giorni_invalid` a **ogni** chiamata
+  dal 2026-04-12; il badge di `AlertScadenzeWidget` non si accendeva mai.
+- `vendite/services/approvazioni_prezzo_service.py`: la pratica di approvazione
+  prezzo di un preventivo leggeva `numero_documento`, che la testata non ha
+  (`numero`), e si descriveva con l'id interno. Il test lo fabbricava col mock.
+- `vendite/api/views_pricing.py` (resolve e diagnose): l'obbligo di
+  `data_riferimento` si giudicava sul valore grezzo, e `""` passava.
+- `documenti/api/sorgente_documenti_views.py`: la fabbrica accettava
+  `emetti_call` senza `emetti_response_key` (risposta con la chiave `null`);
+  ora la combinazione incoerente si rifiuta all'import. Nessun dominio di oggi la
+  usava.
+
+✅ **Seguito del 2026-10-09 (ok di Tid):** building block
+`utente_autenticato` / `utente_autenticato_id` in `core/api/endpoint_helpers.py`
+(catalogo BB), 45 sedi in 12 file; `cambia_stato` di DDT e ordini con un valore
+non testuale → 400; `views_contatti_ruolo` col BB `qp_int_optional` → 400;
+`soggetti_repository` senza i default cablati `"IT"`/`"SU"`/`"LN"` (`None` = il
+default di `config.parameters`, risolto dalla funzione DB); `views_pricing` con
+l'helper `_data_riferimento_obbligatoria` (regola del 2), che ora nomina il campo
+anche in `diagnose`. Test per ciascuno. Registro **47 → 2**; suite intera verde
+(6.340 test).
+
+🟡 **Difetti trovati (lo stato è nel paragrafo sopra; resta aperto solo il primo):**
+
+- `documenti/services/context_builders/_number_formatting.py` (righe 96, 101):
+  `-d.as_tuple().exponent` su NaN/Infinity è una stringa → `TypeError` (500) se
+  un contesto documento porta un `numeric` NaN. Va deciso cosa mostrare.
+- `vendite/services/ddt_service.py` e `ordini_service.py` `cambia_stato`:
+  `(stato_codice or "").strip()` con un numero nel JSON → `AttributeError` (500
+  invece di 400).
+- `anagrafiche/api/views_contatti_ruolo.py` (≈ riga 57): `int(istanza_str)`
+  grezzo, un valore non numerico è un 500.
+- `anagrafiche/db/soggetti_repository.py`: i default `"IT"`/`"SU"`/`"LN"` di
+  `crea_soggetto_pf/pg` sono cablati, mentre la funzione DB ha già `DEFAULT NULL`
+  + `COALESCE` su `config.parameters`; il service li scavalca sempre. Da valutare
+  se toglierli (`None` = il default del DB).
+- `vendite/api/views_pricing.py`: dopo la correzione i due blocchi
+  «`data_riferimento` obbligatoria» sono identici — regola del 2, estrazione da
+  approvare.
+
+⏳ **Restavano 47 rilievi nel registro** (stato prima del seguito qui sopra):
+
+- **45** sono `request.user.id` / `request.user` (`int | None`, `User |
+  AnonymousUser`) passati dove serve l'utente autenticato. A runtime l'utente
+  c'è sempre (`ZeroERPPermission` rifiuta l'anonimo), ma il tipo non lo sa.
+  Proposta (regola del 2, **da approvare**): un building block in
+  `apps/core/api/endpoint_helpers.py`, `utente_autenticato(request) -> User` e
+  `utente_autenticato_id(request) -> int`, che solleva `NotAuthenticated` (401)
+  sull'anonimo invece di lasciar passare `None`; le sedi (12 file) passano al BB.
+- **2** sono il difetto NaN qui sopra.
+
+**Verifiche**: cancello verde a 47; `ruff` pulito; suite backend intera (6.327
+test) verde tranne il rosso notturno noto del giornale (brief sul fuso).
 
 ⭐ L'ordine L2 → L3 è sulla **natura** del rilievo, non sul conteggio: un
 `[attr-defined]` è quasi sempre un 500 in attesa, un `[arg-type]` quasi sempre

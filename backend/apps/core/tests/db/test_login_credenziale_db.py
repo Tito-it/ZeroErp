@@ -477,7 +477,9 @@ class CicloOperatoreDbTests(_ViewVere):
         from apps.amm_software.services.amm_software_service import AmmSoftwareService
 
         payload = {
-            "cognome": "Prova", "nome": "Ciclo",
+            # Il sesso si SCEGLIE (brief-db-sesso-senza-default, 2026-10-09):
+            # `create_operatore` lo pretende per un soggetto nuovo.
+            "cognome": "Prova", "nome": "Ciclo", "sesso": "M",
             "codice_fiscale": codice_fiscale or _codice_fiscale(),
             "username": username, "email": email, "qualifica_id": self.qualifica_id,
         }

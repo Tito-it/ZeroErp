@@ -7,7 +7,7 @@
 > La parte che si poteva chiudere coi codici già a catalogo è fatta lato backend
 > (2026-10-08, righe E-4/E-5 dell'analisi). Restano i punti per cui **nessun codice
 > esistente dice la cosa giusta**: servono righe nuove nel catalogo.
-> **Stato:** ✅ DB applicato il 2026-10-08, pgTAP verdi (Tid). ⏳ Resta il giro BE (§6, con le correzioni di §8.6).
+> **Stato:** ✅ DB applicato il 2026-10-08, pgTAP verdi (Tid). ✅ Giro BE fatto il 2026-10-09 (§9). ⏳ Restano le decisioni del §9.3.
 > **Da leggere per primo:** §1, poi §2.
 
 ## 1. Cosa si chiede
@@ -372,3 +372,167 @@ Il §6 vale com'è, con due correzioni:
 * al punto 7, **la firma non cambia**: repository e view possono continuare a
   passare `p_emittente_ids` (non è letto). Il test sul DB vero per i casi 1, 2 e 4
   resta da fare: oggi il 404 è provato solo col repository finto.
+
+## 9. Giro BE
+
+*(sessione backend, 2026-10-09)*
+
+### 9.1 Cosa c'è
+
+| Passo §6 | Esito |
+| --- | --- |
+| 1-2. Policy generate e ripieghi | ✅ erano già in HEAD |
+| 3. Codici nuovi nei punti del §2 e del §4 | ✅ tutti; `E_EMAIL_NON_BOZZA` col nome del §8.2 |
+| 3. Regola del 2 (ok Tid, 2026-10-09) | ✅ `EmailOutboxService.get_bozza` (sul BB `o_not_found`) per la bozza: dieci punti diventano una sede. Le quattro view che chiamano un verbo (modifica, invio, annullo, upload) **non rileggono più** la bozza, che il verbo già legge e controlla. `_richiedi_bozza` per i tre verbi «solo in bozza»; `_allegato_o_404` (core) e `_account_o_404` / `_template_o_404` (admin). L'eliminazione di account e template legge prima di cancellare, come già faceva il test SMTP. I messaggi vengono da `USER_MESSAGE_FALLBACK`, non sono riscritti a mano |
+| 4. `self.code` nelle tre permission | ✅ |
+| 5. Test | ✅ `test_email_outbox_service` n. 18-20, `test_email_views_fase6` n. 20-22, nuovo `test_email_e_permessi_codici_mirati` (le permission sul percorso DRF intero, fino all'envelope) |
+| 6. Doc | ✅ `api_email.md` (§Codici d'errore), `error-handling-api.md`, `api_search_universale.md`; E-4, E-5 ed E-10 chiuse nell'analisi |
+| 7. R-4 | ✅ firma invariata (§8.6), nuovo `core/tests/db/test_search_detail_non_trovato_db.py` sul DB vero: casi 1 e 2 → `None`, caso 4 → `righe: []`, più la contro-prova del cliente visibile |
+
+Prove: suite `apps.core` + `apps.amm_software` con `ZEROERP_TEST_DB_E2E=1`
+(1951 test, verdi); mypy a cricchetto, nessun rilievo nuovo; ruff pulito sui file
+toccati.
+
+### 9.2 Cosa è emerso, fuori dal perimetro del brief
+
+* **«Nessuna azienda attiva»** (`core/api/email_views.py`, preparazione della
+  bozza, oggi `E_EMAIL_OP`). ⚠️ Correzione di questo stesso paragrafo: lo avevo
+  detto «non un dato errato». Il catalogo ha già il codice di questa condizione,
+  ed è `DATO_ERRATO` **di proposito**: `E_EMITTENTE_NON_RISOLTO` (*«Nessun
+  emittente fiscale attivo: seleziona l'emittente in alto…»*), che la nota dice
+  *«un codice solo per N tabelle: è la condizione ad essere una»*. È la modalità
+  «Tutti gli emittenti» del super admin, che è di sola lettura, e il rimedio è
+  della persona. ✅ **Fatto il 2026-10-09** (ok Tid): il BE usa
+  `E_EMITTENTE_NON_RISOLTO`, status 400 invariato, frase del catalogo, senza
+  campo. Nessuna riga nuova a catalogo. Con questo si è ritirata da sola
+  l'unica esenzione del presidio C2 (`test_ui_action_e_canale_campi`), che
+  valeva solo finché ogni sito del codice mandava il campo.
+* Due condizioni vicine, sotto gli stessi accumulatori: «Template '…' non
+  trovato» della preparazione della bozza (`E_OUTBOX`, da `resolve_and_render`)
+  e «Path allegato non valido» (`email_allegati_storage.percorso_allegato`,
+  `E_EMAIL_OP`: il percorso arriva dal database, non da una persona).
+* **CL e FO non si comportano allo stesso modo nel dettaglio.** Letto sul
+  modello: un soggetto-ruolo può esistere senza la riga della sua entità, per
+  tutti e due i ruoli. Per FO, `uq_fornitori_soggetto_ruolo_id` dice 0..1 e
+  nessun trigger la pretende; per CL il soggetto-ruolo nasce prima di istanza,
+  billing account e cliente. La check `fn_check_soggetto_ruolo_visibile` tratta
+  però i due casi in modo diverso, perché scrive `'CL'` come letterale: CL
+  senza clienti dà NULL, FO senza fornitore dà `righe: []` e compare in lista.
+  Lo stesso varrebbe per VT (`vettori`) e BANK_B (`bank_branches`).
+  ⇒ Proposta, sul catalogo che c'è già: `config.tipi_ruoli.entita_tabella` dice
+  per ogni ruolo qual è la sua entità (CL → `vw_clienti_codice_ba`, FO →
+  `fornitori`, VT → `vettori`, BANK_B → `bank_branches`, EF →
+  `emittenti_fiscali`). Regola unica: un soggetto-ruolo si mostra se ha
+  **almeno una riga della sua entità visibile a chi guarda**; un ruolo senza
+  entità si mostra se esiste. Il perimetro resta alla RLS di ciascuna entità
+  (per CL quella di `clienti`, a patto che la vista sia `security_invoker`), e
+  il letterale `'CL'` esce dalla check. ✅ Approvata da Tid il 2026-10-09:
+  richiesta **R-6** al §11. ⚠️ Per il team DB: la tabella diventa un
+  dato, quindi serve SQL dinamico, e la check gira come filtro di riga della
+  lista. Va misurato con EXPLAIN se la regola si applica per riga o una volta
+  per ruolo.
+* **La riga di `anagrafiche.clienti` nei test sul DB vero si scrive a mano**, dopo
+  `dbops.fn_pgtap_crea_cliente_ba`, in almeno nove file di test (con questo).
+  Un builder che arrivi fino al cliente sarebbe un lavoro del team DB.
+
+### 9.3 Decisioni ancora aperte (Tid)
+
+* La lista filtra `s.attivo`, il dettaglio no (§8.5).
+* Le due condizioni vicine del §9.2 («Template non trovato» della bozza,
+  «Path allegato non valido»).
+
+## 10. R-5 — Ritiro di `p_emittente_ids` e di `fn_get_emittenti_scope_sr_effettivo`
+
+*(sessione backend → team DB, 2026-10-09; ritiro approvato da Tid «se non sono
+più utilizzate da nessuno»)*
+
+**Chi le usa, verificato il 2026-10-09:**
+
+* `p_emittente_ids` (in `fn_search_soggetti_universale` e
+  `fn_get_search_detail`): non lo legge nessuna delle due funzioni (§8.2). Il
+  backend **ha smesso di passarlo** il 2026-10-09 (`core/db/search_repository.py`
+  e `core/api/search_view.py`; test `test_search_view` riallineati). Era l'unico
+  chiamante, quindi oggi non lo passa nessuno;
+* `script.fn_get_emittenti_scope_sr_effettivo`: nessuna funzione la chiama (la
+  doc auto-generata di `fn_search_soggetti_universale` la nomina solo in un
+  commento), e il backend nemmeno. La provano ancora due pgTAP:
+  `script/test-search-scope-interno-v1` (test 1-7) e
+  `script/test-scope-emittenti-fail-closed-v1` (test 10-11).
+
+**Cosa si chiede:**
+
+1. `DROP` delle due firme vecchie e `CREATE` senza `p_emittente_ids`, insieme
+   ai `COMMENT`, che oggi lo dichiarano superato;
+2. `DROP` di `script.fn_get_emittenti_scope_sr_effettivo`;
+3. pgTAP: togliere i test che provano la funzione ritirata (1-7 di
+   `test-search-scope-interno-v1`, 10-11 di
+   `test-scope-emittenti-fail-closed-v1`) e quelli che pinnano il parametro
+   superato (8-11 di `test-search-scope-interno-v1`, 24 e 26 di
+   `test-search-soggetti-universale`), riallineando i `plan()`;
+4. doc `manual/` delle due funzioni.
+
+Il presidio BE del vecchio trasporto a tre stati
+(`core/tests/db/test_search_repository_scope.py`) è stato riscritto il
+2026-10-09: ora prova che il repository **non** manda `p_emittente_ids`.
+
+**Ricaduta sul backend:** nessuna. Il repository chiama già per nome senza
+`p_emittente_ids`, quindi funziona con la firma vecchia (il parametro ha
+`DEFAULT NULL`) e con quella nuova. Dopo l'apply basta rilanciare
+`core/tests/db/test_search_detail_non_trovato_db.py` sul DB vero, per provare il
+binding.
+
+## 11. R-6 — Una regola sola per «il soggetto-ruolo si mostra»
+
+*(sessione backend → team DB, 2026-10-09; opzione approvata da Tid)*
+
+**Il difetto.** `script.fn_check_soggetto_ruolo_visibile` (§8.2) scrive `'CL'`
+come letterale. Così due stati che il modello ammette allo stesso modo hanno
+due risposte:
+
+| Soggetto-ruolo | Lista | Dettaglio |
+| --- | --- | --- |
+| CL senza nessun cliente | non compare | NULL → 404 |
+| FO senza la riga in `fornitori` | compare | `righe: []` |
+
+Che il modello li ammetta tutti e due lo dice la struttura, non un conteggio.
+Per FO, `uq_fornitori_soggetto_ruolo_id` dice 0..1 e nessun trigger di
+`soggetti_ruoli` crea o pretende la riga. Per CL il soggetto-ruolo nasce prima
+di istanza, billing account e cliente (è anche l'ordine dei builder pgTAP).
+Lo stesso vale per VT (`vettori`) e BANK_B (`bank_branches`).
+
+**La richiesta.** La regola si legge dal catalogo che già dice qual è l'entità
+di ogni ruolo, `config.tipi_ruoli.entita_tabella` (la usa già
+`fn_search_soggetti_universale` per cercare sul codice dell'entità):
+
+* ruolo **con** `entita_tabella` → il soggetto-ruolo si mostra se ha **almeno
+  una riga della sua entità visibile a chi guarda**. Il perimetro lo fa la RLS
+  di quell'entità, quando ce l'ha;
+* ruolo **senza** `entita_tabella` → si mostra se il soggetto-ruolo esiste.
+
+Il letterale `'CL'` esce dalla check, e lista e dettaglio restano d'accordo
+per costruzione (la check è già la loro sede unica). Il caso FO senza
+fornitore diventa un «non trovato», come CL senza clienti.
+
+**Da verificare prima, sul modello:**
+
+* l'entità di CL è la **vista** `anagrafiche.vw_clienti_codice_ba`. La doc
+  auto-generata (2026-10-09) la dà `security_invoker=on` su `clienti`, quindi la
+  RLS di `clienti` vale anche passando dalla vista. Una riga per cliente, come
+  la check di oggi;
+* `entita_tabella` è un dato, quindi serve SQL dinamico (`EXECUTE format(...)`
+  su una `regclass` già validata da `trgfn_tipi_ruoli_guard_entita_ref`). La
+  check è anche il filtro di riga della lista: va misurato con `EXPLAIN` sul DB
+  vero se conviene risolverla una volta per ruolo (il ruolo è uno per
+  chiamata) invece che per riga;
+* `emittenti_fiscali` per EF e `bank_branches` per BANK_B: dire se un
+  soggetto-ruolo senza la sua riga deve sparire anche lì (per EF il ramo
+  `ELSE` del dettaglio oggi mostra una riga).
+
+**pgTAP**, con i soggetti costruiti nel test: FO senza fornitore → dettaglio
+NULL e assente dalla lista; FO col fornitore → righe; VT senza vettore → NULL;
+un ruolo senza `entita_tabella` → presente; CL invariato (i casi 12-20 di
+`test-search-scope-interno-v1`).
+
+**Ricaduta sul backend:** nessuna nel codice (NULL → 404 c'è già). Dopo
+l'apply si aggiunge a `core/tests/db/test_search_detail_non_trovato_db.py` il
+caso FO senza fornitore, e si aggiorna `api_search_universale.md`.

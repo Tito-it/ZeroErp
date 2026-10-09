@@ -11,6 +11,7 @@ from datetime import date
 from decimal import Decimal
 import json
 import logging
+from collections.abc import Mapping
 from typing import Any, cast
 
 from django.db import connection, transaction
@@ -135,12 +136,15 @@ class PipelineStep:
 class GroupAttivitaInput:
     attivita_id: int
     articolo_id: str  # uuid (catalogo.articoli.id)
-    dest_billing_account_id: int | None
+    # ⚠️ NOT NULL a DB (`attivita_fatturabili.billing_account_id`,
+    #    `.data_attivita`): fino al 2026-10-09 erano dichiarati opzionali, e il
+    #    chiamante faceva `int(ba_id)` su un tipo che diceva «puo' mancare».
+    dest_billing_account_id: int
     uom_id: int | None
     prezzo_unitario: Decimal | None
     competenza_dal: date | None
     competenza_al: date | None
-    data_attivita: date | None
+    data_attivita: date
     calcolo_qta_padre: str
     arrotondamento_importi_dec: int
     arrotondamento_quantita_dec: int
@@ -359,8 +363,8 @@ def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
     return GroupAttivitaInput(
         attivita_id=int(row[0]),
         # ⚠️ `str`, non `int`: e' un UUID (catalogo.articoli.id).
-        articolo_id=None if row[1] is None else str(row[1]),
-        dest_billing_account_id=None if row[2] is None else int(row[2]),
+        articolo_id=str(row[1]),
+        dest_billing_account_id=int(row[2]),
         uom_id=None if row[3] is None else int(row[3]),
         prezzo_unitario=row[4],
         competenza_dal=row[5],
@@ -447,7 +451,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
     @staticmethod
-    def _to_jsonb_param(value: LottoPipelineMeta | None) -> str | None:
+    def _to_jsonb_param(value: Mapping[str, Any] | None) -> str | None:
         if value is None:
             return None
         # Serializza esplicitamente per evitare errori adapter psycopg su dict/list.
@@ -1363,7 +1367,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         fase: str,
         status: str,
         messaggio: str | None,
-        meta: LottoPipelineMeta | None,
+        # `Mapping`: si serializza e basta, anche un TypedDict (`PipelineStepLogMeta`).
+        meta: Mapping[str, Any] | None,
         gruppo_key: str | None = None,
     ) -> None:
         # ⭐ `gruppo_key` = DI QUALE DOCUMENTO parla questa segnalazione
@@ -1882,7 +1887,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         return [
             AttivitaDaFatturare(
                 id=int(row[0]),
-                articolo_id=None if row[1] is None else str(row[1]),
+                # NOT NULL a DB (`attivita_fatturabili.articolo_id`).
+                articolo_id=str(row[1]),
                 quantita=row[2],
                 prezzo_unitario=row[3],
                 uom_id=None if row[4] is None else int(row[4]),
@@ -3159,7 +3165,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         }
 
     # Scopo: Gestisce `build_fattura_key` nel flusso applicativo del modulo.
-    def build_fattura_key(self, attivita_id: int) -> dict[str, object]:
+    def build_fattura_key(self, attivita_id: int) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT vendite.fn_build_fattura_key(%s)",
@@ -3418,7 +3424,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         # di NULL i piu' corti. Un disallineamento fra questi array produrrebbe
         # quindi righe di fattura silenziosamente sbagliate — non un errore.
         # Verificato su PG 18: `unnest(ARRAY[1,2,3], ARRAY[10,20])` -> 3 righe.
-        righe = {
+        righe: dict[str, list[Any]] = {
             "fattura_ids": righe_fattura_ids, "nrs": righe_nrs,
             "articolo_ids": righe_articolo_ids, "descrizioni": righe_descrizioni,
             "uom_ids": righe_uom_ids, "qtas": righe_qtas,
@@ -3434,7 +3440,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             "competenze_dal": righe_competenze_dal,
             "competenze_al": righe_competenze_al,
         }
-        att = {
+        att: dict[str, list[Any]] = {
             "att_ids": att_ids, "att_fattura_ids": att_fattura_ids,
             "att_riga_nrs": att_riga_nrs,
         }

@@ -194,7 +194,7 @@ def resolve_filtri_export_label(
 
 
 # Scopo: Dettaglio testata DDT + capability (righe lette a parte via /righe/).
-def get_ddt(ddt_id: int) -> dict[str, object]:
+def get_ddt(ddt_id: int) -> dict[str, Any]:
     repo = DdtRepository()
     testata = _get_testata_or_raise(repo, ddt_id, op="get_ddt")
     # Capability data-driven da script.fn_available_actions_ddt (matrice
@@ -461,7 +461,7 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
 #        il service non duplica il grafo. Alla transizione a EMESSO il DB
 #        assegna il `numero` (trgfn_ddt_gen_numero_emesso) e scatta il guard
 #        approvazione componenti BoM.
-def cambia_stato(ddt_id: int, stato_codice: str) -> dict[str, Any]:
+def cambia_stato(ddt_id: int, stato_codice: str | None) -> dict[str, Any]:
     repo = DdtRepository()
     # Guard esistenza leggero: serve solo lo stato corrente, non la testata
     # completa (vista + JOIN); la validazione della coppia e' del trigger DB.
@@ -470,7 +470,9 @@ def cambia_stato(ddt_id: int, stato_codice: str) -> dict[str, Any]:
         code="E_DDT_NOT_FOUND", message="DDT non trovato.",
         id_name="ddt_id", function_name=f"{_FN}.cambia_stato",
     )
-    target = (stato_codice or "").strip()
+    # Un valore non testuale (un numero nel JSON) e' «stato mancante», un 400:
+    # fino al 2026-10-09 `.strip()` su un int era un 500.
+    target = stato_codice.strip() if isinstance(stato_codice, str) else ""
     ErrorManager.require(
         bool(target),
         code="E_DDT_VALIDAZIONE",
@@ -1052,6 +1054,7 @@ def _resolve_prezzo_riga(
         function_name=fn,
     )
     emittente_sr_id = _resolve_emittente_sr_id(repo, testata)
+    assert uom_id is not None
     result = PricingService().resolve_prezzo_esito(
         articolo_id=articolo_id,
         uom_id=int(uom_id),

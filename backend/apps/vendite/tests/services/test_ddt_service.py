@@ -354,6 +354,16 @@ class DdtCambiaStatoTests(SimpleTestCase):
         repo.get_stato_id_by_codice.assert_called_once_with("SPEDITO")
         repo.update_stato.assert_called_once_with(7, 6)
 
+    # Un numero nel JSON al posto del codice e' un 400, non un 500 (2026-10-09).
+    @patch(_REPO)
+    def test_cambia_stato_codice_non_testo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.cambia_stato(7, 5)  # type: ignore[arg-type]
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        repo.update_stato.assert_not_called()
+
     @patch(_REPO)
     def test_cambia_stato_codice_vuoto(self, repo_cls) -> None:
         repo = repo_cls.return_value

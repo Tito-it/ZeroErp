@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import uuid as uuid_mod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -26,9 +26,8 @@ from apps.core.services.parameter_service import ParameterService
 from apps.core.services.payload_helpers import MISSING, PayloadValidator, translate_db_errors
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
-from apps.amm_software.constants import DEFAULT_SESSO
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
-from apps.amm_software.types import CredenzialePerEmailRow
+from apps.amm_software.types import CredenzialePerEmailRow, OperatoreDetailRow
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
 E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
@@ -222,6 +221,10 @@ class AmmSoftwareService:
             ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio per soggetto nuovo.", context={"field": "cognome"})
             ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.", context={"field": "nome"})
             ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.", context={"field": "codice_fiscale"})
+            # ⛔ Mai un default silenzioso (decisione di Tid, 2026-10-09): un
+            #    sesso lo propone il form, a video; qui si pretende. Fino a quel
+            #    giorno valeva `DEFAULT_SESSO = "M"` anche se il client taceva.
+            ErrorManager.require(payload.get("sesso") in ("M", "F"), code=E_AMM_VALIDAZIONE, message="Sesso obbligatorio per soggetto nuovo (M o F).", context={"field": "sesso"})
 
         # Contract Fase 7: il caller passa `is_super_admin` (default False).
         # Il caller non puo' creare DISABILITATI via questo endpoint: la
@@ -241,7 +244,8 @@ class AmmSoftwareService:
             qualifica_id=qualifica_id,  # type: ignore[arg-type]
             unita_organizzativa_id=int(payload["unita_organizzativa_id"]) if payload.get("unita_organizzativa_id") else None,
             data_nascita=payload.get("data_nascita"),
-            sesso=payload.get("sesso", DEFAULT_SESSO),
+            # Col soggetto esistente (flusso B) il DB non lo legge.
+            sesso=payload.get("sesso") if not soggetto_id else None,
             is_super_admin=is_super_admin,
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),
@@ -250,7 +254,7 @@ class AmmSoftwareService:
             indirizzo_domfisc_dettaglio_id=optional_int(payload, "indirizzo_domfisc_dettaglio_id"),
             riusa_auth_user_id=optional_int(payload, "riusa_auth_user_id"),
         )
-        dettaglio = self._repo.get_operatore_detail(creato["auth_user_id"]) or {}
+        dettaglio: Mapping[str, Any] = self._repo.get_operatore_detail(creato["auth_user_id"]) or {}
         return {**dettaglio, "credenziale_riusata": creato["credenziale_riusata"]}
 
     # Scopo: Dettaglio operatore con validazione esistenza.
@@ -261,7 +265,7 @@ class AmmSoftwareService:
     #    utente tecnico la troverebbero (dal 2026-10-02 la sua veste e'
     #    `OPERATORE` con `tecnica`, e non la distingue piu' la risorsa umana).
     #    Fermerebbero un processo automatico all'insaputa del suo pannello (A-6).
-    def get_operatore(self, auth_user_id: int) -> dict[str, Any]:
+    def get_operatore(self, auth_user_id: int) -> OperatoreDetailRow:
         operatore = None
         if self._repo.get_categoria_accesso(auth_user_id) == CATEGORIA_ACCESSO_OPERATORE:
             operatore = self._repo.get_operatore_detail(auth_user_id)
@@ -278,7 +282,7 @@ class AmmSoftwareService:
     # presente da solo (NO-OP per il flag mancante). Il guard "ultimo super
     # admin" e' centralizzato sul trigger DB; il service traduce l'errore in
     # `E_PROFILO_ULTIMO_SUPER_ADMIN`.
-    def update_operatore(self, auth_user_id: int, payload: dict) -> dict[str, Any]:
+    def update_operatore(self, auth_user_id: int, payload: dict) -> OperatoreDetailRow | dict[str, Any]:
         ErrorManager.require(
             "ruolo_sistema" not in payload,
             code=E_AMM_VALIDAZIONE,
@@ -387,7 +391,7 @@ class AmmSoftwareService:
     # trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
     # che intercetta anche le race tra sessioni: traduciamo l'errore in
     # `E_PROFILO_ULTIMO_SUPER_ADMIN`.
-    def disabilita_operatore(self, auth_user_id: int) -> dict[str, Any]:
+    def disabilita_operatore(self, auth_user_id: int) -> OperatoreDetailRow | dict[str, Any]:
         operatore = self.get_operatore(auth_user_id)
         # ⛔ `disable_reason` e' un CODICE (`ULTIMO_SUPER_ADMIN`, §16 del
         #    brief blocco-login), non una spiegazione: non si ricopia nel
@@ -655,7 +659,7 @@ class AmmSoftwareService:
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         raw = ParameterService().get_defaults(
             list(_EMITTENTE_FORM_DEFAULTS_CODES),
             django_user_id=django_user_id,
@@ -688,7 +692,7 @@ class AmmSoftwareService:
     #        al CHECK constraint sulla colonna `rounding_policy`.
     #        L'invariante "descrizioni copre l'enum" e' garantita dal test
     #        `test_list_emittente_rounding_modes_coverage` (CI), non a runtime.
-    def list_emittente_rounding_modes(self) -> list[dict[str, object]]:
+    def list_emittente_rounding_modes(self) -> list[dict[str, Any]]:
         return [
             {"codice": codice, "descrizione": descrizione, "ordering": ordering}
             for codice, descrizione, ordering in _ROUNDING_MODE_DESCRIZIONI_EMITTENTE

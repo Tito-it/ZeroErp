@@ -11,7 +11,7 @@
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import date
 from decimal import Decimal
@@ -57,6 +57,7 @@ from apps.vendite.services._indirizzi_documento_helpers import (
     upsert_indirizzo_documento,
 )
 from apps.vendite.db.preventivi_repository import PreventiviRepository
+from apps.vendite.types import PreventivoDetailRow
 from apps.vendite.services._approvazioni_prezzo_constants import (
     STATO_APPROVAZIONE_APPROVED,
     STATO_APPROVAZIONE_PENDING,
@@ -133,7 +134,7 @@ _V_RIGA = PayloadValidator(validation_code="E_PREV_VALIDAZIONE")
 #        `testata_o_not_found`, stesso nome del helper di ordini e DDT).
 def _get_testata_or_raise(
     repo: PreventiviRepository, preventivo_id: int, *, op: str,
-) -> dict[str, Any]:
+) -> PreventivoDetailRow:
     return testata_o_not_found(
         repo.get_preventivo, preventivo_id,
         code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
@@ -209,7 +210,7 @@ def list_preventivi(
     page_size: int = DEFAULT_LIMIT,
     order_by: str = "data",
     order_dir: str = "desc",
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         page >= 1 and 1 <= page_size <= MAX_LIMIT,
         code="E_PREV_VALIDAZIONE",
@@ -272,7 +273,7 @@ def resolve_filtri_export_label(
 #        non_editable_fields) sono calcolate da script.fn_available_actions_preventivo
 #        e viaggiano SOTTO `capabilities` (api.md §«Il blob sta SOTTO
 #        `capabilities`», 2026-09-23).
-def get_preventivo(preventivo_id: int) -> dict[str, object]:
+def get_preventivo(preventivo_id: int) -> dict[str, Any]:
     repo = PreventiviRepository()
     testata = _get_testata_or_raise(repo, preventivo_id, op="get_preventivo")
     indirizzi = repo.list_indirizzi(preventivo_id)
@@ -518,6 +519,7 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_preventivo",
     )
 
+    assert utility_id is not None
     billing_account_id, istanza_utility_id = _risolvi_cliente_preventivo(
         billing_account_id=payload.get("billing_account_id"),
         istanza_utility_id=payload.get("istanza_utility_id"),
@@ -960,6 +962,7 @@ def gestisci_riga(
         message="articolo_id obbligatorio.",
         function_name=f"{_FN}.gestisci_riga",
     )
+    assert articolo_id is not None
 
     # Validazione vincoli economici (prezzo >= 0, quantita > 0) prima del
     # resolver: anticipa i CHECK DB con messaggio parlante.
@@ -1467,7 +1470,7 @@ def _validate_riga_economic(payload: dict[str, Any], *, function_name: str) -> N
 #        tutti i call site dei test continuano a funzionare senza modifica.
 def _resolve_or_check_override_prezzo(
     *,
-    testata: dict[str, Any],
+    testata: Mapping[str, Any],
     articolo_id: Any,
     uom_id: Any,
     payload_prezzo: Any,
@@ -1521,7 +1524,9 @@ def _resolve_emittente_sr_id_or_raise(
 ) -> int:
     user_model = get_user_model()
     try:
-        user = user_model.objects.get(pk=auth_user_id)
+        # `pk=None` e' ammesso da Django (diventa `IS NULL`, nessuna riga ->
+        # DoesNotExist, gestito sotto): e' lo stub a non accettare None.
+        user = user_model.objects.get(pk=auth_user_id)  # type: ignore[misc]  # pk=None -> DoesNotExist
     except user_model.DoesNotExist:
         ErrorManager.raise_error(
             code="E_PREV_VALIDAZIONE",
@@ -1549,8 +1554,9 @@ def _resolve_emittente_sr_id_or_raise(
 def suggerisci_prezzo_riga(
     preventivo_id: int,
     *,
-    articolo_id: str,
-    uom_id: int,
+    # Opzionali: il service li valida da se' (require / guard qui sotto).
+    articolo_id: str | None,
+    uom_id: int | None,
     auth_user_id: int | None,
 ) -> dict[str, Any]:
     from apps.vendite.services.pricing_service import PricingService
@@ -1587,6 +1593,7 @@ def suggerisci_prezzo_riga(
         message="Preventivo senza utility: impossibile risolvere il prezzo.",
         function_name=function_name,
     )
+    assert testata["billing_account_id"] is not None
 
     # Emittente dell'operatore: PermissionResolver ritorna lista (o None=admin).
     # Prendiamo il primo disponibile: per operatori 1-a-1 e' sempre univoco.
@@ -1610,6 +1617,8 @@ def suggerisci_prezzo_riga(
     # Delega al building block centrale. Gli errori di dominio
     # (E_CATEGORIA_LISTINO_NON_MAPPATA ecc.) sono tradotti dal service
     # e propagati al chiamante come ServiceError.
+    # I due require in testa (articolo_id, guard_uom_id_positive) li garantiscono.
+    assert articolo_id is not None and uom_id is not None
     result = PricingService().resolve_prezzo(
         articolo_id=articolo_id,
         uom_id=int(uom_id),

@@ -1,3 +1,4 @@
+from typing import Any
 from datetime import date
 
 from django.http import HttpResponse, JsonResponse
@@ -106,6 +107,7 @@ from apps.vendite.services.vendite_service import (
     get_lotto_giornale,
     get_giornale_trasversale,
 )
+from apps.vendite.types import AnnullaLottoDaDraftResult, EliminaFatturaDaLottoResult
 
 # View API vendite: espone endpoint HTTP per avviare pipeline lotto.
 
@@ -113,7 +115,7 @@ from apps.vendite.services.vendite_service import (
 # Scopo: Estrae i kwargs comuni della pipeline lotto dal payload JSON. Condiviso da
 #        ApiRunLottoPipeline (single step) e ApiRunLottoPipelineUntilDone (driver),
 #        per evitare duplicazione/disallineamento dei parametri.
-def _run_lotto_kwargs(payload: dict[str, object]) -> dict[str, object]:
+def _run_lotto_kwargs(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "lotto_id": optional_int(payload, "lotto_id", zero_as_none=True),
         "competenza_mese": optional_iso_date(payload, "competenza_mese"),
@@ -212,7 +214,7 @@ class ApiRunLottoPipeline(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
     def post(self, request: Request) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             lotto_id = run_lotto_pipeline(**_run_lotto_kwargs(payload))
             return {"lotto_id": lotto_id, "status": "ok"}
 
@@ -267,7 +269,7 @@ class ApiRunLottoPipelineUntilDone(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST: esegue il driver fino a conclusione.
     def post(self, request: Request) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return run_lotto_pipeline_until_done(**_run_lotto_kwargs(payload))
 
         # Pattern condiviso: JSON parse + envelope errori centralizzato.
@@ -390,7 +392,7 @@ class ApiLottoSegnalazioniExport(DomainAPIView):
         # Formato PRIMA della query: su formato invalido non si paga il fetch.
         fmt = parse_export_format(request)
         q = request.query_params
-        filtri = {"livello": q.get("livello") or None, "origine": q.get("origine") or None}
+        filtri: dict[str, Any] = {"livello": q.get("livello") or None, "origine": q.get("origine") or None}
         data = fn_list_lotto_segnalazioni(
             lotto_id=lotto_id,
             **filtri,
@@ -561,6 +563,9 @@ class ApiLottoTaskRuns(DomainAPIView):
             {"page_size": q.get("page_size") or q.get("limit") or str(DEFAULT_LIMIT_EVENTI)}, "page_size"
         )
         offset = optional_int({"offset": q.get("offset", "0")}, "offset")
+        # Col default il parametro non manca mai, e un valore non intero e' gia'
+        # un 400 di `optional_int`: None qui non puo' arrivare.
+        assert page_size is not None and offset is not None
         data = fn_get_lotto_task_runs(
             lotto_id=lotto_id,
             page_size=page_size,
@@ -617,7 +622,7 @@ class ApiResetLottoDraft(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> AnnullaLottoDaDraftResult:
             result = fn_annulla_lotto_da_draft(lotto_id=lotto_id)
             return result
 
@@ -676,7 +681,7 @@ class ApiRiportaLottoADraft(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return dict(fn_riporta_lotto_a_draft(lotto_id=lotto_id))
 
         return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -731,7 +736,7 @@ class ApiResetLottoFatturaDraft(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
     def post(self, request: Request, lotto_id: int, fattura_id: int) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> EliminaFatturaDaLottoResult:
             result = fn_elimina_fattura_da_lotto(lotto_id=lotto_id, fattura_id=fattura_id)
             return result
 
@@ -831,7 +836,7 @@ class ApiEscludiDocumentiDaGiro(DomainAPIView):
     # Scopo: Gestisce la richiesta HTTP POST del relativo endpoint API.
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
         # Scopo: Gestisce la logica interna del caso d'uso richiamato dall'endpoint.
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             # ⛔ NESSUNA NORMALIZZAZIONE, e nemmeno un `str()` di comodo: il
             #    `CHECK` di tabella rifiuta anche i soli spazi, e sistemarlo qui
             #    trasformerebbe un rifiuto in un motivo vuoto scritto. Il TIPO
@@ -973,6 +978,9 @@ class ApiLottiList(DomainAPIView):
 
         page = optional_int({"page": request.query_params.get("page", "1")}, "page")
         page_size = optional_int({"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size")
+        # Col default il parametro non manca mai, e un valore non intero e' gia'
+        # un 400 di `optional_int`: None qui non puo' arrivare.
+        assert page is not None and page_size is not None
 
         data = fn_list_lotti(
             **filtri,
@@ -1276,6 +1284,7 @@ class ApiLottoFattureList(DomainAPIView):
 
         auth_user_id = get_scope_user_id(request)
 
+        assert page is not None and page_size is not None  # come in fn_list_lotti
         data = fn_list_lotto_fatture(
             lotto_id=lotto_id,
             stato_esecuzione=stato_esecuzione,
@@ -1489,7 +1498,7 @@ _PARAMS_FILTRI_GIORNALE = [
 # Scopo: i filtri del giornale trasversale dalla query string, normalizzati:
 #        csv -> liste, date ISO strict (400 se malformate), `filo` uuid (400 se
 #        non lo e'), `solo_vive` bool. Una sede per la lista e per l'export.
-def _filtri_giornale(qp) -> dict[str, object]:
+def _filtri_giornale(qp) -> dict[str, Any]:
     def _csv(raw: str | None) -> list[str] | None:
         valori = [v.strip().upper() for v in (raw or "").split(",") if v.strip()]
         return valori or None
@@ -1742,7 +1751,7 @@ class ApiRunCommessePush(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per lanciare il push commesse.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             source_types_raw = payload.get("source_types")
             source_types: list[str] | None = None
             if source_types_raw is not None:
@@ -1877,7 +1886,7 @@ class ApiCommessaStato(DomainAPIView):
     # Scopo: Azione di stato utente (chiudi/riapri/annulla) sulla commessa.
     def post(self, request: Request, commessa_id: int) -> JsonResponse:
         # Scopo: applica la transizione richiesta con difesa applicativa nel service.
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             user = getattr(request.user, "username", None) or None
             return cambia_stato_commessa(
                 commessa_id=commessa_id,
@@ -1983,14 +1992,19 @@ class ApiCommessaRegistro(DomainAPIView):
     # Scopo: Restituisce via GET il registro paginato di una commessa.
     def get(self, request: Request, commessa_id: int) -> JsonResponse:
         qp = request.query_params
+        limit = optional_int({"limit": qp.get("limit", str(DEFAULT_LIMIT_EVENTI))}, "limit")
+        offset = optional_int({"offset": qp.get("offset", "0")}, "offset")
+        # Col default il parametro non manca mai, e un valore non intero e' gia'
+        # un 400 di `optional_int`: None qui non puo' arrivare.
+        assert limit is not None and offset is not None
         return success_response(
             fn_commessa_registro(
                 commessa_id=commessa_id,
                 commessa_attivita_id=optional_int(
                     {"v": qp.get("commessa_attivita_id")}, "v",
                 ),
-                limit=optional_int({"limit": qp.get("limit", str(DEFAULT_LIMIT_EVENTI))}, "limit"),
-                offset=optional_int({"offset": qp.get("offset", "0")}, "offset"),
+                limit=limit,
+                offset=offset,
             )
         )
 
@@ -2035,6 +2049,9 @@ class ApiCommessaAttivita(DomainAPIView):
         competenza_mese = request.query_params.get("competenza_mese") or None
         limit = optional_int({"limit": request.query_params.get("limit", str(DEFAULT_LIMIT))}, "limit")
         offset = optional_int({"offset": request.query_params.get("offset", "0")}, "offset")
+        # Col default il parametro non manca mai, e un valore non intero e' gia'
+        # un 400 di `optional_int`: None qui non puo' arrivare.
+        assert limit is not None and offset is not None
         # order_by/order_dir passano al service, che li valida contro la
         # whitelist ATTIVITA_SORT_COLUMNS (specchio della fn DB).
         data = fn_list_commessa_attivita(
@@ -2095,7 +2112,7 @@ class ApiCommessaAttivitaExport(DomainAPIView):
         fmt = parse_export_format(request)
         qp = request.query_params
 
-        filtri = {
+        filtri: dict[str, Any] = {
             "stato_emissione": qp.get("stato_emissione") or None,
             "stato_approvazione": qp.get("stato_approvazione") or None,
             "competenza_mese": qp.get("competenza_mese") or None,
@@ -2174,7 +2191,7 @@ class ApiCommessaAttivitaApprova(DomainAPIView):
     # Scopo: Approva le attivita' della commessa (tutte o selezione righe_ids).
     def post(self, request: Request, commessa_id: int) -> JsonResponse:
         # Scopo: delega al service la validazione input + esistenza + approvazione.
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             user = getattr(request.user, "username", None) or None
             return approva_commessa_attivita(
                 commessa_id=commessa_id,
@@ -2242,7 +2259,7 @@ class ApiCommessaOneri(DomainAPIView):
     # Scopo: Carica un onere sulla commessa (riga di valore, qta=1, APPROVATA).
     def post(self, request: Request, commessa_id: int) -> JsonResponse:
         # Scopo: estrae il payload e delega al service; guard di dominio a DB.
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return aggiungi_onere_commessa(
                 commessa_id=commessa_id,
                 # Grezzo: la forma (UUID) e la sua assenza le valida il service,
@@ -2310,7 +2327,7 @@ class ApiFatturazioneApprovaCompetenza(DomainAPIView):
     # Scopo: Approva in massa le attivita' DA_APPROVARE del mese di competenza.
     def post(self, request: Request) -> JsonResponse:
         # Scopo: parsing payload + delega al service (validazioni e transazione).
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             user = getattr(request.user, "username", None) or None
             return approva_attivita_competenza(
                 competenza_mese=optional_iso_date(payload, "competenza_mese"),  # type: ignore[arg-type]
@@ -2375,7 +2392,7 @@ class ApiFatturazioneNumeraLotto(DomainAPIView):
     #        opzionale della data documento, poi step DEFINITIVA.
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
         # Scopo: delega al service (guard fiscale + data + esecuzione step DEFINITIVA).
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return numera_lotto(
                 lotto_id=int(lotto_id),
                 auth_user_id=get_scope_user_id(request),
@@ -2427,7 +2444,7 @@ class ApiFatturazioneRistampaLotto(DomainAPIView):
     # Scopo: Accoda le stampe del lotto (guard scope+DEFINITIVA), ritorna il conteggio.
     def post(self, request: Request, lotto_id: int) -> JsonResponse:
         # Scopo: delega al service (guard fiscale + fn_accoda_stampe_lotto).
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return ristampa_lotto(
                 lotto_id=int(lotto_id),
                 auth_user_id=get_scope_user_id(request),
@@ -2634,7 +2651,7 @@ def _query_lotti_ids(request: Request) -> list[int] | None:
 # ⚠️ E RISCRITTA, non solo controllata: `optional_iso_date` accetta piu' forme
 #    di quante il worker ne rilegga, e nel payload della coda deve finire una
 #    sola forma — quella che `parse_data_iso` sa rileggere.
-def _payload_con_data_documento(payload: dict[str, object]) -> dict[str, object]:
+def _payload_con_data_documento(payload: dict[str, Any]) -> dict[str, Any]:
     data_documento = optional_iso_date(payload, "data_documento")
     if data_documento is None:
         return payload
@@ -2669,13 +2686,13 @@ def _payload_con_data_documento(payload: dict[str, object]) -> dict[str, object]
 #        perimetro sta applicando.
 def _accoda_job_fatturazione(
     request: Request,
-    payload: dict[str, object],
+    payload: dict[str, Any],
     *,
     job_type: str,
     extra_payload_keys: tuple[str, ...] = (),
     accetta_gruppi: bool = False,
     accetta_lotti: bool = False,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     competenza = optional_iso_date(payload, "competenza_mese")
     ErrorManager.require(
         competenza is not None,
@@ -2698,7 +2715,7 @@ def _accoda_job_fatturazione(
     # Whitelist e chiave dello scope servono anche QUI, alla chiave di
     # business: dedup dei job vivi per (competenza, scope[, perimetro]).
     scope_key = str(scope["scope_key"])
-    job_payload: dict[str, object] = {"competenza_mese": competenza.isoformat()}
+    job_payload: dict[str, Any] = {"competenza_mese": competenza.isoformat()}
     for key in extra_payload_keys:
         value = payload.get(key)
         if value:
@@ -2834,7 +2851,7 @@ class ApiFatturazioneRun(DomainAPIView):
     # Scopo: Accoda il giro (transazionale) e ritorna l'handle del job.
     def post(self, request: Request) -> JsonResponse:
         # Scopo: enqueue comune + `fino_a_stato` opzionale e `gruppi` (mirata).
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return _accoda_job_fatturazione(
                 request, _payload_con_data_documento(payload),
                 job_type=JOB_TYPE_FATTURAZIONE_GIRO,
@@ -2977,7 +2994,7 @@ class ApiFatturazioneNumera(DomainAPIView):
         #    due «Rendi definitive» vivi sullo stesso mese e scope restano un
         #    doppione anche con date diverse — la dedup difende l'atto fiscale,
         #    non il parametro.
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return _accoda_job_fatturazione(
                 request, _payload_con_data_documento(payload),
                 job_type=JOB_TYPE_FATTURAZIONE_NUMERA,

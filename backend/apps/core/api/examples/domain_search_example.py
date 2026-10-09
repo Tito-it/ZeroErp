@@ -6,8 +6,8 @@
 # ------------------------------------------------------------
 from __future__ import annotations
 
+from django.http import JsonResponse
 from rest_framework.request import Request
-from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.api.pagination import StandardPageNumberPagination
@@ -21,7 +21,7 @@ class ExampleSearchEndpoint(APIView):
     is_search_endpoint = True
 
     # Scopo: Gestisce la richiesta HTTP GET del relativo endpoint API.
-    def get(self, request: Request) -> Response:
+    def get(self, request: Request) -> JsonResponse:
         term = request.query_params.get("term")
         require_min_search_length(term, field_name="term")
 

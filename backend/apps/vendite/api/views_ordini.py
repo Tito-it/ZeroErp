@@ -105,7 +105,7 @@ _ORDINE_LISTA_RESPONSE = inline_serializer(
 #        {ordine_riga_id, qta_da_evadere} in unita' operativa (qta passata
 #        intatta alla fn DB fn_genera_ddt_da_ordine).
 def _parse_righe_evasione(
-    payload: dict[str, object],
+    payload: dict[str, Any],
 ) -> list[dict[str, Any]] | None:
     righe = payload.get("righe")
     if righe is None:
@@ -605,9 +605,9 @@ _OrdineRigheLista, _OrdineRigheListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiOrdineRigheListaView(_OrdineRigheLista):
+class ApiOrdineRigheListaView(_OrdineRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.ordine_righe"
 
 
-class ApiOrdineRigheListaExportView(_OrdineRigheListaExport):
+class ApiOrdineRigheListaExportView(_OrdineRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.ordine_righe"

@@ -26,6 +26,7 @@ from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.core.services.service_errors import ServiceError
+from apps.core.services.testata_guard import o_not_found
 
 logger = logging.getLogger("zeroerp.email")
 
@@ -45,6 +46,15 @@ DRAFT_EDITABILI: frozenset[str] = frozenset({
 #    fa rispettare usa il codice del DB»).
 E_EMAIL_ALLEGATO_NON_BOZZA = "E_EMAIL_ALLEGATO_NON_BOZZA"
 
+# ⭐ Le condizioni che `E_OUTBOX` accumulava e che non sono dati errati
+#    (brief-db-codici-non-trovato-email-e-permessi §2 e §4, 2026-10-08):
+#    `E_OUTBOX` resta per i soli dati errati (campi, tipo e dimensione file).
+#    Fuori perimetro RLS e inesistente escono uguali: il 404 non rivela le
+#    bozze degli altri.
+E_EMAIL_BOZZA_NOT_FOUND = "E_EMAIL_BOZZA_NOT_FOUND"
+E_EMAIL_NON_BOZZA = "E_EMAIL_NON_BOZZA"
+E_EMAIL_ACCOUNT_NON_CONFIGURATO = "E_EMAIL_ACCOUNT_NON_CONFIGURATO"
+
 ALLOWED_MIME_TYPES = frozenset({
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -57,6 +67,19 @@ ALLOWED_MIME_TYPES = frozenset({
     "text/plain",
     "text/csv",
 })
+
+
+# Scopo: «La mail e' ancora in bozza», o 409 `E_EMAIL_NON_BOZZA`. Una sede
+#        per i tre verbi che la chiedono (modifica, invio, annullo: regola del
+#        2, ok Tid 2026-10-09). Gli allegati hanno il loro codice, quello del
+#        database (`E_EMAIL_ALLEGATO_NON_BOZZA`), e non passano di qui.
+def _richiedi_bozza(outbox: dict[str, Any]) -> None:
+    ErrorManager.require(
+        outbox["stato"] == "DRAFT",
+        code=E_EMAIL_NON_BOZZA,
+        message=USER_MESSAGE_FALLBACK[E_EMAIL_NON_BOZZA],
+        detail=f"email_outbox_id={outbox.get('id')} stato={outbox['stato']}",
+    )
 
 
 def _get_max_size_bytes() -> int:
@@ -76,6 +99,20 @@ class EmailOutboxService:
     def __init__(self) -> None:
         self._repo = EmailRepository()
         self._dispatch = EmailDispatchService()
+
+    # Scopo: La bozza per id, o 404 `E_EMAIL_BOZZA_NOT_FOUND` (id inesistente
+    #        o fuori perimetro RLS: per il client la stessa cosa). ⭐ Sede unica
+    #        della lettura «bozza o non trovato» (regola del 2, ok Tid
+    #        2026-10-09): la usano i verbi qui sotto e le view che leggono la
+    #        bozza senza un verbo (dettaglio, lista allegati). ⛔ Una view che
+    #        chiama un verbo NON la rilegge prima: il controllo lo fa il verbo.
+    def get_bozza(self, outbox_id: int) -> dict[str, Any]:
+        return o_not_found(
+            self._repo.get_outbox(outbox_id),
+            code=E_EMAIL_BOZZA_NOT_FOUND,
+            message=USER_MESSAGE_FALLBACK[E_EMAIL_BOZZA_NOT_FOUND],
+            detail=f"email_outbox_id={outbox_id}",
+        )
 
     # Scopo: Prepara una bozza email risolvendo template e account, pre-compilando
     #        oggetto e corpo con le variabili fornite. La bozza e' editabile.
@@ -136,10 +173,8 @@ class EmailOutboxService:
     #    si dice qui, prima. `destinatari_cc` va a una colonna `text[]`: lista
     #    di stringhe o null, altrimenti il cast del DB sarebbe un 500.
     def update_draft(self, outbox_id: int, **kwargs: Any) -> dict[str, Any]:
-        outbox = self._repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_OUTBOX, message="Bozza non trovata.")
-        assert outbox is not None
-        ErrorManager.require(outbox["stato"] == "DRAFT", code=E_OUTBOX, message="Solo bozze DRAFT sono modificabili.")
+        outbox = self.get_bozza(outbox_id)
+        _richiedi_bozza(outbox)
 
         PayloadValidator(validation_code=E_OUTBOX).validate_allowed_keys(
             kwargs, allowed=DRAFT_EDITABILI, message="Campi della bozza non modificabili.",
@@ -159,13 +194,8 @@ class EmailOutboxService:
     # Scopo: Conferma e invia una bozza via send_raw pubblico di EmailDispatchService.
     #        Crea email_log, copia allegati, aggiorna stato outbox.
     def confirm_and_send(self, outbox_id: int) -> dict[str, Any]:
-        outbox = self._repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_OUTBOX, message="Bozza non trovata.")
-        assert outbox is not None
-        ErrorManager.require(
-            outbox["stato"] == "DRAFT",
-            code=E_OUTBOX, message="Solo bozze DRAFT possono essere inviate.",
-        )
+        outbox = self.get_bozza(outbox_id)
+        _richiedi_bozza(outbox)
 
         # Risolvi account per invio.
         # ⛔ PRIMA di portare a READY, non dopo: READY e' committato subito
@@ -174,7 +204,14 @@ class EmailOutboxService:
         #    restava READY — ne' rinviabile ne' annullabile (analisi difetti
         #    doc API core, F-1).
         account = self._repo.resolve_account(outbox.get("unita_organizzativa_id"))
-        ErrorManager.require(account is not None, code=E_OUTBOX, message="Nessun account email configurato.")
+        # ⚠️ 500, non 400: manca un pezzo di configurazione e chi invia non
+        #    puo' rimediare (brief-db-codici-non-trovato-email-e-permessi §4).
+        ErrorManager.require(
+            account is not None,
+            code=E_EMAIL_ACCOUNT_NON_CONFIGURATO,
+            message=USER_MESSAGE_FALLBACK[E_EMAIL_ACCOUNT_NON_CONFIGURATO],
+            detail=f"unita_organizzativa_id={outbox.get('unita_organizzativa_id')}",
+        )
         assert account is not None
 
         # Porta a READY
@@ -272,10 +309,8 @@ class EmailOutboxService:
     # ⚠️ I file si cancellano DOPO il commit: se la transazione fallisce le
     #    righe restano, e devono trovare il loro file.
     def cancel_draft(self, outbox_id: int) -> dict[str, Any]:
-        outbox = self._repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_OUTBOX, message="Bozza non trovata.")
-        assert outbox is not None
-        ErrorManager.require(outbox["stato"] == "DRAFT", code=E_OUTBOX, message="Solo bozze DRAFT annullabili.")
+        outbox = self.get_bozza(outbox_id)
+        _richiedi_bozza(outbox)
 
         with transaction.atomic():
             file_paths = self._repo.delete_allegati_by_outbox(outbox_id)
@@ -292,9 +327,7 @@ class EmailOutboxService:
         file_content: bytes,
         mime_type: str,
     ) -> dict[str, Any]:
-        outbox = self._repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_OUTBOX, message="Bozza non trovata.")
-        assert outbox is not None
+        outbox = self.get_bozza(outbox_id)
         ErrorManager.require(
             outbox["stato"] == "DRAFT",
             code=E_EMAIL_ALLEGATO_NON_BOZZA,

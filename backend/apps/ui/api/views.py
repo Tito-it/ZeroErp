@@ -20,6 +20,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -177,7 +179,7 @@ class ApiListaPreferenzaView(DomainAPIView):
     #        per rispettare il pattern api.md su modifiche di stato
     #        ripetibili da retry FE.
     def put(self, request: Request, codice: str) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return ListaPreferenzaService().upsert(
                 request.user, codice, dict(payload),
             )
@@ -219,7 +221,7 @@ class ApiListaIgnorePresetUpdateView(DomainAPIView):
     )
     # Scopo: Setta il tombstone "ignore" del banner DEF-2 per (user, lista).
     def post(self, request: Request, codice: str) -> JsonResponse:
-        def _handler(_payload: dict[str, object]) -> dict[str, object]:
+        def _handler(_payload: dict[str, Any]) -> dict[str, Any]:
             return ListaPreferenzaService().ignore_preset_update(
                 request.user, codice,
             )

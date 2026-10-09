@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
+from typing import Any
 from django.core.exceptions import ImproperlyConfigured
 
 # Scopo: Gestisce `env` nel flusso applicativo del modulo.
@@ -436,7 +437,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # --- Cache ---
 # In CI/test senza Redis usa LocMemCache (CACHE_BACKEND=locmem)
 if env("CACHE_BACKEND", "") == "locmem":
-    CACHES = {
+    CACHES: dict[str, dict[str, Any]] = {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "KEY_PREFIX": "zeroerp",

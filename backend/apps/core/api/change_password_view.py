@@ -36,6 +36,7 @@ from apps.core.services.auth_helpers import (
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.password_con_freno import verifica_password_con_freno
 from apps.core.services.request_context import richiesta_django
+from apps.core.api.endpoint_helpers import utente_autenticato
 
 logger = logging.getLogger("security")
 
@@ -69,7 +70,7 @@ class ChangePasswordView(DomainAPIView):
     #    sicurezza §2, 2026-09-28): il corpo porta il solo `access`.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
-            user = request.user
+            user = utente_autenticato(request)
 
             old_password = password_digitata(payload, "old_password")
             new_password = password_digitata(payload, "new_password")

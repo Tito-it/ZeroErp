@@ -28,6 +28,9 @@ Indice test eseguiti:
 17) test_create_account_chiave_estranea_rifiutata — POST account fuori contratto → 400, prima scartata
 18) test_create_template_passa — POST template con le chiavi del contratto → create_template
 19) test_create_template_chiave_estranea_rifiutata — POST template fuori contratto → 400
+20) test_account_inesistente_e_404_da_ogni_verbo — dettaglio, modifica, eliminazione, test → E_EMAIL_ACCOUNT_NOT_FOUND
+21) test_template_inesistente_e_404_da_ogni_verbo — dettaglio, modifica, eliminazione, anteprima → E_EMAIL_TEMPLATE_NOT_FOUND
+22) test_log_inesistente_e_404 — dettaglio log → E_EMAIL_LOG_NOT_FOUND
 """
 
 import json
@@ -40,8 +43,10 @@ from apps.amm_software.api.email_views import (
     EmailAccountTestView,
     EmailTemplateDetailView,
     EmailTemplateListView,
+    EmailLogDetailView,
     EmailTemplatePreviewView,
 )
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.error_manager import ServiceError
 
 
@@ -488,3 +493,87 @@ class TestEmailTemplatePreviewSanitize(TestCase):
 
         body = json.loads(response.content)
         self.assertEqual(body["data"]["oggetto"], "Re: 1 < 2")
+
+
+# =================================================================
+# I «non trovato» dell'amministrazione email — brief-db-codici-non-trovato-
+# email-e-permessi §2: 404 col codice dell'entita', non 400 `E_EMAIL_ADMIN`.
+# =================================================================
+
+
+# Scopo: Il codice con cui una chiamata rifiuta: dall'eccezione (GET, PATCH,
+#        DELETE sollevano) o dall'envelope (le POST passano da handle_post_json).
+def _codice_del_rifiuto(chiama) -> str:
+    try:
+        response = chiama()
+    except ServiceError as exc:
+        return exc.code
+    return json.loads(response.content)["error"]["code"]
+
+
+class TestEmailAdminNonTrovato(TestCase):
+
+    def _view(self, cls):
+        view = cls()
+        view.check_permissions = MagicMock()
+        return view
+
+    def _patch_request(self, body: dict) -> MagicMock:
+        request = _admin_request("PATCH")
+        request.data = body
+        return request
+
+    @patch(DISPATCH_PATH)
+    @patch(REPO_PATH)
+    def test_account_inesistente_e_404_da_ogni_verbo(self, mock_repo_cls, mock_dispatch_cls) -> None:
+        # Scopo: ogni verbo sull'account passa dalla stessa sede, e nessuno
+        # scrive: l'eliminazione legge prima di cancellare.
+        repo = mock_repo_cls.return_value
+        repo.get_account.return_value = None
+        view = self._view(EmailAccountDetailView)
+        verbi = {
+            "dettaglio": lambda: view.get(_admin_request(), 9),
+            "modifica": lambda: view.patch(self._patch_request({"descrizione": "X"}), 9),
+            "eliminazione": lambda: view.delete(_admin_request("DELETE"), 9),
+            "test": lambda: self._view(EmailAccountTestView).post(_admin_request("POST"), 9),
+        }
+        for nome, chiama in verbi.items():
+            with self.subTest(verbo=nome):
+                codice = _codice_del_rifiuto(chiama)
+                self.assertEqual(codice, "E_EMAIL_ACCOUNT_NOT_FOUND")
+                self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 404)
+        repo.update_account.assert_not_called()
+        repo.delete_account.assert_not_called()
+
+    @patch(DISPATCH_PATH)
+    @patch(REPO_PATH)
+    def test_template_inesistente_e_404_da_ogni_verbo(self, mock_repo_cls, mock_dispatch_cls) -> None:
+        # Scopo: come per l'account, sui quattro verbi del template.
+        repo = mock_repo_cls.return_value
+        repo.get_template.return_value = None
+        view = self._view(EmailTemplateDetailView)
+        anteprima = _admin_request("POST", body={"variabili": {}})
+        verbi = {
+            "dettaglio": lambda: view.get(_admin_request(), 9),
+            "modifica": lambda: view.patch(self._patch_request({"oggetto": "X"}), 9),
+            "eliminazione": lambda: view.delete(_admin_request("DELETE"), 9),
+            "anteprima": lambda: self._view(EmailTemplatePreviewView).post(anteprima, 9),
+        }
+        for nome, chiama in verbi.items():
+            with self.subTest(verbo=nome):
+                codice = _codice_del_rifiuto(chiama)
+                self.assertEqual(codice, "E_EMAIL_TEMPLATE_NOT_FOUND")
+                self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 404)
+        repo.update_template.assert_not_called()
+        repo.delete_template.assert_not_called()
+
+    @patch(REPO_PATH)
+    def test_log_inesistente_e_404(self, mock_repo_cls) -> None:
+        # Scopo: l'id del log lo sceglie l'amministratore: 404, non il 500 di
+        # `E_EMAIL_LOG_INESISTENTE` (quello e' l'id scritto dal backend).
+        mock_repo_cls.return_value.get_log.return_value = None
+        codice = _codice_del_rifiuto(
+            lambda: self._view(EmailLogDetailView).get(_admin_request(), 9),
+        )
+        self.assertEqual(codice, "E_EMAIL_LOG_NOT_FOUND")
+        self.assertEqual(ErrorPolicyRegistry.resolve(codice).http_status, 404)

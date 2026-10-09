@@ -888,6 +888,8 @@ def fetch_paged_with_total(
                 cursor.execute(*rilettura)
                 _, total_count = extract_paginated(cursor)
             else:
+                # Senza rilettura c'e' sempre il conteggio dato (vedi sopra).
+                assert fallback_count_sql is not None
                 cursor.execute(fallback_count_sql, fallback_params or [])
                 row = cursor.fetchone()
                 total_count = row[0] if row else 0

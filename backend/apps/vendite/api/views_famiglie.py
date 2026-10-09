@@ -284,6 +284,7 @@ class ApiFamigliaAttivo(AdminAPIView):
             message="Il campo `attivo` è obbligatorio e deve essere booleano.",
             context={"field": "attivo"},
         )
+        assert isinstance(attivo, bool)
         return success_response(
             FamiglieDocumentoService().set_attivo(famiglia_id, attivo),
         )

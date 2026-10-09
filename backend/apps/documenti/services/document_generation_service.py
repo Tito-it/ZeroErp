@@ -704,6 +704,7 @@ class DocumentGenerationService:
             ),
             detail=f"documento_id={documento_id}",
         )
+        assert versione_id is not None
         versione = self._repo.get_versione_by_id(int(versione_id))
         ErrorManager.require(
             versione is not None,

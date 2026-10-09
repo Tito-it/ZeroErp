@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 
 # Whitelist enum gia' presenti nei service di dominio (single source of truth):
 #   - contratti_service._TIPI_VARIAZIONE  -> qui rinominato per contesto
@@ -54,7 +56,7 @@ _AMBITI_CONTRATTO: tuple[tuple[str, str, int], ...] = (
 # (`listino_id` valorizzato vs NULL). Nessun endpoint la espone.
 
 
-def _to_payload(rows: tuple[tuple[str, str, int], ...]) -> list[dict[str, object]]:
+def _to_payload(rows: tuple[tuple[str, str, int], ...]) -> list[dict[str, Any]]:
     # Scopo: trasforma tuple (codice, descrizione, ordering) in dict pronti
     #        per success_response, allineato a fn_list_uom_rounding_modes.
     return [
@@ -64,17 +66,17 @@ def _to_payload(rows: tuple[tuple[str, str, int], ...]) -> list[dict[str, object
 
 
 # Scopo: lista tipi_variazione ammessi per contratti.
-def fn_list_tipi_variazione_contratto() -> list[dict[str, object]]:
+def fn_list_tipi_variazione_contratto() -> list[dict[str, Any]]:
     return _to_payload(_TIPI_VARIAZIONE_CONTRATTO)
 
 
 # Scopo: lista tipi_variazione ammessi per promo articoli (include PREZZO_FISSO).
-def fn_list_tipi_variazione_promo() -> list[dict[str, object]]:
+def fn_list_tipi_variazione_promo() -> list[dict[str, Any]]:
     return _to_payload(_TIPI_VARIAZIONE_PROMO)
 
 
 # Scopo: lista ambiti ammessi per contratti.
-def fn_list_ambiti_contratto() -> list[dict[str, object]]:
+def fn_list_ambiti_contratto() -> list[dict[str, Any]]:
     return _to_payload(_AMBITI_CONTRATTO)
 
 
@@ -88,7 +90,7 @@ def fn_list_ambiti_contratto() -> list[dict[str, object]]:
 #        brief-db-offerta-emissione-ed-erogazione).
 def fn_list_listini_selezionabili(
     utility_id: int | None, emittente_fiscale_id: int | None,
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     from apps.vendite.db.listini_repository import ListiniRepository
 
     return ListiniRepository().list_lookup_selezionabili(

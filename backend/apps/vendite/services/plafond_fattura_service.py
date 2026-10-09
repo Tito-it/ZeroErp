@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import logging
 from decimal import Context, Decimal
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 from django.db import transaction
 
@@ -221,7 +221,10 @@ class PlafondFatturaService:
             titolo_iva_id=titolo_iva_id,
             fattura_id=fattura_id,
             fattura_riga_ids=[int(r["id"]) for r in righe],
-            imponibili=[_dec(r.get("imponibile_riga")) for r in righe],
+            # `fatture_righe.imponibile_riga` e' NOT NULL: `_dec` qui non da' None.
+            imponibili=cast(
+                list[Decimal], [_dec(r.get("imponibile_riga")) for r in righe],
+            ),
             data_movimento=ctx["data_riferimento"],
         )
         quote = {int(e["fattura_riga_id"]): e for e in esiti}
@@ -344,12 +347,11 @@ class PlafondFatturaService:
         qta_residua = qta_totale - qta_coperta
 
         kit_qta = _dec(riga.get("kit_qta"))
-        kit_qta_coperta = (
-            None if kit_qta is None else _ESATTO.multiply(kit_qta, frazione)
-        )
-        kit_qta_residua = (
-            None if kit_qta is None else _ESATTO.subtract(kit_qta, kit_qta_coperta)
-        )
+        kit_qta_coperta: Decimal | None = None
+        kit_qta_residua: Decimal | None = None
+        if kit_qta is not None:
+            kit_qta_coperta = _ESATTO.multiply(kit_qta, frazione)
+            kit_qta_residua = _ESATTO.subtract(kit_qta, kit_qta_coperta)
 
         meta_base = dict(riga.get("meta") or {})
         self.repository.aggiorna_capofila_plafond(

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 import json
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection, transaction
 
@@ -829,8 +829,8 @@ class CommesseRepository(EventLogRepositoryMixin):
         (flag chiude/emittibile/modificabile, config testata, contatori righe):
         servono alla UI commesse per stato e azioni senza chiamate extra."""
 
-        def _int(v: object) -> int | None:
-            return int(v) if v is not None else None  # type: ignore[arg-type]
+        def _int(v: Any) -> int | None:
+            return int(v) if v is not None else None
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -927,7 +927,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [commessa_id])
             row = row_to_dict(cursor)
-            return CommessaTestataRow(**row) if row else None
+            return cast(CommessaTestataRow, row) if row else None
 
     # Colonne di testata scrivibili dall'operatore. ⛔ `data_apertura` NON c'e':
     # la scrive il default (`script.fn_data_operativa()`) alla nascita, e a

@@ -1,10 +1,12 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.http import HttpRequest, JsonResponse
+from rest_framework.exceptions import NotAuthenticated
 from rest_framework.request import Request
 
 from apps.core.api.error_responses import exception_to_error_response
@@ -44,6 +46,28 @@ def get_scope_user_id(request: HttpRequest | Request) -> int | None:
 def get_actor_user_id(request: HttpRequest | Request) -> int | None:
     user = request.user
     return user.id if user and user.is_authenticated else None
+
+
+# Scopo: L'utente AUTENTICATO della richiesta, col tipo che il resto del codice
+#        si aspetta (`User`; l'id e' un `int`). Sulle view col JWT obbligatorio
+#        c'e' sempre — `ZeroERPPermission` rifiuta l'anonimo prima della view —
+#        e qui quella garanzia diventa ESPLICITA: un anonimo e' un 401
+#        `E_NOT_AUTHENTICATED`, mai un `None` (o un `AnonymousUser`) che arriva
+#        a un service.
+# ⭐ Building block del 2026-10-09 (regola del 2, ok Tid, L3 di
+#    piano-be-type-checker): sostituisce `request.user` / `request.user.id`
+#    letti a mano dove serve l'utente vero. Dove `None` e' un valore legittimo
+#    («blocca», «nessuno») resta `get_actor_user_id`.
+def utente_autenticato(request: HttpRequest | Request) -> User:
+    user = request.user
+    if user is None or not user.is_authenticated:
+        raise NotAuthenticated()
+    return cast(User, user)
+
+
+# Scopo: l'id dell'utente autenticato (vedi `utente_autenticato`).
+def utente_autenticato_id(request: HttpRequest | Request) -> int:
+    return utente_autenticato(request).id
 
 
 # Scopo: Restituisce il risorsa_umana_id dell'utente autenticato.
@@ -101,7 +125,7 @@ def get_risorsa_umana_id(request: HttpRequest | Request) -> int | None:
 def handle_post_json(
     request: HttpRequest | Request,
     *,
-    handler: Callable[[dict[str, Any]], dict[str, Any]],
+    handler: Callable[[dict[str, Any]], Mapping[str, Any] | list[Any]],
     require_idempotency_key: bool = False,
 ) -> JsonResponse:
     # ⭐ Corpo illeggibile o non oggetto: 400 `E_VALIDATION_INPUT` nell'envelope,
@@ -201,7 +225,7 @@ def handle_post_json(
 #        view detail (lambda p: Service().update_X(pk, p)).
 def handle_detail_patch(
     request: HttpRequest | Request,
-    update_fn: Callable[[int, dict[str, Any]], dict[str, Any]],
+    update_fn: Callable[[int, dict[str, Any]], Mapping[str, Any] | list[Any]],
     pk: int,
     *,
     require_idempotency_key: bool = False,

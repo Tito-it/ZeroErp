@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 import hashlib
 from datetime import date, datetime
 from typing import Any
@@ -229,7 +231,7 @@ def _concorda(n: int, singolare: str, plurale: str) -> str:
 #    {id, codice} (changeSet `20260909-63`).
 # ⚠️ Se i lotti fossero piu' d'uno si nomina il PRIMO e si dice che ce ne sono
 #    altri: un elenco dentro una frase di toast non si legge.
-def _motivo_trattenuto(d: dict[str, Any]) -> tuple[str, str]:
+def _motivo_trattenuto(d: Mapping[str, Any]) -> tuple[str, str]:
     n = d.get("n_trattenute") or 0
     lotti = d.get("lotti_trattenenti") or []
     codice = (lotti[0] or {}).get("codice") if lotti else None
@@ -244,7 +246,7 @@ def _motivo_trattenuto(d: dict[str, Any]) -> tuple[str, str]:
 
 
 def classifica_gruppo_non_servito(
-    d: dict[str, Any],
+    d: Mapping[str, Any],
     *,
     terne_fallite: frozenset[TernaKey] = frozenset(),
 ) -> tuple[str, str]:
@@ -367,7 +369,7 @@ def classifica_gruppo_non_servito(
 #        bloccata resta non servito). Ordine di input preservato: e' l'ordine in
 #        cui l'operatore ha spuntato le righe.
 def spiega_gruppi_non_serviti(
-    diagnosi: list[dict[str, Any]],
+    diagnosi: Sequence[Mapping[str, Any]],
     *,
     terne_fallite: frozenset[TernaKey] = frozenset(),
 ) -> list[dict[str, Any]]:

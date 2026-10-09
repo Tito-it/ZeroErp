@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 from typing import Any
 
 from django.http import HttpResponse
@@ -97,7 +99,7 @@ def build_export_response(
     request: Request,
     *,
     lista_codice: str,
-    results: list[dict[str, Any]],
+    results: Sequence[Mapping[str, Any]],
     total: int,
     filtri_applicati: dict[str, Any] | None,
     fmt: str,

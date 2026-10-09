@@ -39,6 +39,7 @@ Indice test eseguiti:
 29) test_by_id_chiavi_entrambe_o_nessuna — 0 o 2 chiavi → E_ANAG_VALIDAZIONE
 30) test_by_id_uuid_malformato — soggetto_id non-UUID → E_ANAG_VALIDAZIONE
 31) test_by_id_not_found — record inesistente → E_ANAG_NOT_FOUND
+32) test_create_soggetto_pf_senza_sesso — sesso assente → E_ANAG_VALIDAZIONE, niente default «M»
 """
 
 from unittest import TestCase
@@ -148,6 +149,7 @@ class TestSoggettiCreate(TestCase):
             "cognome": "Rossi",
             "nome": "Mario",
             "codice_fiscale": "RSSMRA80A01H501Z",
+            "sesso": "M",
             "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1, "email": "m@r.it"},
         })
         self.assertEqual(result["id"], FAKE_UUID)
@@ -172,6 +174,7 @@ class TestSoggettiCreate(TestCase):
                 "cognome": "",
                 "nome": "Mario",
                 "codice_fiscale": "RSSMRA80A01H501Z",
+                "sesso": "M",
                 "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
@@ -189,9 +192,28 @@ class TestSoggettiCreate(TestCase):
                 "cognome": "Rossi",
                 "nome": "Mario",
                 "codice_fiscale": "RSSMRA80A01H501Z",
+                "sesso": "M",
                 "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
+
+    @patch(SOGG_REPO)
+    def test_create_soggetto_pf_senza_sesso(self, mock_repo):
+        """Sesso assente → E_ANAG_VALIDAZIONE: il form lo propone a video, il
+        backend non lo inventa (decisione di Tid, 2026-10-09)."""
+        repo = mock_repo.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().create_soggetto({
+                "tipo_soggetto_dettaglio_id": 1,
+                "cognome": "Rossi",
+                "nome": "Mario",
+                "codice_fiscale": "RSSMRA80A01H501Z",
+                "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1, "email": "m@r.it"},
+            })
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        repo.crea_soggetto_pf.assert_not_called()
 
     @patch(SOGG_REPO)
     def test_create_soggetto_pg_ok(self, mock_repo):
@@ -407,6 +429,7 @@ class TestAutoCloneIndirizzi(TestCase):
             "tipo_soggetto_dettaglio_id": 1,
             "cognome": "Rossi", "nome": "Mario",
             "codice_fiscale": "RSSMRA80A01H501Z",
+            "sesso": "M",
             "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             # Solo 1 indirizzo RESID — DOMFISC deve essere auto-clonato
             "indirizzi": [
@@ -440,6 +463,7 @@ class TestAutoCloneIndirizzi(TestCase):
             "tipo_soggetto_dettaglio_id": 1,
             "cognome": "Rossi", "nome": "Mario",
             "codice_fiscale": "RSSMRA80A01H501Z",
+            "sesso": "M",
             "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             "indirizzi": [
                 {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},
@@ -475,6 +499,7 @@ class TestAutoCloneIndirizzi(TestCase):
             "tipo_soggetto_dettaglio_id": 1,
             "cognome": "Rossi", "nome": "Mario",
             "codice_fiscale": "RSSMRA80A01H501Z",
+            "sesso": "M",
             "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1},
             "indirizzi": [
                 {"tipo_indirizzo_codice": "RESID", "stradario_id": 100, "civico": 1},

@@ -54,6 +54,7 @@ VALID_PAYLOAD = {
     "cognome": "Bianchi",
     "nome": "Luca",
     "codice_fiscale": "BNCLCU90A01H501X",
+    "sesso": "M",
     "username": "nuovo_op",
     "email": "nuovo@test.it",
     "qualifica_id": 1,
@@ -290,6 +291,8 @@ class TestCreaOperatoreFlowB(TestCase):
         self.assertIsNone(call_kwargs["cognome"])
         self.assertIsNone(call_kwargs["nome"])
         self.assertIsNone(call_kwargs["codice_fiscale"])
+        # Col soggetto esistente il sesso non serve e non si inventa.
+        self.assertIsNone(call_kwargs["sesso"])
 
     @patch("apps.amm_software.services.amm_software_service.AmmSoftwareRepository")
     @patch("apps.core.api.endpoint_helpers.get_request_id", return_value=None)

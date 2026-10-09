@@ -76,7 +76,8 @@ SQL_DATA_DOCUMENTO_CORRENTE = """
 def costruisci_perimetro_lotti_numerabili(
     *,
     lotti_alias: str,
-    stato_doc_fiscale_id: int,
+    # `| None`: l'assenza la rifiuta il guard qui sotto, con la frase che la nomina.
+    stato_doc_fiscale_id: int | None,
     competenza_mese=None,
     lotti_ids=None,
 ) -> tuple[str, list]:

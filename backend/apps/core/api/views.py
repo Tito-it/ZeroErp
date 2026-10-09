@@ -336,6 +336,9 @@ class ApiPermessiAudit(DomainAPIView):
         page_size = optional_int(
             {"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size"
         )
+        # Mai None: i due valori arrivano sempre come stringa (default di
+        # `get`), e optional_int da' None solo per un valore assente.
+        assert page is not None and page_size is not None
         # ⛔ Pagina e dimensione partono da 1: `page=0` dava un OFFSET negativo,
         #    cioe' un errore del DB (F-4). `ValueError` = 400 E_VALIDATION_INPUT.
         if page < 1:
