@@ -8,7 +8,7 @@ CREATE FUNCTION fn_crea_operatore_v2(p_soggetto_id uuid, p_cognome text, p_nome 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_operatore_v2(p_soggetto_id uuid DEFAULT NULL::uuid, p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_username text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_password_hash text DEFAULT NULL::text, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT 'M'::bpchar, p_is_super_admin boolean DEFAULT false, p_valido_dal date DEFAULT CURRENT_DATE, p_valido_al date DEFAULT NULL::date, p_comune_nascita_id integer DEFAULT NULL::integer, p_indirizzo_resid_dettaglio_id bigint DEFAULT NULL::bigint, p_indirizzo_domfisc_dettaglio_id bigint DEFAULT NULL::bigint, p_riusa_auth_user_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_operatore_v2(p_soggetto_id uuid DEFAULT NULL::uuid, p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_username text DEFAULT NULL::text, p_email text DEFAULT NULL::text, p_password_hash text DEFAULT NULL::text, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT NULL::bpchar, p_is_super_admin boolean DEFAULT false, p_valido_dal date DEFAULT CURRENT_DATE, p_valido_al date DEFAULT NULL::date, p_comune_nascita_id integer DEFAULT NULL::integer, p_indirizzo_resid_dettaglio_id bigint DEFAULT NULL::bigint, p_indirizzo_domfisc_dettaglio_id bigint DEFAULT NULL::bigint, p_riusa_auth_user_id integer DEFAULT NULL::integer)
  RETURNS TABLE(auth_user_id integer, username text, credenziale_riusata boolean)
  LANGUAGE plpgsql
 AS $function$
@@ -23,6 +23,7 @@ DECLARE
     v_veste_attiva     anagrafiche.identita_digitali.attivo%TYPE;
     v_trovata          integer;   -- la credenziale dell'email, se c'era (django: niente %TYPE)
     v_vesti            jsonb;
+    v_dettaglio_pr     config.tipi_soggetto_dettaglio.id%TYPE;
 BEGIN
     -- =========================================================
     -- Scopo: orchestratore della creazione di un operatore.
@@ -41,6 +42,11 @@ BEGIN
     --     deve dichiarare la credenziale trovata, altrimenti
     --     E_CREDENZIALE_DA_CONFERMARE: username e vesti li legge
             --     script.fn_get_credenziale_per_email, come il dialog (rev 20260927-41).
+    --   ⭐ Rev 20261009-27 (brief-db-sesso-senza-default): p_sesso senza
+    --   default ('M' prima); nel flusso A il soggetto nasce PRIVATO (PR),
+    --   chiesto per nome a fn_crea_soggetto_pf, che non lo cabla piu'. Il
+    --   sesso del PR e' obbligatorio: lo rifiuta il guard
+    --   trgfn_soggetti_guard_sesso_policy, prima dello step 2-bis.
     -- Ritorna: la credenziale, il suo username EFFETTIVO, e se e'
     --   stata riusata (allora la password passata e' ignorata).
     -- =========================================================
@@ -205,14 +211,32 @@ BEGIN
             );
         END IF;
 
+        -- ⭐ Rev 20261009-27: l'operatore e' una persona fisica PRIVATA
+        --   (PF pura: niente P.IVA, cfr. script.fn_guard_soggetto_pf_pura).
+        SELECT tsd.id
+          INTO v_dettaglio_pr
+          FROM config.tipi_soggetto_dettaglio tsd
+         WHERE tsd.codice_interno = 'PR';
+
+        IF v_dettaglio_pr IS NULL THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database', 'anagrafiche.fn_crea_operatore_v2',
+                'E_CODICE',
+                jsonb_build_object('codice_interno', 'PR'),
+                NULL::uuid,
+                'PR', 'config.tipi_soggetto_dettaglio'
+            );
+        END IF;
+
         SELECT anagrafiche.fn_crea_soggetto_pf(
-            p_cognome           := p_cognome,
-            p_nome              := p_nome,
-            p_codice_fiscale    := p_codice_fiscale,
-            p_email             := p_email,
-            p_data_nascita      := p_data_nascita,
-            p_sesso             := p_sesso,
-            p_comune_nascita_id := p_comune_nascita_id
+            p_cognome                    := p_cognome,
+            p_nome                       := p_nome,
+            p_codice_fiscale             := p_codice_fiscale,
+            p_email                      := p_email,
+            p_data_nascita               := p_data_nascita,
+            p_sesso                      := p_sesso,
+            p_comune_nascita_id          := p_comune_nascita_id,
+            p_tipo_soggetto_dettaglio_id := v_dettaglio_pr
         ) INTO v_soggetto_id;
     END IF;
 
@@ -292,7 +316,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_operatore_v2(p_soggetto_id uuid, p_cognome text, p_nome text, p_codice_fiscale text, p_username text, p_email text, p_password_hash text, p_qualifica_id integer, p_unita_organizzativa_id integer, p_data_nascita date, p_sesso character, p_is_super_admin boolean, p_valido_dal date, p_valido_al date, p_comune_nascita_id integer, p_indirizzo_resid_dettaglio_id bigint, p_indirizzo_domfisc_dettaglio_id bigint, p_riusa_auth_user_id integer)
-IS 'Orchestratore della creazione di un operatore (flusso A: soggetto PF nuovo; flusso B: soggetto esistente). ⭐ Rev 20260925-42 (brief-db-blocco-login-per-credenziale §5.2): (1) la credenziale dell''email, se esiste, si RIUSA (D-6, una persona una credenziale) senza toccarne password, username e nome — la cerca script.fn_get_auth_user_id_for_email, senza distinguere maiuscole e minuscole; altrimenti la crea fn_crea_auth_user; (2) la veste OPERATORE nasce SPENTA, sempre (regola unica dell''invito, R-2): la accende l''attivazione, e p_attivo e'' uscito dalla firma; (3) una credenziale che ha gia'' una veste OPERATORE, attiva o spenta, si rifiuta con E_CREDENZIALE_GIA_OPERATORE (il rimedio e'' il reinvito). ⭐ Rev 20260925-51 (§12.7): il riuso non e'' piu'' silenzioso — una credenziale con una veste su una PERSONA FISICA diversa dall''operatore si rifiuta (E_CREDENZIALE_ALTRA_PERSONA); negli altri casi serve il consenso, p_riusa_auth_user_id = la credenziale trovata, altrimenti E_CREDENZIALE_DA_CONFERMARE (dichiarazione di cio'' che si e'' visto, come pagamenti.fn_posta_contabile). ⭐ Rev 20260927-41 (§17): username e vesti della credenziale trovata li legge script.fn_get_credenziale_per_email, la stessa funzione del dialog di conferma del backend; nel contesto dell''errore restano per il log, che al client non arriva. Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata): con credenziale_riusata = true la password passata e'' stata IGNORATA. Si legge con SELECT * FROM. INVOKER.';
+IS 'Orchestratore della creazione di un operatore (flusso A: soggetto PF nuovo; flusso B: soggetto esistente). ⭐ Rev 20260925-42 (brief-db-blocco-login-per-credenziale §5.2): (1) la credenziale dell''email, se esiste, si RIUSA (D-6, una persona una credenziale) senza toccarne password, username e nome — la cerca script.fn_get_auth_user_id_for_email, senza distinguere maiuscole e minuscole; altrimenti la crea fn_crea_auth_user; (2) la veste OPERATORE nasce SPENTA, sempre (regola unica dell''invito, R-2): la accende l''attivazione, e p_attivo e'' uscito dalla firma; (3) una credenziale che ha gia'' una veste OPERATORE, attiva o spenta, si rifiuta con E_CREDENZIALE_GIA_OPERATORE (il rimedio e'' il reinvito). ⭐ Rev 20260925-51 (§12.7): il riuso non e'' piu'' silenzioso — una credenziale con una veste su una PERSONA FISICA diversa dall''operatore si rifiuta (E_CREDENZIALE_ALTRA_PERSONA); negli altri casi serve il consenso, p_riusa_auth_user_id = la credenziale trovata, altrimenti E_CREDENZIALE_DA_CONFERMARE (dichiarazione di cio'' che si e'' visto, come pagamenti.fn_posta_contabile). ⭐ Rev 20260927-41 (§17): username e vesti della credenziale trovata li legge script.fn_get_credenziale_per_email, la stessa funzione del dialog di conferma del backend; nel contesto dell''errore restano per il log, che al client non arriva. ⭐ Rev 20261009-27 (brief-db-sesso-senza-default): p_sesso senza default (era ''M''); nel flusso A il soggetto nasce privato (PR), e il sesso e'' obbligatorio per il guard trgfn_soggetti_guard_sesso_policy (E_SESSO_OBBLIGATORIO); nel flusso B il sesso non si legge. Ritorna TABLE(auth_user_id, username effettivo, credenziale_riusata): con credenziale_riusata = true la password passata e'' stata IGNORATA. Si legge con SELECT * FROM. INVOKER.';
 ```
 
 ---

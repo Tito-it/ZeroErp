@@ -91,7 +91,9 @@ WITH nuovo_soggetto AS (
         'Banca Zero Test pgTAP',
         NULL,
         NULL,
-        'S',
+        -- una societa' non ha sesso (sesso_policy NONE); era 'S', fuori
+        --   vocabolario dal 2026-10-09 (brief-db-sesso-senza-default)
+        NULL,
         1,                 -- stato_id IT (adatta se diverso)
         k.piva_test,
         k.piva_test,

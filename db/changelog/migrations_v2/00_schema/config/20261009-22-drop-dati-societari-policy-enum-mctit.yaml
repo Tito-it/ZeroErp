@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DI config.dati_societari_policy_enum
+#   Brief: brief-db-sesso-senza-default (§4.1 punto 1)
+#
+# -- PERCHE' NELLO STESSO GIRO ------------------------------------------
+#   Il 20261009-19 ha estratto config.presenza_policy_enum e ci ha portato
+#   sopra dati_societari_policy; il -20 e il -21 hanno riallineato le due
+#   trigger function che dichiaravano il tipo vecchio. Un tipo identico
+#   lasciato accanto a quello che lo sostituisce sarebbe una seconda copia
+#   della stessa regola (regola del 2: le copie si ritirano nello stesso
+#   giro dell'estrazione).
+#
+# -- LE DUE PRECONDITION -------------------------------------------------
+#   * nessuna colonna (ne' default, ne' vincolo) usa piu' il tipo: pg_depend;
+#   * nessun corpo di funzione lo nomina: PL/pgSQL non registra dipendenze
+#     sul tipo di una variabile, quindi pg_depend non le vede, e il DROP
+#     passerebbe lasciando una funzione che muore alla prima chiamata.
+#   Censimento dalla doc auto-generata (2026-10-09): le sole due funzioni
+#   erano quelle del -20 e del -21.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261009-22-drop-dati-societari-policy-enum-mctit.yaml
+
+  - changeSet:
+      id: 20261009-22-drop-dati-societari-policy-enum
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        DROP TYPE config.dati_societari_policy_enum, sostituito da config.presenza_policy_enum
+        (20261009-19). Nessuna colonna e nessun corpo di funzione lo usa piu' (-20, -21).
+        Brief: brief-db-sesso-senza-default.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_depend d
+                   WHERE d.refobjid = (SELECT t.oid FROM pg_catalog.pg_type t
+                                         JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                                        WHERE n.nspname = 'config'
+                                          AND t.typname = 'dati_societari_policy_enum')
+                     AND d.classid <> 'pg_catalog.pg_type'::regclass;
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                   WHERE p.prosrc LIKE '%dati_societari_policy_enum%';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TYPE config.dati_societari_policy_enum;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE TYPE config.dati_societari_policy_enum AS ENUM ('NONE', 'OPTIONAL', 'REQUIRED');

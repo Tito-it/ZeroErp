@@ -19,11 +19,11 @@ AS $function$
 --   CREATE TEMP TABLE tmp_s AS
 --   SELECT dbops.fn_pgtap_crea_soggetto_pg('Banca Zero pgTAP') AS id;
 DECLARE
-    v_soggetto_id uuid;
-    v_piva        text;
-    v_prov_id     integer;
-    v_tipo_cont   integer;
-    v_n_ind       integer;
+    v_soggetto_id anagrafiche.soggetti.id%TYPE;
+    v_piva        anagrafiche.soggetti.partita_iva%TYPE;
+    v_prov_id     config.province.id%TYPE;
+    v_tipo_cont   config.tipi_contatti.id%TYPE;
+    v_n_ind       integer;   -- un conteggio: nessuna colonna da ancorare
 BEGIN
     v_piva := COALESCE(p_piva, dbops.fn_pgtap_piva_libera());
 
@@ -47,7 +47,10 @@ BEGIN
         storicizza, attivo
     )
     VALUES (
-        p_ragione_sociale, NULL, NULL, 'S', p_stato_id,
+        -- ⭐ Rev 20261009-29: sesso NULL, non 'S'. Per societa' ed enti il
+        --   sesso non si indica (sesso_policy NONE), e 'S' e' fuori dal
+        --   vocabolario (chk_soggetti_sesso). brief-db-sesso-senza-default.
+        p_ragione_sociale, NULL, NULL, NULL, p_stato_id,
         -- Per una persona giuridica italiana il codice fiscale
         -- coincide con la partita IVA, e il guard cf/piva lo esige.
         v_piva, v_piva, p_tipo_soggetto_dettaglio_id,
@@ -114,7 +117,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id integer, p_stato_id integer, p_piva text)
-IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md';
+IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md Rev 20261009-29 (brief-db-sesso-senza-default): il sesso e'' NULL (era ''S'', fuori vocabolario); una natura PF qui viene rifiutata dal guard del sesso, perche'' il builder non ne ha uno da dare.';
 ```
 
 ---

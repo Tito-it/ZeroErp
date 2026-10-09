@@ -193,6 +193,7 @@ SELECT lives_ok(
                 codice,
                 cognome,
                 nome,
+                sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
                 stato_id,
                 codice_fiscale,
                 tipo_soggetto_dettaglio_id
@@ -201,6 +202,7 @@ SELECT lives_ok(
                 'TST-NAT-PF-001-' || (SELECT sfx FROM tmp_run_sfx),
                 'Rossi',
                 'Mario',
+                'M',
                 (
                     SELECT stato_id
                     FROM tmp_stato_test

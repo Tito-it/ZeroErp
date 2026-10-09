@@ -154,7 +154,8 @@ SELECT pg_temp.errore(format(
           p_password_hash                := 'hash-scelto-dall-admin',
           p_qualifica_id                 := (SELECT q.id FROM config.qualifiche q
                                               WHERE q.codice_interno = 'DIPENDENTE'),
-          p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('credenziale per email'))$$,
+          p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('credenziale per email'),
+          p_sesso := 'M')$$,
     (SELECT email FROM _nuda))) AS e;
 SET CONSTRAINTS ALL IMMEDIATE;
 

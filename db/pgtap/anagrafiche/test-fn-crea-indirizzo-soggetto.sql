@@ -101,7 +101,9 @@ SELECT lives_ok(
         p_cognome := 'TestIndSogg',
         p_nome := 'Primo',
         p_codice_fiscale := %L,
-        p_email := %L
+        p_email := %L,
+        p_sesso := 'M',
+        p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
       ) $$,
       'PNZFDN78A01L219Y',
       'test_ind_sogg_' || floor(random() * 1000000)::text || '@test.local'

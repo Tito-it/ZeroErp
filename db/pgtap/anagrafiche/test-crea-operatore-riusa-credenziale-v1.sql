@@ -125,7 +125,8 @@ LANGUAGE sql AS $$
                p_qualifica_id                 := (SELECT q.id FROM config.qualifiche q
                                                    WHERE q.codice_interno = 'DIPENDENTE'),
                p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('riuso credenziale'),
-               p_riusa_auth_user_id           := p_riusa) m
+               p_riusa_auth_user_id           := p_riusa,
+               p_sesso := 'M') m
 $$;
 
 -- ⛔ La riga si rilegge in un'ISTRUZIONE SEPARATA: nella stessa istruzione

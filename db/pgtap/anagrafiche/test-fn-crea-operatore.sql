@@ -235,7 +235,8 @@ BEGIN
             p_email := 'altro_' || (SELECT test_email FROM tmp_crea_op_ctx),
             p_password_hash := 'pbkdf2_sha256$600000$test$hash==',
             p_qualifica_id := (SELECT qualifica_id FROM tmp_crea_op_ctx),
-            p_unita_organizzativa_id := (SELECT uo_id FROM tmp_crea_op_ctx)
+            p_unita_organizzativa_id := (SELECT uo_id FROM tmp_crea_op_ctx),
+            p_sesso := 'M'
         );
     EXCEPTION WHEN SQLSTATE 'P0001' THEN
         GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
@@ -264,7 +265,8 @@ SELECT throws_matching(
         p_email := %L,
         p_password_hash := 'pbkdf2_sha256$600000$test$hash==',
         p_qualifica_id := %s,
-        p_unita_organizzativa_id := %s
+        p_unita_organizzativa_id := %s,
+        p_sesso := 'M'
       ) $$,
       (SELECT upper(test_email) FROM tmp_crea_op_ctx),
       (SELECT qualifica_id FROM tmp_crea_op_ctx),
@@ -287,7 +289,8 @@ SELECT throws_matching(
         p_email := 'cf_dup_' || floor(random() * 1000000)::text || '@test.local',
         p_password_hash := 'pbkdf2_sha256$600000$test$hash==',
         p_qualifica_id := %s,
-        p_unita_organizzativa_id := %s
+        p_unita_organizzativa_id := %s,
+        p_sesso := 'M'
       ) $$,
       (SELECT test_cf FROM tmp_crea_op_ctx),
       (SELECT qualifica_id FROM tmp_crea_op_ctx),
@@ -310,7 +313,8 @@ SELECT throws_matching(
         p_email := 'uo_ines_' || floor(random() * 1000000)::text || '@test.local',
         p_password_hash := 'pbkdf2_sha256$600000$test$hash==',
         p_qualifica_id := %s,
-        p_unita_organizzativa_id := -999
+        p_unita_organizzativa_id := -999,
+        p_sesso := 'M'
       ) $$,
       (SELECT qualifica_id FROM tmp_crea_op_ctx)
     ),
@@ -331,7 +335,8 @@ SELECT throws_matching(
         p_email := 'cognome_vuoto_' || floor(random() * 1000000)::text || '@test.local',
         p_password_hash := 'pbkdf2_sha256$600000$test$hash==',
         p_qualifica_id := %s,
-        p_unita_organizzativa_id := %s
+        p_unita_organizzativa_id := %s,
+        p_sesso := 'M'
       ) $$,
       (SELECT qualifica_id FROM tmp_crea_op_ctx),
       (SELECT uo_id FROM tmp_crea_op_ctx)

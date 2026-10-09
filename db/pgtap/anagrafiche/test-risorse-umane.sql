@@ -85,7 +85,9 @@ SELECT anagrafiche.fn_crea_soggetto_pf(
            p_nome           := 'pgTAP',
            p_codice_fiscale := dbops.fn_pgtap_cf_libero(),
            -- obbligatoria: la madre ne fa il contatto di default del soggetto
-           p_email          := 'pgtap_risorse_umane@example.com') AS id;
+           p_email          := 'pgtap_risorse_umane@example.com',
+           p_sesso := 'M',
+           p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')) AS id;
 
 SELECT anagrafiche.fn_crea_indirizzo_soggetto(
            p_soggetto_id            := (SELECT id FROM tmp_soggetto_test),

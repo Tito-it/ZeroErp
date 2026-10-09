@@ -117,10 +117,12 @@ FROM config.tipi_indirizzi WHERE codice_interno = 'SEDELEG';
 SELECT throws_ok(
     $$
       INSERT INTO anagrafiche.soggetti (
-          codice, cognome, nome, stato_id,
+          codice, cognome, nome, sesso, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-PR-ERR-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'NoCF', (SELECT stato_id FROM tmp_stato_test),
+          -- sesso 'M': per un privato e' obbligatorio, e qui la causa
+          --   sotto prova dev'essere una sola (il codice fiscale)
+          'TST-CFPIVA-PR-ERR-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'NoCF', 'M', (SELECT stato_id FROM tmp_stato_test),
           NULL, NULL,
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_pr)
       );
@@ -140,10 +142,12 @@ SELECT lives_ok(
       --   sul PRIMO insert, prima che contatto e indirizzi esistano.
       SET CONSTRAINTS ALL DEFERRED;
       INSERT INTO anagrafiche.soggetti (
-          codice, cognome, nome, stato_id,
+          codice, cognome, nome, sesso, stato_id,
           codice_fiscale, partita_iva, tipo_soggetto_dettaglio_id
       ) VALUES (
-          'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'ConCF', (SELECT stato_id FROM tmp_stato_test),
+          -- sesso 'M': per un privato e' obbligatorio, e qui la causa
+          --   sotto prova dev'essere una sola (il codice fiscale)
+          'TST-CFPIVA-PR-OK-' || (SELECT sfx FROM tmp_run_sfx), 'Test', 'ConCF', 'M', (SELECT stato_id FROM tmp_stato_test),
           (SELECT cf_libero FROM tmp_run_sfx), NULL,
           (SELECT tipo_soggetto_dettaglio_id FROM tmp_tipo_pr)
       );

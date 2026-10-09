@@ -110,7 +110,8 @@ SELECT m.auth_user_id
            p_password_hash                := 'pgtap-nessun-login',
            p_qualifica_id                 := (SELECT q.id FROM config.qualifiche q WHERE q.codice_interno = 'DIPENDENTE'),
            p_is_super_admin               := true,
-           p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('eccezione SA')) m;
+           p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('eccezione SA'),
+           p_sesso := 'M') m;
 
 -- I vincoli differiti (il require, se ci fosse) scattano QUI.
 SELECT lives_ok(

@@ -58,6 +58,10 @@ databaseChangeLog:
               - column: { name: dati_societari_policy, type: STRING }
               - column: { name: piva_obbligatoria, type: BOOLEAN }
               - column: { name: cf_obbligatorio, type: BOOLEAN }
+              # 2026-10-09: quando serve il sesso (REQUIRED/OPTIONAL/NONE, tipo
+              #   config.presenza_policy_enum, colonna del 20261009-19).
+              #   Brief: brief-db-sesso-senza-default.
+              - column: { name: sesso_policy, type: STRING }
 
         # 3) Ri‐abilita tutti i trigger
         - sql:

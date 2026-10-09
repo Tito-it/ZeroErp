@@ -2,18 +2,32 @@
 # ⚙️ Funzione `fn_crea_soggetto_pf`
 
 ```sql
-CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer)
+CREATE FUNCTION fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email character varying DEFAULT NULL::character varying, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT NULL::bpchar, p_stato_iso2 character DEFAULT NULL::bpchar, p_comune_nascita_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text DEFAULT NULL::text, p_nome text DEFAULT NULL::text, p_codice_fiscale text DEFAULT NULL::text, p_email character varying DEFAULT NULL::character varying, p_data_nascita date DEFAULT NULL::date, p_sesso character DEFAULT NULL::bpchar, p_stato_iso2 character DEFAULT NULL::bpchar, p_comune_nascita_id integer DEFAULT NULL::integer, p_tipo_contatto_id integer DEFAULT NULL::integer, p_tipo_soggetto_dettaglio_id bigint DEFAULT NULL::bigint, p_partita_iva text DEFAULT NULL::text)
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
+-- =========================================================
+-- Scopo: crea un soggetto PERSONA FISICA (natura base PF: privato PR o
+--   ditta individuale DI) + il contatto di default. NON crea indirizzi.
+-- ⭐ Rev 20261009-26 (brief-db-sesso-senza-default):
+--   - la natura di dettaglio la sceglie il chiamante
+--     (p_tipo_soggetto_dettaglio_id, obbligatorio): prima era PR cablato, e
+--     una ditta individuale scelta nel form nasceva privato, senza P.IVA;
+--   - p_partita_iva: per la DI la pretende gia'
+--     trgfn_soggetti_guard_cf_piva_obbligatori;
+--   - il sesso passa cosi' com'e': via il COALESCE(p_sesso, 'M'). Se serve
+--     lo decide la natura (sesso_policy), nel guard
+--     trgfn_soggetti_guard_sesso_policy: una sede sola per la regola.
+-- =========================================================
 DECLARE
-    v_tipo_soggetto_dettaglio_id  config.tipi_soggetto_dettaglio.id%TYPE;
+    v_tipo_soggetto_id            config.tipi_soggetto_dettaglio.tipo_soggetto_id%TYPE;
+    v_descrizione_dettaglio       config.tipi_soggetto_dettaglio.descrizione%TYPE;
     v_stato_id                    config.stati.id%TYPE;
     v_stato_iso2_resolved         config.stati.codice_iso2%TYPE;
     v_tipo_contatto_id            config.tipi_contatti.id%TYPE;
@@ -72,19 +86,43 @@ BEGIN
         );
     END IF;
 
-    -- Lookup tipo soggetto dettaglio (Persona Fisica — natura PR)
-    SELECT tsd.id INTO v_tipo_soggetto_dettaglio_id
-    FROM config.tipi_soggetto_dettaglio tsd
-    WHERE tsd.codice_interno = 'PR';
-
-    IF v_tipo_soggetto_dettaglio_id IS NULL THEN
-        -- Fix: E_GENERICO → E_CODICE
+    -- Natura di dettaglio: obbligatoria, e di natura base PF
+    IF p_tipo_soggetto_dettaglio_id IS NULL OR p_tipo_soggetto_dettaglio_id <= 0 THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'anagrafiche.fn_crea_soggetto_pf',
-            'E_CODICE',
-            jsonb_build_object('codice_interno', 'PR'),
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_tipo_soggetto_dettaglio_id'),
+            NULL::uuid, 'Tipo soggetto obbligatorio.'
+        );
+    END IF;
+
+    SELECT tsd.tipo_soggetto_id, tsd.descrizione
+      INTO v_tipo_soggetto_id, v_descrizione_dettaglio
+      FROM config.tipi_soggetto_dettaglio tsd
+     WHERE tsd.id = p_tipo_soggetto_dettaglio_id;
+
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pf',
+            'E_ADMIN_VALIDAZIONE',
+            jsonb_build_object('parametro', 'p_tipo_soggetto_dettaglio_id',
+                               'p_tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id),
             NULL::uuid,
-            'PR', 'config.tipi_soggetto_dettaglio'
+            concat('Tipo soggetto dettaglio id=', p_tipo_soggetto_dettaglio_id, ' non trovato.')
+        );
+    END IF;
+
+    -- ⛔ Una societa' o un ente qui e' un chiamante che ha sbagliato porta
+    --   (la porta giusta e' fn_crea_soggetto_pg): TECNICO, non un dato del form.
+    IF v_tipo_soggetto_id <> 'PF' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pf',
+            'E_SOGGETTO_CREAZIONE_NATURA_ERRATA',
+            jsonb_build_object('tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id,
+                               'tipo_soggetto_id',           v_tipo_soggetto_id),
+            NULL::uuid,
+            COALESCE(v_descrizione_dettaglio, p_tipo_soggetto_dettaglio_id::text),
+            v_tipo_soggetto_id
         );
     END IF;
 
@@ -126,15 +164,18 @@ BEGIN
     END IF;
 
     -- Step 1: Creazione soggetto (Persona Fisica)
+    -- Il sesso passa com'e': se la natura lo pretende e manca, lo rifiuta
+    --   trgfn_soggetti_guard_sesso_policy (E_SESSO_OBBLIGATORIO, campo sesso).
     INSERT INTO anagrafiche.soggetti (
-        cognome, nome, codice_fiscale, data_nascita, sesso,
+        cognome, nome, codice_fiscale, partita_iva, data_nascita, sesso,
         stato_id, tipo_soggetto_dettaglio_id, comune_id, attivo
     )
     VALUES (
         TRIM(p_cognome), TRIM(p_nome),
         UPPER(TRIM(p_codice_fiscale)),
-        p_data_nascita, COALESCE(p_sesso, 'M'),
-        v_stato_id, v_tipo_soggetto_dettaglio_id,
+        NULLIF(UPPER(TRIM(p_partita_iva)), ''),
+        p_data_nascita, p_sesso,
+        v_stato_id, p_tipo_soggetto_dettaglio_id,
         p_comune_nascita_id, true
     )
     RETURNING id INTO v_soggetto_id;
@@ -155,8 +196,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer)
-IS 'Crea soggetto PF (natura PR) + contatto default con tipo_contatto_id. Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2 da config.parameters. Guard CF univoco. NON crea indirizzo.';
+COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pf(p_cognome text, p_nome text, p_codice_fiscale text, p_email character varying, p_data_nascita date, p_sesso character, p_stato_iso2 character, p_comune_nascita_id integer, p_tipo_contatto_id integer, p_tipo_soggetto_dettaglio_id bigint, p_partita_iva text)
+IS 'Crea un soggetto PERSONA FISICA (natura base PF: privato PR o ditta individuale DI, scelta dal chiamante con p_tipo_soggetto_dettaglio_id, obbligatorio) + contatto default con tipo_contatto_id. Una natura che non e'' PF si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA (porta giusta: fn_crea_soggetto_pg). p_partita_iva per la DI (la pretende il guard su CF e P.IVA). Il sesso passa com''e'', senza default: quando serve lo decide config.tipi_soggetto_dettaglio.sesso_policy nel guard trgfn_soggetti_guard_sesso_policy (PR obbligatorio, DI facoltativo). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2 da config.parameters. Guard CF univoco. NON crea indirizzo. Rev 20261009-26, brief-db-sesso-senza-default.';
 ```
 
 ---

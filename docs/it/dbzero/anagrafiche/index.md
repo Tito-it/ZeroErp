@@ -49,7 +49,7 @@
 - [fn_crea_indirizzo_soggetto](funzioni/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
 - [fn_crea_operatore_v2](funzioni/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](funzioni/fn_crea_risorsa_umana_v2.md)
-- [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md) — (latest review 13-03-2026) Building block atomico per la creazione di un soggetto Persona Fisica (natura PR = Privato) con contatto default obbligatorio.
+- [fn_crea_soggetto_pf](funzioni/fn_crea_soggetto_pf.md) — (latest review 09-10-2026) Building block atomico per la creazione di un soggetto **persona fisica** — privato (PR) o ditta individuale (DI) — con contatto default obbligatorio.
 - [fn_crea_soggetto_pg](funzioni/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
 - [fn_create_indirizzo](funzioni/fn_create_indirizzo.md) — (latest review 08-07-2026)
 - [fn_get_emittente_fiscale_id](funzioni/fn_get_emittente_fiscale_id.md) — (last review 07-04-2026)
@@ -138,6 +138,7 @@
 - [trgfn_soggetti_guard_cf_piva_obbligatori](funzioni/trgfn_soggetti_guard_cf_piva_obbligatori.md) — (latest review 28-02-26) La funzione **`anagrafiche.trgfn_soggetti_guard_cf_piva_obbligatori`** e una **trigger function di tipo "guard"** che:
 - [trgfn_soggetti_guard_dati_societari_required](funzioni/trgfn_soggetti_guard_dati_societari_required.md) — (latest review 03-12-25) Garantire che, per tutti i **soggetti** la cui tipologia dettagliata prevede una policy **dati societari obbligatoria**, esista **almeno una riga** associata in `anagrafiche.dati_societari`.
 - [trgfn_soggetti_guard_indirizzi_required](funzioni/trgfn_soggetti_guard_indirizzi_required.md) — (latest review 15-02-26) Verificare che un soggetto possieda tutti i **tipi di indirizzo obbligatori** definiti nella matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`.
+- [trgfn_soggetti_guard_sesso_policy](funzioni/trgfn_soggetti_guard_sesso_policy.md)
 - [trgfn_soggetti_guard_soggetto_contatti](funzioni/trgfn_soggetti_guard_soggetto_contatti.md) — (latest review 28-12-25) * **Validazione di integrità**   Garantire che ogni soggetto disponga di almeno un contatto predefinito o dotato di un canale attivo.
 - [trgfn_soggetti_normalize](funzioni/trgfn_soggetti_normalize.md) — (latest review 28-12-25) * **Impostare valori di default** per campi mancanti in `anagrafiche.soggetti` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_soggetti_ruoli_conti_bancari_guard](funzioni/trgfn_soggetti_ruoli_conti_bancari_guard.md) — (last review 16-12-25) La trigger function **`anagrafiche.trgfn_soggetti_ruoli_conti_bancari_guard()`** applica controlli di guardia sui legami tra **ruoli del soggetto** e **conti bancari**, impedendo:

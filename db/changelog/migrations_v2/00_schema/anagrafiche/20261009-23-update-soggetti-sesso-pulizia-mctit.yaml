@@ -1,0 +1,79 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PULIZIA DI anagrafiche.soggetti.sesso PRIMA DEL VINCOLO
+#   Brief: brief-db-sesso-senza-default (§3 D3, §4.4)
+#
+# -- IL CASO --------------------------------------------------------
+#   Fino a questo giro sesso aveva DEFAULT 'M' e nessun CHECK: ogni societa'
+#   ed ente creato da anagrafiche.fn_crea_soggetto_pg nasceva 'M', e il
+#   builder dbops.fn_pgtap_crea_soggetto_pg scriveva 'S'. Il -24 mette il
+#   CHECK sul vocabolario (M, F, X o NULL), il -25 il guard per natura:
+#   le righe che li violano vanno riportate nel modello prima.
+#
+# -- LA REGOLA DELLA PULIZIA: NESSUN VALORE INVENTATO ----------------------
+#   Diventa NULL solo cio' che il modello VIETA, e NULL e' l'unico valore
+#   che non dice niente su nessuno:
+#   * un valore fuori vocabolario (oggi 'S'), su qualunque soggetto;
+#   * un sesso su un soggetto di natura base diversa da PF (PG, ENC).
+#   ⛔ Un PR senza sesso NON diventa 'X': sarebbe un valore scritto da un
+#   migrate, cioe' da nessuno che l'ha visto (la regola del §1). Il guard
+#   non giudica le righe esistenti: lo fermera' quando qualcuno tocchera' il
+#   sesso o la natura di quel soggetto, cioe' quando una persona lo vede.
+#   Un soggetto senza natura (tipo_soggetto_dettaglio_id NULL: seed
+#   dell'operatore, utenti tecnici) resta com'e', salvo il vocabolario.
+#   La natura qui si legge dalla natura BASE (tipo_soggetto_id), non da
+#   sesso_policy: su dbdev la policy prende i suoi valori solo dal CSV, in
+#   80_data, dopo questo changeSet.
+#
+# -- PERCHE' UN CHANGESET E NON UNA QUERY A MANO --------------------------
+#   Il CHECK del -24 fermerebbe il migrate su ogni database che ha ancora
+#   una riga sporca, non solo su dbdev. Fotografa le righe di quel momento,
+#   ed e' sufficiente: dopo il -24 e il -25 non ne nascono piu'. Su un
+#   database ricostruito da zero non trova niente da fare.
+#   ⚠️ L'UPDATE fa scattare i trigger di anagrafiche.soggetti (validazione
+#   CF/P.IVA, guard differiti, storico). Se una riga di prova vecchia non
+#   passasse piu' un guard nato dopo di lei, il migrate si ferma qui con
+#   quel codice: si corregge (o si cancella) quella riga a mano.
+#   Solo DML: l'ALTER del -24 sta in un changeSet suo, cosi' gli eventi dei
+#   trigger differiti si chiudono al COMMIT di questo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261009-23-update-soggetti-sesso-pulizia-mctit.yaml
+
+  - changeSet:
+      id: 20261009-23-update-soggetti-sesso-pulizia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.soggetti.sesso a NULL dove il modello lo vieta: valori fuori vocabolario (M, F, X)
+        e sesso su soggetti di natura base diversa da PF. Nessun valore inventato (un PR senza sesso
+        resta senza). Prima del CHECK (-24) e del guard (-25). Brief: brief-db-sesso-senza-default.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE anagrafiche.soggetti s
+                 SET sesso = NULL
+               WHERE s.sesso IS NOT NULL
+                 AND (   s.sesso NOT IN ('M', 'F', 'X')
+                      OR EXISTS (SELECT 1
+                                   FROM config.tipi_soggetto_dettaglio t
+                                  WHERE t.id = s.tipo_soggetto_dettaglio_id
+                                    AND t.tipo_soggetto_id <> 'PF'));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Pulizia di dati: non si ripristinano valori che il modello vieta.
+              SELECT 1;
