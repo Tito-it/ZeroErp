@@ -925,7 +925,7 @@ lega al BA, lock del BA solo sull'ordine. Un ordine senza BA esce dalla lista di
 (il DDT no: la diagnosi ha il motivo `SENZA_BA`). E gli anelli della catena possono dissentire: una
 riga di DDT puo' evadere l'ordine di un altro cliente, e il reso puo' avere un BA diverso dal suo DDT.
 
-Dettaglio, sette decisioni di Tid e forma proposta nel brief
+Dettaglio, decisioni di Tid (tutte chiuse il 2026-10-09) e forma proposta nel brief
 [brief-db-esecutivi-ba-coppia.md](brief-db-esecutivi-ba-coppia.md). 📝 Bozza.
 
 ---
@@ -1124,7 +1124,7 @@ D6 e il registro dei rossi in CI.
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
-      `brief-db-esecutivi-ba-coppia` (sette decisioni di Tid).
+      `brief-db-esecutivi-ba-coppia` (decisioni chiuse il 2026-10-09, tocca al team DB).
 
 ---
 
