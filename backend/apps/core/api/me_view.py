@@ -23,6 +23,7 @@ from apps.core.services.auth_constants import (
     JWT_CLAIM_IDENTITA_ID,
 )
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
+from apps.core.services.fuso_aziendale import fuso_aziendale
 from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 
@@ -131,6 +132,17 @@ class UserProfileView(DomainAPIView):
                                     "frontend porta alla pagina del primo."
                                 ),
                             ),
+                            "fuso_aziendale": serializers.CharField(
+                                help_text=(
+                                    "Nome IANA del fuso dell'azienda (es. "
+                                    "'Europe/Rome'), dal parametro "
+                                    "SYSTEM_FUSO_ORARIO via "
+                                    "script.fn_fuso_operativo. Il frontend "
+                                    "lo usa per l'«oggi» e per le ore a video: "
+                                    "un solo fuso in tutta l'applicazione, "
+                                    "non quello del browser."
+                                ),
+                            ),
                             "identita": serializers.DictField(
                                 allow_null=True,
                                 help_text=(
@@ -194,6 +206,10 @@ class UserProfileView(DomainAPIView):
         # sicurezza §3.4-bis, T-4): il guard del frontend porta alla pagina
         # che chiude il primo. La regola e' una, quella del cancello.
         profile["obblighi_pendenti"] = list(obblighi_in_vigore(user_id))
+        # Il fuso dell'azienda per il frontend (brief un-solo-fuso-aziendale,
+        # B-1): lo stesso valore che il backend usa, dalla stessa cache —
+        # niente seconda lettura del parametro.
+        profile["fuso_aziendale"] = fuso_aziendale().key
         return success_response(profile)
 
     # Scopo: Legge `emittente_attivo_id` dal JWT validato. Claim assente =

@@ -384,7 +384,7 @@ _RICERCA_TEMPLATE_VERSIONI = RicercaFull("documenti.template_versioni", ("titolo
 #    da richiamare. Se le due divergessero, l'editor proporrebbe un asset che
 #    il render rifiuta. La validita' si legge dalla colonna generata
 #    `validita`, mai ricalcolata da `valido_dal`/`valido_al`.
-_ASSET_UTILIZZABILE_OGGI = "(a.attivo AND a.validita @> CURRENT_DATE)"
+_ASSET_UTILIZZABILE_OGGI = "(a.attivo AND a.validita @> (SELECT script.fn_data_operativa()))"
 
 _ASSET_FROM = """
     FROM documenti.template_asset a
@@ -1093,7 +1093,7 @@ class DocumentiRepository:
         return int(row[0]) if row else 0
 
     # Scopo: Carica la versione PUBBLICATA attiva con `validita @> %s`
-    #        (CURRENT_DATE passata dal service per testabilita'). Ritorna
+    #        (l'oggi dell'azienda passato dal service per testabilita'). Ritorna
     #        la versione piu' recente (`versione DESC LIMIT 1`); se nessuna
     #        riga matcha, ritorna None (404 lato service).
     def get_versione_pubblicata_attiva(

@@ -14,7 +14,7 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
 import { STATO_PREVENTIVO } from '../../constants'
-import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
+import { addDaysToToday, displayDate, toDateString, giornoDi, parseIsoDate } from '../../../core/utils/date'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
@@ -331,10 +331,8 @@ watch(() => form.value.validita_dal, (nuovaDal) => {
   if (_suspendDateRecalc.value) return
   if (!nuovaDal) return
   const validitaGg = paramInt(paramDefaults.value.VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG, 30)
-  const dal = nuovaDal instanceof Date ? nuovaDal : new Date(nuovaDal)
-  if (isNaN(dal.getTime())) return
-  const al = new Date(dal)
-  al.setHours(0, 0, 0, 0)
+  const al = giornoDi(nuovaDal)
+  if (!al) return
   al.setDate(al.getDate() + validitaGg)
   form.value.validita_al = al
 })
@@ -411,9 +409,9 @@ async function loadDetail(id = null) {
     istanza_utility_obj: null,  // il BA c'e' sempre: l'istanza e' derivata, picker nascosto
     valuta_id: data.valuta_id,
     termine_pagamento_id: data.termine_pagamento_id,
-    validita_dal: data.validita_dal ? new Date(data.validita_dal + 'T00:00:00') : null,
-    validita_al: data.validita_al ? new Date(data.validita_al + 'T00:00:00') : null,
-    competenza_mese: data.competenza_mese ? new Date(data.competenza_mese + 'T00:00:00') : null,
+    validita_dal: parseIsoDate(data.validita_dal),
+    validita_al: parseIsoDate(data.validita_al),
+    competenza_mese: parseIsoDate(data.competenza_mese),
     fatturazione_immediata: data.fatturazione_immediata || false,
   }
   // Fissa la baseline e ripristina il non-salvato che la sostituzione

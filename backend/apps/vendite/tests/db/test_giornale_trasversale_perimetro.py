@@ -28,12 +28,12 @@
 # ------------------------------------------------------------
 from __future__ import annotations
 
-from datetime import date
 from unittest import TestCase
 from uuid import uuid4
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import richiedi_db_provvisto, richiedi_ruolo_soggetto_a_rls
 from apps.vendite.db.vendite_repository import VenditeRepository
@@ -108,7 +108,9 @@ class GiornaleTrasversalePerimetroTests(TestCase):
             with connection.cursor() as cur:
                 a, b = self._due_mondi(cur)
                 cur.execute("SELECT script.fn_pgtap_set_contesto_operatore(%s)", [a.auth_user_id])
-            oggi = date.today()
+            # Il giorno della riga appena scritta e' quello dell'AZIENDA: il
+            # filtro lo calcola cosi' (BB), e cosi' lo chiede il test.
+            oggi = oggi_aziendale()
             data = get_giornale_trasversale(
                 gravita=["ERROR"], registri=["EVENT_LOG"], entity_type="LOTTO",
                 data_da=oggi, data_a=oggi, limit=200, offset=0,
@@ -145,7 +147,7 @@ class GiornaleTrasversalePerimetroTests(TestCase):
     #    nel registro del piano, come fatto datato.
     def test_ogni_filtro_della_whitelist_si_attraversa(self) -> None:
         repo = VenditeRepository()
-        oggi = date.today()
+        oggi = oggi_aziendale()
         with transaction.atomic():
             with connection.cursor() as cur:
                 a, _b = self._due_mondi(cur)

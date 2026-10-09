@@ -700,8 +700,8 @@ class AuditLogView(AdminAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         events, total_count = AmmSoftwareService().list_audit_log(
-            data_da=qp.get("data_da") or None,
-            data_a=qp.get("data_a") or None,
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             tabella=qp.get("tabella") or None,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,

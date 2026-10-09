@@ -53,7 +53,7 @@ import {
 import { useArticoloComponentiStore } from '../stores/articoloComponenti'
 import { useEsposizioniComponente, ESPOSIZIONE_NASCOSTO } from '../composables/useEsposizioniComponente'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
-import { addDaysToToday, displayDate, parseIsoDate, toDateString } from '../../core/utils/date'
+import { addDaysToToday, displayDate, parseIsoDate, toDateString, giornoDi, oggiAziendale } from '../../core/utils/date'
 import ArticoloLookup from './ArticoloLookup.vue'
 import NoteDrawer from '../../core/components/NoteDrawer.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -251,9 +251,8 @@ function formDaRiga(row, { validoDal, validoAl }) {
 // Scopo: la data scelta e' oggi? (chiusura immediata contro programmata)
 function isOggi(val) {
   if (!val) return false
-  const sel = new Date(val)
-  sel.setHours(0, 0, 0, 0)
-  return sel.getTime() === oggi().getTime()
+  const sel = giornoDi(val)
+  return sel !== null && sel.getTime() === oggi().getTime()
 }
 
 watch(() => props.visible, async (val) => {
@@ -303,7 +302,7 @@ const onRowClick = (row) => apriRiga(row)
 // chiusura immediata, nuova riga apre domani.
 function onDuplicaVersione(row) {
   duplicaDialogRow.value = row
-  duplicaDialogChiudiAl.value = new Date()
+  duplicaDialogChiudiAl.value = oggiAziendale()
   duplicaDialogVisible.value = true
 }
 
@@ -321,7 +320,7 @@ function annullaDuplicaVersione() {
 // nuova versione (step 2).
 async function confermaDuplicaVersione() {
   if (!duplicaDialogRow.value || !duplicaDialogChiudiAl.value) return
-  const chiudiAlDate = new Date(duplicaDialogChiudiAl.value)
+  const chiudiAlDate = giornoDi(duplicaDialogChiudiAl.value)
   const chiudiAlIso = toDateString(chiudiAlDate)
   // Snapshot della sorgente prima di chiudere il dialog: serve a
   // pre-compilare il form quando duplicaDialogRow viene azzerata.
@@ -341,7 +340,7 @@ async function confermaDuplicaVersione() {
   // Apre il form add pre-compilato. valido_dal default = chiudi_al + 1
   // (la nuova versione apre il giorno successivo alla chiusura, evita
   // overlap col range chiuso). Tutti i campi sono editabili.
-  const nextDay = new Date(chiudiAlDate)
+  const nextDay = new Date(chiudiAlDate.getTime())
   nextDay.setDate(nextDay.getDate() + 1)
 
   nuovaRiga()
@@ -384,7 +383,7 @@ async function onSaveNew() {
 // Il delete BoM resta bloccato dal trigger DB E_BOM_MODIFICA_VIETATA.
 function onChiudiRiga(row) {
   chiudiDialogRow.value = row
-  chiudiDialogData.value = parseIsoDate(row.data_default_chiusura) || new Date()
+  chiudiDialogData.value = parseIsoDate(row.data_default_chiusura) || oggiAziendale()
   chiudiDialogVisible.value = true
 }
 

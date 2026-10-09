@@ -714,15 +714,26 @@ def _prefisso_nota(v: VocePresidio) -> str:
 
 
 # Scopo: una riga di una vista, compatta e leggibile — `chiave=valore`.
+# ⚠️ Un istante si scrive nell'ora dell'azienda e nel formato del BB, come il
+#    resto del messaggio: fino al 2026-10-09 era `str()` del valore, cioe' UTC
+#    con `+00:00` (brief un-solo-fuso-aziendale B-6).
 def _riga_compatta(riga: dict[str, Any]) -> str:
-    return ", ".join(
-        f"{k}={'—' if v is None else v}" for k, v in riga.items()
-    )
+    return ", ".join(f"{k}={_valore_compatto(v)}" for k, v in riga.items())
+
+
+# Scopo: un valore di una riga di vista nel messaggio: `None` -> «—», un
+#        istante -> ora dell'azienda coi secondi, il resto com'e'.
+def _valore_compatto(v: Any) -> str:
+    if v is None:
+        return "—"
+    if isinstance(v, datetime):
+        return format_datetime(v, with_seconds=True)
+    return str(v)
 
 
 # Scopo: un istante del messaggio, nel formato e nel fuso del BB
-#        `locale_formatters` (ora locale di `TIME_ZONE`, non quella dell'host:
-#        su un'unit systemd `TZ` puo' non esserci) — con i secondi per le
+#        `locale_formatters` (ora dell'azienda, non quella dell'host ne' del
+#        processo) — con i secondi per le
 #        corse, dove due corse dello stesso minuto vanno distinte, senza per la
 #        testata. `None` si scrive «—», non stringa vuota: in una riga di
 #        elenco il vuoto si legge come un difetto di resa.

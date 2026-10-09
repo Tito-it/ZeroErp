@@ -14,6 +14,7 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
@@ -1642,7 +1643,7 @@ def fn_rettifica_controllata_riga(
     # Il check si basa su validita` (valido_dal <= today <= valido_al), non
     # sullo `stato` persistito: lo stato e` solo flag informativo eventualmente
     # stantio (principio fail-safe: data = fonte di verita` operativa).
-    today = date.today()
+    today = oggi_aziendale()
     valido_dal = versione.get("valido_dal")
     valido_al = versione.get("valido_al")
     is_operativa_oggi = (
@@ -1998,7 +1999,7 @@ def fn_preview_bundle(
     return repository.list_bundle_preview(
         versione_id=versione_id,
         articolo_padre_id=str(articolo_padre_id),
-        data_riferimento=data_riferimento or date.today(),
+        data_riferimento=data_riferimento or oggi_aziendale(),
     )
 
 

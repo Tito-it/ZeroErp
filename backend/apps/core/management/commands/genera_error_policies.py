@@ -32,7 +32,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
+from apps.core.management.comando_aziendale import ComandoAziendale
 from django.db import connection
 
 # Il modulo prodotto. Sta accanto al registro che lo legge.
@@ -172,7 +173,7 @@ def leggi_identita() -> list[tuple]:
     return righe
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
         "Genera apps/core/services/error_policies_generated.py da "
         "config.vw_codici_errore_identita. Con --check non scrive: esce 1 se il "

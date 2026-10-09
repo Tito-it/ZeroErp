@@ -428,7 +428,7 @@ class TemplateAssetAdminService:
     # Scopo: Compone il dict da passare al repository per create.
     #        Campi obbligatori: codice, codice_interno, descrizione,
     #        asset_tipo_id, emittente_fiscale_id. valido_dal default DB
-    #        (CURRENT_DATE).
+    #        (`fn_data_operativa()`, l'oggi dell'azienda).
     def _build_upload_metadati(self, payload: dict[str, Any]) -> dict[str, Any]:
         data: dict[str, Any] = {}
         data["codice"] = self._v.require_string(

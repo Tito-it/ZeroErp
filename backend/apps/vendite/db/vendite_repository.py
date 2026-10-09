@@ -27,6 +27,7 @@ from apps.core.db._helpers import (
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
+    predicato_giorno_operativo,
     query_paged_view,
     row_to_dict,
     rows_to_list,
@@ -1376,7 +1377,7 @@ class VenditeRepository:
         # DB zero — nessuna funzione temporale sul totale delle card.
         if ritardo_giorni is not None:
             conditions.append(
-                "d.data_riferimento <= current_date - make_interval(days => %s)"
+                "d.data_riferimento <= (SELECT script.fn_data_operativa()) - make_interval(days => %s)"
             )
             params.append(ritardo_giorni)
 
@@ -1394,7 +1395,7 @@ class VenditeRepository:
                 d.stato_codice,
                 d.valore_totale,
                 d.unita_totali,
-                GREATEST((current_date - d.data_riferimento), 0) AS anzianita_giorni,
+                GREATEST(((SELECT script.fn_data_operativa()) - d.data_riferimento), 0) AS anzianita_giorni,
                 d.motivo_fermo,
                 d.data_riferimento,
                 -- Emittente (P-4, Fase E). ⛔ L'alias deve restare
@@ -3132,7 +3133,7 @@ class VenditeRepository:
         # confronto — coerente: "fermo da N giorni" richiede un'età nota.
         if ritardo_giorni is not None:
             conditions.append(
-                "d.data_riferimento <= current_date - make_interval(days => %s)"
+                "d.data_riferimento <= (SELECT script.fn_data_operativa()) - make_interval(days => %s)"
             )
             params.append(ritardo_giorni)
 
@@ -5208,21 +5209,23 @@ class VenditeRepository:
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         gravita_valide = [g for g in gravita if g in GIORNALE_GRAVITA]
         registri_validi = list(registri) if registri is not None else None
+        # Il giorno e' quello dell'AZIENDA (BB): fino al 2026-10-09 era
+        # `quando >= %s::date`, la mezzanotte della sessione (UTC), e un evento
+        # fra mezzanotte e le 2 di Roma finiva sotto il giorno prima.
+        giorno_sql, giorno_params = predicato_giorno_operativo("quando", data_da, data_a)
         return self._list_giornale(
-            perimetro_sql="""
+            perimetro_sql=f"""
                 (gravita = ANY(%s::text[]) OR (gravita IS NULL AND 'ERROR' = ANY(%s::text[])))
                 AND (%s::text[] IS NULL OR registro = ANY(%s::text[]))
                 AND (%s::text IS NULL OR entity_type = %s)
-                AND (%s::date IS NULL OR quando >= %s::date)
-                AND (%s::date IS NULL OR quando < %s::date + interval '1 day')
+                AND {giorno_sql}
                 AND (%s::uuid IS NULL OR tx_id = %s::uuid OR correlation_id = %s::uuid)
             """,
             perimetro_params=[
                 gravita_valide, gravita_valide,
                 registri_validi, registri_validi,
                 entity_type, entity_type,
-                data_da, data_da,
-                data_a, data_a,
+                *giorno_params,
                 filo, filo, filo,
             ],
             limit=limit,

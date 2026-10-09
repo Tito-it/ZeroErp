@@ -35,6 +35,17 @@
 #  15. un servizio sempre acceso non può dichiararsi avviabile a mano
 #  16. il drenatore NON è candidato a «Esegui ora» (letto dal JSON per
 #      processo, non ricopiato) — e almeno un timer lo è
+#  17. `dovuto` si valida: vocabolario, orario, giorno, jobname, solo sui timer
+#  18. l'inizio del periodo dovuto, nel fuso dell'azienda (giorno, settimana,
+#      mese; prima delle `dalle` niente; il periodo precedente non si recupera)
+#  19. un template porta l'`ExecCondition` della SUA unit sse la voce ha
+#      `dovuto` — e nessun `comando` contiene il controllo                  ⭐
+#  20. il `jobname` dichiarato è quello che il comando scrive
+#  21. almeno le tre sveglie calendariali dichiarano `dovuto` (anti vuoto)
+#
+#  ⭐ Dal 2026-10-09 il JSON porta `dovuto` sulle sveglie calendariali (brief
+#     un-solo-fuso-aziendale T-4/T-9): il timer si sveglia ogni ora e
+#     l'`ExecCondition` `e_dovuto` decide nel fuso dell'azienda.
 #
 #  ⭐ Dal 2026-09-15 il JSON porta `avvio_manuale`: la sede in cui si dice
 #     quali sveglie hanno il pulsante «Esegui ora» (solo comandi brevi —
@@ -375,3 +386,113 @@ class SveglieDichiarateTests(SimpleTestCase):
             with self.subTest(unit=s.unit):
                 if not s.e_timer:
                     self.assertFalse(s.avvio_manuale, f"{s.unit}: un servizio non si avvia a mano")
+
+    # 17. `dovuto` si valida per intero, e solo un timer lo porta.
+    def test_dovuto_si_valida(self) -> None:
+        buono = {"ogni": "giorno", "dalle": "07:00", "jobname": "p:corsia"}
+        casi = (
+            ({**buono, "ogni": "anno"}, "'ogni'"),
+            ({**buono, "dalle": "7:00"}, "'dalle'"),
+            ({**buono, "dalle": "24:00"}, "'dalle'"),
+            ({**buono, "giorno": 1}, "'giorno' non ha senso"),
+            ({**buono, "ogni": "settimana"}, "'giorno' fra"),
+            ({**buono, "ogni": "settimana", "giorno": "monday"}, "'giorno' fra"),
+            ({**buono, "ogni": "mese", "giorno": 29}, "'giorno' del mese"),
+            ({**buono, "ogni": "mese", "giorno": True}, "'giorno' del mese"),
+            ({**buono, "jobname": "senza_corsia"}, "'jobname'"),
+            ("ogni giorno", "oggetto"),
+        )
+        for dovuto, atteso in casi:
+            with self.subTest(dovuto=dovuto):
+                self._assert_dichiarato_rifiutato(_voce(dovuto=dovuto), atteso)
+        self._assert_dichiarato_rifiutato(
+            _voce(forma="servizio", oncalendar=None, avvio_manuale=False, dovuto=buono),
+            "vale solo per un timer",
+        )
+
+    # 18. L'inizio del periodo dovuto. Il fuso e' un'ipotesi del test (Roma,
+    #     +02:00 a settembre); `adesso` e' un istante UTC.
+    def test_inizio_periodo_dovuto(self) -> None:
+        from datetime import UTC, datetime, time
+        from zoneinfo import ZoneInfo
+
+        roma = ZoneInfo("Europe/Rome")
+        giorno = sveglie.Dovuto("giorno", time(7, 0), None, "p:c")
+        settimana = sveglie.Dovuto("settimana", time(7, 30), 0, "p:c")
+        mese = sveglie.Dovuto("mese", time(0, 0), 1, "p:c")
+
+        def utc(*a: int) -> datetime:
+            return datetime(*a, tzinfo=UTC)
+
+        def roma_alle(*a: int) -> datetime:
+            return datetime(*a, tzinfo=roma)
+
+        casi = (
+            # 04:59 UTC = 06:59 a Roma: non ancora; 05:00 UTC = 07:00: dovuto da oggi.
+            (giorno, utc(2026, 9, 14, 4, 59), None),
+            (giorno, utc(2026, 9, 14, 5, 0), roma_alle(2026, 9, 14, 7, 0)),
+            # 23:30 UTC del 14 = 01:30 del 15 a Roma: il periodo del 15 non e' cominciato.
+            (giorno, utc(2026, 9, 14, 23, 30), None),
+            # Lunedi' 14/09 alle 07:29 di Roma: non ancora (e la settimana prima e' finita).
+            (settimana, utc(2026, 9, 14, 5, 29), None),
+            (settimana, utc(2026, 9, 14, 5, 30), roma_alle(2026, 9, 14, 7, 30)),
+            # Domenica 20/09: ancora la settimana di lunedi' 14 (si recupera dentro il periodo).
+            (settimana, utc(2026, 9, 20, 12, 0), roma_alle(2026, 9, 14, 7, 30)),
+            # Il 1° alle 00:00 di Roma e' il 30 alle 22:00 UTC.
+            (mese, utc(2026, 9, 30, 21, 59), roma_alle(2026, 9, 1, 0, 0)),
+            (mese, utc(2026, 9, 30, 22, 0), roma_alle(2026, 10, 1, 0, 0)),
+            (mese, utc(2026, 10, 18, 9, 0), roma_alle(2026, 10, 1, 0, 0)),
+        )
+        for dovuto, adesso, atteso in casi:
+            with self.subTest(ogni=dovuto.ogni, adesso=adesso.isoformat()):
+                self.assertEqual(sveglie.inizio_periodo_dovuto(dovuto, adesso, roma), atteso)
+        # Un mese col giorno dichiarato dopo oggi: il periodo non e' cominciato.
+        il_15 = sveglie.Dovuto("mese", time(0, 0), 15, "p:c")
+        self.assertIsNone(sveglie.inizio_periodo_dovuto(il_15, utc(2026, 10, 10, 9, 0), roma))
+
+    # 19. ⭐ L'`ExecCondition` sta nel template della sveglia calendariale, con
+    #     la SUA unit — e solo li'. E il controllo non sta nel `comando`, che e'
+    #     la riga di «Esegui ora» (T-9).
+    def test_execcondition_sse_dovuto(self) -> None:
+        for s in sveglie.carica_sveglie():
+            with self.subTest(unit=s.unit):
+                testo = (_TEMPLATE_DIR / f"{s.unit}.service").read_text(encoding="utf-8")
+                righe = [r for r in testo.splitlines() if r.startswith("ExecCondition=")]
+                if s.dovuto is None:
+                    self.assertEqual(righe, [], f"{s.unit}: ExecCondition senza 'dovuto'")
+                else:
+                    self.assertEqual(
+                        righe, [f"ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto {s.unit}"],
+                    )
+                self.assertNotIn("e_dovuto", s.comando)
+
+    # 20. Il `jobname` dichiarato e' la corsia che il comando SCRIVE: se
+    #     divergessero, `e_dovuto` non troverebbe mai la corsa e il lavoro
+    #     ripartirebbe a ogni sveglia.
+    def test_il_jobname_dichiarato_e_quello_che_il_comando_scrive(self) -> None:
+        from apps.core.services.presidi_digest import jobname_corsia as corsia_digest
+        from apps.vendite.management.commands.run_fatturazione_batch import (
+            jobname_corsia as corsia_fatturazione,
+        )
+
+        def opzione(comando: tuple[str, ...], nome: str) -> str:
+            return comando[comando.index(nome) + 1]
+
+        # ⚠️ Un processo nuovo con `dovuto` va insegnato qui: meglio un rosso
+        #    che un jobname non verificato.
+        corsia_per_processo = {
+            processi.PROCESSO_DIGEST_PRESIDI: lambda c: corsia_digest(opzione(c, "--cadenza")),
+            processi.PROCESSO_RUN_FATTURAZIONE_BATCH: lambda c: corsia_fatturazione(opzione(c, "--modalita")),
+        }
+        for s in sveglie.carica_sveglie():
+            if s.dovuto is None:
+                continue
+            with self.subTest(unit=s.unit):
+                self.assertIn(s.processo_codice, corsia_per_processo, "insegnami la corsia di questo processo")
+                self.assertEqual(s.dovuto.jobname, corsia_per_processo[s.processo_codice](s.comando))
+
+    # 21. Le sveglie calendariali di oggi dichiarano `dovuto`: senza, i test 19
+    #     e 20 passerebbero a vuoto.
+    def test_le_sveglie_calendariali_dichiarano_dovuto(self) -> None:
+        calendariali = {s.unit for s in sveglie.carica_sveglie() if s.dovuto is not None}
+        self.assertGreaterEqual(len(calendariali), 3)

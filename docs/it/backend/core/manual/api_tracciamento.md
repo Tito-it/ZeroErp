@@ -144,7 +144,7 @@ Tutti gli endpoint restituiscono l'envelope paginato standard:
 - Paginazione: `page < 1` o `page_size < 1` danno `E_CORE_VALIDATION`. Un `page_size`
   oltre 200 viene ridotto a 200 senza errore; un valore non numerico di `page` o
   `page_size` ripiega sul default senza errore.
-- I filtri date usano `>=` per date_from e `<= date_to + 1 giorno` per includere l'intero giorno.
+- I filtri date (`date_from`/`date_to`, `YYYY-MM-DD`) sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09), `date_to` incluso. Malformate → `400 E_VALIDATION_INPUT` (fino al 2026-10-09 arrivavano al DB come stringa, e il confine alto era compreso: `<= date_to + 1 giorno`).
 - Gli endpoint search hanno throttling `SearchBurstRateThrottle`.
 - Nessun dato viene modificato: il tracciamento runtime (INSERT/UPDATE task_runs) resta nei service di dominio (es. `VenditePipelineRepository`).
 

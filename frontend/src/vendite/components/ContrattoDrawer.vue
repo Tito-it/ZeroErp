@@ -23,7 +23,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, STATUS_ICONS, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { addDaysToToday, toDateString, parseIsoDate, displayDate } from '../../core/utils/date'
+import { addDaysToToday, toDateString, parseIsoDate, displayDate, oggiAziendale, giornoDi } from '../../core/utils/date'
 import { paramInt, paramString } from '../../core/utils/parameterCast'
 import { statoContrattoSeverity } from '../../core/utils/severity'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -587,8 +587,7 @@ const emissioneLoading = ref(false)
 // Min selezionabile: oggi (no retroattivo). Se il contratto inizia nel futuro
 // (valido_dal > oggi, esposto dal BE come min_date) il minimo e' valido_dal.
 const cessaDialogMinDate = computed(() => {
-  const oggi = new Date()
-  oggi.setHours(0, 0, 0, 0)
+  const oggi = oggiAziendale()
   const beMin = parseIsoDate(cessaDialogAction.value?.min_date)
   return beMin && beMin > oggi ? beMin : oggi
 })
@@ -596,17 +595,14 @@ const cessaDialogMinDate = computed(() => {
 // Programmata SOLO se strettamente futura. Data odierna = cessazione immediata.
 const cessazioneProgrammata = computed(() => {
   if (!cessaDialogData.value) return false
-  const oggi = new Date()
-  oggi.setHours(0, 0, 0, 0)
-  const scelta = new Date(cessaDialogData.value)
-  scelta.setHours(0, 0, 0, 0)
-  return scelta > oggi
+  const scelta = giornoDi(cessaDialogData.value)
+  return scelta !== null && scelta > oggiAziendale()
 })
 
 function openCessaDialog(action) {
   cessaDialogAction.value = action
   // default_date dal BE; fallback oggi solo se la fn non lo fornisce.
-  cessaDialogData.value = parseIsoDate(action?.default_date) || new Date()
+  cessaDialogData.value = parseIsoDate(action?.default_date) || oggiAziendale()
   // Il dialog evidenzia `valido_al` da `campiErrati`, che e' lo stesso del
   // form: un rifiuto precedente del form non deve aprirlo gia' in rosso.
   campiErrati.value = []

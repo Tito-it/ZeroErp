@@ -30,7 +30,7 @@ import { STATO_DDT } from '../constants'
 import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
-import { displayDate, toDateString } from '../../../core/utils/date'
+import { displayDate, toDateString, oggiAziendale, parseIsoDate } from '../../../core/utils/date'
 import { createDdt } from '../api/ddtApi'
 import { getDdtFormDefaults } from '../../api/formDefaults'
 import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutosaveBozza'
@@ -222,7 +222,7 @@ function defaultForm() {
     valuta_id: null,
     // Corsia di instradamento: default differita (DEFAULT false a DB).
     fatturazione_immediata: false,
-    data: new Date(),
+    data: oggiAziendale(),
     // Trasporto
     causale_trasporto_id: null,
     aspetto_bene_id: null,
@@ -270,7 +270,7 @@ async function loadDetail(id = null) {
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
     valuta_id: data.valuta_id ?? null,
     fatturazione_immediata: data.fatturazione_immediata ?? false,
-    data: data.data ? new Date(data.data + 'T00:00:00') : null,
+    data: parseIsoDate(data.data),
     // Trasporto
     causale_trasporto_id: data.causale_trasporto_id ?? null,
     aspetto_bene_id: data.aspetto_bene_id ?? null,

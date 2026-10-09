@@ -17,7 +17,7 @@ Endpoint di scrittura che delega a `pratiche_service.sospendi_pratica`. Il servi
 - Header: `Content-Type: application/json`, `Authorization: Bearer <access_token>`
 - Body:
   - `motivo` (string, **obbligatorio**) — motivazione della sospensione
-  - `data_inizio` (string, opzionale) — data/ora ISO 8601 timestamptz (es. `2026-06-20T09:30:00Z`) della sospensione effettiva, anche retroattiva. Default DB `NOW()` se assente/nulla
+  - `data_inizio` (string, opzionale) — data/ora ISO 8601 timestamptz (es. `2026-06-20T09:30:00Z`) della sospensione effettiva, anche retroattiva. Default DB `NOW()` se assente/nulla. ⛔ **L'offset è obbligatorio** (`Z` o `+02:00`): senza, `400 E_VALIDATION_INPUT` (`…_senza_offset`; dal 2026-10-09, `payload_validators.optional_istante`) — PostgreSQL leggerebbe l'ora nel fuso della sessione.
   - `data_riattivazione_prevista` (string, opzionale) — data ISO `YYYY-MM-DD` di riattivazione automatica prevista (puo' essere nel futuro)
 
 ## Output

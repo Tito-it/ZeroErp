@@ -21,12 +21,18 @@
 #        senza la sua data e' esattamente il campo che invita a ricucire.
 # ------------------------------------------------------------
 
+from datetime import date, datetime
 from typing import Any
 
 from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.db._helpers import corsa_conclusa, fetch_paged_with_total, pattern_contiene
+from apps.core.db._helpers import (
+    corsa_conclusa,
+    fetch_paged_with_total,
+    pattern_contiene,
+    predicato_giorno_operativo,
+)
 from apps.core.types import JobRunLogRow
 
 
@@ -64,6 +70,29 @@ def _cte_corse(conditions: list[str]) -> str:
 class MaintenanceRepository:
     """Repository per job_run_log e funzioni maintenance."""
 
+    # Scopo: vero se la corsia `jobname` ha una corsa RIUSCITA (`ok`) partita
+    #        da `dal` in poi: il lavoro del periodo che comincia a `dal` e' fatto.
+    #        Lo chiede `e_dovuto`, l'`ExecCondition` delle sveglie calendariali
+    #        (brief un-solo-fuso-aziendale T-9).
+    # ⚠️ Una corsa FALLITA non conta: il lavoro non e' fatto, e la sveglia dopo
+    #    riprova. Una corsa IN CORSO non conta nemmeno: la sovrapposizione la
+    #    impedisce il lock del comando, e una riga rimasta aperta da un processo
+    #    morto non deve bloccare il periodo.
+    def corsa_riuscita_dal(self, jobname: str, dal: datetime) -> bool:
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM maintenance.job_run_log
+                     WHERE jobname = %s AND started_at >= %s AND ok
+                )
+                """,
+                [jobname, dal],
+            )
+            row = cur.fetchone()
+        assert row is not None
+        return bool(row[0])
+
     # Scopo: Restituisce la lista delle esecuzioni job con filtri opzionali su
     # jobname, esito (ok), intervallo temporale. Ordinamento cronologico decrescente.
     # Perimetro: sola lettura su maintenance.job_run_log.
@@ -72,15 +101,19 @@ class MaintenanceRepository:
         *,
         jobname: str | None = None,
         ok: bool | None = None,
-        date_from: str | None = None,
-        date_to: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         search: str | None = None,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[JobRunLogRow], int]:
         search_pattern = pattern_contiene(search)
+        # Giorni dell'azienda, `date_to` incluso (BB): fino al 2026-10-09 era
+        # `<= %s::timestamptz + 1 day`, mezzanotte della sessione e confine
+        # alto compreso.
+        giorno_sql, giorno_params = predicato_giorno_operativo("started_at", date_from, date_to)
         rows, total_count = fetch_paged_with_total(
-            """
+            f"""
             SELECT id, jobname, stepname,
                    started_at::text, ended_at::text,
                    ok, rows_affected, message,
@@ -90,20 +123,18 @@ class MaintenanceRepository:
               FROM maintenance.job_run_log
              WHERE (%s::text IS NULL OR jobname = %s)
                AND (%s::boolean IS NULL OR ok = %s)
-               AND (%s::text IS NULL OR started_at >= %s::timestamptz)
-               AND (%s::text IS NULL OR started_at <= %s::timestamptz + interval '1 day')
+               AND {giorno_sql}
                AND (%s::text IS NULL
                     OR jobname ILIKE %s
                     OR stepname ILIKE %s
                     OR message ILIKE %s)
              ORDER BY started_at DESC, id DESC
              LIMIT %s OFFSET %s
-            """,
+            """,  # noqa: S608 — frammento del BB predicato_giorno_operativo (colonna validata), valori come parametri
             [
                 jobname, jobname,
                 ok, ok,
-                date_from, date_from,
-                date_to, date_to,
+                *giorno_params,
                 search_pattern, search_pattern, search_pattern, search_pattern,
                 limit, offset,
             ],
@@ -213,7 +244,7 @@ class MaintenanceRepository:
     #  - `meta_month_equals`: `(chiave, 'YYYY-MM-01')` — tiene i run ATTRIBUITI
     #    a quel mese, applicato PRIMA del GROUP BY (i conteggi risultano quindi
     #    relativi ai soli run che matchano). L'attribuzione è:
-    #        COALESCE(meta ->> chiave, mese di `started_at`)
+    #        COALESCE(meta ->> chiave, mese di `started_at` nel fuso dell'azienda)
     #    cioè il mese DICHIARATO dal run se c'è, altrimenti quello in cui il run
     #    è stato ESEGUITO.
     #    Il fallback non è una comodità: senza, il filtro non troverebbe MAI
@@ -244,9 +275,13 @@ class MaintenanceRepository:
             chiave, mese = meta_month_equals
             if not chiave.replace("_", "").isalnum():
                 raise ValueError(f"chiave meta non ammessa: {chiave!r}")
+            # Il mese di `started_at` e' quello dell'AZIENDA (BB DB
+            # `fn_giorno_operativo`): fino al 2026-10-09 era `date_trunc` nel
+            # fuso della sessione, e un run della notte del 1° finiva nel mese prima.
             conditions.append(
                 f"COALESCE(meta ->> '{chiave}',"
-                " to_char(date_trunc('month', started_at), 'YYYY-MM-DD')) = %s"
+                " to_char(date_trunc('month', script.fn_giorno_operativo(started_at)::timestamp),"
+                " 'YYYY-MM-DD')) = %s"
             )
             params.append(str(mese))
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""

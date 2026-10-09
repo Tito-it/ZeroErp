@@ -27,7 +27,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Final
 
 from apps.anagrafiche.error_codes import E_CONTATTO_INCOMPLETO
-from apps.anagrafiche.services._validators import optional_str
+from apps.anagrafiche.services._validators import create_with_constraint_mapping, optional_str
 from apps.core.api.payload_validators import optional_int
 from apps.core.services.service_errors import ServiceError
 
@@ -114,14 +114,77 @@ def crea_contatto_inline_se_valido(
         )
     if contatto_status == "VALID":
         assert contatto_data is not None  # type narrowing per il checker
-        sogg_repo.crea_contatto(
-            soggetto_id,
-            nominativo=contatto_data["nominativo"],
-            email=optional_str(contatto_data, "email"),
-            telefono=optional_str(contatto_data, "telefono"),
-            cellulare=optional_str(contatto_data, "cellulare"),
-            pec=optional_str(contatto_data, "pec"),
-            tipo_contatto_id=optional_int(contatto_data, "tipo_contatto_id"),
-            note=optional_str(contatto_data, "note"),
-            soggetto_ruolo_id=soggetto_ruolo_id,
+        crea_contatto_validato(
+            sogg_repo, soggetto_id, contatto_data, soggetto_ruolo_id=soggetto_ruolo_id,
         )
+
+
+# Scopo: il contatto e' VALIDO (nominativo + tipo contatto), altrimenti
+#        E_CONTATTO_INCOMPLETO coi campi mancanti da accendere. Per chi il
+#        contatto lo pretende: EMPTY e PARTIAL sono lo stesso rifiuto.
+def richiedi_contatto_valido(contatto: dict[str, Any] | None) -> None:
+    if classify_contatto_payload(contatto) != "VALID":
+        missing = missing_required_fields(contatto)
+        raise ServiceError(
+            code=E_CONTATTO_INCOMPLETO,
+            message="Contatto obbligatorio: nominativo e tipo contatto richiesti.",
+            context={"missing": missing},
+            # I campi mancanti SONO i campi da accendere (presidio C2, §3-ter).
+            fields=tuple(missing),
+        )
+
+
+# Le tre unicita' di `anagrafiche.contatti` (indici parziali): un contatto per
+# tipo, sul soggetto, sul ruolo, sul ruolo per istanza. Il campo e' il tipo
+# contatto: e' l'unica colonna che l'operatore sceglie (soggetto, ruolo e
+# istanza li da' il contesto della pagina).
+_VINCOLI_CONTATTO: Final[dict[str, str | tuple[str, str]]] = {
+    "uq_contatti_soggetto_tipo": (
+        "Il soggetto ha gia' un contatto di questo tipo.", "tipo_contatto_id",
+    ),
+    "uq_contatti_ruolo_tipo_no_istanza": (
+        "Il ruolo ha gia' un contatto di questo tipo.", "tipo_contatto_id",
+    ),
+    "uq_contatti_ruolo_istanza_tipo": (
+        "Il ruolo ha gia' un contatto di questo tipo per questa istanza.", "tipo_contatto_id",
+    ),
+}
+
+
+# Scopo: crea un contatto (del soggetto, del ruolo o del ruolo per istanza)
+#        con la regola del contatto valido e le unicita' tradotte.
+# ⭐ Regola del 2 (2026-10-09): stava in tre punti — `SoggettiService.
+#    create_contatto`, la view `RuoloContattiView.post` e il VALID di
+#    `crea_contatto_inline_se_valido` — e nessuno dei tre la scriveva intera.
+#    Il contatto del soggetto non pretendeva il tipo (la colonna NOT NULL
+#    rispondeva `E_DATABASE`) e nessuno traduceva le unicita' sul campo: un
+#    secondo contatto dello stesso tipo era un `E_DATABASE` generico, o un 409
+#    senza dire quale campo.
+def crea_contatto_validato(
+    sogg_repo: "SoggettiRepository",
+    soggetto_id: str,
+    contatto: dict[str, Any],
+    *,
+    soggetto_ruolo_id: int | None = None,
+    istanza_utility_id: int | None = None,
+) -> dict[str, Any]:
+    richiedi_contatto_valido(contatto)
+    nominativo = optional_str(contatto, "nominativo")
+    assert nominativo is not None  # garantito dal contatto VALIDO
+    risultato: dict[str, Any] = create_with_constraint_mapping(
+        lambda: sogg_repo.crea_contatto(
+            soggetto_id,
+            nominativo=nominativo,
+            email=optional_str(contatto, "email"),
+            telefono=optional_str(contatto, "telefono"),
+            cellulare=optional_str(contatto, "cellulare"),
+            pec=optional_str(contatto, "pec"),
+            tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
+            unita_organizzativa_id=optional_int(contatto, "unita_organizzativa_id"),
+            note=optional_str(contatto, "note"),
+            soggetto_ruolo_id=soggetto_ruolo_id,
+            istanza_utility_id=istanza_utility_id,
+        ),
+        _VINCOLI_CONTATTO,
+    )
+    return risultato

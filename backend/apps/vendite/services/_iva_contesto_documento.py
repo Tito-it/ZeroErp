@@ -150,7 +150,7 @@ def contesto_da_testata(
     assert fiscale_id is not None
 
     data_raw = testata.get("data")
-    # ⚠️ Il risolutore prende una data e non legge mai `CURRENT_DATE` (D14):
+    # ⚠️ Il risolutore prende una data e non legge mai l'«oggi» (D14):
     #    senza, non c'e' niente da passargli. Errore di dominio, non un
     #    `ValueError` grezzo da `fromisoformat`.
     ErrorManager.require(

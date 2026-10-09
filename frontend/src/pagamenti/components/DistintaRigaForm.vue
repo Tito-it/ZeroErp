@@ -76,7 +76,7 @@ import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfe
 import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { LIVELLO, spazioSaldo, useSaldi } from '../composables/useSaldi'
 import { DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
-import { displayDate, toDateString, parseIsoDate } from '../../core/utils/date'
+import { displayDate, toDateString, parseIsoDate, oggiAziendale } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import { aggiornaRiga, creaRiga, forzaturaConMotivo } from '../api/pagamenti'
 import { useEtichettePagamenti } from '../etichette'
@@ -129,7 +129,7 @@ function defaultForm() {
     // ⭐ La data del pagamento nasce OGGI: si sta digitando il denaro di
     //    giornata. ⚠️ Ma NON e' la data contabile della distinta — un incasso
     //    puo' essere di ieri e finire sul foglio di oggi.
-    data_pagamento: new Date(),
+    data_pagamento: oggiAziendale(),
     data_valuta: null,
   }
 }

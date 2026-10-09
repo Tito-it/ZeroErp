@@ -106,6 +106,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_attivazioni,
@@ -452,7 +453,7 @@ class TestPreventiviService(unittest.TestCase):
         # competenza=primo del mese corrente (oggi.replace(day=1)).
         kwargs = self.mock_repo.update_preventivo.call_args.kwargs
         self.assertTrue(kwargs["fatturazione_immediata"])
-        expected = date.today().replace(day=1)
+        expected = oggi_aziendale().replace(day=1)
         self.assertEqual(kwargs["competenza_mese"], expected)
         self.mock_repo.cambia_stato.assert_called_once_with(
             1, "ACCETTATO", "django_api",

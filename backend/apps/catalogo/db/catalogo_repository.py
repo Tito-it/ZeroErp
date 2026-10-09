@@ -15,6 +15,7 @@ from django.db import connection
 
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     limiti_pagina,
     pattern_contiene,
     RicercaFull,
@@ -297,12 +298,11 @@ class CatalogoRepository:
         # termine non filtra, e la view non risponde 400 (brief-db-be-fe-
         # ricerca-soglia-per-lista §6 a, Tid 2026-09-26).
         add_ricerca_full_condition(conditions, params, search, _RICERCA_ARTICOLI, alias="a")
-        if data_da is not None:
-            conditions.append("a.data_insert::date >= %s")
-            params.append(data_da)
-        if data_a is not None:
-            conditions.append("a.data_insert::date <= %s")
-            params.append(data_a)
+        # Giorni dell'AZIENDA, `data_a` incluso (BB): fino al 2026-10-09 era
+        # `a.data_insert::date`, il giorno della sessione e niente indice.
+        giorno_sql, giorno_params = predicato_giorno_operativo("a.data_insert", data_da, data_a)
+        conditions.append(giorno_sql)
+        params.extend(giorno_params)
 
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         from_where = f"FROM catalogo.vw_articoli_dettaglio a {where_clause}"

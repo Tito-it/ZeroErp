@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -303,6 +303,27 @@ def optional_iso_date(payload: dict[str, Any], key: str):
     if not isinstance(value, str):
         raise ValueError(f"{key}_invalid")
     return parse_iso_date(value)
+
+
+# Scopo: Valida e converte il campo opzionale ISTANTE (ISO 8601 con data e ora)
+#        mantenendo `None` se assente o vuoto. ⛔ L'OFFSET E' OBBLIGATORIO
+#        (`Z` o `+02:00`): senza, PostgreSQL leggerebbe l'ora nel fuso della
+#        SESSIONE (UTC), cioe' un'ora che nessuno ha scritto. Una stringa senza
+#        offset e' `ValueError` -> 400 `E_VALIDATION_INPUT`, non un'ipotesi.
+#        Brief un-solo-fuso-aziendale B-7 (2026-10-09).
+def optional_istante(payload: dict[str, Any], key: str) -> datetime | None:
+    value = payload.get(key)
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{key}_invalid")
+    try:
+        istante = datetime.fromisoformat(value.strip())
+    except ValueError as exc:
+        raise ValueError(f"{key}_invalid") from exc
+    if istante.tzinfo is None or istante.utcoffset() is None:
+        raise ValueError(f"{key}_senza_offset")
+    return istante
 
 
 # Scopo: Valida e converte il campo opzionale `uuid` mantenendo `None` se assente.

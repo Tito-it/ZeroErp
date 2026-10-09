@@ -27,7 +27,7 @@ Indice test eseguiti:
 """
 
 import math
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
@@ -157,18 +157,20 @@ class PermissionsAuditRepositoryTests(TestCase):
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
         self.repo.list_audit_events(
-            auth_user_id=5, uo_id=None, data_da="2026-01-01", data_a=None,
+            auth_user_id=5, uo_id=None, data_da=date(2026, 1, 1), data_a=None,
             tabella=None, page=1, page_size=50,
         )
 
         sql = mock_cursor.execute.call_args[0][0]
         params = mock_cursor.execute.call_args[0][1]
-        self.assertIn("valid_from >= %s", sql)
-        self.assertIn("2026-01-01", params)
+        # Il giorno e' quello dell'azienda: il confine lo calcola il DB (BB).
+        self.assertIn("valid_from >= script.fn_inizio_giorno_operativo(%s::date)", sql)
+        self.assertIn(date(2026, 1, 1), params)
 
-    # Scopo: `data_a` e' un giorno e lo include tutto: `[da, a + 1 giorno)`.
-    # Il vecchio `valid_from <= a::timestamptz` si fermava alla mezzanotte
-    # d'inizio e perdeva gli eventi del giorno indicato (F-4).
+    # Scopo: `data_a` e' un giorno e lo include tutto: fino all'inizio del
+    # giorno DOPO, nel fuso dell'azienda. Il vecchio `valid_from <=
+    # a::timestamptz` si fermava alla mezzanotte d'inizio e perdeva gli eventi
+    # del giorno indicato (F-4).
     @patch(_CONN)
     def test_filter_data_a_include_il_giorno(self, mock_conn):
         mock_cursor = MagicMock()
@@ -178,15 +180,15 @@ class PermissionsAuditRepositoryTests(TestCase):
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
         self.repo.list_audit_events(
-            auth_user_id=5, uo_id=None, data_da=None, data_a="2026-01-31",
+            auth_user_id=5, uo_id=None, data_da=None, data_a=date(2026, 1, 31),
             tabella=None, page=1, page_size=50,
         )
 
         sql = mock_cursor.execute.call_args[0][0]
         params = mock_cursor.execute.call_args[0][1]
-        self.assertIn("valid_from < %s::date + interval '1 day'", sql)
+        self.assertIn("valid_from < script.fn_inizio_giorno_operativo(%s::date + 1)", sql)
         self.assertNotIn("valid_from <=", sql)
-        self.assertIn("2026-01-31", params)
+        self.assertIn(date(2026, 1, 31), params)
 
     # Scopo: Filtro tabella riduce le sub-query UNION.
     @patch(_CONN)

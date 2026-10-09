@@ -2,7 +2,7 @@
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-08. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§5), che **attende** la consegna DB.
-> **Origine:** L0 di [piano-be-type-checker.md](../work-in-progress/piano-be-type-checker.md) §4.4.
+> **Origine:** L0 di [piano-be-type-checker.md](../work-done/piano-be-type-checker.md) §4.4.
 > Riscrivendo riallinea e sblocca del prezzo di una riga di commessa, la
 > provenienza del prezzo è diventata un insieme unico (building block
 > `apps/vendite/services/prezzo_riga_commessa.py`). `listino_riga_id` ne è rimasta

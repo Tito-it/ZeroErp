@@ -144,7 +144,17 @@ exclude = [
 #    altre regole risultano spente, e ruff toglie TUTTI i `noqa` del repo
 #    (427 il 2026-09-26, ripristinati). Si usa la configurazione intera
 #    (`ruff check .`), e il motivo scritto dopo la direttiva va conservato.
-select = ["F", "E9", "T20", "C4", "A", "PIE", "G", "LOG", "S", "B", "RUF100"]
+# ⭐ DTZ = flake8-datetimez, ACCESA il 2026-10-09 a ZERO (brief
+#    un-solo-fuso-aziendale B-9). Rifiuta `date.today()`, `datetime.now()`
+#    senza fuso, `datetime(...)` e `strptime` senza fuso: sono il giorno o
+#    l'ora del PROCESSO (`TIME_ZONE = 'UTC'`), che non e' il fuso dell'azienda.
+#    L'«oggi» si chiede a `apps.core.services.fuso_aziendale.oggi_aziendale()`,
+#    l'ora mostrata a `locale_formatters`. Sanati 64 rilievi PRIMA di accendere:
+#    45 `date.today()` (quasi tutti test e smoke) -> `oggi_aziendale()`; le righe
+#    finte del DB costruite naive -> `tzinfo=UTC`, come le consegna la
+#    connessione; `noqa` col motivo sui naive costruiti apposta (i formattatori
+#    che non devono convertire) e sulle tre `strptime` che leggono una DATA.
+select = ["F", "E9", "T20", "C4", "A", "PIE", "G", "LOG", "S", "B", "DTZ", "RUF100"]
 ignore = ["S101"]
 
 [lint.per-file-ignores]

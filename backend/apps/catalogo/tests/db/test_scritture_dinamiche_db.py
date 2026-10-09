@@ -50,6 +50,7 @@ from decimal import Decimal
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.catalogo.db.catalogo_bom_repository import CatalogoBomRepository
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.catalogo.db.catalogo_uom_repository import CatalogoUomRepository
@@ -177,7 +178,7 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 riga_id = bom.create_componente(padre, {
                     "componente_id": figlio,
                     "coeff_qta": Decimal("2.5"),
-                    "valido_dal": date.today(),
+                    "valido_dal": oggi_aziendale(),
                     "meta": {"k": "v"},
                 })
                 riga = _riga(cur, """
@@ -192,7 +193,7 @@ class ScrittureDinamicheCatalogoDbTests(unittest.TestCase):
                 # ⚠️ Solo campi NON di struttura: la BoM e' immutabile nei
                 #    campi di struttura (`trgfn_articoli_componenti_block_
                 #    modifica_struttura`); si chiude (valido_al) e si annota.
-                chiusura = date.fromordinal(date.today().toordinal() + 30)
+                chiusura = date.fromordinal(oggi_aziendale().toordinal() + 30)
                 self.assertTrue(bom.update_componente(padre, riga_id, {
                     "valido_al": chiusura, "meta": {"k": "w"},
                 }))

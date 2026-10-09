@@ -68,9 +68,10 @@ from __future__ import annotations
 
 import ast
 import csv
-from datetime import date
 from pathlib import Path
 from unittest import TestCase
+
+from apps.core.services.fuso_aziendale import oggi_aziendale
 
 # .../backend/apps/core/tests/<file> -> parents[3] = backend, parents[4] = repo
 _BACKEND = Path(__file__).resolve().parents[3]
@@ -213,7 +214,7 @@ class EventCodesDeclaredGuardrail(TestCase):
     #        chi lo usa oggi sta scrivendo righe NUOVE sotto un nome che il
     #        catalogo ha dichiarato superato.
     def test_nessun_codice_evento_usato_e_obsoleto(self):
-        oggi = date.today().isoformat()
+        oggi = oggi_aziendale().isoformat()
         obsoleti = {
             codice
             for codice, obsoleto_dal in _catalogo().items()

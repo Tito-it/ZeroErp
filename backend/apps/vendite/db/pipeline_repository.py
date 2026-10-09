@@ -18,6 +18,7 @@ from django.db import connection, transaction
 
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     limiti_pagina,
     call_jsonb_fn,
     coerce_jsonb_dict,
@@ -1786,7 +1787,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     p_tipo_doc_fiscale_id => %s,
                     p_lock_batch_id => %s::uuid,
                     p_lock => %s,
-                    p_data_fatturazione => COALESCE(%s, CURRENT_DATE),
+                    p_data_fatturazione => COALESCE(%s, (SELECT script.fn_data_operativa())),
                     p_billing_account_id => %s,
                     p_utility_id => %s,
                     p_valuta_id => %s,
@@ -2879,8 +2880,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        `caller_username` serve SOLO a calcolare `is_mio` (tag «mio» in
     #        colonna), mai a filtrare — stessa separazione owner/caller della
     #        coda lavori.
-    #        Filtri opzionali stati/lotto/intervallo `data_insert` (`data_a`
-    #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1).
+    #        Filtri opzionali stati/lotto/intervallo `data_insert` (giorni
+    #        dell'AZIENDA, `data_a` incluso: BB `predicato_giorno_operativo`).
     #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
     #        whitelist `CODA_STAMPA_SORT_SQL` — il service valida, qui controllo
     #        esplicito di defense-in-depth (BB `sql_order_clause` rigido).
@@ -2907,8 +2908,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         caller_username: str | None = None,
         stati: list[str] | None = None,
         lotto_id: int | None = None,
-        data_da: Any = None,
-        data_a: Any = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
         includi_archiviate: bool = False,
         limit: int = DEFAULT_LIMIT,
         offset: int = 0,
@@ -2926,12 +2927,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         if lotto_id is not None:
             base_conditions.append("c.lotto_id = %s")
             base_params.append(int(lotto_id))
-        if data_da is not None:
-            base_conditions.append("c.data_insert >= %s")
-            base_params.append(data_da)
-        if data_a is not None:
-            base_conditions.append("c.data_insert < %s")
-            base_params.append(data_a)
+        giorno_sql, giorno_params = predicato_giorno_operativo("c.data_insert", data_da, data_a)
+        base_conditions.append(giorno_sql)
+        base_params.extend(giorno_params)
         if operatore is not None:
             base_conditions.append("c.user_insert = %s")
             base_params.append(str(operatore))

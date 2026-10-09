@@ -8,6 +8,8 @@
 
 # Service layer: valida parametri, delega ai repository, restituisce dict paginati.
 
+from datetime import date
+
 from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS, DbopsRepository
@@ -36,8 +38,8 @@ def fn_list_audit_logs(
     *,
     status: str | None = None,
     function_name: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     search: str | None = None,
     page: int = 1,
     page_size: int = DEFAULT_LIMIT,
@@ -198,8 +200,8 @@ def fn_list_job_runs(
     *,
     jobname: str | None = None,
     ok: bool | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
     search: str | None = None,
     page: int = 1,
     page_size: int = DEFAULT_LIMIT,

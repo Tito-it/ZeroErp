@@ -179,6 +179,17 @@ class CapabilityTests(SimpleTestCase):
             CAPABILITY_DETTAGLIO: {"job_id": 5},
         })
 
+    # 9-bis. Una sveglia calendariale porta `dovuto` (la cadenza del LAVORO, nel
+    #        fuso dell'azienda): `oncalendar` e' solo la sveglia oraria.
+    def test_riga_sveglia_calendariale_porta_dovuto(self) -> None:
+        from datetime import time
+
+        from apps.core.services.sveglie import Dovuto
+
+        s = _sveglia(oncalendar="*:00", dovuto=Dovuto("settimana", time(7, 30), 0, "p:c"))
+        riga = riga_sveglia(s, lavoro_vivo=None)
+        self.assertEqual(riga["dovuto"], {"ogni": "settimana", "giorno": 0, "dalle": "07:30"})
+
     # 9. La riga: il dichiarato (da mostrare) + la capability (su cui decidere).
     def test_riga_sveglia(self) -> None:
         s = _sveglia(unit="zeroerp-r", comando=("cmd", "--a", "b"), nota="n")
@@ -187,6 +198,7 @@ class CapabilityTests(SimpleTestCase):
         self.assertEqual(riga["forma"], FORMA_TIMER)
         self.assertEqual(riga["comando"], ["cmd", "--a", "b"])
         self.assertEqual(riga["oncalendar"], "*:0/5")
+        self.assertIsNone(riga["dovuto"])
         self.assertTrue(riga["abilita"])
         self.assertTrue(riga["avvio_manuale"])
         self.assertEqual(riga["nota"], "n")

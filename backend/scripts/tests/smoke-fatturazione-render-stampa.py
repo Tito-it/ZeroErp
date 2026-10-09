@@ -46,10 +46,10 @@
 # ------------------------------------------------------------
 
 import re
-from datetime import date
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.documenti.db.documenti_repository import DocumentiRepository
 from apps.documenti.services.render_service import _render_html_with_jinja, render_pdf
 from apps.vendite.services.fattura_document_context_builder import (
@@ -151,7 +151,7 @@ with connection.cursor() as cur:
 print(f"fattura {fattura_id} ({n_righe} righe), template '{TEMPLATE_CODICE}'\n")
 
 versione = DocumentiRepository().get_versione_pubblicata_attiva(
-    template_id, today=date.today()
+    template_id, today=oggi_aziendale()
 )
 check("1) esiste una versione PUBBLICATA del template", versione is not None)
 if versione is None:

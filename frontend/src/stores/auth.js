@@ -27,6 +27,7 @@ import { useNavigationStore } from './navigation'
 import { switchEmittenteAttivo } from '../core/api/emittenteAttivo'
 import { cambiaPassword as apiCambiaPassword } from '../core/api/password'
 import { secondoPassoLogin } from '../core/api/secondoFattore'
+import { impostaFusoAziendale } from '../core/utils/date'
 
 export const useAuthStore = defineStore('auth', () => {
   // ⛔ I token non stanno più in localStorage (brief sicurezza §2, dal
@@ -142,6 +143,9 @@ export const useAuthStore = defineStore('auth', () => {
       if (!user.value) {
         throw new Error('Profilo vuoto: risposta API senza dati utente')
       }
+      // Il fuso dell'AZIENDA per «oggi» e per le ore a video (`core/utils/date`,
+      // brief un-solo-fuso-aziendale F-1): un dato del DB, non il fuso del PC.
+      impostaFusoAziendale(user.value.fuso_aziendale)
       // Applica preferenze personali dell'utente (tema + lingua UI + preferiti).
       // Chiavi localStorage user-scoped: evita che la scelta di un altro
       // utente sullo stesso browser persista al login successivo.

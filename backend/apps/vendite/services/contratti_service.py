@@ -42,6 +42,7 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
@@ -916,13 +917,13 @@ class ContrattiService:
     #          - valido_al obbligatorio (no cessazione "senza data")
     #          - valido_al >= valido_dal: lo giudica il DB (guard comune
     #            delle date, E_DATA_AL_MINORE_DAL col campo valido_al)
-    #          - valido_al < CURRENT_DATE -> VIETATO: cessazione retroattiva
+    #          - valido_al < oggi -> VIETATO: cessazione retroattiva
     #            rifiutata dal guard DB trgfn_contratti_guard_transizione_stato
     #            (la UI blocca a monte con min-date = oggi).
-    #          - valido_al == CURRENT_DATE -> cessazione IMMEDIATA: applica
+    #          - valido_al == oggi -> cessazione IMMEDIATA: applica
     #            entrambi PATCH+UPDATE in transazione atomica (la data di fine
     #            validita' = oggi conferma il passaggio a CESSATO).
-    #          - valido_al > CURRENT_DATE -> CESSAZIONE PROGRAMMATA: applica
+    #          - valido_al > oggi -> CESSAZIONE PROGRAMMATA: applica
     #            solo PATCH valido_al; lo stato resta ATTIVO. Il job
     #            notturno DB allineera' lo stato a CESSATO quando la data
     #            scade. Coerente con il principio "data = fonte di verita'
@@ -1000,11 +1001,11 @@ class ContrattiService:
             # cambiamo lo stato. Applichiamo solo PATCH valido_al e lasciamo
             # che il job notturno DB allinei lo stato quando la data scade.
             # Data == oggi -> cessazione IMMEDIATA: transizione a CESSATO subito
-            # (il guard DB la ammette per valido_al >= CURRENT_DATE; e' la data
+            # (il guard DB la ammette per valido_al >= oggi; e' la data
             # di fine validita' a confermare). Data < oggi e' retroattiva e
             # viene rifiutata dal guard DB `trgfn_contratti_guard_transizione_stato`
             # (la UI la blocca gia' con min-date = oggi).
-            if valido_al > date.today():
+            if valido_al > oggi_aziendale():
                 cessazione_programmata = True
 
         with self._map_db_errors(

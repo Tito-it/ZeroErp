@@ -1304,8 +1304,11 @@ Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il fi
   `defaultFiltroDataDaString()` da `core/utils/date`
 - **`data_a`**: null (nessun limite superiore di default)
 - Il filtro si applica su `data_insert` (o colonna data apertura dedicata se esiste)
-- Backend: applica `WHERE data_insert >= data_da::date AND data_insert < (data_a::date + INTERVAL '1 day')`
-  **solo se i parametri arrivano dalla request**; non deve applicare default temporali impliciti
+- Backend: su una colonna istante applica il BB `predicato_giorno_operativo` (giorni dell'**azienda**,
+  `data_a` incluso; dal 2026-10-09, catalogo BB backend) **solo se i parametri arrivano dalla
+  request**; non deve applicare default temporali impliciti
+- «Oggi» è quello dell'**azienda** (`oggiAziendale`, `core/utils/date`), non del PC: anche il
+  default di `data_da` parte da lì
 - Il tiebreaker `id` nell'ORDER BY garantisce paginazione deterministica
 
 Il default temporale e' una scelta UX, non una regola backend. Va impostato nello

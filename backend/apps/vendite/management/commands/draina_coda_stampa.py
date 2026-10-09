@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from django.core.management.base import BaseCommand
+from apps.core.management.comando_aziendale import ComandoAziendale
 
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.processi import PROCESSO_DRAINA_CODA_STAMPA
@@ -25,7 +25,7 @@ from apps.vendite.services.stampa_coda_drainer_service import (
 )
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
         "Worker drainer della coda stampa documentale: numera (backstop) e "
         "genera i PDF delle fatture accodate, aggiornando l'esito per riga. "

@@ -1103,7 +1103,7 @@ class DashApertoDocumentoRow(TypedDict):
     # Riga drill-down del serbatoio pre-commessa (vw_dash_aperto_documenti v2:
     # 4 aree documento, perimetro aperti-non-chiusi — is_transitato IS DISTINCT
     # FROM true AND fase<>CHIUSO, DL-14/15). anzianita_giorni derivata in SELECT
-    # (GREATEST(current_date - data_riferimento, 0)) come il gemello Backlog,
+    # (GREATEST(fn_data_operativa() - data_riferimento, 0)) come il gemello Backlog,
     # allinea la lettura al filtro "aperti da oltre N giorni" (DL-17).
     area: str
     documento_id: int

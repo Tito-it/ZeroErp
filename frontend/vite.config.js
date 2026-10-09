@@ -44,6 +44,14 @@ export default defineConfig({
   //    `src/core/misurePagina.setup-test.js`, prima di ogni file.
   test: {
     include: ['src/**/*.{test,spec}.js'],
+    // ⭐ FUSO OSTILE (brief un-solo-fuso-aziendale T-5, dal 2026-10-09): i
+    //    test girano in un fuso LONTANO da quello dell'azienda (i test di date
+    //    lo fissano a Europe/Rome con `impostaFusoAziendale`). Cio' che
+    //    dipende dal fuso del PC diventa rosso a ogni ora, non solo nella
+    //    finestra notturna in cui i due giorni differiscono. ⚠️ E' un presidio,
+    //    non la prova: la prova e' il test che COSTRUISCE l'istante di confine
+    //    (`core/utils/date.spec.js`).
+    env: { TZ: 'Pacific/Pago_Pago' },
     setupFiles: ['src/core/misurePagina.setup-test.js'],
     reporters: ['default'],
   },

@@ -4,11 +4,11 @@
 > richiesta di Tid, da «il giorno di un filtro» a **tutto ciò che dipende da un fuso**.
 > **A chi:** Tid (decisioni aperte, §6), poi team DB (§5.1), BE (§5.2), FE (§5.3).
 > **Origine:** un test sul DB vero rosso a mezzanotte e mezza (`test_giornale_trasversale_perimetro`
-> 1), verificato su richiesta di Tid durante L2 di [piano-be-type-checker.md](piano-be-type-checker.md)
+> 1), verificato su richiesta di Tid durante L2 di [piano-be-type-checker.md](../work-done/piano-be-type-checker.md)
 > (§5.2). Il test era giusto: il difetto è nel filtro, e il filtro è un caso di una regola più larga.
 > **Stato:** 🟡 **in parte deciso.** Deciso (Tid, 2026-10-09): funzione DB + building block BE per i
 > filtri per giorno (D-2, B-4), colonne `date` fuori dal perimetro dei *filtri*; tutte le decisioni di §6
-> (T-1 … T-8). DB: `20261009-40`…`-61` e la fase `70_dati_sistema` ✅ **applicati, pgTAP verdi, nessuna regressione** (Tid, 2026-10-09); BE e FE da fare (§8.3).
+> (T-1 … T-8). DB: `20261009-40`…`-61` e la fase `70_dati_sistema` ✅ **applicati, pgTAP verdi, nessuna regressione** (Tid, 2026-10-09). BE L1-L4 e FE L5 fatti il 2026-10-09 (timer con T-9); resta T-5 lato Django, da concordare col team DB (§8.3).
 > Censimento su tre lati completato il 2026-10-09 (§4).
 > **Storia del documento:** nato come `brief-be-db-giorno-nel-fuso-aziendale`, che aveva già
 > assorbito il gemello `brief-db-confine-del-giorno-nel-fuso-aziendale` (stesso giorno, stesso
@@ -298,6 +298,13 @@ Nessuna.
    `liquibase-setup-workflow.md`. **Fatto datato:** il 2026-10-09 nessun seed eseguito prima del
    parametro arrivava a quel codice; la fase chiude il caso per costruzione, non per misura.
 
+12. **T-9 — Sveglie calendariali: il controllo sta in un `ExecCondition=`** (Tid, 2026-10-09,
+   strada a). Il timer si sveglia ogni ora; `ExecCondition=… run-command.sh e_dovuto <unit>`
+   decide se il periodo aziendale (`dovuto` in `sveglie.json`) e' cominciato e se la corsia ha
+   gia' una corsa riuscita. Il `comando` resta la riga di «Esegui ora», che esegue sempre. Le
+   alternative scartate: un `--forza` aggiunto dal pulsante (la riga del pulsante non sarebbe
+   piu' quella del timer) e il pulsante spento sulle sveglie calendariali.
+
 ## 7. Fuori da questo brief
 
 - **La correzione dei dati già scritti** con il giorno sbagliato (date di documenti, `data_mov`,
@@ -391,6 +398,99 @@ giorno operativo). Argomenti e risultato di ogni funzione sono **byte-identici**
 
 ### 8.3 BE e FE
 
-Non iniziati: spettano alla sessione backend. ✅ D-1/D-2 sono applicati: `script.fn_fuso_operativo()`
-(con `GRANT EXECUTE` a `zeroerp_app`), `script.fn_inizio_giorno_operativo(date)` e
-`script.fn_giorno_operativo(timestamptz)` sono disponibili per B-1 e B-4.
+Ordine dei lotti (sessione backend, 2026-10-09): **L1** B-1, B-2 e il BB di B-3 → **L2** B-4 (filtri
+per giorno; rimette verde `test_giornale_trasversale_perimetro`) → **L3** B-5 e le sedi di B-3 →
+**L4** B-6, B-7, B-8, B-9 → **L5** F-1 … F-5. T-5 (CI ostile) insieme alla seconda metà di D-7:
+Tid ha accettato (2026-10-09) che la CI resti rossa nel frattempo.
+
+#### L1 — ✅ fatto il 2026-10-09 (non committato)
+
+| Voce | Cosa |
+| --- | --- |
+| B-1 | BB `apps/core/services/fuso_aziendale.py`: `fuso_aziendale()` (da `script.fn_fuso_operativo()` via `CoreRepository.get_fuso_operativo`, cache di processo senza invalidazione, T-6), `oggi_aziendale()`, `attiva_fuso_aziendale()`, `fuso_aziendale_forzato(nome)` per i test. Nessun ripiego: `E_CONFIG_MANCANTE` dal DB, `ImproperlyConfigured` se il nome non e' noto a Python |
+| B-1 | `FusoAziendaleMiddleware` (subito dopo `RequestContextMiddleware`) attiva il fuso per ogni richiesta; `apps/core/management/comando_aziendale.ComandoAziendale` per ogni management command (i 10 di oggi ci passano; presidio `test_comandi_fuso_aziendale` trova i comandi sul disco) |
+| B-1 | `/core/me/` porta `fuso_aziendale` (nome IANA), dalla stessa cache: e' cio' che il FE leggera' (F-1) |
+| B-2 | `settings.TIME_ZONE = 'UTC'` |
+| B-3, B-6 | `locale_formatters.in_ora_locale` e `oggi_aziendale` **dichiarano** il fuso, non si appoggiano a quello attivato. Le quattro sedi che leggevano il fuso implicito (`timezone.localdate()`/`localtime()`: `lista_export_service`, `document_generation_service._today`, `vendite_service` ritardo, `LottiPerMeseView`) passano dal BB. I due test con `override_settings(TIME_ZONE=…)` passano a `fuso_aziendale_forzato` |
+| test | `ZeroErpTestRunner` legge il fuso vero prima della suite e richiude la connessione (dentro un `SimpleTestCase` la lettura sarebbe vietata, e `JwtAuditMiddleware` si accende solo su una connessione aperta). `tests/db/test_fuso_aziendale_db`: Python e DB danno lo stesso giorno a ±30 min dalla mezzanotte aziendale, d'estate e d'inverno |
+
+Prove: suite Django completa con `ZEROERP_TEST_DB_E2E=1`, 6387 test, un solo rosso **estraneo**
+(`test_error_policies_divergenza_db`: il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA` e' gia' nel DB e
+non ancora rigenerato in git, da un altro brief); ruff e cancello mypy verdi.
+
+#### L2 — ✅ fatto il 2026-10-09 (non committato)
+
+| Voce | Cosa |
+| --- | --- |
+| B-4 | BB `apps/core/db/_helpers.predicato_giorno_operativo(colonna, da, a) -> (sql, params)`: `col >= fn_inizio_giorno_operativo(da) AND col < fn_inizio_giorno_operativo(a + 1)`, giorni dell'azienda e `a` incluso. **Una forma sola**: SQL costante con la guardia `%s::date IS NULL OR …` (Django lega lato client, il planner semplifica), quindi sta sia nei `conditions.append` sia nei `WHERE` costanti col conteggio di ripiego. Colonna validata da regex (finisce interpolata) |
+| B-4 | Le 12 sedi di §4.2 a nello stesso giro: giornale trasversale, `audit_log` e `job_run_log` (forma B: anche il confine alto compreso), `error_log`, audit permessi, audit di amm_software (le due forme miste), email log, movimenti di magazzino, pratiche, articoli (forma D, `::date` sulla colonna), coda lavori e coda stampa (forma C: il `+1 giorno` in `gestione_service` sparisce) |
+| B-4 | `maintenance_repository.list_job_summary`: il mese di ripiego di `started_at` passa da `fn_giorno_operativo` |
+| contratto | Le view che passavano la data come stringa non validata (tracciamento, email ×2, pratiche, audit di amm_software) usano `qp_iso_date_optional`: una data malformata e' `400 E_VALIDATION_INPUT`, non piu' un `500` dal cast nel DB; firme a `date` fino al repository |
+| test | `test_predicato_giorno_operativo` (forma); `tests/db/test_predicato_giorno_operativo_db`: confini costruiti a ±30' dalla mezzanotte aziendale d'estate e d'inverno, solo-da/solo-a, sessione a +14, indice utilizzabile con `enable_seqscan = off` e la controprova di `col::date`, le 12 sedi attraversate coi filtri accesi (parametro fuori posto = errore SQL). `test_giornale_trasversale_perimetro` chiede `oggi_aziendale()` invece di `date.today()`: e' la sua stessa domanda (il giorno della riga appena scritta), che con `TIME_ZONE = 'UTC'` `date.today()` non sapeva piu' fare. Quattro test unitari che fissavano la forma vecchia dell'SQL aggiornati |
+
+**Fatto datato (EXPLAIN, 2026-10-09, DB di sviluppo, `enable_seqscan = off`):** col predicato nuovo
+i quattro rami di `script.vw_giornale_entita` entrano dai loro indici per tempo
+(`ix_event_log_event_time`, `ix_fatturazione_lotti_log_data_ora`,
+`ix_fatturazione_lotti_task_runs_started_at`, `ix_fatture_log_data_ora`).
+
+⚠️ **Semantica per sede:** i confini sono provati una volta sul BB; per sede si prova la giuntura
+(SQL e parametri). Con una riga costruita la prova solo il giornale. Se si vuole la riga costruita
+per ognuna delle 12, e' lavoro a parte: dichiararlo qui come debito, non come fatto.
+
+#### L3 — ✅ fatto il 2026-10-09 (non committato)
+
+| Voce | Cosa |
+| --- | --- |
+| B-5 | `CURRENT_DATE` → `(SELECT script.fn_data_operativa())` in **31** punti SQL di 15 file (la forma del team DB nelle istruzioni: una valutazione per istruzione): date di documenti e registrazioni (`COALESCE(%s, …)` di fattura, DDT, reso, pagamenti ×2, amm_software), validita' e filtri «valido oggi» (lookup ×5, contratti, listini, soggetti, pagamenti, dbops, documenti), anzianita' (`vendite_repository` ×3), le espressioni letterali di `tipi_ruolo_tipi_indirizzo` e `clienti`. Commenti che descrivevano `CURRENT_DATE` riallineati |
+| B-3 | `date.today()` → `oggi_aziendale()` in 20 sedi di 12 file (default dei form, guard «attivo oggi», competenza del batch e del preventivo, scelta del listino, prompt dell'assistente, ...). La testata dell'ordine da offerta **omette** la data: decide il DEFAULT della colonna (`fn_data_operativa()`) |
+
+#### L4 — ✅ fatto il 2026-10-09 (non committato)
+
+| Voce | Cosa |
+| --- | --- |
+| B-6 | I tre difetti fuori sede: l'email di conferma del reset password scrive l'ora dell'azienda (`format_datetime`, era UTC); le righe di esempio del digest (`_riga_compatta`) scrivono gli istanti nell'ora dell'azienda (era `str()`, UTC con `+00:00`); `_date_formatting` prende il giorno dell'azienda da una stringa ISO con l'ora (tagliava i primi 10 caratteri, il giorno UTC) |
+| B-7 | `payload_validators.optional_istante`: un istante in ingresso senza offset e' `400 E_VALIDATION_INPUT`. Sospendi/riattiva pratica lo usano; service e repository ricevono `datetime` |
+| B-8 (log) | `apps/core/logging_formatters.FormatterUtcIso` sul formato `verbose`: `2026-10-09T14:32:45.798Z` |
+| B-8 (timer) | T-9: `sveglie.json` dichiara `dovuto` sulle tre sveglie calendariali (digest giornaliero 07:00, settimanale lunedi' 07:30, fatturazione differita il 1° dalle **00:00**, T-4a), che si svegliano ogni ora (`*:00`). Comando nuovo `e_dovuto <unit>` (exit 0 lavora / 1 salta / **255** guasto: un guasto che uscisse 1 systemd lo salterebbe in silenzio); `MaintenanceRepository.corsa_riuscita_dal` (conta solo una corsa riuscita da inizio periodo); `ExecCondition=` nei tre `.service`; `jobname_corsia` estratto in `run_fatturazione_batch` per il confronto col dichiarato; il dettaglio del processo espone `dovuto` accanto a `oncalendar`. Presidi: `test_sveglie` 17-21, `test_e_dovuto`, `tests/db/test_corsa_riuscita_dal_db`, `test_contratto_liveness_vs_deploy` (intervallo = periodo + passo), `test-install-timers.sh` verde, unit resi verificati con `systemd-analyze verify`. ⚠️ Sull'host serve `install-timers.sh` per rendere i template nuovi |
+| B-9 | ruff **`DTZ`** acceso a zero su tutto il repo (64 rilievi sanati prima: 45 `date.today()` di test e smoke → `oggi_aziendale()`; righe finte del DB costruite naive → `tzinfo=UTC`; `noqa` col motivo sui naive voluti e sulle tre `strptime` che leggono una data). `test_presidio_fuso_sql`: nessun `CURRENT_DATE`/`LOCALTIMESTAMP`/`now()::date` nel codice. `tests/db/test_presidio_fuso_sql_db`: nessuna colonna istante — **elenco dal catalogo del DB** (95 nomi il 2026-10-09; 3 ambigui, `date` altrove, esclusi e calcolati) — passa al calendario della sessione (`col::date`, `col >= %s::date`, `date_trunc(…, col)`); zero rilievi dopo L2, controprova sulle forme ritirate |
+
+Prove L1-L4: suite Django completa con `ZEROERP_TEST_DB_E2E=1`, 6423 test, l'unico rosso e'
+l'estraneo `test_error_policies_divergenza_db` (vedi L1); ruff e cancello mypy verdi.
+
+#### L5 (FE) — ✅ fatto il 2026-10-09 (non committato)
+
+| Voce | Cosa |
+| --- | --- |
+| F-1 | `core/utils/date.js` riceve il fuso dell'azienda (`impostaFusoAziendale`, chiamata dallo store auth a ogni `fetchProfile` con `fuso_aziendale`). `displayTimestamp`/`displayTime` convertono nel fuso dell'azienda (`Intl.DateTimeFormat` con `timeZone`); `displayDate` su una stringa con l'ora prende il **giorno aziendale** (`giornoAziendale`), non i primi 10 caratteri |
+| F-2 | `oggiAziendale()`/`oggiAziendaleString()` (giorno dell'azienda in una `Date` locale a mezzanotte); `addDaysToToday` e quindi `defaultFiltroDataDa*` poggiano li'. Ritirate le copie: i default `new Date()` dei form (13), i `toDateString(new Date())` (4), le due `todayLocalDate`, gli «oggi a mezzanotte» a mano (`ContrattoDrawer` ×2, `CloneVersioneDrawer`, `severity.js`, `ArticoloBomDrawer`, `PreventiviDrawer`) via `giornoDi`, anno/mese correnti (dashboard competenza, lotti, registro numerazione, accettazione preventivo, store pratiche), i `min-date`, la concatenazione `YYYY-MM` (`toMeseString`) |
+| F-3 | Ogni `new Date('YYYY-MM-DD')` e `new Date(s + 'T00:00:00')` → `parseIsoDate` (data di nascita del soggetto, qualifica del fornitore, scadenza della pratica, conto bancario, badge CHIUSA di `severity.js`, competenza dei lotti, testate di DDT/ordini/resi/preventivi, versioni di listino, UoM articolo) |
+| F-4 | `SospensionePraticaDialog`: precarica con `istanteComeOraAziendale(adesso())`, salva `toTimestampString(oraAziendaleComeIstante(d))` — l'operatore legge e digita l'ora dell'azienda (il cambio legale e' provato). `AppTopbar` usa `displayOggiEsteso` |
+| F-5 | `datePresidio.spec.js` allargato: fuori da `date.js` niente `new Date()` vuoto, `new Date(x)` a un argomento (ammessi `y.getTime()` e la costruzione numerica), `setHours(`, `toLocaleDateString`/`toLocaleTimeString`; controprova per mutazione (4 rossi su 4). **vitest gira a Pago Pago** (−11, `test.env.TZ`, T-5 lato FE). `date.spec.js` sugli istanti di confine (mutazione: 6 rossi su 8) |
+| T-9 | `ProcessoDrawer` mostra `dovuto` in parole («ogni lunedi' dalle 07:30 (ora dell'azienda)», `amministrazione/dovutoSveglia.js` + spec, chiavi it/en) al posto di `*:00` |
+| test | `auth.spec` 7 (il profilo consegna il fuso a `date.js`). `npm run verify` verde: lint, guard, 760 test, build |
+
+#### Corretto fuori perimetro (2026-10-09)
+
+`apps/core/tests/_contratto_processi.py` diceva che `*:0/N` con N ≥ 60 «gira ogni ora» e il suo
+test lo fissava (`*:0/90` → 60). systemd 257 la **rifiuta** («Failed to parse calendar
+specification»: verificati 59 accettato, 60 e 90 rifiutati) e il timer non partirebbe. Ora il
+parser solleva, come systemd; il test elenca `*:0/60` e `*:0/90` fra le forme rifiutate e
+conosce `*:MM`. Controprova: col vecchio `min(N, 60)` il test e' rosso.
+
+#### Resta
+
+- **T-5 lato Django**: Django tiene la sessione PG dei test sempre in UTC, quindi la finestra
+  ostile la apre solo un **parametro** lontano nel DB di CI (es. `SYSTEM_FUSO_ORARIO =
+  'Pacific/Kiritimati'` dopo il migrate). Tocca anche i pgTAP: da decidere col team DB insieme
+  alla seconda meta' di D-7.
+- **La riga di skip conta come corsa riuscita** (trovato in revisione, 2026-10-09):
+  `fn_job_run_start` scrive la skip con `ok = TRUE` e `corsa_riuscita_dal` la conta, quindi una
+  corsa a mano che tiene il lock all'ora della sveglia e poi fallisce fa saltare il periodo intero
+  senza errore. Brief al team DB:
+  [brief-db-corsa-saltata-non-e-una-corsa](brief-db-corsa-saltata-non-e-una-corsa.md); il BE
+  attende il marcatore strutturale (niente filtro sul testo di `message`).
+
+⚠️ **Da sapere (scritto dopo L1, chiuso in L3):** con `TIME_ZONE = 'UTC'` i ~25 `date.today()` di §4.2 c rispondono il
+giorno **UTC** (prima: Roma). Fra mezzanotte e le 02:00 di Roma sbagliano di un giorno: e' il
+difetto reso visibile (B-2), si chiude in L3. Anche l'ora dei log e' ora UTC, ma ancora **senza
+offset** finche' non arriva B-8 (L4).

@@ -21,4 +21,10 @@ User=__APP_USER__
 Group=www-data
 WorkingDirectory=__APP_DIR__
 EnvironmentFile=__APP_DIR__/.env.systemd
+# ⭐ Dal 2026-10-09 il timer si sveglia OGNI ORA e questa riga decide se il
+#    lavoro e' dovuto, nel fuso dell'AZIENDA (`dovuto` in sveglie.json; brief
+#    un-solo-fuso-aziendale T-4/T-9): exit 1 = salta senza errore (non ancora,
+#    o gia' fatto nel periodo), 255 = guasto e unit fallita. ⛔ Non sta in
+#    `__COMANDO__`: quella e' la riga di «Esegui ora», che esegue sempre.
+ExecCondition=__APP_DIR__/bin/run-command.sh e_dovuto zeroerp-fatturazione-differita
 ExecStart=__APP_DIR__/bin/run-command.sh __COMANDO__

@@ -26,11 +26,18 @@ from apps.core.db.email_repository import EmailRepository
 from apps.core.services import crypto_service
 from apps.core.services.email_allegati_storage import percorso_allegato
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.service_errors import ServiceError
 
 logger = logging.getLogger("zeroerp.email")
 
 E_EMAIL = "E_EMAIL"
+
+# Le condizioni di configurazione che `E_EMAIL` accumulava e che non sono dati
+# errati (brief-db-codici-non-trovato-email-e-permessi §12, 2026-10-09). La
+# usano anche le bozze (`email_outbox_service`), che la importano da qui.
+E_EMAIL_ACCOUNT_NON_CONFIGURATO = "E_EMAIL_ACCOUNT_NON_CONFIGURATO"
+E_EMAIL_ACCOUNT_NOT_FOUND = "E_EMAIL_ACCOUNT_NOT_FOUND"
 
 # Marker per account placeholder (seed iniziale senza SMTP reale).
 # Esposto come pubblico: consumato anche da `email_views._derive_test_capability`
@@ -121,6 +128,25 @@ class EmailDispatchService:
     def is_console_mode(self, account: dict[str, Any]) -> bool:
         return self.canale_invio(account) == CANALE_CONSOLE
 
+    # Scopo: L'account da cui spedire per il reparto (con ripiego su SISTEMA),
+    #        o 500 `E_EMAIL_ACCOUNT_NON_CONFIGURATO`: manca la configurazione, e
+    #        chi chiede la mail non puo' rimediare. ⭐ Sede unica della regola
+    #        (regola del 2, ok Tid 2026-10-09): la usano la preparazione di ogni
+    #        mail (`resolve_and_render`) e l'invio di una bozza
+    #        (`EmailOutboxService.confirm_and_send`). ⚠️ Il rilancio batch
+    #        (`send_pending_emails`) NON passa di qui, di proposito: lui non
+    #        rifiuta, segna la mail `FAILED` e prosegue con le altre.
+    def account_di_invio(self, unita_organizzativa_id: int | None) -> dict[str, Any]:
+        account = self._repo.resolve_account(unita_organizzativa_id)
+        ErrorManager.require(
+            account is not None,
+            code=E_EMAIL_ACCOUNT_NON_CONFIGURATO,
+            message=USER_MESSAGE_FALLBACK[E_EMAIL_ACCOUNT_NON_CONFIGURATO],
+            detail=f"unita_organizzativa_id={unita_organizzativa_id}",
+        )
+        assert account is not None
+        return account
+
     # Scopo: Risolve template e account con fallback, renderizza le variabili.
     #        Usato da send_email e da EmailOutboxService.prepare_draft.
     #        Ritorna (template, account, oggetto, corpo_html, corpo_testo).
@@ -149,13 +175,7 @@ class EmailDispatchService:
         assert template is not None
 
         # 2. Risolvi account SMTP con fallback
-        account = self._repo.resolve_account(unita_organizzativa_id)
-        ErrorManager.require(
-            account is not None,
-            code=error_code,
-            message="Nessun account email configurato (ne' per reparto ne' SISTEMA).",
-        )
-        assert account is not None
+        account = self.account_di_invio(unita_organizzativa_id)
 
         # 3. Renderizza oggetto e corpo
         oggetto = self.render_template(template["oggetto"], variabili)
@@ -518,7 +538,14 @@ class EmailDispatchService:
     # Scopo: Testa la connessione SMTP di un account (senza inviare email).
     def test_connection(self, account_id: int) -> dict[str, Any]:
         account = self._repo.get_account_with_password(account_id)
-        ErrorManager.require(account is not None, code=E_EMAIL, message="Account non trovato.")
+        # L'id lo sceglie l'amministratore (endpoint di test SMTP): 404 come il
+        # dettaglio dell'account.
+        ErrorManager.require(
+            account is not None,
+            code=E_EMAIL_ACCOUNT_NOT_FOUND,
+            message=USER_MESSAGE_FALLBACK[E_EMAIL_ACCOUNT_NOT_FOUND],
+            detail=f"email_account_id={account_id}",
+        )
         assert account is not None
 
         canale = self.canale_invio(account)

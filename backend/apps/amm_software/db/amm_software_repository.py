@@ -16,6 +16,7 @@ from typing import Any, ClassVar, cast
 from django.db import DatabaseError, connection, transaction
 
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     limiti_pagina,
     add_ricerca_full_condition,
     fetch_paged_with_total,
@@ -528,7 +529,7 @@ class AmmSoftwareRepository:
             cursor.execute(
                 f"""UPDATE anagrafiche.risorse_umane ru
                       SET attivo = false,
-                          valido_al = CURRENT_DATE
+                          valido_al = (SELECT script.fn_data_operativa())
                      FROM anagrafiche.identita_digitali id
                     WHERE id.id = {_VESTE_OPERATORE.format(au="%s")}
                       AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id""",  # noqa: S608 — predicato letterale del modulo (_VESTE_OPERATORE), valori come parametri
@@ -594,7 +595,7 @@ class AmmSoftwareRepository:
                 p_data_nascita                   := %s::date,
                 p_sesso                          := %s,
                 p_is_super_admin                 := %s,
-                p_valido_dal                     := COALESCE(%s::date, CURRENT_DATE),
+                p_valido_dal                     := COALESCE(%s::date, (SELECT script.fn_data_operativa())),
                 p_valido_al                      := %s::date,
                 p_comune_nascita_id              := %s,
                 p_indirizzo_resid_dettaglio_id   := %s,
@@ -1348,8 +1349,8 @@ class AmmSoftwareRepository:
     def list_audit_log(
         self,
         *,
-        data_da: str | None = None,
-        data_a: str | None = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
         tabella: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -1402,12 +1403,12 @@ class AmmSoftwareRepository:
             "FROM events WHERE true "
         )
 
-        if data_da:
-            sql += "AND valid_from >= %s::timestamptz "
-            params.append(data_da)
-        if data_a:
-            sql += "AND valid_from < (%s::date + INTERVAL '1 day') "
-            params.append(data_a)
+        # Giorni dell'AZIENDA, `data_a` incluso (BB): fino al 2026-10-09 il
+        # confine basso era `%s::timestamptz` e l'alto `%s::date`, due forme
+        # diverse per lo stesso filtro, entrambe nel fuso della sessione.
+        giorno_sql, giorno_params = predicato_giorno_operativo("valid_from", data_da, data_a)
+        sql += f"AND {giorno_sql} "
+        params.extend(giorno_params)
 
         # Ordinamento sicuro: la whitelist traduce il nome di risultato nel nome
         # colonna in un passaggio solo (vedi `AUDIT_ORDER_COLUMNS`).

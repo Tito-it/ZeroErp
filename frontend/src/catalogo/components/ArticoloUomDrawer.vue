@@ -16,7 +16,7 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
 import { paramBool, paramNumber } from '../../core/utils/parameterCast'
 import { listArticoloUom, createArticoloUom, updateArticoloUom, deleteArticoloUom } from '../api/catalogo'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, parseIsoDate } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import AppDrawer from '../../core/components/AppDrawer.vue'
@@ -169,8 +169,8 @@ function onStartEdit(row) {
       forbid_fraction: row.forbid_fraction || false,
       require_lot: row.require_lot || false,
       gtin: row.gtin || '',
-      valido_dal: row.valido_dal ? new Date(row.valido_dal + 'T00:00:00') : null,
-      valido_al: row.valido_al ? new Date(row.valido_al + 'T00:00:00') : null,
+      valido_dal: parseIsoDate(row.valido_dal),
+      valido_al: parseIsoDate(row.valido_al),
       attivo: row.attivo ?? true,
     }
     // Dopo il giro di watch: `is_base` e' riscritto da `factor_to_base`.

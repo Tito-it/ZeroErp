@@ -20,6 +20,7 @@ Indice test eseguiti:
 4) secondo passo senza codice di recupero → rimasti null
 5) obbligo del secondo fattore → dal profilo (`obblighi_pendenti`), non ricalcolato
 6) la chiave d'ingresso è del canale: email per PORTALE e SHOP, nome utente per ADMIN (L-4)
+7) il profilo consegna il fuso dell'azienda a `core/utils/date` (F-1)
 */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -95,6 +96,17 @@ describe('login a due passi (brief sicurezza §3.4-bis, T-4)', () => {
     expect(getAccessToken()).toBe(access)
     expect(apiGet).toHaveBeenCalledWith('/core/me/')
     expect(esito).toEqual({ codiciRecuperoRimasti: 3 })
+  })
+
+  it("7) il profilo consegna il fuso dell'azienda a `core/utils/date` (F-1)", async () => {
+    const { fusoAziendale, impostaFusoAziendale } = await import('../core/utils/date')
+    impostaFusoAziendale(null)
+    apiGet.mockResolvedValue({
+      data: { data: { utente: {}, obblighi_pendenti: [], fuso_aziendale: 'Asia/Tokyo' } },
+    })
+    await useAuthStore().fetchProfile()
+    expect(fusoAziendale()).toBe('Asia/Tokyo')
+    impostaFusoAziendale(null)
   })
 
   it('4) secondo passo senza codice di recupero → rimasti null', async () => {

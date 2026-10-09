@@ -19,6 +19,7 @@ arricchisce il payload con:
 
 - `is_admin_globale` — derivato da regola Q1 refactor operatore-emittenti
 - `emittente_attivo` — l'emittente dentro cui lavora la sessione (dal claim JWT), da `EmittenteAttivoService.descrivi`
+- `fuso_aziendale` — il nome IANA del fuso dell'azienda, dal BB `fuso_aziendale` (dal 2026-10-09)
 - `identita` — dettaglio dell'identita specifica del JWT corrente (§8.3.6 multi-face).
   Post modello 1:N, un auth_user puo' avere piu' identita attive (es. OPERATORE +
   CLIENTE_PORTALE); il JWT indica quale "veste" stai usando, e /me/ deve riflettere
@@ -52,6 +53,7 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
 | `azioni_abilitate` | object | Mappa azioni abilitate, da `fn_get_user_actions_map` |
 | `permessi_oggetto` | object | Mappa permessi per oggetto, da `fn_get_user_object_permissions_map` |
 | `deve_cambiare_password` | boolean | Flag dell'identita digitale (default false) |
+| `fuso_aziendale` | string | Nome IANA del fuso dell'azienda (es. `Europe/Rome`): parametro `SYSTEM_FUSO_ORARIO` letto da `script.fn_fuso_operativo()` tramite il BB `apps/core/services/fuso_aziendale` (cache di processo). Il frontend lo usa per l'«oggi» e per le ore a video: un solo fuso in tutta l'applicazione, non quello del browser (dal 2026-10-09, brief un-solo-fuso-aziendale B-1/T-1). Un cambio del parametro vale dal riavvio del backend |
 | `obblighi_pendenti` | array | Gli obblighi della credenziale che il cancello fa rispettare, nell'ordine in cui si chiudono: `CAMBIO_PASSWORD`, `SECONDO_FATTORE` (dal 2026-10-02, `cancello_obblighi.obblighi_in_vigore`). Il frontend porta alla pagina del primo. Il profilo risponde anche con un obbligo pendente (`obblighi_ammessi`) |
 
 ### Esempio risposta
@@ -66,6 +68,7 @@ Il blocco `data` contiene il JSONB dalla funzione DB con le sezioni:
     "soggetto": { "soggetto_id": "019...", "nome": "Michele", "cognome": "Titini" },
     "emittente": { "emittente_fiscale_id": 1, "emittente_descrizione": "Azienda SRL", "user_emittente_fiscale_id": null },
     "is_admin_globale": true,
+    "fuso_aziendale": "Europe/Rome",
     "identita": {
       "id": 5,
       "soggetto_ruolo_id": 12,
@@ -129,6 +132,7 @@ Il FE usa `identita.ruolo_applicativo` per decidere la UI della veste attiva.
 | `emittenti_fiscali` | `anagrafiche` | Emittente fiscale |
 | `user_emittenti_fiscali` | `config` | Whitelist emittenti per utente |
 | `fn_get_user_permissions_map(INTEGER)` | `script` | Mappa permessi per area funzionale — JSONB `{area: livello}` |
+| `fn_fuso_operativo()` | `script` | Il fuso dell'azienda (`fuso_aziendale`), letto una volta per processo |
 
 ## File backend
 
@@ -137,6 +141,7 @@ Il FE usa `identita.ruolo_applicativo` per decidere la UI della veste attiva.
 | `apps/core/api/me_view.py` | `UserProfileView(DomainAPIView)` — GET con JWT + `@extend_schema` + helper `_identita_del_jwt` per blocco `identita` |
 | `apps/core/db/core_repository.py` | `CoreRepository.get_user_profile()` — chiama la fn DB |
 | `apps/core/db/auth_repository.py` | `AuthRepository.get_identita_dettaglio(identita_id, auth_user_id)` — query identita con guard anti-tampering (filtra anche auth_user_id) |
+| `apps/core/services/fuso_aziendale.py` | BB del fuso dell'azienda — campo `fuso_aziendale` |
 | `apps/core/services/emittente_attivo_service.py` | `EmittenteAttivoService` — blocco `emittente_attivo` e logica di `/me/emittente-attivo/` |
 | `apps/core/services/auth_constants.py` | `JWT_CLAIM_IDENTITA_ID = "identita_id"` — usato in `_identita_del_jwt` |
 | `apps/core/api/urls_v1.py` | Rotta `me/` registrata |

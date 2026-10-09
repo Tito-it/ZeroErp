@@ -15,7 +15,7 @@ import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
-import { toDateString } from '../../core/utils/date'
+import { oggiAziendaleString } from '../../core/utils/date'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
@@ -129,7 +129,7 @@ async function loadBomRiepilogo() {
     const res = await listArticoloComponenti(props.articoloId)
     const payload = res.data?.data
     const righe = payload?.results || payload || []
-    const oggi = toDateString(new Date())
+    const oggi = oggiAziendaleString()
     // Scopo: il riepilogo nel drawer articolo mostra le stesse righe
     // inizialmente visibili nel sub-drawer BoM: righe senza valido_al
     // oppure con valido_al maggiore/uguale a oggi.

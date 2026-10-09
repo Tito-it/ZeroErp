@@ -1018,12 +1018,12 @@ class ListiniRepository:
     def _filter_versioni_in_scadenza(self) -> str:
         return (
             "upper(v.validita) IS NOT NULL "
-            "AND upper(v.validita) <= CURRENT_DATE + %(giorni)s * INTERVAL '1 day'"
+            "AND upper(v.validita) <= (SELECT script.fn_data_operativa()) + %(giorni)s * INTERVAL '1 day'"
         )
 
     # Scopo: Lista versioni operativamente ATTIVE oggi che scadono entro `giorni`
     #        e non hanno una versione successiva (BOZZA o operativa) che subentra.
-    #        Filtro operativo: stato='ATTIVA' + `validita @> CURRENT_DATE` (regola
+    #        Filtro operativo: stato='ATTIVA' + `validita @> fn_data_operativa()` (regola
     #        §6 brief 2026-05-16: la BOZZA e' preparazione, non versione operativa,
     #        quindi non genera alert di scadenza). Per il "successore che
     #        subentrera`" sono ammesse sia BOZZA sia operative future.
@@ -1042,11 +1042,11 @@ class ListiniRepository:
                     v.codice_versione,
                     v.valido_dal,
                     upper(v.validita) AS valido_al,
-                    upper(v.validita) - CURRENT_DATE AS giorni_rimanenti
+                    upper(v.validita) - (SELECT script.fn_data_operativa()) AS giorni_rimanenti
                   FROM vendite.listini_versioni v
                   JOIN vendite.listini l ON l.id = v.listino_id
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
-                 WHERE v.validita @> CURRENT_DATE
+                 WHERE v.validita @> (SELECT script.fn_data_operativa())
                    AND v.attivo IS TRUE
                    AND v.stato = 'ATTIVA'
                    AND l.attivo IS TRUE

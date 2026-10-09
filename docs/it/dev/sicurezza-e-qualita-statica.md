@@ -90,6 +90,7 @@ porta argomenti, così `ruff check` a mano e il cancello dicono la stessa cosa.
 | `G`, `LOG` | uso corretto del logging (`logger.exception` dentro un `except`, e solo lì) |
 | **`S`** | **sicurezza** (le regole di Bandit, via flake8-bandit): SQL composto a stringhe, `except: pass`, template senza autoescape, `subprocess`, password cablate, hash deboli, `pickle`/`yaml.load`, ... |
 | `B` | bugbear, accesa il 2026-09-28: fra le altre `zip()` senza `strict=` (tronca **in silenzio** alla lista più corta: si scrive `strict=True`, e `strict=False` solo dove la troncatura è voluta, col perché), una funzione nel ciclo che legge la variabile del ciclo, `raise` dentro un `except` senza `from` |
+| `DTZ` | flake8-datetimez, accesa il 2026-10-09 a zero: `date.today()`, `datetime.now()` senza fuso, `datetime(...)`/`strptime` naive — il giorno e l'ora del **processo** (`TIME_ZONE = 'UTC'`), che non è il fuso dell'azienda. L'«oggi» è `fuso_aziendale.oggi_aziendale()`, l'ora mostrata `locale_formatters`; un naive voluto si marca col motivo ([brief un-solo-fuso-aziendale](work-in-progress/brief-be-db-fe-un-solo-fuso-aziendale.md) B-9) |
 | `RUF100` | `# noqa` morti: una direttiva che non sopprime più niente |
 
 ### Le eccezioni, e perché
@@ -133,9 +134,9 @@ aperto protegge solo ciò che avanza.
 
 **File**: `backend/mypy.ini` (perimetro e regole), `backend/mypy.baseline.json` (il registro),
 `scripts/check_mypy_baseline.py` (il cancello). **Dipendenze**: `backend/requirements-dev.in`
-→ `requirements-dev.txt` (mypy, `django-stubs`, `djangorestframework-stubs`), nella venv del
+→ `requirements-dev.txt` (mypy, `django-stubs`, `djangorestframework-stubs`, `types-bleach`, `types-openpyxl`), nella venv del
 backend ma **non** nell'immagine Docker. Acceso il 2026-10-08
-([piano](work-in-progress/piano-be-type-checker.md)).
+([piano](work-done/piano-be-type-checker.md)).
 
 ### Perché
 
@@ -152,7 +153,7 @@ mesi un metodo che non esisteva più, e il test lo fabbricava col mock.
 | Strumento | mypy con i plugin Django e DRF | il plugin legge settings e modelli: conosce l'ORM. Pylance non ha un plugin Django, e resta spento in VS Code (due checker che dicono cose diverse sono peggio di uno) |
 | Perimetro | `apps/` e `zeroerp_backend/`, **esclusi** `tests/` e `migrations/` | i difetti stanno fra gli strati, quindi tutti gli strati; i test controllano mock, le migration sono generate |
 | Severità | base + `check_untyped_defs` | senza, mypy salta il corpo delle funzioni non annotate. Niente `strict` |
-| Librerie senza tipi | `ignore_missing_imports` **per nome** (oggi `bleach`, `openpyxl`, `weasyprint`) | globale, un import sbagliato del progetto diventerebbe `Any` in silenzio. Uno stub (`types-…`) è una dipendenza nuova: entra con l'ok di Tid, e la voce si toglie |
+| Librerie senza tipi | `ignore_missing_imports` **per nome** (oggi solo `weasyprint`, che non ha stub; `bleach` e `openpyxl` hanno i loro dal 2026-10-09) | globale, un import sbagliato del progetto diventerebbe `Any` in silenzio. Uno stub (`types-…`) è una dipendenza nuova: entra con l'ok di Tid, e la voce si toglie |
 | Dove gira | CI, sempre su **tutto** il perimetro; non in pre-commit | una firma cambiata in un file rompe il chiamante in un altro; l'hook vede i soli file in stage e il plugin vuole l'ambiente Django |
 
 ### Il registro
@@ -162,10 +163,10 @@ mesi un metodo che non esisteva più, e il test lo fabbricava col mock.
 sanarlo prima avrebbe rimandato di mesi la protezione del codice nuovo. Il registro deve
 **scendere**: la sede del suo smaltimento è il piano (lotti L2, L3+).
 
-* **Stato**: **2** rilievi al 2026-10-09 (erano 620 alla nascita, il 2026-10-08), entrambi il
-  valore NaN/infinito nella formattazione dei documenti, che attende un codice d'errore dal team DB
-  ([brief](work-in-progress/brief-db-valore-numerico-non-finito-nei-documenti.md)). Il codice
-  nuovo non aggiunge voci: nasce pulito.
+* **Stato**: **0** rilievi al 2026-10-09 (erano 620 alla nascita, il 2026-10-08; gli ultimi 2,
+  il valore NaN/infinito nella formattazione dei documenti, chiusi dal
+  [brief](work-done/brief-db-valore-numerico-non-finito-nei-documenti.md)). Il codice nuovo non
+  aggiunge voci: nasce pulito.
 * La chiave è **per nome**: file + codice (`[arg-type]`) + messaggio, con un conteggio. Mai il
   numero di riga, che cambia a ogni modifica sopra il punto.
 * Il cancello è **rosso** su: un rilievo nuovo; una voce del registro che non c'è più (sanata e

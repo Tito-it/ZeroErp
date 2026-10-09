@@ -68,6 +68,17 @@
 #        ⛔ E non e' una lista di esclusioni in Python: sarebbe la seconda sede
 #        della whitelist, quella che resta indietro alla prima sveglia nuova.
 #
+#        ⭐ E DAL 2026-10-09 STA QUI ANCHE `dovuto` — QUANDO il lavoro di una
+#        sveglia calendariale e' dovuto, nel fuso dell'AZIENDA (decisioni T-4 e
+#        T-9 di brief-be-db-fe-un-solo-fuso-aziendale). Un `OnCalendar` con un
+#        orario («07:00») e' nel fuso dell'HOST, che non e' un dato
+#        dell'azienda; e un fuso scritto in `OnCalendar` sarebbe una seconda
+#        copia del parametro. ⇒ Il timer si sveglia spesso (ogni ora) e un
+#        `ExecCondition=` (`run-command.sh e_dovuto <unit>`) decide se il
+#        periodo aziendale e' cominciato e se il suo lavoro e' gia' fatto. Il
+#        controllo NON sta nel `comando`: quella e' la riga di «Esegui ora»,
+#        che deve eseguire sempre (T-9, strada a).
+#
 #        ⚠️ Il dichiarato e' il DEFAULT di progetto, non lo stato di un host.
 #        Un host puo' avere un `OnCalendar` diverso (l'installer sostituisce un
 #        placeholder) o un timer spento a mano: per sapere cosa sta girando
@@ -80,8 +91,10 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 # ⭐ IL LAYOUT DEL DEPLOY SI CALCOLA QUI, UNA VOLTA. Questo modulo sta in
 #    `backend/apps/core/services/`, quindi `parents[3]` è `backend/`.
@@ -129,6 +142,33 @@ _UNIT_AMMESSA = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 _COMANDO_AMMESSO = re.compile(r"^[a-z][a-z0-9_]*$")
 _ARGOMENTO_AMMESSO = re.compile(r"^-{0,2}[A-Za-z0-9][A-Za-z0-9._:/=-]*$")
 
+# Il vocabolario di `dovuto.ogni`, e i giorni della settimana come li scrive il
+# JSON (indice = `date.weekday()`).
+DOVUTO_GIORNO = "giorno"
+DOVUTO_SETTIMANA = "settimana"
+DOVUTO_MESE = "mese"
+_DOVUTO_OGNI = (DOVUTO_GIORNO, DOVUTO_SETTIMANA, DOVUTO_MESE)
+_GIORNI_SETTIMANA = ("lun", "mar", "mer", "gio", "ven", "sab", "dom")
+# ⚠️ Fino al 28, come il parser degli `OnCalendar` dei test: un 29-31 non
+#    esiste in tutti i mesi, e «il lavoro del mese» sparirebbe a febbraio.
+_ULTIMO_GIORNO_DEL_MESE_SICURO = 28
+_DALLE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+_JOBNAME_AMMESSO = re.compile(r"^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$")
+
+
+# Scopo: QUANDO e' dovuto il lavoro di una sveglia calendariale, nel fuso
+#        dell'azienda: una volta per `ogni` (giorno, settimana, mese), a
+#        partire da `giorno` (della settimana, 0 = lunedi'; del mese, 1-28)
+#        alle `dalle`. `jobname` e' la corsia su `maintenance.job_run_log` con
+#        cui si sa se il lavoro del periodo e' gia' fatto (lo scrive il comando;
+#        `test_sveglie` prova che i due coincidano).
+@dataclass(frozen=True)
+class Dovuto:
+    ogni: str
+    dalle: time
+    giorno: int | None
+    jobname: str
+
 
 # Scopo: una sveglia dichiarata — l'unit systemd che fa partire un processo.
 # ⚠️ La chiave e' `unit`, NON `processo_codice`: un processo puo' avere piu'
@@ -151,6 +191,8 @@ class Sveglia:
     # candidato e spento su questa installazione. Vedi header.
     avvio_manuale: bool
     nota: str
+    # Solo sulle sveglie calendariali: vedi `Dovuto` e l'header.
+    dovuto: Dovuto | None = None
 
     # Scopo: vero se questa sveglia e' un timer con una cadenza dichiarata.
     @property
@@ -188,6 +230,73 @@ def _leggi_comando(unit: str, grezzo: object) -> tuple[str, ...]:
                 f"subprocess lo leggerebbero in due modi diversi)"
             )
     return tuple(token)
+
+
+# Scopo: legge e valida `dovuto` di una voce (assente = sveglia non
+#        calendariale, il timer lavora a ogni sveglia).
+# ⛔ FAIL-LOUD come il resto del file: un `dovuto` letto «al meglio» farebbe
+#    girare il lavoro all'ora sbagliata, o mai.
+def _leggi_dovuto(unit: str, forma: str, grezzo: object) -> Dovuto | None:
+    if grezzo is None:
+        return None
+    errore = f"{_PERCORSO_SVEGLIE}: {unit}: 'dovuto'"
+    if forma != FORMA_TIMER:
+        raise ValueError(f"{errore} vale solo per un timer")
+    if not isinstance(grezzo, dict):
+        raise ValueError(f"{errore} dev'essere un oggetto")
+    ogni = grezzo.get("ogni")
+    if ogni not in _DOVUTO_OGNI:
+        raise ValueError(f"{errore}: 'ogni' fra {', '.join(_DOVUTO_OGNI)}, non {ogni!r}")
+    m = _DALLE.match(str(grezzo.get("dalle") or ""))
+    if not m:
+        raise ValueError(f"{errore}: 'dalle' e' un orario HH:MM, non {grezzo.get('dalle')!r}")
+    giorno_grezzo = grezzo.get("giorno")
+    giorno: int | None
+    if ogni == DOVUTO_GIORNO:
+        if giorno_grezzo is not None:
+            raise ValueError(f"{errore}: 'giorno' non ha senso con ogni = giorno")
+        giorno = None
+    elif ogni == DOVUTO_SETTIMANA:
+        if giorno_grezzo not in _GIORNI_SETTIMANA:
+            raise ValueError(f"{errore}: 'giorno' fra {', '.join(_GIORNI_SETTIMANA)}, non {giorno_grezzo!r}")
+        giorno = _GIORNI_SETTIMANA.index(giorno_grezzo)
+    else:
+        if not isinstance(giorno_grezzo, int) or isinstance(giorno_grezzo, bool) \
+                or not 1 <= giorno_grezzo <= _ULTIMO_GIORNO_DEL_MESE_SICURO:
+            raise ValueError(
+                f"{errore}: 'giorno' del mese da 1 a {_ULTIMO_GIORNO_DEL_MESE_SICURO}, "
+                f"non {giorno_grezzo!r}"
+            )
+        giorno = giorno_grezzo
+    jobname = str(grezzo.get("jobname") or "")
+    if not _JOBNAME_AMMESSO.match(jobname):
+        raise ValueError(f"{errore}: 'jobname' e' la corsia '<processo>:<corsia>', non {jobname!r}")
+    return Dovuto(ogni=ogni, dalle=time(int(m.group(1)), int(m.group(2))), giorno=giorno, jobname=jobname)
+
+
+# Scopo: L'INIZIO del periodo aziendale in cui il lavoro e' dovuto ADESSO, o
+#        None se il periodo corrente non e' ancora cominciato. `adesso` e'
+#        aware; il risultato e' nel fuso `fuso`.
+#        Il periodo e' quello CORRENTE: il giorno; la settimana dall'ultimo
+#        `giorno` della settimana; il mese dal suo `giorno`. Prima delle
+#        `dalle` di quel giorno non e' dovuto niente, e il periodo precedente
+#        non si recupera: e' finito. Dentro il periodo si recupera — un host
+#        spento il lunedi' alle 07:30 fa il settimanale alla prima sveglia dopo.
+def inizio_periodo_dovuto(dovuto: Dovuto, adesso: datetime, fuso: ZoneInfo) -> datetime | None:
+    oggi = adesso.astimezone(fuso).date()
+    primo: date
+    if dovuto.ogni == DOVUTO_GIORNO:
+        primo = oggi
+    elif dovuto.ogni == DOVUTO_SETTIMANA:
+        assert dovuto.giorno is not None
+        primo = oggi - timedelta(days=(oggi.weekday() - dovuto.giorno) % 7)
+    else:
+        assert dovuto.giorno is not None
+        if oggi.day < dovuto.giorno:
+            return None
+        primo = oggi.replace(day=dovuto.giorno)
+    inizio = datetime.combine(primo, dovuto.dalle, tzinfo=fuso)
+    return inizio if adesso >= inizio else None
 
 
 # Scopo: carica e valida il dichiarato. Cache di modulo: il file e' un dato di
@@ -296,6 +405,7 @@ def carica_sveglie() -> tuple[Sveglia, ...]:
             abilita=riga["abilita"],
             avvio_manuale=riga["avvio_manuale"],
             nota=str(riga.get("nota") or ""),
+            dovuto=_leggi_dovuto(unit, forma, riga.get("dovuto")),
         ))
 
     return tuple(sveglie)

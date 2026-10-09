@@ -353,6 +353,29 @@ class PayloadValidator:
             )
         return value
 
+    # Scopo: Codice a vocabolario MAIUSCOLO dal payload (es. il sesso M/F/X):
+    #        `optional_string` + upper. Assente, null o vuoto → None; un
+    #        non-stringa → 400 col campo, come `optional_string`.
+    #        Solo la FORMA: il valore ammesso lo giudica chi possiede il
+    #        vocabolario (un CHECK, un guard), non questo helper.
+    # ⭐ Regola del 2 (ok Tid, 2026-10-09): unifica le copie
+    #    `(payload.get(k) or "").strip().upper() or None` del sesso in
+    #    anagrafiche e amm_software. Con due forme «x» passava in creazione e
+    #    finiva nel CHECK in modifica; e `.strip()` su un non-stringa era un 500.
+    #    Gemello per la query string: `qp_str_upper` (payload_validators).
+    def optional_upper(
+        self,
+        payload: dict[str, Any],
+        key: str,
+        *,
+        log_to_db: bool | None = None,
+        function_name: str | None = None,
+    ) -> str | None:
+        value = self.optional_string(
+            payload, key, log_to_db=log_to_db, function_name=function_name,
+        )
+        return value.upper() if value else None
+
     # =================================================================
     # Estrazione interi
     # =================================================================

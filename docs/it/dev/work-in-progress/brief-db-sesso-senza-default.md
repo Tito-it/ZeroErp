@@ -5,8 +5,8 @@
 > **A chi:** team DB, e team BE/FE per il §6.
 > **Origine:** revisione del codice BE non committato del 2026-10-09; decisioni di Tid.
 > **Stato:** ✅ **lato DB chiuso** (2026-10-09): changeSet `20261009-19` … `-31` **applicati** da
-> Tid, corsa pgTAP **senza regressioni** (§7.3). **Da fare:** il §6 (team BE/FE) — fino ad
-> allora il backend non crea persone fisiche (§7.4).
+> Tid, corsa pgTAP **senza regressioni** (§7.3). ✅ **lato BE/FE fatto** (2026-10-09, §8), non
+> ancora committato: resta la verifica a video del drawer soggetto.
 
 ## 1. La regola (decisione di Tid, 2026-10-09)
 
@@ -295,4 +295,37 @@ vero del CSV e presidi trasversali.
   obblighi con la colonna Sesso. ⚠️ Nella stessa tabella la guida diceva dati societari
   «vietati» per la DI e «obbligatori» per l'ENC; il CSV di catalogo dice `OPTIONAL` per
   entrambe: corretta la guida sul CSV.
+
+## 8. Lato BE/FE (sessione `dev/backend-tid`, 2026-10-09)
+
+Il §6, punto per punto.
+
+| § | Fatto |
+| --- | --- |
+| 6.1 | Ritirati i controlli sul sesso: `SoggettiService._create_pf` lo passa così com'è (vuoto → `NULL`), `AmmSoftwareService.create_operatore` non pretende più `M`/`F`. Il rifiuto lo dà il guard, col campo dal canale `COLUMN` |
+| 6.2 | `_create_pf` passa a `fn_crea_soggetto_pf` il **dettaglio scelto** e la **P.IVA** (`SoggettiRepository.crea_soggetto_pf`, firma nuova senza default su sesso e dettaglio): la DI nasce DI |
+| 6.3 | `sesso_policy` esposta dai due lettori dei tipi (`LookupRepository.list_tipi_soggetto_dettaglio`, config-resolver di ruolo). `useSoggettoForm`: niente `'M'` iniziale; propone «M» solo con `REQUIRED` e solo in creazione, e ritira la proposta se il tipo cambia. `SoggettoForm`: campo nascosto con `NONE`, asterisco solo con `REQUIRED`, svuotabile con `OPTIONAL`, opzione `X` («Non determinabile»), campo acceso da `campiErrati`. Il drawer in modifica non inventa più `'M'` da un `NULL` |
+
+Emersi strada facendo:
+
+* **Genera CF con `X`**: `genera_cf_it` trattava ogni sesso diverso da `F` come maschio, cioè
+  avrebbe calcolato il CF di un uomo. Il service ora rifiuta (`E_ANAG_VALIDAZIONE`, campo
+  `sesso`), e il bottone del form si accende solo con `M`/`F`.
+* **`PATCH` con sesso vuoto**: `''` sarebbe arrivato al CHECK `chk_soggetti_sesso`. Il repository
+  lo normalizza a `NULL` come gli altri campi annullabili.
+* **Etichetta del pannello config** `config_panel.campi.sesso_policy` (it/en): la colonna nuova
+  la richiede (`test_config_panel_registro_db`).
+* `error_policies_generated.py` rigenerato e ripieghi senza `%s` per i tre codici.
+
+Prove: `apps/anagrafiche/tests/db/test_soggetti_sesso_policy_db.py` (DB vero: PR senza sesso
+rifiutato col campo, PR con `X`, DI con P.IVA e senza sesso, PG con sesso rifiutata in `PATCH`,
+vuoto → `NULL`, policy nel lookup); unit test di service e operatore riallineati;
+`useSoggettoForm.spec.js` (proposta, ritiro, `NONE`, modifica, reset).
+
+Smoke `backend/scripts/tests/smoke-test-soggetti.sh` (2026-10-09, **20 OK / 0 FAIL**): sesso
+esplicito nei passi 4 e 14 (il guard rifiutava il privato senza sesso), passi nuovi 15 (privato
+senza sesso → `400 E_SESSO_OBBLIGATORIO` col campo) e 16 (ditta individuale con P.IVA e senza
+sesso → nasce DI). Per farlo girare ho corretto due rotture che c'erano già prima e non
+dipendono da questo cantiere: il contatto senza `tipo_contatto_id` (`E_CONTATTO_INCOMPLETO`) e il
+contatto aggiuntivo con lo stesso tipo del principale.
 

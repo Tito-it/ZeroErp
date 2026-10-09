@@ -32,7 +32,7 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { DATE_FORMAT } from '../../core/constants'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, oggiAziendale } from '../../core/utils/date'
 import { useDocumentiInterniStore } from '../stores/documentiInterni'
 import { FAMIGLIE } from '../vocabolari'
 import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
@@ -56,7 +56,7 @@ const form = ref(defaultForm())
 function defaultForm() {
   return {
     magazzino_id: null,
-    data: new Date(),
+    data: oggiAziendale(),
     descrizione: '',
   }
 }

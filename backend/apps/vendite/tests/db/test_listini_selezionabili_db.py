@@ -32,10 +32,10 @@ from __future__ import annotations
 
 import unittest
 
-from datetime import date
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 from apps.vendite.db.listini_repository import ListiniRepository
@@ -158,7 +158,7 @@ class ListiniSelezionabiliDbTests(unittest.TestCase):
                 "istanza_utility_id": istanza,
                 "utility_id": utility,
                 "listino_id": ids[3],
-                "validita_dal": date.today(),
+                "validita_dal": oggi_aziendale(),
                 "stato_doc_offerta_id": repo.get_stato_id_by_codice("BOZZA"),
             })
             OfferteService().aggiorna_offerta(offerta_id, {"listino_id": ids[4]})

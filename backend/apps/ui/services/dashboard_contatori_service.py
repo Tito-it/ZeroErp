@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import date
 from typing import Any
+
+from apps.core.services.fuso_aziendale import oggi_aziendale
 
 __all__ = ["DashboardContatoriService", "CONTATORI_REGISTRY"]
 
@@ -68,7 +69,7 @@ def _contatore_backlog_documenti_fermi() -> int:
 def _contatore_competenza_da_fatturare() -> int:
     from apps.vendite.services.vendite_service import fn_dash_competenza_mensile
 
-    oggi = date.today()
+    oggi = oggi_aziendale()
     riepilogo = fn_dash_competenza_mensile(anno=oggi.year)
     prefisso = f"{oggi.year:04d}-{oggi.month:02d}"
 

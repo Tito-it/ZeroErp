@@ -318,13 +318,19 @@ class SoggettiRepository:
 
     # Scopo: Crea soggetto PF chiamando la funzione DB building block.
     #        Obiettivo: INSERT soggetto + contatto default, tutto in funzione PG.
+    # ⛔ `sesso` e `tipo_soggetto_dettaglio_id` senza default, come a DB: la
+    #    natura e il sesso non si inventano (brief-db-sesso-senza-default D4).
+    #    `sesso=None` e' un valore legittimo (DI, OPTIONAL): se la natura lo
+    #    pretende, rifiuta il guard `trgfn_soggetti_guard_sesso_policy`.
     def crea_soggetto_pf(
         self, *, cognome: str, nome: str, codice_fiscale: str, email: str,
-        sesso: str, data_nascita: str | None = None,
+        sesso: str | None, tipo_soggetto_dettaglio_id: int,
+        data_nascita: str | None = None,
         # None = il default di `config.parameters`, risolto dalla funzione DB.
         stato_iso2: str | None = None,
         comune_nascita_id: int | None = None,
         tipo_contatto_id: int | None = None,
+        partita_iva: str | None = None,
     ) -> str:
         sql = """
             SELECT anagrafiche.fn_crea_soggetto_pf(
@@ -336,13 +342,16 @@ class SoggettiRepository:
                 p_sesso             := %s,
                 p_stato_iso2        := %s,
                 p_comune_nascita_id := %s,
-                p_tipo_contatto_id  := %s
+                p_tipo_contatto_id  := %s,
+                p_tipo_soggetto_dettaglio_id := %s,
+                p_partita_iva       := %s
             )
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 cognome, nome, codice_fiscale, email,
                 data_nascita, sesso, stato_iso2, comune_nascita_id, tipo_contatto_id,
+                tipo_soggetto_dettaglio_id, partita_iva,
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -418,7 +427,9 @@ class SoggettiRepository:
         #    trasformerebbe un valore sbagliato in una violazione di NOT NULL —
         #    un errore piu' oscuro di quello che gia' c'e'. Il valore lo valida
         #    il service prima di arrivare qui.
-        _NULLABLE = {"codice_fiscale", "partita_iva", "data_nascita", "comune_id"}
+        # `sesso` (2026-10-09): il vuoto e' «non indicato», cioe' NULL — per la
+        #    DI e' ammesso; `''` lo rifiuterebbe il CHECK `chk_soggetti_sesso`.
+        _NULLABLE = {"codice_fiscale", "partita_iva", "sesso", "data_nascita", "comune_id"}
         # Copia con l'alias frontend → colonna DB applicato: `data` e' spesso
         # `request.data`, e non si muta l'input del chiamante.
         mapped = {SOGGETTO_UPDATE_ALIAS.get(k, k): v for k, v in data.items()}
@@ -906,24 +917,39 @@ class SoggettiRepository:
             return row_to_dict(cursor)
 
     # Scopo: Assegna ruolo a soggetto (get or create, idempotente).
-    # codice_ruolo puo' essere il campo `codice` o `codice_interno` di config.tipi_ruoli.
-    # La funzione DB accetta codice_interno: risolviamo con un sub-select.
-    def assign_ruolo(self, soggetto_id: str, codice_ruolo: str) -> int:
-        sql = """
-            SELECT script.fn_get_or_create_soggetto_ruolo(
-                %s::uuid,
-                COALESCE(
-                    (SELECT codice_interno FROM config.tipi_ruoli
-                     WHERE codice = %s OR codice_interno = %s LIMIT 1),
-                    %s
-                )
-            )
-        """
+    #        `codice_interno` e' gia' risolto dal chiamante
+    #        (`resolve_tipo_ruolo`, sede unica della risoluzione); un
+    #        codice sconosciuto passa com'e' e lo rifiuta la funzione DB col suo codice.
+    def assign_ruolo(self, soggetto_id: str, codice_interno: str) -> int:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id, codice_ruolo, codice_ruolo, codice_ruolo])
+            cursor.execute(
+                "SELECT script.fn_get_or_create_soggetto_ruolo(%s::uuid, %s)",
+                [soggetto_id, codice_interno],
+            )
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # Scopo: Il TIPO RUOLO dal codice del payload, che puo' essere il codice
+    #        (`CLIENTE`) o gia' il codice interno (`CL`): `{codice_interno,
+    #        codice, descrizione}`, o None se sconosciuto. Il codice interno e'
+    #        la chiave che il codice usa; codice e descrizione sono cio' che si
+    #        mostra all'utente.
+    # ⚠️ `codice` e `codice_interno` sono UNIQUE ciascuno, non fra loro: il
+    #    codice di una riga puo' essere il codice interno di un'altra. Vince il
+    #    `codice` (e' il campo del payload), e l'ORDER BY rende la scelta
+    #    deterministica invece di lasciarla al `LIMIT 1`.
+    def resolve_tipo_ruolo(self, codice_ruolo: str) -> dict[str, Any] | None:
+        sql = """
+            SELECT codice_interno, codice, descrizione
+              FROM config.tipi_ruoli
+             WHERE codice = %s OR codice_interno = %s
+             ORDER BY (codice = %s) DESC
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [codice_ruolo, codice_ruolo, codice_ruolo])
+            return row_to_dict(cursor)
 
     # =================================================================
     # Dati societari
@@ -958,8 +984,8 @@ class SoggettiRepository:
               JOIN config.tipi_soggetto ts ON ts.id = trna.tipo_soggetto_id
              WHERE trna.tipo_ruolo_id = %s
                AND trna.attivo = true
-               AND (trna.valido_dal IS NULL OR trna.valido_dal <= CURRENT_DATE)
-               AND (trna.valido_al IS NULL OR trna.valido_al >= CURRENT_DATE)
+               AND (trna.valido_dal IS NULL OR trna.valido_dal <= (SELECT script.fn_data_operativa()))
+               AND (trna.valido_al IS NULL OR trna.valido_al >= (SELECT script.fn_data_operativa()))
         """
         # 3. Tipi soggetto dettaglio filtrati per nature ammesse
         # ⛔ `varchar[]`, non `bigint[]`: `config.tipi_soggetto.id` e' un codice
@@ -974,7 +1000,7 @@ class SoggettiRepository:
                    ts.natura_soggetto,
                    tsd.cf_obbligatorio, tsd.piva_obbligatoria,
                    tsd.formato_cf, tsd.formato_piva,
-                   tsd.dati_societari_policy
+                   tsd.dati_societari_policy, tsd.sesso_policy
               FROM config.tipi_soggetto_dettaglio tsd
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
              WHERE (%s::varchar[] IS NULL OR ts.id = ANY(%s::varchar[]))

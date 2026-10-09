@@ -28,9 +28,9 @@
 #            specifico oppure per il singolo utente, niente deploy
 #
 #        ⭐ IL FUSO E' PARTE DEL FORMATO (decisione di Tid, 2026-09-14): un
-#        istante si scrive nell'ORA LOCALE dell'applicazione (`TIME_ZONE` di
-#        Django, o il fuso attivato per la richiesta), mai nel fuso che il
-#        valore porta. Con `USE_TZ` la connessione consegna i timestamptz in
+#        istante si scrive nell'ORA DELL'AZIENDA (BB `fuso_aziendale`, dal
+#        parametro `SYSTEM_FUSO_ORARIO`; fino al 2026-10-09 era `TIME_ZONE` di
+#        Django, oggi 'UTC' e neutro), mai nel fuso che il valore porta. Con `USE_TZ` la connessione consegna i timestamptz in
 #        UTC, e fino a quel giorno ogni export scriveva ore UTC — una o due
 #        indietro — mentre le liste a video le mostravano giuste, perche' il
 #        browser converte. Lo stesso istante con due ore a seconda del canale
@@ -46,6 +46,8 @@ from decimal import Decimal
 from typing import Any
 
 from django.utils import timezone
+
+from apps.core.services.fuso_aziendale import fuso_aziendale
 
 # =================================================================
 # Costanti di default italiane (v1).
@@ -86,7 +88,7 @@ CURRENCY_SYMBOL: str = "€"
 # Formattatori atomici (uno per tipo)
 # =================================================================
 
-# Scopo: Porta un istante nel fuso LOCALE dell'applicazione prima di
+# Scopo: Porta un istante nel fuso DELL'AZIENDA prima di
 #        scriverlo (vedi l'intestazione del modulo). E' la sede unica della
 #        conversione: la usano i formattatori qui sotto e il helper
 #        None-preserving dei documenti (`_date_formatting`), cosi' un PDF e un
@@ -94,8 +96,10 @@ CURRENCY_SYMBOL: str = "€"
 # ⚠️ Un datetime NAIVE non si tocca: non porta un fuso, quindi non c'e'
 #    niente da convertire (`timestamp without time zone`, o un valore costruito
 #    a mano nei test) — e `localtime` su un naive solleverebbe.
+# ⭐ Il fuso e' DICHIARATO, non quello attivato: la conversione e' giusta anche
+#    fuori da una richiesta o da un comando (un thread, un test).
 def in_ora_locale(value: datetime) -> datetime:
-    return timezone.localtime(value) if timezone.is_aware(value) else value
+    return timezone.localtime(value, fuso_aziendale()) if timezone.is_aware(value) else value
 
 
 # Scopo: Formatta una `date` Python in DD-MM-YYYY (formato italiano).

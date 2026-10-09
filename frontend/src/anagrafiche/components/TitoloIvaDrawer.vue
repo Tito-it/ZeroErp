@@ -43,7 +43,7 @@ import {
   useTitoloIvaMovimentiStore,
 } from '../stores/titoloIvaSottoliste'
 import { DRAWER_WIDTH, MANAGE_ICONS, DATE_FORMAT } from '../../core/constants'
-import { toDateString, parseIsoDate } from '../../core/utils/date'
+import { toDateString, parseIsoDate, oggiAziendale } from '../../core/utils/date'
 import { formatCurrency } from '../../core/utils/format'
 import AppDrawer from '../../core/components/AppDrawer.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
@@ -496,7 +496,7 @@ const annulloVisible = ref(false)
 const annullo = ref({ movimento_id: null, motivo: '' })
 
 function nuovaForzatura() {
-  return { imponibile: null, data_movimento: new Date(), motivo: '' }
+  return { imponibile: null, data_movimento: oggiAziendale(), motivo: '' }
 }
 
 // ⚠️ Lo ZERO non passa: `chk_stiva_movimenti_segno` lo rifiuta, e un movimento

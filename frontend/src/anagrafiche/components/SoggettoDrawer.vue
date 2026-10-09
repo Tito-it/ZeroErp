@@ -21,7 +21,7 @@ import { lookupFormeGiuridiche } from '../../core/apiCore'
 import { lookupProvince } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, parseIsoDate } from '../../core/utils/date'
 import SoggettoForm from './SoggettoForm.vue'
 import ContattoForm from './ContattoForm.vue'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
@@ -41,7 +41,9 @@ const store = useSoggettiStore()
 const { execute, loading, campiErrati } = useApiHandler()
 
 // Building block composables
-const soggetto = useSoggettoForm()
+// In modifica il sesso non si propone: un privato senza sesso resta vuoto,
+// e lo sceglie chi lo vede (lo pretende il guard del DB).
+const soggetto = useSoggettoForm({ proponiSesso: () => props.mode !== 'edit' })
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
@@ -175,14 +177,6 @@ watch(() => soggetto.showDatiSocietari.value, (show) => {
   }
 })
 
-// Scopo: Converte stringa ISO date (YYYY-MM-DD) in Date object per DatePicker.
-function parseDate(val) {
-  if (!val) return null
-  if (val instanceof Date) return val
-  const d = new Date(val)
-  return isNaN(d.getTime()) ? null : d
-}
-
 // Popola il drawer con i dati del soggetto in edit mode.
 function populateFromDetail(data) {
   soggetto.form.tipo_soggetto_dettaglio_id = data.tipo_soggetto_dettaglio_id
@@ -191,8 +185,12 @@ function populateFromDetail(data) {
   soggetto.form.ragione_sociale = data.ragione_sociale || ''
   soggetto.form.codice_fiscale = data.codice_fiscale || ''
   soggetto.form.partita_iva = data.partita_iva || ''
-  soggetto.form.sesso = data.sesso || 'M'
-  soggetto.form.data_nascita = parseDate(data.data_nascita)
+  // ⛔ Mai `|| 'M'`: un sesso che il DB non ha non si inventa a video.
+  soggetto.form.sesso = data.sesso?.trim() || ''
+  // ⚠️ `parseIsoDate` e non `new Date('YYYY-MM-DD')` (mezzanotte UTC): nei
+  //    fusi negativi la data di nascita si mostrava — e si risalvava — un
+  //    giorno prima (fino al 2026-10-09).
+  soggetto.form.data_nascita = parseIsoDate(data.data_nascita)
   soggetto.form.comune_nascita_id = data.comune_nascita_id || null
   // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
   //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.
@@ -334,7 +332,8 @@ async function handleSave() {
     if (soggetto.isPF.value) {
       payload.cognome = f.cognome
       payload.nome = f.nome
-      payload.sesso = f.sesso
+      // Vuoto -> NULL: per la ditta individuale e' un valore ammesso.
+      if (soggetto.showSesso.value) payload.sesso = f.sesso || null
       payload.data_nascita = toDateString(f.data_nascita)
       payload.comune_nascita_id = f.comune_nascita_id
     } else {
@@ -367,7 +366,7 @@ async function handleSave() {
       ragione_sociale: soggetto.form.ragione_sociale,
       codice_fiscale: soggetto.form.codice_fiscale,
       partita_iva: soggetto.form.partita_iva,
-      sesso: soggetto.form.sesso,
+      sesso: soggetto.showSesso.value ? (soggetto.form.sesso || null) : null,
       data_nascita: toDateString(soggetto.form.data_nascita),
       comune_nascita_id: soggetto.form.comune_nascita_id,
       contatto: { ...contatto.form },
@@ -431,6 +430,8 @@ async function handleSave() {
       :campi-errati="campiErrati"
       :tipi-soggetto="soggetto.tipiSoggetto"
       :is-p-f="soggetto.isPF.value"
+      :show-sesso="soggetto.showSesso.value"
+      :require-sesso="soggetto.requireSesso.value"
       :show-partita-iva="soggetto.showPartitaIva.value"
       :is-edit="isEdit"
       :disabled="false"

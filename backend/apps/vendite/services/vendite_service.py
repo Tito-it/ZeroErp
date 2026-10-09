@@ -15,8 +15,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.utils import timezone
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.payload_helpers import translate_db_errors
@@ -175,7 +175,7 @@ _PARAM_RITARDO_DATA_MINIMA = "VENDITE_DASHBOARD_RITARDO_DATA_MINIMA"
 #        E_VENDITE_VALIDATION; niente normalizzazione silenziosa (DL-17).
 # ⭐ Il pavimento e' una scelta di DOMINIO (quanto indietro ha senso chiedere),
 #    non il tipo: il tetto `integer` di `qp_int_optional` resta, ma da solo
-#    lasciava passare N per cui `current_date - N giorni` esce da `timestamp`
+#    lasciava passare N per cui `oggi - N giorni` esce da `timestamp`
 #    (`DataError`, cioe' un 500 al posto di un 400).
 # ⭐ Si legge il DEFAULT del parametro, non la cascata (D-1 del brief: limite
 #    uguale per tutti, nessun override previsto).
@@ -199,7 +199,7 @@ def _valida_ritardo_giorni(
         function_name=function_name,
     )
     data_minima = ParameterService().get_default_date(_PARAM_RITARDO_DATA_MINIMA)
-    massimo = (timezone.localdate() - data_minima).days
+    massimo = (oggi_aziendale() - data_minima).days
     ErrorManager.require(
         ritardo_giorni <= massimo,
         code="E_VENDITE_VALIDATION",

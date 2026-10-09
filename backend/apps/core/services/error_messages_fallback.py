@@ -329,6 +329,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOCUMENTI_RENDER_FAILED": "Generazione PDF documento fallita.",
     "E_DOCUMENTI_STORAGE_FAILED": "Errore lettura/scrittura file documento.",
     "E_DOCUMENTI_VALIDATION": "Parametri documento non validi.",
+    "E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO": "Il documento non si puo' generare: un valore numerico non e' un numero.",
     # Il catalogo porta la frase con quattro `%s` (versione, template, le due
     # forme) e l'altra con uno (che cosa manca); qui le frasi senza argomenti.
     "E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA": "La versione del template legge i dati in una forma diversa da quella in cui il sistema li prepara: il documento non si stampa con questa versione.",
@@ -1099,6 +1100,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SEQUENZA_NON_CONFIGURATA": "Sequenza di numerazione non configurata.",
     "E_SESSIONE_NOT_FOUND": "Sessione non trovata o gia' revocata.",
     "E_SESSIONE_REVOCA_CORRENTE": "Non puoi revocare la sessione corrente. Usa il logout.",
+    # Il catalogo nomina il tipo soggetto col `%s`; qui la frase senza.
+    "E_SESSO_NON_AMMESSO": "Il sesso non si indica per questo tipo soggetto.",
+    "E_SESSO_OBBLIGATORIO": "Il sesso e' obbligatorio per questo tipo soggetto: indicare M, F oppure X se non si puo' stabilire.",
     "E_SHOP_NON_DISPONIBILE": "Shop non ancora disponibile. In arrivo con PR-C.",
     "E_SHOP_RICEVUTA_BA_CANALE_INVALIDO": "Il billing account collegato alla ricevuta non e' di canale SHOP.",
     # ⭐ Anche qui il rifiuto nomina l'alternativa. Il varco CONFERMATA ->
@@ -1124,6 +1128,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SNAPSHOT_INIT_INSERT_ERROR": "Storicizzazione: errore nell'inserimento dello snapshot iniziale.",
     "E_SOGGETTI_RUOLI": "Relazione soggetto/ruolo non valida.",
     "E_SOGGETTI_RUOLI_RACE": "Anomalia di concorrenza sull'assegnazione del ruolo.",
+    "E_SOGGETTO_CREAZIONE_NATURA_ERRATA": "Il tipo soggetto non si crea da questo percorso.",
     "E_SOGGETTO_NOT_FOUND": "Soggetto non trovato.",
     "E_SOGGETTO_NO_CONTATTI": "Il soggetto deve avere almeno un contatto.",
     "E_SOGGETTO_NULL": "Soggetto mancante per il ruolo indicato.",

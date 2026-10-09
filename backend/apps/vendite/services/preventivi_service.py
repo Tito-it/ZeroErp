@@ -21,6 +21,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
@@ -692,7 +693,7 @@ def cambia_stato(
             # del mese corrente (snapshot tx-time). Eventuale valore esplicito
             # passato dal caller viene sovrascritto (immediata ha priorita').
             if fatturazione_immediata:
-                competenza_mese = date.today().replace(day=1)
+                competenza_mese = oggi_aziendale().replace(day=1)
             else:
                 ErrorManager.require(
                     competenza_mese is not None,

@@ -739,7 +739,9 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
         "utility_id": testata.get("utility_id"),
         "emittente_fiscale_id": testata.get("emittente_fiscale_id"),
         "valuta_id": testata.get("valuta_id"),
-        "data": date.today().isoformat(),
+        # ⭐ Niente `data`: la decide il DEFAULT della colonna,
+        #    `script.fn_data_operativa()` (l'oggi dell'azienda). Fino al
+        #    2026-10-09 qui c'era `date.today()`, il giorno del processo.
     }
 
     with transaction.atomic():

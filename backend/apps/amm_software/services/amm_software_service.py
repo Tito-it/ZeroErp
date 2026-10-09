@@ -189,16 +189,19 @@ class AmmSoftwareService:
             message="Campo 'password' non ammesso: la sceglie l'operatore attivando l'invito.",
             context={"field": "password"},
         )
-        soggetto_id = (payload.get("soggetto_id") or "").strip() or None
-        username = (payload.get("username") or "").strip()
-        email = (payload.get("email") or "").strip()
+        # ⚠️ Letti dal BB: un non-stringa e' un 400 sul campo; con
+        #    `(payload.get(k) or "").strip()` era un AttributeError, cioe' un 500.
+        _v = PayloadValidator(validation_code=E_AMM_VALIDAZIONE)
+        soggetto_id = _v.optional_string(payload, "soggetto_id")
+        username = _v.optional_string(payload, "username") or ""
+        email = _v.optional_string(payload, "email") or ""
         raw_qualifica = payload.get("qualifica_id")
 
         # Guard UUID soggetto_id (flusso B)
         if soggetto_id:
             try:
                 uuid_mod.UUID(soggetto_id)
-            except (ValueError, AttributeError) as exc:
+            except ValueError as exc:
                 ErrorManager.raise_error(code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.", context={"field": "soggetto_id"}, cause=exc)
 
         # Guard qualifica_id numerico
@@ -213,18 +216,22 @@ class AmmSoftwareService:
         ErrorManager.require(qualifica_id is not None and qualifica_id > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.", context={"field": "qualifica_id"})
 
         # Validazione flusso A: dati persona obbligatori solo se soggetto nuovo
-        cognome = (payload.get("cognome") or "").strip()
-        nome = (payload.get("nome") or "").strip()
-        codice_fiscale = (payload.get("codice_fiscale") or "").strip()
+        cognome = _v.optional_string(payload, "cognome") or ""
+        nome = _v.optional_string(payload, "nome") or ""
+        codice_fiscale = _v.optional_string(payload, "codice_fiscale") or ""
+        sesso = _v.optional_upper(payload, "sesso")
 
         if not soggetto_id:
             ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio per soggetto nuovo.", context={"field": "cognome"})
             ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.", context={"field": "nome"})
             ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.", context={"field": "codice_fiscale"})
-            # ⛔ Mai un default silenzioso (decisione di Tid, 2026-10-09): un
-            #    sesso lo propone il form, a video; qui si pretende. Fino a quel
-            #    giorno valeva `DEFAULT_SESSO = "M"` anche se il client taceva.
-            ErrorManager.require(payload.get("sesso") in ("M", "F"), code=E_AMM_VALIDAZIONE, message="Sesso obbligatorio per soggetto nuovo (M o F).", context={"field": "sesso"})
+            # ⛔ Il sesso NON si controlla qui, e non ha default (decisione di
+            #    Tid, 2026-10-09; fino a quel giorno `DEFAULT_SESSO = "M"`).
+            #    Il flusso A crea un privato (PR, `sesso_policy = REQUIRED`): il
+            #    rifiuto del sesso mancante arriva dal guard
+            #    `trgfn_soggetti_guard_sesso_policy`, prima del consenso al riuso,
+            #    con il campo acceso dal canale `COLUMN`. Una copia qui ammetteva
+            #    solo M/F, mentre `X` («non si puo' stabilire») e' un valore.
 
         # Contract Fase 7: il caller passa `is_super_admin` (default False).
         # Il caller non puo' creare DISABILITATI via questo endpoint: la
@@ -245,7 +252,7 @@ class AmmSoftwareService:
             unita_organizzativa_id=int(payload["unita_organizzativa_id"]) if payload.get("unita_organizzativa_id") else None,
             data_nascita=payload.get("data_nascita"),
             # Col soggetto esistente (flusso B) il DB non lo legge.
-            sesso=payload.get("sesso") if not soggetto_id else None,
+            sesso=sesso if not soggetto_id else None,
             is_super_admin=is_super_admin,
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),

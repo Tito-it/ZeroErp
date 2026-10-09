@@ -515,6 +515,16 @@ Com'è fatto (verificato il 2026-10-02, `smoke-test-core.sh` 25 OK):
 | Email | `mc.titini+smoke@gmail.com` (arriva alla casella di Tid) |
 | Veste | OPERATORE attiva, profilo **`SUPER_ADMIN`**, nessun emittente (admin globale) |
 | Secondo fattore | obbligatorio (SUPER_ADMIN) e configurato: la chiave è in `SMOKE_TOTP_SECRET` |
+| Emittente attivo | **`EMITEST`** (id 44), una preferenza e non un permesso: resta admin globale (impostato il 2026-10-09) |
+
+⚠️ **Senza emittente attivo le liste multi-emittente rispondono `422
+E_UI_LISTA_EMITTENTE_DA_SCEGLIERE`** (cancello di perimetro), e gli smoke si
+fermano al primo `GET` di lista. Si sceglie una volta: è la preferenza
+`config.user_emittente_attivo`, che il login rilegge. La si imposta
+dall'applicazione (combo in topbar, entrando come `smoke`) oppure con
+`POST /api/v1/core/me/emittente-attivo/` `{"emittente_fiscale_id": <id>}`, che
+vuole il cookie del refresh (login con `smoke_login -D <file header>`, poi
+`curl_refresh`). Le opzioni le dà la `GET` sulla stessa rotta.
 
 ### 11.2 Ricrearlo (su un'installazione nuova)
 

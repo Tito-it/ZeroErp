@@ -1,10 +1,14 @@
 # Template systemd — timer della corsia DIFFERITA (mensile su competenza).
-# Placeholder per-host: __ONCALENDAR__ (cadenza, default installer
-# `*-*-01 02:00` = il 1° di ogni mese alle 02:00). Vedi il .service gemello.
+# Placeholder per-host: __ONCALENDAR__ (sveglia, default `*:00`). Dal
+# 2026-10-09 il lavoro lo fa l'ExecCondition del .service dalla MEZZANOTTE
+# AZIENDALE del 1°, una volta al mese (`dovuto`, decisione T-4a: prima era
+# `*-*-01 02:00` nell'ora dell'host). Vedi il .service gemello.
 #
-# ⚠️ `Persistent=true` conta QUI più che altrove: il tick è mensile, quindi un
-# host spento la notte del 1° perderebbe il giro per un mese intero. Col flag,
-# il run parte al primo riaggancio.
+# ⚠️ `Persistent=true` resta, ma non e' piu' cio' che salva il giro: con la
+# sveglia oraria un host spento la notte del 1° fa il lavoro alla prima sveglia
+# dopo il riavvio, perche' `e_dovuto` lo trova dovuto finche' il mese non ha una
+# corsa riuscita (fino al 2026-10-09 il tick era mensile, e senza il flag un
+# host spento la notte del 1° avrebbe perso il giro per un mese intero).
 [Unit]
 Description=Timer corsia differita fatturazione (mensile su competenza)
 

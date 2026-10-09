@@ -1,6 +1,8 @@
 # Template systemd — timer del digest giornaliero dei presidi.
-# Placeholder per-host: __ONCALENDAR__ (cadenza, default `*-*-* 07:00`,
-# dichiarato in `backend/deploy/sveglie.json`). Vedi il .service gemello per il
+# Placeholder per-host: __ONCALENDAR__ (sveglia, default `*:00`, dichiarato in
+# `backend/deploy/sveglie.json`). Dal 2026-10-09 il timer si sveglia ogni ora e
+# l'ExecCondition del .service fa il lavoro alle 07:00 AZIENDALI, una volta al
+# giorno (`dovuto`): l'ora dell'host non conta. Vedi il .service gemello per il
 # perché di quell'ora.
 #
 # ⚠️ `Persistent=true`: dopo un'interruzione (riavvio, host spento) il giro perso

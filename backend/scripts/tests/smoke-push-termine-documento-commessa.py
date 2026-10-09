@@ -71,11 +71,12 @@
 # ------------------------------------------------------------
 
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.commesse_service import pr_run_commesse_push_one
@@ -253,7 +254,7 @@ with transaction.atomic():
 
         # Competenza ISOLATA: ~14 mesi nel futuro, meta' mese. La selezione
         # del lotto non incrocia nulla di vivo.
-        data_doc = (date.today() + timedelta(days=425)).replace(day=15)
+        data_doc = (oggi_aziendale() + timedelta(days=425)).replace(day=15)
         competenza = data_doc.replace(day=1)
 
         marker = uuid.uuid4().hex[:8]

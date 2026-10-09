@@ -233,19 +233,19 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             },
             "bollo_applicato": testata.get("bollo_applicato"),
             "totali": {
-                "imponibile": format_importo(testata.get("imponibile_tot")),
-                "imposta": format_importo(testata.get("imposta_tot")),
+                "imponibile": format_importo(testata.get("imponibile_tot"), campo="imponibile_tot"),
+                "imposta": format_importo(testata.get("imposta_tot"), campo="imposta_tot"),
                 # alias `iva` (nome usato dal template) dell'imposta totale
-                "iva": format_importo(testata.get("imposta_tot")),
-                "sconto": format_importo(testata.get("sconto_tot")),
-                "bollo": format_importo(testata.get("bollo_importo")),
-                "arrotondamento": format_importo(testata.get("arrotondamento_attuale")),
-                "documento": format_importo(testata.get("totale_doc")),
-                "a_pagare": format_importo(testata.get("totale_a_pagare")),
+                "iva": format_importo(testata.get("imposta_tot"), campo="imposta_tot"),
+                "sconto": format_importo(testata.get("sconto_tot"), campo="sconto_tot"),
+                "bollo": format_importo(testata.get("bollo_importo"), campo="bollo_importo"),
+                "arrotondamento": format_importo(testata.get("arrotondamento_attuale"), campo="arrotondamento_attuale"),
+                "documento": format_importo(testata.get("totale_doc"), campo="totale_doc"),
+                "a_pagare": format_importo(testata.get("totale_a_pagare"), campo="totale_a_pagare"),
                 "valuta_codice": testata.get("valuta_codice"),
                 # Il tasso di cambio e' una MISURA, non denaro: `1.00000000`
                 # si legge «1,00», ma un cambio 0,8732 conserva le sue cifre.
-                "tasso_cambio": format_misura(testata.get("tasso_cambio")),
+                "tasso_cambio": format_misura(testata.get("tasso_cambio"), campo="tasso_cambio"),
             },
             # Campi «ricchi» del template. Chiavi SEMPRE presenti (StrictUndefined
             # → chiave mancante = errore); il template le guarda con {% if %},
@@ -341,7 +341,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             "nr": s.get("numero_rata"),
             "data": format_date_it(s.get("data_scadenza")),
             "data_iso": format_date_iso(s.get("data_scadenza")),
-            "importo": format_importo(s.get("importo")),
+            "importo": format_importo(s.get("importo"), campo="importo"),
             "modalita_codice": meta.get("modalita_codice"),
         }
 

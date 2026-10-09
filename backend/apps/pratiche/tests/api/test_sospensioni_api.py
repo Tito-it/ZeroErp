@@ -21,9 +21,11 @@ Indice test eseguiti:
 11) SospensioniApiTests.test_get_calcoli_tempo_con_stato_tempo
 12) SospensioniApiTests.test_get_formule_tempo_ok
 13) SospensioniApiTests.test_get_formule_tempo_senza_tipo_prestazione
+14) SospensioniApiTests.test_istante_senza_offset_e_un_400 — B-7 un-solo-fuso-aziendale
 """
 
 import json
+from datetime import UTC, datetime
 from unittest.mock import Mock, patch
 
 from django.test import Client
@@ -115,11 +117,31 @@ class SospensioniApiTests(JwtMockedApiTest):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
+        # L'istante arriva al service come istante (con il suo offset), non
+        # come stringa da far interpretare alla sessione.
         mock_sospendi.assert_called_once_with(
             1, "Retroattiva",
             data_riattivazione_prevista=None,
-            data_inizio="2026-06-20T09:30:00+00:00",
+            data_inizio=datetime(2026, 6, 20, 9, 30, tzinfo=UTC),
         )
+
+    # Scopo: B-7. Un istante senza offset si rifiuta (400), sia in sospensione
+    # sia in riattivazione: PostgreSQL lo leggerebbe nel fuso della sessione.
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_VIEWS}.pratiche_service.riattiva_pratica")
+    @patch(f"{_VIEWS}.pratiche_service.sospendi_pratica")
+    def test_istante_senza_offset_e_un_400(self, mock_sospendi, mock_riattiva, _auth):
+        for url, corpo in (
+            ("/api/v1/pratiche/1/sospendi/", {"motivo": "x", "data_inizio": "2026-06-20T09:30:00"}),
+            ("/api/v1/pratiche/1/riattiva/", {"data_fine": "2026-06-20T09:30:00"}),
+            ("/api/v1/pratiche/1/riattiva/", {"data_fine": "ieri"}),
+        ):
+            with self.subTest(url=url, corpo=corpo):
+                response = self.client.post(url, data=json.dumps(corpo), content_type="application/json")
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertEqual(response.json()["error"]["code"], "E_VALIDATION_INPUT")
+        mock_sospendi.assert_not_called()
+        mock_riattiva.assert_not_called()
 
     # -- RIATTIVA PRATICA ------------------------------------------------
 

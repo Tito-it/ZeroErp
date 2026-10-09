@@ -23,12 +23,14 @@ Indice test eseguiti:
 13) IdentitaDelJwtTests.test_claim_presente_delega_al_repo
 14) IdentitaDelJwtTests.test_profile_contiene_blocco_identita
 15) UserProfileViewTests.test_profilo_porta_gli_obblighi_del_cancello — T-4 brief sicurezza
+16) UserProfileViewTests.test_profilo_porta_il_fuso_dell_azienda — B-1 brief un-solo-fuso-aziendale
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.core.db.core_repository import CoreRepository
+from apps.core.services.fuso_aziendale import fuso_aziendale_forzato
 from apps.core.services.service_errors import ServiceError
 
 
@@ -116,6 +118,21 @@ class UserProfileViewTests(TestCase):
             mock_resp.call_args[0][0]["obblighi_pendenti"], ["CAMBIO_PASSWORD", "SECONDO_FATTORE"],
         )
         self.mock_obblighi.assert_called_once_with(1)
+
+    # Scopo: B-1. Il profilo porta il NOME del fuso dell'azienda, lo stesso che
+    # usa il backend (BB `fuso_aziendale`): il frontend lo legge da qui. Tokyo
+    # apposta, per non coincidere col fuso del parametro di sviluppo.
+    @patch(_REPO_PATH)
+    def test_profilo_porta_il_fuso_dell_azienda(self, MockRepo):
+        from apps.core.api.me_view import UserProfileView
+
+        MockRepo.return_value.get_user_profile.return_value = dict(_PROFILE_FULL)
+        request = MagicMock(); request.user = MagicMock(); request.user.id = 1; request.auth = None
+        with fuso_aziendale_forzato("Asia/Tokyo"), \
+                patch("apps.core.api.me_view.success_response") as mock_resp, \
+                patch("apps.core.api.me_view.EmittenteAttivoService"):
+            UserProfileView().get(request)
+        self.assertEqual(mock_resp.call_args[0][0]["fuso_aziendale"], "Asia/Tokyo")
 
     # Scopo: Verifica che GET /me/ restituisca il profilo completo con envelope data
     # e arricchito con is_admin_globale.

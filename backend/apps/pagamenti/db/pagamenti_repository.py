@@ -434,7 +434,7 @@ def _sql_stato_vivo(alias: str = "") -> str:
     p = f"{alias}." if alias else ""
     return (
         f"{p}attivo IS TRUE"
-        f" AND ({p}obsoleto_dal IS NULL OR {p}obsoleto_dal > CURRENT_DATE)"
+        f" AND ({p}obsoleto_dal IS NULL OR {p}obsoleto_dal > (SELECT script.fn_data_operativa()))"
     )
 
 
@@ -1052,7 +1052,7 @@ class PagamentiRepository:
             SELECT pagamenti.fn_get_or_create_vendite_contabile(
                 p_centro_riscossione_id := %s,
                 p_data_contabile        := %s,
-                p_data_registrazione    := COALESCE(%s, CURRENT_DATE),
+                p_data_registrazione    := COALESCE(%s, (SELECT script.fn_data_operativa())),
                 p_ente_incasso_id       := %s,
                 p_emittente_fiscale_id  := %s,
                 p_codice_stato_interno  := %s,
@@ -2027,8 +2027,8 @@ class PagamentiRepository:
                -- Le date di validita' ordinano e filtrano sempre: un conto
                -- scaduto non si propone. `COALESCE(valido_al, 'infinity')`
                -- perche' scadenza vuota = validita' infinita.
-               AND (src.valido_dal IS NULL OR src.valido_dal <= CURRENT_DATE)
-               AND COALESCE(src.valido_al, 'infinity'::date) >= CURRENT_DATE
+               AND (src.valido_dal IS NULL OR src.valido_dal <= (SELECT script.fn_data_operativa()))
+               AND COALESCE(src.valido_al, 'infinity'::date) >= (SELECT script.fn_data_operativa())
              ORDER BY src.predefinito DESC, cb.iban
         """  # noqa: S608 — _UTILITY_DEL_CONTO_JOIN costante di modulo, valori come parametri
         with connection.cursor() as cursor:
@@ -2454,7 +2454,7 @@ class PagamentiRepository:
         sql = """
             SELECT contabile_id, righe_create, righe_saltate, esito
               FROM pagamenti.fn_crea_distinta_correzione(
-                       %s, COALESCE(%s::date, CURRENT_DATE), %s)
+                       %s, COALESCE(%s::date, (SELECT script.fn_data_operativa())), %s)
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id), data_contabile, motivo])

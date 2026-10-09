@@ -89,6 +89,7 @@ Indice test eseguiti:
 76) test_optional_smallint_porta_il_campo         — 2026-09-21 (presidio C2 §3-bis.4): i tre rifiuti nominano `field`, come le sorelle
 77) test_optional_bool_porta_il_campo             — idem
 78) test_optional_meta_porta_il_campo             — idem, sui due rifiuti (JSON rotto, non oggetto)
+79) test_optional_upper                         — 2026-10-09 (regola del 2): strip + upper, vuoto -> None; non-stringa -> VALIDATION col campo
 """
 
 from decimal import Decimal
@@ -187,6 +188,20 @@ class TestExtractOptionalString(_Base):
         with self.assertRaisesValidation() as ctx:
             self.v.extract_optional_string({"descrizione": "abcdef"}, "descrizione", nullable=True, max_len=5)
         self.assertEqual(ctx.exception.context.get("field"), "descrizione")
+
+
+class TestOptionalUpper(_Base):
+    # 79. La forma di un codice a vocabolario maiuscolo (il sesso): prima era
+    #     scritta a mano in quattro punti, e `.strip()` su un non-stringa era
+    #     un 500. Il valore ammesso non lo giudica l'helper.
+    def test_optional_upper(self):
+        for raw, atteso in ((" x ", "X"), ("f", "F"), ("  ", None), (None, None), ("", None)):
+            with self.subTest(raw=raw):
+                self.assertEqual(self.v.optional_upper({"sesso": raw}, "sesso"), atteso)
+        self.assertIsNone(self.v.optional_upper({}, "sesso"))
+        with self.assertRaisesValidation() as ctx:
+            self.v.optional_upper({"sesso": 1}, "sesso")
+        self.assertEqual(ctx.exception.context.get("field"), "sesso")
 
 
 class TestRequirePositiveInt(_Base):

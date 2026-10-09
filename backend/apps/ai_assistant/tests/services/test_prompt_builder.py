@@ -17,10 +17,10 @@
 # 7. test_prompt_operator_fallback_username
 
 import unittest
-from datetime import date
 from typing import Any
 from unittest.mock import MagicMock
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.ai_assistant.services.prompt_builder import build_system_prompt, reset_static_context_cache
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.core.api.base_views import DomainAPIView
@@ -60,7 +60,7 @@ class TestPromptBuilder(unittest.TestCase):
     # Scopo: Il prompt deve contenere la data corrente.
     def test_prompt_contains_current_date(self):
         prompt = build_system_prompt(self.user, [])
-        self.assertIn(date.today().isoformat(), prompt)
+        self.assertIn(oggi_aziendale().isoformat(), prompt)
 
     # Scopo: Il prompt deve contenere il nome dell'operatore.
     def test_prompt_contains_operator_name(self):

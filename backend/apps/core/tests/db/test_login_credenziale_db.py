@@ -478,7 +478,7 @@ class CicloOperatoreDbTests(_ViewVere):
 
         payload = {
             # Il sesso si SCEGLIE (brief-db-sesso-senza-default, 2026-10-09):
-            # `create_operatore` lo pretende per un soggetto nuovo.
+            # Per un soggetto nuovo (privato) lo pretende il guard del DB.
             "cognome": "Prova", "nome": "Ciclo", "sesso": "M",
             "codice_fiscale": codice_fiscale or _codice_fiscale(),
             "username": username, "email": email, "qualifica_id": self.qualifica_id,

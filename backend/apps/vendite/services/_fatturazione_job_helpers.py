@@ -45,7 +45,7 @@ def parse_competenza_mese(raw: Any, *, error_code: str) -> date:
         context=contesto_terminale(),
     )
     try:
-        return datetime.strptime(str(raw), "%Y-%m-%d").date().replace(day=1)
+        return datetime.strptime(str(raw), "%Y-%m-%d").date().replace(day=1)  # noqa: DTZ007 — si legge una DATA (formato stretto), non un istante: il fuso non c'entra
     except ValueError as exc:
         raise ServiceError(
             code=error_code,
@@ -70,7 +70,7 @@ def parse_data_iso(raw: Any, *, error_code: str, campo: str) -> date | None:
     if raw in (None, ""):
         return None
     try:
-        return datetime.strptime(str(raw), "%Y-%m-%d").date()
+        return datetime.strptime(str(raw), "%Y-%m-%d").date()  # noqa: DTZ007 — si legge una DATA (formato stretto), non un istante: il fuso non c'entra
     except ValueError as exc:
         raise ServiceError(
             code=error_code,

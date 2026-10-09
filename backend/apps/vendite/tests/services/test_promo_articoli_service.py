@@ -67,6 +67,7 @@ from unittest.mock import patch
 
 from django.db import IntegrityError
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.promo_articoli_service import PromoArticoliService
 
@@ -75,9 +76,9 @@ _REPO = "apps.vendite.services.promo_articoli_service.PromoArticoliRepository"
 _UUID = "019bac81-3f96-7ce8-a086-7e0bd0a2fec1"
 
 
-# Date dinamiche relative a oggi (le guard del service usano date.today(),
+# Date dinamiche relative a oggi (le guard del service usano oggi_aziendale(),
 # quindi date hardcoded diventano stale appena passa l'anno).
-_TODAY = date.today()
+_TODAY = oggi_aziendale()
 _TOMORROW = _TODAY + timedelta(days=1)
 _FAR_FUTURE = _TODAY + timedelta(days=365)
 

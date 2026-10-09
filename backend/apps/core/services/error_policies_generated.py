@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1008, di cui 104 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1012, di cui 104 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -526,6 +526,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOCUMENTI_RENDER_FAILED": "TECNICO",
     "E_DOCUMENTI_STORAGE_FAILED": "TECNICO",
     "E_DOCUMENTI_VALIDATION": "DATO_ERRATO",
+    # Valore numerico non finito (NaN, Infinity, -Infinity) arrivato alla generazione di un documento, sollevato dal BACKEND (apps/documenti/services/context_builders/_number_formatting.py, format_misura e format_importo) - decisione di Tid del 2026-10-09 (opzione C: la generazione si ferma, non si stampa «NaN» e non lo si nasconde). Nessuna funzione a DB lo nomina: questa riga e' cio' che lo rende un codice registrato. * TECNICO e non DATO_ERRATO (D-3): dal 20261009-10 … -18 ogni colonna numeric porta il CHECK «finito», quindi un valore cosi' in un documento e' un'INVARIANTE ROTTA, come E_VENDITE_PRICING_ESITO_ASSENTE; e nessuno lo corregge da un form - su un documento emesso il dato e' bloccato. Resta raggiungibile dalla ristampa: i CHECK non vedono dentro documenti_generati.context_json, che un contesto congelato porta come la stringa "NaN". * LA FRASE E' SENZA SEGNAPOSTO: a riempire un %s e' script.fn_log_and_raise_error, e un codice che nessuna funzione PL/pgSQL solleva da li' non ci passa mai - il %s uscirebbe grezzo a video. Campo e valore li porta il ServiceError del BE (context.field + detail). Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.3).
+    "E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO": "TECNICO",
     # documenti.fn_guard_versione_contesto: la forma dei dati che la versione di template dichiara di leggere (template_documenti_versioni.versione_contesto) non e' quella dei dati (_meta.context_version del contesto, o la costante del builder). Lo sollevano il backend prima del render, il trigger sull'INSERT di documenti.documenti_generati e documenti.fn_pubblica_template_documento_versione. CONFLITTO_STATO (409) e non DATO_ERRATO: nessun campo da correggere nella richiesta, rimedia chi amministra i template pubblicando una versione che legga la forma di oggi. Segnaposto: numero di versione, nome del template, forma del template, forma dei dati. Nessun bersaglio: un template non e' fra i tipi di config.tipi_entita. Nasce il 2026-09-30 (brief-db-documenti-versione-contesto-template).
     "E_DOCUMENTI_VERSIONE_CONTESTO_DIVERSA": "CONFLITTO_STATO",
     # documenti.fn_guard_versione_contesto: il chiamante non ha passato la versione di template (NULL o non positiva) o la forma dei dati (NULL: per una stampa, un contesto senza _meta.context_version intero). Solo un chiamante rotto lo produce — un builder che non dichiara la sua forma — quindi TECNICO (500), niente campo. Segnaposto: che cosa manca, in parole (la versione del template / la forma dichiarata dai dati). Nasce il 2026-09-30 (brief-db-documenti-versione-contesto-template).
@@ -1308,6 +1310,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SEQUENZA_NON_CONFIGURATA": "TECNICO",
     "E_SESSIONE_NOT_FOUND": "NON_TROVATO",
     "E_SESSIONE_REVOCA_CORRENTE": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_soggetti_guard_sesso_policy (20261009-25): la natura di dettaglio ha sesso_policy = NONE (societa', enti) e il sesso e' valorizzato. NULL vuol dire «non serve», X «serve ma non si puo' stabilire». DATO_ERRATO, campo sesso nel contesto. Brief: brief-db-sesso-senza-default.
+    "E_SESSO_NON_AMMESSO": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_soggetti_guard_sesso_policy (20261009-25): la natura di dettaglio ha sesso_policy = REQUIRED e il sesso e' NULL. Decisione di Tid del 2026-10-09: il sesso lo sceglie chi lo vede, nessun default (era 'M' in tre punti). DATO_ERRATO: lo compila una persona nel form, campo sesso nel contesto. Il VARIADIC porta la descrizione della natura. Brief: brief-db-sesso-senza-default.
+    "E_SESSO_OBBLIGATORIO": "DATO_ERRATO",
     "E_SHOP_NON_DISPONIBILE": "NON_DISPONIBILE",
     # La guard e' `IS DISTINCT FROM 'SHOP'`, che prende anche il BA · inesistente (valore NULL): il 400 e' corretto in entrambi i casi, · un 404 solo nel secondo.
     "E_SHOP_RICEVUTA_BA_CANALE_INVALIDO": "DATO_ERRATO",
@@ -1340,6 +1346,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_SOGGETTI_RUOLI": "DATO_ERRATO",
     # Il commento nel DB lo chiama «caso anomalo»: unique_violation · sull'insert e poi la SELECT non trova la riga. E' uno stato · incoerente, non un errore dell'operatore.
     "E_SOGGETTI_RUOLI_RACE": "TECNICO",
+    # anagrafiche.fn_crea_soggetto_pf (20261009-26) rifiuta una natura base diversa da PF, anagrafiche.fn_crea_soggetto_pg (20261009-28) una natura PF: la ditta individuale ha una porta sola, quella che riceve nome, cognome e sesso. TECNICO e non DATO_ERRATO: la funzione la sceglie il chiamante dalla natura, non l'operatore, quindi chi la sbaglia e' un chiamante rotto. Il VARIADIC porta descrizione e natura base. Brief: brief-db-sesso-senza-default.
+    "E_SOGGETTO_CREAZIONE_NATURA_ERRATA": "TECNICO",
     "E_SOGGETTO_NO_CONTATTI": "DATO_ERRATO",
     "E_SOGGETTO_NOT_FOUND": "NON_TROVATO",
     "E_SOGGETTO_NULL": "DATO_ERRATO",

@@ -15,9 +15,28 @@
 //          avevano due formati diversi, e uno mostrava un giorno su un campo
 //          che non ne ha (regola del 2, `MONTH_FORMAT`, 2026-10-04).
 //
+//
+//        ⭐ Dal 2026-10-09 (brief un-solo-fuso-aziendale F-5) anche il FUSO:
+//        «oggi», l'ora di un istante e l'ora digitata sono quelli
+//        dell'AZIENDA, e passano da `date.js`. Fuori di li' si fermano le
+//        forme che usano il fuso del PC, tutte mute:
+//        - `new Date()` per «oggi» o «adesso» (`oggiAziendale`, `adesso`);
+//        - `new Date(stringa)`: su `'YYYY-MM-DD'` e' la mezzanotte UTC, il
+//          giorno prima nei fusi negativi (`parseIsoDate`, `parseIstante`);
+//        - `setHours(0, 0, 0, 0)` per togliere l'ora (`giornoDi`);
+//        - `toLocaleDateString`/`toLocaleTimeString`, che senza `timeZone`
+//          scrivono nel fuso del PC (`displayOggiEsteso`, `displayTimestamp`).
+//        Ammessi: la copia `new Date(x.getTime())` e la costruzione numerica
+//        `new Date(anno, mese, giorno)`, che non leggono un fuso.
+//
 // Indice test:
 //  1. nessun `toISOString()` fuori da core/utils/date.js
 //  2. nessun formato di DatePicker scritto a mano fuori dalle due sedi
+//  3. nessun `new Date()` vuoto fuori da date.js
+//  4. nessun `new Date(x)` con un solo argomento che non sia `y.getTime()`
+//  5. nessun `setHours(` fuori da date.js
+//  6. nessun `toLocaleDateString(`/`toLocaleTimeString(` fuori da date.js
+//  7. controprova: la scansione degli argomenti di `new Date(` vede le forme
 // ------------------------------------------------------------
 import { describe, it, expect } from 'vitest'
 
@@ -60,6 +79,38 @@ function violazioni(regex, escluse) {
   return trovate
 }
 
+// Scopo: gli argomenti di ogni `new Date(…)` di una riga (fra la parentesi
+//         aperta e la sua chiusa, contando le annidate).
+function argomentiNewDate(riga) {
+  const esiti = []
+  const rx = /new Date\(/g
+  let m
+  while ((m = rx.exec(riga)) !== null) {
+    let livello = 1
+    let i = m.index + m[0].length
+    const inizio = i
+    for (; i < riga.length && livello > 0; i++) {
+      if (riga[i] === '(') livello++
+      else if (riga[i] === ')') livello--
+    }
+    esiti.push(riga.slice(inizio, i - 1).trim())
+  }
+  return esiti
+}
+
+// Scopo: un argomento di `new Date(…)` che non legge un fuso: una copia
+//         (`x.getTime()`) o piu' argomenti numerici (`anno, mese, giorno`).
+function newDateAmmesso(arg) {
+  if (arg.endsWith('.getTime()')) return true
+  let livello = 0
+  for (const c of arg) {
+    if (c === '(' || c === '[' || c === '{') livello++
+    else if (c === ')' || c === ']' || c === '}') livello--
+    else if (c === ',' && livello === 0) return true
+  }
+  return false
+}
+
 describe('date in un punto solo', () => {
   it('nessun `toISOString()` fuori da core/utils/date.js', () => {
     expect(Object.keys(sorgenti).length).toBeGreaterThan(100)
@@ -72,5 +123,40 @@ describe('date in un punto solo', () => {
     // La forma ammessa è il binding a una costante: `:date-format="DATE_FORMAT"`.
     const letterale = /(?:^|[\s<])(?:date-format|dateFormat)="|dateFormat\s*:\s*['"`]/
     expect(violazioni(letterale, SEDI_FORMATO)).toEqual([])
+  })
+
+  it('nessun `new Date()` vuoto fuori da date.js', () => {
+    expect(violazioni(/new Date\(\s*\)/, SEDE_DATE)).toEqual([])
+  })
+
+  it('nessun `new Date(x)` con un solo argomento che non sia `y.getTime()`', () => {
+    const trovate = []
+    for (const [chiave, testo] of Object.entries(sorgenti)) {
+      const file = percorso(chiave)
+      if (SEDE_DATE.includes(file)) continue
+      senzaCommenti(testo).split('\n').forEach((riga, i) => {
+        for (const arg of argomentiNewDate(riga)) {
+          if (arg && !newDateAmmesso(arg)) trovate.push(`${file}:${i + 1}: ${riga.trim()}`)
+        }
+      })
+    }
+    expect(trovate).toEqual([])
+  })
+
+  it('nessun `setHours(` fuori da date.js', () => {
+    expect(violazioni(/\.setHours\(/, SEDE_DATE)).toEqual([])
+  })
+
+  it('nessun `toLocaleDateString(`/`toLocaleTimeString(` fuori da date.js', () => {
+    expect(violazioni(/\.toLocale(?:Date|Time)String\(/, SEDE_DATE)).toEqual([])
+  })
+
+  it('controprova: la scansione di `new Date(` vede le forme', () => {
+    expect(argomentiNewDate("const d = new Date(s + 'T00:00:00')")).toEqual(["s + 'T00:00:00'"])
+    expect(argomentiNewDate('x = new Date(a.b(c))')).toEqual(['a.b(c)'])
+    expect(newDateAmmesso("s + 'T00:00:00'")).toBe(false)
+    expect(newDateAmmesso('val')).toBe(false)
+    expect(newDateAmmesso('v.getTime()')).toBe(true)
+    expect(newDateAmmesso('Number(anno), Number(mese) - 1, 1')).toBe(true)
   })
 })

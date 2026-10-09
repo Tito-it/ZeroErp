@@ -38,15 +38,16 @@ from __future__ import annotations
 
 import unittest
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
-_OGGI = date.today()
+_OGGI = oggi_aziendale()
 _DAL = _OGGI + timedelta(days=30)
 _AL_PRIMA = _OGGI + timedelta(days=10)  # futura, ma prima di _DAL
 _AL_DOPO = _OGGI + timedelta(days=60)

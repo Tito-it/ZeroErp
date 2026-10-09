@@ -16,7 +16,7 @@ Endpoint di scrittura che delega a `pratiche_service.riattiva_pratica`. Il servi
 - Path canonico: `/api/v1/pratiche/<pratica_id>/riattiva/`
 - Header: `Content-Type: application/json`, `Authorization: Bearer <access_token>`
 - Body:
-  - `data_fine` (string, opzionale) — data/ora ISO 8601 timestamptz (es. `2026-06-21T18:00:00Z`) della riattivazione effettiva, anche retroattiva. Default DB `NOW()` se assente/nulla
+  - `data_fine` (string, opzionale) — data/ora ISO 8601 timestamptz (es. `2026-06-21T18:00:00Z`) della riattivazione effettiva, anche retroattiva. Default DB `NOW()` se assente/nulla. ⛔ **L'offset è obbligatorio** (`Z` o `+02:00`): senza, `400 E_VALIDATION_INPUT` (`…_senza_offset`; dal 2026-10-09, `payload_validators.optional_istante`) — PostgreSQL leggerebbe l'ora nel fuso della sessione.
 
 ## Output
 
@@ -27,6 +27,7 @@ Endpoint di scrittura che delega a `pratiche_service.riattiva_pratica`. Il servi
 
 - `400`: `pratica_id` non valido (`E_INVALID_ID`), nessuna sospensione attiva (`E_PRATICA_VALIDATION`)
 - `401`: JWT mancante o non valido
+- `400`: `data_fine` senza offset o illeggibile (`E_VALIDATION_INPUT`)
 - `404`: sospensione non trovata o gia' chiusa (`E_SOSPENSIONE_NOT_FOUND`)
 - `409`: transizione di stato non ammessa (`PRATICHE_TRANSIZIONE_NON_AMMESSA`)
 - `422`: `data_fine` nel futuro (`E_SOSPENSIONE_DATA_FUTURA`); `data_fine` anteriore o uguale all'inizio della sospensione (`E_SOSPENSIONE_DATA_FINE`)

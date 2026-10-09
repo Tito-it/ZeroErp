@@ -87,7 +87,7 @@ class RisorseUmaneCoreRepository:
             cursor.execute(
                 """UPDATE anagrafiche.risorse_umane ru
                       SET attivo = true,
-                          valido_al = CASE WHEN ru.valido_al <= CURRENT_DATE
+                          valido_al = CASE WHEN ru.valido_al <= (SELECT script.fn_data_operativa())
                                            THEN NULL ELSE ru.valido_al END
                      FROM anagrafiche.identita_digitali id
                     WHERE id.id = %s

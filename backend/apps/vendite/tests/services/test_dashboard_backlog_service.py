@@ -234,7 +234,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
         "list_dash_backlog_documenti",
         return_value=([], 0),
     )
-    @patch.object(vendite_service.timezone, "localdate", return_value=date(2020, 1, 31))
+    @patch.object(vendite_service, "oggi_aziendale", return_value=date(2020, 1, 31))
     @patch.object(
         vendite_service.ParameterService, "get_default_date",
         return_value=date(2020, 1, 1),
@@ -247,7 +247,7 @@ class DashBacklogDocumentiServiceTests(TestCase):
 
     # Scopo: Un giorno oltre il pavimento -> E_VENDITE_VALIDATION.
     @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_documenti")
-    @patch.object(vendite_service.timezone, "localdate", return_value=date(2020, 1, 31))
+    @patch.object(vendite_service, "oggi_aziendale", return_value=date(2020, 1, 31))
     @patch.object(
         vendite_service.ParameterService, "get_default_date",
         return_value=date(2020, 1, 1),

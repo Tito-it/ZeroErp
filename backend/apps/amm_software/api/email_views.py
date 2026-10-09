@@ -23,6 +23,7 @@ from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
+    qp_iso_date_optional,
     corpo_oggetto,
     optional_int,
     paginated_envelope,
@@ -30,7 +31,11 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
-from apps.core.services.email_service import EmailDispatchService, smtp_non_configurato
+from apps.core.services.email_service import (
+    E_EMAIL_ACCOUNT_NOT_FOUND,
+    EmailDispatchService,
+    smtp_non_configurato,
+)
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.testata_guard import o_not_found
@@ -43,7 +48,6 @@ E_EMAIL_ADMIN = "E_EMAIL_ADMIN"
 
 # I «non trovato» dell'amministrazione email (brief-db-codici-non-trovato-
 # email-e-permessi §2): `E_EMAIL_ADMIN` resta per i soli dati errati.
-E_EMAIL_ACCOUNT_NOT_FOUND = "E_EMAIL_ACCOUNT_NOT_FOUND"
 E_EMAIL_TEMPLATE_NOT_FOUND = "E_EMAIL_TEMPLATE_NOT_FOUND"
 E_EMAIL_LOG_NOT_FOUND = "E_EMAIL_LOG_NOT_FOUND"
 
@@ -535,8 +539,8 @@ class EmailLogListView(AdminAPIView):
             ambito=qp.get("ambito") or None,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
-            data_da=qp.get("data_da") or None,
-            data_a=qp.get("data_a") or None,
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],

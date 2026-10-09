@@ -41,11 +41,12 @@ from __future__ import annotations
 
 import json
 import unittest
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.offerte_repository import OfferteRepository
@@ -151,7 +152,7 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                     "istanza_utility_id": m["istanza_utility_id"],
                     "utility_id": m["utility_id"],
                     "listino_id": m["listino_id"],
-                    "validita_dal": date.today(),
+                    "validita_dal": oggi_aziendale(),
                     "stato_doc_offerta_id": bozza,
                     # ⭐ Regola Tid 2026-09-26: una STRINGA su una colonna jsonb
                     #    dichiarata e' TESTO JSON. Prima `to_write_param` la
@@ -167,7 +168,7 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                 self.assertEqual(_json(riga["meta"]), {"da": "testo"})
 
                 self.assertTrue(repo.update_offerta(offerta, {
-                    "validita_al": date.today() + timedelta(days=30),
+                    "validita_al": oggi_aziendale() + timedelta(days=30),
                     "meta": {"v": 2},
                 }))
                 self.assertEqual(_json(_riga(cur, (
@@ -226,7 +227,7 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
                     "istanza_utility_id": m["istanza_utility_id"],
                     "utility_id": m["utility_id"],
                     "emittente_fiscale_id": m["emittente_fiscale_id"],
-                    "valido_dal": date.today(),
+                    "valido_dal": oggi_aziendale(),
                     "listino_id": m["listino_id"],
                 }, utility=None)
 
@@ -280,7 +281,7 @@ class ScrittureDinamicheVenditeDbTests(unittest.TestCase):
             with transaction.atomic(), connection.cursor() as cur:
                 m = _apri_mondo(cur)
                 # Il guard data-driven vuole `valido_dal` strettamente futuro.
-                domani = date.today() + timedelta(days=1)
+                domani = oggi_aziendale() + timedelta(days=1)
                 promo = repo.create_promo({
                     "codice": "SCRDYNV-PROMO",
                     "descrizione": "Promo scritture",

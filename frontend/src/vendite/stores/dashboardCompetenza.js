@@ -13,6 +13,7 @@ import { ref } from 'vue'
 import { useDashRiepilogo } from '../../core/composables/useDashRiepilogo'
 import { usePagedDashFetch } from '../../core/composables/usePagedDashFetch'
 import { USO_MISURA } from '../../core/misurePagina'
+import { oggiAziendale } from '../../core/utils/date'
 import {
   getDashboardCompetenza,
   listDashboardCompetenzaCommesse,
@@ -89,9 +90,9 @@ function useSortState(defaultBy, defaultDir = 'desc') {
 }
 
 export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-competenza', () => {
-  const anno = ref(new Date().getFullYear())
-  // Indice 0-11 del mese selezionato (default: mese corrente).
-  const meseIdx = ref(new Date().getMonth())
+  const anno = ref(oggiAziendale().getFullYear())
+  // Indice 0-11 del mese selezionato (default: mese corrente dell'azienda).
+  const meseIdx = ref(oggiAziendale().getMonth())
   // Stadio selezionato per il drill-down (null = nessuna card attiva).
   const stadioSelezionato = ref(null)
   // Filtro recuperi tardivi del drill-down (solo attivita' emesse in ritardo).
@@ -355,8 +356,8 @@ export const useDashboardCompetenzaStore = defineStore('vendite-dashboard-compet
   //        resetAll riporta anche le pageSize al default (stato utente).
   function clearUserState() {
     aggregata.invalidate()
-    anno.value = new Date().getFullYear()
-    meseIdx.value = new Date().getMonth()
+    anno.value = oggiAziendale().getFullYear()
+    meseIdx.value = oggiAziendale().getMonth()
     mesi.value = []
     stadioSelezionato.value = null
     soloRitardo.value = false
