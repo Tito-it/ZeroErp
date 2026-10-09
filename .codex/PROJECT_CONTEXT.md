@@ -310,7 +310,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto**
   (`work-in-progress/brief-db-esecutivi-ba-coppia.md`, D21, 2026-10-09): BA nullable, copie di utility e ruolo
   non legate al BA, lock del BA solo sull'ordine; un ordine senza BA esce dal push in silenzio; gli anelli della
-  catena (ordine → DDT → reso) possono avere BA diversi. Decisioni di Tid tutte chiuse il 2026-10-09: tocca al team DB.
+  catena (ordine → DDT → reso) possono avere BA diversi. Giro DB applicato (`20261009-62…-92`, compreso l'emittente
+  bloccato fuori bozza su sei documenti) e verde su dbdev il 2026-10-10, nessuna regressione. Aperti (§10.4 del brief):
+  tre ritocchi DB decisi il 2026-10-10, pgTAP mancanti, pagine `manual/`, ricaduta BE/FE.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

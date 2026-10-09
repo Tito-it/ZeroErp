@@ -7,8 +7,16 @@
 > ha reso `billing_account_id` NOT NULL e legato alla coppia (istanza, utility) su preventivo,
 > offerta e contratto. Chiudendo il lato BE/FE e' emerso che i documenti **esecutivi** di vendita
 > (ordine, DDT, reso) sono rimasti fuori: e' la stessa asimmetria, un livello piu' in basso.
-> **Stato:** 📝 **decisioni chiuse** — tutte e otto decise da Tid il 2026-10-09 (§4; D-7 con
-> l'istruttoria del §4.1). Tocca al team DB: forma (§5) e righe fuori regola (§6).
+> **Stato al 2026-10-10:** ✅ **giro DB applicato su dbdev e verde**: migrazione applicata, corsa pgTAP
+> completa di Tid tutta verde, nessuna regressione (§10.5). 🔧 **Non chiuso**: restano i tre ritocchi DB
+> decisi il 2026-10-10, i pgTAP mancanti, le pagine `manual/` e la ricaduta BE/FE (§10.4).
+> **Dettaglio:** 31 changeSet
+> `20261009-62…-92`, tutti `EXECUTED` nel `databasechangelog` di dbdev (`-62…-82` alle 19:19, `-83…-85`
+> alle 19:30, `-86…-92` alle 23:46 del 2026-10-09). Il giro e' cresciuto due volte oltre il §5: il lock
+> dell'emittente fuori bozza su sei documenti (§9.8, §9.9). **Da leggere per primo: §10** (verifica
+> incrociata del 2026-10-10, le cinque domande chiuse da Tid lo stesso giorno, e il §10.4: che cosa
+> resta da fare); poi §9 (cosa e' stato fatto). Decisioni sul modello chiuse il 2026-10-09 (§4), sulla
+> forma il 2026-10-10 (§10.2). Il codice delle decisioni del 2026-10-10 **non e' ancora scritto**.
 > **Nel registro dei difetti DB:** voce **D21** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -355,5 +363,417 @@ changeSet dei vincoli resta comunque, per i database che non sono dbdev.
 * **Il BA di un documento chiuso si riscrive** (§6.9 del brief d'origine): la domanda generale «quali
   colonne di testata si riscrivono in fase chiusa» e' sua, e resta da aprire. Qui si chiede solo il
   lock del BA che l'ordine ha gia', e su DDT e reso quello per fase che la causale ha gia'.
+  ⚠️ **Superato in parte (2026-10-09):** per l'**emittente** la risposta e' stata data qui, su sei
+  documenti (§9.8, §9.9), con il BB fuori bozza del §9.3 punto 1. Resta aperta la domanda generale
+  per le **altre** colonne di testata.
 * **Acquisti**: ordini e DDT di acquisto parlano di un fornitore, non di un BA. Se il fornitore ha un
   analogo a grana fine (un ruolo con piu' rapporti), la stessa domanda andra' posta li'; oggi no.
+
+## 9. Giro DB 1 — consegna (team DB, 2026-10-09)
+
+> ✅ **Applicato su dbdev il 2026-10-09** (vedi intestazione). L'avviso qui sotto e' quello scritto
+> prima dell'apply, lasciato come storia della prova.
+>
+> ⚠️ **Scritto e provato, NON applicato.** Prova: SQL estratto dagli YAML (preCondition comprese)
+> in una transazione annullata su `zeroerp_ci`, piu' l'upsert di **tutte** le righe dei quattro CSV
+> toccati e la convergenza dei lock (`fn_run_automations_lock_columns`), come fa il `90_end`.
+> `zeroerp_ci` non ha anagrafiche: le preCondition li' passano per costruzione, sui dati veri
+> vale il fatto datato del §6. Apply e corsa pgTAP restano di Tid.
+
+### 9.1 ⛔ Prima dell'apply, su dbdev
+
+* i tre DDT del §6 (61 `DDT0000034`, 82 `DDT0000041`, 91 `DDT0000043`): utility dal BA, a mano.
+  Senza, la preCondition di `20261009-65` ferma il migrate (CHECK «tutti e due o nessuno»).
+  ✅ **Fatto** (la preCondition di `-65` e' passata: `EXECUTED` alle 19:19 del 2026-10-09).
+
+### 9.2 I changeSet
+
+I 24 del giro 1 (`-62…-85`). I sette successivi (`-86…-92`, l'emittente) stanno nelle tabelle del §9.8
+e del §9.9.
+
+| # | Cosa | Decisione |
+| --- | --- | --- |
+| `-62` | `config.causali_trasporto.richiede_cliente` (+ CSV e mirror `20260709-11`): si' VENDITA, OMAGGIO, CAMPIONATURA, CONTO_VISIONE | D-2-bis |
+| `-63` | `UNIQUE (id, soggetto_ruolo_id, utility_id)` su `billing_account`: destinazione unica delle quattro FK | §5.1 |
+| `-64` | ordini: BA e utility NOT NULL + `fk_ordini_ba_cliente` | D-1, D-5 |
+| `-65`, `-66` | ddt, resi: `chk_*_ba_utility_insieme` + `fk_*_ba_cliente` `MATCH SIMPLE` | D-4, D-5 |
+| `-67` | clienti: utility NOT NULL + `fk_clienti_ba_cliente` | D-7 p.4 |
+| `-68`, `-69` | guard del ruolo del BA: + tipo CLIENTE dal BB `script.fn_guard_soggetto_ruolo`; trigger in fascia `_a20_` | D-7 p.1, p.5 |
+| `-70` | **BB nuovo** `vendite.trgfn_doc_testata_lock_fuori_bozza` (stato VECCHIO, coppie colonna/codice) | §5.2 lock |
+| `-71`…`-75` | montato su DDT (causale, BA, utility, destinatario, magazzino) e reso (magazzino); ritirate le tre copie | regola del 2 |
+| `-76`, `-77` | motivo `E_DDT_CLIENTE_OBBLIGATORIO` in `fn_check_ddt_emittibile` e suo ramo nel gate d'emissione | D-2 |
+| `-78`…`-82` | D-6 sulle tre porte: testata del DDT (ordine o reso sorgente), fulfillment, reso — un codice, `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE` | D-3, D-6 |
+| `-83` | `fn_ddt_push_diagnosi`: un BA solo, quello della testata | D-6 |
+| `-84`, `-85` | normalize di ordine e DDT: utility (e destinatario sul DDT) dal BA quando il chiamante non li dice | D-4, D-5 |
+| `80_data` | 4 codici nuovi, 3 frasi riscritte (`E_DDT_CAUSALE_IMMUTABILE`, `E_DDT_CLIENTE_IMMUTABILE`, `E_BA_ISTANZA_IMMUTABILE`); 6 righe di lock (BA ruolo, istanza soggetto, 4 colonne del cliente) e la nota di `ordini.soggetto_ruolo_id` riscritta | D-7 |
+
+### 9.3 Dove la forma si scosta dal §5 — ✅ confermato da Tid il 2026-10-10 (§10.2, domande 1, 2 e 4)
+
+1. **Un BB invece di un gemello.** Il §5.2 chiedeva il lock del BA «gemello di
+   `trgfn_ddt_guard_causale_immutabile`». Sul catalogo la regola «colonna di testata immutabile fuori
+   bozza» era gia' scritta a mano tre volte (causale DDT, magazzino DDT, magazzino reso): la quarta
+   ha fatto estrarre il BB e ritirare le tre copie nello stesso giro. Frasi del magazzino invariate;
+   quella della causale cambia forma («La bolla e' in stato %s: la causale … si sceglie solo in
+   bozza»), come il magazzino.
+2. **Fuori bozza si blocca anche il destinatario senza BA** (deposito, terzista): BA, utility e
+   destinatario sono la controparte stampata, e col BA la FK li lega comunque — bloccarne uno solo
+   lascerebbe agli altri un 23503 grezzo. ✅ Confermato da Tid il 2026-10-10 (§10.2, domanda 1).
+   ⚠️ Decisione di forma presa dal team DB: se il
+   destinatario di un trasferimento deve restare correggibile dopo l'emissione, basta togliere la
+   colonna dal montaggio di `-71`.
+3. **Il reso non ha un lock del BA fuori bozza** (§5.3, terzo punto): il guard «BA uguale a quello
+   del DDT» gira in ogni stato, e il BA del DDT (consegnato) e' bloccato. Un lock in piu' direbbe la
+   stessa regola due volte.
+4. **Il cliente e' bloccato su quattro colonne**, non sul solo `billing_account_id` (§4.1): le altre
+   tre le fermerebbe la FK composta, ma con un 23503 grezzo — lo stesso argomento di D-7.
+5. **Il guard del BA cambia fascia** (`_a10_` → `_a20_`): veniva prima del lock di colonna (g < l), e
+   il lock nuovo su `soggetto_ruolo_id` non avrebbe mai parlato.
+6. **Utility e destinatario si derivano dal BA** (`-84`, `-85`), non solo si verificano: col NOT NULL
+   e le FK nuove ogni chiamante avrebbe dovuto ripetere cio' che il BA gia' dice. Stessa forma di
+   `anagrafiche.clienti` (la copia se manca, il rifiuto se dissente). Il controesempio che l'ha fatta
+   vedere: una cinquantina di fixture pgTAP e le tre righe di dbdev — DDT standalone col BA e senza
+   utility, che il normalize non riempiva.
+7. **Non toccati**, e perche': `trgfn_ordini_normalize` resta con `billing_account_id IS NOT NULL`
+   (in un BEFORE ROW il BA puo' ancora essere NULL: il NOT NULL si controlla dopo, la condizione non e'
+   «sempre vera»); il filtro `o.billing_account_id IS NOT NULL` di `fn_list_ordini_da_pushare` resta,
+   ridondante e innocuo; nessuna riga di `fk_index_policy` per le quattro FK (le registra
+   `fn_populate_fk_index_policy` a `false`, come le FK coppia di R-2).
+
+### 9.4 Prove
+
+* **24 changeSet** in transazione annullata su `zeroerp_ci`: tutti verdi, preCondition comprese; i
+  quattro CSV si ricaricano interi dopo (FK `messaggi → codici` rispettata dall'ordine dei loader).
+* **pgTAP nuovo** `db/pgtap/vendite/test-esecutivi-ba-coppia-v1.sql`, 27 test, fixture fabbricati
+  (gira anche da zero): **27/27 dopo**, rosso dal test 1 prima.
+* **153 pgTAP di `dbops/` e `script/`** prima/dopo: 146 identici. Dei 7 diversi, uno e' un artefatto
+  della prova (`test-user-update-not-null-v1` vedeva le tabelle temporanee dell'upsert dei CSV), sei
+  sono fixture del §9.5.
+* Nella prova il log remoto via `dblink` e' spento (`myapp.log_with_dblink = off`): la sessione del
+  log scrive `error_log` con FK verso le righe di `messaggi_errore` che la transazione di prova ha
+  appena inserito, e aspetta la sua fine — mentre la prova aspetta lei. Dopo l'apply il caso non
+  esiste.
+
+### 9.5 Fixture pgTAP — sistemati e da sistemare
+
+Censimento statico del 2026-10-09 sui `db/pgtap/**`: le forme che le regole nuove rifiutano.
+
+* ✅ **Sistemati** (in questo giro):
+  * 6 file con DDT che passava la utility senza BA (`rls/test-rls-ddt-satelliti`,
+    `-note-padre`, `-resi-ef-whitelist-write`, `-resi-satelliti`,
+    `script/test-fn-check-prezzi-autorizzati-v1`, `vendite/test-righe-e-componenti-le-altre-famiglie-v1`):
+    ora col BA del cliente; nei 5 RLS il BA e' legato all'emittente del mondo (terzo argomento di
+    `fn_pgtap_crea_cliente_ba`), perche' col BA il guard emittente <-> BA ora guarda;
+  * 2 file con ordini senza BA (`rls/test-rls-ordini-satelliti`,
+    `vendite/test-riepilogo-iva-equivalenza-cross-doc`, che usava come cliente il ruolo dell'emittente);
+  * 29 file che sceglievano come cliente «il primo ruolo del database» accanto a un BA scelto a parte:
+    il ruolo e' ora quello del BA;
+  * `vendite/test-fn-list-ddt-da-pushare-v1` caso 9: costruiva una bolla VENDITA spedita senza BA, che
+    il modello non ammette piu' — ora misura che non si emette;
+  * `anagrafiche/test-trgfn-billing-account-guard-soggetto-coerenza-istanza-v1` (nome del trigger
+    `_a20_`) e un commento di `test-istanza-nasce-col-ba-v1`.
+* ⏳ **Da sistemare** — ordini creati **di proposito** col BA NULL «per saltare il guard emittente <->
+  BA», forma che D-1 vieta: `script/test-fn-available-actions-ordine-v1`, `-v2`,
+  `script/test-guard-emittente-senza-utente`, `script/test-seed-stati-doc-ordini-evaso-v1`,
+  `vendite/test-fn-list-ordini-da-pushare-v3`, `vendite/test-ordini-guard-transizione-v1`; piu'
+  `script/test-fn-available-actions-ddt-reason-catch-all-v1` (emette una VENDITA senza BA) e
+  `script/test-fn-check-ddt-emittibile-v1` (destinatario scollegato dal BA). Vanno ripensati uno per
+  uno: il caso che misuravano esiste ancora, ma va costruito con un cliente fabbricato.
+  ⚠️ **Aggiornato il 2026-10-10** (lettura statica dei file): `vendite/test-ordini-guard-transizione-v1`
+  e `vendite/test-fn-list-ordini-da-pushare-v3` sistemati nella terza corsa (sotto),
+  `script/test-fn-check-ddt-emittibile-v1` sistemato (il ruolo e' quello del BA). Restavano ⏳ cinque — 🔧 **tutti
+  corretti nell'albero nella notte fra il 9 e il 10** (cliente fabbricato, BA legato all'emittente
+  dell'operatore dal trigger z90); ⏳ **da confermare con la corsa** (§10.5):
+  * `script/test-fn-available-actions-ordine-v1` — ordine con `NULL::bigint` come BA (riga 100);
+  * `script/test-fn-available-actions-ordine-v2` — **sfuggito al censimento dei «29 file»**: BA preso
+    dai dati (`push_ba_id`) e ruolo = «il primo `soggetti_ruoli` del database» (riga 69). La FK
+    composta lo rifiuta, salvo che i due coincidano per caso; su un database senza BA pushabile non
+    inserisce niente (`WHERE r.push_ba_id IS NOT NULL`): verde per sottrazione;
+  * `script/test-guard-emittente-senza-utente` — tre INSERT con BA `NULL` dentro `throws_ok`: ora
+    escono col 23502 del NOT NULL, non col codice che il test aspetta;
+  * `script/test-seed-stati-doc-ordini-evaso-v1` — ordine con BA `NULL` (riga 140);
+  * `script/test-fn-available-actions-ddt-reason-catch-all-v1` — DDT VENDITA con BA `NULL` (riga 413):
+    `E_DDT_CLIENTE_OBBLIGATORIO` all'emissione.
+* ⚠️ Il censimento e' statico: la conferma e' la corsa di Tid su dbdev dopo l'apply.
+
+**Dopo l'apply (2026-10-09 sera).** Il primo migrate si e' fermato su `-83` (il `COMMENT` nello stesso
+`- sql:` del `BEGIN ATOMIC`: pgjdbc lo manda come istruzione unica — corretto separando i due change,
+come `20260922-14`). Con `-84`/`-85` assenti la corsa pgTAP dava ~60 rossi «utility_id nullo»; dopo il
+secondo migrate ne restavano quattro, sistemati cosi':
+
+* `vendite/offerte_commerciali/test_fn_push_offerta_a_contratto`: l'ordine nato dall'offerta ha ora il BA
+  dell'offerta e il suo ruolo (D-6), non BA NULL e il primo ruolo del database;
+* `vendite/test-ordini-riepilogo-iva-totali` e `vendite/test-riepilogo-iva-equivalenza-cross-doc`: il
+  cliente dell'ordine si fabbrica (`fn_pgtap_crea_cliente_ba` sotto l'operatore), invece di pescare un BA
+  dai dati — su un database senza BA l'ordine non nasceva;
+* `vendite/test-esecutivi-ba-coppia-v1` (il mio): gira come app, e il BA passato col terzo argomento
+  dell'helper non era visibile sotto la RLS. Ora agisce come l'operatore dell'emittente fabbricato e il BA
+  lo lega il trigger z90. ⚠️ L'avevo provato solo da owner, dove la RLS non c'e'.
+
+⚠️ **Trovato strada facendo, da decidere (Tid).** Il test 15 di `test-ordini-riepilogo-iva-totali`
+collaudava `trg_ordini_z90_ricalcola_totali_upd` (`AFTER UPDATE OF emittente_fiscale_id`) spostando
+l'ordine su un altro emittente. Con il BA obbligatorio (D-1) e un emittente per BA, quel cambio lo
+rifiuta sempre il guard emittente <-> BA: il ramo «l'ordine cambia emittente» non ha piu' un caso
+legittimo. Il test ora riscrive l'emittente con lo stesso valore (`UPDATE OF` scatta lo stesso); il
+trigger resta. Se l'emittente dell'ordine e' di fatto immutabile, va dichiarato (lock) e il trigger
+ripensato. ⚠️ Superato dal §9.8 (decisione di Tid dello stesso giorno): il test 15 ora verifica il lock.
+
+### 9.6 Ricaduta BE/FE, in piu' del §7
+
+* **FE**: `reason_key` nuova `vendite.ddt.azione_reason.cliente_mancante` nei locales
+  (`scripts/check_i18n_keys.py`, controllo 4, va in rosso finche' manca).
+* **BE**: codici nuovi `E_DDT_CLIENTE_OBBLIGATORIO` (CONFLITTO_STATO),
+  `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE` (DATO_ERRATO, campo `billing_account_id`),
+  `E_ISTANZA_SOGGETTO_IMMUTABILE`, `E_CLIENTE_FORNITURA_IMMUTABILE` (CONFLITTO_STATO); FK nuove
+  `fk_ordini_ba_cliente`, `fk_ddt_ba_cliente`, `fk_resi_ba_cliente`, `fk_clienti_ba_cliente`, CHECK
+  `chk_ddt_ba_utility_insieme`, `chk_resi_ba_utility_insieme`.
+* **BE, regola duplicata**: `ddt_service.aggiorna_ddt` rifiuta il cambio di BA **anche in bozza**
+  (`E_DDT_CLIENTE_IMMUTABILE`, «cambiare cliente = nuovo DDT»). Il DB dal 2026-10-09 lo blocca solo
+  **fuori bozza**, e D-2 vuole che il BA si possa scegliere in bozza prima di emettere: col guard BE
+  una bolla nata senza BA non lo riceve mai. Il guard BE va tolto (decide il DB, con lo stesso
+  codice) — e con lui la frase di ripiego «dopo la creazione».
+* ⚠️ **Allargato il 2026-10-10** (analisi critica; nessun commit BE ha toccato `ddt_service` dopo il
+  giro DB). Togliere il guard non basta, perche' lo stesso service contraddice D-2 e D-4 in altri tre
+  punti:
+  * **la creazione pretende il BA su ogni DDT** — `ddt_service.crea_ddt` (`E_DDT_VALIDAZIONE`,
+    «Cliente obbligatorio»): dall'API non nasce un trasferimento, un conto lavoro o una riparazione
+    senza BA, cioe' proprio i casi che D-2 lascia senza cliente. Col modello di oggi l'obbligo e' un
+    motivo d'emissione che decide la causale, e lo dice il DB;
+  * **il destinatario si deriva dal BA in Python** (`repo.get_soggetto_ruolo_id_by_ba`): dal `-85` lo
+    fa `trgfn_ddt_normalize` (punto 2-bis). E' la stessa regola su due livelli: quella in Python va
+    ritirata;
+  * **la whitelist `UPDATE_KEYS_DDT` e' rovesciata**: non contiene `billing_account_id` (quindi la
+    scelta del BA in bozza non arriva mai al DB, anche senza il guard) e contiene `utility_id`, che ora
+    e' una copia del BA (in bozza: 23514 dal CHECK senza BA, 23503 dalla FK con un BA diverso). Va
+    dentro il BA, fuori la utility; il destinatario resta fuori (col BA lo scrive il normalize, senza
+    BA e' da decidere — §10.2, domanda 1).
+
+### 9.7 Resta nel giro (DB)
+
+* ✅ i fixture ⏳ del §9.5: verdi su dbdev nella corsa del 2026-10-10 (§10.5);
+* ✅ doc `manual/`: tolta la frase sulla «continuita'» dal §7.3 di `istanze_utilities` (D-7, punto 3),
+  insieme alla riga «1:1 tra istanza e cliente» superata da R-8; cancellata
+  `vendite/manual/trgfn_ddt_guard_causale_immutabile.md` (funzione ritirata). ⏳ Pagine per il BB nuovo
+  e i due guard D-6.
+
+**Terza corsa (2026-10-09 notte), sei rossi:**
+
+* `test-esecutivi-ba-coppia-v1` test 1: confrontava i nomi con `regclass::text`, che dipende dal
+  `search_path` (come app esce `clienti`, non `anagrafiche.clienti`): ora schema e nome dal catalogo.
+* `test-ddt-causale-immutabile-v1`, `test-ddt-componenti-senza-prezzo-v1`: cliente = «il primo
+  `soggetti_ruoli`» (forma `SELECT … INTO v_sr`, sfuggita al censimento) accanto a un BA preso a parte;
+  l'eccezione del fixture la inghiottiva e il test 1 diceva «fixture non costruita». Ora il cliente si
+  fabbrica.
+* `test-fn-list-ordini-da-pushare-v3`: ruolo legato a `push_ba_id` nei cinque ordini.
+* `test-ordini-guard-transizione-v1`: ordini col BA NULL «per saltare il guard»; ora cliente fabbricato.
+  Lo slot F copiava la commessa dalla prima del database (altro cliente, altro emittente): ora la
+  commessa e' quella del cliente dell'ordine.
+* Provati sullo scratch **come app**: 5/5, 30/30, 8/8, 18/18; il test dei kit sullo scratch non ha un
+  composito (0 contro 16 su dbdev), la `v3` non ha un BA pushabile (uguale prima e dopo).
+* ⏳ `test-ordini-riepilogo-iva-totali`: verde sullo scratch come app (18/18), rosso su dbdev — serve la
+  riga `not ok` della corsa. ⏳ Ancora da vedere (§10.5).
+
+**Baseline CI su `zeroerp_ci` (2026-10-10), cinque rossi** — riprodotti come app sullo scratch:
+
+* `script/test-fn-available-actions-ordine-v1`, `-offerta-v1`: ordini col BA NULL; ora col BA del cliente
+  fabbricato (l'offerta ce l'aveva gia', `tmp_aa_cli`); il ruolo dell'ordine pushabile e' quello del suo BA.
+  10/10 e 19/19.
+* `script/test-guard-emittente-senza-utente`: gli ordini erano senza BA «per lasciare in prova solo il
+  guard di scope». Ora cliente fabbricato col BA dell'emittente dell'operatore: il guard emittente <-> BA
+  e' soddisfatto e resta in prova lo scope (test 3-5, 9-10). ⚠️ Il test 6 (emittente ALTRUI) passa su un
+  **DDT senza BA**: su un ordine, che il BA ce l'ha sempre, parlerebbe prima il guard emittente <-> BA
+  (`b` < `s`) e il test sarebbe verde per la ragione sbagliata. 10/10 (il 6 salta sullo scratch: come app
+  non vede un secondo emittente).
+* `script/test-fn-available-actions-ddt-reason-catch-all-v1` test 17: costruiva `DDT_SENZA_BA` con una
+  VENDITA **emessa** senza BA, che D-2 vieta. Il ramo resta raggiungibile **in bozza** (rank 2 non
+  scatta, la 3 precede la 5): la bolla ora resta in bozza. 17/17.
+* `dbops/test-fn-non-editable-fields-conditional`: non riprodotto — 4/4 come app e da owner. Verifica i
+  flag di distinta degli articoli, nulla di questo giro: da ricontrollare alla prossima corsa.
+  ✅ **Spiegato il 2026-10-10**: e' rosso solo col runner a fuso ostile del T-5, nella finestra in cui
+  il giorno della sessione non e' quello aziendale. Le regole di `dbops.lock_columns_conditional` sugli
+  articoli chiedevano `CURRENT_DATE`; corrette da `80_data/changelog/20261010-01` del cantiere del fuso
+  aziendale (brief-be-db-fe-un-solo-fuso-aziendale §8.2), applicato col migrate del §10.5.
+
+**Ultimi due (2026-10-10).** `script/test-fn-available-actions-ordine-v2` (forma di `v3`, sfuggita: ruolo
+scelto a parte da `push_ba_id` in tre ordini, un quarto col BA NULL) e
+`script/test-seed-stati-doc-ordini-evaso-v1` (ordine col BA NULL): corretti come gli altri. Un censimento
+su tutto `db/pgtap` non trova piu' ordini col BA NULL ne' la forma `r.soggetto_ruolo_id, r.push_ba_id`.
+⚠️ Restano rossi per ragioni gia' in baseline, non di questo giro: `ordine-v2` test 1 sullo scratch (nessun
+BA da push nei dati); `ordini-evaso` test 4 (matrice delle transizioni) e 6, che si aspetta il motivo
+`ORDINE_GIA_EVASO` che la capability non produce piu' dal fix dell'orfano (e col BA vero quell'ordine e'
+proprio un orfano pushabile). Entrambi i file sono gia' in `baseline-rossi*.tsv`.
+✅ Verdi (o rossi solo per le ragioni gia' in baseline) nella corsa del 2026-10-10 (§10.5).
+
+### 9.8 L'emittente dei documenti si sceglie solo in bozza (Tid, 2026-10-09)
+
+**La domanda di Tid:** «perche' sulla tabella ordini si puo' cambiare l'emittente? da quando?». Risposta:
+da sempre — nessuno l'aveva mai bloccato. Nel registro dei lock `emittente_fiscale_id` c'era solo sul
+**preventivo** (dal 2026-05-01); il 2026-06-05 (`20260605-05`) era nato anzi un trigger che ricalcolava i
+totali dell'ordine **dopo** un cambio di emittente: gestiva l'effetto invece di vietare la causa. In
+pratica il cambio era gia' chiuso per conseguenza (backend che non lo espone, guard di perimetro,
+guard emittente <-> BA), tranne che sull'ordine senza BA — che D-1 ha tolto — e sui DDT senza BA, dove
+fuori bozza si cambiava davvero.
+
+**Decisione (punti 1, 2, 3):** bloccato in modo dichiarato su ordine, DDT, reso, offerta e contratto.
+
+| # | Cosa |
+| --- | --- |
+| `-86` | ordini: `trg_ordini_a05_lock_fuori_bozza_upd` (emittente) |
+| `-87`, `-88` | ddt, resi: trigger del BB **rimontati** con l'emittente in piu' |
+| `-89` | ritirati `trg_ordini_z90_ricalcola_totali_upd` e `vendite.trgfn_ordini_ricalcola_totali` |
+| `-90`, `-91` | offerte (stato bozza `BOZZA`), contratti: montaggio nuovo |
+| `80_data` | codice `E_DOC_EMITTENTE_FUORI_BOZZA` (CONFLITTO_STATO, id 1236), uno per tutti |
+
+* **Fuori bozza, non assoluto**: sull'offerta in bozza il backend cambia cliente ed emittente insieme
+  (`offerte_service.UPDATE_KEYS_OFFERTA`), ed e' legittimo; in bozza, col BA, l'emittente lo lega il
+  guard emittente <-> BA. Stesso BB del §9.3 punto 1, stesso stato VECCHIO.
+* **Codice nuovo**, non `E_EMITTENTE_NON_MODIFICABILE`: quello e' il codice dell'associazione
+  operatore <-> emittente, e la sua frase dice «L'emittente fiscale di un operatore e' immutabile…».
+  ⚠️ **Difetto trovato, non corretto qui:** il lock del **preventivo** usa proprio quel codice, quindi
+  chi prova a cambiare l'emittente di un preventivo legge una frase che parla di operatori. ✅ Chiuso
+  dal §9.9 (Tid: il preventivo passa sul BB fuori bozza, col codice nuovo).
+* pgTAP: `test-esecutivi-ba-coppia-v1` + test 28 e 29 (29/29 su `zeroerp_ci`); in
+  `test-ordini-riepilogo-iva-totali` il test 5 verifica che il trigger ritirato non ci sia e il 15 il
+  montaggio del lock (18/18). Nessun pgTAP cambia l'emittente di un documento (censimento statico).
+* doc: cancellata `vendite/manual/trgfn_ordini_ricalcola_totali.md`, aggiornata
+  `fn_ricalcola_totali_ordine.md`.
+* BE: codice nuovo con policy e frase di ripiego; l'emittente dell'offerta resta modificabile solo in bozza.
+
+### 9.9 Anche il preventivo: emittente fuori bozza (Tid, 2026-10-09)
+
+* `-92`: `trg_preventivi_a05_lock_fuori_bozza_upd` sul BB, codice `E_DOC_EMITTENTE_FUORI_BOZZA`.
+* `automation_lock_columns`: la riga `vendite.preventivi.emittente_fiscale_id` si **spegne** (`enabled = f`,
+  nota datata col testo di prima, come `ddt.numero`). La convergenza del `90_end` rigenera
+  `trg_preventivi_a10_lock_columns_upd` col solo `numero` — provato: dopo la convergenza l'emittente non
+  e' piu' fra i suoi argomenti.
+* ⚠️ **Il preventivo si allenta in bozza**: prima l'emittente era bloccato dalla nascita, ora in bozza si
+  cambia, legato al BA dal guard emittente <-> BA (il BA del preventivo e' NOT NULL). E' la stessa regola
+  degli altri sei documenti.
+* Prove su `zeroerp_ci` (da owner, sopra `-62…-85` gia' applicati): `test-esecutivi-ba-coppia-v1` 30/30
+  (test 30 nuovo; prima 27/30), `test-ordini-riepilogo-iva-totali` 18/18,
+  `test-user-emittenti-fiscali-immutable` 3/3 (il codice dell'operatore resta suo),
+  `test-lock-columns-convergenza` 22/22 prima e dopo.
+
+## 10. Verifica incrociata e domande aperte (2026-10-10)
+
+### 10.1 Altri cantieri: nessuno ha riscritto cio' che questo brief tocca
+
+Controllato il 2026-10-10, prima di aggiornare lo stato:
+
+* **Corpi riscritti, contro la versione precedente piu' recente** (fra tutti i changeSet): ogni
+  funzione di questo giro parte dall'ultima versione e **aggiunge** soltanto, tranne le righe ritirate
+  di proposito (il punto «immutabile fuori bozza» dei due guard del magazzino, la seconda fonte del BA
+  in `fn_ddt_push_diagnosi`). ⚠️ Lo stesso giorno il cantiere del fuso aziendale (`20261009-50`) aveva
+  riscritto `trgfn_ordini_normalize` e `trgfn_ddt_normalize`: `-84` e `-85` partono dalla sua versione
+  (`script.fn_data_operativa()`, non `CURRENT_DATE`), quindi nessuna regressione.
+* **Branch:** i commit di `Tito-dev` non ancora in `dev/db-tid` sono del fuso aziendale lato BE
+  (`fn_data_operativa` nei test Django): nessuno tocca i service di ordine, DDT o reso.
+* **Helper pgTAP:** `dbops.fn_pgtap_crea_ordine` prende BA e ruolo dalla stessa riga del mondo,
+  `dbops.fn_pgtap_crea_ddt` ricava la utility dal BA: coerenti con le FK nuove.
+* **Brief aperti:** i lotti 3 e 3-bis del magazzino nominano `trgfn_ddt_guard_causale_immutabile` e i
+  codici `E_*_MAGAZZINO_IMMUTABILE`, ma come storia (lato DB chiuso): da qui in poi la regola sta nel BB
+  del §9.3 punto 1, con gli stessi codici.
+* **dbdev:** 31 changeSet `EXECUTED` (intestazione); `richiede_cliente` 4 si' e 4 no; le sei righe di
+  lock nuove attive, e quella dell'emittente del preventivo spenta (§9.9).
+
+### 10.2 Domande aperte per Tid
+
+Ciascuna con la proposta del team DB. Le si chiude una alla volta.
+
+1. **Il destinatario di una bolla senza cliente si blocca dopo l'emissione?** (§9.3 punto 2) Oggi si':
+   fuori bozza il destinatario e' bloccato anche su trasferimento, conto lavoro e riparazione.
+   Proposta: lasciarlo bloccato. ✅ **Tid, 2026-10-10: bloccato.** La bolla emessa e' un foglio gia'
+   consegnato: se il destinatario e' sbagliato si annulla e se ne fa una nuova. Il montaggio di `-71`
+   (rimontato da `-87`) resta com'e'.
+2. **La regola «la utility (e il destinatario) si copia dal BA se manca» e' scritta in tre posti**
+   (`trgfn_clienti_sync_utility_from_ba`, `trgfn_ordini_normalize` punto 3, `trgfn_ddt_normalize`
+   punto 2-bis; la quarta copia in Python, §9.6, va ritirata). Regola del 2: estrarre un BB o lasciare
+   le tre copie? Proposta: un BB che legge dal BA ruolo e utility, adottato dai tre trigger.
+   ✅ **Tid, 2026-10-10: building block, in questo giro.** Le tre copie gia' divergono: sul cliente un
+   valore diverso dal BA esce con un codice parlante (`E_CLIENTE_UTILITY_MISMATCH_BA`), su ordine e DDT
+   col 23503 della FK. Il BB dice una sola cosa — le copie del documento sono quelle del suo BA: le
+   scrive se mancano, rifiuta con un codice se dissentono — e i tre trigger lo chiamano; le copie si
+   ritirano nello stesso giro. Forma (funzione chiamata dai normalize o trigger parametrico come il
+   lock fuori bozza) da scegliere scrivendolo.
+3. **I guard D-6 non vedono la sorgente e lasciano passare.** `trgfn_ddt_guard_cliente_sorgente` e
+   `trgfn_resi_guard_cliente_ddt` leggono ordine, reso e DDT come INVOKER: se la RLS nasconde la
+   sorgente, non confrontano ed escono senza errore. ~~Proposta: il guard emittente <-> BA copre gia'
+   il caso (sorgente invisibile = altro emittente); scriverlo nei COMMENT e in un pgTAP che lo prova,
+   invece di passare a SECURITY DEFINER.~~
+   ⛔ **Ipotesi smentita il 2026-10-10** (trigger di `vendite.ddt` e `vendite.resi` letti su dbdev): il
+   guard emittente <-> BA confronta l'emittente del DDT con quello del **suo** BA, non con quello della
+   sorgente; e nessun guard controlla che la sorgente dichiarata (`sorgente_tipo_id`, `sorgente_uid`)
+   sia dello stesso emittente. Un DDT di E1 col BA di E1 e come sorgente l'ordine di E2 (invisibile
+   sotto RLS) passa tutti e tre i guard. La strada e' solo la scrittura diretta: il verbo
+   `fn_genera_ddt_da_ordine` l'ordine lo deve vedere.
+   Proposta nuova: **fail-closed** — sorgente di tipo ORDINE_VENDITA, RESO_VENDITA o DDT_VENDITA
+   dichiarata e non trovata = errore (invisibile e inesistente rispondono uguale, come per i
+   magazzini); una sorgente di un altro tipo resta fuori dal confronto.
+   ✅ **Tid, 2026-10-10: bloccare.** Nei due guard D-6 il ramo «non trovata» diventa un errore; serve
+   un codice (da scegliere: uno esistente sulla sorgente, se c'e', o uno nuovo registrato) e un pgTAP
+   che costruisce la sorgente dell'altro emittente e la prova come app.
+4. **Gli altri scostamenti del §9.3** (punti 1, 3, 4, 5, 7: BB invece del gemello, reso senza lock del
+   BA, cliente bloccato su quattro colonne, guard del BA in fascia `_a20_`, normalize dell'ordine e
+   filtro del push non toccati): da confermare in blocco. Proposta: confermare.
+   ✅ **Tid, 2026-10-10: confermati tutti e cinque.**
+5. **Due nomi** (minori): il BB segnala il montaggio errato con `E_DOC_RIGHE_LOCK_MONTAGGIO`, che parla
+   di righe anche quando si monta sulla testata; e il BB sta nello schema `vendite`, non in
+   `script`/`dbops` (come il gemello delle righe). ~~Proposta: codice rinominato in
+   `E_DOC_LOCK_MONTAGGIO` per tutti e due i BB~~ — ⚠️ rivista il 2026-10-10 dopo il censimento dei
+   consumatori: il codice e' nei due CSV, nella frase di ripiego del BE (`error_messages_fallback`:
+   «Il controllo sulle righe del documento…», sbagliata quando parla la testata) e nelle policy
+   generate. Rinominarlo vuol dire un codice nuovo, il vecchio ritirato e i due BB riscritti, per un
+   errore TECNICO che esce solo da un montaggio sbagliato. Proposta: **codice invariato**, descrizione
+   e frase (CSV e ripiego BE) riscritte per righe e testata; schema lasciato com'e', con l'eccezione
+   scritta nel COMMENT del BB.
+   ✅ **Tid, 2026-10-10: solo le frasi.** Codice invariato; descrizione e frase riscritte (CSV e
+   ripiego BE); schema `vendite` con l'eccezione nel COMMENT.
+
+### 10.4 Che cosa resta da fare (decisioni chiuse il 2026-10-10, codice non ancora scritto)
+
+Nessuna modifica al codice e' stata fatta il 2026-10-10: solo questo brief e il registro.
+
+* **DB:**
+  1. il BB «copie dal BA» e i tre trigger che lo adottano, copie ritirate (domanda 2);
+  2. il ramo «sorgente non trovata = errore» nei due guard D-6, col suo codice (domanda 3);
+  3. descrizione e frase di `E_DOC_RIGHE_LOCK_MONTAGGIO` per righe e testata; eccezione dello schema
+     nel COMMENT del BB (domanda 5);
+  4. i cinque fixture del §9.5 (corretti nell'albero, da confermare con la corsa) e i pgTAP mancanti
+     del §10.3;
+  5. le pagine `manual/` del BB e dei due guard D-6 (§9.7).
+* **Da Tid:** la riga `not ok` di `test-ordini-riepilogo-iva-totali` su dbdev, se resta rosso; la
+  corsa pgTAP completa (adesso per i fixture corretti, poi dopo i punti 1–4).
+* **BE/FE** (dopo la consegna DB): §7 e §9.6, compresi i tre punti di `ddt_service` aggiunti il
+  2026-10-10, e la frase di ripiego del punto 3.
+
+**Cosa serve da Tid, non da decidere:** la riga `not ok` di `test-ordini-riepilogo-iva-totali` su
+dbdev (§9.7), e la corsa dei cinque fixture del §9.5, ora corretti nell'albero (§10.5).
+
+### 10.3 Debito: che cosa resta qui e che cosa no
+
+Fuori perimetro — all'archiviazione va in un **brief nuovo**, con la voce-rimando nel registro:
+
+* le **sette copie** del guard emittente <-> BA (ordini, DDT, resi, preventivi, offerte, contratti,
+  commesse), annotate nel §5.5: regola del 2, un BB parametrico;
+* la domanda generale del §8 sulle **altre** colonne di testata in fase chiusa.
+
+Dentro il giro:
+
+* i buchi del pgTAP nuovo: lock dell'emittente su offerte, contratti, preventivi e resi;
+  `fk_clienti_ba_cliente` su INSERT col ruolo di un altro soggetto; reso con BA NULL da un DDT senza
+  BA (D-3, «NULL compreso»); BA tolto in bozza che toglie la utility; emissione di OMAGGIO e
+  CAMPIONATURA senza BA. Questi si chiudono **in questo** giro, insieme ai fixture del §9.5.
+
+### 10.5 Stato del 2026-10-10, verificato su file e `databasechangelog`
+
+* ✅ **Migrazione applicata, corsa pgTAP completa verde, nessuna regressione** (Tid, 2026-10-10).
+  Copre i 31 changeSet `20261009-62…-92`, `20261010-01` e tutti i fixture corretti del §9.5 — compresi
+  `test-ordini-riepilogo-iva-totali` e gli ultimi due (`script/test-fn-available-actions-ordine-v2`,
+  `script/test-seed-stati-doc-ordini-evaso-v1`).
+* Su dbdev e' entrato alle 00:20 `20261010-01` del cantiere del fuso aziendale
+  (`dbops.lock_columns_conditional`, condizioni degli articoli dal giorno aziendale), con le
+  convergenze `runAlways` (`RERAN`). Non tocca gli oggetti di questo brief.
+* ⚠️ **Da guardare:** `script/test-fn-available-actions-ordine-v1` costruisce l'ordine «pushabile» con
+  un BA **preso dai dati** (`fn_get_emittente_fiscale_pk` su un BA reale), non fabbricato: su un
+  database ricostruito da zero (CI) quel caso puo' non nascere. Si guarda insieme ai pgTAP del §10.3.
+* Le decisioni del 2026-10-10 (§10.2, domande 2, 3 e 5) **non sono ancora nel codice**: la corsa
+  verde riguarda il giro gia' scritto. Il cantiere resta aperto sul §10.4.

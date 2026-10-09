@@ -82,13 +82,24 @@ SELECT ok(
 -- ============================================================
 -- Fixture: gli estremi per un ordine minimo
 -- ============================================================
--- ⚠️ billing_account_id = NULL apposta: cosi' non c'e' il guard di coerenza
---   emittente<->BA da soddisfare, e resta in prova SOLO il guard di scope.
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): fino a questo giorno gli
+--   ordini nascevano con billing_account_id = NULL «cosi' non c'e' il guard di
+--   coerenza emittente<->BA da soddisfare». L'ordine senza BA non esiste piu'.
+--   Ora il cliente si FABBRICA, col BA legato dal trigger z90 all'emittente
+--   dell'operatore: il guard emittente<->BA e' soddisfatto, e resta in prova
+--   SOLO il guard di scope (test 3-5, 9-10). Il test 6 (emittente ALTRUI) passa
+--   su un DDT senza BA: su un ordine parlerebbe prima il guard emittente<->BA.
+CREATE TEMP TABLE tmp_gsu_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('guard emittente senza utente');
+SET CONSTRAINTS ALL IMMEDIATE;
+
 -- L'emittente e' quello su cui l'operatore di contesto puo' davvero scrivere.
 CREATE TEMP TABLE tmp_gsu_refs AS
 SELECT
-    (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1)
+    (SELECT c.soggetto_ruolo_id FROM tmp_gsu_cli c)
         AS soggetto_ruolo_id,
+    (SELECT c.billing_account_id FROM tmp_gsu_cli c)
+        AS billing_account_id,
     script.fn_pgtap_emittente_operatore()
         AS emittente_fiscale_id,
     -- L'ALTRO emittente attivo: serve al test 6. Puo' mancare, e in quel caso
@@ -115,7 +126,7 @@ SELECT lives_ok(
           soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
           stato_doc_ordine_id, valuta_id, data, storicizza, meta
       )
-      SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
+      SELECT r.soggetto_ruolo_id, r.billing_account_id, r.emittente_fiscale_id,
              r.stato_draft_id, r.valuta_id, script.fn_data_operativa(), false,
              jsonb_build_object('test_scope', 'pgtap_guard_senza_utente')
         FROM tmp_gsu_refs r$$,
@@ -135,7 +146,7 @@ SELECT throws_ok(
           soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
           stato_doc_ordine_id, valuta_id, data, storicizza, meta
       )
-      SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
+      SELECT r.soggetto_ruolo_id, r.billing_account_id, r.emittente_fiscale_id,
              r.stato_draft_id, r.valuta_id, script.fn_data_operativa(), false,
              jsonb_build_object('test_scope', 'pgtap_guard_senza_utente')
         FROM tmp_gsu_refs r$$,
@@ -153,7 +164,7 @@ SELECT throws_ok(
           soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
           stato_doc_ordine_id, valuta_id, data, storicizza, meta
       )
-      SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
+      SELECT r.soggetto_ruolo_id, r.billing_account_id, r.emittente_fiscale_id,
              r.stato_draft_id, r.valuta_id, script.fn_data_operativa(), false,
              jsonb_build_object('test_scope', 'pgtap_guard_senza_utente')
         FROM tmp_gsu_refs r$$,
@@ -175,12 +186,18 @@ SELECT CASE
         THEN skip('6. un solo emittente attivo: il caso «perimetro altrui» '
                   'non e'' costruibile su questo database', 1)
     ELSE throws_ok(
-        $$INSERT INTO vendite.ordini (
-              soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
-              stato_doc_ordine_id, valuta_id, data, storicizza, meta
+        -- rev 2026-10-09: su un DDT SENZA BA (in bozza, senza causale: il
+        --   destinatario e' libero), perche' il guard emittente<->BA esca
+        --   subito e a parlare sia SOLO lo scope. Su un ordine, che il BA ce
+        --   l'ha sempre, parlerebbe prima lui (b < s) e il test diventerebbe
+        --   verde per la ragione sbagliata.
+        $$INSERT INTO vendite.ddt (
+              destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id,
+              storicizza, meta
           )
-          SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_altrui_id,
-                 r.stato_draft_id, r.valuta_id, script.fn_data_operativa(), false,
+          SELECT r.soggetto_ruolo_id,
+                 (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'),
+                 r.emittente_altrui_id, false,
                  jsonb_build_object('test_scope', 'pgtap_guard_senza_utente')
             FROM tmp_gsu_refs r$$,
         'P0001',

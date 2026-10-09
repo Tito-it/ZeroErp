@@ -23,6 +23,8 @@ BEGIN
   --   1. Imposta anno/data se numero presente e valori mancanti.
   --   2. fatturazione_trigger: la TESTATA ha la precedenza; il
   --      billing_account e' il ripiego. SOLO su INSERT.
+  --   3. utility_id dal billing account se il chiamante non la
+  --      dice (rev 2026-10-09). SOLO su INSERT.
   --
   -- Nota (DB-ORD-LOCK 2026-06-04): billing_account_id e'
   --   immutabile su UPDATE (automation_lock_columns ->
@@ -68,6 +70,21 @@ BEGIN
     NEW.fatturazione_trigger := COALESCE(NEW.fatturazione_trigger,
                                          v_fatturazione_ordini,
                                          'CONFERMATO');
+
+    ----------------------------------------------------------------
+    -- 3. utility_id (rev 2026-10-09, brief-db-esecutivi-ba-coppia,
+    --    D-5): e' una COPIA di cio' che il billing account gia' dice.
+    --    Se il chiamante non la dice, la dice il BA; se la dice
+    --    diversa, la FK fk_ordini_ba_cliente la rifiuta. Solo su
+    --    INSERT: il BA dell'ordine e' bloccato (E_ORD_CLIENTE_IMMUTABILE).
+    --    ⚠️ Il NOT NULL si controlla dopo i BEFORE ROW: qui il BA puo'
+    --    ancora essere NULL (e l'INSERT fallira' sul NOT NULL).
+    IF NEW.utility_id IS NULL AND NEW.billing_account_id IS NOT NULL THEN
+      SELECT ba.utility_id
+        INTO NEW.utility_id
+        FROM anagrafiche.billing_account ba
+       WHERE ba.id = NEW.billing_account_id;
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -75,7 +92,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ordini_normalize()
-IS 'Normalize: imposta anno/data se numero presente; fatturazione_trigger risolto per precedenza TESTATA -> billing_account.fatturazione_ordini -> CONFERMATO, entrambe SOLO su INSERT. rev 2026-08-17: prima l''eredita'' dal BA era una SOVRASCRITTURA incondizionata e la scelta in testata veniva scartata — con tutti i BA a CONFERMATO nessun ordine poteva nascere SPEDITO/CONSEGNATO e il ramo order-backed di fn_list_ddt_da_pushare era irraggiungibile (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19). Il NULL in NEW e'' il modo in cui il chiamante dice «non ho scelto» e funziona solo perche'' il changeSet 20260817-02 toglie il DEFAULT dalla colonna: i due vanno letti insieme. Il cambio BA su UPDATE non e'' supportato (billing_account_id immutabile - DB-ORD-LOCK).';
+IS 'Normalize: imposta anno/data se numero presente; fatturazione_trigger risolto per precedenza TESTATA -> billing_account.fatturazione_ordini -> CONFERMATO, entrambe SOLO su INSERT. rev 2026-08-17: prima l''eredita'' dal BA era una SOVRASCRITTURA incondizionata e la scelta in testata veniva scartata — con tutti i BA a CONFERMATO nessun ordine poteva nascere SPEDITO/CONSEGNATO e il ramo order-backed di fn_list_ddt_da_pushare era irraggiungibile (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19). Il NULL in NEW e'' il modo in cui il chiamante dice «non ho scelto» e funziona solo perche'' il changeSet 20260817-02 toglie il DEFAULT dalla colonna: i due vanno letti insieme. Il cambio BA su UPDATE non e'' supportato (billing_account_id immutabile - DB-ORD-LOCK). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-5): utility_id, copia di quella del billing account, la mette il BA se il chiamante non la dice (solo INSERT); se la dice diversa la rifiuta la FK fk_ordini_ba_cliente. La colonna e'' NOT NULL dal 20261009-64.';
 ```
 
 ---

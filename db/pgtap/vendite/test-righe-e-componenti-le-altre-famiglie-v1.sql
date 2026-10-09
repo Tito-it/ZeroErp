@@ -223,13 +223,16 @@ BEGIN
 
     -- DDT: causale CONTO_VISIONE, che non vende — il prezzo non si chiede
     --   all'emissione (test 34 di test-fn-check-prezzi-autorizzati-v1).
+    -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): col BA del cliente — la
+    --   causale vuole un cliente (D-2) e la utility senza BA viola
+    --   chk_ddt_ba_utility_insieme.
     INSERT INTO vendite.ddt
         (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id,
-         utility_id, causale_trasporto_id)
+         utility_id, billing_account_id, causale_trasporto_id)
     VALUES
         (c.cliente_soggetto_ruolo_id,
          (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'),
-         c.emittente_fiscale_id, c.utility_id,
+         c.emittente_fiscale_id, c.utility_id, c.billing_account_id,
          (SELECT ct.id FROM config.causali_trasporto ct WHERE ct.codice = 'CONTO_VISIONE'))
     RETURNING id INTO v_id;
 

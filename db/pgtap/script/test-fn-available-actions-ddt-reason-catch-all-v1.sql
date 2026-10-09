@@ -427,8 +427,13 @@ SELECT n.ddt_id, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb
   FROM tmp_noba n, tmp_refs r
 ON CONFLICT DO NOTHING;
 
-UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT stato_ddt_emesso_id FROM tmp_refs)
- WHERE id = (SELECT ddt_id FROM tmp_noba);
+-- ⭐ rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2): la bolla RESTA IN BOZZA.
+--   Una VENDITA senza billing account non si emette piu' (motivo
+--   E_DDT_CLIENTE_OBBLIGATORIO di script.fn_check_ddt_emittibile): lo stato che
+--   questo caso costruiva — emessa senza BA — il modello non lo ammette. Il
+--   ramo della rank 3 resta raggiungibile, e in bozza: la causale e' VENDITA
+--   (la rank 2 non scatta) e il BA e' NULL, e la rank 3 precede la 5
+--   (merce in viaggio) che una bozza altrimenti darebbe.
 
 -- ⚠️ Il seme si passa come VALORE (sottoquery), non come colonna laterale
 --    (`FROM tmp_noba n, fn_ddt_push_diagnosi(n.ddt_id)`): in forma laterale la

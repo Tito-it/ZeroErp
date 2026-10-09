@@ -66,19 +66,24 @@ SELECT 'B' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 CREATE TEMP TABLE _cliente AS
 SELECT m.emittente_fiscale_id, c.*
   FROM _mondi m
-  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS resi write') c
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA legato all'emittente del
+  --   mondo. Il documento porta ora il BA, e il guard emittente <-> BA lo guarda.
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS resi write', NULL, m.soggetto_ruolo_id) c
  WHERE m.lato = 'A';
 
 -- Il DDT di A, portato fino a CONSEGNATO.
 CREATE TEMP TABLE _ddt AS
 WITH d AS (
+    -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA del cliente, non la sola
+    --   utility — chk_ddt_ba_utility_insieme vuole tutti e due o nessuno.
     INSERT INTO vendite.ddt
         (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id,
-         utility_id, causale_trasporto_id)
+         utility_id, billing_account_id, causale_trasporto_id)
     SELECT c.soggetto_ruolo_id,
            (SELECT st.id FROM config.stati_doc_ddt st WHERE st.codice_interno = 'DRAFT'),
            c.emittente_fiscale_id,
            c.utility_id,
+           c.billing_account_id,
            (SELECT ct.id FROM config.causali_trasporto ct WHERE ct.attivo ORDER BY ct.id LIMIT 1)
       FROM _cliente c
     RETURNING id, uid, emittente_fiscale_id, destinatario_soggetto_ruolo_id

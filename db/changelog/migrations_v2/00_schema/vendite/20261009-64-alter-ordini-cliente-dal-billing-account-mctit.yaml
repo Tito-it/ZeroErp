@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ORDINE HA SEMPRE IL SUO BILLING ACCOUNT, E CLIENTE E UTILITY SONO I SUOI
+#   vendite.ordini: billing_account_id e utility_id SET NOT NULL
+#   + FK (billing_account_id, soggetto_ruolo_id, utility_id)
+#     verso anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id).
+#   Brief: brief-db-esecutivi-ba-coppia (§5.1, D-1, D-5)
+#
+# -- PERCHE' --------------------------------------------------------
+#   D-1 di Tid (2026-10-09): l'ordine ha sempre il BA. Nasce dal preventivo o
+#   dall'offerta, che il BA lo hanno sempre, o standalone su un cliente, e un
+#   ordine senza fornitura non si sa a chi si fattura: oggi esce dalla lista
+#   del push in silenzio (fn_list_ordini_da_pushare filtra il BA NULL).
+#   L'ordine «prospect» sparisce, ed e' voluto: dopo brief-db-istanza-nasce-col-ba
+#   un ruolo CLIENTE senza fornitura non riceve ordini.
+#
+# -- LA FK COMPOSTA ------------------------------------------------
+#   D-5: le due copie di testata (soggetto_ruolo_id, utility_id) si LEGANO al
+#   BA, non si ritirano (costerebbe tutti i lettori). Un ordine col BA del
+#   cliente A e il ruolo del cliente B, o col BA del gas e la utility
+#   dell'elettricita', oggi si scrive: da qui no. Destinazione
+#   uq_billing_account_id_cliente (20261009-63).
+#   ⚠️ La FK semplice fk_ordini_v_billing_account RESTA: la composta la
+#   implica, e il backend ne mappa il nome a una frase (come per
+#   fk_preventivi_billing_account accanto a fk_preventivi_ba_coppia).
+#   ⚠️ I lock dell'ordine (billing_account_id, soggetto_ruolo_id:
+#   E_ORD_CLIENTE_IMMUTABILE) sono BEFORE ROW e parlano prima della FK.
+#   utility_id non e' nel lock: su UPDATE la FK la tiene uguale a quella del
+#   BA, che e' bloccato — un cambio esce col nome della FK (§7 del brief).
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   preCondition: zero ordini senza BA o con ruolo/utility diversi da quelli
+#   del BA (expectedResult 0). Se ce ne sono il migrate si ferma e si
+#   correggono a mano (brief §6). Nessun valore scelto dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261009-64-alter-ordini-cliente-dal-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20261009-64-alter-ordini-cliente-dal-billing-account
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini: billing_account_id e utility_id NOT NULL, FK composta verso il billing
+        account del cliente e della utility della testata. Brief: brief-db-esecutivi-ba-coppia
+        (D-1, D-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM vendite.ordini o
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+               WHERE ba.id IS NULL
+                  OR ba.soggetto_ruolo_id IS DISTINCT FROM o.soggetto_ruolo_id
+                  OR ba.utility_id        IS DISTINCT FROM o.utility_id;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini
+                ALTER COLUMN billing_account_id SET NOT NULL,
+                ALTER COLUMN utility_id SET NOT NULL;
+
+              ALTER TABLE vendite.ordini
+                ADD CONSTRAINT fk_ordini_ba_cliente
+                FOREIGN KEY (billing_account_id, soggetto_ruolo_id, utility_id)
+                REFERENCES anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id);
+
+              COMMENT ON CONSTRAINT fk_ordini_ba_cliente ON vendite.ordini
+              IS 'Il cliente (soggetto_ruolo_id) e la utility dell''ordine sono quelli del suo billing account: fino al 2026-10-09 la sola FK semplice ammetteva il BA di un altro cliente o di un''altra utility. Gemelli: fk_ddt_ba_cliente, fk_resi_ba_cliente, fk_clienti_ba_cliente. Brief: brief-db-esecutivi-ba-coppia (D-1, D-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ordini DROP CONSTRAINT fk_ordini_ba_cliente;
+              ALTER TABLE vendite.ordini
+                ALTER COLUMN billing_account_id DROP NOT NULL,
+                ALTER COLUMN utility_id DROP NOT NULL;

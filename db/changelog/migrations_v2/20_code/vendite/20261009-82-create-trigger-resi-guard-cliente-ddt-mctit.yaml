@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: trg_resi_z10_guard_cliente_ddt_ins_upd su vendite.resi
+#   Brief: brief-db-esecutivi-ba-coppia (D-3, D-6). Funzione in -81.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   preCondition: zero resi col billing account diverso da quello del DDT
+#   sorgente (expectedResult 0; un database vuoto la soddisfa).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-82-create-trigger-resi-guard-cliente-ddt-mctit.yaml
+
+  - changeSet:
+      id: 20261009-82-create-trigger-resi-guard-cliente-ddt
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.resi: trg_resi_z10_guard_cliente_ddt_ins_upd, il reso ha il billing account del suo
+        DDT. Brief: brief-db-esecutivi-ba-coppia (D-3, D-6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM vendite.resi r
+                JOIN config.sorgenti s ON s.id = r.sorgente_tipo_id
+                                      AND s.codice_interno = 'DDT_VENDITA'
+                JOIN vendite.ddt d ON d.uid = r.sorgente_uid
+               WHERE d.billing_account_id IS DISTINCT FROM r.billing_account_id;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_resi_z10_guard_cliente_ddt_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.resi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_resi_guard_cliente_ddt();
+
+              COMMENT ON TRIGGER trg_resi_z10_guard_cliente_ddt_ins_upd ON vendite.resi
+              IS 'Il reso ha il billing account del DDT sorgente, NULL compreso (E_DOC_CLIENTE_DIVERSO_DA_SORGENTE). Fascia _z10_: dopo trg_resi_normalize_ins_upd, prima di trg_resi_z10_guard_emittente_ba_ins_upd. Brief: brief-db-esecutivi-ba-coppia (D-3, D-6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_z10_guard_cliente_ddt_ins_upd ON vendite.resi;

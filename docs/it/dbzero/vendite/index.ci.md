@@ -298,7 +298,6 @@
 - [trgfn_contratti_utilities_guard_tipo_classe](manual/trgfn_contratti_utilities_guard_tipo_classe.md) — (rev 2026-08-21 — pricing v5)
 - [trgfn_ddt_gen_numero_emesso](manual/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-08-31, sera)
 - [trgfn_ddt_guard_causale_emissione](manual/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-08-28)
-- [trgfn_ddt_guard_causale_immutabile](manual/trgfn_ddt_guard_causale_immutabile.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice B, decisione D-4)
 - [trgfn_ddt_guard_emittente_ba](manual/trgfn_ddt_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_ddt_guard_indirizzi_obbligatori](manual/trgfn_ddt_guard_indirizzi_obbligatori.md) — (rev 2026-07-11)
 - [trgfn_ddt_guard_transizione](manual/trgfn_ddt_guard_transizione.md) — (rev 2026-07-09)
@@ -351,7 +350,6 @@
 - [trgfn_ordini_guard_emittente_ba](manual/trgfn_ordini_guard_emittente_ba.md) — (rev 2026-06-01)
 - [trgfn_ordini_guard_transizione](manual/trgfn_ordini_guard_transizione.md) — (rev 2026-09-24 — Regola 5, il prezzo non autorizzato; rev 2026-06-05)
 - [trgfn_ordini_normalize](manual/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` normalizza i campi minimi dell’ordine **in fase di creazione**: completa anno/data quando il `numero` è presente ed eredita il `fatturazione_trigger` dal billing account.
-- [trgfn_ordini_ricalcola_totali](manual/trgfn_ordini_ricalcola_totali.md) — (latest review 05-06-2026)
 - [trgfn_ordini_righe_componenti_guard_pending](manual/trgfn_ordini_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga ordine ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. Cambi strutturali durante la fase di approvazione renderebbero la decisione ambigua. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ordini_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_ordini_righe_ricalcola_totali](manual/trgfn_ordini_righe_ricalcola_totali.md) — (latest review 05-06-2026)
 - [trgfn_preventivi_default_valuta](manual/trgfn_preventivi_default_valuta.md) — (rev 2026-08-21)

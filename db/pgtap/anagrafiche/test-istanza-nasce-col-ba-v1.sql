@@ -297,11 +297,11 @@ SELECT is(
 -- 13) Lock della coppia del BA -> E_BA_ISTANZA_IMMUTABILE
 --     Il trigger lo genera l'automazione: si cerca per funzione e argomenti.
 --     Si cambia utility_id del BA 2 (verso quella del BA X): il lock e' BEFORE
---     e parla prima dell'unicita' (istanza, utility). ⚠️ Il cambio di
---     istanza_utility_id verso l'istanza di un ALTRO soggetto lo intercetta
---     prima trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
---     (g < l in ordine alfabetico), con E_BA_SOGGETTO_INCOERENTE_ISTANZA: e'
---     comunque un rifiuto, e il lock resta il cancello per lo stesso soggetto.
+--     e parla prima dell'unicita' (istanza, utility). ⚠️ Fino al 2026-10-09 il
+--     cambio di istanza_utility_id verso l'istanza di un ALTRO soggetto lo
+--     intercettava prima il guard di coerenza (allora in fascia _a10_, g < l),
+--     con E_BA_SOGGETTO_INCOERENTE_ISTANZA. Da 20261009-69 il guard e' in
+--     _a20_: parla il lock, per ogni cambio (brief-db-esecutivi-ba-coppia, D-7).
 -- ============================================================
 SELECT CASE
     WHEN EXISTS (

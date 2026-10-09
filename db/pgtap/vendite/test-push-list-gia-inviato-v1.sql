@@ -73,7 +73,14 @@ SELECT
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1)                                              AS istanza_utility_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,

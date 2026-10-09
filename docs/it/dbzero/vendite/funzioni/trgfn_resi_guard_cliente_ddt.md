@@ -1,0 +1,68 @@
+# ⚙️ Funzione `trgfn_resi_guard_cliente_ddt`
+
+```sql
+CREATE FUNCTION trgfn_resi_guard_cliente_ddt()
+```
+
+**Definizione completa:**
+
+```sql
+CREATE OR REPLACE FUNCTION vendite.trgfn_resi_guard_cliente_ddt()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+-- Scopo: il reso ha il billing account del DDT da cui nasce,
+--   NULL compreso (D-3 e D-6 di brief-db-esecutivi-ba-coppia).
+--   Su INSERT e su ogni UPDATE che tocca BA o sorgente, in
+--   qualunque stato: il BA del DDT sorgente e' bloccato fuori
+--   bozza, quindi quello del reso non cambia mai.
+-- Uso: BEFORE INSERT OR UPDATE, fascia _z10_ (dopo il normalize).
+DECLARE
+    v_ba_ddt   vendite.ddt.billing_account_id%TYPE;
+    v_ddt_lbl  text;
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND NEW.billing_account_id IS NOT DISTINCT FROM OLD.billing_account_id
+       AND NEW.sorgente_tipo_id   IS NOT DISTINCT FROM OLD.sorgente_tipo_id
+       AND NEW.sorgente_uid       IS NOT DISTINCT FROM OLD.sorgente_uid THEN
+        RETURN NEW;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM config.sorgenti s
+                    WHERE s.id = NEW.sorgente_tipo_id
+                      AND s.codice_interno = 'DDT_VENDITA') THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT d.billing_account_id, 'DDT ' || COALESCE(d.numero, '#' || d.id::text)
+      INTO v_ba_ddt, v_ddt_lbl
+      FROM vendite.ddt d
+     WHERE d.uid = NEW.sorgente_uid;
+
+    -- DDT non trovato (o non visibile): non c'e' niente da
+    -- confrontare, ed e' il caso di cui parlano i guard della
+    -- sorgente.
+    IF FOUND AND v_ba_ddt IS DISTINCT FROM NEW.billing_account_id THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', TG_NAME::text, 'E_DOC_CLIENTE_DIVERSO_DA_SORGENTE',
+            jsonb_build_object(
+                'campo',                  'billing_account_id',
+                'reso_id',                NEW.id,
+                'billing_account_id',     NEW.billing_account_id,
+                'sorgente_uid',           NEW.sorgente_uid,
+                'billing_account_ddt',    v_ba_ddt),
+            NEW.tx_id,
+            'reso ' || COALESCE(NEW.numero, '#' || NEW.id::text),
+            v_ddt_lbl);
+    END IF;
+
+    RETURN NEW;
+END;
+$function$
+
+COMMENT ON FUNCTION vendite.trgfn_resi_guard_cliente_ddt()
+IS 'Guard BEFORE INSERT OR UPDATE su vendite.resi, fascia _z10_ (dopo trgfn_resi_normalize): il reso ha il billing account del DDT sorgente (DDT_VENDITA), NULL compreso (D-3, D-6 di brief-db-esecutivi-ba-coppia). E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, come DDT e fulfillment. In qualunque stato: il BA del DDT sorgente e'' bloccato fuori bozza e il DDT di un reso e'' consegnato, quindi il BA del reso non cambia mai — per questo il reso non ha un lock fuori bozza sul cliente. DDT letto come INVOKER, come il normalize.';
+```
+
+---
+{% include-markdown "signature-core.md" %}

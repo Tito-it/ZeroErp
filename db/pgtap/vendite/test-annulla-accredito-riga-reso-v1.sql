@@ -100,7 +100,7 @@ SELECT
   ba.istanza_utility_id                        AS istanza_utility_id,
   script.fn_pgtap_emittente_operatore()        AS emittente_fiscale_id,
   script.fn_pgtap_emittente_sr_operatore()     AS emittente_sr_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1)                AS soggetto_ruolo_id,
+  ba.soggetto_ruolo_id                AS soggetto_ruolo_id,  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il ruolo del BA, non il primo del database
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
     ORDER BY a.data_insert DESC NULLS LAST, a.id DESC LIMIT 1)                            AS articolo_id,

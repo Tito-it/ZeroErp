@@ -54,15 +54,19 @@ SELECT 'B' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 CREATE TEMP TABLE _clienti AS
 SELECT m.lato, m.emittente_fiscale_id, c.*
   FROM _mondi m
-  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS ordini ' || m.lato) c;
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA legato all'emittente del
+  --   mondo. Il documento porta ora il BA, e il guard emittente <-> BA lo guarda.
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS ordini ' || m.lato, NULL, m.soggetto_ruolo_id) c;
 
 -- ⚠️ `canale_origine` resta il default ADMIN: serve al test 8, che verifica che
 --   la veste SHOP non basti la proprieta'.
 CREATE TEMP TABLE _ordini AS
 WITH ord AS (
+    -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine ha sempre il BA.
     INSERT INTO vendite.ordini
-        (soggetto_ruolo_id, stato_doc_ordine_id, fatturazione_trigger, emittente_fiscale_id)
-    SELECT c.soggetto_ruolo_id,
+        (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id, fatturazione_trigger,
+         emittente_fiscale_id)
+    SELECT c.soggetto_ruolo_id, c.billing_account_id,
            (SELECT st.id FROM config.stati_doc_ordini st ORDER BY st.id LIMIT 1),
            'CONFERMATO',
            c.emittente_fiscale_id

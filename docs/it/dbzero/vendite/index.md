@@ -316,7 +316,7 @@
 - [trgfn_ddt_default_magazzino](funzioni/trgfn_ddt_default_magazzino.md)
 - [trgfn_ddt_gen_numero_emesso](funzioni/trgfn_ddt_gen_numero_emesso.md) — (rev 2026-08-31, sera)
 - [trgfn_ddt_guard_causale_emissione](funzioni/trgfn_ddt_guard_causale_emissione.md) — (rev 2026-08-28)
-- [trgfn_ddt_guard_causale_immutabile](funzioni/trgfn_ddt_guard_causale_immutabile.md) — (creata 2026-08-19 — brief-ddt-righe-senza-prezzo §9 slice B, decisione D-4)
+- [trgfn_ddt_guard_cliente_sorgente](funzioni/trgfn_ddt_guard_cliente_sorgente.md)
 - [trgfn_ddt_guard_emittente_ba](funzioni/trgfn_ddt_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_ddt_guard_indirizzi_obbligatori](funzioni/trgfn_ddt_guard_indirizzi_obbligatori.md) — (rev 2026-07-11)
 - [trgfn_ddt_guard_magazzino](funzioni/trgfn_ddt_guard_magazzino.md)
@@ -330,6 +330,7 @@
 - [trgfn_doc_guard_delete_solo_bozza](funzioni/trgfn_doc_guard_delete_solo_bozza.md) — **Un documento si elimina solo finché è in bozza.**
 - [trgfn_doc_righe_lock_fuori_bozza](funzioni/trgfn_doc_righe_lock_fuori_bozza.md) — **Le righe di un documento si aggiungono, modificano e tolgono solo finché il documento è in bozza.**
 - [trgfn_doc_ritira_commessa_attivita](funzioni/trgfn_doc_ritira_commessa_attivita.md) — (latest review 26-08-2026)
+- [trgfn_doc_testata_lock_fuori_bozza](funzioni/trgfn_doc_testata_lock_fuori_bozza.md)
 - [trgfn_documenti_sync_canali](funzioni/trgfn_documenti_sync_canali.md) — (latest review 24-02-2026)   La funzione trigger `vendite.trgfn_documenti_sync_canali()` mantiene allineato il registro `documenti_fatturazione_canali` sugli eventi principali dei documenti commerciali.
 - [trgfn_emittenti_fiscali_provision_registri](funzioni/trgfn_emittenti_fiscali_provision_registri.md)
 - [trgfn_event_log_append_only](funzioni/trgfn_event_log_append_only.md) — (rev 2026-08-21)
@@ -380,7 +381,6 @@
 - [trgfn_ordini_guard_emittente_ba](funzioni/trgfn_ordini_guard_emittente_ba.md) — (rev 2026-06-01)
 - [trgfn_ordini_guard_transizione](funzioni/trgfn_ordini_guard_transizione.md) — (rev 2026-09-24 — Regola 5, il prezzo non autorizzato; rev 2026-06-05)
 - [trgfn_ordini_normalize](funzioni/trgfn_ordini_normalize.md) — La trigger function `vendite.trgfn_ordini_normalize()` normalizza i campi minimi dell’ordine **in fase di creazione**: completa anno/data quando il `numero` è presente ed eredita il `fatturazione_trigger` dal billing account.
-- [trgfn_ordini_ricalcola_totali](funzioni/trgfn_ordini_ricalcola_totali.md) — (latest review 05-06-2026)
 - [trgfn_ordini_righe_componenti_guard_pending](funzioni/trgfn_ordini_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga ordine ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. Cambi strutturali durante la fase di approvazione renderebbero la decisione ambigua. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ordini_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
 - [trgfn_ordini_righe_ricalcola_totali](funzioni/trgfn_ordini_righe_ricalcola_totali.md) — (latest review 05-06-2026)
 - [trgfn_preventivi_default_valuta](funzioni/trgfn_preventivi_default_valuta.md) — (rev 2026-08-21)
@@ -400,6 +400,7 @@
 - [trgfn_resi_accrediti_guard](funzioni/trgfn_resi_accrediti_guard.md) — (rev 2026-08-18)
 - [trgfn_resi_default_magazzino](funzioni/trgfn_resi_default_magazzino.md)
 - [trgfn_resi_gen_numero](funzioni/trgfn_resi_gen_numero.md) — (rev 2026-08-31, sera)
+- [trgfn_resi_guard_cliente_ddt](funzioni/trgfn_resi_guard_cliente_ddt.md)
 - [trgfn_resi_guard_ddt_consegnato](funzioni/trgfn_resi_guard_ddt_consegnato.md) — (rev 2026-07-13)
 - [trgfn_resi_guard_emittente_ba](funzioni/trgfn_resi_guard_emittente_ba.md) — (rev 2026-07-13)
 - [trgfn_resi_guard_magazzino](funzioni/trgfn_resi_guard_magazzino.md)

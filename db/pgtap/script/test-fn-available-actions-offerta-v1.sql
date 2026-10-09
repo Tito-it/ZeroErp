@@ -231,12 +231,14 @@ WITH ins AS (
 INSERT INTO tmp_aa_ids SELECT 'ACCT-ORD', id FROM ins;
 
 -- Ordine collegato all'offerta ACCT-ORD (documento_origine OFFERTA).
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1/D-6): col BA del cliente, quello
+--   dell'offerta da cui nasce. Prima nasceva col BA NULL.
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
     documento_origine_tipo, documento_origine_id
 )
-SELECT od.soggetto_ruolo_id, NULL::bigint, od.emittente_fiscale_id,
+SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-02', false,
        'OFFERTA', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
   FROM tmp_aa_ord od;
@@ -475,7 +477,7 @@ SELECT throws_ok(
             stato_doc_ordine_id, valuta_id, data, storicizza,
             documento_origine_tipo, documento_origine_id
         )
-        SELECT od.soggetto_ruolo_id, NULL::bigint, od.emittente_fiscale_id,
+        SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
                od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-03', false,
                'OFFERTA', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
           FROM tmp_aa_ord od
@@ -495,7 +497,7 @@ INSERT INTO vendite.ordini (
     stato_doc_ordine_id, valuta_id, data, storicizza,
     documento_origine_tipo, documento_origine_id
 )
-SELECT od.soggetto_ruolo_id, NULL::bigint, od.emittente_fiscale_id,
+SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-02-01', false,
        'PREVENTIVO', 999999
   FROM tmp_aa_ord od;
@@ -507,7 +509,7 @@ SELECT lives_ok(
             stato_doc_ordine_id, valuta_id, data, storicizza,
             documento_origine_tipo, documento_origine_id
         )
-        SELECT od.soggetto_ruolo_id, NULL::bigint, od.emittente_fiscale_id,
+        SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
                od.stato_draft_ordine_id, od.valuta_id, DATE '2087-02-02', false,
                'PREVENTIVO', 999999
           FROM tmp_aa_ord od

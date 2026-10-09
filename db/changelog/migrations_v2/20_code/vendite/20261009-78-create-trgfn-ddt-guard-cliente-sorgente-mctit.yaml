@@ -1,0 +1,171 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DDT HA IL CLIENTE DEL DOCUMENTO DA CUI NASCE
+#   vendite.trgfn_ddt_guard_cliente_sorgente (trigger in -79).
+#   Brief: brief-db-esecutivi-ba-coppia (§3, §5.2, D-6)
+#
+# -- LA REGOLA (D-6 di Tid) -------------------------------------------
+#   «Un esecutivo derivato ha il billing account della sua sorgente.» Sul DDT
+#   la sorgente si dichiara in due posti, e la regola ha quindi due porte
+#   (madri) — piu' una terza, il fulfillment, che ha un guard suo (-80):
+#     1. la TESTATA: sorgente_tipo_id/sorgente_uid. ORDINE_VENDITA -> il BA
+#        dell'ordine; RESO_VENDITA (la riconsegna standalone,
+#        fn_genera_ddt_riconsegna) -> il BA del reso;
+#     2. un UPDATE del BA di un DDT che EVADE gia' righe d'ordine: quelle
+#        righe hanno, per il guard del fulfillment, il BA di prima. Si rifiuta
+#        il cambio in se', non si ricontrollano gli ordini: e' la stessa regola
+#        vista dall'altra parte, senza ricopiarne il predicato.
+#   Oggi trgfn_ddt_normalize mette il BA dell'ordine con un COALESCE che TIENE
+#   un valore esplicito diverso: il verbo scrive giusto, una scrittura diretta
+#   no. Il normalize non cambia (riempie quando manca); rifiuta questo guard.
+#
+# -- DOVE NELL'ORDINE DEI TRIGGER ---------------------------------------
+#   Fascia _z10_: DOPO trg_ddt_normalize_ins_upd, che su INSERT riempie il BA
+#   dall'ordine, e dopo trg_ddt_a05_lock_fuori_bozza_upd (fuori bozza il BA non
+#   cambia: parla il lock). Prima di trg_ddt_z10_guard_emittente_ba_ins_upd
+#   (c < e): prima si dice qual e' il cliente giusto, poi se l'emittente e'
+#   coerente con lui.
+#
+# -- ⚠️ LETTURA SOTTO RLS ------------------------------------------------
+#   Ordine e reso si leggono come INVOKER, come fa gia' trgfn_ddt_normalize:
+#   una sorgente che chi scrive non vede e' NOT FOUND e il guard passa. Chi
+#   puo' scrivere il DDT vede la sua sorgente (stesso perimetro emittente).
+#
+# -- IL CODICE --------------------------------------------------------
+#   E_DOC_CLIENTE_DIVERSO_DA_SORGENTE: UNO per la regola, comune a DDT,
+#   fulfillment e reso. VARIADIC: il documento e la sua sorgente, come li
+#   legge una persona («DDT DDT0000034», «ordine ORD0000012»).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-78-create-trgfn-ddt-guard-cliente-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261009-78-create-trgfn-ddt-guard-cliente-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_ddt_guard_cliente_sorgente: il DDT ha il billing account dell'ordine o del
+        reso da cui nasce, e non lo cambia se evade gia' righe d'ordine. Brief:
+        brief-db-esecutivi-ba-coppia (D-6).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ddt_guard_cliente_sorgente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: il DDT ha il billing account del documento da cui
+              --   nasce (D-6 di brief-db-esecutivi-ba-coppia): «un esecutivo
+              --   derivato ha il BA della sua sorgente».
+              --   1. sorgente di testata ORDINE_VENDITA -> BA dell'ordine;
+              --      RESO_VENDITA -> BA del reso (NULL compreso);
+              --   2. su UPDATE, il BA non cambia se il DDT evade gia' righe
+              --      d'ordine (la terza porta, il fulfillment, ha il guard in
+              --      vendite.trgfn_ordini_ful_guard_consistenza).
+              -- Uso: BEFORE INSERT OR UPDATE, fascia _z10_ (dopo il normalize).
+              DECLARE
+                  v_sorgente   config.sorgenti.codice_interno%TYPE;
+                  v_ba_src     vendite.ddt.billing_account_id%TYPE;
+                  v_src_label  text;
+                  v_doc_label  text;
+              BEGIN
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.billing_account_id IS NOT DISTINCT FROM OLD.billing_account_id
+                     AND NEW.sorgente_tipo_id   IS NOT DISTINCT FROM OLD.sorgente_tipo_id
+                     AND NEW.sorgente_uid       IS NOT DISTINCT FROM OLD.sorgente_uid THEN
+                      RETURN NEW;
+                  END IF;
+
+                  v_doc_label := 'DDT ' || COALESCE(NEW.numero, '#' || NEW.id::text);
+
+                  -- 1. La sorgente di testata.
+                  IF NEW.sorgente_tipo_id IS NOT NULL AND NEW.sorgente_uid IS NOT NULL THEN
+                      SELECT s.codice_interno INTO v_sorgente
+                        FROM config.sorgenti s
+                       WHERE s.id = NEW.sorgente_tipo_id;
+
+                      IF v_sorgente = 'ORDINE_VENDITA' THEN
+                          SELECT o.billing_account_id,
+                                 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+                            INTO v_ba_src, v_src_label
+                            FROM vendite.ordini o
+                           WHERE o.uid = NEW.sorgente_uid;
+                      ELSIF v_sorgente = 'RESO_VENDITA' THEN
+                          SELECT r.billing_account_id,
+                                 'reso ' || COALESCE(r.numero, '#' || r.id::text)
+                            INTO v_ba_src, v_src_label
+                            FROM vendite.resi r
+                           WHERE r.uid = NEW.sorgente_uid;
+                      END IF;
+
+                      -- v_src_label NULL = sorgente di un altro tipo, o non
+                      -- trovata (o non visibile): niente da confrontare.
+                      IF v_src_label IS NOT NULL
+                         AND v_ba_src IS DISTINCT FROM NEW.billing_account_id THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', TG_NAME::text, 'E_DOC_CLIENTE_DIVERSO_DA_SORGENTE',
+                              jsonb_build_object(
+                                  'campo',              'billing_account_id',
+                                  'ddt_id',             NEW.id,
+                                  'billing_account_id', NEW.billing_account_id,
+                                  'sorgente',           v_sorgente,
+                                  'sorgente_uid',       NEW.sorgente_uid,
+                                  'billing_account_sorgente', v_ba_src),
+                              NEW.tx_id,
+                              v_doc_label,
+                              v_src_label);
+                      END IF;
+                  END IF;
+
+                  -- 2. Il BA di un DDT che evade gia' righe d'ordine non cambia:
+                  --    quelle righe hanno il BA di prima.
+                  IF TG_OP = 'UPDATE'
+                     AND NEW.billing_account_id IS DISTINCT FROM OLD.billing_account_id THEN
+                      SELECT 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+                        INTO v_src_label
+                        FROM vendite.ddt_righe dr
+                        JOIN vendite.ordini_righe_fulfillment ful ON ful.ddt_riga_id = dr.id
+                        JOIN vendite.ordini_righe orr ON orr.id = ful.ordine_riga_id
+                        JOIN vendite.ordini o ON o.id = orr.ordine_id
+                       WHERE dr.ddt_id = NEW.id
+                       ORDER BY ful.id
+                       LIMIT 1;
+
+                      IF FOUND THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'vendite', TG_NAME::text, 'E_DOC_CLIENTE_DIVERSO_DA_SORGENTE',
+                              jsonb_build_object(
+                                  'campo',                 'billing_account_id',
+                                  'ddt_id',                NEW.id,
+                                  'billing_account_id_da', OLD.billing_account_id,
+                                  'billing_account_id_a',  NEW.billing_account_id,
+                                  'regola',                'DDT_CHE_EVADE_ORDINI'),
+                              NEW.tx_id,
+                              v_doc_label,
+                              v_src_label);
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_guard_cliente_sorgente()
+              IS 'Guard BEFORE INSERT OR UPDATE su vendite.ddt, fascia _z10_ (dopo trgfn_ddt_normalize): il DDT ha il billing account del documento da cui nasce (D-6 di brief-db-esecutivi-ba-coppia, «un esecutivo derivato ha il BA della sua sorgente»). (1) sorgente di testata ORDINE_VENDITA -> BA dell''ordine, RESO_VENDITA -> BA del reso, NULL compreso; (2) su UPDATE il BA non cambia se il DDT evade gia'' righe d''ordine (quelle righe hanno il BA di prima: si rifiuta il cambio, senza ricopiare il predicato del guard del fulfillment). E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, VARIADIC documento e sorgente leggibili. Ordine e reso letti come INVOKER, come il normalize. La terza porta, il fulfillment, e'' in vendite.trgfn_ordini_ful_guard_consistenza; il reso ha vendite.trgfn_resi_guard_cliente_ddt.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_guard_cliente_sorgente();

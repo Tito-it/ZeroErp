@@ -1,0 +1,59 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DELLA PRIMA COPIA: la causale del DDT fuori bozza
+#   DROP TRIGGER trg_ddt_a10_guard_causale_immutabile_upd ON vendite.ddt
+#   DROP FUNCTION vendite.trgfn_ddt_guard_causale_immutabile()
+#   Brief: brief-db-esecutivi-ba-coppia (regola del 2)
+#
+#   La regola resta, identica — stato VECCHIO diverso da DRAFT, codice
+#   E_DDT_CAUSALE_IMMUTABILE — e la dice trg_ddt_a05_lock_fuori_bozza_upd
+#   (20261009-71) sul BB vendite.trgfn_doc_testata_lock_fuori_bozza.
+#   Cambia la frase (VARIADIC: lo stato invece del numero, come i lock del
+#   magazzino): messaggi_errore.csv, stesso giro.
+#   ⚠️ Nessuno chiama la funzione fuori dal trigger (pg_proc, backend, pgTAP:
+#   censimento del 2026-10-09). La pagina manual/ omonima si cancella nello
+#   stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-72-drop-trgfn-ddt-guard-causale-immutabile-mctit.yaml
+
+  - changeSet:
+      id: 20261009-72-drop-trgfn-ddt-guard-causale-immutabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira vendite.trgfn_ddt_guard_causale_immutabile e il suo trigger: la regola la dice il BB
+        vendite.trgfn_doc_testata_lock_fuori_bozza (20261009-71). Brief: brief-db-esecutivi-ba-coppia.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*)
+                FROM pg_trigger
+               WHERE tgrelid = 'vendite.ddt'::regclass
+                 AND tgname = 'trg_ddt_a05_lock_fuori_bozza_upd'
+                 AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a10_guard_causale_immutabile_upd ON vendite.ddt;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_guard_causale_immutabile();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si rimette dai changeSet 20260819-20 e -21.
+              SELECT 1;

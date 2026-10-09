@@ -131,16 +131,23 @@ SELECT
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'EVASO'      LIMIT 1) AS stato_evaso_id,
   (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO'  LIMIT 1) AS stato_ann_id;
 
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine senza BA non esiste piu'.
+--   Il cliente si FABBRICA (BA legato all'emittente dell'operatore dal trigger z90).
+CREATE TEMP TABLE tmp_ev_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('ordine evaso');
+SET CONSTRAINTS ALL IMMEDIATE;
+
 CREATE TEMP TABLE tmp_ord_ev AS
 WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta
   )
-  SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id,
+         anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
          r.stato_draft_id, r.valuta_id, DATE '2026-06-15', false,
          '{"test_scope":"pgtap_ordine_evaso"}'::jsonb
-  FROM tmp_refs_ev r
+  FROM tmp_refs_ev r, tmp_ev_cli c
   RETURNING id
 )
 SELECT id FROM ins;

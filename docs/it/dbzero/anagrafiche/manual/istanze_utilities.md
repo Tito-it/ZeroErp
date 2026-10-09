@@ -184,8 +184,8 @@ La tabella `anagrafiche.clienti` rappresenta la **specializzazione commerciale**
 
 Regole introdotte:
 
-* **1:1 tra istanza e cliente** (il cliente vive *dentro* l’istanza);
-* un nuovo cliente implica la creazione di una **nuova istanza**, salvo casi di continuità pre-definiti;
+* il cliente vive *dentro* l’istanza: **un cliente per billing account**, quindi un'istanza ha tanti clienti quante sono le sue utility;
+* la fornitura **non cambia intestatario**: il soggetto dell'istanza è bloccato (`E_ISTANZA_SOGGETTO_IMMUTABILE`), come il ruolo del billing account e la fornitura del cliente. Un nuovo intestatario è una **nuova istanza** (il subentro); una fornitura creata sul soggetto sbagliato si annulla e si ricrea;
 * l'istanza fornisce al cliente:
 
   * indirizzo tecnico;
