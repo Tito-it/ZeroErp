@@ -25,6 +25,11 @@ AS $function$
 --        in DUE copie, e la discovery ne aveva una senza identita': al
 --        rilancio di un pull fallito scartava i PROPRI documenti e questa
 --        funzione, che li avrebbe ripresi, non veniva mai chiamata.
+-- rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa, R-2):
+--        propaga anche listino_riga_id, la riga di listino che ha dato
+--        il prezzo. Senza, il legame si fermava sulla commessa: un
+--        riallineamento che sposta la commessa su un'altra riga
+--        liberava quella gia' FATTURATA, perche' nessuna AF la citava.
 -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente COMMESSA
 --        risolta per codice_interno (immutabile), non per codice.
 -- rev 2026-07-17: propaga tipo_movimento (brief immutabilita §4c.2);
@@ -154,7 +159,9 @@ BEGIN
                ca.prezzo_base_snapshot, ca.origine_prezzo,
                ca.tipo_variazione_applicata, ca.valore_variazione_applicata,
                ca.promo_id, ca.contratto_id,
-               ca.categoria_cliente_id_snapshot, ca.classe_utenza_id_snapshot
+               ca.categoria_cliente_id_snapshot, ca.classe_utenza_id_snapshot,
+               -- La riga di listino da cui viene il prezzo (rev 2026-10-09)
+               ca.listino_riga_id
           FROM vendite.commesse_attivita ca
           -- ⭐ rev 2026-09-09 — LA SEDE UNICA DEL CRITERIO (changeSet -59).
           --   Qui non si scrive piu' quali righe si possono emettere: si
@@ -234,6 +241,7 @@ BEGIN
                 prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata,
                 valore_variazione_applicata, promo_id, contratto_id,
                 categoria_cliente_id_snapshot, classe_utenza_id_snapshot,
+                listino_riga_id,
                 emit_batch_id
             )
             VALUES (
@@ -255,6 +263,7 @@ BEGIN
                 v_row.prezzo_base_snapshot, v_row.origine_prezzo, v_row.tipo_variazione_applicata,
                 v_row.valore_variazione_applicata, v_row.promo_id, v_row.contratto_id,
                 v_row.categoria_cliente_id_snapshot, v_row.classe_utenza_id_snapshot,
+                v_row.listino_riga_id,
                 -- Il giro che consegna questa riga. NULL = nessun giro l'ha
                 -- rivendicata: e' cio' che la vista di presidio elenca.
                 p_emit_batch_id
@@ -313,6 +322,10 @@ BEGIN
                    contratto_id = v_row.contratto_id,
                    categoria_cliente_id_snapshot = v_row.categoria_cliente_id_snapshot,
                    classe_utenza_id_snapshot = v_row.classe_utenza_id_snapshot,
+                   -- La riga di listino segue la CA come lo snapshot: la
+                   -- riga gia' fatturata e' respinta sopra, quindi qui non
+                   -- si stacca mai il legame di un documento emesso.
+                   listino_riga_id = v_row.listino_riga_id,
                    -- ⭐ IL RAMO CHE CHIUDE D1+D2. Questa e' la ri-adozione di
                    --   un residuo: la riga c'era gia', il giro la riprende e
                    --   ci scrive sopra il PROPRIO nome. Da qui in poi non e'
@@ -333,7 +346,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_emit_attivita_fatturabili_da_commessa(p_commessa_id bigint, p_only_approved boolean, p_dry_run boolean, p_gruppi text[], p_emit_batch_id uuid)
-IS 'Il PULL: emette le righe di una commessa in vendite.attivita_fatturabili, in modo idempotente (sorgente COMMESSA + segment_key), propagando snapshot pricing e tipo_movimento. Quali righe: si legge la CLASSE da vendite.vw_commesse_attivita_emittibilita, vista DAL GIRO con vendite.fn_classe_emittibilita_per_giro — una riga TRATTENUTA soltanto dal lotto corrente (vendite.fn_lotto_da_emit_batch(p_emit_batch_id)) e'' PRONTA, cosi'' il RILANCIO riprende i propri documenti; una riga trattenuta da un altro lotto in gioco resta fuori; con p_only_approved = false entrano anche NON_APPROVATA e RIFIUTATA. p_gruppi restringe alle chiavi richieste (emissione mirata). p_emit_batch_id e'' anche il marchio scritto su ogni riga consegnata. Rev 2026-09-12: auto-esclusione dalla sede unica, la stessa di fn_list_commesse_emittibili (brief-db-rilancio-step-non-rivede-le-proprie-commesse, D1).';
+IS 'Il PULL: emette le righe di una commessa in vendite.attivita_fatturabili, in modo idempotente (sorgente COMMESSA + segment_key), propagando snapshot pricing e tipo_movimento. Quali righe: si legge la CLASSE da vendite.vw_commesse_attivita_emittibilita, vista DAL GIRO con vendite.fn_classe_emittibilita_per_giro — una riga TRATTENUTA soltanto dal lotto corrente (vendite.fn_lotto_da_emit_batch(p_emit_batch_id)) e'' PRONTA, cosi'' il RILANCIO riprende i propri documenti; una riga trattenuta da un altro lotto in gioco resta fuori; con p_only_approved = false entrano anche NON_APPROVATA e RIFIUTATA. p_gruppi restringe alle chiavi richieste (emissione mirata). p_emit_batch_id e'' anche il marchio scritto su ogni riga consegnata. Rev 2026-09-12: auto-esclusione dalla sede unica, la stessa di fn_list_commesse_emittibili (brief-db-rilancio-step-non-rivede-le-proprie-commesse, D1). Rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-2): propaga anche listino_riga_id, cosi'' la riga di listino di un documento emesso resta «propagata» per vendite.trgfn_listini_righe_guard_stato anche dopo che la commessa e'' stata riallineata su un''altra riga.';
 ```
 
 ---
