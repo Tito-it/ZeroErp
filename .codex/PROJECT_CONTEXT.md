@@ -217,6 +217,16 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 
 ### 🟡 Altri cantieri aperti
 
+- **Type checker del backend (D2-b): L0-L3 chiusi, committati** (`work-in-progress/piano-be-type-checker.md`;
+  `0ffe7b7c3`, `ebc54fc56`): mypy col plugin Django in CI, a cricchetto (`backend/mypy.ini`,
+  `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`
+  §mypy). Registro **620 → 2** il 2026-10-09; gli envelope JSON sono `dict[str, Any]`; BB
+  `utente_autenticato`/`utente_autenticato_id`. Trovati e corretti difetti veri (fra cui i 500 di riallinea/sblocca
+  prezzo e l'alert scadenze listini sempre in 400). Restano tre brief al team DB, il BE attende:
+  `brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C, la generazione si ferma),
+  `brief-db-riga-listino-propagata-dalla-commessa`, `brief-be-db-giorno-nel-fuso-aziendale` (i filtri per giorno
+  usano il giorno UTC: `test_giornale_trasversale_perimetro` è rosso fra le 00:00 e le 02:00). Da decidere: gli
+  stub `types-bleach`/`types-openpyxl`.
 - **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,
   archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su
   `dbops.presidi`; il pannello mostra azione → significato → a chi tocca, il digest raggruppa per chi agisce.

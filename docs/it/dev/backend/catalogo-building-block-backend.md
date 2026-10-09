@@ -5,7 +5,7 @@
 >
 > Documento vivo — aggiornare ogni volta che si aggiunge un building block.
 >
-> **Ultimo aggiornamento**: 8 ottobre 2026
+> **Ultimo aggiornamento**: 9 ottobre 2026
 
 ---
 

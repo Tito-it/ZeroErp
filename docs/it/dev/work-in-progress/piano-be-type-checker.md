@@ -3,7 +3,8 @@
 > Nato il **2026-10-08** dalla decisione di Tid su **D2-b** di
 > [migliorie-generali-BE-FE-da-test-valutazione.md](migliorie-generali-BE-FE-da-test-valutazione.md):
 > il progetto **vuole** un type checker, acceso **a cricchetto**.
-> Stato: 🟡 **in corso** — S2 e le tre dipendenze approvate il 2026-10-08.
+> Stato: ✅ **L0-L3 chiusi e committati** (`0ffe7b7c3` L0-L2, `ebc54fc56` L3). S2 e le tre
+> dipendenze approvate il 2026-10-08. Resta solo il caso NaN (sotto), che attende il team DB.
 > ✅ **L0 chiuso il 2026-10-08** (§4.5). ✅ **L1 chiuso il 2026-10-09** (§5.1):
 > mypy acceso in CI, registro alla nascita **620** rilievi. ✅ **L2 chiuso il
 > 2026-10-09** (§5.2): registro a **558**. ✅ **L3 chiuso il 2026-10-09**
@@ -180,7 +181,7 @@ e divergenti. È la regola del 2.
 
 ### 4.2 La proposta (L0)
 
-**A — Un building block, due consumatori (regola del 2, da approvare).**
+**A — Un building block, due consumatori (regola del 2, approvata da Tid il 2026-10-08).**
 In `apps/vendite/services/` una funzione sola che, data una riga di commessa,
 **costruisce gli argomenti** del resolver (articolo, uom, data con il fallback
 `data_attivita` → `competenza_mese`, BA, utility, emittente, contesto kit dal
@@ -290,7 +291,7 @@ Il seguito BE sta in quel brief (§5), non in questo piano.
 | **L0** ✅ | Il difetto di §4, nella forma di §4.2 (A-D) — fatto il 2026-10-08 (§4.5) | i test sul DB vero di §4.2 rossi prima, verdi dopo |
 | **L1** ✅ | Accensione: `requirements-dev.in/.txt` (S2), `backend/mypy.ini` (S1/S5), `scripts/check_mypy_baseline.py` + `backend/mypy.baseline.json` (S4), passo CI (S6), documentazione (§6) | tre mutazioni, tre rossi: un rilievo nuovo, una voce sanata e non tolta, un'uscita illeggibile |
 | **L2** ✅ | Smaltimento dei rilievi che sono **difetti di per sé**, qualunque sia il file: chiamate ad attributi inesistenti (`[attr-defined]`), uso del valore di una funzione che non restituisce niente (`[func-returns-value]`), funzioni che possono uscire senza `return` (`[return]`), `None` non gestito (`[union-attr]`, `[index]`) | il registro scende; per ogni difetto vero un test che lo costruisce |
-| **L3+** | Il resto, **per app**, partendo da quelle con i service più centrali (vendite, core). Ogni voce si giudica: difetto (si corregge il codice) o annotazione sbagliata (si corregge la firma) | il registro scende |
+| **L3** ✅ | Il resto: convenzione `dict[str, Any]`, correzioni alla radice, quattro lotti paralleli, BB dell'utente autenticato — fatto il 2026-10-09 (§5.3) | il registro scende a 2; un test per ogni difetto vero |
 
 ### 5.1 ✅ L1 fatto — 2026-10-09
 
@@ -316,11 +317,7 @@ Il seguito BE sta in quel brief (§5), non in questo piano.
   `PROJECT_CONTEXT.md` (la riga dell'`assert`), `api.md` §Test, registro
   migliorie (D2-b in §9).
 
-⚠️ Il registro è stato generato sul working tree del 2026-10-09, che conteneva
-anche modifiche di un lavoro in parallelo (anagrafiche, contratti, offerte,
-preventivi). Se quel lavoro si committa diverso, il cancello lo dirà: rilievi
-nuovi o voci sanate. Si allinea con `--aggiorna` (voci sanate) o correggendo il
-codice (rilievi nuovi).
+✅ Il registro era stato generato su un working tree con lavoro in parallelo: il rischio è chiuso, perché quel lavoro è entrato nello stesso commit (`0ffe7b7c3`) e il cancello era verde sull'albero committato.
 
 ### 5.2 ✅ L2 fatto — 2026-10-09
 
@@ -453,7 +450,7 @@ anche in `diagnose`. Test per ciascuno. Registro **47 → 2**; suite intera verd
 - **45** sono `request.user.id` / `request.user` (`int | None`, `User |
   AnonymousUser`) passati dove serve l'utente autenticato. A runtime l'utente
   c'è sempre (`ZeroERPPermission` rifiuta l'anonimo), ma il tipo non lo sa.
-  Proposta (regola del 2, **da approvare**): un building block in
+  Proposta (regola del 2, ✅ **approvata e fatta** il 2026-10-09, vedi il seguito sopra): un building block in
   `apps/core/api/endpoint_helpers.py`, `utente_autenticato(request) -> User` e
   `utente_autenticato_id(request) -> int`, che solleva `NotAuthenticated` (401)
   sull'anonimo invece di lasciar passare `None`; le sedi (12 file) passano al BB.

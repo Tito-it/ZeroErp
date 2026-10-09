@@ -633,7 +633,11 @@ sanata e non tolta, su un'uscita illeggibile — provato per mutazione.
 ⭐ Prima ancora di accenderlo, la misura ha trovato un **500 vero**: riallinea e
 sblocca prezzo di commessa chiamavano un metodo tolto da sei mesi, con il test
 mockato verde. Chiuso nello stesso giro (L0 del piano). Lo smaltimento del
-registro è nel [piano](piano-be-type-checker.md) (L2, L3+). Sede:
+registro è nel [piano](piano-be-type-checker.md): ✅ **L2 e L3 fatti il 2026-10-09**, registro
+**620 → 2** (i 2 attendono un codice d'errore dal team DB), con altri difetti veri trovati e
+corretti strada facendo (alert scadenze listini sempre in 400, numero del preventivo nella pratica
+di approvazione prezzo, data vuota nel pricing, `int()` grezzi). Committato in `0ffe7b7c3` e
+`ebc54fc56`. Sede:
 [sicurezza-e-qualita-statica.md](../sicurezza-e-qualita-statica.md) §mypy.
 
 ### ✅ D3-a — Lo schema OpenAPI si dichiara — 2026-09-09
