@@ -10,7 +10,9 @@
 > la può passare.
 > **Decisione:** di Tid, 2026-10-08 — una riga di listino che ha dato il prezzo
 > a una riga di commessa **diventa immutabile** (è «propagata»).
-> **Stato:** 🟡 aperto, in attesa del team DB.
+> **Stato:** ✅ R-1, R-2, R-5 applicati a DB il 2026-10-09, pgTAP verdi; R-3 e
+> R-4 decisi (§6). ⏳ Tocca al BE (§5). Debito aperto in un brief a
+> parte: [brief-db-coerenza-listino-della-riga-di-commessa](brief-db-coerenza-listino-della-riga-di-commessa.md).
 
 ## 1. La regola
 
@@ -72,3 +74,103 @@ riga di listino «propagata» solo se qualcuno ha premuto «riallinea»).
 3. Test sul DB vero: la rettifica N6 di una riga di listino usata da una
    commessa risponde `E_RIGA_LISTINO_PROPAGATA` (oggi passa).
 4. Se R-4 è sì: il kit, con la sua colonna, nello stesso giro.
+
+## 6. Esito DB (2026-10-09, `dev/db-tid`)
+
+### 6.1 Decisioni
+
+* **D-1 (R-3) — «propagata» = citata ADESSO**, cioè com'è oggi il guard. Quello che
+  deve restare riproducibile è il prezzo **fatturato**, e con R-2 lo garantisce
+  l'attività fatturabile emessa, che cita la riga di listino e la blocca. Dopo un
+  riallineamento la riga di commessa ha un prezzo nuovo e non dipende più dalla
+  riga vecchia. «Citata almeno una volta» richiederebbe un registro per proteggere
+  un prezzo che nessun documento porta. **Per il BE (facoltativo):** scrivere l'id
+  della riga di listino nella voce di `meta.riallineamenti`, così la storia del
+  prezzo resta leggibile.
+* **D-2 (R-4) — il kit: nessun legame nuovo.** Il guard dei componenti
+  (`trgfn_listini_righe_comp_guard_immutabilita_v5`) è più severo di quello delle
+  righe: DELETE sempre bloccato, UPDATE di prezzo, IVA e validità bloccato in ogni
+  versione non in `BOZZA`, senza l'eccezione N6. Un componente che ha dato un
+  prezzo da una versione `ATTIVA` o `CHIUSA` è già immutabile. Non servono una
+  colonna nuova né un guard. Il §5.4 del BE quindi non scatta.
+  ⚠️ Vale per le versioni `ATTIVA`/`CHIUSA`. Il **percorso rapido** del resolver
+  (`p_listino_versione_id_preferito`) non guarda lo stato della versione, quindi un
+  prezzo può venire da una `BOZZA`, dove righe e componenti restano modificabili
+  per scelta. Riguarda righe e kit allo stesso modo, ed è finito in D-3.
+* **D-3 — la coerenza del legame va in un brief a parte.** Nessuna regola dice che
+  la riga di listino citata sia della versione citata, che il listino sia
+  dell'emittente della commessa e che la versione sia in vigore. Senza la regola
+  sull'emittente, il guard dei listini (INVOKER, sotto RLS) può non vedere una
+  commessa di un altro emittente e giudicare la riga «non propagata». Un controllo
+  nella sola madre lascerebbe scoperti l'`UPDATE` diretto del BE e l'emissione:
+  la sede giusta è un trigger della tabella. →
+  [brief-db-coerenza-listino-della-riga-di-commessa](brief-db-coerenza-listino-della-riga-di-commessa.md).
+* **Builder `dbops.fn_pgtap_crea_commessa_attivita`: non toccato.** Costruisce
+  un'attività senza listino, e così deve restare: il listino è il caso del test.
+  Il pgTAP di R-5 chiama la madre direttamente.
+
+### 6.2 Cosa è stato scritto
+
+| File | Che cosa |
+| --- | --- |
+| `20_code/vendite/20261009-04-update-fn-upsert-commessa-attivita-listino-riga` | R-1: `p_listino_riga_id` in coda (`DEFAULT NULL`), scritto in INSERT e `ON CONFLICT`. DROP + CREATE: un parametro in più con DEFAULT creerebbe un overload ambiguo. Firma con i `%TYPE` dal 20260818-29, corpo dall'oggetto vivo |
+| `20_code/vendite/20261009-05-update-fn-batch-upsert-commessa-attivita-listino-riga` | R-1: la chiave JSON `listino_riga_id`, facoltativa, passata alla madre |
+| `20_code/vendite/20261009-06-update-fn-emit-attivita-propaga-listino-riga` | R-2: l'emissione copia `listino_riga_id` su `attivita_fatturabili` (INSERT e UPDATE) |
+| `80_data/changelog/20261009-07-upsert-fk-index-policy-riga-listino-propagata` + `sql/dbops/fk_index_policy_riga_listino_propagata.csv` | gli indici delle due FK su `listino_riga_id`, da `false` a `true`, **parziali** `IS NOT NULL` (linee-guida-sql §8.4). Con la colonna popolata, il guard la interroga a ogni modifica di una riga di listino `ATTIVA`, e così fa il controllo FK al DELETE |
+| `db/pgtap/vendite/test-riga-listino-propagata-dalla-commessa-v1.sql` | R-5, 9 test (sotto) |
+
+**Chiamanti della madre: nessuno toccato.** Censiti sul nome: tre funzioni DB, il
+builder pgTAP, il backend e i pgTAP. Passano tutti argomenti **nominali**, quindi
+il parametro in coda non sposta nessuno.
+
+**pgTAP di R-5:**
+1. c'è una sola madre, ed ha il parametro;
+2. il push scrive R1;
+3. UPDATE di R1 → `E_RIGA_LISTINO_PROPAGATA`;
+4. DELETE di R1 → `E_RIGA_LISTINO_PROPAGATA`;
+5. una riga non citata resta modificabile;
+6. il re-push dal **batch** sullo stesso segmento porta la commessa su R2 (ramo
+   `ON CONFLICT`);
+7. R1 torna modificabile (D-1);
+8. l'emissione porta R2 sull'attività fatturabile;
+9. R2 ora è bloccata.
+
+I rifiuti si asseriscono sul **codice**, letto dal `CONSTRAINT_NAME`
+dell'eccezione, e non su un P0001 qualunque.
+
+### 6.3 Prova pre-apply
+
+Fatta su un **cluster PG18 usa-e-getta**: clone del catalogo di dbdev
+(`pg_dump -s` come app, dati con `--enable-row-security`) con i ruoli veri. L'SQL
+è **estratto** dagli YAML ed eseguito da `titodb`, i test girano come
+`zeroerp_app`.
+
+* **Applicazione:** i tre changeSet passano. Resta **una** sola madre, e i grant
+  all'app si ripristinano dai default privileges.
+* **pgTAP nuovo:** 9/9 dopo; prima si ferma alla prima chiamata, perché il
+  parametro non esiste.
+* **Mutazioni:** senza `-05` cade il test 6 (e a cascata l'8 e il 9); senza `-06`
+  cade l'8.
+* **Regressione:** 75 pgTAP che nominano le tre funzioni, il builder o
+  `listini_righe`, prima e dopo sugli stessi file: **362 ok / 29 not ok in
+  entrambi**, stessi nomi dei rossi. ⚠️ Sul clone arrivano in fondo solo **22 file
+  su 75**: gli altri pescano un billing account dai dati, che sotto RLS il clone
+  non ha. Si fermano allo **stesso** errore prima e dopo, quindi il confronto non
+  dice niente su quelle asserzioni. La corsa che conta resta quella di Tid su dbdev.
+* **`plpgsql_check`** sulle tre funzioni: zero errori. Sul batch restano i due
+  avvisi preesistenti sulla variabile `i`, identici a prima.
+* **`-07`:** l'upsert del CSV e `CALL dbops.apply_fk_index_policy()` (in ROLLBACK)
+  creano i due indici parziali, e `dbops.vw_fk_senza_indice` non elenca più le due
+  FK.
+
+### 6.4 Per il BE (§5)
+
+* la chiave del payload del batch è **`listino_riga_id`**;
+* il parametro della madre è **`p_listino_riga_id`**;
+
+### 6.5 Applicato (2026-10-09, Tid)
+
+Su dev, `-04`…`-07` risultano `EXECUTED` in `databasechangelog`. C'è una sola
+`fn_upsert_commessa_attivita`, i due indici parziali esistono e i pgTAP sono verdi.
+Lato DB questo brief è chiuso. Resta aperto per il §5 (BE); il debito D-3 vive nel
+suo brief.

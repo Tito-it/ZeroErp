@@ -31,6 +31,10 @@ BEGIN
   -- firma OBBLIGATORIA (il caller deve includerle, anche
   -- come NULL JSON, per garantire che la riga snapshot sia
   -- coerente).
+  -- rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa,
+  -- R-1): la chiave listino_riga_id arriva alla madre. FACOLTATIVA,
+  -- come listino_versione_id: assente o null = nessuna riga di
+  -- listino (prezzo manuale, onere, rettifica, stadio BUNDLE).
   -- =========================================================
 
   IF p_rows IS NULL OR jsonb_typeof(p_rows) <> 'array' THEN
@@ -82,6 +86,7 @@ BEGIN
         p_valuta_id                     => (v_row ->> 'valuta_id')::integer,
         p_area_geografica_id            => (v_row ->> 'area_geografica_id')::bigint,
         p_listino_versione_id           => (v_row ->> 'listino_versione_id')::bigint,
+        p_listino_riga_id               => (v_row ->> 'listino_riga_id')::bigint,
         p_prezzo_bloccato               => (v_row ->> 'prezzo_bloccato')::boolean,
         p_pricing_mode                  => (v_row ->> 'pricing_mode')::varchar,
         p_prezzo_da_riallineare         => (v_row ->> 'prezzo_da_riallineare')::boolean,
@@ -116,7 +121,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_batch_upsert_commessa_attivita(p_rows jsonb)
-IS 'Batch wrapper su fn_upsert_commessa_attivita: array jsonb in input, contatori inserted/updated + errors collect-all. Pricing v5: il payload deve includere le 8 chiavi snapshot (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot).';
+IS 'Batch wrapper su fn_upsert_commessa_attivita: array jsonb in input, contatori inserted/updated + errors collect-all. Pricing v5: il payload deve includere le 8 chiavi snapshot (prezzo_base_snapshot, origine_prezzo, tipo_variazione_applicata, valore_variazione_applicata, promo_id, contratto_id, categoria_cliente_id_snapshot, classe_utenza_id_snapshot). rev 2026-10-09 (brief-db-riga-listino-propagata-dalla-commessa R-1): chiave facoltativa listino_riga_id, la riga di listino che ha dato il prezzo; e'' il legame che rende la riga di listino «propagata» per vendite.trgfn_listini_righe_guard_stato.';
 ```
 
 ---
