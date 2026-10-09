@@ -98,10 +98,10 @@ i tipi indirizzo obbligatori non compilati, secondo la matrice indirizzi del tip
 | `nome` | string | Si (PF) | Nome della persona fisica |
 | `ragione_sociale` | string | Si (PG) | Ragione sociale della persona giuridica |
 | `codice_fiscale` | string | Si (PF), facoltativo (PG) | Codice fiscale — validato per congruenza (PF) |
-| `partita_iva` | string | No | Partita IVA |
+| `partita_iva` | string | No | Partita IVA — anche per la ditta individuale (PF), dove la pretende il DB |
 | `stato_iso2` | string | No | Codice ISO2 dello stato (default: `IT`) |
 | `data_nascita` | string (ISO) | No | Data di nascita (PF), formato `YYYY-MM-DD` |
-| `sesso` | string | No | `M` o `F` (PF, default: `M`) |
+| `sesso` | string | Secondo il tipo | `M`, `F` o `X` («serve, ma non si puo' stabilire»); vuoto = non indicato. **Nessun default**: quando serve lo dice `sesso_policy` del tipo (vedi sotto) |
 | `auto_clone` | bool | No | Clona indirizzo per tipi obbligatori mancanti (default: `true`) |
 | `contatto` | object | Si | Contatto principale (vedi sotto) |
 | `contatto.nominativo` | string | Si | Nome del contatto |
@@ -123,6 +123,21 @@ i tipi indirizzo obbligatori non compilati, secondo la matrice indirizzi del tip
 >   `tipo_contatto_id`) → solleva `E_CONTATTO_INCOMPLETO` con
 >   `context.missing` (lista campi mancanti) per highlight UI
 > - `VALID` (`nominativo` + `tipo_contatto_id` presenti) → procede
+
+> **Sesso e natura (brief-db-sesso-senza-default, 2026-10-09)**: il backend
+> non controlla il sesso e non lo inventa. Una persona fisica nasce con il
+> **tipo scelto** (privato `PR` o ditta individuale `DI`) e la sua partita IVA:
+> fino a quella data nasceva sempre `PR` e la P.IVA si perdeva. La regola la
+> tiene il guard `anagrafiche.trgfn_soggetti_guard_sesso_policy`, che legge
+> `config.tipi_soggetto_dettaglio.sesso_policy`:
+>
+> | `sesso_policy` | Tipi | Sesso vuoto | `M`/`F`/`X` |
+> | --- | --- | --- | --- |
+> | `REQUIRED` | privato | `E_SESSO_OBBLIGATORIO` (400) | ✅ |
+> | `OPTIONAL` | ditta individuale | ✅ | ✅ |
+> | `NONE` | societa', enti | ✅ | `E_SESSO_NON_AMMESSO` (400) |
+>
+> I due rifiuti portano `error.fields = ["sesso"]`; valgono anche sulla `PATCH`.
 | `dati_societari` | object | No | Dati societari (solo PG, vedi sotto) |
 | `dati_societari.forma_giuridica_id` | int | No | ID forma giuridica |
 | `dati_societari.id_prov_iscri_rea` | int | No | Provincia iscrizione REA |
@@ -311,6 +326,7 @@ Aggiorna uno o piu' campi del soggetto. Invia solo i campi da modificare.
 | `ragione_sociale` | string | Ragione sociale (PG) |
 | `codice_fiscale` | string | Codice fiscale |
 | `partita_iva` | string | Partita IVA |
+| `sesso` | string | `M`, `F`, `X`; vuoto = `NULL`. Lo giudica il guard secondo `sesso_policy` (vedi la creazione) |
 
 Inviare solo i campi che si intende modificare.
 
@@ -933,7 +949,7 @@ Tutti i campi sono obbligatori.
 | `cognome` | string | Si | Cognome |
 | `nome` | string | Si | Nome |
 | `data_nascita` | string (ISO) | Si | Data di nascita, formato `YYYY-MM-DD` |
-| `sesso` | string | Si | `M` o `F` |
+| `sesso` | string | Si | `M` o `F`. Con `X` il calcolo e' rifiutato (`E_ANAG_VALIDAZIONE`, campo `sesso`): il codice fiscale codifica solo M e F |
 | `comune_nascita_id` | int | Si | ID del comune di nascita (per ricavare il codice catastale) |
 
 ### Risposta (200)

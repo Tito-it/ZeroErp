@@ -318,13 +318,19 @@ class SoggettiRepository:
 
     # Scopo: Crea soggetto PF chiamando la funzione DB building block.
     #        Obiettivo: INSERT soggetto + contatto default, tutto in funzione PG.
+    # ⛔ `sesso` e `tipo_soggetto_dettaglio_id` senza default, come a DB: la
+    #    natura e il sesso non si inventano (brief-db-sesso-senza-default D4).
+    #    `sesso=None` e' un valore legittimo (DI, OPTIONAL): se la natura lo
+    #    pretende, rifiuta il guard `trgfn_soggetti_guard_sesso_policy`.
     def crea_soggetto_pf(
         self, *, cognome: str, nome: str, codice_fiscale: str, email: str,
-        sesso: str, data_nascita: str | None = None,
+        sesso: str | None, tipo_soggetto_dettaglio_id: int,
+        data_nascita: str | None = None,
         # None = il default di `config.parameters`, risolto dalla funzione DB.
         stato_iso2: str | None = None,
         comune_nascita_id: int | None = None,
         tipo_contatto_id: int | None = None,
+        partita_iva: str | None = None,
     ) -> str:
         sql = """
             SELECT anagrafiche.fn_crea_soggetto_pf(
@@ -336,13 +342,16 @@ class SoggettiRepository:
                 p_sesso             := %s,
                 p_stato_iso2        := %s,
                 p_comune_nascita_id := %s,
-                p_tipo_contatto_id  := %s
+                p_tipo_contatto_id  := %s,
+                p_tipo_soggetto_dettaglio_id := %s,
+                p_partita_iva       := %s
             )
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 cognome, nome, codice_fiscale, email,
                 data_nascita, sesso, stato_iso2, comune_nascita_id, tipo_contatto_id,
+                tipo_soggetto_dettaglio_id, partita_iva,
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -418,7 +427,9 @@ class SoggettiRepository:
         #    trasformerebbe un valore sbagliato in una violazione di NOT NULL —
         #    un errore piu' oscuro di quello che gia' c'e'. Il valore lo valida
         #    il service prima di arrivare qui.
-        _NULLABLE = {"codice_fiscale", "partita_iva", "data_nascita", "comune_id"}
+        # `sesso` (2026-10-09): il vuoto e' «non indicato», cioe' NULL — per la
+        #    DI e' ammesso; `''` lo rifiuterebbe il CHECK `chk_soggetti_sesso`.
+        _NULLABLE = {"codice_fiscale", "partita_iva", "sesso", "data_nascita", "comune_id"}
         # Copia con l'alias frontend → colonna DB applicato: `data` e' spesso
         # `request.data`, e non si muta l'input del chiamante.
         mapped = {SOGGETTO_UPDATE_ALIAS.get(k, k): v for k, v in data.items()}
@@ -974,7 +985,7 @@ class SoggettiRepository:
                    ts.natura_soggetto,
                    tsd.cf_obbligatorio, tsd.piva_obbligatoria,
                    tsd.formato_cf, tsd.formato_piva,
-                   tsd.dati_societari_policy
+                   tsd.dati_societari_policy, tsd.sesso_policy
               FROM config.tipi_soggetto_dettaglio tsd
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
              WHERE (%s::varchar[] IS NULL OR ts.id = ANY(%s::varchar[]))

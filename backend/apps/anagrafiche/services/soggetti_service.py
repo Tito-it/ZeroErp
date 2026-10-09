@@ -183,7 +183,7 @@ class SoggettiService:
 
         with transaction.atomic():
             if natura == "PF":
-                soggetto_id = self._create_pf(payload)
+                soggetto_id = self._create_pf(payload, tipo_id)
             else:
                 soggetto_id = self._create_pg(payload, tipo_id)
 
@@ -204,6 +204,9 @@ class SoggettiService:
             payload, allowed=_UPDATE_SOGGETTO_KEYS, message="Payload soggetto non valido.",
         )
         dati = self._normalizza_flag_fiscali(payload)
+        # La stessa forma della creazione: «x» e' «X», non un rifiuto del CHECK.
+        if "sesso" in dati:
+            dati["sesso"] = _V.optional_upper(dati, "sesso")
         return update_with_dedup(
             lambda: self._repo.update_soggetto(soggetto_id, dati),
             "Codice fiscale o partita IVA duplicata.",
@@ -517,7 +520,7 @@ class SoggettiService:
 
         cf = (payload.get("codice_fiscale") or "").strip().upper()
         piva = (payload.get("partita_iva") or "").strip().upper()
-        sesso = (payload.get("sesso") or "").strip().upper() or None
+        sesso = _V.optional_upper(payload, "sesso")
         data_nascita_raw = payload.get("data_nascita")
         comune_nascita_id = optional_int(payload, "comune_nascita_id")
 
@@ -571,7 +574,16 @@ class SoggettiService:
 
         cognome = require_str(payload, "cognome", "Cognome obbligatorio.")
         nome = require_str(payload, "nome", "Nome obbligatorio.")
-        sesso = require_str(payload, "sesso", "Sesso obbligatorio.")
+        sesso = require_str(payload, "sesso", "Sesso obbligatorio.").upper()
+        # ⛔ Il codice fiscale codifica solo M e F (il giorno +40). Con `X`
+        #    («non si puo' stabilire») un calcolo darebbe il CF di un uomo:
+        #    un sesso inventato, rientrato dalla finestra.
+        ErrorManager.require(
+            sesso in ("M", "F"),
+            code=E_ANAG_VALIDAZIONE,
+            message="Il codice fiscale si calcola solo con sesso M o F.",
+            context={"field": "sesso"},
+        )
         comune_id = optional_int(payload, "comune_nascita_id")
         ErrorManager.require(
             comune_id is not None and comune_id > 0,
@@ -624,19 +636,26 @@ class SoggettiService:
                 fields=tuple(missing),
             )
 
-    # Scopo: Crea soggetto PF via building block DB.
+    # Scopo: Crea soggetto PF (privato PR o ditta individuale DI) via building
+    #        block DB, con la natura di dettaglio SCELTA e la partita IVA.
     #        Include validazione congruenza CF con dati anagrafici (data, sesso, comune).
-    def _create_pf(self, payload: dict[str, Any]) -> str:
+    # ⚠️ Fino al 2026-10-09 la funzione DB cablava `PR` e non riceveva la P.IVA:
+    #    chi sceglieva «Ditta individuale» otteneva un privato, e la P.IVA si
+    #    perdeva senza errore (brief-db-sesso-senza-default §2).
+    def _create_pf(self, payload: dict[str, Any], tipo_id: int) -> str:
         cognome = require_str(payload, "cognome", "Cognome obbligatorio.")
         nome = require_str(payload, "nome", "Nome obbligatorio.")
         codice_fiscale = require_str(payload, "codice_fiscale", "Codice fiscale obbligatorio.")
-        # ⛔ Obbligatorio, mai un default silenzioso (decisione di Tid,
-        #    2026-10-09): il form puo' PROPORRE «M», ma a video; un sesso che
-        #    nessuno ha visto non si scrive. Fino a quel giorno qui c'era `"M"`.
-        sesso = require_str(payload, "sesso", "Sesso obbligatorio.")
+        # ⛔ Nessun controllo e nessun default qui (decisione di Tid,
+        #    2026-10-09): QUANDO il sesso serve lo dice la natura
+        #    (`sesso_policy`), e lo giudica il guard
+        #    `trgfn_soggetti_guard_sesso_policy`, che accende il campo dal canale
+        #    `COLUMN`. Un controllo qui sarebbe una seconda sede della regola, e
+        #    per la DI (sesso facoltativo) una sede sbagliata.
+        sesso = _V.optional_upper(payload, "sesso")
 
         # Validazione congruenza CF con dati anagrafici
-        self._valida_cf_congruenza(payload, codice_fiscale)
+        self._valida_cf_congruenza(payload, codice_fiscale, sesso)
 
         contatto = payload.get("contatto") or {}
         # Regola unificata via classify_contatto_payload (Fase 5): per il
@@ -654,6 +673,8 @@ class SoggettiService:
                 stato_iso2=optional_str(payload, "stato_iso2"),
                 comune_nascita_id=optional_int(payload, "comune_nascita_id"),
                 tipo_contatto_id=optional_int(contatto, "tipo_contatto_id"),
+                tipo_soggetto_dettaglio_id=tipo_id,
+                partita_iva=optional_str(payload, "partita_iva"),
             ),
             "Soggetto con questo codice fiscale gia' esistente.",
         )
@@ -911,7 +932,11 @@ class SoggettiService:
 
     # Scopo: Validazione congruenza CF italiano con dati anagrafici (data, sesso, comune).
     #        Non blocca se i dati opzionali non sono forniti — valida solo quelli presenti.
-    def _valida_cf_congruenza(self, payload: dict[str, Any], codice_fiscale: str) -> None:
+    # ⚠️ `sesso` gia' normalizzato dal chiamante: riletto grezzo dal payload,
+    #    « m » non era ne' M ne' F e la congruenza col CF si saltava in silenzio.
+    def _valida_cf_congruenza(
+        self, payload: dict[str, Any], codice_fiscale: str, sesso: str | None,
+    ) -> None:
         from datetime import date as date_type
 
         data_nascita = None
@@ -921,8 +946,6 @@ class SoggettiService:
                 data_nascita = date_type.fromisoformat(dn_str)
             except ValueError:
                 pass
-
-        sesso = payload.get("sesso")
 
         codice_catastale = None
         comune_id = optional_int(payload, "comune_nascita_id") or optional_int(payload, "comune_id")

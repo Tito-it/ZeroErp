@@ -55,7 +55,8 @@ quali sono obbligatori per il tipo scelto.
 | `codice_interno`, `descrizione` | idem | |
 | `natura_soggetto` | `config.tipi_soggetto.id` | la natura (codice testo), è il valore da passare al §2 |
 | `cf_obbligatorio`, `piva_obbligatoria` | `tipi_soggetto_dettaglio` | bool |
-| `dati_societari_policy` | `tipi_soggetto_dettaglio` | enum `config.dati_societari_policy_enum` |
+| `dati_societari_policy` | `tipi_soggetto_dettaglio` | enum `config.presenza_policy_enum` (`NONE`/`OPTIONAL`/`REQUIRED`) |
+| `sesso_policy` | `tipi_soggetto_dettaglio` | idem: `REQUIRED` asterisco, `OPTIONAL` vuoto ammesso, `NONE` campo nascosto (dal 2026-10-09) |
 
 Ordine per `id`. ⚠️ Nessun filtro di attività: tornano **tutte** le righe (il
 commento del repository dice «solo attivi», la query no).

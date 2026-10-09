@@ -39,7 +39,11 @@ Indice test eseguiti:
 29) test_by_id_chiavi_entrambe_o_nessuna — 0 o 2 chiavi → E_ANAG_VALIDAZIONE
 30) test_by_id_uuid_malformato — soggetto_id non-UUID → E_ANAG_VALIDAZIONE
 31) test_by_id_not_found — record inesistente → E_ANAG_NOT_FOUND
-32) test_create_soggetto_pf_senza_sesso — sesso assente → E_ANAG_VALIDAZIONE, niente default «M»
+32) test_create_soggetto_pf_senza_sesso_non_lo_inventa — sesso assente → None al repository: lo giudica il guard DB
+33) test_create_soggetto_pf_passa_dettaglio_e_piva — DI: dettaglio scelto e P.IVA arrivano al repository
+34) test_genera_cf_con_sesso_x_rifiutato — il CF codifica solo M/F: con X niente calcolo
+35) test_update_soggetto_sesso_stessa_forma_della_creazione — «x» → «X», vuoto → None
+36) test_create_soggetto_pf_congruenza_cf_legge_il_sesso_normalizzato — « f » su CF maschile → E_ANAG_VALIDAZIONE
 """
 
 from unittest import TestCase
@@ -154,6 +158,8 @@ class TestSoggettiCreate(TestCase):
         })
         self.assertEqual(result["id"], FAKE_UUID)
         repo.crea_soggetto_pf.assert_called_once()
+        kwargs = repo.crea_soggetto_pf.call_args.kwargs
+        self.assertEqual((kwargs["sesso"], kwargs["tipo_soggetto_dettaglio_id"]), ("M", 1))
 
     @patch(SOGG_REPO)
     def test_create_soggetto_missing_tipo(self, mock_repo):
@@ -198,9 +204,59 @@ class TestSoggettiCreate(TestCase):
         self.assertEqual(ctx.exception.code, "E_ANAG_DUPLICATO")
 
     @patch(SOGG_REPO)
-    def test_create_soggetto_pf_senza_sesso(self, mock_repo):
-        """Sesso assente → E_ANAG_VALIDAZIONE: il form lo propone a video, il
-        backend non lo inventa (decisione di Tid, 2026-10-09)."""
+    def test_create_soggetto_pf_senza_sesso_non_lo_inventa(self, mock_repo):
+        """Sesso assente (o vuoto) → None al repository, nessun default e nessun
+        controllo: QUANDO serve lo dice la natura, e lo giudica il guard DB
+        `trgfn_soggetti_guard_sesso_policy` (brief-db-sesso-senza-default §6).
+        Il rifiuto vero lo prova `tests/db/test_soggetti_sesso_policy_db`."""
+        repo = mock_repo.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        repo.crea_soggetto_pf.return_value = FAKE_UUID
+        repo.get_soggetto_contatti.return_value = [{"id": 1}]
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        for sesso in (None, "", "  "):
+            with self.subTest(sesso=sesso):
+                repo.crea_soggetto_pf.reset_mock()
+                SoggettiService().create_soggetto({
+                    "tipo_soggetto_dettaglio_id": 1,
+                    "cognome": "Rossi",
+                    "nome": "Mario",
+                    "codice_fiscale": "RSSMRA80A01H501Z",
+                    "sesso": sesso,
+                    "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1, "email": "m@r.it"},
+                })
+                self.assertIsNone(repo.crea_soggetto_pf.call_args.kwargs["sesso"])
+
+    @patch(SOGG_REPO)
+    def test_create_soggetto_pf_passa_dettaglio_e_piva(self, mock_repo):
+        """Ditta individuale: il dettaglio scelto e la P.IVA arrivano al
+        repository. Fino al 2026-10-09 la funzione DB cablava PR e la P.IVA si
+        perdeva: la DI nasceva privato."""
+        repo = mock_repo.return_value
+        repo.get_natura_by_tipo_id.return_value = "PF"
+        repo.crea_soggetto_pf.return_value = FAKE_UUID
+        repo.get_soggetto_contatti.return_value = [{"id": 1}]
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().create_soggetto({
+            "tipo_soggetto_dettaglio_id": 2,
+            "cognome": "Rossi",
+            "nome": "Mario",
+            "codice_fiscale": "RSSMRA80A01H501Z",
+            "partita_iva": " 01234567890 ",
+            "sesso": "x",
+            "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1, "email": "m@r.it"},
+        })
+        kwargs = repo.crea_soggetto_pf.call_args.kwargs
+        self.assertEqual(
+            (kwargs["tipo_soggetto_dettaglio_id"], kwargs["partita_iva"], kwargs["sesso"]),
+            (2, "01234567890", "X"),
+        )
+
+    @patch(SOGG_REPO)
+    def test_create_soggetto_pf_congruenza_cf_legge_il_sesso_normalizzato(self, mock_repo):
+        """« f » e' F: su un CF maschile la congruenza lo rifiuta. Prima la
+        verifica rileggeva il sesso grezzo, « F » non era ne' M ne' F e il
+        controllo si saltava in silenzio."""
         repo = mock_repo.return_value
         repo.get_natura_by_tipo_id.return_value = "PF"
         from apps.anagrafiche.services.soggetti_service import SoggettiService
@@ -210,10 +266,24 @@ class TestSoggettiCreate(TestCase):
                 "cognome": "Rossi",
                 "nome": "Mario",
                 "codice_fiscale": "RSSMRA80A01H501Z",
+                "sesso": " f ",
                 "contatto": {"nominativo": "Mario Rossi", "tipo_contatto_id": 1, "email": "m@r.it"},
             })
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         repo.crea_soggetto_pf.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_genera_cf_con_sesso_x_rifiutato(self, mock_repo):
+        """Il CF codifica solo M e F: con X un calcolo darebbe il CF di un
+        uomo, cioe' un sesso inventato."""
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        with self.assertRaises(ServiceError) as ctx:
+            SoggettiService().genera_cf({
+                "cognome": "Rossi", "nome": "Mario", "sesso": "X",
+                "comune_nascita_id": 1, "data_nascita": "1980-01-01",
+            })
+        self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.get_codice_catastale.assert_not_called()
 
     @patch(SOGG_REPO)
     def test_create_soggetto_pg_ok(self, mock_repo):
@@ -259,6 +329,19 @@ class TestSoggettiUpdate(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             SoggettiService().update_soggetto(FAKE_UUID, {"cognome": "X"})
         self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+
+    @patch(SOGG_REPO)
+    def test_update_soggetto_sesso_stessa_forma_della_creazione(self, mock_repo):
+        """Il sesso in modifica ha la forma della creazione: «x» e' «X», il
+        vuoto e' None. Prima la creazione normalizzava e l'update no: «x»
+        finiva nel CHECK `chk_soggetti_sesso` come rifiuto d'integrita'."""
+        mock_repo.return_value.update_soggetto.return_value = True
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        for sesso, atteso in ((" x ", "X"), ("f", "F"), ("  ", None), (None, None)):
+            with self.subTest(sesso=sesso):
+                SoggettiService().update_soggetto(FAKE_UUID, {"sesso": sesso})
+                payload = mock_repo.return_value.update_soggetto.call_args.args[1]
+                self.assertEqual(payload["sesso"], atteso)
 
     @patch(SOGG_REPO)
     def test_update_soggetto_flag_fiscali_ok(self, mock_repo):

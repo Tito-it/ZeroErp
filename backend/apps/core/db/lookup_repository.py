@@ -20,7 +20,7 @@ from django.db import connection
 class LookupRepository:
     """Lookup lettura per tabelle config/anagrafiche cross-dominio."""
 
-    # Scopo: Restituisce i tipi soggetto dettaglio con natura, policy CF/PIVA/dati societari.
+    # Scopo: Restituisce i tipi soggetto dettaglio con natura, policy CF/PIVA/dati societari/sesso.
     # JOIN config.tipi_soggetto_dettaglio + config.tipi_soggetto per natura_soggetto.
     # Filtro: solo record con stato attivo (stato_id via JOIN config.stati).
     def list_tipi_soggetto_dettaglio(self) -> list[dict[str, Any]]:
@@ -31,7 +31,8 @@ class LookupRepository:
                    ts.id AS natura_soggetto,
                    tsd.cf_obbligatorio,
                    tsd.piva_obbligatoria,
-                   tsd.dati_societari_policy
+                   tsd.dati_societari_policy,
+                   tsd.sesso_policy
               FROM config.tipi_soggetto_dettaglio tsd
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
              ORDER BY tsd.id
