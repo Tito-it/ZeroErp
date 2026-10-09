@@ -213,8 +213,11 @@ class CommesseRepositoryUnitTests(TestCase):
             sorgente_uid="PREV-001",
         )
         self.assertEqual(result, 99)
-        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        sql, args = mock_cursor_factory.return_value.execute.call_args[0]
         self.assertIn("fn_link_commessa_sorgente", sql)
+        # Segnaposti e valori si corrispondono: un `p_… => %s` senza valore
+        # rende la chiamata irrisolvibile, e il mock da solo non lo vede.
+        self.assertEqual(sql.count("%s"), len(args))
 
     # Scopo: Verifica che upsert_attivita chiami la fn DB e restituisca UpsertAttivitaResult.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -239,8 +242,9 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertIsInstance(result, UpsertAttivitaResult)
         self.assertEqual(result.attivita_id, 77)
         self.assertTrue(result.is_new)
-        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        sql, args = mock_cursor_factory.return_value.execute.call_args[0]
         self.assertIn("fn_upsert_commessa_attivita", sql)
+        self.assertEqual(sql.count("%s"), len(args))
 
     # Scopo: Verifica default di CommessaAttivitaInput (#3, #4, #5, #10).
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -771,6 +775,7 @@ class CommesseRepositoryUnitTests(TestCase):
             contratto_id=None,
             categoria_cliente_id_snapshot=None,
             classe_utenza_id_snapshot=4,
+            listino_riga_id=301,
         )
         row = CommesseRepository._inp_to_jsonb_row(inp)
         self.assertEqual(row["prezzo_base_snapshot"], "25.0000")
@@ -781,6 +786,8 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertIsNone(row["contratto_id"])
         self.assertIsNone(row["categoria_cliente_id_snapshot"])
         self.assertEqual(row["classe_utenza_id_snapshot"], 4)
+        # La chiave che il batch passa a `p_listino_riga_id` (2026-10-09).
+        self.assertEqual(row["listino_riga_id"], 301)
 
 
 class DiagnosticaGruppiTernePronteTests(TestCase):

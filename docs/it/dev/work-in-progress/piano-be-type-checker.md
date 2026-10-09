@@ -251,8 +251,9 @@ riga di commessa deve diventare immutabile? Se sì, è un brief al team DB (il
 parametro nella madre del push) e poi una riga nel building block.
 
 ✅ **Deciso da Tid il 2026-10-08: sì.** Brief al team DB:
-[brief-db-riga-listino-propagata-dalla-commessa.md](brief-db-riga-listino-propagata-dalla-commessa.md).
-Il seguito BE sta in quel brief (§5), non in questo piano.
+[brief-db-riga-listino-propagata-dalla-commessa.md](../work-done/brief-db-riga-listino-propagata-dalla-commessa.md).
+Il seguito BE sta in quel brief (§5), non in questo piano. ✅ **Chiuso il
+2026-10-09** (DB e BE, §7 del brief): `listino_riga_id` è nella provenienza.
 
 ### 4.5 ✅ L0 fatto — 2026-10-08
 

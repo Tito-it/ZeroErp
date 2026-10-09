@@ -88,6 +88,7 @@ CommessaTestataLeggibileTests (Blocco C di brief-db-modifiche-certe-ciclo-vendit
 """
 
 from decimal import Decimal
+from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -160,8 +161,8 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pr_run_commesse_push(source_types=["SORGENTE_INESISTENTE"])
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail)
-        self.assertIn("PREVENTIVO", ctx.exception.detail)
+        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail or "")
+        self.assertIn("PREVENTIVO", ctx.exception.detail or "")
 
     # Scopo: _build_handlers costruisce solo handler per sorgenti attive in DB.
     def test_build_handlers_only_active_sources(self):
@@ -461,7 +462,7 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pr_run_commesse_push_one(sorgente_codice="SORGENTE_INESISTENTE", sorgente_uid=1)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail)
+        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail or "")
 
     # Scopo: sorgente_uid non valido (None/0/negativo) → ServiceError validazione.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
@@ -512,7 +513,7 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=7)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
-        self.assertIn("segment_key=PREV:abc:R:4", ctx.exception.detail)
+        self.assertIn("segment_key=PREV:abc:R:4", ctx.exception.detail or "")
 
     # Scopo: all-or-nothing su ERRORE — stesso pattern del PARZIALE
     # (ogni handler con errors → rollback totale + raise).
@@ -1031,6 +1032,7 @@ class CommesseServiceTests(TestCase):
         provenienza = call_kwargs["provenienza"]
         self.assertEqual(provenienza["origine_prezzo"], "MANUALE")
         self.assertIsNone(provenienza["listino_versione_id"])
+        self.assertIsNone(provenienza["listino_riga_id"])
         self.assertIsNone(provenienza["prezzo_base_snapshot"])
 
     # Scopo: N7 - commessa in stato non modificabile rifiutata (flag data-driven
@@ -1168,6 +1170,13 @@ class CommesseServiceTests(TestCase):
         provenienza = repo.update_attivita_prezzo.call_args.kwargs["provenienza"]
         self.assertEqual(provenienza["prezzo_base_snapshot"], "50.0000000000")
         self.assertEqual(provenienza["listino_versione_id"], 101)
+        self.assertEqual(provenienza["listino_riga_id"], 301)
+        # Il diario porta anche la riga di listino (D-1 del brief-db-riga-
+        # listino-propagata-dalla-commessa): quella vecchia torna modificabile.
+        voce = repo.update_attivita_prezzo.call_args.kwargs["meta"]["riallineamenti"][-1]
+        self.assertEqual(
+            (voce["listino_riga_id_precedente"], voce["listino_riga_id_nuovo"]), (301, 301),
+        )
 
     # Scopo: N5 - riallineamento su prezzo bloccato rifiutato.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
@@ -1325,7 +1334,9 @@ class CommesseApprovazioneServiceTests(TestCase):
     def test_approva_commessa_attivita_righe_ids_invalido(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import approva_commessa_attivita
 
-        for bad in ([], [0], [-1], ["x"], [True], "10", 10):
+        # Eterogenea di proposito: ogni caso e' un tipo che la firma non ammette.
+        casi_invalidi: tuple[Any, ...] = ([], [0], [-1], ["x"], [True], "10", 10)
+        for bad in casi_invalidi:
             with self.subTest(righe_ids=bad):
                 with self.assertRaises(ServiceError) as ctx:
                     approva_commessa_attivita(commessa_id=42, righe_ids=bad)
@@ -1612,7 +1623,7 @@ class CommessaPortaOneriServiceTests(TestCase):
 
         repo = self._repo_ok(mock_repo_cls)
         uuid_ok = "3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011"
-        casi = [
+        casi: list[tuple[dict[str, Any], str]] = [
             # (kwargs sovrascritti, motivo del rifiuto)
             ({"articolo_onere_id": "non-un-uuid"}, "articolo non UUID"),
             ({"articolo_onere_id": None}, "articolo assente"),
@@ -1626,7 +1637,7 @@ class CommessaPortaOneriServiceTests(TestCase):
             ({"commessa_id": 0}, "commessa non valida"),
         ]
         for override, descrizione in casi:
-            kwargs = {
+            kwargs: dict[str, Any] = {
                 "commessa_id": 42,
                 "articolo_onere_id": uuid_ok,
                 "importo": "10",

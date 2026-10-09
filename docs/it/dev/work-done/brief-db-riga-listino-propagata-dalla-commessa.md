@@ -2,7 +2,7 @@
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-08. **A chi:** team DB
 > (`dev/db-tid`); poi BE (§5), che **attende** la consegna DB.
-> **Origine:** L0 di [piano-be-type-checker.md](piano-be-type-checker.md) §4.4.
+> **Origine:** L0 di [piano-be-type-checker.md](../work-in-progress/piano-be-type-checker.md) §4.4.
 > Riscrivendo riallinea e sblocca del prezzo di una riga di commessa, la
 > provenienza del prezzo è diventata un insieme unico (building block
 > `apps/vendite/services/prezzo_riga_commessa.py`). `listino_riga_id` ne è rimasta
@@ -10,9 +10,10 @@
 > la può passare.
 > **Decisione:** di Tid, 2026-10-08 — una riga di listino che ha dato il prezzo
 > a una riga di commessa **diventa immutabile** (è «propagata»).
-> **Stato:** ✅ R-1, R-2, R-5 applicati a DB il 2026-10-09, pgTAP verdi; R-3 e
-> R-4 decisi (§6). ⏳ Tocca al BE (§5). Debito aperto in un brief a
-> parte: [brief-db-coerenza-listino-della-riga-di-commessa](brief-db-coerenza-listino-della-riga-di-commessa.md).
+> **Stato:** ✅ **chiuso il 2026-10-09.** R-1, R-2, R-5 applicati a DB, pgTAP
+> verdi; R-3 e R-4 decisi (§6); BE fatto lo stesso giorno (§7). Debito aperto in
+> un brief a parte:
+> [brief-db-coerenza-listino-della-riga-di-commessa](../work-in-progress/brief-db-coerenza-listino-della-riga-di-commessa.md).
 
 ## 1. La regola
 
@@ -174,3 +175,28 @@ Su dev, `-04`…`-07` risultano `EXECUTED` in `databasechangelog`. C'è una sola
 `fn_upsert_commessa_attivita`, i due indici parziali esistono e i pgTAP sono verdi.
 Lato DB questo brief è chiuso. Resta aperto per il §5 (BE); il debito D-3 vive nel
 suo brief.
+
+## 7. Esito BE (2026-10-09, `dev/backend-tid`)
+
+Il §5 punto per punto. Il §5.4 non scatta (D-2).
+
+| § | Che cosa | Dove |
+| --- | --- | --- |
+| 5.1 | `listino_riga_id` entra nella provenienza: `COLONNE_PROVENIENZA_PREZZO` (sede unica) e `provenienza_da_resolver`. Il push lo passa (`CommessaAttivitaInput.listino_riga_id` → chiave JSON `listino_riga_id` del batch, `p_listino_riga_id` della madre nella porta singola); riallinea e sblocca lo scrivono con `update_attivita_prezzo`, sulla riga di commessa **e** sull'attività fatturabile non ancora in fattura | `apps/vendite/db/commesse_repository.py`, `apps/vendite/services/prezzo_riga_commessa.py`, `apps/vendite/services/commesse_source_handlers.py` |
+| 5.2 | La variazione eccezionale lo azzera con il resto (`provenienza_manuale`): la riga di listino, non più citata, torna modificabile | `apps/vendite/services/commesse_service.py` |
+| D-1, facoltativo | Il diario porta la riga di listino: `listino_riga_id_precedente` / `_nuovo` in `meta.riallineamenti`, `listino_riga_id_riferimento` in `meta.variazioni_eccezionali` | `apps/vendite/services/commesse_service.py` |
+| 5.3 | Test sul DB vero, mondo costruito (`test_prezzo_riga_commessa_db.py`, 4 e 5): la rettifica N6 passa finché nessuno cita la riga; dopo il riallineamento è rifiutata, e lo è anche l'`UPDATE` diretto della riga di listino (`E_RIGA_LISTINO_PROPAGATA`, letto dal `CONSTRAINT_NAME`); dopo la variazione a mano torna rettificabile. Il push dal batch scrive la riga di listino | `apps/vendite/tests/db/test_prezzo_riga_commessa_db.py` |
+
+**Prove.** Suite `apps.vendite` con `ZEROERP_TEST_DB_E2E=1` su dev: 2343 ok.
+**Mutazioni:** togliendo la chiave del batch cade il test 5; togliendo la colonna
+dall'`UPDATE` del riallineamento cade il 4. ruff e mypy puliti sui file toccati.
+
+**La rettifica N6 risponde con il codice del DB (ok Tid 2026-10-09).**
+`fn_rettifica_controllata_riga` ricontrollava in Python la regola del guard
+(`ListiniRepository.check_riga_propagata`) e rifiutava con un codice suo,
+`E_VENDITE_RIGA_GIA_PROPAGATA`. Il controllo è stato tolto: il service scrive, il
+guard rifiuta con `E_RIGA_LISTINO_PROPAGATA` (o `E_RIGA_LISTINO_VERSIONE_CHIUSA`) e
+`ErrorManager.raise_from_database_error` porta il codice al chiamante. Il test 4
+lo prova sul DB vero. L'override UI (toast) è passato al codice del DB. Il ritiro
+del codice vecchio dal catalogo è chiesto al team DB:
+[brief-db-ritiro-codice-riga-gia-propagata](../work-in-progress/brief-db-ritiro-codice-riga-gia-propagata.md).

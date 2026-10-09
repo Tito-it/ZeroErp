@@ -33,8 +33,12 @@ from apps.vendite.types import (
 # Le colonne di PROVENIENZA del prezzo di una riga di commessa, che
 # `update_attivita_prezzo` scrive con il prezzo. ⭐ Sede unica: il building
 # block `apps/vendite/services/prezzo_riga_commessa.py` le importa da qui
-# (`CAMPI_PROVENIENZA`). Le prime otto esistono anche su
+# (`CAMPI_PROVENIENZA`). Le prime nove esistono anche su
 # `attivita_fatturabili`; `listino_versione_id` solo sulla riga di commessa.
+# ⭐ `listino_riga_id` (2026-10-09, brief-db-riga-listino-propagata-dalla-
+# commessa): la riga di listino che ha dato il prezzo. Scriverla la rende
+# «propagata», cioe' immutabile (`trgfn_listini_righe_guard_stato`), finche'
+# una riga la cita ADESSO (D-1 del brief).
 COLONNE_PROVENIENZA_PREZZO: tuple[str, ...] = (
     "prezzo_base_snapshot",
     "origine_prezzo",
@@ -44,6 +48,7 @@ COLONNE_PROVENIENZA_PREZZO: tuple[str, ...] = (
     "contratto_id",
     "categoria_cliente_id_snapshot",
     "classe_utenza_id_snapshot",
+    "listino_riga_id",
     "listino_versione_id",
 )
 
@@ -246,6 +251,7 @@ class CommessaAttivitaInput:
     posticipa_al: date | None = None
     area_geografica_id: int | None = None
     listino_versione_id: int | None = None
+    listino_riga_id: int | None = None  # la riga di listino del prezzo (la rende «propagata»)
     sorgente_tipo_id: int | None = None
     sorgente_uid: str | None = None
     meta: dict[str, Any] | None = None
@@ -993,7 +999,8 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_sorgente_uid => %s,
                     p_tipo_movimento => %s,
                     p_tipo_consumo => %s,
-                    p_meta => %s::jsonb
+                    p_meta => %s::jsonb,
+                    p_listino_riga_id => %s
                 )
                 """,
                 [
@@ -1034,6 +1041,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                     inp.tipo_movimento,
                     inp.tipo_consumo,
                     self._to_jsonb_param(inp.meta),
+                    inp.listino_riga_id,
                 ],
             )
             row = cursor.fetchone()
@@ -1071,6 +1079,7 @@ class CommesseRepository(EventLogRepositoryMixin):
             "valuta_id": inp.valuta_id,
             "area_geografica_id": inp.area_geografica_id,
             "listino_versione_id": inp.listino_versione_id,
+            "listino_riga_id": inp.listino_riga_id,
             "prezzo_bloccato": inp.prezzo_bloccato,
             "pricing_mode": inp.pricing_mode,
             "prezzo_da_riallineare": inp.prezzo_da_riallineare,
@@ -1937,7 +1946,7 @@ class CommesseRepository(EventLogRepositoryMixin):
     #        ⭐ Dal 2026-10-08 prezzo e provenienza si scrivono INSIEME: prima si
     #        scriveva il solo prezzo, e la riga riallineata diceva un prezzo
     #        nuovo con la versione di listino, l'origine e la base del prezzo
-    #        vecchio. Le otto colonne che `attivita_fatturabili` ha in comune si
+    #        vecchio. Le nove colonne che `attivita_fatturabili` ha in comune si
     #        propagano con il prezzo, alle stesse condizioni (riga non ancora
     #        in fattura).
     #        ⛔ `provenienza` deve avere ESATTAMENTE quelle colonne: una chiave
@@ -1982,6 +1991,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                        contratto_id = %(contratto_id)s,
                        categoria_cliente_id_snapshot = %(categoria_cliente_id_snapshot)s,
                        classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
+                       listino_riga_id = %(listino_riga_id)s,
                        listino_versione_id = %(listino_versione_id)s,
                        meta = %(meta)s::jsonb,
                        data_update = now()
@@ -2003,6 +2013,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                        contratto_id = %(contratto_id)s,
                        categoria_cliente_id_snapshot = %(categoria_cliente_id_snapshot)s,
                        classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
+                       listino_riga_id = %(listino_riga_id)s,
                        data_update = now()
                  WHERE commessa_attivita_id = %(att_id)s
                    AND fattura_riga_id IS NULL

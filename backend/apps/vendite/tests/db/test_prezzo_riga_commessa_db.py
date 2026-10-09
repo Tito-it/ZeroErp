@@ -27,20 +27,30 @@
 #   1. test_riallinea_chiede_conferma_poi_scrive_prezzo_e_versione
 #   2. test_variazione_manuale_poi_sblocco_dal_listino
 #   3. test_componente_di_kit_prende_il_prezzo_del_kit
+#   4. test_riallinea_rende_propagata_la_riga_di_listino
+#   5. test_porta_batch_scrive_la_riga_di_listino
+#
+# ⭐ 4-5 (brief-db-riga-listino-propagata-dalla-commessa §5, 2026-10-09): la
+#    riga di listino che ha dato il prezzo si scrive sulla riga di commessa, e
+#    da li' e' «propagata» — la rettifica N6 la rifiuta e il guard DB anche.
+#    Prima nessun percorso la scriveva, e la rettifica passava.
 # ------------------------------------------------------------
 from __future__ import annotations
 
 from decimal import Decimal
 from unittest import TestCase
 
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 
+from apps.core.services.service_errors import ServiceError
 from apps.core.tests.db_e2e import apri_transazione_annullata, richiedi_db_provvisto
+from apps.vendite.db.commesse_repository import CommessaAttivitaInput, CommesseRepository
 from apps.vendite.services.commesse_service import (
     fn_riallinea_prezzo,
     fn_sblocca_prezzo,
     fn_variazione_prezzo_eccezionale,
 )
+from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
 _PREZZO_V2 = Decimal("46.00")
 _PREZZO_KIT = Decimal("75.00")
@@ -107,10 +117,30 @@ class PrezzoRigaCommessaDbTests(TestCase):
             for sql in _FIXTURE:
                 cur.execute(sql)
             cur.execute(
-                "SELECT c.commessa_id, a.attivita_id, l.listino_versione_id, v.id"
+                "SELECT c.commessa_id, a.attivita_id, l.listino_id, l.listino_versione_id, v.id,"
+                " r.id"
                 " FROM _c c, _a a, _l l, _v2 v"
+                " JOIN vendite.listini_righe r ON r.listino_versione_id = v.id"
+                " WHERE r.articolo_id = a.articolo_id AND r.uom_id = a.uom_id"
             )
-            self.commessa, self.attivita, self.v1, self.v2 = cur.fetchone()
+            (
+                self.commessa, self.attivita, self.listino, self.v1, self.v2, self.riga_v2,
+            ) = cur.fetchone()
+
+    # Scopo: la riga di listino citata ADESSO dalla riga di commessa.
+    def _listino_riga_della_commessa(self) -> int | None:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT listino_riga_id FROM vendite.commesse_attivita WHERE id = %s",
+                [self.attivita],
+            )
+            return cur.fetchone()[0]
+
+    # Scopo: la rettifica N6 della riga di listino V2.
+    def _rettifica(self) -> dict:
+        return fn_rettifica_controllata_riga(
+            self.listino, self.v2, self.riga_v2, {"prezzo": "47.00", "motivo": "refuso"},
+        )
 
     def _riga(self) -> tuple:
         with connection.cursor() as cur:
@@ -181,3 +211,79 @@ class PrezzoRigaCommessaDbTests(TestCase):
         self.assertEqual(prezzo, _PREZZO_KIT)
         self.assertEqual(versione, self.v2)
         self.assertIsNone(origine)
+
+    # 4. Riallineata, la riga di commessa cita la riga di listino V2, che da li'
+    #    e' «propagata»: la rettifica N6 la rifiuta con il codice del guard DB
+    #    (l'unica sede della regola dal 2026-10-09), e cosi' il guard a chi la
+    #    scrivesse senza passare dal service (letto dal CONSTRAINT_NAME, non da
+    #    un errore qualunque). Un prezzo a mano non la cita piu', e la riga
+    #    torna rettificabile: «propagata» vuol dire citata ADESSO (D-1).
+    def test_riallinea_rende_propagata_la_riga_di_listino(self) -> None:
+        self._rettifica()  # nessuno la cita: passa
+
+        fn_riallinea_prezzo(self.commessa, self.attivita, {"conferma_versione_diversa": True})
+        self.assertEqual(self._listino_riga_della_commessa(), self.riga_v2)
+
+        with self.assertRaises(ServiceError) as ctx:
+            self._rettifica()
+        self.assertEqual(ctx.exception.code, "E_RIGA_LISTINO_PROPAGATA")
+
+        with self.assertRaises(DatabaseError) as db_ctx, transaction.atomic(), \
+                connection.cursor() as cur:
+            cur.execute(
+                "UPDATE vendite.listini_righe SET prezzo = prezzo + 1 WHERE id = %s",
+                [self.riga_v2],
+            )
+        diag = getattr(db_ctx.exception.__cause__, "diag", None)
+        self.assertEqual(getattr(diag, "constraint_name", None), "E_RIGA_LISTINO_PROPAGATA")
+
+        fn_variazione_prezzo_eccezionale(
+            self.commessa, self.attivita, {"prezzo": "33.00", "motivo": "accordo"},
+        )
+        self.assertIsNone(self._listino_riga_della_commessa())
+        self._rettifica()
+
+    # 5. La porta batch del repository (quella che usa il push) porta la riga
+    #    di listino fino alla madre: e' la giuntura fra `_inp_to_jsonb_row` e la
+    #    chiave JSON che `fn_batch_upsert_commessa_attivita` legge, che un mock
+    #    non vede. ⚠️ Oggi l'handler del push la passa NULL (decisione B,
+    #    2026-10-09): la riempira' la provenienza del documento
+    #    (brief-db-provenienza-prezzo-segue-il-prezzo). Qui la si passa a mano.
+    def test_porta_batch_scrive_la_riga_di_listino(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute(
+                "SELECT segment_key, quantita, competenza_mese, articolo_id, prezzo_snapshot,"
+                " uom_id, istanza_utility_id, data_attivita, competenza_dal, competenza_al,"
+                " tipo_doc_fiscale_id, valuta_id"
+                " FROM vendite.commesse_attivita WHERE id = %s",
+                [self.attivita],
+            )
+            (
+                segment_key, quantita, competenza_mese, articolo_id, prezzo, uom_id,
+                istanza_utility_id, data_attivita, competenza_dal, competenza_al,
+                tipo_doc_fiscale_id, valuta_id,
+            ) = cur.fetchone()
+
+        # Il re-push della stessa riga (stesso segmento: ramo ON CONFLICT).
+        esito = CommesseRepository().batch_upsert_attivita([CommessaAttivitaInput(
+            commessa_id=self.commessa,
+            segment_key=segment_key,
+            quantita=quantita,
+            competenza_mese=competenza_mese,
+            articolo_id=articolo_id,
+            prezzo_snapshot=prezzo,
+            uom_id=uom_id,
+            istanza_utility_id=istanza_utility_id,
+            data_attivita=data_attivita,
+            competenza_dal=competenza_dal,
+            competenza_al=competenza_al,
+            tipo_doc_fiscale_id=tipo_doc_fiscale_id,
+            valuta_id=valuta_id,
+            listino_versione_id=self.v2,
+            listino_riga_id=self.riga_v2,
+        )])
+        self.assertEqual(esito.errors, [])
+        self.assertEqual(self._listino_riga_della_commessa(), self.riga_v2)
+        with self.assertRaises(ServiceError) as ctx:
+            self._rettifica()
+        self.assertEqual(ctx.exception.code, "E_RIGA_LISTINO_PROPAGATA")

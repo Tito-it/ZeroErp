@@ -543,6 +543,10 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_RIGA_CONTABILE_CAPIENZA_SUPERATA": "confirm_and_retry",  # classe CONFLITTO_STATO
     "E_RIGA_COMMESSA_GIA_ANNULLATA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_RIGA_COMMESSA_MOTIVO_OBBLIGATORIO": "highlight_form_fields",  # classe DATO_ERRATO
+    # Dal 2026-10-09 e' il codice con cui risponde la rettifica N6 di una riga
+    # di listino citata da una commessa: eredita il toast del codice BE che
+    # ripeteva la regola del guard (`E_VENDITE_RIGA_GIA_PROPAGATA`, ritirato).
+    "E_RIGA_LISTINO_PROPAGATA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_RISORSA_UMANA_SOGGETTO_MISMATCH": "highlight_form_fields",  # classe DATO_ERRATO
     "E_SESSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     # §8.4.3/§8.4.4/§8.4.5: endpoint shop rispondono 501 finche' PR-C
@@ -609,7 +613,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_VALORE_MANCANTE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_VENDITE_FK": "highlight_form_fields",  # classe DATO_ERRATO
     "E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA": "show_toast_error",  # classe CONFLITTO_STATO
-    "E_VENDITE_RIGA_GIA_PROPAGATA": "show_toast_error",  # classe CONFLITTO_STATO
     "E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO": "show_toast_error",  # classe CONFLITTO_STATO
     "E_VENDITE_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_VENDITE_VARIAZIONE_PREZZO_NON_AMMESSA": "show_toast_error",  # classe CONFLITTO_STATO

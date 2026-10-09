@@ -87,6 +87,7 @@ import dataclasses
 from contextlib import nullcontext
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -105,7 +106,7 @@ from apps.vendite.services.commesse_source_handlers import (
 
 def _make_row(**overrides) -> PushableRow:
     """Crea un PushableRow con valori di default ragionevoli."""
-    defaults = {
+    defaults: dict[str, Any] = {
         "billing_account_id": 1,
         "utility_id": 2,
         "emittente_soggetto_ruolo_id": 3,
@@ -435,7 +436,7 @@ class CommesseSourceHandlersTests(TestCase):
             ),
         ]
         handler = HandlerConsumi(repo)
-        handler._fetch_componenti = MagicMock(return_value=componenti)
+        handler._fetch_componenti = MagicMock(return_value=componenti)  # type: ignore[method-assign]
 
         result = handler.run()
 
@@ -526,7 +527,7 @@ def _make_composito_row(**overrides) -> PushableRow:
     - articolo_id stringa che il mock is_composito_fn interpreta come composito
     - quantita esplicita (necessaria per calcolo x coeff_qta)
     """
-    defaults = {
+    defaults: dict[str, Any] = {
         "billing_account_id": 100,
         "utility_id": 5,
         "emittente_soggetto_ruolo_id": 200,
@@ -1002,7 +1003,7 @@ class BoMHandlerIntegrationTests(TestCase):
         ]
         handler = HandlerConsumi(repo, bom_expander=expander)
         # Stub fan-out consumi: 2 componenti.
-        handler._fetch_componenti = MagicMock(return_value=[
+        handler._fetch_componenti = MagicMock(return_value=[  # type: ignore[method-assign]
             ComponenteConsumabile(codice="A", articolo_id="art-A", quantita=Decimal("1"), prezzo=Decimal("5"), uom_id=1),
             ComponenteConsumabile(codice="B", articolo_id="art-B", quantita=Decimal("2"), prezzo=Decimal("3"), uom_id=2),
         ])
@@ -1192,6 +1193,7 @@ class PricingAuditSnapshotTests(TestCase):
             "categoria_cliente_id_snapshot": 5,
             "classe_utenza_id_snapshot": None,
             "listino_versione_id": 404,
+            "listino_riga_id": 505,
         }
         return ps
 
@@ -1225,6 +1227,10 @@ class PricingAuditSnapshotTests(TestCase):
         # ⭐ 2026-10-08: anche la versione di listino, o il guard «versione
         #    cambiata» di riallinea confronta con NULL e non scatta mai.
         self.assertEqual(inp.listino_versione_id, 404)
+        # ⛔ 2026-10-09 (decisione B): la riga di listino NO, anche se il
+        #    resolver la restituisce. Il prezzo e' del documento: citarla
+        #    renderebbe «propagata» una riga di listino che non l'ha dato.
+        self.assertIsNone(inp.listino_riga_id)
         ps.resolve_prezzo.assert_called_once()
 
     # Scopo: il prezzo negoziato alla sorgente NON viene sovrascritto dal resolver.

@@ -222,9 +222,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `backend/mypy.baseline.json`, `scripts/check_mypy_baseline.py`; sede `docs/it/dev/sicurezza-e-qualita-statica.md`
   §mypy). Registro **620 → 2** il 2026-10-09; gli envelope JSON sono `dict[str, Any]`; BB
   `utente_autenticato`/`utente_autenticato_id`. Trovati e corretti difetti veri (fra cui i 500 di riallinea/sblocca
-  prezzo e l'alert scadenze listini sempre in 400). Restano tre brief al team DB, il BE attende:
-  `brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C, la generazione si ferma),
-  `brief-db-riga-listino-propagata-dalla-commessa`, `brief-be-db-giorno-nel-fuso-aziendale` (i filtri per giorno
+  prezzo e l'alert scadenze listini sempre in 400). Chiuso il 2026-10-09
+  `work-done/brief-db-riga-listino-propagata-dalla-commessa` (la riga di listino che ha dato il prezzo a una
+  commessa è «propagata», e la regola ha una sede sola, il guard DB; il seguito D-3 in
+  `brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA` in
+  `brief-db-ritiro-codice-riga-gia-propagata`; e — decisione B di Tid, 2026-10-09 — la riga di listino si cita solo
+  se il prezzo viene davvero da lì: il push non la scrive più, la provenienza dovrà viaggiare col prezzo dal
+  documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Restano due brief
+  al team DB, il BE attende: `brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C,
+  la generazione si ferma), `brief-be-db-giorno-nel-fuso-aziendale` (i filtri per giorno
   usano il giorno UTC: `test_giornale_trasversale_perimetro` è rosso fra le 00:00 e le 02:00). Da decidere: gli
   stub `types-bleach`/`types-openpyxl`.
 - **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,
@@ -275,9 +281,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-done/brief-db-righe-e-componenti-le-altre-famiglie.md`, `20261008-30` … `-35`, applicati, pgTAP verdi):
   la revisione del preventivo porta anche i componenti spenti (D-1 di Tid) e li lega per identità; componenti
   di preventivo, ordine e DDT solo in bozza; `user_update NOT NULL` su righe e componenti; CHECK `_nz`.
-- ⏳ (BE) **Righe e componenti: i tre debiti rimasti** (`work-in-progress/brief-db-righe-e-componenti-debiti-residui.md`,
-  D20, 2026-10-08): righe d'ordine e di preventivo ancora aperte fuori bozza; `user_update` nullable altrove e
-  senza presidio; componente spento in attesa copiato nella revisione. Decisi da Tid il 2026-10-08 (D-1 lock a tre porte, sull'ordine aperta la sola `data_consegna_confermata` negli stati da evadere; D-2 un giro solo col presidio; D-3 lo spento in attesa si copia senza marca). DB scritto lo stesso giorno (`20261008-80` … `-94`, helper di fixture `dbops.fn_pgtap_porta_a_stato`, ~55 fixture pgTAP in forma bozza → righe → transizione), applicato su dev, pgTAP verdi anche su `zeroerp_ci` (2026-10-09, con `20261009-03` per `config.tipi_doc_fiscale`, la tabella che dev non mostrava); tre test non più costruibili come skip motivati (§4.5). ✅ Lato DB chiuso; ⏳ restano le richieste al BE (§4.4).
+- **Righe e componenti: i tre debiti rimasti — chiuso il 2026-10-09** (`work-done/brief-db-righe-e-componenti-debiti-residui.md`,
+  D20): righe d'ordine e di preventivo chiuse fuori bozza sulle tre porte (sull'ordine aperta la sola
+  `data_consegna_confermata` in `CONFERMATO`/`PARZIALMENTE_EVASO`), `user_update NOT NULL` ovunque col presidio,
+  lo spento in attesa si copia senza marca nella revisione. DB `20261008-80` … `-94` e `20261009-03`, pgTAP verdi
+  anche su `zeroerp_ci`. Lato BE (§5): test e smoke già in forma bozza → righe → transizione; il verbo della data
+  passa al brief sotto; i debiti stanno in § «Aperto — Media priorità».
+- 📝 **Ordine: la capability della data di consegna confermata** (`work-in-progress/brief-db-ordine-data-consegna-confermata-capability.md`,
+  2026-10-09): prima la check e la capability a DB (una sede sola per gli stati, la stessa del lock), poi il verbo BE
+  e il dialog FE. Il BE attende. Una domanda a Tid sulla stampa (D-1).
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
@@ -558,12 +570,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Registry runtime Python multi-dominio**: modello DB pronto, ma la mappa Python per tutti i domini non è completa
 - **Builder XML SDI**: payload pronto, ma generazione file FatturaPA non ancora implementata. ⚠️ Sospeso per decisione (Tid, 2026-08-05); raccoglie anche `EsigibilitaIVA`, `DatiContratto` e le righe spezzate dal plafond (`vw_fattura_righe_esposte`, `PARTE_PLAFOND`) — dettagli in `work-done/fatturazione-roadmap.md` §9
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
-- **La promessa di consegna dopo la conferma** (BE, decisione di Tid; ereditata
-  il 2026-09-14 dal brief «modifiche certe», voce 1-bis): le righe d'ordine si
-  scrivono solo in `DRAFT` (`_STATI_RIGHE_MODIFICABILI`), ma
-  `data_consegna_confermata` si decide **alla conferma** e può cambiare dopo. Il
-  DB non mette guard di stato di proposito: serve un verbo suo (stampo: gli
-  override di prezzo) o il dialog di conferma che la raccolga
+- **La promessa di consegna dopo la conferma** (BE, decisione di Tid del 14-09): dal
+  `20261008-90` il DB lascia aperta la sola `data_consegna_confermata` in `CONFERMATO`/`PARZIALMENTE_EVASO`;
+  il verbo che la cambia è in `work-in-progress/brief-db-ordine-data-consegna-confermata-capability.md`
+  (prima la capability a DB, decisione di Tid del 2026-10-09)
 - **Pratica di approvazione prezzo su revisione superata** (BE,
   `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
   2026-09-14 (`20260914-14`) riguarda anche i **preventivi** — la rev N+1
@@ -580,6 +590,17 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   prezzo è in attesa, quindi la riga in attesa ricopiata non può più nascere;
   approvato e rifiutato si ricopiano come prima. Resta del BE il ciclo di vita
   della pratica su una rev superata (il suo `meta` nomina la riga della rev N)
+  ⚠️ **Dal 2026-10-08 anche sul preventivo annullato** (`work-done/brief-db-righe-e-componenti-debiti-residui.md`
+  §4.4, §5): con le righe chiuse fuori bozza l'esito di una pratica su un preventivo annullato con una riga in
+  attesa è respinto dal lock (`E_RIGA_DOC_NON_BOZZA`), e la pratica resta `APERTA` in coda. Debito dichiarato da
+  Tid il 2026-10-09: si chiude con il resto del ciclo di vita della pratica
+- **L'L3 dei componenti non esiste** (DB + BE, ereditata il 2026-10-09 dalla chiusura di
+  `work-done/brief-db-righe-e-componenti-debiti-residui.md` §3): nessun verbo mette un componente in attesa
+  né gli dà un esito, e non c'è il controllo L2. Dal `20261008-87`/`-88` uno spento in attesa si copia nella
+  revisione senza marca: la nuova richiesta alla riaccensione è di quel ciclo. Un brief suo quando si costruisce
+- **`user_update` nullable su nove tabelle senza audit** (DB, stessa origine, §2 e §4.6): `dbops.fk_index_policy`,
+  `dbops.transaction_ids` e sette di `ui`. Il presidio `dbops/test-user-update-not-null-v1` le tiene a vista nel
+  registro del debito; da decidere chi scrive la colonna
 
 **Residui della roadmap fatturazione** (archiviata il 2026-09-12 in
 `docs/it/dev/work-done/fatturazione-roadmap.md`, dove sta il *perché* di

@@ -18,6 +18,7 @@ Indice test eseguiti:
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from unittest import TestCase
 
 from apps.vendite.db.commesse_repository import COLONNE_PROVENIENZA_PREZZO
@@ -27,7 +28,7 @@ from apps.vendite.services.prezzo_riga_commessa import (
     provenienza_manuale,
 )
 
-_RIGA = {
+_RIGA: dict[str, Any] = {
     "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
     "uom_id": 1,
     "data_attivita": date(2026, 4, 3),
@@ -86,7 +87,8 @@ class ProvenienzaTests(TestCase):
         self.assertEqual(set(provenienza), set(COLONNE_PROVENIENZA_PREZZO))
         self.assertEqual(provenienza["origine_prezzo"], "CATEGORIA")
         self.assertEqual(provenienza["listino_versione_id"], 101)
-        self.assertNotIn("listino_riga_id", provenienza)
+        # ⭐ 2026-10-09: anche la riga di listino, che la rende «propagata».
+        self.assertEqual(provenienza["listino_riga_id"], 301)
 
     # 5. L'origine dello stadio kit non e' fra quelle che il CHECK ammette.
     def test_origine_fuori_check_diventa_none(self):

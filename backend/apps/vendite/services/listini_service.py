@@ -1601,10 +1601,18 @@ def fn_alert_scadenze(giorni: int | None = None) -> dict[str, Any]:
 
 # --- N6: Rettifica controllata su riga ATTIVA non propagata ---
 
+# I codici di `vendite.trgfn_listini_righe_guard_stato` che la rettifica N6
+# puo' incontrare. Dal campo strutturato il codice arriva comunque: i marker
+# servono solo al ripiego sul testo (stesso schema dei prezzi bundle, sotto).
+_KNOWN_RETTIFICA_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("E_RIGA_LISTINO_PROPAGATA", ("E_RIGA_LISTINO_PROPAGATA",)),
+    ("E_RIGA_LISTINO_VERSIONE_CHIUSA", ("E_RIGA_LISTINO_VERSIONE_CHIUSA",)),
+)
+
 
 # Scopo: Consente la modifica del prezzo di una riga in versione ATTIVA solo se
-#        la riga non e` mai stata propagata in commesse o attivita` fatturabili.
-#        Lock pessimistico FOR UPDATE + check non-propagazione nella stessa transazione.
+#        nessuna riga di commessa o attivita` fatturabile la cita (riga non
+#        «propagata»): lo decide il guard DB sull'UPDATE, sotto lock FOR UPDATE.
 #        Motivo obbligatorio. Audit in meta.rettifiche_controllate[].
 def fn_rettifica_controllata_riga(
     listino_id: int,
@@ -1703,50 +1711,55 @@ def fn_rettifica_controllata_riga(
 
     repository = ListiniRepository()
 
-    # --- Livello 1+2: lock pessimistico + check non-propagazione in transazione ---
-    with transaction.atomic():
-        locked = repository.lock_riga_for_update(versione_id, riga_id)
-        ErrorManager.require(
-            locked,
-            code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
-            message="Riga non trovata.",
-            detail=f"Riga id={riga_id} non trovata nella versione id={versione_id}.",
+    # --- Lock pessimistico + scrittura; «propagata» la decide il guard DB ---
+    # ⛔ Niente controllo di propagazione qui (2026-10-09, ok Tid): la regola e'
+    #    di `vendite.trgfn_listini_righe_guard_stato`, che rifiuta l'UPDATE con
+    #    `E_RIGA_LISTINO_PROPAGATA` (o `E_RIGA_LISTINO_VERSIONE_CHIUSA`). Fino ad
+    #    allora il service ne teneva una copia in Python con un codice suo
+    #    (`E_VENDITE_RIGA_GIA_PROPAGATA`): due sedi, due codici per una regola.
+    try:
+        with transaction.atomic():
+            locked = repository.lock_riga_for_update(versione_id, riga_id)
+            ErrorManager.require(
+                locked,
+                code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
+                message="Riga non trovata.",
+                detail=f"Riga id={riga_id} non trovata nella versione id={versione_id}.",
+                context={"riga_id": riga_id, "versione_id": versione_id},
+                function_name=function_name,
+                log_to_db=False,
+            )
+            # ⚠️ Prezzo e meta si rileggono SOTTO il lock: letti prima, due
+            #    rettifiche concorrenti scrivevano ognuna il proprio `meta`, e
+            #    la seconda cancellava la voce di audit della prima (e diceva
+            #    un `prezzo_precedente` gia' superato).
+            riga = _get_riga_or_raise(
+                listino_id, versione_id, riga_id, function_name=function_name
+            )
+            meta_corrente = _V.optional_meta(
+                riga, "meta", function_name=function_name
+            ) or {}
+            rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
+            rettifiche.append({
+                "data": datetime.now(timezone.utc).isoformat(),
+                "prezzo_precedente": str(riga["prezzo"]),
+                "prezzo_nuovo": str(nuovo_prezzo),
+                "motivo": motivo,
+            })
+            meta_corrente["rettifiche_controllate"] = rettifiche
+            repository.update_riga_prezzo_rettifica(
+                riga_id=riga_id,
+                nuovo_prezzo=str(nuovo_prezzo),
+                meta_aggiornata=meta_corrente,
+            )
+    except DatabaseError as exc:
+        ErrorManager.raise_from_database_error(
+            exc,
+            known_markers=_KNOWN_RETTIFICA_DB_ERROR_MARKERS,
+            fallback_code="E_VENDITE_VALIDATION",
+            message="Rettifica della riga di listino non ammessa.",
             context={"riga_id": riga_id, "versione_id": versione_id},
             function_name=function_name,
-            log_to_db=False,
-        )
-
-        propagata = repository.check_riga_propagata(riga_id)
-        ErrorManager.require(
-            not propagata,
-            code="E_VENDITE_RIGA_GIA_PROPAGATA",
-            message="Rettifica bloccata: riga gia` propagata.",
-            detail=(
-                "La riga e` stata usata in almeno una commessa o attivita` fatturabile. "
-                "Per correggere il prezzo, clonare la versione."
-            ),
-            context={"riga_id": riga_id},
-            function_name=function_name,
-            log_to_db=True,
-        )
-
-        # --- Audit in meta ---
-        meta_corrente = _V.optional_meta(
-            riga, "meta", function_name="listini_service.fn_rettifica_controllata_riga"
-        ) or {}
-        rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
-        rettifiche.append({
-            "data": datetime.now(timezone.utc).isoformat(),
-            "prezzo_precedente": str(riga["prezzo"]),
-            "prezzo_nuovo": str(nuovo_prezzo),
-            "motivo": motivo,
-        })
-        meta_corrente["rettifiche_controllate"] = rettifiche
-
-        repository.update_riga_prezzo_rettifica(
-            riga_id=riga_id,
-            nuovo_prezzo=str(nuovo_prezzo),
-            meta_aggiornata=meta_corrente,
         )
 
     return {
