@@ -101,6 +101,22 @@ class ParameterRepository:
             return None
         return row[0]
 
+    # Scopo: Il valore di DEFAULT di un parametro (`config.parameters.default_value`),
+    #        senza la cascata di override. None se il parametro non esiste o
+    #        il default e' NULL.
+    # ⭐ Per i limiti uguali per tutti (decisione del team DB, es. D-1 di
+    #    brief-db-parametro-data-minima-ritardo-dashboard): la cascata farebbe
+    #    valere un override che il modello non prevede. Stessa scelta di
+    #    `script.fn_data_operativa` su SYSTEM_FUSO_ORARIO.
+    def get_default_value(self, code: str) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT default_value FROM config.parameters WHERE code = %s",
+                [code],
+            )
+            row = cursor.fetchone()
+        return row[0] if row else None
+
     # Scopo: Risolve N parametri in un'unica sessione DB.
     #        Restituisce un dizionario {code: valore_risolto}.
     #        I codici non trovati vengono esclusi dal risultato.

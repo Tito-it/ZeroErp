@@ -5,8 +5,8 @@
 > **Origine:** revisione del codice non committato del 2026-10-08 (tetto di
 > intervallo in `qp_int_optional`, `api.md` §Query params). **Decisione di Tid
 > (2026-10-08):** il limite è un parametro di configurazione, valore `2020-01-01`.
-> **Stato:** ✅ R-1 applicato a DB il 2026-10-09 (§5), pgTAP verde. ⏳ Tocca al BE
-> (§4): il parametro c'è.
+> **Stato:** ✅ R-1 applicato a DB il 2026-10-09 (§5), pgTAP verde. ✅ §4 BE
+> fatto il 2026-10-09 (§6), da committare.
 
 ## 1. Cosa si chiede
 
@@ -106,3 +106,27 @@ UPDATE su un parametro con `storicizza = t` moriva nel trigger di storico
 in `databasechangelog`. La riga id 60 c'è, e le 12 sorelle sono a `storicizza = t`
 come previsto. Il pgTAP è verde. Lato DB non resta niente: il brief resta aperto
 solo per il §4 (BE).
+
+## 6. Esito BE (2026-10-09, `dev/backend-tid`)
+
+* **Helper unico** `_valida_ritardo_giorni` in `vendite/services/vendite_service.py`,
+  usato da `fn_dash_aperto_documenti` e `fn_dash_backlog_documenti` (lista ed
+  export passano da lì). Le due copie del `> 0`, con due detail diversi, sono
+  ritirate nello stesso giro. Regole: `ritardo_giorni > 0` e
+  `ritardo_giorni <= oggi - data_minima` (in giorni). Fuori → `E_VENDITE_VALIDATION`,
+  detail con la data minima.
+  ⭐ Il confronto è fra **interi di giorni**, mai `oggi - timedelta(N)`: con `N`
+  enorme sarebbe Python a sollevare `OverflowError`, di nuovo un 500.
+* **Lettura del default** (D-1): BB nuovo `ParameterService.get_default_date`
+  (+ `ParameterRepository.get_default_value`), registrato nel catalogo BB backend.
+  Assente, vuoto o non ISO (D-2) → `E_CONFIG_MANCANTE`, non un 500.
+* **Test**: sul pavimento passa, un giorno oltre dà 400 (tutte e due le
+  dashboard), `N = 2000000` dà 400; `get_default_date` su valido, assente/vuoto,
+  non ISO. Binding provato sul DB di sviluppo con chiamata reale (dà `2020-01-01`).
+* ⚠️ **Aperto, da decidere** — quale «oggi». Il BE confronta con
+  `timezone.localdate()` (Europe/Rome); il filtro SQL usa `current_date`, che
+  nella sessione Django è **UTC**. Fra mezzanotte e le 02:00 locali i due
+  differiscono di un giorno: sul pavimento non produce più un 500 (la data resta
+  nell'intervallo), ma il filtro «ritardo» e `anzianita_giorni` delle due
+  dashboard contano i giorni sulla data UTC, non su quella operativa
+  (`script.fn_data_operativa`, che esiste proprio per questo).

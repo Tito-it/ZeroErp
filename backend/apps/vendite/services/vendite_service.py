@@ -15,6 +15,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from django.utils import timezone
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
@@ -26,6 +27,7 @@ from apps.core.services.list_helpers import (
     validate_order_params,
     validate_pagination,
 )
+from apps.core.services.parameter_service import ParameterService
 from apps.core.services.partitioned_note_service import PartitionedNoteService
 from apps.core.services.testata_guard import pagina_dopo_testata
 from apps.vendite.db.fatture_repository import FattureRepository
@@ -159,6 +161,58 @@ def _validate_enum(
         function_name=function_name,
         nullable=nullable,
         log_to_db=log_to_db,
+    )
+
+
+# La data piu' vecchia che il filtro «ritardo» delle dashboard puo' chiedere
+# (brief-db-parametro-data-minima-ritardo-dashboard, decisione di Tid 2026-10-08).
+_PARAM_RITARDO_DATA_MINIMA = "VENDITE_DASHBOARD_RITARDO_DATA_MINIMA"
+
+
+# Scopo: La soglia «da oltre N giorni» delle dashboard aperto e backlog (lista
+#        ed export): assente, oppure un intero > 0 che non porti `oggi - N`
+#        prima di VENDITE_DASHBOARD_RITARDO_DATA_MINIMA. Fuori ->
+#        E_VENDITE_VALIDATION; niente normalizzazione silenziosa (DL-17).
+# ⭐ Il pavimento e' una scelta di DOMINIO (quanto indietro ha senso chiedere),
+#    non il tipo: il tetto `integer` di `qp_int_optional` resta, ma da solo
+#    lasciava passare N per cui `current_date - N giorni` esce da `timestamp`
+#    (`DataError`, cioe' un 500 al posto di un 400).
+# ⭐ Si legge il DEFAULT del parametro, non la cascata (D-1 del brief: limite
+#    uguale per tutti, nessun override previsto).
+# ⭐ Il confronto e' fra interi di giorni, mai `oggi - timedelta(N)`: con N
+#    enorme sarebbe Python a sollevare (OverflowError), di nuovo un 500.
+# ℹ️ Regola del 2: fino al 2026-10-09 il solo `> 0` era copiato nelle due
+#    dashboard, con due detail diversi.
+def _valida_ritardo_giorni(
+    ritardo_giorni: int | None,
+    *,
+    function_name: str,
+) -> None:
+    if ritardo_giorni is None:
+        return
+    ErrorManager.require(
+        ritardo_giorni > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro ritardo_giorni non valido.",
+        detail="ritardo_giorni deve essere un intero positivo (o assente).",
+        context={"ritardo_giorni": ritardo_giorni},
+        function_name=function_name,
+    )
+    data_minima = ParameterService().get_default_date(_PARAM_RITARDO_DATA_MINIMA)
+    massimo = (timezone.localdate() - data_minima).days
+    ErrorManager.require(
+        ritardo_giorni <= massimo,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro ritardo_giorni non valido.",
+        detail=(
+            f"Il ritardo non puo' risalire prima del {data_minima.isoformat()}: "
+            f"oggi al massimo {massimo} giorni."
+        ),
+        context={
+            "ritardo_giorni": ritardo_giorni,
+            "data_minima": data_minima.isoformat(),
+        },
+        function_name=function_name,
     )
 
 
@@ -667,15 +721,8 @@ def fn_dash_aperto_documenti(
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
 ) -> dict[str, Any]:
-    # Filtro ritardo opzionale: se presente deve essere un intero > 0 (una
-    # soglia di giorni non-positiva non ha senso; niente normalizzazione
-    # silenziosa — DL-17).
-    ErrorManager.require(
-        ritardo_giorni is None or ritardo_giorni > 0,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro ritardo_giorni non valido.",
-        detail="Deve essere un intero maggiore di zero.",
-        context={"ritardo_giorni": ritardo_giorni},
+    _valida_ritardo_giorni(
+        ritardo_giorni,
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
     # Ordinamento server-side (convenzione order_by/order_dir come le liste
@@ -1589,15 +1636,10 @@ def fn_dash_backlog_documenti(
         param_name="area",
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
-    # Filtro "fermo da oltre N giorni": soglia positiva o assente (una soglia
-    # non-positiva non ha senso; niente normalizzazione silenziosa). Speculare
-    # al filtro ritardo della Situazione aperta.
-    ErrorManager.require(
-        ritardo_giorni is None or ritardo_giorni > 0,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro ritardo_giorni non valido.",
-        detail="ritardo_giorni deve essere un intero positivo (o assente).",
-        context={"ritardo_giorni": ritardo_giorni},
+    # Filtro "fermo da oltre N giorni": stessa regola del ritardo della
+    # Situazione aperta, nella stessa sede.
+    _valida_ritardo_giorni(
+        ritardo_giorni,
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     # Ordinamento server-side (convenzione order_by/order_dir come le liste
