@@ -25,6 +25,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ordini_r_ful_v_qta_pos |  |
+| CHECK | chk_ordini_righe_fulfillment_qta_evasa_finito |  |
 | FOREIGN KEY | fk_ordini_r_ful_v_ddt_riga | ddt_riga_id |
 | FOREIGN KEY | fk_ordini_r_ful_v_ordine_riga | ordine_riga_id |
 | PRIMARY KEY | pk_fulv | id |

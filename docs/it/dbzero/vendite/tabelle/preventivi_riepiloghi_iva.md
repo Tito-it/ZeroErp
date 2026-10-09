@@ -25,6 +25,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_preventivi_riepiloghi_iva_arrotondamento_finito |  |
+| CHECK | chk_preventivi_riepiloghi_iva_imponibile_finito |  |
+| CHECK | chk_preventivi_riepiloghi_iva_imposta_finito |  |
 | FOREIGN KEY | fk_preventivi_r_iva_iva | iva_id |
 | FOREIGN KEY | fk_preventivi_r_iva_natura | natura_id |
 | FOREIGN KEY | fk_preventivi_r_iva_preventivo | preventivo_id |

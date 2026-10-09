@@ -27,6 +27,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_contratti_utilities_param_1_num_finito |  |
 | FOREIGN KEY | fk_contratti_utilities_classi_utenze | classe_utenza_id |
 | FOREIGN KEY | fk_contratti_utilities_contratti | contratto_id |
 | FOREIGN KEY | fk_contratti_utilities_istanze_dati_precontrattuali | istanza_dati_precontrattuali_id |

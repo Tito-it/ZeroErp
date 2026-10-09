@@ -35,6 +35,11 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_contratti_righe_componenti_coeff_qta_snapshot_finito |  |
+| CHECK | chk_contratti_righe_componenti_factor_to_base_finito |  |
+| CHECK | chk_contratti_righe_componenti_prezzo_unitario_finito |  |
+| CHECK | chk_contratti_righe_componenti_qta_operativa_finito |  |
+| CHECK | chk_contratti_righe_componenti_quantita_finito |  |
 | CHECK | chk_contrighe_comp_coeff_qta_pos |  |
 | CHECK | chk_contrighe_comp_origine |  |
 | CHECK | chk_contrighe_comp_quantita_nz |  |

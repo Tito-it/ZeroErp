@@ -50,6 +50,7 @@
 |------|------|---------|
 | CHECK | chk_contratti_tipo_variazione_globale |  |
 | CHECK | chk_contratti_validita |  |
+| CHECK | chk_contratti_valore_variazione_globale_finito |  |
 | FOREIGN KEY | fk_contratti_ba_coppia | billing_account_id, istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_contratti_billing_account | billing_account_id |
 | FOREIGN KEY | fk_contratti_categoria_cliente_snapshot | categoria_cliente_id_snapshot |

@@ -37,6 +37,8 @@
 | CHECK | chk_mag_movimenti_asset_qta_unitaria |  |
 | CHECK | chk_mag_movimenti_qta_non_zero |  |
 | CHECK | chk_mag_movimenti_sorgente_chiave |  |
+| CHECK | chk_movimenti_costo_unitario_finito |  |
+| CHECK | chk_movimenti_qta_finito |  |
 | FOREIGN KEY | fk_mag_movimenti_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_movimenti_asset | asset_id |
 | FOREIGN KEY | fk_mag_movimenti_causale | causale_id |

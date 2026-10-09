@@ -43,6 +43,7 @@
 | CHECK | chk_fornitori_canale_fe_len |  |
 | CHECK | chk_fornitori_rating |  |
 | CHECK | chk_fornitori_ritenuta_aliquota |  |
+| CHECK | chk_fornitori_ritenuta_aliquota_finito |  |
 | FOREIGN KEY | fk_fornitori_modalita_pagamento | modalita_pagamento_id |
 | FOREIGN KEY | fk_fornitori_soggetti_ruoli | soggetto_ruolo_id |
 | FOREIGN KEY | fk_fornitori_stati_fornitore | stato_fornitore_id |

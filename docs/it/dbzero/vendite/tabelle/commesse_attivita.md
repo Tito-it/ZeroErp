@@ -63,10 +63,15 @@
 | CHECK | chk_commesse_attivita_comp_mese_primo |  |
 | CHECK | chk_commesse_attivita_comp_range |  |
 | CHECK | chk_commesse_attivita_factor_to_base |  |
+| CHECK | chk_commesse_attivita_factor_to_base_finito |  |
 | CHECK | chk_commesse_attivita_origine_prezzo |  |
 | CHECK | chk_commesse_attivita_posticipa |  |
 | CHECK | chk_commesse_attivita_prezzo |  |
+| CHECK | chk_commesse_attivita_prezzo_base_snapshot_finito |  |
+| CHECK | chk_commesse_attivita_prezzo_snapshot_finito |  |
 | CHECK | chk_commesse_attivita_pricing_mode |  |
+| CHECK | chk_commesse_attivita_qta_operativa_finito |  |
+| CHECK | chk_commesse_attivita_quantita_finito |  |
 | CHECK | chk_commesse_attivita_rettificata_e_rettifica |  |
 | CHECK | chk_commesse_attivita_sorgente_pair |  |
 | CHECK | chk_commesse_attivita_stato_approvazione |  |
@@ -74,6 +79,7 @@
 | CHECK | chk_commesse_attivita_tipo_doc_emittibile |  |
 | CHECK | chk_commesse_attivita_tipo_movimento |  |
 | CHECK | chk_commesse_attivita_tipo_variazione_applicata |  |
+| CHECK | chk_commesse_attivita_valore_variazione_applicata_finito |  |
 | FOREIGN KEY | commesse_attivita_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_commesse_attivita_area_geo | area_geografica_id |
 | FOREIGN KEY | fk_commesse_attivita_articolo | articolo_id |

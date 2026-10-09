@@ -37,6 +37,8 @@
 |------|------|---------|
 | CHECK | chk_soggetti_titoli_iva_ambito |  |
 | CHECK | chk_soggetti_titoli_iva_finestra |  |
+| CHECK | chk_soggetti_titoli_iva_imponibile_utilizzato_finito |  |
+| CHECK | chk_soggetti_titoli_iva_plafond_finito |  |
 | CHECK | chk_soggetti_titoli_iva_plafond_pos |  |
 | FOREIGN KEY | fk_soggetti_titoli_iva_emittente | emittente_fiscale_id |
 | FOREIGN KEY | fk_soggetti_titoli_iva_iva | iva_id |

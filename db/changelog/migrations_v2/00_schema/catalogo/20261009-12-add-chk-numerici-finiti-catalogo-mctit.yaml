@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN NUMERO CHE NON E' UN NUMERO NON SI SCRIVE — schema catalogo
+#   CHECK «finito» su 4 colonne numeric di 3 tabelle:
+#     catalogo.articoli_componenti: coeff_qta
+#     catalogo.articoli_uom_operativa: factor_to_base, qty_step
+#     catalogo.unita_misura_conversioni: fattore
+#   Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1 e D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il tipo numeric ammette 'NaN' (con o senza scala) e 'Infinity' /
+#   '-Infinity' (solo senza scala). Nessuno dei tre e' una quantita', un
+#   prezzo o un importo, e il NaN contagia: una somma con un NaN e' NaN, e
+#   NaN e' maggiore di ogni numero, quindi passa i CHECK di segno (>= 0) e
+#   risponde «si'» a ogni confronto con una soglia. La regola e' del TIPO,
+#   non dei documenti: vale per ogni colonna numeric del modello (D-2).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Un CHECK per colonna, sempre lo stesso predicato:
+#     col > '-Infinity'::numeric AND col < 'Infinity'::numeric
+#   falso su NaN, Infinity e -Infinity, vero su ogni numero; il NULL passa
+#   come in ogni CHECK. Nome chk_<tabella>_<colonna>_finito.
+#   Un CHECK e non un guard (D-1): chi scrive un NaN e' un chiamante rotto,
+#   non una persona da un form, e la violazione esce 23514 col nome del
+#   vincolo: un errore tecnico, giusto per un guasto.
+#   ⭐ Una colonna numeric nuova nasce col suo CHECK: lo pretende il presidio
+#   db/pgtap/dbops/test-numerici-finiti-v1.sql.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero valori non finiti (expectedResult 0: un DB
+#   da zero la soddisfa, linee-guida-sql §11.4), come il 20261008-85. Se ce
+#   ne sono il migrate si ferma e si guardano a mano: nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/catalogo/20261009-12-add-chk-numerici-finiti-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261009-12-add-chk-numerici-finiti-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK «finito» (niente NaN, Infinity, -Infinity) sulle 4 colonne numeric dello
+        schema catalogo. Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT (SELECT count(*) FROM catalogo.articoli_componenti
+                                WHERE NOT (coeff_qta > '-Infinity'::numeric AND coeff_qta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM catalogo.articoli_uom_operativa
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (qty_step > '-Infinity'::numeric AND qty_step < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM catalogo.unita_misura_conversioni
+                                WHERE NOT (fattore > '-Infinity'::numeric AND fattore < 'Infinity'::numeric));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                ADD CONSTRAINT chk_articoli_componenti_coeff_qta_finito
+                    CHECK (coeff_qta > '-Infinity'::numeric AND coeff_qta < 'Infinity'::numeric);
+              ALTER TABLE catalogo.articoli_uom_operativa
+                ADD CONSTRAINT chk_articoli_uom_operativa_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_articoli_uom_operativa_qty_step_finito
+                    CHECK (qty_step > '-Infinity'::numeric AND qty_step < 'Infinity'::numeric);
+              ALTER TABLE catalogo.unita_misura_conversioni
+                ADD CONSTRAINT chk_unita_misura_conversioni_fattore_finito
+                    CHECK (fattore > '-Infinity'::numeric AND fattore < 'Infinity'::numeric);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE catalogo.articoli_componenti
+                DROP CONSTRAINT IF EXISTS chk_articoli_componenti_coeff_qta_finito;
+              ALTER TABLE catalogo.articoli_uom_operativa
+                DROP CONSTRAINT IF EXISTS chk_articoli_uom_operativa_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_articoli_uom_operativa_qty_step_finito;
+              ALTER TABLE catalogo.unita_misura_conversioni
+                DROP CONSTRAINT IF EXISTS chk_unita_misura_conversioni_fattore_finito;

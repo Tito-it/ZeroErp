@@ -759,6 +759,34 @@ La generalizzazione del guard transizione e' rinviata: serviranno almeno tre cas
 
 ---
 
+### 7d. ⛔ Una colonna `numeric` nasce col CHECK «finito»
+
+Il tipo `numeric` ammette `'NaN'` (con o senza scala) e `'Infinity'`/`'-Infinity'`
+(solo senza scala). Nessuno dei tre è una quantità, un prezzo o un importo, e il
+`NaN` contagia: una somma che lo incontra vale `NaN`, e `NaN` è maggiore di ogni
+numero, quindi passa i CHECK di segno (`>= 0`) e risponde «sì» a ogni confronto
+con una soglia. Per questo **ogni** colonna `numeric` porta il suo CHECK, sempre
+nella stessa forma:
+
+```sql
+ADD COLUMN importo numeric(18,6)
+    CONSTRAINT chk_<tabella>_importo_finito
+    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric)
+```
+
+* Il predicato è falso su `NaN`, `Infinity` e `-Infinity`; il `NULL` passa, come in
+  ogni CHECK. Il nome `chk_<tabella>_<colonna>_finito`, abbreviato con la sigla di
+  casa della tabella quando supera i 63 caratteri (`chk_oce_comp_…`).
+* È un CHECK e non un guard: chi scrive un `NaN` è un chiamante rotto, non una
+  persona da un form.
+* Lo presidia `db/pgtap/dbops/test-numerici-finiti-v1.sql`, che confronta la
+  **forma esatta** su ogni colonna `numeric` (`storico` escluso): una colonna nuova
+  senza CHECK lo rende rosso.
+
+Brief: `brief-db-valore-numerico-non-finito-nei-documenti` (§5.2).
+
+---
+
 ### 8. Indici
 
 * **Naming**: `ix_<table>_<column>`

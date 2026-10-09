@@ -1,0 +1,149 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN NUMERO CHE NON E' UN NUMERO NON SI SCRIVE — schema acquisti
+#   CHECK «finito» su 16 colonne numeric di 5 tabelle:
+#     acquisti.ddt: peso_lordo, peso_netto, volume
+#     acquisti.ddt_righe: qta
+#     acquisti.ordini: imponibile_tot_atteso, iva_tot_atteso, peso_lordo, peso_netto, sconto_tot_atteso, tasso_cambio, totale_doc_atteso, volume
+#     acquisti.ordini_righe: prezzo_unitario, qta, sconto_percentuale
+#     acquisti.ordini_righe_fulfillment: qta_ricevuta
+#   Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1 e D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il tipo numeric ammette 'NaN' (con o senza scala) e 'Infinity' /
+#   '-Infinity' (solo senza scala). Nessuno dei tre e' una quantita', un
+#   prezzo o un importo, e il NaN contagia: una somma con un NaN e' NaN, e
+#   NaN e' maggiore di ogni numero, quindi passa i CHECK di segno (>= 0) e
+#   risponde «si'» a ogni confronto con una soglia. La regola e' del TIPO,
+#   non dei documenti: vale per ogni colonna numeric del modello (D-2).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Un CHECK per colonna, sempre lo stesso predicato:
+#     col > '-Infinity'::numeric AND col < 'Infinity'::numeric
+#   falso su NaN, Infinity e -Infinity, vero su ogni numero; il NULL passa
+#   come in ogni CHECK. Nome chk_<tabella>_<colonna>_finito.
+#   Un CHECK e non un guard (D-1): chi scrive un NaN e' un chiamante rotto,
+#   non una persona da un form, e la violazione esce 23514 col nome del
+#   vincolo: un errore tecnico, giusto per un guasto.
+#   ⭐ Una colonna numeric nuova nasce col suo CHECK: lo pretende il presidio
+#   db/pgtap/dbops/test-numerici-finiti-v1.sql.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero valori non finiti (expectedResult 0: un DB
+#   da zero la soddisfa, linee-guida-sql §11.4), come il 20261008-85. Se ce
+#   ne sono il migrate si ferma e si guardano a mano: nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/acquisti/20261009-10-add-chk-numerici-finiti-acquisti-mctit.yaml
+
+  - changeSet:
+      id: 20261009-10-add-chk-numerici-finiti-acquisti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK «finito» (niente NaN, Infinity, -Infinity) sulle 16 colonne numeric dello
+        schema acquisti. Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT (SELECT count(*) FROM acquisti.ddt
+                                WHERE NOT (peso_lordo > '-Infinity'::numeric AND peso_lordo < 'Infinity'::numeric)
+                                  OR NOT (peso_netto > '-Infinity'::numeric AND peso_netto < 'Infinity'::numeric)
+                                  OR NOT (volume > '-Infinity'::numeric AND volume < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM acquisti.ddt_righe
+                                WHERE NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM acquisti.ordini
+                                WHERE NOT (imponibile_tot_atteso > '-Infinity'::numeric AND imponibile_tot_atteso < 'Infinity'::numeric)
+                                  OR NOT (iva_tot_atteso > '-Infinity'::numeric AND iva_tot_atteso < 'Infinity'::numeric)
+                                  OR NOT (peso_lordo > '-Infinity'::numeric AND peso_lordo < 'Infinity'::numeric)
+                                  OR NOT (peso_netto > '-Infinity'::numeric AND peso_netto < 'Infinity'::numeric)
+                                  OR NOT (sconto_tot_atteso > '-Infinity'::numeric AND sconto_tot_atteso < 'Infinity'::numeric)
+                                  OR NOT (tasso_cambio > '-Infinity'::numeric AND tasso_cambio < 'Infinity'::numeric)
+                                  OR NOT (totale_doc_atteso > '-Infinity'::numeric AND totale_doc_atteso < 'Infinity'::numeric)
+                                  OR NOT (volume > '-Infinity'::numeric AND volume < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM acquisti.ordini_righe
+                                WHERE NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric)
+                                  OR NOT (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM acquisti.ordini_righe_fulfillment
+                                WHERE NOT (qta_ricevuta > '-Infinity'::numeric AND qta_ricevuta < 'Infinity'::numeric));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE acquisti.ddt
+                ADD CONSTRAINT chk_ddt_peso_lordo_finito
+                    CHECK (peso_lordo > '-Infinity'::numeric AND peso_lordo < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_peso_netto_finito
+                    CHECK (peso_netto > '-Infinity'::numeric AND peso_netto < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_volume_finito
+                    CHECK (volume > '-Infinity'::numeric AND volume < 'Infinity'::numeric);
+              ALTER TABLE acquisti.ddt_righe
+                ADD CONSTRAINT chk_ddt_righe_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric);
+              ALTER TABLE acquisti.ordini
+                ADD CONSTRAINT chk_ordini_imponibile_tot_atteso_finito
+                    CHECK (imponibile_tot_atteso > '-Infinity'::numeric AND imponibile_tot_atteso < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_iva_tot_atteso_finito
+                    CHECK (iva_tot_atteso > '-Infinity'::numeric AND iva_tot_atteso < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_peso_lordo_finito
+                    CHECK (peso_lordo > '-Infinity'::numeric AND peso_lordo < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_peso_netto_finito
+                    CHECK (peso_netto > '-Infinity'::numeric AND peso_netto < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_sconto_tot_atteso_finito
+                    CHECK (sconto_tot_atteso > '-Infinity'::numeric AND sconto_tot_atteso < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_tasso_cambio_finito
+                    CHECK (tasso_cambio > '-Infinity'::numeric AND tasso_cambio < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_totale_doc_atteso_finito
+                    CHECK (totale_doc_atteso > '-Infinity'::numeric AND totale_doc_atteso < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_volume_finito
+                    CHECK (volume > '-Infinity'::numeric AND volume < 'Infinity'::numeric);
+              ALTER TABLE acquisti.ordini_righe
+                ADD CONSTRAINT chk_ordini_righe_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_sconto_percentuale_finito
+                    CHECK (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric);
+              ALTER TABLE acquisti.ordini_righe_fulfillment
+                ADD CONSTRAINT chk_ordini_righe_fulfillment_qta_ricevuta_finito
+                    CHECK (qta_ricevuta > '-Infinity'::numeric AND qta_ricevuta < 'Infinity'::numeric);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE acquisti.ddt
+                DROP CONSTRAINT IF EXISTS chk_ddt_peso_lordo_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_peso_netto_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_volume_finito;
+              ALTER TABLE acquisti.ddt_righe
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_qta_finito;
+              ALTER TABLE acquisti.ordini
+                DROP CONSTRAINT IF EXISTS chk_ordini_imponibile_tot_atteso_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_iva_tot_atteso_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_peso_lordo_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_peso_netto_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_sconto_tot_atteso_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_tasso_cambio_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_totale_doc_atteso_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_volume_finito;
+              ALTER TABLE acquisti.ordini_righe
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_qta_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_sconto_percentuale_finito;
+              ALTER TABLE acquisti.ordini_righe_fulfillment
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_fulfillment_qta_ricevuta_finito;

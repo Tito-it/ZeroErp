@@ -70,10 +70,16 @@
 | CHECK | chk_attivita_competenza_dal_al |  |
 | CHECK | chk_attivita_competenza_mese_primo |  |
 | CHECK | chk_attivita_fatt_stato_esecuzione |  |
+| CHECK | chk_attivita_fatturabili_factor_to_base_finito |  |
 | CHECK | chk_attivita_fatturabili_origine_prezzo |  |
+| CHECK | chk_attivita_fatturabili_prezzo_base_snapshot_finito |  |
+| CHECK | chk_attivita_fatturabili_prezzo_unitario_finito |  |
+| CHECK | chk_attivita_fatturabili_qta_operativa_finito |  |
+| CHECK | chk_attivita_fatturabili_quantita_finito |  |
 | CHECK | chk_attivita_fatturabili_rettificata_e_rettifica |  |
 | CHECK | chk_attivita_fatturabili_tipo_movimento |  |
 | CHECK | chk_attivita_fatturabili_tipo_variazione_applicata |  |
+| CHECK | chk_attivita_fatturabili_valore_variazione_applicata_finito |  |
 | FOREIGN KEY | attivita_fatturabili_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_attivita_fatturabili_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |

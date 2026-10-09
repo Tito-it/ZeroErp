@@ -26,6 +26,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_arrotondamenti_scope_saldo_arrotondamento_finito |  |
 | FOREIGN KEY | fk_arrotondamenti_scope_modalita_pagamento | modalita_pagamento_id |
 | FOREIGN KEY | fk_arrotondamenti_scope_termine_pagamento | termine_pagamento_id |
 | FOREIGN KEY | fk_fatture_arrotondamenti_scope_ba | billing_account_id |

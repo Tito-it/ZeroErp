@@ -55,6 +55,14 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_arrotondamento_attuale_finito |  |
+| CHECK | chk_fatture_arrotondamento_precedente_finito |  |
+| CHECK | chk_fatture_bollo_importo_finito |  |
+| CHECK | chk_fatture_imponibile_tot_finito |  |
+| CHECK | chk_fatture_imposta_tot_finito |  |
+| CHECK | chk_fatture_tasso_cambio_finito |  |
+| CHECK | chk_fatture_totale_a_pagare_finito |  |
+| CHECK | chk_fatture_totale_doc_finito |  |
 | FOREIGN KEY | fk_fatture_ba | billing_account_id |
 | FOREIGN KEY | fk_fatture_emittente | emittente_soggetto_ruolo_id |
 | FOREIGN KEY | fk_fatture_modpag | modalita_pagamento_id |

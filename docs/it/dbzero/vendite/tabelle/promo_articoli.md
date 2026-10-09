@@ -30,6 +30,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_promo_articoli_tipo_variazione |  |
+| CHECK | chk_promo_articoli_valore_variazione_finito |  |
 | FOREIGN KEY | fk_promo_articoli_articolo | articolo_id |
 | FOREIGN KEY | fk_promo_articoli_uom | uom_id |
 | PRIMARY KEY | pk_promo_articoli | id |

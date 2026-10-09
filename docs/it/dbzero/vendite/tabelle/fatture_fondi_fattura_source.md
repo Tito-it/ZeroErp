@@ -34,6 +34,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_fondi_fattura_source_importo_finito |  |
 | CHECK | chk_fondi_source_importo_non_zero |  |
 | CHECK | chk_fondi_source_motivo_obbligatorio |  |
 | CHECK | chk_fondi_source_origine |  |

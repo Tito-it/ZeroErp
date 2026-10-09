@@ -25,6 +25,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_iva_aliquota_iva_finito |  |
 | CHECK | chk_iva_aliquota_pos_no_natura_assogg |  |
 | CHECK | chk_iva_codice_interno_non_vuoto |  |
 | CHECK | chk_iva_zero_requires_natura_or_assogg |  |

@@ -31,6 +31,8 @@
 | CHECK | chk_mag_rettifiche_qta_non_zero |  |
 | CHECK | chk_mag_rettifiche_righe_asset_qta_unitaria |  |
 | CHECK | chk_mag_rettifiche_righe_costo_non_neg |  |
+| CHECK | chk_rettifiche_righe_costo_unitario_finito |  |
+| CHECK | chk_rettifiche_righe_qta_delta_finito |  |
 | FOREIGN KEY | fk_mag_rettifiche_righe_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_rettifiche_righe_asset | asset_id |
 | FOREIGN KEY | fk_mag_rettifiche_righe_lotto | lotto_id |

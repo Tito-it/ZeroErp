@@ -30,6 +30,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ricevute_totale_iva_finito |  |
+| CHECK | chk_ricevute_totale_lordo_finito |  |
 | CHECK | chk_shop_ricevute_canale_shop |  |
 | CHECK | chk_shop_ricevute_pagamento_esito |  |
 | CHECK | chk_shop_ricevute_totali_non_neg |  |

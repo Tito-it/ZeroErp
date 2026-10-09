@@ -230,7 +230,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   se il prezzo viene davvero da lì: il push non la scrive più, la provenienza dovrà viaggiare col prezzo dal
   documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Restano due brief
   al team DB, il BE attende: `brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C,
-  la generazione si ferma), `brief-be-db-giorno-nel-fuso-aziendale` (i filtri per giorno
+  la generazione si ferma; ✅ DB chiuso il 2026-10-09 (applicato, pgTAP verdi): CHECK «finito» su tutte le 170
+  colonne numeric, `20261009-10…-18`, codice TECNICO `E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO`),
+  `brief-be-db-giorno-nel-fuso-aziendale` (i filtri per giorno
   usano il giorno UTC: `test_giornale_trasversale_perimetro` è rosso fra le 00:00 e le 02:00). Da decidere: gli
   stub `types-bleach`/`types-openpyxl`.
 - **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,

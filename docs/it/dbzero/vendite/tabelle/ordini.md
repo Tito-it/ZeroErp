@@ -50,6 +50,11 @@
 | CHECK | chk_ordini_documento_origine_copres |  |
 | CHECK | chk_ordini_documento_origine_tipo |  |
 | CHECK | chk_ordini_fatturazione_trigger |  |
+| CHECK | chk_ordini_imponibile_tot_finito |  |
+| CHECK | chk_ordini_iva_tot_finito |  |
+| CHECK | chk_ordini_sconto_tot_finito |  |
+| CHECK | chk_ordini_tasso_cambio_finito |  |
+| CHECK | chk_ordini_totale_doc_finito |  |
 | FOREIGN KEY | fk_ordini_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_ordini_registro | registro_id |
 | FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |

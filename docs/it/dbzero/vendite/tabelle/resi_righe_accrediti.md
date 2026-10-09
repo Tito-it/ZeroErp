@@ -27,6 +27,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_resi_righe_accrediti_qta_finito |  |
+| CHECK | chk_resi_righe_accrediti_qta_partita_finito |  |
 | CHECK | k_resi_accrediti_qta_partita_pos |  |
 | CHECK | k_resi_accrediti_qta_pos |  |
 | FOREIGN KEY | fk_resi_accrediti_commessa_attivita | commessa_attivita_id |

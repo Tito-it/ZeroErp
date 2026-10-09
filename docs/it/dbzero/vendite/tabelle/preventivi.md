@@ -39,6 +39,9 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_preventivi_competenza_mese_primo |  |
+| CHECK | chk_preventivi_totale_documento_finito |  |
+| CHECK | chk_preventivi_totale_imponibile_finito |  |
+| CHECK | chk_preventivi_totale_iva_finito |  |
 | CHECK | chk_preventivi_validita |  |
 | FOREIGN KEY | fk_preventivi_ba_coppia | billing_account_id, istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_preventivi_billing_account | billing_account_id |

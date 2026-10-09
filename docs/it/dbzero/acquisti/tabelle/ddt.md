@@ -40,6 +40,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ddt_peso_lordo_finito |  |
+| CHECK | chk_ddt_peso_netto_finito |  |
+| CHECK | chk_ddt_volume_finito |  |
 | FOREIGN KEY | fk_a_ddt_aspetto_bene | aspetto_bene_id |
 | FOREIGN KEY | fk_a_ddt_causale_trasporto | causale_trasporto_id |
 | FOREIGN KEY | fk_a_ddt_destinatario_ruolo | destinatario_soggetto_ruolo_id |

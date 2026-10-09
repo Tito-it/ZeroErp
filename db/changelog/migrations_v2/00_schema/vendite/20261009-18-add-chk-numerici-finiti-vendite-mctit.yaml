@@ -1,0 +1,676 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN NUMERO CHE NON E' UN NUMERO NON SI SCRIVE — schema vendite
+#   CHECK «finito» su 114 colonne numeric di 38 tabelle:
+#     vendite.attivita_consumi: consumo_totale
+#     vendite.attivita_fatturabili: factor_to_base, prezzo_base_snapshot, prezzo_unitario, qta_operativa, quantita, valore_variazione_applicata
+#     vendite.commesse_attivita: factor_to_base, prezzo_base_snapshot, prezzo_snapshot, qta_operativa, quantita, valore_variazione_applicata
+#     vendite.contratti: valore_variazione_globale
+#     vendite.contratti_righe: factor_to_base, prezzo_unitario, qta_operativa, quantita
+#     vendite.contratti_righe_componenti: coeff_qta_snapshot, factor_to_base, prezzo_unitario, qta_operativa, quantita
+#     vendite.contratti_utilities: param_1_num
+#     vendite.ddt: peso_lordo, peso_netto, volume
+#     vendite.ddt_righe: factor_to_base, prezzo_unitario, qta_operativa, quantita, sconto_percentuale
+#     vendite.ddt_righe_componenti: coeff_qta_snapshot, factor_to_base, prezzo_unitario, qta_operativa, quantita
+#     vendite.ddt_righe_prelievi: qta
+#     vendite.fatture: arrotondamento_attuale, arrotondamento_precedente, bollo_importo, imponibile_tot, imposta_tot, tasso_cambio, totale_a_pagare, totale_doc
+#     vendite.fatture_arrotondamenti_scope: saldo_arrotondamento
+#     vendite.fatture_fondi_fattura: importo
+#     vendite.fatture_fondi_fattura_source: importo
+#     vendite.fatture_riepiloghi_iva: aliquota_iva, arrotondamento, imponibile, imposta
+#     vendite.fatture_righe: aliquota_iva, imponibile_riga, kit_qta, prezzo_unitario, qta, sconto_percentuale
+#     vendite.fatture_scadenze: importo
+#     vendite.listini_righe: prezzo
+#     vendite.listini_righe_componenti: prezzo
+#     vendite.offerte_commerciali: valore_variazione_globale
+#     vendite.offerte_commerciali_eccezioni: factor_to_base, prezzo_unitario, qta_operativa, quantita
+#     vendite.offerte_commerciali_eccezioni_componenti: coeff_qta_snapshot, factor_to_base, prezzo_unitario, qta_operativa, quantita
+#     vendite.offerte_commerciali_utilities: param_1_num
+#     vendite.ordini: imponibile_tot, iva_tot, sconto_tot, tasso_cambio, totale_doc
+#     vendite.ordini_righe: factor_to_base, prezzo_unitario, qta_operativa, quantita, sconto_percentuale
+#     vendite.ordini_righe_componenti: coeff_qta_snapshot, factor_to_base, prezzo_unitario, qta_operativa, quantita
+#     vendite.ordini_righe_fulfillment: qta_evasa
+#     vendite.preventivi: totale_documento, totale_imponibile, totale_iva
+#     vendite.preventivi_riepiloghi_iva: arrotondamento, imponibile, imposta
+#     vendite.preventivi_righe: factor_to_base, prezzo_unitario, qta_operativa, quantita, sconto_percentuale
+#     vendite.preventivi_righe_componenti: coeff_qta_snapshot, factor_to_base, prezzo_unitario, qta_operativa, quantita
+#     vendite.promo_articoli: valore_variazione
+#     vendite.resi_righe: factor_to_base, qta_operativa, quantita
+#     vendite.resi_righe_accrediti: qta, qta_partita
+#     vendite.resi_righe_riconsegne: qta
+#     vendite.resi_righe_rientri: qta
+#     vendite.resi_righe_rinunce: qta
+#   Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1 e D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il tipo numeric ammette 'NaN' (con o senza scala) e 'Infinity' /
+#   '-Infinity' (solo senza scala). Nessuno dei tre e' una quantita', un
+#   prezzo o un importo, e il NaN contagia: una somma con un NaN e' NaN, e
+#   NaN e' maggiore di ogni numero, quindi passa i CHECK di segno (>= 0) e
+#   risponde «si'» a ogni confronto con una soglia. La regola e' del TIPO,
+#   non dei documenti: vale per ogni colonna numeric del modello (D-2).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Un CHECK per colonna, sempre lo stesso predicato:
+#     col > '-Infinity'::numeric AND col < 'Infinity'::numeric
+#   falso su NaN, Infinity e -Infinity, vero su ogni numero; il NULL passa
+#   come in ogni CHECK. Nome chk_<tabella>_<colonna>_finito.
+#   ⚠️ Su offerte_commerciali_eccezioni_componenti il nome usa l'abbreviazione
+#   di casa «oce_comp» (come chk_oce_comp_quantita_nz): per esteso supera
+#   i 63 caratteri e PostgreSQL lo troncherebbe.
+#   Un CHECK e non un guard (D-1): chi scrive un NaN e' un chiamante rotto,
+#   non una persona da un form, e la violazione esce 23514 col nome del
+#   vincolo: un errore tecnico, giusto per un guasto.
+#   ⭐ Una colonna numeric nuova nasce col suo CHECK: lo pretende il presidio
+#   db/pgtap/dbops/test-numerici-finiti-v1.sql.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero valori non finiti (expectedResult 0: un DB
+#   da zero la soddisfa, linee-guida-sql §11.4), come il 20261008-85. Se ce
+#   ne sono il migrate si ferma e si guardano a mano: nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261009-18-add-chk-numerici-finiti-vendite-mctit.yaml
+
+  - changeSet:
+      id: 20261009-18-add-chk-numerici-finiti-vendite
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK «finito» (niente NaN, Infinity, -Infinity) sulle 114 colonne numeric dello
+        schema vendite. Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT (SELECT count(*) FROM vendite.attivita_consumi
+                                WHERE NOT (consumo_totale > '-Infinity'::numeric AND consumo_totale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.attivita_fatturabili
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_base_snapshot > '-Infinity'::numeric AND prezzo_base_snapshot < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric)
+                                  OR NOT (valore_variazione_applicata > '-Infinity'::numeric AND valore_variazione_applicata < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.commesse_attivita
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_base_snapshot > '-Infinity'::numeric AND prezzo_base_snapshot < 'Infinity'::numeric)
+                                  OR NOT (prezzo_snapshot > '-Infinity'::numeric AND prezzo_snapshot < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric)
+                                  OR NOT (valore_variazione_applicata > '-Infinity'::numeric AND valore_variazione_applicata < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.contratti
+                                WHERE NOT (valore_variazione_globale > '-Infinity'::numeric AND valore_variazione_globale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.contratti_righe
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.contratti_righe_componenti
+                                WHERE NOT (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric)
+                                  OR NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.contratti_utilities
+                                WHERE NOT (param_1_num > '-Infinity'::numeric AND param_1_num < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.ddt
+                                WHERE NOT (peso_lordo > '-Infinity'::numeric AND peso_lordo < 'Infinity'::numeric)
+                                  OR NOT (peso_netto > '-Infinity'::numeric AND peso_netto < 'Infinity'::numeric)
+                                  OR NOT (volume > '-Infinity'::numeric AND volume < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.ddt_righe
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric)
+                                  OR NOT (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.ddt_righe_componenti
+                                WHERE NOT (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric)
+                                  OR NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.ddt_righe_prelievi
+                                WHERE NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.fatture
+                                WHERE NOT (arrotondamento_attuale > '-Infinity'::numeric AND arrotondamento_attuale < 'Infinity'::numeric)
+                                  OR NOT (arrotondamento_precedente > '-Infinity'::numeric AND arrotondamento_precedente < 'Infinity'::numeric)
+                                  OR NOT (bollo_importo > '-Infinity'::numeric AND bollo_importo < 'Infinity'::numeric)
+                                  OR NOT (imponibile_tot > '-Infinity'::numeric AND imponibile_tot < 'Infinity'::numeric)
+                                  OR NOT (imposta_tot > '-Infinity'::numeric AND imposta_tot < 'Infinity'::numeric)
+                                  OR NOT (tasso_cambio > '-Infinity'::numeric AND tasso_cambio < 'Infinity'::numeric)
+                                  OR NOT (totale_a_pagare > '-Infinity'::numeric AND totale_a_pagare < 'Infinity'::numeric)
+                                  OR NOT (totale_doc > '-Infinity'::numeric AND totale_doc < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.fatture_arrotondamenti_scope
+                                WHERE NOT (saldo_arrotondamento > '-Infinity'::numeric AND saldo_arrotondamento < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.fatture_fondi_fattura
+                                WHERE NOT (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.fatture_fondi_fattura_source
+                                WHERE NOT (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.fatture_riepiloghi_iva
+                                WHERE NOT (aliquota_iva > '-Infinity'::numeric AND aliquota_iva < 'Infinity'::numeric)
+                                  OR NOT (arrotondamento > '-Infinity'::numeric AND arrotondamento < 'Infinity'::numeric)
+                                  OR NOT (imponibile > '-Infinity'::numeric AND imponibile < 'Infinity'::numeric)
+                                  OR NOT (imposta > '-Infinity'::numeric AND imposta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.fatture_righe
+                                WHERE NOT (aliquota_iva > '-Infinity'::numeric AND aliquota_iva < 'Infinity'::numeric)
+                                  OR NOT (imponibile_riga > '-Infinity'::numeric AND imponibile_riga < 'Infinity'::numeric)
+                                  OR NOT (kit_qta > '-Infinity'::numeric AND kit_qta < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric)
+                                  OR NOT (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.fatture_scadenze
+                                WHERE NOT (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.listini_righe
+                                WHERE NOT (prezzo > '-Infinity'::numeric AND prezzo < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.listini_righe_componenti
+                                WHERE NOT (prezzo > '-Infinity'::numeric AND prezzo < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.offerte_commerciali
+                                WHERE NOT (valore_variazione_globale > '-Infinity'::numeric AND valore_variazione_globale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni_componenti
+                                WHERE NOT (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric)
+                                  OR NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_utilities
+                                WHERE NOT (param_1_num > '-Infinity'::numeric AND param_1_num < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.ordini
+                                WHERE NOT (imponibile_tot > '-Infinity'::numeric AND imponibile_tot < 'Infinity'::numeric)
+                                  OR NOT (iva_tot > '-Infinity'::numeric AND iva_tot < 'Infinity'::numeric)
+                                  OR NOT (sconto_tot > '-Infinity'::numeric AND sconto_tot < 'Infinity'::numeric)
+                                  OR NOT (tasso_cambio > '-Infinity'::numeric AND tasso_cambio < 'Infinity'::numeric)
+                                  OR NOT (totale_doc > '-Infinity'::numeric AND totale_doc < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.ordini_righe
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric)
+                                  OR NOT (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.ordini_righe_componenti
+                                WHERE NOT (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric)
+                                  OR NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.ordini_righe_fulfillment
+                                WHERE NOT (qta_evasa > '-Infinity'::numeric AND qta_evasa < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.preventivi
+                                WHERE NOT (totale_documento > '-Infinity'::numeric AND totale_documento < 'Infinity'::numeric)
+                                  OR NOT (totale_imponibile > '-Infinity'::numeric AND totale_imponibile < 'Infinity'::numeric)
+                                  OR NOT (totale_iva > '-Infinity'::numeric AND totale_iva < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.preventivi_riepiloghi_iva
+                                WHERE NOT (arrotondamento > '-Infinity'::numeric AND arrotondamento < 'Infinity'::numeric)
+                                  OR NOT (imponibile > '-Infinity'::numeric AND imponibile < 'Infinity'::numeric)
+                                  OR NOT (imposta > '-Infinity'::numeric AND imposta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.preventivi_righe
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric)
+                                  OR NOT (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.preventivi_righe_componenti
+                                WHERE NOT (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric)
+                                  OR NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.promo_articoli
+                                WHERE NOT (valore_variazione > '-Infinity'::numeric AND valore_variazione < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.resi_righe
+                                WHERE NOT (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric)
+                                  OR NOT (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric)
+                                  OR NOT (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.resi_righe_accrediti
+                                WHERE NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric)
+                                  OR NOT (qta_partita > '-Infinity'::numeric AND qta_partita < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.resi_righe_riconsegne
+                                WHERE NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.resi_righe_rientri
+                                WHERE NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM vendite.resi_righe_rinunce
+                                WHERE NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.attivita_consumi
+                ADD CONSTRAINT chk_attivita_consumi_consumo_totale_finito
+                    CHECK (consumo_totale > '-Infinity'::numeric AND consumo_totale < 'Infinity'::numeric);
+              ALTER TABLE vendite.attivita_fatturabili
+                ADD CONSTRAINT chk_attivita_fatturabili_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_attivita_fatturabili_prezzo_base_snapshot_finito
+                    CHECK (prezzo_base_snapshot > '-Infinity'::numeric AND prezzo_base_snapshot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_attivita_fatturabili_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_attivita_fatturabili_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_attivita_fatturabili_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_attivita_fatturabili_valore_variazione_applicata_finito
+                    CHECK (valore_variazione_applicata > '-Infinity'::numeric AND valore_variazione_applicata < 'Infinity'::numeric);
+              ALTER TABLE vendite.commesse_attivita
+                ADD CONSTRAINT chk_commesse_attivita_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_commesse_attivita_prezzo_base_snapshot_finito
+                    CHECK (prezzo_base_snapshot > '-Infinity'::numeric AND prezzo_base_snapshot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_commesse_attivita_prezzo_snapshot_finito
+                    CHECK (prezzo_snapshot > '-Infinity'::numeric AND prezzo_snapshot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_commesse_attivita_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_commesse_attivita_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_commesse_attivita_valore_variazione_applicata_finito
+                    CHECK (valore_variazione_applicata > '-Infinity'::numeric AND valore_variazione_applicata < 'Infinity'::numeric);
+              ALTER TABLE vendite.contratti
+                ADD CONSTRAINT chk_contratti_valore_variazione_globale_finito
+                    CHECK (valore_variazione_globale > '-Infinity'::numeric AND valore_variazione_globale < 'Infinity'::numeric);
+              ALTER TABLE vendite.contratti_righe
+                ADD CONSTRAINT chk_contratti_righe_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_contratti_righe_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_contratti_righe_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_contratti_righe_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric);
+              ALTER TABLE vendite.contratti_righe_componenti
+                ADD CONSTRAINT chk_contratti_righe_componenti_coeff_qta_snapshot_finito
+                    CHECK (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_contratti_righe_componenti_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_contratti_righe_componenti_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_contratti_righe_componenti_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_contratti_righe_componenti_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric);
+              ALTER TABLE vendite.contratti_utilities
+                ADD CONSTRAINT chk_contratti_utilities_param_1_num_finito
+                    CHECK (param_1_num > '-Infinity'::numeric AND param_1_num < 'Infinity'::numeric);
+              ALTER TABLE vendite.ddt
+                ADD CONSTRAINT chk_ddt_peso_lordo_finito
+                    CHECK (peso_lordo > '-Infinity'::numeric AND peso_lordo < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_peso_netto_finito
+                    CHECK (peso_netto > '-Infinity'::numeric AND peso_netto < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_volume_finito
+                    CHECK (volume > '-Infinity'::numeric AND volume < 'Infinity'::numeric);
+              ALTER TABLE vendite.ddt_righe
+                ADD CONSTRAINT chk_ddt_righe_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_righe_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_righe_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_righe_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_righe_sconto_percentuale_finito
+                    CHECK (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric);
+              ALTER TABLE vendite.ddt_righe_componenti
+                ADD CONSTRAINT chk_ddt_righe_componenti_coeff_qta_snapshot_finito
+                    CHECK (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_righe_componenti_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_righe_componenti_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_righe_componenti_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ddt_righe_componenti_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric);
+              ALTER TABLE vendite.ddt_righe_prelievi
+                ADD CONSTRAINT chk_ddt_righe_prelievi_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric);
+              ALTER TABLE vendite.fatture
+                ADD CONSTRAINT chk_fatture_arrotondamento_attuale_finito
+                    CHECK (arrotondamento_attuale > '-Infinity'::numeric AND arrotondamento_attuale < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_arrotondamento_precedente_finito
+                    CHECK (arrotondamento_precedente > '-Infinity'::numeric AND arrotondamento_precedente < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_bollo_importo_finito
+                    CHECK (bollo_importo > '-Infinity'::numeric AND bollo_importo < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_imponibile_tot_finito
+                    CHECK (imponibile_tot > '-Infinity'::numeric AND imponibile_tot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_imposta_tot_finito
+                    CHECK (imposta_tot > '-Infinity'::numeric AND imposta_tot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_tasso_cambio_finito
+                    CHECK (tasso_cambio > '-Infinity'::numeric AND tasso_cambio < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_totale_a_pagare_finito
+                    CHECK (totale_a_pagare > '-Infinity'::numeric AND totale_a_pagare < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_totale_doc_finito
+                    CHECK (totale_doc > '-Infinity'::numeric AND totale_doc < 'Infinity'::numeric);
+              ALTER TABLE vendite.fatture_arrotondamenti_scope
+                ADD CONSTRAINT chk_fatture_arrotondamenti_scope_saldo_arrotondamento_finito
+                    CHECK (saldo_arrotondamento > '-Infinity'::numeric AND saldo_arrotondamento < 'Infinity'::numeric);
+              ALTER TABLE vendite.fatture_fondi_fattura
+                ADD CONSTRAINT chk_fatture_fondi_fattura_importo_finito
+                    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric);
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                ADD CONSTRAINT chk_fatture_fondi_fattura_source_importo_finito
+                    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric);
+              ALTER TABLE vendite.fatture_riepiloghi_iva
+                ADD CONSTRAINT chk_fatture_riepiloghi_iva_aliquota_iva_finito
+                    CHECK (aliquota_iva > '-Infinity'::numeric AND aliquota_iva < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_riepiloghi_iva_arrotondamento_finito
+                    CHECK (arrotondamento > '-Infinity'::numeric AND arrotondamento < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_riepiloghi_iva_imponibile_finito
+                    CHECK (imponibile > '-Infinity'::numeric AND imponibile < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_riepiloghi_iva_imposta_finito
+                    CHECK (imposta > '-Infinity'::numeric AND imposta < 'Infinity'::numeric);
+              ALTER TABLE vendite.fatture_righe
+                ADD CONSTRAINT chk_fatture_righe_aliquota_iva_finito
+                    CHECK (aliquota_iva > '-Infinity'::numeric AND aliquota_iva < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_righe_imponibile_riga_finito
+                    CHECK (imponibile_riga > '-Infinity'::numeric AND imponibile_riga < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_righe_kit_qta_finito
+                    CHECK (kit_qta > '-Infinity'::numeric AND kit_qta < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_righe_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_righe_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_fatture_righe_sconto_percentuale_finito
+                    CHECK (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric);
+              ALTER TABLE vendite.fatture_scadenze
+                ADD CONSTRAINT chk_fatture_scadenze_importo_finito
+                    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric);
+              ALTER TABLE vendite.listini_righe
+                ADD CONSTRAINT chk_listini_righe_prezzo_finito
+                    CHECK (prezzo > '-Infinity'::numeric AND prezzo < 'Infinity'::numeric);
+              ALTER TABLE vendite.listini_righe_componenti
+                ADD CONSTRAINT chk_listini_righe_componenti_prezzo_finito
+                    CHECK (prezzo > '-Infinity'::numeric AND prezzo < 'Infinity'::numeric);
+              ALTER TABLE vendite.offerte_commerciali
+                ADD CONSTRAINT chk_offerte_commerciali_valore_variazione_globale_finito
+                    CHECK (valore_variazione_globale > '-Infinity'::numeric AND valore_variazione_globale < 'Infinity'::numeric);
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                ADD CONSTRAINT chk_offerte_commerciali_eccezioni_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_offerte_commerciali_eccezioni_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_offerte_commerciali_eccezioni_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_offerte_commerciali_eccezioni_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric);
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                ADD CONSTRAINT chk_oce_comp_coeff_qta_snapshot_finito
+                    CHECK (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_oce_comp_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_oce_comp_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_oce_comp_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_oce_comp_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric);
+              ALTER TABLE vendite.offerte_commerciali_utilities
+                ADD CONSTRAINT chk_offerte_commerciali_utilities_param_1_num_finito
+                    CHECK (param_1_num > '-Infinity'::numeric AND param_1_num < 'Infinity'::numeric);
+              ALTER TABLE vendite.ordini
+                ADD CONSTRAINT chk_ordini_imponibile_tot_finito
+                    CHECK (imponibile_tot > '-Infinity'::numeric AND imponibile_tot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_iva_tot_finito
+                    CHECK (iva_tot > '-Infinity'::numeric AND iva_tot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_sconto_tot_finito
+                    CHECK (sconto_tot > '-Infinity'::numeric AND sconto_tot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_tasso_cambio_finito
+                    CHECK (tasso_cambio > '-Infinity'::numeric AND tasso_cambio < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_totale_doc_finito
+                    CHECK (totale_doc > '-Infinity'::numeric AND totale_doc < 'Infinity'::numeric);
+              ALTER TABLE vendite.ordini_righe
+                ADD CONSTRAINT chk_ordini_righe_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_sconto_percentuale_finito
+                    CHECK (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric);
+              ALTER TABLE vendite.ordini_righe_componenti
+                ADD CONSTRAINT chk_ordini_righe_componenti_coeff_qta_snapshot_finito
+                    CHECK (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_componenti_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_componenti_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_componenti_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ordini_righe_componenti_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric);
+              ALTER TABLE vendite.ordini_righe_fulfillment
+                ADD CONSTRAINT chk_ordini_righe_fulfillment_qta_evasa_finito
+                    CHECK (qta_evasa > '-Infinity'::numeric AND qta_evasa < 'Infinity'::numeric);
+              ALTER TABLE vendite.preventivi
+                ADD CONSTRAINT chk_preventivi_totale_documento_finito
+                    CHECK (totale_documento > '-Infinity'::numeric AND totale_documento < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_totale_imponibile_finito
+                    CHECK (totale_imponibile > '-Infinity'::numeric AND totale_imponibile < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_totale_iva_finito
+                    CHECK (totale_iva > '-Infinity'::numeric AND totale_iva < 'Infinity'::numeric);
+              ALTER TABLE vendite.preventivi_riepiloghi_iva
+                ADD CONSTRAINT chk_preventivi_riepiloghi_iva_arrotondamento_finito
+                    CHECK (arrotondamento > '-Infinity'::numeric AND arrotondamento < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_riepiloghi_iva_imponibile_finito
+                    CHECK (imponibile > '-Infinity'::numeric AND imponibile < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_riepiloghi_iva_imposta_finito
+                    CHECK (imposta > '-Infinity'::numeric AND imposta < 'Infinity'::numeric);
+              ALTER TABLE vendite.preventivi_righe
+                ADD CONSTRAINT chk_preventivi_righe_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_righe_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_righe_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_righe_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_righe_sconto_percentuale_finito
+                    CHECK (sconto_percentuale > '-Infinity'::numeric AND sconto_percentuale < 'Infinity'::numeric);
+              ALTER TABLE vendite.preventivi_righe_componenti
+                ADD CONSTRAINT chk_preventivi_righe_componenti_coeff_qta_snapshot_finito
+                    CHECK (coeff_qta_snapshot > '-Infinity'::numeric AND coeff_qta_snapshot < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_righe_componenti_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_righe_componenti_prezzo_unitario_finito
+                    CHECK (prezzo_unitario > '-Infinity'::numeric AND prezzo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_righe_componenti_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_preventivi_righe_componenti_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric);
+              ALTER TABLE vendite.promo_articoli
+                ADD CONSTRAINT chk_promo_articoli_valore_variazione_finito
+                    CHECK (valore_variazione > '-Infinity'::numeric AND valore_variazione < 'Infinity'::numeric);
+              ALTER TABLE vendite.resi_righe
+                ADD CONSTRAINT chk_resi_righe_factor_to_base_finito
+                    CHECK (factor_to_base > '-Infinity'::numeric AND factor_to_base < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_resi_righe_qta_operativa_finito
+                    CHECK (qta_operativa > '-Infinity'::numeric AND qta_operativa < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_resi_righe_quantita_finito
+                    CHECK (quantita > '-Infinity'::numeric AND quantita < 'Infinity'::numeric);
+              ALTER TABLE vendite.resi_righe_accrediti
+                ADD CONSTRAINT chk_resi_righe_accrediti_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_resi_righe_accrediti_qta_partita_finito
+                    CHECK (qta_partita > '-Infinity'::numeric AND qta_partita < 'Infinity'::numeric);
+              ALTER TABLE vendite.resi_righe_riconsegne
+                ADD CONSTRAINT chk_resi_righe_riconsegne_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric);
+              ALTER TABLE vendite.resi_righe_rientri
+                ADD CONSTRAINT chk_resi_righe_rientri_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric);
+              ALTER TABLE vendite.resi_righe_rinunce
+                ADD CONSTRAINT chk_resi_righe_rinunce_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.attivita_consumi
+                DROP CONSTRAINT IF EXISTS chk_attivita_consumi_consumo_totale_finito;
+              ALTER TABLE vendite.attivita_fatturabili
+                DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_prezzo_base_snapshot_finito,
+                DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_quantita_finito,
+                DROP CONSTRAINT IF EXISTS chk_attivita_fatturabili_valore_variazione_applicata_finito;
+              ALTER TABLE vendite.commesse_attivita
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_prezzo_base_snapshot_finito,
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_prezzo_snapshot_finito,
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_quantita_finito,
+                DROP CONSTRAINT IF EXISTS chk_commesse_attivita_valore_variazione_applicata_finito;
+              ALTER TABLE vendite.contratti
+                DROP CONSTRAINT IF EXISTS chk_contratti_valore_variazione_globale_finito;
+              ALTER TABLE vendite.contratti_righe
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_quantita_finito;
+              ALTER TABLE vendite.contratti_righe_componenti
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_componenti_coeff_qta_snapshot_finito,
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_componenti_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_componenti_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_componenti_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_contratti_righe_componenti_quantita_finito;
+              ALTER TABLE vendite.contratti_utilities
+                DROP CONSTRAINT IF EXISTS chk_contratti_utilities_param_1_num_finito;
+              ALTER TABLE vendite.ddt
+                DROP CONSTRAINT IF EXISTS chk_ddt_peso_lordo_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_peso_netto_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_volume_finito;
+              ALTER TABLE vendite.ddt_righe
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_quantita_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_sconto_percentuale_finito;
+              ALTER TABLE vendite.ddt_righe_componenti
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_componenti_coeff_qta_snapshot_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_componenti_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_componenti_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_componenti_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_componenti_quantita_finito;
+              ALTER TABLE vendite.ddt_righe_prelievi
+                DROP CONSTRAINT IF EXISTS chk_ddt_righe_prelievi_qta_finito;
+              ALTER TABLE vendite.fatture
+                DROP CONSTRAINT IF EXISTS chk_fatture_arrotondamento_attuale_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_arrotondamento_precedente_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_bollo_importo_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_imponibile_tot_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_imposta_tot_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_tasso_cambio_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_totale_a_pagare_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_totale_doc_finito;
+              ALTER TABLE vendite.fatture_arrotondamenti_scope
+                DROP CONSTRAINT IF EXISTS chk_fatture_arrotondamenti_scope_saldo_arrotondamento_finito;
+              ALTER TABLE vendite.fatture_fondi_fattura
+                DROP CONSTRAINT IF EXISTS chk_fatture_fondi_fattura_importo_finito;
+              ALTER TABLE vendite.fatture_fondi_fattura_source
+                DROP CONSTRAINT IF EXISTS chk_fatture_fondi_fattura_source_importo_finito;
+              ALTER TABLE vendite.fatture_riepiloghi_iva
+                DROP CONSTRAINT IF EXISTS chk_fatture_riepiloghi_iva_aliquota_iva_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_riepiloghi_iva_arrotondamento_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_riepiloghi_iva_imponibile_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_riepiloghi_iva_imposta_finito;
+              ALTER TABLE vendite.fatture_righe
+                DROP CONSTRAINT IF EXISTS chk_fatture_righe_aliquota_iva_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_righe_imponibile_riga_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_righe_kit_qta_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_righe_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_righe_qta_finito,
+                DROP CONSTRAINT IF EXISTS chk_fatture_righe_sconto_percentuale_finito;
+              ALTER TABLE vendite.fatture_scadenze
+                DROP CONSTRAINT IF EXISTS chk_fatture_scadenze_importo_finito;
+              ALTER TABLE vendite.listini_righe
+                DROP CONSTRAINT IF EXISTS chk_listini_righe_prezzo_finito;
+              ALTER TABLE vendite.listini_righe_componenti
+                DROP CONSTRAINT IF EXISTS chk_listini_righe_componenti_prezzo_finito;
+              ALTER TABLE vendite.offerte_commerciali
+                DROP CONSTRAINT IF EXISTS chk_offerte_commerciali_valore_variazione_globale_finito;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                DROP CONSTRAINT IF EXISTS chk_offerte_commerciali_eccezioni_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_offerte_commerciali_eccezioni_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_offerte_commerciali_eccezioni_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_offerte_commerciali_eccezioni_quantita_finito;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni_componenti
+                DROP CONSTRAINT IF EXISTS chk_oce_comp_coeff_qta_snapshot_finito,
+                DROP CONSTRAINT IF EXISTS chk_oce_comp_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_oce_comp_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_oce_comp_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_oce_comp_quantita_finito;
+              ALTER TABLE vendite.offerte_commerciali_utilities
+                DROP CONSTRAINT IF EXISTS chk_offerte_commerciali_utilities_param_1_num_finito;
+              ALTER TABLE vendite.ordini
+                DROP CONSTRAINT IF EXISTS chk_ordini_imponibile_tot_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_iva_tot_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_sconto_tot_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_tasso_cambio_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_totale_doc_finito;
+              ALTER TABLE vendite.ordini_righe
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_quantita_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_sconto_percentuale_finito;
+              ALTER TABLE vendite.ordini_righe_componenti
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_componenti_coeff_qta_snapshot_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_componenti_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_componenti_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_componenti_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_componenti_quantita_finito;
+              ALTER TABLE vendite.ordini_righe_fulfillment
+                DROP CONSTRAINT IF EXISTS chk_ordini_righe_fulfillment_qta_evasa_finito;
+              ALTER TABLE vendite.preventivi
+                DROP CONSTRAINT IF EXISTS chk_preventivi_totale_documento_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_totale_imponibile_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_totale_iva_finito;
+              ALTER TABLE vendite.preventivi_riepiloghi_iva
+                DROP CONSTRAINT IF EXISTS chk_preventivi_riepiloghi_iva_arrotondamento_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_riepiloghi_iva_imponibile_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_riepiloghi_iva_imposta_finito;
+              ALTER TABLE vendite.preventivi_righe
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_quantita_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_sconto_percentuale_finito;
+              ALTER TABLE vendite.preventivi_righe_componenti
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_componenti_coeff_qta_snapshot_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_componenti_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_componenti_prezzo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_componenti_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_preventivi_righe_componenti_quantita_finito;
+              ALTER TABLE vendite.promo_articoli
+                DROP CONSTRAINT IF EXISTS chk_promo_articoli_valore_variazione_finito;
+              ALTER TABLE vendite.resi_righe
+                DROP CONSTRAINT IF EXISTS chk_resi_righe_factor_to_base_finito,
+                DROP CONSTRAINT IF EXISTS chk_resi_righe_qta_operativa_finito,
+                DROP CONSTRAINT IF EXISTS chk_resi_righe_quantita_finito;
+              ALTER TABLE vendite.resi_righe_accrediti
+                DROP CONSTRAINT IF EXISTS chk_resi_righe_accrediti_qta_finito,
+                DROP CONSTRAINT IF EXISTS chk_resi_righe_accrediti_qta_partita_finito;
+              ALTER TABLE vendite.resi_righe_riconsegne
+                DROP CONSTRAINT IF EXISTS chk_resi_righe_riconsegne_qta_finito;
+              ALTER TABLE vendite.resi_righe_rientri
+                DROP CONSTRAINT IF EXISTS chk_resi_righe_rientri_qta_finito;
+              ALTER TABLE vendite.resi_righe_rinunce
+                DROP CONSTRAINT IF EXISTS chk_resi_righe_rinunce_qta_finito;

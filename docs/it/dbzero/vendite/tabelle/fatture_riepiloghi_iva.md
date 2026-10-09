@@ -29,6 +29,10 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_fatture_r_iva_esigibilita |  |
+| CHECK | chk_fatture_riepiloghi_iva_aliquota_iva_finito |  |
+| CHECK | chk_fatture_riepiloghi_iva_arrotondamento_finito |  |
+| CHECK | chk_fatture_riepiloghi_iva_imponibile_finito |  |
+| CHECK | chk_fatture_riepiloghi_iva_imposta_finito |  |
 | FOREIGN KEY | fk_fatture_r_iva_fattura | fattura_id |
 | FOREIGN KEY | fk_fatture_r_iva_iva | iva_id |
 | FOREIGN KEY | fk_fatture_r_iva_natura | natura_id |

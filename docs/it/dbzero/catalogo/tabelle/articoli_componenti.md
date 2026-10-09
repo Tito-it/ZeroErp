@@ -31,6 +31,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_articoli_componenti_coeff_qta_finito |  |
 | CHECK | chk_articoli_componenti_coeff_qta_pos |  |
 | CHECK | chk_articoli_componenti_no_selfref |  |
 | CHECK | chk_articoli_componenti_note_target_tipo |  |

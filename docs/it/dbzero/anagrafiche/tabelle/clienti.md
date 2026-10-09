@@ -37,6 +37,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_clienti_date_coerenti |  |
+| CHECK | chk_clienti_garanzia_importo_finito |  |
 | CHECK | chk_clienti_garanzia_importo_nonneg |  |
 | CHECK | chk_clienti_garanzia_tipo |  |
 | FOREIGN KEY | fk_clienti_billing_account | billing_account_id, istanza_utility_id |

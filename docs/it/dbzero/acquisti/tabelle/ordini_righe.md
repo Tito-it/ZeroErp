@@ -39,6 +39,9 @@
 | CHECK | chk_ordini_ao_r_przz_pos |  |
 | CHECK | chk_ordini_ao_r_qta_pos |  |
 | CHECK | chk_ordini_ao_r_sconto |  |
+| CHECK | chk_ordini_righe_prezzo_unitario_finito |  |
+| CHECK | chk_ordini_righe_qta_finito |  |
+| CHECK | chk_ordini_righe_sconto_percentuale_finito |  |
 | FOREIGN KEY | fk_ao_r_articolo | articolo_id |
 | FOREIGN KEY | fk_ao_r_iva | iva_id |
 | FOREIGN KEY | fk_ao_r_sorgente_tipo | sorgente_tipo_id |

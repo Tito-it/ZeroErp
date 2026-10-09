@@ -27,6 +27,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ddt_righe_prelievi_asset_qta_unitaria |  |
+| CHECK | chk_ddt_righe_prelievi_qta_finito |  |
 | CHECK | chk_ddt_righe_prelievi_qta_positiva |  |
 | FOREIGN KEY | fk_ddt_righe_prelievi_asset | asset_id |
 | FOREIGN KEY | fk_ddt_righe_prelievi_componente | ddt_riga_componente_id |

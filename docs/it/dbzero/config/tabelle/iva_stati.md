@@ -23,6 +23,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_iva_aliquota_pos_no_assogg |  |
+| CHECK | chk_iva_stati_aliquota_override_finito |  |
 | CHECK | chk_iva_stati_zero_requires_assogg |  |
 | FOREIGN KEY | fk_iva_stati_assoggettamento_override | assoggettamento_id_override |
 | FOREIGN KEY | fk_iva_stati_iva | iva_id |
