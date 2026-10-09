@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_giorno_operativo — IN CHE GIORNO CADE QUESTO ISTANTE, PER L'AZIENDA
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-2.
+#
+# ── IL DIFETTO CHE CHIUDE ───────────────────────────────────────────
+#   `istante::date` e `date_trunc('month', istante)` calcolano il giorno (o il
+#   mese) nel fuso della SESSIONE: lo stesso istante cade in due giorni
+#   diversi secondo chi lo legge (backend in UTC, psql e pgAgent nel fuso del
+#   server). Succede oggi nelle viste della dashboard di competenza e nel
+#   trigger dello storico (§4.1 b del brief).
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   `(p_istante AT TIME ZONE <fuso>)::date`: l'ora locale dell'azienda, poi il
+#   giorno. Il mese si ottiene da qui (date_trunc('month', giorno)), non dal
+#   timestamptz. NULL -> NULL.
+#   ⚠️ Applicata a una colonna dentro un WHERE non e' servita da un indice
+#   sulla colonna: per filtrare per giorno si usano i confini di
+#   fn_inizio_giorno_operativo (-42). Questa e' per PROIETTARE il giorno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261009-43-create-fn-giorno-operativo-mctit.yaml
+
+  - changeSet:
+      id: 20261009-43-create-fn-giorno-operativo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_giorno_operativo(timestamptz): il giorno, nel fuso dell'azienda
+        (fn_fuso_operativo), in cui cade un istante. Al posto di ::date e date_trunc
+        nel fuso della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT (count(*) FILTER (WHERE p.proname = 'fn_giorno_operativo') = 0
+                      AND count(*) FILTER (WHERE p.proname = 'fn_fuso_operativo') = 1)::int
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_giorno_operativo', 'fn_fuso_operativo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Tipi espliciti in firma e risultato: un istante qualunque e il
+              -- giorno in cui cade. La funzione serve colonne diverse, quindi
+              -- non e' il riflesso di nessuna.
+              CREATE OR REPLACE FUNCTION script.fn_giorno_operativo(p_istante timestamptz)
+               RETURNS date
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Il GIORNO, nel fuso dell'azienda, in cui cade p_istante.
+                  --   Sostituisce `istante::date` e `date_trunc(.., istante)`,
+                  --   che calcolano nel fuso della sessione.
+                  --
+                  -- Regole:
+                  --   - il fuso lo legge e lo valida fn_fuso_operativo (sede
+                  --     unica, fail-loud): qui non si rilegge il parametro;
+                  --   - NULL -> NULL. Il fuso non si legge nemmeno.
+                  --   - ⚠️ per FILTRARE per giorno non si applica alla colonna
+                  --     (niente indice): si usano i confini di
+                  --     fn_inizio_giorno_operativo. Questa serve a PROIETTARE.
+                  -- =========================================================
+                  IF p_istante IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  RETURN (p_istante AT TIME ZONE script.fn_fuso_operativo())::date;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_giorno_operativo(p_istante timestamptz)
+                IS 'Il GIORNO, nel fuso dell''azienda (script.fn_fuso_operativo), in cui cade p_istante. ⛔ Sostituisce istante::date e date_trunc(''month'', istante), che calcolano nel fuso della SESSIONE: lo stesso istante cadeva in due giorni secondo chi lo legge (backend in UTC, psql e pgAgent nel fuso del server). Il mese si ricava dal giorno restituito, non dal timestamptz. ⚠️ Serve a PROIETTARE il giorno: per FILTRARE per giorno una colonna timestamptz si usano i confini di fn_inizio_giorno_operativo, che lasciano lavorare l''indice. NULL -> NULL. Fail-loud sul fuso ereditato da fn_fuso_operativo. Brief: brief-be-db-fe-un-solo-fuso-aziendale D-2 (20261009-43).';
+
+              -- ⚠️ I GRANT di una funzione NUOVA non esistono finche' non si
+              --    scrivono: il ciclo che li ridistribuisce gira in ci_apply.
+              --    Il ruolo batch e' coperto dal provisioning (linee-guida-sql.md §11.6).
+              GRANT EXECUTE ON FUNCTION script.fn_giorno_operativo(timestamptz) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_giorno_operativo(timestamptz);

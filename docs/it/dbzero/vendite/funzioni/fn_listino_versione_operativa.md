@@ -32,7 +32,7 @@ BEGIN
         RETURN NULL;
     END IF;
 
-    RETURN vendite.fn_listino_versione_in_vigore(p_listino_id, CURRENT_DATE);
+    RETURN vendite.fn_listino_versione_in_vigore(p_listino_id, script.fn_data_operativa());
 END;
 $function$
 

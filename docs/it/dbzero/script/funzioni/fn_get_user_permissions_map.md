@@ -88,7 +88,7 @@ BEGIN
           LEFT JOIN config.user_override_aree uoa
             ON uoa.auth_user_id = p_auth_user_id
            AND uoa.area_id = af.id
-           AND uoa.validita @> CURRENT_DATE
+           AND uoa.validita @> (SELECT script.fn_data_operativa())
           LEFT JOIN script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
             ON e.area_id = af.id
          WHERE af.attivo = TRUE

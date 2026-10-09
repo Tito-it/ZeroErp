@@ -98,6 +98,33 @@ Tali vincoli garantiscono che i pattern siano omogenei e validabili in modo gene
 
 ---
 
+## `sesso_policy`: quando il sesso serve (dal 2026-10-09)
+
+Ogni natura dice se il sesso del soggetto e' **obbligatorio**, **facoltativo** o
+**vietato**. Lo legge il guard `anagrafiche.trgfn_soggetti_guard_sesso_policy`
+(vedi la tabella [soggetti](/dbzero/anagrafiche/manual/soggetti)).
+
+| Natura | `sesso_policy` |
+| --- | --- |
+| PR, privato | `REQUIRED` |
+| DI, ditta individuale | `OPTIONAL` |
+| SP, SC, ENC | `NONE` |
+
+Il CHECK `chk_tipi_soggetto_dettaglio_sesso_policy_natura` impedisce alla
+configurazione di dire il falso: **solo una persona fisica** (natura base `PF`)
+puo' avere una policy diversa da `NONE`, e una persona fisica non puo' averla
+`NONE`.
+
+**Un solo tipo per le due policy.** `dati_societari_policy` e `sesso_policy`
+rispondono alla stessa domanda — «quanto e' richiesto questo dato, per questa
+natura?» — e usano lo stesso tipo, `config.presenza_policy_enum`
+(`NONE` / `OPTIONAL` / `REQUIRED`). Fino al 2026-10-09 i dati societari avevano un
+tipo loro, `config.dati_societari_policy_enum`, con gli stessi valori: e' stato
+ritirato quando la domanda si e' presentata la seconda volta.
+Brief: brief-db-sesso-senza-default.
+
+---
+
 ## Implicazioni funzionali
 
 ### ✔ Validazione CF/P.IVA

@@ -14,7 +14,7 @@
 | serie | character varying(8) | YES |  |
 | numero | character varying(20) | YES |  |
 | anno | smallint | YES |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | stato_doc_ordine_id | bigint | NO |  |
 | sorgente_tipo_id | bigint | YES |  |
 | valuta_id | integer | YES |  |
@@ -50,6 +50,14 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ordini_ao_totali_nonneg |  |
+| CHECK | chk_ordini_imponibile_tot_atteso_finito |  |
+| CHECK | chk_ordini_iva_tot_atteso_finito |  |
+| CHECK | chk_ordini_peso_lordo_finito |  |
+| CHECK | chk_ordini_peso_netto_finito |  |
+| CHECK | chk_ordini_sconto_tot_atteso_finito |  |
+| CHECK | chk_ordini_tasso_cambio_finito |  |
+| CHECK | chk_ordini_totale_doc_atteso_finito |  |
+| CHECK | chk_ordini_volume_finito |  |
 | FOREIGN KEY | fk_ao_aspetto_bene | aspetto_bene_id |
 | FOREIGN KEY | fk_ao_causale_trasporto | causale_trasporto_id |
 | FOREIGN KEY | fk_ao_matr | modalita_addebito_trasporto_id |

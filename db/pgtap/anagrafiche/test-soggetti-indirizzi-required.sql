@@ -157,6 +157,7 @@ WITH ins AS (
       ragione_sociale,
       cognome,
       nome,
+      sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
       stato_id,
       codice_fiscale,
       partita_iva,
@@ -169,6 +170,7 @@ WITH ins AS (
       NULL,
       'Test',
       'PR ERR',
+      'M',
       (SELECT stato_id FROM tmp_stato_test),
       'QMMTPK69T01G127B',
       NULL,
@@ -229,6 +231,7 @@ WITH ins AS (
       ragione_sociale,
       cognome,
       nome,
+      sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
       stato_id,
       codice_fiscale,
       partita_iva,
@@ -241,6 +244,7 @@ WITH ins AS (
       NULL,
       'Test',
       'PR OK',
+      'M',
       (SELECT stato_id FROM tmp_stato_test),
       'QMMTPK69T01G127B',
       NULL,

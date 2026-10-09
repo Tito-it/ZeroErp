@@ -181,7 +181,8 @@ SELECT m.auth_user_id AS user_id
            p_email                        := '_pgtap_inv_madre_' || substring(md5(clock_timestamp()::text) from 1 for 8) || '@example.com',
            p_password_hash                := 'pgtap-nessun-login',
            p_qualifica_id                 := (SELECT q.id FROM config.qualifiche q WHERE q.codice_interno = 'DIPENDENTE'),
-           p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('invitabile madre')) m;
+           p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('invitabile madre'),
+           p_sesso := 'M') m;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT is(

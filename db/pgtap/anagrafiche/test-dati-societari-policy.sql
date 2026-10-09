@@ -2,7 +2,8 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test policy dati societari (config.dati_societari_policy_enum)
+-- Test policy dati societari (config.presenza_policy_enum; fino al 2026-10-09
+--   config.dati_societari_policy_enum, brief-db-sesso-senza-default)
 -- e trigger:
 --   - anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()
 --   - anagrafiche.trgfn_soggetti_check_dati_societari_required()
@@ -173,6 +174,8 @@ SELECT lives_ok(
                 ragione_sociale,
                 cognome,
                 nome,
+                -- un privato: il sesso e' obbligatorio (sesso_policy REQUIRED)
+                sesso,
                 stato_id,
                 codice_fiscale,
                 partita_iva,
@@ -184,6 +187,7 @@ SELECT lives_ok(
                 NULL,
                 'Test PR',
                 'Policy NONE',
+                'M',
                 (
                     SELECT stato_id
                     FROM tmp_stato_test

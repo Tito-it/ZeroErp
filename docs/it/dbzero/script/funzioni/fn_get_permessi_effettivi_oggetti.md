@@ -72,7 +72,7 @@ BEGIN
             ON uoo.auth_user_id = p_auth_user_id
            AND uoo.app_label    = ca.v_app
            AND uoo.model_name   = ca.v_modello
-           AND uoo.validita @> CURRENT_DATE
+           AND uoo.validita @> (SELECT script.fn_data_operativa())
     ),
     calcolo AS (
         -- 4. Senza tetto (la catena di ieri) e col tetto.

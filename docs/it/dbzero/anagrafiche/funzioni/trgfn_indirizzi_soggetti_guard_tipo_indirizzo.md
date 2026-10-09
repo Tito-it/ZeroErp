@@ -15,7 +15,7 @@ AS $function$
 DECLARE
   v_tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio.id%TYPE;
   v_has_matrix                 boolean;
-  v_today                      date := current_date;
+  v_today                      date := script.fn_data_operativa();
 BEGIN
   -- Gestione DELETE: nessun controllo
   IF TG_OP = 'DELETE' THEN

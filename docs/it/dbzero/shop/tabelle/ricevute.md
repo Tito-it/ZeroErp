@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | uuid | NO | uuidv7() |
 | numero | character varying(40) | NO |  |
-| data_emissione | date | NO | CURRENT_DATE |
+| data_emissione | date | NO | script.fn_data_operativa() |
 | soggetto_ruolo_id | bigint | NO |  |
 | billing_account_id | bigint | NO |  |
 | ordine_shop_id | bigint | YES |  |
@@ -30,6 +30,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ricevute_totale_iva_finito |  |
+| CHECK | chk_ricevute_totale_lordo_finito |  |
 | CHECK | chk_shop_ricevute_canale_shop |  |
 | CHECK | chk_shop_ricevute_pagamento_esito |  |
 | CHECK | chk_shop_ricevute_totali_non_neg |  |

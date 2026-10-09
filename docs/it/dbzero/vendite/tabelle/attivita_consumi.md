@@ -29,6 +29,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_attivita_consumi_consumo_totale_finito |  |
 | CHECK | chk_attivita_consumi_stato_calcolo |  |
 | FOREIGN KEY | fk_attivita_consumi_ba | billing_account_id |
 | FOREIGN KEY | fk_attivita_consumi_fattura | fattura_id |

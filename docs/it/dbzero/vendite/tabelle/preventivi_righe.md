@@ -35,6 +35,11 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_preventivi_righe_factor_to_base_finito |  |
+| CHECK | chk_preventivi_righe_prezzo_unitario_finito |  |
+| CHECK | chk_preventivi_righe_qta_operativa_finito |  |
+| CHECK | chk_preventivi_righe_quantita_finito |  |
+| CHECK | chk_preventivi_righe_sconto_percentuale_finito |  |
 | CHECK | chk_prevrighe_qta_operativa_nonzero |  |
 | CHECK | chk_prevrighe_sconto |  |
 | FOREIGN KEY | fk_preventivi_vendita_r_uom_operativa | uom_operativa_id |

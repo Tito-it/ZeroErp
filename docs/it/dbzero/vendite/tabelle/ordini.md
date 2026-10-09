@@ -15,7 +15,7 @@
 | serie | character varying(8) | YES |  |
 | numero | character varying(20) | YES |  |
 | anno | smallint | YES |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | stato_doc_ordine_id | bigint | NO |  |
 | valuta_id | integer | YES |  |
 | tasso_cambio | numeric(18,8) | NO | 1 |
@@ -50,6 +50,11 @@
 | CHECK | chk_ordini_documento_origine_copres |  |
 | CHECK | chk_ordini_documento_origine_tipo |  |
 | CHECK | chk_ordini_fatturazione_trigger |  |
+| CHECK | chk_ordini_imponibile_tot_finito |  |
+| CHECK | chk_ordini_iva_tot_finito |  |
+| CHECK | chk_ordini_sconto_tot_finito |  |
+| CHECK | chk_ordini_tasso_cambio_finito |  |
+| CHECK | chk_ordini_totale_doc_finito |  |
 | FOREIGN KEY | fk_ordini_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_ordini_registro | registro_id |
 | FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |

@@ -30,6 +30,7 @@
 | CHECK | chk_mag_trasferimenti_qta_pos |  |
 | CHECK | chk_mag_trasferimenti_righe_asset_qta_unitaria |  |
 | CHECK | chk_mag_trasferimenti_righe_ubicazioni_distinte |  |
+| CHECK | chk_trasferimenti_righe_qta_finito |  |
 | FOREIGN KEY | fk_mag_trasferimenti_righe_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_trasferimenti_righe_asset | asset_id |
 | FOREIGN KEY | fk_mag_trasferimenti_righe_lotto | lotto_id |

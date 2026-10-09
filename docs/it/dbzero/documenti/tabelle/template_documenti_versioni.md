@@ -43,6 +43,10 @@
 |------|------|---------|
 | CHECK | chk_template_documenti_versioni_context_schema_obj |  |
 | CHECK | chk_template_documenti_versioni_html_template_non_vuoto |  |
+| CHECK | chk_template_documenti_versioni_margin_bottom_mm_finito |  |
+| CHECK | chk_template_documenti_versioni_margin_left_mm_finito |  |
+| CHECK | chk_template_documenti_versioni_margin_right_mm_finito |  |
+| CHECK | chk_template_documenti_versioni_margin_top_mm_finito |  |
 | CHECK | chk_template_documenti_versioni_margini_non_neg |  |
 | CHECK | chk_template_documenti_versioni_stato |  |
 | CHECK | chk_template_documenti_versioni_titolo_non_vuoto |  |

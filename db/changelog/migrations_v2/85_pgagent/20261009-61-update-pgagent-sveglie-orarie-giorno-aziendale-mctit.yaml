@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# pgAgent — LE SVEGLIE DEL GIORNO DIVENTANO ORARIE, IL GIORNO LO DECIDE L'AZIENDA
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-9, decisione T-4.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Le schedulazioni di pgAgent si leggono nel fuso del SERVER. Un job alle
+#   00:05 parte cinque minuti dopo la mezzanotte dell'host, non dell'azienda:
+#   con l'host in UTC e l'azienda a New York (-5) la chiusura delle scadenze
+#   girerebbe alle 19:05 del giorno prima, e cio' che scade oggi si chiuderebbe
+#   quasi un giorno dopo. Scrivere l'orario nel fuso dell'azienda vorrebbe
+#   dire una seconda copia del fuso (nella configurazione del server).
+#
+# ── LA CORREZIONE (T-4) ─────────────────────────────────────────────
+#   Sveglia frequente, lavoro una volta per GIORNO AZIENDALE:
+#   - chiusura_scadenze_daily: ogni ora al minuto 5. dbops.
+#     fn_accoda_chiusura_scadenze (20261009-46) accoda con la chiave
+#     (azienda, giorno aziendale) e salta l'azienda che ha gia' un lavoro
+#     FATTO per quel giorno: la prima sveglia dopo la mezzanotte dell'azienda
+#     fa il lavoro, le altre escono;
+#   - sync_auth_user_expired_daily: ogni ora al minuto 10. anagrafiche.
+#     fn_sync_auth_user_expired e' gia' idempotente (riallinea lo stato e
+#     conta cio' che ha cambiato): farla ogni ora la rende solo piu'
+#     tempestiva, e il giorno lo decide fn_veste_utilizzabile, che dal -49
+#     legge fn_data_operativa;
+#   - guardiano_digest gira gia' ogni ora (20260911-17) con la chiave del
+#     giorno, dal -46 aziendale: non si tocca.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   I NOMI dei job (il suffisso _daily resta): chiusura_scadenze_daily e'
+#   anche il codice del processo in dbops.processi, che
+#   fn_accoda_chiusura_scadenze usa per il roster; rinominarlo romperebbe il
+#   legame. Classi, step, descrizione.
+#
+# ── ⚠️ IL DEBITO DI SEMPRE: `85_pgagent` in CI e' MARK_RAN ──────────
+#   Come 20260905-25: su un ambiente senza pgagent questo changeSet e' segnato
+#   come eseguito senza esserlo (R-11).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: /migrations_v2/85_pgagent/20261009-61-update-pgagent-sveglie-orarie-giorno-aziendale-mctit.yaml
+
+  - changeSet:
+      id: 20261009-61-update-pgagent-sveglie-orarie-giorno-aziendale
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      comments: >
+        chiusura_scadenze_daily e sync_auth_user_expired_daily da una sveglia al giorno
+        (00:05 e 06:00 nel fuso del server) a una sveglia oraria: il lavoro si fa una volta
+        per giorno AZIENDALE, qualunque sia il fuso dell'host (T-4).
+      preConditions:
+        - onFail: MARK_RAN
+          onError: CONTINUE
+          and:
+            - sqlCheck:
+                expectedResult: 1
+                sql: |
+                  SELECT COUNT(*) FROM pg_extension WHERE extname = 'pgagent'
+            - sqlCheck:
+                expectedResult: 2
+                sql: |
+                  SELECT COUNT(*) FROM pgagent.pga_job
+                   WHERE jobname IN ('chiusura_scadenze_daily', 'sync_auth_user_expired_daily')
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Ogni ora, al minuto 5: la prima sveglia dopo la mezzanotte
+              -- dell'azienda accoda, le altre trovano il lavoro FATTO ed escono.
+              UPDATE pgagent.pga_schedule s
+                 SET jscname    = 'hourly_05',
+                     jscminutes = (SELECT array_agg((i = 5)::boolean) FROM generate_series(0,59) AS g(i)),
+                     jschours   = array_fill(TRUE, ARRAY[24])::boolean[]
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jscjobid
+                 AND j.jobname = 'chiusura_scadenze_daily';
+
+              -- Ogni ora, al minuto 10: la sync e' idempotente.
+              UPDATE pgagent.pga_schedule s
+                 SET jscname    = 'hourly_10',
+                     jscminutes = (SELECT array_agg((i = 10)::boolean) FROM generate_series(0,59) AS g(i)),
+                     jschours   = array_fill(TRUE, ARRAY[24])::boolean[]
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jscjobid
+                 AND j.jobname = 'sync_auth_user_expired_daily';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- Torna alle sveglie giornaliere nel fuso del server
+              -- (20260426-06: 00:05; 20260302-04: 06:00).
+              UPDATE pgagent.pga_schedule s
+                 SET jscname    = 'daily_00_05',
+                     jscminutes = (SELECT array_agg((i = 5)::boolean) FROM generate_series(0,59) AS g(i)),
+                     jschours   = (SELECT array_agg((i = 0)::boolean) FROM generate_series(0,23) AS g(i))
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jscjobid
+                 AND j.jobname = 'chiusura_scadenze_daily';
+
+              UPDATE pgagent.pga_schedule s
+                 SET jscname    = 'daily_06',
+                     jscminutes = (SELECT array_agg((i = 0)::boolean) FROM generate_series(0,59) AS g(i)),
+                     jschours   = (SELECT array_agg((i = 6)::boolean) FROM generate_series(0,23) AS g(i))
+                FROM pgagent.pga_job j
+               WHERE j.jobid = s.jscjobid
+                 AND j.jobname = 'sync_auth_user_expired_daily';

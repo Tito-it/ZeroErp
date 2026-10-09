@@ -34,6 +34,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_catasto_unita_immobiliari_rendita_catastale_finito |  |
 | PRIMARY KEY | pk_catasto_unita_immobiliari | id |
 
 ## 📑 Indici

@@ -72,7 +72,7 @@ from _yaml_veloce import carica as carica_yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = ROOT / "db" / "changelog" / "migrations_v2"
-FASI_PRESIDIATE = ("00_schema", "20_code")
+FASI_PRESIDIATE = ("00_schema", "20_code", "70_dati_sistema")
 FILENAME_RE = re.compile(r"^\d{8}-\d{2}.*\.(ya?ml)$", re.IGNORECASE)
 
 # Schemi di sistema: leggerli e' leggere lo SCHEMA, non il seed.

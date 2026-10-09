@@ -228,7 +228,7 @@ BEGIN
     p.validita_dal, p.validita_al,
     0, 0, 0,
     p.valuta_id, p.competenza_mese, p.fatturazione_immediata,
-    v_stato_draft_id, CURRENT_DATE, p.termine_pagamento_id,
+    v_stato_draft_id, (SELECT script.fn_data_operativa()), p.termine_pagamento_id,
     p.storicizza, p.meta,
     COALESCE(p_user, CURRENT_USER), COALESCE(p_user, CURRENT_USER)
   FROM vendite.preventivi p

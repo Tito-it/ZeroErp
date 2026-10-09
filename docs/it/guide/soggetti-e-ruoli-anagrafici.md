@@ -1,6 +1,6 @@
 # Guida — Soggetti e Ruoli Anagrafici
 
-> **Ultimo aggiornamento**: 8 ottobre 2026
+> **Ultimo aggiornamento**: 9 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -108,15 +108,22 @@ Ogni soggetto ha una **natura** definita su due livelli:
 
 La natura determina automaticamente quali dati sono obbligatori:
 
-| Tipo                   | Natura | CF obbligatorio | PIVA obbligatoria | Dati societari |
-| ---------------------- | ------ | :-------------: | :---------------: | -------------- |
-| PR (Privato)           | PF     |       si        |        no         | vietati        |
-| DI (Ditta Individuale) | PF     |       si        |        si         | vietati        |
-| SP (Soc. Persone)      | PG     |       si        |        si         | opzionali      |
-| SC (Soc. Capitali)     | PG     |       si        |        si         | obbligatori    |
-| ENC (Ente)             | ENC    |       si        |        si         | obbligatori    |
+| Tipo                   | Natura | CF obbligatorio | PIVA obbligatoria | Dati societari | Sesso          |
+| ---------------------- | ------ | :-------------: | :---------------: | -------------- | -------------- |
+| PR (Privato)           | PF     |       si        |        no         | vietati        | obbligatorio   |
+| DI (Ditta Individuale) | PF     |       si        |        si         | opzionali      | facoltativo    |
+| SP (Soc. Persone)      | PG     |       si        |        si         | opzionali      | non si indica  |
+| SC (Soc. Capitali)     | PG     |       si        |        si         | obbligatori    | non si indica  |
+| ENC (Ente)             | ENC    |       si        |        si         | opzionali      | non si indica  |
 
 In pratica: un privato non deve avere dati societari (forma giuridica, REA, capitale sociale), mentre una S.r.l. li deve avere obbligatoriamente. Il sistema verifica automaticamente queste regole tramite trigger.
+
+**Il sesso non ha mai un valore di comodo.** Lo sceglie chi lo vede: `M` o `F`, oppure
+`X` quando serve ma non si puo' stabilire (un dato storico, un codice fiscale estero o
+non riconoscibile). Un campo vuoto vuol dire «non serve», ed e' ammesso solo dove la
+natura lo prevede. Una ditta individuale e' una persona con un'attivita' in proprio:
+il sesso si puo' indicare, ma non e' richiesto. Il dettaglio sta nella
+[tabella soggetti](/dbzero/anagrafiche/manual/soggetti).
 
 La validazione distingue due aspetti separati:
 

@@ -25,6 +25,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_istanze_dati_precontrattuali_param_1_num_finito |  |
 | FOREIGN KEY | fk_idp_billing_account_coppia | istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_idp_classi_utenze | classe_utenza_id |
 | FOREIGN KEY | fk_idp_istanze_utilities | istanza_utility_id |

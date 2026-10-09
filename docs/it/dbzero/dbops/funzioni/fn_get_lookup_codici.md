@@ -296,7 +296,7 @@ BEGIN
   END IF;
 
   IF NOT p_includi_obsoleti AND v_has_obsoleto THEN
-    v_conds := array_append(v_conds, '(t.obsoleto_dal IS NULL OR t.obsoleto_dal > CURRENT_DATE)');
+    v_conds := array_append(v_conds, '(t.obsoleto_dal IS NULL OR t.obsoleto_dal > (SELECT script.fn_data_operativa()))');
   END IF;
 
   IF array_length(v_conds, 1) > 0 THEN

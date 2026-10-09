@@ -26,9 +26,15 @@ Building block atomico per la creazione di un soggetto Persona Giuridica
 con contatto default obbligatorio e dati societari (condizionali alla
 `dati_societari_policy` del tipo soggetto).
 
-A differenza di `fn_crea_soggetto_pf`, riceve direttamente
-`p_tipo_soggetto_dettaglio_id` perche' le PG hanno nature diverse
-(SC, ENC, DI, PA, ecc.) — il chiamante deve risolvere il tipo.
+Riceve `p_tipo_soggetto_dettaglio_id` perche' societa' ed enti hanno nature
+diverse (SP, SC, ENC) — il chiamante deve risolvere il tipo.
+
+⛔ **Una persona fisica non passa da qui** (rev 2026-10-09,
+brief-db-sesso-senza-default): una natura base PF — privato (PR) o ditta
+individuale (DI) — si rifiuta con `E_SOGGETTO_CREAZIONE_NATURA_ERRATA`. La sua
+porta e' [fn_crea_soggetto_pf](/dbzero/anagrafiche/manual/fn_crea_soggetto_pf),
+che ne riceve nome, cognome e sesso. Il sesso qui non si scrive: per societa' ed
+enti e' `NULL` (`sesso_policy = NONE`).
 
 **Non crea indirizzo:** il chiamante e' responsabile di creare gli indirizzi
 obbligatori dalla matrice `config.tipi_soggetto_dettaglio_tipi_indirizzo`

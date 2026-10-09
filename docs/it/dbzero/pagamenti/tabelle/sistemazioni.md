@@ -35,6 +35,7 @@
 | CHECK | chk_sistemazioni_documenti |  |
 | CHECK | chk_sistemazioni_eseguita |  |
 | CHECK | chk_sistemazioni_esito |  |
+| CHECK | chk_sistemazioni_importo_finito |  |
 | CHECK | chk_sistemazioni_importo_non_zero |  |
 | CHECK | chk_sistemazioni_motivo_obbligatorio |  |
 | CHECK | chk_sistemazioni_stato |  |

@@ -13,7 +13,7 @@
 | anno | smallint | YES |  |
 | serie | character varying(8) | YES |  |
 | numero | character varying(20) | YES |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | stato_doc_ddt_id | bigint | NO |  |
 | mittente_soggetto_ruolo_id | bigint | YES |  |
 | destinatario_soggetto_ruolo_id | bigint | NO |  |
@@ -52,6 +52,9 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ddt_magazzino_arrivo_distinto |  |
+| CHECK | chk_ddt_peso_lordo_finito |  |
+| CHECK | chk_ddt_peso_netto_finito |  |
+| CHECK | chk_ddt_volume_finito |  |
 | FOREIGN KEY | fk_ddt_magazzino | magazzino_id |
 | FOREIGN KEY | fk_ddt_magazzino_arrivo | magazzino_arrivo_id |
 | FOREIGN KEY | fk_ddt_registro | registro_id |

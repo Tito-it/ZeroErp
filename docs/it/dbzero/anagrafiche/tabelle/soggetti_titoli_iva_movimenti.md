@@ -28,6 +28,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_soggetti_titoli_iva_movimenti_imponibile_finito |  |
 | CHECK | chk_stiva_movimenti_auto_annullo |  |
 | CHECK | chk_stiva_movimenti_documento |  |
 | CHECK | chk_stiva_movimenti_motivo_forzatura |  |

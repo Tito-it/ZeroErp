@@ -32,6 +32,11 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ddt_righe_factor_to_base_finito |  |
+| CHECK | chk_ddt_righe_prezzo_unitario_finito |  |
+| CHECK | chk_ddt_righe_qta_operativa_finito |  |
+| CHECK | chk_ddt_righe_quantita_finito |  |
+| CHECK | chk_ddt_righe_sconto_percentuale_finito |  |
 | CHECK | k_ddt_righe_qta_operativa_pos |  |
 | CHECK | k_ddt_righe_qta_pos |  |
 | FOREIGN KEY | fk_ddt_vendita_r_articolo | articolo_id |

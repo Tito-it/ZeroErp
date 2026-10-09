@@ -152,7 +152,7 @@ BEGIN
             CONTINUE;
         END IF;
 
-        v_data_valuta := CASE WHEN current_date > r.data_fattura_sorgente THEN current_date ELSE r.data_fattura_sorgente END;
+        v_data_valuta := CASE WHEN script.fn_data_operativa() > r.data_fattura_sorgente THEN script.fn_data_operativa() ELSE r.data_fattura_sorgente END;
 
         v_contabile_id := pagamenti.fn_get_or_create_vendite_contabile(
             p_centro_riscossione_id => v_centro_fondo_id, p_data_contabile => r.data_fattura_sorgente,

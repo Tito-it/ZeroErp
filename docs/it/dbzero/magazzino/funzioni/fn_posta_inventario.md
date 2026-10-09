@@ -129,7 +129,7 @@ BEGIN
             p_lotto_id         => v_piano.lotto_id,
             p_asset_id         => v_piano.asset_id,
             p_ubicazione_id    => v_piano.ubicazione_id,
-            p_data_mov         => v_data::timestamptz);
+            p_data_mov         => script.fn_inizio_giorno_operativo(v_data));
         riga_id := v_piano.riga_id;
         qta     := v_piano.delta;
         RETURN NEXT;

@@ -16,7 +16,7 @@ AS $function$
 DECLARE
     v_emittente_pk        anagrafiche.emittenti_fiscali.id%TYPE;
     v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
-    v_today               date := current_date;
+    v_today               date := script.fn_data_operativa();
 BEGIN
     -- rev 2026-06-29 (analisi-hardcoded-codice §3a #15 / §9.5):
     --   ruoli soggetto/EF risolti per codice_interno (immutabile).

@@ -87,7 +87,7 @@ BEGIN
             p_lotto_id         => v_rientro.lotto_id,
             p_asset_id         => v_rientro.asset_id,
             p_ubicazione_id    => v_rientro.ubicazione_id,
-            p_data_mov         => v_reso.data::timestamptz);
+            p_data_mov         => script.fn_inizio_giorno_operativo(v_reso.data));
         rientro_id := v_rientro.id;
         qta        := v_rientro.x_qta;
         RETURN NEXT;

@@ -32,6 +32,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_emittenti_fiscali_bollo_soglia |  |
+| CHECK | chk_emittenti_fiscali_bollo_soglia_finito |  |
 | CHECK | chk_emittenti_fiscali_codice_forma |  |
 | CHECK | chk_emittenti_fiscali_codice_non_vuoto |  |
 | CHECK | chk_emittenti_fiscali_regime_conferma_coppia |  |

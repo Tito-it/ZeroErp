@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN NUMERO CHE NON E' UN NUMERO NON SI SCRIVE — schema config
+#   CHECK «finito» su 4 colonne numeric di 3 tabelle:
+#     config.classi_utenze: pot_contratto_max_ee, pot_contratto_min_ee
+#     config.iva: aliquota_iva
+#     config.iva_stati: aliquota_override
+#   Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1 e D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il tipo numeric ammette 'NaN' (con o senza scala) e 'Infinity' /
+#   '-Infinity' (solo senza scala). Nessuno dei tre e' una quantita', un
+#   prezzo o un importo, e il NaN contagia: una somma con un NaN e' NaN, e
+#   NaN e' maggiore di ogni numero, quindi passa i CHECK di segno (>= 0) e
+#   risponde «si'» a ogni confronto con una soglia. La regola e' del TIPO,
+#   non dei documenti: vale per ogni colonna numeric del modello (D-2).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Un CHECK per colonna, sempre lo stesso predicato:
+#     col > '-Infinity'::numeric AND col < 'Infinity'::numeric
+#   falso su NaN, Infinity e -Infinity, vero su ogni numero; il NULL passa
+#   come in ogni CHECK. Nome chk_<tabella>_<colonna>_finito.
+#   Un CHECK e non un guard (D-1): chi scrive un NaN e' un chiamante rotto,
+#   non una persona da un form, e la violazione esce 23514 col nome del
+#   vincolo: un errore tecnico, giusto per un guasto.
+#   ⭐ Una colonna numeric nuova nasce col suo CHECK: lo pretende il presidio
+#   db/pgtap/dbops/test-numerici-finiti-v1.sql.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero valori non finiti (expectedResult 0: un DB
+#   da zero la soddisfa, linee-guida-sql §11.4), come il 20261008-85. Se ce
+#   ne sono il migrate si ferma e si guardano a mano: nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261009-13-add-chk-numerici-finiti-config-mctit.yaml
+
+  - changeSet:
+      id: 20261009-13-add-chk-numerici-finiti-config
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK «finito» (niente NaN, Infinity, -Infinity) sulle 4 colonne numeric dello
+        schema config. Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT (SELECT count(*) FROM config.classi_utenze
+                                WHERE NOT (pot_contratto_max_ee > '-Infinity'::numeric AND pot_contratto_max_ee < 'Infinity'::numeric)
+                                  OR NOT (pot_contratto_min_ee > '-Infinity'::numeric AND pot_contratto_min_ee < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM config.iva
+                                WHERE NOT (aliquota_iva > '-Infinity'::numeric AND aliquota_iva < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM config.iva_stati
+                                WHERE NOT (aliquota_override > '-Infinity'::numeric AND aliquota_override < 'Infinity'::numeric));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.classi_utenze
+                ADD CONSTRAINT chk_classi_utenze_pot_contratto_max_ee_finito
+                    CHECK (pot_contratto_max_ee > '-Infinity'::numeric AND pot_contratto_max_ee < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_classi_utenze_pot_contratto_min_ee_finito
+                    CHECK (pot_contratto_min_ee > '-Infinity'::numeric AND pot_contratto_min_ee < 'Infinity'::numeric);
+              ALTER TABLE config.iva
+                ADD CONSTRAINT chk_iva_aliquota_iva_finito
+                    CHECK (aliquota_iva > '-Infinity'::numeric AND aliquota_iva < 'Infinity'::numeric);
+              ALTER TABLE config.iva_stati
+                ADD CONSTRAINT chk_iva_stati_aliquota_override_finito
+                    CHECK (aliquota_override > '-Infinity'::numeric AND aliquota_override < 'Infinity'::numeric);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.classi_utenze
+                DROP CONSTRAINT IF EXISTS chk_classi_utenze_pot_contratto_max_ee_finito,
+                DROP CONSTRAINT IF EXISTS chk_classi_utenze_pot_contratto_min_ee_finito;
+              ALTER TABLE config.iva
+                DROP CONSTRAINT IF EXISTS chk_iva_aliquota_iva_finito;
+              ALTER TABLE config.iva_stati
+                DROP CONSTRAINT IF EXISTS chk_iva_stati_aliquota_override_finito;

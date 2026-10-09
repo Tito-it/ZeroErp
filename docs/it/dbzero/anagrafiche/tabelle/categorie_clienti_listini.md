@@ -32,6 +32,7 @@
 |------|------|---------|
 | CHECK | chk_categ_cli_listini_tipo_variazione |  |
 | CHECK | chk_categ_cli_listini_variazione_coerente |  |
+| CHECK | chk_categorie_clienti_listini_valore_variazione_finito |  |
 | FOREIGN KEY | fk_categ_cli_listini_categoria | categoria_cliente_id |
 | FOREIGN KEY | fk_categ_cli_listini_classe_utenza | classe_utenza_id |
 | FOREIGN KEY | fk_categ_cli_listini_emittente | emittente_soggetto_ruolo_id |

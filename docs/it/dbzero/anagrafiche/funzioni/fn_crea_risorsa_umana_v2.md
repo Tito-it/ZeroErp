@@ -8,7 +8,7 @@ CREATE FUNCTION fn_crea_risorsa_umana_v2(p_soggetto_id uuid, p_qualifica_id inte
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid DEFAULT NULL::uuid, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_valido_dal date DEFAULT CURRENT_DATE, p_valido_al date DEFAULT NULL::date, p_auth_user_id integer DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo boolean DEFAULT true)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id uuid DEFAULT NULL::uuid, p_qualifica_id integer DEFAULT NULL::integer, p_unita_organizzativa_id integer DEFAULT NULL::integer, p_valido_dal date DEFAULT script.fn_data_operativa(), p_valido_al date DEFAULT NULL::date, p_auth_user_id integer DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo boolean DEFAULT true)
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -184,7 +184,7 @@ BEGIN
             p_auth_user_id,
             'OPERATORE'::config.ruolo_applicativo,
             p_attivo,
-            COALESCE(p_valido_dal, CURRENT_DATE),
+            COALESCE(p_valido_dal, (SELECT script.fn_data_operativa())),
             p_valido_al
         )
         RETURNING id INTO v_identita_id;

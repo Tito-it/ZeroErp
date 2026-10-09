@@ -39,6 +39,9 @@ DEFAULT_EXCLUDE_DIRS = {
 
 # Escludi intere aree dalla timeline autogenerata (path relativo alla root scansionata)
 DEFAULT_EXCLUDE_PREFIXES = (
+    # 70_dati_sistema: i dati di sistema che il codice legge, inclusi a blocco
+    #   nel master DOPO l'autogen e PRIMA di 80_data (fuso aziendale, T-8).
+    "70_dati_sistema/",
     "80_data/",
     "85_pgagent/",
     "90_end/",

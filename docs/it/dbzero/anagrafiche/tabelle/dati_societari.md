@@ -30,6 +30,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_dati_societari_capitale_sociale_finito |  |
 | FOREIGN KEY | fk_dati_societari_forme_giuridiche | forma_giuridica_id |
 | FOREIGN KEY | fk_province_config | id_prov_iscri_rea |
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id |

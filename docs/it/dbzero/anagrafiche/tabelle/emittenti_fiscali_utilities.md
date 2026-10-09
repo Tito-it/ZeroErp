@@ -27,6 +27,8 @@
 |------|------|---------|
 | CHECK | chk_emittenti_fiscali_utilities_arrotondamento_dec |  |
 | CHECK | chk_emittenti_fiscali_utilities_metodo_arrotondamento |  |
+| CHECK | chk_emittenti_fiscali_utilities_minimo_soglia_max_finito |  |
+| CHECK | chk_emittenti_fiscali_utilities_minimo_soglia_min_finito |  |
 | CHECK | chk_emittenti_fiscali_utilities_soglie |  |
 | CHECK | chk_emittenti_fiscali_utilities_soglie_coppia |  |
 | FOREIGN KEY | fk_emittenti_fiscali_utilities_emittente | emittente_soggetto_ruolo_id |

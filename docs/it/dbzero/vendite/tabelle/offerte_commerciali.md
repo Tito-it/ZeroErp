@@ -41,6 +41,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_offerte_commerciali_valore_variazione_globale_finito |  |
 | CHECK | chk_offerte_revisione_numero |  |
 | CHECK | chk_offerte_tipo_variazione_globale |  |
 | CHECK | chk_offerte_validita_date |  |

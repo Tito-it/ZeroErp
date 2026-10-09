@@ -30,9 +30,9 @@ DECLARE
     v_attivita vendite.commesse_attivita.id%TYPE;
 BEGIN
     SELECT c.billing_account_id,
-           COALESCE(c.competenza_dal, date_trunc('month', CURRENT_DATE)::date),
+           COALESCE(c.competenza_dal, date_trunc('month', (SELECT script.fn_data_operativa()))::date),
            COALESCE(c.competenza_al,
-                    (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date)
+                    (date_trunc('month', (SELECT script.fn_data_operativa())) + interval '1 month - 1 day')::date)
       INTO v_ba_id, v_dal, v_al
       FROM vendite.commesse c
      WHERE c.id = p_commessa_id;

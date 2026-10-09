@@ -30,6 +30,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ddt_acquisto_r_qta_pos |  |
+| CHECK | chk_ddt_righe_qta_finito |  |
 | FOREIGN KEY | fk_ddt_acquisto_r_articolo | articolo_id |
 | FOREIGN KEY | fk_ddt_acquisto_r_testata | ddt_id |
 | FOREIGN KEY | fk_ddt_acquisto_r_uom | uom_id |

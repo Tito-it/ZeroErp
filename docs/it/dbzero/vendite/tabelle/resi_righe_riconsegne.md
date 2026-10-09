@@ -24,6 +24,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_resi_righe_riconsegne_qta_finito |  |
 | CHECK | k_resi_riconsegne_qta_pos |  |
 | FOREIGN KEY | fk_resi_riconsegne_ddt_riga | ddt_riga_id |
 | FOREIGN KEY | fk_resi_riconsegne_resi_riga | resi_riga_id |

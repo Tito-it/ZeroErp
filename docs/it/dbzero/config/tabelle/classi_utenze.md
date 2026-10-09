@@ -22,6 +22,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_classi_utenze_pot_contratto_max_ee_finito |  |
+| CHECK | chk_classi_utenze_pot_contratto_min_ee_finito |  |
 | CHECK | chk_classi_utenze_tipo_pod |  |
 | FOREIGN KEY | fk_classi_utenze_categoria_accisa | categoria_accisa_id |
 | FOREIGN KEY | fk_classi_utenze_tipi_tariffa_ee | tipi_tariffa_ee_id |

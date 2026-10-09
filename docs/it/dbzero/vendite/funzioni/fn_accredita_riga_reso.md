@@ -175,7 +175,7 @@ BEGIN
      WHERE ca.segment_key LIKE v_seg_ddt || '#RET:%';
 
     v_residuo := v_coda.accredito_dovuto;
-    v_data    := CURRENT_DATE;
+    v_data    := script.fn_data_operativa();
 
     -- --------------------------------------------------
     -- 6) Le UNITA' FATTURANTI della partita, consumate LIFO

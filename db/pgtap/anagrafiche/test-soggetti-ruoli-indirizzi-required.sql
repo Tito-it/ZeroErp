@@ -156,6 +156,7 @@ WITH ins AS (
       codice,
       cognome,
       nome,
+      sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
       stato_id,
       tipo_soggetto_dettaglio_id,
       codice_fiscale,
@@ -165,15 +166,18 @@ WITH ins AS (
   SELECT 'TST-RUOLO-IND-ERR',
     'Test',
     'Ruolo ERR',
+    'M',
     (
       SELECT stato_id
       FROM tmp_stato_test
     ),
+    -- Rev 2026-10-09: la natura per NOME (era «il primo id», cioe' PR per
+    --   caso): dal sesso in poi la natura decide cosa la riga deve portare.
+    --   brief-db-sesso-senza-default.
     (
       SELECT id
       FROM config.tipi_soggetto_dettaglio
-      ORDER BY id
-      LIMIT 1
+      WHERE codice_interno = 'PR'
     ),
     'QMMTPK69T01G127B',
     TRUE,
@@ -256,6 +260,7 @@ WITH ins AS (
       codice,
       cognome,
       nome,
+      sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
       stato_id,
       tipo_soggetto_dettaglio_id,
       codice_fiscale,
@@ -265,15 +270,18 @@ WITH ins AS (
   SELECT 'TST-RUOLO-IND-OK',
     'Test',
     'Ruolo OK',
+    'M',
     (
       SELECT stato_id
       FROM tmp_stato_test
     ),
+    -- Rev 2026-10-09: la natura per NOME (era «il primo id», cioe' PR per
+    --   caso): dal sesso in poi la natura decide cosa la riga deve portare.
+    --   brief-db-sesso-senza-default.
     (
       SELECT id
       FROM config.tipi_soggetto_dettaglio
-      ORDER BY id
-      LIMIT 1
+      WHERE codice_interno = 'PR'
     ),
     'QMMTPK69T01G127B',
     TRUE,

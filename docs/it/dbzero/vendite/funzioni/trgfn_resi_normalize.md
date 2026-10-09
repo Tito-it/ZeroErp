@@ -26,10 +26,10 @@ BEGIN
   -- 1. anno/data
   IF TG_OP = 'INSERT' AND (NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '') THEN
     IF NEW.anno IS NULL OR NEW.anno = 0 THEN
-      NEW.anno := EXTRACT(YEAR FROM CURRENT_DATE)::smallint;
+      NEW.anno := EXTRACT(YEAR FROM script.fn_data_operativa())::smallint;
     END IF;
     IF NEW.data IS NULL THEN
-      NEW.data := CURRENT_DATE;
+      NEW.data := script.fn_data_operativa();
     END IF;
   END IF;
 

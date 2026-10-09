@@ -37,6 +37,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_articoli_uom_operativa_factor_to_base_finito |  |
+| CHECK | chk_articoli_uom_operativa_qty_step_finito |  |
 | CHECK | ck_artuomop_factor_pos |  |
 | CHECK | ck_artuomop_forbid_fraction_rules |  |
 | CHECK | ck_artuomop_max_decimals_range |  |

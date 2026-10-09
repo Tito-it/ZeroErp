@@ -83,7 +83,7 @@ BEGIN
       NULL::uuid, COALESCE(p_articolo_onere_id::text,'NULL'));
   END IF;
 
-  v_data      := COALESCE(p_data_attivita, CURRENT_DATE);
+  v_data      := COALESCE(p_data_attivita, script.fn_data_operativa());
   v_comp_mese := date_trunc('month', v_data)::date;
 
   -- =====================================================

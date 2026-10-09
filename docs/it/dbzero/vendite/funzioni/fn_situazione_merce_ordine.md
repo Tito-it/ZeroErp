@@ -178,7 +178,7 @@ BEGIN ATOMIC
      orr.data_consegna_richiesta_cliente,
      orr.data_consegna_confermata,
          CASE
-             WHEN ((ds.da_spedire > (0)::numeric) AND (COALESCE(orr.data_consegna_confermata, orr.data_consegna_richiesta_cliente) IS NOT NULL)) THEN GREATEST(0, (CURRENT_DATE - COALESCE(orr.data_consegna_confermata, orr.data_consegna_richiesta_cliente)))
+             WHEN ((ds.da_spedire > (0)::numeric) AND (COALESCE(orr.data_consegna_confermata, orr.data_consegna_richiesta_cliente) IS NOT NULL)) THEN GREATEST(0, (( SELECT script.fn_data_operativa() AS fn_data_operativa) - COALESCE(orr.data_consegna_confermata, orr.data_consegna_richiesta_cliente)))
              ELSE NULL::integer
          END AS giorni_ritardo
     FROM (((((((((orr_in orr

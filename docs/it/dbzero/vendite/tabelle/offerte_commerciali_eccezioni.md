@@ -36,6 +36,10 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_offerte_commerciali_eccezioni_factor_to_base_finito |  |
+| CHECK | chk_offerte_commerciali_eccezioni_prezzo_unitario_finito |  |
+| CHECK | chk_offerte_commerciali_eccezioni_qta_operativa_finito |  |
+| CHECK | chk_offerte_commerciali_eccezioni_quantita_finito |  |
 | CHECK | chk_offerte_eccezioni_coerenza_canone |  |
 | CHECK | chk_offerte_eccezioni_erogazione_per_tipo_eccezione |  |
 | CHECK | chk_offerte_eccezioni_esclusione_senza_dati |  |

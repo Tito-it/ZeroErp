@@ -49,13 +49,19 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_righe_aliquota_iva_finito |  |
 | CHECK | chk_fatture_righe_capofila_non_se_stessa |  |
 | CHECK | chk_fatture_righe_competenza_dal_al |  |
 | CHECK | chk_fatture_righe_esigibilita |  |
+| CHECK | chk_fatture_righe_imponibile_riga_finito |  |
 | CHECK | chk_fatture_righe_kit_articolo |  |
 | CHECK | chk_fatture_righe_kit_coerente |  |
+| CHECK | chk_fatture_righe_kit_qta_finito |  |
+| CHECK | chk_fatture_righe_prezzo_unitario_finito |  |
+| CHECK | chk_fatture_righe_qta_finito |  |
 | CHECK | chk_fatture_righe_rettificata_non_se_stessa |  |
 | CHECK | chk_fatture_righe_sconto |  |
+| CHECK | chk_fatture_righe_sconto_percentuale_finito |  |
 | FOREIGN KEY | fk_fatture_righe_art | articolo_id |
 | FOREIGN KEY | fk_fatture_righe_ba_dest | dest_billing_account_id |
 | FOREIGN KEY | fk_fatture_righe_esposizioni_componente | kit_esposizione |

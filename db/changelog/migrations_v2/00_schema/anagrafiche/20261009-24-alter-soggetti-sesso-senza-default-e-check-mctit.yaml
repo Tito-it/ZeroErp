@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.soggetti.sesso: VIA IL DEFAULT 'M', DENTRO IL VOCABOLARIO
+#   Brief: brief-db-sesso-senza-default (§1, §3 D1, §4.1 punto 2)
+#
+# -- LA REGOLA (decisione di Tid, 2026-10-09) ------------------------------
+#   Il sesso lo sceglie qualcuno che lo vede: un INSERT che non lo nomina
+#   non deve scrivere un uomo. Il vocabolario e':
+#     M, F  il sesso della persona;
+#     X     serve, ma non si puo' stabilire (dati storici, CF esteri o non
+#           riconoscibili): si scrive ESPLICITAMENTE, non e' un default;
+#     NULL  non serve per questo soggetto.
+#   'S' («soggetto generico», che il manual documentava insieme a un CHECK
+#   mai esistito) esce: per chi non e' una persona il valore e' NULL.
+#
+# -- COSA FA ----------------------------------------------------------
+#   * DROP DEFAULT: da qui fn_crea_soggetto_pg (che non nomina il sesso)
+#     scrive NULL, come ogni INSERT senza la colonna.
+#   * CHECK chk_soggetti_sesso: un vincolo di RIGA, sul solo valore. Quando
+#     il sesso serve lo decide la natura, che sta in un'altra tabella: quel
+#     controllo e' il guard del -25, non un CHECK.
+#   * COMMENT della colonna riscritto (diceva S e X «non indicato»).
+#   Le righe sporche le ha riportate nel modello il -23.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261009-24-alter-soggetti-sesso-senza-default-e-check-mctit.yaml
+
+  - changeSet:
+      id: 20261009-24-alter-soggetti-sesso-senza-default-e-check
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.soggetti.sesso: DROP DEFAULT 'M' e CHECK chk_soggetti_sesso (NULL, M, F, X).
+        Quando serve lo decide il guard per natura (-25). Brief: brief-db-sesso-senza-default.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_constraint c
+                JOIN pg_catalog.pg_class r ON r.oid = c.conrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+               WHERE n.nspname = 'anagrafiche' AND r.relname = 'soggetti'
+                 AND c.conname = 'chk_soggetti_sesso';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti ALTER COLUMN sesso DROP DEFAULT;
+
+              ALTER TABLE anagrafiche.soggetti
+                  ADD CONSTRAINT chk_soggetti_sesso
+                  CHECK (sesso IS NULL OR sesso IN ('M', 'F', 'X'));
+
+              COMMENT ON COLUMN anagrafiche.soggetti.sesso IS
+                  'M = maschio, F = femmina, X = serve ma non si puo'' stabilire (dati storici, CF esteri o non riconoscibili: si scrive esplicitamente), NULL = non serve per questo soggetto. Nessun default: lo sceglie chi lo vede. Quando e'' obbligatorio, facoltativo o vietato lo dice config.tipi_soggetto_dettaglio.sesso_policy, letta dal guard anagrafiche.trgfn_soggetti_guard_sesso_policy. Brief: brief-db-sesso-senza-default.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti DROP CONSTRAINT IF EXISTS chk_soggetti_sesso;
+              ALTER TABLE anagrafiche.soggetti ALTER COLUMN sesso SET DEFAULT 'M'::bpchar;
+              COMMENT ON COLUMN anagrafiche.soggetti.sesso IS 'M=Maschio, F=Femmina, S=Soggetto, X=Non indicato';

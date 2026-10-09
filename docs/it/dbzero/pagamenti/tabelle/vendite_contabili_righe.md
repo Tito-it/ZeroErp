@@ -34,6 +34,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_vendite_contabili_righe_importo_finito |  |
 | CHECK | chk_vendite_contabili_righe_importo_non_zero |  |
 | FOREIGN KEY | fk_vendite_contabili_righe_billing_account | billing_account_id |
 | FOREIGN KEY | fk_vendite_contabili_righe_contabile | contabile_id |

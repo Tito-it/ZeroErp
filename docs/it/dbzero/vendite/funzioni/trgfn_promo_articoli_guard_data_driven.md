@@ -24,9 +24,9 @@ AS $function$
 -- (data_update/user_update/tx_id) sono escluse dal confronto
 -- SCADUTA per non bloccare i trigger di sistema.
 DECLARE
-    v_today CONSTANT date := CURRENT_DATE;
-    v_old_dal date;
-    v_old_al  date;
+    v_today CONSTANT date := script.fn_data_operativa();
+    v_old_dal vendite.promo_articoli.valido_dal%TYPE;
+    v_old_al  vendite.promo_articoli.valido_al%TYPE;
 BEGIN
     IF TG_OP = 'INSERT' THEN
         -- valido_al >= valido_dal lo verifica il guard comune delle

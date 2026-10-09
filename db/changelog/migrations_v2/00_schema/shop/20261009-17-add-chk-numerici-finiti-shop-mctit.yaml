@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN NUMERO CHE NON E' UN NUMERO NON SI SCRIVE — schema shop
+#   CHECK «finito» su 2 colonne numeric di 1 tabelle:
+#     shop.ricevute: totale_iva, totale_lordo
+#   Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1 e D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il tipo numeric ammette 'NaN' (con o senza scala) e 'Infinity' /
+#   '-Infinity' (solo senza scala). Nessuno dei tre e' una quantita', un
+#   prezzo o un importo, e il NaN contagia: una somma con un NaN e' NaN, e
+#   NaN e' maggiore di ogni numero, quindi passa i CHECK di segno (>= 0) e
+#   risponde «si'» a ogni confronto con una soglia. La regola e' del TIPO,
+#   non dei documenti: vale per ogni colonna numeric del modello (D-2).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Un CHECK per colonna, sempre lo stesso predicato:
+#     col > '-Infinity'::numeric AND col < 'Infinity'::numeric
+#   falso su NaN, Infinity e -Infinity, vero su ogni numero; il NULL passa
+#   come in ogni CHECK. Nome chk_<tabella>_<colonna>_finito.
+#   Un CHECK e non un guard (D-1): chi scrive un NaN e' un chiamante rotto,
+#   non una persona da un form, e la violazione esce 23514 col nome del
+#   vincolo: un errore tecnico, giusto per un guasto.
+#   ⭐ Una colonna numeric nuova nasce col suo CHECK: lo pretende il presidio
+#   db/pgtap/dbops/test-numerici-finiti-v1.sql.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero valori non finiti (expectedResult 0: un DB
+#   da zero la soddisfa, linee-guida-sql §11.4), come il 20261008-85. Se ce
+#   ne sono il migrate si ferma e si guardano a mano: nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/shop/20261009-17-add-chk-numerici-finiti-shop-mctit.yaml
+
+  - changeSet:
+      id: 20261009-17-add-chk-numerici-finiti-shop
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK «finito» (niente NaN, Infinity, -Infinity) sulle 2 colonne numeric dello
+        schema shop. Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT (SELECT count(*) FROM shop.ricevute
+                                WHERE NOT (totale_iva > '-Infinity'::numeric AND totale_iva < 'Infinity'::numeric)
+                                  OR NOT (totale_lordo > '-Infinity'::numeric AND totale_lordo < 'Infinity'::numeric));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE shop.ricevute
+                ADD CONSTRAINT chk_ricevute_totale_iva_finito
+                    CHECK (totale_iva > '-Infinity'::numeric AND totale_iva < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_ricevute_totale_lordo_finito
+                    CHECK (totale_lordo > '-Infinity'::numeric AND totale_lordo < 'Infinity'::numeric);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE shop.ricevute
+                DROP CONSTRAINT IF EXISTS chk_ricevute_totale_iva_finito,
+                DROP CONSTRAINT IF EXISTS chk_ricevute_totale_lordo_finito;

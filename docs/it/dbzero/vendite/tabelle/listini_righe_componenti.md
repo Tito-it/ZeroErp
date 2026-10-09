@@ -29,6 +29,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_listini_righe_componenti_prezzo_finito |  |
 | CHECK | chk_listrighe_comp_prezzo_notnull |  |
 | FOREIGN KEY | fk_listrighe_comp_articoli_comp_temporal | articolo_componente_id, validita |
 | FOREIGN KEY | listini_righe_componenti_articolo_componente_id_fkey | articolo_componente_id |

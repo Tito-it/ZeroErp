@@ -22,7 +22,7 @@ WITH role_cand AS (
            FROM ((anagrafiche.soggetti_ruoli sr
              JOIN anagrafiche.soggetti_ruoli_conti_bancari r ON ((r.soggetto_ruolo_id = sr.id)))
              JOIN anagrafiche.conti_bancari cb ON ((cb.id = r.conto_bancario_id)))
-          WHERE (((r.valido_dal IS NULL) OR (r.valido_dal <= CURRENT_DATE)) AND ((r.valido_al IS NULL) OR (r.valido_al >= CURRENT_DATE)) AND (COALESCE(r.bloccato, false) = false) AND (cb.attivo = true))
+          WHERE (((r.valido_dal IS NULL) OR (r.valido_dal <= ( SELECT script.fn_data_operativa() AS fn_data_operativa))) AND ((r.valido_al IS NULL) OR (r.valido_al >= ( SELECT script.fn_data_operativa() AS fn_data_operativa))) AND (COALESCE(r.bloccato, false) = false) AND (cb.attivo = true))
         ), subj_cand AS (
          SELECT sr.id AS soggetto_ruolo_id,
             s.uso,
@@ -38,7 +38,7 @@ WITH role_cand AS (
            FROM ((anagrafiche.soggetti_ruoli sr
              JOIN anagrafiche.soggetti_conti_bancari s ON ((s.soggetto_id = sr.soggetto_id)))
              JOIN anagrafiche.conti_bancari cb ON ((cb.id = s.conto_bancario_id)))
-          WHERE (((s.valido_dal IS NULL) OR (s.valido_dal <= CURRENT_DATE)) AND ((s.valido_al IS NULL) OR (s.valido_al >= CURRENT_DATE)) AND (COALESCE(s.bloccato, false) = false) AND (cb.attivo = true))
+          WHERE (((s.valido_dal IS NULL) OR (s.valido_dal <= ( SELECT script.fn_data_operativa() AS fn_data_operativa))) AND ((s.valido_al IS NULL) OR (s.valido_al >= ( SELECT script.fn_data_operativa() AS fn_data_operativa))) AND (COALESCE(s.bloccato, false) = false) AND (cb.attivo = true))
         )
  SELECT soggetto_ruolo_id,
     uso,

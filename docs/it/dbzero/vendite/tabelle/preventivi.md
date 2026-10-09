@@ -28,7 +28,7 @@
 | competenza_mese | date | YES |  |
 | fatturazione_immediata | boolean | YES | false |
 | stato_doc_preventivo_id | bigint | NO |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | termine_pagamento_id | bigint | YES |  |
 | uid | uuid | NO | uuidv7() |
 | storicizza | boolean | NO | true |
@@ -39,6 +39,9 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_preventivi_competenza_mese_primo |  |
+| CHECK | chk_preventivi_totale_documento_finito |  |
+| CHECK | chk_preventivi_totale_imponibile_finito |  |
+| CHECK | chk_preventivi_totale_iva_finito |  |
 | CHECK | chk_preventivi_validita |  |
 | FOREIGN KEY | fk_preventivi_ba_coppia | billing_account_id, istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_preventivi_billing_account | billing_account_id |

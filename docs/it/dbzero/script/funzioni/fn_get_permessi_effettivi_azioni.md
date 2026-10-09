@@ -78,7 +78,7 @@ BEGIN
           LEFT JOIN config.user_override_azioni uoa
             ON uoa.auth_user_id = p_auth_user_id
            AND uoa.azione_id    = v.v_azione_id
-           AND uoa.validita @> CURRENT_DATE
+           AND uoa.validita @> (SELECT script.fn_data_operativa())
           LEFT JOIN script.fn_get_permessi_ereditati_azioni(p_auth_user_id) e
             ON e.azione_id = v.v_azione_id
     ),

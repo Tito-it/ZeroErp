@@ -24,6 +24,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_fondi_fattura_importo_finito |  |
 | FOREIGN KEY | fk_fatture_fondi_fattura_fattura | fattura_id |
 | FOREIGN KEY | fk_fatture_fondi_fattura_rif_fattura | riferimento_fattura_id |
 | FOREIGN KEY | fk_fatture_fondi_fattura_tipo | tipo_fondo_fattura_id |

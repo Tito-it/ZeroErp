@@ -40,6 +40,11 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | check_ordini_righe_qta_operativa_pos |  |
+| CHECK | chk_ordini_righe_factor_to_base_finito |  |
+| CHECK | chk_ordini_righe_prezzo_unitario_finito |  |
+| CHECK | chk_ordini_righe_qta_operativa_finito |  |
+| CHECK | chk_ordini_righe_quantita_finito |  |
+| CHECK | chk_ordini_righe_sconto_percentuale_finito |  |
 | CHECK | chk_ordini_v_r_qta_pos |  |
 | CHECK | chk_ordini_v_r_sconto |  |
 | CHECK | chk_ordini_v_r_uom_qta_operativa_copres |  |

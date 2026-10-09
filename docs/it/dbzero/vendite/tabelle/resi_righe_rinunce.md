@@ -23,6 +23,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_resi_righe_rinunce_qta_finito |  |
 | CHECK | k_resi_rinunce_qta_pos |  |
 | FOREIGN KEY | fk_resi_rinunce_resi_riga | resi_riga_id |
 | PRIMARY KEY | pk_resi_rinunce | id |

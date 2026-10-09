@@ -97,7 +97,8 @@ SELECT anagrafiche.fn_crea_soggetto_pf(
     p_sesso             := 'M',
     p_stato_iso2        := 'IT',
     p_comune_nascita_id := (SELECT comune_id FROM _t_comune),
-    p_tipo_contatto_id  := NULL
+    p_tipo_contatto_id  := NULL,
+    p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
 ) AS soggetto_id;
 
 SELECT ok(

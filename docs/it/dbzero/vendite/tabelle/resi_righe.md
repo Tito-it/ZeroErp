@@ -33,6 +33,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_resi_righe_factor_to_base_finito |  |
+| CHECK | chk_resi_righe_qta_operativa_finito |  |
+| CHECK | chk_resi_righe_quantita_finito |  |
 | CHECK | k_resi_righe_qta_operativa_pos |  |
 | CHECK | k_resi_righe_qta_pos |  |
 | FOREIGN KEY | fk_resi_righe_articolo | articolo_id |

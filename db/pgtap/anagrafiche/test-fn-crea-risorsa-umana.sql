@@ -105,7 +105,9 @@ SELECT lives_ok(
         p_cognome := 'TestRU',
         p_nome := 'SenzaBridge',
         p_codice_fiscale := %L,
-        p_email := %L
+        p_email := %L,
+        p_sesso := 'M',
+        p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
       ) $$,
       'PNZFDN78A01L219Y',
       'test_ru_senza_' || floor(random() * 1000000)::text || '@test.local'
@@ -127,7 +129,9 @@ SELECT lives_ok(
         p_cognome := 'TestRU',
         p_nome := 'ConBridge',
         p_codice_fiscale := %L,
-        p_email := %L
+        p_email := %L,
+        p_sesso := 'M',
+        p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
       ) $$,
       'PRAFNC80A01F205N',
       'test_ru_con_' || floor(random() * 1000000)::text || '@test.local'

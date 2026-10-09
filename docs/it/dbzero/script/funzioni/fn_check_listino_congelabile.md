@@ -63,7 +63,7 @@ BEGIN
             'codice',     'E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO',
             'reason',     'LISTINO_SENZA_VERSIONE_IN_VIGORE',
             'reason_key', 'vendite.offerte.azione_reason.listino_senza_versione_in_vigore',
-            'dettaglio',  jsonb_build_object('listino_id', p_listino_id, 'data', CURRENT_DATE),
+            'dettaglio',  jsonb_build_object('listino_id', p_listino_id, 'data', (SELECT script.fn_data_operativa())),
             -- Frase chiusa: niente da infilare nei segnaposto.
             'valori',     jsonb_build_array()));
     END IF;
@@ -74,7 +74,7 @@ BEGIN
             'codice',     'E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO',
             'reason',     'LISTINO_SENZA_VERSIONE_IN_VIGORE',
             'reason_key', 'vendite.contratti.azione_reason.listino_senza_versione_in_vigore',
-            'dettaglio',  jsonb_build_object('listino_id', p_listino_id, 'data', CURRENT_DATE),
+            'dettaglio',  jsonb_build_object('listino_id', p_listino_id, 'data', (SELECT script.fn_data_operativa())),
             'valori',     jsonb_build_array()));
     END IF;
 

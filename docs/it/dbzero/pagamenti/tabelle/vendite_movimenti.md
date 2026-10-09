@@ -34,6 +34,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_vendite_movimenti_importo_finito |  |
 | FOREIGN KEY | fk_pagamenti_vendite_movimenti_ba | billing_account_id |
 | FOREIGN KEY | fk_pagamenti_vendite_movimenti_fattura | fattura_id |
 | FOREIGN KEY | fk_vendite_movimenti_centro_riscossione | centro_riscossione_id |

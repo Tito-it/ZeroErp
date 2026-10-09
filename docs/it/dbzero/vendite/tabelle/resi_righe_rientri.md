@@ -24,6 +24,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_resi_righe_rientri_qta_finito |  |
 | CHECK | chk_resi_righe_rientri_qta_positiva |  |
 | FOREIGN KEY | fk_resi_righe_rientri_prelievo | ddt_riga_prelievo_id |
 | FOREIGN KEY | fk_resi_righe_rientri_riga | resi_riga_id |

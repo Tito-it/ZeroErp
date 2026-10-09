@@ -36,6 +36,10 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_contratti_righe_factor_to_base_finito |  |
+| CHECK | chk_contratti_righe_prezzo_unitario_finito |  |
+| CHECK | chk_contratti_righe_qta_operativa_finito |  |
+| CHECK | chk_contratti_righe_quantita_finito |  |
 | CHECK | chk_contrighe_coerenza_canone |  |
 | CHECK | chk_contrighe_erogazione_per_tipo_eccezione |  |
 | CHECK | chk_contrighe_esclusione_senza_dati |  |

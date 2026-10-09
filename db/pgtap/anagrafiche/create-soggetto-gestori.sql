@@ -152,7 +152,9 @@ SELECT throws_ok(
         partita_iva, codice_fiscale, tipo_soggetto_dettaglio_id,
         storicizza, attivo
     )
-    SELECT 'Gestore Test Doppio pgTAP', NULL, NULL, 'S', 1,
+    -- sesso NULL: una societa' non ne ha (sesso_policy NONE); era 'S',
+    --   fuori vocabolario dal 2026-10-09 (brief-db-sesso-senza-default)
+    SELECT 'Gestore Test Doppio pgTAP', NULL, NULL, NULL, 1,
            k.piva_test, k.piva_test, 3, TRUE, TRUE
       FROM tmp_costanti k;
     $$,

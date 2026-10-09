@@ -13,7 +13,7 @@
 | auth_user_id | integer | NO |  |
 | ruolo_applicativo | config.ruolo_applicativo | NO |  |
 | attivo | boolean | NO | true |
-| valido_dal | date | NO | CURRENT_DATE |
+| valido_dal | date | NO | script.fn_data_operativa() |
 | valido_al | date | YES |  |
 | invito_inviato_at | timestamp with time zone | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |

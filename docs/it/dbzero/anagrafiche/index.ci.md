@@ -49,7 +49,7 @@
 - [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
 - [fn_crea_operatore_v2](manual/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](manual/fn_crea_risorsa_umana_v2.md)
-- [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md) — (latest review 13-03-2026) Building block atomico per la creazione di un soggetto Persona Fisica (natura PR = Privato) con contatto default obbligatorio.
+- [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md) — (latest review 09-10-2026) Building block atomico per la creazione di un soggetto **persona fisica** — privato (PR) o ditta individuale (DI) — con contatto default obbligatorio.
 - [fn_crea_soggetto_pg](manual/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
 - [fn_create_indirizzo](manual/fn_create_indirizzo.md) — (latest review 08-07-2026)
 - [fn_get_emittente_fiscale_id](manual/fn_get_emittente_fiscale_id.md) — (last review 07-04-2026)

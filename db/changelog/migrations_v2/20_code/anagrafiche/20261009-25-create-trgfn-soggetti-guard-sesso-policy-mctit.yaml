@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL GUARD DEL SESSO PER NATURA
+#   anagrafiche.trgfn_soggetti_guard_sesso_policy()
+#   trg_soggetti_a10_guard_sesso_policy_ins_upd
+#     BEFORE INSERT OR UPDATE OF sesso, tipo_soggetto_dettaglio_id
+#   Brief: brief-db-sesso-senza-default (§3 D2-D4, §4.1 punto 3)
+#
+# -- LA REGOLA --------------------------------------------------------
+#   Quando il sesso serve lo dice la natura di dettaglio, in config
+#   (sesso_policy, 20261009-19), non il codice:
+#     PR (privato)            REQUIRED  -> NULL rifiutato (E_SESSO_OBBLIGATORIO)
+#     DI (ditta individuale)  OPTIONAL  -> M, F, X o NULL
+#     SP, SC, ENC             NONE      -> un valore rifiutato (E_SESSO_NON_AMMESSO)
+#   I valori li porta il CSV del catalogo (80_data); il CHECK che lega la
+#   policy alla natura base e' in 90_end (20261009-31).
+#   Una sola sede per la regola: ne' fn_crea_soggetto_pf ne' il backend
+#   controllano il sesso (§4.2 e §6 del brief).
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Un CHECK non basta: la natura sta in un'altra tabella.
+#   * UPDATE OF sesso, tipo_soggetto_dettaglio_id: il guard giudica chi
+#     TOCCA il sesso o la natura. Un cambio di policy in config non rende
+#     intoccabili le righe esistenti per una modifica che non c'entra.
+#     Nessun altro trigger BEFORE della tabella scrive le due colonne.
+#   * Fase a10, nome «guard_sesso_policy»: dopo guard_cf_piva_obbligatori
+#     (alfabetico), ed e' l'ordine giusto: prima l'identificativo fiscale.
+#   * Contesto con 'campo' = 'sesso': il form accende il campo (canale
+#     COLUMN). Il VARIADIC porta la descrizione della natura, cioe' la cosa
+#     che l'operatore riconosce, non un nome di colonna.
+#   * Rifiuti DATO_ERRATO: il dato lo compila una persona nel form.
+#   ⚠️ Da questo changeSet in poi, su dbdev, fino al mirror del CSV in
+#   80_data, PR e DI valgono NONE: in quella finestra della stessa corsa
+#   nessun changeSet scrive il sesso di un soggetto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261009-25-create-trgfn-soggetti-guard-sesso-policy-mctit.yaml
+
+  - changeSet:
+      id: 20261009-25-create-trgfn-soggetti-guard-sesso-policy
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard anagrafiche.trgfn_soggetti_guard_sesso_policy e trigger
+        trg_soggetti_a10_guard_sesso_policy_ins_upd (BEFORE INSERT OR UPDATE OF sesso,
+        tipo_soggetto_dettaglio_id): il sesso rispetta config.tipi_soggetto_dettaglio.sesso_policy.
+        Codici E_SESSO_OBBLIGATORIO, E_SESSO_NON_AMMESSO. Brief: brief-db-sesso-senza-default.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: config, tableName: tipi_soggetto_dettaglio, columnName: sesso_policy }
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class r ON r.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+                   WHERE n.nspname = 'anagrafiche' AND r.relname = 'soggetti'
+                     AND t.tgname = 'trg_soggetti_a10_guard_sesso_policy_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_sesso_policy()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: il sesso di un soggetto rispetta la policy della sua natura.
+              --   config.tipi_soggetto_dettaglio.sesso_policy:
+              --     REQUIRED  -> obbligatorio (M, F o X): NULL rifiutato;
+              --     OPTIONAL  -> facoltativo: tutto ammesso;
+              --     NONE      -> non si indica: un valore rifiutato.
+              --   Il VALORE (M, F, X o NULL) lo presidia il CHECK chk_soggetti_sesso;
+              --   qui si decide solo QUANDO serve, cioe' la parte che sta in un'altra
+              --   tabella e che un CHECK non puo' leggere.
+              -- Aggancio: BEFORE INSERT OR UPDATE OF sesso, tipo_soggetto_dettaglio_id.
+              --   Il ramo sulla natura copre il cambio di natura: una PG che diventa PR
+              --   deve portare il sesso, un PR che diventa PG deve lasciarlo.
+              --   Nessun altro trigger BEFORE di soggetti scrive queste due colonne
+              --   (linee-guida-trigger, «UPDATE OF»).
+              -- ⚠️ Limite dichiarato, come trgfn_soggetti_guard_cf_piva_obbligatori:
+              --   senza natura (tipo_soggetto_dettaglio_id NULL) non c'e' policy da
+              --   leggere, e il guard tace. Un id inesistente lo rifiuta la FK, dopo.
+              -- Brief: brief-db-sesso-senza-default (§3 D2-D4, §4.1 punto 3).
+              -- =========================================================
+              DECLARE
+                  v_policy      config.tipi_soggetto_dettaglio.sesso_policy%TYPE;
+                  v_descrizione config.tipi_soggetto_dettaglio.descrizione%TYPE;
+                  v_codice      config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+              BEGIN
+                  IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT tsd.sesso_policy, tsd.descrizione, tsd.codice_interno
+                    INTO v_policy, v_descrizione, v_codice
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = NEW.tipo_soggetto_dettaglio_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NEW;   -- la FK fk_soggetti_tipo_soggetto_dettaglio parla dopo
+                  END IF;
+
+                  IF v_policy = 'REQUIRED' AND NEW.sesso IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_soggetti_guard_sesso_policy',
+                          'E_SESSO_OBBLIGATORIO',
+                          jsonb_build_object('campo',                      'sesso',
+                                             'soggetto_id',                NEW.id,
+                                             'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                             'codice_interno',             v_codice),
+                          NEW.tx_id,
+                          COALESCE(v_descrizione, v_codice));
+                  END IF;
+
+                  IF v_policy = 'NONE' AND NEW.sesso IS NOT NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.trgfn_soggetti_guard_sesso_policy',
+                          'E_SESSO_NON_AMMESSO',
+                          jsonb_build_object('campo',                      'sesso',
+                                             'soggetto_id',                NEW.id,
+                                             'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                                             'codice_interno',             v_codice),
+                          NEW.tx_id,
+                          COALESCE(v_descrizione, v_codice));
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_sesso_policy() IS
+                  'Guard BEFORE INSERT OR UPDATE OF sesso, tipo_soggetto_dettaglio_id su anagrafiche.soggetti: il sesso rispetta config.tipi_soggetto_dettaglio.sesso_policy della natura (REQUIRED: NULL rifiutato con E_SESSO_OBBLIGATORIO; NONE: un valore rifiutato con E_SESSO_NON_AMMESSO; OPTIONAL: tutto ammesso). Il valore (M, F, X o NULL) lo presidia il CHECK chk_soggetti_sesso. Senza natura tace, come il guard su CF e P.IVA. Campo «sesso» nel contesto, per il form. Brief: brief-db-sesso-senza-default.';
+
+              CREATE TRIGGER trg_soggetti_a10_guard_sesso_policy_ins_upd
+                  BEFORE INSERT OR UPDATE OF sesso, tipo_soggetto_dettaglio_id ON anagrafiche.soggetti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_sesso_policy();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_a10_guard_sesso_policy_ins_upd ON anagrafiche.soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_guard_sesso_policy();

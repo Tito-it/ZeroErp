@@ -1,0 +1,129 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN NUMERO CHE NON E' UN NUMERO NON SI SCRIVE — schema magazzino
+#   CHECK «finito» su 10 colonne numeric di 6 tabelle:
+#     magazzino.inventari_righe: costo_unitario, qta_contata, qta_sistema
+#     magazzino.movimenti: costo_unitario, qta
+#     magazzino.movimenti_attesi: qta
+#     magazzino.rettifiche_righe: costo_unitario, qta_delta
+#     magazzino.trasferimenti_righe: qta
+#     magazzino.valore_giacenza: valore
+#   Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1 e D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il tipo numeric ammette 'NaN' (con o senza scala) e 'Infinity' /
+#   '-Infinity' (solo senza scala). Nessuno dei tre e' una quantita', un
+#   prezzo o un importo, e il NaN contagia: una somma con un NaN e' NaN, e
+#   NaN e' maggiore di ogni numero, quindi passa i CHECK di segno (>= 0) e
+#   risponde «si'» a ogni confronto con una soglia. La regola e' del TIPO,
+#   non dei documenti: vale per ogni colonna numeric del modello (D-2).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Un CHECK per colonna, sempre lo stesso predicato:
+#     col > '-Infinity'::numeric AND col < 'Infinity'::numeric
+#   falso su NaN, Infinity e -Infinity, vero su ogni numero; il NULL passa
+#   come in ogni CHECK. Nome chk_<tabella>_<colonna>_finito.
+#   Un CHECK e non un guard (D-1): chi scrive un NaN e' un chiamante rotto,
+#   non una persona da un form, e la violazione esce 23514 col nome del
+#   vincolo: un errore tecnico, giusto per un guasto.
+#   ⭐ Una colonna numeric nuova nasce col suo CHECK: lo pretende il presidio
+#   db/pgtap/dbops/test-numerici-finiti-v1.sql.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero valori non finiti (expectedResult 0: un DB
+#   da zero la soddisfa, linee-guida-sql §11.4), come il 20261008-85. Se ce
+#   ne sono il migrate si ferma e si guardano a mano: nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261009-15-add-chk-numerici-finiti-magazzino-mctit.yaml
+
+  - changeSet:
+      id: 20261009-15-add-chk-numerici-finiti-magazzino
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK «finito» (niente NaN, Infinity, -Infinity) sulle 10 colonne numeric dello
+        schema magazzino. Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT (SELECT count(*) FROM magazzino.inventari_righe
+                                WHERE NOT (costo_unitario > '-Infinity'::numeric AND costo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_contata > '-Infinity'::numeric AND qta_contata < 'Infinity'::numeric)
+                                  OR NOT (qta_sistema > '-Infinity'::numeric AND qta_sistema < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM magazzino.movimenti
+                                WHERE NOT (costo_unitario > '-Infinity'::numeric AND costo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM magazzino.movimenti_attesi
+                                WHERE NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM magazzino.rettifiche_righe
+                                WHERE NOT (costo_unitario > '-Infinity'::numeric AND costo_unitario < 'Infinity'::numeric)
+                                  OR NOT (qta_delta > '-Infinity'::numeric AND qta_delta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM magazzino.trasferimenti_righe
+                                WHERE NOT (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM magazzino.valore_giacenza
+                                WHERE NOT (valore > '-Infinity'::numeric AND valore < 'Infinity'::numeric));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE magazzino.inventari_righe
+                ADD CONSTRAINT chk_inventari_righe_costo_unitario_finito
+                    CHECK (costo_unitario > '-Infinity'::numeric AND costo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_inventari_righe_qta_contata_finito
+                    CHECK (qta_contata > '-Infinity'::numeric AND qta_contata < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_inventari_righe_qta_sistema_finito
+                    CHECK (qta_sistema > '-Infinity'::numeric AND qta_sistema < 'Infinity'::numeric);
+              ALTER TABLE magazzino.movimenti
+                ADD CONSTRAINT chk_movimenti_costo_unitario_finito
+                    CHECK (costo_unitario > '-Infinity'::numeric AND costo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_movimenti_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric);
+              ALTER TABLE magazzino.movimenti_attesi
+                ADD CONSTRAINT chk_movimenti_attesi_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric);
+              ALTER TABLE magazzino.rettifiche_righe
+                ADD CONSTRAINT chk_rettifiche_righe_costo_unitario_finito
+                    CHECK (costo_unitario > '-Infinity'::numeric AND costo_unitario < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_rettifiche_righe_qta_delta_finito
+                    CHECK (qta_delta > '-Infinity'::numeric AND qta_delta < 'Infinity'::numeric);
+              ALTER TABLE magazzino.trasferimenti_righe
+                ADD CONSTRAINT chk_trasferimenti_righe_qta_finito
+                    CHECK (qta > '-Infinity'::numeric AND qta < 'Infinity'::numeric);
+              ALTER TABLE magazzino.valore_giacenza
+                ADD CONSTRAINT chk_valore_giacenza_valore_finito
+                    CHECK (valore > '-Infinity'::numeric AND valore < 'Infinity'::numeric);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.inventari_righe
+                DROP CONSTRAINT IF EXISTS chk_inventari_righe_costo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_inventari_righe_qta_contata_finito,
+                DROP CONSTRAINT IF EXISTS chk_inventari_righe_qta_sistema_finito;
+              ALTER TABLE magazzino.movimenti
+                DROP CONSTRAINT IF EXISTS chk_movimenti_costo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_movimenti_qta_finito;
+              ALTER TABLE magazzino.movimenti_attesi
+                DROP CONSTRAINT IF EXISTS chk_movimenti_attesi_qta_finito;
+              ALTER TABLE magazzino.rettifiche_righe
+                DROP CONSTRAINT IF EXISTS chk_rettifiche_righe_costo_unitario_finito,
+                DROP CONSTRAINT IF EXISTS chk_rettifiche_righe_qta_delta_finito;
+              ALTER TABLE magazzino.trasferimenti_righe
+                DROP CONSTRAINT IF EXISTS chk_trasferimenti_righe_qta_finito;
+              ALTER TABLE magazzino.valore_giacenza
+                DROP CONSTRAINT IF EXISTS chk_valore_giacenza_valore_finito;

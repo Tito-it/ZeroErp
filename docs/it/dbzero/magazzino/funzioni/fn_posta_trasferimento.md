@@ -84,7 +84,7 @@ BEGIN
             p_lotto_id         => v_riga.lotto_id,
             p_asset_id         => v_riga.asset_id,
             p_ubicazione_id    => v_riga.ubicazione_id_da,
-            p_data_mov         => v_t.data::timestamptz,
+            p_data_mov         => script.fn_inizio_giorno_operativo(v_t.data),
             p_transfer_uid     => v_t.uid);
         riga_id := v_riga.id;
         qta     := -v_riga.qta;
@@ -101,7 +101,7 @@ BEGIN
             p_lotto_id         => v_riga.lotto_id,
             p_asset_id         => v_riga.asset_id,
             p_ubicazione_id    => v_riga.ubicazione_id_a,
-            p_data_mov         => v_t.data::timestamptz,
+            p_data_mov         => script.fn_inizio_giorno_operativo(v_t.data),
             p_transfer_uid     => v_t.uid);
         riga_id := v_riga.id;
         qta     := v_riga.qta;

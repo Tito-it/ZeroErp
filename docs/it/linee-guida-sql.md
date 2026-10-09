@@ -759,6 +759,34 @@ La generalizzazione del guard transizione e' rinviata: serviranno almeno tre cas
 
 ---
 
+### 7d. ⛔ Una colonna `numeric` nasce col CHECK «finito»
+
+Il tipo `numeric` ammette `'NaN'` (con o senza scala) e `'Infinity'`/`'-Infinity'`
+(solo senza scala). Nessuno dei tre è una quantità, un prezzo o un importo, e il
+`NaN` contagia: una somma che lo incontra vale `NaN`, e `NaN` è maggiore di ogni
+numero, quindi passa i CHECK di segno (`>= 0`) e risponde «sì» a ogni confronto
+con una soglia. Per questo **ogni** colonna `numeric` porta il suo CHECK, sempre
+nella stessa forma:
+
+```sql
+ADD COLUMN importo numeric(18,6)
+    CONSTRAINT chk_<tabella>_importo_finito
+    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric)
+```
+
+* Il predicato è falso su `NaN`, `Infinity` e `-Infinity`; il `NULL` passa, come in
+  ogni CHECK. Il nome `chk_<tabella>_<colonna>_finito`, abbreviato con la sigla di
+  casa della tabella quando supera i 63 caratteri (`chk_oce_comp_…`).
+* È un CHECK e non un guard: chi scrive un `NaN` è un chiamante rotto, non una
+  persona da un form.
+* Lo presidia `db/pgtap/dbops/test-numerici-finiti-v1.sql`, che confronta la
+  **forma esatta** su ogni colonna `numeric` (`storico` escluso): una colonna nuova
+  senza CHECK lo rende rosso.
+
+Brief: `brief-db-valore-numerico-non-finito-nei-documenti` (§5.2).
+
+---
+
 ### 8. Indici
 
 * **Naming**: `ix_<table>_<column>`
@@ -1627,11 +1655,14 @@ peggio di uno assente.
 
 ### 11.4 ⛔ Una `preCondition` di `00_schema`/`20_code` non interroga il CONTENUTO di `80_data`
 
-Presidiato da `scripts/guardrail_precondition_seed.py` in CI.
+Presidiato da `scripts/guardrail_precondition_seed.py` in CI. Vale anche per
+`70_dati_sistema` (dal 2026-10-09), che gira anch'essa prima di `80_data`: è la fase
+dei dati di sistema che il codice legge (oggi il fuso dell'azienda), vedi
+[liquibase-setup-workflow](liquibase-setup-workflow.md).
 
 **Il meccanismo.** `changelog-master-v2.yaml` esegue in quest'ordine: vecchia
 storia → `changelog-autogen.yaml` (`00_schema` e `20_code`, mescolati per
-numero) → `80_data` → `85_pgagent` → `90_end`. Quindi un `sqlCheck` che chiede
+numero) → `70_dati_sistema` → `80_data` → `85_pgagent` → `90_end`. Quindi un `sqlCheck` che chiede
 _«esiste già la riga `RESO_VENDITA` in `config.sorgenti`?»_ dentro `20_code`
 viene valutato **quando `80_data` non è ancora passato**.
 

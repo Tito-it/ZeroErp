@@ -58,7 +58,7 @@ SELECT a.id,
         END AS motivo_non_gestibile_bom,
     (a.is_composito AND (EXISTS ( SELECT 1
            FROM catalogo.articoli_componenti ac
-          WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> CURRENT_DATE) AND (ac.attivo = true))))) AS has_componenti_alla_data,
+          WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> ( SELECT script.fn_data_operativa() AS fn_data_operativa)) AND (ac.attivo = true))))) AS has_componenti_alla_data,
     a.natura_vendita_id,
     nv.codice_interno AS natura_vendita_codice_interno,
     nv.descrizione AS natura_vendita_descrizione,

@@ -110,7 +110,7 @@ BEGIN
     INSERT INTO vendite.fatture (
         registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
         tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
-    VALUES (v_registro, CURRENT_DATE, v_ef_sr_id, v_ba_id,
+    VALUES (v_registro, (SELECT script.fn_data_operativa()), v_ef_sr_id, v_ba_id,
             v_tipo_id, v_stato_id, v_valuta_id, v_utility,
             jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
     RETURNING id INTO v_fattura;

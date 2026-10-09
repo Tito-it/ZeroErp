@@ -17,9 +17,9 @@ BEGIN ATOMIC
             FROM ((anagrafiche.identita_digitali idg
               JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = idg.soggetto_ruolo_id)))
               JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
-           WHERE ((idg.id = fn_veste_utilizzabile.p_identita_id) AND idg.attivo AND (idg.valido_dal <= CURRENT_DATE) AND ((idg.valido_al IS NULL) OR (idg.valido_al >= CURRENT_DATE)) AND s.attivo AND ((idg.ruolo_applicativo <> 'OPERATORE'::config.ruolo_applicativo) OR idg.tecnica OR (EXISTS ( SELECT 1
+           WHERE ((idg.id = fn_veste_utilizzabile.p_identita_id) AND idg.attivo AND (idg.valido_dal <= ( SELECT script.fn_data_operativa() AS fn_data_operativa)) AND ((idg.valido_al IS NULL) OR (idg.valido_al >= ( SELECT script.fn_data_operativa() AS fn_data_operativa))) AND s.attivo AND ((idg.ruolo_applicativo <> 'OPERATORE'::config.ruolo_applicativo) OR idg.tecnica OR (EXISTS ( SELECT 1
                     FROM anagrafiche.risorse_umane ru
-                   WHERE ((ru.soggetto_ruolo_id = idg.soggetto_ruolo_id) AND ru.attivo AND (ru.valido_dal <= CURRENT_DATE) AND ((ru.valido_al IS NULL) OR (ru.valido_al >= CURRENT_DATE))))))))) AS "exists";
+                   WHERE ((ru.soggetto_ruolo_id = idg.soggetto_ruolo_id) AND ru.attivo AND (ru.valido_dal <= ( SELECT script.fn_data_operativa() AS fn_data_operativa)) AND ((ru.valido_al IS NULL) OR (ru.valido_al >= ( SELECT script.fn_data_operativa() AS fn_data_operativa)))))))))) AS "exists";
 END
 
 COMMENT ON FUNCTION script.fn_veste_utilizzabile(p_identita_id bigint)

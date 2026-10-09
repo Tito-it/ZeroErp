@@ -36,7 +36,12 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_oce_comp_coeff_qta_pos |  |
+| CHECK | chk_oce_comp_coeff_qta_snapshot_finito |  |
+| CHECK | chk_oce_comp_factor_to_base_finito |  |
 | CHECK | chk_oce_comp_origine |  |
+| CHECK | chk_oce_comp_prezzo_unitario_finito |  |
+| CHECK | chk_oce_comp_qta_operativa_finito |  |
+| CHECK | chk_oce_comp_quantita_finito |  |
 | CHECK | chk_oce_comp_quantita_nz |  |
 | FOREIGN KEY | fk_oce_comp_art_comp | articolo_componente_id |
 | FOREIGN KEY | fk_oce_comp_componente | componente_id |

@@ -28,6 +28,9 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_inventari_righe_costo_unitario_finito |  |
+| CHECK | chk_inventari_righe_qta_contata_finito |  |
+| CHECK | chk_inventari_righe_qta_sistema_finito |  |
 | CHECK | chk_mag_inventari_righe_asset_qta_unitaria |  |
 | CHECK | chk_mag_inventari_righe_costo_non_neg |  |
 | CHECK | chk_mag_inventario_righe_qta_contata_non_neg |  |

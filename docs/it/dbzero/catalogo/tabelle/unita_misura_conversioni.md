@@ -25,6 +25,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_unita_misura_conversioni_fattore_finito |  |
 | CHECK | chk_uom_conv_fattore_pos |  |
 | CHECK | chk_uom_conv_no_self |  |
 | FOREIGN KEY | fk_uom_conv_from | uom_from_id |

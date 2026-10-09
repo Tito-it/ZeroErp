@@ -21,6 +21,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_valore_giacenza_valore_finito |  |
 | FOREIGN KEY | fk_mag_valore_giacenza_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_valore_giacenza_magazzino | magazzino_id |
 | PRIMARY KEY | pk_mag_valore_giacenza | id |

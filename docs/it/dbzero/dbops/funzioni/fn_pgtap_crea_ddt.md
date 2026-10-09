@@ -37,7 +37,7 @@ BEGIN
                              billing_account_id, utility_id, valuta_id, emittente_fiscale_id,
                              causale_trasporto_id, magazzino_id, magazzino_arrivo_id,
                              storicizza, meta)
-    VALUES (CURRENT_DATE, v_draft, p_destinatario_sr_id,
+    VALUES ((SELECT script.fn_data_operativa()), v_draft, p_destinatario_sr_id,
             p_billing_account_id, v_utility, v_valuta, v_ef,
             v_causale, p_magazzino_id, p_magazzino_arrivo_id,
             false, jsonb_build_object('test_scope', 'pgtap_crea_ddt'))

@@ -1,0 +1,202 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# pratiche: «OGGI» E' IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   CURRENT_DATE e' il giorno nel fuso della SESSIONE che esegue, e le
+#   sessioni non hanno tutte lo stesso fuso: il backend si connette in UTC,
+#   psql/Liquibase/pgAgent nel fuso del server. Fra la mezzanotte dell'azienda
+#   e quella della sessione, la stessa funzione risponde un giorno diverso
+#   secondo chi la chiama: una data documento di ieri, un guard di validita'
+#   che scatta o non scatta. Non dipende dai dati: e' la struttura, e vale per
+#   ogni installazione il cui fuso non coincide con quello della sessione.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Ogni CURRENT_DATE di codice diventa script.fn_data_operativa() (il giorno
+#   nel fuso di SYSTEM_FUSO_ORARIO, letto dalla sede unica
+#   script.fn_fuso_operativo, 20261009-40/41). Tre forme, scelte dal posto:
+#   - in un'istruzione SQL (WHERE, SELECT, VALUES, SQL dinamico):
+#     `(SELECT script.fn_data_operativa())` — la sottoquery scalare e'
+#     valutata UNA volta per istruzione, non per riga (misurato su
+#     zeroerp_ci il 2026-10-09: 20.000 righe, 122 ms per riga contro 2 ms);
+#   - in un'espressione PL/pgSQL (`:=`, IF, RETURN) la chiamata diretta,
+#     valutata una volta;
+#   - nel DEFAULT di un parametro la chiamata diretta: li' una sottoquery non
+#     e' ammessa.
+#   I commenti che citano CURRENT_DATE restano: raccontano la regola di prima.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firme, tipi, volatilita', sicurezza, commenti e GRANT delle funzioni (il
+#   CREATE OR REPLACE li conserva). Il corpo e' quello vivo, preso da
+#   pg_get_functiondef su zeroerp_ci il 2026-10-09 e confrontato con la doc
+#   auto-generata (identici), con la sola sostituzione di CURRENT_DATE.
+#
+# ── %TYPE: FIRMA, RETURNS TABLE, DECLARE ───────────────────────────
+#   Il corpo vivo (pg_get_functiondef) scioglie i %TYPE della firma: quelli
+#   gia' scritti nell'ultimo changeSet di ogni funzione sono stati RIPRESI
+#   (anche nel rollback), e in questo giro si sono ancorati i parametri, le
+#   colonne di RETURNS TABLE e le variabili che riflettono una colonna.
+#   Verificato in transazione annullata su zeroerp_ci: argomenti e risultato
+#   di ogni funzione restano byte-identici (nessun overload, nessun chiamante
+#   rotto). Restano a TIPO ESPLICITO, perche' non sono il riflesso di nessuna
+#   colonna, le voci elencate sotto per funzione: contatori, interruttori del
+#   chiamante, jsonb e testi di lavoro, valori calcolati o costanti tipizzate,
+#   chiavi polimorfe, il giorno operativo.
+#
+# ── FUNZIONI (1) ──────────────────────────────────────────────
+#     - pratiche.trgfn_pratiche_set_data_apertura — tutto ancorato
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20261009-48-update-oggi-dal-fuso-aziendale-pratiche-mctit.yaml
+
+  - changeSet:
+      id: 20261009-48-update-oggi-dal-fuso-aziendale-pratiche
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pratiche: CURRENT_DATE -> script.fn_data_operativa() in 1 funzioni, perche'
+        «oggi» e' il giorno dell'azienda (SYSTEM_FUSO_ORARIO) e non quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname = 'pratiche' AND p.proname IN ('trgfn_pratiche_set_data_apertura'))
+                  OR (n.nspname = 'script' AND p.proname = 'fn_fuso_operativo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: valorizzare data_apertura quando la pratica entra in APERTA,
+              --   sia per creazione diretta (INSERT con stato APERTA) sia per
+              --   transizione BOZZA -> APERTA su UPDATE.
+              -- Regole:
+              --   1. INSERT con stato APERTA e data_apertura non fornita -> CURRENT_DATE
+              --   2. UPDATE: solo alla transizione BOZZA -> APERTA
+              --   3. Immutabile: se data_apertura e' gia' valorizzata, preserva il valore
+              --   4. Gli id degli stati vengono risolti da config.stati_pratiche
+              --      tramite codice_interno, mai hardcodati
+              DECLARE
+                  v_bozza_id  config.stati_pratiche.id%TYPE;
+                  v_aperta_id config.stati_pratiche.id%TYPE;
+              BEGIN
+                  -- Stato APERTA: serve sia al ramo INSERT che al ramo UPDATE
+                  SELECT id INTO v_aperta_id
+                    FROM config.stati_pratiche
+                   WHERE codice_interno = 'APERTA';
+
+                  -- Ramo INSERT: creazione diretta in APERTA.
+                  -- Valorizza data_apertura solo se non gia' fornita dal chiamante
+                  -- (immutabilita' anche all'INSERT).
+                  IF TG_OP = 'INSERT' THEN
+                      IF NEW.data_apertura IS NULL AND NEW.stato_id = v_aperta_id THEN
+                          NEW.data_apertura := script.fn_data_operativa();
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- Ramo UPDATE: logica preesistente invariata.
+                  -- Nessuna transizione: niente da fare
+                  IF OLD.stato_id = NEW.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Immutabilita': se gia' valorizzata, preserva
+                  IF OLD.data_apertura IS NOT NULL THEN
+                      NEW.data_apertura := OLD.data_apertura;
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT id INTO v_bozza_id
+                    FROM config.stati_pratiche
+                   WHERE codice_interno = 'BOZZA';
+
+                  -- Transizione BOZZA -> APERTA: valorizza data_apertura
+                  IF OLD.stato_id = v_bozza_id AND NEW.stato_id = v_aperta_id THEN
+                      NEW.data_apertura := script.fn_data_operativa();
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.trgfn_pratiche_set_data_apertura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: valorizzare data_apertura quando la pratica entra in APERTA,
+              --   sia per creazione diretta (INSERT con stato APERTA) sia per
+              --   transizione BOZZA -> APERTA su UPDATE.
+              -- Regole:
+              --   1. INSERT con stato APERTA e data_apertura non fornita -> CURRENT_DATE
+              --   2. UPDATE: solo alla transizione BOZZA -> APERTA
+              --   3. Immutabile: se data_apertura e' gia' valorizzata, preserva il valore
+              --   4. Gli id degli stati vengono risolti da config.stati_pratiche
+              --      tramite codice_interno, mai hardcodati
+              DECLARE
+                  v_bozza_id  config.stati_pratiche.id%TYPE;
+                  v_aperta_id config.stati_pratiche.id%TYPE;
+              BEGIN
+                  -- Stato APERTA: serve sia al ramo INSERT che al ramo UPDATE
+                  SELECT id INTO v_aperta_id
+                    FROM config.stati_pratiche
+                   WHERE codice_interno = 'APERTA';
+
+                  -- Ramo INSERT: creazione diretta in APERTA.
+                  -- Valorizza data_apertura solo se non gia' fornita dal chiamante
+                  -- (immutabilita' anche all'INSERT).
+                  IF TG_OP = 'INSERT' THEN
+                      IF NEW.data_apertura IS NULL AND NEW.stato_id = v_aperta_id THEN
+                          NEW.data_apertura := CURRENT_DATE;
+                      END IF;
+                      RETURN NEW;
+                  END IF;
+
+                  -- Ramo UPDATE: logica preesistente invariata.
+                  -- Nessuna transizione: niente da fare
+                  IF OLD.stato_id = NEW.stato_id THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Immutabilita': se gia' valorizzata, preserva
+                  IF OLD.data_apertura IS NOT NULL THEN
+                      NEW.data_apertura := OLD.data_apertura;
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT id INTO v_bozza_id
+                    FROM config.stati_pratiche
+                   WHERE codice_interno = 'BOZZA';
+
+                  -- Transizione BOZZA -> APERTA: valorizza data_apertura
+                  IF OLD.stato_id = v_bozza_id AND NEW.stato_id = v_aperta_id THEN
+                      NEW.data_apertura := CURRENT_DATE;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

@@ -7,7 +7,7 @@ CREATE FUNCTION fn_crea_distinta_correzione(p_contabile_id bigint, p_data_contab
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION pagamenti.fn_crea_distinta_correzione(p_contabile_id bigint, p_data_contabile date DEFAULT CURRENT_DATE, p_motivo text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION pagamenti.fn_crea_distinta_correzione(p_contabile_id bigint, p_data_contabile date DEFAULT script.fn_data_operativa(), p_motivo text DEFAULT NULL::text)
  RETURNS TABLE(contabile_id bigint, righe_create integer, righe_saltate integer, esito text)
  LANGUAGE plpgsql
 AS $function$
@@ -156,7 +156,7 @@ BEGIN
         contabile_corretta_id, meta)
     VALUES (
         v_centro_id, v_ente_id, v_emittente_sr,
-        p_data_contabile, CURRENT_DATE, v_stato_bozza_id, 'MANUALE',
+        p_data_contabile, (SELECT script.fn_data_operativa()), v_stato_bozza_id, 'MANUALE',
         p_contabile_id,
         jsonb_strip_nulls(jsonb_build_object(
             'correzione_di', v_codice_origine,

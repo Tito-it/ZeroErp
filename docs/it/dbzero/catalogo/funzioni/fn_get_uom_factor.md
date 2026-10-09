@@ -50,8 +50,8 @@ BEGIN
   WHERE auo.articolo_id = p_articolo_id
     AND auo.uom_id      = p_uom_id
     AND auo.attivo      = TRUE
-    AND (auo.valido_dal IS NULL OR auo.valido_dal <= CURRENT_DATE)
-    AND (auo.valido_al  IS NULL OR auo.valido_al  >= CURRENT_DATE)
+    AND (auo.valido_dal IS NULL OR auo.valido_dal <= (SELECT script.fn_data_operativa()))
+    AND (auo.valido_al  IS NULL OR auo.valido_al  >= (SELECT script.fn_data_operativa()))
   LIMIT 1;
 
   IF v_factor IS NOT NULL AND v_factor > 0 THEN
@@ -66,8 +66,8 @@ BEGIN
     AND c.uom_to_id   = v_uom_base_id
     AND c.attivo      = TRUE
     AND c.fattore     > 0
-    AND (c.valido_dal IS NULL OR c.valido_dal <= CURRENT_DATE)
-    AND (c.valido_al   IS NULL OR c.valido_al   >= CURRENT_DATE)
+    AND (c.valido_dal IS NULL OR c.valido_dal <= (SELECT script.fn_data_operativa()))
+    AND (c.valido_al   IS NULL OR c.valido_al   >= (SELECT script.fn_data_operativa()))
   LIMIT 1;
 
   IF v_conv IS NOT NULL THEN
@@ -82,8 +82,8 @@ BEGIN
     AND c.uom_to_id   = p_uom_id
     AND c.attivo      = TRUE
     AND c.fattore     > 0
-    AND (c.valido_dal IS NULL OR c.valido_dal <= CURRENT_DATE)
-    AND (c.valido_al   IS NULL OR c.valido_al   >= CURRENT_DATE)
+    AND (c.valido_dal IS NULL OR c.valido_dal <= (SELECT script.fn_data_operativa()))
+    AND (c.valido_al   IS NULL OR c.valido_al   >= (SELECT script.fn_data_operativa()))
   LIMIT 1;
 
   IF v_conv IS NOT NULL THEN

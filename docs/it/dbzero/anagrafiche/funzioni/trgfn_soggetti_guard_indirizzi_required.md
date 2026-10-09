@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()
 AS $function$
 DECLARE
   v_has_matrix boolean;
-  v_today      date := current_date;
+  v_today      date := script.fn_data_operativa();
   v_missing    record;
 BEGIN
   IF TG_OP = 'DELETE' THEN

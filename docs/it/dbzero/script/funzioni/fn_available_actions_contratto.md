@@ -179,7 +179,7 @@ BEGIN
         SELECT jsonb_agg(
             CASE WHEN (elem->>'requires_date')::boolean IS TRUE
                  THEN elem || jsonb_build_object(
-                          'default_date', CURRENT_DATE::text,
+                          'default_date', (SELECT script.fn_data_operativa())::text,
                           'min_date',     v_valido_dal::text
                       )
                  ELSE elem

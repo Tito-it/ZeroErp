@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | stato_mag_inventario | character varying(16) | NO | 'DRAFT'::character varying |
 | magazzino_id | bigint | NO |  |
 | descrizione | character varying(255) | YES |  |

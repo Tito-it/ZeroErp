@@ -42,6 +42,7 @@
 | CHECK | chk_mag_movimenti_attesi_qta_non_zero |  |
 | CHECK | chk_mag_movimenti_attesi_sorgente_chiave |  |
 | CHECK | chk_mag_movimenti_attesi_stato |  |
+| CHECK | chk_movimenti_attesi_qta_finito |  |
 | FOREIGN KEY | fk_mag_movimenti_attesi_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_movimenti_attesi_asset | asset_id |
 | FOREIGN KEY | fk_mag_movimenti_attesi_causale | causale_id |

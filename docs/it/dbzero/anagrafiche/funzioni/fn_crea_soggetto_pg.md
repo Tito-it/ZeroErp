@@ -12,7 +12,13 @@ CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale tex
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
+-- ⭐ Rev 20261009-28 (brief-db-sesso-senza-default): una natura base PF
+--   (privato, ditta individuale) qui si rifiuta. La persona fisica ha la sua
+--   porta, fn_crea_soggetto_pf, che ne riceve nome, cognome e sesso: da qui
+--   una ditta individuale nasceva con la sola ragione sociale.
 DECLARE
+    v_tipo_soggetto_id            config.tipi_soggetto_dettaglio.tipo_soggetto_id%TYPE;
+    v_descrizione_dettaglio       config.tipi_soggetto_dettaglio.descrizione%TYPE;
     v_stato_id                    config.stati.id%TYPE;
     v_stato_iso2_resolved         config.stati.codice_iso2%TYPE;
     v_dati_societari_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
@@ -41,8 +47,8 @@ BEGIN
     END IF;
 
     -- Verifica che il tipo soggetto esista e recupera policy dati societari
-    SELECT tsd.dati_societari_policy
-      INTO v_dati_societari_policy
+    SELECT tsd.dati_societari_policy, tsd.tipo_soggetto_id, tsd.descrizione
+      INTO v_dati_societari_policy, v_tipo_soggetto_id, v_descrizione_dettaglio
       FROM config.tipi_soggetto_dettaglio tsd
      WHERE tsd.id = p_tipo_soggetto_dettaglio_id;
 
@@ -53,6 +59,20 @@ BEGIN
             jsonb_build_object('p_tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id),
             NULL::uuid,
             concat('Tipo soggetto dettaglio id=', p_tipo_soggetto_dettaglio_id, ' non trovato.')
+        );
+    END IF;
+
+    -- ⛔ Rev 20261009-28: una persona fisica qui e' un chiamante che ha
+    --   sbagliato porta (TECNICO, non un dato del form).
+    IF v_tipo_soggetto_id = 'PF' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database', 'anagrafiche.fn_crea_soggetto_pg',
+            'E_SOGGETTO_CREAZIONE_NATURA_ERRATA',
+            jsonb_build_object('tipo_soggetto_dettaglio_id', p_tipo_soggetto_dettaglio_id,
+                               'tipo_soggetto_id',           v_tipo_soggetto_id),
+            NULL::uuid,
+            COALESCE(v_descrizione_dettaglio, p_tipo_soggetto_dettaglio_id::text),
+            v_tipo_soggetto_id
         );
     END IF;
 
@@ -257,7 +277,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
-IS 'Crea soggetto PG + contatto default con tipo_contatto_id + dati societari (se policy). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli.';
+IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli.';
 ```
 
 ---
