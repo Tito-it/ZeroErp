@@ -103,9 +103,9 @@ LANGUAGE sql STABLE AS $f$ SELECT id FROM _art WHERE sigla = p_sigla $f$;
 UPDATE catalogo.articoli SET is_composito = true WHERE id = pg_temp.art('P');
 
 INSERT INTO catalogo.articoli_componenti (prodotto_id, componente_id, coeff_qta, obbligatorio, valido_dal)
-VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, true,  CURRENT_DATE - 30),
-       (pg_temp.art('P'), pg_temp.art('G'), 1, false, CURRENT_DATE - 30),
-       (pg_temp.art('P'), pg_temp.art('R'), 1, false, CURRENT_DATE - 30);
+VALUES (pg_temp.art('P'), pg_temp.art('F'), 1, true,  script.fn_data_operativa() - 30),
+       (pg_temp.art('P'), pg_temp.art('G'), 1, false, script.fn_data_operativa() - 30),
+       (pg_temp.art('P'), pg_temp.art('R'), 1, false, script.fn_data_operativa() - 30);
 
 CREATE TEMP TABLE _k AS
 SELECT (SELECT i.id FROM config.iva i
@@ -171,7 +171,7 @@ BEGIN
         VALUES
             (c.cliente_soggetto_ruolo_id, c.billing_account_id,
              (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-             'SPEDITO', c.emittente_fiscale_id, k.valuta_id, CURRENT_DATE)
+             'SPEDITO', c.emittente_fiscale_id, k.valuta_id, script.fn_data_operativa())
         RETURNING id INTO v_id;
 
         INSERT INTO vendite.ordini_righe
@@ -191,7 +191,7 @@ BEGIN
         ('PGT-DR-' || substring(md5(clock_timestamp()::text) FOR 6),
          (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'DRAFT'),
          c.utility_id, c.istanza_utility_id, c.billing_account_id,
-         CURRENT_DATE, c.emittente_fiscale_id, k.valuta_id)
+         script.fn_data_operativa(), c.emittente_fiscale_id, k.valuta_id)
     RETURNING id INTO v_id;
 
     INSERT INTO vendite.preventivi_righe
@@ -220,7 +220,7 @@ BEGIN
          utility_id, listino_id, listino_versione_id, validita_dal, validita_al, stato_doc_offerta_id)
     SELECT 'PGT-DR-' || substr(gen_random_uuid()::text, 1, 8),
            c.emittente_fiscale_id, c.billing_account_id, c.istanza_utility_id,
-           c.utility_id, l.listino_id, l.listino_versione_id, CURRENT_DATE, CURRENT_DATE + 365,
+           c.utility_id, l.listino_id, l.listino_versione_id, script.fn_data_operativa(), script.fn_data_operativa() + 365,
            (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'BOZZA')
       FROM _l l
     RETURNING id INTO v_id;
@@ -282,7 +282,7 @@ SELECT is(
 );
 
 SELECT is(
-    pg_temp.esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = CURRENT_DATE + 10 WHERE id = %s',
+    pg_temp.esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 10 WHERE id = %s',
                          pg_temp.riga('ORDINE'))),
     'PASSA',
     '5) ordine CONFERMATO: la data di consegna confermata cambia (eccezione dichiarata nel montaggio)'
@@ -290,7 +290,7 @@ SELECT is(
 
 SELECT is(
     pg_temp.esito(format($$UPDATE vendite.ordini_righe
-                              SET data_consegna_confermata = CURRENT_DATE + 11, descrizione = 'altra'
+                              SET data_consegna_confermata = script.fn_data_operativa() + 11, descrizione = 'altra'
                             WHERE id = %s$$, pg_temp.riga('ORDINE'))),
     'E_RIGA_DOC_NON_BOZZA',
     '6) ordine CONFERMATO: data e descrizione insieme no — l''eccezione e'' la sola data'
@@ -314,7 +314,7 @@ SELECT is(
 SELECT is(
     dbops.fn_pgtap_porta_a_stato('vendite.ordini', pg_temp.doc('ORDINE_ANN'), 'ANNULLATO')
     || ' | ' ||
-    pg_temp.esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = CURRENT_DATE + 12 WHERE id = %s',
+    pg_temp.esito(format('UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 12 WHERE id = %s',
                          pg_temp.riga('ORDINE_ANN'))),
     'ANNULLATO | E_RIGA_DOC_NON_BOZZA',
     '9) ordine ANNULLATO: nemmeno la data cambia — l''eccezione vale solo negli stati da evadere'

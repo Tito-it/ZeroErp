@@ -26,7 +26,7 @@
 --   - veste attiva con finestra valida + soggetto attivo ->
 --     should_active = true
 --   - veste con attivo=false -> should_active = false
---   - veste fuori finestra (valido_al < CURRENT_DATE) ->
+--   - veste fuori finestra (valido_al < script.fn_data_operativa()) ->
 --     should_active = false
 --   - DISABILITATO non si scrive: E_RUOLO_APPLICATIVO_RITIRATO
 --
@@ -308,14 +308,14 @@ SELECT CASE
 END;
 
 -- =========================================================
--- 6) CLIENTE_PORTALE fuori finestra (valido_al < CURRENT_DATE) -> is_active=false
+-- 6) CLIENTE_PORTALE fuori finestra (valido_al < script.fn_data_operativa()) -> is_active=false
 -- =========================================================
 -- Sposto sia valido_dal sia valido_al nel passato per rispettare il
 -- vincolo chk_identita_digitali_date (valido_dal <= valido_al).
 UPDATE anagrafiche.identita_digitali
    SET attivo = true,
-       valido_dal = CURRENT_DATE - INTERVAL '2 days',
-       valido_al  = CURRENT_DATE - INTERVAL '1 day'
+       valido_dal = script.fn_data_operativa() - INTERVAL '2 days',
+       valido_al  = script.fn_data_operativa() - INTERVAL '1 day'
  WHERE id = (SELECT case_cli_id_id FROM _t_setup WHERE case_cli_ready);
 
 UPDATE django.auth_user SET is_active = true
@@ -338,7 +338,7 @@ END;
 
 -- Reset finestra per i test successivi (CLIENTE_PORTALE torna aperto).
 UPDATE anagrafiche.identita_digitali
-   SET valido_dal = CURRENT_DATE,
+   SET valido_dal = script.fn_data_operativa(),
        valido_al  = NULL
  WHERE id = (SELECT case_cli_id_id FROM _t_setup WHERE case_cli_ready);
 

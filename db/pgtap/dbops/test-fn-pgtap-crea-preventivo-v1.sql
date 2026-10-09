@@ -68,7 +68,7 @@ SELECT is(
 
 -- 4) Numero dal dominio, validita' da oggi
 SELECT ok(
-    (SELECT p.numero IS NOT NULL AND p.validita_dal = CURRENT_DATE
+    (SELECT p.numero IS NOT NULL AND p.validita_dal = script.fn_data_operativa()
             AND p.validita_al > p.validita_dal
        FROM vendite.preventivi p WHERE p.id = (SELECT preventivo_id FROM t_p1)),
     'il numero lo assegna il dominio (trgfn_preventivi_gen_codice); validita'' aperta da oggi'

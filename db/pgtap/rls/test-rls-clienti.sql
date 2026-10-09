@@ -187,7 +187,7 @@ WITH tutti AS (
         (soggetto_ruolo_id, istanza_utility_id, stato_cliente_id,
          billing_account_id, data_attivazione)
     SELECT t.soggetto_ruolo_id, t.istanza_utility_id, c.stato_cliente_id,
-           t.billing_account_id, CURRENT_DATE
+           t.billing_account_id, script.fn_data_operativa()
       FROM tutti t CROSS JOIN _catalogo c
     RETURNING id, billing_account_id
 )
@@ -320,7 +320,7 @@ BEGIN
              billing_account_id, data_attivazione)
         VALUES (v_b.soggetto_ruolo_id, v_b.istanza_utility_id,
                 (SELECT stato_cliente_id FROM _catalogo),
-                v_b.billing_account_id, CURRENT_DATE);
+                v_b.billing_account_id, script.fn_data_operativa());
         PERFORM set_config('pgtap.op_scrittura', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation OR raise_exception THEN
         PERFORM set_config('pgtap.op_scrittura', 'RIFIUTATA', true);

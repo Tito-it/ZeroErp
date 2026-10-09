@@ -97,7 +97,7 @@ SELECT ok(
 --   ne' la fixture del test «annulla lotto vuoto», che usa +2 mesi.
 CREATE TEMP TABLE tmp_lotto_ann AS
 SELECT vendite.fn_get_or_create_lotto(
-         p_competenza_mese             => (date_trunc('month', CURRENT_DATE) + interval '4 month')::date,
+         p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '4 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale
                                             WHERE attivo IS TRUE ORDER BY id LIMIT 1),
          p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba

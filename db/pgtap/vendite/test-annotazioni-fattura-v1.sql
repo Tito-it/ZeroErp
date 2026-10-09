@@ -74,7 +74,7 @@ SELECT 999902, 'PGTAP_NI', 'pgTAP non imponibile', 'pgTAP NI', 0,
 CREATE OR REPLACE FUNCTION pg_temp.fx_riga(p_nr integer, p_iva integer)
 RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, competenza_dal, competenza_al)
-  SELECT (SELECT fattura_id FROM tmp_an), p_nr, 'Riga ' || p_nr, 1, 100, p_iva, CURRENT_DATE, CURRENT_DATE
+  SELECT (SELECT fattura_id FROM tmp_an), p_nr, 'Riga ' || p_nr, 1, 100, p_iva, script.fn_data_operativa(), script.fn_data_operativa()
   RETURNING id;
 $fx$;
 

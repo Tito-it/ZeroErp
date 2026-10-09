@@ -47,12 +47,12 @@ SELECT col_type_is('pratiche', 'tipi_prestazione', 'obsoleto_dal', 'date',
 
 -- 4) / 5) vecchi tipi ritirati (obsoleto_dal valorizzato e gia attivo)
 SELECT ok(
-  (SELECT obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE
+  (SELECT obsoleto_dal IS NOT NULL AND obsoleto_dal <= script.fn_data_operativa()
      FROM pratiche.tipi_prestazione WHERE codice_interno = 'PREVENTIVI_IMMEDIATA'),
   'PREVENTIVI_IMMEDIATA: obsoleto_dal valorizzato e <= oggi (ritirato)'
 );
 SELECT ok(
-  (SELECT obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE
+  (SELECT obsoleto_dal IS NOT NULL AND obsoleto_dal <= script.fn_data_operativa()
      FROM pratiche.tipi_prestazione WHERE codice_interno = 'PREVENTIVI_DIFFERITA'),
   'PREVENTIVI_DIFFERITA: obsoleto_dal valorizzato e <= oggi (ritirato)'
 );
@@ -99,7 +99,7 @@ SELECT is(
   (SELECT count(*) FROM pratiche.tipi_prestazione
     WHERE codice_interno LIKE 'PREVENTIVI%'
       AND attivo
-      AND (obsoleto_dal IS NULL OR obsoleto_dal > CURRENT_DATE)),
+      AND (obsoleto_dal IS NULL OR obsoleto_dal > script.fn_data_operativa())),
   1::bigint,
   'predicato selezione: tra i tipi PREVENTIVI* esattamente 1 (il tipo unico) è selezionabile'
 );

@@ -105,7 +105,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture
       (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
        tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, utility_id, meta)
-  SELECT (SELECT id FROM tmp_cf_reg), current_date,
+  SELECT (SELECT id FROM tmp_cf_reg), script.fn_data_operativa(),
          r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.stato_doc_fiscale_id, r.valuta_id, r.utility_id,
          jsonb_build_object('test_scope', 'pgtap_capofila', 'n', n)
@@ -121,7 +121,7 @@ WITH ins AS (
       (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
   SELECT f.id, 1, 'Capofila fattura ' || f.n, 10, 100,
          (SELECT iva_id FROM tmp_cf_refs),
-         jsonb_build_object('test_scope', 'pgtap_capofila', 'n', f.n), CURRENT_DATE, CURRENT_DATE
+         jsonb_build_object('test_scope', 'pgtap_capofila', 'n', f.n), script.fn_data_operativa(), script.fn_data_operativa()
     FROM tmp_cf_fatt f
   RETURNING id, fattura_id, (meta ->> 'n')::int AS n)
 SELECT * FROM ins;
@@ -145,14 +145,14 @@ INSERT INTO vendite.fatture_righe
      riga_capofila_id, meta, competenza_dal, competenza_al)
 SELECT c.fattura_id, 2, 'Parte 2 (plafond esaurito)', 4, 100,
        (SELECT iva_id FROM tmp_cf_refs), c.id,
-       jsonb_build_object('test_scope', 'pgtap_capofila'), CURRENT_DATE, CURRENT_DATE
+       jsonb_build_object('test_scope', 'pgtap_capofila'), script.fn_data_operativa(), script.fn_data_operativa()
   FROM tmp_cf_capo c WHERE c.n = 1;
 
 SELECT lives_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
                riga_capofila_id, competenza_dal, competenza_al)
-           VALUES (%s, 3, 'Parte 3', 1, 100, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
+           VALUES (%s, 3, 'Parte 3', 1, 100, %s, %s, script.fn_data_operativa(), script.fn_data_operativa())$$,
          (SELECT fattura_id FROM tmp_cf_capo WHERE n = 1),
          (SELECT iva_id FROM tmp_cf_refs),
          (SELECT id FROM tmp_cf_capo WHERE n = 1)),
@@ -169,7 +169,7 @@ SELECT throws_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
                riga_capofila_id, competenza_dal, competenza_al)
-           VALUES (%s, 4, 'Nipote', 1, 100, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
+           VALUES (%s, 4, 'Nipote', 1, 100, %s, %s, script.fn_data_operativa(), script.fn_data_operativa())$$,
          (SELECT fattura_id FROM tmp_cf_capo WHERE n = 1),
          (SELECT iva_id FROM tmp_cf_refs),
          (SELECT r.id FROM vendite.fatture_righe r
@@ -191,7 +191,7 @@ SELECT throws_ok(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
                riga_capofila_id, competenza_dal, competenza_al)
-           VALUES (%s, 9, 'Parte con capofila altrui', 1, 100, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
+           VALUES (%s, 9, 'Parte con capofila altrui', 1, 100, %s, %s, script.fn_data_operativa(), script.fn_data_operativa())$$,
          (SELECT fattura_id FROM tmp_cf_capo WHERE n = 2),
          (SELECT iva_id FROM tmp_cf_refs),
          (SELECT id FROM tmp_cf_capo WHERE n = 1)),
@@ -214,7 +214,7 @@ INSERT INTO vendite.fatture_righe
 SELECT (SELECT fattura_id FROM tmp_cf_capo WHERE n = 1), 5,
        'Terza capofila, stessa fattura', 1, 100,
        (SELECT iva_id FROM tmp_cf_refs),
-       jsonb_build_object('test_scope', 'pgtap_capofila'), CURRENT_DATE, CURRENT_DATE;
+       jsonb_build_object('test_scope', 'pgtap_capofila'), script.fn_data_operativa(), script.fn_data_operativa();
 
 SELECT throws_ok(
   format($$UPDATE vendite.fatture_righe SET riga_capofila_id = %s WHERE id = %s$$,
@@ -249,7 +249,7 @@ SELECT throws_like(
   format($$INSERT INTO vendite.fatture_righe
               (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
                riga_capofila_id, competenza_dal, competenza_al)
-           VALUES (%s, 6, 'Nipote bis', 1, 100, %s, %s, CURRENT_DATE, CURRENT_DATE)$$,
+           VALUES (%s, 6, 'Nipote bis', 1, 100, %s, %s, script.fn_data_operativa(), script.fn_data_operativa())$$,
          (SELECT fattura_id FROM tmp_cf_capo WHERE n = 1),
          (SELECT iva_id FROM tmp_cf_refs),
          (SELECT r.id FROM vendite.fatture_righe r

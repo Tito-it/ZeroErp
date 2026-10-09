@@ -158,7 +158,7 @@ WITH ins AS (
   )
   SELECT
     r.registro_id,
-    current_date,
+    script.fn_data_operativa(),
     r.emittente_soggetto_ruolo_id,
     r.billing_account_id,
     r.tipo_doc_fiscale_id,

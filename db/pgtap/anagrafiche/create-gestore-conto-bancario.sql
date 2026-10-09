@@ -155,7 +155,7 @@ WITH link AS (
         c.id,
         k.uso_test,
         TRUE,                       -- conto predefinito per INCASSO
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         NULL,                       -- valido fino a data open-ended
         NULL,                       -- intestazione_dichiarata non specificata
         FALSE,                      -- non ancora verificato

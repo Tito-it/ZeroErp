@@ -108,7 +108,7 @@ BEGIN
     VALUES ('PGT-MV2-B', 'pgTAP movimenti v2 B', v_ind, v_ef) RETURNING id INTO v_mb;
 
     INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo)
-    VALUES (v_art, 'PGT-L-1', current_date) RETURNING id INTO v_lot;
+    VALUES (v_art, 'PGT-L-1', script.fn_data_operativa()) RETURNING id INTO v_lot;
 
     INSERT INTO magazzino.assets (articolo_id, seriale, stato_id, ownership_id, emittente_fiscale_id)
     VALUES (v_art, 'PGT-SN-' || v_ma::text,

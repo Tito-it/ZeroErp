@@ -12,7 +12,7 @@
 -- 3) APERTA → SOSPESA — data_apertura non cambia (immutabile)
 -- 4) SOSPESA → APERTA — data_apertura non cambia (immutabile)
 -- 5) Nuova pratica: BOZZA → ANNULLATA — data_apertura resta NULL
--- 6) INSERT diretto in APERTA (senza data_apertura) → data_apertura = CURRENT_DATE
+-- 6) INSERT diretto in APERTA (senza data_apertura) → data_apertura = script.fn_data_operativa()
 -- 7) INSERT diretto in APERTA con data_apertura esplicita → valore chiamante preservato (immutabilita' all'INSERT)
 -- 8) INSERT in BOZZA → data_apertura IS NULL (comportamento bozza invariato)
 -- 9) Cleanup
@@ -170,7 +170,7 @@ SELECT is(
 );
 
 -- =========================================================
--- 6) INSERT diretto in APERTA (senza data_apertura) → CURRENT_DATE
+-- 6) INSERT diretto in APERTA (senza data_apertura) → script.fn_data_operativa()
 -- =========================================================
 CREATE TEMP TABLE tmp_da_pratica3 AS
 WITH ins AS (
@@ -188,8 +188,8 @@ SELECT id AS pratica_id FROM ins;
 
 SELECT is(
   (SELECT data_apertura FROM pratiche.pratiche WHERE id = (SELECT pratica_id FROM tmp_da_pratica3)),
-  CURRENT_DATE,
-  '6. INSERT in APERTA senza data_apertura: data_apertura = CURRENT_DATE'
+  script.fn_data_operativa(),
+  '6. INSERT in APERTA senza data_apertura: data_apertura = script.fn_data_operativa()'
 );
 
 -- =========================================================

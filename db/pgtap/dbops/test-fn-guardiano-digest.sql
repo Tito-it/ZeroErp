@@ -130,7 +130,7 @@ SELECT is(
        FROM dbops.coda_lavori
       WHERE job_type = 'NOTIFICA_DIGEST_MUTO'
       ORDER BY id DESC LIMIT 1),
-    'SISTEMA/NULL/guardiano_digest:' || CURRENT_DATE::text || '/true/digest_presidi',
+    'SISTEMA/NULL/guardiano_digest:' || script.fn_data_operativa()::text || '/true/digest_presidi',
     '4-bis. il lavoro e'' SISTEMA senza scope, con la chiave del giorno e il payload che dice chi e da quanto'
 );
 
@@ -167,7 +167,7 @@ SELECT is(
 -- ============================================================
 -- ⚠️ obsoleto_dal e non attivo = false: il panorama filtra su entrambi, e il
 --   primo non sveglia nessun guard di disattivazione con figlie.
-UPDATE dbops.processi SET obsoleto_dal = CURRENT_DATE - 1 WHERE codice = 'digest_presidi';
+UPDATE dbops.processi SET obsoleto_dal = script.fn_data_operativa() - 1 WHERE codice = 'digest_presidi';
 
 SELECT throws_like(
     $$SELECT dbops.fn_guardiano_digest()$$,

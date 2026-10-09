@@ -3,6 +3,8 @@
 -- pgTAP test per Zero ERP
 -- Test: NESSUN «OGGI» PRESO DAL FUSO DELLA SESSIONE — presidio sul catalogo
 --       brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-8 (20261009-40..60)
+-- pgtap-oggi: escluso — il presidio CERCA CURRENT_DATE & co.: le parole
+--   stanno nella sua espressione regolare e nella controprova (test 4)
 -- ------------------------------------------------------------
 -- Indice test (1..4)
 --  1) nessuna funzione (plpgsql, sql, BEGIN ATOMIC) usa CURRENT_DATE & co.

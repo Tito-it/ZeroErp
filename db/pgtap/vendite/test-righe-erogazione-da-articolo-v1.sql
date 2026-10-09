@@ -281,7 +281,7 @@ WITH ins AS (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
         listino_id, validita_dal, stato_doc_offerta_id)
     SELECT script.fn_pgtap_emittente_operatore(), c.billing_account_id, c.istanza_utility_id,
-           c.utility_id, (SELECT listino_id FROM tmp_eda_listino), CURRENT_DATE,
+           c.utility_id, (SELECT listino_id FROM tmp_eda_listino), script.fn_data_operativa(),
            (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
       FROM tmp_eda_cli2 c
     RETURNING id)

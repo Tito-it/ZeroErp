@@ -15,10 +15,8 @@ db/pgtap/config/test-soglia-congelamento-sede-unica.sql	ASSERZIONE
 db/pgtap/pratiche/test-assegnazione-flusso-eligibilita.sql	ERRORE_FIXTURE
 db/pgtap/pratiche/test-coda-lavoro-presa-carico.sql	ERRORE_FIXTURE
 db/pgtap/pratiche/test-guard-contesto-pratica.sql	ASSERZIONE
-db/pgtap/pratiche/test-guida-avanza-esito-proiettato.sql	ERRORE_FIXTURE
 db/pgtap/pratiche/test-pratiche-sorgenti-flusso.sql	ERRORE_FIXTURE
-db/pgtap/pratiche/test-proiezione-stato-sorgente.sql	ERRORE_FIXTURE
-db/pgtap/pratiche/test-reconcile-tie-break-flusso-origine.sql	ERRORE_FIXTURE
+db/pgtap/pratiche/test-proiezione-stato-sorgente.sql	SORGENTE_POLIMORFA
 db/pgtap/pratiche/test-workflow-definizioni-fase2b.sql	ASSERZIONE
 db/pgtap/script/test-capability-annulla-aspetto-e-stato-leggibile-v1.sql	ASSERZIONE
 db/pgtap/script/test-fn-available-actions-ordine-v2.sql	ASSERZIONE
@@ -53,7 +51,6 @@ db/pgtap/vendite/test-commesse-transizioni-stati-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-contratti-overlap-draft-escluso-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-schema-step22-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-contratti-utilities-snapshot.sql	ASSERZIONE
 db/pgtap/vendite/test-data-documento-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ddt-causale-immutabile-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-ddt-componenti-senza-prezzo-v1.sql	ASSERZIONE

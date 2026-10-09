@@ -111,7 +111,7 @@ WITH l AS (
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id)
     SELECT 'PGTAP-LOTTO-' || c.lato || '-' || c.billing_account_id,
-           date_trunc('month', CURRENT_DATE)::date,
+           date_trunc('month', script.fn_data_operativa())::date,
            (SELECT t.id FROM config.tipi_doc_fiscale t
              WHERE t.attivo ORDER BY t.id LIMIT 1),
            c.emittente_sr_id

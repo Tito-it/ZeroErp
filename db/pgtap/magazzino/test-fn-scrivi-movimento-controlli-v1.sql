@@ -82,8 +82,8 @@ BEGIN
     v_art_lotto  := dbops.fn_pgtap_crea_articolo('PGT-L2C-LOT', true, true,  false);
     v_art_serial := dbops.fn_pgtap_crea_articolo('PGT-L2C-SER', true, false, true);
     v_art_no     := dbops.fn_pgtap_crea_articolo('PGT-L2C-NO',  false, false, false);
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art_lotto, 'PGT-L2C-L1', current_date) RETURNING id INTO v_lotto;
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art, 'PGT-L2C-L2', current_date) RETURNING id INTO v_lotto_altro;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art_lotto, 'PGT-L2C-L1', script.fn_data_operativa()) RETURNING id INTO v_lotto;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art, 'PGT-L2C-L2', script.fn_data_operativa()) RETURNING id INTO v_lotto_altro;
     INSERT INTO magazzino.assets (articolo_id, seriale, stato_id, ownership_id, emittente_fiscale_id)
     VALUES (v_art_serial, 'PGT-L2C-SN1',
             (SELECT s.id FROM config.stati_assets s WHERE s.attivo ORDER BY s.id LIMIT 1),

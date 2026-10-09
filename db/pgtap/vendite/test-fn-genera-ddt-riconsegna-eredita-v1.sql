@@ -134,7 +134,7 @@ WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
   SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-         r.valuta_id, CURRENT_DATE, 'SPEDITO', r.emittente_fiscale_id, false,
+         r.valuta_id, script.fn_data_operativa(), 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
   FROM tmp_ref r RETURNING id, uid)
 SELECT * FROM ins;
@@ -266,7 +266,7 @@ WITH ins AS (
     mittente_soggetto_ruolo_id, vettore_soggetto_ruolo_id,
     num_colli, peso_lordo, peso_netto, volume, targa, autista, tracking_code,
     data_ora_partenza, data_ora_consegna_prev, storicizza, meta)
-  SELECT CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id,
+  SELECT script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id,
          r.billing_account_id, ba.utility_id, r.valuta_id, r.emittente_fiscale_id,
          r.causale_vendita_id, r.aspetto_id, r.modalita_addebito_id,
          r.mittente_sr_id, r.vettore_sr_id,
@@ -439,7 +439,7 @@ WITH ins AS (
   INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
     billing_account_id, valuta_id, emittente_fiscale_id, causale_trasporto_id,
     storicizza, meta)
-  SELECT CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id,
+  SELECT script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id,
          r.billing_account_id, r.valuta_id, r.emittente_fiscale_id,
          r.causale_vendita_id, false,
          jsonb_build_object('test_scope','pgtap_riconsegna_eredita')

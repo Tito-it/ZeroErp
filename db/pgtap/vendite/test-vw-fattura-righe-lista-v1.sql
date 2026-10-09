@@ -88,7 +88,7 @@ RETURNS bigint LANGUAGE sql AS $fx$
          p_kit, p_esposizione,
          CASE WHEN p_kit IS NOT NULL THEN (SELECT padre_id FROM tmp_frl_art) END,
          CASE WHEN p_kit IS NOT NULL THEN 'Padre ' || p_kit END,
-         p_capofila, CURRENT_DATE, CURRENT_DATE,
+         p_capofila, script.fn_data_operativa(), script.fn_data_operativa(),
          -- un kit per riga di componente (rev 2026-10-02: kit_qta obbligatoria sulle
          -- righe di kit, chk_fatture_righe_kit_coerente)
          CASE WHEN p_kit IS NOT NULL THEN 1 END

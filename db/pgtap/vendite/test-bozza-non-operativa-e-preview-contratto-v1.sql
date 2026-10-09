@@ -141,12 +141,12 @@ WITH ins AS (
 SELECT id FROM ins;
 
 -- BOZZA (no no-overlap con ATTIVA: il vincolo è solo su stato=ATTIVA).
--- valido_dal = CURRENT_DATE: il freeze trigger usa CURRENT_DATE per il lookup,
--- quindi entrambe le versioni devono coprire CURRENT_DATE per essere trovate.
+-- valido_dal = script.fn_data_operativa(): il freeze trigger usa script.fn_data_operativa() per il lookup,
+-- quindi entrambe le versioni devono coprire script.fn_data_operativa() per essere trovate.
 CREATE TEMP TABLE tmp_ver_mixed_bozza AS
 WITH ins AS (
     INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, stato)
-    SELECT id, 'PGTAP-MX-BOZZA', CURRENT_DATE, 'BOZZA'
+    SELECT id, 'PGTAP-MX-BOZZA', script.fn_data_operativa(), 'BOZZA'
       FROM tmp_lst_mixed
     RETURNING id
 )
@@ -157,11 +157,11 @@ SELECT v.id, a.id, ctx.uom_id, 99.99
   FROM tmp_ver_mixed_bozza v, tmp_bozza_art a, tmp_bozza_ctx ctx;
 
 -- ATTIVA per stesso listino (INSERT diretto: guard solo su UPDATE OF stato).
--- valido_dal = CURRENT_DATE: freeze trigger la troverà e farà snapshot.
+-- valido_dal = script.fn_data_operativa(): freeze trigger la troverà e farà snapshot.
 CREATE TEMP TABLE tmp_ver_mixed_attiva AS
 WITH ins AS (
     INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, stato)
-    SELECT id, 'PGTAP-MX-ATTIVA', CURRENT_DATE, 'ATTIVA'
+    SELECT id, 'PGTAP-MX-ATTIVA', script.fn_data_operativa(), 'ATTIVA'
       FROM tmp_lst_mixed
     RETURNING id
 )

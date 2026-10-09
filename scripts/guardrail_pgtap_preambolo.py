@@ -21,11 +21,23 @@
 #   C) contesto applicativo         -> senza, con la RLS attiva le SELECT della
 #      fixture leggono ZERO righe e le asserzioni finiscono nei rami `skip`.
 #
+# E una quarta, che non e' di preambolo ma si verifica con lo stesso grep:
+#
+#   D) «oggi» = `script.fn_data_operativa()` -> `CURRENT_DATE`, `LOCALTIMESTAMP`,
+#      `LOCALTIME`, `now()::date` e affini danno il giorno della SESSIONE, che il
+#      runner rende apposta diverso da quello dell'azienda (fuso ostile,
+#      scripts/testpgtap.sh). Il codice provato legge il giorno aziendale: un
+#      test che costruisce «oggi» col giorno della sessione prova un altro
+#      giorno. E' il gemello statico del presidio sul catalogo
+#      (db/pgtap/dbops/test-oggi-dal-fuso-aziendale-v1.sql), che i test non li
+#      vede. Brief: brief-be-db-fe-un-solo-fuso-aziendale (T-5).
+#
 # ⚠️ Le esclusioni esistono, e devono essere DICHIARATE nel file — non spiegate
 # in prosa e basta. Una ragione in prosa non e' leggibile da un cancello, e
 # soprattutto non distingue «escluso apposta» da «dimenticato»:
 #     -- pgtap-contesto: escluso — <perche>
 #     -- pgtap-differiti: escluso — <perche>
+#     -- pgtap-oggi: escluso — <perche>
 # E' lo stesso schema del marcatore `pgtap-runner`, per la stessa ragione:
 # l'eccezione sta accanto al test e porta la sua motivazione.
 #
@@ -88,6 +100,15 @@ RX_DIF_ESCL = re.compile(r"^--\s*pgtap-differiti:\s*escluso\b", re.M)
 RX_MARK = re.compile(r"^--\s*pgtap-runner:\s*owner\s*$", re.M)
 RX_MOTIVO = re.compile(r"^--\s*pgtap-runner-motivo:\s*\S", re.M)
 RX_THROWS = re.compile(r"\bthrows_ok\s*\(")
+# ⚠️ Si cerca anche DENTRO le stringhe: un `format('UPDATE … SET valido_al =
+#   CURRENT_DATE + 30 …')` gira nella sessione come il resto del file.
+RX_OGGI = re.compile(
+    r"\b(current_date|localtimestamp|localtime)\b"
+    r"|\b(now|clock_timestamp|statement_timestamp|transaction_timestamp)\s*\(\s*\)\s*::\s*date\b"
+    r"|\bcurrent_timestamp\s*::\s*date\b",
+    re.I,
+)
+RX_OGGI_ESCL = re.compile(r"^--\s*pgtap-oggi:\s*escluso\b", re.M)
 
 
 # Scopo: azzerare commenti, stringhe e dollar-quote preservando gli offset,
@@ -198,6 +219,13 @@ def main() -> int:
         # statico, cosi' si vede in PR invece che al primo lancio.
         if RX_MARK.search(t) and not RX_MOTIVO.search(t):
             viol.append((rel, "`pgtap-runner: owner` senza `pgtap-runner-motivo`"))
+        if not RX_OGGI_ESCL.search(t):
+            for nr, riga in enumerate(senza_commenti(t).split("\n"), 1):
+                mo = RX_OGGI.search(riga)
+                if mo:
+                    viol.append((f"{rel}:{nr}", f"`{mo.group(0)}` e' il giorno della sessione: "
+                                 "«oggi» e' `script.fn_data_operativa()`, il giorno da un "
+                                 "istante `script.fn_giorno_operativo(...)`"))
 
         debito += throws_senza_discriminante(t, m)
 

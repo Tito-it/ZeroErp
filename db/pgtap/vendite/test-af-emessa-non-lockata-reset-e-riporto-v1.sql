@@ -92,7 +92,7 @@ SELECT
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE) AS sorgente_id,
   (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT') AS stato_draft,
-  date_trunc('month', CURRENT_DATE)::date                  AS mese;
+  date_trunc('month', script.fn_data_operativa())::date                  AS mese;
 
 SELECT ok(
   (SELECT r.emittente_sr IS NOT NULL AND r.billing_account_id IS NOT NULL

@@ -162,11 +162,11 @@ BEGIN
         RETURNING id INTO v_iu;
 
         INSERT INTO tmp_link_templates
-        VALUES (v_i, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, current_date);
+        VALUES (v_i, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, script.fn_data_operativa());
     END LOOP;
 
     INSERT INTO tmp_link_templates
-    VALUES (4, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, current_date);
+    VALUES (4, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, script.fn_data_operativa());
 END $seed$;
 
 -- Tabella di appoggio per i risultati intermedi (creata fuori da qualunque

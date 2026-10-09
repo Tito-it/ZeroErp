@@ -148,7 +148,7 @@ BEGIN
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
       uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
   VALUES (v_f, 1, r.articolo_id, 'Riga pgTAP numerazione NC', r.uom_id, p_qta, p_prezzo,
-      r.iva_id, p_qta * p_prezzo, CURRENT_DATE, CURRENT_DATE)
+      r.iva_id, p_qta * p_prezzo, script.fn_data_operativa(), script.fn_data_operativa())
   RETURNING id INTO v_r;
 
   RETURN QUERY SELECT v_f, v_r;
@@ -353,7 +353,7 @@ SELECT * FROM pg_temp.nnc_mk_doc((SELECT natura_fattura_id FROM tmp_refs_nnc), 7
 INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
     uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, riga_rettificata_id, competenza_dal, competenza_al)
 SELECT (SELECT fattura_id FROM tmp_nc), 2, r.articolo_id, 'Seconda riga pgTAP NC',
-       r.uom_id, -3, 25, r.iva_id, -75, (SELECT riga_id FROM tmp_padre2), CURRENT_DATE, CURRENT_DATE
+       r.uom_id, -3, 25, r.iva_id, -75, (SELECT riga_id FROM tmp_padre2), script.fn_data_operativa(), script.fn_data_operativa()
   FROM tmp_refs_nnc r;
 
 CREATE TEMP TABLE tmp_bers_2 AS

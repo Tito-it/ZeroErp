@@ -476,7 +476,7 @@ SELECT ok(
   EXISTS (
     SELECT 1 FROM config.eventi_dominio ed
      WHERE ed.codice = 'LOTTO_RIAPERTO'
-       AND (ed.obsoleto_dal IS NULL OR ed.obsoleto_dal > CURRENT_DATE))
+       AND (ed.obsoleto_dal IS NULL OR ed.obsoleto_dal > script.fn_data_operativa()))
   AND EXISTS (
     -- e il tipo di entita' su cui la funzione lo scrive dev'essere
     -- GIORNALABILE: un modo di risoluzione a NULL fa rifiutare la riga dal
@@ -484,7 +484,7 @@ SELECT ok(
     SELECT 1 FROM config.tipi_entita te
      WHERE te.codice = 'LOTTO'
        AND te.modo_risoluzione_emittente IS NOT NULL
-       AND (te.obsoleto_dal IS NULL OR te.obsoleto_dal > CURRENT_DATE)),
+       AND (te.obsoleto_dal IS NULL OR te.obsoleto_dal > script.fn_data_operativa())),
   '14) RD-7: LOTTO_RIAPERTO e dichiarato e non obsoleto, e LOTTO e giornalabile');
 
 SELECT * FROM finish();

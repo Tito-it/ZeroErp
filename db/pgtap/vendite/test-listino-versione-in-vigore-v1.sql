@@ -160,7 +160,7 @@ SELECT lives_ok(
     $$UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_lvv_v2)$$,
     '9) V2 diventa ATTIVA sul periodo libero');
 
-SELECT is(pg_temp.in_vigore(CURRENT_DATE), (SELECT id FROM tmp_lvv_v2),
+SELECT is(pg_temp.in_vigore(script.fn_data_operativa()), (SELECT id FROM tmp_lvv_v2),
     '10) oggi e'' in vigore V2');
 
 SELECT is(pg_temp.in_vigore('2020-06-01'), (SELECT listino_versione_id FROM tmp_lvv_listino),

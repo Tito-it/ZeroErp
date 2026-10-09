@@ -60,8 +60,8 @@ SELECT plan(9);
 CREATE TEMP TABLE tmp_costanti_goc AS
 SELECT
   'pgtap_get_or_create_contabile'::text AS test_scope,
-  date_trunc('month', current_date)::date AS data_contabile,
-  current_date::date AS data_registrazione;
+  date_trunc('month', script.fn_data_operativa())::date AS data_contabile,
+  script.fn_data_operativa()::date AS data_registrazione;
 
 -- ============================================================
 -- 1) Presenza funzione
@@ -280,8 +280,8 @@ SELECT throws_ok(
   $$
   SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => 0,
-    p_data_contabile => current_date,
-    p_data_registrazione => current_date,
+    p_data_contabile => script.fn_data_operativa(),
+    p_data_registrazione => script.fn_data_operativa(),
     p_ente_incasso_id => NULL,
     p_lotto_id => NULL,
     p_codice_stato_interno => (SELECT codice_interno FROM tmp_stato_ref),
@@ -309,8 +309,8 @@ SELECT throws_like(
   $$
   SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => 0,
-    p_data_contabile => current_date,
-    p_data_registrazione => current_date,
+    p_data_contabile => script.fn_data_operativa(),
+    p_data_registrazione => script.fn_data_operativa(),
     p_ente_incasso_id => NULL,
     p_lotto_id => NULL,
     p_codice_stato_interno => (SELECT codice_interno FROM tmp_stato_ref),

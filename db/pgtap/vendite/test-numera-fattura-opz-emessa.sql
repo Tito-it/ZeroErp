@@ -124,7 +124,7 @@ WITH ins AS (
   )
   SELECT
     (SELECT id FROM tmp_reg_nf),
-    current_date,
+    script.fn_data_operativa(),
     (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_nf),
     (SELECT billing_account_id FROM tmp_refs_nf),
     (SELECT utility_id FROM tmp_refs_nf),
@@ -173,7 +173,7 @@ SELECT
   1::numeric,
   100::numeric,
   (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf)), CURRENT_DATE, CURRENT_DATE;
+  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf)), script.fn_data_operativa(), script.fn_data_operativa();
 
 -- ⚠️ 2026-08-02: la fattura di test deve essere anche COERENTE.
 --   Il guard D-K (Fase 4b, E_FATTURA_NON_NUMERABILE_INCOERENTE) rifiuta un

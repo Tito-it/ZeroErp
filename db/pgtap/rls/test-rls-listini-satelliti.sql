@@ -125,7 +125,7 @@ SELECT m.lato, l.id AS listino_id, m.soggetto_ruolo_id, m.auth_user_id
 CREATE TEMP TABLE _versioni AS
 WITH v AS (
     INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
-    SELECT l.listino_id, 'V1', CURRENT_DATE FROM _listini l
+    SELECT l.listino_id, 'V1', script.fn_data_operativa() FROM _listini l
     RETURNING id, listino_id
 )
 SELECT l.lato, v.id AS versione_id, v.listino_id
@@ -139,7 +139,7 @@ SELECT v.versione_id, c.articolo_id, c.uom_id, 42.0000000000
 -- L'aggancio categoria-listino, che vive in `anagrafiche` ma e' del listino.
 INSERT INTO anagrafiche.categorie_clienti_listini
     (categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id, listino_id, valido_dal)
-SELECT c.categoria_id, c.utility_id, l.soggetto_ruolo_id, l.listino_id, CURRENT_DATE
+SELECT c.categoria_id, c.utility_id, l.soggetto_ruolo_id, l.listino_id, script.fn_data_operativa()
   FROM _listini l CROSS JOIN _catalogo c;
 
 -- ============================================================

@@ -116,7 +116,7 @@ SELECT lives_ok(
           stato_doc_ordine_id, valuta_id, data, storicizza, meta
       )
       SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
-             r.stato_draft_id, r.valuta_id, CURRENT_DATE, false,
+             r.stato_draft_id, r.valuta_id, script.fn_data_operativa(), false,
              jsonb_build_object('test_scope', 'pgtap_guard_senza_utente')
         FROM tmp_gsu_refs r$$,
     '3. operatore nel proprio perimetro: la scrittura passa'
@@ -136,7 +136,7 @@ SELECT throws_ok(
           stato_doc_ordine_id, valuta_id, data, storicizza, meta
       )
       SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
-             r.stato_draft_id, r.valuta_id, CURRENT_DATE, false,
+             r.stato_draft_id, r.valuta_id, script.fn_data_operativa(), false,
              jsonb_build_object('test_scope', 'pgtap_guard_senza_utente')
         FROM tmp_gsu_refs r$$,
     'P0001',
@@ -154,7 +154,7 @@ SELECT throws_ok(
           stato_doc_ordine_id, valuta_id, data, storicizza, meta
       )
       SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
-             r.stato_draft_id, r.valuta_id, CURRENT_DATE, false,
+             r.stato_draft_id, r.valuta_id, script.fn_data_operativa(), false,
              jsonb_build_object('test_scope', 'pgtap_guard_senza_utente')
         FROM tmp_gsu_refs r$$,
     'P0001',
@@ -180,7 +180,7 @@ SELECT CASE
               stato_doc_ordine_id, valuta_id, data, storicizza, meta
           )
           SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_altrui_id,
-                 r.stato_draft_id, r.valuta_id, CURRENT_DATE, false,
+                 r.stato_draft_id, r.valuta_id, script.fn_data_operativa(), false,
                  jsonb_build_object('test_scope', 'pgtap_guard_senza_utente')
             FROM tmp_gsu_refs r$$,
         'P0001',

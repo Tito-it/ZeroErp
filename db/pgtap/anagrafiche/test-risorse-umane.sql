@@ -131,7 +131,7 @@ WITH ins AS (
         sr.soggetto_ruolo_id,
         s.id,
         q.qualifica_id,
-        CURRENT_DATE
+        script.fn_data_operativa()
     FROM tmp_soggetto_ruolo_test sr,
          tmp_soggetto_test s,
          tmp_qualifica_test q

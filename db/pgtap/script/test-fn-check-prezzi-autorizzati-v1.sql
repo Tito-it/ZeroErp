@@ -125,7 +125,7 @@ UPDATE catalogo.articoli SET is_composito = true
 --   componente rifiutato e poi TOLTO — esiste solo per i facoltativi.
 INSERT INTO catalogo.articoli_componenti
     (prodotto_id, componente_id, coeff_qta, valido_dal, esposizione_in_fattura, obbligatorio)
-SELECT a.kit_id, a.cmp_id, 1, CURRENT_DATE - 30, 'DESCRITTIVO', false FROM _a a;
+SELECT a.kit_id, a.cmp_id, 1, script.fn_data_operativa() - 30, 'DESCRITTIVO', false FROM _a a;
 
 CREATE TEMP TABLE _k AS
 SELECT a.kit_id, a.cmp_id,
@@ -189,7 +189,7 @@ BEGIN
             ('PGT-PZA-' || v_caso.tag || '-' || substring(md5(clock_timestamp()::text) FOR 6),
              (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'DRAFT'),
              c.utility_id, c.istanza_utility_id, c.billing_account_id,
-             CURRENT_DATE, c.emittente_fiscale_id)
+             script.fn_data_operativa(), c.emittente_fiscale_id)
         RETURNING id INTO v_prev;
 
         INSERT INTO vendite.preventivi_righe
@@ -470,7 +470,7 @@ BEGIN
         VALUES
             ('PGT-PZA-O-' || v_tag || '-' || substring(md5(clock_timestamp()::text) FOR 6),
              c.emittente_fiscale_id, c.billing_account_id, c.istanza_utility_id,
-             c.utility_id, l.listino_id, l.listino_versione_id, CURRENT_DATE,
+             c.utility_id, l.listino_id, l.listino_versione_id, script.fn_data_operativa(),
              (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'BOZZA'))
         RETURNING id INTO v_off;
 
@@ -583,7 +583,7 @@ BEGIN
         VALUES
             (c.cliente_soggetto_ruolo_id, c.billing_account_id,
              (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-             'SPEDITO', c.emittente_fiscale_id, CURRENT_DATE)
+             'SPEDITO', c.emittente_fiscale_id, script.fn_data_operativa())
         RETURNING id INTO v_ord;
 
         INSERT INTO vendite.ordini_righe

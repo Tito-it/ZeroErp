@@ -307,8 +307,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   i debiti del §7.5.
 - 📝 **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto**
   (`work-in-progress/brief-db-esecutivi-ba-coppia.md`, D21, 2026-10-09): BA nullable, copie di utility e ruolo
-  non legate al BA, lock del BA solo sull'ordine; un esecutivo fatturabile senza BA esce dal push in silenzio.
-  Bozza, cinque decisioni di Tid.
+  non legate al BA, lock del BA solo sull'ordine; un ordine senza BA esce dal push in silenzio; gli anelli della
+  catena (ordine → DDT → reso) possono avere BA diversi. Bozza: decise D-1, D-2, D-3, D-6, D-7 (2026-10-09), aperte D-2-bis, D-4, D-5.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

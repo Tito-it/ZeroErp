@@ -141,7 +141,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, 350.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
@@ -160,7 +160,7 @@ WITH ins AS (
     INSERT INTO pagamenti.vendite_contabili
         (centro_riscossione_id, data_contabile, data_registrazione,
          stato_id, origine, meta)
-    SELECT r.centro_banca_id, current_date, current_date,
+    SELECT r.centro_banca_id, script.fn_data_operativa(), script.fn_data_operativa(),
            CASE v.et WHEN 'DG' THEN r.d_validata ELSE r.d_bozza END,
            v.origine,
            jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'et', v.et)
@@ -181,7 +181,7 @@ WITH ins AS (
     INSERT INTO pagamenti.vendite_contabili_righe
         (contabile_id, riferimento_ente, data_pagamento, importo,
          fattura_id, billing_account_id, stato_id, motivo_sospeso, meta)
-    SELECT d.id, 'PGTAP_ANNC_' || v.et, current_date, v.importo,
+    SELECT d.id, 'PGTAP_ANNC_' || v.et, script.fn_data_operativa(), v.importo,
            CASE WHEN v.stato = 'ABB' THEN (SELECT fattura_id FROM tmp_fattura) END,
            CASE WHEN v.stato = 'ABB' THEN r.billing_account_id END,
            CASE v.stato WHEN 'DAB' THEN r.st_da_abbinare
@@ -323,7 +323,7 @@ SELECT is(
     pg_temp.codice_rifiuto(format(
         $q$INSERT INTO pagamenti.vendite_contabili_righe
                (contabile_id, riferimento_ente, data_pagamento, importo, stato_id, meta)
-           VALUES (%s, 'PGTAP_ANNC_NUOVA', current_date, 1.00, %s,
+           VALUES (%s, 'PGTAP_ANNC_NUOVA', script.fn_data_operativa(), 1.00, %s,
                    jsonb_build_object('test_scope', %L))$q$,
         (SELECT id FROM tmp_distinte WHERE et = 'DA'), (SELECT st_da_abbinare FROM tmp_refs),
         (SELECT test_scope FROM tmp_costanti))),

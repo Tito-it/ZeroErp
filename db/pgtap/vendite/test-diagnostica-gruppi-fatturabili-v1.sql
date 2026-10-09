@@ -358,7 +358,7 @@ DECLARE
     v_mese vendite.commesse_attivita.competenza_mese%TYPE;
 BEGIN
     SELECT * INTO v_r FROM tmp_dg_refs;
-    v_mese := date_trunc('month', CURRENT_DATE)::date;
+    v_mese := date_trunc('month', script.fn_data_operativa())::date;
 
     INSERT INTO vendite.commesse (codice, billing_account_id, utility_id,
                                   emittente_soggetto_ruolo_id, stato_commessa_id)
@@ -398,7 +398,7 @@ $addendum$;
 CREATE TEMP TABLE tmp_dg_foto_trat AS
   SELECT d.* FROM vendite.fn_diagnostica_gruppi_fatturabili(
                      (SELECT array_agg(gruppo_key) FROM tmp_dg_trat),
-                     date_trunc('month', CURRENT_DATE)::date) d;
+                     date_trunc('month', script.fn_data_operativa())::date) d;
 
 -- ============================================================
 -- 12) ⭐ La riga TRATTENUTA esce dai pronti ed entra in n_trattenute

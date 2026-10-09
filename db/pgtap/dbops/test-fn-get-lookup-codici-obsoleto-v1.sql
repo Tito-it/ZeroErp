@@ -38,9 +38,9 @@ SELECT plan(6);
 -- =========================================================
 INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo, obsoleto_dal)
 VALUES
-  ('ZZTEST_OBS_PAST', 'ZZTEST_OBS_PAST', 'test obsoleto (passato)',       true, CURRENT_DATE - 1),
+  ('ZZTEST_OBS_PAST', 'ZZTEST_OBS_PAST', 'test obsoleto (passato)',       true, script.fn_data_operativa() - 1),
   ('ZZTEST_OBS_NULL', 'ZZTEST_OBS_NULL', 'test selezionabile (null)',     true, NULL),
-  ('ZZTEST_OBS_FUT',  'ZZTEST_OBS_FUT',  'test ritiro programmato (fut)', true, CURRENT_DATE + 30);
+  ('ZZTEST_OBS_FUT',  'ZZTEST_OBS_FUT',  'test ritiro programmato (fut)', true, script.fn_data_operativa() + 30);
 
 -- 1) default = mostra tutto (retro-compat): i 3 record di test sono presenti.
 SELECT is(

@@ -84,7 +84,7 @@ SELECT (SELECT iu.soggetto_id FROM anagrafiche.istanze_utilities iu
        (SELECT tp.id
           FROM pratiche.tipi_prestazione tp
          WHERE tp.attivo IS TRUE
-           AND (tp.obsoleto_dal IS NULL OR tp.obsoleto_dal > CURRENT_DATE)
+           AND (tp.obsoleto_dal IS NULL OR tp.obsoleto_dal > script.fn_data_operativa())
            AND pratiche.fn_risolvi_definizione(tp.id, NULL) IS NOT NULL
          ORDER BY tp.id LIMIT 1)                                    AS tipo_prestazione_id,
        NULL::bigint AS ba_2,
@@ -171,7 +171,7 @@ SELECT lives_ok(
     $sql$
     INSERT INTO anagrafiche.clienti
         (soggetto_ruolo_id, istanza_utility_id, billing_account_id, stato_cliente_id, data_attivazione)
-    SELECT w.cliente_soggetto_ruolo_id, v.istanza_c, b.id, v.stato_cliente_id, CURRENT_DATE
+    SELECT w.cliente_soggetto_ruolo_id, v.istanza_c, b.id, v.stato_cliente_id, script.fn_data_operativa()
       FROM t_w w, t_v v
       JOIN anagrafiche.billing_account b ON b.id IN (v.ba_c1, v.ba_c2)
     $sql$,
@@ -185,7 +185,7 @@ SELECT is(
     pg_temp.esito($sql$
         INSERT INTO anagrafiche.clienti
             (soggetto_ruolo_id, istanza_utility_id, billing_account_id, stato_cliente_id, data_attivazione)
-        SELECT w.cliente_soggetto_ruolo_id, v.istanza_c, v.ba_c1, v.stato_cliente_id, CURRENT_DATE
+        SELECT w.cliente_soggetto_ruolo_id, v.istanza_c, v.ba_c1, v.stato_cliente_id, script.fn_data_operativa()
           FROM t_w w, t_v v $sql$),
     '23505 uq_clienti_billing_account',
     '3. Un secondo cliente sullo stesso billing account: uq_clienti_billing_account'

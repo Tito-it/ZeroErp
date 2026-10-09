@@ -54,6 +54,11 @@ mostrare.
 ⇒ Chi aggiunge uno stato passa da un punto solo, e lì deve decidere se è un
 guasto. Non c'è un comportamento predefinito in cui cadere per distrazione.
 
+Dal 2026-10-09 ogni riga porta anche la sua **causa** (ultima colonna), che
+sceglie il testo per chi deve agire: lo stesso stato può avere rimedi diversi —
+un timer fermo non si ripara come un servizio scollegato. Elenco delle cause in
+[vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione).
+
 ---
 
 ### ⚠️ Due situazioni non sono guasti, e per ragioni opposte

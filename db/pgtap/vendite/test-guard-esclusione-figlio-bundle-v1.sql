@@ -52,10 +52,10 @@ SELECT
   FROM vendite.listini_righe_componenti lrc
   JOIN vendite.listini_versioni lv ON lv.id = lrc.listino_versione_id
  WHERE lrc.attivo  = TRUE
-   AND lrc.validita @> CURRENT_DATE
+   AND lrc.validita @> script.fn_data_operativa()
    AND lv.attivo   = TRUE
    AND lv.stato    IN ('ATTIVA', 'CHIUSA')
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
    -- 2026-10-08 (§F.2): un bundle di un listino dell'emittente di chi agisce, perche'
    --   il contratto del fixture e' suo.
    AND EXISTS (SELECT 1 FROM vendite.listini l

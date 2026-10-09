@@ -132,7 +132,7 @@ RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
                                billing_account_id, stato_doc_fiscale_id, valuta_id,
                                utility_id, meta)
-  SELECT (SELECT id FROM tmp_reg_fri), current_date,
+  SELECT (SELECT id FROM tmp_reg_fri), script.fn_data_operativa(),
          r.emittente_soggetto_ruolo_id, r.billing_account_id, p_stato, r.valuta_id,
          r.utility_id,
          jsonb_build_object('test_scope', 'pgtap_fatture_righe_importo')
@@ -157,7 +157,7 @@ RETURNS numeric LANGUAGE sql AS $fx$
     INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
                                        prezzo_unitario, sconto_percentuale, iva_id, competenza_dal, competenza_al)
     SELECT (SELECT id FROM tmp_fattura_fri), p_nr, 'Riga test ' || p_nr,
-           p_qta, p_prezzo, p_sconto, (SELECT iva_id FROM tmp_refs_fri), CURRENT_DATE, CURRENT_DATE
+           p_qta, p_prezzo, p_sconto, (SELECT iva_id FROM tmp_refs_fri), script.fn_data_operativa(), script.fn_data_operativa()
     RETURNING imponibile_riga
   )
   SELECT imponibile_riga FROM ins;
@@ -190,7 +190,7 @@ SELECT is(pg_temp.fx_riga_fri(5, 3, 0.333, 0), 1.00::numeric,
 INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
                                    prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
 SELECT (SELECT id FROM tmp_fattura_fri), 6, 'Riga con importo imposto',
-       1, 1, (SELECT iva_id FROM tmp_refs_fri), 999999, CURRENT_DATE, CURRENT_DATE;
+       1, 1, (SELECT iva_id FROM tmp_refs_fri), 999999, script.fn_data_operativa(), script.fn_data_operativa();
 
 SELECT is(
   (SELECT imponibile_riga FROM vendite.fatture_righe
@@ -266,7 +266,7 @@ SELECT throws_ok(
 
 SELECT throws_ok(
   $$ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, competenza_dal, competenza_al)
-     SELECT (SELECT id FROM tmp_fattura_fri), 99, 'Riga tardiva', 1, 1, CURRENT_DATE, CURRENT_DATE $$,
+     SELECT (SELECT id FROM tmp_fattura_fri), 99, 'Riga tardiva', 1, 1, script.fn_data_operativa(), script.fn_data_operativa() $$,
   NULL::text, NULL::text,
   '14) oltre soglia anche l''INSERT di una riga nuova e'' respinto');
 
@@ -296,7 +296,7 @@ SELECT pg_temp.fx_fattura_fri((SELECT stato_draft FROM tmp_refs_fri)) AS id;
 SELECT throws_ok(
   $$ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
                                         prezzo_unitario, kit_key, competenza_dal, competenza_al)
-     SELECT (SELECT id FROM tmp_fattura_kit_fri), 1, 'kit a meta', 1, 1, 'K-INCOMPLETO', CURRENT_DATE, CURRENT_DATE $$,
+     SELECT (SELECT id FROM tmp_fattura_kit_fri), 1, 'kit a meta', 1, 1, 'K-INCOMPLETO', script.fn_data_operativa(), script.fn_data_operativa() $$,
   NULL::text, NULL::text,
   '16) riga di kit con metadati a meta'': respinta dal CHECK di coerenza');
 
@@ -308,7 +308,7 @@ INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione
 SELECT (SELECT id FROM tmp_fattura_kit_fri), v.nr,
        dbops.fn_pgtap_crea_articolo('PGTAP-FRI-C' || v.nr), v.descr, 1, v.prezzo,
        (SELECT iva_id FROM tmp_refs_fri), 'K-TEST', v.esposto,
-       (SELECT articolo_id FROM tmp_refs_fri), 'Padre del kit di test', CURRENT_DATE, CURRENT_DATE, 1
+       (SELECT articolo_id FROM tmp_refs_fri), 'Padre del kit di test', script.fn_data_operativa(), script.fn_data_operativa(), 1
   FROM (VALUES (1, 'comp A', 2::numeric, 'DESCRITTIVO'),
                (2, 'comp B', 6::numeric, 'DESCRITTIVO'),
                (3, 'comp C', 9::numeric, 'NASCOSTO')) AS v(nr, descr, prezzo, esposto);

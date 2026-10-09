@@ -332,7 +332,7 @@ INSERT INTO vendite.contratti (
   emittente_fiscale_id, meta)
 SELECT 'PGTAP-BL-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
        r.billing_account_id, r.istanza_utility_id, r.utility_id,
-       CURRENT_DATE, NULL, r.contr_annullato_id, CURRENT_DATE,
+       script.fn_data_operativa(), NULL, r.contr_annullato_id, script.fn_data_operativa(),
        (SELECT offerta_id FROM tmp_bl_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO'),
        COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                 r.emittente_fiscale_id),
@@ -348,8 +348,8 @@ WITH ins AS (
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-BL-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         date_trunc('month', CURRENT_DATE)::date, NULL,
-         r.contr_attivo_id, date_trunc('month', CURRENT_DATE)::date,
+         date_trunc('month', script.fn_data_operativa())::date, NULL,
+         r.contr_attivo_id, date_trunc('month', script.fn_data_operativa())::date,
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
          jsonb_build_object('test_scope','pgtap_dash_backlog')
@@ -381,7 +381,7 @@ SELECT ok(
       AND b.azione IS NOT NULL
       AND b.valore_fermo = 30
       AND b.data_riferimento = DATE '2080-01-01'
-      AND b.anzianita_giorni = (CURRENT_DATE - DATE '2080-01-01')
+      AND b.anzianita_giorni = (script.fn_data_operativa() - DATE '2080-01-01')
      FROM vendite.vw_dash_backlog_documenti b
     WHERE b.area = 'PREVENTIVI'
       AND b.documento_id = (SELECT id FROM tmp_bl_prev)

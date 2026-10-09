@@ -98,7 +98,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, v.totale,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'ruolo', v.ruolo)
     FROM tmp_refs r, (VALUES ('F', 350.00), ('G', 100.00)) AS v(ruolo, totale)
@@ -109,7 +109,7 @@ SELECT * FROM ins;
 CREATE TEMP TABLE tmp_rate AS
 WITH ins AS (
   INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo, meta)
-  SELECT f.id, v.n, current_date + v.n, v.importo,
+  SELECT f.id, v.n, script.fn_data_operativa() + v.n, v.importo,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'rata', v.et)
     FROM (VALUES ('F', 1, 100.00, 'R1'),
                  ('F', 2, 200.00, 'R2'),
@@ -138,8 +138,8 @@ SELECT ok(
 CREATE TEMP TABLE tmp_contabile AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa(),
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -150,7 +150,7 @@ WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili_righe
       (contabile_id, riferimento_ente, data_pagamento, importo,
        fattura_id, billing_account_id, scadenza_id, stato_id, motivo_sospeso, meta)
-  SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_TARD_' || v.et, current_date, v.importo,
+  SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_TARD_' || v.et, script.fn_data_operativa(), v.importo,
          CASE WHEN v.et = 'A' THEN (SELECT id FROM tmp_fatture WHERE ruolo = 'F') END,
          CASE WHEN v.et = 'A' THEN r.billing_account_id END,
          CASE WHEN v.et = 'A' THEN (SELECT id FROM tmp_rate WHERE etichetta = 'R1') END,
@@ -223,8 +223,8 @@ SELECT ok(
            AND m.contabile_id = (SELECT contabile_id FROM tmp_contabile)
            AND m.importo = 60.00
            AND m.meta ->> 'origine' = 'POSTING_TARDIVO'
-           AND m.data_registrazione = current_date
-           AND m.data_contabilizzazione = current_date
+           AND m.data_registrazione = script.fn_data_operativa()
+           AND m.data_contabilizzazione = script.fn_data_operativa()
          FROM pagamenti.vendite_movimenti m
         WHERE m.id = (SELECT movimento_id FROM tmp_esito)),
   '4) La riga e'' POSTATA; il movimento porta rata, fattura, distinta, origine POSTING_TARDIVO e la data di oggi'
@@ -325,8 +325,8 @@ SELECT throws_like(
 CREATE TEMP TABLE tmp_contabile_ann AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date - 1,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa() - 1,
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -334,7 +334,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, stato_id, motivo_sospeso, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile_ann), 'PGTAP_TARD_S4', current_date, 7.00,
+SELECT (SELECT contabile_id FROM tmp_contabile_ann), 'PGTAP_TARD_S4', script.fn_data_operativa(), 7.00,
        r.st_sospesa, 'sospesa poi annullata',
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'et', 'S4')
   FROM tmp_refs r;
@@ -360,8 +360,8 @@ SELECT throws_like(
 CREATE TEMP TABLE tmp_contabile_val AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date - 2,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa() - 2,
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -369,7 +369,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, stato_id, motivo_sospeso, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile_val), 'PGTAP_TARD_S5', current_date, 8.00,
+SELECT (SELECT contabile_id FROM tmp_contabile_val), 'PGTAP_TARD_S5', script.fn_data_operativa(), 8.00,
        r.st_sospesa, 'sospesa sotto una validata',
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'et', 'S5')
   FROM tmp_refs r;

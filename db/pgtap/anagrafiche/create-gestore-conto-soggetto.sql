@@ -178,7 +178,7 @@ WITH link AS (
         c.id,
         k.uso_test,
         TRUE,                       -- predefinito per uso INCASSO a livello soggetto
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         NULL,                       -- open-ended
         NULL,                       -- intestazione_dichiarata non specificata
         FALSE,                      -- non ancora verificato

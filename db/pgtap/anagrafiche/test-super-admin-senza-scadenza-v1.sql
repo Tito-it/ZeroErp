@@ -82,7 +82,7 @@ SELECT o.* FROM dbops.fn_pgtap_crea_operatore_umano('Operatore non SA', false) o
 -- Gli altri SUPER_ADMIN del database: una data di fine lontana sulla veste.
 -- Permesso: A e B non scadono.
 UPDATE anagrafiche.identita_digitali idg
-   SET valido_al = CURRENT_DATE + 3650
+   SET valido_al = script.fn_data_operativa() + 3650
  WHERE idg.valido_al IS NULL
    AND idg.id NOT IN ((SELECT identita_id FROM _a), (SELECT identita_id FROM _b))
    AND EXISTS (SELECT 1
@@ -94,9 +94,9 @@ UPDATE anagrafiche.identita_digitali idg
 
 -- Le finestre partono indietro di dieci giorni, cosi' «domani» e le date di
 -- fine sono ammesse dai CHECK (valido_al >= valido_dal).
-UPDATE anagrafiche.identita_digitali SET valido_dal = CURRENT_DATE - 10
+UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() - 10
  WHERE id IN ((SELECT identita_id FROM _a), (SELECT identita_id FROM _b), (SELECT identita_id FROM _c));
-UPDATE anagrafiche.risorse_umane SET valido_dal = CURRENT_DATE - 10
+UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() - 10
  WHERE id IN ((SELECT risorsa_umana_id FROM _a), (SELECT risorsa_umana_id FROM _b), (SELECT risorsa_umana_id FROM _c));
 
 -- ============================================================
@@ -113,7 +113,7 @@ SELECT is(script.fn_identita_super_admin_senza_scadenza((SELECT identita_id FROM
 -- ============================================================
 SELECT is(
     pg_temp.codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET valido_al = CURRENT_DATE + 30 WHERE id = %s',
+        'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT identita_id FROM _a))),
     NULL,
     '3) data di fine sulla veste di A: permesso, B non scade');
@@ -132,28 +132,28 @@ SELECT is(
 -- ============================================================
 SELECT is(
     pg_temp.codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET valido_al = CURRENT_DATE + 30 WHERE id = %s',
+        'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT identita_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '6) data di fine sulla veste dell''ultimo: rifiutata');
 
 SELECT is(
     pg_temp.codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET valido_dal = CURRENT_DATE + 1 WHERE id = %s',
+        'UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() + 1 WHERE id = %s',
         (SELECT identita_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '7) inizio della veste dell''ultimo spostato a domani: rifiutato');
 
 SELECT is(
     pg_temp.codice_errore(format(
-        'UPDATE anagrafiche.risorse_umane SET valido_al = CURRENT_DATE + 30 WHERE id = %s',
+        'UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT risorsa_umana_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '8) data di fine sul RAPPORTO dell''ultimo: rifiutata (guard -20)');
 
 SELECT is(
     pg_temp.codice_errore(format(
-        'UPDATE anagrafiche.risorse_umane SET valido_dal = CURRENT_DATE + 1 WHERE id = %s',
+        'UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() + 1 WHERE id = %s',
         (SELECT risorsa_umana_id FROM _b))),
     'E_PROFILO_ULTIMO_SUPER_ADMIN',
     '9) inizio del rapporto dell''ultimo spostato a domani: rifiutato');
@@ -183,14 +183,14 @@ SELECT is(
 
 SELECT is(
     pg_temp.codice_errore(format(
-        'UPDATE anagrafiche.identita_digitali SET valido_al = CURRENT_DATE + 30 WHERE id = %s',
+        'UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT identita_id FROM _b))),
     NULL,
     '12) ora la data di fine a B passa: A non scade');
 
 SELECT is(
     pg_temp.codice_errore(format(
-        'UPDATE anagrafiche.risorse_umane SET valido_al = CURRENT_DATE + 30 WHERE id = %s',
+        'UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() + 30 WHERE id = %s',
         (SELECT risorsa_umana_id FROM _c))),
     NULL,
     '13) a un operatore non amministratore la data di fine si da'' sempre');
@@ -205,7 +205,7 @@ UPDATE django.auth_user SET is_active = false WHERE id = (SELECT auth_user_id FR
 
 -- 15. E l'opposto: B, scaduto ieri sul rapporto, con la credenziale ancora
 -- accesa. La data di fine a B si mette a ieri ora che A copre la garanzia.
-UPDATE anagrafiche.risorse_umane SET valido_al = CURRENT_DATE - 1
+UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() - 1
  WHERE id = (SELECT risorsa_umana_id FROM _b);
 UPDATE django.auth_user SET is_active = true WHERE id = (SELECT auth_user_id FROM _b);
 

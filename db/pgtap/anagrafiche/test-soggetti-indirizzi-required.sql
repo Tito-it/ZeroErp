@@ -545,7 +545,7 @@ SELECT lives_ok(
           'XXXXXXX002',
           'fatt.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
           'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
-          CURRENT_DATE
+          script.fn_data_operativa()
       FROM anagrafiche.soggetti s
       WHERE s.codice = 'TST-IND-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
     $$,

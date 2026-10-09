@@ -318,7 +318,7 @@ BEGIN
   INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
                            billing_account_id, utility_id, valuta_id,
                            emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
+  VALUES (script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
           r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_lock_righe'))
   RETURNING id INTO v_id;

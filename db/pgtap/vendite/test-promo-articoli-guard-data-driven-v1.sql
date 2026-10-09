@@ -12,7 +12,7 @@
 --
 -- Lo stato della promo (FUTURA/INIZIATA/SCADUTA) e' derivato dalle
 -- date e mai persistito. Il guard data-driven applica:
---   INSERT  -> valido_dal > CURRENT_DATE (no retroattiva)
+--   INSERT  -> valido_dal > script.fn_data_operativa() (no retroattiva)
 --   UPDATE  FUTURA   tutti mutabili, date solo nel futuro
 --           INIZIATA solo descrizione/valido_al(>=today)/meta
 --           SCADUTA  immutabile (nessun campo dominio mutabile)
@@ -83,7 +83,7 @@ INSERT INTO vendite.promo_articoli(
     tipo_variazione, valore_variazione, valido_dal, valido_al
 )
 SELECT 'PGTAP_PROMO_GD_FUT', 'Test FUTURA', a.articolo_id, a.uom_id,
-       'PERCENTUALE', 10, CURRENT_DATE + 30, CURRENT_DATE + 60
+       'PERCENTUALE', 10, script.fn_data_operativa() + 30, script.fn_data_operativa() + 60
   FROM tmp_ctx_articoli a WHERE a.rn = 1;
 
 INSERT INTO vendite.promo_articoli(
@@ -91,7 +91,7 @@ INSERT INTO vendite.promo_articoli(
     tipo_variazione, valore_variazione, valido_dal, valido_al
 )
 SELECT 'PGTAP_PROMO_GD_INI', 'Test INIZIATA', a.articolo_id, a.uom_id,
-       'PERCENTUALE', 10, CURRENT_DATE - 5, CURRENT_DATE + 5
+       'PERCENTUALE', 10, script.fn_data_operativa() - 5, script.fn_data_operativa() + 5
   FROM tmp_ctx_articoli a WHERE a.rn = 2;
 
 INSERT INTO vendite.promo_articoli(
@@ -99,7 +99,7 @@ INSERT INTO vendite.promo_articoli(
     tipo_variazione, valore_variazione, valido_dal, valido_al
 )
 SELECT 'PGTAP_PROMO_GD_SCAD', 'Test SCADUTA', a.articolo_id, a.uom_id,
-       'PERCENTUALE', 10, CURRENT_DATE - 60, CURRENT_DATE - 30
+       'PERCENTUALE', 10, script.fn_data_operativa() - 60, script.fn_data_operativa() - 30
   FROM tmp_ctx_articoli a WHERE a.rn = 3;
 
 -- Forza la fire degli eventi DEFERRED accodati dagli INSERT delle
@@ -121,7 +121,7 @@ SELECT throws_ok(
           codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_GD_INS_OGGI', 'Test', a.articolo_id, a.uom_id,
-             'PERCENTUALE', 5, CURRENT_DATE, CURRENT_DATE + 10
+             'PERCENTUALE', 5, script.fn_data_operativa(), script.fn_data_operativa() + 10
         FROM tmp_ctx_articoli a WHERE a.rn = 1$$,
     'P0001',
     NULL,
@@ -136,7 +136,7 @@ SELECT throws_ok(
           codice, descrizione, articolo_id, uom_id,
           tipo_variazione, valore_variazione, valido_dal, valido_al)
       SELECT 'PGTAP_PROMO_GD_INS_IERI', 'Test', a.articolo_id, a.uom_id,
-             'PERCENTUALE', 5, CURRENT_DATE - 1, CURRENT_DATE + 10
+             'PERCENTUALE', 5, script.fn_data_operativa() - 1, script.fn_data_operativa() + 10
         FROM tmp_ctx_articoli a WHERE a.rn = 1$$,
     'P0001',
     NULL,
@@ -168,7 +168,7 @@ BEGIN
             codice, descrizione, articolo_id, uom_id,
             tipo_variazione, valore_variazione, valido_dal, valido_al)
         VALUES ('PGTAP_PROMO_GD_INS_OK', 'Test', v_art, v_uom,
-                'PERCENTUALE', 5, CURRENT_DATE + 1, CURRENT_DATE + 10);
+                'PERCENTUALE', 5, script.fn_data_operativa() + 1, script.fn_data_operativa() + 10);
     END IF;
 END $$;
 
@@ -197,7 +197,7 @@ SELECT throws_ok(
 -- ============================================================
 SELECT throws_ok(
     $$UPDATE vendite.promo_articoli
-         SET valido_al = CURRENT_DATE + 30
+         SET valido_al = script.fn_data_operativa() + 30
        WHERE codice = 'PGTAP_PROMO_GD_SCAD'$$,
     'P0001',
     NULL,
@@ -231,7 +231,7 @@ SELECT lives_ok(
 -- ============================================================
 SELECT lives_ok(
     $$UPDATE vendite.promo_articoli
-         SET valido_al = CURRENT_DATE + 30
+         SET valido_al = script.fn_data_operativa() + 30
        WHERE codice = 'PGTAP_PROMO_GD_INI'$$,
     'UPDATE valido_al verso futuro su INIZIATA ammesso'
 );
@@ -241,7 +241,7 @@ SELECT lives_ok(
 -- ============================================================
 SELECT throws_ok(
     $$UPDATE vendite.promo_articoli
-         SET valido_al = CURRENT_DATE - 1
+         SET valido_al = script.fn_data_operativa() - 1
        WHERE codice = 'PGTAP_PROMO_GD_INI'$$,
     'P0001',
     NULL,
@@ -277,7 +277,7 @@ SELECT throws_ok(
 -- ============================================================
 SELECT throws_ok(
     $$UPDATE vendite.promo_articoli
-         SET valido_dal = CURRENT_DATE - 10
+         SET valido_dal = script.fn_data_operativa() - 10
        WHERE codice = 'PGTAP_PROMO_GD_INI'$$,
     'P0001',
     NULL,
@@ -322,8 +322,8 @@ SELECT lives_ok(
 -- ============================================================
 SELECT lives_ok(
     $$UPDATE vendite.promo_articoli
-         SET valido_dal = CURRENT_DATE + 90,
-             valido_al  = CURRENT_DATE + 120
+         SET valido_dal = script.fn_data_operativa() + 90,
+             valido_al  = script.fn_data_operativa() + 120
        WHERE codice = 'PGTAP_PROMO_GD_FUT'$$,
     'UPDATE date verso futuro su FUTURA ammesso'
 );
@@ -333,7 +333,7 @@ SELECT lives_ok(
 -- ============================================================
 SELECT throws_ok(
     $$UPDATE vendite.promo_articoli
-         SET valido_dal = CURRENT_DATE
+         SET valido_dal = script.fn_data_operativa()
        WHERE codice = 'PGTAP_PROMO_GD_FUT'$$,
     'P0001',
     NULL,
@@ -345,7 +345,7 @@ SELECT throws_ok(
 -- ============================================================
 SELECT throws_ok(
     $$UPDATE vendite.promo_articoli
-         SET valido_al = CURRENT_DATE - 1
+         SET valido_al = script.fn_data_operativa() - 1
        WHERE codice = 'PGTAP_PROMO_GD_FUT'$$,
     'P0001',
     NULL,

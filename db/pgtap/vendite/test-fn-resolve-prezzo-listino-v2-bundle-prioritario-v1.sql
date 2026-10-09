@@ -91,7 +91,7 @@ SELECT * FROM dbops.fn_pgtap_crea_listino(
 CREATE TEMP TABLE tmp_bnd_ver AS
 WITH ins AS (
     INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, valido_al, stato)
-    SELECT listino_id, 'PGTAP_BND_V2', CURRENT_DATE, CURRENT_DATE + 400, 'BOZZA' FROM tmp_bnd_listino
+    SELECT listino_id, 'PGTAP_BND_V2', script.fn_data_operativa(), script.fn_data_operativa() + 400, 'BOZZA' FROM tmp_bnd_listino
     RETURNING id
 )
 SELECT id FROM ins;
@@ -127,7 +127,7 @@ INSERT INTO vendite.listini_righe_componenti (listino_versione_id, articolo_comp
        articolo_padre_id, articolo_figlio_id, prezzo, valido_dal, valido_al)
 -- La validita' della riga sta dentro quella della versione (guard coerenza BoM).
 SELECT (SELECT id FROM tmp_bnd_ver), ac.id, ac.prodotto_id, ac.componente_id, 75.00,
-       CURRENT_DATE, CURRENT_DATE + 400
+       script.fn_data_operativa(), script.fn_data_operativa() + 400
   FROM catalogo.articoli_componenti ac
  WHERE ac.prodotto_id = pg_temp.art('P');
 
@@ -143,7 +143,7 @@ INSERT INTO anagrafiche.categorie_clienti_listini (
     categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
     classe_utenza_id, listino_id, valido_dal)
 SELECT (SELECT id FROM tmp_bnd_categoria), m.utility_id, m.emittente_soggetto_ruolo_id,
-       NULL, (SELECT listino_id FROM tmp_bnd_listino), CURRENT_DATE
+       NULL, (SELECT listino_id FROM tmp_bnd_listino), script.fn_data_operativa()
   FROM tmp_bnd_mondo m;
 
 -- Scopo: la chiamata al GUSCIO del resolver sul mondo della fixture.
@@ -170,7 +170,7 @@ $fx$;
 -- 1) Precondizione: i test sotto leggono la versione costruita
 -- =========================================================
 SELECT is(
-    vendite.fn_listino_versione_in_vigore((SELECT listino_id FROM tmp_bnd_listino), CURRENT_DATE),
+    vendite.fn_listino_versione_in_vigore((SELECT listino_id FROM tmp_bnd_listino), script.fn_data_operativa()),
     (SELECT id FROM tmp_bnd_ver),
     '1) Precondizione: la versione costruita (bundle + standalone) e'' quella in vigore oggi');
 
@@ -179,18 +179,18 @@ SELECT is(
 --    padre_contesto fornito -> LISTINO_BUNDLE [CORE FIX]
 -- =========================================================
 SELECT is(
-    (SELECT origine FROM pg_temp.risolvi(pg_temp.art('F1'), pg_temp.uom('F1'), CURRENT_DATE, pg_temp.art('P'))),
+    (SELECT origine FROM pg_temp.risolvi(pg_temp.art('F1'), pg_temp.uom('F1'), script.fn_data_operativa(), pg_temp.art('P'))),
     'LISTINO_BUNDLE',
     '2) Bundle-only + padre_contesto -> LISTINO_BUNDLE (core fix bug bi-layer)');
 
 -- =========================================================
--- 3) Versione non attiva alla data CURRENT_DATE+500
---    La versione copre solo CURRENT_DATE..CURRENT_DATE+400.
+-- 3) Versione non attiva alla data script.fn_data_operativa()+500
+--    La versione copre solo script.fn_data_operativa()..script.fn_data_operativa()+400.
 --    La matrice e' aperta (valido_al NULL) -> matrice trovata.
 --    -> E_LISTINO_VERSIONE_NON_ATTIVA (448)
 -- =========================================================
 SELECT is(
-    pg_temp.esito(pg_temp.art('F1'), pg_temp.uom('F1'), CURRENT_DATE + 500, pg_temp.art('P')),
+    pg_temp.esito(pg_temp.art('F1'), pg_temp.uom('F1'), script.fn_data_operativa() + 500, pg_temp.art('P')),
     'E_LISTINO_VERSIONE_NON_ATTIVA',
     '3) Versione non attiva alla data -> E_LISTINO_VERSIONE_NON_ATTIVA');
 
@@ -199,7 +199,7 @@ SELECT is(
 --    (prezzo bundle=75, standalone=100)
 -- =========================================================
 SELECT is(
-    (SELECT prezzo_finale FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), CURRENT_DATE, pg_temp.art('P'))),
+    (SELECT prezzo_finale FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), script.fn_data_operativa(), pg_temp.art('P'))),
     75.00::numeric,
     '4) Bundle + standalone: padre_contesto -> bundle vince (prezzo=75 non 100)');
 
@@ -208,7 +208,7 @@ SELECT is(
 --    -> fallback CATEGORIA, prezzo=100
 -- =========================================================
 SELECT is(
-    (SELECT origine FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), CURRENT_DATE,
+    (SELECT origine FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), script.fn_data_operativa(),
                                           '00000000-0000-0000-0000-000000000099'::uuid)),
     'CATEGORIA',
     '5) padre_contesto fake (nessuna lrc) + standalone presente -> CATEGORIA');
@@ -220,7 +220,7 @@ SELECT is(
 --    -> E_PREZZO_LISTINO_RIGA_NON_TROVATA
 -- =========================================================
 SELECT is(
-    pg_temp.esito('00000000-0000-0000-0000-000000000098'::uuid, pg_temp.uom('F2'), CURRENT_DATE,
+    pg_temp.esito('00000000-0000-0000-0000-000000000098'::uuid, pg_temp.uom('F2'), script.fn_data_operativa(),
                   pg_temp.art('P')),
     'E_PREZZO_LISTINO_RIGA_NON_TROVATA',
     '6) Articolo fake + padre_contesto reale: ne'' bundle ne'' standalone -> E_PREZZO_LISTINO_RIGA_NON_TROVATA');
@@ -238,7 +238,7 @@ WITH ins AS (
            m.billing_account_id, m.istanza_utility_id, m.utility_id,
            (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
            (SELECT listino_id FROM tmp_bnd_listino),
-           CURRENT_DATE, CURRENT_DATE + 365
+           script.fn_data_operativa(), script.fn_data_operativa() + 365
       FROM tmp_bnd_mondo m
     RETURNING id
 )
@@ -267,7 +267,7 @@ UPDATE vendite.contratti
 -- =========================================================
 SELECT is(
     (SELECT origine || ' a 999: ' || (prezzo_finale = 999.00)
-       FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), CURRENT_DATE, pg_temp.art('P'))),
+       FROM pg_temp.risolvi(pg_temp.art('F2'), pg_temp.uom('F2'), script.fn_data_operativa(), pg_temp.art('P'))),
     'CONTRATTO_OVERRIDE a 999: true',
     '7) CONTRATTO_OVERRIDE + padre_contesto -> vince override a 999 (bundle ignorato)');
 

@@ -129,7 +129,7 @@ BEGIN
             (codice, competenza_mese, tipo_doc_fiscale_id,
              emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
         VALUES ('PGTAP-FASE-' || COALESCE(r.stato, 'IGNOTO'),
-                date_trunc('month', CURRENT_DATE)::date,
+                date_trunc('month', script.fn_data_operativa())::date,
                 v_tipo, v_emit_sr,
                 -- ⭐ `codice_interno`, mai un id: e' la chiave stabile.
                 (SELECT s.id FROM config.stati_doc_fiscale s

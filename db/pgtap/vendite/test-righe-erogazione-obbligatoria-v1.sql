@@ -120,7 +120,7 @@ WITH ins AS (
            m.billing_account_id, m.istanza_utility_id, m.utility_id,
            (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
            (SELECT listino_id FROM tmp_ero_listino),
-           CURRENT_DATE, CURRENT_DATE + 365
+           script.fn_data_operativa(), script.fn_data_operativa() + 365
       FROM tmp_ero_mondo m
     RETURNING id
 )
@@ -134,7 +134,7 @@ WITH ins AS (
             utility_id, listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id)
     SELECT 'PGTAP-ERO-O-' || substr(gen_random_uuid()::text, 1, 8),
            m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id,
-           m.utility_id, l.listino_id, (SELECT id FROM tmp_ero_ver), CURRENT_DATE,
+           m.utility_id, l.listino_id, (SELECT id FROM tmp_ero_ver), script.fn_data_operativa(),
            (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'BOZZA')
       FROM tmp_ero_mondo m, tmp_ero_listino l
     RETURNING id

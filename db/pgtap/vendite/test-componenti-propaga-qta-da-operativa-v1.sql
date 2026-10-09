@@ -69,7 +69,7 @@ UPDATE catalogo.articoli SET is_composito = true
 -- obbligatorio = false: il test 4 riscrive a mano la quantita' del componente.
 INSERT INTO catalogo.articoli_componenti
     (prodotto_id, componente_id, coeff_qta, valido_dal, esposizione_in_fattura, obbligatorio)
-SELECT a.kit_id, a.cmp_id, 2, CURRENT_DATE - 30, 'DESCRITTIVO', false FROM _a a;
+SELECT a.kit_id, a.cmp_id, 2, script.fn_data_operativa() - 30, 'DESCRITTIVO', false FROM _a a;
 
 CREATE TEMP TABLE _k AS
 SELECT a.kit_id, a.cmp_id,
@@ -106,7 +106,7 @@ BEGIN
         ('PGT-PQO-' || substring(md5(clock_timestamp()::text) FOR 20),
          (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'DRAFT'),
          c.utility_id, c.istanza_utility_id, c.billing_account_id,
-         CURRENT_DATE, c.emittente_fiscale_id)
+         script.fn_data_operativa(), c.emittente_fiscale_id)
     RETURNING id INTO v_prev;
 
     -- UdM operativa = UdM del kit: fattore 1, quantita = qta_operativa.

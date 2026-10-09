@@ -89,8 +89,8 @@ WHERE NOT EXISTS (
   FROM config.utilities_tipi_ruolo m
   WHERE m.utility_id = u.id
     AND m.attivo = true
-    AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-    AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+    AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+    AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa())
 )
 ORDER BY u.id
 LIMIT 1;
@@ -226,7 +226,7 @@ SELECT throws_ok(
 -- 9) Regola fuori validita non abilita il ruolo deny
 UPDATE config.utilities_tipi_ruolo
 SET attivo = true,
-    valido_dal = CURRENT_DATE + 1,
+    valido_dal = script.fn_data_operativa() + 1,
     valido_al = NULL
 WHERE utility_id = (SELECT utility_id FROM tmp_utility_no_matrix)
   AND tipo_ruolo_id = (SELECT tipo_ruolo_deny_id FROM tmp_ruoli_ctx);

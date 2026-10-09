@@ -117,7 +117,7 @@ INSERT INTO vendite.fatture_righe (
     fattura_id, riga_nr, descrizione, qta, prezzo_unitario, imponibile_riga,
     competenza_dal, competenza_al, iva_id)
 SELECT a.fattura_id, n, 'Riga pgTAP RLS satelliti ' || n, 1, 10 * n, 10 * n,
-       CURRENT_DATE, CURRENT_DATE,
+       script.fn_data_operativa(), script.fn_data_operativa(),
        (SELECT i.id FROM config.iva i WHERE i.attivo ORDER BY i.id LIMIT 1)
   FROM _a a, generate_series(1, 2) n;
 

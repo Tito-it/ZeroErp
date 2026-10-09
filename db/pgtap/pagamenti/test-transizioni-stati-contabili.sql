@@ -141,7 +141,7 @@ WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
     (codice, centro_riscossione_id, data_contabile, data_registrazione, meta)
   SELECT 'TSC_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         c.id, current_date, current_date,
+         c.id, script.fn_data_operativa(), script.fn_data_operativa(),
          jsonb_build_object('test_scope', 'pgtap_transizioni_stati_contabili')
     FROM pagamenti.centri_riscossione c
    WHERE c.codice_interno = 'BANCA'
@@ -213,7 +213,7 @@ SELECT lives_ok(
   INSERT INTO pagamenti.vendite_contabili
     (codice, centro_riscossione_id, data_contabile, data_registrazione, stato_id, meta)
   SELECT 'TSC_NASCITA_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         c.id, current_date, current_date,
+         c.id, script.fn_data_operativa(), script.fn_data_operativa(),
          (SELECT id FROM pagamenti.vendite_contabili_stati WHERE codice_interno = 'VALIDATA'),
          '{"test_scope":"pgtap_transizioni_stati_contabili"}'::jsonb
     FROM pagamenti.centri_riscossione c

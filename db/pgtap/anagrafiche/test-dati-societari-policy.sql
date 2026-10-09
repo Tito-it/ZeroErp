@@ -307,7 +307,7 @@ SELECT throws_ok(
             'XXXXXXX001',
             NULL,
             NULL,
-            CURRENT_DATE
+            script.fn_data_operativa()
         FROM anagrafiche.soggetti s
         WHERE s.codice = 'TST-DSP-PR-001-' || (SELECT sfx FROM tmp_run_sfx);
 $$,
@@ -443,7 +443,7 @@ SELECT lives_ok(
             --   uq_ds_codice_sdi): i valori fissi sono bruciati da un residuo.
             'fatt.sp1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
             'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
-            CURRENT_DATE
+            script.fn_data_operativa()
         FROM anagrafiche.soggetti s
         WHERE s.codice = 'TST-DSP-SP-001-' || (SELECT sfx FROM tmp_run_sfx);
         -- Saga completa: qui i guard verificano davvero.
@@ -630,7 +630,7 @@ SELECT s.id,
     'XXXXXXX003',
     'fatt.sc1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
     'SCCO' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 3)),
-    CURRENT_DATE
+    script.fn_data_operativa()
 FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-DSP-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (

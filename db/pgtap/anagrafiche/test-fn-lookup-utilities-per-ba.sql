@@ -144,8 +144,8 @@ SELECT utr.utility_id
   JOIN config.tipi_ruoli tr ON tr.id = utr.tipo_ruolo_id
  WHERE tr.codice_interno = 'CL'
    AND utr.attivo = true
-   AND (utr.valido_dal IS NULL OR utr.valido_dal <= current_date)
-   AND (utr.valido_al  IS NULL OR utr.valido_al  >= current_date)
+   AND (utr.valido_dal IS NULL OR utr.valido_dal <= script.fn_data_operativa())
+   AND (utr.valido_al  IS NULL OR utr.valido_al  >= script.fn_data_operativa())
  LIMIT 1;
 
 -- Aggiunge il mapping EF per quella utility (il seed non mappa nulla a EF).

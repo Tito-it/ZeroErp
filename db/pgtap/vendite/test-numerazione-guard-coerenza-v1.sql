@@ -145,7 +145,7 @@ BEGIN
   INSERT INTO vendite.fatture (registro_id, data, emittente_soggetto_ruolo_id,
                                billing_account_id, utility_id, stato_doc_fiscale_id,
                                tipo_doc_fiscale_id, valuta_id, termine_pagamento_id, meta)
-  SELECT (SELECT id FROM tmp_reg_dk), current_date,
+  SELECT (SELECT id FROM tmp_reg_dk), script.fn_data_operativa(),
          r.emittente_soggetto_ruolo_id, r.billing_account_id, r.utility_id,
          (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'),
          (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
@@ -160,7 +160,7 @@ BEGIN
                                      prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
   VALUES (v_fattura_id, 1, 'Riga test guard D-K', 1::numeric, p_prezzo,
           (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-          jsonb_build_object('test_scope', 'pgtap_guard_dk'), CURRENT_DATE, CURRENT_DATE);
+          jsonb_build_object('test_scope', 'pgtap_guard_dk'), script.fn_data_operativa(), script.fn_data_operativa());
 
   RETURN v_fattura_id;
 END;
@@ -231,7 +231,7 @@ SELECT throws_like(
 CREATE TEMP TABLE tmp_c4 AS SELECT pg_temp.fx_fattura_dk(0) AS id;
 SELECT pg_temp.fx_completa_dk((SELECT id FROM tmp_c4));
 INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo)
-VALUES ((SELECT id FROM tmp_c4), 1, current_date, 0);
+VALUES ((SELECT id FROM tmp_c4), 1, script.fn_data_operativa(), 0);
 SELECT throws_like(
   $$ SELECT * FROM vendite.fn_assign_numero_fattura((SELECT id FROM tmp_c4)) $$,
   '%rate su un totale a pagare zero%',

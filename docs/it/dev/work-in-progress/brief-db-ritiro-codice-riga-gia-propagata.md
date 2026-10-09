@@ -6,7 +6,8 @@
 > [brief-db-riga-listino-propagata-dalla-commessa](../work-done/brief-db-riga-listino-propagata-dalla-commessa.md)
 > (§7). **Decisione:** di Tid, 2026-10-09: la regola «propagata» ha una sede sola,
 > il guard DB.
-> **Stato:** ⏳ da fare (DB). Il BE è già fatto: niente da attendere.
+> **Stato:** ✅ R-1 fatto lato DB il 2026-10-09 (riga del CSV, da applicare:
+> il loader è `runOnChange`). Restano le ricadute BE del §3.
 
 ## 1. Che cosa è cambiato
 
@@ -33,9 +34,24 @@ l'operatore vede lo stesso toast di prima.
 
 Nessuna funzione DB nomina il codice, quindi niente da toccare in `20_code`.
 
+**Esito (DB, 2026-10-09).** Riga di `codici_errore.csv` aggiornata: `obsoleto_dal =
+2026-10-09`, nota «RITIRATO» con la sede della regola e il controllo Python ritirato.
+`messaggi_errore.csv` non toccato. Il loader
+(`20260614-08-upsert-messaggi-errore-chiusura-flusso-prematuro`) è `runOnChange`:
+basta l'apply, nessun changeSet nuovo. Il presidio
+`db/pgtap/config/test-codici-errore-obsoleto-dal.sql` non dipende dalla riga.
+
 ## 3. Ricaduta BE (dopo la consegna)
 
 Rigenerare `error_policies_generated.py` / `error_messages_fallback.py` **solo**
 con il DB allineato a git. ⚠️ Oggi (2026-10-09) il DB di sviluppo è più avanti di
 git per altri lavori (sesso, valore numerico non finito): i due presidi di
 divergenza sono rossi per quelli, non per questo brief.
+
+Censiti dal nome del codice durante la consegna DB, fuori dal perimetro DB:
+
+* `docs/it/backend/vendite/manual/api_listini.md` (righe 951, 957, 972) documenta
+  ancora `409 E_VENDITE_RIGA_GIA_PROPAGATA` per la rettifica controllata N6: va
+  portato a `E_RIGA_LISTINO_PROPAGATA`;
+* `backend/scripts/db-proposals/PROPOSTA_seed_messaggi_errore_mancanti.sql` lo
+  elenca ancora: è una proposta storica, da lasciare o ritirare a giudizio del BE.

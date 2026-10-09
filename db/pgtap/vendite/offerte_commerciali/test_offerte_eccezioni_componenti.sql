@@ -406,7 +406,7 @@ SELECT ok(
 -- TEST 12) fn_init guard p_eccezione_id NULL → E_PARAMETRO_INVALIDO
 -- ============================================================
 SELECT throws_like(
-    $$SELECT vendite.fn_offerta_eccezione_componenti_init(NULL, 1, CURRENT_DATE)$$,
+    $$SELECT vendite.fn_offerta_eccezione_componenti_init(NULL, 1, script.fn_data_operativa())$$,
     '%Parametro non valido%',
     '12) fn_init(NULL, 1, date): guard p_eccezione_id → E_PARAMETRO_INVALIDO'
 );
@@ -415,7 +415,7 @@ SELECT throws_like(
 -- TEST 13) fn_init guard p_emittente_sr_id NULL → E_PARAMETRO_INVALIDO
 -- ============================================================
 SELECT throws_like(
-    $$SELECT vendite.fn_offerta_eccezione_componenti_init(1, NULL, CURRENT_DATE)$$,
+    $$SELECT vendite.fn_offerta_eccezione_componenti_init(1, NULL, script.fn_data_operativa())$$,
     '%Parametro non valido%',
     '13) fn_init(1, NULL, date): guard p_emittente_sr_id → E_PARAMETRO_INVALIDO'
 );
@@ -440,7 +440,7 @@ RETURNS text AS $fn$
 -- ⚠️ `text` esplicito: e' il canale CONSTRAINT dell'eccezione, non una colonna.
 DECLARE v_cod text;
 BEGIN
-    PERFORM vendite.fn_offerta_eccezione_componenti_init(p_ecc, 1, CURRENT_DATE);
+    PERFORM vendite.fn_offerta_eccezione_componenti_init(p_ecc, 1, script.fn_data_operativa());
     RETURN 'NESSUN ERRORE';
 EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME;
@@ -465,7 +465,7 @@ SELECT CASE
         vendite.fn_offerta_eccezione_componenti_init(
             (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'SEMPLICE'),
             (SELECT emittente_sr_id FROM tmp_oce_ctx),
-            CURRENT_DATE
+            script.fn_data_operativa()
         ),
         0,
         '15) fn_init su articolo non composito → 0 (no-op CASO B)'
@@ -482,7 +482,7 @@ SELECT CASE
         vendite.fn_offerta_eccezione_componenti_init(
             (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'CONSUMO'),
             (SELECT emittente_sr_id FROM tmp_oce_ctx),
-            CURRENT_DATE
+            script.fn_data_operativa()
         ),
         0,
         '16) fn_init su eccezione con quantita NULL → 0 (consumo no-op)'
@@ -657,7 +657,7 @@ END;
 
 -- ============================================================
 -- Setup test 21-26: fn_offerta_eccezione_componenti_preview
--- Context separato: richiede componenti validi per CURRENT_DATE.
+-- Context separato: richiede componenti validi per script.fn_data_operativa().
 -- ============================================================
 CREATE TEMP TABLE tmp_preview_ctx AS
 SELECT
@@ -669,7 +669,7 @@ SELECT
     a.uom_id   AS composito_uom_id,
     as_.uom_id AS semplice_uom_id,
     -- disponibile = true solo se tutti i dati presenti E almeno
-    -- un componente attivo valido per CURRENT_DATE
+    -- un componente attivo valido per script.fn_data_operativa()
     (ctx.articolo_composito_id IS NOT NULL
      AND ctx.billing_account_id IS NOT NULL
      AND ctx.emittente_sr_id IS NOT NULL
@@ -677,7 +677,7 @@ SELECT
          SELECT 1 FROM catalogo.articoli_componenti ac
           WHERE ac.prodotto_id = ctx.articolo_composito_id
             AND COALESCE(ac.attivo, TRUE) = TRUE
-            AND ac.validita @> CURRENT_DATE
+            AND ac.validita @> script.fn_data_operativa()
      )) AS disponibile
   FROM tmp_oce_ctx ctx
   LEFT JOIN catalogo.articoli a   ON a.id   = ctx.articolo_composito_id
@@ -704,7 +704,7 @@ SELECT CASE
             (SELECT articolo_semplice_id FROM tmp_preview_ctx),
             (SELECT semplice_uom_id      FROM tmp_preview_ctx),
             1,
-            CURRENT_DATE,
+            script.fn_data_operativa(),
             (SELECT billing_account_id   FROM tmp_preview_ctx),
             (SELECT utility_id           FROM tmp_preview_ctx),
             (SELECT emittente_sr_id      FROM tmp_preview_ctx),
@@ -727,7 +727,7 @@ SELECT CASE
             (SELECT articolo_composito_id FROM tmp_preview_ctx),
             (SELECT composito_uom_id      FROM tmp_preview_ctx),
             2,
-            CURRENT_DATE,
+            script.fn_data_operativa(),
             (SELECT billing_account_id    FROM tmp_preview_ctx),
             (SELECT utility_id            FROM tmp_preview_ctx),
             (SELECT emittente_sr_id       FROM tmp_preview_ctx),
@@ -740,7 +740,7 @@ SELECT CASE
         ) > 0,
         '23) fn_preview articolo composito: righe > 0, colonne obbligatorio+esposizione_in_fattura accessibili'
     )
-    ELSE skip('23) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+    ELSE skip('23) skip: articolo composito con componenti validi per script.fn_data_operativa() non disponibile')
 END;
 
 -- ============================================================
@@ -754,7 +754,7 @@ SELECT CASE
             (SELECT articolo_composito_id FROM tmp_preview_ctx),
             (SELECT composito_uom_id      FROM tmp_preview_ctx),
             2,
-            CURRENT_DATE,
+            script.fn_data_operativa(),
             (SELECT billing_account_id    FROM tmp_preview_ctx),
             (SELECT utility_id            FROM tmp_preview_ctx),
             (SELECT emittente_sr_id       FROM tmp_preview_ctx),
@@ -764,10 +764,10 @@ SELECT CASE
            FROM catalogo.articoli_componenti ac
           WHERE ac.prodotto_id = (SELECT articolo_composito_id FROM tmp_preview_ctx)
             AND COALESCE(ac.attivo, TRUE) = TRUE
-            AND ac.validita @> CURRENT_DATE),
+            AND ac.validita @> script.fn_data_operativa()),
         '24) fn_preview COUNT = COUNT componenti attivi validi (nessun filtro esposto_in_fattura)'
     )
-    ELSE skip('24) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+    ELSE skip('24) skip: articolo composito con componenti validi per script.fn_data_operativa() non disponibile')
 END;
 
 -- ============================================================
@@ -782,7 +782,7 @@ SELECT CASE
                   (SELECT articolo_composito_id FROM tmp_preview_ctx),
                   (SELECT composito_uom_id      FROM tmp_preview_ctx),
                   2,
-                  CURRENT_DATE,
+                  script.fn_data_operativa(),
                   (SELECT billing_account_id    FROM tmp_preview_ctx),
                   (SELECT utility_id            FROM tmp_preview_ctx),
                   (SELECT emittente_sr_id       FROM tmp_preview_ctx),
@@ -792,7 +792,7 @@ SELECT CASE
         ),
         '25) fn_preview quantita_componente = coeff_qta_snapshot * 2 (p_quantita_padre) per ogni riga'
     )
-    ELSE skip('25) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+    ELSE skip('25) skip: articolo composito con componenti validi per script.fn_data_operativa() non disponibile')
 END;
 
 -- ============================================================
@@ -807,7 +807,7 @@ SELECT CASE
             WHERE ac.prodotto_id = (SELECT articolo_composito_id FROM tmp_preview_ctx)
               AND ac.esposizione_in_fattura = 'NASCOSTO'
               AND COALESCE(ac.attivo, TRUE) = TRUE
-              AND ac.validita @> CURRENT_DATE
+              AND ac.validita @> script.fn_data_operativa()
        )
     THEN ok(
         EXISTS (
@@ -816,7 +816,7 @@ SELECT CASE
                   (SELECT articolo_composito_id FROM tmp_preview_ctx),
                   (SELECT composito_uom_id      FROM tmp_preview_ctx),
                   2,
-                  CURRENT_DATE,
+                  script.fn_data_operativa(),
                   (SELECT billing_account_id    FROM tmp_preview_ctx),
                   (SELECT utility_id            FROM tmp_preview_ctx),
                   (SELECT emittente_sr_id       FROM tmp_preview_ctx),
@@ -826,7 +826,7 @@ SELECT CASE
         ),
         '26) fn_preview include componenti NASCOSTI (filtro AND esposto=TRUE rimosso)'
     )
-    ELSE skip('26) skip: nessun componente NASCOSTO valido per CURRENT_DATE')
+    ELSE skip('26) skip: nessun componente NASCOSTO valido per script.fn_data_operativa()')
 END;
 
 -- ============================================================

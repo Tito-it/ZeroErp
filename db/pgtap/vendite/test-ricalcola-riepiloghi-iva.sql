@@ -170,7 +170,7 @@ CREATE TEMP TABLE tmp_fattura_iva AS WITH ins AS (
       SELECT id
       FROM tmp_reg_iva
     ),
-    current_date,
+    script.fn_data_operativa(),
     (
       SELECT emittente_soggetto_ruolo_id
       FROM tmp_refs_iva
@@ -242,7 +242,7 @@ SELECT (
       SELECT test_scope
       FROM tmp_costanti_iva
     )
-  ), CURRENT_DATE, CURRENT_DATE
+  ), script.fn_data_operativa(), script.fn_data_operativa()
 FROM (
     -- ⚠️ 2026-07-28: la fixture NON fornisce piu' gli importi di riga.
     --   `imponibile_riga` e' calcolato dal trigger a20 (qta * prezzo * (1-sconto/100),
@@ -406,7 +406,7 @@ CREATE TEMP TABLE tmp_lotto_iva AS WITH ins AS (
       emittente_soggetto_ruolo_id,
       meta
     )
-  SELECT date_trunc('month', current_date)::date,
+  SELECT date_trunc('month', script.fn_data_operativa())::date,
     (
       SELECT tipo_doc_fiscale_id
       FROM tmp_refs_iva

@@ -98,7 +98,7 @@ BEGIN
     INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
         billing_account_id, utility_id, valuta_id, emittente_fiscale_id,
         causale_trasporto_id, storicizza, meta)
-    VALUES (CURRENT_DATE, v_draft, v_sr, v_ba, v_utility, v_val, v_ef, v_cv, false,
+    VALUES (script.fn_data_operativa(), v_draft, v_sr, v_ba, v_utility, v_val, v_ef, v_cv, false,
             jsonb_build_object('test_scope','pgtap_causale_immutabile'))
     RETURNING id INTO v_uno;
 
@@ -119,7 +119,7 @@ BEGIN
     INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
         billing_account_id, utility_id, valuta_id, emittente_fiscale_id,
         causale_trasporto_id, storicizza, meta)
-    VALUES (CURRENT_DATE, v_draft, v_sr, v_ba, v_utility, v_val, v_ef, v_cc, false,
+    VALUES (script.fn_data_operativa(), v_draft, v_sr, v_ba, v_utility, v_val, v_ef, v_cc, false,
             jsonb_build_object('test_scope','pgtap_causale_immutabile'))
     RETURNING id INTO v_due;
 

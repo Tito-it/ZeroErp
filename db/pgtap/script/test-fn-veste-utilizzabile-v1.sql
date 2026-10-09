@@ -112,10 +112,10 @@ UPDATE _cl SET identita_id = idg.id
 
 -- Le finestre partono indietro di dieci giorni, cosi' «ieri» e «oggi» sono
 -- fini ammesse da chk_identita_digitali_date (valido_al >= valido_dal).
-UPDATE anagrafiche.identita_digitali SET valido_dal = CURRENT_DATE - 10
+UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() - 10
  WHERE id IN ((SELECT identita_id FROM _op), (SELECT identita_id FROM _tec),
               (SELECT identita_id FROM _cl));
-UPDATE anagrafiche.risorse_umane SET valido_dal = CURRENT_DATE - 10
+UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() - 10
  WHERE id = (SELECT risorsa_umana_id FROM _op);
 
 CREATE OR REPLACE FUNCTION pg_temp.vu(p_id bigint) RETURNS boolean
@@ -125,10 +125,10 @@ LANGUAGE sql AS $$ SELECT script.fn_veste_utilizzabile(p_id) $$;
 CREATE OR REPLACE FUNCTION pg_temp.ripristina_op() RETURNS void
 LANGUAGE sql AS $$
     UPDATE anagrafiche.identita_digitali
-       SET attivo = true, valido_dal = CURRENT_DATE - 10, valido_al = NULL
+       SET attivo = true, valido_dal = script.fn_data_operativa() - 10, valido_al = NULL
      WHERE id = (SELECT identita_id FROM _op);
     UPDATE anagrafiche.risorse_umane
-       SET attivo = true, valido_dal = CURRENT_DATE - 10, valido_al = NULL
+       SET attivo = true, valido_dal = script.fn_data_operativa() - 10, valido_al = NULL
      WHERE id = (SELECT risorsa_umana_id FROM _op);
 $$;
 
@@ -151,26 +151,26 @@ UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT ident
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false, '4) veste spenta: no');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET valido_dal = CURRENT_DATE + 1 WHERE id = (SELECT identita_id FROM _op);
+UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() + 1 WHERE id = (SELECT identita_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false, '5) veste con valido_dal domani: no');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET valido_al = CURRENT_DATE - 1 WHERE id = (SELECT identita_id FROM _op);
+UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false,
     '6) veste con valido_al ieri e rapporto valido: no');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET valido_al = CURRENT_DATE WHERE id = (SELECT identita_id FROM _op);
+UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() WHERE id = (SELECT identita_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), true,
     '7) veste con valido_al OGGI: si'' (estremo compreso)');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.risorse_umane SET valido_al = CURRENT_DATE - 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
+UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false,
     '8) D-2: veste valida e rapporto chiuso ieri: no');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.risorse_umane SET valido_dal = CURRENT_DATE + 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
+UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() + 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _op)), false,
     '9) D-2: rapporto con valido_dal domani: no');
 SELECT pg_temp.ripristina_op();
@@ -188,7 +188,7 @@ SELECT pg_temp.ripristina_op();
 SELECT is(pg_temp.vu((SELECT identita_id FROM _tec)), true,
     '11) identita'' tecnica senza risorsa umana: utilizzabile');
 
-UPDATE anagrafiche.identita_digitali SET valido_al = CURRENT_DATE - 1 WHERE id = (SELECT identita_id FROM _tec);
+UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _tec);
 SELECT is(pg_temp.vu((SELECT identita_id FROM _tec)), false,
     '12) identita'' tecnica scaduta: no');
 UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = (SELECT identita_id FROM _tec);
@@ -204,7 +204,7 @@ SELECT is(pg_temp.vu(NULL), false, '15) NULL: false');
 -- ============================================================
 -- 16-24. Le sedi rispondono come il building block
 -- ============================================================
-UPDATE anagrafiche.risorse_umane SET valido_al = CURRENT_DATE - 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
+UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
 
 SELECT is(script.fn_has_identita_attiva((SELECT auth_user_id FROM _op),
                                         'OPERATORE'::config.ruolo_applicativo),
@@ -232,7 +232,7 @@ SELECT is(
     '19) profilo col rapporto chiuso: E_UTENTE_DISABILITATO');
 SELECT pg_temp.ripristina_op();
 
-UPDATE anagrafiche.identita_digitali SET valido_dal = CURRENT_DATE + 1 WHERE id = (SELECT identita_id FROM _op);
+UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() + 1 WHERE id = (SELECT identita_id FROM _op);
 SELECT is(
     pg_temp.codice_errore(format('SELECT script.fn_get_user_profile(%s)',
                                  (SELECT auth_user_id FROM _op))),
@@ -243,7 +243,7 @@ SELECT pg_temp.ripristina_op();
 SELECT is(script.fn_scope_cliente_ownership((SELECT identita_id FROM _cl),
                                             (SELECT soggetto_ruolo_id FROM _cl)),
     true, '21a) fn_scope_cliente_ownership: vera sulla veste cliente valida');
-UPDATE anagrafiche.identita_digitali SET valido_al = CURRENT_DATE - 1 WHERE id = (SELECT identita_id FROM _cl);
+UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _cl);
 SELECT is(script.fn_scope_cliente_ownership((SELECT identita_id FROM _cl),
                                             (SELECT soggetto_ruolo_id FROM _cl)),
     false, '21b) ...falsa quando la veste scade (prima guardava solo attivo)');
@@ -251,7 +251,7 @@ UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = (SELECT ide
 
 SELECT is(script.fn_scope_identita_processo((SELECT auth_user_id FROM _tec), 'chiusura_scadenze_daily'),
     true, '22a) fn_scope_identita_processo: vera sull''identita'' tecnica valida');
-UPDATE anagrafiche.identita_digitali SET valido_al = CURRENT_DATE - 1 WHERE id = (SELECT identita_id FROM _tec);
+UPDATE anagrafiche.identita_digitali SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT identita_id FROM _tec);
 SELECT is(script.fn_scope_identita_processo((SELECT auth_user_id FROM _tec), 'chiusura_scadenze_daily'),
     false, '22b) ...falsa quando scade');
 UPDATE anagrafiche.identita_digitali SET valido_al = NULL WHERE id = (SELECT identita_id FROM _tec);
@@ -265,9 +265,9 @@ CREATE TEMP TABLE _sa_garante AS
 SELECT o.* FROM dbops.fn_pgtap_crea_operatore_umano('veste utilizzabile SA garante', true) o;
 CREATE TEMP TABLE _sa AS
 SELECT o.* FROM dbops.fn_pgtap_crea_operatore_umano('veste utilizzabile SA', true) o;
-UPDATE anagrafiche.risorse_umane SET valido_dal = CURRENT_DATE - 10, valido_al = CURRENT_DATE - 1
+UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() - 10, valido_al = script.fn_data_operativa() - 1
  WHERE id = (SELECT risorsa_umana_id FROM _sa);
-UPDATE anagrafiche.identita_digitali SET valido_dal = CURRENT_DATE - 10
+UPDATE anagrafiche.identita_digitali SET valido_dal = script.fn_data_operativa() - 10
  WHERE id = (SELECT identita_id FROM _sa);
 SELECT is(script.fn_is_super_admin_account((SELECT auth_user_id FROM _sa)), false,
     '23) fn_is_super_admin_account: col rapporto chiuso non e'' piu'' SUPER_ADMIN');
@@ -275,7 +275,7 @@ SELECT is(script.fn_is_super_admin_account((SELECT auth_user_id FROM _sa)), fals
 -- 24. Il tempo passa senza che nessuno scriva: la credenziale e' rimasta
 -- accesa, ma non ha piu' vesti utilizzabili. Lo stato si simula riaccendendo
 -- is_active a mano dopo aver chiuso tutto.
-UPDATE anagrafiche.risorse_umane SET valido_al = CURRENT_DATE - 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
+UPDATE anagrafiche.risorse_umane SET valido_al = script.fn_data_operativa() - 1 WHERE id = (SELECT risorsa_umana_id FROM _op);
 UPDATE anagrafiche.identita_digitali SET attivo = false WHERE id = (SELECT identita_id FROM _cl);
 UPDATE django.auth_user SET is_active = true WHERE id = (SELECT auth_user_id FROM _op);
 SELECT anagrafiche.fn_sync_auth_user_expired();
@@ -289,7 +289,7 @@ SELECT is((SELECT is_active FROM django.auth_user WHERE id = (SELECT auth_user_i
 SELECT is(
     (SELECT count(*)::int FROM config.codici_errore
       WHERE codice IN ('E_UTENTE_NON_ATTIVO', 'E_UTENTE_SCADUTO')
-        AND obsoleto_dal IS NOT NULL AND obsoleto_dal <= CURRENT_DATE)
+        AND obsoleto_dal IS NOT NULL AND obsoleto_dal <= script.fn_data_operativa())
   + (SELECT count(*)::int
        FROM pg_catalog.pg_proc p
        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace

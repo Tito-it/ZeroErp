@@ -86,11 +86,11 @@ WHERE m.obbligatorio = TRUE
   AND m.attivo = TRUE
   AND (
     m.valido_dal IS NULL
-    OR m.valido_dal <= current_date
+    OR m.valido_dal <= script.fn_data_operativa()
   )
   AND (
     m.valido_al IS NULL
-    OR m.valido_al >= current_date
+    OR m.valido_al >= script.fn_data_operativa()
   )
 ORDER BY m.tipo_ruolo_id,
   m.tipo_indirizzo_id
@@ -220,8 +220,8 @@ FROM tmp_soggetto_ruolo_err s
   JOIN tmp_indirizzo_dettaglio_test d ON TRUE
 WHERE m.obbligatorio = TRUE
   AND m.attivo = TRUE
-  AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-  AND (m.valido_al IS NULL OR m.valido_al >= current_date);
+  AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+  AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa());
 
 SELECT lives_ok(
     $$
@@ -324,8 +324,8 @@ FROM tmp_soggetto_ruolo_ok s
   JOIN tmp_indirizzo_dettaglio_test d ON TRUE
 WHERE m.obbligatorio = TRUE
   AND m.attivo = TRUE
-  AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-  AND (m.valido_al IS NULL OR m.valido_al >= current_date);
+  AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+  AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa());
 
 WITH ins_role AS (
   INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)

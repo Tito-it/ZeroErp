@@ -127,8 +127,8 @@ SELECT id.id AS identita_id
  WHERE id.id <> op.identita_id
    AND id.attivo = true
    AND id.ruolo_applicativo <> 'DISABILITATO'
-   AND (id.valido_dal IS NULL OR id.valido_dal <= CURRENT_DATE)
-   AND (id.valido_al  IS NULL OR id.valido_al  >= CURRENT_DATE)
+   AND (id.valido_dal IS NULL OR id.valido_dal <= script.fn_data_operativa())
+   AND (id.valido_al  IS NULL OR id.valido_al  >= script.fn_data_operativa())
    -- Esclude identita gia' SUPER_ADMIN: il binding sarebbe duplicato.
    AND NOT EXISTS (
         SELECT 1 FROM config.profili_accesso_bindings pab

@@ -122,7 +122,7 @@ WITH ins AS (
                               fatturazione_trigger, emittente_fiscale_id,
                               storicizza, meta)
   SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_draft_id,
-         r.valuta_id, current_date, 'SPEDITO', r.emittente_fiscale_id, false,
+         r.valuta_id, script.fn_data_operativa(), 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope', 'pgtap_ordine_conferma_iva')
     FROM tmp_oi_refs r
   RETURNING id

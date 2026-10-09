@@ -95,7 +95,7 @@ SELECT u[1] AS u_kit, u[2] AS u1, u[3] AS u2, u[4] AS u3
 CREATE OR REPLACE FUNCTION pg_temp.fx_kqp(
     p_nr integer, p_kit text, p_modo varchar, p_art uuid, p_uom bigint,
     p_qta numeric, p_prezzo numeric, p_kit_qta numeric,
-    p_dal date DEFAULT CURRENT_DATE, p_al date DEFAULT CURRENT_DATE)
+    p_dal date DEFAULT script.fn_data_operativa(), p_al date DEFAULT script.fn_data_operativa())
 RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, uom_id,
          qta, prezzo_unitario, iva_id, kit_key, kit_esposizione, kit_articolo_padre_id,
@@ -266,7 +266,7 @@ SELECT throws_ok(
     $$INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id,
              competenza_dal, competenza_al, kit_uom_id)
       SELECT (SELECT fattura_id FROM tmp_kqp), 94, 'Fuori kit', 1, 1, (SELECT iva_id FROM tmp_kqp_ref),
-             CURRENT_DATE, CURRENT_DATE, (SELECT u_kit FROM tmp_kqp_u)$$,
+             script.fn_data_operativa(), script.fn_data_operativa(), (SELECT u_kit FROM tmp_kqp_u)$$,
     '23514', NULL,
     '18) kit_uom_id su una riga che non e'' di kit e'' respinta');
 

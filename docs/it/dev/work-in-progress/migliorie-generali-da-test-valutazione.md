@@ -921,10 +921,11 @@ dalla stessa data), con un commento sul perché.
 Trovato il 2026-10-09 chiudendo il lato BE/FE di `brief-db-istanza-nasce-col-ba` (§7.5): R-2 ha reso
 `billing_account_id` NOT NULL e legato alla coppia su preventivo, offerta e contratto, e la fattura lo
 aveva gia'. Ordine, DDT e reso no: BA nullable, `utility_id` e ruolo di testata che nessun vincolo
-lega al BA, lock del BA solo sull'ordine. Un esecutivo fatturabile senza BA esce dalle liste di push
-(`JOIN` interna) senza errore.
+lega al BA, lock del BA solo sull'ordine. Un ordine senza BA esce dalla lista di push senza errore
+(il DDT no: la diagnosi ha il motivo `SENZA_BA`). E gli anelli della catena possono dissentire: una
+riga di DDT puo' evadere l'ordine di un altro cliente, e il reso puo' avere un BA diverso dal suo DDT.
 
-Dettaglio, cinque decisioni di Tid e forma proposta nel brief
+Dettaglio, sette decisioni di Tid e forma proposta nel brief
 [brief-db-esecutivi-ba-coppia.md](brief-db-esecutivi-ba-coppia.md). 📝 Bozza.
 
 ---
@@ -1123,7 +1124,7 @@ D6 e il registro dei rossi in CI.
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
-      `brief-db-esecutivi-ba-coppia` (cinque decisioni di Tid).
+      `brief-db-esecutivi-ba-coppia` (sette decisioni di Tid).
 
 ---
 

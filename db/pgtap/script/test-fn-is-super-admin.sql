@@ -221,8 +221,8 @@ UPDATE config.profili_accesso_bindings pab
 -- Per simulare finestra scaduta aggiorno ENTRAMBE le date:
 -- valido_dal 30 giorni fa, valido_al ieri (coerente col CHECK).
 UPDATE anagrafiche.identita_digitali
-   SET valido_dal = CURRENT_DATE - 30,
-       valido_al  = CURRENT_DATE - 1
+   SET valido_dal = script.fn_data_operativa() - 30,
+       valido_al  = script.fn_data_operativa() - 1
  WHERE id = (SELECT identita_id FROM _t_id WHERE idx = 1);
 
 SELECT ok(

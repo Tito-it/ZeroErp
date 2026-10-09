@@ -89,7 +89,7 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_lotto_ptr AS
 SELECT vendite.fn_create_fatturazione_lotto(
-  p_competenza_mese             => date_trunc('month', current_date)::date,
+  p_competenza_mese             => date_trunc('month', script.fn_data_operativa())::date,
   p_tipo_doc_fiscale_id         => (SELECT tipo_doc_fiscale_id FROM tmp_refs_ptr),
   p_utility_id                  => (SELECT utility_id FROM tmp_refs_ptr),
   p_billing_account_id          => NULL,

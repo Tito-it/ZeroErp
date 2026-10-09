@@ -151,7 +151,7 @@ BEGIN
 
     -- ⚠️ `validita` e' una colonna GENERATA: non si scrive.
     INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
-    VALUES (v_listino_id, 'V-PGTAP', CURRENT_DATE);
+    VALUES (v_listino_id, 'V-PGTAP', script.fn_data_operativa());
 
     PERFORM set_config('pgtap.listino_altrui', v_listino_id::text, true);
 END
@@ -241,7 +241,7 @@ BEGIN
     BEGIN
         INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal)
         VALUES (current_setting('pgtap.listino_altrui')::bigint,
-                'V-PGTAP-INTRUSO', CURRENT_DATE);
+                'V-PGTAP-INTRUSO', script.fn_data_operativa());
     EXCEPTION WHEN OTHERS THEN
         v_esito := SQLSTATE || '|' ||
                    CASE WHEN SQLERRM ILIKE '%scope emittente fiscale%'

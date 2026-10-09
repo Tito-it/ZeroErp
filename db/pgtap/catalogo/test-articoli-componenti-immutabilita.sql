@@ -79,8 +79,8 @@ CREATE TEMP TABLE _t_bom AS
 SELECT
     dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-PRODOTTO')   AS prodotto_id,
     dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-COMPONENTE') AS componente_id,
-    (CURRENT_DATE - INTERVAL '30 days')::date  AS v_dal,
-    (CURRENT_DATE + INTERVAL '30 days')::date  AS v_al;
+    (script.fn_data_operativa() - INTERVAL '30 days')::date  AS v_dal,
+    (script.fn_data_operativa() + INTERVAL '30 days')::date  AS v_al;
 
 -- Prerequisito: il prodotto deve avere is_composito=true perche' il
 -- trigger trgfn_articoli_componenti_guard_is_composito accetti l'INSERT.
@@ -212,7 +212,7 @@ SELECT throws_ok(
 SELECT lives_ok(
     format(
         $sql$ UPDATE catalogo.articoli_componenti
-                 SET valido_al = (CURRENT_DATE + INTERVAL '10 days')::date
+                 SET valido_al = (script.fn_data_operativa() + INTERVAL '10 days')::date
                WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
@@ -233,7 +233,7 @@ SELECT lives_ok(
 SELECT throws_like(
     format(
         $sql$ UPDATE catalogo.articoli_componenti
-                 SET valido_al = (CURRENT_DATE - INTERVAL '60 days')::date
+                 SET valido_al = (script.fn_data_operativa() - INTERVAL '60 days')::date
                WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
@@ -290,7 +290,7 @@ SELECT lives_ok(
     format(
         $sql$ UPDATE catalogo.articoli_componenti
                  SET attivo = true,
-                     valido_al = (CURRENT_DATE + INTERVAL '5 days')::date
+                     valido_al = (script.fn_data_operativa() + INTERVAL '5 days')::date
                WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
@@ -299,7 +299,7 @@ SELECT lives_ok(
 
 -- =========================================================
 -- 16) INSERT nuova riga con valido_dal successivo -> OK
--- Chiudo la riga esistente (gia' chiusa a CURRENT_DATE+5) e
+-- Chiudo la riga esistente (gia' chiusa a script.fn_data_operativa()+5) e
 -- inserisco una nuova riga con valido_dal successivo per verificare
 -- che l'EXCLUDE constraint accetti il pattern chiudi+inserisci.
 -- =========================================================
@@ -311,7 +311,7 @@ SELECT lives_ok(
                   valido_dal, valido_al, attivo
               )
               SELECT prodotto_id, componente_id, 2, true, 'NASCOSTO',
-                     (CURRENT_DATE + INTERVAL '6 days')::date,
+                     (script.fn_data_operativa() + INTERVAL '6 days')::date,
                      NULL,
                      true
                 FROM _t_bom $sql$
@@ -335,10 +335,10 @@ SELECT lives_ok(
 -- =========================================================
 SELECT lives_ok(
     $sql$ UPDATE catalogo.articoli_componenti
-             SET valido_al = (CURRENT_DATE + INTERVAL '6 days')::date
+             SET valido_al = (script.fn_data_operativa() + INTERVAL '6 days')::date
            WHERE prodotto_id   = (SELECT prodotto_id   FROM _t_bom)
              AND componente_id = (SELECT componente_id FROM _t_bom)
-             AND valido_dal    = (CURRENT_DATE + INTERVAL '6 days')::date $sql$,
+             AND valido_dal    = (script.fn_data_operativa() + INTERVAL '6 days')::date $sql$,
     '17. UPDATE valido_al = valido_dal su riga creata oggi (chiusura same-day) -> OK'
 );
 
@@ -352,10 +352,10 @@ SELECT is(
        FROM catalogo.articoli_componenti
       WHERE prodotto_id   = (SELECT prodotto_id   FROM _t_bom)
         AND componente_id = (SELECT componente_id FROM _t_bom)
-        AND valido_dal    = (CURRENT_DATE + INTERVAL '6 days')::date),
+        AND valido_dal    = (script.fn_data_operativa() + INTERVAL '6 days')::date),
     daterange(
-        (CURRENT_DATE + INTERVAL '6 days')::date,
-        (CURRENT_DATE + INTERVAL '7 days')::date,
+        (script.fn_data_operativa() + INTERVAL '6 days')::date,
+        (script.fn_data_operativa() + INTERVAL '7 days')::date,
         '[)'
     ),
     '18. validita riga chiusa same-day = [oggi+6, oggi+7) (range 1 giorno)'

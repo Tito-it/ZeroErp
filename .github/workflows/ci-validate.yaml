@@ -272,6 +272,10 @@ jobs:
         # ha trovato tre test VERDI che collaudavano una cosa diversa da quella
         # dichiarata, proprio per quel difetto.
         #
+        # ⚠️ E rifiuta `CURRENT_DATE` e affini nei test: «oggi» e' il giorno
+        # dell'azienda (`script.fn_data_operativa()`), e la sessione pgTAP gira
+        # apposta in un fuso che cade in un altro giorno (scripts/testpgtap.sh).
+        #
         # Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
         run: python scripts/guardrail_pgtap_preambolo.py
 

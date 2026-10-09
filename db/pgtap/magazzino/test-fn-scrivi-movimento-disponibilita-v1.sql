@@ -53,8 +53,8 @@ BEGIN
     v_mag := dbops.fn_pgtap_crea_magazzino('PGT-L2D-A', false);
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L2D-ART', true, false, false);
     v_art_lotto := dbops.fn_pgtap_crea_articolo('PGT-L2D-LOT', true, true, false);
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art_lotto, 'PGT-L2D-L1', current_date) RETURNING id INTO v_l1;
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art_lotto, 'PGT-L2D-L2', current_date) RETURNING id INTO v_l2;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art_lotto, 'PGT-L2D-L1', script.fn_data_operativa()) RETURNING id INTO v_l1;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_art_lotto, 'PGT-L2D-L2', script.fn_data_operativa()) RETURNING id INTO v_l2;
     FOR i IN 1..9 LOOP
         INSERT INTO magazzino.inventari (magazzino_id) VALUES (v_mag) RETURNING id INTO v_inv;
         INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata) VALUES (v_inv, v_art, i) RETURNING id INTO v_tmp;

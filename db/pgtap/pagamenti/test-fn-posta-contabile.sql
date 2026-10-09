@@ -128,7 +128,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, 300.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
@@ -140,8 +140,8 @@ SELECT * FROM ins;
 CREATE TEMP TABLE tmp_contabile AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa(),
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -159,7 +159,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, data_valuta, importo,
      fattura_id, billing_account_id, stato_id, motivo_sospeso, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile), v.rif, current_date, current_date, v.importo,
+SELECT (SELECT contabile_id FROM tmp_contabile), v.rif, script.fn_data_operativa(), script.fn_data_operativa(), v.importo,
        (SELECT id FROM tmp_fattura), r.billing_account_id, v.stato_id,
        CASE WHEN v.stato_id = r.stato_sospesa_id THEN 'da capire' END,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
@@ -342,8 +342,8 @@ SELECT throws_like(
 CREATE TEMP TABLE tmp_contabile_vuota AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date - 1,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa() - 1,
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -352,7 +352,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
      billing_account_id, stato_id, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile_vuota), 'PGTAP_E', current_date, 10.00,
+SELECT (SELECT contabile_id FROM tmp_contabile_vuota), 'PGTAP_E', script.fn_data_operativa(), 10.00,
        (SELECT id FROM tmp_fattura), r.billing_account_id, r.stato_sospesa_id,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_refs r;

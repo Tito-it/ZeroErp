@@ -307,8 +307,8 @@ SELECT is(
 
 -- 6) Override scaduto (valido_al = ieri) → ignorato → BLOCCATO
 UPDATE config.user_override_aree
-   SET valido_dal = CURRENT_DATE - 30,
-       valido_al  = CURRENT_DATE - 1
+   SET valido_dal = script.fn_data_operativa() - 30,
+       valido_al  = script.fn_data_operativa() - 1
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
    AND area_id = (SELECT area_id FROM tmp_ctx);
 
@@ -557,7 +557,7 @@ SELECT ok(
 INSERT INTO config.user_override_aree
     (auth_user_id, area_id, livello, valido_dal, valido_al, meta)
 SELECT user_id, area_id, 'LETTURA'::config.livello_accesso,
-       CURRENT_DATE - 30, CURRENT_DATE - 10,
+       script.fn_data_operativa() - 30, script.fn_data_operativa() - 10,
        '{"test_scope":"pgtap_funzioni_risoluzione"}'::jsonb
 FROM tmp_ctx;
 
@@ -735,11 +735,11 @@ SELECT is(
 -- (La sezione F ha lasciato un override d'area SCADUTO: l'upsert lo riapre.)
 INSERT INTO config.user_override_aree
     (auth_user_id, area_id, livello, valido_dal, valido_al, meta)
-SELECT user_id, area_id, 'TUTTO'::config.livello_accesso, CURRENT_DATE, NULL,
+SELECT user_id, area_id, 'TUTTO'::config.livello_accesso, script.fn_data_operativa(), NULL,
        '{"test_scope":"pgtap_funzioni_risoluzione"}'::jsonb
 FROM tmp_ctx
 ON CONFLICT ON CONSTRAINT uq_user_override_aree_user_area
-DO UPDATE SET livello = EXCLUDED.livello, valido_dal = CURRENT_DATE, valido_al = NULL;
+DO UPDATE SET livello = EXCLUDED.livello, valido_dal = script.fn_data_operativa(), valido_al = NULL;
 
 -- 31) Nessun override attivo → il livello d'area (non piu' {})
 DELETE FROM config.user_override_oggetti
@@ -770,8 +770,8 @@ SELECT is(
 
 -- 33) Override scaduto → escluso
 UPDATE config.user_override_oggetti
-   SET valido_dal = CURRENT_DATE - 30,
-       valido_al  = CURRENT_DATE - 1
+   SET valido_dal = script.fn_data_operativa() - 30,
+       valido_al  = script.fn_data_operativa() - 1
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
    AND app_label = 'vendite'
    AND model_name = 'fattura';
@@ -786,8 +786,8 @@ SELECT is(
 
 -- 34) Override futuro → escluso
 UPDATE config.user_override_oggetti
-   SET valido_dal = CURRENT_DATE + 1,
-       valido_al  = CURRENT_DATE + 30
+   SET valido_dal = script.fn_data_operativa() + 1,
+       valido_al  = script.fn_data_operativa() + 30
  WHERE auth_user_id = (SELECT user_id FROM tmp_ctx)
    AND app_label = 'vendite'
    AND model_name = 'fattura';

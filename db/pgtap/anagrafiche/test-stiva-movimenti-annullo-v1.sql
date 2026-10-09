@@ -118,7 +118,7 @@ WITH ins AS (
       ambito, valido_dal, plafond, storicizza, meta)
   SELECT CASE g WHEN 1 THEN r.soggetto_1_id ELSE r.soggetto_2_id END,
          r.emittente_fiscale_id, r.tipo_titolo_iva_id, r.iva_id,
-         'TUTTO', CURRENT_DATE - 30, 100000, false,
+         'TUTTO', script.fn_data_operativa() - 30, 100000, false,
          jsonb_build_object('test_scope','pgtap_stiva_annullo', 'n', g)
     FROM tmp_ref r, generate_series(1,2) g
   RETURNING id, meta)
@@ -130,7 +130,7 @@ WITH ins AS (
   INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti (
       titolo_iva_id, tipo_movimento, imponibile, data_movimento, motivo, meta)
   SELECT (SELECT id FROM tmp_titoli WHERE n = 1),
-         'FORZATURA', 250, CURRENT_DATE - 5, 'forzatura di prova',
+         'FORZATURA', 250, script.fn_data_operativa() - 5, 'forzatura di prova',
          jsonb_build_object('test_scope','pgtap_stiva_annullo')
   RETURNING id, titolo_iva_id, imponibile)
 SELECT * FROM ins;
@@ -169,7 +169,7 @@ SELECT throws_ok(
   format($q$INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti
              (titolo_iva_id, tipo_movimento, imponibile, data_movimento, motivo,
               annulla_movimento_id)
-             SELECT %s, 'FORZATURA', -250, CURRENT_DATE, 'secondo annullo', %s$q$,
+             SELECT %s, 'FORZATURA', -250, script.fn_data_operativa(), 'secondo annullo', %s$q$,
          (SELECT titolo_iva_id FROM tmp_forz), (SELECT id FROM tmp_forz)),
   'P0001', NULL,
   '2) doppio annullo rifiutato');
@@ -193,7 +193,7 @@ WITH ins AS (
   INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti (
       titolo_iva_id, tipo_movimento, imponibile, data_movimento, fattura_id, meta)
   SELECT (SELECT id FROM tmp_titoli WHERE n = 2), 'FATTURA', 100,
-         CURRENT_DATE - 3, (SELECT id FROM tmp_fatt),
+         script.fn_data_operativa() - 3, (SELECT id FROM tmp_fatt),
          jsonb_build_object('test_scope','pgtap_stiva_annullo')
   RETURNING id)
 SELECT * FROM ins;
@@ -215,7 +215,7 @@ WITH ins AS (
   INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti (
       titolo_iva_id, tipo_movimento, imponibile, data_movimento, motivo, meta)
   SELECT (SELECT id FROM tmp_titoli WHERE n = 2), 'FORZATURA', 400,
-         CURRENT_DATE - 4, 'seconda forzatura',
+         script.fn_data_operativa() - 4, 'seconda forzatura',
          jsonb_build_object('test_scope','pgtap_stiva_annullo')
   RETURNING id, titolo_iva_id)
 SELECT * FROM ins;
@@ -224,7 +224,7 @@ SELECT throws_ok(
   format($q$INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti
              (titolo_iva_id, tipo_movimento, imponibile, data_movimento, motivo,
               annulla_movimento_id)
-             SELECT %s, 'FORZATURA', -100, CURRENT_DATE, 'importo sbagliato', %s$q$,
+             SELECT %s, 'FORZATURA', -100, script.fn_data_operativa(), 'importo sbagliato', %s$q$,
          (SELECT titolo_iva_id FROM tmp_forz2), (SELECT id FROM tmp_forz2)),
   'P0001', NULL,
   '4) importo diverso dall''opposto rifiutato');
@@ -239,7 +239,7 @@ SELECT throws_ok(
   format($q$INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti
              (titolo_iva_id, tipo_movimento, imponibile, data_movimento, motivo,
               annulla_movimento_id)
-             SELECT %s, 'FORZATURA', -400, CURRENT_DATE, 'titolo sbagliato', %s$q$,
+             SELECT %s, 'FORZATURA', -400, script.fn_data_operativa(), 'titolo sbagliato', %s$q$,
          (SELECT id FROM tmp_titoli WHERE n = 1), (SELECT id FROM tmp_forz2)),
   'P0001', NULL,
   '5) collegamento a un movimento di un altro titolo rifiutato');

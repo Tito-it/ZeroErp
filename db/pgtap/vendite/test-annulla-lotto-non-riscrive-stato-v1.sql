@@ -55,7 +55,7 @@ SELECT plan(7);
 --   che esercita la stessa strada.
 CREATE TEMP TABLE tmp_lotto_arw AS
 SELECT vendite.fn_get_or_create_lotto(
-         p_competenza_mese             => (date_trunc('month', CURRENT_DATE) + interval '7 month')::date,
+         p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '7 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
          p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1),
          p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),
@@ -63,7 +63,7 @@ SELECT vendite.fn_get_or_create_lotto(
 
 CREATE TEMP TABLE tmp_lotto_sano_arw AS
 SELECT vendite.fn_get_or_create_lotto(
-         p_competenza_mese             => (date_trunc('month', CURRENT_DATE) + interval '8 month')::date,
+         p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '8 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
          p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1),
          p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),

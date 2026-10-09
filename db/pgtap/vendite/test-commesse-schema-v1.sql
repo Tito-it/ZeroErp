@@ -234,8 +234,8 @@ WITH ins AS (
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-    date_trunc('month', current_date)::date, current_date, current_date, r.tipo_doc_fiscale_id, r.valuta_id,
+    (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
     1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA'
   FROM tmp_refs_cs r
   RETURNING id
@@ -250,8 +250,8 @@ SELECT throws_ok(
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-    date_trunc('month', current_date)::date, current_date, current_date, r.tipo_doc_fiscale_id, r.valuta_id,
+    (SELECT id FROM tmp_commessa_cs), 'SEG-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
     1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA'
   FROM tmp_refs_cs r;
   $$,
@@ -269,8 +269,8 @@ SELECT throws_ok(
     sorgente_tipo_id, sorgente_uid
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), 'SEG-PAIR-001', r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-    date_trunc('month', current_date)::date, current_date, current_date, r.tipo_doc_fiscale_id, r.valuta_id,
+    (SELECT id FROM tmp_commessa_cs), 'SEG-PAIR-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
     1.2300000000, 'FIXED', 'BOZZA', 'NON_EMESSA',
     r.sorgente_tipo_id, NULL
   FROM tmp_refs_cs r;
@@ -288,8 +288,8 @@ SELECT throws_ok(
     prezzo_snapshot, pricing_mode, stato_approvazione, stato_emissione
   )
   SELECT
-    (SELECT id FROM tmp_commessa_cs), 'SEG-MODE-001', r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-    date_trunc('month', current_date)::date, current_date, current_date, r.tipo_doc_fiscale_id, r.valuta_id,
+    (SELECT id FROM tmp_commessa_cs), 'SEG-MODE-001', r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+    date_trunc('month', script.fn_data_operativa())::date, script.fn_data_operativa(), script.fn_data_operativa(), r.tipo_doc_fiscale_id, r.valuta_id,
     1.2300000000, 'DYNAMIC', 'BOZZA', 'NON_EMESSA'
   FROM tmp_refs_cs r;
   $$,

@@ -142,13 +142,13 @@ SELECT isnt(
 -- Riduce a 1 test + 5 da qui; aggiorno plan a posteriori nei commenti se mancano setup.
 -- Creo la versione attiva del listino (se non c'e' gia' una che copre oggi).
 INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_V5_VER', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE
+SELECT l.listino_id, 'PGTAP_V5_VER', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
   FROM tmp_ctx_listino l
 WHERE NOT EXISTS (
     SELECT 1 FROM vendite.listini_versioni lv
      WHERE lv.listino_id = l.listino_id
        AND lv.attivo = TRUE
-       AND lv.validita @> CURRENT_DATE
+       AND lv.validita @> script.fn_data_operativa()
 )
 ON CONFLICT DO NOTHING;
 
@@ -157,7 +157,7 @@ SELECT lv.id AS versione_id, lv.listino_id
   FROM vendite.listini_versioni lv, tmp_ctx_listino l
  WHERE lv.listino_id = l.listino_id
    AND lv.attivo IS TRUE
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
  ORDER BY lv.id DESC
  LIMIT 1;
 
@@ -177,7 +177,7 @@ SELECT t.categoria_id, t.utility_id, t.emittente_srid,
        (SELECT id FROM config.classi_utenze ORDER BY id LIMIT 1),
        v.listino_id,
        'PERCENTUALE', -10,
-       CURRENT_DATE, CURRENT_DATE + 365
+       script.fn_data_operativa(), script.fn_data_operativa() + 365
   FROM tmp_ctx t, tmp_ctx_versione v;
 
 -- Seconda riga matrice: fallback classe NULL + variazione VALORE_FISSO -5
@@ -190,7 +190,7 @@ SELECT t.categoria_id, t.utility_id, t.emittente_srid,
        NULL,
        v.listino_id,
        'VALORE_FISSO', -5,
-       CURRENT_DATE, CURRENT_DATE + 365
+       script.fn_data_operativa(), script.fn_data_operativa() + 365
   FROM tmp_ctx t, tmp_ctx_versione v;
 
 -- 1) STADIO 2 CATEGORIA: match con classe specifica -> prezzo = 100 * (1 + (-10)/100) = 90
@@ -198,7 +198,7 @@ SELECT is(
     (SELECT prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -214,7 +214,7 @@ SELECT is(
     (SELECT prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -242,7 +242,7 @@ INSERT INTO vendite.contratti(
     valido_dal, valido_al, listino_id, tipo_variazione_globale, valore_variazione_globale)
 SELECT 'PGTAP_V5_CONTR', t.ba_id, t.istanza_utility_id, t.utility_id,
        (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
-       CURRENT_DATE, CURRENT_DATE, v.listino_id, NULL, NULL
+       script.fn_data_operativa(), script.fn_data_operativa(), v.listino_id, NULL, NULL
   FROM tmp_ctx t, tmp_ctx_versione v;
 
 -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
@@ -270,7 +270,7 @@ SELECT is(
     (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -298,7 +298,7 @@ INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
     tipo_variazione, valore_variazione, valido_dal, valido_al)
 SELECT 'PGTAP_V5_PROMO', 'Promo test', t.articolo_id, t.uom_id,
        'PREZZO_FISSO', 12.5,
-       CURRENT_DATE + 1, CURRENT_DATE + 365
+       script.fn_data_operativa() + 1, script.fn_data_operativa() + 365
   FROM tmp_ctx t;
 
 -- 🔴 IL CONTRATTO NON SI CANCELLA PIU': SCADE. Corretto il 2026-08-18.
@@ -307,7 +307,7 @@ SELECT 'PGTAP_V5_PROMO', 'Promo test', t.articolo_id, t.uom_id,
 --   anche il DELETE su un contratto ATTIVO, ed e' giusto — un contratto attivo
 --   non si smonta, si chiude.
 --   ⚠️ Cosi' il fixture dice anche una cosa piu' vera: il contratto vale FINO A
---   OGGI (`valido_al = CURRENT_DATE`), e le asserzioni che seguono chiedono il
+--   OGGI (`valido_al = script.fn_data_operativa()`), e le asserzioni che seguono chiedono il
 --   prezzo per DOMANI, quando non applica piu'. E' la stessa data in cui vive la
 --   promo. Nessuna cancellazione, nessuno stato forzato: due documenti con
 --   validita' diverse e una domanda posta nel giorno giusto.
@@ -316,7 +316,7 @@ SELECT is(
     (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE + 1,   -- il giorno in cui la promo e' viva (vedi sopra)
+        script.fn_data_operativa() + 1,   -- il giorno in cui la promo e' viva (vedi sopra)
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -339,7 +339,7 @@ SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE + 1,   -- il contratto e' scaduto ieri: qui non applica
+        script.fn_data_operativa() + 1,   -- il contratto e' scaduto ieri: qui non applica
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -355,7 +355,7 @@ SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         999999999,
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),

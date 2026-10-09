@@ -92,7 +92,7 @@ WITH ins AS (
                               stato_doc_ordine_id, valuta_id, data,
                               fatturazione_trigger, emittente_fiscale_id, storicizza)
   SELECT r.soggetto_ruolo_id, r.billing_account_id, r.utility_id,
-         r.stato_vivo_id, r.valuta_id, current_date,
+         r.stato_vivo_id, r.valuta_id, script.fn_data_operativa(),
          'CONFERMATO', r.emittente_fiscale_id, false
     FROM tmp_rc_refs r
   RETURNING id, uid)
@@ -126,10 +126,10 @@ BEGIN
         stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
       SELECT (SELECT id FROM tmp_rc_commessa),
              'ORD:' || (SELECT uid FROM tmp_rc_ordine)::text || ':R:' || s,
-             r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-             date_trunc('month', current_date)::date,
-             date_trunc('month', current_date)::date,
-             (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+             r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+             date_trunc('month', script.fn_data_operativa())::date,
+             date_trunc('month', script.fn_data_operativa())::date,
+             (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
              r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
              'BOZZA',
              CASE WHEN s = 'EMESSA' THEN 'EMESSA' ELSE 'NON_EMESSA' END,
@@ -152,10 +152,10 @@ WITH ins AS (
     stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_rc_commessa),
          'ORD:PGTAP-RC-ESTRANEA:' || substr(md5(clock_timestamp()::text), 1, 10),
-         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-         date_trunc('month', current_date)::date,
-         date_trunc('month', current_date)::date,
-         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+         date_trunc('month', script.fn_data_operativa())::date,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
          'BOZZA', 'NON_EMESSA', r.sorgente_tipo_id, gen_random_uuid()::text
     FROM tmp_rc_refs r

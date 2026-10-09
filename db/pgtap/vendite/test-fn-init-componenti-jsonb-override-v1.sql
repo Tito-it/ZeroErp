@@ -92,7 +92,7 @@ SELECT CASE
                     SELECT 1 FROM catalogo.articoli_componenti ac
                      WHERE ac.prodotto_id = a.id
                        AND COALESCE(ac.attivo, TRUE) = TRUE
-                       AND ac.validita @> CURRENT_DATE
+                       AND ac.validita @> script.fn_data_operativa()
                 )
          )
     THEN skip('4) nessuna riga composita con BoM attiva: skip test operatore ?')
@@ -111,7 +111,7 @@ SELECT CASE
                    SELECT 1 FROM catalogo.articoli_componenti ac
                     WHERE ac.prodotto_id = a.id
                       AND COALESCE(ac.attivo, TRUE) = TRUE
-                      AND ac.validita @> CURRENT_DATE
+                      AND ac.validita @> script.fn_data_operativa()
                )
              LIMIT 1;
 
@@ -119,7 +119,7 @@ SELECT CASE
                 SELECT vendite.fn_preventivo_riga_componenti_init(
                     v_riga_id,
                     1::bigint,
-                    CURRENT_DATE,
+                    script.fn_data_operativa(),
                     '{"chiave-non-esistente-xxxxxxxx": 50.00}'::jsonb
                 ) INTO v_dummy;
             EXCEPTION WHEN SQLSTATE 'P0001' THEN
@@ -170,7 +170,7 @@ SELECT pr.id AS riga_id, ac.componente_id
  WHERE a.is_composito = TRUE
    AND COALESCE(ac.obbligatorio, TRUE) = TRUE
    AND COALESCE(ac.attivo, TRUE) = TRUE
-   AND ac.validita @> CURRENT_DATE
+   AND ac.validita @> script.fn_data_operativa()
    -- LA condizione che mancava: la funzione esce con RETURN 0 se la riga
    -- ha gia' componenti, e non raggiunge mai il guard che si vuole provare.
    AND NOT EXISTS (
@@ -192,7 +192,7 @@ SELECT CASE
                 -- riga non ancora inizializzata: l'operatore ? deve trovare la
                 -- chiave e il guard deve bloccare.
                 PERFORM vendite.fn_preventivo_riga_componenti_init(
-                    %L::bigint, 1::bigint, CURRENT_DATE, %L::jsonb);
+                    %L::bigint, 1::bigint, script.fn_data_operativa(), %L::jsonb);
             END
             $inner$
             $$,

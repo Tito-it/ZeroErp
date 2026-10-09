@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidio-processi-testo-per-causa §3 B.2 — il testo di un presidio
+# puo' avere una VARIANTE: quella delle righe con una certa causa.
+#
+# ── ⭐ LA CHIAVE DIVENTA (vista, lingua, variante) ───────────────────
+#   `variante` NULL e' il testo del presidio, come fino a oggi; valorizzata e'
+#   il testo per le righe della vista la cui colonna dbops.presidi.colonna_variante
+#   (20261009-32) vale quel valore.
+#   ⛔ NULLS NOT DISTINCT, e non e' un dettaglio: con l'indice di default due
+#     testi generici dello stesso presidio e lingua convivrebbero (i NULL sono
+#     distinti fra loro), e il lettore ne pescherebbe uno a caso. Il vincolo
+#     vecchio (vista, lingua) proibiva proprio questo, e il nuovo non deve
+#     perderlo per strada.
+#   ⭐ Il mirror (80_data/20261006-06) chiava sulle stesse tre colonne:
+#     Liquibase rende la chiave NULL come `variante is NULL` (verificato con
+#     updateSQL offline, 2026-10-09), quindi il ri-caricamento aggiorna la riga
+#     generica invece di duplicarla.
+#   ⚠️ La UNIQUE nuova comincia ancora da `vista`: copre la FK verso
+#     dbops.presidi per prefisso, come la vecchia (linee-guida-sql §8.7).
+#
+# ── ⛔ COSA NON STA QUI, E PERCHE' ──────────────────────────────────
+#   «Una variante solo su un presidio che dichiara colonna_variante» e «ogni
+#   causa che la vista puo' produrre ha il suo testo italiano» sono vincoli fra
+#   due oggetti (e il secondo guarda dentro una vista): li presidiano i pgTAP,
+#   in CI. Il generico NON e' il ripiego di una variante che manca.
+#
+# ⚠️ RICADUTA BE (brief §3, «Ricaduta BE/FE»): la LATERAL di
+#   presidi_repository legge il testo per (vista, lingua) con LIMIT 1. Da
+#   quando il seed porta le varianti, senza `AND variante IS NULL` pescherebbe
+#   una riga qualsiasi fra generico e varianti. Il filtro va col deploy.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261009-33-alter-presidi-testi-add-variante-mctit.yaml
+
+  - changeSet:
+      id: 20261009-33-alter-presidi-testi-add-variante
+      author: mctit
+      failOnError: true
+      comment: >
+        Aggiunge dbops.presidi_testi.variante (NULL = testo del presidio) e
+        porta la chiave naturale da (vista, lingua) a (vista, lingua, variante)
+        NULLS NOT DISTINCT. brief-db-presidio-processi-testo-per-causa §3 B.2.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi_testi
+        - not:
+            - columnExists:
+                schemaName: dbops
+                tableName: presidi_testi
+                columnName: variante
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.presidi_testi
+                  ADD COLUMN variante text NULL;
+
+              -- Una variante vuota non e' «nessuna variante»: e' NULL.
+              ALTER TABLE dbops.presidi_testi
+                  ADD CONSTRAINT chk_presidi_testi_variante_non_vuota
+                  CHECK (btrim(variante) <> '');
+
+              ALTER TABLE dbops.presidi_testi
+                  DROP CONSTRAINT uq_presidi_testi_vista_lingua;
+
+              ALTER TABLE dbops.presidi_testi
+                  ADD CONSTRAINT uq_presidi_testi_vista_lingua_variante
+                  UNIQUE NULLS NOT DISTINCT (vista, lingua, variante);
+
+              COMMENT ON TABLE dbops.presidi_testi IS
+                  'Il testo di un presidio per CHI DEVE AGIRE, per lingua: `significato` (cosa vuol dire una riga) e `azione` (cosa fare per spegnerlo). ⛔ Non sostituisce il COMMENT della vista ne'' la `nota` di dbops.presidi: quelli sono scritti per chi MANTIENE il presidio e restano com''erano. Chi lo spegne e'' un dato del presidio, non del testo: dbops.presidi.chi_agisce. Lo leggono il pannello dei processi automatici e il digest (che va per email, senza i locali del frontend: per questo il testo sta a DB, come config.messaggi_errore). ⭐ VARIANTI, dal 2026-10-09: `variante` NULL e'' il testo del presidio; valorizzata e'' il testo delle righe la cui colonna dbops.presidi.colonna_variante vale quel valore. Chiave (vista, lingua, variante) NULLS NOT DISTINCT. ⛔ Il testo generico non fa da ripiego per una variante senza testo; una lingua che manca ripiega sull''italiano DELLA STESSA variante. La completezza — ogni presidio attivo, non obsoleto e non INVENTARIO ha la riga `it` generica; le varianti stanno solo sui presidi che dichiarano colonna_variante, e ognuna ha la sua riga `it` — la garantisce il pgTAP dbops/test-presidi-testi-v1, perche'' un CHECK non guarda un''altra tabella; che ogni causa che la vista puo'' produrre abbia il suo testo lo garantisce il pgTAP del presidio. Seed: 80_data/sql/dbops/presidi_testi.csv. Brief: brief-db-presidi-cosa-significa-cosa-fare §4.1, brief-db-presidio-processi-testo-per-causa §3 B.';
+
+              COMMENT ON COLUMN dbops.presidi_testi.variante IS
+                  'NULL = il testo del presidio. Valorizzata = il testo delle righe della vista la cui colonna dbops.presidi.colonna_variante ha questo valore (per il presidio dei processi: la `causa`). ⛔ Il generico non fa da ripiego per una variante che manca: darebbe il rimedio sbagliato, in silenzio — e'' il difetto del 2026-10-09. Non vuota per vincolo. Brief: brief-db-presidio-processi-testo-per-causa §3 B.2.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DELETE FROM dbops.presidi_testi WHERE variante IS NOT NULL;
+              ALTER TABLE dbops.presidi_testi
+                  DROP CONSTRAINT IF EXISTS uq_presidi_testi_vista_lingua_variante;
+              ALTER TABLE dbops.presidi_testi
+                  ADD CONSTRAINT uq_presidi_testi_vista_lingua UNIQUE (vista, lingua);
+              ALTER TABLE dbops.presidi_testi DROP COLUMN IF EXISTS variante;
