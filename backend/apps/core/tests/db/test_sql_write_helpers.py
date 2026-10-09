@@ -316,10 +316,10 @@ class EstensioniTests(unittest.TestCase):
     #     parametri.
     def test_insert_espressioni_letterali(self) -> None:
         sql, params = self._insert(
-            "s.t", {"a": 1}, allowed=None, espressioni={"valido_dal": "CURRENT_DATE"},
+            "s.t", {"a": 1}, allowed=None, espressioni={"valido_dal": "script.fn_data_operativa()"},
         )
         self.assertEqual(
-            sql, "INSERT INTO s.t (a, valido_dal) VALUES (%s, CURRENT_DATE) RETURNING id",
+            sql, "INSERT INTO s.t (a, valido_dal) VALUES (%s, script.fn_data_operativa()) RETURNING id",
         )
         self.assertEqual(params, [1])
 
@@ -327,7 +327,7 @@ class EstensioniTests(unittest.TestCase):
     def test_insert_espressione_su_colonna_gia_in_values_rifiutata(self) -> None:
         with patch(f"{_MODULO}.connection") as conn, self.assertRaises(RuntimeError):
             execute_dynamic_insert(
-                "s.t", {"a": 1}, allowed=None, espressioni={"a": "CURRENT_DATE"},
+                "s.t", {"a": 1}, allowed=None, espressioni={"a": "script.fn_data_operativa()"},
             )
         conn.cursor.assert_not_called()
 
@@ -335,7 +335,7 @@ class EstensioniTests(unittest.TestCase):
     def test_insert_espressione_fuori_whitelist_rifiutata(self) -> None:
         with patch(f"{_MODULO}.connection") as conn, self.assertRaises(RuntimeError):
             execute_dynamic_insert(
-                "s.t", {"a": 1}, allowed={"a"}, espressioni={"b": "CURRENT_DATE"},
+                "s.t", {"a": 1}, allowed={"a"}, espressioni={"b": "script.fn_data_operativa()"},
             )
         conn.cursor.assert_not_called()
 

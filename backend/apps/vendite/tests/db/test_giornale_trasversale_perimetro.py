@@ -62,7 +62,7 @@ class _Mondo:
                  emittente_soggetto_ruolo_id, stato_doc_fiscale_id, meta)
             VALUES ('E2E-GIORNALE-' || %s,
                     (SELECT id FROM config.tipi_doc_fiscale WHERE codice_interno = 'BACKOFFICE'),
-                    date_trunc('month', CURRENT_DATE)::date, %s,
+                    date_trunc('month', script.fn_data_operativa())::date, %s,
                     (SELECT id FROM config.stati_doc_fiscale WHERE codice_interno = 'DRAFT'),
                     '{"test_scope": "e2e_giornale_trasversale"}'::jsonb)
             RETURNING id

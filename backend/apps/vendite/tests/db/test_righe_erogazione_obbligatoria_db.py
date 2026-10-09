@@ -69,7 +69,7 @@ _CONTRATTO = (
     " SELECT 'EROGOBB-' || substr(gen_random_uuid()::text, 1, 8),"
     " m.billing_account_id, m.istanza_utility_id, m.utility_id,"
     " (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),"
-    " (SELECT listino_id FROM _l), CURRENT_DATE, CURRENT_DATE + 365"
+    " (SELECT listino_id FROM _l), script.fn_data_operativa(), script.fn_data_operativa() + 365"
     " FROM _m m RETURNING id"
 )
 

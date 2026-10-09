@@ -34,7 +34,7 @@ def _tipo_prestazione(cur) -> int:
     cur.execute(
         "SELECT tp.id FROM pratiche.tipi_prestazione tp "
         " WHERE tp.attivo "
-        "   AND (tp.obsoleto_dal IS NULL OR tp.obsoleto_dal > CURRENT_DATE) "
+        "   AND (tp.obsoleto_dal IS NULL OR tp.obsoleto_dal > script.fn_data_operativa()) "
         "   AND tp.pre_attivazione = tp.post_attivazione "
         "   AND pratiche.fn_risolvi_definizione(tp.id, NULL) IS NOT NULL "
         " ORDER BY tp.id LIMIT 1"

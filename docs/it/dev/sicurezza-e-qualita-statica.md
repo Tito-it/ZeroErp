@@ -90,7 +90,7 @@ porta argomenti, così `ruff check` a mano e il cancello dicono la stessa cosa.
 | `G`, `LOG` | uso corretto del logging (`logger.exception` dentro un `except`, e solo lì) |
 | **`S`** | **sicurezza** (le regole di Bandit, via flake8-bandit): SQL composto a stringhe, `except: pass`, template senza autoescape, `subprocess`, password cablate, hash deboli, `pickle`/`yaml.load`, ... |
 | `B` | bugbear, accesa il 2026-09-28: fra le altre `zip()` senza `strict=` (tronca **in silenzio** alla lista più corta: si scrive `strict=True`, e `strict=False` solo dove la troncatura è voluta, col perché), una funzione nel ciclo che legge la variabile del ciclo, `raise` dentro un `except` senza `from` |
-| `DTZ` | flake8-datetimez, accesa il 2026-10-09 a zero: `date.today()`, `datetime.now()` senza fuso, `datetime(...)`/`strptime` naive — il giorno e l'ora del **processo** (`TIME_ZONE = 'UTC'`), che non è il fuso dell'azienda. L'«oggi» è `fuso_aziendale.oggi_aziendale()`, l'ora mostrata `locale_formatters`; un naive voluto si marca col motivo ([brief un-solo-fuso-aziendale](work-in-progress/brief-be-db-fe-un-solo-fuso-aziendale.md) B-9) |
+| `DTZ` | flake8-datetimez, accesa il 2026-10-09 a zero: `date.today()`, `datetime.now()` senza fuso, `datetime(...)`/`strptime` naive — il giorno e l'ora del **processo** (`TIME_ZONE = 'UTC'`), che non è il fuso dell'azienda. L'«oggi» è `fuso_aziendale.oggi_aziendale()`, l'ora mostrata `locale_formatters`; un naive voluto si marca col motivo ([brief un-solo-fuso-aziendale](work-done/brief-be-db-fe-un-solo-fuso-aziendale.md) B-9) |
 | `RUF100` | `# noqa` morti: una direttiva che non sopprime più niente |
 
 ### Le eccezioni, e perché

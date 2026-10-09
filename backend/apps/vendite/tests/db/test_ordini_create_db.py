@@ -7,7 +7,7 @@
 #        davvero in `vendite.ordini` e i valori riletti sono quelli scritti.
 #        Presidia le convenzioni del BB che un mock non vede:
 #          · `skip_none` — un opzionale None si OMETTE e vale il DEFAULT del
-#            DB (`data` = CURRENT_DATE, `fatturazione_immediata` = false,
+#            DB (`data` = fn_data_operativa(), `fatturazione_immediata` = false,
 #            `canale_origine` = ADMIN) o il trigger BEFORE INSERT
 #            (`fatturazione_trigger` ereditato dal cliente da
 #            `trgfn_ordini_normalize`: NOT NULL senza DEFAULT, quindi un NULL
@@ -65,7 +65,7 @@ class CreateOrdineDbTests(unittest.TestCase):
                     valuta_id = cur.fetchone()[0]
                     cur.execute("SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT'")
                     stato_bozza_id = cur.fetchone()[0]
-                    cur.execute("SELECT current_date")
+                    cur.execute("SELECT script.fn_data_operativa()")
                     oggi = cur.fetchone()[0]
                     repo = OrdiniRepository()
 

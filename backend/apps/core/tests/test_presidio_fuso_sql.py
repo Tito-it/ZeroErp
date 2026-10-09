@@ -18,6 +18,7 @@
 
 1. test_nessun_sql_prende_oggi_dalla_sessione
 2. test_la_scansione_vede_le_forme_vietate (controprova)
+3. test_nessun_test_prende_oggi_dalla_sessione   (T-5, gemello del guardrail pgTAP)
 """
 
 from __future__ import annotations
@@ -38,14 +39,21 @@ OGGI_DELLA_SESSIONE = re.compile(
 )
 
 
+# I due file di presidio nominano le forme vietate apposta (controprova).
+_PRESIDI = (
+    "apps/core/tests/test_presidio_fuso_sql.py",
+    "apps/core/tests/db/test_presidio_fuso_sql_db.py",
+)
+
+
 # Scopo: (percorso relativo, numero, testo) di ogni riga di CODICE del backend
-#        fuori dai test: i commenti `#` non contano, la storia di cio' che si
-#        e' tolto ci sta legittimamente.
-def righe_di_codice() -> Iterator[tuple[str, int, str]]:
+#        — fuori dai test, o dei soli test con `dei_test=True` — : i commenti
+#        `#` non contano, la storia di cio' che si e' tolto ci sta legittimamente.
+def righe_di_codice(*, dei_test: bool = False) -> Iterator[tuple[str, int, str]]:
     radice = Path(settings.BASE_DIR)
     for percorso in sorted((radice / "apps").rglob("*.py")):
         relativo = str(percorso.relative_to(radice))
-        if "/tests/" in relativo:
+        if ("/tests/" in relativo) != dei_test or relativo in _PRESIDI:
             continue
         for numero, riga in enumerate(percorso.read_text().split("\n"), start=1):
             if riga.strip().startswith("#"):
@@ -78,3 +86,17 @@ class OggiNonDallaSessioneTests(SimpleTestCase):
         self.assertIsNone(OGGI_DELLA_SESSIONE.search("v.validita @> (SELECT script.fn_data_operativa())"))
         self.assertIsNone(OGGI_DELLA_SESSIONE.search("timezone.localtime(value, fuso_aziendale())"))
         self.assertTrue(any(True for _ in righe_di_codice()))
+
+    # 3. Anche l'SQL dei TEST prende «oggi» dall'azienda: un test che scrive
+    #    `CURRENT_DATE` confronta il giorno della SESSIONE (UTC) col DEFAULT
+    #    aziendale, ed e' verde solo finche' i due coincidono. Col parametro
+    #    ostile della CI (T-5) erano cinque rossi; e' il gemello del guardrail
+    #    che il team DB applica ai pgTAP (`guardrail_pgtap_preambolo.py`).
+    def test_nessun_test_prende_oggi_dalla_sessione(self) -> None:
+        trovate = [
+            f"{p}:{n}: {r.strip()}"
+            for p, n, r in righe_di_codice(dei_test=True)
+            if OGGI_DELLA_SESSIONE.search(r)
+        ]
+        self.assertEqual(trovate, [], "nei test l'oggi e' script.fn_data_operativa() / oggi_aziendale()")
+        self.assertTrue(any(True for _ in righe_di_codice(dei_test=True)))

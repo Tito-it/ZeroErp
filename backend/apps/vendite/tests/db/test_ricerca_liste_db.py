@@ -106,7 +106,7 @@ _FIXTURE: tuple[str, ...] = (
             (codice, descrizione, articolo_id, uom_id, tipo_variazione, valore_variazione,
              valido_dal, valido_al)
         SELECT 'RVPRM-' || %(sfx)s, 'Promo ricdescprm', a.id, a.uom_id, 'PERCENTUALE', 5,
-               current_date + 1, current_date + 30
+               script.fn_data_operativa() + 1, script.fn_data_operativa() + 30
           FROM catalogo.articoli a
          WHERE a.id = (SELECT articolo_id FROM _art)
         RETURNING id
@@ -199,7 +199,7 @@ _FIXTURE: tuple[str, ...] = (
                stato_doc_contratto_id, valido_dal, valido_al)
         SELECT 'RVCNT-' || %(sfx)s, m.billing_account_id, m.istanza_utility_id, m.utility_id,
                (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
-               current_date, current_date + 365
+               script.fn_data_operativa(), script.fn_data_operativa() + 365
           FROM _mondo m
         RETURNING id
     )
@@ -239,7 +239,7 @@ _FIXTURE: tuple[str, ...] = (
         INSERT INTO vendite.offerte_commerciali (emittente_fiscale_id, billing_account_id,
                istanza_utility_id, utility_id, listino_id, validita_dal, stato_doc_offerta_id)
         SELECT m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id, m.utility_id,
-               (SELECT listino_id FROM _lst), current_date,
+               (SELECT listino_id FROM _lst), script.fn_data_operativa(),
                (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
           FROM _mondo m
         RETURNING id
