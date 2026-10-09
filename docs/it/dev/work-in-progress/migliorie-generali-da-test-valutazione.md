@@ -927,7 +927,8 @@ riga di DDT puo' evadere l'ordine di un altro cliente, e il reso puo' avere un B
 
 Dettaglio, decisioni di Tid (tutte chiuse il 2026-10-09) e forma proposta nel brief
 [brief-db-esecutivi-ba-coppia.md](brief-db-esecutivi-ba-coppia.md). 🔧 Lato DB applicato su dbdev il
-2026-10-09, verde il 2026-10-10 (corsa completa di Tid, nessuna regressione); aperti: tre ritocchi DB decisi il 2026-10-10, pgTAP mancanti, ricaduta BE/FE (§10.4 del brief).
+2026-10-09, verde il 2026-10-10 (corsa completa di Tid, nessuna regressione); giro DB 2 (le decisioni del 2026-10-10) applicato e verde il 2026-10-10 (§11 del brief); resta la
+ricaduta BE/FE.
 
 ---
 
@@ -1125,7 +1126,7 @@ D6 e il registro dei rossi in CI.
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
-      `brief-db-esecutivi-ba-coppia` (decisioni chiuse il 2026-10-09; lato DB applicato su dbdev il 2026-10-09, aperti: §10).
+      `brief-db-esecutivi-ba-coppia` (decisioni chiuse il 2026-10-09; lato DB, giro 1 e 2, applicato e verde; resta il BE/FE: §11.5).
 
 ---
 

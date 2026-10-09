@@ -5,7 +5,8 @@
 -- Test: ordine, DDT e reso parlano del cliente come preventivo, offerta e
 --   contratto — il billing account, e le copie in testata legate a lui.
 --   Brief: docs/it/dev/work-in-progress/brief-db-esecutivi-ba-coppia.md
---   ChangeSet 20261009-62 ... -85.
+--   ChangeSet 20261009-62 ... -92, 20261010-02 ... -07 (giro 2: BB delle copie
+--   dal BA, sorgente non trovata = errore).
 --
 -- ⭐ I soggetti li FABBRICA (dbops.fn_pgtap_crea_emittente_operatore,
 --   fn_pgtap_crea_cliente_ba): il test non pesca dai dati della macchina e
@@ -22,12 +23,12 @@
 --    3) causali che vogliono il cliente: VENDITA, OMAGGIO, CAMPIONATURA, CONTO_VISIONE
 --   ORDINE (D-1, D-5)
 --    4) un ordine senza BA non nasce (23502)
---    5) col BA di A e il ruolo di B non nasce (23503, FK composta)
+--    5) col BA di A e il ruolo di B non nasce (E_DOC_CLIENTE_DIVERSO_DA_BA, BB)
 --    6) senza utility nasce, con la utility del BA
 --   DDT (D-2, D-4, D-5)
 --    7) standalone col BA e senza utility: la utility la mette il BA
 --    8) utility senza BA: CHECK «tutti e due o nessuno» (23514)
---    9) col BA di A e il destinatario di B: FK composta (23503)
+--    9) col BA di A e il destinatario di B: E_DOC_CLIENTE_DIVERSO_DA_BA (BB)
 --   10) in bozza il BA si sceglie: destinatario e utility lo seguono
 --   11) bozza CONTO_VISIONE senza BA: la check d'emissione ha il motivo
 --   12) bozza TRASFERIMENTO senza BA: nessun motivo cliente
@@ -53,12 +54,25 @@
 --   28) fuori bozza il DDT non cambia emittente (E_DOC_EMITTENTE_FUORI_BOZZA)
 --   29) fuori bozza l'ordine non cambia emittente
 --   30) preventivo: emittente sul BB fuori bozza, non piu' nel lock assoluto (§9.9)
+--   GIRO 2 (brief §10.2 e §10.3, 2026-10-10)
+--   31) ordine con la utility di un altro BA: E_DOC_CLIENTE_DIVERSO_DA_BA
+--   32) cliente col BA di A e il ruolo di B: E_DOC_CLIENTE_DIVERSO_DA_BA (prima 23503)
+--   33) DDT: il BA tolto in bozza toglie la utility e lascia il destinatario
+--   34) omaggio e campionatura senza BA: la check d'emissione ha il motivo cliente
+--   35) DDT senza BA (conto lavoro) consegnato: il reso nasce senza BA (D-3, «NULL compreso»)
+--   36) DDT con un ordine sorgente che non esiste: E_DOC_SORGENTE_NON_TROVATA
+--   37) reso spostato su un DDT che non esiste: E_DOC_SORGENTE_NON_TROVATA (UPDATE)
+--   38) lock dell'emittente fuori bozza montato su offerte, contratti e resi
+--   39) DDT di E1 dall'ordine di E2 (invisibile): E_DOC_SORGENTE_NON_TROVATA
+--       ⚠️ ROSSO DA OWNER, VERDE COME APP: da owner la RLS non c'e', l'ordine si
+--       vede e parla E_DOC_CLIENTE_DIVERSO_DA_SORGENTE. Per ultimo: cambia
+--       contesto (memoria del progetto, prova pre-apply da owner).
 -- ------------------------------------------------------------
 BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(30);
+SELECT plan(39);
 
 -- ============================================================
 -- FIXTURE
@@ -89,6 +103,9 @@ SELECT (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT')  
        (SELECT id FROM config.causali_trasporto WHERE codice = 'CONTO_VISIONE')  AS cv,
        (SELECT id FROM config.causali_trasporto WHERE codice = 'TRASFERIMENTO')  AS trasf,
        (SELECT id FROM config.causali_trasporto WHERE codice = 'VENDITA')        AS vendita,
+       (SELECT id FROM config.causali_trasporto WHERE codice = 'OMAGGIO')        AS omaggio,
+       (SELECT id FROM config.causali_trasporto WHERE codice = 'CAMPIONATURA')   AS campionatura,
+       (SELECT id FROM config.causali_trasporto WHERE codice = 'CONTO_LAVORO')   AS conto_lavoro,
        (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_VENDITA')  AS src_ordine,
        (SELECT id FROM config.sorgenti WHERE codice_interno = 'DDT_VENDITA')     AS src_ddt,
        (SELECT id FROM config.tipi_indirizzi WHERE codice_interno = 'CON')       AS ind_con,
@@ -162,14 +179,14 @@ SELECT throws_ok(
     '23502', NULL,
     '4) un ordine senza billing account non nasce (D-1)');
 
-SELECT throws_ok(
+SELECT throws_like(
     format($q$INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id, emittente_fiscale_id, valuta_id)
               VALUES (%s, %s, %s, %s, %s)$q$,
            (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'B'),
            (SELECT billing_account_id FROM _c WHERE lato = 'A'),
            (SELECT ord_draft FROM _k), (SELECT ef FROM _k), (SELECT valuta FROM _k)),
-    '23503', NULL,
-    '5) col BA di A e il ruolo di B l''ordine non nasce: la FK composta li lega');
+    '%il cliente non corrisponde al billing account%',
+    '5) col BA di A e il ruolo di B l''ordine non nasce: E_DOC_CLIENTE_DIVERSO_DA_BA dal BB (la FK composta resta sotto)');
 
 CREATE TEMP TABLE _ord AS
 WITH o AS (
@@ -218,13 +235,13 @@ SELECT throws_ok(
     '23514', NULL,
     '8) utility senza billing account: chk_ddt_ba_utility_insieme');
 
-SELECT throws_ok(
+SELECT throws_like(
     format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, billing_account_id, stato_doc_ddt_id, emittente_fiscale_id)
               VALUES (%s, %s, %s, %s)$q$,
            (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'B'),
            (SELECT billing_account_id FROM _c WHERE lato = 'A'),
            (SELECT ddt_draft FROM _k), (SELECT ef FROM _k)),
-    '23503', NULL,
+    '%il cliente non corrisponde al billing account%',
     '9) col BA di A il destinatario non e'' B: la consegna a terzi passa dagli indirizzi (D-4)');
 
 -- 10) in bozza il BA si sceglie, e le copie lo seguono
@@ -238,6 +255,9 @@ SELECT is(
     '10) in bozza il BA si sceglie: destinatario e utility seguono il billing account');
 
 UPDATE vendite.ddt SET billing_account_id = NULL WHERE id = (SELECT trasf FROM _d);
+
+CREATE TEMP TABLE _t33 AS
+SELECT d.utility_id, d.destinatario_soggetto_ruolo_id FROM vendite.ddt d WHERE d.id = (SELECT trasf FROM _d);
 
 SELECT ok(
     (SELECT script.fn_check_ddt_emittibile(d) @> '[{"codice": "E_DDT_CLIENTE_OBBLIGATORIO"}]'
@@ -418,6 +438,128 @@ SELECT is(
         AND t.tgname IN ('trg_preventivi_a05_lock_fuori_bozza_upd', 'trg_preventivi_a10_lock_columns_upd')),
     'trg_preventivi_a05_lock_fuori_bozza_upd:true,trg_preventivi_a10_lock_columns_upd:false',
     '30) preventivo: l''emittente sta nel BB fuori bozza, non piu'' nel lock assoluto (codice dell''operatore)');
+
+-- ============================================================
+-- GIRO 2 (brief §10.2 e §10.3, 2026-10-10)
+-- ============================================================
+SELECT throws_like(
+    format($q$INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, utility_id, stato_doc_ordine_id, emittente_fiscale_id, valuta_id)
+              VALUES (%s, %s, %s, %s, %s, %s)$q$,
+           (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'A'),
+           (SELECT billing_account_id FROM _c WHERE lato = 'A'),
+           (SELECT u.id FROM config.utilities u
+             WHERE u.id <> (SELECT utility_id FROM _c WHERE lato = 'A') ORDER BY u.id LIMIT 1),
+           (SELECT ord_draft FROM _k), (SELECT ef FROM _k), (SELECT valuta FROM _k)),
+    '%la utility non corrisponde al billing account%',
+    '31) ordine con una utility diversa da quella del suo BA: E_DOC_CLIENTE_DIVERSO_DA_BA');
+
+SELECT throws_like(
+    format($q$INSERT INTO anagrafiche.clienti (soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, billing_account_id)
+              VALUES (%s, %s, (SELECT id FROM config.stati_cliente WHERE codice_interno = 'PR' LIMIT 1), %s)$q$,
+           (SELECT soggetto_ruolo_id   FROM _c WHERE lato = 'B'),
+           (SELECT istanza_utility_id  FROM _c WHERE lato = 'A'),
+           (SELECT billing_account_id  FROM _c WHERE lato = 'A')),
+    '%il cliente non corrisponde al billing account%',
+    '32) cliente col BA di A e il ruolo di B: E_DOC_CLIENTE_DIVERSO_DA_BA, come ordine e DDT (prima il 23503 della FK)');
+
+SELECT is(
+    (SELECT (utility_id IS NULL) AND destinatario_soggetto_ruolo_id = (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'B') FROM _t33),
+    true,
+    '33) DDT: il BA tolto in bozza toglie la utility (CHECK tutti e due o nessuno) e lascia il destinatario');
+
+-- ⚠️ Le bolle si creano PRIMA e si leggono dopo: una query non vede le righe
+--   che inserisce lei stessa (stessa istantanea).
+CREATE TEMP TABLE _d34 AS
+SELECT ct.codice,
+       pg_temp.ddt_bozza(NULL, (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'A'), ct.id) AS id
+  FROM config.causali_trasporto ct
+ WHERE ct.id IN ((SELECT omaggio FROM _k), (SELECT campionatura FROM _k));
+
+SELECT is(
+    (SELECT string_agg(x.codice, ',' ORDER BY x.codice)
+       FROM _d34 x
+       JOIN vendite.ddt d ON d.id = x.id
+      WHERE script.fn_check_ddt_emittibile(d) @> '[{"codice": "E_DDT_CLIENTE_OBBLIGATORIO"}]'),
+    'CAMPIONATURA,OMAGGIO',
+    '34) omaggio e campionatura senza BA: non si emettono, la causale vuole un cliente (D-2 b)');
+
+-- 35) una bolla di conto lavoro senza BA, portata a consegnata, e il suo reso
+CREATE TEMP TABLE _cl AS
+SELECT pg_temp.ddt_bozza(NULL, (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'A'),
+                         (SELECT conto_lavoro FROM _k)) AS id;
+UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_emesso FROM _k)     WHERE id = (SELECT id FROM _cl);
+UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_spedito FROM _k)    WHERE id = (SELECT id FROM _cl);
+UPDATE vendite.ddt SET stato_doc_ddt_id = (SELECT ddt_consegnato FROM _k) WHERE id = (SELECT id FROM _cl);
+
+CREATE TEMP TABLE _r35 AS
+WITH r AS (
+    INSERT INTO vendite.resi (stato_doc_reso_id, sorgente_tipo_id, sorgente_uid, destinatario_soggetto_ruolo_id, emittente_fiscale_id)
+    SELECT k.reso_draft, k.src_ddt, d.uid, d.destinatario_soggetto_ruolo_id, k.ef
+      FROM _k k, vendite.ddt d WHERE d.id = (SELECT id FROM _cl)
+    RETURNING id, billing_account_id, utility_id
+)
+SELECT * FROM r;
+
+SELECT is(
+    (SELECT (billing_account_id IS NULL AND utility_id IS NULL) FROM _r35),
+    true,
+    '35) dal DDT di conto lavoro senza BA il reso nasce senza BA: «quello del DDT, NULL compreso» (D-3)');
+
+SELECT throws_like(
+    format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_uid)
+              VALUES (%s, %s, %s, %s, %L)$q$,
+           (SELECT soggetto_ruolo_id FROM _c WHERE lato = 'A'),
+           (SELECT ddt_draft FROM _k), (SELECT ef FROM _k),
+           (SELECT src_ordine FROM _k), gen_random_uuid()),
+    '%il documento da cui nasce (ordine) non esiste o non e'' visibile%',
+    '36) DDT che dichiara un ordine che non esiste: E_DOC_SORGENTE_NON_TROVATA (fail-closed)');
+
+SELECT throws_like(
+    format('UPDATE vendite.resi SET sorgente_uid = %L WHERE id = %s',
+           gen_random_uuid(), (SELECT id FROM _r35)),
+    '%il documento da cui nasce (DDT) non esiste o non e'' visibile%',
+    '37) reso spostato su un DDT che non esiste: E_DOC_SORGENTE_NON_TROVATA (su UPDATE il guard del consegnato non gira)');
+
+SELECT is(
+    (SELECT string_agg(c.relname || ':' || ('emittente_fiscale_id' = ANY (dbops.fn_trigger_argomenti(t.tgargs)))::text,
+                       ',' ORDER BY c.relname)
+       FROM pg_trigger t
+       JOIN pg_class c ON c.oid = t.tgrelid
+       JOIN pg_proc p ON p.oid = t.tgfoid
+      WHERE p.proname = 'trgfn_doc_testata_lock_fuori_bozza'
+        AND t.tgrelid IN ('vendite.offerte_commerciali'::regclass, 'vendite.contratti'::regclass,
+                          'vendite.resi'::regclass)),
+    'contratti:true,offerte_commerciali:true,resi:true',
+    '38) l''emittente fuori bozza e'' nel BB di testata anche su offerte, contratti e resi (§9.8)');
+
+-- 39) un secondo emittente, col suo cliente e il suo ordine; poi si torna
+--     all'operatore del primo, che quell'ordine non lo vede.
+CREATE TEMP TABLE _m2 AS
+SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m2)); END $ctx$;
+CREATE TEMP TABLE _c2 AS
+SELECT c.* FROM dbops.fn_pgtap_crea_cliente_ba('esecutivi E2') c;
+SET CONSTRAINTS ALL IMMEDIATE;
+CREATE TEMP TABLE _ord2 AS
+WITH o AS (
+    INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+                                emittente_fiscale_id, valuta_id)
+    SELECT c.soggetto_ruolo_id, c.billing_account_id, k.ord_draft, m.emittente_fiscale_id, k.valuta
+      FROM _c2 c, _k k, _m2 m
+    RETURNING uid
+)
+SELECT * FROM o;
+DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m)); END $ctx$;
+
+SELECT throws_like(
+    format($q$INSERT INTO vendite.ddt (destinatario_soggetto_ruolo_id, billing_account_id, stato_doc_ddt_id, emittente_fiscale_id, sorgente_tipo_id, sorgente_uid)
+              VALUES (%s, %s, %s, %s, %s, %L)$q$,
+           (SELECT soggetto_ruolo_id  FROM _c WHERE lato = 'A'),
+           (SELECT billing_account_id FROM _c WHERE lato = 'A'),
+           (SELECT ddt_draft FROM _k), (SELECT ef FROM _k),
+           (SELECT src_ordine FROM _k), (SELECT uid FROM _ord2)),
+    '%il documento da cui nasce (ordine) non esiste o non e'' visibile%',
+    '39) DDT di E1 col BA di E1 dall''ordine di E2, invisibile: E_DOC_SORGENTE_NON_TROVATA (rosso da owner, verde come app)');
 
 SELECT * FROM finish();
 ROLLBACK;

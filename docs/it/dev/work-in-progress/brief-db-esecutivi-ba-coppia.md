@@ -7,16 +7,18 @@
 > ha reso `billing_account_id` NOT NULL e legato alla coppia (istanza, utility) su preventivo,
 > offerta e contratto. Chiudendo il lato BE/FE e' emerso che i documenti **esecutivi** di vendita
 > (ordine, DDT, reso) sono rimasti fuori: e' la stessa asimmetria, un livello piu' in basso.
-> **Stato al 2026-10-10:** ✅ **giro DB applicato su dbdev e verde**: migrazione applicata, corsa pgTAP
-> completa di Tid tutta verde, nessuna regressione (§10.5). 🔧 **Non chiuso**: restano i tre ritocchi DB
-> decisi il 2026-10-10, i pgTAP mancanti, le pagine `manual/` e la ricaduta BE/FE (§10.4).
+> **Stato al 2026-10-10:** ✅ **lato DB applicato su dbdev e verde, giro 1 e giro 2** (Tid: «migrazione
+> applicata, test verdi»; giro 2 al §11). 🔧 **Non chiuso**: resta la ricaduta BE/FE (§7, §9.6, §11.5),
+> e il debito fuori perimetro del §10.3 che all'archiviazione va in un brief nuovo.
 > **Dettaglio:** 31 changeSet
 > `20261009-62…-92`, tutti `EXECUTED` nel `databasechangelog` di dbdev (`-62…-82` alle 19:19, `-83…-85`
 > alle 19:30, `-86…-92` alle 23:46 del 2026-10-09). Il giro e' cresciuto due volte oltre il §5: il lock
 > dell'emittente fuori bozza su sei documenti (§9.8, §9.9). **Da leggere per primo: §10** (verifica
 > incrociata del 2026-10-10, le cinque domande chiuse da Tid lo stesso giorno, e il §10.4: che cosa
 > resta da fare); poi §9 (cosa e' stato fatto). Decisioni sul modello chiuse il 2026-10-09 (§4), sulla
-> forma il 2026-10-10 (§10.2). Il codice delle decisioni del 2026-10-10 **non e' ancora scritto**.
+> forma il 2026-10-10 (§10.2), messe nel codice dal giro DB 2 (§11: 6 changeSet `20261010-02…-07`,
+> 2 codici a catalogo, pgTAP a 39 test, 4 pagine `manual/`), applicato e verde il 2026-10-10.
+> **Da leggere per primo, ora: §11** (e il §11.5 per il backend).
 > **Nel registro dei difetti DB:** voce **D21** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -728,7 +730,7 @@ Ciascuna con la proposta del team DB. Le si chiude una alla volta.
    ✅ **Tid, 2026-10-10: solo le frasi.** Codice invariato; descrizione e frase riscritte (CSV e
    ripiego BE); schema `vendite` con l'eccezione nel COMMENT.
 
-### 10.4 Che cosa resta da fare (decisioni chiuse il 2026-10-10, codice non ancora scritto)
+### 10.4 Che cosa resta da fare (decisioni chiuse il 2026-10-10) — ⚠️ i punti DB 1, 2, 3, 5 e i pgTAP del 4 sono nel giro 2 (§11)
 
 Nessuna modifica al codice e' stata fatta il 2026-10-10: solo questo brief e il registro.
 
@@ -762,6 +764,7 @@ Dentro il giro:
   `fk_clienti_ba_cliente` su INSERT col ruolo di un altro soggetto; reso con BA NULL da un DDT senza
   BA (D-3, «NULL compreso»); BA tolto in bozza che toglie la utility; emissione di OMAGGIO e
   CAMPIONATURA senza BA. Questi si chiudono **in questo** giro, insieme ai fixture del §9.5.
+  ✅ **Chiusi** dal giro 2 (§11.2, test 32-35 e 38), verdi nella corsa di Tid del 2026-10-10.
 
 ### 10.5 Stato del 2026-10-10, verificato su file e `databasechangelog`
 
@@ -777,3 +780,108 @@ Dentro il giro:
   database ricostruito da zero (CI) quel caso puo' non nascere. Si guarda insieme ai pgTAP del §10.3.
 * Le decisioni del 2026-10-10 (§10.2, domande 2, 3 e 5) **non sono ancora nel codice**: la corsa
   verde riguarda il giro gia' scritto. Il cantiere resta aperto sul §10.4.
+  ⚠️ Superato poco dopo: le decisioni sono nel giro DB 2 (§11), scritto e provato, non applicato.
+
+## 11. Giro DB 2 — consegna (team DB, 2026-10-10)
+
+> ✅ **Applicato su dbdev, test verdi** (Tid, 2026-10-10: «migrazione applicata, test verdi»). Sotto,
+> l'avviso scritto prima, lasciato come storia della prova.
+>
+> ⚠️ **Scritto e provato, NON applicato.** Prova: SQL estratto dagli YAML, preCondition comprese
+> (eseguite nella stessa transazione, nell'ordine dei changeSet), righe nuove del catalogo e pgTAP in
+> una transazione annullata su `zeroerp_ci`, da proprietario (`zeroerp`), con `SET CONSTRAINTS ALL
+> DEFERRED` come Liquibase e `myapp.log_with_dblink = off`. Lo scratch era allo stesso punto di dbdev
+> (giro 1 e `20261010-01`). Il passaggio su dbdev e la corsa pgTAP restano di Tid.
+> Numerazione `-02…-07` (Tid: «in sequenza, da -02»); `-01` e' del cantiere del fuso aziendale.
+
+### 11.1 I changeSet
+
+| # | Cosa | Decisione |
+| --- | --- | --- |
+| `-02` | **BB nuovo** `script.fn_cliente_dal_billing_account(ba, ruolo, utility, documento, colonna_ruolo, tx_id)`: rende ruolo e utility del BA, scritti se mancano, `E_DOC_CLIENTE_DIVERSO_DA_BA` se dissentono; BA non trovato o invisibile `E_CODICE` | §10.2, domanda 2 |
+| `-03` | `anagrafiche.trgfn_clienti_sync_utility_from_ba` adotta il BB (anche per il ruolo); esce il ramo `E_BILLING_ACCOUNT_UTILITY_NULL` (la utility del BA e' NOT NULL); resta il PDP | domanda 2 |
+| `-04` | `vendite.trgfn_ordini_normalize` adotta il BB (INSERT, e UPDATE che tocca una delle tre colonne) | domanda 2 |
+| `-05` | `vendite.trgfn_ddt_normalize` adotta il BB; il «quando» (INSERT, cambio in bozza, copia non toccata = NULL) resta suo | domanda 2 |
+| `-06` | `vendite.trgfn_ddt_guard_cliente_sorgente`: ordine o reso sorgente non trovato = `E_DOC_SORGENTE_NON_TROVATA` | domanda 3 |
+| `-07` | `vendite.trgfn_resi_guard_cliente_ddt`: DDT sorgente non trovato = `E_DOC_SORGENTE_NON_TROVATA` | domanda 3 |
+| `80_data` | codici `E_DOC_CLIENTE_DIVERSO_DA_BA` (id 1237) e `E_DOC_SORGENTE_NON_TROVATA` (1238), tutti e due `DATO_ERRATO`; `E_DOC_RIGHE_LOCK_MONTAGGIO`: nota, causa e soluzione per righe **e** testata, codice invariato | domande 2, 3, 5 |
+
+* **Forma del BB (domanda 2): funzione, non trigger.** Sul DDT le copie si risolvono dopo il
+  normalize, che eredita il BA dall'ordine; fra `trg_ddt_normalize_ins_upd` e i guard `_z10_` non c'e'
+  una fascia (la `_mXX_` delle linee guida girerebbe prima). Il BB dice **cosa**, il chiamante
+  **quando**. Sede `script`, come chiede la regola del 2.
+* **Il reso non adotta il BB**: le sue copie vengono dal DDT (`trgfn_resi_normalize`), non dal BA.
+* **`E_CLIENTE_UTILITY_MISMATCH_BA` e `E_BILLING_ACCOUNT_UTILITY_NULL` restano a catalogo**: li
+  solleva ancora `vendite.fn_get_or_create_commessa`, e altri.
+* **Domanda 5:** l'eccezione dello schema (`vendite` e non `script`) sta nella pagina `manual/` nuova
+  del BB di testata; la pagina del gemello delle righe non e' stata toccata.
+* Le FK composte, e le loro mappe nel BE, restano: sono la rete sotto per chi scrivesse senza passare
+  dai trigger.
+
+### 11.2 pgTAP
+
+`vendite/test-esecutivi-ba-coppia-v1`: da 30 a **39 test**.
+
+* **Cambiati:** 5 e 9 non aspettano piu' il 23503 della FK, ma la frase del BB («il cliente non
+  corrisponde al billing account»).
+* **Nuovi:** 31 (ordine con un'altra utility), 32 (cliente col ruolo di un altro soggetto, il buco
+  «INSERT» del §10.3), 33 (BA tolto in bozza: la utility se ne va, il destinatario resta), 34 (omaggio e
+  campionatura senza BA), 35 (reso senza BA da un DDT di conto lavoro senza BA: D-3, «NULL compreso»),
+  36 (DDT con un ordine sorgente che non esiste), 37 (reso spostato su un DDT che non esiste: su UPDATE
+  parla solo questo guard), 38 (lock dell'emittente montato su offerte, contratti e resi), 39 (DDT di E1
+  dall'ordine di E2, invisibile).
+* ✅ **Verde come app nella corsa di Tid del 2026-10-10** (39/39), insieme ai quattro file che sullo
+  scratch non giravano (§11.3).
+* ⚠️ **Il 39 e' rosso da proprietario e verde come app, per costruzione**: da proprietario la RLS non
+  c'e', l'ordine di E2 si vede e parla `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE`. E' per ultimo perche' cambia
+  contesto. **La conferma «come app» arriva solo dalla corsa di Tid.**
+* Il lock dell'emittente su offerte, contratti e resi e' provato sul **montaggio** (38), non sul
+  comportamento: il BB e' gia' provato sul comportamento su DDT e ordine (28, 29).
+
+### 11.3 Prove (pre-apply, scratch `zeroerp_ci`, da proprietario)
+
+* **preCondition:** `-02` 0 (atteso 0), `-03…-05` 1 (atteso 1), lette dentro la transazione dopo i
+  changeSet precedenti.
+* **`plpgsql_check`** sulle sei funzioni: nessuna segnalazione.
+* **Catalogo:** id unici, ogni riga a 6 colonne; il controllo dei segnaposto segnala solo
+  `E_BOM_IVA_DISCORDANTE` (`%s%%`, valido e preesistente). ⚠️ Trovato e corretto nella prova: la causa
+  nuova di `E_DOC_RIGHE_LOCK_MONTAGGIO` conteneva una virgola in un campo senza virgolette, e la riga
+  era passata a 7 colonne.
+* **pgTAP nuovo:** **38/39 dopo** (rosso solo il 39, come dichiarato), **32/39 prima**: senza il giro 2
+  sono rossi proprio 5, 9, 31, 32, 36, 37, 39. Il 33, il 34, il 35 e il 38 sono verdi anche prima:
+  coprono comportamento del giro 1 che nessun test provava (i buchi del §10.3).
+* **Regressione mirata**, 24 file, ognuno con e senza il giro 2 in testa nella sua transazione
+  annullata: gli 11 pgTAP che inseriscono clienti, quelli di DDT da ordine, riconsegna, resi, push,
+  transizioni d'ordine, satelliti RLS di DDT e resi, check d'emissione, causale immutabile, e i presidi
+  `dbops/test-riferimenti-morti-v1`, `dbops/test-vw-codici-errore-motivo-nominato`,
+  `script/test-catalogo-messaggi-errore-completo`. **Identici prima e dopo**, tranne il test nuovo.
+* ⚠️ **Quattro di quei file sullo scratch non girano, prima come dopo**:
+  `vendite/test-fn-genera-ddt-da-ordine-v1`, `vendite/test-fn-genera-ddt-riconsegna-eredita-v1`,
+  `vendite/test-resi-motore-v1`, `vendite/test-fn-list-ddt-da-pushare-v1` si fermano al test 2
+  («riferimenti minimi disponibili»): pescano i dati della macchina, e lo scratch non li ha. Sono i piu'
+  vicini a questo giro: **la loro conferma e' la corsa di Tid su dbdev.**
+
+### 11.4 Da Tid — ✅ fatto il 2026-10-10 (migrazione applicata, test verdi)
+
+* il passaggio su dbdev di `-02…-07` e dei due CSV;
+* la corsa pgTAP: in particolare `test-esecutivi-ba-coppia-v1` **come app** (39/39 atteso) e i quattro
+  file del §11.3 che sullo scratch non girano.
+
+### 11.5 Ricaduta BE (dopo il passaggio su dbdev)
+
+* **Codici nuovi**, con policy e frase di ripiego: `E_DOC_CLIENTE_DIVERSO_DA_BA` (DATO_ERRATO; `campo`
+  = `soggetto_ruolo_id`, `destinatario_soggetto_ruolo_id` o `utility_id`), `E_DOC_SORGENTE_NON_TROVATA`
+  (DATO_ERRATO; `campo` = `sorgente_uid`).
+* **Errori che cambiano strada**: ordine, DDT e cliente con ruolo o utility diversi dal BA non arrivano
+  piu' col 23503 della FK (le mappe dei vincoli per nome restano, ma non sono piu' la strada normale);
+  il cliente non solleva piu' `E_CLIENTE_UTILITY_MISMATCH_BA`.
+* **Frase di ripiego di `E_DOC_RIGHE_LOCK_MONTAGGIO`** (`error_messages_fallback.py`): parla delle
+  righe; dal giro 1 lo solleva anche il BB di testata. Va riscritta per tutti e due (domanda 5).
+* Invariati i punti del §9.6 (`ddt_service`: creazione senza BA, destinatario derivato in Python,
+  whitelist `UPDATE_KEYS_DDT`).
+
+### 11.6 Agganci con altri brief
+
+* [brief-db-codici-non-trovato-email-e-permessi](brief-db-codici-non-trovato-email-e-permessi.md): R-9
+  (builder pgTAP fino al cliente) va scritto **dopo** questo giro, perche' `-03` cambia il trigger dei
+  clienti; R-7 prende gli id dei messaggi da 1239. Annotato nel suo §13.2.
