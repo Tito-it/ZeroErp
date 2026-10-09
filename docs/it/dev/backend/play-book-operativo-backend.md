@@ -407,6 +407,12 @@ lo faccia partire; `test_nessun_template_orfano` guarda il verso opposto.
   `cambio_reparto` e `permessi_catalogo`. Si abilita il **`.service`**. Scrive
   **un solo run**, quello di avvio: sul giornale dice «sono partito alle ore
   X», non «sono vivo adesso». Per questo la sua `tolleranza_minuti` è `null`.
+  ⭐ Dal 2026-10-09 **sonda la connessione** (`SELECT 1` a ogni giro del
+  poll; non scrive sul giornale, il segno di vita resta la sessione): un riavvio
+  della macchina del DB lasciava il socket «aperto» lato client, e il
+  listener restava acceso per systemd ma sordo, segnato `MUTO` finché
+  qualcuno non lo riavviava. Ora si riconnette da solo in pochi secondi
+  (header di `notify_listener.py`).
 
 ℹ️ Fino al 2026-10-05 si chiamava `zeroerp-listen-cambio-reparto` (command
 `listen_cambio_reparto`). Sugli host già installati l'unità vecchia la spegne e

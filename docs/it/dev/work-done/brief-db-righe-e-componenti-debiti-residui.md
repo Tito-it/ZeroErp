@@ -8,8 +8,10 @@
 > **Stato:** ✅ **lato DB chiuso il 2026-10-09** — changeSet `20261008-80` … `-94` e
 > `20261009-03` applicati su dev, pgTAP verdi col runner di Tid, anche su `zeroerp_ci` (§4.8).
 > D-1, D-2 e D-3 decisi da Tid il 2026-10-08 (in fondo a ciascun paragrafo); i tre test non più
-> costruibili sono skip motivati (§4.5). ⏳ **Resta aperto per il BE** (§4.4): il brief si
-> archivia quando il team BE le ha chiuse.
+> costruibili sono skip motivati (§4.5). ✅ **Lato BE chiuso il 2026-10-09** (§5): test e smoke
+> erano già in forma bozza → righe → transizione; il verbo della data confermata passa al brief
+> `brief-db-ordine-data-consegna-confermata-capability` (prima la capability a DB); il ciclo di
+> vita della pratica resta un debito dichiarato in PROJECT_CONTEXT. Archiviato il 2026-10-09.
 > **Nel registro dei difetti DB:** voce **D20** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -268,3 +270,18 @@ della pratica su un preventivo annullato). Debiti dichiarati, da portare in brie
 all'archiviazione: l'L3 dei componenti (§3) e il registro `user_update` delle nove tabelle senza
 audit (§2, presidio a vista).
 
+## 5. Il giro BE (2026-10-09) — chiusura del §4.4
+
+| Richiesta del §4.4 | Esito |
+| --- | --- |
+| Il verbo di `data_consegna_confermata` dopo la conferma | ➡️ **Brief nuovo**, `work-in-progress/brief-db-ordine-data-consegna-confermata-capability.md`. Decisione di Tid: verbo dedicato **sopra una capability letta dal DB**. Gli stati ammessi stanno solo negli argomenti del montaggio (`-90`), e `fn_available_actions_ordine` non li espone: un pre-check Python con `CONFERMATO`/`PARZIALMENTE_EVASO` sarebbe stato una seconda sede della regola. Prima la capability a DB, poi BE e FE |
+| `test_resi_create_db.py` e lo smoke `smoke-push-termine-documento-commessa.py` | ✅ **Già fatti** nel giro del type checker (`0ffe7b7c3` il test, `ebc54fc56` lo smoke, entrambi del 2026-10-09): ordine in `DRAFT` → riga → `CONFERMATO`. Nessun altro test o smoke del backend scrive righe d'ordine, di preventivo o prelievi fuori bozza (ricerca sugli `INSERT`/`UPDATE` diretti, 2026-10-09) |
+| Ciclo di vita della pratica su un preventivo annullato | 📌 **Debito dichiarato** (decisione di Tid): non si costruisce in questo giro. Resta nella voce «Pratica di approvazione prezzo su revisione superata» di PROJECT_CONTEXT, estesa al caso dell'annullato: l'esito lo respinge il lock, e la pratica resta `APERTA` in coda |
+
+Nel codice, solo commenti diventati falsi: `_righe_bozza_guard.py` (il pre-check non è più «l'unico
+cancello» su ordini, preventivi e componenti: ora è un doppione con lo stesso codice) e
+`ordini_service.py` (il DB chiude anche INSERT/UPDATE di `ordini_righe`, con la sola eccezione della
+data confermata, che non passa da `aggiorna_riga`). Comportamento invariato.
+
+**Debiti portati fuori all'archiviazione** (in PROJECT_CONTEXT § «Aperto — Media priorità», come
+dice il §4.8): l'L3 dei componenti (§3) e il registro `user_update` delle nove tabelle senza audit (§2).

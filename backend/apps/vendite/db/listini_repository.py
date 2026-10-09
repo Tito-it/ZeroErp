@@ -988,27 +988,6 @@ class ListiniRepository:
             )
             return cursor.fetchone() is not None
 
-    # Scopo: Controlla se una riga listino e` stata propagata in commesse o
-    #        attivita` fatturabili. Tabelle controllate documentate per espansione
-    #        concentrica: commesse_attivita, attivita_fatturabili.
-    def check_riga_propagata(self, riga_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT EXISTS (
-                    SELECT 1 FROM vendite.commesse_attivita
-                     WHERE listino_riga_id = %(riga_id)s
-                ) OR EXISTS (
-                    SELECT 1 FROM vendite.attivita_fatturabili
-                     WHERE listino_riga_id = %(riga_id)s
-                ) AS propagata
-                """,
-                {"riga_id": riga_id},
-            )
-            row = cursor.fetchone()
-            assert row is not None
-            return bool(row[0])
-
     # Scopo: Aggiorna il prezzo di una riga per rettifica controllata N6.
     #        Aggiorna anche meta con audit trail. Caller gestisce transazione.
     def update_riga_prezzo_rettifica(

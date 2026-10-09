@@ -36,6 +36,40 @@
 #       stessa costante con cui il command registra il run. Scritto a mano qui
 #       sarebbe la seconda sede, e la vista guarderebbe un nome che non esiste
 #       rispondendo «muto» su un listener vivo.
+#
+#       ⛔ CHI ASCOLTA SOLTANTO NON SI ACCORGE CHE IL SERVER E' SPARITO
+#       (2026-10-09). Un LISTEN e' un socket su cui il client non scrive mai:
+#       se il server muore senza chiudere la connessione (riavvio della
+#       macchina del DB, rete che cade), dal lato client il socket resta
+#       «aperto» per sempre, `notifies()` scade a vuoto ogni giro e nessun
+#       errore arriva alla riconnessione. Il processo e' vivo per systemd,
+#       sordo per il database — e il panorama lo segna MUTO, giustamente. E'
+#       successo: Postgres sul dbdev e' ripartito sette minuti dopo l'avvio
+#       del listener, e il listener e' rimasto in ascolto del nulla.
+#       Il rimedio e' la SONDA: a ogni giro del poll il listener SCRIVE
+#       (`SELECT 1`). Su una connessione morta la scrittura fallisce con
+#       `OperationalError` e passa dalla riconnessione che esiste gia' (con
+#       la sua `invalidate_all`, che recupera le notifiche perse).
+#       ⚠️ La sonda da sola non basta: su un host irraggiungibile il kernel
+#       ritrasmette per ~15 minuti prima di arrendersi, e la `SELECT 1`
+#       resterebbe appesa. Lo taglia `tcp_user_timeout` nella connessione;
+#       `connect_timeout` fa lo stesso per i tentativi di riconnessione.
+#       I keepalive TCP non servono: con la sonda il client scrive comunque
+#       ogni `poll_interval`, e un secondo meccanismo per la stessa domanda
+#       sarebbe una seconda sede.
+#       ⚠️ «Sonda», non «battito»: nel progetto il battito e' un segno di vita
+#       SCRITTO SUL GIORNALE (`job_liveness`, il battito del digest). La sonda
+#       non scrive niente da nessuna parte: chiede solo alla connessione se
+#       c'e' ancora. Il segno di vita del listener resta la sessione.
+#       ⛔ LIMITE DICHIARATO: la sonda scopre un server SPARITO (risponde RST
+#       o non risponde affatto), non un server APPESO che riceve e non
+#       risponde mai. Quello e' un guasto del database, e lo vede il
+#       panorama: la sessione c'e' ma non serve nessuno.
+#
+#       ⭐ IL RITARDO DI RICONNESSIONE RIPARTE DA CAPO A OGNI CONNESSIONE
+#       RIUSCITA (2026-10-09). Prima ripartiva solo all'uscita pulita, cioe'
+#       mai: ogni caduta, anche a settimane di distanza, ereditava il ritardo
+#       raddoppiato della precedente, fino a fermarsi per sempre al massimo.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -62,6 +96,13 @@ CANALI = (CANALE_CAMBIO_REPARTO, CANALE_PERMESSI_CATALOGO)
 DEFAULT_POLL_INTERVAL = 5.0
 RECONNECT_BASE_DELAY = 1.0
 RECONNECT_MAX_DELAY = 60.0
+# La sonda: istruzione che fa scrivere il client sulla connessione.
+SONDA_SQL = "SELECT 1"
+# Tetti di rete (vedi header): quanto puo' restare senza risposta un dato
+# scritto (millisecondi, parametro libpq) e quanto puo' durare un tentativo
+# di connessione (secondi).
+TCP_USER_TIMEOUT_MS = 30_000
+CONNECT_TIMEOUT_S = 10
 
 
 class PermessiListener:
@@ -79,11 +120,15 @@ class PermessiListener:
         self._poll_interval = poll_interval
         self._reconnect_base_delay = reconnect_base_delay
         self._reconnect_max_delay = reconnect_max_delay
+        self._delay = reconnect_base_delay
         self._conn: psycopg.Connection[Any] | None = None
 
     # Scopo: Costruisce i parametri di connessione psycopg3 dai settings Django.
     # ⚠️ `application_name` e' il segno di vita del processo (vedi header): il
     #    database lo legge da `pg_stat_activity` per dire se il listener e' vivo.
+    # ⚠️ `tcp_user_timeout` e `connect_timeout` sono il tetto della sonda
+    #    (vedi header): senza, una connessione mezza morta tiene appeso il
+    #    listener per minuti invece di farlo riconnettere.
     @staticmethod
     def _get_conninfo() -> str:
         db = settings.DATABASES["default"]
@@ -94,6 +139,8 @@ class PermessiListener:
             user=db.get("USER", ""),
             password=db.get("PASSWORD", ""),
             application_name=PROCESSO_LISTEN_PERMESSI,
+            tcp_user_timeout=TCP_USER_TIMEOUT_MS,
+            connect_timeout=CONNECT_TIMEOUT_S,
         )
 
     # Scopo: Avvia il loop LISTEN/NOTIFY con riconnessione automatica.
@@ -110,12 +157,10 @@ class PermessiListener:
             self._poll_interval,
         )
 
-        delay = self._reconnect_base_delay
+        self._delay = self._reconnect_base_delay
         while self._running:
             try:
                 self._listen_loop()
-                # Uscita pulita (stop() chiamato)
-                delay = self._reconnect_base_delay
             except psycopg.OperationalError as exc:
                 if not self._running:
                     break
@@ -124,17 +169,20 @@ class PermessiListener:
                     "riconnessione tra %.1fs",
                     PROCESSO_LISTEN_PERMESSI,
                     exc,
-                    delay,
+                    self._delay,
                 )
-                time.sleep(delay)
-                delay = min(delay * 2, self._reconnect_max_delay)
+                time.sleep(self._delay)
+                self._delay = min(self._delay * 2, self._reconnect_max_delay)
 
         logger.info("Listener %s terminato.", PROCESSO_LISTEN_PERMESSI)
 
     # Scopo: Ciclo interno LISTEN/NOTIFY su una singola connessione.
     # Registra i canali, poi svuota tutta la cache (vedi header: cio' che e'
     # stato notificato mentre la connessione non c'era e' perso) e cicla.
-    # Solleva psycopg.OperationalError se la connessione cade.
+    # A ogni giro sonda la connessione (vedi header): e' cio' che fa emergere
+    # una connessione morta in silenzio. A connessione riuscita il ritardo di
+    # riconnessione riparte dalla base. Solleva psycopg.OperationalError se la connessione
+    # cade.
     def _listen_loop(self) -> None:
         conninfo = self._get_conninfo()
         with psycopg.connect(conninfo, autocommit=True) as conn:
@@ -145,10 +193,13 @@ class PermessiListener:
                 "LISTEN %s registrati, in attesa notifiche...", ", ".join(CANALI),
             )
             invalidate_all()
+            self._delay = self._reconnect_base_delay
 
             while self._running:
                 for notify in conn.notifies(timeout=self._poll_interval):
                     self._handle_notification(notify)
+                if self._running:
+                    conn.execute(SONDA_SQL)
 
         self._conn = None
 

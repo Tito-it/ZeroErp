@@ -1313,6 +1313,11 @@ def fn_riallinea_prezzo(
         "prezzo_nuovo": nuovo_prezzo,
         "listino_versione_id_precedente": versione_originale,
         "listino_versione_id_nuovo": versione_attuale,
+        # La riga di listino del prezzo vecchio: dopo il riallineamento non la
+        # cita piu' nessuno e torna modificabile (D-1 del brief-db-riga-listino-
+        # propagata-dalla-commessa); la storia del prezzo resta leggibile qui.
+        "listino_riga_id_precedente": att.get("listino_riga_id"),
+        "listino_riga_id_nuovo": provenienza["listino_riga_id"],
     })
     meta["riallineamenti"] = riallineamenti
 
@@ -1377,6 +1382,7 @@ def fn_variazione_prezzo_eccezionale(
         "motivo": motivo,
         "stato_commessa": str(att["commessa_stato"]),
         "listino_versione_id_riferimento": att.get("listino_versione_id"),
+        "listino_riga_id_riferimento": att.get("listino_riga_id"),
     })
     meta["variazioni_eccezionali"] = variazioni
 
@@ -1389,7 +1395,8 @@ def fn_variazione_prezzo_eccezionale(
             meta=meta,
             # Un prezzo scritto a mano dice di esserlo: origine MANUALE e
             # niente provenienza da listino (decisione di Tid 2026-10-08).
-            # La versione di riferimento resta nel diario qui sopra.
+            # Versione e riga di riferimento restano nel diario qui sopra: la riga
+            # di listino, non piu' citata, torna modificabile (D-1).
             provenienza=provenienza_manuale(),
         )
 

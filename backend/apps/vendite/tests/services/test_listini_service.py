@@ -72,7 +72,7 @@ from datetime import date
 from unittest import TestCase
 from unittest.mock import patch
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 
 from apps.core.services.service_errors import ServiceError
 
@@ -1047,7 +1047,10 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("BOZZA", ctx.exception.message or "")
 
-    # Scopo: N6 - rettifica su riga gia` propagata in commessa rifiutata.
+    # Scopo: N6 - rettifica su riga gia` propagata in commessa rifiutata. La
+    #        regola e' del guard DB (`trgfn_listini_righe_guard_stato`, dal
+    #        2026-10-09 senza copia in Python): qui il rifiuto arriva come
+    #        DatabaseError dall'UPDATE e il service ne porta il codice.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_riga_propagata_rifiutata(self, mock_repo_cls, mock_atomic):
@@ -1069,12 +1072,13 @@ class ListiniServiceTests(TestCase):
             "meta": None,
         }
         repo.lock_riga_for_update.return_value = True
-        repo.check_riga_propagata.return_value = True
+        repo.update_riga_prezzo_rettifica.side_effect = DatabaseError(
+            "E_RIGA_LISTINO_PROPAGATA: la riga listino 501 e' gia' stata propagata a valle."
+        )
 
         with self.assertRaises(ServiceError) as ctx:
             fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": "errore battitura"})
-        self.assertEqual(ctx.exception.code, "E_VENDITE_RIGA_GIA_PROPAGATA")
-        repo.update_riga_prezzo_rettifica.assert_not_called()
+        self.assertEqual(ctx.exception.code, "E_RIGA_LISTINO_PROPAGATA")
 
     # Scopo: N6 - rettifica ammessa se riga non propagata.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
@@ -1098,7 +1102,6 @@ class ListiniServiceTests(TestCase):
             "meta": None,
         }
         repo.lock_riga_for_update.return_value = True
-        repo.check_riga_propagata.return_value = False
         repo.update_riga_prezzo_rettifica.return_value = True
 
         result = fn_rettifica_controllata_riga(
@@ -1109,7 +1112,6 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(result["prezzo_nuovo"], "12.25")
         self.assertEqual(result["motivo"], "errore di battitura al caricamento")
         repo.lock_riga_for_update.assert_called_once_with(101, 501)
-        repo.check_riga_propagata.assert_called_once_with(501)
         repo.update_riga_prezzo_rettifica.assert_called_once()
 
     # Scopo: N6 - rettifica senza motivo rifiutata.

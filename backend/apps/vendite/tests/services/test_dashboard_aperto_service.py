@@ -21,6 +21,9 @@ Indice test eseguiti:
 11) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_inoltrato
 12) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_default_none
 13) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_non_positivo
+13b) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_sul_pavimento_passa
+13c) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_oltre_pavimento
+13d) DashApertoDocumentiServiceTests.test_documenti_ritardo_giorni_enorme_e_400
 14) DashApertoDocumentiServiceTests.test_documenti_anzianita_giorni_passthrough
 15) DashApertoDocumentiServiceTests.test_documenti_page_invalida
 16) DashApertoDocumentiServiceTests.test_documenti_pagina_stantia_clampata
@@ -29,6 +32,7 @@ Indice test eseguiti:
 19) DashApertoDocumentiServiceTests.test_documenti_order_dir_non_valido
 """
 
+from datetime import date
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -230,7 +234,11 @@ class DashApertoDocumentiServiceTests(TestCase):
         "list_dash_aperto_documenti",
         return_value=([], 0),
     )
-    def test_documenti_ritardo_giorni_inoltrato(self, mock_repo):
+    @patch.object(
+        vendite_service.ParameterService, "get_default_date",
+        return_value=date(2020, 1, 1),
+    )
+    def test_documenti_ritardo_giorni_inoltrato(self, _mock_param, mock_repo):
         fn_dash_aperto_documenti(ritardo_giorni=60)
         kwargs = mock_repo.call_args.kwargs
         self.assertEqual(kwargs["ritardo_giorni"], 60)
@@ -257,6 +265,57 @@ class DashApertoDocumentiServiceTests(TestCase):
             with self.assertRaises(ServiceError) as ctx:
                 fn_dash_aperto_documenti(ritardo_giorni=valore)
             self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: Il pavimento VENDITE_DASHBOARD_RITARDO_DATA_MINIMA e' compreso:
+    #        oggi 2020-01-31, data minima 2020-01-01 -> 30 giorni passano
+    #        (oggi - 30 = la data minima). Si legge il DEFAULT del parametro.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_aperto_documenti",
+        return_value=([], 0),
+    )
+    @patch.object(vendite_service.timezone, "localdate", return_value=date(2020, 1, 31))
+    @patch.object(
+        vendite_service.ParameterService, "get_default_date",
+        return_value=date(2020, 1, 1),
+    )
+    def test_documenti_ritardo_giorni_sul_pavimento_passa(
+        self, mock_param, _mock_oggi, mock_repo,
+    ):
+        fn_dash_aperto_documenti(ritardo_giorni=30)
+        mock_param.assert_called_once_with("VENDITE_DASHBOARD_RITARDO_DATA_MINIMA")
+        self.assertEqual(mock_repo.call_args.kwargs["ritardo_giorni"], 30)
+
+    # Scopo: Un giorno oltre il pavimento -> E_VENDITE_VALIDATION, col detail
+    #        che nomina la data minima; il repository non viene chiamato.
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti")
+    @patch.object(vendite_service.timezone, "localdate", return_value=date(2020, 1, 31))
+    @patch.object(
+        vendite_service.ParameterService, "get_default_date",
+        return_value=date(2020, 1, 1),
+    )
+    def test_documenti_ritardo_giorni_oltre_pavimento(
+        self, _mock_param, _mock_oggi, mock_repo,
+    ):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_aperto_documenti(ritardo_giorni=31)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        self.assertIn("2020-01-01", ctx.exception.detail)
+        mock_repo.assert_not_called()
+
+    # Scopo: Il caso che dava il 500 (DataError `timestamp too small` con
+    #        N = 2000000): ora e' un 400, e senza OverflowError lato Python
+    #        (il confronto e' fra interi di giorni).
+    @patch.object(vendite_service.VenditeRepository, "list_dash_aperto_documenti")
+    @patch.object(
+        vendite_service.ParameterService, "get_default_date",
+        return_value=date(2020, 1, 1),
+    )
+    def test_documenti_ritardo_giorni_enorme_e_400(self, _mock_param, mock_repo):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_aperto_documenti(ritardo_giorni=2_000_000)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        mock_repo.assert_not_called()
 
     # Scopo: anzianita_giorni (derivata dal repo in SELECT) transita
     #        nell'envelope senza rielaborazione lato service.

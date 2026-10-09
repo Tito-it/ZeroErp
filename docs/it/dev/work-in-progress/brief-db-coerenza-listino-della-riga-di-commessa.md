@@ -2,7 +2,7 @@
 
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-09. **A chi:** team DB.
 > **Origine:** debito emerso lavorando
-> [brief-db-riga-listino-propagata-dalla-commessa](brief-db-riga-listino-propagata-dalla-commessa.md)
+> [brief-db-riga-listino-propagata-dalla-commessa](../work-done/brief-db-riga-listino-propagata-dalla-commessa.md)
 > (§6, D-3). Quel brief fa scrivere `listino_riga_id`; questo dice che cosa la
 > colonna può contenere.
 > **Stato:** 🟡 aperto, da progettare.

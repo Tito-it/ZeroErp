@@ -26,8 +26,12 @@ Indice test eseguiti:
 13) ParameterServiceTests.test_delete_user_override_not_found_raises
 14) ParameterServiceTests.test_get_emittente_fiscale_id_for_user
 15) ParameterServiceTests.test_upsert_parametro_inesistente_e_404_a_ogni_livello (E-9)
+16) ParameterServiceTests.test_get_default_date_legge_il_default
+17) ParameterServiceTests.test_get_default_date_assente_o_vuoto
+18) ParameterServiceTests.test_get_default_date_non_iso
 """
 
+from datetime import date
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch, MagicMock
@@ -300,3 +304,26 @@ class ParameterServiceTests(TestCase):
                     getattr(self.svc, metodo)("NON_ESISTE", scope, "v")
                 self.assertEqual(ctx.exception.code, "E_PARAMETER_NOT_FOUND")
 
+    # Scopo: get_default_date legge il DEFAULT nudo (mai la cascata) e lo
+    #        converte a date.
+    def test_get_default_date_legge_il_default(self):
+        self._mock_repo.get_default_value.return_value = " 2020-01-01 "
+        self.assertEqual(self.svc.get_default_date("P_DATA"), date(2020, 1, 1))
+        self._mock_repo.get_default_value.assert_called_once_with("P_DATA")
+        self._mock_repo.get_parameter.assert_not_called()
+
+    # Scopo: Parametro assente, default NULL o vuoto -> E_CONFIG_MANCANTE.
+    def test_get_default_date_assente_o_vuoto(self):
+        for valore in (None, "", "   "):
+            self._mock_repo.get_default_value.return_value = valore
+            with self.assertRaises(ServiceError) as ctx:
+                self.svc.get_default_date("P_DATA")
+            self.assertEqual(ctx.exception.code, "E_CONFIG_MANCANTE")
+
+    # Scopo: Valore non ISO -> E_CONFIG_MANCANTE parlante, mai un 500.
+    def test_get_default_date_non_iso(self):
+        for valore in ("01/01/2020", "2020-02-30", "domani"):
+            self._mock_repo.get_default_value.return_value = valore
+            with self.assertRaises(ServiceError) as ctx:
+                self.svc.get_default_date("P_DATA")
+            self.assertEqual(ctx.exception.code, "E_CONFIG_MANCANTE")

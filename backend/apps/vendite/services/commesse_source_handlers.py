@@ -719,6 +719,13 @@ class BaseSourceHandler(ABC):
             #    senza, il guard «versione cambiata» di `fn_riallinea_prezzo`
             #    confrontava con NULL e non scattava mai sulle righe del push.
             listino_versione_id=audit.get("listino_versione_id"),
+            # ⛔ `listino_riga_id` NON si prende dal resolver (decisione B di
+            #    Tid, 2026-10-09): la riga di listino si cita solo se il prezzo
+            #    e' venuto DAVVERO da li', e il push oggi non lo sa — il prezzo
+            #    e' quello del documento. Citarla la renderebbe «propagata»
+            #    (immutabile) senza che nessuno ne porti il prezzo. Resta NULL
+            #    finche' la provenienza non viaggia col prezzo dal documento
+            #    (brief-db-provenienza-prezzo-segue-il-prezzo).
             # === Snapshot pricing v5 (F2-BE-12) ===
             prezzo_base_snapshot=audit.get("prezzo_base_snapshot"),
             origine_prezzo=origine_prezzo,

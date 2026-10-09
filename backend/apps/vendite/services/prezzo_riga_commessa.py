@@ -29,11 +29,16 @@
 #    riallinea e sblocca prendono `prezzo_finale` dal resolver. La provenienza
 #    e' la stessa in entrambi i casi: da dove verrebbe, oggi, quel prezzo.
 #
-# ⚠️ `listino_riga_id` NON e' fra i campi, e non per dimenticanza: su
-#    `commesse_attivita` quella colonna rende la riga di listino «propagata»,
-#    cioe' immutabile (`trgfn_listini_righe_guard_stato`), e la madre del push
-#    (`fn_upsert_commessa_attivita`) non la riceve. Scriverla da un percorso
-#    solo sarebbe un'altra asimmetria: e' un punto aperto del piano (§4.4).
+# ⭐ `listino_riga_id` E' fra i campi dal 2026-10-09
+#    (brief-db-riga-listino-propagata-dalla-commessa): scriverla rende la riga
+#    di listino «propagata», cioe' immutabile (`trgfn_listini_righe_guard_stato`).
+#    La scrivono i percorsi che prendono DAVVERO il prezzo dal listino
+#    (riallinea, sblocca). ⛔ Il push no (decisione B di Tid, 2026-10-09): li'
+#    il prezzo e' del documento, e citare la riga che il resolver darebbe la
+#    renderebbe «propagata» senza che nessuno ne porti il prezzo — vedi
+#    brief-db-provenienza-prezzo-segue-il-prezzo. Nello stadio del kit il
+#    resolver non la restituisce e resta NULL: il componente ha un guard suo,
+#    piu' severo (D-2 del brief).
 # ------------------------------------------------------------
 from __future__ import annotations
 
@@ -127,6 +132,7 @@ def provenienza_da_resolver(risultato: Mapping[str, Any]) -> dict[str, Any]:
         "contratto_id": risultato.get("contratto_id"),
         "categoria_cliente_id_snapshot": risultato.get("categoria_cliente_id_snapshot"),
         "classe_utenza_id_snapshot": risultato.get("classe_utenza_id_snapshot"),
+        "listino_riga_id": risultato.get("listino_riga_id"),
         "listino_versione_id": risultato.get("listino_versione_id"),
     }
 
@@ -134,8 +140,8 @@ def provenienza_da_resolver(risultato: Mapping[str, Any]) -> dict[str, Any]:
 # Scopo: la provenienza di un prezzo scritto A MANO (variazione eccezionale,
 #        decisione di Tid 2026-10-08): origine `MANUALE`, e niente della
 #        provenienza da listino — un prezzo che il listino non ha dato non ha
-#        ne' una base ne' una versione di listino. Lo sblocco la riscrive dal
-#        resolver.
+#        ne' una base ne' una riga ne' una versione di listino. Lo sblocco la
+#        riscrive dal resolver.
 def provenienza_manuale() -> dict[str, Any]:
     provenienza: dict[str, Any] = dict.fromkeys(CAMPI_PROVENIENZA)
     provenienza["origine_prezzo"] = ORIGINE_PREZZO_MANUALE

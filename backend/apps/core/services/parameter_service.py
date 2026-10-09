@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from apps.core.db.parameter_repository import ParameterRepository
@@ -111,6 +112,32 @@ class ParameterService:
             ErrorManager.raise_error(
                 code="E_PARAMETER_VALIDATION",
                 message=f"Parametro '{code}' non convertibile a decimale.",
+                detail=f"Valore attuale: '{value}'",
+            )
+
+    # Scopo: Il DEFAULT di un parametro di tipo data (`YYYY-MM-DD`), letto nudo:
+    #        nessuna cascata di override. Per i limiti uguali per tutti, dove
+    #        un override non ha un caso d'uso (vedi
+    #        `ParameterRepository.get_default_value`).
+    # ⛔ Fail-loud con `E_CONFIG_MANCANTE` su tutte e tre le forme di guasto
+    #    (assente, vuoto, non ISO), come `script.fn_data_operativa`: il rimedio
+    #    ce l'ha chi amministra la configurazione, non chi ha fatto la
+    #    richiesta. A DB non c'e' un guard sul formato (D-2 del brief
+    #    parametro-data-minima-ritardo-dashboard): il presidio e' qui.
+    def get_default_date(self, code: str) -> date:
+        value = self._repo.get_default_value(code)
+        ErrorManager.require(
+            value is not None and value.strip() != "",
+            code="E_CONFIG_MANCANTE",
+            message=f"Parametro '{code}' assente o senza valore.",
+        )
+        assert value is not None
+        try:
+            return date.fromisoformat(value.strip())
+        except ValueError:
+            ErrorManager.raise_error(
+                code="E_CONFIG_MANCANTE",
+                message=f"Parametro '{code}' non e' una data ISO (YYYY-MM-DD).",
                 detail=f"Valore attuale: '{value}'",
             )
 

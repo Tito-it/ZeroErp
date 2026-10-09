@@ -155,11 +155,13 @@ UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
 #    data malformata e' un 400 col campo acceso, non un 500 dal DB.
 # ⚠️ `data_consegna_confermata` e' «quando ci si impegna», cioe' si decide alla
 #    conferma e puo' cambiare dopo; ma le righe si scrivono solo in DRAFT
-#    (BB `richiedi_righe_in_bozza`, codice `E_RIGA_DOC_NON_BOZZA`). Il DB non
-#    mette nessun guard di stato su INSERT/UPDATE di `ordini_righe`, di
-#    proposito (il BB a DB e' montato sul solo DELETE): il limite alla bozza
-#    e' solo di qui, ed e' dichiarato nel brief (§5.5, 1-bis) come fatto da
-#    decidere — non da questo cantiere.
+#    (BB `richiedi_righe_in_bozza`, codice `E_RIGA_DOC_NON_BOZZA`). Dal
+#    `20261008-90` lo dice anche il DB, sulle tre porte, con una sola
+#    eccezione: un UPDATE della sola `data_consegna_confermata` in
+#    CONFERMATO/PARZIALMENTE_EVASO (brief-db-righe-e-componenti-debiti-residui,
+#    D-1). Quell'eccezione NON passa da `aggiorna_riga` (che resta «solo in
+#    bozza»): avra' un verbo suo, sulla capability letta dal DB
+#    (brief-db-ordine-data-consegna-confermata-capability).
 _DATE_RIGA: tuple[str, ...] = (
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 )

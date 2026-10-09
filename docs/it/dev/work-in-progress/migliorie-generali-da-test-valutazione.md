@@ -514,7 +514,7 @@ errore.
 > la sua chiusura ha trovato. **D21** dal lato BE/FE di
 > `brief-db-istanza-nasce-col-ba` (2026-10-09).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D20, D21.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -916,22 +916,6 @@ dalla stessa data), con un commento sul perché.
   valutare dopo il censimento: senza sapere quali regole sono temporali, il
   presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
 
-### 🟡 D20 — Righe e componenti: tre debiti rimasti dalla chiusura di D19
-
-Trovati il 2026-10-08 chiudendo D19 (`brief-db-righe-e-componenti-le-altre-famiglie`, §5). Tre
-punti:
-* righe d'ordine e di preventivo si cambiano ancora fuori bozza a DB (ora una riga kit no, una
-  semplice sì);
-* `user_update` nullable su circa 140 tabelle, e nessun presidio che fermi una tabella nuova;
-* un componente spento in attesa di approvazione passa nella revisione, legato alla pratica
-  della rev N (preventivo e offerta).
-
-Dettaglio e stato nel brief
-[brief-db-righe-e-componenti-debiti-residui.md](brief-db-righe-e-componenti-debiti-residui.md).
-Decisi da Tid il 2026-10-08; DB scritto lo stesso giorno (`20261008-80` … `-94`), applicato su dev, pgTAP
-verdi anche su `zeroerp_ci` (2026-10-09); tre test non più costruibili sono skip motivati (§4.5).
-✅ **Chiuso lato DB**; restano le richieste al BE del §4.4 del brief.
-
 ### 🟠 D21 — Ordine, DDT e reso: il cliente puo' mancare, e le sue copie non sono legate
 
 Trovato il 2026-10-09 chiudendo il lato BE/FE di `brief-db-istanza-nasce-col-ba` (§7.5): R-2 ha reso
@@ -1136,7 +1120,8 @@ D6 e il registro dei rossi in CI.
       guardrail statico.
 * [x] **D19** — allineare righe e componenti di preventivo, ordine e DDT a
       contratto e offerta: chiusa il 2026-10-08 (§7).
-* [ ] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`.
+* [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
+      chiuso e archiviato il 2026-10-09.
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
       `brief-db-esecutivi-ba-coppia` (cinque decisioni di Tid).
 
@@ -1519,6 +1504,25 @@ due codici in `error_policies_generated.py` + ripieghi) chiusa il 2026-10-04
 (`63deeb194`). Resta Q-2 (§3).
 
 ---
+
+### ✅ D20 — Righe e componenti: tre debiti rimasti dalla chiusura di D19 — chiusa il 2026-10-09
+
+Trovati il 2026-10-08 chiudendo D19 (`brief-db-righe-e-componenti-le-altre-famiglie`, §5). Tre
+punti:
+* righe d'ordine e di preventivo si cambiano ancora fuori bozza a DB (ora una riga kit no, una
+  semplice sì);
+* `user_update` nullable su circa 140 tabelle, e nessun presidio che fermi una tabella nuova;
+* un componente spento in attesa di approvazione passa nella revisione, legato alla pratica
+  della rev N (preventivo e offerta).
+
+Dettaglio e stato nel brief
+[brief-db-righe-e-componenti-debiti-residui.md](../work-done/brief-db-righe-e-componenti-debiti-residui.md)
+(archiviato il 2026-10-09).
+Decisi da Tid il 2026-10-08; DB scritto lo stesso giorno (`20261008-80` … `-94`), applicato su dev, pgTAP
+verdi anche su `zeroerp_ci` (2026-10-09); tre test non più costruibili sono skip motivati (§4.5).
+✅ **Chiuso lato DB**; ✅ lato BE chiuso il 2026-10-09 (§5 del brief): il verbo della data confermata
+passa a `brief-db-ordine-data-consegna-confermata-capability`, il ciclo della pratica resta debito
+dichiarato in PROJECT_CONTEXT.
 
 ### ✅ D19 — Righe e componenti di preventivo, ordine e DDT come contratto e offerta — chiusa il 2026-10-08
 

@@ -22,6 +22,9 @@ Indice test eseguiti:
 11) PermessiListenerTests.test_catalogo_payload_non_valido_invalida_lo_stesso
 12) PermessiListenerTests.test_canale_non_atteso_ignorato
 13) PermessiListenerTests.test_invalidate_all_dopo_listen_a_ogni_connessione
+14) PermessiListenerTests.test_socket_muto_la_sonda_fa_riconnettere
+15) PermessiListenerTests.test_conninfo_porta_i_tetti_di_rete_della_sonda
+16) PermessiListenerTests.test_ritardo_riparte_a_ogni_connessione_riuscita
 """
 
 import json
@@ -31,8 +34,11 @@ from unittest.mock import MagicMock, patch
 import psycopg
 
 from apps.anagrafiche.services.notify_listener import (
+    SONDA_SQL,
     CANALE_CAMBIO_REPARTO,
     CANALE_PERMESSI_CATALOGO,
+    CONNECT_TIMEOUT_S,
+    TCP_USER_TIMEOUT_MS,
     PermessiListener,
 )
 from apps.core.services.processi import PROCESSO_LISTEN_PERMESSI
@@ -165,10 +171,15 @@ class PermessiListenerTests(TestCase):
         with patch.object(listener, "_install_signal_handlers"):
             listener.run()
 
-        # Verifica LISTEN eseguito, un canale per istruzione
+        # Verifica LISTEN eseguito, un canale per istruzione; poi la sonda
+        # del primo giro (il secondo giro si ferma e non sonda)
         self.assertEqual(
             [c.args for c in mock_conn.execute.call_args_list],
-            [("LISTEN cambio_reparto",), ("LISTEN permessi_catalogo",)],
+            [
+                ("LISTEN cambio_reparto",),
+                ("LISTEN permessi_catalogo",),
+                (SONDA_SQL,),
+            ],
         )
 
         # Verifica invalidazione
@@ -340,3 +351,131 @@ class PermessiListenerTests(TestCase):
         self.assertEqual(
             [(c[0], c.args) for c in ordine.mock_calls], giro + giro,
         )
+
+    # Scopo: Il caso del 2026-10-09. Il server sparisce senza chiudere la
+    #        connessione: `notifies()` scade a vuoto ogni giro, nessun errore
+    #        arriva da li'. E' la sonda (la scrittura) a far emergere la
+    #        connessione morta, e da li' la riconnessione, con la sua
+    #        `invalidate_all` che recupera le notifiche perse.
+    # ⛔ Senza la sonda questo test non termina: il ciclo resterebbe sulla
+    #    prima connessione per sempre — ed e' esattamente il difetto. Il tetto
+    #    `giri` lo trasforma in un fallimento invece che in un test appeso.
+    @patch(_INVALIDATE_ALL)
+    @patch("apps.anagrafiche.services.notify_listener.time.sleep")
+    @patch(_SETTINGS)
+    @patch(_CONNINFO, return_value="host=localhost dbname=test")
+    @patch(_PSYCOPG_CONNECT)
+    def test_socket_muto_la_sonda_fa_riconnettere(
+        self, mock_connect, mock_conninfo, mock_settings, mock_sleep, mock_all,
+    ):
+        mock_settings.DATABASES = {"default": {"NAME": "testdb"}}
+        listener = PermessiListener(poll_interval=0.1)
+        connessioni = 0
+        giri = 0
+
+        def muto(timeout=None):
+            # Socket mezzo morto: nessuna notifica, nessun errore. Mai.
+            nonlocal giri
+            giri += 1
+            if giri > 10:
+                listener.stop()
+                self.fail("il listener e' rimasto sulla connessione muta")
+            yield from ()
+
+        def sana(timeout=None):
+            listener.stop()
+            yield from ()
+
+        def execute_muta(sql):
+            if sql == SONDA_SQL:
+                raise psycopg.OperationalError("server closed the connection")
+
+        def nuova_connessione(*args, **kwargs):
+            nonlocal connessioni
+            connessioni += 1
+            conn = MagicMock()
+            if connessioni == 1:
+                conn.notifies = muto
+                conn.execute = MagicMock(side_effect=execute_muta)
+            else:
+                conn.notifies = sana
+            ctx = MagicMock()
+            ctx.__enter__ = MagicMock(return_value=conn)
+            ctx.__exit__ = MagicMock(return_value=False)
+            return ctx
+
+        mock_connect.side_effect = nuova_connessione
+
+        with patch.object(listener, "_install_signal_handlers"):
+            listener.run()
+
+        self.assertEqual(giri, 1)
+        self.assertEqual(connessioni, 2)
+        self.assertEqual(mock_all.call_count, 2)
+
+    # Scopo: La sonda vale solo se una scrittura senza risposta fallisce in
+    #        fretta: senza `tcp_user_timeout` il kernel ritrasmette per ~15
+    #        minuti e la `SELECT 1` resta appesa. Si legge la stringa che
+    #        libpq accetta DAVVERO (`conninfo_to_dict` la analizza con
+    #        PQconninfoParse, e un parametro sconosciuto solleva).
+    @patch(_SETTINGS)
+    def test_conninfo_porta_i_tetti_di_rete_della_sonda(self, mock_settings):
+        mock_settings.DATABASES = {"default": {"NAME": "testdb"}}
+
+        parametri = psycopg.conninfo.conninfo_to_dict(
+            PermessiListener._get_conninfo(),
+        )
+
+        self.assertEqual(
+            parametri.get("tcp_user_timeout"), str(TCP_USER_TIMEOUT_MS),
+        )
+        self.assertEqual(
+            parametri.get("connect_timeout"), str(CONNECT_TIMEOUT_S),
+        )
+
+    # Scopo: Il ritardo di riconnessione raddoppia mentre il server non
+    #        risponde, ma riparte dalla base a ogni connessione RIUSCITA. Prima
+    #        ripartiva solo all'uscita pulita, cioe' mai: la seconda caduta,
+    #        anche a settimane dalla prima, ereditava il ritardo raddoppiato,
+    #        e dopo qualche incidente il listener restava al massimo per sempre.
+    #        Qui: caduta, riconnessione riuscita, caduta di nuovo -> 1s e 1s
+    #        (non 1s e 2s).
+    @patch(_INVALIDATE_ALL)
+    @patch("apps.anagrafiche.services.notify_listener.time.sleep")
+    @patch(_SETTINGS)
+    @patch(_CONNINFO, return_value="host=localhost dbname=test")
+    @patch(_PSYCOPG_CONNECT)
+    def test_ritardo_riparte_a_ogni_connessione_riuscita(
+        self, mock_connect, mock_conninfo, mock_settings, mock_sleep, mock_all,
+    ):
+        mock_settings.DATABASES = {"default": {"NAME": "testdb"}}
+        listener = PermessiListener(
+            poll_interval=0.1, reconnect_base_delay=1.0, reconnect_max_delay=10.0,
+        )
+        connessioni = 0
+
+        def cade(timeout=None):
+            raise psycopg.OperationalError("connection lost")
+            yield  # pragma: no cover - rende la funzione un generatore
+
+        def ferma(timeout=None):
+            listener.stop()
+            yield from ()
+
+        def nuova_connessione(*args, **kwargs):
+            nonlocal connessioni
+            connessioni += 1
+            conn = MagicMock()
+            conn.notifies = cade if connessioni < 3 else ferma
+            ctx = MagicMock()
+            ctx.__enter__ = MagicMock(return_value=conn)
+            ctx.__exit__ = MagicMock(return_value=False)
+            return ctx
+
+        mock_connect.side_effect = nuova_connessione
+
+        with patch.object(listener, "_install_signal_handlers"):
+            listener.run()
+
+        self.assertEqual(connessioni, 3)
+        self.assertEqual([c.args for c in mock_sleep.call_args_list], [(1.0,), (1.0,)])
