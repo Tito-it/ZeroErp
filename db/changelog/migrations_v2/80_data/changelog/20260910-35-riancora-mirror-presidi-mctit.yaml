@@ -117,6 +117,11 @@ databaseChangeLog:
               # stesso CSV e carica la colonna dall'intestazione: e' testo,
               # nessun tipo da dichiarare perche' arrivi giusta.
               - column: { name: chi_agisce,    type: STRING }
+              # 2026-10-09, brief-db-presidio-processi-testo-per-causa §3 B.3:
+              # da quale colonna della vista si legge la variante del testo
+              # (colonna di 00_schema/20261009-32). NULL = un testo solo. Come
+              # chi_agisce, il mirror -08 la carica dall'intestazione.
+              - column: { name: colonna_variante, type: STRING }
       rollback:
         # ⛔ Niente DELETE, e vuoto DI PROPOSITO: il catalogo lo popola anche il
         #   20260910-08, quindi svuotare la tabella qui cancellerebbe il lavoro

@@ -26,7 +26,8 @@
 - [pipeline_task_registry](manual/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](manual/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
 - [presidi](manual/presidi.md) — (latest review 10-09-2026)
-- [presidi_testi](manual/presidi_testi.md) — (latest review 06-10-2026)
+- [presidi_cause](manual/presidi_cause.md) — (latest review 09-10-2026)
+- [presidi_testi](manual/presidi_testi.md) — (latest review 09-10-2026)
 - [processi](manual/processi.md) — (latest review 14-09-2026)
 - [processi_bersagli](manual/processi_bersagli.md) — (latest review 04-09-2026)
 - [processi_identita](manual/processi_identita.md) — (latest review 04-09-2026)

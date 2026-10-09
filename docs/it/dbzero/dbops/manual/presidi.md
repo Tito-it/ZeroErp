@@ -163,6 +163,14 @@ Le **parole** per chi agisce — cosa vuol dire una riga, cosa fare — stanno i
 tabella e il `COMMENT` della vista restano scritti per chi **mantiene** il
 presidio, e non si riscrivono.
 
+Dal 2026-10-09 la colonna `colonna_variante` dice, per i presidi le cui righe
+sono guasti **diversi**, da quale colonna della vista si legge la causa di ogni
+riga: il testo si sceglie da lì, riga per riga. Vuota = un testo solo per tutto
+il presidio. Per questi presidi anche «a chi tocca» si legge per causa, da
+[`dbops.presidi_cause`](/dbzero/dbops/manual/presidi_cause): `chi_agisce` qui resta
+il valore del presidio nel suo insieme. Dettaglio in
+[`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi).
+
 ---
 
 ### ⛔ Che cosa NON sta qui

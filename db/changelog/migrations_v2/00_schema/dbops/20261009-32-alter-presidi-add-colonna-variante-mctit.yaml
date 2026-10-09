@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidio-processi-testo-per-causa §3 B.3 — il catalogo dice da
+# quale colonna della vista si legge la variante del testo.
+#
+# ── ⭐ IL DIFETTO E' DEL MODELLO DEI TESTI, NON DI UN PRESIDIO ───────
+#   dbops.presidi_testi ha un testo per presidio e lingua. Quando le righe di
+#   una vista sono guasti DIVERSI con rimedi diversi, un testo unico e'
+#   sbagliato per alcune di loro: il 2026-10-09 il pannello ha detto «lancialo
+#   con Esegui ora» per un servizio sempre acceso, che un timer non ce l'ha.
+#   ⇒ Il testo lo sceglie la CAUSA della riga. Quale colonna porti la causa e'
+#     un fatto del presidio, e sta nel catalogo: cosi' la regola vale per
+#     qualsiasi presidio, e il backend non ha un nome di colonna nel codice.
+#
+# ── ⛔ NULLABLE, ED E' UN DATO ───────────────────────────────────────
+#   NULL = il presidio ha un testo solo (tutti, fino a oggi). Valorizzata = il
+#   testo si sceglie per riga, dal valore di quella colonna, fra le righe di
+#   dbops.presidi_testi con `variante` uguale (20261009-33).
+#   ⚠️ Che la colonna ESISTA nella vista non lo puo' dire un CHECK (guarda un
+#   altro oggetto): lo presidia il pgTAP dbops/test-presidi-testi-v1 (test 8).
+#
+# ⚠️ Il valore lo scrive il mirror del CSV (80_data/sql/dbops/presidi.csv, la
+#   colonna in coda all'intestazione), come chi_agisce.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261009-32-alter-presidi-add-colonna-variante-mctit.yaml
+
+  - changeSet:
+      id: 20261009-32-alter-presidi-add-colonna-variante
+      author: mctit
+      failOnError: true
+      comment: >
+        Aggiunge dbops.presidi.colonna_variante: la colonna della vista da cui
+        si legge la variante del testo per chi agisce (dbops.presidi_testi.variante).
+        NULL = un testo solo per il presidio. brief-db-presidio-processi-testo-per-causa §3 B.3.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi
+        - not:
+            - columnExists:
+                schemaName: dbops
+                tableName: presidi
+                columnName: colonna_variante
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.presidi
+                  ADD COLUMN colonna_variante text NULL;
+
+              -- Un nome vuoto passerebbe per una colonna dichiarata e non lo e'.
+              ALTER TABLE dbops.presidi
+                  ADD CONSTRAINT chk_presidi_colonna_variante_non_vuota
+                  CHECK (btrim(colonna_variante) <> '');
+
+              COMMENT ON COLUMN dbops.presidi.colonna_variante IS
+                  'La colonna della vista da cui si legge, per ogni riga, la variante del testo per chi agisce (dbops.presidi_testi.variante). NULL = il presidio ha un testo solo. ⭐ Serve quando le righe della vista sono guasti diversi con rimedi diversi: un testo unico e'' sbagliato per alcune di loro (il 2026-10-09 il presidio dei processi diceva «Esegui ora» a un servizio sempre acceso). ⛔ Il testo generico NON fa da ripiego per una variante senza testo: tornerebbe a dare il rimedio sbagliato, in silenzio. Che la colonna esista nella vista, e che ogni valore che la vista puo'' produrre abbia il suo testo italiano, lo presidiano i pgTAP (dbops/test-presidi-testi-v1 e il test del presidio). Brief: brief-db-presidio-processi-testo-per-causa §3 B.3.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.presidi DROP COLUMN IF EXISTS colonna_variante;

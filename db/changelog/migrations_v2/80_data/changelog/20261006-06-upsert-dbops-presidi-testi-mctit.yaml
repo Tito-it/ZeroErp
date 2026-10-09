@@ -10,7 +10,8 @@
 # agisce: una riga `it` per ognuno dei presidi che possono accendersi (tutte
 # le nature tranne INVENTARIO).
 #
-# ── ⭐ CHIAVE DELL'UPSERT: (vista, lingua) ──────────────────────────
+# ── ⭐ CHIAVE DELL'UPSERT: (vista, lingua, variante) ─────────────────
+#   (variante dal 2026-10-09, brief-db-presidio-processi-testo-per-causa.)
 #   La chiave naturale (uq_presidi_testi_vista_lingua), non l'`id`, che e'
 #   IDENTITY: il CSV non porta la colonna id. `vista` e' anche la FK verso
 #   dbops.presidi, quindi il presidio si nomina come lo nomina il suo CSV.
@@ -40,15 +41,42 @@ databaseChangeLog:
         - ANY
       failOnError: true
       comment: >
-        Mirror di dbops.presidi_testi dal CSV: significato e azione in
-        italiano per ogni presidio che puo' accendersi. Chiave (vista,
-        lingua). Catalogo puro. brief-db-presidi-cosa-significa-cosa-fare §4.1.
+        Mirror di dbops.presidi_cause e poi di dbops.presidi_testi dai loro
+        CSV: le cause dei presidi con colonna_variante (chiave vista, causa) e
+        significato e azione in italiano per ogni presidio che puo' accendersi
+        (chiave vista, lingua, variante). Catalogo puro.
+        brief-db-presidi-cosa-significa-cosa-fare §4.1,
+        brief-db-presidio-processi-testo-per-causa §5.5.
       preConditions:
         - onFail: HALT
         - tableExists:
             schemaName: dbops
             tableName: presidi_testi
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi_cause
       changes:
+        # ⭐ 2026-10-09, brief-db-presidio-processi-testo-per-causa §5.5 (b): PRIMA
+        #   le cause, POI i testi. I testi di variante hanno la FK (vista,
+        #   variante) → dbops.presidi_cause (00_schema/20261009-36): un mirror
+        #   delle cause numerato oggi girerebbe DOPO questo (in 80_data l'ordine
+        #   e' il nome del file), e la prossima causa aggiunta ai due CSV insieme
+        #   farebbe fallire qui la FK. Due tabelle, due CSV, un changeSet: il
+        #   runOnChange si sveglia se cambia l'uno o l'altro, e li ricarica
+        #   nell'ordine giusto.
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/dbops/presidi_cause.csv
+            tableName: presidi_cause
+            schemaName: dbops
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "vista,causa"
+            columns:
+              - column: { name: vista,      type: STRING }
+              - column: { name: causa,      type: STRING }
+              - column: { name: chi_agisce, type: STRING }
         - loadUpdateData:
             relativeToChangelogFile: true
             file: ../sql/dbops/presidi_testi.csv
@@ -57,13 +85,20 @@ databaseChangeLog:
             separator: ","
             encoding: UTF-8
             # Token letterale `NULL`, non la cella vuota (linee-guida-sql §11.7).
-            # Oggi nessuna colonna e' nullable: e' la forma di casa, perche' la
-            # prossima colonna non debba ricordarsene.
+            # Dal 2026-10-09 `variante` e' nullable (NULL = testo del
+            # presidio): la cella vuota la renderebbe stringa vuota, e il
+            # CHECK chk_presidi_testi_variante_non_vuota la rifiuterebbe.
             nullValue: "NULL"
-            primaryKey: "vista,lingua"
+            # 2026-10-09, brief-db-presidio-processi-testo-per-causa §3 B.2: la
+            # chiave prende `variante` (00_schema/20261009-33). La riga
+            # generica ha variante NULL: Liquibase la cerca con `variante is
+            # NULL` (updateSQL offline, verificato), quindi la aggiorna invece
+            # di duplicarla — e la UNIQUE e' NULLS NOT DISTINCT comunque.
+            primaryKey: "vista,lingua,variante"
             columns:
               - column: { name: vista,       type: STRING }
               - column: { name: lingua,      type: STRING }
+              - column: { name: variante,    type: STRING }
               - column: { name: significato, type: STRING }
               - column: { name: azione,      type: STRING }
       rollback:
@@ -71,3 +106,4 @@ databaseChangeLog:
             splitStatements: false
             sql: |
               DELETE FROM dbops.presidi_testi;
+              DELETE FROM dbops.presidi_cause;

@@ -140,10 +140,43 @@ Tre colonne in coda dal 2026-09-11: `tolleranza_minuti`, `segno_di_vita`,
 
 ---
 
+### ⭐ La causa: non solo *che cosa* non va, ma *perché*
+
+Dal 2026-10-09 la vista porta, accanto allo stato, la **causa** del guasto. Due
+stati, da soli, non bastano a dire che cosa fare:
+
+| Stato | Causa | Che cosa è successo | Chi interviene |
+| --- | --- | --- | --- |
+| `MUTO` | `TIMER_FERMO` | il timer del lavoro ha smesso di girare | chi gestisce il server |
+| `MUTO` | `SERVIZIO_GIU` | un servizio sempre acceso è spento, o ha perso la connessione al database | chi gestisce il server |
+| `MAI_PARTITO` | `TIMER_NON_INSTALLATO` | il timer è previsto ma non è mai stato installato | chi gestisce il server |
+| `MAI_PARTITO` | `JOB_MAI_PARTITO` | il lavoro programmato nel database è acceso e non è mai partito | chi gestisce il database |
+| `NON_PROGRAMMATO` | `NON_PROGRAMMATO` | il catalogo non dice quale lavoro lo fa partire | lo sviluppo |
+| `JOB_ASSENTE` | `JOB_ASSENTE` | il lavoro programmato nominato dal catalogo non esiste | chi gestisce il database |
+| `JOB_SPENTO` | `JOB_SPENTO` | il lavoro programmato è stato spento | chi gestisce il database |
+| `GIRA_E_NON_REGISTRA` | `GIRA_E_NON_REGISTRA` | è partito ma non ha lasciato traccia | lo sviluppo |
+
+È la causa a scegliere il **testo** che il pannello e il digest mostrano a chi
+deve agire ([`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi)) e **a chi**
+mandarlo ([`dbops.presidi_cause`](/dbzero/dbops/manual/presidi_cause): la colonna
+«chi interviene» qui sopra è quel dato, non una frase): il 9
+ottobre 2026 il testo unico diceva *«Esegui ora»* a un servizio sempre acceso,
+che quel pulsante non ce l'ha.
+
+⭐ Stato e causa escono **dallo stesso punto** della vista, in coppia: scriverli in
+due punti separati vorrebbe dire due elenchi degli stessi casi, che prima o poi
+smettono di coincidere.
+
+---
+
 ### ⭐ `da_guardare`: il criterio del guasto sta in un posto solo
 
 La vista porta una colonna che dice, per ogni riga, **se quello stato è un
-guasto**. Non è una comodità: è la sede unica di quel criterio.
+guasto**. Non è una comodità: è la sede unica di quel criterio. Dal 2026-10-09
+la regola è una sola: **è un guasto ciò che ha una causa**. I tre casi sani
+(`OK`, fuori portata, su richiesta) non ne hanno; ogni guasto ce l'ha per
+costruzione — quindi nel presidio non può comparire una riga senza il suo
+rimedio.
 
 ⛔ La vista di presidio ([vw_processi_programmazione_da_guardare](/dbzero/dbops/manual/vw_processi_programmazione_da_guardare))
 la **proietta** invece di ripetere un elenco di stati sani. Se lo ripetesse, il
@@ -221,7 +254,7 @@ fare — quella è la vista di presidio, e sta apposta da un'altra parte.
 
 ### Verifica
 
-`db/pgtap/dbops/test-vw-processi-programmazione.sql` — tredici test.
+`db/pgtap/dbops/test-vw-processi-programmazione.sql` — i test del panorama.
 
 Quelli che contano **costruiscono** il caso invece di cercarlo fra i dati di
 oggi: si toglie il giornale a un lavoro e si pretende «è girato e non l'ha
@@ -241,3 +274,10 @@ canali ammessi dal vincolo di tabella e i rami che la vista dichiara, e —
 allo stesso modo — i modi in cui una corsa può essere stata registrata e quali
 di essi valgono come risposta dello scheduler. Un valore nuovo senza verdetto fa
 rosso il test, invece di produrre un falso allarme in produzione.
+
+`db/pgtap/dbops/test-presidio-processi-testo-per-causa-v1.sql` costruisce le otto
+cause una per una (le tre che vivono nello scheduler del database solo dove
+c'è) e pretende per ciascuna lo stato e la causa giusti; e pretende che **ogni**
+causa che la vista può produrre abbia il suo testo. L'elenco delle cause si legge
+dalla definizione della vista, non dalle righe di oggi: vale anche su un database
+appena creato, dove nessun lavoro è guasto.

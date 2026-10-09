@@ -1,0 +1,104 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidio-processi-testo-per-causa §3 B.1 — il presidio porta la
+# CAUSA di ogni riga, perche' e' da li' che si sceglie il testo per chi agisce.
+#
+# ── ⭐ PROIETTA, NON CALCOLA ─────────────────────────────────────────
+#   La causa nasce nel panorama (20261009-34), nello stesso ramo del CASE che
+#   produce lo stato. Qui si proietta come lo stato: un secondo calcolo qui
+#   sarebbe la seconda enumerazione degli stessi casi.
+#   ⚠️ In questa vista `causa` non e' mai NULL: il filtro e' `da_guardare`, che
+#   nel panorama E' «la riga ha una causa».
+#
+# ⚠️ Stesse colonne, stesso ordine, `causa` IN CODA: CREATE OR REPLACE VIEW
+#   (niente DROP: il GRANT e il COMMENT restano). Corpo dal 20260907-07, che
+#   coincide con la doc auto-gen (verificato 2026-10-09). Nessuna reloption.
+# ⚠️ Dipende dal 20261009-34: la colonna `causa` del panorama deve esistere.
+#
+# Verifica: db/pgtap/dbops/test-presidio-processi-testo-per-causa-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261009-35-update-vw-processi-programmazione-da-guardare-causa-mctit.yaml
+
+  - changeSet:
+      id: 20261009-35-update-vw-processi-programmazione-da-guardare-causa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_processi_programmazione_da_guardare: proietta `causa` dal
+        panorama, in coda. E' la colonna da cui il pannello e il digest
+        scelgono il testo per chi agisce (dbops.presidi.colonna_variante).
+        brief-db-presidio-processi-testo-per-causa §3 B.1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: dbops
+                viewName: vw_processi_programmazione_da_guardare
+            - sqlCheck:
+                expectedResult: 1
+                sql: >-
+                  SELECT count(*) FROM pg_attribute a
+                   WHERE a.attrelid = 'dbops.vw_processi_programmazione'::regclass
+                     AND a.attname = 'causa'
+                     AND NOT a.attisdropped
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_programmazione_da_guardare AS
+              SELECT v.processo_codice,
+                     -- Il verdetto per primo: e' la colonna che dice cosa
+                     -- guardare, e in un presidio si legge quella.
+                     v.stato,
+                     v.classe,
+                     v.canale,
+                     v.jobname_pgagent,
+                     v.job_abilitato,
+                     -- ⭐ Le date sono la PROVA del verdetto, non un ornamento:
+                     --   `GIRA_E_NON_REGISTRA` si legge guardando quanto
+                     --   distano.
+                     v.pgagent_ultima_corsa,
+                     -- ⛔ E la prova e' QUESTA, non quella sotto: dal
+                     --   20260907-06 il confronto legge le sole corse scritte
+                     --   dal percorso DB.
+                     v.giornale_ultima_corsa_pgagent,
+                     -- ⚠️ Resta accanto perche' la differenza fra le due E'
+                     --   l'informazione: se questa e' avanti e quella indietro,
+                     --   qualcuno ha registrato sotto questo codice senza
+                     --   essere pgAgent.
+                     v.giornale_ultima_corsa,
+                     v.ultimo_esito,
+                     v.prossima_corsa,
+                     -- ⭐ Rev 2026-10-09, in coda: la causa, che sceglie il
+                     --   testo per chi agisce. Proiettata, non calcolata.
+                     v.causa
+                FROM dbops.vw_processi_programmazione v
+               -- ⛔ Nessun NOT IN qui: il criterio sta nel panorama, accanto al
+               --   CASE che produce gli stati. Questa vista proietta.
+               WHERE v.da_guardare
+               ORDER BY v.canale, v.processo_codice;
+
+              COMMENT ON VIEW dbops.vw_processi_programmazione_da_guardare IS
+                  'PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa non tornano. DEVE restare VUOTA. ⭐ E'' il panorama (dbops.vw_processi_programmazione) proiettato sulla colonna `da_guardare`, NON un secondo criterio: ripetere qui un NOT IN sugli stati sarebbe la seconda enumerazione dello stesso vocabolario, e la seconda diverge — il giorno in cui uno stato nuovo entra, qualcuno dovrebbe ricordarsi di venire a decidere da che parte cade. ⛔ Il panorama non puo'' stare al suo posto: elenca anche i sani (12 righe OK al 2026-09-06), e un presidio che mostra il verde insegna a leggere il verde come debito, cioe'' a ignorare l''avviso. ⚠️ Restano FUORI di proposito FUORI_PORTATA e SU_RICHIESTA, che non sono guasti per ragioni opposte: il primo e'' un limite di vista del database (i COMMAND li sveglia systemd, e chi li presidia e'' il backend da deploy/sveglie.json), il secondo e'' la natura del processo (un CODA lo sveglia una persona: una cadenza da confrontare non esiste). ⭐ Lo stato che vale piu'' di tutti e'' GIRA_E_NON_REGISTRA: pgAgent dice che il job e'' girato, il giornale non lo sa. E'' la firma di R-12 — un lavoro che muore prima di riuscire a raccontarlo. ⭐ LE DUE DATE DEL GIORNALE SONO DUE, rev 2026-09-07: il verdetto poggia su `giornale_ultima_corsa_pgagent` (le sole corse scritte dal percorso DB), e `giornale_ultima_corsa` sta accanto perche'' la DIFFERENZA fra le due e'' informazione — se la seconda e'' avanti e la prima indietro, qualcuno ha registrato sotto questo codice senza essere pgAgent. Brief §9.5-bis. ⚠️ UNA CAUSA NON ACCERTATA, e non e'' una condizione di riapertura: fra il 21-02-2026 e il 05-09-2026 apply_storicizza_weekly e'' girato ogni settimana senza lasciare una riga, e la corsa forzata del 2026-09-07 e'' andata VERDE — quindi il difetto non era nel job, era nel verbale, ma perche'' sei mesi e mezzo di corse riuscite non abbiano scritto niente resta senza risposta. Da qui non si accerta: lo storico degli esiti dello scheduler sta in pgagent.*, che zeroerp_app non legge. ⇒ La prossima volta che questo giornale tace, si comincia da li''. ⭐ LA CAUSA, rev 2026-10-09 (brief-db-presidio-processi-testo-per-causa §3 B.1): colonna `causa` in coda, proiettata dal panorama come lo stato. Due stati hanno due cause con rimedi diversi (MUTO: TIMER_FERMO o SERVIZIO_GIU; MAI_PARTITO: TIMER_NON_INSTALLATO o JOB_MAI_PARTITO), e la causa sceglie il testo per chi agisce (dbops.presidi.colonna_variante = ''causa''). Qui non e'' mai NULL: nel panorama da_guardare E'' «la riga ha una causa».';
+
+              COMMENT ON COLUMN dbops.vw_processi_programmazione_da_guardare.causa IS
+                  'La causa del guasto, dal panorama (dbops.vw_processi_programmazione.causa): TIMER_FERMO, TIMER_NON_INSTALLATO, SERVIZIO_GIU, NON_PROGRAMMATO, JOB_ASSENTE, JOB_SPENTO, JOB_MAI_PARTITO, GIRA_E_NON_REGISTRA. Mai NULL qui. Sceglie il testo per chi agisce: dbops.presidi.colonna_variante → dbops.presidi_testi.variante. Brief: brief-db-presidio-processi-testo-per-causa §3 B.1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Una colonna in coda non si toglie con CREATE OR REPLACE. Il
+              --   verso di ritiro e' un changeSet nuovo.
+              SELECT 1;
