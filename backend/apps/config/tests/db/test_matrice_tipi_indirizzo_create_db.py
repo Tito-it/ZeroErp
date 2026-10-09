@@ -51,7 +51,7 @@ class CreateMatriceDbTests(unittest.TestCase):
                 )
                 cur.execute(
                     """
-                    SELECT valido_dal = CURRENT_DATE, valido_al, obbligatorio, attivo,
+                    SELECT valido_dal = script.fn_data_operativa(), valido_al, obbligatorio, attivo,
                            fallback_tipo_indirizzo_id
                       FROM config.tipi_ruolo_tipi_indirizzo WHERE id = %s
                     """,

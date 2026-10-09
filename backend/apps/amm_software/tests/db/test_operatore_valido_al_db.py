@@ -55,7 +55,7 @@ class OperatoreValidoAlDbTests(unittest.TestCase):
             # (permesso: A e B non scadono). «Senza scadenza» restano A e B.
             cur.execute(
                 """UPDATE anagrafiche.identita_digitali idg
-                      SET valido_al = CURRENT_DATE + 3650
+                      SET valido_al = script.fn_data_operativa() + 3650
                     WHERE idg.valido_al IS NULL
                       AND idg.id NOT IN (%s, %s)
                       AND EXISTS (SELECT 1
@@ -69,10 +69,10 @@ class OperatoreValidoAlDbTests(unittest.TestCase):
             # I rapporti partono indietro di dieci giorni: le date di fine di
             # prova cadono dentro la finestra.
             cur.execute(
-                "UPDATE anagrafiche.risorse_umane SET valido_dal = CURRENT_DATE - 10 WHERE id IN (%s, %s, %s)",
+                "UPDATE anagrafiche.risorse_umane SET valido_dal = script.fn_data_operativa() - 10 WHERE id IN (%s, %s, %s)",
                 [self.a["risorsa_umana_id"], self.b["risorsa_umana_id"], self.c["risorsa_umana_id"]],
             )
-            cur.execute("SELECT (CURRENT_DATE + 30)::text, (CURRENT_DATE - 11)::text")
+            cur.execute("SELECT (script.fn_data_operativa() + 30)::text, (script.fn_data_operativa() - 11)::text")
             self.fra_un_mese, self.prima_dell_inizio = cur.fetchone()
 
     @staticmethod

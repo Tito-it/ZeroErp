@@ -1,7 +1,7 @@
 # Brief DB — Una corsa saltata non è una corsa riuscita
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09, durante la revisione di L4 di
-> [brief-be-db-fe-un-solo-fuso-aziendale](brief-be-db-fe-un-solo-fuso-aziendale.md) (T-9).
+> [brief-be-db-fe-un-solo-fuso-aziendale](../work-done/brief-be-db-fe-un-solo-fuso-aziendale.md) (T-9).
 > **A chi:** team DB (`dev/db-tid`); ricadute BE in §6.
 > **Decisione di Tid (2026-10-09):** aprire il brief.
 > **Stato:** 🔵 da fare.

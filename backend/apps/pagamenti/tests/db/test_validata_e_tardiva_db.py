@@ -85,7 +85,7 @@ _FIXTURE_MONDO: tuple[str, ...] = (
     CREATE TEMP TABLE _rate_vt AS
     WITH ins AS (
         INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo, meta)
-        SELECT f.fattura_id, v.n, current_date + v.n, v.importo,
+        SELECT f.fattura_id, v.n, script.fn_data_operativa() + v.n, v.importo,
                jsonb_build_object('rata', v.et)
           FROM _fat_vt f, (VALUES (1, 100.00, 'R1'), (2, 200.00, 'R2')) AS v(n, importo, et)
         RETURNING id, meta ->> 'rata' AS etichetta
@@ -98,8 +98,8 @@ _FIXTURE_MONDO: tuple[str, ...] = (
         p_centro_riscossione_id => (SELECT c.id FROM pagamenti.centri_riscossione c
                                      WHERE c.attivo IS TRUE AND c.codice_interno = 'BANCA'
                                      ORDER BY c.id LIMIT 1),
-        p_data_contabile        => current_date,
-        p_data_registrazione    => current_date,
+        p_data_contabile        => script.fn_data_operativa(),
+        p_data_registrazione    => script.fn_data_operativa(),
         p_codice_stato_interno  => 'BOZZA',
         p_meta                  => '{"test_scope": "be_validata_tardiva"}'::jsonb,
         p_origine               => 'MANUALE'
@@ -113,7 +113,7 @@ _RIGA_SQL = """
     INSERT INTO pagamenti.vendite_contabili_righe
         (contabile_id, riferimento_ente, data_pagamento, importo,
          fattura_id, billing_account_id, scadenza_id, stato_id, motivo_sospeso, meta)
-    SELECT d.contabile_id, 'BE_VT_' || %(et)s, current_date, %(importo)s,
+    SELECT d.contabile_id, 'BE_VT_' || %(et)s, script.fn_data_operativa(), %(importo)s,
            CASE WHEN %(et)s = 'A' THEN (SELECT fattura_id FROM _fat_vt) END,
            CASE WHEN %(et)s = 'A' THEN (SELECT billing_account_id FROM _cli_vt) END,
            CASE WHEN %(et)s = 'A' THEN (SELECT id FROM _rate_vt WHERE etichetta = 'R1') END,

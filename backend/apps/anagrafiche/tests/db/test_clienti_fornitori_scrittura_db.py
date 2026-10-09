@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Le INSERT di clienti, billing account e fornitori migrate sul BB
 #        `execute_dynamic_insert` (2026-09-26), sul DATABASE VERO: le
-#        `espressioni` letterali (stato iniziale per codice, `CURRENT_DATE`)
+#        `espressioni` letterali (stato iniziale per codice, `fn_data_operativa()`)
 #        finiscono davvero nel testo SQL e i None omessi lasciano lavorare i
 #        DEFAULT del DB — cio' che i test di servizio, che mockano il
 #        repository, non vedono.
@@ -123,7 +123,7 @@ class ScritturaClientiFornitoriDbTests(unittest.TestCase):
                 )
                 stato, attivazione, garanzia_tipo, da_fatturare = cur.fetchone()
                 self.assertEqual(stato, "AT")
-                cur.execute("SELECT CURRENT_DATE")
+                cur.execute("SELECT script.fn_data_operativa()")
                 self.assertEqual(attivazione, cur.fetchone()[0])
                 # None omesso -> DEFAULT 'D' della colonna, come prima.
                 self.assertEqual(garanzia_tipo, "D")

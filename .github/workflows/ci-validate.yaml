@@ -806,6 +806,43 @@ jobs:
           source backend/.venv/bin/activate
           python -c "import weasyprint; print('WeasyPrint', weasyprint.__version__)"
 
+      # ⭐ FUSO OSTILE PER I TEST DJANGO (brief-be-db-fe-un-solo-fuso-aziendale,
+      #   T-5, decisione di Tid del 2026-10-09). La sessione PG dei test Django
+      #   e' SEMPRE UTC (Django la imposta da se' con `USE_TZ`), quindi l'unica
+      #   leva e' il fuso dell'AZIENDA: col seed (Europe/Rome) il giorno UTC e
+      #   quello aziendale differiscono solo fra le 22 e le 24 UTC, e un errore
+      #   di fuso nel backend sarebbe rosso quasi mai — com'e' nato il brief.
+      #   Qui il parametro si sposta su un fuso il cui giorno ADESSO differisce
+      #   da quello UTC: Kiritimati (+14) dalle 10 UTC in poi, Pago Pago (−11)
+      #   prima — uno dei due differisce sempre, e la scelta lascia almeno
+      #   un'ora di margine alla suite. Stessa idea di `scripts/testpgtap.sh`,
+      #   che sceglie la SESSIONE ostile al parametro; qui la sessione e' fissa e
+      #   si sceglie il parametro.
+      #   ⚠️ Solo per questo passo: il passo dopo rimette il valore di prima,
+      #   cosi' la suite pgTAP gira sul seed com'e'. Il backend legge il fuso
+      #   all'avvio del processo dei test (`ZeroErpTestRunner`), quindi deve
+      #   cambiare PRIMA di «Django tests».
+      #   ⚠️ E' un presidio, non la prova: la prova sono i test che COSTRUISCONO
+      #   gli istanti di confine. Un test che suppone Roma senza dichiararlo
+      #   (`fuso_aziendale_forzato`) qui diventa rosso, ed e' giusto.
+      - name: Fuso aziendale ostile per i test Django (T-5)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          prima=$(psql --no-psqlrc -X -A -t -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "SELECT default_value FROM config.parameters WHERE code = 'SYSTEM_FUSO_ORARIO'")
+          echo "FUSO_AZIENDALE_SEED=$prima" >> "$GITHUB_ENV"
+          ostile=$(psql --no-psqlrc -X -A -t -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "SELECT CASE WHEN (now() AT TIME ZONE 'Pacific/Kiritimati')::date <> (now() AT TIME ZONE 'UTC')::date
+                         THEN 'Pacific/Kiritimati' ELSE 'Pacific/Pago_Pago' END")
+          # ⚠️ Da stdin e non con `-c`: psql sostituisce `:'fuso'` solo li'.
+          psql --no-psqlrc -X -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v fuso="$ostile" <<'SQL'
+          UPDATE config.parameters SET default_value = :'fuso' WHERE code = 'SYSTEM_FUSO_ORARIO';
+          SQL
+          echo "fuso aziendale per i test Django: $ostile (seed: $prima, adesso UTC: $(date -u +%H:%M))"
+
       - name: Django tests
         working-directory: ./backend
         env:
@@ -866,6 +903,18 @@ jobs:
         run: |
           source .venv/bin/activate
           python manage.py test
+
+      # Rimette il fuso del seed, anche se i test Django sono rossi: la suite
+      # pgTAP (e ogni passo dopo) gira sul database com'e' nato.
+      - name: Fuso aziendale del seed ripristinato
+        if: ${{ !cancelled() && env.FUSO_AZIENDALE_SEED != '' }}
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -X -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v fuso="$FUSO_AZIENDALE_SEED" <<'SQL'
+          UPDATE config.parameters SET default_value = :'fuso' WHERE code = 'SYSTEM_FUSO_ORARIO';
+          SQL
 
       # ------------------------------------------------------------------
       # Suite pgTAP — 426 test DB, che fino al 2026-08-07 non giravano MAI in CI

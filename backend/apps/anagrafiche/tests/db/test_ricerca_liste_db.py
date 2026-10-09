@@ -175,7 +175,7 @@ class RicercaListeAnagraficheDbTests(unittest.TestCase):
                 cur.execute(
                     "INSERT INTO anagrafiche.categorie_clienti_listini "
                     "       (categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id, listino_id, valido_dal) "
-                    "VALUES (%s, %s, %s, %s, current_date) RETURNING id",
+                    "VALUES (%s, %s, %s, %s, script.fn_data_operativa()) RETURNING id",
                     [categoria, mondo["utility_id"], mondo["emittente_soggetto_ruolo_id"], listino],
                 )
                 riga = cur.fetchone()[0]

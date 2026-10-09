@@ -23,7 +23,7 @@
 #        lavoro (decisione T-9 di Tid, strada a): il `comando` della sveglia e'
 #        anche la riga di «Esegui ora», e il pulsante deve eseguire sempre — il
 #        digest rilanciato alle 15:00 dopo quello delle 07:00 deve partire.
-#        Brief: work-in-progress/brief-be-db-fe-un-solo-fuso-aziendale.md (B-8, T-4, T-9).
+#        Brief: work-done/brief-be-db-fe-un-solo-fuso-aziendale.md (B-8, T-4, T-9).
 # ------------------------------------------------------------
 
 from __future__ import annotations

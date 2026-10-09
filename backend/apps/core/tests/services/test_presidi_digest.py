@@ -198,6 +198,11 @@ class PresidiDigestTests(SimpleTestCase):
         patcher = patch.object(presidi_digest, "connection")
         self.connessione = patcher.start()
         self.addCleanup(patcher.stop)
+        # Il fuso dell'azienda e' un'ipotesi del test, dichiarata: le ore attese
+        # nei messaggi (07:30, 09:47…) sono di Roma. Fino al 2026-10-09 la classe
+        # le supponeva senza dirlo, e col parametro ostile della CI (T-5) tre
+        # test erano rossi.
+        self.enterContext(fuso_aziendale_forzato("Europe/Rome"))
 
     # 1. ⭐ IL TEST DELLA FORMA (§5.5). Tutto a posto ⇒ niente invio. Senza
     #    questo, il digest diventa un messaggio quotidiano che ripete lo stesso

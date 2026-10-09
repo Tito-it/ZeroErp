@@ -179,12 +179,12 @@ class OperatoreAltreVestiDbTests(TestCase):
                 _, valido_dal, _ = self._rapporto(cur, operatore)
                 AmmSoftwareRepository().disabilita_operatore(uid)
                 cur.execute(
-                    "UPDATE anagrafiche.risorse_umane ru SET valido_al = CURRENT_DATE + 30 "
+                    "UPDATE anagrafiche.risorse_umane ru SET valido_al = script.fn_data_operativa() + 30 "
                     "  FROM anagrafiche.identita_digitali id "
                     " WHERE id.id = %s AND id.soggetto_ruolo_id = ru.soggetto_ruolo_id",
                     [operatore],
                 )
-                cur.execute("SELECT CURRENT_DATE + 30")
+                cur.execute("SELECT script.fn_data_operativa() + 30")
                 fine = cur.fetchone()[0]
 
                 self.assertEqual(RisorseUmaneCoreRepository().riapri_risorsa_umana_della_veste(operatore), 1)
@@ -347,7 +347,7 @@ class OperatoreAltreVestiDbTests(TestCase):
                         # 2026-10-04: le due strade scrivono lo stesso spegnimento,
                         # rapporto chiuso a oggi compreso.
                         attivo, _, valido_al = self._rapporto(cur, operatore)
-                        cur.execute("SELECT CURRENT_DATE")
+                        cur.execute("SELECT script.fn_data_operativa()")
                         self.assertEqual((attivo, valido_al), (False, cur.fetchone()[0]))
                         self.assertIsNone(inviti.validate(invito_operatore, PORTA_OPERATORE.token_invito))
                         self.assertIsNotNone(inviti.validate(invito_shop, PORTA_SHOP.token_invito))

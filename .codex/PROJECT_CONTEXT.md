@@ -231,13 +231,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Chiuso il 2026-10-09
   `work-done/brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C, la generazione
   si ferma: CHECK «finito» su tutte le 170 colonne numeric, `20261009-10…-18`; il BE solleva il codice TECNICO
-  `E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO` col campo, registro mypy a 0). Resta aperto
-  `brief-be-db-fe-un-solo-fuso-aziendale` (un solo fuso, quello dell'azienda; ✅ lato DB applicato il
-  2026-10-09, pgTAP verdi: `fn_fuso_operativo`, confini del giorno, «oggi» aziendale ovunque, fase
-  `70_dati_sistema`; BE L1-L4 fatti il 2026-10-09: BB `fuso_aziendale`, `TIME_ZONE = 'UTC'`, filtri per giorno
-  col BB `predicato_giorno_operativo`, niente `CURRENT_DATE`/`date.today()` nel BE, log in UTC con `Z`, ruff
-  `DTZ`; timer systemd con ExecCondition (T-9); FE L5 fatto lo stesso giorno: `date.js` nel fuso dell'azienda, vitest a
-  Pago Pago; resta T-5 lato Django, da concordare col team DB). Stub `types-bleach`/`types-openpyxl`
+  `E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO` col campo, registro mypy a 0). Chiuso il 2026-10-09
+  `work-done/brief-be-db-fe-un-solo-fuso-aziendale` (un solo fuso, quello dell'azienda, su DB, BE e FE:
+  `fn_fuso_operativo` e i confini del giorno, «oggi» aziendale ovunque, fase `70_dati_sistema`; BB BE
+  `fuso_aziendale` e `predicato_giorno_operativo`, `TIME_ZONE = 'UTC'`, log in UTC con `Z`, ruff `DTZ`, timer
+  systemd con `ExecCondition` (T-9); `date.js` nel fuso dell'azienda; CI ostile sui tre lati (T-5)). Ne eredita
+  una voce `brief-db-corsa-saltata-non-e-una-corsa` (🔵 team DB): la riga di skip di `fn_job_run_start` conta
+  come corsa riuscita, e le sveglie calendariali possono saltare un periodo. Stub `types-bleach`/`types-openpyxl`
   installati il 2026-10-09 (ok di Tid): mypy controlla anche le chiamate a quelle due librerie.
 - **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,
   archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su

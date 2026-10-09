@@ -311,7 +311,7 @@ class RicercaFullDbTests(unittest.TestCase):
                 unita_2 = cur.fetchone()[0]
                 cur.execute(
                     "INSERT INTO catalogo.unita_misura_conversioni (uom_from_id, uom_to_id, fattore, valido_dal) "
-                    "VALUES (%s, %s, 10, current_date) RETURNING id",
+                    "VALUES (%s, %s, 10, script.fn_data_operativa()) RETURNING id",
                     [unita, unita_2],
                 )
                 conversione = cur.fetchone()[0]

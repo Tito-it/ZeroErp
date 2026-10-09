@@ -7,7 +7,7 @@
 #        in `vendite.ddt` e i valori riletti sono quelli scritti.
 #        Presidia le tre convenzioni del BB che un mock non vede:
 #          · `skip_none` — un opzionale None si OMETTE, e vale il DEFAULT del
-#            DB (`data` = CURRENT_DATE, `fatturazione_immediata` = false);
+#            DB (`data` = fn_data_operativa(), `fatturazione_immediata` = false);
 #          · il dict `meta` esce `::jsonb` e si rilegge come oggetto;
 #          · le stringhe arrivano strippate (`targa`).
 # Note: ⚠️ Il mondo si COSTRUISCE, non si cerca (regola zero): azienda,
@@ -53,7 +53,7 @@ class CreateDdtDbTests(unittest.TestCase):
                     valuta_id = cur.fetchone()[0]
                     cur.execute("SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'DRAFT'")
                     stato_bozza_id = cur.fetchone()[0]
-                    cur.execute("SELECT current_date")
+                    cur.execute("SELECT script.fn_data_operativa()")
                     oggi = cur.fetchone()[0]
 
                     # Il payload che `ddt_service.crea_ddt` passa al repository.

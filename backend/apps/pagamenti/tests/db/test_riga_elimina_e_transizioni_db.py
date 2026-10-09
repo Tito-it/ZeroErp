@@ -397,7 +397,7 @@ _FIXTURE_PASSI: tuple[str, ...] = _FIXTURE_MONDO + (
     CREATE TEMP TABLE _rata_bst AS
     WITH ins AS (
         INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo)
-        SELECT fattura_id, 1, current_date + 30, 400.00 FROM _fat_bst
+        SELECT fattura_id, 1, script.fn_data_operativa() + 30, 400.00 FROM _fat_bst
         RETURNING id
     )
     SELECT id AS scadenza_id FROM ins
@@ -409,7 +409,7 @@ _FIXTURE_PASSI: tuple[str, ...] = _FIXTURE_MONDO + (
             (centro_riscossione_id, data_contabile, data_registrazione, stato_id, origine, meta)
         SELECT (SELECT c.id FROM pagamenti.centri_riscossione c
                  WHERE c.attivo IS TRUE AND c.codice_interno = 'BANCA' ORDER BY c.id LIMIT 1),
-               current_date, current_date,
+               script.fn_data_operativa(), script.fn_data_operativa(),
                (SELECT s.id FROM pagamenti.vendite_contabili_stati s
                  WHERE s.codice_interno = 'BOZZA' ORDER BY s.id LIMIT 1),
                'MANUALE', '{"test_scope": "be_secondo_tempo"}'::jsonb
@@ -421,7 +421,7 @@ _FIXTURE_PASSI: tuple[str, ...] = _FIXTURE_MONDO + (
     INSERT INTO pagamenti.vendite_contabili_righe
         (contabile_id, riferimento_ente, data_pagamento, importo,
          fattura_id, billing_account_id, scadenza_id, stato_id)
-    SELECT d.contabile_id, 'BE_SECONDO_TEMPO', current_date, 400.00,
+    SELECT d.contabile_id, 'BE_SECONDO_TEMPO', script.fn_data_operativa(), 400.00,
            f.fattura_id, c.billing_account_id, r.scadenza_id,
            (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
              WHERE s.codice_interno = 'ABBINATA' ORDER BY s.id LIMIT 1)

@@ -6,7 +6,7 @@
 #        al BB `execute_dynamic_insert` (2026-09-26): la testata nasce davvero
 #        in `vendite.resi`, eredita dal DDT sorgente cio' che il trigger le da'
 #        (destinatario, cliente, emittente), e i valori riletti sono quelli
-#        scritti. Presidia `skip_none` (`data` None -> DEFAULT CURRENT_DATE) e
+#        scritti. Presidia `skip_none` (`data` None -> DEFAULT fn_data_operativa()) e
 #        il dict `meta` -> `::jsonb`.
 # Note: ⚠️ Il reso nasce SOLO da un DDT CONSEGNATO
 #       (`trgfn_resi_guard_ddt_consegnato`), e non c'e' un BB `fn_pgtap_*` che
@@ -120,7 +120,7 @@ class CreateResoDbTests(unittest.TestCase):
                     sorgente_tipo_id = cur.fetchone()[0]
                     cur.execute("SELECT id FROM config.stati_doc_reso WHERE codice_interno = 'DRAFT'")
                     stato_bozza_id = cur.fetchone()[0]
-                    cur.execute("SELECT current_date")
+                    cur.execute("SELECT script.fn_data_operativa()")
                     oggi = cur.fetchone()[0]
 
                     # Il payload di `resi_service.crea_reso`: `sorgente_uid`
@@ -151,7 +151,7 @@ class CreateResoDbTests(unittest.TestCase):
                     self.assertEqual(riga["sorgente_tipo_id"], sorgente_tipo_id)
                     self.assertEqual(riga["sorgente_uid"], ddt["uid"])
                     self.assertEqual(riga["stato_doc_reso_id"], stato_bozza_id)
-                    # skip_none: `data` omessa -> DEFAULT CURRENT_DATE.
+                    # skip_none: `data` omessa -> DEFAULT fn_data_operativa().
                     self.assertEqual(riga["data"], oggi)
                     # Ereditati dal DDT sorgente dal trigger.
                     self.assertEqual(riga["destinatario_soggetto_ruolo_id"], mondo["cliente_soggetto_ruolo_id"])

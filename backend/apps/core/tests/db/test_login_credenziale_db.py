@@ -707,7 +707,7 @@ class CicloOperatoreDbTests(_ViewVere):
         with connection.cursor() as cur:
             cur.execute(
                 "UPDATE anagrafiche.identita_digitali "
-                "   SET valido_dal = CURRENT_DATE - 10, valido_al = CURRENT_DATE - 1 "
+                "   SET valido_dal = script.fn_data_operativa() - 10, valido_al = script.fn_data_operativa() - 1 "
                 " WHERE id = script.fn_veste_di_riferimento(%s, 'OPERATORE')",
                 [uid],
             )
@@ -734,7 +734,7 @@ class CicloOperatoreDbTests(_ViewVere):
             cur.execute(
                 "INSERT INTO anagrafiche.identita_digitali "
                 "(soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo, valido_dal, valido_al) "
-                "VALUES (%s, %s, 'CLIENTE_PORTALE', true, CURRENT_DATE - 10, CURRENT_DATE - 1)",
+                "VALUES (%s, %s, 'CLIENTE_PORTALE', true, script.fn_data_operativa() - 10, script.fn_data_operativa() - 1)",
                 [self.ruolo_cliente, persona.id],
             )
             cur.execute(
@@ -763,13 +763,13 @@ class CicloOperatoreDbTests(_ViewVere):
         # Il rapporto comincia prima, cosi' la sua fine puo' essere ieri.
         with connection.cursor() as cur:
             cur.execute(
-                "UPDATE anagrafiche.risorse_umane ru SET valido_dal = CURRENT_DATE - 10 "
+                "UPDATE anagrafiche.risorse_umane ru SET valido_dal = script.fn_data_operativa() - 10 "
                 "  FROM anagrafiche.identita_digitali id "
                 " WHERE id.soggetto_ruolo_id = ru.soggetto_ruolo_id "
                 "   AND id.id = script.fn_veste_di_riferimento(%s, 'OPERATORE')",
                 [uid],
             )
-            cur.execute("SELECT (CURRENT_DATE - 1)::text")
+            cur.execute("SELECT (script.fn_data_operativa() - 1)::text")
             ieri = cur.fetchone()[0]
         r = self._admin("patch", f"/api/v1/amm-software/operatori/{uid}/", {"valido_al": ieri})
         self.assertEqual(r.status_code, 200, r.content)

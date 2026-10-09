@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1012, di cui 104 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1012, di cui 105 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1583,6 +1583,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_VENDITE_PRICING_FAILED": "DATO_ERRATO",
     "E_VENDITE_PROMO_OVERLAP": "CONFLITTO_STATO",
     "E_VENDITE_RIALLINEAMENTO_VERSIONE_CAMBIATA": "CONFLITTO_STATO",
+    # RITIRATO il 2026-10-09 (brief-db-ritiro-codice-riga-gia-propagata, decisione di Tid): la regola «una riga di listino citata da una riga di commessa o da un'attivita' fatturabile non si modifica» ha una sede sola, vendite.trgfn_listini_righe_guard_stato, che rifiuta con E_RIGA_LISTINO_PROPAGATA. Il controllo Python che lo sollevava (ListiniRepository.check_riga_propagata, nella rettifica controllata N6 di listini_service) ripeteva quella regola con un codice suo, e si ritira: il service scrive e porta al chiamante il codice del DB. Nessuna funzione DB lo ha mai sollevato. Il messaggio resta in messaggi_errore perche' il diario resti leggibile.
+    # ⚠️ RITIRATO il 2026-10-09
     "E_VENDITE_RIGA_GIA_PROPAGATA": "CONFLITTO_STATO",
     "E_VENDITE_SBLOCCO_PREZZO_NON_AMMESSO": "CONFLITTO_STATO",
     "E_VENDITE_VALIDATION": "DATO_ERRATO",
@@ -1764,6 +1766,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_USER_DISABILITATO",
         "E_UTENTE_NON_ATTIVO",
         "E_UTENTE_SCADUTO",
+        "E_VENDITE_RIGA_GIA_PROPAGATA",
         "FLUSSI_COMPETENZA_MANCANTE",
         "FLUSSI_ESITO_NON_AMMESSO",
         "FLUSSI_ESITO_OBBLIGATORIO",
