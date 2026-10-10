@@ -51,6 +51,7 @@
 - [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
 - [fn_check_ordine_annullabile](manual/fn_check_ordine_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-15)
 - [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_check_ordine_data_consegna_confermata](manual/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
 - [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
@@ -75,6 +76,11 @@
 - [fn_current_identita_context](manual/fn_current_identita_context.md) — (latest review 19-04-2026)
 - [fn_data_operativa](manual/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](manual/fn_disdetta_cliente.md) — (rev 2026-08-21)
+- [fn_doc_colonna_modificabile](manual/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_lock_colonna_bloccata](manual/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_lock_montaggi](manual/fn_doc_lock_montaggi.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_lock_regola](manual/fn_doc_lock_regola.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_testata_in_stato](manual/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](manual/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_esigibilita_iva](manual/fn_esigibilita_iva.md)
