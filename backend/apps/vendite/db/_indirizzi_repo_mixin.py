@@ -49,16 +49,22 @@ class IndirizziDocumentoRepositoryMixin:
     - ``_indirizzi_doc_sr_column`` (opzionale): colonna soggetto_ruolo NATIVA
       della testata quando il dominio ce l'ha (ordini ``soggetto_ruolo_id``,
       ddt ``destinatario_soggetto_ruolo_id``). Ha priorita' sul BA: e'
-      l'identita' che il FE usa per il picker, e regge anche i documenti
-      con billing_account NULL (ordine prospect, DDT da evasione di ordine
-      senza BA). None = risoluzione solo via billing_account.
+      l'identita' che il FE usa per il picker. Col BA la colonna e' una
+      COPIA del suo ruolo, legata dalla FK composta (``fk_ordini_ba_cliente``,
+      ``fk_ddt_ba_cliente``): le due fonti coincidono. Senza BA — solo il DDT
+      la cui causale non manda merce a un cliente (trasferimento, conto
+      lavoro, riparazione: ``config.causali_trasporto.richiede_cliente``) —
+      e' l'unica ancora: il terzista o il deposito. None = risoluzione solo
+      via billing_account.
     - ``_indirizzi_doc_istanza_column`` (opzionale): colonna istanza NATIVA
       della testata. La dichiarano i soli documenti **precontrattuali**
       (preventivi, offerte, contratti), che scelgono l'istanza prima che
-      esista un BA e la congelano sulla testata. Gli **esecutivi** (ordini,
-      DDT, fatture) hanno sempre un BA e l'istanza e' univoca da li'
-      (``ba.istanza_utility_id``, FK NOT NULL): non duplicano la colonna.
-      Vedi guida `gestione-delle-istanze-utility` §«relazione 1:1 per utility».
+      esista un BA e la congelano sulla testata. Gli **esecutivi** la
+      leggono dal BA (``ba.istanza_utility_id``, FK NOT NULL) e non duplicano
+      la colonna: ordine e fattura il BA lo hanno sempre; DDT e reso no
+      quando la causale non va a un cliente, e allora un'istanza non c'e'.
+      Vedi guida `gestione-delle-istanze-utility` §«relazione 1:1 per utility»
+      e brief-db-esecutivi-ba-coppia (D-1, D-2, D-3).
     """
 
     _indirizzi_table: str
@@ -74,8 +80,9 @@ class IndirizziDocumentoRepositoryMixin:
     #        - soggetto_ruolo: colonna nativa se dichiarata (fallback BA);
     #        - istanza: colonna nativa se dichiarata (precontrattuali),
     #          altrimenti da `ba.istanza_utility_id` (esecutivi).
-    #        LEFT JOIN sul BA: un documento senza BA ma con colonna nativa
-    #        resta risolvibile (ordine prospect, DDT da evasione senza BA).
+    #        LEFT JOIN sul BA: il DDT senza cliente (causale che non manda
+    #        merce a un cliente) resta risolvibile dalla colonna nativa, con
+    #        l'istanza NULL.
     #        (None, None) se il documento non esiste.
     def get_ancora_indirizzi_documento(
         self, documento_id: int,

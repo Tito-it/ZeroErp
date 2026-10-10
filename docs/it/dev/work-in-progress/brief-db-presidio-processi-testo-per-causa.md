@@ -25,7 +25,11 @@
 > riga: aggiungere `AND pt.variante IS NULL` (il testo del presidio). Vale per
 > ogni presidio, non solo per questo.
 >
-> **Da leggere per primo:** §5.4.
+> ✅ **2026-10-10, BE:** il rimedio urgente è fatto (§6.1). 🔵 **Al team DB: R-2, il
+> conteggio per causa (§6.2)**, che serve al digest per raggruppare per chi agisce. Il
+> testo per causa nel pannello e nel digest si fa intanto (§6.3).
+>
+> **Da leggere per primo:** §5.4, poi §6.
 
 ## 1. Il difetto
 
@@ -275,3 +279,82 @@ Mutazioni: tolta la causa `SERVIZIO_GIU` (e il suo testo) → rossi i test 3 e 1
 la nominano; un testo con una causa inventata → rifiutato dalla FK già NOT VALID.
 Guardrail statici verdi. ⚠️ Non provati: apply vero, runner, baseline (di Tid).
 
+## 6. Giro BE/FE (sessione backend, 2026-10-10)
+
+### 6.1 Fatto
+
+* ✅ §5.4.1, il rimedio urgente: `presidi_repository._TESTO_PER_LINGUA` legge il testo
+  del presidio con `pt.variante IS NULL`. Prove: il test 9 di `test_presidi_repository`
+  legge l'SQL (mutazione senza filtro: rosso); `test_presidi_catalogo` 9-bis confronta,
+  sul database vero, il testo consegnato con la riga generica del seed. ⚠️ Il 9-bis è un
+  presidio della giuntura, non la prova del filtro: senza filtro il `LIMIT 1` sceglie per
+  ordine fisico, e sul dbdev il 2026-10-10 pescava proprio il generico (mutazione: verde).
+
+### 6.2 🔵 Richiesta al team DB — R-2: il conteggio per causa
+
+**Perché serve.** Il §5.4.3-4 chiede che il digest raggruppi per causa e per chi agisce
+della causa. Il BE però ha un solo numero per presidio (`dbops.fn_conta_presidio`) e un
+**campione** di righe: 5 nel digest, 20 nel pannello. Raggruppare il campione darebbe
+conteggi per causa sbagliati appena le righe sono più del campione, e una causa
+`SVILUPPO` oltre la quinta riga non arriverebbe mai al gruppo dello sviluppo: è lo stesso
+difetto del §1, spostato sul conteggio. Il conteggio, per la regola del repository, non
+si fa nel BE (il filtro `colonna_stato` e la RLS stanno nella funzione). ⇒ Decisione di
+Tid, 2026-10-10: lo dà il DB.
+
+| # | Cosa | Tipo | Bloccante per il BE |
+| --- | --- | --- | --- |
+| R-2 | `dbops.fn_conta_presidio_per_variante(p_vista text) RETURNS TABLE (variante text, conteggio bigint)` | funzione `20_code` | sì: il raggruppamento del digest per chi agisce e i conteggi per causa nel pannello |
+
+Contratto proposto (la forma la fissa il team DB):
+
+1. **Stesso perimetro e stesso filtro di `fn_conta_presidio`**: `SECURITY DEFINER`, vista
+   a catalogo attiva oppure `E_PRESIDIO_NON_A_CATALOGO`, `colonna_stato IS DISTINCT FROM
+   stato_atteso` quando c'è. ⭐ Meglio se le due funzioni condividono la costruzione del
+   `FROM … WHERE`: due copie del filtro divergono.
+2. `GROUP BY` la colonna nominata da `dbops.presidi.colonna_variante` (`%I`). Una riga per
+   valore presente; i valori a zero non si restituiscono.
+3. Presidio **senza** `colonna_variante`: una riga sola, `variante = NULL`, conteggio
+   uguale a `fn_conta_presidio`. Così non serve un codice d'errore nuovo, e il BE ha una
+   lettura sola.
+4. Una riga con la colonna della variante a `NULL`, in un presidio che la dichiara, esce
+   come gruppo `NULL`: il modello lo ammette anche se la vista dei processi oggi non lo
+   produce. Il BE lo mostra come «causa non indicata», **senza** ripiegare sul testo
+   generico (§5.4.2).
+5. `GRANT EXECUTE` a `zeroerp_app`, come `fn_conta_presidio`.
+6. pgTAP: la somma dei conteggi è uguale a `fn_conta_presidio` per ogni presidio a
+   catalogo; casi **costruiti**, cioè due cause con conteggi diversi, il filtro di stato che
+   esclude e il presidio senza variante.
+
+### 6.3 Il BE/FE nell'attesa di R-2
+
+Si fa ora quello che non dipende dai conteggi: il testo **per causa** delle righe lette
+(`presidi_cause` + `presidi_testi`, lingua richiesta poi `it` della stessa causa, nessun
+ripiego sul generico), consegnato per gruppo di causa nel pannello e nel digest. Il
+raggruppamento del digest per chi agisce della causa e i conteggi per causa si chiudono
+con R-2.
+
+✅ **Fatto il 2026-10-10** (non committato):
+
+| Dove | Che cosa |
+| --- | --- |
+| `presidi_repository` | la scelta della lingua in una sede sola (`_testo_per_lingua`), con due lettori: il testo del presidio (`variante IS NULL`) e quello della causa (`variante = c.causa`); `colonna_variante` letta dal catalogo; `testi_delle_cause(vista)` (`presidi_cause` + `presidi_testi`); `cause_delle_righe(riga, righe)`, unica sede del raggruppamento, con il nome della colonna dal catalogo. Una causa senza testo, o assente dal catalogo, arriva con i campi a `None` e non eredita il testo del presidio |
+| pannello (`stato_presidi` → `PresidiProcessiPanel`) | campo `cause`; a video ogni gruppo di righe ha sopra la causa, il badge del suo «chi agisce», l'azione e il significato; una causa senza testo lo dice |
+| digest | `VocePresidio.cause`; testo e HTML rendono ogni causa con «causa — a chi tocca», il rimedio e le sue righe. La voce resta nel gruppo del presidio: lo spostamento per causa aspetta R-2 |
+| doc | `api_amm_software.md` §presidi: `significato`, `azione`, `chi_agisce` (mancavano già) e `cause` |
+
+Prove: `test_presidi_repository` 12-13, `test_presidi_digest` 27-28, `test_presidi_catalogo`
+9-ter (e2e: ogni causa del catalogo arriva col suo testo; mutazione sul join: rosso),
+`PresidiProcessiPanel.spec` 5-7. Ruff, mypy (baseline) e `check_i18n_keys` verdi.
+⏳ Restano: R-2 (DB) e poi il giro BE che ne segue (§6.4); il collaudo a video dopo il
+`kill -HUP` del backend.
+
+### 6.4 Il giro BE dopo R-2 (da fare)
+
+1. `PresidiRepository.conta_per_variante(riga)` su `dbops.fn_conta_presidio_per_variante`.
+2. `cause_delle_righe` parte dai **conteggi** (tutte le cause accese, anche senza righe nel
+   campione) e aggiunge a ciascuna le righe del campione; ogni causa porta il suo
+   `conteggio`.
+3. Digest: una voce per (presidio, causa) nel gruppo del «chi agisce» della causa, così
+   le righe `NON_PROGRAMMATO` e `GIRA_E_NON_REGISTRA` vanno allo sviluppo (§5.4.4).
+   L'intestazione e il conteggio del presidio restano su `dbops.presidi.chi_agisce`.
+4. Pannello: il conteggio accanto a ogni causa.

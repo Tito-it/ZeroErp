@@ -137,13 +137,16 @@ class SendEmailTests(TestCase):
         repo.resolve_template.return_value = None
 
         service = EmailDispatchService()
-        with self.assertRaises(ServiceError):
+        with self.assertRaises(ServiceError) as ctx:
             service.send_email(
                 ambito="SISTEMA",
                 codice_template="INESISTENTE",
                 destinatario="dest@example.com",
                 variabili={},
             )
+        # Manca la configurazione, come per l'account: 500 (R-7 di
+        # brief-db-codici-non-trovato-email-e-permessi).
+        self.assertEqual(ctx.exception.code, "E_EMAIL_TEMPLATE_NON_CONFIGURATO")
 
     # Scopo: Verifica che account non trovato lanci ServiceError.
     @patch(_SETTINGS)

@@ -558,9 +558,11 @@ in `/amm-software/lookup/email-log-stati/` (solo super admin).
 ## Codici d'errore
 
 Dal 2026-10-09 (brief-db-codici-non-trovato-email-e-permessi): i «non trovato»
-e le condizioni di stato hanno un codice proprio. `E_EMAIL_OP`, `E_OUTBOX` ed
-`E_EMAIL_ADMIN` restano per i soli **dati errati** della richiesta (campo
-obbligatorio, chiave fuori contratto, tipo o dimensione del file), HTTP 400.
+e le condizioni di stato hanno un codice proprio; dal 2026-10-10 (R-7) anche il
+template mancante, il percorso d'allegato fuori archivio e la mail piena.
+`E_EMAIL_OP`, `E_OUTBOX` ed `E_EMAIL_ADMIN` restano per i soli **dati errati**
+della richiesta (campo obbligatorio, chiave fuori contratto, tipo o dimensione
+del file), HTTP 400.
 
 | Codice | HTTP | Quando |
 | --- | --- | --- |
@@ -570,6 +572,9 @@ obbligatorio, chiave fuori contratto, tipo o dimensione del file), HTTP 400.
 | `E_EMAIL_ALLEGATO_NOT_FOUND` | 404 | allegato inesistente o fuori perimetro (download, rimozione) |
 | `E_EMAIL_ALLEGATO_FILE_MANCANTE` | 500 | la riga dell'allegato c'e', il file sullo storage no: guasto, non un «non trovato» |
 | `E_EMAIL_ACCOUNT_NON_CONFIGURATO` | 500 | nessun account email da cui spedire |
+| `E_EMAIL_TEMPLATE_NON_CONFIGURATO` | 500 | nessun template per l'invio, dopo il ripiego (mail di sistema e preparazione della bozza). Non e' `E_EMAIL_TEMPLATE_NOT_FOUND`: il codice del template lo sceglie il programma |
+| `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO` | 500 | il `file_path` dell'allegato (dal database) esce dall'archivio: dato alterato, caso da guardare anche per la sicurezza. Download e invio si fermano; la cancellazione lo scrive nel log e prosegue |
+| `E_EMAIL_ALLEGATI_LIMITE` | 409 | la mail ha gia' il numero massimo di allegati |
 | `E_EMITTENTE_NON_RISOLTO` | 400 | bozza non di sistema senza azienda attiva (modalita' «Tutti gli emittenti») |
 | `E_EMAIL_ACCOUNT_NOT_FOUND` | 404 | admin: account inesistente (dettaglio, modifica, eliminazione, test) |
 | `E_EMAIL_TEMPLATE_NOT_FOUND` | 404 | admin: template inesistente (dettaglio, modifica, eliminazione, anteprima) |
@@ -593,7 +598,7 @@ Richiesta invio email (unita_organizzativa_id = 42)
   → fn_resolve_email_account(42)
   → 1. Account specifico del reparto 42 (attivo)
   → 2. Account di sistema (codice_interno = 'SISTEMA', attivo)
-  → NULL se nessuno trovato → errore E_EMAIL (E_OUTBOX nel flusso bozze)
+  → NULL se nessuno trovato → errore E_EMAIL_ACCOUNT_NON_CONFIGURATO (500)
 ```
 
 ## Risoluzione Template — Catena di Fallback (5 livelli)
@@ -606,7 +611,7 @@ Richiesta template (codice='INVITO', uo_id=42, tipo_prest_id=7, lingua='en')
   → 3. Sistema + tipo 7 + lingua 'en'
   → 4. Sistema + lingua 'en' (senza tipo)
   → 5. Sistema + lingua 'it' (fallback finale)
-  → NULL se nessuno trovato → errore E_EMAIL (E_OUTBOX nel flusso bozze)
+  → NULL se nessuno trovato → errore E_EMAIL_TEMPLATE_NON_CONFIGURATO (500)
 ```
 
 ## Rendering Variabili

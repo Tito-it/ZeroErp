@@ -3,9 +3,9 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Unit test ddt_service (mock repository, no DB). Clone strutturale di
-#        test_ordini_service: valida i guard di stato/not-found, la derivazione
-#        destinatario_soggetto_ruolo dal BA in create, l'immutabilita' cliente in
-#        update, il gating eliminazione, il cambio stato data-driven (+ emetti),
+#        test_ordini_service: valida i guard di stato/not-found, il cliente (BA)
+#        facoltativo e le sue copie lasciate al DB (brief-db-esecutivi-ba-coppia
+#        §9.6), il gating eliminazione, il cambio stato data-driven (+ emetti),
 #        l'evasione da ordine (delega alla fn madre, niente atomic extra), il push
 #        singolo a commessa (sorgente DDT_VENDITA) e la traduzione errori DB di
 #        _db_errors (IntegrityError -> codice vincolo; DatabaseError trigger ->
@@ -24,16 +24,18 @@ DdtServiceGuardsTests
  5b) test_update_componente_stato_non_draft — E_RIGA_DOC_NON_BOZZA; l'etichetta prende `numero` dallo scope del componente
 
 DdtCreaTests
- 6) test_crea_ddt_deriva_destinatario_da_ba — deriva destinatario dal BA + DRAFT
- 7) test_crea_ddt_destinatario_esplicito    — destinatario passato: no lookup BA
- 8) test_crea_ddt_senza_destinatario_ne_ba  — E_DDT_VALIDAZIONE
- 8b) test_crea_ddt_senza_ba_rifiutato       — E_DDT_VALIDAZIONE (BA obbligatorio: destinatario + fallback emittente)
+ 6) test_crea_ddt_col_ba_lascia_le_copie_al_db — col BA destinatario None, utility scartata + DRAFT
+ 7) test_crea_ddt_destinatario_esplicito    — destinatario passato arriva al repo
+ 8) test_crea_ddt_senza_destinatario_ne_ba  — nessun guard Python: il NOT NULL lo dice il DB
+ 8b) test_crea_ddt_senza_ba_ammesso         — bolla senza cliente (terzista, deposito): BA None
+ 8e) test_crea_ddt_id_non_numerico          — E_DDT_VALIDAZIONE col campo (no 500)
  8c) test_crea_ddt_passa_emittente_payload  — emittente dallo user (payload) → repo kwargs
  8d) test_crea_ddt_emittente_omesso_none    — emittente assente → None (fallback DB dal BA)
 
 DdtAggiornaTests
- 9) test_aggiorna_ddt_cambio_ba_rifiutato   — E_DDT_CLIENTE_IMMUTABILE
-10) test_aggiorna_ddt_ba_invariato_tollerato — BA uguale escluso dall'UPDATE
+ 9) test_aggiorna_ddt_cambio_ba_in_bozza    — il BA arriva al DB (D-2: si sceglie in bozza)
+10) test_aggiorna_ddt_utility_scartata      — utility fuori whitelist: e' copia del BA
+10b) test_aggiorna_ddt_ba_tolto             — BA a None arriva al DB, destinatario intatto
 11) test_aggiorna_ddt_ba_non_numerico       — E_DDT_VALIDAZIONE (no 500)
 
 DdtEliminaTests
@@ -58,6 +60,7 @@ DdtDbErrorsTests
 22) test_integrity_error_fk_mappato          — E_VENDITE_FK
 23) test_integrity_error_fallback            — E_VENDITE_VALIDATION
 24) test_database_error_trigger_code_estratto — E_STATO_DDT_TRANSIZIONE_NON_VALIDA
+24b) test_vincoli_della_coppia_col_campo       — fk_ddt_ba_cliente, chk_ddt_ba_utility_insieme → campo billing_account_id
 
 DdtSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
 25) test_list_righe_ddt_non_trovato_e_404        — E_DDT_NOT_FOUND, repo righe non chiamato
@@ -128,12 +131,12 @@ class DdtServiceGuardsTests(SimpleTestCase):
 
     @patch(_REPO)
     def test_aggiorna_ddt_stato_non_draft(self, repo_cls) -> None:
-        # DDT gia' EMESSO: la testata non e' piu' modificabile (guard su
-        # testata unica: aggiorna_ddt legge get_ddt una sola volta).
+        # DDT gia' EMESSO: la testata non e' piu' modificabile (guard di stato
+        # leggero, solo il codice interno).
         repo = repo_cls.return_value
-        repo.get_ddt.return_value = {"id": 7, "stato_codice_interno": "EMESSO"}
+        repo.get_stato_codice.return_value = "EMESSO"
         with self.assertRaises(ServiceError) as cm:
-            ddt_service.aggiorna_ddt(7, {"utility_id": 9})
+            ddt_service.aggiorna_ddt(7, {"valuta_id": 9})
         self.assertEqual(cm.exception.code, "E_DDT_STATO_TRANSIZIONE")
         repo.update_ddt.assert_not_called()
 
@@ -184,32 +187,32 @@ class DdtServiceGuardsTests(SimpleTestCase):
 
 
 class DdtCreaTests(SimpleTestCase):
-    """crea_ddt standalone: derivazione destinatario dal BA + stato DRAFT."""
+    """crea_ddt standalone: BA facoltativo, copie del BA lasciate al DB, DRAFT."""
 
     @patch(_REPO)
-    def test_crea_ddt_deriva_destinatario_da_ba(self, repo_cls) -> None:
+    def test_crea_ddt_col_ba_lascia_le_copie_al_db(self, repo_cls) -> None:
+        # Col BA, destinatario e utility li scrive `trgfn_ddt_normalize` (BB
+        # `fn_cliente_dal_billing_account`): il service non li deriva e non
+        # inoltra una utility, che e' una copia del BA.
         repo = repo_cls.return_value
-        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 7, "uid": "u", "numero": None}
 
         out = ddt_service.crea_ddt({"billing_account_id": 3, "utility_id": 1})
 
         self.assertEqual(out["id"], 7)
-        # destinatario derivato dal billing_account (cliente=BA, come ordini).
-        repo.get_soggetto_ruolo_id_by_ba.assert_called_once_with(3)
-        self.assertEqual(
-            repo.create_ddt.call_args.kwargs["destinatario_soggetto_ruolo_id"], 555,
-        )
+        kwargs = repo.create_ddt.call_args.kwargs
+        self.assertEqual(kwargs["billing_account_id"], 3)
+        self.assertIsNone(kwargs["destinatario_soggetto_ruolo_id"])
+        self.assertNotIn("utility_id", kwargs)
         # stato risolto via codice interno DRAFT.
         repo.get_stato_id_by_codice.assert_called_once_with("DRAFT")
-        self.assertEqual(
-            repo.create_ddt.call_args.kwargs["stato_doc_ddt_id"], 1,
-        )
+        self.assertEqual(kwargs["stato_doc_ddt_id"], 1)
 
     @patch(_REPO)
     def test_crea_ddt_destinatario_esplicito(self, repo_cls) -> None:
-        # destinatario passato esplicito: nessun lookup dal BA.
+        # destinatario passato esplicito: arriva al repo (col BA il DB lo
+        # confronta con quello del BA, senza BA e' il terzista o il deposito).
         repo = repo_cls.return_value
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
@@ -217,29 +220,45 @@ class DdtCreaTests(SimpleTestCase):
         ddt_service.crea_ddt(
             {"destinatario_soggetto_ruolo_id": 777, "billing_account_id": 3},
         )
-        repo.get_soggetto_ruolo_id_by_ba.assert_not_called()
         self.assertEqual(
             repo.create_ddt.call_args.kwargs["destinatario_soggetto_ruolo_id"], 777,
         )
 
     @patch(_REPO)
     def test_crea_ddt_senza_destinatario_ne_ba(self, repo_cls) -> None:
-        # Ne' destinatario esplicito ne' billing_account -> validazione parlante.
+        # Ne' destinatario ne' BA: nessun guard Python ricopia il NOT NULL del
+        # destinatario. Lo dice il DB (23502), e la traduzione porta il campo.
         repo = repo_cls.return_value
-        with self.assertRaises(ServiceError) as cm:
-            ddt_service.crea_ddt({"utility_id": 1})
-        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        repo.create_ddt.assert_not_called()
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
+        ddt_service.crea_ddt({"causale_trasporto_id": 5})
+        kwargs = repo.create_ddt.call_args.kwargs
+        self.assertIsNone(kwargs["billing_account_id"])
+        self.assertIsNone(kwargs["destinatario_soggetto_ruolo_id"])
 
     @patch(_REPO)
-    def test_crea_ddt_senza_ba_rifiutato(self, repo_cls) -> None:
-        # Cliente obbligatorio anche con destinatario esplicito: il BA deriva
-        # il destinatario e ancora il fallback DB dell'emittente
-        # (trgfn_ddt_normalize) -> guard parlante prima dell'INSERT.
+    def test_crea_ddt_senza_ba_ammesso(self, repo_cls) -> None:
+        # D-2: trasferimento, conto lavoro, riparazione non vanno a un cliente.
+        # La bolla nasce senza BA; se la causale lo vuole, lo dira' l'emissione
+        # (E_DDT_CLIENTE_OBBLIGATORIO, capability CLIENTE_MANCANTE).
         repo = repo_cls.return_value
-        with self.assertRaises(ServiceError) as cm:
-            ddt_service.crea_ddt({"destinatario_soggetto_ruolo_id": 777})
-        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_ddt.return_value = {"id": 8, "uid": "u", "numero": None}
+        ddt_service.crea_ddt({"destinatario_soggetto_ruolo_id": 777})
+        kwargs = repo.create_ddt.call_args.kwargs
+        self.assertIsNone(kwargs["billing_account_id"])
+        self.assertEqual(kwargs["destinatario_soggetto_ruolo_id"], 777)
+
+    @patch(_REPO)
+    def test_crea_ddt_id_non_numerico(self, repo_cls) -> None:
+        # Un id non numerico e' un 400 col campo, non un 500 da `int()`.
+        repo = repo_cls.return_value
+        for chiave in ("billing_account_id", "destinatario_soggetto_ruolo_id"):
+            with self.subTest(chiave=chiave):
+                with self.assertRaises(ServiceError) as cm:
+                    ddt_service.crea_ddt({chiave: "abc"})
+                self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+                self.assertEqual(cm.exception.context.get("field"), chiave)
         repo.create_ddt.assert_not_called()
 
     @patch(_REPO)
@@ -247,7 +266,6 @@ class DdtCreaTests(SimpleTestCase):
         # Emittente dallo USER (uniformazione 2026-07-13, mirror ordini): il
         # payload create lo porta (prefill FE dal profilo) e arriva al repo.
         repo = repo_cls.return_value
-        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
 
@@ -261,7 +279,6 @@ class DdtCreaTests(SimpleTestCase):
         # Emittente assente dal payload (es. admin globale che non sceglie):
         # None al repo, che omette la colonna -> fallback dal BA nel trigger.
         repo = repo_cls.return_value
-        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 10, "uid": "u", "numero": None}
 
@@ -272,44 +289,47 @@ class DdtCreaTests(SimpleTestCase):
 
 
 class DdtAggiornaTests(SimpleTestCase):
-    """aggiorna_ddt: cliente immutabile post-creazione."""
+    """aggiorna_ddt: in bozza cliente e destinatario si scelgono; il DB decide le copie."""
 
     @patch(_REPO)
-    def test_aggiorna_ddt_cambio_ba_rifiutato(self, repo_cls) -> None:
+    def test_aggiorna_ddt_cambio_ba_in_bozza(self, repo_cls) -> None:
+        # D-2: la bolla puo' ricevere (o cambiare) il cliente in bozza. Fino al
+        # 2026-10-10 il service lo rifiutava con E_DDT_CLIENTE_IMMUTABILE.
         repo = repo_cls.return_value
-        repo.get_ddt.return_value = {
-            "id": 7, "stato_codice_interno": "DRAFT", "billing_account_id": 3,
-        }
-        with self.assertRaises(ServiceError) as cm:
-            ddt_service.aggiorna_ddt(7, {"billing_account_id": 99})
-        self.assertEqual(cm.exception.code, "E_DDT_CLIENTE_IMMUTABILE")
-        repo.update_ddt.assert_not_called()
+        repo.get_stato_codice.return_value = "DRAFT"
+        ddt_service.aggiorna_ddt(7, {"billing_account_id": 99})
+        self.assertEqual(repo.update_ddt.call_args.kwargs, {"billing_account_id": 99})
 
     @patch(_REPO)
-    def test_aggiorna_ddt_ba_invariato_tollerato(self, repo_cls) -> None:
-        # BA reinviato invariato dal form: tollerato ma escluso dall'UPDATE
-        # (non in whitelist UPDATE_KEYS_DDT). Aggiorna solo gli altri campi.
-        # Lettura singola: guard stato + confronto BA dalla stessa testata.
+    def test_aggiorna_ddt_utility_scartata(self, repo_cls) -> None:
+        # La utility e' una copia del BA: fuori whitelist, si scarta.
         repo = repo_cls.return_value
-        repo.get_ddt.return_value = {
-            "id": 7, "stato_codice_interno": "DRAFT", "billing_account_id": 3,
-        }
+        repo.get_stato_codice.return_value = "DRAFT"
         ddt_service.aggiorna_ddt(7, {"billing_account_id": 3, "utility_id": 9})
-        repo.get_ddt.assert_called_once_with(7)
         kwargs = repo.update_ddt.call_args.kwargs
-        self.assertNotIn("billing_account_id", kwargs)
-        self.assertEqual(kwargs["utility_id"], 9)
+        self.assertEqual(kwargs, {"billing_account_id": 3})
+
+    @patch(_REPO)
+    def test_aggiorna_ddt_ba_tolto(self, repo_cls) -> None:
+        # BA tolto in bozza: None arriva al DB, che toglie la utility e lascia
+        # il destinatario (`trgfn_ddt_normalize`).
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        ddt_service.aggiorna_ddt(7, {"billing_account_id": "", "destinatario_soggetto_ruolo_id": 12})
+        self.assertEqual(
+            repo.update_ddt.call_args.kwargs,
+            {"billing_account_id": None, "destinatario_soggetto_ruolo_id": 12},
+        )
 
     @patch(_REPO)
     def test_aggiorna_ddt_ba_non_numerico(self, repo_cls) -> None:
-        # billing_account_id non numerico -> 4xx parlante, non 500 da int().
+        # billing_account_id non numerico -> 4xx parlante col campo, non 500.
         repo = repo_cls.return_value
-        repo.get_ddt.return_value = {
-            "id": 7, "stato_codice_interno": "DRAFT", "billing_account_id": 3,
-        }
+        repo.get_stato_codice.return_value = "DRAFT"
         with self.assertRaises(ServiceError) as cm:
             ddt_service.aggiorna_ddt(7, {"billing_account_id": "abc"})
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "billing_account_id")
         repo.update_ddt.assert_not_called()
 
 
@@ -502,6 +522,22 @@ class DdtDbErrorsTests(SimpleTestCase):
             cm.exception.code, "E_STATO_DDT_TRANSIZIONE_NON_VALIDA",
         )
 
+    def test_vincoli_della_coppia_col_campo(self) -> None:
+        # La rete sotto il BB del cliente (brief-db-esecutivi-ba-coppia §7):
+        # chi scrive senza passare dai trigger riceve un codice parlante e il
+        # campo da accendere, non il messaggio generico.
+        casi = {
+            "fk_ddt_ba_cliente": "E_DOC_CLIENTE_DIVERSO_DA_BA",
+            "chk_ddt_ba_utility_insieme": "E_VENDITE_VALIDATION",
+        }
+        for vincolo, codice in casi.items():
+            with self.subTest(vincolo=vincolo):
+                with self.assertRaises(ServiceError) as cm:
+                    with _db_errors("test"):
+                        raise IntegrityError(f'violates constraint "{vincolo}"')
+                self.assertEqual(cm.exception.code, codice)
+                self.assertEqual(cm.exception.context.get("field"), "billing_account_id")
+
 
 class DdtFatturazioneImmediataTests(SimpleTestCase):
     """Corsia di instradamento `fatturazione_immediata` sul DDT.
@@ -515,8 +551,6 @@ class DdtFatturazioneImmediataTests(SimpleTestCase):
     @patch(_REPO)
     def test_crea_ddt_porta_il_flag(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_destinatario_soggetto_ruolo_id_by_ba.return_value = 555
-        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ddt.return_value = {"id": 9, "uid": "u", "numero": None}
         ddt_service.crea_ddt({
@@ -529,9 +563,7 @@ class DdtFatturazioneImmediataTests(SimpleTestCase):
     @patch(_REPO)
     def test_aggiorna_ddt_persiste_il_flag(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_ddt.return_value = {
-            "id": 9, "billing_account_id": 3, "stato_codice_interno": "DRAFT",
-        }
+        repo.get_stato_codice.return_value = "DRAFT"
         ddt_service.aggiorna_ddt(9, {"fatturazione_immediata": True})
         self.assertIs(
             repo.update_ddt.call_args.kwargs["fatturazione_immediata"], True,

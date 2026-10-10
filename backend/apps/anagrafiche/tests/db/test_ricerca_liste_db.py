@@ -41,9 +41,11 @@ from apps.core.tests.db_e2e import (
 
 
 # Scopo: il mondo minimo di un cliente — azienda con operatore, contesto, e un
-#        cliente fatturabile legato a QUELL'azienda — piu' la riga di
-#        `anagrafiche.clienti`, che i builder non scrivono (si fermano al BA).
-#        Torna `(mondo, cliente_id)`.
+#        cliente fatturabile legato a QUELL'azienda, fino alla riga di
+#        `anagrafiche.clienti` (builder `dbops.fn_pgtap_crea_cliente`, R-9 di
+#        brief-db-codici-non-trovato-email-e-permessi: fino al 2026-10-10 la
+#        riga era una INSERT a mano, copia divergente di quella del test del
+#        dettaglio ricerca). Torna `(mondo, cliente_id)`.
 # ⚠️ Il mondo PRIMA del contesto dell'operatore di prova: il builder vuole
 #    scegliersi l'azienda (ramo «nessun contesto»), come in `test_ricerca_full_db`.
 #    E anche il cliente: il builder apre il contesto sul SUO operatore, e il BA
@@ -54,23 +56,17 @@ from apps.core.tests.db_e2e import (
 def _mondo_cliente(cur) -> tuple[dict, int]:
     cur.execute("SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('ricerca anagrafiche BE')")
     mondo = dict(zip([c.name for c in cur.description], cur.fetchone(), strict=True))
+    # Stato PR (pre-contratto), come la riga scritta a mano che il builder
+    # sostituisce: lo stato non e' il soggetto di questa prova.
     cur.execute(
-        "SELECT * FROM dbops.fn_pgtap_crea_cliente_ba("
+        "SELECT * FROM dbops.fn_pgtap_crea_cliente("
         "  'ricerca anagrafiche',"
         "  (SELECT u.id FROM config.utilities u WHERE NOT u.richiede_pdp ORDER BY u.id LIMIT 1),"
-        "  %s)",
+        "  %s, 'PR')",
         [mondo["emittente_soggetto_ruolo_id"]],
     )
     cli = dict(zip([c.name for c in cur.description], cur.fetchone(), strict=True))
-    # ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
-    cur.execute(
-        "INSERT INTO anagrafiche.clienti "
-        "       (soggetto_ruolo_id, istanza_utility_id, stato_cliente_id, billing_account_id, utility_id) "
-        "SELECT %s, %s, sc.id, %s, %s FROM config.stati_cliente sc WHERE sc.codice_interno = 'PR' "
-        "RETURNING id",
-        [cli["soggetto_ruolo_id"], cli["istanza_utility_id"], cli["billing_account_id"], cli["utility_id"]],
-    )
-    cliente_id = cur.fetchone()[0]
+    cliente_id = cli["cliente_id"]
     apri_contesto_operatore(cur)
     return {**mondo, "cliente": cli}, cliente_id
 

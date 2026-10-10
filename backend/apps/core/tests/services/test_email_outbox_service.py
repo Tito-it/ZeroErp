@@ -28,6 +28,9 @@ Indice test eseguiti:
 18) ConfirmAndSendTests.test_senza_account_la_bozza_resta_draft
 19) CodiciNonTrovatoEStatoTests.test_bozza_inesistente_e_404_per_ogni_verbo
 20) CodiciNonTrovatoEStatoTests.test_mail_non_in_bozza_e_409_per_i_tre_verbi
+21) CodiciR7Tests.test_mail_piena_e_409_e_non_scrive_il_file
+22) CodiciR7Tests.test_percorso_fuori_radice_e_500
+23) CodiciR7Tests.test_template_non_configurato_e_500
 """
 
 import os
@@ -129,7 +132,8 @@ class PrepareDraftTests(TestCase):
         dispatch = MockDispatch.return_value
         # resolve_and_render lancia ServiceError se template non trovato
         dispatch.resolve_and_render.side_effect = ServiceError(
-            code="E_OUTBOX", message="Template 'INESISTENTE' non trovato.",
+            code="E_EMAIL_TEMPLATE_NON_CONFIGURATO",
+            message="Nessun template email configurato per questo invio.",
         )
 
         service = EmailOutboxService()
@@ -521,3 +525,56 @@ class CodiciNonTrovatoEStatoTests(TestCase):
                 )
         repo.update_outbox.assert_not_called()
         repo.update_outbox_stato.assert_not_called()
+
+
+# brief-db-codici-non-trovato-email-e-permessi R-7 (§12.2): le tre condizioni
+# rimaste sotto gli accumulatori escono col loro codice, e lo status lo dice
+# la classe.
+class CodiciR7Tests(TestCase):
+
+    # Scopo: Mail che ha gia' il massimo degli allegati → 409
+    #        `E_EMAIL_ALLEGATI_LIMITE` (e' uno stato, non un campo), prima di
+    #        scrivere il file su storage.
+    @patch("apps.core.services.email_outbox_service._get_max_count", return_value=1)
+    @patch("apps.core.services.email_outbox_service._get_max_size_bytes", return_value=10 * 1024 * 1024)
+    @patch("apps.core.services.email_outbox_service.os.makedirs")
+    @patch(_DISPATCH)
+    @patch(_REPO)
+    def test_mail_piena_e_409_e_non_scrive_il_file(self, MockRepo, MockDispatch, mock_makedirs, _size, _count):
+        repo = MockRepo.return_value
+        repo.get_outbox.return_value = {**_MOCK_OUTBOX_DRAFT, "allegati": [{"id": 1}]}
+
+        with self.assertRaises(ServiceError) as ctx:
+            EmailOutboxService().add_attachment(
+                outbox_id=10, file_name="a.pdf", file_content=b"x", mime_type="application/pdf",
+            )
+        self.assertEqual(ctx.exception.code, "E_EMAIL_ALLEGATI_LIMITE")
+        self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 409)
+        mock_makedirs.assert_not_called()
+        repo.create_allegato.assert_not_called()
+
+    # Scopo: Un `file_path` che esce dalla radice (viene dal database, non da
+    #        una persona) → 500 `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO`.
+    def test_percorso_fuori_radice_e_500(self):
+        from apps.core.services.email_allegati_storage import percorso_allegato
+
+        with tempfile.TemporaryDirectory() as radice, \
+                patch("apps.core.services.email_allegati_storage.radice_allegati", return_value=radice):
+            with self.assertRaises(ServiceError) as ctx:
+                percorso_allegato("../fuori.pdf")
+        self.assertEqual(ctx.exception.code, "E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO")
+        self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 500)
+
+    # Scopo: Nessun template per l'invio, dopo il ripiego → 500
+    #        `E_EMAIL_TEMPLATE_NON_CONFIGURATO`, sia dalla preparazione della
+    #        bozza sia da una mail di sistema: e' la stessa risoluzione.
+    @patch("apps.core.services.email_service.EmailRepository")
+    def test_template_non_configurato_e_500(self, MockDispatchRepo):
+        from apps.core.services.email_service import EmailDispatchService
+
+        MockDispatchRepo.return_value.resolve_template.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            EmailDispatchService().resolve_and_render(codice_template="INESISTENTE", variabili={})
+        self.assertEqual(ctx.exception.code, "E_EMAIL_TEMPLATE_NON_CONFIGURATO")
+        self.assertEqual(ErrorPolicyRegistry.resolve(ctx.exception.code).http_status, 500)
+        MockDispatchRepo.return_value.resolve_account.assert_not_called()

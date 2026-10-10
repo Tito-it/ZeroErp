@@ -6,8 +6,8 @@
 > [brief-db-riga-listino-propagata-dalla-commessa](../work-done/brief-db-riga-listino-propagata-dalla-commessa.md)
 > (§7). **Decisione:** di Tid, 2026-10-09: la regola «propagata» ha una sede sola,
 > il guard DB.
-> **Stato:** ✅ R-1 fatto lato DB il 2026-10-09 (riga del CSV, da applicare:
-> il loader è `runOnChange`). Restano le ricadute BE del §3.
+> **Stato:** ✅ **Chiuso il 2026-10-09**, DB e BE. R-1 fatto lato DB (riga del
+> CSV, applicata: il loader è `runOnChange`); ricadute BE del §3 fatte, §4.
 
 ## 1. Che cosa è cambiato
 
@@ -59,3 +59,15 @@ Censiti dal nome del codice durante la consegna DB, fuori dal perimetro DB:
   portato a `E_RIGA_LISTINO_PROPAGATA`;
 * `backend/scripts/db-proposals/PROPOSTA_seed_messaggi_errore_mancanti.sql` lo
   elenca ancora: è una proposta storica, da lasciare o ritirare a giudizio del BE.
+
+## 4. Chiusura (2026-10-09)
+
+| Punto del §3 | Esito |
+| --- | --- |
+| `error_policies_generated.py` | rigenerato col DB allineato a git: `E_VENDITE_RIGA_GIA_PROPAGATA` in `CODICI_RITIRATI`, con la nota «RITIRATO» del catalogo. Presidio `test_error_policies_divergenza_db` verde sul DB vero (`ZEROERP_TEST_DB_E2E=1`) |
+| `error_messages_fallback.py` | invariato: il messaggio resta per il diario |
+| `api_listini.md` | rettifica controllata N6 riscritta: la regola «propagata» ha una sede sola, il guard DB; errori `409 E_RIGA_LISTINO_PROPAGATA` e `409 E_RIGA_LISTINO_VERSIONE_CHIUSA` (dal guard, portati al chiamante da `raise_from_database_error`); tolto il «guard triplo livello», che descriveva il controllo Python ritirato |
+| `PROPOSTA_seed_messaggi_errore_mancanti.sql` | **lasciato com'è**: è una proposta storica non applicata, la fotografia dei codici che mancavano quel giorno. Riscriverla falserebbe la storia senza cambiare niente a runtime |
+
+Verifiche, 2026-10-09: `test_error_policies_divergenza_db`, `test_error_codes_declared_guardrail`,
+`test_error_policies_classi` e `test_listini_service` verdi (83 + 2 test).

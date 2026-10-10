@@ -215,8 +215,9 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
 
     # Scopo: Sotto-dict "cliente" (soggetto via soggetto_ruolo diretto +
     #        billing account). Denominazione/id fiscale gia' denormalizzati
-    #        in vista (`ragione_sociale_completa`/`id_fiscale_univoco_cf_piva`),
-    #        valorizzati anche per i prospect senza BA.
+    #        in vista (`ragione_sociale_completa`/`id_fiscale_univoco_cf_piva`).
+    #        Il BA sull'ordine e' NOT NULL e il ruolo e' il suo
+    #        (`fk_ordini_ba_cliente`): le due vie portano allo stesso cliente.
     def _shape_cliente(self, testata: dict[str, Any]) -> dict[str, Any]:
         return {
             "soggetto_ruolo_id": testata.get("soggetto_ruolo_id"),

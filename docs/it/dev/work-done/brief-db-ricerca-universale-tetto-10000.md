@@ -7,7 +7,7 @@
 > (§14.5). Non nato in quel giro: c'era già.
 > **Nel registro dei difetti DB:** voce **D23** di
 > [migliorie-generali-da-test-valutazione.md](migliorie-generali-da-test-valutazione.md), che rimanda qui.
-> **Stato:** 🔧 **decisioni chiuse** (Tid, 2026-10-10: strada B, via l'ordinamento per utility, quindi nessun tetto); **giro DB applicato da Tid il 2026-10-10, pgTAP verdi** (Tid: «migrazione applicata e test verdi»; §7). Resta la ricaduta BE/FE (§7.3).
+> **Stato:** 🔧 **decisioni chiuse** (Tid, 2026-10-10: strada B, via l'ordinamento per utility, quindi nessun tetto); **giro DB applicato da Tid il 2026-10-10, pgTAP verdi** (Tid: «migrazione applicata e test verdi»; §7). ✅ **Ricaduta BE/FE fatta il 2026-10-10** (§7.4). ✅ **Chiuso e archiviato il 2026-10-10** su richiesta di Tid; il collaudo a video segue il `kill -HUP` del backend.
 
 ## 1. Il difetto, in breve
 
@@ -143,4 +143,23 @@ corpo nuovo dal vecchio.
 2. **Frontend**: in `core/components/SearchDrawer.vue` la colonna «Utility» (`field="utility_list"`)
    perde `sortable`. Resta visibile.
 3. **Doc**: `api_search_universale.md` — totale vero senza tetto, colonne ordinabili.
+
+### 7.4 Giro BE/FE (sessione backend, 2026-10-10)
+
+| §7.3 | Dove | Che cosa |
+| --- | --- | --- |
+| 1 | `core/api/search_validators.py` | `utility_list` esce da `ALLOWED_ORDER_COLUMNS`. Il commento la dichiara **mirror** della whitelist di `p_order_by`: resta perché dà il 400 `E_SEARCH_VALIDATION` col campo, mentre il rifiuto del DB è `E_PARAMETRO_INVALIDO`, un codice di debito (D11) che non si espone |
+| 1 | `core/api/search_view.py` | descrizione OpenAPI di `order_by`: tre colonne, e perché `utility_list` non c'è |
+| 2 | `core/components/SearchDrawer.vue` | la colonna «Utility» perde `sortable` e resta visibile |
+| 3 | `api_search_universale.md`, `api_search_validation.md` | nessun tetto, `total_count` vero, colonne ordinabili e aggregati della sola pagina |
+
+⭐ **Il presidio del mirror**, ed è il pezzo che mancava: questo difetto è nato perché due
+copie della stessa whitelist si sono separate senza che niente fallisse.
+`core/tests/db/test_search_ordinamento_db` (e2e, sul DB vero) prova i due versi: ogni
+colonna del mirror la accetta la funzione; `utility_list` ed `emittente_ragione_sociale` la
+funzione le rifiuta **e** il mirror non le ammette. Mutazione con `utility_list` rimessa nel
+mirror: rossi tutti e due. In `test_search_view` il test 12 prova anche il 400 su
+`utility_list`.
+
+Verde: `test_search_view` (22), `test_search_ordinamento_db` (2, e2e), ruff, eslint.
 

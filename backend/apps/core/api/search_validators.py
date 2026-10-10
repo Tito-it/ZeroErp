@@ -6,13 +6,19 @@ from apps.core.services.service_errors import ServiceError
 # Helper DRF: validazione search per evitare query troppo generiche.
 
 # Colonne ammesse per l'ordinamento nella ricerca universale.
-# La whitelist e' duplicata nel DB (fn_search_soggetti_universale),
-# qui serve solo per dare un errore 400 immediato senza round-trip.
+# ⚠️ MIRROR DICHIARATO della whitelist di `p_order_by` in
+#    `script.fn_search_soggetti_universale`, che e' la regola. Qui serve a dare
+#    il 400 `E_SEARCH_VALIDATION` col campo: il rifiuto del DB e'
+#    `E_PARAMETRO_INVALIDO`, un codice di debito (D11) che non si espone.
+# ⛔ Il 2026-10-10 il DB ha tolto `utility_list` (un aggregato calcolato per la
+#    sola pagina: ordinarci sopra vorrebbe dire aggregare tutte le
+#    corrispondenze, brief-db-ricerca-universale-tetto-10000 D-2) e questa
+#    copia lo lasciava passare. Il mirror lo presidia
+#    `test_search_ordinamento_db` (e2e): ogni colonna di qui la accetta il DB.
 ALLOWED_ORDER_COLUMNS = frozenset({
     "ragione_sociale_completa",
     "soggetto_codice",
     "id_fiscale_univoco",
-    "utility_list",
 })
 
 

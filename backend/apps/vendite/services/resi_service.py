@@ -34,6 +34,7 @@ from django.db import transaction
 
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.core.services.list_helpers import validate_enum_param
@@ -65,8 +66,11 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # nome vincolo). `vendite.resi`/`resi_righe` non hanno UNIQUE di dominio
 # scrivibili dal BE (uq_resi_anno_numero e' del trigger numerazione) -> solo FK.
 _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {}
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_resi_billing_account": (E_VENDITE_FK, "Cliente (billing account) non valido."),
+    # Rete sotto l'eredita' dal DDT (`trgfn_resi_normalize` e il guard D-6
+    # `trgfn_resi_guard_cliente_ddt`, che rispondono prima col loro codice).
+    "fk_resi_ba_cliente": FK_CLIENTE_DIVERSO_DA_BA,
     "fk_resi_destinatario_ruolo": (E_VENDITE_FK, "Destinatario non valido."),
     "fk_resi_emittente_fiscale": (E_VENDITE_FK, "Emittente fiscale non valido."),
     "fk_resi_sorgente_tipo": (E_VENDITE_FK, "Sorgente reso non valida."),
@@ -77,6 +81,14 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "fk_resi_righe_testata": (E_VENDITE_FK, "Reso non valido."),
     "fk_resi_righe_tipo_reso": (E_VENDITE_FK, "Tipo reso non valido."),
     "fk_resi_righe_uom_operativa": (E_VENDITE_FK, "Unita' di misura non valida."),
+}
+# «BA e utility tutti e due o nessuno»: le eredita entrambe dal DDT.
+_CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
+    "chk_resi_ba_utility_insieme": (
+        E_VENDITE_VALIDATION,
+        "La utility del reso e' quella del suo billing account: senza billing account non c'e'.",
+        "billing_account_id",
+    ),
 }
 
 # ── Costanti di dominio ──
@@ -1100,6 +1112,7 @@ _db_errors = make_db_errors_translator(
     fallback_message="Violazione vincolo DB su reso.",
     unique_constraints=_UNIQUE_CONSTRAINTS,
     fk_constraints=_FK_CONSTRAINTS,
+    check_constraints=_CHECK_CONSTRAINTS,
 )
 
 

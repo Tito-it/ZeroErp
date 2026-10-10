@@ -29,9 +29,18 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   applicativo).
 - Export `GET /api/v1/vendite/ddt/export/?formato=csv|xlsx`.
 - Form-defaults `GET /api/v1/vendite/ddt/form-defaults/`.
-- Create `POST /api/v1/vendite/ddt/` — `billing_account_id` **obbligatorio**
-  (risolve emittente via trigger `trgfn_ddt_normalize`, NOT NULL + scope RLS);
-  `destinatario_soggetto_ruolo_id` derivato dal BA se assente. Stato iniziale
+- Create `POST /api/v1/vendite/ddt/` — il cliente (`billing_account_id`) e'
+  **facoltativo** (brief-db-esecutivi-ba-coppia D-2, 2026-10-10): lo pretende
+  l'**emissione** quando la causale manda merce a un cliente
+  (`config.causali_trasporto.richiede_cliente`: vendita, omaggio, campionatura,
+  conto visione) → 409 `E_DDT_CLIENTE_OBBLIGATORIO`, capability con reason
+  `CLIENTE_MANCANTE`. Col BA, `destinatario_soggetto_ruolo_id` e `utility_id`
+  sono copie del BA e le scrive `trgfn_ddt_normalize` (BB
+  `script.fn_cliente_dal_billing_account`): un destinatario diverso e' 400
+  `E_DOC_CLIENTE_DIVERSO_DA_BA`, la `utility_id` non e' nel contratto (si
+  scarta). Senza BA il destinatario (terzista, deposito) e' **obbligatorio**:
+  il NOT NULL del DB, 400 col campo. L'emittente, se omesso, il trigger lo
+  risolve dal BA. Stato iniziale
   DRAFT, `numero` NULL fino a EMESSO. **Auto-assegnazione indirizzo** (UX v2):
   alla creazione (standalone ed evasione, se la cascata non l'ha gia' portato)
   lo slot Consegna viene valorizzato best-effort dall'indirizzo di RUOLO del
@@ -39,7 +48,13 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
 - Detail `GET /api/v1/vendite/ddt/<id>/` — testata + capabilities data-driven
   (`fn_available_actions_ddt`) nella chiave `capabilities`, non fuse nella
   testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
-- Update `PATCH /api/v1/vendite/ddt/<id>/` — solo DRAFT; cliente immutabile.
+- Update `PATCH /api/v1/vendite/ddt/<id>/` — solo DRAFT. Cliente e
+  destinatario **si scelgono in bozza** (`billing_account_id`,
+  `destinatario_soggetto_ruolo_id`; `utility_id` fuori contratto): al cambio di
+  BA il destinatario non inviato segue il BA nuovo, un BA tolto toglie la
+  utility e lascia il destinatario. Fuori bozza li blocca il DB
+  (`trg_ddt_a05_lock_fuori_bozza_upd`: 409 `E_DDT_CLIENTE_IMMUTABILE`). Fino al
+  2026-10-10 il service rifiutava il cambio di BA anche in bozza.
 - Delete `DELETE /api/v1/vendite/ddt/<id>/` — hard delete solo DRAFT
   (pattern abbandono bozza).
 - Riepilogo IVA `GET /api/v1/vendite/ddt/<id>/riepilogo-iva/` — lettura pura
@@ -141,7 +156,12 @@ Riferimento: `docs/it/dev/work-done/brief-ddt-righe-senza-prezzo.md`.
 ## Codici errore principali
 
 `E_DDT_NOT_FOUND` (404), `E_DDT_VALIDAZIONE` (400), `E_DDT_STATO_TRANSIZIONE`
-(409, la testata), `E_RIGA_DOC_NON_BOZZA` (409: righe e componenti solo in
+(409, la testata), `E_DDT_CLIENTE_OBBLIGATORIO` (409, emissione senza cliente
+con una causale che lo vuole), `E_DDT_CLIENTE_IMMUTABILE` (409, cliente fuori
+bozza), `E_DOC_CLIENTE_DIVERSO_DA_BA` (400, destinatario diverso dal BA),
+`E_DOC_CLIENTE_DIVERSO_DA_SORGENTE` (400, BA diverso da quello dell'ordine o
+del reso da cui la bolla nasce), `E_DOC_SORGENTE_NON_TROVATA` (400, sorgente
+inesistente o di un'altra azienda), `E_DOC_EMITTENTE_FUORI_BOZZA` (409), `E_RIGA_DOC_NON_BOZZA` (409: righe e componenti solo in
 bozza — dal 2026-09-22 lo stesso codice del BB a DB
 `trgfn_doc_righe_lock_fuori_bozza`, che il pre-check BE `richiedi_righe_in_bozza`
 solleva con la frase a catalogo),

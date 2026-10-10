@@ -31,6 +31,11 @@ from apps.core.services.testata_guard import o_not_found
 logger = logging.getLogger("zeroerp.email")
 
 E_OUTBOX = "E_OUTBOX"
+# La mail ha gia' il numero massimo di allegati: il file va bene, e' la mail a
+# essere piena — uno stato, non un campo (409; R-7 di
+# brief-db-codici-non-trovato-email-e-permessi). Tipo e dimensione del file
+# restano `E_OUTBOX`: quelli sono dati errati.
+E_EMAIL_ALLEGATI_LIMITE = "E_EMAIL_ALLEGATI_LIMITE"
 
 # Campi della bozza che l'operatore puo' modificare (PATCH outbox). Coincide
 # oggi con `EmailRepository._OUTBOX_UPDATE_COLS`, ma e' il contratto
@@ -141,7 +146,6 @@ class EmailOutboxService:
             unita_organizzativa_id=unita_organizzativa_id,
             tipo_prestazione_id=tipo_prestazione_id,
             lingua=lingua,
-            error_code=E_OUTBOX,
         )
 
         # Crea bozza
@@ -341,7 +345,9 @@ class EmailOutboxService:
         max_count = _get_max_count()
         ErrorManager.require(
             current_count < max_count,
-            code=E_OUTBOX, message=f"Numero massimo allegati raggiunto ({max_count}).",
+            code=E_EMAIL_ALLEGATI_LIMITE,
+            message=USER_MESSAGE_FALLBACK[E_EMAIL_ALLEGATI_LIMITE],
+            detail=f"allegati={current_count} max={max_count}",
         )
 
         # Salva file su storage

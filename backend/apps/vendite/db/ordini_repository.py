@@ -132,7 +132,9 @@ class OrdiniRepository(
     _indirizzi_ambito = "ORDINI"
     _indirizzi_documento_table = "vendite.ordini"
     # Ancora ownership/auto-default = soggetto_ruolo NATIVO della testata
-    # (NOT NULL): regge anche l'ordine prospect con billing_account NULL.
+    # (NOT NULL): e' il ruolo del BA, che sull'ordine e' NOT NULL e lo lega
+    # con la FK composta `fk_ordini_ba_cliente` (brief-db-esecutivi-ba-coppia
+    # D-1, D-5). Si legge la colonna nativa per non dipendere dalla JOIN.
     _indirizzi_doc_sr_column = "soggetto_ruolo_id"
 
     # ══════════════════════════════════════════════════════════
@@ -351,9 +353,7 @@ class OrdiniRepository(
     def create_ordine(
         self,
         *,
-        soggetto_ruolo_id: int,
-        billing_account_id: int | None,
-        utility_id: int | None = None,
+        billing_account_id: int,
         emittente_fiscale_id: int | None = None,
         valuta_id: int | None = None,
         modalita_pagamento_id: int | None = None,
@@ -369,14 +369,12 @@ class OrdiniRepository(
         # DEFAULT del DB (es. fatturazione_trigger ereditato da BA via
         # trgfn_ordini_normalize, canale_origine='ADMIN') restano attivi; le
         # chiavi sono letterali del metodo (`allowed=None`).
-        # ⚠️ `billing_account_id` None prima si scriveva come NULL esplicito e
-        #    ora si omette: la colonna non ha DEFAULT, quindi il trigger BEFORE
-        #    INSERT vede NULL in entrambi i casi.
+        # ⭐ Ruolo del cliente e utility NON si scrivono: sono copie del BA, e
+        #    le mette `trgfn_ordini_normalize` (BB `fn_cliente_dal_billing_account`,
+        #    brief-db-esecutivi-ba-coppia §10.2 domanda 2).
         valori: dict[str, Any] = {
-            "soggetto_ruolo_id": soggetto_ruolo_id,
             "billing_account_id": billing_account_id,
             "stato_doc_ordine_id": stato_doc_ordine_id,
-            "utility_id": utility_id,
             "emittente_fiscale_id": emittente_fiscale_id,
             "valuta_id": valuta_id,
             "modalita_pagamento_id": modalita_pagamento_id,
@@ -462,7 +460,7 @@ class OrdiniRepository(
     #    sta nel service, `ordini_service.UPDATE_KEYS_ORDINE / UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
     #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
     TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
-        "utility_id", "valuta_id", "modalita_pagamento_id",
+        "billing_account_id", "valuta_id", "modalita_pagamento_id",
         "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
         "data", "meta", "fatturazione_immediata",
     })
@@ -695,16 +693,10 @@ class OrdiniRepository(
     #  LOOKUP — Risoluzione config per creazione/transizioni
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: soggetto_ruolo_id del cliente a partire dal billing_account.
-    #        La testata ordine ha `soggetto_ruolo_id` NOT NULL mentre il FE
-    #        seleziona il billing_account (cliente=BA, memoria
-    #        feedback_cliente_billing_account): si deriva qui.
-    def get_soggetto_ruolo_id_by_ba(self, billing_account_id: int) -> int | None:
-        sql = "SELECT soggetto_ruolo_id FROM anagrafiche.billing_account WHERE id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [billing_account_id])
-            row = cursor.fetchone()
-            return row[0] if row else None
+    # ⛔ `get_soggetto_ruolo_id_by_ba` RITIRATA (2026-10-10): ruolo e utility
+    #    del cliente li scrive `trgfn_ordini_normalize` col BB
+    #    `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia
+    #    §10.2 domanda 2). Derivarli qui era una copia della regola.
 
     # Scopo: id di uno stato ordine via codice_interno (immutabile).
     def get_stato_id_by_codice(self, codice_interno: str) -> int | None:

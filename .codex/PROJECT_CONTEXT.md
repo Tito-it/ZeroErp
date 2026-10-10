@@ -225,8 +225,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   prezzo e l'alert scadenze listini sempre in 400). Chiuso il 2026-10-09
   `work-done/brief-db-riga-listino-propagata-dalla-commessa` (la riga di listino che ha dato il prezzo a una
   commessa è «propagata», e la regola ha una sede sola, il guard DB; il seguito D-3 in
-  `brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA` in
-  `brief-db-ritiro-codice-riga-gia-propagata`; e — decisione B di Tid, 2026-10-09 — la riga di listino si cita solo
+  `brief-db-coerenza-listino-della-riga-di-commessa`, il ritiro di `E_VENDITE_RIGA_GIA_PROPAGATA`, chiuso, in
+  `work-done/brief-db-ritiro-codice-riga-gia-propagata`; e — decisione B di Tid, 2026-10-09 — la riga di listino si cita solo
   se il prezzo viene davvero da lì: il push non la scrive più, la provenienza dovrà viaggiare col prezzo dal
   documento, `brief-db-provenienza-prezzo-segue-il-prezzo`, BE in attesa). Chiuso il 2026-10-09
   `work-done/brief-db-valore-numerico-non-finito-nei-documenti` (gli ultimi 2 rilievi; deciso C, la generazione
@@ -306,11 +306,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   2026-10-10** e applicato lo stesso giorno, pgTAP verdi (`20261010-08…-15`: regola unica di chi si vede nella ricerca su
   `tipi_ruoli.entita_esistenza`, ritiro di `p_emittente_ids`, builder `dbops.fn_pgtap_crea_cliente`, quattro codici);
   resta il BE (§14.6).
-- 📝 **Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicono il vero**
-  (`work-in-progress/brief-db-ricerca-universale-tetto-10000.md`, D23, 2026-10-10): il tetto della lista e' un
-  `LIMIT` senza `ORDER BY`. Decisioni chiuse da Tid il 2026-10-10: pagina sulle righe semplici, aggregati solo
-  per la pagina, via l'ordinamento per utility (nessun tetto). DB applicato e verde il 2026-10-10 (`20261010-16`);
-  resta il BE/FE (§7.3 del brief).
+- ✅ **Ricerca universale senza tetto: chiuso il 2026-10-10**
+  (`work-done/brief-db-ricerca-universale-tetto-10000.md`, D23): il tetto della lista era un `LIMIT` senza
+  `ORDER BY`. Pagina sulle righe semplici, aggregati solo per la pagina, via l'ordinamento per utility (nessun
+  tetto). DB `20261010-16`; BE/FE il 2026-10-10 (§7.4), con l'e2e che tiene allineato il mirror delle colonne
+  ordinabili (`test_search_ordinamento_db`).
 - ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
   decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); BE/FE fatti il
   2026-10-08 (§7, non committati: la pratica sceglie la fornitura, cioe' il BA — D-10). Restano il collaudo a video e

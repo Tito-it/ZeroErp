@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Unit test ordini_service (mock repository, no DB). Valida i guard di
-#        stato/not-found, la derivazione soggetto_ruolo dal BA in create, e la
+#        stato/not-found, il cliente (BA) obbligatorio con le sue copie lasciate
+#        al DB (brief-db-esecutivi-ba-coppia, 2026-10-10), e la
 #        traduzione errori DB di _db_errors (IntegrityError -> codice vincolo;
 #        DatabaseError trigger -> estrazione codice E_*).
 # ------------------------------------------------------------
@@ -82,67 +83,62 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         repo.update_stato.assert_called_once_with(7, 2)
 
     @patch(_REPO)
-    def test_crea_ordine_deriva_soggetto_ruolo_da_ba(self, repo_cls) -> None:
+    def test_crea_ordine_lascia_le_copie_al_db(self, repo_cls) -> None:
+        # Ruolo e utility sono copie del BA: li scrive `trgfn_ordini_normalize`
+        # (BB `fn_cliente_dal_billing_account`), il service non li deriva ne'
+        # li inoltra (brief-db-esecutivi-ba-coppia §10.2 domanda 2).
         repo = repo_cls.return_value
-        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
-        out = ordini_service.crea_ordine({"billing_account_id": 3, "utility_id": 1})
+        out = ordini_service.crea_ordine(
+            {"billing_account_id": 3, "utility_id": 1, "soggetto_ruolo_id": 555},
+        )
         self.assertEqual(out["numero"], "ORD0007")
-        repo.get_soggetto_ruolo_id_by_ba.assert_called_once_with(3)
-        # soggetto_ruolo_id derivato passato a create_ordine
-        self.assertEqual(repo.create_ordine.call_args.kwargs["soggetto_ruolo_id"], 555)
+        kwargs = repo.create_ordine.call_args.kwargs
+        self.assertEqual(kwargs["billing_account_id"], 3)
+        self.assertNotIn("soggetto_ruolo_id", kwargs)
+        self.assertNotIn("utility_id", kwargs)
 
     @patch(_REPO)
     def test_crea_ordine_senza_cliente_errore(self, repo_cls) -> None:
+        # D-1: l'ordine ha sempre il BA. Validazione del payload col campo.
         with self.assertRaises(ServiceError) as cm:
             ordini_service.crea_ordine({"utility_id": 1})
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "billing_account_id")
+        repo_cls.return_value.create_ordine.assert_not_called()
 
     @patch(_REPO)
-    def test_aggiorna_ordine_cambio_ba_rifiutato(self, repo_cls) -> None:
-        # Cliente immutabile: cambiare billing_account_id su un ordine esistente
-        # e' rifiutato (lascerebbe soggetto_ruolo_id stantio).
+    def test_aggiorna_ordine_ba_arriva_al_db(self, repo_cls) -> None:
+        # Il cliente immutabile lo dice il DB (lock di colonna,
+        # E_ORD_CLIENTE_IMMUTABILE): il service non ricopia il lock e passa
+        # il BA, invariato o no. Fino al 2026-10-10 qui c'era la copia Python.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_ordine.return_value = {"id": 7, "billing_account_id": 3}
-        with self.assertRaises(ServiceError) as cm:
-            ordini_service.aggiorna_ordine(7, {"billing_account_id": 99})
-        # Codice dedicato, allineato alla difesa DB lock-columns (DB-ORD-LOCK).
-        self.assertEqual(cm.exception.code, "E_ORD_CLIENTE_IMMUTABILE")
-        repo.update_ordine.assert_not_called()
+        ordini_service.aggiorna_ordine(7, {"billing_account_id": 99})
+        self.assertEqual(repo.update_ordine.call_args.kwargs, {"billing_account_id": 99})
+        repo.get_ordine.assert_not_called()
 
     @patch(_REPO)
-    def test_aggiorna_ordine_ba_invariato_tollerato(self, repo_cls) -> None:
-        # Il form FE puo' reinviare il BA invariato: tollerato, ma escluso
-        # dall'UPDATE (non e' nella whitelist). Aggiorna solo gli altri campi.
+    def test_aggiorna_ordine_utility_scartata(self, repo_cls) -> None:
+        # La utility e' una copia del BA, che sull'ordine non cambia: fuori
+        # whitelist.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
-        repo.get_ordine.return_value = {"id": 7, "billing_account_id": 3}
         ordini_service.aggiorna_ordine(7, {"billing_account_id": 3, "utility_id": 9})
-        kwargs = repo.update_ordine.call_args.kwargs
-        self.assertNotIn("billing_account_id", kwargs)
-        self.assertEqual(kwargs["utility_id"], 9)
+        self.assertEqual(repo.update_ordine.call_args.kwargs, {"billing_account_id": 3})
 
     @patch(_REPO)
     def test_aggiorna_ordine_ba_non_numerico_rifiutato(self, repo_cls) -> None:
-        # Input malformato: billing_account_id non numerico -> 422 parlante
-        # (E_ORD_VALIDAZIONE), non 500 da int() non gestito.
+        # Input malformato: billing_account_id non numerico -> 400 parlante
+        # (E_ORD_VALIDAZIONE) col campo, non 500 dal driver.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         with self.assertRaises(ServiceError) as cm:
             ordini_service.aggiorna_ordine(7, {"billing_account_id": "abc"})
         self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "billing_account_id")
         repo.update_ordine.assert_not_called()
-
-    @patch(_REPO)
-    def test_aggiorna_ordine_senza_ba_aggiorna(self, repo_cls) -> None:
-        # Payload senza billing_account_id: nessun confronto, update diretto.
-        repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
-        ordini_service.aggiorna_ordine(7, {"utility_id": 9})
-        repo.get_ordine.assert_not_called()
-        repo.update_ordine.assert_called_once()
 
     @patch(_REPO)
     def test_get_ordine_capabilities_annidate(self, repo_cls) -> None:
@@ -784,7 +780,6 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
     @patch(_REPO)
     def test_crea_ordine_porta_il_flag(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
         ordini_service.crea_ordine({
@@ -799,7 +794,6 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
     @patch(_REPO)
     def test_crea_ordine_senza_flag_lascia_il_default(self, repo_cls) -> None:
         repo = repo_cls.return_value
-        repo.get_soggetto_ruolo_id_by_ba.return_value = 555
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_ordine.return_value = {"id": 7, "uid": "u", "numero": "ORD0007"}
         ordini_service.crea_ordine({"billing_account_id": 3, "utility_id": 1})

@@ -38,6 +38,13 @@
      ⭐ 2026-10-06: il join su `dbops.presidi_testi` GIRA sul database vero e
      porta il testo. La completezza del catalogo la garantisce il pgTAP
      `dbops/test-presidi-testi-v1`; qui si prova il TRASPORTO fino al Python.
+9-bis. test_il_testo_del_presidio_e_quello_senza_variante
+     ⛔ 2026-10-09: dove il catalogo dichiara `colonna_variante` la stessa
+     (vista, lingua) porta anche i testi per causa; il testo del presidio e'
+     quello con `variante IS NULL`.
+9-ter. test_ogni_causa_arriva_col_suo_testo
+     ⭐ 2026-10-10: `testi_delle_cause` gira sul database vero e porta, per
+     ogni causa del catalogo, chi agisce e il testo.
 10. test_una_lingua_senza_testo_ripiega_su_it
 """
 
@@ -58,7 +65,10 @@ from apps.core.db.presidi_repository import (
     PERIMETRI,
     PresidiRepository,
 )
-from apps.core.middleware.user_language_middleware import GUC_NAME
+from apps.core.middleware.user_language_middleware import (
+    DEFAULT_LANGUAGE as LINGUA_DEFAULT,
+    GUC_NAME,
+)
 from apps.core.services.presidi_digest import CADENZE_DEL_DIGEST
 from apps.core.tests.db_e2e import richiedi_db_provvisto, valori_check
 
@@ -226,6 +236,62 @@ class PresidiCatalogoGuardrail(TestCase):
             "presidi che si accendono senza testo per chi agisce: il pannello e "
             "il digest ripiegherebbero sulla prosa tecnica.",
         )
+
+    # 9-bis. ⛔ IL TESTO DEL PRESIDIO E' QUELLO SENZA VARIANTE, sul database
+    #     vero (brief-db-presidio-processi-testo-per-causa §5.4). Dove il
+    #     catalogo dichiara `colonna_variante`, la stessa (vista, lingua) porta
+    #     anche i testi per causa: un join che non li esclude ne restituisce uno
+    #     a caso, e il test 9 resterebbe verde perche' un testo c'e'.
+    #     ⭐ Si confronta col seed (contratto in `80_data`), non con le righe di
+    #     una vista: vale anche su un database ricostruito da zero.
+    #     ⚠️ E' un PRESIDIO DELLA GIUNTURA, non la prova del filtro: senza
+    #     `variante IS NULL` il `LIMIT 1` sceglie per ordine fisico, e il
+    #     2026-10-10 sul dbdev pescava proprio il generico (mutazione provata:
+    #     verde). La prova che morde e' il test 9 di `test_presidi_repository`,
+    #     che legge l'SQL; questo prova che la colonna c'e' e che la query gira.
+    def test_il_testo_del_presidio_e_quello_senza_variante(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT vista, significato
+                  FROM dbops.presidi_testi
+                 WHERE lingua = %s AND variante IS NULL
+                """,
+                [LINGUA_DEFAULT],
+            )
+            generico = dict(cur.fetchall())
+        confrontati = [r for r in self.catalogo if r["vista"] in generico]
+        self.assertTrue(confrontati, "nessun presidio con testo: confronto a vuoto")
+        self.assertEqual(
+            sorted(r["vista"] for r in confrontati
+                   if r["significato"] != generico[r["vista"]]),
+            [],
+        )
+
+    # 9-ter. ⭐ IL TESTO DELLE CAUSE GIRA SUL DATABASE VERO: per ogni presidio
+    #     che dichiara `colonna_variante`, ogni causa del catalogo arriva col
+    #     suo «chi agisce» e il suo testo. La completezza la garantisce il pgTAP
+    #     (`test-presidi-testi-v1` 16-17); qui si prova il TRASPORTO — un join
+    #     sulla colonna sbagliata tornerebbe NULL per tutte, e pannello e
+    #     digest direbbero «nessun testo per questa causa» ovunque.
+    def test_ogni_causa_arriva_col_suo_testo(self) -> None:
+        a_varianti = [r for r in self.catalogo if r["colonna_variante"]]
+        if not a_varianti:
+            self.skipTest("nessun presidio a catalogo dichiara colonna_variante")
+        with connection.cursor() as cur:
+            cur.execute("SELECT vista, causa FROM dbops.presidi_cause")
+            attese = cur.fetchall()
+        repo = self.repo
+        scoperte = []
+        for riga in a_varianti:
+            testi = repo.testi_delle_cause(riga["vista"])
+            for vista, causa in attese:
+                if vista != riga["vista"]:
+                    continue
+                t = testi.get(causa)
+                if not (t and t["chi_agisce"] and t["significato"] and t["azione"]):
+                    scoperte.append((vista, causa))
+        self.assertEqual(scoperte, [])
 
     # 10. ⭐ IL RIPIEGO SULLA LINGUA, sul database vero: con la GUC su una
     #     lingua diversa da `it` il testo arriva comunque — la riga `it` e'

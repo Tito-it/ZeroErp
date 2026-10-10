@@ -941,20 +941,23 @@ Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
 
 - **Endpoint dedicato** separato dal PATCH ordinario della riga. L'operazione
   eccezionale deve essere esplicita, non mascherata dal PATCH standard.
-- **Guard triplo livello**:
-  1. Service Python: lock `FOR UPDATE` sulla riga + check non-propagazione nella stessa transazione
-  2. Trigger DB `trgfn_listini_righe_guard_stato` (defense-in-depth, da implementare su `dev/db-tid`)
-  3. Audit obbligatorio in `riga.meta.rettifiche_controllate[]`
-- **Tabelle controllate per propagazione** (espansione concentrica):
-  - `vendite.commesse_attivita` (`listino_riga_id`)
-  - `vendite.attivita_fatturabili` (`listino_riga_id`)
-- Se la riga e` stata propagata → errore `409 E_VENDITE_RIGA_GIA_PROPAGATA`.
+- **Una sede sola per la regola «propagata»**: il trigger DB
+  `vendite.trgfn_listini_righe_guard_stato`. Il service prende il lock
+  `FOR UPDATE` sulla riga, rilegge prezzo e `meta` sotto il lock e scrive; se il
+  guard rifiuta, porta al chiamante il codice del DB. ⛔ Nessun controllo di
+  propagazione in Python (ritirato il 2026-10-09 con `E_VENDITE_RIGA_GIA_PROPAGATA`:
+  ripeteva la regola del guard con un codice suo).
+- **Audit obbligatorio** in `riga.meta.rettifiche_controllate[]`.
+- Che cosa vuol dire «propagata» lo dice il guard (doc auto-generata di
+  `vendite.trgfn_listini_righe_guard_stato`), non questa pagina.
+- Se la riga e` stata propagata → errore `409 E_RIGA_LISTINO_PROPAGATA`.
   Soluzione: clonare la versione (O1).
 
 ### Errori tipici
 
 - `400` `E_VENDITE_VALIDATION`: versione non ATTIVA, prezzo non valido, motivo mancante o troppo lungo
-- `409` `E_VENDITE_RIGA_GIA_PROPAGATA`: riga usata in almeno una commessa/fatturabile
+- `409` `E_RIGA_LISTINO_PROPAGATA` (dal guard DB): riga usata in almeno una commessa/fatturabile
+- `409` `E_RIGA_LISTINO_VERSIONE_CHIUSA` (dal guard DB): la versione e' CHIUSA
 
 ---
 
@@ -969,7 +972,7 @@ Caso d'uso: errore di battitura su riga non ancora usata da nessuna commessa.
   - `E_VENDITE_LISTINO_VERSIONE_NOT_FOUND` (404)
   - `E_VENDITE_LISTINO_RIGA_NOT_FOUND` (404)
   - `E_VENDITE_LISTINO_ASSOCIAZIONE_NOT_FOUND` (404)
-  - `E_VENDITE_RIGA_GIA_PROPAGATA` (409) — rettifica controllata N6
+  - `E_RIGA_LISTINO_PROPAGATA` (409, dal guard DB) — rettifica controllata N6
   - `E_VENDITE_VALIDATION` (400) — validazione generica
 
 ## Dipendenze DB

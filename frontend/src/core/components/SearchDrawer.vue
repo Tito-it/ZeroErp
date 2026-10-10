@@ -302,11 +302,13 @@ watch(() => props.visible, (newVal) => {
         <Column field="soggetto_codice" :header="t('search.col_code')" sortable style="width: 90px" />
         <Column field="ragione_sociale_completa" :header="t('search.col_name')" sortable />
         <Column field="id_fiscale_univoco" :header="t('search.col_fiscal_id')" sortable style="width: 160px" />
+        <!-- ⛔ Non ordinabile (2026-10-10, brief-db-ricerca-universale-tetto-10000
+             D-2): è un aggregato che il DB calcola per le sole righe della
+             pagina, e `p_order_by` lo rifiuta. -->
         <Column
           v-if="selectedTipoRuolo?.codice === TIPO_RUOLO.CLIENTE"
           field="utility_list"
           :header="t('search.col_utility')"
-          sortable
           style="width: 80px"
         >
           <template #body="{ data }">

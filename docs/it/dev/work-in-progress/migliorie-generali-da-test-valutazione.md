@@ -959,9 +959,8 @@ lista della ricerca universale tiene al massimo 10.000 corrispondenze con un `LI
 non è la prima vera e le pagine possono ripetere o saltare soggetti.
 
 Dettaglio, due strade e decisioni attese nel brief
-[brief-db-ricerca-universale-tetto-10000.md](brief-db-ricerca-universale-tetto-10000.md). 🔧 Decisioni
-chiuse il 2026-10-10 (strada B, via l'ordinamento per utility); lato DB applicato e verde il
-2026-10-10 (`20261010-16`); resta il BE/FE (§7.3 del brief).
+[brief-db-ricerca-universale-tetto-10000.md](../work-done/brief-db-ricerca-universale-tetto-10000.md). ✅ Chiuso
+e archiviato il 2026-10-10 (strada B, via l'ordinamento per utility; DB `20261010-16`, BE/FE §7.4).
 
 ---
 
@@ -1161,9 +1160,9 @@ D6 e il registro dei rossi in CI.
 * [ ] **D23** — la testata dopo l'emissione, colonna per colonna: brief
       `brief-db-testata-dopo-emissione` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
 * [ ] **D22** — il guard emittente <-> BA scritto sette volte: brief
-      `brief-db-guard-emittente-ba-unico` (aperto il 2026-10-10; lato DB applicato e verde, resta il BE: §8.6).
-* [ ] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre
-      il tetto): brief `brief-db-ricerca-universale-tetto-10000` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno; DB `20261010-16` applicato e verde; resta il BE/FE).
+      `brief-db-guard-emittente-ba-unico` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+* [x] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre
+      il tetto): brief `work-done/brief-db-ricerca-universale-tetto-10000` — chiuso e archiviato il 2026-10-10 (DB `20261010-16`, BE/FE §7.4).
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
       `brief-db-esecutivi-ba-coppia` (decisioni chiuse il 2026-10-09; lato DB, giro 1 e 2, applicato e verde; resta il BE/FE: §11.5).
 

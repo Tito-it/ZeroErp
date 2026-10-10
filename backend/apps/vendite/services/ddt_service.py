@@ -12,8 +12,16 @@
 # singolo a commessa (sorgente DDT_VENDITA). Clone strutturale di
 # `ordini_service` (modulo di funzioni libere, non classe): stessa impronta,
 # logica DDT (macchina a stati DRAFT->EMESSO->SPEDITO->CONSEGNATO->RESO(+ANNULLATO)
-# data-driven, numero assegnato a EMESSO dal trigger DB, cliente/destinatario
-# immutabile post-creazione).
+# data-driven, numero assegnato a EMESSO dal trigger DB; cliente e destinatario
+# si scelgono in bozza, fuori bozza li blocca il DB).
+#
+# NOTA cliente (brief-db-esecutivi-ba-coppia, D-2/D-4, 2026-10-10): il BA e'
+# FACOLTATIVO. Lo pretende l'emissione quando la causale manda merce a un
+# cliente (`config.causali_trasporto.richiede_cliente`: motivo
+# `E_DDT_CLIENTE_OBBLIGATORIO`, capability CLIENTE_MANCANTE). Col BA,
+# destinatario e utility sono copie del BA e le scrive `trgfn_ddt_normalize`;
+# senza, il destinatario (terzista, deposito) lo sceglie l'operatore. Nessuna
+# di queste regole e' ricopiata qui.
 #
 # NOTA emittente (addendum §15 + uniformazione 2026-07-13): l'emittente del
 # DDT e' legato allo USER, come ordini/preventivi/contratti. Il FE prefilla
@@ -22,8 +30,7 @@
 # (NOT NULL, scope RLS `rls_ddt_ef_whitelist`) con reti di sicurezza DB in
 # `trgfn_ddt_normalize`: eredita dall'ordine sorgente (evasione) o, se il
 # payload non lo porta, fallback dal billing_account. Il service LEGGE la
-# colonna dalla testata e non la risolve a runtime; il billing_account resta
-# richiesto alla creazione (deriva il destinatario e ancora il fallback).
+# colonna dalla testata e non la risolve a runtime.
 
 import logging
 from datetime import date
@@ -33,10 +40,11 @@ from django.db import transaction
 
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.error_policies import ErrorPolicyRegistry
-from apps.core.services.payload_helpers import make_db_errors_translator
+from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
 from apps.core.services.testata_guard import (
     pagina_dopo_testata,
     riga_del_padre_o_not_found,
@@ -73,25 +81,42 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # `vendite.ddt`/`vendite.ddt_righe` non hanno UNIQUE di dominio (numerazione
 # gestita dal trigger a EMESSO, fuori da sistema_codici) -> solo FK.
 _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {}
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_ddt_vendita_r_articolo": (E_VENDITE_FK, "Articolo non valido."),
     "fk_ddt_v_billing_account": (E_VENDITE_FK, "Cliente (billing account) non valido."),
     "fk_ddt_vendita_destinatario_ruolo": (E_VENDITE_FK, "Destinatario non valido."),
     "fk_ddt_vendita_r_iva": (E_VENDITE_FK, "Aliquota IVA non valida."),
     "fk_ddt_v_emittente_fiscale": (E_VENDITE_FK, "Emittente fiscale non valido."),
+    # Rete sotto il BB `fn_cliente_dal_billing_account` (che risponde prima,
+    # col suo codice): destinatario o utility diversi da quelli del BA.
+    "fk_ddt_ba_cliente": FK_CLIENTE_DIVERSO_DA_BA,
+}
+# «BA e utility tutti e due o nessuno»: la utility e' copia del BA.
+_CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
+    "chk_ddt_ba_utility_insieme": (
+        E_VENDITE_VALIDATION,
+        "La utility della bolla e' quella del suo billing account: senza billing account non c'e'.",
+        "billing_account_id",
+    ),
 }
 
 # ── Costanti di dominio ──
 _FN = "vendite.ddt_service"
+_V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
+# Gli id della controparte che il payload puo' portare: si coerciscono a
+# intero (un valore non numerico e' un 400 col campo, non un 500 da `int()`).
+_ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
 _STATO_BOZZA = "DRAFT"
 _STATO_EMESSO = "EMESSO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
 # Whitelist campi testata accettati in create (null_vs_empty -> None).
-# `destinatario_soggetto_ruolo_id` opzionale nel payload: derivato dal
-# billing_account se assente (cliente=BA, come ordini).
+# Col BA il destinatario lo scrive il DB (e rifiuta un valore diverso); senza
+# BA e' obbligatorio (NOT NULL: il 23502 arriva col campo). ⛔ `utility_id`
+# NON c'e': e' una copia del BA (CHECK «tutti e due o nessuno»), la scrive il
+# DB — un client vecchio che la manda la vede scartata.
 CREATE_KEYS_DDT: frozenset[str] = frozenset({
-    "billing_account_id", "destinatario_soggetto_ruolo_id", "utility_id",
+    "billing_account_id", "destinatario_soggetto_ruolo_id",
     "emittente_fiscale_id",
     "valuta_id", "mittente_soggetto_ruolo_id", "vettore_soggetto_ruolo_id",
     "causale_trasporto_id", "aspetto_bene_id", "modalita_addebito_trasporto_id",
@@ -104,10 +129,15 @@ CREATE_KEYS_DDT: frozenset[str] = frozenset({
     # testata DDT e' editabile solo in DRAFT: le due finestre non si toccano.
     "fatturazione_immediata",
 })
-# NB: billing_account_id/destinatario NON aggiornabili (cliente immutabile
-# post-creazione, vedi aggiorna_ddt): cambiare cliente = nuovo DDT.
+# Cliente e destinatario si cambiano in BOZZA (D-2: la bolla puo' nascere senza
+# BA e riceverlo prima dell'emissione); fuori bozza li blocca il DB
+# (`trg_ddt_a05_lock_fuori_bozza_upd`, E_DDT_CLIENTE_IMMUTABILE). Al cambio di
+# BA il destinatario non toccato segue il BA nuovo; un BA tolto toglie la
+# utility e lascia il destinatario (`trgfn_ddt_normalize`). ⛔ `utility_id`
+# fuori, come in create.
 UPDATE_KEYS_DDT: frozenset[str] = frozenset({
-    "utility_id", "valuta_id", "mittente_soggetto_ruolo_id",
+    "billing_account_id", "destinatario_soggetto_ruolo_id",
+    "valuta_id", "mittente_soggetto_ruolo_id",
     "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
     "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
     "volume", "targa", "autista", "tracking_code", "data", "meta",
@@ -287,40 +317,12 @@ def list_riepilogo_iva(ddt_id: int) -> list[dict[str, Any]]:
 
 # Scopo: Crea un nuovo DDT standalone in stato DRAFT (BOZZA). `numero` NON
 #        assegnato in DRAFT: lo valorizza il trigger DB a EMESSO (C6).
-#        `destinatario_soggetto_ruolo_id` derivato dal billing_account se
-#        assente (cliente=BA, come ordini).
+#        Cliente (BA) facoltativo: col BA il destinatario lo scrive il DB,
+#        senza va indicato (terzista, deposito). Vedi la NOTA cliente in testa.
 def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
     data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_DDT}
-
-    billing_account_id = data.get("billing_account_id")
-    # Cliente obbligatorio: deriva il destinatario e ancora il fallback DB
-    # dell'emittente (`trgfn_ddt_normalize`) quando il payload non lo porta.
-    # Senza BA l'INSERT fallirebbe a DB con un errore non parlante.
-    ErrorManager.require(
-        billing_account_id is not None,
-        code="E_DDT_VALIDAZIONE",
-        message=(
-            "Cliente (billing_account_id) obbligatorio: risolve l'emittente "
-            "fiscale del DDT."
-        ),
-        context={"field": "billing_account_id"},
-        function_name=f"{_FN}.crea_ddt",
-    )
-    assert billing_account_id is not None
-    destinatario_id = data.get("destinatario_soggetto_ruolo_id")
-    if destinatario_id is None:
-        # BA garantito non-None dal guard sopra: derivazione sempre tentabile.
-        destinatario_id = repo.get_soggetto_ruolo_id_by_ba(int(billing_account_id))
-    ErrorManager.require(
-        destinatario_id is not None,
-        code="E_DDT_VALIDAZIONE",
-        message="Destinatario non risolvibile dal billing_account: indicare "
-                "destinatario_soggetto_ruolo_id esplicito.",
-        context={"field": "destinatario_soggetto_ruolo_id"},
-        function_name=f"{_FN}.crea_ddt",
-    )
-    assert destinatario_id is not None
+    _coerci_id_controparte(data, op="crea_ddt")
 
     stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
     ErrorManager.require(
@@ -334,13 +336,12 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     meta = data.get("meta")
     with _db_errors("crea_ddt"):
         creato = repo.create_ddt(
-            destinatario_soggetto_ruolo_id=int(destinatario_id),
+            destinatario_soggetto_ruolo_id=data.get("destinatario_soggetto_ruolo_id"),
             stato_doc_ddt_id=int(stato_bozza_id),
-            billing_account_id=int(billing_account_id) if billing_account_id is not None else None,
+            billing_account_id=data.get("billing_account_id"),
             # Emittente dallo user (prefill FE dal profilo, mirror ordini).
             # Se None: fallback DB dal BA in trgfn_ddt_normalize.
             emittente_fiscale_id=data.get("emittente_fiscale_id"),
-            utility_id=data.get("utility_id"),
             valuta_id=data.get("valuta_id"),
             mittente_soggetto_ruolo_id=data.get("mittente_soggetto_ruolo_id"),
             vettore_soggetto_ruolo_id=data.get("vettore_soggetto_ruolo_id"),
@@ -366,56 +367,16 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
 
 # Scopo: Aggiorna testata DDT (solo in DRAFT).
 #
-# Cliente immutabile post-creazione: billing_account_id NON e' nella whitelist
-# UPDATE_KEYS_DDT. `vendite.ddt` denormalizza il cliente su billing_account_id
-# + destinatario_soggetto_ruolo_id (NOT NULL): cambiare il BA lascerebbe il
-# destinatario stantio -> incoerenza cliente<->soggetto. Regola "cambiare
-# cliente = nuovo DDT". Un tentativo ESPLICITO di cambiare BA e' rifiutato (non
-# ignorato in silenzio); un BA invariato nel payload e' tollerato.
+# Cliente e destinatario sono nella whitelist (vedi UPDATE_KEYS_DDT): cosa
+# succede alle copie lo decide il DB. Fino al 2026-10-10 qui c'era un guard
+# «cliente immutabile dopo la creazione» che contraddiceva D-2: una bolla nata
+# senza BA non l'avrebbe mai ricevuto (brief-db-esecutivi-ba-coppia §9.6).
 def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
-    # Lettura singola: la testata copre sia il guard stato sia il confronto
-    # billing_account (evita get_stato_codice + get_ddt sullo stesso record).
-    testata = _get_testata_or_raise(repo, ddt_id, op="aggiorna_ddt")
-    stato = testata["stato_codice_interno"]
-    ErrorManager.require(
-        stato in _STATI_MODIFICABILI,
-        code="E_DDT_STATO_TRANSIZIONE",
-        message=f"Operazione non ammessa nello stato {stato}.",
-        detail=f"ammessi={sorted(_STATI_MODIFICABILI)}",
-        function_name=f"{_FN}.aggiorna_ddt",
-    )
-
-    if "billing_account_id" in payload:
-        raw_ba = empty_to_none(payload["billing_account_id"])
-        # Coercion difensiva: un billing_account_id non numerico e' input
-        # invalido -> 4xx parlante, non 500.
-        try:
-            nuovo_ba = int(raw_ba) if raw_ba is not None else None
-        except (TypeError, ValueError):
-            nuovo_ba = None
-            ErrorManager.require(
-                False,
-                code="E_DDT_VALIDAZIONE",
-                message="billing_account_id non valido.",
-                detail=f"billing_account_id={payload['billing_account_id']!r}",
-                context={"field": "billing_account_id"},
-                function_name=f"{_FN}.aggiorna_ddt",
-            )
-        attuale_ba = testata.get("billing_account_id")
-        attuale_ba = int(attuale_ba) if attuale_ba is not None else None
-        ErrorManager.require(
-            nuovo_ba == attuale_ba,
-            code="E_DDT_CLIENTE_IMMUTABILE",
-            message=(
-                "Cliente (billing_account_id) immutabile dopo la creazione. "
-                "Per cambiare cliente crea un nuovo DDT."
-            ),
-            detail=f"attuale={attuale_ba} richiesto={nuovo_ba}",
-            function_name=f"{_FN}.aggiorna_ddt",
-        )
+    _assert_stato(repo, ddt_id, _STATI_MODIFICABILI, op="aggiorna_ddt")
 
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_DDT}
+    _coerci_id_controparte(data, op="aggiorna_ddt")
     ErrorManager.require(
         len(data) > 0,
         code="E_DDT_VALIDAZIONE",
@@ -891,7 +852,17 @@ _db_errors = make_db_errors_translator(
     fallback_message="Violazione vincolo DB su DDT.",
     unique_constraints=_UNIQUE_CONSTRAINTS,
     fk_constraints=_FK_CONSTRAINTS,
+    check_constraints=_CHECK_CONSTRAINTS,
 )
+
+
+# Scopo: Coerce a intero positivo gli id della controparte presenti nel
+#        payload (BB `PayloadValidator`); un None resta None (BA tolto in
+#        bozza, o destinatario lasciato al DB).
+def _coerci_id_controparte(data: dict[str, Any], *, op: str) -> None:
+    for chiave in _ID_CONTROPARTE:
+        if chiave in data:
+            data[chiave] = _V.optional_positive_int(data, chiave, function_name=f"{_FN}.{op}")
 
 
 # Scopo: Carica la testata DDT o solleva E_DDT_NOT_FOUND (BB core

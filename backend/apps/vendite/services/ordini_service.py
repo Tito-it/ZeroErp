@@ -26,6 +26,7 @@ from django.db import DatabaseError, transaction
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
@@ -72,10 +73,13 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Un ordine è già stato generato da questa offerta.",
     ),
 }
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_ordrig_articolo": (E_VENDITE_FK, "Articolo non valido."),
     "fk_ordini_v_billing_account": (E_VENDITE_FK, "Cliente (billing account) non valido."),
     "fk_ordini_v_cliente_ruolo": (E_VENDITE_FK, "Cliente non valido."),
+    # Rete sotto il BB `fn_cliente_dal_billing_account` (che risponde prima,
+    # col suo codice): ruolo o utility diversi da quelli del BA.
+    "fk_ordini_ba_cliente": FK_CLIENTE_DIVERSO_DA_BA,
 }
 
 # CHECK di dominio. `chk_ordini_fatturazione_trigger` diventa raggiungibile solo
@@ -115,16 +119,21 @@ _STATI_PUSHABILI: frozenset[str] = frozenset(
 # Qui non serve una difesa applicativa aggiuntiva: la testata dell'ordine e'
 # editabile solo in DRAFT (`can_edit_testata`), e il push avviene da CONFERMATO
 # in poi — le due finestre non si sovrappongono.
+# ⛔ `soggetto_ruolo_id` e `utility_id` NON ci sono (2026-10-10): sono copie
+# del BA, le scrive `trgfn_ordini_normalize` col BB
+# `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia D-1,
+# D-5, §10.2 domanda 2). Un client che le manda le vede scartate.
 CREATE_KEYS_ORDINE: frozenset[str] = frozenset({
-    "billing_account_id", "soggetto_ruolo_id", "utility_id",
+    "billing_account_id",
     "emittente_fiscale_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
     "data", "meta", "fatturazione_immediata",
 })
-# NB: billing_account_id NON e' aggiornabile (cliente immutabile post-creazione,
-# vedi aggiorna_ordine): a differenza di create, dove deriva soggetto_ruolo_id.
+# `billing_account_id` c'e' e arriva al DB, che lo blocca dopo la creazione
+# (lock di colonna, E_ORD_CLIENTE_IMMUTABILE): rimandato invariato passa, un
+# cambio e' rifiutato col codice del DB. Utility fuori, come in create.
 UPDATE_KEYS_ORDINE: frozenset[str] = frozenset({
-    "utility_id", "valuta_id", "modalita_pagamento_id",
+    "billing_account_id", "valuta_id", "modalita_pagamento_id",
     "termine_pagamento_id", "fatturazione_trigger", "agente_soggetto_ruolo_id",
     "data", "meta", "fatturazione_immediata",
 })
@@ -165,9 +174,10 @@ UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
 _DATE_RIGA: tuple[str, ...] = (
     "data_consegna_richiesta_cliente", "data_consegna_confermata",
 )
-# Validator delle date di riga: `optional_date` solleva `E_ORD_VALIDAZIONE` con
-# `context.field` = la chiave, cosi' l'input si accende (`campiErrati`).
-_V_RIGA = PayloadValidator(validation_code="E_ORD_VALIDAZIONE")
+# Validator del dominio (testata e date di riga): solleva `E_ORD_VALIDAZIONE`
+# con `context.field` = la chiave, cosi' l'input si accende (`campiErrati`).
+# Uno solo: il codice e' lo stesso, e il validator non ha stato da separare.
+_V = PayloadValidator(validation_code="E_ORD_VALIDAZIONE")
 
 
 # ══════════════════════════════════════════════════════════
@@ -404,22 +414,17 @@ def delete_indirizzo(ordine_id: int, indirizzo_id: int) -> dict[str, Any]:
 # ══════════════════════════════════════════════════════════
 
 # Scopo: Crea un nuovo ordine in stato DRAFT (BOZZA). `numero` generato dal
-#        trigger DB. soggetto_ruolo_id derivato dal billing_account se assente.
+#        trigger DB. Il cliente e' il BA (obbligatorio, D-1): ruolo e utility
+#        li scrive il DB dal BA.
 def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
     data = {k: empty_to_none(v) for k, v in payload.items() if k in CREATE_KEYS_ORDINE}
 
-    billing_account_id = data.get("billing_account_id")
-    soggetto_ruolo_id = data.get("soggetto_ruolo_id")
-    if soggetto_ruolo_id is None and billing_account_id is not None:
-        soggetto_ruolo_id = repo.get_soggetto_ruolo_id_by_ba(int(billing_account_id))
-    ErrorManager.require(
-        soggetto_ruolo_id is not None,
-        code="E_ORD_VALIDAZIONE",
-        message="Cliente obbligatorio (billing_account_id o soggetto_ruolo_id).",
+    billing_account_id = _V.require_positive_int(
+        data, "billing_account_id",
+        message="Cliente (billing account) obbligatorio.",
         function_name=f"{_FN}.crea_ordine",
     )
-    assert soggetto_ruolo_id is not None
 
     stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
     ErrorManager.require(
@@ -432,9 +437,7 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
 
     with _db_errors("crea_ordine"):
         creato = repo.create_ordine(
-            soggetto_ruolo_id=int(soggetto_ruolo_id),
-            billing_account_id=int(billing_account_id) if billing_account_id is not None else None,
-            utility_id=data.get("utility_id"),
+            billing_account_id=billing_account_id,
             emittente_fiscale_id=data.get("emittente_fiscale_id"),
             valuta_id=data.get("valuta_id"),
             modalita_pagamento_id=data.get("modalita_pagamento_id"),
@@ -455,52 +458,20 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
 
 # Scopo: Aggiorna testata ordine (solo in DRAFT).
 #
-# Cliente immutabile post-creazione: billing_account_id NON e' nella whitelist
-# UPDATE_KEYS_ORDINE. vendite.ordini denormalizza soggetto_ruolo_id (NOT NULL)
-# accanto a billing_account_id, ma nessun trigger DB li ri-sincronizza su UPDATE
-# (trgfn_ordini_normalize tocca solo fatturazione_trigger): cambiare il BA
-# lascerebbe soggetto_ruolo_id stantio -> incoerenza cliente<->soggetto. Regola
-# "cambiare cliente = nuovo ordine" (come utility immutabile in preventivi).
-# Un tentativo ESPLICITO di cambiare BA e' rifiutato (non ignorato in silenzio);
-# un BA invariato nel payload e' tollerato (il form FE puo' reinviarlo).
+# Il cliente non cambia dopo la creazione, e lo dice il DB (lock di colonna su
+# `billing_account_id` e `soggetto_ruolo_id`, E_ORD_CLIENTE_IMMUTABILE): il BA
+# e' in whitelist e arriva fin li'. Fino al 2026-10-10 qui c'era una copia del
+# lock in Python, nata quando nessun trigger ri-sincronizzava il ruolo.
 def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
     _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="aggiorna_ordine")
 
-    if "billing_account_id" in payload:
-        raw_ba = empty_to_none(payload["billing_account_id"])
-        # Coercion difensiva: un billing_account_id non numerico e' input
-        # invalido -> 422 parlante, non 500 (int() su garbage solleverebbe
-        # ValueError non gestito). attuale_ba dal DB e' gia' bigint.
-        try:
-            nuovo_ba = int(raw_ba) if raw_ba is not None else None
-        except (TypeError, ValueError):
-            nuovo_ba = None
-            ErrorManager.require(
-                False,
-                code="E_ORD_VALIDAZIONE",
-                message="billing_account_id non valido.",
-                detail=f"billing_account_id={payload['billing_account_id']!r}",
-                function_name=f"{_FN}.aggiorna_ordine",
-            )
-        testata = repo.get_ordine(ordine_id)
-        attuale_ba = (testata or {}).get("billing_account_id")
-        attuale_ba = int(attuale_ba) if attuale_ba is not None else None
-        # Stesso codice della difesa DB (lock-columns, DB-ORD-LOCK): un solo
-        # codice user-facing per "cliente immutabile", indipendente dal layer
-        # che lo intercetta (service vs UPDATE diretta su DB).
-        ErrorManager.require(
-            nuovo_ba == attuale_ba,
-            code="E_ORD_CLIENTE_IMMUTABILE",
-            message=(
-                "Cliente (billing_account_id) immutabile dopo la creazione. "
-                "Per cambiare cliente crea un nuovo ordine."
-            ),
-            detail=f"attuale={attuale_ba} richiesto={nuovo_ba}",
-            function_name=f"{_FN}.aggiorna_ordine",
-        )
-
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_ORDINE}
+    if "billing_account_id" in data:
+        # Un id non numerico e' un 400 col campo, non un 500 dal driver.
+        data["billing_account_id"] = _V.optional_positive_int(
+            data, "billing_account_id", function_name=f"{_FN}.aggiorna_ordine",
+        )
     ErrorManager.require(
         len(data) > 0,
         code="E_ORD_VALIDAZIONE",
@@ -735,8 +706,8 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
     righe = off_repo.list_righe_espanse(offerta_id)
 
     header = {
+        # La utility (e il ruolo) li scrive il DB dal BA: non si ricopiano.
         "billing_account_id": testata.get("billing_account_id"),
-        "utility_id": testata.get("utility_id"),
         "emittente_fiscale_id": testata.get("emittente_fiscale_id"),
         "valuta_id": testata.get("valuta_id"),
         # ⭐ Niente `data`: la decide il DEFAULT della colonna,
@@ -1329,7 +1300,7 @@ def _data_riferimento(testata: dict[str, Any]) -> date:
 def _parse_date_riga(data: dict[str, Any], *, function_name: str) -> None:
     for chiave in _DATE_RIGA:
         if chiave in data:
-            data[chiave] = _V_RIGA.optional_date(
+            data[chiave] = _V.optional_date(
                 data, chiave, function_name=function_name,
             )
 
