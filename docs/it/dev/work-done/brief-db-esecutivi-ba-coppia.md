@@ -10,9 +10,9 @@
 > **Stato al 2026-10-10:** ✅ **chiuso e archiviato.** Lato DB applicato su dbdev e verde, giro 1 e
 > giro 2 (§9, §11); lato BE/FE fatto (§12, commit `062b06368`). Il debito fuori perimetro e' in tre
 > brief: [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22, chiuso),
-> [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D23) e
+> [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D26) e
 > [brief-db-indirizzi-documento-seguono-il-cliente](../work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md)
-> (D25, dal §12.3). Il collaudo a video dei form di DDT e ordine resta di Tid (§12.2).
+> (D27, dal §12.3). Il collaudo a video dei form di DDT e ordine resta di Tid (§12.2).
 > **Dettaglio:** 31 changeSet
 > `20261009-62…-92`, tutti `EXECUTED` nel `databasechangelog` di dbdev (`-62…-82` alle 19:19, `-83…-85`
 > alle 19:30, `-86…-92` alle 23:46 del 2026-10-09). Il giro e' cresciuto due volte oltre il §5: il lock
@@ -762,7 +762,7 @@ Fuori perimetro — all'archiviazione va in un **brief nuovo**, con la voce-rima
   commesse), annotate nel §5.5: regola del 2, un BB parametrico. ➡️ **Brief aperto il 2026-10-10**:
   [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22);
 * la domanda generale del §8 sulle **altre** colonne di testata in fase chiusa. ➡️ **Brief aperto il
-  2026-10-10**: [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D23).
+  2026-10-10**: [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D26).
 
 Dentro il giro:
 
@@ -939,6 +939,6 @@ Dentro il giro:
   l'auto-assegnazione all'UPDATE del BA), e la domanda e' di modello.
   ➡️ **Deciso da Tid il 2026-10-10, passato a un brief nuovo**:
   [brief-db-indirizzi-documento-seguono-il-cliente](../work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md)
-  (D25). L'istruttoria ha trovato lo stesso buco su preventivo e offerta, e il gate d'emissione che
+  (D27). L'istruttoria ha trovato lo stesso buco su preventivo e offerta, e il gate d'emissione che
   non guarda l'origine dell'indirizzo. La regola va nel DB, e con lei l'auto-assegnazione dello slot
   di default.

@@ -108,7 +108,7 @@ class RigaPresidio(TypedDict):
     nota: str
     # ⭐ LA COLONNA DELLA VISTA CHE DICE LA CAUSA DI OGNI RIGA (dal 2026-10-09):
     #    quando c'e', le righe sono guasti diversi, e testo e «chi agisce» si
-    #    leggono per causa (`cause_delle_righe`). ⛔ Il nome si legge da qui,
+    #    leggono per causa (`cause_del_presidio`). ⛔ Il nome si legge da qui,
     #    mai scritto nel codice.
     colonna_variante: str | None
     # ⭐ IL TESTO PER CHI AGISCE (`dbops.presidi_testi`, dal 2026-10-06): cosa
@@ -144,7 +144,22 @@ class CausaPresidio(TypedDict):
     chi_agisce: str | None
     significato: str | None
     azione: str | None
+    # ⭐ Quante righe del presidio hanno questa causa, da
+    #    `dbops.fn_conta_presidio_per_variante` (R-2, 2026-10-10): il numero
+    #    vero, non quello del campione. ⚠️ Mai meno delle `righe` consegnate:
+    #    conteggio e campione sono due letture, e fra l'una e l'altra puo'
+    #    accendersi una riga (`cause_del_presidio`).
+    conteggio: int
+    # Le righe del CAMPIONE con questa causa: possono essere zero anche con
+    # `conteggio` > 0 (la causa sta oltre il campione, o il perimetro non le
+    # lascia elencare).
     righe: list[dict[str, Any]]
+
+
+# Scopo: una riga di `dbops.fn_conta_presidio_per_variante`.
+class ConteggioVariante(TypedDict):
+    variante: str | None
+    conteggio: int
 
 
 # ⚠️ IL DEBITO DICHIARATO DELLE VISTE NON ANCORA A CATALOGO — oggi A ZERO.
@@ -312,6 +327,48 @@ class PresidiRepository:
         assert valore is not None  # count e fn_conta_presidio tornano una riga
         return int(valore[0])
 
+    # Scopo: Quante righe di questa vista chiedono un intervento, PER VALORE
+    #        della colonna che il catalogo nomina in `colonna_variante` (R-2 del
+    #        brief-db-presidio-processi-testo-per-causa, 2026-10-10).
+    #
+    # ⭐ E' la SEDE del conteggio a database: `fn_conta_presidio` ne e' la
+    #    somma, quindi filtro e perimetro sono gli stessi per costruzione.
+    # ⚠️ Una riga per valore presente, i valori a zero non escono; `variante`
+    #    NULL e' un gruppo a se' («causa non indicata»). Su un presidio senza
+    #    variante risponde una riga sola `(NULL, n)`.
+    # ⛔ `SELECT … FROM fn(…)` e non `SELECT fn(…)`: la seconda consegna la tupla
+    #    in un campo solo (§7.4 del brief).
+    def conta_per_variante(self, riga: RigaPresidio) -> list[ConteggioVariante]:
+        vista = self._vista_valida(riga["vista"])
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT variante, conteggio "
+                "FROM dbops.fn_conta_presidio_per_variante(%s)",
+                [vista],
+            )
+            return [
+                {"variante": variante, "conteggio": int(conteggio)}
+                for variante, conteggio in cursor.fetchall()
+            ]
+
+    # Scopo: Il conteggio di un presidio e, dove il catalogo nomina una
+    #        `colonna_variante`, i conteggi per causa da cui discende: UNA
+    #        lettura sola. `(n, None)` per un presidio senza cause.
+    #
+    # ⭐ Il totale e' la SOMMA dei conteggi per causa, non una seconda lettura
+    #    di `fn_conta_presidio`: quella funzione ne e' gia' la somma a database,
+    #    e due letture prese in due momenti potevano dire un totale e delle
+    #    cause che non tornano. Cosi' tornano per costruzione.
+    # ⚠️ Solo per le viste a catalogo: quelle in attesa passano da `conta`, e
+    #    la funzione per causa le rifiuterebbe come `fn_conta_presidio`.
+    def conta_presidio(
+        self, riga: RigaPresidio,
+    ) -> tuple[int, list[ConteggioVariante] | None]:
+        if riga["a_catalogo"] and riga["colonna_variante"]:
+            conteggi = self.conta_per_variante(riga)
+            return sum(c["conteggio"] for c in conteggi), conteggi
+        return self.conta(riga), None
+
     # Scopo: Le prime righe di una vista, per chi le puo' vedere.
     #
     # ⛔ Su `perimetro = DEFINER` NON si elencano, e il guard sta qui e non nel
@@ -335,39 +392,63 @@ class PresidiRepository:
             cursor.execute(f"SELECT * FROM {vista} LIMIT %s", [limite])  # noqa: S608
             return rows_to_list(cursor)
 
-    # Scopo: Le righe lette di un presidio, raggruppate per CAUSA, ognuna col suo
-    #        testo e il suo «chi agisce». `[]` se il presidio non dichiara
-    #        `colonna_variante`: allora vale il testo del presidio, come prima.
+    # Scopo: Le CAUSE accese di un presidio, ognuna col suo conteggio, il suo
+    #        testo, il suo «chi agisce» e le righe del campione che le
+    #        appartengono. `[]` se il presidio non dichiara `colonna_variante`:
+    #        allora vale il testo del presidio, come prima.
     #
     # ⭐ L'unica sede del raggruppamento: pannello e digest lo chiedono qui, e non
     #    possono raccontare la stessa causa in due modi.
-    # ⚠️ Raggruppa le righe CHE GLI SI DANNO, cioe' il campione di `prime_righe`:
-    #    non conta le cause. I conteggi per causa (e il raggruppamento del digest
-    #    per chi agisce) aspettano R-2 del brief-db-presidio-processi-testo-per-
-    #    causa §6.2 — contarle qui sarebbe la seconda sede del filtro di
-    #    `fn_conta_presidio`, e contare il campione darebbe numeri sbagliati.
-    # ⭐ L'ordine dei gruppi e' quello in cui le cause compaiono nelle righe: la
-    #    vista ha il suo ORDER BY, e un riordino qui sarebbe una seconda regola.
-    def cause_delle_righe(
+    # ⭐ SI PARTE DAI CONTEGGI, non dal campione (§6.4.2 del brief, dal
+    #    2026-10-10): ogni causa accesa arriva, anche quella che sta oltre le
+    #    prime righe o su una vista che non si elenca. Raggruppare il solo
+    #    campione dava numeri sbagliati, e una causa oltre la quinta riga non
+    #    arrivava mai a chi la deve spegnere.
+    # ⚠️ Conteggio e campione sono DUE letture: una riga accesa fra l'una e
+    #    l'altra porta una causa che i conteggi non hanno, o una in piu' di
+    #    quante ne contavano. Non si scarta (e' un guasto vero): il gruppo nasce
+    #    o cresce, e il suo conteggio non e' mai meno delle righe che mostra.
+    # ⭐ L'ordine e' quello della funzione (per valore, il NULL in coda): un
+    #    riordino qui sarebbe una seconda regola.
+    # ⭐ I conteggi per causa li riceve da `conta_presidio` (la stessa lettura
+    #    del totale), non li rilegge: `None` = presidio senza cause.
+    def cause_del_presidio(
         self, riga: RigaPresidio, righe: list[dict[str, Any]],
+        conteggi: list[ConteggioVariante] | None,
     ) -> list[CausaPresidio]:
         colonna = riga["colonna_variante"]
-        if not colonna or not righe:
+        if not colonna or conteggi is None:
+            return []
+        if not conteggi and not righe:
             return []
         testi = self.testi_delle_cause(riga["vista"])
-        gruppi: dict[str | None, CausaPresidio] = {}
+
+        def _gruppo(causa: str | None, conteggio: int) -> CausaPresidio:
+            # ⛔ Causa NULL o fuori catalogo: testo e «chi agisce» a None, mai
+            #    quelli del presidio — sarebbero il rimedio di un altro guasto.
+            testo = testi.get(causa) if causa is not None else None
+            return {
+                "causa": causa,
+                "chi_agisce": testo["chi_agisce"] if testo else None,
+                "significato": testo["significato"] if testo else None,
+                "azione": testo["azione"] if testo else None,
+                "conteggio": conteggio,
+                "righe": [],
+            }
+
+        gruppi: dict[str | None, CausaPresidio] = {
+            c["variante"]: _gruppo(c["variante"], c["conteggio"]) for c in conteggi
+        }
         for r in righe:
-            causa = r.get(colonna)
+            valore = r.get(colonna)
+            # ⚠️ La funzione consegna la variante come testo (`::text`): la
+            #    colonna della vista puo' avere un tipo suo.
+            causa = None if valore is None else str(valore)
             if causa not in gruppi:
-                testo = testi.get(causa) if causa is not None else None
-                gruppi[causa] = {
-                    "causa": causa,
-                    "chi_agisce": testo["chi_agisce"] if testo else None,
-                    "significato": testo["significato"] if testo else None,
-                    "azione": testo["azione"] if testo else None,
-                    "righe": [],
-                }
+                gruppi[causa] = _gruppo(causa, 0)
             gruppi[causa]["righe"].append(r)
+        for g in gruppi.values():
+            g["conteggio"] = max(g["conteggio"], len(g["righe"]))
         return list(gruppi.values())
 
     # Scopo: Il catalogo delle cause di un presidio: per ogni causa chi la spegne
@@ -425,12 +506,18 @@ class PresidiRepository:
             if riga["natura"] != NATURA_ZERO:
                 continue
             try:
-                conteggio = self.conta(riga)
+                conteggio, conteggi = self.conta_presidio(riga)
                 righe = (
                     self.prime_righe(riga, limite=righe_per_presidio)
                     if (con_righe and conteggio) else []
                 )
-                cause = self.cause_delle_righe(riga, righe)
+                # ⚠️ Anche senza righe (perimetro DEFINER): le cause e i loro
+                #    numeri arrivano dalla funzione, non dall'elenco. La lettura
+                #    leggera del pallino non le chiede.
+                cause = (
+                    self.cause_del_presidio(riga, righe, conteggi)
+                    if (con_righe and conteggio) else []
+                )
             except Exception as exc:  # isolamento per presidio
                 # ⚠️ Solo se e' inutilizzabile: questo giro sta dentro una
                 #    richiesta web, e chiudere una connessione sana e' un

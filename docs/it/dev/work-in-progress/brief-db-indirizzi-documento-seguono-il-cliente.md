@@ -5,7 +5,7 @@
 > Dal giro di quel brief il cliente di un DDT si sceglie, si cambia e si toglie **in bozza**. Gli
 > indirizzi del documento gia' scritti non lo seguono.
 > **Stato:** 📝 **aperto, decisioni di Tid chiuse il 2026-10-10 (§4), nessun codice.**
-> **Nel registro dei difetti DB:** voce **D25** di `migliorie-generali-da-test-valutazione.md`, che
+> **Nel registro dei difetti DB:** voce **D27** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
 ## 1. La regola

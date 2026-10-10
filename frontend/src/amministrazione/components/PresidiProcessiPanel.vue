@@ -44,13 +44,15 @@
 // ⭐ PER CAUSA (2026-10-10, brief-db-presidio-processi-testo-per-causa §5.4.3).
 //    Dove le righe di un presidio sono guasti diversi, il backend le consegna
 //    raggruppate in `cause`, ognuna col suo rimedio e il suo «chi agisce»; il
-//    testo del presidio in testa resta, ed è quello neutro. ⚠️ Le cause sono
-//    quelle delle righe MOSTRATE: i conteggi per causa aspettano R-2 (§6.2).
+//    testo del presidio in testa resta, ed è quello neutro. ⭐ Le cause sono
+//    TUTTE quelle accese, ognuna col suo `conteggio` (R-2, §6.4.4): anche una
+//    causa senza righe fra quelle mostrate, o su una vista che non si elenca.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import PresidioChip from './PresidioChip.vue'
+import { displayDate, displayTimestamp } from '../../core/utils/date'
 
 const { t } = useI18n()
 
@@ -113,10 +115,25 @@ function colonne(righe) {
   return righe.length ? Object.keys(righe[0]) : []
 }
 
+// Scopo: la forma con cui il JSON trasporta un istante (`2026-10-09T13:47:54.044Z`,
+//        o con lo scostamento `+02:00`) e un giorno di calendario (`2026-10-09`).
+// ⚠️ Le colonne delle viste non hanno un tipo dichiarato qui (forme diverse per
+//    vista): il tipo si riconosce dalla FORMA, ed è affidabile perché la
+//    scrive il serializzatore del backend. ⛔ Senza fuso non è un istante: una
+//    stringa «ingenua» si lascia com'è, invece di leggerla in un fuso inventato.
+const ISTANTE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)$/
+const GIORNO = /^\d{4}-\d{2}-\d{2}$/
+
 // Scopo: valore di cella leggibile — `null` non è «vuoto», è «non si applica».
+// ⭐ Un istante si legge nell'ora dell'AZIENDA col BB delle date, come nel
+//    digest: fino al 2026-10-10 qui usciva grezzo, in UTC e in ISO.
 function cella(valore) {
   if (valore === null || valore === undefined) return '—'
   if (typeof valore === 'boolean') return valore ? t('common.yes') : t('common.no')
+  if (typeof valore === 'string') {
+    if (ISTANTE.test(valore)) return displayTimestamp(valore)
+    if (GIORNO.test(valore)) return displayDate(valore)
+  }
   return String(valore)
 }
 </script>
@@ -202,10 +219,25 @@ function cella(valore) {
                 {{ g.causa ?? t('amministrazione.processi.presidi_causa_non_indicata') }}
               </span>
               <Tag
+                class="app-presidio-causa-conteggio"
+                :value="String(g.conteggio)"
+                severity="warn"
+              />
+              <Tag
                 v-if="chiAgisce(g)"
                 :value="t(chiAgisce(g).labelKey)"
                 :severity="chiAgisce(g).severity"
               />
+              <!-- ⚠️ Le righe mostrate sono un campione del presidio: una causa
+                   può averne meno del suo conteggio, anche nessuna. Senza
+                   dirlo, tre righe su sette si leggerebbero «sono tre». Su una
+                   vista non elencabile lo dice già la testa del presidio. -->
+              <span
+                v-if="p.elencabili && g.righe.length < g.conteggio"
+                class="app-presidio-troncato"
+              >
+                {{ t('amministrazione.processi.presidi_causa_mostrate', { n: g.righe.length, tot: g.conteggio }) }}
+              </span>
             </div>
             <p v-if="g.azione" class="app-presidio-azione">{{ g.azione }}</p>
             <p v-if="g.significato" class="app-presidio-significato">{{ g.significato }}</p>
@@ -263,6 +295,9 @@ function cella(valore) {
   padding-top: 0.5rem;
   border-top: 1px dashed var(--app-border-color);
 }
+/* Il conteggio di una causa: cifre a larghezza fissa, perché i gruppi stanno
+   uno sotto l'altro e i numeri si confrontano a colpo d'occhio. */
+.app-presidio-causa-conteggio { font-variant-numeric: tabular-nums; }
 .app-presidio-dettaglio > summary {
   cursor: pointer; font-size: 0.8rem; opacity: 0.7;
 }

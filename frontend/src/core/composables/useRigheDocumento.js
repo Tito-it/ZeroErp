@@ -25,7 +25,7 @@
 // Uso:
 //   const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
 //     testata: { modificato, chiudiConConferma },          // useDrawerFormPreserve
-//     modificabile: () => canEditTestata.value && !isReadonly.value,
+//     modificabile: () => testata.modificabile.value,     // useTestataDocumento
 //     presente: () => hasDetail.value,
 //   })
 //   <AppDrawer :footer="footerDrawer" :conferma-uscita="documento.chiudiConConferma" …>

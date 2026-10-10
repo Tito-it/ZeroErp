@@ -70,6 +70,28 @@ _ORDINE_RIGA_CREATE_REQUEST = schema_da_contratto(
 _ORDINE_RIGA_UPDATE_REQUEST = schema_da_contratto(
     "VenditeOrdineRigaUpdateReq", ordini_service.UPDATE_KEYS_RIGA,
 )
+# La promessa di consegna di una riga: `null` la toglie.
+_ORDINE_RIGA_DATA_CONSEGNA_CONFERMATA_REQUEST = inline_serializer(
+    name="VenditeOrdineRigaDataConsegnaConfermataReq",
+    fields={
+        "data_consegna_confermata": serializers.DateField(
+            allow_null=True, help_text="AAAA-MM-GG, oppure null per togliere la promessa.",
+        ),
+    },
+)
+_ORDINE_RIGA_DATA_CONSEGNA_CONFERMATA_RESPONSE = inline_serializer(
+    name="VenditeOrdineRigaDataConsegnaConfermataResp",
+    fields={
+        "data": inline_serializer(
+            name="VenditeOrdineRigaDataConsegnaConfermataData",
+            fields={
+                "ordine_id": serializers.IntegerField(),
+                "riga_id": serializers.IntegerField(),
+                "data_consegna_confermata": serializers.DateField(allow_null=True),
+            },
+        ),
+    },
+)
 # Evasione parziale: la forma che legge `_parse_righe_evasione`.
 _ORDINE_GENERA_DDT_REQUEST = inline_serializer(
     name="VenditeOrdineGeneraDdtReq",
@@ -469,6 +491,31 @@ class ApiOrdineRigaDetail(DomainAPIView):
     def delete(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ordini_service.elimina_riga(int(ordine_id), int(riga_id)),
+        )
+
+
+class ApiOrdineRigaDataConsegnaConfermata(DomainAPIView):
+    """POST /api/v1/vendite/ordini/<ordine_id>/righe/<riga_id>/data-consegna-confermata/.
+
+    La promessa di consegna di una riga, anche dopo la conferma dell'ordine
+    (brief-db-testata-dopo-emissione, fase 1). In quali stati si cambia lo dice
+    il DB (lock delle righe); l'azione si spegne prima con la capability
+    `can_edit_data_consegna_confermata` del dettaglio.
+    """
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
+
+    @extend_schema(
+        request=_ORDINE_RIGA_DATA_CONSEGNA_CONFERMATA_REQUEST,
+        responses={200: _ORDINE_RIGA_DATA_CONSEGNA_CONFERMATA_RESPONSE},
+    )
+    def post(self, request: Request, ordine_id: int, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: ordini_service.cambia_data_consegna_confermata(
+                int(ordine_id), int(riga_id), payload,
+            ),
         )
 
 

@@ -134,13 +134,16 @@ function onDestinatarioClear() {
           :disabled="isLocked('emittente_fiscale_id')" />
       </div>
       <!-- Utility: col BA e' la sua (copia scritta dal DB) e si spegne; senza
-           BA filtra solo la ricerca del cliente, e non si salva. -->
+           BA filtra solo la ricerca del cliente, e non si salva — una bolla
+           senza cliente non ha utility (`chk_ddt_ba_utility_insieme`). Il
+           campo lo DICHIARA (etichetta e nota visibili): col solo tooltip
+           l'operatore la sceglieva credendo di salvarla (collaudo 2026-10-10). -->
       <div class="form-field">
-        <label>{{ t('vendite.ddt.field_utility') }}</label>
+        <label>{{ conCliente ? t('vendite.ddt.field_utility') : t('vendite.ddt.field_utility_filtro') }}</label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
-          v-tooltip.bottom="t('vendite.ddt.utility_dal_cliente_hint')"
-          :placeholder="t('vendite.ddt.field_utility')"
+          :placeholder="conCliente ? t('vendite.ddt.field_utility') : t('vendite.ddt.field_utility_filtro')"
           :disabled="isLocked('billing_account_id') || conCliente" />
+        <small class="app-text-muted">{{ t('vendite.ddt.utility_dal_cliente_hint') }}</small>
       </div>
     </div>
 
@@ -162,6 +165,7 @@ function onDestinatarioClear() {
           <span v-if="!conCliente && !isLocked('destinatario_soggetto_ruolo_id')">*</span>
         </label>
         <SoggettoRuoloLookup
+          solo-con-ruolo
           :model-value="form.destinatario_obj"
           :invalid="campiErrati.includes('destinatario_soggetto_ruolo_id')"
           :disabled="isLocked('destinatario_soggetto_ruolo_id') || conCliente"
@@ -248,6 +252,7 @@ function onDestinatarioClear() {
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_vettore') }}</label>
         <SoggettoRuoloLookup
+          solo-con-ruolo
           :model-value="form.vettore_obj"
           :disabled="isLocked('vettore_soggetto_ruolo_id')"
           :placeholder="t('vendite.ddt.field_vettore_placeholder')"
@@ -260,6 +265,7 @@ function onDestinatarioClear() {
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_mittente') }}</label>
         <SoggettoRuoloLookup
+          solo-con-ruolo
           :model-value="form.mittente_obj"
           :disabled="isLocked('mittente_soggetto_ruolo_id')"
           :placeholder="t('vendite.ddt.field_mittente_placeholder')"

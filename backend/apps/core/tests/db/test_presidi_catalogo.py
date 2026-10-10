@@ -45,6 +45,12 @@
 9-ter. test_ogni_causa_arriva_col_suo_testo
      ⭐ 2026-10-10: `testi_delle_cause` gira sul database vero e porta, per
      ogni causa del catalogo, chi agisce e il testo.
+9-quater. test_il_conteggio_per_causa_si_legge_come_tabella
+     ⭐ 2026-10-10 (R-2): `conta_per_variante` gira sul database vero e consegna
+     coppie (variante, conteggio), con varianti che il catalogo delle cause
+     conosce. Che la somma sia `fn_conta_presidio` lo garantisce il DB per
+     costruzione (pgTAP `test-conta-presidio-per-variante-v1` 9): qui si prova
+     il TRASPORTO — letta come `SELECT fn(…)` la tupla arriverebbe in un campo.
 10. test_una_lingua_senza_testo_ripiega_su_it
 """
 
@@ -292,6 +298,26 @@ class PresidiCatalogoGuardrail(TestCase):
                 if not (t and t["chi_agisce"] and t["significato"] and t["azione"]):
                     scoperte.append((vista, causa))
         self.assertEqual(scoperte, [])
+
+    # 9-quater. ⭐ IL CONTEGGIO PER CAUSA SI LEGGE COME TABELLA, sul database
+    #     vero. ⚠️ Le righe dipendono da cosa e' acceso adesso, e zero righe e'
+    #     una risposta legittima: il test prova la FORMA di cio' che arriva e
+    #     che ogni variante non NULL sia a catalogo, non quante ce ne sono.
+    def test_il_conteggio_per_causa_si_legge_come_tabella(self) -> None:
+        a_varianti = [r for r in self.catalogo if r["colonna_variante"]]
+        if not a_varianti:
+            self.skipTest("nessun presidio a catalogo dichiara colonna_variante")
+        with connection.cursor() as cur:
+            cur.execute("SELECT vista, causa FROM dbops.presidi_cause")
+            a_catalogo = set(cur.fetchall())
+        for riga in a_varianti:
+            with self.subTest(vista=riga["vista"]):
+                for gruppo in self.repo.conta_per_variante(riga):
+                    self.assertEqual(set(gruppo), {"variante", "conteggio"})
+                    self.assertIsInstance(gruppo["conteggio"], int)
+                    self.assertGreater(gruppo["conteggio"], 0)
+                    if gruppo["variante"] is not None:
+                        self.assertIn((riga["vista"], gruppo["variante"]), a_catalogo)
 
     # 10. ⭐ IL RIPIEGO SULLA LINGUA, sul database vero: con la GUC su una
     #     lingua diversa da `it` il testo arriva comunque — la riga `it` e'

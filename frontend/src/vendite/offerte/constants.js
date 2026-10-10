@@ -55,3 +55,19 @@ export const STATI_OFFERTA_SEGNALA_SCADENZA = Object.freeze([
 // append allegati) ora DATA-DRIVEN via capability `pdf` di
 // `fn_available_actions_offerta` (`config.stati_doc_offerte.pdf_mode` +
 // `pdf_allow_allegati`), consumata da `EntityPdfButton`.
+
+// Le colonne della testata che il form dell'offerta (inline in
+// `OffertaDrawer`) MOSTRA, per `useTestataDocumento`
+// (brief-db-testata-dopo-emissione, R-FE-3). ⚠️ Deve dire gli stessi campi del
+// form (`testata.bloccato('…')`): lo presidia `campiFormTestata.spec.js`. I dati
+// della fornitura (utenza) non ci sono: li governa `can_edit_utility`.
+export const CAMPI_FORM_TESTATA_OFFERTA = Object.freeze([
+  'emittente_fiscale_id',
+  'utility_id',
+  'listino_id',
+  'tipo_variazione_globale',
+  'valore_variazione_globale',
+  'valuta_id',
+  'validita_dal',
+  'validita_al',
+])

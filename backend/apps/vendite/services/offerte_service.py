@@ -598,23 +598,34 @@ class OfferteService:
             )
         self._repo.create_utility(offerta_id, merged)
 
-    # Scopo: Aggiorna la testata di un'offerta. Editabilita' solo in stato
-    #        BOZZA — defense-in-depth applicativa; il trigger DB blocca
-    #        comunque cambi su stati terminali. Payload vuoto -> 400 (no-op
+    # Scopo: Aggiorna la testata di un'offerta. Payload vuoto -> 400 (no-op
     #        silenzioso evitato).
+    #
+    #        Quali colonne della TESTATA si cambiano in quale stato lo dice il
+    #        DB, colonna per colonna: il lock `vendite.trgfn_doc_testata_lock_fuori_bozza`
+    #        (in bozza tutto; emessa e accettata le note; chiusa niente). Fino
+    #        al 2026-10-10 qui c'era un «solo in BOZZA» che ne era la seconda
+    #        copia (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del
+    #        lock passa com'e'.
     #
     #        Sub-oggetto opzionale `utility`: se presente, fa upsert del
     #        record utility 1:1 nella stessa transaction.atomic(). Simmetria
     #        col create (refactor atomico 2026-05-26). Eredita
     #        `istanza_utility_id`/`utility_id` dalla testata se non passati
     #        esplicitamente nel sub-oggetto (coerenza FK garantita dal BA).
+    #        ⚠️ Il satellite `offerte_commerciali_utilities` NON ha un lock a
+    #        DB: quando si cambia lo dice solo la capability (`can_edit_utility`).
+    #        Il cancello qui la LEGGE, non la riscrive.
     def aggiorna_offerta(
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_OFFERTA)
         self._guard_payload_non_vuoto(payload, op="aggiorna_offerta")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # Prima la testata: fuori perimetro o inesistente e' un 404.
+        self._get_offerta_or_raise(
+            offerta_id, op="aggiorna_offerta", getter=self._repo.get_stato_codice,
+        )
         # Split testata vs utility prima del repo. La testata non ha la
         # colonna `utility` (vive in offerte_commerciali_utilities).
         utility_payload = payload.get("utility")
@@ -624,6 +635,21 @@ class OfferteService:
                 code=E_VENDITE_VALIDATION,
                 message="Campo 'utility' deve essere oggetto.",
                 context={"got": type(utility_payload).__name__},
+            )
+            # ⛔ Il messaggio non dice IN QUALI stati: lo sa solo la capability,
+            #    e una frase che lo ripete ne sarebbe la seconda copia.
+            capabilities = self._repo.get_available_actions(offerta_id)
+            ErrorManager.require(
+                bool(capabilities.get("can_edit_utility")),
+                code=E_VENDITE_VALIDATION,
+                message=(
+                    "I dati della fornitura dell'offerta non si cambiano "
+                    f"nello stato corrente ('{capabilities.get('stato_codice')}')."
+                ),
+                context={
+                    "offerta_id": offerta_id,
+                    "stato_corrente": capabilities.get("stato_codice"),
+                },
             )
         testata_payload = self._con_meta_normalizzato(
             {k: v for k, v in payload.items() if k != "utility"},

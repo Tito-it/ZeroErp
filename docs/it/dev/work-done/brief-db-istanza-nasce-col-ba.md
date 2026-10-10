@@ -18,7 +18,7 @@
 > del §7.5 ancora aperti sono passati in PROJECT_CONTEXT § «Aperto — Media priorità».
 > ➡️ Il 2026-10-10 il resolver per istanza, il ramo morto della capability (§6.10.3, §6.12.3) e i
 > debiti rimasti senza sede (`uq_gestori_singleton`, il pgTAP del gestore globale) sono passati a
-> [brief-db-istanza-nasce-col-ba-residui.md](../work-in-progress/brief-db-istanza-nasce-col-ba-residui.md) (D25).
+> [brief-db-istanza-nasce-col-ba-residui.md](brief-db-istanza-nasce-col-ba-residui.md) (D25).
 > Decisioni D-1…D-9 prese (§6.1), D-10 (§7.1). R-3 non si fa.
 
 ## 1. La regola

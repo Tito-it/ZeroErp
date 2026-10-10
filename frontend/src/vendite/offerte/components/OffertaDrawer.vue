@@ -44,6 +44,7 @@ import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useFooterDocumento } from '../../../core/composables/useFooterDocumento'
+import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import {
   READONLY_KEY,
   useInjectReadonly,
@@ -58,6 +59,8 @@ import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import ListinoDocumentoSelect from '../../components/ListinoDocumentoSelect.vue'
 import TipoVariazioneSelect from '../../components/TipoVariazioneSelect.vue'
 import {
+  CAMPI_FORM_TESTATA_OFFERTA,
+  STATO_OFFERTA,
   STATI_OFFERTA_SEGNALA_SCADENZA,
   STATI_OFFERTA_TERMINALI,
 } from '../constants'
@@ -120,7 +123,6 @@ const stato = computed(() => detail.value?.stato_codice_interno || null)
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
-const canEditTestata = caps.canEdit
 
 // Push contratto / genera ordine: le azioni arrivano data-driven in
 // `available_actions` solo quando sono eseguibili, quindi da sole spariscono
@@ -138,13 +140,36 @@ const pushReasons = computed(() => {
   return motivi.filter((r, i) => motivi.findIndex((m) => m.key === r.key) === i)
 })
 
-// isReadonly cumulativo: OR tra permessi area e workflow lock (= !canEditTestata
-// in edit mode). In create canEditTestata e' true per costruzione (l'offerta
-// nasce in BOZZA, l'utente puo' compilare).
+// isReadonly cumulativo: OR tra permessi area e workflow lock (offerta fuori
+// BOZZA). In create l'offerta nasce in BOZZA, l'utente puo' compilare.
+// ⚠️ Fino al 2026-10-10 il lock era `!canEditTestata`. Da quel giorno
+//    `can_edit_testata` dice «in questo stato almeno una colonna della testata
+//    si cambia» (brief-db-testata-dopo-emissione, fase 2): vero anche su
+//    EMESSA/ACCETTATA per le note, che il form non porta. Leggerlo qui
+//    avrebbe sbloccato tutto il drawer — form, utility, indirizzi — su
+//    un'offerta emessa. Il lock di corpo resta quindi sullo stato, come nei
+//    cinque drawer gemelli (righe, utility, indirizzi); i campi della testata
+//    aperti fuori bozza (R-FE-3 del brief) si accendono uno per uno da
+//    `non_editable_fields` (`useTestataDocumento`, sotto), e il blocco della
+//    testata esce dal corpo protetto quando ne resta aperto qualcuno.
+const isWorkflowLocked = computed(
+  () => isEdit.value && detail.value !== null && stato.value !== STATO_OFFERTA.BOZZA,
+)
 const isReadonly = computed(
-  () => parentReadonly.value || (isEdit.value && !canEditTestata.value),
+  () => parentReadonly.value || isWorkflowLocked.value,
 )
 provide(READONLY_KEY, isReadonly)
+// La testata dopo la bozza: quali campi del form si cambiano, dalla capability
+// (brief-db-testata-dopo-emissione, R-FE-3).
+const testata = useTestataDocumento({
+  caps,
+  campi: CAMPI_FORM_TESTATA_OFFERTA,
+  readonlyPuro: () => parentReadonly.value,
+  // Il documento esiste: in EDIT anche prima che arrivi il dettaglio, cosi'
+  // la capability ancora vuota tiene il form fermo (fail-closed).
+  presente: () => isEdit.value || detail.value !== null,
+  corpoProtetto: () => isReadonly.value,
+})
 
 // Discriminante terminale vs intermedio per la severity del banner: il BE
 // espone `can_edit_testata=false` sia per EMESSA/ACCETTATA (intermedi, "passa
@@ -392,7 +417,7 @@ watch(() => [props.visible, props.offertaId], loadOrReset)
 
 // Validazione FE create: campi obbligatori secondo whitelist BE.
 const canSave = computed(() => {
-  if (isReadonly.value) return false
+  if (!testata.modificabile.value) return false
   const f = form.value
   const hasTipo = !!f.tipo_variazione_globale
   const hasValore = f.valore_variazione_globale != null && f.valore_variazione_globale !== ''
@@ -408,11 +433,11 @@ const canSave = computed(() => {
 
 function buildPayload() {
   const f = form.value
-  // Guard difensivo: in EDIT solo se la testata e' editabile (canEditTestata
-  // BE-driven). Il footer Salva ha gia' `v-if="!isReadonly"` quindi questo
-  // branch non dovrebbe essere mai raggiunto in pratica; ritorniamo dict
-  // vuoto per safety, evitando PATCH inutili.
-  if (isEdit.value && !canEditTestata.value) return {}
+  // Guard difensivo: in EDIT solo se un campo della testata si cambia ancora
+  // (`useTestataDocumento`). Il footer Salva segue la stessa regola, quindi
+  // questo branch non dovrebbe essere mai raggiunto in pratica; ritorniamo
+  // dict vuoto per safety, evitando PATCH inutili.
+  if (isEdit.value && !testata.modificabile.value) return {}
   return {
     emittente_fiscale_id: f.emittente_fiscale_id,
     billing_account_id: f.billing_account_id,
@@ -474,7 +499,11 @@ async function handleSave() {
   // ContrattoDrawer). Niente piu' fallimento parziale ne' .catch() silenziosi.
   const payload = buildPayload()
   const utilityInline = buildUtilityInline()
-  if (utilityInline) payload.utility = utilityInline
+  // I dati della fornitura viaggiano solo se si cambiano ancora
+  // (`can_edit_utility`, che il BE legge per lo stesso sotto-oggetto).
+  if (utilityInline && (!isEdit.value || caps.flag('can_edit_utility'))) {
+    payload.utility = utilityInline
+  }
 
   const isCreate = !isEdit.value
   const result = await execute(
@@ -798,10 +827,11 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 
 // Il footer del drawer segue lo stato del documento (BB useFooterDocumento,
 // D-11 di work-done/analisi-fe-chrome-drawer.md).
-// «Modificabile» qui e' il readonly di stato: Salva solo in CREATE o in BOZZA.
+// «Modificabile» e' la testata (`useTestataDocumento`): Salva in CREATE, in
+// BOZZA, e dopo solo se un campo del form resta aperto.
 // Le eccezioni hanno un drawer loro: nessun form di riga qui.
 const footerDrawer = useFooterDocumento({
-  modificabile: () => !isReadonly.value,
+  modificabile: () => testata.modificabile.value,
   presente: () => isEdit.value,
 })
 </script>
@@ -817,6 +847,7 @@ const footerDrawer = useFooterDocumento({
     :width="DRAWER_WIDTH.COMPLEX"
     :modificato="modificato"
     :conferma-uscita="chiudiConConferma"
+    :footer-readonly="testata.footerReadonly.value"
     :footer="footerDrawer"
     :loading="loading"
     :save-disabled="!canSave"
@@ -895,7 +926,7 @@ const footerDrawer = useFooterDocumento({
         {{ t('vendite.offerte.banner_stato_terminale', { stato: detail.stato_descrizione }) }}
       </Message>
       <Message
-        v-else-if="!canEditTestata"
+        v-else-if="isWorkflowLocked"
         severity="info"
         :closable="false"
         size="small"
@@ -921,152 +952,157 @@ const footerDrawer = useFooterDocumento({
         <!-- ====================== TAB TESTATA ====================== -->
         <TabPanel value="testata">
 
-          <h4>{{ t('vendite.offerte.section_emittente') }}</h4>
-          <div class="form-grid-2col">
+          <!-- La testata: i campi si spengono uno per uno dalla capability
+               (`useTestataDocumento`); quando ne resta aperto qualcuno fuori
+               bozza il blocco esce dal corpo protetto. -->
+          <div :class="{ 'app-escape': testata.sopraCorpoProtetto.value }">
+            <h4>{{ t('vendite.offerte.section_emittente') }}</h4>
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
+                <!-- Campo emittente fiscale auto-adattivo (pattern preventivi/contratti):
+                     - edit                 -> testo read-only dal record (codice + RS denormalizzati)
+                     - create + operatore   -> testo read-only dal profilo (derivato 1-a-1)
+                     - create + admin glob. -> Select sugli EF disponibili
+                     In CREATE per operatore non-admin il valore arriva da
+                     `useEmittenteFiscaleField().defaultEmittenteId`. -->
+                <EmittenteFiscaleField
+                  v-model="form.emittente_fiscale_id"
+                  :record="detail"
+                  :is-edit="isEdit"
+                  :disabled="testata.bloccato('emittente_fiscale_id')"
+                />
+              </div>
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_utility') }} <span v-if="!isEdit">*</span></label>
+                <!-- Building block standard utility-per-ruolo-EF
+                     (`UtilityPerRuoloSelect`). Filtra le utility configurate
+                     per l'EF dell'operatore + ammesse al ruolo CLIENTE
+                     (intersezione `emittenti_fiscali_utilities` x
+                     `utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
+                     via `utilityDefaultId` (parametro `DEFAULT_UTILITY`,
+                     codice_interno -> id locale). Quando l'operatore sceglie
+                     il BA, `onBaSelected` sovrascrive con la utility canonical
+                     del BA (coerenza FK garantita); se l'operatore pulisce
+                     il BA, ripristiniamo il default per mantenere il filtro
+                     lookup BA sull'utility tipica. -->
+                <UtilityPerRuoloSelect
+                  v-model="form.utility_id"
+                  :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
+                  :placeholder="t('vendite.offerte.field_utility')"
+                  :disabled="testata.bloccato('utility_id')"
+                />
+              </div>
+            </div>
+
+            <h4>{{ t('vendite.offerte.section_cliente') }}</h4>
             <div class="form-field">
-              <label>{{ t('vendite.offerte.field_emittente_fiscale') }} <span v-if="!isEdit">*</span></label>
-              <!-- Campo emittente fiscale auto-adattivo (pattern preventivi/contratti):
-                   - edit                 -> testo read-only dal record (codice + RS denormalizzati)
-                   - create + operatore   -> testo read-only dal profilo (derivato 1-a-1)
-                   - create + admin glob. -> Select sugli EF disponibili
-                   In CREATE per operatore non-admin il valore arriva da
-                   `useEmittenteFiscaleField().defaultEmittenteId`. -->
-              <EmittenteFiscaleField
-                v-model="form.emittente_fiscale_id"
+              <label>{{ t('vendite.offerte.field_billing_account') }} <span v-if="!isEdit">*</span></label>
+              <!-- `utility-id` (da utilityDefaultId in CREATE) pre-filtra
+                   il lookup BA sull'utility dell'operatore. Lookup ricco
+                   (3 righe: ragione sociale + codice + PDP) — sta a tutta
+                   larghezza in una propria riga. -->
+              <BillingAccountLookup
+                v-if="!isEdit"
+                :model-value="form.billing_account_obj"
+                :utility-id="form.utility_id"
+                :placeholder="t('vendite.offerte.select_billing_account')"
+                @update:model-value="onBaSelected"
+              />
+              <InputText
+                v-else
+                :model-value="detail?.billing_account_display"
+                disabled
+              />
+            </div>
+
+            <h4>{{ t('vendite.offerte.section_listino') }}</h4>
+            <div class="form-field">
+              <label>{{ t('vendite.offerte.field_listino') }} <span v-if="!isEdit">*</span></label>
+              <!-- I listini della utility e dell'emittente del form, dal DB: la
+                   tendina non propone cio' che il salvataggio rifiuterebbe (F-2).
+                   Niente piu' filtro «almeno una versione ATTIVA»: un'offerta
+                   senza versione in vigore la rifiuta l'emissione (A-D1). -->
+              <ListinoDocumentoSelect
+                v-model="form.listino_id"
+                :utility-id="form.utility_id"
+                :emittente-fiscale-id="form.emittente_fiscale_id"
                 :record="detail"
-                :is-edit="isEdit"
-                :disabled="isReadonly"
+                :placeholder="t('vendite.offerte.select_listino')"
+                :disabled="testata.bloccato('listino_id')"
+                @update:model-value="onListinoChange"
+                :invalid="campiErrati.includes('listino_id')"
               />
+              <small v-if="isEdit && detail?.listino_versione_codice"
+                class="app-text-muted">
+                {{ t('vendite.offerte.hint_versione_fissata', { codice: detail.listino_versione_codice }) }}
+              </small>
             </div>
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_utility') }} <span v-if="!isEdit">*</span></label>
-              <!-- Building block standard utility-per-ruolo-EF
-                   (`UtilityPerRuoloSelect`). Filtra le utility configurate
-                   per l'EF dell'operatore + ammesse al ruolo CLIENTE
-                   (intersezione `emittenti_fiscali_utilities` x
-                   `utilities_tipi_ruolo`). Pre-popolata dal `defaultForm()`
-                   via `utilityDefaultId` (parametro `DEFAULT_UTILITY`,
-                   codice_interno -> id locale). Quando l'operatore sceglie
-                   il BA, `onBaSelected` sovrascrive con la utility canonical
-                   del BA (coerenza FK garantita); se l'operatore pulisce
-                   il BA, ripristiniamo il default per mantenere il filtro
-                   lookup BA sull'utility tipica. -->
-              <UtilityPerRuoloSelect
-                v-model="form.utility_id"
-                :tipo-ruolo-codice="TIPO_RUOLO.CLIENTE"
-                :placeholder="t('vendite.offerte.field_utility')"
-                :disabled="isReadonly"
-              />
-            </div>
-          </div>
 
-          <h4>{{ t('vendite.offerte.section_cliente') }}</h4>
-          <div class="form-field">
-            <label>{{ t('vendite.offerte.field_billing_account') }} <span v-if="!isEdit">*</span></label>
-            <!-- `utility-id` (da utilityDefaultId in CREATE) pre-filtra
-                 il lookup BA sull'utility dell'operatore. Lookup ricco
-                 (3 righe: ragione sociale + codice + PDP) — sta a tutta
-                 larghezza in una propria riga. -->
-            <BillingAccountLookup
-              v-if="!isEdit"
-              :model-value="form.billing_account_obj"
-              :utility-id="form.utility_id"
-              :placeholder="t('vendite.offerte.select_billing_account')"
-              @update:model-value="onBaSelected"
-            />
-            <InputText
-              v-else
-              :model-value="detail?.billing_account_display"
-              disabled
-            />
-          </div>
-
-          <h4>{{ t('vendite.offerte.section_listino') }}</h4>
-          <div class="form-field">
-            <label>{{ t('vendite.offerte.field_listino') }} <span v-if="!isEdit">*</span></label>
-            <!-- I listini della utility e dell'emittente del form, dal DB: la
-                 tendina non propone cio' che il salvataggio rifiuterebbe (F-2).
-                 Niente piu' filtro «almeno una versione ATTIVA»: un'offerta
-                 senza versione in vigore la rifiuta l'emissione (A-D1). -->
-            <ListinoDocumentoSelect
-              v-model="form.listino_id"
-              :utility-id="form.utility_id"
-              :emittente-fiscale-id="form.emittente_fiscale_id"
-              :record="detail"
-              :placeholder="t('vendite.offerte.select_listino')"
-              :disabled="isReadonly"
-              @update:model-value="onListinoChange"
-              :invalid="campiErrati.includes('listino_id')"
-            />
-            <small v-if="isEdit && detail?.listino_versione_codice"
-              class="app-text-muted">
-              {{ t('vendite.offerte.hint_versione_fissata', { codice: detail.listino_versione_codice }) }}
-            </small>
-          </div>
-
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_tipo_variazione') }}</label>
-              <TipoVariazioneSelect
-                v-model="form.tipo_variazione_globale"
-                scope="contratto"
-                show-clear
-                :disabled="isReadonly"
-              />
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_tipo_variazione') }}</label>
+                <TipoVariazioneSelect
+                  v-model="form.tipo_variazione_globale"
+                  scope="contratto"
+                  show-clear
+                  :disabled="testata.bloccato('tipo_variazione_globale')"
+                />
+              </div>
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_valore_variazione') }}</label>
+                <InputNumber
+                  v-model="form.valore_variazione_globale"
+                  :min-fraction-digits="0"
+                  :max-fraction-digits="4"
+                  show-buttons
+                  :disabled="testata.bloccato('valore_variazione_globale')"
+                  :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
+                  @update:model-value="onValoreVariazioneChange"
+                  :invalid="campiErrati.includes('valore_variazione_globale')"
+                />
+              </div>
             </div>
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_valore_variazione') }}</label>
-              <InputNumber
-                v-model="form.valore_variazione_globale"
-                :min-fraction-digits="0"
-                :max-fraction-digits="4"
-                show-buttons
-                :disabled="isReadonly"
-                :suffix="form.tipo_variazione_globale === 'PERCENTUALE' ? ' %' : ''"
-                @update:model-value="onValoreVariazioneChange"
-                :invalid="campiErrati.includes('valore_variazione_globale')"
-              />
-            </div>
-          </div>
 
-          <!-- Valuta: snapshot fissato al CREATE, immutabile in EDIT
-               (allineato a preventivi/contratti). Pre-popolata da
-               ApiOffertaFormDefaults via cascata BB resolve_valuta_default. -->
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_valuta') }}</label>
-              <LookupSelect
-                v-model="form.valuta_id"
-                rel="config.valute"
-                :placeholder="t('vendite.offerte.field_valuta')"
-                :disabled="isReadonly || isEdit"
-                show-clear
-              />
+            <!-- Valuta: snapshot fissato al CREATE, immutabile in EDIT
+                 (allineato a preventivi/contratti). Pre-popolata da
+                 ApiOffertaFormDefaults via cascata BB resolve_valuta_default. -->
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_valuta') }}</label>
+                <LookupSelect
+                  v-model="form.valuta_id"
+                  rel="config.valute"
+                  :placeholder="t('vendite.offerte.field_valuta')"
+                  :disabled="testata.bloccato('valuta_id') || isEdit"
+                  show-clear
+                />
+              </div>
             </div>
-          </div>
 
-          <h4>{{ t('vendite.offerte.section_validita') }}</h4>
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_validita_dal') }} <span v-if="!isEdit">*</span></label>
-              <DatePicker
-                :model-value="parseIsoDate(form.validita_dal)"
-                :disabled="isReadonly"
-                :date-format="DATE_FORMAT"
-                show-icon
-                @update:model-value="form.validita_dal = toIsoDate($event)"
-              />
-            </div>
-            <div class="form-field">
-              <label>{{ t('vendite.offerte.field_validita_al') }}</label>
-              <DatePicker
-                :model-value="parseIsoDate(form.validita_al)"
-                :disabled="isReadonly"
-                :date-format="DATE_FORMAT"
-                show-icon
-                show-button-bar
-                @update:model-value="form.validita_al = toIsoDate($event)"
-              />
+            <h4>{{ t('vendite.offerte.section_validita') }}</h4>
+            <div class="form-grid-2col">
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_validita_dal') }} <span v-if="!isEdit">*</span></label>
+                <DatePicker
+                  :model-value="parseIsoDate(form.validita_dal)"
+                  :disabled="testata.bloccato('validita_dal')"
+                  :date-format="DATE_FORMAT"
+                  show-icon
+                  @update:model-value="form.validita_dal = toIsoDate($event)"
+                />
+              </div>
+              <div class="form-field">
+                <label>{{ t('vendite.offerte.field_validita_al') }}</label>
+                <DatePicker
+                  :model-value="parseIsoDate(form.validita_al)"
+                  :disabled="testata.bloccato('validita_al')"
+                  :date-format="DATE_FORMAT"
+                  show-icon
+                  show-button-bar
+                  @update:model-value="form.validita_al = toIsoDate($event)"
+                />
+              </div>
             </div>
           </div>
 

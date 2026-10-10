@@ -400,6 +400,7 @@ class SoggettiService:
         tipo_ruolo: str | None = None,
         emittente_ids: list[int] | None = None,
         limit: int = _LOOKUP_DEFAULT_LIMIT,
+        con_ruolo: bool = False,
     ) -> dict[str, Any]:
         function_name = "anagrafiche.soggetti_service.search_ruoli_lookup"
         cleaned_q = q.strip() if isinstance(q, str) else ""
@@ -425,6 +426,7 @@ class SoggettiService:
             tipo_ruolo=cleaned_tipo,
             emittente_ids=emittente_ids,
             limit=effective_limit,
+            con_ruolo=con_ruolo,
         )
         return {
             "results": results,

@@ -27,6 +27,10 @@ const props = defineProps({
   modelValue: { type: Object, default: null },
   // Filtro codice tipo ruolo (CL, FO, ...). Esclude le righe "senza ruolo".
   tipoRuolo: { type: String, default: null },
+  // Solo righe con un ruolo, di qualunque tipo: per i campi che salvano un
+  // `soggetto_ruolo_id` (destinatario, vettore, mittente del DDT), dove una
+  // riga "senza ruolo" non ha niente da salvare e lascerebbe il campo vuoto.
+  soloConRuolo: { type: Boolean, default: false },
   placeholder: { type: String, default: null },
   disabled: { type: Boolean, default: false }
 })
@@ -39,6 +43,7 @@ const { totalCount, mostrati, daAffinare, onResponse } = useAutocompleteRefineHi
 const ac = useServerAutocomplete(async (query) => {
   const params = { q: query }
   if (props.tipoRuolo) params.tipo_ruolo = props.tipoRuolo
+  if (props.soloConRuolo) params.con_ruolo = true
   return await lookupSoggettiRuoli(params)
 }, {
   minLength: 2,

@@ -1691,6 +1691,7 @@
       "presidi_dettaglio_tecnico": "Technical detail",
       "presidi_causa_non_indicata": "cause not given",
       "presidi_causa_senza_testo": "no text for this cause in the catalogue",
+      "presidi_causa_mostrate": "{n} of {tot} shown",
       "chi_agisce": {
         "amministratore": "You can fix it",
         "sistemista": "Report it to whoever runs the server",
@@ -2799,7 +2800,8 @@
       "field_destinatario": "Recipient",
       "field_destinatario_placeholder": "Search recipient (subcontractor, warehouse)...",
       "destinatario_dal_cliente_hint": "With a customer, the recipient is the customer itself. Without a customer (transfer, subcontracting, repair) choose who receives the goods.",
-      "utility_dal_cliente_hint": "The utility is the customer's: here it only filters the customer search.",
+      "utility_dal_cliente_hint": "The delivery note's utility is the customer's. Without a customer the note has no utility: here you only filter the customer search.",
+      "field_utility_filtro": "Filter customers by utility",
       "field_emittente_fiscale": "Fiscal issuer",
       "field_billing_account": "Customer",
       "field_billing_account_placeholder": "Search customer by name, code, tax id...",
@@ -3712,6 +3714,15 @@
         "nessuna_riga_pushabile": "No line can be sent to a job: check line quantities and prices.",
         "annullato": "The order is cancelled: it does not go to invoicing."
       },
+      "data_consegna_confermata_reason": {
+        "in_bozza": "In draft the date is changed by editing the line.",
+        "stato_non_ammette": "In this status the delivery date can no longer be changed."
+      },
+      "azione_data_consegna_confermata": "Change the confirmed delivery date",
+      "data_consegna_confermata_titolo": "Confirmed delivery date",
+      "data_consegna_confermata_riga": "Line {riga_nr} — {descrizione}",
+      "data_consegna_confermata_hint": "Leave the field empty to remove the delivery commitment.",
+      "data_consegna_confermata_salvata": "Confirmed delivery date updated.",
       "evasione_titolo": "Generate DDT",
       "evasione_intro": "Select the lines to fulfil and generate the delivery note. The DDT is created as a draft.",
       "evasione_col_qta_ordinata": "Ordered qty",
@@ -3892,7 +3903,6 @@
       "push_commessa_reason": {
         "non_accettato": "Project integration will be available once the quote is accepted.",
         "nessuna_riga": "No line to push to a job.",
-        "senza_billing_account": "The customer is missing: set it to push to a job.",
         "stato_chiuso": "The quote is closed: it no longer feeds the job order."
       },
       "genera_ordine_reason": {

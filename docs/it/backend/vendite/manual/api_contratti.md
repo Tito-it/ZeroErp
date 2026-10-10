@@ -67,8 +67,10 @@ Riferimento: [refactor-contratti-modalita.md](/dev/work-done/refactor-contratti-
   temporal UNIQUE PG18:
   - `trgfn_contratti_freeze_listino_versione_upd` — fissa
     `listino_versione_id` al passaggio DRAFT→ATTIVO
-  - `trgfn_contratti_lock_post_attivazione_upd` — testata immutabile
-    (listino, versione, variazione globale) dopo l'attivazione
+  - `trgfn_doc_testata_lock_fuori_bozza` (building block di testata, dal
+    2026-10-10 al posto di `trgfn_contratti_lock_post_attivazione`) — quali
+    colonne della testata si cambiano fuori bozza, colonna per colonna e per
+    stato (vedi §PATCH testata)
   - `trgfn_doc_righe_lock_fuori_bozza` (building block, dal 2026-09-22, al
     posto di `trgfn_contratti_righe_lock_post_attivazione`) — eccezioni
     immutabili dopo l'attivazione del contratto padre: la stessa regola «le
@@ -251,14 +253,18 @@ Solo campi mutabili: `ambito`, `valido_dal`, `valido_al`,
 `parent_contratto_id`, `data`, `listino_id`, `tipo_variazione_globale`,
 `valore_variazione_globale`, `categoria_cliente_id_snapshot`, `meta`.
 Identificativi (numero, BA, istanza, utility, stato) sono immutabili.
-`categoria_cliente_id_snapshot` e' modificabile **solo in stato DRAFT**;
-in altri stati il service lo rifiuta con `E_VENDITE_VALIDATION`.
-
-**Post-attivazione** (refactor 2026-05-15 §3-bis-A): `listino_id`,
-`listino_versione_id`, `tipo_variazione_globale`, `valore_variazione_globale`
-diventano **immutabili** (Profilo A). Tentativo di modifica → 409 con
-`E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`. Per cambi sostanziali serve
-un nuovo contratto.
+**Fuori bozza decide il DB** (dal 2026-10-10,
+[brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)):
+il service non ha piu' una tabella dei campi ammessi per stato. In ATTIVO
+restano aperti `valido_al`, `codice_cig`/`codice_cup`/`codice_commessa` e
+`meta`; il resto lo ferma il lock di testata con un 409 per famiglia —
+`E_DOC_IDENTITA_FUORI_BOZZA` (data, valuta), `E_DOC_CONDIZIONI_FUORI_BOZZA`
+(listino, versione, variazione globale, categoria, ambito, decorrenza, contratto
+padre), `E_DOC_CLIENTE_FUORI_BOZZA`, `E_DOC_SORGENTE_FUORI_BOZZA`. In CESSATO e
+ANNULLATO si ferma tutto (`E_DOC_CHIUSO`). Il form spegne i campi prima con
+`can_edit_testata` e `non_editable_fields` della capability, letti dallo stesso
+montaggio. `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` e' ritirato. Per cambi
+sostanziali serve un nuovo contratto.
 
 **Blocco rimozione listino con eccezioni** (refactor §3-bis-F): se il PATCH
 porta `listino_id` da NOT NULL a NULL e ci sono OVERRIDE/ESCLUSIONE attive,
@@ -428,7 +434,7 @@ Vincoli:
 - **Post-attivazione**: tutte le eccezioni sono immutabili (INSERT/UPDATE/DELETE
   bloccati dal building block `trgfn_doc_righe_lock_fuori_bozza`, dal
   2026-09-22) → `E_RIGA_DOC_NON_BOZZA` (409).
-  `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` resta alla **testata**.
+  La testata ha il suo lock (`trgfn_doc_testata_lock_fuori_bozza`, §PATCH testata).
 
 `PATCH /api/v1/vendite/contratti/<id>/righe/<riga_id>/` aggiorna i campi
 mutabili di una riga OVERRIDE o AGGIUNTA; `articolo_id` e `tipo_eccezione`
@@ -889,8 +895,9 @@ alle righe di contratto via `target_riga_id`.
    tutti i campi pricing della testata (`listino_id`, `listino_versione_id`,
    `tipo_variazione_globale`, `valore_variazione_globale`) sono immutabili,
    cosi' come le eccezioni in `contratti_righe`. Tentativi di modifica
-   sollevano `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (409). Per
-   modifiche sostanziali serve un nuovo contratto.
+   sollevano `E_DOC_CONDIZIONI_FUORI_BOZZA` (409, lock di testata, dal
+   2026-10-10) e `E_RIGA_DOC_NON_BOZZA` sulle righe. Per modifiche
+   sostanziali serve un nuovo contratto.
 6. **Coerenza coppia variazione globale**: `tipo_variazione_globale` e
    `valore_variazione_globale` entrambi NULL o entrambi NOT NULL
    (pre-validation `_validate_variazione_globale_coppia_coerente`).
@@ -947,7 +954,7 @@ alle righe di contratto via `target_riga_id`.
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` o `uq_contrighe_one_eccezione_per_articolo` o `uq_contrighe_one_aggiunta_per_articolo` | — |
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/listino_versione/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
 | `E_VENDITE_CONTRATTO_OVERLAP` | 409 | Pre-check service `fn_contratto_sovrapposto` su `emetti()` (messaggio che nomina l'incumbent) **oppure** backstop EXCLUDE gist `ex_contratti_no_overlap`. Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9) | — |
-| `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service — **testata e utility** su contratto post-DRAFT (PATCH testata fuori whitelist, create/update utility, indirizzi). ⚠️ Fino al 2026-09-22 copriva anche righe e componenti: lì ora vale `E_RIGA_DOC_NON_BOZZA`, il codice del DB sulle stesse righe (prima lo stesso rifiuto usciva con due nomi) | — |
+| `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service — **utility e indirizzi** su contratto post-DRAFT (create/update utility, indirizzi). Dal 2026-10-10 non piu' la testata: lì decide il lock di testata del DB (riga `E_DOC_*` sotto). ⚠️ Fino al 2026-09-22 copriva anche righe e componenti: lì ora vale `E_RIGA_DOC_NON_BOZZA`, il codice del DB sulle stesse righe (prima lo stesso rifiuto usciva con due nomi) | — |
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_DATA_AL_MINORE_DAL` | 400 | DB P0001, campo `valido_al` — `valido_al < valido_dal` in create, PATCH testata e cessazione. Il service non lo anticipa (dal 2026-09-23). Frase del catalogo con le due date, soluzione in `hint`: `raise_from_database_error` fa vincere il codice del DB anche fuori da `_KNOWN_DB_ERROR_MARKERS` | `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
@@ -964,7 +971,7 @@ alle righe di contratto via `target_riga_id`.
 | `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` | 409 | DB P0001 (2026-10-07, A-D2) — attivazione di un contratto con listino che non ha una versione in vigore oggi | `trgfn_contratti_freeze_listino_versione` |
 | `E_RIGA_ESCLUSIONE_CON_DATI` | 400 | DB P0001 (2026-10-04) — INSERT di un'ESCLUSIONE con un dato di fatturazione valorizzato. Campo (il primo valorizzato) in `error.fields`. Stesso codice sull'offerta | `script.trgfn_righe_guard_esclusione_senza_dati` |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |
-| `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` | 409 | DB P0001 (refactor §3-bis-A) — UPDATE su `listino_id`/`listino_versione_id`/`tipo_variazione_globale`/`valore_variazione_globale` di contratto ATTIVO (la sola **testata**, dal 2026-09-22) | `trgfn_contratti_lock_post_attivazione` |
+| `E_DOC_IDENTITA_FUORI_BOZZA` · `E_DOC_CONDIZIONI_FUORI_BOZZA` · `E_DOC_CLIENTE_FUORI_BOZZA` · `E_DOC_SORGENTE_FUORI_BOZZA` · `E_DOC_CHIUSO` | 409 | DB P0001 (2026-10-10, brief-db-testata-dopo-emissione) — PATCH testata su una colonna che lo stato non ammette, una famiglia per codice; `E_DOC_CHIUSO` a contratto cessato o annullato. Al posto di `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (ritirato) e della tabella per stato del service | `trgfn_doc_testata_lock_fuori_bozza` |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | DB P0001 (building block, 2026-09-22 — D7 di brief-db-partita-merce-per-documento) — INSERT/UPDATE/DELETE di un'eccezione su contratto non più in bozza; stesso codice sulle righe di DDT e (DELETE) di ordine. Lo solleva **anche il pre-check BE** (BB `richiedi_righe_in_bozza`) su righe e componenti, con la frase a catalogo (etichetta «Contratto <numero>», stato, verbo) | `trgfn_doc_righe_lock_fuori_bozza` + service |
 | `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` | 422 | Service (refactor §3-bis-F) — PATCH testata che porta `listino_id` da NOT NULL a NULL con eccezioni OVERRIDE/ESCLUSIONE attive | — |
 | `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403 (retryable=True) | Service (refactor §3-bis-E) — gate L2 sulla variazione globale del contratto al PATCH testata. Cascata user → categoria → group → emittente. VALORE_FISSO non applicabile (skip) | — |

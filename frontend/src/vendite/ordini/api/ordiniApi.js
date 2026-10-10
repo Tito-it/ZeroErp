@@ -128,6 +128,16 @@ export function deleteRiga(ordineId, rigaId) {
   return api.delete(`${BASE}/${ordineId}/righe/${rigaId}/`)
 }
 
+// La promessa di consegna di UNA riga, anche dopo la conferma (verbo dedicato,
+// brief-db-testata-dopo-emissione fase 1). `data` = 'AAAA-MM-GG' oppure null,
+// che toglie la promessa. In quali stati si puo' lo dice il DB.
+export function cambiaDataConsegnaConfermata(ordineId, rigaId, data) {
+  return api.post(
+    `${BASE}/${ordineId}/righe/${rigaId}/data-consegna-confermata/`,
+    { data_consegna_confermata: data },
+  )
+}
+
 // --- Riepilogo IVA ---
 
 // Riepilogo IVA aggregato dell'ordine (una riga per aliquota, regola fiscale

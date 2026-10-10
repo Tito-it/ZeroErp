@@ -21,6 +21,7 @@ import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
+import { useTestataDocumento } from '../../core/composables/useTestataDocumento'
 import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, STATUS_ICONS, DATE_FORMAT } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { addDaysToToday, toDateString, parseIsoDate, displayDate, oggiAziendale, giornoDi } from '../../core/utils/date'
@@ -42,7 +43,7 @@ import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../documenti/constants'
-import { FORMA_CONTRATTO } from '../constants'
+import { CAMPI_FORM_TESTATA_CONTRATTO, FORMA_CONTRATTO, STATO_CONTRATTO } from '../constants'
 import TipoVariazioneSelect from './TipoVariazioneSelect.vue'
 import AmbitoContrattoSelect from './AmbitoContrattoSelect.vue'
 import { useParameterDefaults } from '../../core/composables/useParameterDefaults'
@@ -107,9 +108,9 @@ const righeCount = computed(() => detail.value?.righe_count ?? detail.value?.rig
 // Prima usava `!canEditTestata` (true in ATTIVO/ANNULLATO perche' la fn DB
 // considera ATTIVO parzialmente editabile) -> sub-drawer righe restava
 // erroneamente editabile in stati terminali. Allineato al footer
-// Salva/Chiudi che gia' usa stato_codice_interno === 'DRAFT'.
+// Salva/Chiudi.
 const isContractLocked = computed(
-  () => isEdit.value && detail.value?.stato_codice_interno !== 'DRAFT',
+  () => isEdit.value && detail.value?.stato_codice_interno !== STATO_CONTRATTO.DRAFT,
 )
 
 // isReadonly effettivo del drawer: OR tra permessi area e stato post-DRAFT.
@@ -135,10 +136,13 @@ provide(READONLY_KEY, isReadonly)
 //    `vendite.fn_create_contratto` li ammette dal changeSet `20260831-24`.
 //    Prima erano spenti perche' quella whitelist non RESPINGE una chiave che
 //    non conosce — la SCARTA, e il CIG sarebbe sparito con un 200 a video.
-// Specchio di `_CONTRATTO_PATCH_ALLOWED_BY_STATE` del BE, che resta l'autorita':
-// qui si evita solo di proporre un campo che il BE rifiuterebbe. Costante con un
-// nome perche' e' l'UNICO punto da riallineare se quella whitelist cambia.
-const STATI_CODICI_ATTO_EDITABILI = ['DRAFT', 'ATTIVO']
+// ⭐ Dal 2026-10-10 non e' piu' uno specchio di stati: in quali stati i tre
+//    campi si cambiano lo dice il montaggio del lock di testata del DB
+//    (brief-db-testata-dopo-emissione, D-8/D-10: aperti in DRAFT e ATTIVO,
+//    fermi a contratto chiuso), e la capability lo porta in
+//    `can_edit_testata` + `non_editable_fields` (`isLocked`). La costante
+//    `STATI_CODICI_ATTO_EDITABILI` specchiava la tabella per stato del BE,
+//    ritirata lo stesso giorno.
 
 // Lunghezze massime, speculari alle colonne di `vendite.contratti`
 // (VARCHAR(15)/VARCHAR(15)/VARCHAR(100)) e al guard `_CODICI_ATTO_MAX_LEN` del
@@ -146,25 +150,28 @@ const STATI_CODICI_ATTO_EDITABILI = ['DRAFT', 'ATTIVO']
 // all'operatore caratteri che verrebbero poi respinti.
 const CODICI_ATTO_MAX_LEN = { cig: 15, cup: 15, commessa: 100 }
 
-const codiciAttoEditabili = computed(() => {
-  if (props.readonly || parentReadonly.value) return false
-  // ⭐ SLICE S3-b (2026-08-31): editabili anche in CREATE. Prima erano spenti
-  //    li' perche' la whitelist di `vendite.fn_create_contratto` non li
-  //    conosceva e li avrebbe SCARTATI in silenzio; il changeSet `20260831-24`
-  //    li ha ammessi. Il caso d'uso e' proprio questo — un CIG nasce con la
-  //    gara, cioe' PRIMA del contratto.
-  // ⚠️ In create `detail` non esiste ancora: il contratto nasce DRAFT, che e'
-  //    gia' nella whitelist degli stati. Interrogare `detail` qui darebbe
-  //    `undefined` e quindi `false`, cioe' il vecchio comportamento.
-  if (!isEdit.value) return true
-  return STATI_CODICI_ATTO_EDITABILI.includes(detail.value?.stato_codice_interno)
+// I tre campi aperti dopo la bozza, dalla capability (BB `useTestataDocumento`,
+// R-FE-3; regola del 2): fino al 2026-10-10 qui c'era `codiciAttoEditabili`,
+// la prima copia della regola, con gli stati scritti a mano.
+// ⭐ In CREATE editabili (slice S3-b, 2026-08-31): la whitelist di
+//    `vendite.fn_create_contratto` li ammette dal changeSet `20260831-24` — un
+//    CIG nasce con la gara, cioe' PRIMA del contratto. Senza dettaglio il BB
+//    tiene il form aperto.
+// ⚠️ `presente` e' il modo EDIT, non il dettaglio arrivato: prima che arrivi la
+//    capability e' vuota e il BB dice «fermo» (fail-closed), come prima.
+const testata = useTestataDocumento({
+  caps,
+  campi: CAMPI_FORM_TESTATA_CONTRATTO,
+  readonlyPuro: () => props.readonly || parentReadonly.value,
+  presente: () => isEdit.value,
+  corpoProtetto: () => isReadonly.value,
 })
 
-// Il footer Salva compare in DRAFT (form pieno) oppure quando restano
+// Il footer Salva compare in CREATE e in DRAFT (form pieno: `isReadonly`
+// comprende gia' lo stato, via `isContractLocked`) oppure quando restano
 // modificabili i soli tre riferimenti dell'atto.
 const mostraFooterSalva = computed(
-  () => (!isReadonly.value && (!detail.value || detail.value.stato_codice_interno === 'DRAFT'))
-    || codiciAttoEditabili.value,
+  () => !isReadonly.value || testata.modificabile.value,
 )
 
 // Sub-drawer
@@ -416,7 +423,7 @@ useBaFormDefaults({ form, isEdit, fetchDefaults: getContrattoFormDefaults })
 const canSave = computed(() => {
   // I tre riferimenti dell'atto restano salvabili anche a contratto ATTIVO
   // (Q1): il lock post-DRAFT non li riguarda.
-  if (isReadonly.value && !codiciAttoEditabili.value) return false
+  if (isReadonly.value && !testata.modificabile.value) return false
   const f = form.value
   // Coppia variazione coerente: tipo presente <=> valore presente. Applicabile
   // sia in create che in edit — il BE rifiuta la coppia incoerente con
@@ -457,15 +464,15 @@ function buildPayload() {
   //    l'intero payload se contiene una chiave che non ammette — non la ignora.
   //    Una chiave accettata in PATCH ma non in CREATE va quindi cancellata qui
   //    sotto, o rompe la creazione contratto.
-  const stato = isEdit.value ? (detail.value?.stato_codice_interno || null) : 'DRAFT'
-  const isDraft = stato === 'DRAFT'
+  const stato = isEdit.value ? (detail.value?.stato_codice_interno || null) : STATO_CONTRATTO.DRAFT
+  const isDraft = stato === STATO_CONTRATTO.DRAFT
 
   if (!isDraft) {
     // Post-DRAFT il form e' bloccato tranne i tre riferimenti dell'atto: si
     // spedisce SOLO quello che il BE accetta nello stato corrente. Mandare di
     // piu' significherebbe farsi rifiutare l'intera PATCH per campi che
     // l'operatore non ha nemmeno potuto toccare.
-    if (codiciAttoEditabili.value) return buildCodiciAttoPayload(f)
+    if (testata.modificabile.value) return buildCodiciAttoPayload(f)
     // CESSATO/ANNULLATO: il Salva non e' nemmeno visibile. Payload vuoto per
     // sicurezza — le operazioni li' passano solo dal cambio stato.
     return {}
@@ -612,7 +619,7 @@ function openCessaDialog(action) {
 async function onConfermaCessazione() {
   const validoAl = toDateString(cessaDialogData.value)
   const programmata = cessazioneProgrammata.value
-  const targetState = cessaDialogAction.value?.target_state || 'CESSATO'
+  const targetState = cessaDialogAction.value?.target_state || STATO_CONTRATTO.CESSATO
   const result = await execute(
     () => store.cambiaStato(props.contrattoId, targetState, { validoAl }),
     {
@@ -647,7 +654,7 @@ function onCambiaStato(action) {
   // L'endpoint /emetti/ (multipart) orchestra atomic state + genera + allegati
   // (refactor 2026-05-28). NB: il BE rifiuta la transizione via /cambia-stato/
   // con E_VENDITE_VALIDAZIONE — questa intercettazione e' la sola via supportata.
-  if (action.target_state === 'ATTIVO') {
+  if (action.target_state === STATO_CONTRATTO.ATTIVO) {
     emissioneDialogVisible.value = true
     return
   }
@@ -706,7 +713,7 @@ function onAnnullaContratto(action) {
   // target_state arriva data-driven dall'azione BE (`available_actions[]` di
   // `fn_available_actions_contratto`). Fallback 'ANNULLATO' difensivo per
   // eventuali chiamate dirette senza action (oggi non esistono).
-  const targetState = action?.target_state || 'ANNULLATO'
+  const targetState = action?.target_state || STATO_CONTRATTO.ANNULLATO
   confirmAction({
     header: t('vendite.contratti.annulla_dialog_titolo'),
     message: t('vendite.contratti.annulla_dialog_messaggio', { numero: detail.value?.numero }),
@@ -762,7 +769,7 @@ const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
 // D-11 di work-done/analisi-fe-chrome-drawer.md).
 // «Modificabile» qui e' `mostraFooterSalva`: in CREATE e in DRAFT, piu' l'ATTIVO
 // per i soli riferimenti dell'atto (Q1). NB: ATTIVO ammette tecnicamente anche
-// la modifica di `valido_al` + meta (_CONTRATTO_PATCH_ALLOWED_BY_STATE), ma
+// la modifica di `valido_al` + meta (lock di testata del DB), ma
 // l'unica modifica operativa li' e' la cessazione programmata, dal dialog «Cessa
 // contratto». ⚠️ In ATTIVO la catena readonly e' accesa (`isContractLocked`):
 // il Salva lo riaccende `footer-readonly`, i tre campi l'`app-escape` della
@@ -791,7 +798,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     :footer="footerDrawer"
     :loading="loading"
     :save-disabled="!canSave"
-    :footer-readonly="codiciAttoEditabili ? false : undefined"
+    :footer-readonly="testata.footerReadonly.value"
     @update:visible="(v) => emit('update:visible', v)"
     @cancel="emit('cancelled')"
     @save="handleSave"
@@ -846,11 +853,11 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
          modifica valido_al (programma cessazione) + cambio stato.
          Coerente con Profilo A whitelist BE. -->
-    <Message v-if="isContractLocked && detail.stato_codice_interno !== 'CESSATO'"
+    <Message v-if="isContractLocked && detail.stato_codice_interno !== STATO_CONTRATTO.CESSATO"
       severity="info" :closable="false" size="small">
       {{ t('vendite.contratti.banner_locked_attivo', { stato: detail.stato_descrizione }) }}
     </Message>
-    <Message v-else-if="isContractLocked && detail.stato_codice_interno === 'CESSATO'"
+    <Message v-else-if="isContractLocked && detail.stato_codice_interno === STATO_CONTRATTO.CESSATO"
       severity="warn" :closable="false" size="small">
       {{ t('vendite.contratti.banner_locked_cessato') }}
     </Message>
@@ -969,28 +976,28 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
        quando arriva. -->
   <!-- `app-escape` solo quando la catena e' in sola lettura ma i tre campi no
        (contratto ATTIVO, Q1): il corpo protetto li spegnerebbe. -->
-  <div :class="{ 'app-escape': codiciAttoEditabili && isReadonly }">
+  <div :class="{ 'app-escape': testata.sopraCorpoProtetto.value }">
     <h4>{{ t('vendite.contratti.section_riferimenti_atto') }}</h4>
     <div class="form-grid-3col">
       <div class="form-field">
         <label>{{ t('vendite.contratti.field_codice_cig') }}</label>
         <InputText v-model="form.codice_cig"
           :maxlength="CODICI_ATTO_MAX_LEN.cig"
-          :disabled="!codiciAttoEditabili"
+          :disabled="testata.bloccato('codice_cig')"
           :invalid="campiErrati.includes('codice_cig')" />
       </div>
       <div class="form-field">
         <label>{{ t('vendite.contratti.field_codice_cup') }}</label>
         <InputText v-model="form.codice_cup"
           :maxlength="CODICI_ATTO_MAX_LEN.cup"
-          :disabled="!codiciAttoEditabili"
+          :disabled="testata.bloccato('codice_cup')"
           :invalid="campiErrati.includes('codice_cup')" />
       </div>
       <div class="form-field">
         <label>{{ t('vendite.contratti.field_codice_commessa') }}</label>
         <InputText v-model="form.codice_commessa"
           :maxlength="CODICI_ATTO_MAX_LEN.commessa"
-          :disabled="!codiciAttoEditabili"
+          :disabled="testata.bloccato('codice_commessa')"
           :invalid="campiErrati.includes('codice_commessa')" />
       </div>
     </div>
@@ -1023,13 +1030,13 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
          - CESSATO: readonly come "Data cessazione" -->
     <div class="form-field"
       v-if="!isEdit
-        || detail?.stato_codice_interno === 'DRAFT'
-        || detail?.stato_codice_interno === 'CESSATO'
-        || (form.valido_al && detail?.stato_codice_interno === 'ATTIVO')">
+        || detail?.stato_codice_interno === STATO_CONTRATTO.DRAFT
+        || detail?.stato_codice_interno === STATO_CONTRATTO.CESSATO
+        || (form.valido_al && detail?.stato_codice_interno === STATO_CONTRATTO.ATTIVO)">
       <label>
-        {{ detail?.stato_codice_interno === 'CESSATO'
+        {{ detail?.stato_codice_interno === STATO_CONTRATTO.CESSATO
           ? t('vendite.contratti.field_data_cessazione')
-          : detail?.stato_codice_interno === 'ATTIVO' && form.valido_al
+          : detail?.stato_codice_interno === STATO_CONTRATTO.ATTIVO && form.valido_al
             ? t('vendite.contratti.field_cessazione_programmata')
             : t('vendite.contratti.field_valido_al') }}
       </label>
@@ -1119,13 +1126,13 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       <label>{{ t('vendite.contratti.field_tipo_utenza') }}</label>
       <LookupSelect v-model="form.utility_tipo_utenza_id" rel="config.tipi_utenze"
         :placeholder="t('vendite.contratti.select_tipo_utenza')" show-clear
-        :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
+        :disabled="isContractLocked" />
     </div>
     <div class="form-field">
       <label>{{ t('vendite.contratti.field_classe_utenza') }}</label>
       <LookupSelect v-model="form.utility_classe_utenza_id" rel="config.classi_utenze"
         :placeholder="t('vendite.contratti.select_classe_utenza')" show-clear
-        :disabled="isEdit && detail?.stato_codice_interno !== 'DRAFT'" />
+        :disabled="isContractLocked" />
     </div>
   </div>
 

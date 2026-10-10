@@ -509,6 +509,9 @@ export const MANAGE_ICONS = {
   CLONE: 'pi pi-copy',
   CLOSE: 'pi pi-lock',
   CLOSE_DATE: 'pi pi-calendar-times',
+  // La promessa di consegna di una riga (data di consegna confermata), che si
+  // cambia anche dopo la conferma dell'ordine.
+  PROMESSA_CONSEGNA: 'pi pi-calendar-clock',
   PERMISSIONS: 'pi pi-shield',
   // La sicurezza dell'accesso: il secondo fattore (pagina «Sicurezza», sezione
   // del drawer operatore).
