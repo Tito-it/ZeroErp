@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CANONICA DELLO SCOPE DICHIARA QUANTO COSTA: COST 5000
+#   script.fn_check_user_emittente_scope(integer, bigint)
+#   Completa 20261010-77, che l'aveva mancata.
+#
+# ── PERCHE' 20261010-77 NON BASTAVA ─────────────────────────────────
+#   -77 ha dato COST 5000 alle 50 funzioni NOMINATE dalle policy. Ma
+#   script.fn_scope_ef_whitelist e' LANGUAGE sql, e il pianificatore la
+#   INCORPORA: nel piano non compare piu' lei, compare il suo corpo, cioe' la
+#   chiamata a fn_check_user_emittente_scope (plpgsql, opaca) — col COST di
+#   default. Il COST 5000 della funzione esterna sparisce con lei.
+#   Misurato il 2026-10-10 su dbdev come app, EXPLAIN di SELECT * su ogni
+#   tabella sotto RLS: fn_check_user_emittente_scope e' nel Filter di 69
+#   tabelle su 171, a COST 100.
+#   Caso: la diagnosi del push di un DDT (vendite.fn_ddt_push_diagnosi)
+#   avvolta dall'aggregato della capability faceva ancora Seq Scan sotto
+#   policy su vendite.ddt (46 righe, 30 ms) e vendite.resi (16 righe, 11 ms).
+#
+# ── IL VALORE ───────────────────────────────────────────────────────
+#   0,09 ms a chiamata in un ciclo caldo, fino a 0,66 ms a riga nei piani
+#   (misure del 2026-10-10): ~6-44 unita' del pianificatore, procost
+#   ~2.500-17.000. 5000 come le funzioni di -77: conta l'ordine di grandezza.
+#   ⚠️ Le altre quattro funzioni che i piani mostrano a COST 100 —
+#   fn_get_uo_id_for_user, fn_is_super_admin_account,
+#   fn_scope_identita_processo (~0,01 ms) e fn_resolve_emittente_fiscale_id
+#   (~0,007 ms, DEFINER: niente RLS sotto) — costano ~0,5-0,7 unita': il
+#   default (0,25) e' nell'ordine giusto, e restano come sono.
+#
+# ── ALTER, NON CREATE OR REPLACE ────────────────────────────────────
+#   Cambia solo procost: firma, corpo e %TYPE restano quelli applicati.
+#
+# ── ⛔ IL PRESIDIO ORA LEGGE I PIANI ────────────────────────────────
+#   script/test-policy-funzioni-cost-v1.sql, test 4: le funzioni nel Filter
+#   dei piani delle tabelle sotto RLS (EXPLAIN come app) che restano al COST
+#   di default devono essere fra quelle misurate economiche. Una funzione
+#   cara che entra nel piano per incorporazione — il caso di oggi — diventa
+#   rossa invece di passare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-79-alter-fn-check-user-emittente-scope-cost-mctit.yaml
+
+  - changeSet:
+      id: 20261010-79-alter-fn-check-user-emittente-scope-cost
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        COST 5000 su script.fn_check_user_emittente_scope: incorporata dentro la policy SQL
+        fn_scope_ef_whitelist, compare nel piano di 69 tabelle sotto RLS al COST di default e
+        il pianificatore continuava a preferire la scansione intera. Completa 20261010-77.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = 'fn_check_user_emittente_scope';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ COST si perde a ogni CREATE OR REPLACE che non lo ripete:
+              --    presidio in script/test-policy-funzioni-cost-v1.sql (test 4).
+              DO $cost$
+              DECLARE v_fn regprocedure;
+              BEGIN
+                  SELECT p.oid::regprocedure INTO STRICT v_fn
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_user_emittente_scope';
+                  EXECUTE format('ALTER FUNCTION %s COST 5000', v_fn);
+              END
+              $cost$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $cost$
+              DECLARE v_fn regprocedure;
+              BEGIN
+                  SELECT p.oid::regprocedure INTO STRICT v_fn
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_check_user_emittente_scope';
+                  EXECUTE format('ALTER FUNCTION %s COST 100', v_fn);
+              END
+              $cost$;

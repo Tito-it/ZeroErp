@@ -8,7 +8,8 @@
 -- ------------------------------------------------------------
 --
 -- Test: ogni funzione chiamata da una policy RLS dichiara il proprio costo
---       (COST >= 1000) — changeSet 20261010-77
+--       (COST >= 1000) — changeSet 20261010-77, e cosi' ogni funzione che
+--       i PIANI delle tabelle sotto RLS mostrano nel Filter (20261010-79)
 --
 -- ⛔ IL PUNTO DI QUESTO FILE. COST e' una proprieta' invisibile nel corpo,
 --   come ROWS (20261008-21) e security_invoker: un CREATE OR REPLACE FUNCTION
@@ -29,13 +30,23 @@
 --   dichiara un valore diverso nello stesso ordine non e' un difetto. Il
 --   default (100) e qualunque valore di quell'ordine restano rossi.
 --
--- Elenco test (plan 3):
+-- ⛔ E IL TESTO NON BASTA: CONTA IL PIANO (test 4, 2026-10-10). Una funzione
+--   di policy LANGUAGE sql viene INCORPORATA: nel piano non compare lei col
+--   suo COST, compare cio' che chiama. Cosi' fn_check_user_emittente_scope,
+--   chiamata dentro fn_scope_ef_whitelist, stava nel Filter di 69 tabelle su
+--   171 al COST di default, mentre i test 1-3 erano verdi. Il test 4 ricava le
+--   funzioni dai piani (EXPLAIN come app), cioe' dalla fonte che decide.
+--
+-- Elenco test (plan 4):
 --  1) la derivazione non e' cieca: trova le funzioni di policy, e fra loro
 --     la canarina script.fn_scope_ef_whitelist_via_ddt (il caso del DDT)
 --  2) ⭐ nessuna funzione chiamata da una policy ha COST < 1000 — il messaggio
 --     nomina le inadempienti
 --  3) ogni nome trovato nelle policy risolve a una funzione (un nome che non
 --     risolve uscirebbe dal test 2 senza essere misurato)
+--  4) ⭐ ogni funzione nel Filter dei piani delle tabelle sotto RLS dichiara
+--     COST >= 1000, oppure e' fra quelle MISURATE economiche (elenco sotto,
+--     con la misura datata accanto a ciascuna)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -46,7 +57,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: il test gira come gira l'applicazione (OPERATORE + RLS).
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(3);
+SELECT plan(4);
 
 -- I nomi di funzione che le policy chiamano, da qual e da with_check.
 CREATE TEMP TABLE _nomi_policy AS
@@ -87,6 +98,70 @@ SELECT is(
     WHERE NOT EXISTS (SELECT 1 FROM pg_proc p WHERE p.proname = x.fn)),
   '',
   '3) ogni nome di funzione trovato nelle policy risolve a una funzione');
+
+-- ============================================================
+-- 4) ⭐ Le funzioni che i PIANI mostrano, non solo quelle che le policy nominano.
+-- ============================================================
+-- Un EXPLAIN (senza ANALYZE: non esegue niente) di SELECT * su ogni tabella
+-- con RLS attiva e almeno una policy, come app: il Filter contiene la policy
+-- come il pianificatore la vede, con le funzioni SQL gia' incorporate.
+CREATE TEMP TABLE _righe_piano (tabella regclass, riga text);
+
+DO $piani$
+DECLARE
+    v_tab  regclass;
+    v_riga text;
+BEGIN
+    FOR v_tab IN
+        SELECT c.oid::regclass
+          FROM pg_class c
+         WHERE c.relrowsecurity
+           AND c.relkind = 'r'
+           AND EXISTS (SELECT 1 FROM pg_policy pol WHERE pol.polrelid = c.oid)
+           -- ⚠️ Solo le tabelle che chi esegue puo' leggere: i piani che
+           --   l'applicazione paga. Uno schema senza USAGE (shop, per l'app)
+           --   farebbe fallire l'EXPLAIN; il messaggio del test conta le
+           --   tabelle davvero esaminate.
+           AND has_schema_privilege(c.relnamespace, 'USAGE')
+           AND has_table_privilege(c.oid, 'SELECT')
+    LOOP
+        FOR v_riga IN EXECUTE format('EXPLAIN (VERBOSE) SELECT * FROM %s', v_tab) LOOP
+            INSERT INTO _righe_piano VALUES (v_tab, v_riga);
+        END LOOP;
+    END LOOP;
+END
+$piani$;
+
+-- ⚠️ LE ECONOMICHE MISURATE. Sono nel Filter dei piani al COST di default
+--   perche' costano davvero poco: il default (0,25 unita') e' nell'ordine di
+--   grandezza giusto. Ogni voce porta la sua misura; chi ne aggiunge una la
+--   MISURA (ciclo da 2000 chiamate come app, contro un ciclo vuoto), non la
+--   suppone. ⛔ Non e' un posto dove parcheggiare un rosso: una funzione che
+--   legge tabelle sotto RLS non e' economica.
+CREATE TEMP TABLE _economiche (sch text, nome text, misura text);
+INSERT INTO _economiche VALUES
+  ('script', 'fn_get_uo_id_for_user',           '~0,010 ms/chiamata, dbdev come app, 2026-10-10'),
+  ('script', 'fn_is_super_admin_account',       '~0,010 ms/chiamata, dbdev come app, 2026-10-10'),
+  ('script', 'fn_scope_identita_processo',      '~0,008 ms/chiamata, dbdev come app, 2026-10-10'),
+  ('script', 'fn_resolve_emittente_fiscale_id', '~0,007 ms/chiamata, dbdev come app, 2026-10-10 (DEFINER: niente RLS sotto)');
+
+SELECT is(
+  (SELECT coalesce(string_agg(DISTINCT n.nspname || '.' || p.proname || ' = ' || p.procost
+                              || ' (in ' || x.n_tab || ' tabelle)', ', '), '')
+     FROM (SELECT m[1] AS fn, count(DISTINCT r.tabella) AS n_tab
+             FROM _righe_piano r,
+                  regexp_matches(r.riga, '(fn_\w+)\(', 'g') m
+            WHERE r.riga ~ 'Filter'
+            GROUP BY m[1]) x
+     JOIN pg_proc p ON p.proname = x.fn
+     JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND p.procost < 1000
+      AND NOT EXISTS (SELECT 1 FROM _economiche e
+                       WHERE e.sch = n.nspname AND e.nome = p.proname)),
+  '',
+  format('4) le funzioni nel Filter dei piani di %s tabelle sotto RLS dichiarano COST >= 1000 o sono fra le economiche misurate',
+         (SELECT count(DISTINCT tabella) FROM _righe_piano)));
 
 SELECT finish();
 

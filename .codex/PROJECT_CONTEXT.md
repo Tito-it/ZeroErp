@@ -301,6 +301,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   lo spento in attesa si copia senza marca nella revisione. DB `20261008-80` … `-94` e `20261009-03`, pgTAP verdi
   anche su `zeroerp_ci`. Lato BE (§5): test e smoke già in forma bozza → righe → transizione; il verbo della data
   passa al brief sotto; i debiti stanno in § «Aperto — Media priorità».
+- **La partita merce e il push dei DDT non leggono più tutte le attività: chiuso il 2026-10-10**
+  (`work-done/brief-db-segment-base-commesse-attivita.md`, `20261010-80…-84`, applicati): colonna generata
+  `commesse_attivita.segment_base` (uguaglianza indicizzabile sotto RLS anche nel piano generico) e
+  `plan_cache_mode = force_generic_plan` sulla capability e sul lister dei DDT. Capability su tutti i DDT
+  ~2,1 → ~0,6 s. Nello stesso giorno: `COST 5000` sulle funzioni di policy (`20261010-77`, `-79`,
+  linee-guida-sql §10.3). Debito residuo: ⬜ **D26**, `work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md`
+  (le altre funzioni che ripianificano a ogni chiamata; il lister senza filtri), aperto, non iniziato.
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
@@ -356,7 +363,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **Dati fiscali e societari del soggetto** (`work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md`,
   2026-10-10): (A) «Cliente PA» e «Split payment» ammessi per ogni natura, anche per un privato; (B) in modifica i
   dati societari non si salvano, serve il verbo di scrittura (decisione di Tid); (C) la forma giuridica non è legata
-  alla natura, e il drawer la mostra vuota. Decisioni di Tid nel §4; BE/FE attendono il DB.
+  alla natura, e il drawer la mostra vuota; (D) un titolo IVA si registra su qualunque soggetto (assorbito
+  `brief-db-regime-fiscale-per-natura-soggetto`, ora solo rimando). Decisioni di Tid prese (§4), aperta solo D-4
+  (`COOPERATIVA`, non blocca); pronto per il team DB, BE/FE attendono il DB.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

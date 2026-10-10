@@ -11,7 +11,7 @@ CREATE FUNCTION fn_check_user_emittente_scope(p_auth_user_id integer, p_emittent
 CREATE OR REPLACE FUNCTION script.fn_check_user_emittente_scope(p_auth_user_id integer, p_emittente_fiscale_id bigint)
  RETURNS boolean
  LANGUAGE plpgsql
- STABLE
+ STABLE COST 5000
 AS $function$
 DECLARE
     v_cnt    integer;

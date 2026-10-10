@@ -55,6 +55,7 @@
 | causale_onere_id | bigint | YES |  |
 | natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
 | fattura_riga_rettificata_id | bigint | YES |  |
+| segment_base | character varying(128) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -109,6 +110,7 @@
 | ix_commesse_attivita_lane_candidate | `CREATE INDEX ix_commesse_attivita_lane_candidate ON vendite.commesse_attivita USING btree (commessa_id, competenza_mese, tipo_doc_fiscale_id) WHERE (((stato_emissione)::text = 'NON_EMESSA'::text) AND ((stato_approvazione)::text = 'APPROVATA'::text) AND (tipo_doc_fiscale_id IS NOT NULL))` |
 | ix_commesse_attivita_listino_riga_id | `CREATE INDEX ix_commesse_attivita_listino_riga_id ON vendite.commesse_attivita USING btree (listino_riga_id) WHERE (listino_riga_id IS NOT NULL)` |
 | ix_commesse_attivita_origine_prezzo | `CREATE INDEX ix_commesse_attivita_origine_prezzo ON vendite.commesse_attivita USING btree (origine_prezzo)` |
+| ix_commesse_attivita_segment_base | `CREATE INDEX ix_commesse_attivita_segment_base ON vendite.commesse_attivita USING btree (segment_base)` |
 | ix_commesse_attivita_segment_key | `CREATE INDEX ix_commesse_attivita_segment_key ON vendite.commesse_attivita USING btree (segment_key varchar_pattern_ops)` |
 | ix_commesse_attivita_sorgente_competenza | `CREATE INDEX ix_commesse_attivita_sorgente_competenza ON vendite.commesse_attivita USING btree (sorgente_uid, competenza_mese) WHERE (sorgente_uid IS NOT NULL)` |
 | pk_commesse_attivita | `CREATE UNIQUE INDEX pk_commesse_attivita ON vendite.commesse_attivita USING btree (id)` |

@@ -982,6 +982,34 @@ per conto suo: per la vista quel sito non esiste.
 * **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
   di ritiro del presidio) e il BE la toglie.
 
+### 🟡 D25 — I residui di «l'istanza nasce col billing account»
+
+Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`: il resolver
+`script.fn_get_billing_account_by_istanza`, che il backend non chiama più, e il motivo
+`PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo, irraggiungibile perché BA e
+utility del preventivo sono `NOT NULL`. La stessa «testata incompleta» era scritta anche come filtro
+nel residuo commessa e nella lista del push.
+
+Dettaglio nel brief
+[brief-db-istanza-nasce-col-ba-residui.md](brief-db-istanza-nasce-col-ba-residui.md). 🔧 DB scritto e
+✅ lato DB chiuso il 2026-10-10 (`20261010-50…-59` applicati da Tid, pgTAP verdi); restano la chiave
+nei locales (FE) e una riga di doc (BE). Del §5 del brief sono fatte tutte: D-1 (via il filtro tautologico sul BA da ordini e contratti), D-2 (lo stato
+assente dal catalogo ferma le liste del push invece di aprirle), D-3 (ritirato
+`uq_gestori_singleton`), D-4 (il pgTAP dello spostamento dell'azienda predefinita) e D-5 (quello
+spostamento non dipende più da chi lo fa: i guard chiedono l'azienda dei BA per l'installazione).
+
+### 🟡 D26 — Le funzioni che ripianificano a ogni chiamata
+
+Ereditato il 2026-10-10 dalla chiusura di `work-done/brief-db-segment-base-commesse-attivita`: una
+funzione plpgsql che chiama con un parametro una funzione SQL grande che si incorpora fa
+ripianificare la query a ogni chiamata (in modo `auto` la plancache preferisce i piani
+personalizzati). Curate e presidiate la capability del DDT e il lister dei DDT da spingere; il
+censimento delle altre e il lister senza filtri restano aperti.
+
+Dettaglio nel brief
+[brief-db-plancache-funzioni-con-query-incorporate.md](brief-db-plancache-funzioni-con-query-incorporate.md):
+aperto, non iniziato, due decisioni attese (§3).
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1194,6 +1222,8 @@ D6 e il registro dei rossi in CI.
       `work-done/brief-db-istanza-nasce-col-ba-residui` — chiuso e archiviato il 2026-10-10 (DB `20261010-50…-59`, FE/BE §4).
 * [ ] **D27** — gli indirizzi del documento seguono il cliente: brief
       `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+* [ ] **D26** — le funzioni che ripianificano a ogni chiamata: brief
+      `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
 
 ---
 

@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO DI UN ADATTATORE DI POLICY SENZA PIU' POLICY
+#   script.fn_scope_ef_whitelist_via_ente_incasso(integer, bigint)
+#   Trovato censendo le fn_scope_* rimaste a COST 100 dopo 20261010-77.
+#
+# ── LA STORIA ───────────────────────────────────────────────────────
+#   20260822-19 la crea per la policy della TESTATA delle distinte
+#   (pagamenti.vendite_contabili), che allora risaliva all'emittente dal
+#   canale di incasso; 20260822-20 la usa. 20260828-17 (policy di
+#   pagamenti.enti_incasso) non la adotta. 20260915-31 riscrive la policy
+#   della testata sull'emittente della distinta (fn_scope_ef_whitelist_via_sr)
+#   e porta il guard di scrittura al modo soggetto_ruolo: era l'unico lettore.
+#
+# ── IL CENSIMENTO (2026-10-10) ──────────────────────────────────────
+#   Nessun lettore: funzioni (prosrc), viste, policy (qual e with_check),
+#   default, CHECK, pgTAP, backend. Restano i changeSet storici e la doc.
+#   ⚠️ NON si ritira il modo 'ente_incasso' di script.fn_resolve_emittente_fiscale_id:
+#   lo usano ancora pagamenti.fn_get_emittente_distinta e due trigger.
+#
+# ── ROLLBACK ────────────────────────────────────────────────────────
+#   Ricrea la funzione com'era: il corpo vivo coincide con 20260822-19 (doc
+#   auto-generata confrontata). Firma con i %TYPE dove l'ancora esiste ancora:
+#   p_ente_incasso_id resta pagamenti.enti_incasso.id%TYPE; p_auth_user_id
+#   diventa integer, come nelle sorelle recenti (via_coppia, via_efba),
+#   perche' l'ancora di 20260822-19 — anagrafiche.risorse_umane_auth_user —
+#   e' stata ritirata con 20260912-10 e l'utente vive in django.auth_user, a
+#   cui il DB non si lega. COST 5000 come le sorelle di policy (20261010-77,
+#   linee-guida-sql §10.3).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-78-drop-fn-scope-ef-whitelist-via-ente-incasso-mctit.yaml
+
+  - changeSet:
+      id: 20261010-78-drop-fn-scope-ef-whitelist-via-ente-incasso
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Ritira script.fn_scope_ef_whitelist_via_ente_incasso: nessuna policy, funzione, vista
+        o pgTAP la chiama dal 20260915-31 (policy della testata delle distinte riscritta
+        sull'emittente). Il modo 'ente_incasso' di fn_resolve_emittente_fiscale_id resta: ha
+        altri lettori.
+      # ⛔ Niente preCondition MARK_RAN: su un DROP segnerebbe eseguito un lavoro
+      #    non fatto. L'idempotenza la da' IF EXISTS.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Senza CASCADE: se un lettore fosse comparso dopo il censimento,
+              -- il DROP deve fallire, non portarselo via.
+              DROP FUNCTION IF EXISTS script.fn_scope_ef_whitelist_via_ente_incasso(integer, bigint);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ente_incasso(
+                  p_auth_user_id    integer,
+                  p_ente_incasso_id pagamenti.enti_incasso.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              COST 5000
+              AS $function$
+                  -- Risolve il canale -> il CONTO su cui atterra il suo denaro ->
+                  -- il soggetto -> l'emittente, e delega alla canonica. E' D5:
+                  -- quando il denaro arriva non ha ancora una fattura, e il suo
+                  -- padrone lo dice il conto.
+                  -- ⚠️ La catena vive TUTTA in fn_resolve_emittente_fiscale_id,
+                  --   che e' SECURITY DEFINER e la stessa usata dal guard di
+                  --   scrittura: due copie della catena sono il modo in cui un
+                  --   perimetro comincia a rispondere in modo diverso a seconda
+                  --   di chi chiede.
+                  -- Canale senza conto risolvibile -> emittente NULL -> la
+                  -- canonica risponde false (fail-closed).
+                  SELECT script.fn_check_user_emittente_scope(
+                      p_auth_user_id,
+                      script.fn_resolve_emittente_fiscale_id('ente_incasso', p_ente_incasso_id)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_scope_ef_whitelist_via_ente_incasso(integer, bigint) IS
+                'Scope dell''operatore su un CANALE di incasso: risolve canale -> conto -> soggetto -> emittente e delega alla canonica. ⭐ E'' D5 in una riga: quando il denaro arriva in banca non ha ancora una fattura, e il suo padrone lo dice il conto. La catena vive tutta in script.fn_resolve_emittente_fiscale_id, che e'' SECURITY DEFINER e la stessa che usa il guard di SCRITTURA — cosi'' lettura e scrittura non possono divergere. Fail-closed su catena interrotta.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_scope_ef_whitelist_via_ente_incasso(integer, bigint) TO PUBLIC;

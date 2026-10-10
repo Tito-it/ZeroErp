@@ -1111,9 +1111,24 @@ conosce `~>=~`). Precedente e prova come app: `vendite.fn_af_merce_per_riga` e
 ⚠️ La prova va fatta **come applicazione** (`zeroerp_app`), non da owner — e si
 può fare senza applicare nulla: una `TEMP TABLE` con `FORCE ROW LEVEL SECURITY`
 e una policy che chiama una funzione plpgsql riproduce esattamente il criterio
-del planner. ⚠️ Con `force_generic_plan` la forma set-based può preferire la
-scansione (stima di 100 chiavi da `unnest($1)` × 0,5 % per range): nella forma
-reale la plancache tiene i piani custom finché il generico costa di più.
+del planner.
+
+⛔ **Rev 2026-10-10 — il range da solo NON regge il piano generico.** Fino a oggi
+questo paragrafo diceva che «nella forma reale la plancache tiene i piani
+custom». Misurato: dentro una funzione plpgsql che chiama la forma con un
+**parametro** (la capability del DDT → la diagnosi → `fn_partite_merce` →
+`fn_af_merce_per_riga`), la plancache sceglie il **generico**, e lì il range con
+bordi non noti è stimato al default (~11 % della tabella per chiave): la
+scansione intera, con la policy su ogni riga, vince. Uguaglianza 3 ms in
+`Index Cond`, range 31 ms in scansione (dbdev come app, 2 chiavi). E la stima
+è proporzionale alla tabella: in bilico a qualunque volume.
+⭐ **La forma che regge**: una colonna con la **base** della chiave (generata
+`STORED`, indicizzata) e un'**uguaglianza** su di essa come condizione
+d'ingresso, con il range tenuto come filtro residuo — `texteq` è leakproof e la
+stima viene dalle statistiche della colonna. Un indice su espressione no:
+`split_part`, `left`, `lower` non sono leakproof. Caso:
+`vendite.commesse_attivita.segment_base` (`20261010-80…-82`,
+`brief-db-segment-base-commesse-attivita`).
 
 ---
 
@@ -1340,6 +1355,14 @@ un `CREATE OR REPLACE` che non la ripete la riporta a 100, con risultati
 identici. La presidia `script/test-policy-funzioni-cost-v1`, che deriva le
 funzioni da `pg_policies` (`qual` e `with_check`): una policy nuova che chiama
 una funzione senza `COST` lo rende rosso da sola. Origine: `20261010-77`.
+⛔ **E vale per ciò che la funzione di scope CHIAMA, se è SQL.** Una funzione
+`LANGUAGE sql` viene **incorporata**: nel piano non compare lei col suo
+`COST`, compare il suo corpo. Così `script.fn_check_user_emittente_scope`,
+chiamata dentro `fn_scope_ef_whitelist`, restava nel `Filter` di 69 tabelle
+al costo di default (`20261010-79`). Una funzione chiamata da una funzione di
+scope che **legge tabelle** dichiara anch'essa `COST 5000`. Il presidio lo
+ricava dai **piani** (test 4: `EXPLAIN` come app di ogni tabella sotto RLS),
+con un elenco delle funzioni misurate economiche, ognuna con la sua misura.
 
 Policy che la usa:
 

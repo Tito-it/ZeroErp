@@ -11,9 +11,9 @@ Dice se l'operatore ha scope su una **distinta contabile**: risolve
 
 Serve alle policy dei **satelliti** della distinta — le righe e il manifesto dei
 lotti — che l'emittente non ce l'hanno in colonna: ce l'ha la loro testata.
-Gemella di
-[fn_scope_ef_whitelist_via_ente_incasso](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_ente_incasso),
-che parte invece dal canale.
+La gemella che partiva dal canale, `fn_scope_ef_whitelist_via_ente_incasso`,
+è stata ritirata il 2026-10-10 (`20261010-78`): dal 2026-09-15 nessuna policy
+la chiamava più.
 
 ---
 

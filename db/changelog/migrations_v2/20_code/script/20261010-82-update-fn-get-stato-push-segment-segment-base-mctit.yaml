@@ -1,0 +1,189 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# fn_get_stato_push_segment ENTRA DALLA BASE DEL SEGMENTO
+#   script.fn_get_stato_push_segment(character varying)
+#   Brief: brief-db-segment-base-commesse-attivita (P-3).
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   Solo la WHERE: `ca.segment_base = split_part(p_segment_key, '#', 1) AND
+#   (<i tre rami di prima>)`. Ognuno dei tre rami implica l'uguaglianza
+#   (una chiave che vale p o comincia per p#CMP: / p#RET: ha la base di p,
+#   anche se p contiene gia' un '#'), quindi l'aggiunta non toglie righe:
+#   risultati identici per costruzione. split_part sta sul PARAMETRO, non
+#   sulla colonna: la clausola resta leakproof per la tabella.
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Chiamata con un parametro (piano generico nelle fn_list_*_da_pushare,
+#   nella diagnosi del DDT, nelle capability), ogni ramo a intervallo era
+#   stimato al default (~11 % della tabella): la scansione intera, con la
+#   policy RLS su ogni riga, vinceva. Stessa causa di 20261010-81.
+#
+# Corpo di partenza: 20260921-55 (ultima revisione; doc auto-generata
+#   confrontata). Firma invariata, segment_key%TYPE compreso.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-82-update-fn-get-stato-push-segment-segment-base-mctit.yaml
+
+  - changeSet:
+      id: 20261010-82-update-fn-get-stato-push-segment-segment-base
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script.fn_get_stato_push_segment entra in commesse_attivita dall'uguaglianza su
+        segment_base (20261010-80), con i tre rami di prima come residuo che la implicano:
+        risultati identici, e il piano generico smette di leggere la tabella intera.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: vendite
+            tableName: commesse_attivita
+            columnName: segment_base
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'fn_get_stato_push_segment'
+                 AND pronamespace = 'script'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_stato_push_segment(
+                  p_segment_key vendite.commesse_attivita.segment_key%TYPE)
+              RETURNS text   -- vocabolario calcolato: LIBERA / ALLOCATA / EMESSA
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+              -- Scopo: classificare lo stato-push della segment_key di una riga
+              --   documento rispetto a vendite.commesse_attivita, vedendo anche
+              --   le attivita' dei componenti BoM (suffisso '#CMP:<id>') e le
+              --   RETTIFICHE (suffisso '#RET:<n>', dal 2026-08-18):
+              --     LIBERA   = nessuna attivita' (riga mai instradata)
+              --     ALLOCATA = attivita' presenti, non tutte EMESSE (in attesa
+              --                di fatturazione; ANNULLATA conta come allocata)
+              --     EMESSA   = attivita' presenti e tutte fatturate
+              --   Single source del predicato "gia' inviato": consumata dalle
+              --   fn_list_*_da_pushare (eleggibile <=> LIBERA), dalla diagnosi
+              --   del DDT (colonna `segment`) e dai rami reason delle capability.
+              -- rev 2026-08-18 (brief nota di credito, N11): il suffisso
+              --   '#RET:%' copre sia la rettifica semplice sia quella per
+              --   componente, perche' '#CMP:' viene DOPO '#RET:<n>'.
+              --   ⚠️ Su una partita fatturata dalla corsia ORD il segmento DDT
+              --   non ha attivita' NORMALE e resterebbe LIBERA anche a nota di
+              --   credito emessa: a impedire la ri-spinta ci sarebbe SOLO la
+              --   cintura XOR sullo stato dell'ordine. Due cinture sono una;
+              --   una e' zero.
+              -- rev 2026-09-21 (D14 giro 4, D8): il predicato e' un RANGE sugli
+              --   operatori del pattern, non piu' due LIKE. commesse_attivita e'
+              --   sotto RLS e sotto una policy un LIKE non diventa MAI Index Cond
+              --   (textlike non e' leakproof); `~>=~`/`~<~` si' — sono a byte e
+              --   leakproof — con l'indice varchar_pattern_ops sulla colonna.
+              --   [k#CMP:, k#CMP;) e' esattamente «comincia per k#CMP:» (';' e'
+              --   il byte dopo ':'). ⛔ Niente LIKE qui: e' pinnato dal pgTAP.
+              -- rev 2026-10-10 (20261010-82): si entra dall'uguaglianza su
+              --   ca.segment_base (colonna generata, 20261010-80). Chiamata con un
+              --   PARAMETRO (piano generico delle fn_list_*_da_pushare e della
+              --   diagnosi) il range da solo era stimato al default — ~11 % della
+              --   tabella per ramo — e perdeva contro la scansione intera.
+              SELECT CASE
+                       WHEN count(*) = 0 THEN 'LIBERA'
+                       WHEN bool_and(ca.stato_emissione = 'EMESSA') THEN 'EMESSA'
+                       ELSE 'ALLOCATA'
+                     END
+                FROM vendite.commesse_attivita ca
+               -- ⭐ rev 2026-10-10 (20261010-82): si entra dall'UGUAGLIANZA sulla
+               --   base (indice ix_commesse_attivita_segment_base); i tre rami di
+               --   prima restano come filtro residuo e la implicano — una chiave che
+               --   vale p o comincia per p#CMP:/p#RET: ha la base di p — quindi i
+               --   risultati sono identici per costruzione. split_part si applica al
+               --   PARAMETRO, non alla colonna: la clausola resta leakproof per la
+               --   tabella e sale in Index Cond sotto la policy.
+               WHERE ca.segment_base = split_part(p_segment_key, '#', 1)
+                 AND (   ca.segment_key = p_segment_key
+                      OR (    ca.segment_key ~>=~ (p_segment_key || '#CMP:')
+                          AND ca.segment_key ~<~  (p_segment_key || '#CMP;'))
+                      OR (    ca.segment_key ~>=~ (p_segment_key || '#RET:')
+                          AND ca.segment_key ~<~  (p_segment_key || '#RET;')));
+              END;
+        # ⛔ Il COMMENT sta in un change SUO: pgjdbc esegue un `BEGIN ATOMIC … END;`
+        #    solo se sta da solo nel testo.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_stato_push_segment(character varying)
+              IS 'Classifica lo stato-push di una segment_key rispetto a vendite.commesse_attivita: LIBERA (mai instradata) / ALLOCATA (attivita'' presenti, non tutte emesse) / EMESSA (tutte fatturate). Fonte UNICA del predicato «gia'' inviato», consumata dalle fn_list_*_da_pushare (eleggibile <=> LIBERA), dalla diagnosi del DDT (colonna `segment`, da cui il lister deriva) e dai rami reason delle capability. Vede i suffissi dei componenti BoM (#CMP:) e, dal 2026-08-18, quelli delle RETTIFICHE (#RET:<n>, con o senza #CMP a seguire). ⚠️ Il suffisso di rettifica non e'' cosmesi: su una partita fatturata dalla corsia ORD il segmento DDT non ha attivita'' NORMALE e resterebbe LIBERA anche a nota di credito emessa — a impedire la ri-spinta ci sarebbe SOLO la cintura XOR sullo stato dell''ordine, e due cinture sono una mentre una e'' zero. brief-design-note-credito-resi N11. ⭐ rev 2026-09-21 (D14 giro 4, D8): il predicato e'' un RANGE sugli operatori del pattern (`~>=~`/`~<~`, a byte, leakproof) al posto dei due LIKE: commesse_attivita e'' sotto RLS e sotto una policy un LIKE non diventa mai Index Cond (textlike non e'' leakproof) — la lettura era una scansione intera con la policy valutata riga per riga, per OGNI riga della diagnosi. Con l''indice varchar_pattern_ops (90_end/20260921-50) e'' un BitmapOr di tre Index Cond sopra la policy. Semantica identica per le chiavi che riceve (nessun jolly `_`/`%`). BEGIN ATOMIC: dipendenze in pg_depend. ⛔ Niente LIKE nel corpo: pinnato da script/test-fn-get-stato-push-segment-v1. ⭐ rev 2026-10-10 (20261010-82): si entra in commesse_attivita dall''UGUAGLIANZA su segment_base = split_part(p_segment_key, ''#'', 1) (colonna generata di 20261010-80, indicizzata): texteq e'' leakproof e la stima viene dalle statistiche. I tre rami di prima restano come residuo e la implicano: risultati identici. Perche'': con la chiave come parametro (piano generico) il range era stimato al default e la tabella si leggeva per intero sotto la policy. brief-db-segment-base-commesse-attivita.';
+      rollback:
+        # Il corpo di 20260921-55, per intero: senza, il DROP COLUMN del
+        # rollback di 20261010-80 fallirebbe sulla dipendenza.
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_stato_push_segment(
+                  p_segment_key vendite.commesse_attivita.segment_key%TYPE)
+              RETURNS text   -- vocabolario calcolato: LIBERA / ALLOCATA / EMESSA
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+              -- Scopo: classificare lo stato-push della segment_key di una riga
+              --   documento rispetto a vendite.commesse_attivita, vedendo anche
+              --   le attivita' dei componenti BoM (suffisso '#CMP:<id>') e le
+              --   RETTIFICHE (suffisso '#RET:<n>', dal 2026-08-18):
+              --     LIBERA   = nessuna attivita' (riga mai instradata)
+              --     ALLOCATA = attivita' presenti, non tutte EMESSE (in attesa
+              --                di fatturazione; ANNULLATA conta come allocata)
+              --     EMESSA   = attivita' presenti e tutte fatturate
+              --   Single source del predicato "gia' inviato": consumata dalle
+              --   fn_list_*_da_pushare (eleggibile <=> LIBERA), dalla diagnosi
+              --   del DDT (colonna `segment`) e dai rami reason delle capability.
+              -- rev 2026-08-18 (brief nota di credito, N11): il suffisso
+              --   '#RET:%' copre sia la rettifica semplice sia quella per
+              --   componente, perche' '#CMP:' viene DOPO '#RET:<n>'.
+              --   ⚠️ Su una partita fatturata dalla corsia ORD il segmento DDT
+              --   non ha attivita' NORMALE e resterebbe LIBERA anche a nota di
+              --   credito emessa: a impedire la ri-spinta ci sarebbe SOLO la
+              --   cintura XOR sullo stato dell'ordine. Due cinture sono una;
+              --   una e' zero.
+              -- rev 2026-09-21 (D14 giro 4, D8): il predicato e' un RANGE sugli
+              --   operatori del pattern, non piu' due LIKE. commesse_attivita e'
+              --   sotto RLS e sotto una policy un LIKE non diventa MAI Index Cond
+              --   (textlike non e' leakproof); `~>=~`/`~<~` si' — sono a byte e
+              --   leakproof — con l'indice varchar_pattern_ops sulla colonna.
+              --   [k#CMP:, k#CMP;) e' esattamente «comincia per k#CMP:» (';' e'
+              --   il byte dopo ':'). ⛔ Niente LIKE qui: e' pinnato dal pgTAP.
+              SELECT CASE
+                       WHEN count(*) = 0 THEN 'LIBERA'
+                       WHEN bool_and(ca.stato_emissione = 'EMESSA') THEN 'EMESSA'
+                       ELSE 'ALLOCATA'
+                     END
+                FROM vendite.commesse_attivita ca
+               WHERE ca.segment_key = p_segment_key
+                  OR (    ca.segment_key ~>=~ (p_segment_key || '#CMP:')
+                      AND ca.segment_key ~<~  (p_segment_key || '#CMP;'))
+                  OR (    ca.segment_key ~>=~ (p_segment_key || '#RET:')
+                      AND ca.segment_key ~<~  (p_segment_key || '#RET;'));
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_get_stato_push_segment(character varying)
+              IS 'Classifica lo stato-push di una segment_key rispetto a vendite.commesse_attivita: LIBERA (mai instradata) / ALLOCATA (attivita'' presenti, non tutte emesse) / EMESSA (tutte fatturate). Fonte UNICA del predicato «gia'' inviato», consumata dalle fn_list_*_da_pushare (eleggibile <=> LIBERA), dalla diagnosi del DDT (colonna `segment`, da cui il lister deriva) e dai rami reason delle capability. Vede i suffissi dei componenti BoM (#CMP:) e, dal 2026-08-18, quelli delle RETTIFICHE (#RET:<n>, con o senza #CMP a seguire). ⚠️ Il suffisso di rettifica non e'' cosmesi: su una partita fatturata dalla corsia ORD il segmento DDT non ha attivita'' NORMALE e resterebbe LIBERA anche a nota di credito emessa — a impedire la ri-spinta ci sarebbe SOLO la cintura XOR sullo stato dell''ordine, e due cinture sono una mentre una e'' zero. brief-design-note-credito-resi N11. ⭐ rev 2026-09-21 (D14 giro 4, D8): il predicato e'' un RANGE sugli operatori del pattern (`~>=~`/`~<~`, a byte, leakproof) al posto dei due LIKE: commesse_attivita e'' sotto RLS e sotto una policy un LIKE non diventa mai Index Cond (textlike non e'' leakproof) — la lettura era una scansione intera con la policy valutata riga per riga, per OGNI riga della diagnosi. Con l''indice varchar_pattern_ops (90_end/20260921-50) e'' un BitmapOr di tre Index Cond sopra la policy. Semantica identica per le chiavi che riceve (nessun jolly `_`/`%`). BEGIN ATOMIC: dipendenze in pg_depend. ⛔ Niente LIKE nel corpo: pinnato da script/test-fn-get-stato-push-segment-v1.';
