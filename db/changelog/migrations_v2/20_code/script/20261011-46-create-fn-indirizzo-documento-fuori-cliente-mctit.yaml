@@ -1,0 +1,115 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_indirizzo_documento_fuori_cliente(origine_indirizzo,
+#        origine_ruolo, ruolo, istanza)
+#   Il predicato «questo indirizzo del documento e' del suo cliente?».
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§1, §7.2 c, D-1)
+#
+# -- LA REGOLA ------------------------------------------------------------
+#   Un indirizzo del documento preso dall'anagrafica e' del cliente del
+#   documento; un una-tantum, scritto a mano, resta valido sempre (D-4 di
+#   brief-db-esecutivi-ba-coppia: la consegna a terzi passa da li').
+#   * Le due origini NULL: una-tantum -> valido.
+#   * Documento senza ruolo: nessuna ancora -> valido (come il guard del
+#     backend che sostituisce).
+#   * Altrimenti la riga e' d'anagrafica, e il suo ruolo e'
+#     origine_soggetto_ruolo_id (o quello dell'indirizzo d'anagrafica se
+#     l'origine del ruolo manca). E' del cliente se:
+#       - quel ruolo e' il ruolo del documento, e l'indirizzo d'anagrafica
+#         (quando c'e') e' dello stesso ruolo; altrimenti ALTRO_CLIENTE;
+#       - l'istanza dell'indirizzo d'anagrafica e' NULL o e' quella del
+#         documento; altrimenti ALTRA_FORNITURA. ⚠️ Anche su un documento
+#         SENZA istanza (DDT senza BA): e' la scelta del risolutore
+#         (fn_resolve_indirizzo_documento), che con l'istanza NULL prende
+#         solo gli indirizzi generici.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Sui VALORI, non sulla riga: la usano il guard di scrittura (sulla riga
+#   NEW), il cambio di cliente (sulle righe di un documento) e il motivo
+#   d'emissione. Ritorna il motivo, NULL = del cliente.
+#   ⚠️ L'istanza dell'indirizzo d'anagrafica si legge VIVA: la riga del
+#   documento non la registra. anagrafiche.indirizzi non ha RLS: INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261011-46-create-fn-indirizzo-documento-fuori-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20261011-46-create-fn-indirizzo-documento-fuori-cliente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo BB script.fn_indirizzo_documento_fuori_cliente: NULL se l'indirizzo del documento e'
+        del suo cliente (o e' una-tantum), altrimenti ALTRO_CLIENTE / ALTRA_FORNITURA. Brief:
+        brief-db-indirizzi-documento-seguono-il-cliente (§7.2 c).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_indirizzo_documento_fuori_cliente(
+                  p_origine_indirizzo_id      anagrafiche.indirizzi.id%TYPE,
+                  p_origine_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_soggetto_ruolo_id         anagrafiche.soggetti_ruoli.id%TYPE,
+                  p_istanza_utility_id        anagrafiche.indirizzi.istanza_utility_id%TYPE
+              )
+              RETURNS text
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- ⚠️ RETURNS text nudo DICHIARATO: e' un motivo macchina
+              --   (ALTRO_CLIENTE | ALTRA_FORNITURA), senza colonna di vocabolario.
+              DECLARE
+                  v_ind_ruolo   anagrafiche.indirizzi.soggetto_ruolo_id%TYPE;
+                  v_ind_istanza anagrafiche.indirizzi.istanza_utility_id%TYPE;
+                  v_ruolo_riga  anagrafiche.soggetti_ruoli.id%TYPE;
+              BEGIN
+                  -- Una-tantum: scritto a mano, resta valido col cliente che cambia.
+                  IF p_origine_indirizzo_id IS NULL AND p_origine_soggetto_ruolo_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Documento senza ruolo: nessuna ancora da confrontare.
+                  IF p_soggetto_ruolo_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Layer RUOLO: l'indirizzo d'anagrafica, letto vivo. La FK
+                  -- (NO ACTION) garantisce che ci sia.
+                  IF p_origine_indirizzo_id IS NOT NULL THEN
+                      SELECT i.soggetto_ruolo_id, i.istanza_utility_id
+                        INTO v_ind_ruolo, v_ind_istanza
+                        FROM anagrafiche.indirizzi i
+                       WHERE i.id = p_origine_indirizzo_id;
+                  END IF;
+
+                  v_ruolo_riga := COALESCE(p_origine_soggetto_ruolo_id, v_ind_ruolo);
+
+                  -- ⚠️ Due confronti, non uno: un'origine del ruolo che dice il
+                  --   cliente giusto accanto a un indirizzo d'anagrafica di un
+                  --   altro ruolo e' una riga incoerente, e non e' del cliente.
+                  IF v_ruolo_riga IS DISTINCT FROM p_soggetto_ruolo_id
+                     OR (v_ind_ruolo IS NOT NULL AND v_ind_ruolo <> p_soggetto_ruolo_id) THEN
+                      RETURN 'ALTRO_CLIENTE';
+                  END IF;
+
+                  IF v_ind_istanza IS NOT NULL
+                     AND v_ind_istanza IS DISTINCT FROM p_istanza_utility_id THEN
+                      RETURN 'ALTRA_FORNITURA';
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_indirizzo_documento_fuori_cliente(anagrafiche.indirizzi.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE, anagrafiche.indirizzi.istanza_utility_id%TYPE)
+              IS 'Il predicato «l''indirizzo del documento e'' del suo cliente?», sui valori: origine della riga (origine_indirizzo_id, origine_soggetto_ruolo_id) e cliente del documento (ruolo, istanza: script.fn_get_cliente_testata_documento). NULL = del cliente; altrimenti il motivo: ALTRO_CLIENTE (il ruolo della riga, o quello dell''indirizzo d''anagrafica, non e'' il ruolo del documento) o ALTRA_FORNITURA (l''indirizzo d''anagrafica e'' legato a un''istanza diversa da quella del documento, anche quando il documento non ne ha una: e'' la scelta di script.fn_resolve_indirizzo_documento, che con l''istanza NULL prende solo i generici). Una-tantum (le due origini NULL) e documento senza ruolo: sempre NULL. ⚠️ L''istanza dell''indirizzo d''anagrafica si legge viva. La usano vendite.trgfn_doc_indirizzi_guard_cliente, vendite.trgfn_doc_indirizzi_seguono_cliente e script.fn_check_indirizzi_documento_cliente: guard, cambio di cliente e motivo d''emissione non possono rispondere in due modi. Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-1, §7.2 c).';

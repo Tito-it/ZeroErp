@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LO SLOT DI DEFAULT DI UN DOCUMENTO E' UN DATO
+#   config.tipi_indirizzi_allowed + slot_default, ripiego_tipo_indirizzo_id
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 a, D-2)
+#
+# -- IL CASO ------------------------------------------------------------
+#   Quale indirizzo un documento riceve da solo dal suo cliente lo diceva il
+#   backend, in Python (_tipo_default, «regola di UX»): lo slot CON, se manca
+#   FATT, se manca il primo ammesso; e lo riempiva con la catena fissa
+#   CON -> FATT. Con D-2 il riempimento passa al database
+#   (vendite.fn_doc_indirizzo_default): la regola diventa di dominio, e un
+#   dominio si dichiara in configurazione, non si cabla.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   * slot_default: il tipo che il database riempie da solo, uno per ambito
+#     (indice unico parziale). Un ambito senza riga marcata non ha slot di
+#     default: la fattura ha la sua funzione, il DDT d'acquisto un'altra
+#     semantica (la Consegna e' il nostro magazzino).
+#   * ripiego_tipo_indirizzo_id: il tipo d'ANAGRAFICA da cui prendere lo slot
+#     se il cliente non ha quello dello slot («la merce va all'indirizzo di
+#     fatturazione se manca la consegna»). Un livello solo, e solo sullo slot
+#     di default (CHECK): non e' un altro slot, e' una seconda fonte dello
+#     stesso. Non puo' essere il tipo dello slot (CHECK).
+#   * ⚠️ Il ripiego NON deve essere ammesso nell'ambito: e' un tipo di
+#     anagrafica, non uno slot del documento (sul DDT e' ammessa la sola CON).
+#   * La FK la registra la fk_index_policy (opt-in, consentito false): la
+#     tabella ha una ventina di righe.
+#   Seme: il CSV del mirror 20260711-18 (80_data/sql/config/tipi_indirizzi_allowed.csv).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261011-43-alter-tipi-indirizzi-allowed-slot-default-mctit.yaml
+
+  - changeSet:
+      id: 20261011-43-alter-tipi-indirizzi-allowed-slot-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.tipi_indirizzi_allowed: slot_default (il tipo che il database riempie da solo, uno per
+        ambito) e ripiego_tipo_indirizzo_id (il tipo d'anagrafica da cui prenderlo se manca). Brief:
+        brief-db-indirizzi-documento-seguono-il-cliente (§7.2 a).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: tipi_indirizzi_allowed }
+            - not:
+                - columnExists:
+                    { schemaName: config, tableName: tipi_indirizzi_allowed, columnName: slot_default }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_indirizzi_allowed
+                  ADD COLUMN slot_default boolean NOT NULL DEFAULT false,
+                  ADD COLUMN ripiego_tipo_indirizzo_id integer NULL,
+                  ADD CONSTRAINT fk_tipi_indirizzi_allowed_ripiego
+                      FOREIGN KEY (ripiego_tipo_indirizzo_id)
+                      REFERENCES config.tipi_indirizzi (id) ON UPDATE CASCADE,
+                  -- Il ripiego e' una seconda fonte dello slot di default, non
+                  -- un attributo di ogni tipo ammesso.
+                  ADD CONSTRAINT chk_tipi_indirizzi_allowed_ripiego_solo_slot
+                      CHECK (ripiego_tipo_indirizzo_id IS NULL OR slot_default),
+                  ADD CONSTRAINT chk_tipi_indirizzi_allowed_ripiego_diverso
+                      CHECK (ripiego_tipo_indirizzo_id IS DISTINCT FROM tipo_indirizzo_id);
+
+              -- Uno slot di default per ambito. Anche una riga spenta (attivo =
+              -- false) lo occupa: lo slot si sposta togliendo il flag, non
+              -- spegnendo la riga.
+              CREATE UNIQUE INDEX uq_tipi_indirizzi_allowed_slot_default
+                  ON config.tipi_indirizzi_allowed (ambito)
+                  WHERE slot_default;
+
+              COMMENT ON COLUMN config.tipi_indirizzi_allowed.slot_default IS
+                  'Vero sul tipo che il database riempie da solo dall''anagrafica del cliente (vendite.fn_doc_indirizzo_default): alla creazione del documento e dopo un cambio di cliente in bozza. Uno per ambito (uq_tipi_indirizzi_allowed_slot_default). Nessuna riga marcata = l''ambito non ha slot di default. Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-2).';
+              COMMENT ON COLUMN config.tipi_indirizzi_allowed.ripiego_tipo_indirizzo_id IS
+                  'Tipo d''ANAGRAFICA da cui prendere lo slot di default se il cliente non ha quello dello slot (per la Consegna: la Fatturazione). Un livello solo, solo sullo slot di default, diverso dal tipo dello slot. Non e'' uno slot del documento: non deve essere ammesso nell''ambito. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 a).';

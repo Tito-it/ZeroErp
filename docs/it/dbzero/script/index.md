@@ -49,6 +49,7 @@
 - [fn_check_fattura_eliminabile_da_lotto](funzioni/fn_check_fattura_eliminabile_da_lotto.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono di togliere una fattura da un lotto**. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando la fattura si può togliere.
 - [fn_check_fatture_con_plafond_consumato](funzioni/fn_check_fatture_con_plafond_consumato.md) — (funzione nata il 2026-10-04, `20261004-07`)
 - [fn_check_fatture_con_rettifiche](funzioni/fn_check_fatture_con_rettifiche.md)
+- [fn_check_indirizzi_documento_cliente](funzioni/fn_check_indirizzi_documento_cliente.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
 - [fn_check_listino_cambiabile](funzioni/fn_check_listino_cambiabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4 e D-11 di Tid)
 - [fn_check_listino_congelabile](funzioni/fn_check_listino_congelabile.md)
@@ -89,6 +90,7 @@
 - [fn_data_operativa](funzioni/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](funzioni/fn_disdetta_cliente.md) — (rev 2026-08-21)
 - [fn_doc_colonna_modificabile](funzioni/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_indirizzi_sede](funzioni/fn_doc_indirizzi_sede.md)
 - [fn_doc_lock_colonna_bloccata](funzioni/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_montaggi](funzioni/fn_doc_lock_montaggi.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_regola](funzioni/fn_doc_lock_regola.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
@@ -107,6 +109,7 @@
 - [fn_get_ba_emittente_sr_id](funzioni/fn_get_ba_emittente_sr_id.md) — (latest review 13-09-26)
 - [fn_get_ba_emittente_sr_id_installazione](funzioni/fn_get_ba_emittente_sr_id_installazione.md) — (latest review 10-10-26)
 - [fn_get_catasto_source_by_istanza](funzioni/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
+- [fn_get_cliente_testata_documento](funzioni/fn_get_cliente_testata_documento.md)
 - [fn_get_contatti](funzioni/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 - [fn_get_contatto_default](funzioni/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:
 - [fn_get_conto_bancario_predefinito](funzioni/fn_get_conto_bancario_predefinito.md) — (latest review 25-03-26)
@@ -169,6 +172,7 @@
 - [fn_imposta_deve_cambiare_password](funzioni/fn_imposta_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_imposta_totp_obbligatorio](funzioni/fn_imposta_totp_obbligatorio.md) — (scritta il 29-09-2026)
 - [fn_indirizzi_obbligatori_mancanti](funzioni/fn_indirizzi_obbligatori_mancanti.md) — (rev 2026-07-11)
+- [fn_indirizzo_documento_fuori_cliente](funzioni/fn_indirizzo_documento_fuori_cliente.md)
 - [fn_inizio_giorno_operativo](funzioni/fn_inizio_giorno_operativo.md)
 - [fn_is_proprietario_tabella](funzioni/fn_is_proprietario_tabella.md) — (scritta il 25-09-2026)
 - [fn_is_super_admin](funzioni/fn_is_super_admin.md) — (latest review 20-04-2026 — filtro OPERATORE)

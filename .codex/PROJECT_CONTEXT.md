@@ -347,7 +347,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md`, D27, 2026-10-10): su DDT, preventivo
   e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
   e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
-  nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. Al team DB, codice da scrivere.
+  nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. ✅ DB applicato e verde il 2026-10-11 (`20261011-43…-61`): slot di default come dato, guard d'origine sulle sei `*_indirizzi`,
+  cambio di cliente in bozza a trigger, codice `E_INDIRIZZO_DOC_NON_DEL_CLIENTE` nei gate; alla creazione il
+  default lo chiama chi crea (D-2-bis di Tid). ⏳ Tocca a BE/FE (§6, nello stesso giro: chiave i18n e policy del codice); D-4 fatta (la revisione dell'offerta copia gli indirizzi).
 - ⏳ **Le righe di un DDT nato da un ordine** (`work-in-progress/brief-db-ddt-righe-evase-dall-ordine.md`, D28,
   2026-10-10): in bozza la riga evasa cambia quantità e articolo senza che il fulfillment lo veda (ordine evaso
   per 10, bolla a 6). Decisioni chiuse il 2026-10-10: riga evasa ferma; verbo DB per correggere la quantità in
