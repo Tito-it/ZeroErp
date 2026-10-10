@@ -1,0 +1,292 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE FUNZIONI DELLE POLICY DICHIARANO QUANTO COSTANO: COST 5000
+#   le 50 funzioni script.fn_scope_* chiamate dalle policy RLS
+#   Nasce dal pgTAP lento script/test-capability-motivi-e-nessuna-azione-v1
+#   (2026-10-10): la capability del DDT costava ~41 ms a documento.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   Le funzioni di scope delle policy non dichiarano COST: valgono il default
+#   100, cioe' per il pianificatore 100 x cpu_operator_cost = 0,25 unita' a
+#   riga. Costano invece 0,16-0,56 ms a riga — misurato il 2026-10-10 su
+#   dbdev come app, count(*) su 170 tabelle sotto RLS, tutte le famiglie
+#   (ef_whitelist, ownership, shop, note, email) — cioe' ~10-35 unita'
+#   (scala tarata sullo stesso server: 30 unita' = 0,45 ms). Il pianificatore
+#   sottostima la policy di 50 volte, e allora valutarla su TUTTA la tabella
+#   gli sembra piu' conveniente che cercare per chiave le poche righe che
+#   servono.
+#   Caso: vendite.fn_partite_merce su UN DDT faceva Seq Scan sotto policy su
+#   ddt_righe (x2), ddt, resi_righe, resi_righe_riconsegne (x3): ~33 ms su 47,
+#   pagati in proporzione a TUTTE le righe visibili — in esercizio, migliaia.
+#   Lo pagano il drawer DDT, la capability, il lister. Stessa radice del
+#   precedente dei preventivi (brief-db-riferimento-gruppi-lateral-costosa,
+#   Seq Scan sotto policy), la' curato nella forma della query.
+#
+# ── LA CURA, SUL MODELLO ────────────────────────────────────────────
+#   Il costo e' una proprieta' della funzione e si dichiara dove la funzione
+#   e' definita, come ROWS 1 in 20261008-21. COST non forza nessun piano:
+#   da' al pianificatore il prezzo vero. Dove una query deve leggere tutta la
+#   tabella la scansione resta (non c'e' alternativa piu' economica); dove
+#   servono poche righe, l'accesso per chiave diventa la scelta conveniente
+#   e la policy si valuta solo su quelle.
+#   Il valore: ~10-35 unita' / 0,0025 = ~4.000-14.000. Si dichiara 5000 per
+#   tutte, il bordo basso: conta l'ordine di grandezza, non la cifra.
+#   Simulazione (enable_seqscan = off, come app, dbdev): capability su 51 DDT
+#   2,1 -> 0,84 s, fn_partite_merce su un DDT 46 -> 17 ms. E' un'IPOTESI sul
+#   verso, non la misura: la misura vera e' dopo l'apply.
+#
+# ── ⭐ ALTER, NON CREATE OR REPLACE: I %TYPE RESTANO ─────────────────
+#   ALTER FUNCTION cambia solo procost nel catalogo: firma, RETURNS e corpo
+#   restano quelli applicati. Le firme non sono scritte qui: le risolve
+#   regprocedure da pg_proc, per nome. Ricreare le 50 funzioni da una
+#   sorgente avrebbe rischiato di sciogliere i %TYPE delle loro firme.
+#
+# ── PERCHE' UN ELENCO E NON pg_policies ─────────────────────────────
+#   Su un database da zero il changeSet deve sapere su cosa agire anche se una
+#   policy nasce dopo: l'elenco e' esplicito (le 50 funzioni chiamate da
+#   qual o with_check di pg_policies al 2026-10-10). La DERIVAZIONE sta nel
+#   presidio, che e' dove serve: una funzione di policy nuova senza COST lo
+#   rende rosso da sola.
+#
+# ── ⛔ COST E' UNA PROPRIETA' INVISIBILE NEL CORPO ─────────────────────
+#   Come ROWS e security_invoker: un CREATE OR REPLACE FUNCTION che non ripete
+#   COST lo riporta a 100, senza errore e con risultati identici. Lo presidia
+#   db/pgtap/script/test-policy-funzioni-cost-v1.sql. Chi riscrive una di
+#   queste funzioni ripete `COST 5000` nella definizione.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firme, corpi, risultati, perimetro della RLS. Cambiano solo le stime.
+#   Nessun lavoro BE/FE.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-77-alter-fn-scope-policy-cost-mctit.yaml
+
+  - changeSet:
+      id: 20261010-77-alter-fn-scope-policy-cost
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        COST 5000 sulle 50 funzioni script.fn_scope_* chiamate dalle policy RLS: costano
+        0,16-0,56 ms a riga (~10-35 unita') e ne dichiaravano 0,25 (default 100), quindi il
+        pianificatore preferiva valutare la policy su tutta la tabella invece di cercare per
+        chiave. Solo la stima cambia; ALTER, non REPLACE: firme e %TYPE restano.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 50
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname = ANY (ARRAY[
+                  'fn_scope_ba_ownership',
+                  'fn_scope_ba_ownership_via_fattura',
+                  'fn_scope_ba_ownership_via_fattura_sdi',
+                  'fn_scope_cliente_ownership',
+                  'fn_scope_cliente_ownership_via_ordine',
+                  'fn_scope_cliente_ownership_via_ordine_riga',
+                  'fn_scope_ef_whitelist',
+                  'fn_scope_ef_whitelist_via_asset',
+                  'fn_scope_ef_whitelist_via_attivita_fatturabile',
+                  'fn_scope_ef_whitelist_via_commessa',
+                  'fn_scope_ef_whitelist_via_commessa_attivita',
+                  'fn_scope_ef_whitelist_via_contabile',
+                  'fn_scope_ef_whitelist_via_contratto',
+                  'fn_scope_ef_whitelist_via_contratto_riga',
+                  'fn_scope_ef_whitelist_via_coppia',
+                  'fn_scope_ef_whitelist_via_ddt',
+                  'fn_scope_ef_whitelist_via_ddt_riga',
+                  'fn_scope_ef_whitelist_via_documento_generato',
+                  'fn_scope_ef_whitelist_via_efba',
+                  'fn_scope_ef_whitelist_via_evento_asset',
+                  'fn_scope_ef_whitelist_via_fattura',
+                  'fn_scope_ef_whitelist_via_fattura_sdi',
+                  'fn_scope_ef_whitelist_via_flusso',
+                  'fn_scope_ef_whitelist_via_inventario',
+                  'fn_scope_ef_whitelist_via_listino',
+                  'fn_scope_ef_whitelist_via_listino_versione',
+                  'fn_scope_ef_whitelist_via_lotto',
+                  'fn_scope_ef_whitelist_via_magazzino',
+                  'fn_scope_ef_whitelist_via_movimento',
+                  'fn_scope_ef_whitelist_via_offerta',
+                  'fn_scope_ef_whitelist_via_offerta_eccezione',
+                  'fn_scope_ef_whitelist_via_ordine',
+                  'fn_scope_ef_whitelist_via_ordine_riga',
+                  'fn_scope_ef_whitelist_via_pratica',
+                  'fn_scope_ef_whitelist_via_preventivo',
+                  'fn_scope_ef_whitelist_via_preventivo_riga',
+                  'fn_scope_ef_whitelist_via_reso',
+                  'fn_scope_ef_whitelist_via_reso_riga',
+                  'fn_scope_ef_whitelist_via_rettifica',
+                  'fn_scope_ef_whitelist_via_sr',
+                  'fn_scope_ef_whitelist_via_trasferimento',
+                  'fn_scope_email_ambito',
+                  'fn_scope_fornitore_ownership',
+                  'fn_scope_note_cliente',
+                  'fn_scope_note_ef_whitelist',
+                  'fn_scope_note_magazzino_ef_whitelist',
+                  'fn_scope_note_shop',
+                  'fn_scope_shop_via_ba',
+                  'fn_scope_shop_via_ordine',
+                  'fn_scope_shop_via_ordine_riga'
+                 ]);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ COST si perde a ogni CREATE OR REPLACE che non lo ripete:
+              --    presidio in script/test-policy-funzioni-cost-v1.sql.
+              DO $cost$
+              DECLARE
+                  v_fn regprocedure;
+                  v_n  integer := 0;
+              BEGIN
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure
+                        FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script'
+                         AND p.proname = ANY (ARRAY[
+                             'fn_scope_ba_ownership',
+                             'fn_scope_ba_ownership_via_fattura',
+                             'fn_scope_ba_ownership_via_fattura_sdi',
+                             'fn_scope_cliente_ownership',
+                             'fn_scope_cliente_ownership_via_ordine',
+                             'fn_scope_cliente_ownership_via_ordine_riga',
+                             'fn_scope_ef_whitelist',
+                             'fn_scope_ef_whitelist_via_asset',
+                             'fn_scope_ef_whitelist_via_attivita_fatturabile',
+                             'fn_scope_ef_whitelist_via_commessa',
+                             'fn_scope_ef_whitelist_via_commessa_attivita',
+                             'fn_scope_ef_whitelist_via_contabile',
+                             'fn_scope_ef_whitelist_via_contratto',
+                             'fn_scope_ef_whitelist_via_contratto_riga',
+                             'fn_scope_ef_whitelist_via_coppia',
+                             'fn_scope_ef_whitelist_via_ddt',
+                             'fn_scope_ef_whitelist_via_ddt_riga',
+                             'fn_scope_ef_whitelist_via_documento_generato',
+                             'fn_scope_ef_whitelist_via_efba',
+                             'fn_scope_ef_whitelist_via_evento_asset',
+                             'fn_scope_ef_whitelist_via_fattura',
+                             'fn_scope_ef_whitelist_via_fattura_sdi',
+                             'fn_scope_ef_whitelist_via_flusso',
+                             'fn_scope_ef_whitelist_via_inventario',
+                             'fn_scope_ef_whitelist_via_listino',
+                             'fn_scope_ef_whitelist_via_listino_versione',
+                             'fn_scope_ef_whitelist_via_lotto',
+                             'fn_scope_ef_whitelist_via_magazzino',
+                             'fn_scope_ef_whitelist_via_movimento',
+                             'fn_scope_ef_whitelist_via_offerta',
+                             'fn_scope_ef_whitelist_via_offerta_eccezione',
+                             'fn_scope_ef_whitelist_via_ordine',
+                             'fn_scope_ef_whitelist_via_ordine_riga',
+                             'fn_scope_ef_whitelist_via_pratica',
+                             'fn_scope_ef_whitelist_via_preventivo',
+                             'fn_scope_ef_whitelist_via_preventivo_riga',
+                             'fn_scope_ef_whitelist_via_reso',
+                             'fn_scope_ef_whitelist_via_reso_riga',
+                             'fn_scope_ef_whitelist_via_rettifica',
+                             'fn_scope_ef_whitelist_via_sr',
+                             'fn_scope_ef_whitelist_via_trasferimento',
+                             'fn_scope_email_ambito',
+                             'fn_scope_fornitore_ownership',
+                             'fn_scope_note_cliente',
+                             'fn_scope_note_ef_whitelist',
+                             'fn_scope_note_magazzino_ef_whitelist',
+                             'fn_scope_note_shop',
+                             'fn_scope_shop_via_ba',
+                             'fn_scope_shop_via_ordine',
+                             'fn_scope_shop_via_ordine_riga'
+                         ])
+                  LOOP
+                      EXECUTE format('ALTER FUNCTION %s COST 5000', v_fn);
+                      v_n := v_n + 1;
+                  END LOOP;
+                  IF v_n <> 50 THEN
+                      RAISE EXCEPTION '20261010-77: attese 50 funzioni di policy, trovate %', v_n;
+                  END IF;
+              END
+              $cost$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $cost$
+              DECLARE v_fn regprocedure;
+              BEGIN
+                  FOR v_fn IN
+                      SELECT p.oid::regprocedure
+                        FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script'
+                         AND p.proname = ANY (ARRAY[
+                             'fn_scope_ba_ownership',
+                             'fn_scope_ba_ownership_via_fattura',
+                             'fn_scope_ba_ownership_via_fattura_sdi',
+                             'fn_scope_cliente_ownership',
+                             'fn_scope_cliente_ownership_via_ordine',
+                             'fn_scope_cliente_ownership_via_ordine_riga',
+                             'fn_scope_ef_whitelist',
+                             'fn_scope_ef_whitelist_via_asset',
+                             'fn_scope_ef_whitelist_via_attivita_fatturabile',
+                             'fn_scope_ef_whitelist_via_commessa',
+                             'fn_scope_ef_whitelist_via_commessa_attivita',
+                             'fn_scope_ef_whitelist_via_contabile',
+                             'fn_scope_ef_whitelist_via_contratto',
+                             'fn_scope_ef_whitelist_via_contratto_riga',
+                             'fn_scope_ef_whitelist_via_coppia',
+                             'fn_scope_ef_whitelist_via_ddt',
+                             'fn_scope_ef_whitelist_via_ddt_riga',
+                             'fn_scope_ef_whitelist_via_documento_generato',
+                             'fn_scope_ef_whitelist_via_efba',
+                             'fn_scope_ef_whitelist_via_evento_asset',
+                             'fn_scope_ef_whitelist_via_fattura',
+                             'fn_scope_ef_whitelist_via_fattura_sdi',
+                             'fn_scope_ef_whitelist_via_flusso',
+                             'fn_scope_ef_whitelist_via_inventario',
+                             'fn_scope_ef_whitelist_via_listino',
+                             'fn_scope_ef_whitelist_via_listino_versione',
+                             'fn_scope_ef_whitelist_via_lotto',
+                             'fn_scope_ef_whitelist_via_magazzino',
+                             'fn_scope_ef_whitelist_via_movimento',
+                             'fn_scope_ef_whitelist_via_offerta',
+                             'fn_scope_ef_whitelist_via_offerta_eccezione',
+                             'fn_scope_ef_whitelist_via_ordine',
+                             'fn_scope_ef_whitelist_via_ordine_riga',
+                             'fn_scope_ef_whitelist_via_pratica',
+                             'fn_scope_ef_whitelist_via_preventivo',
+                             'fn_scope_ef_whitelist_via_preventivo_riga',
+                             'fn_scope_ef_whitelist_via_reso',
+                             'fn_scope_ef_whitelist_via_reso_riga',
+                             'fn_scope_ef_whitelist_via_rettifica',
+                             'fn_scope_ef_whitelist_via_sr',
+                             'fn_scope_ef_whitelist_via_trasferimento',
+                             'fn_scope_email_ambito',
+                             'fn_scope_fornitore_ownership',
+                             'fn_scope_note_cliente',
+                             'fn_scope_note_ef_whitelist',
+                             'fn_scope_note_magazzino_ef_whitelist',
+                             'fn_scope_note_shop',
+                             'fn_scope_shop_via_ba',
+                             'fn_scope_shop_via_ordine',
+                             'fn_scope_shop_via_ordine_riga'
+                         ])
+                  LOOP
+                      EXECUTE format('ALTER FUNCTION %s COST 100', v_fn);
+                  END LOOP;
+              END
+              $cost$;

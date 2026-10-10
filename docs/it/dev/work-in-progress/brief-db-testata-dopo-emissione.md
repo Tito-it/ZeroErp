@@ -552,6 +552,37 @@ dell'offerta e il test 5 di quello del preventivo.
   trasversali), senza e con il giro: identici, salvo i quattro adeguati qui sopra
   (`test-contratti-step23-v1` test 2 verificava il trigger ritirato; ora verifica le quattro
   colonne nel lock di testata).
+* ⚠️ **Un buco della regressione, trovato da Tid dopo l'apply (2026-10-10).** Anche il test 13 di
+  `vendite/test-ddt-read-side-v1` pinnava `can_edit_testata = false` su una bolla `EMESSO`, ed è
+  diventato rosso alla corsa di Tid. Nella mia regressione risultava «uguale senza e con», ma
+  **troncato al test 5 in tutte e due le corse**: sullo scratch la sua fixture cerca i dati nel
+  database e si ferma, quindi il 13 non girava mai. Uguale non vuol dire verificato: un file che
+  si ferma prima dell'asserzione è cieco, e va contato come non provato. Adeguato come gli altri
+  tre (testata modificabile, identità, causale, cliente e numero fra i non modificabili, il
+  tracciamento no); il predicato nuovo è vero sulla lettura dal montaggio per `EMESSO` (dbdev,
+  come app). Gli altri pgTAP che nominano `can_edit_testata` o `non_editable_fields`, cercati per
+  nome: sono quelli già adeguati più `dbops/test-fn-non-editable-fields-conditional`, che parla
+  degli articoli.
+* ⚠️ **Secondo rosso alla corsa di Tid: `vendite/test-resolve-termini-livello-sorgente-v1`.** Il
+  file prendeva attività reali già spinte in commessa e cambiava termine e modalità di pagamento
+  sul loro ordine e preventivo, cioè su documenti fuori bozza: dopo D-3 il modello non lo ammette
+  da nessun percorso (`E_DOC_CONDIZIONI_FUORI_BOZZA`). **Riscritto in modo costruttivo** (scelta
+  di Tid, 2026-10-10): ordine e preventivo nascono in bozza col loro termine, escono dalla bozza
+  con le transizioni vere, passano dal push come lo fa il backend (lista da pushare →
+  `fn_get_or_create_commessa` con termine e modalità del documento → `fn_link_commessa_sorgente` →
+  `fn_upsert_commessa_attivita`) e dal pull (`fn_emit_attivita_fatturabili_da_commessa`). Al
+  preventivo un articolo servizio con natura `SERVIZIO_UNA_TANTUM`: la merce andrebbe all'ordine.
+  Il test non dipende più dai dati del database; il 7 (sorgente bolla, tipo non gestito) resta
+  sui dati e, dove non ce ne sono, è uno `skip` dichiarato. Su zeroerp_ci 9/9 (il 7 in skip).
+* **Censimento per nome** dei pgTAP che scrivono una colonna di testata ora bloccata (55 file).
+  Su zeroerp_ci nessuno solleva i codici nuovi; 30 si fermano prima della fine per i loro fixture
+  sui dati, e lì lo scratch è cieco. Di quelli che scrivono una colonna bloccata **da questa
+  fase**, letto il contesto: `fatturazione_trigger` è sempre rimesso su un ordine appena creato in
+  bozza; `ddt.data` in `test-documenti-numerazione-trasloco-v1` prima dell'emissione; i dati di
+  trasporto in `test-fn-genera-ddt-riconsegna-eredita-v1` sulla bolla appena generata; `meta`
+  dell'ordine pushato in `test-fatturazione-immediata-simmetria-sorgenti-v1` (aperta in
+  `CONFERMATO`); `codice_cig` in `test-fatture-atti-v1` su un contratto che deve essere `ATTIVO`
+  (l'unico che dipende dallo stato del contratto nel test). Da guardare alla corsa intera di Tid.
 * I due CSV caricati per intero (upsert di 1034 codici e 1030 messaggi) dopo l'SQL estratto:
   nessun rifiuto.
 * `plpgsql_check`: nessun avviso nuovo; firme delle capability invariate (il reso ora ancorato

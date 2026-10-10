@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_reso(p_auth_user_id integer, p_reso_id
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_reso(p_auth_user_id integer, p_reso_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: dire se l'operatore ha nel proprio perimetro
     --   l'emittente del reso indicato.

@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_offerta(p_auth_user_id integer, p_offe
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_offerta(p_auth_user_id integer, p_offerta_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: dire se l'operatore ha nel proprio perimetro
     --   l'emittente dell'offerta indicata.

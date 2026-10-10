@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_note_magazzino_ef_whitelist(p_auth_user_id integer, p_t
 CREATE OR REPLACE FUNCTION script.fn_scope_note_magazzino_ef_whitelist(p_auth_user_id integer, p_target_tipo character varying, p_target_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: smistare la nota verso l'adattatore della sua famiglia.
     --   Serve al PADRE partizionato magazzino.note, che non eredita le

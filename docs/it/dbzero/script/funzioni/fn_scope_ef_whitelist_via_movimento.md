@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_movimento(p_auth_user_id integer, p_mo
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_movimento(p_auth_user_id integer, p_movimento_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: perimetro di un movimento del registro, via il suo magazzino.
     --   E' la chiave che porta magazzino.note_movimento.

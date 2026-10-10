@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_lotto(p_auth_user_id integer, p_lotto_
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_lotto(p_auth_user_id integer, p_lotto_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: dire se l'operatore ha nel proprio perimetro
     --   l'emittente del lotto di fatturazione indicato.

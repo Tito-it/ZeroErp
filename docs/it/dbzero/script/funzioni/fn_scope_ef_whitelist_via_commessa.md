@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_commessa(p_auth_user_id integer, p_com
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_commessa(p_auth_user_id integer, p_commessa_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Risolve commessa -> emittente_soggetto_ruolo_id e delega
     -- all'adapter SR. Commessa inesistente / emittente NULL -> SR

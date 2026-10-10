@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_inventario(p_auth_user_id integer, p_i
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_inventario(p_auth_user_id integer, p_inventario_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: perimetro di un inventario via il suo magazzino. E' la chiave
     --   che portano inventari_righe (inventario_id) e le note

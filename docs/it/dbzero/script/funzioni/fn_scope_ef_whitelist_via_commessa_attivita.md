@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_commessa_attivita(p_auth_user_id integ
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_commessa_attivita(p_auth_user_id integer, p_commessa_attivita_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: dire se l'operatore ha nel proprio perimetro
     --   l'emittente della commessa a cui la riga appartiene.

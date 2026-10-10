@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ba_ownership(p_identita_id bigint, p_billing_account_id
 CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership(p_identita_id bigint, p_billing_account_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- =========================================================
     -- Scope policy BA_OWNERSHIP, versione ruolo-aware.

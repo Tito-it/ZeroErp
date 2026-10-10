@@ -159,7 +159,6 @@ db/pgtap/vendite/test-resi-motore-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-resi-righe-guard-origine-coerente-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-resi-rinunce-fondamenta-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-resi-rinunce-scenario-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-resolve-termini-livello-sorgente-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-rettifica-non-annullabile-e-prezzo-immutabile-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ricalcola-riepiloghi-iva.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ricalcola-totali-fattura-arrotondamento.sql	ERRORE_FIXTURE

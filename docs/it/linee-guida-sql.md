@@ -1322,8 +1322,24 @@ CREATE FUNCTION script.fn_scope_ba_ownership(
 ) RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
+COST 5000
 AS $$ ... $$;
 ```
+
+⛔ **`COST 5000`, sempre, e ripetuto a ogni `CREATE OR REPLACE`.** Una
+funzione di scope fa almeno una lettura per riga: costa 0,16-0,56 ms a riga
+(misura dbdev come app del 2026-10-10, su 170 tabelle sotto RLS), cioè
+~10-35 unità del pianificatore. Il default `COST 100` ne dichiara 0,25: il
+pianificatore sottostima la policy di 50 volte, e allora valutarla su **tutta**
+la tabella gli sembra più conveniente che cercare per chiave le poche righe che
+servono — caso: `vendite.fn_partite_merce` su un DDT, ~33 ms su 47 in
+`Seq Scan` sotto policy. `COST` non forza un piano: dà al pianificatore il
+prezzo vero. Conta l'ordine di grandezza, non la cifra.
+⚠️ È una proprietà **invisibile nel corpo**, come `ROWS` e `security_invoker`:
+un `CREATE OR REPLACE` che non la ripete la riporta a 100, con risultati
+identici. La presidia `script/test-policy-funzioni-cost-v1`, che deriva le
+funzioni da `pg_policies` (`qual` e `with_check`): una policy nuova che chiama
+una funzione senza `COST` lo rende rosso da sola. Origine: `20261010-77`.
 
 Policy che la usa:
 
@@ -1481,7 +1497,7 @@ Naming file test: `db/pgtap/rls/<schema>_<tabella>_rls.sql`.
 
 Prima di attivare RLS su una tabella esistente:
 
-* Funzione `script.fn_scope_*` scritta e coperta da pgTAP
+* Funzione `script.fn_scope_*` scritta e coperta da pgTAP, con `COST 5000` (§10.3)
 * Backend popola tutti i GUC necessari in tutte le auth class
 * La FK della colonna emittente ha una **decisione dichiarata** in
   `dbops.fk_index_policy` — un seed CSV con `true` o `false` **e il perché**

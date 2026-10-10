@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_offerta_eccezione(p_auth_user_id integ
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_offerta_eccezione(p_auth_user_id integer, p_eccezione_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: come sopra, ma partendo da una ECCEZIONE di offerta —
     --   e' la chiave che porta
