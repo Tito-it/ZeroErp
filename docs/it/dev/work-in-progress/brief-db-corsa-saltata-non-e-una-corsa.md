@@ -4,8 +4,11 @@
 > [brief-be-db-fe-un-solo-fuso-aziendale](../work-done/brief-be-db-fe-un-solo-fuso-aziendale.md) (T-9).
 > **A chi:** team DB (`dev/db-tid`); ricadute BE in §6.
 > **Decisione di Tid (2026-10-09):** aprire il brief.
-> **Stato:** 🔵 da fare. **Rivisto** dalla sessione DB (`dev/db-tid`) il 2026-10-09: decisioni
-> di Tid e lavoro DB nel §8, che prevale sui §3–§5 dove dissente.
+> **Stato:** ✅ **lato DB chiuso** (2026-10-10, §8.5): changeSet `20261010-20` … `-25`
+> **applicati** da Tid, pgTAP di `maintenance/` **senza rossi** (compreso il nuovo
+> `test-job-run-saltata-v1`). Resta il BE (§8.6). **Rivisto** dalla sessione DB
+> (`dev/db-tid`) il 2026-10-09: decisioni di Tid e lavoro DB nel §8, che prevale sui §3–§5
+> dove dissente.
 
 ## 1. Il fatto
 
@@ -164,3 +167,70 @@ stesso giorno. Dove dissente dai §3–§5, vale questo paragrafo.
   «presa e mai chiusa»;
 * `vw_processi_programmazione`: una skip nella tolleranza tiene `OK` il timer (niente
   `TIMER_FERMO`), e `ultimo_esito` è quello della corsa vera.
+
+### 8.5 Stato del lavoro DB (2026-10-10)
+
+| # | Cartella | Cosa |
+| --- | --- | --- |
+| `-20` | `00_schema/maintenance` | `job_run_log.saltata boolean NOT NULL DEFAULT false`; CHECK `chk_job_run_log_saltata` (`NOT saltata OR (ended_at IS NOT NULL AND ok IS NULL)`); COMMENT |
+| `-21` | `20_code/script` | `fn_job_run_start`: la skip nasce `saltata`, chiusa, `ok` NULL |
+| `-22` | `20_code/maintenance` | `fn_run_and_log`: idem, e ora con `ended_at` (prima mancava); firma ancorata con `%TYPE` |
+| `-23` | `20_code/script` | `fn_job_run_end`: rifiuta una riga saltata, `E_JOB_RUN_SALTATA_NON_CHIUDIBILE` (TECNICO) |
+| `-24` | `20_code/maintenance` | `vw_job_run_da_guardare`: la CTE `ultima` esclude le saltate |
+| `-25` | `20_code/dbops` | `vw_processi_programmazione`: solo `ultimo_esito` esclude le saltate; COMMENT sulle tre colonne del giornale |
+
+`80_data`: una riga in `codici_errore.csv` e `messaggi_errore.csv` (id 1244).
+
+Corpi presi dall'ultimo YAML di ogni oggetto, verificati identici al vivo (`prosrc` su
+`zeroerp_ci`); il corpo della vista dei processi è estratto dal `20261009-34` da uno script che
+dichiara l'unica sostituzione. Firme, `SECURITY`, `search_path` e ACL invariati.
+
+**pgTAP nuovo:** `maintenance/test-job-run-saltata-v1.sql` (11 asserzioni, runner owner):
+colonna e CHECK, corse vere che restano vere, il rifiuto di `fn_job_run_end`, la corsa appesa
+seguita da una skip, `ultimo_esito` sulla corsa vera, la skip che tiene OK il timer (D3), e i
+**due rami skip veri**, col lock tenuto da una seconda sessione via dblink (dove dblink non si
+apre, cioè su dev, vanno in `skip()` col motivo). Il ramo skip, che
+`test-job-run-attore.sql` dichiarava «non collaudabile qui», ora ha un test.
+
+#### La prova (2026-10-10), e cosa non copre
+
+Su `zeroerp_ci`, come `zeroerp`, **SQL estratto dagli YAML** in ordine di numero, `sqlCheck`
+delle preCondition valutate prima (verdi), `80_data` simulato con le righe vere del CSV, vincoli
+differiti come Liquibase, tutto in `BEGIN … ROLLBACK`. Scratch verificato intatto dopo.
+
+| Prova | Esito |
+| --- | --- |
+| pgTAP nuovo | 11/11 (seconda sessione dblink aperta: i rami skip veri sono girati) |
+| **mutazioni** (oggetto rimesso alla versione di prima) | `fn_job_run_start` → rosso il 10; `fn_run_and_log` → l'11; `fn_job_run_end` → il 6; vista di presidio → il 7; vista processi → l'8; skip esclusa anche dal segno di vita → il 9 (`MUTO/TIMER_FERMO`) |
+| firme, `SECURITY`, `search_path`, ACL, una funzione per nome | identici al vivo |
+| viste: `pg_get_viewdef` prima/dopo | cambia solo il filtro `NOT saltata` |
+| `plpgsql_check` sulle tre funzioni | 0 errori |
+| 18 pgTAP esistenti prima/dopo (giornale, processi, guardiano, postura, e i presidi trasversali: riferimenti morti, catalogo messaggi, rubinetto, stati-check, codici-motivo, storico-scope) | stessi ok in tutti |
+| guardrail statici (runOnChange, preCondition/seed, DDL su trigger, GRANT batch, v1, letterali, timestamp, preambolo pgTAP) | verdi |
+
+⚠️ Due cose da dire:
+* `test-app-postura-job-run-log-v1` ha **1 rosso prima e dopo** (il 9): gira come owner, che
+  ha il privilegio che il test vuole negato all'app. Atteso fuori dal runner.
+* `test-vw-job-run-da-guardare` ha dato **5 ok alla prima corsa «prima»** e 6/6 in quattro
+  corse successive, senza i changeSet: un'oscillazione non riprodotta, non un effetto di questo
+  lavoro (il «dopo» è sempre 6/6). Nessuna riga lasciata nel giornale dello scratch.
+
+**Non coperto:** il loader vero dei due CSV (simulato con `INSERT`); la RLS e il runner come
+applicazione; dbdev; il canale di log dblink (nella prova la riga di `error_log` non si scrive,
+perché il codice nuovo non è committato). L'apply e la corsa del runner sono di Tid.
+
+✅ **Apply e corsa del runner (Tid, 2026-10-10):** migrazione applicata, pgTAP di `maintenance/`
+senza rossi. Una corsa lanciata prima dell'apply aveva dato 11/11 rossi su
+`test-job-run-saltata-v1` («la colonna saltata non esiste»): era il database non ancora migrato.
+
+### 8.6 Ricadute BE (al posto del §6)
+
+* `error_policies_generated.py` va **rigenerato** per `E_JOB_RUN_SALTATA_NON_CHIUDIBILE`.
+* `MaintenanceRepository.corsa_riuscita_dal` **non cambia**: legge `AND ok`, e una skip ha
+  `ok` NULL (D2). Il test sul DB vero che costruisce la skip (§6) resta utile.
+* I lettori che **mostrano** le corse (`list_job_runs`, `job_liveness`, `list_job_summary`,
+  `ProcessiRepository`): una skip ora ha `ok` NULL, come una corsa **aperta**. Per non
+  mostrarla «in corso» si legge `saltata` (o `ended_at`). Le skip scritte prima del
+  2026-10-10 restano `ok = true`, `saltata = false` (D4).
+* `JobRunHandle`: invariato. Su `acquired = false` non chiama `fn_job_run_end`, e dal `-23`
+  il DB lo rifiuterebbe comunque.

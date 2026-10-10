@@ -22,6 +22,18 @@
 > rossi di CI (Tid, 2026-10-08). **⏳ Restano** i tre trovati del §F.4.3 (il primo, la quantità
 > DERIVATA_COMPONENTI, torna al team DB dopo la decisione di Tid; con lui `quantita` nel payload
 > di riga: §G.1), poi il collaudo a video (§D.5 + §G.4, dopo, per scelta di Tid) e l'archiviazione.
+> **⏭️ Chi riparte (2026-10-10).** Il §G è committato (`67a0cac2e`, in `Tito-dev`). Riparte **prima
+> Tid**, poi il **DB**, poi il **BE**:
+>
+> 1. **Tid** decide il primo trovato del §F.4.3 (la quantità della riga DERIVATA_COMPONENTI);
+> 2. **DB**: il giro che ne segue (calcolo della quantità, oppure la DERIVATA tolta da
+>    `fn_fonte_porta_quantita` e dai due CHECK), più commenti e manual che oggi dicono il falso;
+> 3. **BE**: toglie `quantita` dalle chiavi ammesse del payload di riga (§G.1);
+> 4. **Tid**: collaudo a video (§D.5 + §G.4), poi l'archiviazione.
+>
+> Il secondo trovato (FISSA, `quantita` a mano) resta aperto senza richiesta; il terzo (ordine fra
+> guard del listino e lock del contratto attivo) è **passato** a
+> [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md) §5 (§F.4.3).
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
 > **Le decisioni** (di Tid, 2026-10-07) stanno in §C.5 e in coda al §C.7: A-D1 chiusa dal modello,
 > A-D2 il contratto non si attiva senza versione in vigore, A-D3 la revisione congela alla sua
@@ -1182,6 +1194,8 @@ riscritta: il campo è sempre `qta_operativa`.
   cambio di listino incoerente risponde «listino di un'altra utility/azienda» prima di «campi
   bloccati» (`a10_guard_listino…` < `a10_lock_post_attivazione`). L'operatore corregge il listino
   e poi trova il lock. Se conta, il lock va in `_a05_` (linee-guida-trigger), cantiere a sé.
+  ➡️ **Passato** (2026-10-10) a [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md)
+  §5: quel giro rimonta il lock del contratto nella forma per stato, e lì se ne sceglie il posto.
 
 #### F.4.4 pgTAP e prova (2026-10-08, prima dell'apply)
 
@@ -1323,7 +1337,7 @@ collaudo a video e l'archiviazione.
 
 ## G. Terzo giro BE/FE (`dev/backend-tid`, 2026-10-08)
 
-> Esegue il §F.4.5 (e con lui il resto del §E.5). Non committato: lo decide Tid.
+> Esegue il §F.4.5 (e con lui il resto del §E.5). Committato (`67a0cac2e`, in `Tito-dev`).
 
 ### G.1 F-1, la quantità
 

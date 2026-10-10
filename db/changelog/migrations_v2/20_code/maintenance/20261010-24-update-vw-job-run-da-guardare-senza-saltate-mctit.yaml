@@ -1,0 +1,174 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ L'ULTIMA CORSA E' L'ULTIMA CORSA VERA.
+#   Brief: brief-db-corsa-saltata-non-e-una-corsa §2.2 e §8.3 punto 5
+#
+#   Una corsa col processo vivo ma bloccato tiene il lock. Ogni sveglia
+#   successiva scrive una skip, piu' recente della corsa appesa: la CTE
+#   `ultima` (DISTINCT ON jobname, la piu' recente) prendeva la skip, e il ramo
+#   «presa e mai chiusa: il job e' morto senza dire niente» non scattava piu'.
+#   Il caso che la vista esiste per vedere lo copriva proprio la sveglia che
+#   doveva farlo emergere.
+#   ⇒ La CTE esclude le righe saltate. La skip resta nel giornale, e resta un
+#   segno di vita della SVEGLIA (dbops.vw_processi_programmazione la conta, D3):
+#   qui la domanda e' sul LAVORO.
+#   ⚠️ E con ok NULL (D2) servirebbe comunque: una skip come ultima corsa, senza
+#   rossi recenti, non entra nella vista; con un rosso recente ci entrerebbe col
+#   motivo «ultima corsa OK… intermittente», che di una skip e' falso.
+#
+# ⚠️ I due conteggi dei rossi (`ok IS FALSE`) non cambiano: una skip ha ok NULL.
+# ⚠️ Stesse colonne, stesso ordine: CREATE OR REPLACE VIEW. Corpo dal
+#   20260905-39, unico changeSet della vista, coerente con la doc auto-gen.
+#   Nessuna reloption (doc senza «Opzioni di sicurezza»); il GRANT a
+#   zeroerp_app lo conserva il CREATE OR REPLACE. Il COMMENT si riscrive per
+#   intero: testo di prima + la revisione.
+#
+# Verifica: db/pgtap/maintenance/test-job-run-saltata-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/maintenance/20261010-24-update-vw-job-run-da-guardare-senza-saltate-mctit.yaml
+
+  - changeSet:
+      id: 20261010-24-update-vw-job-run-da-guardare-senza-saltate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.vw_job_run_da_guardare: la CTE `ultima` esclude le corse
+        saltate, cosi' una corsa appesa seguita da skip resta «presa e mai
+        chiusa». brief-db-corsa-saltata-non-e-una-corsa §8.3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                { schemaName: maintenance, viewName: vw_job_run_da_guardare }
+            - columnExists:
+                { schemaName: maintenance, tableName: job_run_log, columnName: saltata }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW maintenance.vw_job_run_da_guardare AS
+              WITH ultima AS (
+                  -- ⭐ Una riga per job: l'ULTIMA corsa. E' cio' che rende la
+                  --   vista capace di tornare vuota da sola.
+                  SELECT DISTINCT ON (l.jobname)
+                         l.id, l.jobname, l.stepname, l.processo_codice,
+                         l.origine, l.started_at, l.ended_at, l.ok,
+                         l.error_code, l.message, l.error_detail,
+                         l.run_uuid, l.auth_user_id, l.meta
+                    FROM maintenance.job_run_log l
+                   -- ⛔ Rev 2026-10-10: l'ultima corsa VERA. Una skip e' piu'
+                   --   recente della corsa appesa che l'ha causata, e la
+                   --   nascondeva. brief-db-corsa-saltata-non-e-una-corsa §2.2.
+                   WHERE NOT l.saltata
+                   ORDER BY l.jobname, l.started_at DESC, l.id DESC
+              )
+              SELECT u.jobname,
+                     u.processo_codice,
+                     u.origine,
+                     u.started_at,
+                     u.ended_at,
+                     -- ⭐ Tre motivi, perche' sono tre guasti diversi e vogliono
+                     --   tre gesti diversi.
+                     CASE
+                         WHEN u.ok IS FALSE
+                             THEN 'l''ultima corsa e'' FALLITA'
+                         WHEN u.ok IS NULL AND u.ended_at IS NULL
+                             THEN 'presa e mai chiusa: il job e'' morto senza dire niente'
+                         -- ⭐ Il terzo caso, e senza di lui la vista sarebbe
+                         --   cieca proprio dove serve: un job che fallisce e
+                         --   passa, fallisce e passa. L'ultima corsa e' verde,
+                         --   quindi da sola non lo direbbe nessuno.
+                         ELSE 'ultima corsa OK, ma ha fallito di recente: intermittente'
+                     END AS motivo,
+                     u.error_code,
+                     u.message,
+                     u.error_detail,
+                     -- Da quanto: e' il numero che dice se guardare adesso o
+                     -- domani.
+                     now() - u.started_at AS da_quanto,
+                     u.run_uuid,
+                     u.id AS job_run_id,
+                     -- ⚠️ Quante volte di fila: 29 fallimenti in un giorno e uno
+                     --   solo non sono la stessa situazione, e la vista deve
+                     --   poterlo dire senza elencarli.
+                     (SELECT count(*)
+                        FROM maintenance.job_run_log p
+                       WHERE p.jobname = u.jobname
+                         AND p.ok IS FALSE
+                         AND p.started_at >= u.started_at - interval '7 days')
+                         AS falliti_ultimi_7_giorni
+                FROM ultima u
+               WHERE u.ok IS FALSE
+                  -- ⭐ INTERMITTENZA: l'ultima corsa e' andata bene, ma nei sette
+                  --   giorni prima ha fallito almeno una volta. Un job che
+                  --   fallisce e passa non e' sano, e guardando solo l'ultima
+                  --   corsa sarebbe invisibile.
+                  -- ⚠️ Misurato il 2026-09-05: `sync_auth_user_active` ha 29
+                  --   fallimenti in un giorno e l'ultima corsa VERDE. Senza
+                  --   questo ramo la vista non lo nominerebbe.
+                  -- ⭐ Resta auto-pulente: dopo sette giorni senza rossi esce
+                  --   da solo, senza colonne «visto».
+                  OR EXISTS (SELECT 1
+                               FROM maintenance.job_run_log p
+                              WHERE p.jobname = u.jobname
+                                AND p.ok IS FALSE
+                                AND p.started_at >= now() - interval '7 days')
+                  -- ⛔ Il caso che il canale fuori transazione NON copre: per
+                  --   scrivere il verbale bisogna almeno arrivare al gestore
+                  --   d'eccezione. Un processo ucciso di colpo lascia solo la
+                  --   riga d'avvio, aperta per sempre.
+                  -- ⚠️ La soglia di un'ora distingue «morto» da «ancora in
+                  --   corso», ed e' una scelta: questi job durano secondi.
+                  OR (u.ok IS NULL
+                      AND u.ended_at IS NULL
+                      AND u.started_at < now() - interval '60 minutes');
+
+              COMMENT ON VIEW maintenance.vw_job_run_da_guardare IS
+                  'I job che chiedono un occhio: quelli la cui ULTIMA corsa e'' FALLITA, e '
+                  'quelli la cui ultima corsa e'' rimasta APERTA da oltre un''ora (il '
+                  'processo e'' morto senza arrivare nemmeno al gestore d''eccezione). DEVE '
+                  'restare VUOTA. ⭐ Esiste perche'' dal changeSet 20260905-36 una corsa '
+                  'fallita lascia finalmente una riga rossa: prima il verbale veniva '
+                  'scritto e annullato dal RAISE, e nel giornale non e'' MAI esistito un '
+                  'fallimento di un job pgAgent (misurato: 0 rossi con origine PGAGENT '
+                  'contro 31 dei command). ⛔ Ma righe rosse in una tabella che nessuno '
+                  'interroga sono un silenzio nuovo, e questa vista e'' il posto dove '
+                  'guardare. ⭐ Si guarda solo l''ULTIMA corsa di ogni job, non tutti i '
+                  'rossi: cosi'' un job che ricomincia a funzionare ESCE DA SOLO, senza '
+                  'colonne «visto» ne'' finestre arbitrarie — e sync_auth_user_active, che '
+                  'il 2026-09-05 aveva 29 fallimenti in un giorno, occupa UNA riga invece '
+                  'di ventinove. ⭐ E un TERZO motivo prende '
+                  'l''intermittenza: ultima corsa verde ma almeno un rosso negli ultimi '
+                  'sette giorni — senza, un job che fallisce e passa sarebbe invisibile, '
+                  'ed e'' proprio il caso di sync_auth_user_active. Anche quel ramo si '
+                  'auto-pulisce: dopo sette giorni senza rossi il job esce da solo. ⛔ E non vede IL JOB CHE NON PARTE '
+                  'AFFATTO: per quello servirebbe che ogni processo dichiarasse ogni '
+                  'quanto deve girare, e dbops.processi non ce l''ha — stessa forma di '
+                  'R-12 da un altro lato, e resta scoperta. ⚠️ Niente RLS: un giro di '
+                  'manutenzione non appartiene a un''azienda. Chi la vede lo decide il '
+                  'backend con area funzionale e profilo, come per le viste di presidio '
+                  'sorelle. ⛔ Rev 2026-10-10: l''ultima corsa e'' l''ultima corsa VERA — '
+                  'le righe saltate (maintenance.job_run_log.saltata) sono escluse. Una '
+                  'corsa appesa tiene il lock, e ogni sveglia successiva scrive una skip '
+                  'piu'' recente: prima la skip diventava l''ultima corsa e il ramo «presa '
+                  'e mai chiusa» non scattava piu''. Brief: '
+                  'brief-db-corsa-saltata-non-e-una-corsa §2.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare al corpo del 20260905-39 rimetterebbe la skip come
+              --   «ultima corsa». Il verso di ritiro e' un changeSet nuovo.
+              SELECT 1;

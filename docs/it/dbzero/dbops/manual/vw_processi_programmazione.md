@@ -238,9 +238,28 @@ senza dichiararsi finisce lì dentro. ⇒ Il confronto distingue il backend, che
 dichiara sempre, e **non** distingue lo scheduler da un lavoro lanciato a mano
 dalla console del database. È meno di quanto sembri, ed è molto più di niente.
 
-⚠️ E l'esito dell'ultima corsa (`ultimo_esito`) **non** è filtrato: è contesto,
-non la prova del verdetto. Le corse andate male hanno un presidio loro
+⚠️ E l'esito dell'ultima corsa (`ultimo_esito`) **non** è filtrato per chi l'ha
+scritta: è contesto, non la prova del verdetto. Le corse andate male hanno un
+presidio loro
 ([maintenance.vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare)).
+
+### ⭐ Le corse saltate: la sveglia sì, l'esito no *(rev 2026-10-10)*
+
+Una corsa **saltata** (`job_run_log.saltata`: il lock della corsia era occupato)
+non ha fatto lavoro, ma prova che la sveglia è suonata. Le tre colonne del
+giornale la trattano secondo la domanda che fanno:
+
+| colonna | la corsa saltata | perché |
+| --- | --- | --- |
+| `ultimo_esito` | **esclusa** | l'esito è del lavoro, e una skip non ne ha: più recente di una corsa fallita, la nascondeva |
+| `giornale_ultima_corsa` (→ `TIMER_FERMO`) | **contata** | il timer si è svegliato: escluderla darebbe `TIMER_FERMO` a un timer che gira |
+| `giornale_ultima_corsa_pgagent` (→ `GIRA_E_NON_REGISTRA`) | **contata** | una skip è una registrazione: pgAgent è scattato e il giornale lo sa |
+
+⚠️ Quindi una corsa **appesa** (processo vivo e bloccato, sveglie che saltano)
+qui risulta `OK`: la sveglia funziona. Il lavoro fermo lo mostra
+[maintenance.vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare)
+(«presa e mai chiusa»). Uno stato `APPESO` in questa vista non c'è, per decisione
+di Tid. Brief: `brief-db-corsa-saltata-non-e-una-corsa`.
 
 ---
 

@@ -24,7 +24,7 @@
 > * [vendite.fn_list_ordini_da_pushare](/dbzero/vendite/funzioni/fn_list_ordini_da_pushare) — righe eleggibili al push a commessa
 > * [vendite.fn_ricalcola_totali_ordine](/dbzero/vendite/funzioni/fn_ricalcola_totali_ordine) — totali di testata e riepilogo IVA per aliquota
 > * [vendite.trgfn_ordini_gen_numero](/dbzero/vendite/funzioni/trgfn_ordini_gen_numero) — numero ordine auto-generato e immutabile
-> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [vendite.trgfn_ordini_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ordini_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15) e coerenza con il cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, dal 2026-09-15) e coerenza con il cliente
 >
 > **Vedi anche** — API e service backend:
 >
@@ -440,7 +440,7 @@ trigger di default dell'emittente (`trg_ordini_a10_default_emittente_ins`, che d
 lo stesso per preventivi, contratti, DDT, offerte, magazzini e altre tabelle), in base
 all'emittente associato all'utente che sta operando. Inoltre, se l'ordine ha un cliente, l'emittente deve
 essere **coerente** con quel cliente: a questo pensa il trigger
-`trgfn_ordini_guard_emittente_ba`, che rifiuta combinazioni incoerenti. In pratica
+`script.trgfn_doc_guard_emittente_ba`, che rifiuta combinazioni incoerenti. In pratica
 l'operatore raramente deve preoccuparsene, ma se l'utente non ha un emittente
 assegnato la creazione viene bloccata con un errore parlante.
 

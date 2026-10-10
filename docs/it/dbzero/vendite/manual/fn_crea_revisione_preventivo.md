@@ -59,7 +59,7 @@ rimosso dalla tabella e sostituito dalla colonna derivata `is_attiva` in `vendit
   esplicito delle colonne e lo riempiva il **trigger di default di sessione**: per un
   operatore della stessa azienda lo stesso valore, ma per un super admin senza emittente
   attivo la revisione **sollevava** (`E_…_EMITTENTE_NON_RISOLTO`) e con un emittente attivo
-  diverso nasceva incoerente col BA e la fermava `trgfn_preventivi_guard_emittente_ba` —
+  diverso nasceva incoerente col BA e la fermava `script.trgfn_doc_guard_emittente_ba` —
   un difetto mascherato da un guard, quindi mai un dato sbagliato a terra, solo una
   revisione impossibile. La revisione è **lo stesso documento**: copia l'ancora, come già
   [fn_crea_revisione_offerta](/dbzero/vendite/funzioni/fn_crea_revisione_offerta). Trovato

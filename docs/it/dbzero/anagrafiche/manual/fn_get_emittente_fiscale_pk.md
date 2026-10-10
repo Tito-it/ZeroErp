@@ -29,7 +29,7 @@ livelli (mapping specifico, altrimenti default): finché i livelli erano gli ste
 non si vedeva, ma con il terzo livello del lettore — *in sessione, l'emittente di
 chi agisce* — le due copie avrebbero risposto cose diverse sullo stesso billing
 account senza legame: la RLS lo mostra all'operatore, il guard di un preventivo
-(`trgfn_preventivi_guard_emittente_ba`, che passa da qui) lo rifiuta perché «il BA
+(`script.trgfn_doc_guard_emittente_ba`, che passa da qui) lo rifiuta perché «il BA
 è del default». Una regola, un posto.
 
 E' la funzione **da usare** quando serve l'`id` reale dell'emittente fiscale, ad esempio per:
