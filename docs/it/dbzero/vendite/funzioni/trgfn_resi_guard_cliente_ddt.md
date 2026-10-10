@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_resi_guard_cliente_ddt.md" %}
 # ⚙️ Funzione `trgfn_resi_guard_cliente_ddt`
 
 ```sql
@@ -16,10 +17,13 @@ AS $function$
 --   Su INSERT e su ogni UPDATE che tocca BA o sorgente, in
 --   qualunque stato: il BA del DDT sorgente e' bloccato fuori
 --   bozza, quindi quello del reso non cambia mai.
+--   rev 2026-10-10 (§10.2 domanda 3): un DDT sorgente che non si
+--   trova (o non si vede) e' un errore, non «niente da confrontare».
 -- Uso: BEFORE INSERT OR UPDATE, fascia _z10_ (dopo il normalize).
 DECLARE
     v_ba_ddt   vendite.ddt.billing_account_id%TYPE;
     v_ddt_lbl  text;
+    v_reso_lbl text;
 BEGIN
     IF TG_OP = 'UPDATE'
        AND NEW.billing_account_id IS NOT DISTINCT FROM OLD.billing_account_id
@@ -34,15 +38,29 @@ BEGIN
         RETURN NEW;
     END IF;
 
+    v_reso_lbl := 'reso ' || COALESCE(NEW.numero, '#' || NEW.id::text);
+
     SELECT d.billing_account_id, 'DDT ' || COALESCE(d.numero, '#' || d.id::text)
       INTO v_ba_ddt, v_ddt_lbl
       FROM vendite.ddt d
      WHERE d.uid = NEW.sorgente_uid;
 
-    -- DDT non trovato (o non visibile): non c'e' niente da
-    -- confrontare, ed e' il caso di cui parlano i guard della
-    -- sorgente.
-    IF FOUND AND v_ba_ddt IS DISTINCT FROM NEW.billing_account_id THEN
+    -- DDT dichiarato e non trovato, o invisibile sotto RLS: fail-
+    -- closed (rev 2026-10-10). Prima passava.
+    IF NOT FOUND THEN
+        PERFORM script.fn_log_and_raise_error(
+            'vendite', TG_NAME::text, 'E_DOC_SORGENTE_NON_TROVATA',
+            jsonb_build_object(
+                'campo',        'sorgente_uid',
+                'reso_id',      NEW.id,
+                'sorgente',     'DDT_VENDITA',
+                'sorgente_uid', NEW.sorgente_uid),
+            NEW.tx_id,
+            v_reso_lbl,
+            'DDT');
+    END IF;
+
+    IF v_ba_ddt IS DISTINCT FROM NEW.billing_account_id THEN
         PERFORM script.fn_log_and_raise_error(
             'vendite', TG_NAME::text, 'E_DOC_CLIENTE_DIVERSO_DA_SORGENTE',
             jsonb_build_object(
@@ -52,7 +70,7 @@ BEGIN
                 'sorgente_uid',           NEW.sorgente_uid,
                 'billing_account_ddt',    v_ba_ddt),
             NEW.tx_id,
-            'reso ' || COALESCE(NEW.numero, '#' || NEW.id::text),
+            v_reso_lbl,
             v_ddt_lbl);
     END IF;
 
@@ -61,7 +79,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_resi_guard_cliente_ddt()
-IS 'Guard BEFORE INSERT OR UPDATE su vendite.resi, fascia _z10_ (dopo trgfn_resi_normalize): il reso ha il billing account del DDT sorgente (DDT_VENDITA), NULL compreso (D-3, D-6 di brief-db-esecutivi-ba-coppia). E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, come DDT e fulfillment. In qualunque stato: il BA del DDT sorgente e'' bloccato fuori bozza e il DDT di un reso e'' consegnato, quindi il BA del reso non cambia mai — per questo il reso non ha un lock fuori bozza sul cliente. DDT letto come INVOKER, come il normalize.';
+IS 'Guard BEFORE INSERT OR UPDATE su vendite.resi, fascia _z10_ (dopo trgfn_resi_normalize): il reso ha il billing account del DDT sorgente (DDT_VENDITA), NULL compreso (D-3, D-6 di brief-db-esecutivi-ba-coppia). E_DOC_CLIENTE_DIVERSO_DA_SORGENTE, come DDT e fulfillment. In qualunque stato: il BA del DDT sorgente e'' bloccato fuori bozza e il DDT di un reso e'' consegnato, quindi il BA del reso non cambia mai — per questo il reso non ha un lock fuori bozza sul cliente. DDT letto come INVOKER, come il normalize. rev 2026-10-10 (§10.2 domanda 3, Tid): DDT sorgente dichiarato e non trovato — inesistente o invisibile sotto RLS — e'' E_DOC_SORGENTE_NON_TROVATA (fail-closed; su INSERT parla prima vendite.trgfn_resi_guard_ddt_consegnato, su un UPDATE della sorgente solo questo guard).';
 ```
 
 ---

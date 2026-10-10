@@ -4,7 +4,8 @@
 > [brief-be-db-fe-un-solo-fuso-aziendale](brief-be-db-fe-un-solo-fuso-aziendale.md) (T-9).
 > **A chi:** team DB (`dev/db-tid`); ricadute BE in §6.
 > **Decisione di Tid (2026-10-09):** aprire il brief.
-> **Stato:** 🔵 da fare.
+> **Stato:** 🔵 da fare. **Rivisto** dalla sessione DB (`dev/db-tid`) il 2026-10-09: decisioni
+> di Tid e lavoro DB nel §8, che prevale sui §3–§5 dove dissente.
 
 ## 1. Il fatto
 
@@ -110,3 +111,56 @@ partenza, non l'elenco chiuso.
   «presa e mai chiusa»;
 * `vw_processi_programmazione`: una sola skip nella finestra di tolleranza non rende OK un
   processo senza corse vere.
+
+## 8. Revisione DB e decisioni (2026-10-09)
+
+Analisi della sessione DB sul corpo vero (doc auto-generata, 2026-10-09), decisioni di Tid lo
+stesso giorno. Dove dissente dai §3–§5, vale questo paragrafo.
+
+### 8.1 Che cosa la revisione ha trovato
+
+* **Gli scrittori della skip sono due, non uno.** Anche `maintenance.fn_run_and_log` ha un ramo
+  sul lock occupato, e scrive una riga con `ok = TRUE` e **`ended_at` NULL**: «riuscita e mai
+  chiusa». Il §4 la dava come «scrive, non legge».
+* **`script.fn_job_run_end` chiude qualunque riga** e ne riscrive `ok`: chiamata su una riga
+  saltata, la trasformerebbe in una corsa vera e cancellerebbe il marcatore.
+* **`vw_processi_programmazione`: le tre colonne fanno tre domande diverse.**
+  `ultima_corsa_pgagent` alimenta `GIRA_E_NON_REGISTRA` («pgAgent scatta e il giornale lo
+  registra?»): la skip **è** una registrazione. `ultima_corsa` alimenta `TIMER_FERMO`: la skip
+  prova che il timer va. Solo `ultimo_esito` parla del lavoro.
+* **`vw_run_senza_attore`** non ha una colonna `ultimo_ok`: chiede solo se l'ultima corsa ha un
+  attore, e la skip ce l'ha. Non si tocca.
+
+### 8.2 Decisioni (Tid, 2026-10-09)
+
+| # | Decisione |
+| --- | --- |
+| D1 | Proposta (A): colonna `saltata boolean NOT NULL DEFAULT false` su `maintenance.job_run_log`. |
+| D2 | Sulla riga saltata **`ok` è NULL**, non `TRUE` (rettifica del §5.2). Il motivo sul modello: una skip non ha un esito del lavoro, e con `NULL` la domanda «è riuscita?» (`ok IS TRUE`) la scarta da sola, senza un `AND NOT saltata` da ricordare in ogni lettore presente e futuro. `saltata` toglie al `NULL` il doppio significato che il §3 temeva. CHECK di riga: `NOT saltata OR (ended_at IS NOT NULL AND ok IS NULL)`. |
+| D3 | La skip **conta** come segno di vita della sveglia (rettifica del §5.3): la corsa appesa la mostra `vw_job_run_da_guardare`, non un `TIMER_FERMO` falso. Nessuno stato `APPESO` nuovo, per ora. |
+| D4 | **Nessuna bonifica** delle skip già scritte: restano `saltata = false` col loro testo. Siamo in sviluppo. |
+
+### 8.3 Lavoro DB
+
+1. `maintenance.job_run_log`: colonna `saltata` (D1), CHECK del D2, COMMENT.
+2. `script.fn_job_run_start`, ramo lock occupato: `saltata = TRUE`, `ok` NULL, `ended_at`
+   valorizzato. Il `message` resta come testo per chi legge, non è più il marcatore.
+3. `maintenance.fn_run_and_log`, ramo lock occupato: idem, con `ended_at` (oggi manca).
+4. `script.fn_job_run_end`: rifiuta una riga saltata (codice nuovo di classe `TECNICO`: chiudere
+   una corsa mai presa è un chiamante rotto; nome da registrare nei due registri, ok Tid).
+5. `maintenance.vw_job_run_da_guardare`: la CTE `ultima` esclude `saltata`.
+6. `dbops.vw_processi_programmazione`: solo `ultimo_esito` esclude `saltata`; `ultima_corsa` e
+   `ultima_corsa_pgagent` restano su tutte le righe (D3).
+7. Manual di `job_run_log`, delle due viste e delle tre funzioni.
+
+### 8.4 pgTAP (al posto del §7)
+
+* lock occupato da una seconda sessione (dblink) → riga `saltata`, chiusa, `ok` NULL; idem per
+  `fn_run_and_log`;
+* corsa normale → `saltata = false`;
+* il CHECK rifiuta una riga saltata con `ok` valorizzato o aperta;
+* `fn_job_run_end` su una riga saltata → rifiuto;
+* `vw_job_run_da_guardare`: corsa aperta da più di un'ora **seguita da** una skip → resta
+  «presa e mai chiusa»;
+* `vw_processi_programmazione`: una skip nella tolleranza tiene `OK` il timer (niente
+  `TIMER_FERMO`), e `ultimo_esito` è quello della corsa vera.

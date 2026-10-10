@@ -1,3 +1,4 @@
+{% include-markdown "it/dbzero/vendite/manual/trgfn_doc_testata_lock_fuori_bozza.md" %}
 # ⚙️ Funzione `trgfn_doc_testata_lock_fuori_bozza`
 
 ```sql

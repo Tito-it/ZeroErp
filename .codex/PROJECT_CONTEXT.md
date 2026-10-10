@@ -318,9 +318,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto**
   (`work-in-progress/brief-db-esecutivi-ba-coppia.md`, D21, 2026-10-09): BA nullable, copie di utility e ruolo
   non legate al BA, lock del BA solo sull'ordine; un ordine senza BA esce dal push in silenzio; gli anelli della
-  catena (ordine → DDT → reso) possono avere BA diversi. Giro DB applicato (`20261009-62…-92`, compreso l'emittente
-  bloccato fuori bozza su sei documenti) e verde su dbdev il 2026-10-10, nessuna regressione. Aperti (§10.4 del brief):
-  tre ritocchi DB decisi il 2026-10-10, pgTAP mancanti, pagine `manual/`, ricaduta BE/FE.
+  catena (ordine → DDT → reso) possono avere BA diversi. Lato DB applicato e verde su dbdev il 2026-10-10, in due
+  giri (`20261009-62…-92`, compreso l'emittente bloccato fuori bozza su sei documenti; `20261010-02…-07`, le copie
+  dal BA in un BB e la sorgente non trovata = errore). Resta la ricaduta BE/FE (§7, §9.6, §11.5 del brief).
+- 📝 **L'emittente del documento e' quello del cliente: una regola, sette copie**
+  (`work-in-progress/brief-db-guard-emittente-ba-unico.md`, D22, 2026-10-10): il guard emittente <-> BA estratto in
+  un BB, un codice e una frase leggibile. Decisioni chiuse da Tid il 2026-10-10; codice da scrivere.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

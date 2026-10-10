@@ -755,7 +755,8 @@ dbdev (§9.7), e la corsa dei cinque fixture del §9.5, ora corretti nell'albero
 Fuori perimetro — all'archiviazione va in un **brief nuovo**, con la voce-rimando nel registro:
 
 * le **sette copie** del guard emittente <-> BA (ordini, DDT, resi, preventivi, offerte, contratti,
-  commesse), annotate nel §5.5: regola del 2, un BB parametrico;
+  commesse), annotate nel §5.5: regola del 2, un BB parametrico. ➡️ **Brief aperto il 2026-10-10**:
+  [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22);
 * la domanda generale del §8 sulle **altre** colonne di testata in fase chiusa.
 
 Dentro il giro:
