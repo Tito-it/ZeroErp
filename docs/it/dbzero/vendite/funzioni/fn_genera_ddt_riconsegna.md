@@ -26,7 +26,6 @@ DECLARE
     v_orig           RECORD;
     v_riga           RECORD;
     v_ord            RECORD;
-    v_stato_target_id config.stati_doc_ordini.id%TYPE;
     v_residuo_ric    numeric;
     v_qta_ric        numeric;
     v_qta_op         numeric;
@@ -385,17 +384,9 @@ BEGIN
          WHERE rr.reso_id = p_reso_id
            AND rr.ordine_riga_id IS NOT NULL
     LOOP
-        IF vendite.fn_ordine_ha_residuo_evasione(v_ord.ordine_id) THEN
-            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-             WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
-        ELSE
-            SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-             WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
-        END IF;
-        UPDATE vendite.ordini
-           SET stato_doc_ordine_id = v_stato_target_id
-         WHERE id = v_ord.ordine_id
-           AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+        -- ⭐ rev 2026-10-11: la proiezione e' il building block
+        --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-dall-ordine).
+        PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ord.ordine_id);
     END LOOP;
 
     RETURN v_new_ddt_id;
@@ -403,7 +394,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_riconsegna(p_reso_id bigint, p_righe jsonb, p_data date)
-IS 'Madre ri-spedizione reso: nuovo DDT DRAFT (order-backed ORDINE_VENDITA o standalone), popola il ponte resi_righe_riconsegne (aggancio duro) e, se order-backed, il fulfillment che richiude il residuo. p_righe [{resi_riga_id, qta}] NULL=copertura residua. brief S5b. rev 2026-07-13. rev 2026-07-26: la copertura residua viene dall''helper unico vendite.fn_resi_riga_residuo_riconsegna, che sottrae ANCHE le quote rinunciate -> una quota dichiarata definitiva non e'' piu'' ri-spedibile. ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase A): il documento non nasce piu'' nudo. EREDITA dal DDT d''origine il blocco «relazione» — causale, aspetto, modalita'' addebito, mittente, vettore, fatturazione_immediata — fa cascadere gli indirizzi di ambito DDT come il gemello fn_genera_ddt_da_ordine, e nel solo ramo STANDALONE copia prezzo, sconto e aliquota dalla riga di DDT d''origine (resi_righe.ddt_riga_id, NOT NULL). ⛔ NON eredita il blocco «viaggio»: num_colli, pesi, volume, targa, autista, data_ora_partenza, data_ora_consegna_prev, tracking_code — sono misure di un viaggio gia'' avvenuto, e la ri-consegna porta un sottoinsieme delle righe e una frazione della quantita''; il tracking copiato punterebbe il cliente al collo precedente. Criterio: eredita cio'' che e'' una SCELTA, non cio'' che e'' una MISURA. ⛔ Nell''order-backed il valore NON si copia: lo risale il COALESCE di fn_list_ddt_da_pushare via ordini_righe_fulfillment, e una copia diventerebbe una seconda sorgente che diverge. ⚠️ Ogni eredita'' di catalogo passa da un LEFT JOIN filtrato su `attivo` (causali_trasporto, aspetti_beni, modalita_addebito_trasporto, iva): le colonne corrispondenti hanno un trigger require_active_parent, e ereditare un elemento ritirato dopo farebbe FALLIRE la generazione invece di lasciare il campo vuoto. ⚠️ La copia di iva_id e'' una misura di attesa: col risolutore IVA la riga prendera'' l''aliquota da li'' e questa copia va TOLTA. rev 2026-08-28 (Fase D / R6): la sorgente si dichiara SEMPRE — order-backed ORDINE_VENDITA + uid dell''ordine (invariato), STANDALONE RESO_VENDITA + uid del reso, che prima restava NULL e faceva nascere il documento senza origine dichiarata. config.sorgenti non si tocca: key_selector governa la chiave polimorfa TESTUALE, non questa colonna uuid tipizzata (ORDINE_VENDITA e'' gia'' a ''id'' e qui ci mette ordini.uid), e fn_get_sorgente_documento_ref prova la via uuid PRIMA del selettore, quindi risolve resi.uid e ne legge il numero.';
+IS 'Madre ri-spedizione reso: nuovo DDT DRAFT (order-backed ORDINE_VENDITA o standalone), popola il ponte resi_righe_riconsegne (aggancio duro) e, se order-backed, il fulfillment che richiude il residuo. p_righe [{resi_riga_id, qta}] NULL=copertura residua. brief S5b. rev 2026-07-13. rev 2026-07-26: la copertura residua viene dall''helper unico vendite.fn_resi_riga_residuo_riconsegna, che sottrae ANCHE le quote rinunciate -> una quota dichiarata definitiva non e'' piu'' ri-spedibile. ⭐ rev 2026-08-28 (brief-db-ddt-riconsegna-eredita-testata, Fase A): il documento non nasce piu'' nudo. EREDITA dal DDT d''origine il blocco «relazione» — causale, aspetto, modalita'' addebito, mittente, vettore, fatturazione_immediata — fa cascadere gli indirizzi di ambito DDT come il gemello fn_genera_ddt_da_ordine, e nel solo ramo STANDALONE copia prezzo, sconto e aliquota dalla riga di DDT d''origine (resi_righe.ddt_riga_id, NOT NULL). ⛔ NON eredita il blocco «viaggio»: num_colli, pesi, volume, targa, autista, data_ora_partenza, data_ora_consegna_prev, tracking_code — sono misure di un viaggio gia'' avvenuto, e la ri-consegna porta un sottoinsieme delle righe e una frazione della quantita''; il tracking copiato punterebbe il cliente al collo precedente. Criterio: eredita cio'' che e'' una SCELTA, non cio'' che e'' una MISURA. ⛔ Nell''order-backed il valore NON si copia: lo risale il COALESCE di fn_list_ddt_da_pushare via ordini_righe_fulfillment, e una copia diventerebbe una seconda sorgente che diverge. ⚠️ Ogni eredita'' di catalogo passa da un LEFT JOIN filtrato su `attivo` (causali_trasporto, aspetti_beni, modalita_addebito_trasporto, iva): le colonne corrispondenti hanno un trigger require_active_parent, e ereditare un elemento ritirato dopo farebbe FALLIRE la generazione invece di lasciare il campo vuoto. ⚠️ La copia di iva_id e'' una misura di attesa: col risolutore IVA la riga prendera'' l''aliquota da li'' e questa copia va TOLTA. rev 2026-08-28 (Fase D / R6): la sorgente si dichiara SEMPRE — order-backed ORDINE_VENDITA + uid dell''ordine (invariato), STANDALONE RESO_VENDITA + uid del reso, che prima restava NULL e faceva nascere il documento senza origine dichiarata. config.sorgenti non si tocca: key_selector governa la chiave polimorfa TESTUALE, non questa colonna uuid tipizzata (ORDINE_VENDITA e'' gia'' a ''id'' e qui ci mette ordini.uid), e fn_get_sorgente_documento_ref prova la via uuid PRIMA del selettore, quindi risolve resi.uid e ne legge il numero. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine e'' il building block vendite.fn_ordine_proietta_stato_evasione; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato.';
 ```
 
 ---

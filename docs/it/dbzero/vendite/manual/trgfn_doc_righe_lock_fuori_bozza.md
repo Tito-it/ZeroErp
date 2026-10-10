@@ -297,3 +297,30 @@ fra quelle che scrive l'audit. Unica stretta: una lista di sole virgole accanto 
 
 > 📎 changeSet `20261010-60 … -64`. Presidio:
 > `db/pgtap/script/test-doc-lock-montaggio-v1.sql`.
+
+### 🔄 rev 2026-10-11 — i satelliti del documento (brief-db-testata-dopo-emissione §11, R-DB-3 e D-12)
+
+Il building block si monta anche sui **satelliti** del documento: gli indirizzi di DDT,
+ordine, preventivo, offerta e contratto (`vendite.*_indirizzi`) e la fornitura 1:1 di offerta
+e contratto (`vendite.offerte_commerciali_utilities`, `vendite.contratti_utilities`). Si
+scrivono solo in bozza, come diceva il solo backend.
+
+Per questi il montaggio passa un settimo argomento, il codice: rifiutano con
+`E_DOC_DATI_COLLEGATI_NON_BOZZA`, la cui frase parla di indirizzi e fornitura. Gli adottanti
+di prima non lo passano e restano su `E_RIGA_DOC_NON_BOZZA`.
+
+Le capability leggono lo stesso montaggio con `script.fn_doc_riga_modificabile`
+(`can_edit_indirizzi`, `can_edit_utility`).
+
+### 🔄 rev 2026-10-11 — la nascita (brief-db-testata-dopo-emissione §11.6, D-13)
+
+Un documento può nascere già fuori bozza: un seed o un import inserisce un contratto
+direttamente ATTIVO. Quello che un **trigger** scrive in quel momento fa parte della nascita
+e passa: è lo snapshot della fornitura, che `trgfn_contratti_snapshot_precontrattuali` scrive
+dopo l'inserimento del contratto. Il lock lo riconosce da due cose insieme: la scrittura la
+fa un altro trigger, e la testata è nata nella transazione corrente (`nata_in_transazione` di
+`script.fn_get_stato_testata_documento`).
+
+Una scrittura **diretta** resta rifiutata fuori bozza, anche nella transazione che ha creato
+il documento. Per questo i pgTAP dei lock, che girano in una transazione sola, vedono ancora
+il rifiuto.

@@ -147,16 +147,19 @@ SELECT r1.id, ctx.articolo_id_3, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto
 -- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
 --   dell'offerta si scrivono solo in BOZZA. L'emissione viene quindi DOPO le
 --   eccezioni, come in un'offerta vera; prima le si aggiungeva a rev.1 gia' EMESSA.
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
- WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
-
+-- ⚠️ rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3): anche la
+--   fornitura si scrive solo in BOZZA (trg_offerte_commerciali_utilities_a05_
+--   doc_bozza_ins_upd_dlt). Nasce quindi prima dell'emissione, come le eccezioni.
 -- Utility rev.1 (1:1)
 INSERT INTO vendite.offerte_commerciali_utilities (
     offerta_id, istanza_utility_id, utility_id
 )
 SELECT r1.id, ctx.istanza_utility_id, ctx.utility_id
   FROM tmp_rev_fn_rev1 r1, tmp_rev_fn_ctx ctx;
+
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
+ WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
 
 -- ============================================================
 -- 2) Setup OK

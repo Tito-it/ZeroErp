@@ -517,7 +517,7 @@ errore.
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
 > alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
 > **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
-> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10).
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11).
 >
 > ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
 > numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
@@ -526,7 +526,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D28.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D28, D29.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -1037,7 +1037,17 @@ brief dell'evasione non ha un lock a DB.
 Dettaglio e decisioni di Tid (chiuse il 2026-10-10: riga evasa ferma; un verbo per correggere la
 quantita' in bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; righe a mano ammesse)
 nel brief [brief-db-ddt-righe-evase-dall-ordine.md](brief-db-ddt-righe-evase-dall-ordine.md).
-📝 Aperto, nessun codice.
+✅ Lato DB applicato e verde il 2026-10-11 (`20261011-05 … -20`, `-34`, `-35`); tocca a BE/FE. Dentro anche la ri-consegna (D-7) e l'annullo con conferma (D-8).
+
+### 🟠 D29 — Annullare un documento con legami: l'origine resta consumata
+
+Trovato il 2026-10-11 nel giro di D28 (§7.6 di `brief-db-ddt-righe-evase-dall-ordine`) e allargato da Tid a
+tutti i documenti: quando un documento nato da un altro si annulla, quello a monte deve tornare disponibile,
+con una conferma. Bolla → ordine e ri-consegna → reso sono fatti (D-8); restano preventivo → ordine,
+offerta → contratto, offerta → ordine (oggi consumati per sempre) e il ritiro dalla commessa (corretto ma
+silenzioso). Dettaglio, censimento e decisioni attese nel brief
+[brief-db-annullo-documento-con-legami.md](brief-db-annullo-documento-con-legami.md). ✅ Caso 1 applicato,
+casi 2-5 aperti.
 
 ---
 
@@ -1254,7 +1264,9 @@ D6 e il registro dei rossi in CI.
 * [ ] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
       `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
 * [ ] **D28** — le righe evase di un DDT da ordine: brief `brief-db-ddt-righe-evase-dall-ordine` (aperto il
-      2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+      2026-10-10, decisioni chiuse lo stesso giorno; lato DB applicato e verde il 2026-10-11, tocca a BE/FE).
+* [ ] **D29** — annullare un documento con legami: brief `brief-db-annullo-documento-con-legami` (aperto il
+      2026-10-11; caso 1 applicato, casi 2-5 in attesa di decisioni).
 
 ---
 

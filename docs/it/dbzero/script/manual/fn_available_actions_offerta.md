@@ -247,3 +247,11 @@ motivo** se l'offerta ha un prezzo in attesa —
 [script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa), la
 stessa funzione con cui `fn_crea_revisione_offerta` rifiuta. `can_create_revisione` diventa
 **veritiero**.
+
+## Rev 2026-10-11 — fornitura, indirizzi e motivazione del rifiuto (brief-db-testata-dopo-emissione §11)
+
+* **R-DB-2.** `motivazione_rifiuto` non è più fra le colonne ferme in ogni stato: la governa il
+  lock di testata, aperta in EMESSA e ACCETTATA, chiusa a offerta chiusa.
+* **R-DB-3.** `can_edit_utility` non è più «stato = BOZZA» scritto nella funzione: si legge dal
+  lock montato sulla fornitura (`vendite.offerte_commerciali_utilities`). Nuovo
+  `can_edit_indirizzi`, dal lock sugli indirizzi.

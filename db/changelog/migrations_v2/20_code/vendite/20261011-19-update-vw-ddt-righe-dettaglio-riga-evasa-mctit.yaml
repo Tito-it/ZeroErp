@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA DICE AL FORM CHE COSA E' FERMO E SE LA QUANTITA' PASSA DAL VERBO
+#   vendite.vw_ddt_righe_dettaglio: + evasa, + correggi_qta_evasa_blocco
+#   Brief: brief-db-ddt-righe-evase-dall-ordine (§5.1 punto 5, §6)
+#
+# -- LE DUE COLONNE (in coda: CREATE OR REPLACE VIEW non sposta le altre) ----
+#   * evasa (boolean) = vendite.fn_ddt_riga_evasa(id). TRUE: la riga porta un
+#     legame con un ordine o con un reso da ri-consegnare (D-7); articolo, UoM
+#     e quantita' sono fermi (D-1), e la quantita' si cambia col verbo
+#     vendite.fn_ddt_riga_correggi_qta_evasa. FALSE: riga a mano, il form
+#     resta com'e'. Il predicato e' lo stesso del guard.
+#   * correggi_qta_evasa_blocco (text) = il `reason` del primo motivo di
+#     script.fn_check_ddt_riga_correggi_qta_evasa; NULL = l'azione e' ammessa.
+#     Un verbo, una colonna (linee-guida-sql §12.5.4). La reason_key la FE la
+#     ricava dal reason (vendite.ddt.correggi_qta_evasa_reason.<reason minuscolo>),
+#     come per le altre colonne di blocco per riga.
+#   ⚠️ Una colonna per riga che chiama una check costa qualche query per riga:
+#   la vista serve il dettaglio di UN documento (le righe di una bolla), non
+#   una lista trasversale — la stessa scelta di vendite.vw_resi_righe_dettaglio.
+#
+#   Corpo dalla doc auto-generata; security_invoker ri-specificata (si
+#   azzera su CREATE OR REPLACE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-19-update-vw-ddt-righe-dettaglio-riga-evasa-mctit.yaml
+
+  - changeSet:
+      id: 20261011-19-update-vw-ddt-righe-dettaglio-riga-evasa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_ddt_righe_dettaglio: + evasa (riga ferma, quantita' dal verbo) e
+        + correggi_qta_evasa_blocco (motivo dell'azione spenta, NULL = ammessa). Brief:
+        brief-db-ddt-righe-evase-dall-ordine.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_ddt_riga_correggi_qta_evasa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_ddt_righe_dettaglio
+              WITH (security_invoker=true) AS
+              SELECT r.id,
+                  r.ddt_id,
+                  r.riga_nr,
+                  r.attivo,
+                  r.articolo_id,
+                  a.codice AS articolo_codice,
+                  a.descrizione AS articolo_descrizione,
+                  r.descrizione,
+                  r.quantita,
+                  r.qta_operativa,
+                  r.factor_to_base,
+                  r.uom_operativa_id,
+                  um.codice AS uom_codice,
+                  r.prezzo_unitario,
+                  r.sconto_percentuale,
+                  r.iva_id,
+                  iva.codice AS iva_codice,
+                  iva.descrizione AS iva_descrizione,
+                  iva.aliquota_iva AS iva_aliquota,
+                  round(script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale), 2) AS importo_riga,
+                  script.fn_imponibile_riga(r.quantita, r.prezzo_unitario, r.sconto_percentuale) AS imponibile_riga_full,
+                  r.meta,
+                  r.data_insert,
+                  r.data_update,
+                  (EXISTS ( SELECT 1
+                         FROM vendite.ddt_righe_componenti rc
+                        WHERE ((rc.riga_ddt_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a,
+                  vendite.fn_ddt_riga_evasa(r.id) AS evasa,
+                  (script.fn_check_ddt_riga_correggi_qta_evasa(r.id) -> 0) ->> 'reason' AS correggi_qta_evasa_blocco
+                 FROM (((vendite.ddt_righe r
+                   LEFT JOIN catalogo.articoli a ON ((a.id = r.articolo_id)))
+                   LEFT JOIN catalogo.unita_misura um ON ((um.id = r.uom_operativa_id)))
+                   LEFT JOIN config.iva iva ON ((iva.id = r.iva_id)));
+
+              COMMENT ON COLUMN vendite.vw_ddt_righe_dettaglio.evasa IS
+                  'TRUE se la riga porta un legame con una riga d''ordine o con una riga di reso da ri-consegnare (vendite.fn_ddt_riga_evasa, lo stesso predicato del guard): articolo, UoM e quantita'' sono fermi, la quantita'' si corregge col verbo vendite.fn_ddt_riga_correggi_qta_evasa. Brief: brief-db-ddt-righe-evase-dall-ordine.';
+              COMMENT ON COLUMN vendite.vw_ddt_righe_dettaglio.correggi_qta_evasa_blocco IS
+                  'Il reason del primo motivo per cui la quantita'' evasa NON si corregge ora (script.fn_check_ddt_riga_correggi_qta_evasa): DDT_NON_IN_BOZZA, RIGA_NON_EVASA, DDT_SENZA_ORIGINE, LEGAMI_MULTIPLI. NULL = azione ammessa. reason_key vendite.ddt.correggi_qta_evasa_reason.<reason minuscolo>.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Togliere due colonne da una vista e' un DROP + CREATE: il
+              -- ripristino e' il ripristino del giro.
+              SELECT 1;

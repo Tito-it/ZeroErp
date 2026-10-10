@@ -16,7 +16,6 @@ DECLARE
     v_sorg_ord_id     config.sorgenti.id%TYPE;
     v_stato_draft_id  config.stati_doc_ddt.id%TYPE;
     v_stato_ord       config.stati_doc_ordini.codice_interno%TYPE;
-    v_stato_target_id config.stati_doc_ordini.id%TYPE;
     v_ordine_uid      vendite.ordini.uid%TYPE;
     v_dest_ruolo_id   vendite.ordini.soggetto_ruolo_id%TYPE;
     v_ddt_id          vendite.ddt.id%TYPE;
@@ -218,25 +217,19 @@ BEGIN
     -- 7) Proiezione stato ordine (C5), atomica. residuo 0 -> EVASO,
     --    altrimenti PARZIALMENTE_EVASO. La transizione passa per
     --    trgfn_ordini_guard_transizione (matrice).
-    IF NOT vendite.fn_ordine_ha_residuo_evasione(p_ordine_id) THEN
-        SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-         WHERE codice_interno = 'EVASO' AND attivo IS TRUE;
-    ELSE
-        SELECT id INTO v_stato_target_id FROM config.stati_doc_ordini
-         WHERE codice_interno = 'PARZIALMENTE_EVASO' AND attivo IS TRUE;
-    END IF;
-
-    UPDATE vendite.ordini
-       SET stato_doc_ordine_id = v_stato_target_id
-     WHERE id = p_ordine_id
-       AND stato_doc_ordine_id IS DISTINCT FROM v_stato_target_id;
+    -- ⭐ rev 2026-10-11: la proiezione e' il building block
+    --    vendite.fn_ordine_proietta_stato_evasione (brief-db-ddt-righe-evase-
+    --    dall-ordine §5.2), condiviso con i verbi del reso, la correzione della
+    --    quantita' evasa e il ritiro del legame in bozza. Qui il fulfillment
+    --    c'e' sempre (step 6), quindi gli esiti restano i due di prima.
+    PERFORM vendite.fn_ordine_proietta_stato_evasione(p_ordine_id);
 
     RETURN v_ddt_id;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_data date)
-IS 'Madre evasione ordine->DDT (DRAFT): multi-DDT (A-1), copia snapshot prezzi/componenti (A-2), fulfillment riga-riga (over-shipping via guard, C2), proiezione stato ordine CONFERMATO/PARZIALMENTE_EVASO/EVASO (C5). sorgente=ORDINE_VENDITA (C1). p_righe [{ordine_riga_id, qta_da_evadere(operativa)}] NULL=tutto il residuo. Pattern fn_push_preventivo_a_ordine. rev 2026-07-09. ⭐ rev 2026-08-24: i due rifiuti di evasione (E_DDT_ORDINE_STATO_NON_EVADIBILE, E_DDT_NIENTE_DA_EVADERE) portano il BERSAGLIO sull''ordine, nel canale DATATYPE dell''eccezione: l''evasione si lancia anche in massa, e li'' la frase dice QUALE ordine ha rifiutato ma non ci porta. Il bersaglio si compone una volta sola dopo la lettura dell''ordine — a quel punto esiste ED e'' visibile — e non costa nessuna query in piu''. ⛔ E_DDT_ORDINE_NOT_FOUND resta SENZA bersaglio, di proposito: l''ordine non c''e'' o la RLS lo nasconde, e un pulsante che apre il vuoto e'' peggio di nessun pulsante. Brief: brief-db-bersaglio-errore.md §6 L6.';
+IS 'Madre evasione ordine->DDT (DRAFT): multi-DDT (A-1), copia snapshot prezzi/componenti (A-2), fulfillment riga-riga (over-shipping via guard, C2), proiezione stato ordine CONFERMATO/PARZIALMENTE_EVASO/EVASO (C5). sorgente=ORDINE_VENDITA (C1). p_righe [{ordine_riga_id, qta_da_evadere(operativa)}] NULL=tutto il residuo. Pattern fn_push_preventivo_a_ordine. rev 2026-07-09. ⭐ rev 2026-08-24: i due rifiuti di evasione (E_DDT_ORDINE_STATO_NON_EVADIBILE, E_DDT_NIENTE_DA_EVADERE) portano il BERSAGLIO sull''ordine, nel canale DATATYPE dell''eccezione: l''evasione si lancia anche in massa, e li'' la frase dice QUALE ordine ha rifiutato ma non ci porta. Il bersaglio si compone una volta sola dopo la lettura dell''ordine — a quel punto esiste ED e'' visibile — e non costa nessuna query in piu''. ⛔ E_DDT_ORDINE_NOT_FOUND resta SENZA bersaglio, di proposito: l''ordine non c''e'' o la RLS lo nasconde, e un pulsante che apre il vuoto e'' peggio di nessun pulsante. Brief: brief-db-bersaglio-errore.md §6 L6. ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine §5.2): la proiezione dello stato dell''ordine (step 7) e'' il building block vendite.fn_ordine_proietta_stato_evasione, condiviso coi cinque verbi del reso, con vendite.fn_ddt_riga_correggi_qta_evasa e col ritiro del legame in bozza; la copia scritta a mano qui si ritira (regola del 2). Comportamento invariato.';
 ```
 
 ---

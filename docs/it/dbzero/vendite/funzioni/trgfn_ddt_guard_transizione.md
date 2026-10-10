@@ -25,6 +25,8 @@ DECLARE
     v_ammessa   boolean := false;
     v_guc          text;
     v_dentro_verbo boolean;
+    -- Regola 4: quante righe della bolla sono legate (un CONTEGGIO).
+    v_righe_legate integer;
 BEGIN
     -- No-op se lo stato non cambia davvero (UPDATE su altre colonne).
     IF NEW.stato_doc_ddt_id IS NOT DISTINCT FROM OLD.stato_doc_ddt_id THEN
@@ -126,12 +128,41 @@ BEGIN
         END IF;
     END IF;
 
+    -- Regola 4 — L'ANNULLO CON LEGAMI CHIEDE CONFERMA (rev 2026-10-11,
+    --   brief-db-ddt-righe-evase-dall-ordine, D-8). Una bolla che porta legami
+    --   con ordini o resi (vendite.fn_ddt_legami: fulfillment e ponti di
+    --   ri-consegna) non si annulla in silenzio: annullandola quelle quantita'
+    --   tornano da spedire, e lo deve sapere chi preme. Questo rifiuto e'
+    --   l'AVVISO, per ogni strada (UPDATE diretto o vendite.fn_cambia_stato_ddt).
+    --   L'annullo vero passa da vendite.fn_annulla_ddt, che riceve la conferma,
+    --   ritira i legami e POI cambia lo stato: qui arriva senza legami e passa.
+    IF v_codice_a = 'ANNULLATO' THEN
+        SELECT count(DISTINCT l.ddt_riga_id)::integer
+          INTO v_righe_legate
+          FROM vendite.fn_ddt_legami(NEW.id) AS l;
+
+        IF v_righe_legate > 0 THEN
+            PERFORM script.fn_log_and_raise_error(
+                'database',
+                TG_NAME::text,
+                'E_DDT_ANNULLO_CON_LEGAMI',
+                jsonb_build_object(
+                    'ddt_id',       NEW.id,
+                    'numero',       NEW.numero,
+                    'stato_da',     v_codice_da,
+                    'righe_legate', v_righe_legate),
+                NEW.tx_id,
+                'DDT ' || coalesce(NEW.numero, '#' || NEW.id::text),
+                v_righe_legate::text);
+        END IF;
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ddt_guard_transizione()
-IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-e): Regola 3, la PORTA DEL REGISTRO. DRAFT->EMESSO, EMESSO->ANNULLATO e ->CONSEGNATO di una bolla di trasferimento, su una bolla che muove merce (vendite.fn_ddt_muove_merce sulla riga NUOVA), passano solo dal verbo vendite.fn_cambia_stato_ddt: GUC transazionale zeroerp.ddt_cambio_stato = NEW.id E chi esegue e'' il proprietario della tabella (script.fn_is_proprietario_tabella), altrimenti E_DDT_STATO_SOLO_DA_VERBO. Le bolle che non muovono merce restano all''UPDATE diretto.';
+IS 'Trigger function: enforcement grafo transizioni stato DDT letto da config.transizioni_stati_ddt (E_STATO_DDT_TRANSIZIONE_NON_VALIDA). Regola 2: DRAFT->EMESSO richiede almeno una riga attiva (E_DDT_EMISSIONE_SENZA_RIGHE) — verdetto delegato a script.fn_check_ddt_emittibile (single source con fn_available_actions_ddt). Mirror di trgfn_ordini_guard_transizione. rev 2026-07-19 (brief-db-guard-righe-avanzamento-stato Rev 2). rev 2026-09-28 (brief-db-magazzino-lotto-3-scarico-da-ddt, D-L3-e): Regola 3, la PORTA DEL REGISTRO. DRAFT->EMESSO, EMESSO->ANNULLATO e ->CONSEGNATO di una bolla di trasferimento, su una bolla che muove merce (vendite.fn_ddt_muove_merce sulla riga NUOVA), passano solo dal verbo vendite.fn_cambia_stato_ddt: GUC transazionale zeroerp.ddt_cambio_stato = NEW.id E chi esegue e'' il proprietario della tabella (script.fn_is_proprietario_tabella), altrimenti E_DDT_STATO_SOLO_DA_VERBO. Le bolle che non muovono merce restano all''UPDATE diretto. rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-8): Regola 4, L''ANNULLO CON LEGAMI CHIEDE CONFERMA. Verso ANNULLATO, una bolla che porta legami con ordini o resi (vendite.fn_ddt_legami: fulfillment e ponti di ri-consegna) e'' rifiutata con E_DDT_ANNULLO_CON_LEGAMI (CONFLITTO_STATO; valori: etichetta della bolla, numero di righe legate): e'' l''avviso, su ogni strada. L''annullo vero passa dal verbo vendite.fn_annulla_ddt, che riceve la conferma, ritira i legami (vendite.fn_ddt_riga_ritira_legami) e poi cambia lo stato: qui arriva senza legami e passa.';
 ```
 
 ---

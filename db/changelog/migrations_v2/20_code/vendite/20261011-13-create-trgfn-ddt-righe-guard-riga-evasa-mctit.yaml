@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA EVASA E' FERMA: ARTICOLO, UNITA' DI MISURA, QUANTITA'
+#   vendite.trgfn_ddt_righe_guard_riga_evasa() + trg_ddt_righe_a10_guard_riga_evasa_upd
+#   Brief: brief-db-ddt-righe-evase-dall-ordine (D-1, §5.1 punto 1)
+#
+# -- IL CASO --------------------------------------------------------
+#   Su un DDT da ordine in bozza la riga evasa cambiava quantita', articolo e
+#   unita' di misura con un UPDATE, e il fulfillment non lo vedeva: il guard
+#   del legame (trgfn_ordini_ful_guard_consistenza) scatta quando il legame
+#   si SCRIVE, non quando cambia la riga. Ordine 10, bolla corretta a 6: il
+#   magazzino scarica 6, l'ordine resta evaso per 10, il residuo non si
+#   riapre.
+#
+# -- LA REGOLA (D-1) ----------------------------------------------------------
+#   Su una riga EVASA (vendite.fn_ddt_riga_evasa: ha un legame con una riga
+#   d'ordine o con una riga di reso da ri-consegnare, D-7) non cambiano articolo_id, uom_operativa_id,
+#   factor_to_base, qta_operativa, quantita. Il resto della riga (descrizione,
+#   prezzo, sconto, aliquota, note) resta libero in bozza. Fuori bozza parla
+#   prima il lock delle righe (fascia _a05_).
+#   ⭐ LA PORTA DEL VERBO: la quantita' (qta_operativa e la quantita
+#   derivata) cambia solo dal verbo vendite.fn_ddt_riga_correggi_qta_evasa,
+#   che apre la GUC transazionale zeroerp.ddt_riga_correggi_qta sull'id di
+#   QUESTA riga e gira come proprietario della tabella (SECURITY DEFINER):
+#   le due condizioni insieme, come la porta del registro di
+#   trgfn_ddt_guard_transizione. Dalla porta non passano articolo, UoM e
+#   fattore: il verbo cambia la quantita', non la riga.
+#
+# -- PERCHE' UPDATE SENZA «OF» --------------------------------------------------
+#   quantita la riscrive un altro BEFORE (trgfn_qta_from_operativa), quindi
+#   «UPDATE OF quantita» e' la forma sbagliata (linee-guida-trigger). Il guard
+#   confronta OLD e NEW nel corpo, e se nessuna delle cinque colonne cambia
+#   esce prima di leggere il fulfillment. Nome _a10_guard_ < _a10_qta_: gira
+#   prima del ricalcolo, e confronta comunque l'input (qta_operativa).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-13-create-trgfn-ddt-righe-guard-riga-evasa-mctit.yaml
+
+  - changeSet:
+      id: 20261011-13-create-trgfn-ddt-righe-guard-riga-evasa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_ddt_righe_guard_riga_evasa: su una riga di DDT evasa articolo, UoM e quantita'
+        non cambiano (E_DDT_RIGA_EVASA_FERMA); la quantita' passa solo dal verbo
+        fn_ddt_riga_correggi_qta_evasa. Brief: brief-db-ddt-righe-evase-dall-ordine (D-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_riga_evasa';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'vendite.ddt_righe'::regclass
+                     AND t.tgname = 'trg_ddt_righe_a10_guard_riga_evasa_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.trgfn_ddt_righe_guard_riga_evasa()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: su una riga di DDT EVASA (vendite.fn_ddt_riga_evasa)
+              --   articolo, UoM, fattore e quantita' non cambiano (D-1 di
+              --   brief-db-ddt-righe-evase-dall-ordine). La quantita' passa solo
+              --   dal verbo vendite.fn_ddt_riga_correggi_qta_evasa: GUC
+              --   transazionale zeroerp.ddt_riga_correggi_qta = id della riga E
+              --   chi scrive e' il proprietario della tabella.
+              -- Uso: BEFORE UPDATE FOR EACH ROW, fascia _a10_.
+              -- =========================================================
+              DECLARE
+                  -- Le colonne ferme che questo UPDATE cambia: nomi, non valori.
+                  v_cambiate   text[];
+                  v_dal_verbo  boolean;
+                  -- La frase del rifiuto (script.fn_get_stato_testata_documento):
+                  -- composta, nessuna colonna di cui sia il riflesso.
+                  v_etichetta  text;
+              BEGIN
+                  v_cambiate := array_remove(ARRAY[
+                      CASE WHEN NEW.articolo_id      IS DISTINCT FROM OLD.articolo_id      THEN 'articolo_id'      END,
+                      CASE WHEN NEW.uom_operativa_id IS DISTINCT FROM OLD.uom_operativa_id THEN 'uom_operativa_id' END,
+                      CASE WHEN NEW.factor_to_base   IS DISTINCT FROM OLD.factor_to_base   THEN 'factor_to_base'   END,
+                      CASE WHEN NEW.qta_operativa    IS DISTINCT FROM OLD.qta_operativa    THEN 'qta_operativa'    END,
+                      CASE WHEN NEW.quantita         IS DISTINCT FROM OLD.quantita         THEN 'quantita'         END
+                  ], NULL);
+
+                  -- Nessuna colonna ferma cambia: niente da guardare.
+                  IF cardinality(v_cambiate) = 0 THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Una riga a mano: resta libera.
+                  IF NOT vendite.fn_ddt_riga_evasa(OLD.id) THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- La porta del verbo: la sola quantita', per QUESTA riga, dal
+                  -- proprietario della tabella.
+                  v_dal_verbo := COALESCE(current_setting('zeroerp.ddt_riga_correggi_qta', true), '') = OLD.id::text
+                                 AND script.fn_is_proprietario_tabella(TG_RELID);
+                  IF v_dal_verbo
+                     AND v_cambiate <@ ARRAY['qta_operativa', 'quantita']::text[] THEN
+                      RETURN NEW;
+                  END IF;
+
+                  SELECT t.etichetta
+                    INTO v_etichetta
+                    FROM script.fn_get_stato_testata_documento('DDT', OLD.ddt_id) AS t;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'vendite', TG_NAME::text, 'E_DDT_RIGA_EVASA_FERMA',
+                      jsonb_build_object('ddt_riga_id', OLD.id,
+                                         'ddt_id',      OLD.ddt_id,
+                                         'colonne',     to_jsonb(v_cambiate),
+                                         'dal_verbo',   v_dal_verbo),
+                      NEW.tx_id,
+                      OLD.riga_nr::text,
+                      COALESCE(v_etichetta, 'DDT #' || OLD.ddt_id::text));
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ddt_righe_guard_riga_evasa() IS
+                  'Guard (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-1): su una riga di DDT EVASA (vendite.fn_ddt_riga_evasa: ha un legame con una riga d''ordine o con una riga di reso da ri-consegnare, D-7) non cambiano articolo_id, uom_operativa_id, factor_to_base, qta_operativa, quantita: sono la fotografia di cio'' che si evade, e prima cambiavano senza che il legame lo vedesse (ordine evaso per 10, bolla a 6; reso da ri-consegnare 4, bolla a 2). Rifiuto E_DDT_RIGA_EVASA_FERMA (CONFLITTO_STATO; valori: numero di riga, etichetta del DDT; contesto: colonne cambiate). Il resto della riga resta libero in bozza; fuori bozza parla prima il lock delle righe (_a05_). La quantita'' passa solo dal verbo vendite.fn_ddt_riga_correggi_qta_evasa: GUC transazionale zeroerp.ddt_riga_correggi_qta = id della riga E proprietario della tabella (script.fn_is_proprietario_tabella), come la porta del registro di trgfn_ddt_guard_transizione; articolo, UoM e fattore non passano nemmeno dalla porta. BEFORE UPDATE senza OF (quantita la riscrive trgfn_qta_from_operativa): il confronto e'' nel corpo, ed esce subito se nessuna delle cinque colonne cambia.';
+
+              CREATE TRIGGER trg_ddt_righe_a10_guard_riga_evasa_upd
+                BEFORE UPDATE ON vendite.ddt_righe
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_ddt_righe_guard_riga_evasa();
+
+              COMMENT ON TRIGGER trg_ddt_righe_a10_guard_riga_evasa_upd ON vendite.ddt_righe IS
+                  'Riga evasa ferma: articolo, UoM, fattore e quantita'' non cambiano; la quantita'' solo dal verbo vendite.fn_ddt_riga_correggi_qta_evasa (E_DDT_RIGA_EVASA_FERMA). Fascia _a10_, dopo il lock fuori bozza (_a05_), prima del ricalcolo della quantita'' (_a10_qta_from_operativa). Brief: brief-db-ddt-righe-evase-dall-ordine (D-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_righe_a10_guard_riga_evasa_upd ON vendite.ddt_righe;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ddt_righe_guard_riga_evasa();

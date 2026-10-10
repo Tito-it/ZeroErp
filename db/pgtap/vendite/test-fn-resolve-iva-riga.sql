@@ -149,13 +149,22 @@ BEGIN
       RETURNING id, billing_account_id, emittente_fiscale_id
            INTO v_new, v_ba, v_emitt;
 
-      -- ⚠️ La riga la CREA un trigger sul contratto: si aggiorna, non si inserisce.
-      UPDATE vendite.contratti_utilities
-         SET tipo_utenza_id = v_tipo, classe_utenza_id = v_classe
-       WHERE contratto_id = v_new;
+      -- ⚠️ La riga la CREA un trigger sul contratto, alla nascita, dai dati
+      --    precontrattuali dell'istanza: non si inserisce e non si modifica.
+      -- ⛔ rev 2026-10-11 (brief-db-testata-dopo-emissione §11.7): fino a oggi
+      --    qui si AGGIORNAVANO tipo e classe della fornitura del contratto ATTIVO.
+      --    Dal lock dei satelliti (20261011-24) la fornitura di un documento
+      --    fuori bozza non si cambia piu' (E_DOC_DATI_COLLEGATI_NON_BOZZA): si
+      --    LEGGE il tipo d'uso che lo snapshot ha scritto, e il codice IVA si
+      --    mette su quello (sotto), che e' catalogo.
+      SELECT cu.tipo_utenza_id, cu.classe_utenza_id, tu.iva_id
+        INTO v_tipo, v_classe, v_iva_tipo
+        FROM vendite.contratti_utilities cu
+        LEFT JOIN config.tipi_utenze tu ON tu.id = cu.tipo_utenza_id
+       WHERE cu.contratto_id = v_new;
 
       -- il codice IVA sul tipo d'uso: e' l'anello che lo stadio A2 legge
-      IF v_iva_tipo IS NULL THEN
+      IF v_tipo IS NOT NULL AND v_iva_tipo IS NULL THEN
         UPDATE config.tipi_utenze SET iva_id = (
             SELECT i.id FROM config.iva i
              WHERE i.attivo IS TRUE AND i.aliquota_iva > 0 ORDER BY i.id LIMIT 1)
@@ -182,6 +191,8 @@ BEGIN
       CASE WHEN v_art_muto  IS NULL THEN 'articolo senza codice IVA'   END,
       CASE WHEN v_utility   IS NULL THEN 'utility con dimensione tipo/classe' END,
       CASE WHEN v_new       IS NULL THEN 'contratto attivo costruito'  END,
+      CASE WHEN v_new IS NOT NULL AND v_tipo IS NULL
+           THEN 'fornitura del contratto con tipo d uso (dati precontrattuali dell istanza)' END,
       CASE WHEN v_iva_tipo  IS NULL THEN 'codice IVA sul tipo d uso'   END,
       CASE WHEN v_emitt     IS NULL THEN 'emittente fiscale'           END,
       CASE WHEN v_sogg      IS NULL THEN 'soggetto senza titoli'       END), '');

@@ -102,6 +102,16 @@ SELECT acc.id, ctx.articolo_id, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto"
   FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx
  WHERE ctx.articolo_id IS NOT NULL;
 
+-- ⚠️ rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3): anche la
+--   fornitura si scrive solo in BOZZA (trg_offerte_commerciali_utilities_a05_
+--   doc_bozza_ins_upd_dlt). Nasce quindi prima delle transizioni, come l'eccezione.
+-- Utility dell'offerta (per verifica copia 1:1)
+INSERT INTO vendite.offerte_commerciali_utilities (
+    offerta_id, istanza_utility_id, utility_id
+)
+SELECT acc.id, ctx.istanza_utility_id, ctx.utility_id
+  FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx;
+
 -- BOZZA -> EMESSA -> ACCETTATA
 UPDATE vendite.offerte_commerciali
    SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
@@ -110,13 +120,6 @@ UPDATE vendite.offerte_commerciali
 UPDATE vendite.offerte_commerciali
    SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_push_ctx)
  WHERE id = (SELECT id FROM tmp_push_offerta_acc);
-
--- Utility dell'offerta (per verifica copia 1:1)
-INSERT INTO vendite.offerte_commerciali_utilities (
-    offerta_id, istanza_utility_id, utility_id
-)
-SELECT acc.id, ctx.istanza_utility_id, ctx.utility_id
-  FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx;
 
 -- Offerta in BOZZA (per test 6)
 CREATE TEMP TABLE tmp_push_offerta_bozza AS

@@ -9,7 +9,7 @@
 --
 -- Elenco test (plan 30):
 --  La grammatica (script.fn_doc_lock_regola, 20261010-60)
---   1) RIGHE: i sei argomenti, contati da 0 come TG_ARGV
+--   1) RIGHE: i sei argomenti, contati da 0 come TG_ARGV, e il codice di default (rev 2026-10-11)
 --   2) RIGHE: con due argomenti, i default (DRAFT, TESTATA, nessuna eccezione)
 --   3) RIGHE: colonne senza stati, un livello che non e' un livello, un argomento solo: tre montaggi sbagliati
 --   4) TESTATA: le terne, nell'ordine, col codice e gli stati aperti (rev 2026-10-10, fase 2)
@@ -106,8 +106,11 @@ SELECT is(
         'stato_bozza', 'DRAFT', 'livello', 'TESTATA',
         'colonne_ammesse', jsonb_build_array('data_consegna_confermata'),
         'stati_ammessi',   jsonb_build_array('CONFERMATO', 'PARZIALMENTE_EVASO'),
+        -- rev 2026-10-11 (20261011-21): il codice da sollevare, settimo
+        -- argomento; senza, quello delle righe.
+        'codice',          'E_RIGA_DOC_NON_BOZZA',
         'errore', NULL),
-    '1) RIGHE: i sei argomenti contati da 0 come TG_ARGV, liste ripulite dagli spazi'
+    '1) RIGHE: i sei argomenti contati da 0 come TG_ARGV, liste ripulite dagli spazi; il codice di default'
 );
 
 SELECT is(

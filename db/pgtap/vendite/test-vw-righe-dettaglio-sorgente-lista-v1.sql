@@ -98,7 +98,10 @@ SELECT columns_are('vendite', 'vw_ddt_righe_dettaglio', ARRAY[
     'factor_to_base', 'uom_operativa_id', 'uom_codice', 'prezzo_unitario',
     'sconto_percentuale', 'iva_id', 'iva_codice', 'iva_descrizione', 'iva_aliquota',
     'importo_riga', 'imponibile_riga_full', 'meta', 'data_insert', 'data_update',
-    'is_composito_caso_a'],
+    'is_composito_caso_a',
+    -- rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, 20261011-19): la riga
+    -- evasa e il motivo per cui la sua quantita' evasa non si corregge ora.
+    'evasa', 'correggi_qta_evasa_blocco'],
     '7) righe DDT: le colonne del repository');
 
 -- ---- 8..9: la distinta base -------------------------------------------------

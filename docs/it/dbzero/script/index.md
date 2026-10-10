@@ -39,6 +39,7 @@
 - [fn_check_credenziale_eliminabile](funzioni/fn_check_credenziale_eliminabile.md) — (scritta il 06-10-2026)
 - [fn_check_ddt_emittibile](funzioni/fn_check_ddt_emittibile.md) — (creata 2026-07-19 — brief-db-guard-righe-avanzamento-stato §1a-bis Rev 2)
 - [fn_check_ddt_merce](funzioni/fn_check_ddt_merce.md)
+- [fn_check_ddt_riga_correggi_qta_evasa](funzioni/fn_check_ddt_riga_correggi_qta_evasa.md)
 - [fn_check_disponibilita_uscita](funzioni/fn_check_disponibilita_uscita.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_documento_escludibile_da_giro](funzioni/fn_check_documento_escludibile_da_giro.md) — (latest review 2026-09-08)
 - [fn_check_documento_interno_registrabile](funzioni/fn_check_documento_interno_registrabile.md) — (scritta il 22-09-2026)
@@ -49,6 +50,7 @@
 - [fn_check_fatture_con_plafond_consumato](funzioni/fn_check_fatture_con_plafond_consumato.md) — (funzione nata il 2026-10-04, `20261004-07`)
 - [fn_check_fatture_con_rettifiche](funzioni/fn_check_fatture_con_rettifiche.md)
 - [fn_check_indirizzo_duplicato](funzioni/fn_check_indirizzo_duplicato.md)
+- [fn_check_listino_cambiabile](funzioni/fn_check_listino_cambiabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4 e D-11 di Tid)
 - [fn_check_listino_congelabile](funzioni/fn_check_listino_congelabile.md)
 - [fn_check_listino_documento](funzioni/fn_check_listino_documento.md)
 - [fn_check_lotto_annullabile](funzioni/fn_check_lotto_annullabile.md) — (latest review 04-08-2026) Elenca i **motivi che impediscono l'annullamento** di un lotto di fatturazione. Funzione **pura** (`fn_check_*`): non solleva errori di dominio e non scrive. Ritorna `[]` quando l'annullamento è lecito.
@@ -90,6 +92,7 @@
 - [fn_doc_lock_colonna_bloccata](funzioni/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_montaggi](funzioni/fn_doc_lock_montaggi.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_doc_lock_regola](funzioni/fn_doc_lock_regola.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_riga_modificabile](funzioni/fn_doc_riga_modificabile.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-3)
 - [fn_doc_testata_in_stato](funzioni/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](funzioni/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
 - [fn_ensure_logconn](funzioni/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
@@ -290,6 +293,7 @@
 - [trgfn_default_emittente_fiscale](funzioni/trgfn_default_emittente_fiscale.md) — > Brief: `brief-db-emittente-di-default-un-bb-solo` (decisione di Tid, 2026-09-15). > ChangeSet `20260915-36` (la funzione), `-37 … -40` (le quattro copie di vendite > ritirate), `-42 … -46` (i sette montaggi nuovi).
 - [trgfn_delete_block_by_guc](funzioni/trgfn_delete_block_by_guc.md) — (latest review 23-01-2026) La funzione `script.trgfn_delete_block_by_guc()` e` una **trigger function generica** che blocca le DELETE, consentendo il bypass tramite una **GUC** di manutenzione.
 - [trgfn_doc_guard_emittente_ba](funzioni/trgfn_doc_guard_emittente_ba.md) — **Un documento di vendita è emesso dall'azienda del suo cliente.**
+- [trgfn_doc_guard_listino_con_righe](funzioni/trgfn_doc_guard_listino_con_righe.md) — (nato il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-4)
 - [trgfn_doc_guard_listino_documento](funzioni/trgfn_doc_guard_listino_documento.md)
 - [trgfn_guard_date_validita](funzioni/trgfn_guard_date_validita.md)
 - [trgfn_guard_emittente_scope](funzioni/trgfn_guard_emittente_scope.md) — (rev 2026-09-04 — chiuso il ramo «nessun utente in sessione → passa»: il criterio è `row_security_active()`. Prima: rev 2026-08-22, la **risoluzione** esce dal guard e passa a una `SECURITY DEFINER`, chiudendo un fail-open, e arrivano le modalità `ente_incasso` e `contabile`; rev 2026-06-01, modalità `fiscale` PK e delega alla canonica `fn_check_user_emittente_scope`) La trigger function **`script.trgfn_guard_emittente_scope`** implementa il defense-in-depth: blocca INSERT/UPDATE se l'utente corrente non ha visibilità sull'emittente fiscale della riga.

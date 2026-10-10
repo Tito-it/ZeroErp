@@ -1,0 +1,279 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# AGGIORNA: vendite.trgfn_doc_righe_lock_fuori_bozza() — la nascita del
+#   documento: cio' che un trigger scrive su un documento nato in questa
+#   transazione passa anche fuori bozza.
+#   Brief: brief-db-testata-dopo-emissione (§11.6, D-13 di Tid)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Un contratto inserito ATTIVO (seed, import) riceve dal trigger
+#   trgfn_contratti_snapshot_precontrattuali la sua fornitura, che il lock
+#   dei satelliti (20261011-24) rifiutava: sette pgTAP caduti all'apply.
+#   D-13 di Tid, fra tre strade: passa la scrittura fatta da un TRIGGER
+#   (pg_trigger_depth() > 1) su una testata creata nella transazione
+#   corrente (20261011-40). Scartate: «la nascita e' la transazione
+#   intera», che acceca ogni pgTAP dei lock (tutto il test e' una
+#   transazione); il lock della fornitura senza INSERT, che lascia un buco.
+#
+# -- COSA NON CAMBIA ------------------------------------------------------
+#   Una scrittura diretta su un documento fuori bozza resta rifiutata, anche
+#   nella transazione che lo ha creato: codici, contesto e frase invariati.
+#   Corpo di partenza: 20261011-22 (applicato).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-41-update-trgfn-doc-righe-lock-fuori-bozza-nascita-mctit.yaml
+
+  - changeSet:
+      id: 20261011-41-update-trgfn-doc-righe-lock-fuori-bozza-nascita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_doc_righe_lock_fuori_bozza: cio' che un trigger scrive su un documento nato in questa
+        transazione passa anche fuori bozza (la nascita). Brief: brief-db-testata-dopo-emissione (D-13).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- La regola del montaggio, letta dalla grammatica condivisa
+                -- (script.fn_doc_lock_regola): [0] tipo documento, [1] colonna
+                -- FK, [2] stato bozza, [3] livello, [4] colonne ammesse fuori
+                -- bozza, [5] stati in cui lo sono, [6] codice da sollevare.
+                v_regola       jsonb;
+                v_documento    text;
+                v_fk_col       text;
+                v_livello      text;
+                v_ammesse      text[];
+                v_codice       text;           -- il codice del rifiuto, dal montaggio ([6])
+
+                v_riga         jsonb;          -- la riga che sta cambiando (NEW, o OLD sul DELETE)
+                v_vecchia      jsonb;          -- OLD, sull'UPDATE
+                v_cambiate     text[];         -- le colonne che l'UPDATE cambia; NULL = la riga intera
+                v_padri        bigint[];       -- i padri coinvolti: uno, due se la riga cambia padre
+                v_padre_id     bigint;
+                v_testata_id   bigint;
+                v_stato        text;
+                v_etichetta    text;
+                v_nata         boolean;        -- la testata e' nata in questa transazione
+                v_verbo        text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Le righe di un documento si aggiungono, modificano e
+                --   tolgono SOLO finche' il documento e' in bozza. Fuori dalla
+                --   bozza il contenuto non e' piu' una proposta ma un fatto
+                --   (una spedizione, una merce instradata a fatturazione, un
+                --   pricing attivo): le correzioni passano da documenti di
+                --   rettifica, non da una riga che cambia.
+                --
+                -- Building block, montato per documento con fino a sette
+                -- argomenti:
+                --   [0] tipo documento (DDT | ORDINE | CONTRATTO | OFFERTA |
+                --       RESO | PREVENTIVO — decide il lettore
+                --       script.fn_get_stato_testata_documento);
+                --   [1] colonna FK della riga verso il padre;
+                --   [2] (opz.) codice dello stato bozza, default 'DRAFT';
+                --   [3] (opz.) livello del padre: 'TESTATA' (default) se la FK
+                --       punta alla testata, 'RIGA' se punta a una riga del
+                --       documento (tabelle NIPOTI: componenti, rientri). Nel
+                --       secondo caso la testata la da'
+                --       script.fn_get_testata_id_di_riga (rev 2026-10-05);
+                --   [4] (opz.) le colonne che un UPDATE puo' cambiare FUORI
+                --       bozza, separate da virgola (rev 2026-10-08);
+                --   [5] (opz., obbligatorio con [4]) gli stati — codice_interno,
+                --       separati da virgola — in cui le [4] si cambiano;
+                --   [6] (opz.) il codice errore del rifiuto, default
+                --       E_RIGA_DOC_NON_BOZZA (rev 2026-10-11). I satelliti del
+                --       documento — indirizzi, fornitura — montano lo stesso
+                --       building block con un codice la cui frase non parla di
+                --       righe (D-12 di brief-db-testata-dopo-emissione).
+                --
+                -- ⭐ La grammatica degli argomenti e la decisione non stanno
+                --    qui (rev 2026-10-10): script.fn_doc_lock_regola legge il
+                --    montaggio, script.fn_doc_lock_colonna_bloccata decide. Le
+                --    stesse due le usa il lettore del montaggio
+                --    (script.fn_doc_lock_montaggi), da cui la capability spegne
+                --    il verbo: lock e capability non possono rispondere in due
+                --    modi.
+                -- ⭐ L'eccezione [4]/[5] (rev 2026-10-08): un UPDATE con il
+                --    documento in uno degli stati [5] passa se ogni colonna che
+                --    cambia e' fra le [4] o fra le tecniche (data_update,
+                --    user_update, tx_id). Allowlist e non denylist, come
+                --    script.trgfn_righe_guard_pending: una colonna nuova nasce
+                --    chiusa. INSERT e DELETE non hanno eccezioni.
+                --
+                -- ⛔ Stato e testata si leggono da lettori SECURITY DEFINER:
+                --    testate e righe hanno RLS, e un guard invoker non
+                --    distinguerebbe «non c'e'» da «non la vedo».
+                -- ⚠️ Padre assente = cascade partito dal padre (DELETE), o FK
+                --    che parlera' (INSERT/UPDATE): il guard PASSA. La regola di
+                --    stato sul padre l'ha gia' applicata il suo guard (la
+                --    testata col guard di testata, la riga con questo stesso
+                --    building block), e le FK sono NOT NULL: un figlio orfano
+                --    non esiste, quindi «assente» non puo' voler dire altro.
+                -- ⭐ Fascia _a05_: il rifiuto di stato deve parlare PRIMA dei
+                --    guard _a10_ sui legami (fulfillment, figli), o l'operatore
+                --    legge un rimedio che non e' il rimedio.
+                -- =========================================================
+
+                -- ── Argomenti: errore di MONTAGGIO, non di dato ───────────
+                v_regola := script.fn_doc_lock_regola('RIGHE', TG_ARGV);
+
+                IF v_regola ->> 'errore' IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'tg_argv', TG_ARGV),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    v_regola ->> 'errore');
+                END IF;
+
+                v_documento := v_regola ->> 'documento';
+                v_fk_col    := v_regola ->> 'colonna_fk';
+                v_livello   := v_regola ->> 'livello';
+                v_ammesse   := ARRAY(SELECT jsonb_array_elements_text(v_regola -> 'colonne_ammesse'));
+                v_codice    := v_regola ->> 'codice';
+
+                -- ── La riga, letta una volta (niente SQL dinamico per riga) ─
+                v_riga := CASE WHEN TG_OP = 'DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;
+
+                IF NOT (v_riga ? v_fk_col) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'fk_col',  v_fk_col),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    format('la colonna %s non esiste sulla riga', v_fk_col));
+                END IF;
+
+                -- Una colonna ammessa che la riga non ha e' un refuso del montaggio:
+                -- l'eccezione non scatterebbe mai, e nessuno se ne accorgerebbe.
+                IF EXISTS (SELECT 1 FROM unnest(v_ammesse) AS c WHERE NOT (v_riga ? c)) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'colonne_ammesse', to_jsonb(v_ammesse)),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    format('le colonne ammesse %s non esistono tutte sulla riga', array_to_string(v_ammesse, ', ')));
+                END IF;
+
+                -- ── Le colonne che l'UPDATE cambia, contate una volta ─────
+                -- INSERT e DELETE toccano la riga intera: v_cambiate resta
+                -- NULL, e fuori bozza non c'e' eccezione.
+                IF TG_OP = 'UPDATE' THEN
+                  v_vecchia  := to_jsonb(OLD);
+                  v_cambiate := ARRAY(SELECT n.key
+                                        FROM jsonb_each(v_riga) AS n
+                                       WHERE n.value IS DISTINCT FROM (v_vecchia -> n.key)
+                                       ORDER BY n.key);
+                END IF;
+
+                -- ── I padri da guardare ───────────────────────────────────
+                -- Su UPDATE anche quello di provenienza: spostare una riga da
+                -- un documento emesso a una bozza e' comunque una modifica del
+                -- documento emesso.
+                v_padri := ARRAY[(v_riga ->> v_fk_col)::bigint];
+                IF TG_OP = 'UPDATE'
+                   AND (v_vecchia ->> v_fk_col) IS DISTINCT FROM (v_riga ->> v_fk_col) THEN
+                  v_padri := ARRAY[(v_vecchia ->> v_fk_col)::bigint] || v_padri;
+                END IF;
+
+                v_verbo := CASE TG_OP
+                             WHEN 'INSERT' THEN 'aggiungere'
+                             WHEN 'UPDATE' THEN 'modificare'
+                             ELSE               'togliere'
+                           END;
+
+                FOREACH v_padre_id IN ARRAY v_padri LOOP
+                  v_stato := NULL;
+                  v_etichetta := NULL;
+                  v_nata := NULL;
+
+                  -- Livello RIGA: dalla riga alla sua testata. Riga assente:
+                  -- cascade dalla riga, o FK che parlera'. Si passa.
+                  IF v_livello = 'RIGA' THEN
+                    v_testata_id := script.fn_get_testata_id_di_riga(v_documento, v_padre_id);
+                    CONTINUE WHEN v_testata_id IS NULL;
+                  ELSE
+                    v_testata_id := v_padre_id;
+                  END IF;
+
+                  SELECT t.stato, t.etichetta, t.nata_in_transazione
+                    INTO v_stato, v_etichetta, v_nata
+                    FROM script.fn_get_stato_testata_documento(v_documento, v_testata_id) AS t;
+
+                  -- Assente: cascade dalla testata, o FK che parlera'. Si passa.
+                  CONTINUE WHEN v_stato IS NULL;
+
+                  -- ⭐ La nascita (rev 2026-10-11, D-13 di Tid): cio' che un TRIGGER
+                  --    scrive su un documento nato in questa transazione fa parte
+                  --    della sua nascita, anche se il documento nasce gia' fuori
+                  --    bozza (un contratto inserito ATTIVO: lo snapshot della
+                  --    fornitura, AFTER INSERT). pg_trigger_depth() > 1 = questa
+                  --    scrittura l'ha fatta un altro trigger. Una scrittura diretta
+                  --    (backend, import, pgTAP) resta rifiutata fuori bozza.
+                  CONTINUE WHEN v_nata AND pg_trigger_depth() > 1;
+
+                  -- In bozza, o nell'eccezione dichiarata nel montaggio: si
+                  -- passa. Decide la funzione che usa anche la capability.
+                  CONTINUE WHEN script.fn_doc_lock_colonna_bloccata(v_regola, v_stato, v_cambiate) IS NULL;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, v_codice,
+                    jsonb_build_object('table',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'id',         v_riga ->> 'id',
+                                       'documento',  v_documento,
+                                       'testata_id', v_testata_id,
+                                       'stato',      v_stato,
+                                       'operazione', TG_OP)
+                    || CASE WHEN v_livello = 'RIGA'
+                            THEN jsonb_build_object('riga_documento_id', v_padre_id)
+                            ELSE '{}'::jsonb
+                       END
+                    || CASE WHEN cardinality(v_ammesse) > 0
+                            THEN jsonb_build_object('colonne_ammesse', v_regola -> 'colonne_ammesse',
+                                                    'stati_ammessi',   v_regola -> 'stati_ammessi')
+                            ELSE '{}'::jsonb
+                       END,
+                    (v_riga ->> 'tx_id')::uuid,
+                    v_etichetta,
+                    v_stato,
+                    v_verbo);
+                END LOOP;
+
+                RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+              IS 'Building block (2026-09-22): le righe di un documento si aggiungono, modificano e tolgono SOLO finche'' il documento e'' in bozza. BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, TG_ARGV = [0] tipo documento per script.fn_get_stato_testata_documento (DDT | ORDINE | CONTRATTO | OFFERTA | RESO | PREVENTIVO, quest''ultimo dal 2026-10-08), [1] colonna FK della riga verso il padre, [2] (opz.) codice_interno dello stato bozza, default DRAFT, [3] (opz., dal 2026-10-05) livello del padre: TESTATA (default) o RIGA. Rifiuta con E_RIGA_DOC_NON_BOZZA (CONFLITTO_STATO; valori: etichetta, stato, verbo). ⛔ Stato e testata si leggono da lettori SECURITY DEFINER perche'' testate e righe hanno RLS: un guard invoker non distinguerebbe «non c''e''» da «non la vedo». Padre assente = cascade dal padre o FK che parlera'': passa. Su UPDATE guarda anche il padre di provenienza se la riga cambia padre. ⭐ Fascia _a05_: il rifiuto di stato parla PRIMA dei guard _a10_ sui legami (fulfillment, figli), o l''operatore legge un rimedio che non e'' il rimedio. Nasce da D7 di brief-db-partita-merce-per-documento (una riga di DDT gia'' instradata a fatturazione poteva essere disattivata) e ritira nello stesso giro le due copie che la regola aveva a DB: vendite.trgfn_contratti_righe_lock_post_attivazione (droppata) e il ramo 1 di vendite.trgfn_dlt_block_ordrig_ddtrig. Adottanti: vendite.ddt_righe (tre porte), vendite.ordini_righe (solo DELETE: INSERT/UPDATE restano aperti di proposito, data_consegna_confermata cambia dopo la conferma), vendite.contratti_righe (tre porte). Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO (TECNICO). rev 2026-09-29 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-h): quarto adottante, vendite.resi_righe (tre porte, tipo RESO, colonna reso_id): dal Lotto 3-bis la conferma del reso carica la merce, e una riga cambiata dopo farebbe divergere reso e registro. rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): quinto adottante, vendite.offerte_commerciali_eccezioni (tre porte, tipo OFFERTA, colonna offerta_id, stato bozza BOZZA come terzo argomento): fn_push_offerta_a_contratto copia le righe 1:1 nel contratto, e la regola che il backend diceva da solo ora sta ai due capi. rev 2026-10-05 (brief-db-righe-esclusione-solo-non-si-vende §8.2 B3): livello RIGA per le tabelle NIPOTI, la cui FK punta a una riga del documento: la testata la da'' script.fn_get_testata_id_di_riga (SECURITY DEFINER), e nel contesto entra riga_documento_id. Adottanti a livello RIGA: vendite.contratti_righe_componenti e vendite.offerte_commerciali_eccezioni_componenti (prima li proteggeva solo il ricalcolo della riga madre, un effetto), vendite.resi_righe_rientri (ritira la copia scritta a mano in vendite.trgfn_resi_righe_rientri_guard). Non adottante: vendite.ddt_righe_prelievi, la cui regola ammette in EMESSO/SPEDITO il cambio della sola ubicazione d''arrivo — un''altra regola, non una copia. rev 2026-10-08 (brief-db-righe-e-componenti-le-altre-famiglie §2.2): altri tre adottanti a livello RIGA, vendite.preventivi_righe_componenti (tipo PREVENTIVO), vendite.ordini_righe_componenti (ORDINE) e vendite.ddt_righe_componenti (DDT); i due lettori DEFINER conoscono le tre famiglie. Le righe d''ordine restano chiuse solo sul DELETE e quelle del preventivo non sono chiuse: su una riga kit la quantita'' cambiata fuori bozza ora la respinge il lock del componente, su una semplice no (debito nel brief, §5.1). rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §1, D-1 di Tid): due argomenti opzionali, [4] le colonne che un UPDATE puo'' cambiare FUORI bozza (separate da virgola) e [5] gli stati, per codice_interno, in cui si cambiano; vanno insieme, uno senza l''altro e'' E_DOC_RIGHE_LOCK_MONTAGGIO, come una colonna ammessa che la riga non ha. Un UPDATE in uno stato [5] passa se, tolte le [4] e le colonne tecniche (data_update, user_update, tx_id), la riga e'' identica: allowlist, come script.trgfn_righe_guard_pending, quindi una colonna nuova nasce chiusa. INSERT e DELETE non hanno eccezioni. Nel contesto del rifiuto entrano colonne_ammesse e stati_ammessi. Regola del 2: la forma esisteva gia'', scritta a mano, in vendite.trgfn_ddt_righe_prelievi_guard (la sola ubicazione_arrivo_id in EMESSO/SPEDITO), che la ritira nello stesso giro (20261008-92/-93); la seconda occorrenza e'' vendite.ordini_righe (la sola data_consegna_confermata in CONFERMATO e PARZIALMENTE_EVASO). Adottanti di oggi: vendite.ordini_righe passa alle tre porte con l''eccezione (20261008-90), vendite.preventivi_righe alle tre porte senza eccezioni (20261008-91), vendite.ddt_righe_prelievi a livello RIGA con l''eccezione (20261008-93). rev 2026-10-10 (brief-db-testata-dopo-emissione fase 1, R-1 e D-F2 di Tid): la grammatica degli argomenti e la decisione escono dal corpo in due building block condivisi col lettore del montaggio. script.fn_doc_lock_regola legge TG_ARGV; script.fn_doc_lock_colonna_bloccata decide: in bozza tutto, fuori bozza un UPDATE passa solo nello stato [5] e se ogni colonna che cambia e'' ammessa [4] o tecnica (la stessa regola di prima, detta per colonna). Le stesse due le usa script.fn_doc_lock_montaggi, da cui script.fn_doc_colonna_modificabile e la capability della promessa di consegna (script.fn_check_ordine_data_consegna_confermata, script.fn_available_actions_ordine): lock e capability leggono lo stesso montaggio con la stessa grammatica, e non possono rispondere in due modi. Codici, contesto e valori della frase invariati; unica stretta: un [4] o un [5] di sole virgole accanto a uno pieno ora e'' un montaggio a meta'' (E_DOC_RIGHE_LOCK_MONTAGGIO). rev 2026-10-11 (brief-db-testata-dopo-emissione §11, R-DB-3 e D-12 di Tid): settimo argomento [6], il codice errore del rifiuto (default E_RIGA_DOC_NON_BOZZA, letto da script.fn_doc_lock_regola). Adottanti nuovi, i satelliti del documento: vendite.{ddt,ordini,preventivi,offerte_commerciali,contratti}_indirizzi, vendite.offerte_commerciali_utilities e vendite.contratti_utilities, tre porte, col codice E_DOC_DATI_COLLEGATI_NON_BOZZA: indirizzi e fornitura si scrivono solo in bozza, come diceva il solo backend. Stessi valori della frase (etichetta, stato, verbo). rev 2026-10-11 (brief-db-testata-dopo-emissione §11.6, D-13 di Tid): la nascita. Una scrittura fatta da un TRIGGER (pg_trigger_depth() > 1) su un documento creato nella transazione corrente (nata_in_transazione di script.fn_get_stato_testata_documento) passa anche fuori bozza: e'' parte della nascita del documento, come lo snapshot della fornitura che trgfn_contratti_snapshot_precontrattuali scrive su un contratto inserito ATTIVO. Una scrittura diretta resta rifiutata, quindi i pgTAP dei lock (una transazione sola) vedono ancora il rifiuto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' in 20261011-22.
+              SELECT 1;

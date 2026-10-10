@@ -27,3 +27,11 @@ dopo l'emissione si fermano quando il documento si chiude) è arrivata **qui** i
 nella fase 2 del brief: le coppie *(colonna, codice)* sono diventate terne *(colonna, codice,
 stati)*, e trigger e lettore l'hanno seguita insieme. Una terna senza colonna o senza codice
 è un montaggio sbagliato.
+
+### 🔄 rev 2026-10-11 — il codice del rifiuto (brief-db-testata-dopo-emissione §11, D-12)
+
+Il building block delle righe legge un **settimo argomento**: il codice d'errore da sollevare.
+Senza, resta `E_RIGA_DOC_NON_BOZZA`. Serve ai satelliti del documento (indirizzi e
+fornitura), che montano lo stesso lock con `E_DOC_DATI_COLLEGATI_NON_BOZZA`: la frase delle
+righe, su un indirizzo, avrebbe detto una cosa falsa. Oltre sette argomenti è un montaggio
+sbagliato.

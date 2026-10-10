@@ -7,7 +7,7 @@
 > [migliorie-generali-da-test-valutazione](migliorie-generali-da-test-valutazione.md).
 > **Stato (2026-10-10):** 🔎 censimento e misura del §2.1 fatti (§4). **D-4**: primo
 > passo `20261010-44` ✅ applicato da Tid, pgTAP `vendite` rilanciati, misurato (§5.2).
-> D-6 e D-5 passate al brief `brief-db-lineage-seminata-per-chiave`. In attesa: D-3.
+> D-6 e D-5 passate al brief figlio `brief-db-lineage-seminata-per-chiave`. **Cosa resta: §6.**
 > **Ricadute BE/FE:** nessuna prevista.
 
 ## 1. Cosa ha insegnato il cantiere da cui nasce
@@ -162,3 +162,15 @@ colonna della lineage nelle liste). Decisione attesa: **D-6**.
 Il censimento ha mostrato che lo stesso costo lo paga **ogni pagina di sette
 liste** (~0,42 s), e che la **D-5** di questo brief (lista offerte letta per id)
 è lo stesso difetto: anche D-5 passa di là.
+
+## 6. Cosa resta — indice per chi riparte (aggiornato al 2026-10-11)
+
+| Voce | Cosa | Stato | Dove |
+| --- | --- | --- | --- |
+| D-1 | censimento delle funzioni che ripianificano | ✅ fatto | §4 |
+| **D-2** | il lister dei DDT **senza filtri** (~1,1 s, diagnosi di tutti i DDT in una chiamata): profilarlo come query | ⬜ **aperto**, decisione attesa: ora o col volume | §2.2 |
+| **D-3** | resi: misurare un ciclo di accredito **costruito** (in transazione annullata) e, se il 4× regge, `plan_cache_mode` sui chiamanti plpgsql | ⬜ **aperto** | §4.3, §4.4 |
+| D-4 | pannello «Passaggi», primo passo | ✅ `20261010-44` applicato e misurato | §5.2 |
+| **D-5 + D-6** | lista offerte per id e lineage seminata (ogni pagina di sette liste paga il grafo intero) | 🔀 **nel brief figlio** — decisioni prese da Tid, giro 1 da iniziare | [brief-db-lineage-seminata-per-chiave](brief-db-lineage-seminata-per-chiave.md) §8 |
+
+Il padre si archivia quando D-2 e D-3 sono chiuse; il figlio vive per conto suo.

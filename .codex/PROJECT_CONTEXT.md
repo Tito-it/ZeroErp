@@ -348,11 +348,19 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
   e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
   nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. Al team DB, codice da scrivere.
-- 📝 **Le righe di un DDT nato da un ordine** (`work-in-progress/brief-db-ddt-righe-evase-dall-ordine.md`, D28,
+- ⏳ **Le righe di un DDT nato da un ordine** (`work-in-progress/brief-db-ddt-righe-evase-dall-ordine.md`, D28,
   2026-10-10): in bozza la riga evasa cambia quantità e articolo senza che il fulfillment lo veda (ordine evaso
   per 10, bolla a 6). Decisioni chiuse il 2026-10-10: riga evasa ferma; verbo DB per correggere la quantità in
   bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; `qta_evasa` bloccata fuori bozza; righe a mano
-  ammesse. Il magazzino (Lotto 3) è invariato. Al team DB, codice da scrivere.
+  ammesse. Il magazzino (Lotto 3) è invariato. Lato DB applicato e verde il 2026-10-11 (`20261011-05 … -20`,
+  `-34`, `-35`, con il BB `vendite.fn_ordine_proietta_stato_evasione` che ritira sei copie); tocca a BE/FE (§6.1).
+  D-6/D-7 (Tid, 2026-10-11): niente legami nuovi su bolle emesse, e la ri-consegna di un reso segue la
+  stessa regola, dentro lo stesso brief.
+  D-8: annullare una bolla con legami li ritira (l'ordine si riapre), ma con conferma (`vendite.fn_annulla_ddt`).
+- 📝 **Annullare un documento con legami** (`work-in-progress/brief-db-annullo-documento-con-legami.md`, D29,
+  2026-10-11): quando un documento nato da un altro si annulla, l'origine si riapre, con conferma. Caso 1
+  (bolla → ordine/reso) applicato nel giro di D28; aperti preventivo → ordine, offerta → contratto/ordine
+  (oggi consumati per sempre) e il ritiro dalla commessa (silenzioso). Decisioni attese da Tid (§5).
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito
@@ -362,9 +370,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   D26, 2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
   Colonne divise in famiglie (identità, stampato, arriva dopo, note, condizioni commerciali). Decisioni chiuse
   il 2026-10-10: decide il DB, il BE toglie i suoi «solo in DRAFT»; documento chiuso = tutto fermo (D-8).
-  **Fase 1 (§5-bis), da fare per prima e consegnabile da sola:** il lettore del montaggio e la capability della
-  data di consegna confermata (assorbito il brief `brief-db-ordine-data-consegna-confermata-capability`); il BE
-  la attende per il suo verbo. Poi la fase 2, la testata. Codice da scrivere.
+  Fasi 1 e 2 applicate (2026-10-10), BE/FE fatti. Il giro R-DB (§11, 2026-10-11, D-11/D-12 di Tid) è scritto e
+  provato sullo scratch, non applicato: lock «solo in bozza» su indirizzi e fornitura dei documenti, cliente della
+  bolla dal guard, regole del listino sotto le righe a DB per contratto e offerta, congelamento del listino provato.
 - ✅ **Un testo non si riempie di spazi: chiuso il 2026-10-10** (`work-done/brief-db-character-n-spazi-di-riempimento.md`):
   colonne `character(n)` a lunghezza variabile portate a `varchar` (`20261010-26…-40`), sigla di provincia con la
   sua regola, `destinatario_fe` diventato il canale FE (P/C) che pretende il suo recapito; BE/FE e collaudo a video

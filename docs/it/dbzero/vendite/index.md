@@ -99,6 +99,7 @@
 - [fn_annotazioni_fattura](funzioni/fn_annotazioni_fattura.md)
 - [fn_annulla_accredito_riga_reso](funzioni/fn_annulla_accredito_riga_reso.md) — (rev 2026-08-21 — funzione del 2026-08-18)
 - [fn_annulla_commessa_attivita](funzioni/fn_annulla_commessa_attivita.md) — (rev 2026-07-28)
+- [fn_annulla_ddt](funzioni/fn_annulla_ddt.md)
 - [fn_annulla_lotto_da_draft](funzioni/fn_annulla_lotto_da_draft.md) — (latest review 23-09-2026)   La funzione **`vendite.fn_annulla_lotto_da_draft()`** effettua il **rollback tecnico** di un lotto in stato **DRAFT**, eliminando i documenti generati dal draft, ripristinando le righe di `attivita_fatturabili` e **chiudendo** il lotto portandolo ad **ANNULLATA**.
 - [fn_annulla_reso](funzioni/fn_annulla_reso.md) — (rev 2026-07-13)
 - [fn_applica_fondi_fattura](funzioni/fn_applica_fondi_fattura.md) — (latest review 15-08-2026)
@@ -139,11 +140,16 @@
 - [fn_create_contratto](funzioni/fn_create_contratto.md) — (latest review 08-07-2026)
 - [fn_create_fatturazione_lotto](funzioni/fn_create_fatturazione_lotto.md) — (latest review 27-01-2026) La funzione **`vendite.fn_create_fatturazione_lotto()`** crea un lotto di fatturazione con parametri coerenti (competenza, utility, tipo documento, BA) e inizializza lo stato documento a **DRAFT**.
 - [fn_ddt_causale_magazzino](funzioni/fn_ddt_causale_magazzino.md)
+- [fn_ddt_legami](funzioni/fn_ddt_legami.md)
 - [fn_ddt_merce_da_movimentare](funzioni/fn_ddt_merce_da_movimentare.md)
 - [fn_ddt_muove_merce](funzioni/fn_ddt_muove_merce.md)
 - [fn_ddt_push_diagnosi](funzioni/fn_ddt_push_diagnosi.md) — `vendite.fn_ddt_push_diagnosi(...)` è la **fonte unica dell'eleggibilità al push a commessa**. Per ogni riga attiva di un DDT risponde a *perché questa riga non è inviabile a commessa?* — `motivo = NULL` se è eleggibile, altrimenti **il** motivo di esclusione, per precedenza — ed espone i quattro fatti che servono a chi agisce su quella risposta: il billing account, la riga d'ordine sorgente, lo stato-push del segmento e la **dose** da spingere.
 - [fn_ddt_riga_componenti_init](funzioni/fn_ddt_riga_componenti_init.md)
 - [fn_ddt_riga_componenti_preview](funzioni/fn_ddt_riga_componenti_preview.md)
+- [fn_ddt_riga_correggi_qta_evasa](funzioni/fn_ddt_riga_correggi_qta_evasa.md)
+- [fn_ddt_riga_evasa](funzioni/fn_ddt_riga_evasa.md)
+- [fn_ddt_riga_ritira_legami](funzioni/fn_ddt_riga_ritira_legami.md)
+- [fn_ddt_vincoli_cliente](funzioni/fn_ddt_vincoli_cliente.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-1)
 - [fn_diagnostica_gruppi_fatturabili](funzioni/fn_diagnostica_gruppi_fatturabili.md) — (latest review 15-08-2026)
 - [fn_documento_lineage](funzioni/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_documento_listino_operativo](funzioni/fn_documento_listino_operativo.md) — (funzione nata il 2026-10-04, `20261004-42`)
@@ -223,6 +229,7 @@
 - [fn_offerta_righe_espanse](funzioni/fn_offerta_righe_espanse.md)
 - [fn_offerta_righe_preview](funzioni/fn_offerta_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-72`)
 - [fn_ordine_ha_residuo_evasione](funzioni/fn_ordine_ha_residuo_evasione.md) — (rev 2026-07-13 — **reso-aware**)
+- [fn_ordine_proietta_stato_evasione](funzioni/fn_ordine_proietta_stato_evasione.md)
 - [fn_ordine_riga_componenti_init](funzioni/fn_ordine_riga_componenti_init.md)
 - [fn_ordine_riga_componenti_preview](funzioni/fn_ordine_riga_componenti_preview.md)
 - [fn_ordine_riga_qta_riconsegna](funzioni/fn_ordine_riga_qta_riconsegna.md) — (rev 2026-07-26)
@@ -319,7 +326,9 @@
 - [trgfn_ddt_guard_transizione](funzioni/trgfn_ddt_guard_transizione.md) — (rev 2026-07-09)
 - [trgfn_ddt_guard_transizione_approvazione](funzioni/trgfn_ddt_guard_transizione_approvazione.md) — (rev 2026-07-09; rev 2026-09-24)
 - [trgfn_ddt_normalize](funzioni/trgfn_ddt_normalize.md) — La trigger function `vendite.trgfn_ddt_normalize()` normalizza la testata del DDT su `INSERT`: completa i campi temporali minimi ed **eredita billing/utility/valuta/ emittente dall'ordine sorgente**.
+- [trgfn_ddt_riga_legame_guard](funzioni/trgfn_ddt_riga_legame_guard.md)
 - [trgfn_ddt_righe_componenti_guard_pending](funzioni/trgfn_ddt_righe_componenti_guard_pending.md) — - **Decisione L3 sul componente esatto** — quando un componente di una riga DDT ha un prezzo out-of-policy in attesa di approvazione, l'approvatore L3 deve decidere sulla riga esatta proposta. - **Pattern denylist difensivo** — elenco esplicito dei campi struttura. Se `ddt_righe_componenti` viene estesa con nuove colonne struttura, il trigger va aggiornato.
+- [trgfn_ddt_righe_guard_riga_evasa](funzioni/trgfn_ddt_righe_guard_riga_evasa.md)
 - [trgfn_ddt_righe_prelievi_guard](funzioni/trgfn_ddt_righe_prelievi_guard.md)
 - [trgfn_dlt_block_ordrig_ddtrig](funzioni/trgfn_dlt_block_ordrig_ddtrig.md) — **Traduce in una frase il rifiuto di togliere una riga di documento — di un DDT o di un ordine — che ha legami a valle.**
 - [trgfn_doc_guard_chiusura_sorgente](funzioni/trgfn_doc_guard_chiusura_sorgente.md) — (latest review 26-08-2026)
