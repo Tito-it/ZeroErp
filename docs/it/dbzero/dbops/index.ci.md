@@ -58,7 +58,8 @@
 - [fn_check_pipeline_task_registered](manual/fn_check_pipeline_task_registered.md) — (latest review 08-02-2026) Verifica che un task sia registrato e **attivo** per un dominio. La funzione fallisce con errore applicativo se il task non e` ammesso.
 - [fn_cleanup_at_params](manual/fn_cleanup_at_params.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)
 - [fn_col_exists](manual/fn_col_exists.md) — (rev 2026-08-21)
-- [fn_conta_presidio](manual/fn_conta_presidio.md) — (latest review 10-09-2026)
+- [fn_conta_presidio](manual/fn_conta_presidio.md) — (latest review 10-10-2026)
+- [fn_conta_presidio_per_variante](manual/fn_conta_presidio_per_variante.md) — (latest review 10-10-2026)
 - [fn_drop_triggers_by_function_args](manual/fn_drop_triggers_by_function_args.md) — (latest review 13-01-26) La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger associati a una tabella** che invocano una determinata funzione di trigger, filtrando in base a **schema**, **nome funzione** e **lista di argomenti**.
 - [fn_ensure_storico_table](manual/fn_ensure_storico_table.md) — (latest review 16-01-26) La funzione **`fn_ensure_storico_table`** si occupa di **creare** (se non esiste) la **tabella di storico** nello schema `storico` corrispondente ad una tabella base (`p_schema_base.p_table_base`), con **colonna FK** coerente al **tipo** della PK della tabella padre, **indici** necessari e **logging** integrato. Supporta modalità **dry‑run** e la creazione opzionale di un **indice GIN** sullo `snapshot`.
 - [fn_find_file_usage](manual/fn_find_file_usage.md) — * **Analisi d’impatto**     Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.
