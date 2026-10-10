@@ -4,7 +4,7 @@
 > (`dev/db-tid`) nello stesso giorno, §6. **A chi:** team DB; poi BE/FE (§5), che **attende** la
 > consegna DB.
 > **Origine:** D10-bis di
-> [migliorie-generali-BE-FE-da-test-valutazione.md](migliorie-generali-BE-FE-da-test-valutazione.md):
+> [migliorie-generali-BE-FE-da-test-valutazione.md](../work-in-progress/migliorie-generali-BE-FE-da-test-valutazione.md):
 > chiudendo il restore per id del lookup istanze, che leggeva istanze di qualunque emittente,
 > è emerso che la regola di scope «un'istanza è dell'emittente del suo BA» ha un buco
 > **solo** se un'istanza può esistere senza BA. Il DB oggi lo ammette.
@@ -12,9 +12,11 @@
 > sempre così»*. Decisioni D-1…D-4 di Tid del 2026-10-08 (§6.1).
 > **Stato:** ✅ DB **chiuso** il 2026-10-08: R-1/R-2/R-7 (`20261008-50…-62`, §6.10), R-8/R-9
 > (`-63…-73`, §6.12) e la RLS dei dati precontrattuali (`-74…-76`, §6.13) **applicati da Tid**,
-> pgTAP senza regressioni. ✅ BE/FE fatti il 2026-10-08 (§7, non committati); ⏳ restano il
-> collaudo a video (§7.4) e i debiti del §7.5. Decisioni D-1…D-9 prese (§6.1), D-10 (§7.1).
-> R-3 non si fa.
+> pgTAP senza regressioni. ✅ BE/FE fatti il 2026-10-08 (§7). ✅ **Chiuso e archiviato il
+> 2026-10-10**, su decisione di Tid. Del collaudo a video (§7.4) è superato il punto del preventivo;
+> i punti sulle pratiche sono **rimandati** alla ripresa di quel cantiere, oggi fermo. I debiti
+> del §7.5 ancora aperti sono passati in PROJECT_CONTEXT § «Aperto — Media priorità».
+> Decisioni D-1…D-9 prese (§6.1), D-10 (§7.1). R-3 non si fa.
 
 ## 1. La regola
 
@@ -675,19 +677,28 @@ BA), `pratiche/tests/db/test_pratica_billing_account_db.py` (2) e
 
 ### 7.4 Collaudo a video (Tid)
 
-* Pratica nuova su un cliente con un BA solo: «Fornitura … derivata»; con piu' BA (anche
+* ⏭️ Pratica nuova su un cliente con un BA solo: «Fornitura … derivata»; con piu' BA (anche
   un'istanza con due utility): la tendina mostra una riga per fornitura, con la utility nel testo.
-* Pratica su un soggetto senza ruoli o con un ruolo non cliente: nessun campo fornitura.
-* Preventivo nuovo scegliendo l'istanza invece del BA: al salvataggio il BA compare, bloccato.
-* Dal flusso di una pratica col BA: offerta e contratto si aprono col cliente ereditato.
+* ⏭️ Pratica su un soggetto senza ruoli o con un ruolo non cliente: nessun campo fornitura.
+* ✅ Preventivo nuovo scegliendo l'istanza invece del BA: al salvataggio il BA compare, bloccato.
+* ⏭️ Dal flusso di una pratica col BA: offerta e contratto si aprono col cliente ereditato.
+
+✅ Superato il 2026-10-10 il punto del preventivo. ⏭️ I tre punti sulle pratiche sono rimandati
+(Tid, 2026-10-10): il cantiere pratiche è fermo e sarà ripreso per intero. Si rifanno alla sua
+ripresa; il promemoria sta in PROJECT_CONTEXT § «Aperto — Media priorità».
 
 ### 7.5 Debiti e segnalazioni, aperti
+
+> **Aggiornamento 2026-10-10, all'archiviazione:** il primo punto è preso in carico da
+> [brief-db-esecutivi-ba-coppia](../work-in-progress/brief-db-esecutivi-ba-coppia.md). Il secondo
+> e il terzo sono ancora aperti e passano in PROJECT_CONTEXT § «Aperto — Media priorità». Il
+> quarto è chiuso: `test_resi_create_db` è verde sul DB di sviluppo (con `ZEROERP_TEST_DB_E2E=1`).
 
 * **Ordini e DDT hanno ancora `billing_account_id` nullable**, senza FK di coppia: e' la stessa
   asimmetria che R-2 ha chiuso su preventivo, offerta e contratto (il BE ha ancora i commenti
   «ordine prospect con BA NULL», `ordini_repository`, `_indirizzi_repo_mixin`, `ddt_repository`,
   `ordine_document_context_builder`). → Brief aperto il 2026-10-09 su richiesta di Tid:
-  [brief-db-esecutivi-ba-coppia.md](brief-db-esecutivi-ba-coppia.md) (D21 del registro DB).
+  [brief-db-esecutivi-ba-coppia.md](../work-in-progress/brief-db-esecutivi-ba-coppia.md) (D21 del registro DB).
 * `script.fn_get_billing_account_by_istanza` non ha piu' consumatori nel BE: il team DB puo'
   ritirarla (§6.12.3).
 * Il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT`: la chiave

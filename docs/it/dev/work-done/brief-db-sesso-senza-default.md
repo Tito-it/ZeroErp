@@ -6,7 +6,7 @@
 > **Origine:** revisione del codice BE non committato del 2026-10-09; decisioni di Tid.
 > **Stato:** ✅ **lato DB chiuso** (2026-10-09): changeSet `20261009-19` … `-31` **applicati** da
 > Tid, corsa pgTAP **senza regressioni** (§7.3). ✅ **lato BE/FE fatto** (2026-10-09, §8),
-> committato (`e7cdad077`, in `Tito-dev`): resta la verifica a video del drawer soggetto.
+> committato (`e7cdad077`, in `Tito-dev`). ✅ **Collaudo a video del drawer soggetto superato e brief chiuso** (Tid, 2026-10-10).
 
 ## 1. La regola (decisione di Tid, 2026-10-09)
 
