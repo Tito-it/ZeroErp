@@ -605,19 +605,19 @@ def elimina_preventivo(preventivo_id: int) -> dict[str, Any]:
     return {"status": "ok" if deleted else "noop", "preventivo_id": preventivo_id}
 
 
-# Scopo: Aggiorna testata preventivo con guard su stato modificabile.
+# Scopo: Aggiorna testata preventivo.
+#
+# Quali colonne si cambiano in quale stato lo dice il DB, colonna per colonna:
+# il lock di testata `vendite.trgfn_doc_testata_lock_fuori_bozza` (in bozza
+# tutto; emesso e accettato le note e la competenza, D-9; chiuso niente). Fino
+# al 2026-10-10 qui c'era un «solo in DRAFT» che ne era la seconda copia
+# (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del lock passa com'e'.
 def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = PreventiviRepository()
+    # Prima la testata: fuori perimetro o inesistente e' un 404.
     testata = _get_testata_or_raise(repo, preventivo_id, op="aggiorna_preventivo")
-    ErrorManager.require(
-        testata["stato_codice_interno"] in _STATI_MODIFICABILI,
-        code="E_PREV_STATO_NON_MODIFICABILE",
-        message="Preventivo non modificabile nello stato corrente.",
-        detail=f"stato={testata['stato_codice_interno']}",
-        function_name=f"{_FN}.aggiorna_preventivo",
-    )
 
-    # Campi aggiornabili in BOZZA. utility_id e' immutabile per regola di
+    # Campi esposti dal form. utility_id e' immutabile per regola di
     # dominio (vedi script.fn_available_actions_preventivo: non_editable_fields
     # include sempre utility_id) e quindi NON e' nella whitelist: per cambiarla
     # serve creare un nuovo preventivo.

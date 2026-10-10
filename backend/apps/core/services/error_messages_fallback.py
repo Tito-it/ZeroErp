@@ -324,6 +324,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_CLIENTE_DIVERSO_DA_SORGENTE": "Il cliente deve essere quello del documento da cui nasce.",
     "E_DOC_EMITTENTE_BA_INCOERENTE": "L'azienda che emette il documento non e' quella del cliente: lasciala vuota, la mette il billing account.",
     "E_DOC_EMITTENTE_FUORI_BOZZA": "L'azienda che emette il documento si sceglie solo in bozza: se e' sbagliata, annulla il documento e creane uno nuovo.",
+    # brief-db-testata-dopo-emissione (fase 2, 2026-10-10): la testata dopo la
+    # bozza, un codice per famiglia di colonne. Il lock e' il BB di testata.
+    "E_DOC_IDENTITA_FUORI_BOZZA": "Data, valuta e numerazione del documento si scelgono solo in bozza.",
+    "E_DOC_CONDIZIONI_FUORI_BOZZA": "In questo stato le condizioni commerciali del documento non si cambiano piu': annulla il documento e rifallo, oppure creane una nuova revisione.",
+    "E_DOC_CLIENTE_FUORI_BOZZA": "Il cliente del documento si sceglie solo in bozza: se e' sbagliato, annulla il documento e creane uno nuovo.",
+    "E_DOC_SORGENTE_FUORI_BOZZA": "Il documento da cui nasce si sceglie solo in bozza.",
+    "E_DOC_CHIUSO": "Il documento e' chiuso, e non si modifica piu'.",
     "E_DOC_LISTINO_EMITTENTE_DIVERSO": "Il listino scelto e' di un'altra azienda: il documento puo' usare solo un listino della sua azienda emittente.",
     "E_DOC_LISTINO_UTILITY_DIVERSA": "Il listino scelto e' di un'altra utility: il documento puo' usare solo un listino della sua utility.",
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "Eliminazione asset non consentita. Disattivare l'asset impostando valido_al.",

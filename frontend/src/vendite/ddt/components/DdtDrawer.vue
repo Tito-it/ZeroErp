@@ -24,9 +24,10 @@ import { useEmittenteFiscaleField } from '../../../core/composables/useEmittente
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useBaFormDefaults } from '../../_shared/baDefaults/useBaFormDefaults'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoDdtSeverity } from '../../../core/utils/severity'
-import { STATO_DDT } from '../constants'
+import { CAMPI_FORM_TESTATA_DDT, STATO_DDT } from '../constants'
 import { AZIONE_PUSH_COMMESSA } from '../../constants'
 import EntityPdfButton from '../../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../../documenti/constants'
@@ -91,7 +92,7 @@ const {
 // stato: il legame e' del BB `useRigheDocumento` (regola del 2).
 const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
   testata: { modificato, chiudiConConferma },
-  modificabile: () => canEditTestataEffective.value && !isReadonly.value,
+  modificabile: () => testata.modificabile.value,
   presente: () => hasDetail.value,
 })
 const modificatoDocumento = documento.modificato
@@ -178,8 +179,6 @@ const showResoAction = computed(
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
-const canEditTestata = caps.canEdit
-const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // Push a commessa: la capability include l'azione in `available_actions` solo
 // quando e' eseguibile; quando non lo e', espone il motivo nei campi
@@ -193,11 +192,31 @@ const pushCommessaDisabledAction = computed(() => caps.azioneNegata('can_push_co
   label_key: 'vendite.ddt.azione_push_commessa',
 }))
 
-// ⛔ Nessun campo bloccato per-campo (fino al 2026-10-10 il cliente lo era dopo
-// la creazione). Cliente e destinatario si scelgono in BOZZA (D-2 di
-// brief-db-esecutivi-ba-coppia: la bolla puo' nascere senza cliente e
-// riceverlo prima di emettere); fuori bozza la testata e' spenta da
-// `can_edit_testata`, e il DB blocca comunque le due colonne.
+// La testata dopo la bozza: quali campi del form si cambiano, dalla capability
+// (brief-db-testata-dopo-emissione, R-FE-3, D-0/D-1). A bolla emessa restano
+// aperti trasporto e tracciamento: il form esce dal corpo protetto.
+const isReadonlyPuro = computed(() => props.readonly || parentReadonly.value)
+const testata = useTestataDocumento({
+  caps,
+  campi: CAMPI_FORM_TESTATA_DDT,
+  readonlyPuro: () => isReadonlyPuro.value,
+  // Il documento esiste: in EDIT anche prima che arrivi il dettaglio, cosi'
+  // la capability ancora vuota tiene il form fermo (fail-closed).
+  presente: () => isEdit.value || hasDetail.value,
+  corpoProtetto: () => isReadonly.value,
+})
+// ⚠️ ECCEZIONE DICHIARATA, da togliere col changeSet DB che la corregge:
+//    `fn_available_actions_ddt` mette `billing_account_id` fra i campi fermi
+//    ANCHE IN BOZZA (`c_non_edit_draft`), mentre il lock di testata lo ferma
+//    solo fuori bozza e D-2 (brief-db-esecutivi-ba-coppia) vuole che la bolla
+//    nata senza cliente lo riceva in bozza. Vale il lock: in bozza il cliente
+//    resta sceglibile. Segnalato al team DB (brief-db-testata-dopo-emissione
+//    §10.1).
+const nonEditableFields = computed(() => {
+  const fermi = testata.campiBloccati.value
+  const inBozza = detail.value?.stato_codice_interno === STATO_DDT.DRAFT
+  return inBozza ? fermi.filter((c) => c !== 'billing_account_id') : fermi
+})
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
 // (sceglie via EmittenteFiscaleField in modalita' Select). Uniformato a
@@ -433,13 +452,15 @@ const { close } = useDrawerAutosaveBozza({
 })
 
 const canSave = computed(() => {
-  if (isReadonly.value) return false
+  if (!testata.modificabile.value) return false
   return form.value.billing_account_id != null || form.value.destinatario_soggetto_ruolo_id != null
 })
 
 async function handleSave() {
   if (isEdit.value || createdId.value !== null) {
-    // UPDATE testata (DRAFT): cliente e destinatario compresi (si scelgono in bozza).
+    // UPDATE testata: in bozza tutto, cliente e destinatario compresi (si
+    // scelgono in bozza); dopo i soli campi aperti (decide il DB, i bloccati
+    // viaggiano invariati e il lock li lascia passare).
     const result = await execute(
       () => store.update(effectiveDdtId.value, buildTestataPayload()),
       { successMessage: t('vendite.ddt.ddt_salvato') },
@@ -635,6 +656,7 @@ const drawerActions = computed(() => {
     :modificato="modificatoDocumento"
     :conferma-uscita="() => close()"
     :footer="footerDrawer"
+    :footer-readonly="testata.footerReadonly.value"
     :loading="loading"
     :save-disabled="!canSave"
     @update:visible="(v) => emit('update:visible', v)"
@@ -704,23 +726,31 @@ const drawerActions = computed(() => {
     <Divider v-if="hasDetail" />
 
     <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup. -->
-    <DdtForm
-      :campi-errati="campiErrati"
-      :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
-      :record="detail"
-      :is-edit="isEdit || createdId !== null" />
+    <!-- Fuori bozza il form esce dal corpo protetto se ha un campo aperto
+         (`useTestataDocumento`): a bolla emessa trasporto e tracciamento. -->
+    <div :class="{ 'app-escape': testata.sopraCorpoProtetto.value }">
+      <DdtForm
+        :campi-errati="campiErrati"
+        :form="form" :is-modificabile="testata.modificabile.value"
+        :non-editable-fields="nonEditableFields"
+        :record="detail"
+        :is-edit="isEdit || createdId !== null" />
+    </div>
 
     <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
     <template v-if="hasDetail">
       <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
            avviso se mancante (obbligatorio all'emissione, guard DB),
            pulsante "Indirizzi" che apre il drawer di gestione. -->
+      <!-- Indirizzi: seguono lo stato (in bozza), non la capability della
+           testata, che dal 2026-10-10 e' vera anche fuori bozza per le
+           colonne ancora aperte (brief-db-testata-dopo-emissione). -->
       <DocumentoIndirizziSection
         dominio="ddt"
         :doc-id="effectiveDdtId"
         :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
         :istanza-utility-id="detail?.istanza_utility_id ?? null"
-        :readonly="!(canEditTestataEffective && !isReadonly)"
+        :readonly="isReadonly"
         @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
         :bordo="false" />
 

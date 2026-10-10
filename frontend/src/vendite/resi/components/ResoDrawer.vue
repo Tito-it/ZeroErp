@@ -20,6 +20,7 @@ import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import { statoResoSeverity } from '../../../core/utils/severity'
@@ -30,7 +31,7 @@ import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
-import { STATO_RESO } from '../constants'
+import { CAMPI_FORM_TESTATA_RESO, STATO_RESO } from '../constants'
 import ResoForm from './ResoForm.vue'
 import ResoRigheTable from './ResoRigheTable.vue'
 import ResoRiconsegnaDialog from './dialogs/ResoRiconsegnaDialog.vue'
@@ -81,8 +82,20 @@ provide(READONLY_KEY, isReadonly)
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
-const canEditTestata = caps.canEdit
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// La testata dopo la bozza: quali campi del form si cambiano, dalla capability
+// (brief-db-testata-dopo-emissione, R-FE-3). Il form del reso mostra la sola
+// data, che fuori bozza e' ferma: oggi il form si apre solo in bozza, e lo
+// dice la capability, non lo stato.
+const testata = useTestataDocumento({
+  caps,
+  campi: CAMPI_FORM_TESTATA_RESO,
+  readonlyPuro: () => isReadonlyPuro.value,
+  // Il reso non si crea da qui: con un id il documento esiste anche prima che
+  // arrivi il dettaglio, e la capability ancora vuota tiene il form fermo.
+  presente: () => props.resoId !== null || hasDetail.value,
+  corpoProtetto: () => isReadonly.value,
+})
 
 // ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): testata E riga aperta, una
 //    domanda sola all'uscita. La fotografia della riga la tiene il suo form.
@@ -90,7 +103,7 @@ const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // stato: il legame e' del BB `useRigheDocumento` (regola del 2).
 const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
   testata: { modificato, chiudiConConferma },
-  modificabile: () => canEditTestata.value && !isReadonly.value,
+  modificabile: () => testata.modificabile.value,
   presente: () => hasDetail.value,
 })
 const modificatoDocumento = documento.modificato
@@ -129,7 +142,7 @@ watch(() => props.visible, (v) => {
 })
 
 const canSave = computed(
-  () => !isReadonly.value && canEditTestata.value && form.value.data != null,
+  () => testata.modificabile.value && form.value.data != null,
 )
 
 // Scopo: salva la testata (solo `data`: il resto e' ereditato/immutabile).
@@ -258,6 +271,7 @@ async function onCoperturaRiconsegnaCambiata() {
     :modificato="modificatoDocumento"
     :conferma-uscita="documento.chiudiConConferma"
     :footer="footerDrawer"
+    :footer-readonly="testata.footerReadonly.value"
     :loading="loading"
     :save-disabled="!canSave"
     @update:visible="(v) => emit('update:visible', v)"
@@ -300,11 +314,13 @@ async function onCoperturaRiconsegnaCambiata() {
     <Divider v-if="hasDetail" />
 
     <!-- Form testata (data editabile in DRAFT, resto display). -->
-    <ResoForm
-      :campi-errati="campiErrati" v-if="hasDetail"
-      :form="form"
-      :is-modificabile="canEditTestata && !isReadonly"
-      :record="detail" />
+    <div v-if="hasDetail" :class="{ 'app-escape': testata.sopraCorpoProtetto.value }">
+      <ResoForm
+        :campi-errati="campiErrati"
+        :form="form"
+        :is-modificabile="testata.modificabile.value"
+        :record="detail" />
+    </div>
 
     <template v-if="hasDetail">
       <Divider />

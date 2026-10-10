@@ -1691,6 +1691,7 @@
       "presidi_dettaglio_tecnico": "Technical detail",
       "presidi_causa_non_indicata": "cause not given",
       "presidi_causa_senza_testo": "no text for this cause in the catalogue",
+      "presidi_causa_mostrate": "{n} of {tot} shown",
       "chi_agisce": {
         "amministratore": "You can fix it",
         "sistemista": "Report it to whoever runs the server",
@@ -3712,6 +3713,15 @@
         "nessuna_riga_pushabile": "No line can be sent to a job: check line quantities and prices.",
         "annullato": "The order is cancelled: it does not go to invoicing."
       },
+      "data_consegna_confermata_reason": {
+        "in_bozza": "In draft the date is changed by editing the line.",
+        "stato_non_ammette": "In this status the delivery date can no longer be changed."
+      },
+      "azione_data_consegna_confermata": "Change the confirmed delivery date",
+      "data_consegna_confermata_titolo": "Confirmed delivery date",
+      "data_consegna_confermata_riga": "Line {riga_nr} — {descrizione}",
+      "data_consegna_confermata_hint": "Leave the field empty to remove the delivery commitment.",
+      "data_consegna_confermata_salvata": "Confirmed delivery date updated.",
       "evasione_titolo": "Generate DDT",
       "evasione_intro": "Select the lines to fulfil and generate the delivery note. The DDT is created as a draft.",
       "evasione_col_qta_ordinata": "Ordered qty",

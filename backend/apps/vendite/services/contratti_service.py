@@ -22,7 +22,7 @@
 #             NULL o entrambi NOT NULL)
 #          3) affidamento ai trigger DB per gli invarianti piu' complessi
 #             (overlap cross-contratto, tipo/classe utenza dinamica, lock
-#             post-attivazione, validita' versione listino fissata).
+#             della testata fuori bozza, validita' versione listino fissata).
 #
 #        Il numero contratto e' generato nel service via
 #        `script.fn_generate_codice('contratto')` — NON va mai
@@ -224,35 +224,12 @@ UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "meta",
 })
 
-# Whitelist PATCH testata per stato del documento contratto. Il workflow
-# operativo e' DRAFT -> ATTIVO -> CESSATO (terminale). SOSPESO e' stato
-# rimosso dal modello (config.stati_doc_contratti, 2026-04-26): la sua
-# semantica operativa (blocco fatturazione/proroghe/ripresa) non era
-# implementata. In ATTIVO restano editabili solo `valido_al` (per
-# programmare la cessazione, coerente con "data = fonte di verita'
-# operativa") e `meta` (note interne, non operative). CESSATO e'
-# completamente immutabile. Per cambi sostanziali in stati post-DRAFT
-# serve creare un nuovo contratto (eventualmente con parent_contratto_id) —
-# pattern audit-friendly.
-# ⭐ In ATTIVO entrano anche i tre riferimenti dell'atto (I8/D9, decisione Q1 di
-#   Tid del 2026-08-29). NON sono un cambio sostanziale: non toccano prezzo,
-#   validita' o perimetro, e non producono NESSUN effetto finche' la fattura non
-#   ne fa lo snapshot (I4). E il caso reale e' proprio questo — negli appalti PA
-#   il CIG arriva quando arriva, e puo' arrivare a contratto gia' attivo:
-#   negarlo costringerebbe a creare un contratto nuovo PER UN PEZZO DI CARTA,
-#   che e' il contrario di cio' che quella regola protegge.
-# ⛔ In CESSATO e ANNULLATO restano fuori: li' la regola e' immutabilita' piena e
-#   non c'e' ragione di scalfirla.
-_CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
-    "DRAFT": UPDATE_KEYS_TESTATA,
-    "ATTIVO": frozenset({"valido_al", "meta"}) | _CODICI_ATTO,
-    "CESSATO": frozenset(),
-    # ANNULLATO (refactor 2026-05-20): stato terminale "soft-delete", coerente
-    # con preventivi (is_abortito=true). Nessun campo modificabile —
-    # transizione consentita SOLO da DRAFT. Per contratti ATTIVO la chiusura
-    # avviene via CESSATO con data di fine validita'.
-    "ANNULLATO": frozenset(),
-}
+# Quali colonne della testata si cambiano in quale stato lo dice il DB,
+# colonna per colonna: il lock `vendite.trgfn_doc_testata_lock_fuori_bozza`
+# (DRAFT tutto; ATTIVO `valido_al`, i riferimenti dell'atto e `meta`; CESSATO e
+# ANNULLATO niente). Fino al 2026-10-10 qui c'era la tabella per stato
+# `_CONTRATTO_PATCH_ALLOWED_BY_STATE`, la seconda copia di quella regola
+# (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del lock passa com'e'.
 
 # Refactor 2026-05-20 — Lock cambio `listino_id` in presenza di righe.
 # Razionale: il `listino_id` definisce il contesto di pricing contro cui le
@@ -488,10 +465,6 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "E_ARTICOLO_ESCLUSO_DA_CONTRATTO",
         ("articolo escluso dal contratto",),
-    ),
-    (
-        "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE",
-        ("contratto ATTIVO", "campi bloccati"),
     ),
     (
         "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",
@@ -775,33 +748,6 @@ class ContrattiService:
         # globale: serve al validator per sapere il listino_id corrente quando
         # il payload patch non lo include (es. patch solo su variazione globale).
         existing = self._get_contratto_or_raise(contratto_id, op="update_contratto")
-
-        # Guard whitelist PATCH per stato. In ATTIVO ammessi solo
-        # `valido_al` (programma cessazione) e `meta` (note interne); in
-        # CESSATO nulla; in DRAFT tutto. categoria_cliente_id_snapshot non
-        # appare nelle whitelist non-DRAFT, quindi viene rifiutato implicitamente
-        # con messaggio coerente. Errore parlante con detail che lista i campi
-        # ammessi per lo stato corrente.
-        stato_corrente = str(existing.get("stato_codice_interno") or "")
-        allowed_for_state = _CONTRATTO_PATCH_ALLOWED_BY_STATE.get(stato_corrente, frozenset())
-        non_ammessi = sorted(set(payload.keys()) - allowed_for_state)
-        if non_ammessi:
-            ErrorManager.raise_error(
-                code="E_CONTRATTO_NON_MODIFICABILE",
-                message="Modifica contratto non consentita nello stato corrente.",
-                detail=(
-                    f"In stato {stato_corrente or 'sconosciuto'} sono modificabili solo: "
-                    f"{sorted(allowed_for_state) if allowed_for_state else 'nessun campo'}. "
-                    f"Campi non ammessi nel payload: {non_ammessi}. "
-                    f"Per modifiche sostanziali su contratti post-DRAFT creare un nuovo contratto."
-                ),
-                context={
-                    "contratto_id": contratto_id,
-                    "stato_codice": stato_corrente,
-                    "campi_non_ammessi": non_ammessi,
-                    "campi_ammessi": sorted(allowed_for_state),
-                },
-            )
 
         # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o sostituzione,
         # NON rimozione) quando ci sono righe persistite. Vedi commento su

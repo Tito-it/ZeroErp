@@ -28,6 +28,7 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import date
+from collections.abc import Callable
 from typing import Any
 
 from django.db import transaction
@@ -119,11 +120,15 @@ MAX_ACCREDITI_MASSIVI = 200
 
 # Scopo: Carica la testata reso o solleva E_RESO_NOT_FOUND (BB core
 #        `testata_o_not_found`, stesso nome del helper di ordini e DDT).
+# `getter` ammette il lettore leggero `get_stato_codice`, dove al chiamante
+# basta sapere che il documento esiste (stessa forma di
+# `offerte_service._get_offerta_or_raise`).
 def _get_testata_or_raise(
     repo: ResiRepository, reso_id: int, *, op: str,
-) -> dict[str, Any]:
+    getter: Callable[[int], Any] | None = None,
+) -> Any:
     return testata_o_not_found(
-        repo.get_reso, reso_id,
+        getter or repo.get_reso, reso_id,
         code="E_RESO_NOT_FOUND", message="Reso non trovato.",
         id_name="reso_id", function_name=f"{_FN}.{op}",
     )
@@ -525,11 +530,19 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     return {**creato, "righe_ids": righe_ids}
 
 
-# Scopo: Aggiorna testata reso (solo DRAFT; soli campi data/meta — il resto e'
-#        ereditato dal DDT sorgente e immutabile).
+# Scopo: Aggiorna testata reso (soli campi data/meta — il resto e' ereditato
+#        dal DDT sorgente e immutabile).
+#
+# Quali colonne si cambiano in quale stato lo dice il DB, colonna per colonna:
+# il lock di testata `vendite.trgfn_doc_testata_lock_fuori_bozza` (in bozza
+# tutto; dopo la conferma le sole note, ferme a reso annullato). Fino al
+# 2026-10-10 qui c'era un «solo in DRAFT» che ne era la seconda copia
+# (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del lock passa com'e'.
 def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = ResiRepository()
-    _assert_stato(repo, reso_id, _STATI_MODIFICABILI, op="aggiorna_reso")
+    # Prima la testata: fuori perimetro o inesistente e' un 404. Basta sapere
+    # che esiste: il lettore leggero, non la testata intera.
+    _get_testata_or_raise(repo, reso_id, op="aggiorna_reso", getter=repo.get_stato_codice)
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RESO}
     ErrorManager.require(
         len(data) > 0,

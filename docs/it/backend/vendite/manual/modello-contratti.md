@@ -68,7 +68,8 @@ post-attivazione (Profilo A). La soluzione:
   averla verificata con `script.fn_check_listino_congelabile` (la stessa
   check che spegne «Attiva»). Una eventuale BOZZA con date sovrapposte viene
   ignorata — non e' mai snapshot (fix Bug A 2026-05-16). Da quel momento la
-  versione e' **immutabile** (lock dal trigger
+  versione e' **immutabile** (lock di testata
+  `trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10: assorbe il vecchio
   `trgfn_contratti_lock_post_attivazione`).
 - in **ATTIVO**: il pricing legge la versione fissata. Cambi futuri del
   listino non toccano il contratto.
@@ -163,22 +164,31 @@ modellato).
 
 ## 7. Profilo A — congelamento post-attivazione
 
-Il contratto ATTIVO e' **blindato** per garantire stabilita' contrattuale:
+Il contratto ATTIVO e' **blindato** per garantire stabilita' contrattuale.
+⭐ Dal 2026-10-10 la regola ha **una sede sola**, il lock di testata del DB
+(`vendite.trgfn_doc_testata_lock_fuori_bozza`, montato colonna per colonna e per
+stato: [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)).
+Il backend non ha piu' la sua tabella per stato (`_CONTRATTO_PATCH_ALLOWED_BY_STATE`,
+ritirata): passa la scrittura e il 409 del lock arriva com'e'. Il form spegne i
+campi prima, leggendo `can_edit_testata` e `non_editable_fields` dalla capability,
+che leggono lo stesso montaggio.
 
-| Campo | Modificabilita' in ATTIVO |
-| --- | --- |
-| `listino_id` | ❌ trigger `trgfn_contratti_lock_post_attivazione` |
-| `listino_versione_id` | ❌ trigger lock |
-| `tipo_variazione_globale` | ❌ trigger lock |
-| `valore_variazione_globale` | ❌ trigger lock |
-| Eccezioni in `contratti_righe` (INSERT/UPDATE/DELETE) | ❌ building block `trgfn_doc_righe_lock_fuori_bozza` (dal 2026-09-22, lo stesso di DDT e ordini), `E_RIGA_DOC_NON_BOZZA` |
-| `categoria_cliente_id_snapshot` | ❌ rifiutato dal service (DRAFT-only) |
-| `valido_al` | ✅ ammesso (cessazione programmata) |
-| `meta` | ✅ ammesso (note interne) |
+| Campo | In ATTIVO | Codice del rifiuto |
+| --- | --- | --- |
+| `data`, `valuta_id` | ❌ | `E_DOC_IDENTITA_FUORI_BOZZA` |
+| `listino_id`, `listino_versione_id`, `tipo_variazione_globale`, `valore_variazione_globale`, `categoria_cliente_id_snapshot`, `ambito`, `valido_dal`, `parent_contratto_id` | ❌ | `E_DOC_CONDIZIONI_FUORI_BOZZA` |
+| `billing_account_id`, `istanza_utility_id`, `utility_id` | ❌ | `E_DOC_CLIENTE_FUORI_BOZZA` |
+| `offerta_id`, `sorgente_tipo_id`, `sorgente_uid` | ❌ | `E_DOC_SORGENTE_FUORI_BOZZA` |
+| Eccezioni in `contratti_righe` (INSERT/UPDATE/DELETE) | ❌ | `E_RIGA_DOC_NON_BOZZA` (building block `trgfn_doc_righe_lock_fuori_bozza`) |
+| `valido_al` | ✅ (cessazione programmata) | — |
+| `codice_cig`, `codice_cup`, `codice_commessa` | ✅ (riferimenti dell'atto) | — |
+| `meta` | ✅ (note interne) | — |
 
-Tentativi di modifica sui campi bloccati sollevano
-`E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (409). Per cambi sostanziali
-serve un nuovo contratto.
+In **CESSATO** e **ANNULLATO** il documento e' chiuso: si fermano anche le
+colonne aperte in ATTIVO (`E_DOC_CHIUSO`). `fatturazione_immediata` non e'
+nominata dal lock: la governa il suo guard di commessa.
+`E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` e' **ritirato** (2026-10-10). Per
+cambi sostanziali serve un nuovo contratto.
 
 ### 7.1 Invariante no-overlap (esclusivita' all'attivazione)
 

@@ -151,11 +151,13 @@ export const STATO_SMISTAMENTO = Object.freeze({
 
 // Codici stato contratto (`config.stati_doc_contratti.codice_interno`).
 // DRAFT = bozza pre-attivazione; ATTIVO = contratto in vigore; CESSATO =
-// terminato (data fine raggiunta o cessazione manuale anticipata).
+// terminato (data fine raggiunta o cessazione manuale anticipata);
+// ANNULLATO = chiuso dalla bozza senza essere mai entrato in vigore.
 export const STATO_CONTRATTO = Object.freeze({
   DRAFT: 'DRAFT',
   ATTIVO: 'ATTIVO',
   CESSATO: 'CESSATO',
+  ANNULLATO: 'ANNULLATO',
 })
 
 // Forma di un contratto, DERIVATA (non persistita) da `contratti.listino_id`:
@@ -242,3 +244,31 @@ export const MODO_DATA_DOCUMENTO = Object.freeze({
   // decide la politica del registro», che non e' «oggi».
   CREAZIONE: 'creazione',
 })
+
+// Le colonne della testata che `PreventiviForm` MOSTRA, per
+// `useTestataDocumento` (brief-db-testata-dopo-emissione, R-FE-3): la testata
+// e' modificabile se almeno una di queste e' aperta nella capability.
+// ⚠️ Deve dire gli stessi campi del form: lo presidia
+// `campiFormTestata.spec.js`. `competenza_mese` e `fatturazione_immediata` non
+// ci sono: si scelgono accettando (dialog di accettazione), non dal form.
+export const CAMPI_FORM_TESTATA_PREVENTIVO = Object.freeze([
+  'emittente_fiscale_id',
+  'billing_account_id',
+  'istanza_utility_id',
+  'utility_id',
+  'valuta_id',
+  'termine_pagamento_id',
+  'validita_dal',
+  'validita_al',
+])
+
+// Le colonne della testata del contratto che il form cambia DOPO la bozza,
+// per `useTestataDocumento`: i tre riferimenti dell'atto (Q1). ⚠️ Scelta di
+// interfaccia, dichiarata: `valido_al`, che il DB apre in ATTIVO, si cambia
+// dal dialog «Cessa contratto» e non dal form; in bozza il form e' tutto
+// aperto e i suoi campi leggono `isLocked` come prima.
+export const CAMPI_FORM_TESTATA_CONTRATTO = Object.freeze([
+  'codice_cig',
+  'codice_cup',
+  'codice_commessa',
+])

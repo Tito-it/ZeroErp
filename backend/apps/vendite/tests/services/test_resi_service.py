@@ -182,13 +182,16 @@ class ResiServiceGuardsTests(SimpleTestCase):
         self.assertEqual(out["righe_count"], 2)
 
     @patch(_REPO)
-    def test_aggiorna_reso_stato_non_draft(self, repo_cls) -> None:
+    def test_aggiorna_reso_fuori_bozza_decide_il_db(self, repo_cls) -> None:
+        # Reso CONFERMATO: le note si cambiano ancora, la data no, e lo dice il
+        # lock di testata del DB (brief-db-testata-dopo-emissione, D-2): il
+        # service non ha piu' un «solo in DRAFT» e passa la scrittura.
         repo = repo_cls.return_value
+        # L'esistenza si legge col lettore leggero; lo stato non ferma niente.
         repo.get_stato_codice.return_value = "CONFERMATO"
-        with self.assertRaises(ServiceError) as cm:
-            resi_service.aggiorna_reso(7, {"data": "2026-07-13"})
-        self.assertEqual(cm.exception.code, "E_RESO_STATO_TRANSIZIONE")
-        repo.update_reso.assert_not_called()
+        resi_service.aggiorna_reso(7, {"meta": {"nota": "x"}})
+        repo.get_reso.assert_not_called()
+        self.assertEqual(repo.update_reso.call_args.kwargs, {"meta": {"nota": "x"}})
 
     @patch(_REPO)
     def test_gestisci_riga_stato_non_draft(self, repo_cls) -> None:

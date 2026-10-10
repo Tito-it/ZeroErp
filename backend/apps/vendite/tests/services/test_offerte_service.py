@@ -14,7 +14,7 @@ Indice test eseguiti:
 5)  crea_offerta_codice_rifiutato_in_payload          [Step 5]
 6)  crea_offerta_richiede_validita_dal
 7)  crea_offerta_ok_setta_stato_bozza                 [Step 5: no codice]
-8)  aggiorna_offerta_su_emessa_fallisce
+8)  aggiorna_offerta_su_emessa_decide_il_db + aggiorna_offerta_utility_su_emessa_fallisce
 9)  emetti_da_non_bozza_fallisce
 10) registra_accettazione_da_bozza_fallisce
 11) registra_rifiuto_senza_motivazione_fallisce
@@ -253,16 +253,38 @@ class OfferteServiceTests(TestCase):
 
     # --- update / delete con guard stato ------------------------------
 
-    # Scopo: PATCH testata su offerta EMESSA -> 422 (guard stato BOZZA).
+    # Scopo: PATCH testata su offerta EMESSA: quali colonne si cambiano lo
+    #        dice il lock di testata del DB (brief-db-testata-dopo-emissione,
+    #        D-0). Il service non ha piu' un «solo in BOZZA» e passa la scrittura.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_aggiorna_offerta_su_emessa_fallisce(self, repo_cls):
+    def test_aggiorna_offerta_su_emessa_decide_il_db(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSA"
+        OfferteService().aggiorna_offerta(1, {"meta": {"nota": "x"}})
+        repo.update_offerta.assert_called_once()
+        repo.get_available_actions.assert_called()  # il dettaglio di ritorno
+
+    # Scopo: il satellite utility non ha un lock a DB: il cancello e' la
+    #        capability `can_edit_utility`, LETTA (non riscritta). Spenta ->
+    #        400 e nessuna scrittura, nemmeno della testata.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_utility_su_emessa_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSA"
+        repo.get_available_actions.return_value = {
+            "can_edit_utility": False, "stato_codice": "EMESSA",
+        }
         with self.assertRaises(ServiceError) as cm:
-            OfferteService().aggiorna_offerta(1, {"validita_al": "2026-12-31"})
+            OfferteService().aggiorna_offerta(
+                1, {"meta": {"nota": "x"}, "utility": {"param_2_txt": "y"}},
+            )
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_offerta.assert_not_called()
+        repo.update_utility.assert_not_called()
 
     # --- transizioni di stato -----------------------------------------
 

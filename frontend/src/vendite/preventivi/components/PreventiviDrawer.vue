@@ -11,9 +11,10 @@ import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
-import { STATO_PREVENTIVO } from '../../constants'
+import { CAMPI_FORM_TESTATA_PREVENTIVO, STATO_PREVENTIVO } from '../../constants'
 import { addDaysToToday, displayDate, toDateString, giornoDi, parseIsoDate } from '../../../core/utils/date'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
@@ -167,7 +168,7 @@ const {
 // stato: il legame e' del BB `useRigheDocumento` (regola del 2).
 const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
   testata: { modificato, chiudiConConferma },
-  modificabile: () => canEditTestataEffective.value && !isReadonly.value,
+  modificabile: () => testata.modificabile.value,
   presente: () => hasDetail.value,
 })
 const modificatoDocumento = documento.modificato
@@ -216,12 +217,20 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
-const canEditTestata = caps.canEdit
-// In CREATE non c'e' detail BE: il drawer e' editabile per default (gated solo
-// da isReadonly). In EDIT vale la capability BE. Pattern allineato a
-// ContrattoDrawer (`isEdit && isLocked('field')`).
-const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// La testata dopo la bozza: quali campi del form si cambiano, dalla capability
+// (brief-db-testata-dopo-emissione, R-FE-3). Fuori bozza il form esce dal
+// corpo protetto se ha un campo aperto (oggi nessuno: la competenza, aperta in
+// EMESSO e ACCETTATO, si sceglie accettando, non dal form).
+const testata = useTestataDocumento({
+  caps,
+  campi: CAMPI_FORM_TESTATA_PREVENTIVO,
+  readonlyPuro: () => isReadonlyPuro.value,
+  // Il documento esiste: in EDIT anche prima che arrivi il dettaglio, cosi'
+  // la capability ancora vuota tiene il form fermo (fail-closed).
+  presente: () => isEdit.value || hasDetail.value,
+  corpoProtetto: () => isReadonly.value,
+})
 // `can_create_revisione`: il flag BE resta esposto per backward-compat, ma il
 // FE non lo legge piu' — l'azione `crea_revisione` arriva ora data-driven in
 // `available_actions` (post brief DB 2026-05-28, mirror offerte).
@@ -245,7 +254,7 @@ const showSmistamento = computed(() => {
 // il dettaglio righe; un cambio sarebbe un nuovo preventivo, non una modifica
 // della testata. utility_id era gia' immutabile via metadata BE.
 const nonEditableFields = computed(() => {
-  const base = capabilities.value.non_editable_fields || []
+  const base = testata.campiBloccati.value
   // Post auto-save bozza / EDIT: cambiare BA o istanza sarebbe un altro
   // preventivo, non una modifica → entrambi bloccati. utility_id è già
   // immutabile via metadata BE.
@@ -617,12 +626,11 @@ const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({
 // arriva dal BA scelto o dal picker delle forniture; il BA della coppia lo
 // risolve il backend. In EDIT l'istanza e' gia' persistita e il backend non
 // richiede di rispedirla.
-// Defense-in-depth: anche se il FormFooter e' nascosto da
-// `v-if="canEditTestataEffective && !isReadonly"`, includiamo isReadonly qui
-// cosi' qualsiasi consumer futuro del computed (shortcut tastiera, save
-// programmato) e' coperto dalla stessa guard.
+// Defense-in-depth: il footer segue la stessa regola (`useTestataDocumento`),
+// ma la guard sta anche qui cosi' qualsiasi consumer futuro del computed
+// (shortcut tastiera, save programmato) e' coperto.
 const canSave = computed(() => {
-  if (isReadonly.value) return false
+  if (!testata.modificabile.value) return false
   const f = form.value
   if (f.utility_id == null) return false
   if (!isEdit.value && f.istanza_utility_id == null) return false
@@ -905,6 +913,7 @@ const drawerActions = computed(() => {
     :modificato="modificatoDocumento"
     :conferma-uscita="() => close()"
     :footer="footerDrawer"
+    :footer-readonly="testata.footerReadonly.value"
     :loading="loading"
     :save-disabled="!canSave"
     @update:visible="(v) => emit('update:visible', v)"
@@ -1039,11 +1048,13 @@ const drawerActions = computed(() => {
         <!-- ====================== TAB TESTATA ====================== -->
         <TabPanel value="testata">
           <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
-          <PreventiviForm
-            :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
-            :non-editable-fields="nonEditableFields"
-            :is-edit="isEdit || createdId !== null"
-            :record="detail" />
+          <div :class="{ 'app-escape': testata.sopraCorpoProtetto.value }">
+            <PreventiviForm
+              :form="form" :is-modificabile="testata.modificabile.value"
+              :non-editable-fields="nonEditableFields"
+              :is-edit="isEdit || createdId !== null"
+              :record="detail" />
+          </div>
 
           <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
           <template v-if="hasDetail">
@@ -1055,7 +1066,7 @@ const drawerActions = computed(() => {
               :doc-id="effectivePreventivoId"
               :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
               :istanza-utility-id="detail?.istanza_utility_id ?? null"
-              :readonly="!(canEditTestataEffective && !isReadonly)"
+              :readonly="isReadonly"
               :bordo="false" />
 
             <Divider />

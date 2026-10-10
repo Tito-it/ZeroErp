@@ -1691,6 +1691,7 @@
       "presidi_dettaglio_tecnico": "Dettaglio tecnico",
       "presidi_causa_non_indicata": "causa non indicata",
       "presidi_causa_senza_testo": "nessun testo per questa causa nel catalogo",
+      "presidi_causa_mostrate": "mostrate {n} di {tot}",
       "chi_agisce": {
         "amministratore": "Puoi sistemarlo tu",
         "sistemista": "Da segnalare a chi gestisce il server",
@@ -3712,6 +3713,15 @@
         "nessuna_riga_pushabile": "Nessuna riga inviabile a commessa: verifica quantità e prezzi delle righe.",
         "annullato": "L'ordine è annullato: non va a fatturazione."
       },
+      "data_consegna_confermata_reason": {
+        "in_bozza": "In bozza la data si cambia modificando la riga.",
+        "stato_non_ammette": "In questo stato la data di consegna non si cambia più."
+      },
+      "azione_data_consegna_confermata": "Cambia la data di consegna confermata",
+      "data_consegna_confermata_titolo": "Data di consegna confermata",
+      "data_consegna_confermata_riga": "Riga {riga_nr} — {descrizione}",
+      "data_consegna_confermata_hint": "Lascia il campo vuoto per togliere la promessa di consegna.",
+      "data_consegna_confermata_salvata": "Data di consegna confermata aggiornata.",
       "evasione_titolo": "Genera DDT",
       "evasione_intro": "Seleziona le righe da evadere e genera il documento di trasporto. Il DDT nasce in bozza.",
       "evasione_col_qta_ordinata": "Qtà ordinata",

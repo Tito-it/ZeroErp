@@ -17,8 +17,10 @@
 > due CSV dei codici): **da leggere per primo il §9.4**. D-9 e D-10 decise da Tid lo stesso giorno.
 > ⚠️ Il BE toglie i suoi «solo in DRAFT» **nello stesso rilascio** (§9.5, R-BE-2): da questo apply
 > le capability accendono la testata negli stati in cui una colonna resta aperta.
-> **Resta:** lato DB il pgTAP del congelamento del listino all'uscita dalla bozza (§9.4, «Non fatto»);
-> lato BE/FE le richieste del §5-bis.6 e del §9.5. Poi l'archivio.
+> **Resta:** lato DB il pgTAP del congelamento del listino all'uscita dalla bozza (§9.4, «Non fatto»)
+> e le richieste **R-DB-1 … R-DB-4** del §10.1 (trovate dal BE/FE, tenute qui per decisione di Tid);
+> poi i ritocchi BE/FE che ne discendono e il collaudo a video. ✅ Lato BE/FE le richieste del
+> §5-bis.6 e del §9.5 sono fatte (§10, 2026-10-10, non committate). Poi l'archivio.
 > ⚠️ (superato: fasi 1 e 2 fatte) ⛔ **Si comincia dalla fase 1** (§5-bis): il lettore del montaggio e la capability della data di
 > consegna confermata. È consegnabile da sola, e **il BE la aspetta** per il suo verbo: non attende
 > il resto del giro. Poi la fase 2: le colonne decise nel montaggio del BB fuori bozza di ogni
@@ -602,3 +604,42 @@ emessa e di contratto attivato, che i builder pgTAP non hanno; resta da fare in 
 | R-BE-4 | BE | i test che pinnano `can_edit_testata = false` fuori bozza o le liste di `non_editable_fields`; `docs/it/backend/vendite/manual/modello-contratti.md` nomina ancora il lock post-attivazione |
 | R-FE-3 | FE | i form di testata seguono `can_edit_testata` e `non_editable_fields` anche fuori bozza: la bolla emessa mostra trasporto e tracciamento modificabili (D-0), il preventivo emesso e accettato la competenza, il contratto attivo fine validità e CIG/CUP |
 
+
+## 10. Lato BE/FE (sessione backend, 2026-10-10)
+
+> Non committato. Prove: suite `apps.core` + `apps.vendite` con `ZEROERP_TEST_DB_E2E=1`
+> 4154 verdi; mypy a cricchetto e ruff verdi; FE 790 test (con i due presidi nuovi, provati per mutazione), `npm run guards`, lint e build verdi;
+> sonda sul DB di sviluppo in transazione annullata (sotto).
+
+| # | Fatto |
+| --- | --- |
+| R-BE-1 | `POST /vendite/ordini/<id>/righe/<riga_id>/data-consegna-confermata/` (`ordini_service.cambia_data_consegna_confermata`): scrive la sola colonna, `null` toglie la promessa, ogni altra chiave è un 400; nessun pre-check di stato. La terna arriva già sotto `capabilities` (il dettaglio trasporta il blob intero). Doc: `api_ordini.md` §Righe |
+| R-BE-2 | Ritirati i «solo in DRAFT» della testata in `aggiorna_ordine`, `aggiorna_ddt`, `aggiorna_reso`, `aggiorna_preventivo`, `aggiorna_offerta` e la tabella `_CONTRATTO_PATCH_ALLOWED_BY_STATE`: resta la lettura della testata (404 fuori perimetro), il 409 del lock passa com'è. Le costanti restano dove servono ad altro (elimina, conferma, indirizzi, righe/eccezioni dell'offerta) |
+| R-BE-3 | `error_policies_generated.py` rigenerato (diff: i cinque codici e il ritiro, nient'altro), ripieghi dei cinque codici in `error_messages_fallback.py`, tolto il marker di `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` in `contratti_service.py` |
+| R-BE-4 | Test riscritti sul contratto nuovo («fuori bozza decide il DB»: il service passa la scrittura) e 6 test del verbo; `modello-contratti.md` §7 e `api_contratti.md` riscritti sul lock di testata; `api_ddt/resi/preventivi/offerte/ordini.md` allineati |
+| R-FE-1 | Le due chiavi `vendite.ordini.data_consegna_confermata_reason.*` (it, en): `check_i18n_keys.py` pulito |
+| R-FE-2 | Azione di riga «Cambia la data di consegna confermata» in `OrdiniRigheTable` (icona `MANAGE_ICONS.PROMESSA_CONSEGNA`), accesa o spenta col motivo dalla terna; nascosta solo in readonly da permessi. Dialog `OrdineRigaDataConsegnaDialog` (DatePicker, vuoto = toglie la promessa, conferma all'uscita) |
+| R-FE-3 | BB `useTestataDocumento` (ok Tid, regola del 2) nei sei drawer: la testata è modificabile se almeno un campo che il form MOSTRA è aperto nella capability (`CAMPI_FORM_TESTATA_*`, presidio `campiFormTestata.spec.js`); i campi si spengono uno per uno da `non_editable_fields`, il form esce dal corpo protetto con `app-escape`, il Salva si libera (`footer-readonly`). Il corpo (righe, indirizzi, sub-drawer) resta sul readonly di stato. A video: la bolla emessa/spedita/consegnata cambia trasporto e tracciamento (D-0, D-1); il contratto ATTIVO CIG/CUP/commessa (ritirata la copia degli stati `codiciAttoEditabili`); l'ordine confermato l'interruttore «fatturazione immediata» (non nominato dal lock, §9.1). Preventivo, offerta e reso: nessun campo del form aperto fuori bozza, come prima. `valido_al` del contratto resta sul dialog «Cessa» (scelta di interfaccia) |
+
+**La sonda (dbdev, transazione annullata, contesto operatore).** Verbo e capability rispondono uguale in
+`CONFERMATO`/`PARZIALMENTE_EVASO` (scrive), `EVASO`/`ANNULLATO` (`E_RIGA_DOC_NON_BOZZA`, motivo
+`stato_non_ammette`), `DRAFT` (scrive; capability spenta con `in_bozza`). Testata: note dell'ordine e
+tracciamento della bolla passano fuori bozza, `data` dà `E_DOC_IDENTITA_FUORI_BOZZA`, a documento annullato
+`E_DOC_CHIUSO`. Un payload intero con i campi bloccati **invariati** passa (ordine confermato, bolla emessa):
+il form può continuare a mandarlo tutto.
+
+### 10.1 Aperto — richieste al team DB (tutte qui, decisione di Tid del 2026-10-10)
+
+> Trovate dal lato BE/FE facendo il §10. Restano in questo brief, che si chiude quando sono fatte
+> insieme al pgTAP del congelamento del listino (§9.4, «Non fatto») e al collaudo a video di Tid.
+
+| # | Cosa | Perché | Ricaduta BE/FE quando è fatta |
+| --- | --- | --- | --- |
+| **R-DB-1** | `fn_available_actions_ddt`: togliere `billing_account_id` da `c_non_edit_draft` | La capability lo dice fermo **anche in bozza**, il lock lo ferma solo fuori bozza e D-2 (brief-db-esecutivi-ba-coppia) vuole che la bolla nata senza cliente lo riceva in bozza. Terza copia scritta a mano, rimasta indietro | Togliere l'eccezione dichiarata in `DdtDrawer` (`nonEditableFields`) |
+| **R-DB-2** | `fn_available_actions_offerta`: `motivazione_rifiuto` fuori dalle «sempre» | È fra le colonne ferme in ogni stato, mentre D-10 la vuole aperta in `EMESSA`/`ACCETTATA`. Oggi non pesa: la scrive il cambio di stato e il form non la mostra | Nessuna |
+| **R-DB-3** | Un lock a DB per il satellite `vendite.offerte_commerciali_utilities` e per gli indirizzi dei documenti | Nessun lock li nomina: quando si cambiano lo dice solo la capability (`can_edit_utility`) o il BE (`_INDIRIZZI_CFG`, «solo in bozza»). Chi scrive senza passare dal BE cambia la fornitura di un'offerta emessa o gli indirizzi di un documento emesso. Il BE, tolto il «solo in BOZZA» della testata, per il sotto-oggetto `utility` legge `can_edit_utility` | Il BE toglie i suoi «solo in bozza» degli indirizzi e la lettura di `can_edit_utility` in `aggiorna_offerta`: il 409 del lock passa com'è |
+| **R-DB-4** | Portare nel DB, dopo il lock di testata, le due regole del contratto che oggi vivono solo in Python: cambio di `listino_id` con righe (`E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE`) e rimozione del listino con eccezioni (`E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`) | Su un contratto ATTIVO che cambia listino il rifiuto Python arriva prima di `E_DOC_CONDIZIONI_FUORI_BOZZA`, mentre il §5 voleva «bloccato» per primo. E una regola in una sede sola, quella del DB | Il BE toglie i due controlli da `update_contratto` |
+
+**Da sapere, non da fare:** `fatturazione_immediata` non è nominata dal lock (§9.1). Dopo R-FE-3
+l'interruttore resta acceso fuori bozza (ordine, bolla, contratto) finché il documento non entra in
+commessa, e lì lo ferma il suo guard. È la decisione del DB: a video si vedrà.

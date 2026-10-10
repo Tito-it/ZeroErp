@@ -130,15 +130,16 @@ class DdtServiceGuardsTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
 
     @patch(_REPO)
-    def test_aggiorna_ddt_stato_non_draft(self, repo_cls) -> None:
-        # DDT gia' EMESSO: la testata non e' piu' modificabile (guard di stato
-        # leggero, solo il codice interno).
+    def test_aggiorna_ddt_fuori_bozza_decide_il_db(self, repo_cls) -> None:
+        # DDT gia' EMESSO: quali colonne si cambiano lo dice il lock di testata
+        # del DB, colonna per colonna (brief-db-testata-dopo-emissione, D-0):
+        # il service non ha piu' un «solo in DRAFT» e passa la scrittura.
         repo = repo_cls.return_value
+        # L'esistenza si legge col lettore leggero; lo stato non ferma niente.
         repo.get_stato_codice.return_value = "EMESSO"
-        with self.assertRaises(ServiceError) as cm:
-            ddt_service.aggiorna_ddt(7, {"valuta_id": 9})
-        self.assertEqual(cm.exception.code, "E_DDT_STATO_TRANSIZIONE")
-        repo.update_ddt.assert_not_called()
+        ddt_service.aggiorna_ddt(7, {"tracking_code": "TRK-1"})
+        repo.get_ddt.assert_not_called()
+        self.assertEqual(repo.update_ddt.call_args.kwargs, {"tracking_code": "TRK-1"})
 
     @patch(_REPO)
     def test_gestisci_riga_stato_non_draft(self, repo_cls) -> None:

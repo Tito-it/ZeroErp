@@ -10,7 +10,7 @@ Indice test eseguiti:
 1) test_crea_preventivo_ok — creazione con campi minimi
 2) test_crea_preventivo_utility_mancante — validazione utility obbligatoria
 3) test_aggiorna_preventivo_ok — aggiornamento in BOZZA
-4) test_aggiorna_preventivo_stato_non_modificabile — guard su stato EMESSO
+4) test_aggiorna_preventivo_fuori_bozza_decide_il_db — EMESSO: nessun guard Python, decide il lock DB
 5) test_gestisci_riga_ok — aggiunta riga in BOZZA con ricalcolo totali
 5b) test_gestisci_riga_padre_composito_prezzo_default_zero — composito senza prezzo → 0 placeholder
 5c) test_gestisci_riga_non_composito_senza_prezzo_solleva — non composito + prezzo None → E_PREV_VALIDAZIONE
@@ -780,16 +780,17 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
         self.mock_repo.update_preventivo.assert_not_called()
 
-    # Scopo: Verifica guard su stato EMESSO.
-    def test_aggiorna_preventivo_stato_non_modificabile(self):
+    # Scopo: Preventivo EMESSO: quali colonne si cambiano lo dice il lock di
+    #        testata del DB (brief-db-testata-dopo-emissione, D-0): il service
+    #        non ha piu' un «solo in DRAFT» e passa la scrittura.
+    def test_aggiorna_preventivo_fuori_bozza_decide_il_db(self):
         from apps.vendite.services.preventivi_service import aggiorna_preventivo
 
         self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc",
+            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc", "utility_id": 3,
         }
-        with self.assertRaises(ServiceError) as ctx:
-            aggiorna_preventivo(1, {"validita_dal": "2026-04-01"})
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+        aggiorna_preventivo(1, {"meta": {"nota": "x"}})
+        self.mock_repo.update_preventivo.assert_called_once_with(1, meta={"nota": "x"})
 
     # ── Righe ──
 

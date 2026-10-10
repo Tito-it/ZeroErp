@@ -731,8 +731,9 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "valore_variazione_globale",
         "categoria_cliente_id_snapshot",
         # Corsia di instradamento (Fase B brief emissione mirata): il guard
-        # DB respinge l'UPDATE dopo il push in commessa, e la whitelist di
-        # patch per stato lo ammette solo in DRAFT.
+        # DB respinge l'UPDATE dopo il push in commessa. Il lock di testata
+        # non la nomina: la governa quel guard (brief-db-testata-dopo-emissione
+        # §9.1).
         "fatturazione_immediata",
         # Riferimenti dell'atto (I8/D9, 2026-08-29). ⭐ Ammessi in PATCH anche in
         # ATTIVO (decisione Q1): non toccano prezzo ne' validita' e non
@@ -753,8 +754,9 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #        su due trigger di `vendite.contratti`:
     #          - trgfn_contratti_guard_transizione_stato: transizione ammessa
     #            dalla matrice `config.transizioni_stati_contratti`;
-    #          - trgfn_contratti_lock_post_attivazione: immutabilita' della
-    #            testata dopo l'attivazione.
+    #          - trgfn_doc_testata_lock_fuori_bozza: le colonne della testata
+    #            ferme fuori bozza, colonna per colonna e per stato (dal
+    #            2026-10-10 assorbe trgfn_contratti_lock_post_attivazione).
     #        (Fino al 2026-08-04 qui era nominato
     #        trgfn_contratti_guard_modalita_c_activation, droppato con il
     #        modello di pricing a modalita' A/B/C il 2026-05-15.)
