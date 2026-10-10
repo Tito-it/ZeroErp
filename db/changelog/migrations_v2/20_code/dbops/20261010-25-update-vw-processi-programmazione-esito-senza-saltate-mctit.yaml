@@ -1,0 +1,220 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ L'ESITO E' DEL LAVORO; LA SVEGLIA E' VIVA ANCHE QUANDO SALTA.
+#   Brief: brief-db-corsa-saltata-non-e-una-corsa §8.1, D3, §8.3 punto 6
+#
+# ── Le tre colonne del giornale fanno tre domande diverse ───────────
+#   * `ultimo_esito` — «com'e' andato l'ultimo lavoro?». Una skip non ha
+#     esito: ESCLUSA. Prima, con ok = TRUE, una skip dopo una corsa fallita
+#     rendeva l'esito verde.
+#   * `giornale_ultima_corsa` → TIMER_FERMO — «il timer si sveglia?». Una skip
+#     prova di si': CONTATA (D3, Tid 2026-10-09). Escluderla darebbe
+#     TIMER_FERMO a un timer che gira, con la causa e il rimedio sbagliati.
+#   * `giornale_ultima_corsa_pgagent` → GIRA_E_NON_REGISTRA — «pgAgent scatta
+#     e il giornale lo registra?». Una skip E' una registrazione: CONTATA.
+#   ⚠️ La corsa appesa (lavoro fermo, sveglia viva) la mostra
+#   maintenance.vw_job_run_da_guardare («presa e mai chiusa», 20261010-24),
+#   non un falso TIMER_FERMO qui. Nessuno stato APPESO nuovo, per ora (Tid).
+#
+# ⚠️ Una sola riga cambia nel corpo: il filtro `AND NOT r2.saltata` nella
+#   sottoselezione di `ultimo_esito`. Corpo estratto dal 20261009-34 con uno
+#   script che dichiara la sostituzione (e si ferma se il testo non c'e');
+#   il -34 coincide con la doc auto-gen. Stesse colonne, stesso ordine:
+#   CREATE OR REPLACE VIEW; nessuna reloption da ripetere; i GRANT restano.
+#   Il COMMENT ON VIEW resta quello del -34: la revisione va sulle colonne.
+# ⚠️ Lettori: dbops.vw_processi_programmazione_da_guardare e
+#   dbops.fn_guardiano_digest leggono `stato`/`da_guardare`, che non cambiano
+#   (non dipendono da ultimo_esito); il backend legge ultimo_esito per nome.
+#
+# Verifica: db/pgtap/maintenance/test-job-run-saltata-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261010-25-update-vw-processi-programmazione-esito-senza-saltate-mctit.yaml
+
+  - changeSet:
+      id: 20261010-25-update-vw-processi-programmazione-esito-senza-saltate
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.vw_processi_programmazione: ultimo_esito esclude le corse
+        saltate; ultima_corsa e ultima_corsa_pgagent le contano ancora (segno
+        di vita della sveglia, D3). brief-db-corsa-saltata-non-e-una-corsa §8.3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: dbops
+                viewName: vw_processi_programmazione
+            - columnExists:
+                schemaName: maintenance
+                tableName: job_run_log
+                columnName: saltata
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW dbops.vw_processi_programmazione AS
+              WITH panorama AS (
+                  SELECT p.codice AS processo_codice,
+                         p.classe,
+                         p.canale,
+                         p.jobname_pgagent,
+                         p.tolleranza_minuti,
+                         p.segno_di_vita,
+                         g.abilitato          AS job_abilitato,
+                         g.prossima_esecuzione AS prossima_corsa,
+                         g.ultima_esecuzione  AS pgagent_ultima_corsa,
+                         l.ultima_corsa       AS giornale_ultima_corsa,
+                         l.ultima_corsa_pgagent,
+                         l.ultimo_esito,
+                         s.viva_dal           AS sessione_viva_dal,
+                         -- ⭐ [stato, causa]: un ramo, due fatti. La causa e'
+                         --   NULL solo sui rami sani, ed e' cio' che li fa sani
+                         --   (vedi `da_guardare`). Rev 2026-10-09.
+                         CASE
+                             WHEN p.canale = 'CODA' THEN ARRAY['SU_RICHIESTA', NULL]
+                             -- ⭐ Un COMMAND con CONTRATTO: il database sa che
+                             --   cosa aspettarsi, e lo confronta.
+                             -- ⛔ Il verdetto poggia su s.viva (ESISTE una sessione),
+                             --   non su s.viva_dal: backend_start e' mascherato a
+                             --   chi non e' lo stesso utente della sessione ne'
+                             --   pg_read_all_stats, e «NULL» li' vuol dire «non
+                             --   ti e' dato vedere», non «non c'e'». Rev 2026-09-14.
+                             -- ⭐ Un servizio sempre acceso non ha timer: se tace e'
+                             --   spento, o acceso ma senza connessione al database.
+                             WHEN p.canale = 'COMMAND' AND p.segno_di_vita = 'SESSIONE' THEN
+                                 CASE WHEN s.viva THEN ARRAY['OK', NULL]
+                                      ELSE ARRAY['MUTO', 'SERVIZIO_GIU'] END
+                             WHEN p.canale = 'COMMAND' AND p.tolleranza_minuti IS NOT NULL THEN
+                                 CASE
+                                     -- Il timer dichiarato e mai installato.
+                                     WHEN l.ultima_corsa IS NULL
+                                         THEN ARRAY['MAI_PARTITO', 'TIMER_NON_INSTALLATO']
+                                     -- Era vivo, e il suo timer ha smesso.
+                                     WHEN l.ultima_corsa
+                                          < now() - make_interval(mins => p.tolleranza_minuti)
+                                         THEN ARRAY['MUTO', 'TIMER_FERMO']
+                                     ELSE ARRAY['OK', NULL]
+                                 END
+                             -- ⚠️ Senza contratto resta un limite di VISTA, come
+                             --   prima: la sveglia vive fuori e nessuno l'ha
+                             --   dichiarata qui.
+                             WHEN p.canale = 'COMMAND' THEN ARRAY['FUORI_PORTATA', NULL]
+                             -- Dove lo stato identifica gia' la causa, la causa E'
+                             -- lo stato.
+                             WHEN p.jobname_pgagent IS NULL
+                                 THEN ARRAY['NON_PROGRAMMATO', 'NON_PROGRAMMATO']
+                             WHEN g.abilitato IS NULL
+                                 THEN ARRAY['JOB_ASSENTE', 'JOB_ASSENTE']
+                             WHEN g.abilitato IS FALSE
+                                 THEN ARRAY['JOB_SPENTO', 'JOB_SPENTO']
+                             WHEN g.ultima_esecuzione IS NOT NULL
+                                  AND COALESCE(l.ultima_corsa_pgagent, '-infinity'::timestamptz)
+                                      < g.ultima_esecuzione - interval '1 hour'
+                                 THEN ARRAY['GIRA_E_NON_REGISTRA', 'GIRA_E_NON_REGISTRA']
+                             -- Il job e' acceso e non e' mai girato: e' il
+                             -- programmatore pgAgent che non gira, non un timer.
+                             WHEN g.ultima_esecuzione IS NULL
+                                 THEN ARRAY['MAI_PARTITO', 'JOB_MAI_PARTITO']
+                             ELSE ARRAY['OK', NULL]
+                         END::text[] AS verdetto
+                    FROM dbops.processi p
+                    LEFT JOIN LATERAL dbops.fn_get_pgagent_job_stato(p.jobname_pgagent)
+                         g(abilitato, ultima_esecuzione, prossima_esecuzione) ON true
+                    LEFT JOIN LATERAL (
+                        SELECT max(r.started_at) AS ultima_corsa,
+                               max(r.started_at) FILTER (WHERE r.origine::text = 'PGAGENT')
+                                   AS ultima_corsa_pgagent,
+                               -- ⛔ Rev 2026-10-10: l'esito e' del LAVORO, quindi dell'ultima
+                               --   corsa VERA. Una skip (saltata) non ha esito, e piu' recente
+                               --   di una corsa fallita la nascondeva. ⭐ Le due righe sopra
+                               --   invece la CONTANO: ultima_corsa alimenta TIMER_FERMO e
+                               --   ultima_corsa_pgagent GIRA_E_NON_REGISTRA, e una skip prova
+                               --   proprio che la sveglia gira e registra (D3 di
+                               --   brief-db-corsa-saltata-non-e-una-corsa).
+                               (SELECT r2.ok
+                                  FROM maintenance.job_run_log r2
+                                 WHERE (r2.processo_codice = p.codice OR r2.jobname = p.codice)
+                                   AND NOT r2.saltata
+                                 ORDER BY r2.started_at DESC, r2.id DESC
+                                 LIMIT 1) AS ultimo_esito
+                          FROM maintenance.job_run_log r
+                         WHERE r.processo_codice = p.codice OR r.jobname = p.codice
+                    ) l ON true
+                    -- ⭐ SESSIONE: il segno di vita e' una connessione, non una riga.
+                    --   Il processo si presenta con il proprio codice.
+                    -- ⚠️ pg_stat_activity mostra a TUTTI la riga della sessione
+                    --   (pid, usename, application_name), ma MASCHERA le altre
+                    --   colonne — backend_start compresa — a chi non e' lo
+                    --   stesso utente ne' pg_read_all_stats. Una vista non cambia
+                    --   l'utente che pg_stat_get_activity() guarda. Percio':
+                    --   `viva` = esiste la riga (visibile a chiunque, e' il
+                    --   verdetto); `viva_dal` = da quando (informazione, NULL a
+                    --   chi non puo' leggerla). Il 14-09 il digest ha contato un
+                    --   MUTO su listen_cambio_reparto VIVO da 31 ore: contava
+                    --   come titodb, e la sessione era di zeroerp_app.
+                    LEFT JOIN LATERAL (
+                        SELECT count(*) > 0          AS viva,
+                               min(a.backend_start)  AS viva_dal
+                          FROM pg_stat_activity a
+                         WHERE p.segno_di_vita = 'SESSIONE'
+                           AND a.datname = current_database()
+                           AND a.application_name = p.codice
+                    ) s ON true
+                   WHERE p.attivo AND p.obsoleto_dal IS NULL
+              )
+              SELECT processo_codice,
+                     classe,
+                     canale,
+                     jobname_pgagent,
+                     job_abilitato,
+                     prossima_corsa,
+                     pgagent_ultima_corsa,
+                     giornale_ultima_corsa,
+                     ultimo_esito,
+                     verdetto[1] AS stato,
+                     -- ⛔ Il criterio del guasto sta nel CASE: e' guasto cio'
+                     --   che ha una causa. Rev 2026-10-09 — prima era un NOT IN
+                     --   sugli stati sani, cioe' un secondo elenco.
+                     (verdetto[2] IS NOT NULL) AS da_guardare,
+                     ultima_corsa_pgagent AS giornale_ultima_corsa_pgagent,
+                     -- Colonne nuove, IN CODA.
+                     tolleranza_minuti,
+                     segno_di_vita,
+                     -- ⭐ L'ultimo segno di vita che il verdetto ha usato: la
+                     --   corsa per GIORNALE, l'avvio della sessione per SESSIONE.
+                     -- ⚠️ Per SESSIONE e' informazione, non verdetto: NULL per un
+                     --   lettore che non puo' vedere backend_start della sessione
+                     --   altrui (vedi il LATERAL s). Lo stato dice OK lo stesso.
+                     CASE WHEN segno_di_vita = 'SESSIONE' THEN sessione_viva_dal
+                          ELSE giornale_ultima_corsa END AS ultimo_segno_di_vita,
+                     -- ⭐ Rev 2026-10-09: la causa del guasto, che sceglie il
+                     --   testo per chi agisce (dbops.presidi.colonna_variante).
+                     verdetto[2] AS causa
+                FROM panorama
+               ORDER BY canale, processo_codice;
+
+              COMMENT ON COLUMN dbops.vw_processi_programmazione.ultimo_esito IS
+                  'L''esito (ok) dell''ultima corsa VERA del processo nel giornale: TRUE riuscita, FALSE fallita, NULL ancora aperta (o nessuna corsa). ⛔ Le corse SALTATE per lock occupato sono escluse (maintenance.job_run_log.saltata): non hanno fatto lavoro, quindi non hanno esito. Rev 2026-10-10, brief-db-corsa-saltata-non-e-una-corsa §8.';
+              COMMENT ON COLUMN dbops.vw_processi_programmazione.giornale_ultima_corsa IS
+                  'L''inizio della corsa piu'' recente del processo nel giornale, qualunque origine. ⭐ CONTA anche le corse saltate per lock occupato: e'' il segno di vita della SVEGLIA (alimenta TIMER_FERMO per i COMMAND col giornale), e una skip prova che il timer si e'' svegliato. Il lavoro fermo si vede in maintenance.vw_job_run_da_guardare. Rev 2026-10-10, brief-db-corsa-saltata-non-e-una-corsa §8 (D3).';
+              COMMENT ON COLUMN dbops.vw_processi_programmazione.giornale_ultima_corsa_pgagent IS
+                  'L''inizio della corsa piu'' recente registrata da pgAgent (origine PGAGENT). Alimenta GIRA_E_NON_REGISTRA, confrontata con l''ultima esecuzione che pgAgent dichiara. ⭐ CONTA anche le corse saltate: una skip e'' una registrazione, e prova che il job scatta e il giornale lo sa. Rev 2026-10-10, brief-db-corsa-saltata-non-e-una-corsa §8 (D3).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare al corpo del 20261009-34 rimetterebbe la skip come
+              --   ultimo esito. Il verso di ritiro e' un changeSet nuovo.
+              SELECT 1;

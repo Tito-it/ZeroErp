@@ -44,11 +44,22 @@ e rilascia l'advisory lock di sessione.
 
 ---
 
-### Robustezza `end`-dopo-`skip`
+### ⛔ Una corsa saltata non si chiude *(rev 2026-10-10)*
+
+* Se la riga `p_id` è **saltata** (`saltata = true`: `fn_job_run_start` ha trovato il lock
+  occupato) la funzione **rifiuta** con `E_JOB_RUN_SALTATA_NON_CHIUDIBILE` (classe
+  `TECNICO`). La corsa non ha fatto lavoro e nasce già chiusa, senza esito: chiuderla le
+  scriverebbe un esito e la farebbe passare per una corsa vera. Lo produce solo un
+  chiamante che ha ignorato `acquired = false`.
+* Fino al 2026-10-10 questo percorso («`end` dopo `skip`») era tollerato: nessun
+  chiamante lo usa più (il backend, su `acquired = false`, non chiama la funzione).
+
+### Robustezza della doppia chiusura
 
 * L'advisory lock viene rilasciato **solo se realmente posseduto da questo flusso**: se la
-  riga era già chiusa (caso *skip*, dove `fn_job_run_start` non ha acquisito il lock),
-  l'unlock viene saltato → niente warning `pg_advisory_unlock` su lock non posseduto.
+  riga era già chiusa (una seconda chiusura, o una *skip* scritta prima del 2026-10-10
+  con `saltata = false`), l'unlock viene saltato → niente warning `pg_advisory_unlock` su
+  lock non posseduto.
 * Lo sblocco usa lo **stesso** `classid` + `hashtext(p_lock_key)` di `fn_job_run_start`
   (unlock simmetrico), sulla **stessa** connessione (vincolo lock di sessione).
 
@@ -60,7 +71,8 @@ e rilascia l'advisory lock di sessione.
   `fn_job_run_start`): i ruoli batch hanno solo `EXECUTE`, nessun DML diretto.
 * `EXECUTE` **revocato da PUBLIC**.
 * Contratto col BE: su `acquired=false` (skip) il chiamante **non** invoca `fn_job_run_end`
-  (la riga è già chiusa); la guardia interna lo gestisce comunque in modo difensivo.
+  (la riga è già chiusa). Dal 2026-10-10 non è più solo un contratto: la funzione lo
+  rifiuta (sopra).
 
 ---
 
