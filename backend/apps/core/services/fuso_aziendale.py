@@ -10,7 +10,7 @@
 #        niente sull'azienda. Ogni passaggio fra un istante e il calendario —
 #        «che giorno e' oggi», «che ora mostro» — passa di qui, e il fuso di chi
 #        esegue (processo, host, sessione PG) diventa irrilevante.
-#        Regola completa: work-in-progress/brief-be-db-fe-un-solo-fuso-aziendale.md §1.
+#        Regola completa: work-done/brief-be-db-fe-un-solo-fuso-aziendale.md §1.
 #
 #          fuso_aziendale()          -> ZoneInfo del parametro (cache di processo)
 #          oggi_aziendale()          -> il giorno di adesso, nel fuso dell'azienda

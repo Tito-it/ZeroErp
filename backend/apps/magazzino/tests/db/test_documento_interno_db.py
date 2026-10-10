@@ -89,7 +89,7 @@ _FIXTURE: tuple[str, ...] = (
     # Un lotto dell'articolo per lotti, per il lookup.
     """
     INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo)
-    SELECT art_l, 'L-2026-01', current_date FROM _art
+    SELECT art_l, 'L-2026-01', script.fn_data_operativa() FROM _art
     """,
 )
 

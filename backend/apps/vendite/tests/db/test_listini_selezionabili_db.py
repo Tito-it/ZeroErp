@@ -70,7 +70,7 @@ _CONTRATTO = (
     " SELECT 'BESEL-' || substr(gen_random_uuid()::text, 1, 8),"
     " c.billing_account_id, c.istanza_utility_id, c.utility_id, m.emittente_fiscale_id,"
     " (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),"
-    " (SELECT listino_id FROM _l1), CURRENT_DATE, CURRENT_DATE + 365"
+    " (SELECT listino_id FROM _l1), script.fn_data_operativa(), script.fn_data_operativa() + 365"
     " FROM _c c, _mondo m RETURNING id"
 )
 

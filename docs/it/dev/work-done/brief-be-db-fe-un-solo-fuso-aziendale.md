@@ -4,11 +4,16 @@
 > richiesta di Tid, da «il giorno di un filtro» a **tutto ciò che dipende da un fuso**.
 > **A chi:** Tid (decisioni aperte, §6), poi team DB (§5.1), BE (§5.2), FE (§5.3).
 > **Origine:** un test sul DB vero rosso a mezzanotte e mezza (`test_giornale_trasversale_perimetro`
-> 1), verificato su richiesta di Tid durante L2 di [piano-be-type-checker.md](../work-done/piano-be-type-checker.md)
+> 1), verificato su richiesta di Tid durante L2 di [piano-be-type-checker.md](piano-be-type-checker.md)
 > (§5.2). Il test era giusto: il difetto è nel filtro, e il filtro è un caso di una regola più larga.
-> **Stato:** 🟡 **in parte deciso.** Deciso (Tid, 2026-10-09): funzione DB + building block BE per i
-> filtri per giorno (D-2, B-4), colonne `date` fuori dal perimetro dei *filtri*; tutte le decisioni di §6
-> (T-1 … T-8). DB: `20261009-40`…`-61` e la fase `70_dati_sistema` ✅ **applicati, pgTAP verdi, nessuna regressione** (Tid, 2026-10-09). BE L1-L4 e FE L5 fatti il 2026-10-09 (timer con T-9); resta T-5 lato Django, da concordare col team DB (§8.3).
+> **Stato:** ✅ **chiuso il 2026-10-09** (Tid). Decise tutte le voci di §6 (T-1 … T-9). DB:
+> `20261009-40`…`-61`, la fase `70_dati_sistema` e la seconda metà di D-7 applicati, pgTAP verdi.
+> BE L1-L4 e FE L5 fatti e mergiati lo stesso giorno; T-5 chiuso sui tre lati (pgTAP dal team DB,
+> Django col parametro ostile in CI, vitest a Pago Pago).
+> **Ereditato da un altro brief:** la riga di *skip* di `fn_job_run_start` conta come corsa
+> riuscita, e `e_dovuto` (T-9) puo' saltare un periodo intero →
+> [brief-db-corsa-saltata-non-e-una-corsa](../work-in-progress/brief-db-corsa-saltata-non-e-una-corsa.md)
+> (§8.3, «Passato a un altro brief»).
 > Censimento su tre lati completato il 2026-10-09 (§4).
 > **Storia del documento:** nato come `brief-be-db-giorno-nel-fuso-aziendale`, che aveva già
 > assorbito il gemello `brief-db-confine-del-giorno-nel-fuso-aziendale` (stesso giorno, stesso
@@ -388,9 +393,12 @@ giorno operativo). Argomenti e risultato di ogni funzione sono **byte-identici**
 
 ### 8.2 DB — resta
 
-- **D-7, seconda metà, con T-5**: i ~236 pgTAP che usano `CURRENT_DATE` come «oggi» delle
-  fixture sono coerenti finché sessione e azienda hanno lo stesso giorno; col fuso ostile in CI
-  vanno portati a `fn_data_operativa()`. Si fa insieme alla CI ostile, che li fa emergere.
+- ✅ **D-7, seconda metà, e T-5 lato pgTAP: fatti** (commit `38aef2841`, mergiato il
+  2026-10-09; riportato qui dalla sessione BE leggendo il commit). Circa 240 pgTAP prendono
+  «oggi» da `fn_data_operativa()`; `scripts/testpgtap.sh` fa girare ogni file in una SESSIONE
+  il cui giorno differisce da quello aziendale (Kiritimati o Pago Pago, scelto file per file
+  chiedendo al DB; `PGTZ` impostato a mano vince); `scripts/guardrail_pgtap_preambolo.py`
+  rifiuta `CURRENT_DATE` e affini nei test. Guida: `pgtap-come-si-scrive-un-test.md`.
 - Il guardrail statico gemello di D-8 sui changeSet non c'è: il presidio guarda il catalogo vivo
   e in CI gira dopo il migrate. Un guardrail anticiperebbe solo l'avviso.
 - `script.fn_fuso_operativo` è la lettura che il backend userà (B-1): il `GRANT` a `zeroerp_app`
@@ -489,18 +497,46 @@ specification»: verificati 59 accettato, 60 e 90 rifiutati) e il timer non part
 parser solleva, come systemd; il test elenca `*:0/60` e `*:0/90` fra le forme rifiutate e
 conosce `*:MM`. Controprova: col vecchio `min(N, 60)` il test e' rosso.
 
-#### Resta
+#### T-5 lato Django — ✅ fatto il 2026-10-09 (decisione di Tid: parametro ostile in CI)
 
-- **T-5 lato Django**: Django tiene la sessione PG dei test sempre in UTC, quindi la finestra
-  ostile la apre solo un **parametro** lontano nel DB di CI (es. `SYSTEM_FUSO_ORARIO =
-  'Pacific/Kiritimati'` dopo il migrate). Tocca anche i pgTAP: da decidere col team DB insieme
-  alla seconda meta' di D-7.
+Django tiene la sessione PG dei test sempre in UTC, quindi la leva e' il fuso dell'AZIENDA.
+`ci-validate.yaml`, prima di «Django tests»: **«Fuso aziendale ostile per i test Django
+(T-5)»** sposta `SYSTEM_FUSO_ORARIO` su un fuso il cui giorno ADESSO differisce da UTC
+(Kiritimati dalle 10 UTC, altrimenti Pago Pago: uno dei due differisce sempre, con almeno
+un'ora di margine), e salva il valore del seed; dopo, **«Fuso aziendale del seed
+ripristinato»** (`!cancelled()`) lo rimette, cosi' la suite pgTAP gira sul seed com'e'.
+Stessa idea di `testpgtap.sh` rovesciata: la' la sessione e' ostile al parametro, qui il
+parametro e' ostile alla sessione.
+
+Prova (2026-10-09, `zeroerp_ci`, parametro rimesso a `Europe/Rome` dopo ogni corsa): col seed
+la suite era verde; con Kiritimati **otto rossi**, nessuno nel codice applicativo:
+- cinque test sul DB confrontavano il DEFAULT aziendale della data con `SELECT current_date`,
+  o costruivano una promo «da domani» con `current_date + 1` che il guard (giorno aziendale)
+  rifiuta: **52 righe di `CURRENT_DATE` nell'SQL di 21 file di test** portate a
+  `script.fn_data_operativa()`;
+- tre test del digest supponevano Roma senza dichiararlo: `fuso_aziendale_forzato` nel
+  `setUp` della classe.
+Poi verde con Kiritimati e con Roma. **Presidio**: `test_presidio_fuso_sql` 3 rifiuta
+`CURRENT_DATE` e affini anche nel codice dei test (gemello del guardrail pgTAP). Gli step
+sono stati eseguiti cosi' come li vede il runner (estratti dallo YAML) contro `zeroerp_ci`.
+⚠️ Su `zeroerp_ci` 240 test sul DB si saltano per mancanza di materiale (sul DB di sviluppo
+uno): la CI vedra' col fuso ostile anche quelli che li' girano.
+
+Nella stessa sessione: rigenerato `error_policies_generated.py` (ritiro di
+`E_VENDITE_RIGA_GIA_PROPAGATA`, `brief-db-ritiro-codice-riga-gia-propagata` §3, ora che DB e
+git sono allineati): il presidio di divergenza e' verde, e con lui l'intera suite
+(6441 test, DB di sviluppo).
+
+#### Passato a un altro brief
+
 - **La riga di skip conta come corsa riuscita** (trovato in revisione, 2026-10-09):
   `fn_job_run_start` scrive la skip con `ok = TRUE` e `corsa_riuscita_dal` la conta, quindi una
   corsa a mano che tiene il lock all'ora della sveglia e poi fallisce fa saltare il periodo intero
-  senza errore. Brief al team DB:
-  [brief-db-corsa-saltata-non-e-una-corsa](brief-db-corsa-saltata-non-e-una-corsa.md); il BE
-  attende il marcatore strutturale (niente filtro sul testo di `message`).
+  senza errore. E' un difetto di modello di `maintenance.job_run_log` (copre anche i presidi delle
+  corse appese), non del fuso: lo porta
+  [brief-db-corsa-saltata-non-e-una-corsa](../work-in-progress/brief-db-corsa-saltata-non-e-una-corsa.md),
+  aperto su decisione di Tid. Il BE attende il marcatore strutturale (niente filtro sul testo di
+  `message`) e allora corregge `corsa_riuscita_dal`.
 
 ⚠️ **Da sapere (scritto dopo L1, chiuso in L3):** con `TIME_ZONE = 'UTC'` i ~25 `date.today()` di §4.2 c rispondono il
 giorno **UTC** (prima: Roma). Fra mezzanotte e le 02:00 di Roma sbagliano di un giorno: e' il

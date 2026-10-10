@@ -43,6 +43,10 @@ basta l'apply, nessun changeSet nuovo. Il presidio
 
 ## 3. Ricaduta BE (dopo la consegna)
 
+✅ **Fatto il 2026-10-09** (sessione BE, dopo il merge del DB): rigenerato
+`error_policies_generated.py`, presidio di divergenza verde.
+`error_messages_fallback.py` non cambia: il messaggio resta per il diario.
+
 Rigenerare `error_policies_generated.py` / `error_messages_fallback.py` **solo**
 con il DB allineato a git. ⚠️ Oggi (2026-10-09) il DB di sviluppo è più avanti di
 git per altri lavori (sesso, valore numerico non finito): i due presidi di
