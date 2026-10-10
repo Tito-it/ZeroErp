@@ -35,7 +35,8 @@ FUNCTION maintenance.fn_run_and_log(
 1. **Lock opzionale**
 
    * Se `p_lock_key` è valorizzato, prova `pg_try_advisory_lock(p_lock_key)`.
-   * In caso di lock già detenuto da un’altra esecuzione, **non esegue** `p_sql` e scrive un log con `message = 'skip: another run in progress'`.
+   * In caso di lock già detenuto da un’altra esecuzione, **non esegue** `p_sql` e scrive una riga **saltata**: `saltata = true`, `ok` NULL, `ended_at` valorizzato, `message = 'skip: another run in progress'`.
+   * ⚠️ Fino al 2026-10-10 quella riga nasceva con `ok = true` e **aperta** (`ended_at` NULL): «riuscita e mai chiusa», contata come corsa vera da ogni lettore. Vedi [job_run_log](/dbzero/maintenance/manual/job_run_log), «una corsa saltata non è una corsa riuscita».
 
 2. **Apertura log**
 

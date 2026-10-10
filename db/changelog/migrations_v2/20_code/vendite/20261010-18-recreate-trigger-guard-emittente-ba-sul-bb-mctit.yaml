@@ -1,0 +1,147 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I SETTE GUARD EMITTENTE <-> BA SI RIMONTANO SUL BUILDING BLOCK
+#   preventivi, offerte_commerciali, contratti, ordini, ddt, resi, commesse:
+#   stesso nome di trigger, stessa fascia, stessi eventi; cambia la funzione,
+#   script.trgfn_doc_guard_emittente_ba (20261010-17).
+#   Brief: brief-db-guard-emittente-ba-unico (§3; D-1, D-3)
+#
+# -- PERCHE' NOME E FASCIA RESTANO ----------------------------------
+#   L'ordine fra i BEFORE ROW lo decide il nome: `_a10_` dopo i default
+#   dell'emittente (default_ < guard_), `_z10_` su DDT e reso dopo il normalize
+#   che eredita il BA dall'ordine o dal DDT. Rinominarli cambierebbe chi parla
+#   per primo.
+# -- CODICI ------------------------------------------------------------
+#   I sei documenti: E_DOC_EMITTENTE_BA_INCOERENTE (D-1). La commessa tiene
+#   E_COMMESSA_EMITTENTE_BA_INCOERENTE (TECNICO), con la frase riscritta nello
+#   stesso ordine di segnaposto (D-3).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261010-18-recreate-trigger-guard-emittente-ba-sul-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261010-18-recreate-trigger-guard-emittente-ba-sul-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        I sette trigger guard emittente <-> BA (preventivi, offerte, contratti, ordini, DDT, resi,
+        commesse) rimontati sul BB script.trgfn_doc_guard_emittente_ba. Brief:
+        brief-db-guard-emittente-ba-unico.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'trgfn_doc_guard_emittente_ba';
+            - sqlCheck:
+                expectedResult: "7"
+                sql: >
+                  SELECT count(*)
+                    FROM pg_trigger t
+                    JOIN pg_class c ON c.oid = t.tgrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE n.nspname = 'vendite'
+                     AND NOT t.tgisinternal
+                     AND t.tgname IN ('trg_preventivi_a10_guard_emittente_ba_ins_upd',
+                                      'trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd',
+                                      'trg_contratti_a10_guard_emittente_ba_ins_upd',
+                                      'trg_ordini_a10_guard_emittente_ba_ins_upd',
+                                      'trg_ddt_z10_guard_emittente_ba_ins_upd',
+                                      'trg_resi_z10_guard_emittente_ba_ins_upd',
+                                      'trg_commesse_a10_guard_emittente_ba_ins_upd');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- preventivi
+              DROP TRIGGER trg_preventivi_a10_guard_emittente_ba_ins_upd ON vendite.preventivi;
+              CREATE TRIGGER trg_preventivi_a10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id ON vendite.preventivi
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+                  'Preventivo', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE');
+              COMMENT ON TRIGGER trg_preventivi_a10_guard_emittente_ba_ins_upd ON vendite.preventivi
+              IS 'L''emittente del preventivo e'' quello del suo billing account (E_DOC_EMITTENTE_BA_INCOERENTE). BB script.trgfn_doc_guard_emittente_ba dal 2026-10-10 (brief-db-guard-emittente-ba-unico); fascia _a10_, dopo il default dell''emittente.';
+
+              -- offerte commerciali
+              DROP TRIGGER trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd ON vendite.offerte_commerciali;
+              CREATE TRIGGER trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id ON vendite.offerte_commerciali
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+                  'Offerta', 'codice', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE');
+              COMMENT ON TRIGGER trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd ON vendite.offerte_commerciali
+              IS 'L''emittente dell''offerta e'' quello del suo billing account (E_DOC_EMITTENTE_BA_INCOERENTE). BB script.trgfn_doc_guard_emittente_ba dal 2026-10-10 (brief-db-guard-emittente-ba-unico); fascia _a10_.';
+
+              -- contratti
+              DROP TRIGGER trg_contratti_a10_guard_emittente_ba_ins_upd ON vendite.contratti;
+              CREATE TRIGGER trg_contratti_a10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id ON vendite.contratti
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+                  'Contratto', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE');
+              COMMENT ON TRIGGER trg_contratti_a10_guard_emittente_ba_ins_upd ON vendite.contratti
+              IS 'L''emittente del contratto e'' quello del suo billing account (E_DOC_EMITTENTE_BA_INCOERENTE). BB script.trgfn_doc_guard_emittente_ba dal 2026-10-10 (brief-db-guard-emittente-ba-unico); fascia _a10_, dopo il default dell''emittente.';
+
+              -- ordini
+              DROP TRIGGER trg_ordini_a10_guard_emittente_ba_ins_upd ON vendite.ordini;
+              CREATE TRIGGER trg_ordini_a10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id ON vendite.ordini
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+                  'Ordine', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE');
+              COMMENT ON TRIGGER trg_ordini_a10_guard_emittente_ba_ins_upd ON vendite.ordini
+              IS 'L''emittente dell''ordine e'' quello del suo billing account (E_DOC_EMITTENTE_BA_INCOERENTE). BB script.trgfn_doc_guard_emittente_ba dal 2026-10-10 (brief-db-guard-emittente-ba-unico); fascia _a10_, dopo il default dell''emittente.';
+
+              -- DDT: _z10_, dopo il normalize che eredita il BA dall'ordine
+              DROP TRIGGER trg_ddt_z10_guard_emittente_ba_ins_upd ON vendite.ddt;
+              CREATE TRIGGER trg_ddt_z10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id ON vendite.ddt
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+                  'DDT', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE');
+              COMMENT ON TRIGGER trg_ddt_z10_guard_emittente_ba_ins_upd ON vendite.ddt
+              IS 'L''emittente del DDT e'' quello del suo billing account, se c''e'' (E_DOC_EMITTENTE_BA_INCOERENTE). BB script.trgfn_doc_guard_emittente_ba dal 2026-10-10 (brief-db-guard-emittente-ba-unico); fascia _z10_, dopo il normalize che eredita il BA dall''ordine.';
+
+              -- resi: _z10_, dopo il normalize che eredita il BA dal DDT
+              DROP TRIGGER trg_resi_z10_guard_emittente_ba_ins_upd ON vendite.resi;
+              CREATE TRIGGER trg_resi_z10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_fiscale_id ON vendite.resi
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+                  'Reso', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE');
+              COMMENT ON TRIGGER trg_resi_z10_guard_emittente_ba_ins_upd ON vendite.resi
+              IS 'L''emittente del reso e'' quello del suo billing account, se c''e'' (E_DOC_EMITTENTE_BA_INCOERENTE). BB script.trgfn_doc_guard_emittente_ba dal 2026-10-10 (brief-db-guard-emittente-ba-unico); fascia _z10_, dopo il normalize che eredita il BA dal DDT.';
+
+              -- commesse: altra colonna, altro risolutore, codice TECNICO (D-3)
+              DROP TRIGGER trg_commesse_a10_guard_emittente_ba_ins_upd ON vendite.commesse;
+              CREATE TRIGGER trg_commesse_a10_guard_emittente_ba_ins_upd
+                BEFORE INSERT OR UPDATE OF billing_account_id, emittente_soggetto_ruolo_id ON vendite.commesse
+                FOR EACH ROW
+                EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba(
+                  'Commessa', 'codice', 'emittente_soggetto_ruolo_id', 'E_COMMESSA_EMITTENTE_BA_INCOERENTE');
+              COMMENT ON TRIGGER trg_commesse_a10_guard_emittente_ba_ins_upd ON vendite.commesse
+              IS 'L''emittente della commessa e'' quello del suo billing account (E_COMMESSA_EMITTENTE_BA_INCOERENTE, TECNICO: la commessa nasce dal push e nessuna persona sceglie l''emittente). UPDATE OF sulle due sole colonne che possono romperla: una modifica di stato non rivalida niente. BB script.trgfn_doc_guard_emittente_ba dal 2026-10-10 (brief-db-guard-emittente-ba-unico); fascia _a10_, dopo trg_commesse_*_default_emittente.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- I trigger di prima puntano alle sette funzioni ritirate da
+              -- 20261010-19: si rimontano a mano dalla doc auto-gen se serve.
+              SELECT 1;

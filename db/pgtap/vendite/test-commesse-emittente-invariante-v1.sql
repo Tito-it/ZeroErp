@@ -141,7 +141,10 @@ SELECT throws_like(
         (SELECT utility_id            FROM tmp_refs_emitt_inv),
         (SELECT emittente_sr_estraneo FROM tmp_refs_emitt_inv)
     ),
-    '%TST-EMITT-INV-DIVERSO-2%non e%quello del billing account%',
+    -- rev 2026-10-10 (brief-db-guard-emittente-ba-unico, D-2/D-3): la frase e'
+    --   quella del BB, «l'azienda indicata (…) non e' quella del cliente (…,
+    --   billing account …)», con i nomi delle aziende.
+    '%TST-EMITT-INV-DIVERSO-2%non e%quella del cliente%billing account%',
     'L2: la frase nomina la commessa e i due emittenti'
 );
 

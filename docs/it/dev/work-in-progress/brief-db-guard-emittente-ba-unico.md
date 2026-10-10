@@ -4,9 +4,10 @@
 > **Origine:** §10.3 e §5.5 di [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md), il
 > debito fuori perimetro: «i guard emittente ↔ BA sono sette copie quasi uguali; il giro che li
 > toccherà li estrae in un BB parametrico (regola del 2)».
-> **Stato:** 📝 **aperto, decisioni chiuse da Tid il 2026-10-10 (§4), nessun codice scritto.** Il
-> prossimo passo è il giro DB: BB `script.trgfn_doc_guard_emittente_ba`, codice nuovo, sette
-> funzioni ritirate (§3, §5).
+> **Stato:** ✅ **lato DB applicato su dbdev e verde** (Tid, 2026-10-10: «migrazione applicata, test
+> verde»; §8): 3 changeSet `20261010-17…-19`, codice `E_DOC_EMITTENTE_BA_INCOERENTE` (id 1243), sei
+> codici ritirati, pgTAP nuovo a 10 test. 🔧 **Resta la ricaduta BE (§8.6).** Decisioni di Tid chiuse
+> il 2026-10-10 (§4).
 > **Nel registro dei difetti DB:** voce **D22** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -89,7 +90,7 @@ Le sette funzioni si ritirano nello stesso giro.
 | **D-3** | La commessa entra nel BB? | **Sì**: è la stessa regola, e colonna, risolutore e codice sono argomenti. Restarne fuori la lascerebbe come seconda sede della stessa regola | ✅ **Dentro** (Tid, 2026-10-10). ⚠️ Conseguenza: il BB passa gli stessi valori per tutti e due i codici, quindi la frase di `E_COMMESSA_EMITTENTE_BA_INCOERENTE` va riscritta con i segnaposto nello stesso ordine di quella nuova (documento, emittente indicato, emittente atteso, BA) |
 | **D-4** | Dove sta il BB | `script` (la sede comune dei BB lato DB, come `fn_cliente_dal_billing_account`), non `vendite`: la regola è di anagrafica (il BA risolve l'emittente) e vale su più tabelle | ✅ **`script`** (Tid, 2026-10-10) |
 
-## 5. Da censire nel giro (non qui)
+## 5. Da censire nel giro (non qui) — ⚠️ fatto nel giro, §8.2
 
 * i pgTAP che citano i sei codici (uno, al 2026-10-10) e quelli che provano i sette guard;
 * i COMMENT dei trigger, e le pagine `manual/` delle sette funzioni (da cancellare: oggetti ritirati);
@@ -108,4 +109,109 @@ Le sette funzioni si ritirano nello stesso giro.
 
 * **Le altre colonne di testata in fase chiusa** (§8 di brief-db-esecutivi-ba-coppia): quali colonne
   di una testata si possono ancora cambiare dopo l'emissione. È una domanda di dominio, colonna per
-  colonna: brief suo.
+  colonna: brief suo. ➡️ [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md) (D23,
+  aperto il 2026-10-10).
+
+## 8. Giro DB — consegna (team DB, 2026-10-10)
+
+> ✅ **Applicato su dbdev, test verdi** (Tid, 2026-10-10), compresi `test-guard-emittente-ba-unico-v1`
+> e `test-commesse-emittente-invariante-v1`, che sullo scratch non si potevano confermare. Sotto,
+> l'avviso scritto prima, lasciato come storia della prova.
+>
+> ⚠️ **Scritto e provato, NON applicato.** Prova: SQL estratto dagli YAML, preCondition comprese, in
+> una transazione annullata su `zeroerp_ci`, da proprietario, con `SET CONSTRAINTS ALL DEFERRED` e
+> `myapp.log_with_dblink = off`; lo scratch aveva `20261010-01…-16`. Il catalogo nella prova: il
+> codice nuovo con `INSERT`, la frase della commessa e i sei ritiri con `UPDATE` mirati. Passaggio su
+> dbdev e corsa pgTAP restano di Tid.
+> ⚠️ **Numerazione:** il primo file era nato `-08`; nel frattempo il cantiere R-5…R-9
+> (`brief-db-codici-non-trovato-email-e-permessi`) aveva preso `-08…-16`. Rinumerato a `-17…-19`
+> prima di ogni prova.
+
+### 8.1 I changeSet
+
+| # | Cosa | Decisione |
+| --- | --- | --- |
+| `-17` | **BB** `script.trgfn_doc_guard_emittente_ba()`, TG_ARGV = etichetta, colonna identificativa, colonna dell'emittente, codice | D-1…D-4 |
+| `-18` | i sette trigger rimontati sul BB: **stesso nome, stessa fascia, stessi eventi** (`_a10_`; `_z10_` su DDT e reso, dopo il normalize) | D-1, D-3 |
+| `-19` | ritirate le sette funzioni `vendite.trgfn_*_guard_emittente_ba` (preCondition: nessun trigger le usa) | regola del 2 |
+| `80_data` | `E_DOC_EMITTENTE_BA_INCOERENTE` (DATO_ERRATO, id 1243); i sei codici per documento con `obsoleto_dal = 2026-10-10` (restano a catalogo per i log già scritti); frase di `E_COMMESSA_EMITTENTE_BA_INCOERENTE` riscritta nello stesso ordine di segnaposto; `E_DOC_RIGHE_LOCK_MONTAGGIO` con il terzo utente nella nota e nella causa | D-1, D-2, D-3 |
+
+* **La frase (D-2):** «%s: l'azienda che emette (%s) non è quella del cliente (%s, billing account
+  %s).» — documento, nome dell'azienda indicata, nome di quella del cliente, codice del BA. Il nome è
+  `soggetti.ragione_sociale_completa`, la forma già in uso (`emittente_descrizione`,
+  `cliente_display`); un'azienda che chi scrive non vede sotto RLS esce come `#id`. Gli id stanno nel
+  contesto.
+* **`campo` nel contesto solo se il codice non è TECNICO**: il BB lo legge da `config.codici_errore`
+  (solo sul ramo d'errore). Così la commessa resta senza `campo`, come dichiarava il suo COMMENT.
+* **BA NULL: esce su tutte e sette** (§2.1 punto 4). Su contratti e commesse il BA è NOT NULL, e il
+  vincolo si controlla dopo i BEFORE ROW: parla lui.
+* **`tx_id`**: il BB passa quello della riga (prima `NULL::uuid` in tutte e sette).
+* **Montaggio errato** (argomenti mancanti, colonna che la tabella non ha, colonna dell'emittente
+  diversa dalle due ammesse): `E_DOC_RIGHE_LOCK_MONTAGGIO`, il codice dei BB di documento montati male.
+  ⚠️ È il **terzo** utente di un codice che nel nome parla di righe (domanda 5 di ba-coppia: nome
+  tenuto per storia). Se il terzo utente fa cambiare idea, la rinomina vale per tutti e tre.
+
+### 8.2 Censimento (§5)
+
+* **pgTAP:** nessuno asseriva i sei codici; le citazioni delle sette funzioni erano descrizioni di
+  test o commenti. Cambiato `vendite/test-commesse-emittente-invariante-v1` test 5, che controllava la
+  frase vecchia della commessa.
+* **`manual/`:** cancellate le sette pagine delle funzioni ritirate; pagina nuova
+  `script/manual/trgfn_doc_guard_emittente_ba.md`, con i tre ragionamenti che valevano (DDT e reso dopo
+  il normalize, solo due colonne, la commessa che sparisce); link riscritti in tre guide
+  (`gestione-ordini`, `gestione-ddt`, `gestione-commesse`) e in otto pagine `manual/`.
+* **Restano, e non sono un difetto:** tre COMMENT di funzioni vive nominano le funzioni ritirate in
+  prosa (`trgfn_commesse_default_emittente`, `fn_crea_revisione_preventivo`,
+  `fn_get_sorgente_emittente_sr_id`) — riscrivere tre funzioni per un commento non vale un changeSet:
+  si aggiornano al primo giro che le tocca. Le pagine auto-generate si rigenerano da sole; i brief
+  archiviati sono storia.
+* **`anagrafiche.fn_check_ba_coppia_emittente_omogenea`** (§5): non è un'ottava copia. Controlla che
+  **padre e figlio nell'albero dei billing account** (`parent_account_id`) risolvano la stessa
+  azienda — l'albero omogeneo, da cui la fattura unica — non che un documento abbia quella del suo BA.
+  Letta dalla doc auto-generata il 2026-10-10.
+
+### 8.3 pgTAP
+
+`vendite/test-guard-emittente-ba-unico-v1`, **10 test**, soggetti fabbricati (due emittenti, un
+cliente): montaggio sulle sette tabelle con colonna e codice; le sette funzioni ritirate; i sei codici
+ritirati e non sollevati; ordine con l'azienda sbagliata (codice dal canale `CONSTRAINT`) e la sua
+frase; DDT senza BA che nasce; ordine giusto che nasce; commessa con l'azienda sbagliata (codice
+TECNICO) e la sua frase; montaggio errato su una tabella temporanea.
+
+⚠️ **DDT e reso non sono provati sul comportamento**, per costruzione: con l'emittente di un'altra
+azienda sul DDT parla prima il guard di perimetro (`trg_ddt_a10_guard_emittente_scope`,
+`E_SCOPE_EMITTENTE`), e il BA di un cliente dell'altra azienda l'operatore non lo vede (lo ferma prima
+`script.fn_cliente_dal_billing_account`). La funzione è la stessa dell'ordine; il montaggio su DDT e
+reso lo prova il test 1. La prima stesura aveva il caso del DDT, ed era rosso per questo motivo.
+
+### 8.4 Prove (pre-apply, scratch, da proprietario)
+
+* **preCondition:** `-17` 0, `-18` 1 e 7, `-19` 0, tutte come attese.
+* **`plpgsql_check`** del BB su `ordini` e `commesse`: nessuna segnalazione.
+* **pgTAP nuovo:** **10/10 dopo**; prima, senza il giro, 4 ok, 5 rossi e 3 errori.
+* **Regressione**, 48 file con e senza il giro, ognuno nella sua transazione annullata: tutti quelli
+  che nominano i sette guard, i sei codici o `guard_emittente`, il test della commessa, i presidi
+  `test-riferimenti-morti-v1`, `test-catalogo-messaggi-errore-completo`, `test-codici-errore-obsoleto-dal`,
+  `test-codici-errore-identita`, `test-vw-codici-errore-motivo-nominato`. **Identici prima e dopo**,
+  tranne il test nuovo.
+* ⚠️ **Sullo scratch molti di quei file sono rossi in tutte e due le corse**: pescano i dati della
+  macchina, e lo scratch non li ha (per esempio il test della commessa: «precondizioni» `NULL`, e le
+  query nascono vuote). Lì la regressione non si vede: **la conferma è la corsa di Tid su dbdev**, e
+  in particolare `test-commesse-emittente-invariante-v1`, di cui è cambiata la frase attesa.
+* **Guardrail CI** `scripts/sql/guardrail_codice_errore_strutturato.sql` dopo il giro: «nessun codice
+  ritirato ancora sollevato (111 ritirati) né nei corpi né negli argomenti dei 2261 trigger».
+
+### 8.5 Da Tid — ✅ fatto il 2026-10-10 (migrazione applicata, test verde)
+
+* il passaggio su dbdev di `-17…-19` e dei due CSV;
+* la corsa pgTAP: `test-guard-emittente-ba-unico-v1` (10/10 atteso anche come app) e
+  `test-commesse-emittente-invariante-v1`.
+
+### 8.6 Ricaduta BE (dopo il passaggio su dbdev)
+
+* `backend/apps/core/services/error_ui_overrides.py`: le sei voci dei codici ritirati diventano una,
+  per `E_DOC_EMITTENTE_BA_INCOERENTE`;
+* policy generate e frase di ripiego del codice nuovo; frase di ripiego di
+  `E_COMMESSA_EMITTENTE_BA_INCOERENTE` allineata;
+* `docs/it/backend/vendite/manual/api_ordini.md` riga 459 nomina `trgfn_ordini_guard_emittente_ba`
+  (ritirata): diventa `script.trgfn_doc_guard_emittente_ba`.

@@ -33,7 +33,7 @@ credito) o *per ri-consegna* (merce da rifare e ri-spedire). Brief: `brief-db-re
   (`billing_account_id`, `destinatario_soggetto_ruolo_id`, `utility_id`, `valuta_id`,
   `emittente_fiscale_id`). `emittente_fiscale_id` è `NOT NULL`.
 - **Scope emittente**: RLS `rls_resi_ef_whitelist` + guard scrittura
-  `trgfn_resi_guard_emittente_ba` (`z10`, dopo il normalize).
+  `script.trgfn_doc_guard_emittente_ba` (`z10`, dopo il normalize).
 - **Macchina a stati** data-driven (`config.stati_doc_reso` + `transizioni_stati_reso`),
   enforcement `trgfn_resi_guard_transizione`. `DRAFT → CONFERMATO → (ANNULLATO)`.
 - **Numero** assegnato alla **CONFERMA** (NULL in DRAFT) da `trgfn_resi_gen_numero` +

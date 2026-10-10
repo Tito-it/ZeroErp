@@ -39,6 +39,14 @@ l'**ultima corsa** di ogni lavoro.
 > ⚠️ Il 2026-09-05 un comando aveva **29 fallimenti in un giorno**. Elencandoli
 > tutti la vista sarebbe nata con ventinove righe che dicono la stessa cosa.
 
+⛔ **L'ultima corsa è l'ultima corsa VERA** *(rev 2026-10-10)*. Le corse
+**saltate** (`job_run_log.saltata`: il lock della corsia era occupato, il lavoro
+non è partito) sono escluse. Una corsa appesa tiene il lock, e ogni sveglia
+successiva scrive una skip più recente di lei: prima la skip diventava
+«l'ultima corsa», e il motivo **presa e mai chiusa** non scattava più. Il caso
+che la vista esiste per vedere lo copriva proprio la sveglia che doveva farlo
+emergere. Brief: `brief-db-corsa-saltata-non-e-una-corsa`.
+
 ---
 
 ### Tre motivi, perché sono tre guasti diversi
@@ -92,7 +100,7 @@ con l'area funzionale e il profilo, come per le altre viste di presidio.
 
 `db/pgtap/maintenance/test-vw-job-run-da-guardare.sql` — i casi costruiti uno per
 uno, compreso il rientro automatico e la corsa ancora in corso che **non** deve
-comparire.
+comparire. La corsa appesa seguita da una skip: `test-job-run-saltata-v1.sql`, test 7.
 
 ---
 
