@@ -101,6 +101,13 @@ GET /api/v1/core/tracciamento/job-runs/
 | `page`      | int    | No           | 1       | Pagina                        |
 | `page_size` | int    | No           | 50      | Righe per pagina (1-200)      |
 
+Ogni riga porta `saltata`: `true` sulla corsa che ha trovato il lock della corsia
+occupato (dal 2026-10-10, brief `brief-db-corsa-saltata-non-e-una-corsa`). Una
+saltata è chiusa e **senza esito** (`ok = null`), quindi `ok` da solo non la
+distingue da una corsa aperta: la distingue `saltata`. Il filtro `ok` la esclude
+in entrambi i versi. Le saltate scritte prima di quel giorno restano
+`ok = true`, `saltata = false`.
+
 ### Job Summary
 
 ```http
@@ -112,10 +119,13 @@ GET /api/v1/core/tracciamento/job-summary/
 | `page`      | int  | No           | 1       | Pagina                  |
 | `page_size` | int  | No           | 50      | Righe per pagina (1-200)|
 
-Restituisce per ogni jobname: `total_runs`, `ok_count`, `fail_count`,
-`last_run_at` (la riga più recente, testo PG), `in_corso` (quella riga è ancora
-aperta) e `ultima_conclusa = {started_at, ended_at, ok}` in ISO-8601 (`null`
-se nessuna corsa è mai stata chiusa). ⛔ Dal 2026-09-14 al posto di `last_ok`:
+Restituisce per ogni jobname: `total_runs` (le corse **vere**: una saltata non è
+un'esecuzione), `ok_count`, `fail_count`, `saltate_count`,
+`last_run_at` (la riga più recente, testo PG: anche una saltata, che è segno di
+vita della sveglia), `in_corso` (quella riga è ancora
+aperta) e `ultima_conclusa = {started_at, ended_at, ok}` in ISO-8601: l'ultima
+corsa **vera** chiusa, mai una saltata (`null` se nessuna corsa vera è mai stata
+chiusa). ⛔ Dal 2026-09-14 al posto di `last_ok`:
 un esito accanto alla data di un'*altra* corsa (l'ultima avviata) si leggeva
 come uno — stessa forma di `job_liveness`, vedi
 [api_gestione_code.md](api_gestione_code.md) §1.

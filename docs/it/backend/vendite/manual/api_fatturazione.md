@@ -278,7 +278,7 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
   **le due conseguenze che l'operatore non si aspetta** sono un lotto numerato a
   metà e delle scadenze che si sono spostate. Chi non le mostra le nasconde.
 - Finestra di numerazione: vedi §7.
-- Esiti: `{ "data": { "giri": [ { "jobname": "...", "origine": "app|batch", "last_run_at": "...", "in_corso": false, "ultima_conclusa": { "started_at": "...", "ended_at": "...", "ok": true } | null, "total_runs": 24, "ok_count": 23, "fail_count": 1 } ], "coda_stampa": { "PENDING": 2, "FATTO": 5 } } }`.
+- Esiti: `{ "data": { "giri": [ { "jobname": "...", "origine": "app|batch", "last_run_at": "...", "in_corso": false, "ultima_conclusa": { "started_at": "...", "ended_at": "...", "ok": true } | null, "total_runs": 24, "ok_count": 23, "fail_count": 1, "saltate_count": 0 } ], "coda_stampa": { "PENDING": 2, "FATTO": 5 } } }`.
   ⛔ Dal 2026-09-14 **`last_ok` non c'è più**: era l'esito dell'ultimo giro
   concluso accanto alla data dell'ultimo giro *toccato*, e durante un giro in
   esecuzione il pannello mostrava l'ora del giro in corso con l'esito del
@@ -288,6 +288,10 @@ stato emesso nessun numero), **non** «nessun limite noto». `data_corrente` a
   (`maintenance.job_run_log` e `dbops.coda_lavori`), perché il pannello le
   fonde in una lista sola. `ok` può essere `null` sul giornale dei run
   (colonna nullable): il pannello lo rende «esito non scritto», non «Errore».
+  `saltate_count` c'è sulle sole righe `batch` (dal 2026-10-10): sono le sveglie
+  che hanno trovato la corsia occupata, e non entrano in `total_runs` né in
+  `ultima_conclusa` — una corsa saltata non ha fatto il lavoro. La coda lavori
+  non ha corse saltate.
 
 ## Regole
 

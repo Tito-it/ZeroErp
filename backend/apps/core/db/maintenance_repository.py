@@ -48,9 +48,16 @@ from apps.core.types import JobRunLogRow
 #    entrambe: e' la ragione per cui il frammento sta qui e non dentro una
 #    delle due — prima erano due copie di `MAX` + `ARRAY_AGG … FILTER`, e il
 #    difetto stava in tutte e due.
+# ⭐ LA CORSA SALTATA (dal 2026-10-10, brief-db-corsa-saltata-non-e-una-corsa
+#    §8): la riga che `fn_job_run_start` scrive sul lock occupato nasce CHIUSA,
+#    senza esito (`ok` NULL) e con `saltata = true`. Per `recente` e' un segno di
+#    vita come le altre — la sveglia e' scattata (D3 di Tid) — e, chiusa, non
+#    risulta «in corso». Per `conclusa` NO: non ha fatto il lavoro, e
+#    l'ultima conclusa e' l'ultima corsa VERA. Senza il filtro una skip diventava
+#    l'ultima conclusa con «esito non scritto», e copriva l'esito di quella vera.
 def _cte_corse(conditions: list[str]) -> str:
     where_recente = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    where_conclusa = "WHERE " + " AND ".join([*conditions, "ended_at IS NOT NULL"])
+    where_conclusa = "WHERE " + " AND ".join([*conditions, "ended_at IS NOT NULL", "NOT saltata"])
     return f"""
         recente AS (
             SELECT DISTINCT ON (jobname) jobname, started_at, ended_at
@@ -77,7 +84,10 @@ class MaintenanceRepository:
     # ⚠️ Una corsa FALLITA non conta: il lavoro non e' fatto, e la sveglia dopo
     #    riprova. Una corsa IN CORSO non conta nemmeno: la sovrapposizione la
     #    impedisce il lock del comando, e una riga rimasta aperta da un processo
-    #    morto non deve bloccare il periodo.
+    #    morto non deve bloccare il periodo. Una corsa SALTATA (lock occupato)
+    #    nemmeno: dal 2026-10-10 nasce con `ok` NULL (brief corsa-saltata D2), e
+    #    `AND ok` la scarta da solo. Fino a quel giorno aveva `ok = true`, e una
+    #    sveglia saltata dietro una corsa poi fallita chiudeva il periodo.
     def corsa_riuscita_dal(self, jobname: str, dal: datetime) -> bool:
         with connection.cursor() as cur:
             cur.execute(
@@ -96,6 +106,10 @@ class MaintenanceRepository:
     # Scopo: Restituisce la lista delle esecuzioni job con filtri opzionali su
     # jobname, esito (ok), intervallo temporale. Ordinamento cronologico decrescente.
     # Perimetro: sola lettura su maintenance.job_run_log.
+    # ⚠️ Ogni riga porta `saltata`: una skip ha `ok` NULL come una corsa APERTA,
+    #    e chi la mostra la distingue da `saltata`, non da `ok`. Il filtro `ok`
+    #    la esclude in entrambi i versi, ed e' giusto: non e' ne' riuscita ne'
+    #    fallita.
     def list_job_runs(
         self,
         *,
@@ -118,7 +132,7 @@ class MaintenanceRepository:
                    started_at::text, ended_at::text,
                    ok, rows_affected, message,
                    error_code, error_detail,
-                   agent_host, run_uuid::text,
+                   agent_host, run_uuid::text, saltata,
                    COUNT(*) OVER () AS total_count
               FROM maintenance.job_run_log
              WHERE (%s::text IS NULL OR jobname = %s)
@@ -147,6 +161,7 @@ class MaintenanceRepository:
                 ok=r["ok"], rows_affected=r["rows_affected"], message=r["message"],
                 error_code=r["error_code"], error_detail=r["error_detail"],
                 agent_host=r["agent_host"], run_uuid=r["run_uuid"],
+                saltata=bool(r["saltata"]),
             )
             for r in rows
         ]
@@ -235,6 +250,9 @@ class MaintenanceRepository:
     #        (riga piu' recente, `::text` di PG per contratto storico),
     #        `in_corso` e `ultima_conclusa` (date in ISO-8601).
     # Utile per dashboard riepilogativa dei job schedulati.
+    # ⚠️ `total_runs` conta le corse VERE: una saltata (lock occupato) non e'
+    #    un'esecuzione, e «riuscite sul totale» la leggerebbe come un lavoro
+    #    mancato. Le saltate hanno il loro conteggio, `saltate_count`.
     #
     # Filtri OPZIONALI (default: nessuno → comportamento storico invariato):
     #  - `jobname_prefix`: tiene solo i job il cui nome inizia col prefisso
@@ -290,15 +308,16 @@ class MaintenanceRepository:
             f"""
             WITH summary AS (
                 SELECT jobname,
-                       COUNT(*) AS total_runs,
+                       COUNT(*) FILTER (WHERE NOT saltata) AS total_runs,
                        COUNT(*) FILTER (WHERE ok = true) AS ok_count,
-                       COUNT(*) FILTER (WHERE ok = false) AS fail_count
+                       COUNT(*) FILTER (WHERE ok = false) AS fail_count,
+                       COUNT(*) FILTER (WHERE saltata) AS saltate_count
                   FROM maintenance.job_run_log
                   {where}
                  GROUP BY jobname
             ),
             {_cte_corse(conditions)}
-            SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count,
+            SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count, s.saltate_count,
                    r.started_at::text AS last_run_at,
                    r.ended_at IS NULL AS in_corso,
                    c.started_at, c.ended_at, c.ok,
@@ -320,6 +339,7 @@ class MaintenanceRepository:
                 "total_runs": r["total_runs"],
                 "ok_count": r["ok_count"],
                 "fail_count": r["fail_count"],
+                "saltate_count": r["saltate_count"],
                 "last_run_at": r["last_run_at"],
                 "in_corso": bool(r["in_corso"]),
                 "ultima_conclusa": corsa_conclusa(r["started_at"], r["ended_at"], r["ok"]),

@@ -816,8 +816,12 @@ def _esito_conclusa(conclusa: dict[str, Any]) -> str:
 # ⭐ Due forme, e la differenza e' il punto:
 #    - riga piu' recente APERTA → «in corso (avviata 14-09-2026 09:47:32) —
 #      ultima conclusa 14-09-2026 07:30:49 (ok)», o «— nessuna corsa conclusa»;
-#    - riga piu' recente CHIUSA → «14-09-2026 07:00:12 (ok)»: qui la riga piu'
-#      recente E' l'ultima conclusa, e una data basta.
+#    - riga piu' recente CHIUSA → «14-09-2026 07:00:12 (ok)»: la data e'
+#      quella dell'ultima conclusa, con l'esito suo. Di solito coincide con la
+#      riga piu' recente; non quando questa e' una corsa SALTATA (lock
+#      occupato, dal 2026-10-10 chiusa e senza esito): la skip e' segno di vita
+#      e non lavoro, e la data che accompagna l'esito resta quella della corsa
+#      vera (`_cte_corse` di MaintenanceRepository).
 def _pezzi_corsa(corsa: dict[str, Any]) -> list[tuple[str, bool]]:
     conclusa = corsa.get("ultima_conclusa")
     if corsa.get("in_corso"):
@@ -842,9 +846,10 @@ def _pezzi_corsa(corsa: dict[str, Any]) -> list[tuple[str, bool]]:
             (esito, esito == ESITO_FALLITA),
             (")", False),
         ]
-    # ⚠️ Riga piu' recente chiusa e nessuna conclusa non puo' succedere dal
-    #    repository (una riga chiusa E' una conclusa); da un dict costruito
-    #    altrove si', e si dice invece di sollevare dentro il messaggio.
+    # ⚠️ Riga piu' recente chiusa e nessuna conclusa: dal repository succede
+    #    quando la corsia ha solo corse SALTATE (una skip e' chiusa ma non e'
+    #    una conclusa); da un dict costruito altrove pure. Si dice, invece di
+    #    sollevare dentro il messaggio.
     return [
         (f"{_ora_locale(corsa.get('last_run_at'), secondi=True)} (nessuna corsa conclusa)", False),
     ]

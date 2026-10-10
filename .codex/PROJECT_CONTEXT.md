@@ -236,8 +236,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `fn_fuso_operativo` e i confini del giorno, «oggi» aziendale ovunque, fase `70_dati_sistema`; BB BE
   `fuso_aziendale` e `predicato_giorno_operativo`, `TIME_ZONE = 'UTC'`, log in UTC con `Z`, ruff `DTZ`, timer
   systemd con `ExecCondition` (T-9); `date.js` nel fuso dell'azienda; CI ostile sui tre lati (T-5)). Ne eredita
-  una voce `brief-db-corsa-saltata-non-e-una-corsa` (🔵 team DB): la riga di skip di `fn_job_run_start` conta
-  come corsa riuscita, e le sveglie calendariali possono saltare un periodo. Stub `types-bleach`/`types-openpyxl`
+  una voce `brief-db-corsa-saltata-non-e-una-corsa`: la riga di skip di `fn_job_run_start` contava
+  come corsa riuscita, e le sveglie calendariali potevano saltare un periodo. DB applicato e BE/FE fatti il
+  2026-10-10 (colonna `saltata`, la skip senza esito); chiuso e archiviato in `work-done/` lo stesso giorno,
+  il residuo sta in § «Aperto — Media priorità». Stub `types-bleach`/`types-openpyxl`
   installati il 2026-10-09 (ok di Tid): mypy controlla anche le chiamate a quelle due librerie.
 - **I presidi parlano a chi deve agire: chiuso** (`work-done/brief-db-presidi-cosa-significa-cosa-fare.md`,
   archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su
@@ -321,9 +323,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   catena (ordine → DDT → reso) possono avere BA diversi. Lato DB applicato e verde su dbdev il 2026-10-10, in due
   giri (`20261009-62…-92`, compreso l'emittente bloccato fuori bozza su sei documenti; `20261010-02…-07`, le copie
   dal BA in un BB e la sorgente non trovata = errore). Resta la ricaduta BE/FE (§7, §9.6, §11.5 del brief).
-- 📝 **L'emittente del documento e' quello del cliente: una regola, sette copie**
-  (`work-in-progress/brief-db-guard-emittente-ba-unico.md`, D22, 2026-10-10): il guard emittente <-> BA estratto in
-  un BB, un codice e una frase leggibile. Lato DB applicato e verde il 2026-10-10 (`20261010-17…-19`); resta il BE (§8.6).
+- ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
+  (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
+  (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito
+  e' **D24** del registro DB (`migliorie-generali-da-test-valutazione.md`): la vista del presidio C2 non vede i BB
+  trigger col codice in `TG_ARGV`, e il BE tiene un'esenzione su `E_DOC_EMITTENTE_BA_INCOERENTE` finche' non la vede.
 - 📝 **La testata di un documento dopo l'emissione** (`work-in-progress/brief-db-testata-dopo-emissione.md`, D23,
   2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
   Colonne divise in famiglie (identità, stampato, arriva dopo, note, condizioni commerciali). Decisioni chiuse
@@ -340,6 +344,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **La corsa appesa non è «in corso» nella liveness del BE** (BE/FE, ereditata il 2026-10-10 dalla chiusura
+  di `work-done/brief-db-corsa-saltata-non-e-una-corsa.md` §8.7): una corsa col processo vivo che tiene il
+  lock, seguita da skip, ha come riga più recente la skip, chiusa; `job_liveness`/`list_job_summary` dicono
+  `in_corso = false`, e badge e digest non la mostrano. Il caso lo vede `maintenance.vw_job_run_da_guardare`
+  («presa e mai chiusa»), coerente con D3 di quel brief. Se la si vuole anche nel BE: `in_corso` dall'ultima
+  corsa **vera**, con la sua data di avvio — un campo in più nella forma condivisa con la coda lavori. Da
+  decidere, di Tid.
 - **Presidi, i residui del brief dei testi per chi agisce** (ereditati il 2026-10-06 dalla chiusura di
   `work-done/brief-db-presidi-cosa-significa-cosa-fare.md`):
   - ✅ **due nomi di schermata sbagliati nel CSV** `80_data/sql/dbops/presidi_testi.csv` (§9.3): corretti nel

@@ -528,7 +528,7 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | `E_DDT_CLIENTE_IMMUTABILE`           | Tentativo di cambiare cliente/destinatario di un DDT già creato                                              |
 | `E_DDT_STATO_TRANSIZIONE`            | Operazione non ammessa nello stato (modifica fuori da `DRAFT`, delete di una bozza con righe → va annullata) |
 | `E_DDT_NESSUNA_RIGA`                 | Push senza righe eleggibili                                                                                  |
-| `E_DDT_EMITTENTE_BA_INCOERENTE`      | Emittente non coerente col cliente selezionato                                                               |
+| `E_DOC_EMITTENTE_BA_INCOERENTE`      | L'azienda che emette non è quella del cliente (stesso codice per i sei documenti di vendita)                 |
 | `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` | Cambio di stato non previsto/attivo nella matrice (guard DB)                                                 |
 | `E_INDIRIZZO_DOC_OBBLIGATORIO`       | Emissione senza l'indirizzo di consegna obbligatorio (guard DB)                                              |
 | `E_DOCUMENTI_*`                      | Stampa: template/versione non risolti, input invalido o render fallito                                       |

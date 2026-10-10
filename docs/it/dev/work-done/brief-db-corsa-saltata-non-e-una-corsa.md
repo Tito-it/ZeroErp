@@ -1,12 +1,14 @@
 # Brief DB — Una corsa saltata non è una corsa riuscita
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09, durante la revisione di L4 di
-> [brief-be-db-fe-un-solo-fuso-aziendale](../work-done/brief-be-db-fe-un-solo-fuso-aziendale.md) (T-9).
+> [brief-be-db-fe-un-solo-fuso-aziendale](brief-be-db-fe-un-solo-fuso-aziendale.md) (T-9).
 > **A chi:** team DB (`dev/db-tid`); ricadute BE in §6.
 > **Decisione di Tid (2026-10-09):** aprire il brief.
 > **Stato:** ✅ **lato DB chiuso** (2026-10-10, §8.5): changeSet `20261010-20` … `-25`
 > **applicati** da Tid, pgTAP di `maintenance/` **senza rossi** (compreso il nuovo
-> `test-job-run-saltata-v1`). Resta il BE (§8.6). **Rivisto** dalla sessione DB
+> `test-job-run-saltata-v1`). ✅ **Lato BE/FE fatto** il 2026-10-10 (§8.7).
+> ✅ **Chiuso e archiviato** il 2026-10-10 (decisione di Tid): il punto aperto del §8.7 (la corsa
+> appesa nella liveness del BE) passa a PROJECT_CONTEXT § «Aperto — Media priorità». **Rivisto** dalla sessione DB
 > (`dev/db-tid`) il 2026-10-09: decisioni di Tid e lavoro DB nel §8, che prevale sui §3–§5
 > dove dissente.
 
@@ -234,3 +236,30 @@ senza rossi. Una corsa lanciata prima dell'apply aveva dato 11/11 rossi su
   2026-10-10 restano `ok = true`, `saltata = false` (D4).
 * `JobRunHandle`: invariato. Su `acquired = false` non chiama `fn_job_run_end`, e dal `-23`
   il DB lo rifiuterebbe comunque.
+
+### 8.7 Lato BE/FE (sessione `dev/backend-tid`, 2026-10-10)
+
+| Punto | Cosa |
+| --- | --- |
+| policy | `error_policies_generated.py` rigenerato: `E_JOB_RUN_SALTATA_NON_CHIUDIBILE` → `TECNICO`; ripiego senza segnaposto in `error_messages_fallback.py`. ⚠️ La rigenerazione porta con sé anche le voci di `brief-db-guard-emittente-ba-unico` (il file è uno solo) |
+| `corsa_riuscita_dal` | invariato (`AND ok`, la skip ha `ok` NULL); commento aggiornato |
+| `_cte_corse` (`job_liveness`, `list_job_summary`) | `conclusa` esclude le saltate: l'ultima conclusa è l'ultima corsa **vera**. Senza, una skip diventava l'ultima conclusa con «esito non scritto» e copriva l'esito di quella vera. `recente` resta su tutte le righe: la skip è segno di vita della sveglia (D3) e, chiusa, non è «in corso» |
+| `list_job_summary` | `total_runs` conta le corse vere; nuovo `saltate_count` |
+| `list_job_runs`, `list_run_processo` | ogni riga porta `saltata` |
+| `ProcessiRepository.list_processi` | `ultimo_ok` è l'esito dell'ultima corsa non saltata, come `ultimo_esito` della vista processi; `ultimo_run` resta su tutte (D3) |
+| digest | commenti di `_pezzi_corsa` allineati (la riga più recente chiusa può essere una skip) |
+| FE `ProcessoDrawer` | la cella esito delle corse ha quattro facce: saltata (con tooltip), OK, errore, in corso (`ended_at` vuoto), «esito non scritto» (chiusa senza esito). Prima ogni `ok` NULL era «in corso» |
+| doc | `api_tracciamento.md` (`saltata`, `total_runs`, `saltate_count`, `ultima_conclusa`), `api_fatturazione.md` |
+
+**Test:** `core/tests/db/test_corsa_riuscita_dal_db` +3 sul DB vero, con la skip **costruita** dal ramo
+vero (lock tenuto da una seconda connessione): la skip non chiude il periodo dopo una corsa fallita,
+l'ultima conclusa resta la fallita (mutazione: tolto `NOT saltata` → rosso), `fn_job_run_end` su una
+skip → `E_JOB_RUN_SALTATA_NON_CHIUDIBILE`. Suite `core`, `amm_software`, servizi di `vendite` e
+`anagrafiche`: 4181 ok; mypy 0 rilievi; ruff e i18n verdi.
+
+**Punto aperto, per Tid.** Una corsa **appesa** (processo vivo, lock tenuto, riga aperta) seguita
+da skip: nel BE `in_corso` legge la riga più recente, cioè la skip chiusa, quindi il badge e il
+digest non dicono «in corso» mentre un lavoro tiene la corsia. La corsa appesa la mostra
+`vw_job_run_da_guardare` (D3), ed è coerente con quella decisione; se si vuole che anche la liveness
+del BE la dica, `in_corso` dovrebbe leggere l'ultima corsa vera, con la sua data di avvio — un campo
+in più nella forma condivisa con la coda lavori. Non fatto.

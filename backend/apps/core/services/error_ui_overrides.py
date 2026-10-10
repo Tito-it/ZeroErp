@@ -203,7 +203,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_CONTO_BANCARIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "highlight_form_fields",  # classe NON_ESEGUIBILE
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
-    "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
     # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/CESSATO)
     # le modifiche sono limitate o vietate. La testata ammette solo
     # `valido_al` e `meta` in ATTIVO; CESSATO immutabile. Le sotto
@@ -258,7 +257,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # (brief §14.3). Lo status non ne dipende — il ramo che solleva e'
     # inequivocabilmente «il soggetto non esiste».
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "show_error_banner",  # classe NON_TROVATO
-    "E_DDT_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
     #   `fn_contratto_riga_componenti_init` non era sola: ddt, ordine e
     #   preventivo hanno la stessa funzione con lo stesso `IF NOT FOUND`
     #   raccontato come «parametro non valido». Sfuggite alla prima passata
@@ -276,6 +274,21 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_DOCUMENTI_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_DOCUMENTI_VERSIONE_NOT_FOUND": "show_error_banner",  # classe NON_TROVATO
     "E_DOC_COMPONENTE_OBBLIGATORIO_PREZZO_ZERO": "highlight_form_fields",  # classe DATO_ERRATO
+    # L'azienda che emette e' quella del cliente: guard emittente <-> BA dei
+    # sei documenti di vendita (preventivo, offerta, contratto, ordine, DDT,
+    # reso), un codice solo dal BB `script.trgfn_doc_guard_emittente_ba`
+    # (brief-db-guard-emittente-ba-unico, D-1 di Tid del 2026-10-10). Prende
+    # il posto delle sei voci per documento E_{PREV,OFFERTA,CONTRATTO,ORDINE,
+    # DDT,RESO}_EMITTENTE_BA_INCOERENTE, ritirate a catalogo.
+    # `emittente_fiscale_id` e' un campo del form in tutti e sei: il valore
+    # in conflitto l'ha scelto l'operatore, quindi si evidenzia il campo
+    # (api.md, «400 · highlight quando il valore l'ha scelto lui in un
+    # form»), e il BB manda `campo` nel contesto. ⚠️ La commessa tiene il suo
+    # E_COMMESSA_EMITTENTE_BA_INCOERENTE, TECNICO e senza override: li' nessuno
+    # sceglie l'emittente, e il BB non manda `campo`.
+    # ⚠️ Il presidio C2 non vede il sito (il codice arriva da TG_ARGV): vedi
+    # `_ESENZIONI` in apps/core/tests/test_ui_action_e_canale_campi.py.
+    "E_DOC_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
     # ⭐ La sigla dell'emittente: campo, non banner. Il default di
     #    `DATO_ERRATO` esiste perche' «promettere un campo che non esiste e'
     #    peggio del contrario»; qui il campo esiste, si chiama `codice`, e
@@ -375,7 +388,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # prospettiva su tabelle note di altri schemi che adotteranno lo stesso pattern.
     "E_NOTA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_OFFERTA_ECCEZIONE_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
-    "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
     #   `E_PARAMETRO_INVALIDO` lo nominano 113 funzioni e per 111 il 400 e'
     #   giusto: la correzione non poteva stare qui, doveva stare nel punto
     #   che solleva. Il team DB ha creato i due codici (changeSet
@@ -388,12 +400,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_ONERE_ARTICOLO_MANCANTE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_ONERE_CAUSALE_NON_VALIDA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_ONERE_IMPORTO_NON_VALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    # Sollevati da trgfn_<dominio>_guard_emittente_ba quando
-    # emittente_fiscale_id diverge da fn_get_emittente_fiscale_pk(BA)
-    # (skip se BA NULL). Ordini/contratti esistevano gia' (mai registrati:
-    # gap sanato); DDT/preventivi/offerte aggiunti dal DB team 2026-07-13
-    # (brief emittente-user-e-etichetta-soggetto).
-    "E_ORDINE_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
     "E_ORDINE_RIGA_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
     "E_ORD_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     # <- EMITTENTE_NON_MODIFICABILE (senza prefisso) RIMOSSO il 2026-08-06.
@@ -423,7 +429,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # -- Vendite: parametri di collegamento pratica/flusso --------------
     "E_PRATICA_VALIDATION": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PREVENTIVO_RIGA_NON_TROVATA": "show_error_banner",  # classe NON_TROVATO
-    "E_PREV_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe CONFLITTO_STATO
     # Codici sollevati dai trigger DB landed su `vendite.preventivi`:
     #   _a10_default_emittente_ins: setta emittente_fiscale_id da GUC
     #     app.current_user_id; raise se utente senza EF e payload non
@@ -490,21 +495,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_QTA_NON_POSITIVA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_QTA_OPERATIVA_NON_INTERA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_QTA_OPER_STEP_INVALIDO": "highlight_form_fields",  # classe DATO_ERRATO
-    # ⚠️ SESTA DI SEI GUARDIE IDENTICHE, e fino al 2026-08-08 era l'unica senza
-    # override — segnalato dal team DB collaudando il campo da correggere.
-    # `emittente_fiscale_id` e' un campo del form in tutti e sei i documenti
-    # (preventivi, offerte, ordini, contratti, DDT, resi): il valore in
-    # conflitto l'ha scelto l'operatore, quindi si evidenzia il campo. E' il
-    # criterio di api.md — «400 · highlight quando il valore l'ha scelto lui in
-    # un form», l'analogo di `E_ID_FISCALI_DIVERSI`.
-    #
-    # ⚠️ E LA FAMIGLIA RESTA DISALLINEATA SULL'ALTRA META', che non e' nostra:
-    # i cinque gemelli hanno classe `CONFLITTO_STATO` (409) mentre questo ha
-    # `DATO_ERRATO` (400). **Ha ragione questo**: il conflitto non e' fra righe
-    # che l'operatore non ha scelto — e' il valore che ha appena messo nel form.
-    # I cinque vanno spostati a `DATO_ERRATO` **a catalogo**: la classe e' un
-    # dato del DB, non si corregge qui (o il controllo di divergenza va rosso).
-    "E_RESO_EMITTENTE_BA_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
     "E_RESO_VALIDAZIONE": "highlight_form_fields",  # classe DATO_ERRATO
     # Annullamento riga MANUALE di commessa (guard DB 564-567,
     # brief-annullamento-righe-manuali-commessa §4d). Quattro codici

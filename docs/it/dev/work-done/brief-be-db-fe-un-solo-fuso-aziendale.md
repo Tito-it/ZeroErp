@@ -12,7 +12,7 @@
 > Django col parametro ostile in CI, vitest a Pago Pago).
 > **Ereditato da un altro brief:** la riga di *skip* di `fn_job_run_start` conta come corsa
 > riuscita, e `e_dovuto` (T-9) puo' saltare un periodo intero →
-> [brief-db-corsa-saltata-non-e-una-corsa](../work-in-progress/brief-db-corsa-saltata-non-e-una-corsa.md)
+> [brief-db-corsa-saltata-non-e-una-corsa](brief-db-corsa-saltata-non-e-una-corsa.md)
 > (§8.3, «Passato a un altro brief»).
 > Censimento su tre lati completato il 2026-10-09 (§4).
 > **Storia del documento:** nato come `brief-be-db-giorno-nel-fuso-aziendale`, che aveva già
@@ -534,7 +534,7 @@ git sono allineati): il presidio di divergenza e' verde, e con lui l'intera suit
   corsa a mano che tiene il lock all'ora della sveglia e poi fallisce fa saltare il periodo intero
   senza errore. E' un difetto di modello di `maintenance.job_run_log` (copre anche i presidi delle
   corse appese), non del fuso: lo porta
-  [brief-db-corsa-saltata-non-e-una-corsa](../work-in-progress/brief-db-corsa-saltata-non-e-una-corsa.md),
+  [brief-db-corsa-saltata-non-e-una-corsa](brief-db-corsa-saltata-non-e-una-corsa.md),
   aperto su decisione di Tid. Il BE attende il marcatore strutturale (niente filtro sul testo di
   `message`) e allora corregge `corsa_riuscita_dal`.
 

@@ -199,7 +199,8 @@ function onIdentitaCreata() {
       </template>
 
       <template #cell-ultimo_ok="{ data }">
-        <!-- ⚠️ `null` = mai girato, non «fallito». -->
+        <!-- ⚠️ `null` non è «fallito»: nessuna corsa vera conclusa (mai
+             girato, solo corse saltate, o l'ultima ancora in corso). -->
         <Tag
           v-if="data.ultimo_ok === true"
           :value="t('amministrazione.processi.esito_ok')"

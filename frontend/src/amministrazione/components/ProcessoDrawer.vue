@@ -448,10 +448,19 @@ async function eseguiOra(sveglia) {
                   <td>{{ r.jobname }}</td>
                   <td>{{ r.origine }}</td>
                   <td>
-                    <!-- ⚠️ `ok` è a tre stati: `null` = corsa ancora aperta,
-                         non «fallita». Appiattirlo a rosso direbbe il falso. -->
+                    <!-- ⚠️ `ok` è a tre stati, e `null` ha tre letture: corsa
+                         SALTATA (lock occupato: chiusa e senza esito, la dice
+                         `saltata`), corsa ancora APERTA (`ended_at` vuoto), o
+                         chiusa senza che nessuno abbia scritto l'esito.
+                         Appiattirlo a rosso, o tutto a «in corso», direbbe il falso. -->
                     <Tag
-                      v-if="r.ok === true"
+                      v-if="r.saltata"
+                      v-tooltip.top="t('amministrazione.processi.esito_saltata_tooltip')"
+                      :value="t('amministrazione.processi.esito_saltata')"
+                      severity="secondary"
+                    />
+                    <Tag
+                      v-else-if="r.ok === true"
                       :value="t('amministrazione.processi.esito_ok')"
                       severity="success"
                     />
@@ -461,9 +470,14 @@ async function eseguiOra(sveglia) {
                       severity="danger"
                     />
                     <Tag
-                      v-else
+                      v-else-if="!r.ended_at"
                       :value="t('amministrazione.processi.esito_in_corso')"
                       severity="secondary"
+                    />
+                    <Tag
+                      v-else
+                      :value="t('amministrazione.processi.esito_non_scritto')"
+                      severity="warn"
                     />
                   </td>
                 </tr>

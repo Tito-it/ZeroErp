@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1023, di cui 105 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1025, di cui 111 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -253,7 +253,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_COMMESSA_AZIONE_NON_AMMESSA": "CONFLITTO_STATO",
     "E_COMMESSA_CHIAVE_IMMUTABILE": "CONFLITTO_STATO",
     "E_COMMESSA_CHIUSURA_CON_RIGHE_PENDENTI": "CONFLITTO_STATO",
-    # Guard emittente<->BA sulla COMMESSA. ⛔ Classe TECNICO e non DATO_ERRATO come i sei fratelli documento (E_ORDINE_/E_PREV_/E_DDT_/E_CONTRATTO_/E_OFFERTA_EMITTENTE_BA_INCOERENTE), e la divergenza e' deliberata: li' il valore lo fornisce una persona in un form, qui non ci arriva nessuno — la commessa nasce dal push, con l'emittente derivato dal billing account, quindi solo un chiamante rotto o una INSERT a mano puo' produrre un valore diverso. Ne discende che il contesto NON porta la chiave `campo` (su un 500 non c'e' nessun campo da accendere) e non porta il `bersaglio` (nessun gesto da offrire). ⛔ Non si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito con lo split rimandato, non una sede. Piano: brief-db-emittente-commessa-invariante, L2.
+    # Guard emittente<->BA sulla COMMESSA. ⛔ Classe TECNICO e non DATO_ERRATO come i sei fratelli documento (E_ORDINE_/E_PREV_/E_DDT_/E_CONTRATTO_/E_OFFERTA_EMITTENTE_BA_INCOERENTE), e la divergenza e' deliberata: li' il valore lo fornisce una persona in un form, qui non ci arriva nessuno — la commessa nasce dal push, con l'emittente derivato dal billing account, quindi solo un chiamante rotto o una INSERT a mano puo' produrre un valore diverso. Ne discende che il contesto NON porta la chiave `campo` (su un 500 non c'e' nessun campo da accendere) e non porta il `bersaglio` (nessun gesto da offrire). ⛔ Non si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito con lo split rimandato, non una sede. Piano: brief-db-emittente-commessa-invariante, L2. · Dal 2026-10-10 lo solleva il BB script.trgfn_doc_guard_emittente_ba (D-3 di brief-db-guard-emittente-ba-unico): la frase ha i segnaposto nello stesso ordine di E_DOC_EMITTENTE_BA_INCOERENTE (documento, azienda indicata, azienda del cliente, billing account).
     "E_COMMESSA_EMITTENTE_BA_INCOERENTE": "TECNICO",
     "E_COMMESSA_EMITTENTE_MANCANTE": "CONFLITTO_STATO",
     "E_COMMESSA_NESSUNA_RIGA_APPROVATA": "CONFLITTO_STATO",
@@ -340,7 +340,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE": "CONFLITTO_STATO",
     "E_CONTRATTO_CATEGORIA_SNAPSHOT_IMMUTABILE": "CONFLITTO_STATO",
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "DATO_ERRATO",
-    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
+    # ⚠️ RITIRATO il 2026-10-10
     "E_CONTRATTO_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     # RITIRATO il 2026-09-15 (brief-db-emittente-di-default-un-bb-solo, D1): vendite.trgfn_contratti_default_emittente era una delle tre copie della stessa regola (ordini, preventivi, contratti; ddt la variante) e la sua funzione e' droppata. La regola vive in script.trgfn_default_emittente_fiscale, che solleva E_EMITTENTE_NON_RISOLTO. Nessuna funzione viva nomina piu' questo codice; il messaggio resta perche' il diario deve restare leggibile.
     # ⚠️ RITIRATO il 2026-09-15
@@ -433,7 +434,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Motivo 2-bis di script.fn_check_ddt_emittibile, sollevato da vendite.trgfn_ddt_guard_causale_emissione: la causale vuole un cliente (config.causali_trasporto.richiede_cliente) e la bolla non ha il billing account. CONFLITTO_STATO come i fratelli dell'emissione (E_DDT_CAUSALE_OBBLIGATORIA): la richiesta e' «emetti», non c'e' un campo di QUELLA richiesta da accendere. VARIADIC: documento e codice della causale. La capability lo espone con reason CLIENTE_MANCANTE. Brief: brief-db-esecutivi-ba-coppia (D-2, D-2-bis).
     "E_DDT_CLIENTE_OBBLIGATORIO": "CONFLITTO_STATO",
     "E_DDT_EMISSIONE_SENZA_RIGHE": "CONFLITTO_STATO",
-    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
+    # ⚠️ RITIRATO il 2026-10-10
     "E_DDT_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     # vendite.trgfn_ddt_guard_magazzino (2026-09-28, D-L3-a): il magazzino (o l'arrivo) cambia su una bolla che non era in bozza. Si guarda lo stato VECCHIO, come per la causale: l'UPDATE che emette e sceglie il magazzino insieme resta lecito. Il VARIADIC porta lo stato.
     "E_DDT_MAGAZZINO_IMMUTABILE": "CONFLITTO_STATO",
@@ -506,6 +508,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DOC_COMPONENTI_PENDING_VALORIZZAZIONE": "CONFLITTO_STATO",
     # Gemello di `E_LISTINO_VERSIONE_NON_ATTIVA`: l'articolo composito · c'e', la sua distinta non ha componenti validi ALLA DATA. Non e' · un «non trovato», e' una configurazione che non regge quel giorno.
     "E_DOC_COMPOSITO_BOM_VUOTA": "NON_ESEGUIBILE",
+    # L'emittente di un documento di vendita (preventivo, offerta, contratto, ordine, DDT, reso) non e' quello che il suo billing account risolve (anagrafiche.fn_get_emittente_fiscale_pk). Lo solleva il BB script.trgfn_doc_guard_emittente_ba (brief-db-guard-emittente-ba-unico, D-1 di Tid del 2026-10-10): UN codice per i sei documenti, al posto di E_PREV_/E_OFFERTA_/E_CONTRATTO_/E_ORDINE_/E_DDT_/E_RESO_EMITTENTE_BA_INCOERENTE (ritirati). DATO_ERRATO: l'emittente lo sceglie una persona nel form; `campo` = emittente_fiscale_id. La commessa tiene E_COMMESSA_EMITTENTE_BA_INCOERENTE (TECNICO). VARIADIC: documento, nome dell'azienda indicata, nome di quella del cliente, codice del billing account.
+    "E_DOC_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     # L'emittente fiscale di preventivo, ordine, DDT, reso, offerta e contratto non cambia fuori bozza: BB vendite.trgfn_doc_testata_lock_fuori_bozza (decisione di Tid del 2026-10-09, brief-db-esecutivi-ba-coppia §9.8). Fino a quel giorno l'emittente di questi documenti non era bloccato da nessuna parte, e un trigger (20260605-05, ritirato) ricalcolava i totali dell'ordine dopo il suo cambio. CONFLITTO_STATO come gli altri lock fuori bozza; VARIADIC lo stato. Non si e' riusato E_EMITTENTE_NON_MODIFICABILE: e' il codice dell'associazione operatore-emittente e la sua frase parla di quella.
     "E_DOC_EMITTENTE_FUORI_BOZZA": "CONFLITTO_STATO",
     # Secondo motivo di script.fn_check_listino_documento, sollevato da script.trgfn_doc_guard_listino_documento (vendite.contratti, vendite.offerte_commerciali): il listino del documento e' di un altro emittente (listini.emittente_soggetto_ruolo_id diverso dal ruolo dell'emittente_fiscale_id del documento), oppure sotto RLS non si legge, cioe' e' fuori dal perimetro di chi agisce mentre il documento ci sta. Campo listino_id. DATO_ERRATO, frase chiusa: non dice nulla del listino che non si vede. Nasce il 2026-10-08 (brief-db-offerta-emissione-ed-erogazione §F.2).
@@ -517,7 +521,7 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Un documento di vendita (preventivo, contratto, offerta, ordine, DDT) contiene prezzi RIFIUTATI dal responsabile (stato_approvazione_prezzo = REJECTED) su righe o componenti BoM attivi, e si chiede di farlo uscire dalla bozza o di accettarlo. Decisione di Tid del 2026-09-24 (D-1): un prezzo rifiutato e uno in attesa sono entrambi prezzi che nessuno ha autorizzato — fino a quel giorno il REJECTED non lo guardava nessun guard, e un prezzo rifiutato usciva col documento. Stesso building block e stessi siti di E_DOC_PREZZO_PENDENTE. CONFLITTO_STATO: il rimedio e' correggere il prezzo o togliere la riga, non un campo della richiesta. Brief: brief-db-preventivi-congelamento-pricing.
     "E_DOC_PREZZO_RIFIUTATO": "CONFLITTO_STATO",
     "E_DOC_RIGA_NON_COMPOSITO": "DATO_ERRATO",
-    # vendite.trgfn_doc_righe_lock_fuori_bozza: il building block e' stato montato senza i due argomenti obbligatori (tipo documento, colonna FK della riga), con una colonna che sulla riga non esiste, o (dal 2026-10-05) con un quarto argomento che non e' un livello (TESTATA | RIGA). Nasce il 2026-09-22. Dal 2026-10-09 lo solleva anche il gemello di testata vendite.trgfn_doc_testata_lock_fuori_bozza (evento diverso da UPDATE, argomenti spaiati, colonna che la testata non ha): il codice resta lo stesso, il nome parla di righe per storia (brief-db-esecutivi-ba-coppia §10.2 domanda 5, Tid 2026-10-10: niente rinomina per un TECNICO). · TECNICO e non DATO_ERRATO perche' nessuna persona sceglie quel valore: e' un CREATE TRIGGER scritto male, e chi ha fatto la richiesta non puo' farci niente. Fratello di E_ATTIVO_BLOCK_ARGS (stesso ruolo nel framework ATTIVO). · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una sede (D11 di brief-db-be-classe-codici-errore). · ⚠️ Su un TECNICO la chiave `campo` NON esce dal contesto: su un 500 non c'e' nessun campo da accendere.
+    # vendite.trgfn_doc_righe_lock_fuori_bozza: il building block e' stato montato senza i due argomenti obbligatori (tipo documento, colonna FK della riga), con una colonna che sulla riga non esiste, o (dal 2026-10-05) con un quarto argomento che non e' un livello (TESTATA | RIGA). Nasce il 2026-09-22. Dal 2026-10-09 lo solleva anche il gemello di testata vendite.trgfn_doc_testata_lock_fuori_bozza (evento diverso da UPDATE, argomenti spaiati, colonna che la testata non ha): il codice resta lo stesso, il nome parla di righe per storia (brief-db-esecutivi-ba-coppia §10.2 domanda 5, Tid 2026-10-10: niente rinomina per un TECNICO). · TECNICO e non DATO_ERRATO perche' nessuna persona sceglie quel valore: e' un CREATE TRIGGER scritto male, e chi ha fatto la richiesta non puo' farci niente. Fratello di E_ATTIVO_BLOCK_ARGS (stesso ruolo nel framework ATTIVO). · ⛔ NON si e' riusato E_PARAMETRO_INVALIDO: quel codice e' un debito, non una sede (D11 di brief-db-be-classe-codici-errore). · ⚠️ Su un TECNICO la chiave `campo` NON esce dal contesto: su un 500 non c'e' nessun campo da accendere. Dal 2026-10-10 lo solleva anche script.trgfn_doc_guard_emittente_ba (montato senza i quattro argomenti, o con una colonna che la tabella non ha): e' il codice dei building block di documento montati male, il nome resta per storia (brief-db-guard-emittente-ba-unico).
     "E_DOC_RIGHE_LOCK_MONTAGGIO": "TECNICO",
     # Un DDT dichiara come sorgente un ordine o un reso, o un reso dichiara un DDT, che non si trova: inesistente o invisibile sotto RLS, che rispondono uguale (fail-closed). Lo sollevano vendite.trgfn_ddt_guard_cliente_sorgente e vendite.trgfn_resi_guard_cliente_ddt (brief-db-esecutivi-ba-coppia §10.2 domanda 3, Tid 2026-10-10): prima passavano «niente da confrontare», e una bolla poteva nascere dall'ordine di un altro emittente col BA del proprio. DATO_ERRATO e non NON_TROVATO: la sorgente e' un campo della richiesta (contesto `campo` = sorgente_uid), non la risorsa che una persona chiede (api.md, tassonomia). VARIADIC: il documento, il tipo della sorgente (ordine | reso | DDT).
     "E_DOC_SORGENTE_NON_TROVATA": "DATO_ERRATO",
@@ -787,6 +791,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_JOB_NON_RIACCODABILE": "CONFLITTO_STATO",
     # C-3: polling di un giro (job coda) inesistente o non di proprieta` · dell'operatore → 404 (senza registrazione cadrebbe sul fallback 400).
     "E_JOB_NON_TROVATO": "NON_TROVATO",
+    # script.fn_job_run_end su una riga di maintenance.job_run_log con saltata = TRUE: si e' chiesto di chiudere una corsa che non e' mai partita (lock della corsia occupato). La riga nasce chiusa e senza esito (CHECK chk_job_run_log_saltata): chiuderla le darebbe un esito e la farebbe passare per una corsa vera. TECNICO e non DATO_ERRATO: lo produce solo un chiamante rotto, che ha ignorato acquired = false di script.fn_job_run_start; niente campo ne' bersaglio. VARIADIC: id della corsa, jobname. Brief: brief-db-corsa-saltata-non-e-una-corsa §8 (nome ok Tid, 2026-10-10).
+    "E_JOB_RUN_SALTATA_NON_CHIUDIBILE": "TECNICO",
     # ⚠️ Distinto dal gemello NON_TROVATO: qui il tipo **esiste** ed e' · stato disattivato. Stessa famiglia di `E_AI_DISABLED` e · `E_SHOP_NON_DISPONIBILE`, gia' a 501: funzione presente ma non · servita. Il 503 sarebbe l'alternativa, ma introdurrebbe un · dodicesimo status per un codice solo — vedi api.md sui one-off.
     "E_JOB_TYPE_NON_ATTIVO": "NON_DISPONIBILE",
     # `dbops.coda_lavori_tipi` non ha quel codice: un tipo di job che il · backend accoda ma nessuno ha registrato. E' il gemello esatto di · `E_PIPELINE_TASK_HANDLER_NOT_FOUND` — difetto di deploy, non · risorsa mancante.
@@ -948,7 +954,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Codici DB del flusso offerta (emissione/transizione/push/revisione) e del · push a contratto. Senza registrazione cadevano sul fallback 400, mentre · la convenzione del progetto per "operazione non ammessa nello stato / · precondizione di transizione / overlap" è 409 (gemelli già registrati: · E_ORD_STATO_TRANSIZIONE, E_PREV_STATO_TRANSIZIONE, · E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA, E_VENDITE_*_OVERLAP). Registrati · qui per fissare lo status corretto (il messaggio parlante DB vince · comunque su user_message). Pulizia 2026-06-08.
     "E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO": "CONFLITTO_STATO",
     "E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA": "CONFLITTO_STATO",
-    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
+    # ⚠️ RITIRATO il 2026-10-10
     "E_OFFERTA_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     "E_OFFERTA_NON_TROVATA": "NON_TROVATO",
     "E_OFFERTA_ORDINE_GIA_GENERATO": "CONFLITTO_STATO",
@@ -979,7 +986,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Cliente (billing_account_id/soggetto_ruolo_id) immutabile post-create. · Sollevato sia dal guard BE (ordini_service.aggiorna_ordine) sia, come · difesa finale, dal lock-columns DB (automation_lock_columns, · DB-ORD-LOCK 2026-06-04, codice DB messaggi_errore id 469). · 400 -> 409 il 2026-08-06 (audit coerenza status): immutabilita' · post-creazione = conflitto con lo stato attuale (RFC 9110), come · gli altri 29 della famiglia. `ui_action` invariata.
     "E_ORD_CLIENTE_IMMUTABILE": "CONFLITTO_STATO",
     "E_ORDINE_CONFERMA_SENZA_RIGHE": "CONFLITTO_STATO",
-    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
+    # ⚠️ RITIRATO il 2026-10-10
     "E_ORDINE_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     # RITIRATO il 2026-09-15 (brief-db-emittente-di-default-un-bb-solo, D1): vendite.trgfn_ordini_default_emittente era una delle tre copie della stessa regola (ordini, preventivi, contratti; ddt la variante) e la sua funzione e' droppata. La regola vive in script.trgfn_default_emittente_fiscale, che solleva E_EMITTENTE_NON_RISOLTO. Nessuna funzione viva nomina piu' questo codice; il messaggio resta perche' il diario deve restare leggibile.
     # ⚠️ RITIRATO il 2026-09-15
@@ -1097,7 +1105,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Il quarto motivo, arrivato col consolidamento §7.3 del brief: era la · regola che viveva DENTRO `fn_cambia_stato_preventivo` (col codice senza · prefisso `E_`, quindi invisibile all'estrattore e degradato a · E_DATABASE), ora assorbita in `fn_check_preventivo_annullabile` come · motivo a se'. Piu' preciso del fratello E_PREV_GIA_IN_COMMESSA: quello · dice che esiste un collegamento a commessa, questo che a valle esiste · gia' una FATTURA — e una fattura senza l'origine che la giustifica non · si crea annullando il preventivo, si corregge dal lato fatturazione.
     "E_PREV_ANNULLA_COMMESSA_EMESSA": "CONFLITTO_STATO",
     "E_PREV_COMPONENTE_NOT_FOUND": "NON_TROVATO",
-    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
+    # ⚠️ RITIRATO il 2026-10-10
     "E_PREV_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     # RITIRATO il 2026-09-15 (brief-db-emittente-di-default-un-bb-solo, D1): vendite.trgfn_preventivi_default_emittente era una delle tre copie della stessa regola (ordini, preventivi, contratti; ddt la variante) e la sua funzione e' droppata. La regola vive in script.trgfn_default_emittente_fiscale, che solleva E_EMITTENTE_NON_RISOLTO. Nessuna funzione viva nomina piu' questo codice; il messaggio resta perche' il diario deve restare leggibile.
     # ⚠️ RITIRATO il 2026-09-15
@@ -1207,7 +1216,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_RESO_DA_DDT_TRASFERIMENTO": "CONFLITTO_STATO",
     # Guard DB sorgente reso (trgfn_resi_guard_ddt_consegnato, a10 INSERT): · il reso richiede il DDT sorgente in CONSEGNATO. Il service ha il · guard gemello parlante (crea_reso); questo copre le scritture non-BE.
     "E_RESO_DDT_NON_CONSEGNATO": "CONFLITTO_STATO",
-    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6.
+    # Guard emittente<->BA: valore sbagliato in un campo scelto dall'operatore, non conflitto di stato. Da CONFLITTO_STATO a DATO_ERRATO il 2026-08-09 (rilievo BE). Ragioni: brief-db-be-classe-codici-errore.md §8.6. · Ritirato il 2026-10-10 (brief-db-guard-emittente-ba-unico, D-1 di Tid): i sei documenti sollevano E_DOC_EMITTENTE_BA_INCOERENTE dal BB script.trgfn_doc_guard_emittente_ba. Resta a catalogo per i messaggi gia' scritti nel log.
+    # ⚠️ RITIRATO il 2026-10-10
     "E_RESO_EMITTENTE_BA_INCOERENTE": "DATO_ERRATO",
     # vendite.trgfn_resi_guard_magazzino (2026-09-28, D-3b-a): il magazzino di rientro cambia su un reso che non era in bozza. Si guarda lo stato VECCHIO, come per la bolla. Il VARIADIC porta lo stato.
     "E_RESO_MAGAZZINO_IMMUTABILE": "CONFLITTO_STATO",
@@ -1746,6 +1756,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_CONTABILE_COMPENSAZIONE_CON_LOTTO",
         "E_CONTABILE_COMPENSAZIONE_GIA_PRESENTE",
         "E_CONTABILE_COMPENSAZIONE_LOTTO_ESCLUSIVI",
+        "E_CONTRATTO_EMITTENTE_BA_INCOERENTE",
         "E_CONTRATTO_EMITTENTE_NON_RISOLTO",
         "E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA",
         "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
@@ -1754,6 +1765,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_DATA_FINE_INFERIORE_DI_INIZIO",
         "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO",
         "E_DBLINK_LOG_CONN_MISSING",
+        "E_DDT_EMITTENTE_BA_INCOERENTE",
         "E_DELETE_RIGA_DOC_NON_BOZZA",
         "E_DRYRUN_CREATE_TRIGGER",
         "E_EMITTENTE_DISATTIVAZIONE_BLOCCATA",
@@ -1762,12 +1774,15 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_ISTANZA_UTILITY_SENZA_UTILITY",
         "E_KIT_QUANTITA_DISOMOGENEE",
         "E_NUMERAZIONE_IMMUTABILE",
+        "E_OFFERTA_EMITTENTE_BA_INCOERENTE",
         "E_ONERE_CAUSALE_NON_VALIDA",
         "E_ORD_ANNULLA_IN_COMMESSA",
+        "E_ORDINE_EMITTENTE_BA_INCOERENTE",
         "E_ORDINE_EMITTENTE_NON_RISOLTO",
         "E_PARAMETER_DEFAULT_TIPO_SOGGETTO_INVALID",
         "E_PERC_IVA_NO_MOD",
         "E_PIPELINE_MARK_ERROR",
+        "E_PREV_EMITTENTE_BA_INCOERENTE",
         "E_PREV_EMITTENTE_NON_RISOLTO",
         "E_PREVENTIVO_RIGHE_PRICING_PENDENTI",
         "E_PREV_GIA_IN_COMMESSA",
@@ -1775,6 +1790,7 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_PULL_COMMESSA_ALL_FAILED",
         "E_REFRESH_LOCK_TIMEOUT",
         "E_REGOLA_FATTURAZIONE_MANCANTE",
+        "E_RESO_EMITTENTE_BA_INCOERENTE",
         "ERRORE_PARAMETRI",
         "ERRORE_PARAMETRI_TABELLA",
         "E_SORG_BA_NON_RISOLTO",
