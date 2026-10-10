@@ -19,6 +19,7 @@
 > forma il 2026-10-10 (§10.2), messe nel codice dal giro DB 2 (§11: 6 changeSet `20261010-02…-07`,
 > 2 codici a catalogo, pgTAP a 39 test, 4 pagine `manual/`), applicato e verde il 2026-10-10.
 > **Da leggere per primo, ora: §11** (e il §11.5 per il backend).
+> **Giro BE/FE fatto il 2026-10-10: §12** (con due punti aperti al §12.3).
 > **Nel registro dei difetti DB:** voce **D21** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -886,3 +887,47 @@ Dentro il giro:
 * [brief-db-codici-non-trovato-email-e-permessi](brief-db-codici-non-trovato-email-e-permessi.md): R-9
   (builder pgTAP fino al cliente) va scritto **dopo** questo giro, perche' `-03` cambia il trigger dei
   clienti; R-7 prende gli id dei messaggi da 1239. Annotato nel suo §13.2.
+
+## 12. Giro BE/FE (sessione backend, 2026-10-10)
+
+> ✅ **Fatto** il §7, il §9.6 e il §11.5. Decisioni di forma chieste a Tid prima di scrivere
+> (2026-10-10): **campo destinatario** nel form del DDT, e **ritiro delle copie Python** sull'ordine.
+
+### 12.1 Che cosa c'e'
+
+| Dove | Che cosa |
+| --- | --- |
+| Catalogo | `error_policies_generated.py` rigenerato (dal DB allineato a `20261010-16`); ripieghi senza segnaposto per `E_DDT_CLIENTE_OBBLIGATORIO`, `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE`, `E_DOC_CLIENTE_DIVERSO_DA_BA`, `E_DOC_SORGENTE_NON_TROVATA`, `E_DOC_EMITTENTE_FUORI_BOZZA`, `E_ISTANZA_SOGGETTO_IMMUTABILE`, `E_CLIENTE_FORNITURA_IMMUTABILE`; riscritte le frasi di `E_DDT_CLIENTE_IMMUTABILE`, `E_DDT_CAUSALE_IMMUTABILE`, `E_BA_ISTANZA_IMMUTABILE` e `E_DOC_RIGHE_LOCK_MONTAGGIO` (righe **e** testata, domanda 5) |
+| `ddt_service` | BA facoltativo in creazione; ritirati la derivazione Python del destinatario (`get_soggetto_ruolo_id_by_ba`, tolta dai due repository) e il guard «cliente immutabile» anche in bozza. Whitelist: dentro `billing_account_id` e `destinatario_soggetto_ruolo_id` (anche in update), fuori `utility_id` (create e update). Senza BA il NOT NULL del destinatario lo dice il DB, col campo. I due id si coerciscono col BB `PayloadValidator` (400 col campo, non 500) |
+| `ordini_service` | BA obbligatorio (validazione del payload, col campo); ruolo e utility fuori dalle whitelist (li scrive il BB); ritirata la copia Python del lock del BA: il BA arriva al DB, che risponde `E_ORD_CLIENTE_IMMUTABILE` (409). `crea_ordine_da_offerta` non passa piu' la utility |
+| Mappe vincoli | `fk_ordini_ba_cliente`, `fk_ddt_ba_cliente`, `fk_resi_ba_cliente` → `E_DOC_CLIENTE_DIVERSO_DA_BA`; `chk_ddt_ba_utility_insieme`, `chk_resi_ba_utility_insieme` → `E_VENDITE_VALIDATION`; tutte col campo `billing_account_id` |
+| Commenti «prospect / BA NULL» | riscritti in `_indirizzi_repo_mixin` (docstring e `LEFT JOIN`), `ordini_repository`, `ddt_repository`, `ordine_document_context_builder` |
+| FE DDT | campo **Destinatario** (`SoggettoRuoloLookup`): senza cliente si sceglie ed e' obbligatorio, col cliente si spegne e mostra il cliente. Cliente modificabile in bozza; utility spenta col cliente (filtra solo la ricerca, non si salva); autosave della bozza da cliente **o** destinatario. Reason `vendite.ddt.azione_reason.cliente_mancante` (it/en) |
+| FE ordine | utility spenta dopo la creazione e uguale a quella del BA scelto; non si manda piu' nei payload |
+| `config_panel` | etichette delle colonne nuove `richiede_cliente` ed `entita_esistenza` (presidio `test_config_panel_registro_db`) |
+| Doc | `api_ddt.md`, `api_ordini.md` |
+
+### 12.2 Prove
+
+* Suite backend 6107 test verdi senza DB; ruff pulito; mypy a cricchetto 0 rilievi nuovi.
+* Sul DB vero (`ZEROERP_TEST_DB_E2E=1`): nuovo `vendite/tests/db/test_esecutivi_cliente_dal_ba_db.py`
+  (3 test, dai verbi del service: DDT senza cliente → cliente in bozza → tolto; destinatario diverso
+  dal BA rifiutato; ordine con ruolo e utility dal BA e BA bloccato). Riallineati
+  `test_ddt_create_db` e `test_ordini_create_db`: non passano piu' le copie, e la rilettura prova che
+  le scrive il DB.
+* Frontend: vitest 765/765, eslint e oxlint puliti, build ok. ⚠️ **Non provato a video.**
+
+### 12.3 Rimasto aperto
+
+* ⚠️ **Due rossi sul DB vero che non sono di questo giro**: `test_error_policies_divergenza_db` e
+  `test_ui_action_e_canale_campi` (promesse `highlight` di sei `*_EMITTENTE_BA_INCOERENTE`). Su
+  dbdev e' stato applicato il 2026-10-10 alle 10:03 il giro DB di
+  [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md), che e' su
+  `origin/dev/db-tid` ma non ancora in `dev/backend-tid`: il DB e' avanti rispetto a git, e le
+  policy **non** si rigenerano finche' il commit non e' nel branch. Si chiudono col giro BE di quel
+  brief.
+* ⚠️ **Da verificare (Tid)**: al cambio di cliente in bozza gli **indirizzi del documento** gia'
+  assegnati (lo slot Consegna, auto-assegnato alla creazione dal ruolo del cliente) restano quelli
+  del cliente di prima. Il guard di ownership del picker guarda il destinatario attuale, ma lo
+  snapshot gia' scritto non si riallinea. Non l'ho toccato: se va riallineato, la sede e' il DB (o
+  l'auto-assegnazione all'UPDATE del BA), e la domanda e' di modello.

@@ -52,6 +52,13 @@
 11. test_un_presidio_non_letto_non_consegna_un_azione
      ⛔ L'azione rimedia a righe accese: su un presidio che non si e' letto
      direbbe di sistemare una cosa che nessuno ha visto.
+12. test_il_testo_delle_cause_si_cerca_per_causa_con_ripiego_nella_causa
+     ⛔ 2026-10-10 (brief-db-presidio-processi-testo-per-causa §5.4.2): il testo
+     di una causa e' quello con `variante = causa`, e la lingua ripiega DENTRO
+     la causa — mai sul testo generico del presidio.
+13. test_il_pannello_consegna_le_righe_per_causa
+     ⭐ Il nome della colonna si legge da `colonna_variante`; un presidio senza
+     variante consegna `cause` vuoto e non interroga il catalogo delle cause.
 """
 
 from __future__ import annotations
@@ -93,6 +100,7 @@ def _riga(**override: Any) -> RigaPresidio:
         "cadenza": "GIORNALIERA",
         "perimetro": PERIMETRO_LIBERO,
         "nota": "riga di prova",
+        "colonna_variante": None,
         # ⚠️ Senza testo per chi agisce, di default: e' il ripiego, e i casi
         #    col testo se lo costruiscono.
         "chi_agisce": None,
@@ -208,6 +216,9 @@ class PresidiRepositoryGuardieTests(SimpleTestCase):
         sql, params = cursore.execute.call_args[0]
         self.assertIn("dbops.presidi_testi", sql)
         self.assertIn("pt.vista = p.vista", sql)
+        # ⛔ Il testo del presidio e' quello SENZA variante: le varianti sono i
+        #    testi per causa, e il `LIMIT 1` ne pescherebbe una a caso.
+        self.assertIn("pt.variante IS NULL", sql)
         self.assertIn("current_setting(%s, true)", sql)
         self.assertEqual(params[:3], [GUC_NAME, DEFAULT_LANGUAGE, DEFAULT_LANGUAGE])
         for colonna in ("p.chi_agisce", "t.significato", "t.azione"):
@@ -352,3 +363,50 @@ class PresidiPannelloTests(SimpleTestCase):
         self.assertEqual(caduto["significato"], "cosa vuol dire")
         self.assertIsNone(caduto["azione"])
         self.assertIsNone(caduto["chi_agisce"])
+
+    # 13. ⭐ Le righe per causa, col testo e il «chi agisce» della causa. La
+    #     colonna si chiama apposta `motivo`: il nome viene dal catalogo.
+    def test_il_pannello_consegna_le_righe_per_causa(self) -> None:
+        repo = self._repo(
+            [
+                _riga(vista="dbops.vw_a", natura="ZERO", colonna_variante="motivo"),
+                _riga(vista="dbops.vw_b", natura="ZERO"),
+            ],
+            {"dbops.vw_a": 2, "dbops.vw_b": 1},
+            {"dbops.vw_a": [{"id": 1, "motivo": "X"}, {"id": 2, "motivo": "Y"}],
+             "dbops.vw_b": [{"id": 3}]},
+        )
+        chieste: list[str] = []
+
+        def _testi(vista):
+            chieste.append(vista)
+            return {"X": {"causa": "X", "chi_agisce": "SVILUPPO",
+                          "significato": "s-x", "azione": "a-x"}}
+
+        repo.testi_delle_cause = _testi  # type: ignore[method-assign]
+        a, b = repo.stato_presidi()
+        self.assertEqual(
+            [(c["causa"], c["chi_agisce"], c["azione"], [r["id"] for r in c["righe"]])
+             for c in a["cause"]],
+            [("X", "SVILUPPO", "a-x", [1]), ("Y", None, None, [2])],
+        )
+        self.assertEqual(b["cause"], [])
+        self.assertEqual(chieste, ["dbops.vw_a"])
+
+
+class PresidiTestiCauseTests(SimpleTestCase):
+    """Il testo delle cause: quale riga di `presidi_testi`, in che lingua."""
+
+    # 12. ⛔ `variante = causa`, lingua richiesta poi `it` della STESSA causa.
+    #     ⚠️ SQL letta, non eseguita: che giri sul database vero lo prova
+    #     `test_presidi_catalogo`.
+    def test_il_testo_delle_cause_si_cerca_per_causa_con_ripiego_nella_causa(self) -> None:
+        with _cursore_finto() as cursore:
+            cursore.description = []
+            cursore.fetchall.return_value = []
+            PresidiRepository().testi_delle_cause("dbops.vw_a")
+        sql, params = cursore.execute.call_args[0]
+        self.assertIn("dbops.presidi_cause c", sql)
+        self.assertIn("pt.variante = c.causa", sql)
+        self.assertNotIn("variante IS NULL", sql)
+        self.assertEqual(params, [GUC_NAME, DEFAULT_LANGUAGE, DEFAULT_LANGUAGE, "dbops.vw_a"])

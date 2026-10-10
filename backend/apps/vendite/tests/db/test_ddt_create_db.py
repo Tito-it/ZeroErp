@@ -57,12 +57,14 @@ class CreateDdtDbTests(unittest.TestCase):
                     oggi = cur.fetchone()[0]
 
                     # Il payload che `ddt_service.crea_ddt` passa al repository.
+                    # ⭐ Col BA, destinatario e utility NON si passano: li scrive
+                    #    il DB dal BA (brief-db-esecutivi-ba-coppia §10.2), e la
+                    #    rilettura sotto lo prova.
                     creato = DdtRepository().create_ddt(
-                        destinatario_soggetto_ruolo_id=mondo["cliente_soggetto_ruolo_id"],
+                        destinatario_soggetto_ruolo_id=None,
                         stato_doc_ddt_id=stato_bozza_id,
                         billing_account_id=mondo["billing_account_id"],
                         emittente_fiscale_id=mondo["emittente_fiscale_id"],
-                        utility_id=mondo["utility_id"],
                         valuta_id=valuta_id,
                         num_colli=3,
                         peso_lordo="12.500",

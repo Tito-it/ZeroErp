@@ -150,13 +150,11 @@ const pushCommessaDisabledAction = computed(() => caps.azioneNegata('can_push_co
 }))
 
 // Campi bloccati lato UX. Una volta che l'ordine esiste (EDIT classico o CREATE
-// post auto-save), il cliente NON e' piu' modificabile: il BE deriva
-// `soggetto_ruolo_id` dal billing_account solo in create (crea_ordine), mentre
-// aggiorna_ordine cambierebbe `billing_account_id` SENZA ri-derivare il
-// soggetto_ruolo → incoerenza cliente↔soggetto. Difesa FE allineata a
-// PreventiviDrawer (che blocca billing_account_id post-create). Cambiare cliente
-// = nuovo ordine, non una modifica della testata.
-const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id'] : []))
+// post auto-save), il cliente NON e' piu' modificabile: lo blocca il DB (lock
+// di colonna, E_ORD_CLIENTE_IMMUTABILE), e qui il campo si spegne per non
+// proporre un gesto che verrebbe rifiutato. Cambiare cliente = nuovo ordine.
+// La utility e' una copia del cliente (la scrive il DB): si spegne con lui.
+const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id', 'utility_id'] : []))
 
 // Readonly PURO (permesso LETTURA / split / readonly forzato) — SENZA il
 // lock-di-stato post-DRAFT: l'evasione e' un'azione di processo legittima su un
@@ -358,7 +356,6 @@ const { close } = useDrawerAutosaveBozza({
     const f = form.value
     return {
       billing_account_id: f.billing_account_id || null,
-      utility_id: f.utility_id || null,
       // Opzionale per BE: se omesso (operatore) il trigger DB lo deriva da GUC.
       emittente_fiscale_id: f.emittente_fiscale_id || null,
       valuta_id: f.valuta_id || null,
@@ -398,9 +395,10 @@ async function handleSave() {
   if (isEdit.value || createdId.value !== null) {
     // UPDATE testata (DRAFT). emittente_fiscale_id NON e' aggiornabile (whitelist
     // BE _UPDATE_KEYS_ORDINE). Inviamo la whitelist: il BE normalizza empty→NULL.
+    // ⛔ La utility non si manda: e' una copia del cliente, la scrive il DB
+    // (brief-db-esecutivi-ba-coppia). Il cliente invariato passa il lock.
     const payload = {
       billing_account_id: f.billing_account_id ?? null,
-      utility_id: f.utility_id ?? null,
       valuta_id: f.valuta_id ?? null,
       modalita_pagamento_id: f.modalita_pagamento_id ?? null,
       termine_pagamento_id: f.termine_pagamento_id ?? null,
@@ -424,7 +422,6 @@ async function handleSave() {
     // Fallback CREATE manuale (auto-save non scattato): chiude dopo create.
     const payload = {
       billing_account_id: f.billing_account_id || null,
-      utility_id: f.utility_id || null,
       emittente_fiscale_id: f.emittente_fiscale_id || null,
       valuta_id: f.valuta_id || null,
       modalita_pagamento_id: f.modalita_pagamento_id || null,

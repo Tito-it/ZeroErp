@@ -48,9 +48,11 @@ const fatturazioneTriggerOptions = computed(() =>
   })),
 )
 
-// Il BA risolve cliente (soggetto_ruolo) + utility in modo univoco. Mutiamo il
-// form via defineModel (form.value.*): resta lo stesso oggetto reattivo, quindi
-// il drawer reagisce al watch su billing_account_id (autosave bozza CREATE).
+// Il BA risolve cliente (soggetto_ruolo) + utility in modo univoco: li scrive il
+// DB dal BA (brief-db-esecutivi-ba-coppia), qui la utility filtra solo la
+// ricerca e poi mostra quella del BA. Mutiamo il form via defineModel
+// (form.value.*): resta lo stesso oggetto reattivo, quindi il drawer reagisce
+// al watch su billing_account_id (autosave bozza CREATE).
 function onBaSelected(item) {
   if (!item) {
     form.value.billing_account_id = null
@@ -59,12 +61,8 @@ function onBaSelected(item) {
   }
   form.value.billing_account_id = item.id
   form.value.billing_account_obj = item
-  // Coerenza utility/BA: se l'operatore non aveva selezionato utility, pre-compila
-  // quella del BA. Se gia' valorizzata e diversa, lascia intervenire il lookup
-  // (BillingAccountLookup resetta il BA al cambio utility).
-  if (!form.value.utility_id && item.utility_id) {
-    form.value.utility_id = item.utility_id
-  }
+  // La utility e' quella del BA (copia, la scrive il DB): il campo la mostra.
+  if (item.utility_id != null) form.value.utility_id = item.utility_id
 }
 
 function onBaClear() {

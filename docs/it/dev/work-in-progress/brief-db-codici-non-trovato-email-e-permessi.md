@@ -14,7 +14,8 @@
 > `config.tipi_ruoli.entita_esistenza`, 1 pgTAP nuovo e 4 riallineati. R-8 è
 > **superato dal modello** (Q-5, Tid 2026-10-10). Partito dopo l'apply di
 > [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md) giro 1 e 2, come
-> deciso (Q-4). ⏳ Resta il backend: le richieste del §14.6.
+> deciso (Q-4). ✅ **Backend fatto il 2026-10-10** (§15): tutti i punti del §14.6. Il brief si
+> puo' archiviare.
 > **Da leggere per primo:** §1, poi il §14 (consegne del giro R-5…R-9).
 
 ## 1. Cosa si chiede
@@ -840,7 +841,7 @@ posizione, la fixture su CL per nome, e via i test 23-26.
   **senza `ORDER BY`**. Oltre 10.000 corrispondenze, `total_count` e le pagine vengono
   da un sottoinsieme qualunque. Non è nato in questo giro: ha un brief suo, aperto il
   2026-10-10 su richiesta di Tid,
-  [brief-db-ricerca-universale-tetto-10000](brief-db-ricerca-universale-tetto-10000.md)
+  [brief-db-ricerca-universale-tetto-10000](../work-done/brief-db-ricerca-universale-tetto-10000.md)
   (voce D23 del registro).
 
 ### 14.6 Per il backend, dopo l'apply
@@ -865,3 +866,16 @@ posizione, la fixture su CL per nome, e via i test 23-26.
 6. **Doc**: `api_search_universale.md` — la regola su `entita_esistenza`, i codici
    `E_TIPO_RUOLO_NON_RICERCABILE` ed `E_TIPO_RUOLO_NON_TROVATO` (anche dalla lista), le
    firme senza `p_emittente_ids`.
+
+## 15. Giro BE del §14.6 (sessione backend, 2026-10-10)
+
+> ✅ **Fatti tutti e sei i punti del §14.6.** Nessuna richiesta nuova al team DB.
+
+| Punto §14.6 | Esito |
+| --- | --- |
+| 1. Q-2 | ritirato `SearchRepository.is_tipo_ruolo_visibile` e il controllo in `_require_tipo_ruolo_id`: esistenza e `ricerca_visibile` li dice il DB (404 `E_TIPO_RUOLO_NON_RICERCABILE` / `E_TIPO_RUOLO_NON_TROVATO`). Il parametro resta obbligatorio e ora e' limitato a `integer` (`qp_int_optional`): andava a `p_tipo_ruolo_id integer`, e un bigint sarebbe stato un 500. `test_search_view` 6 e 17 riscritti (la view passa il ruolo, il tetto resta un 400) |
+| 2. Catalogo | policy rigenerate; ripieghi per i quattro codici |
+| 3. R-7 | `E_EMAIL_TEMPLATE_NON_CONFIGURATO` (`resolve_and_render`; il parametro `error_code` e' uscito, e con lui l'ultimo punto di `E_EMAIL` in `email_service`), `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO` (`percorso_allegato`), `E_EMAIL_ALLEGATI_LIMITE` (`add_attachment`). Un test per codice: `test_email_outbox_service` 21-23, piu' il 5 di `test_email_service` che ora asserisce il codice |
+| 4. R-9 | `test_ricerca_liste_db` e `test_search_detail_non_trovato_db` passano a `dbops.fn_pgtap_crea_cliente` (stato `PR` nel primo, come la riga che sostituisce). Nessun'altra INSERT a mano su `clienti` nei test Python |
+| 5. R-6 | `test_search_detail_non_trovato_db`: fornitore senza la riga in `fornitori` → `None`, con la contro-prova del fornitore che la riga ce l'ha; ruolo non ricercabile rifiutato dal DB su lista e dettaglio; binding delle firme senza `p_emittente_ids` provato sul DB vero (7/7). La sonda del file era `fn_check_soggetto_ruolo_visibile`, ritirata: ora e' il BB nuovo — con la vecchia il file sarebbe stato **saltato in silenzio** |
+| 6. Doc | `api_search_universale.md` (regola su `entita_esistenza`, codici, firme), `api_email.md` (i tre codici, catene di ripiego) |

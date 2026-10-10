@@ -12,6 +12,13 @@
 //
 // Granularita' disabilitazione: isModificabile (stato form, legato a
 // can_edit_testata + readonly) OPPURE campo in nonEditableFields (per-campo BE).
+//
+// Cliente (brief-db-esecutivi-ba-coppia, D-2/D-4, 2026-10-10): il BA e'
+// FACOLTATIVO e si sceglie in bozza. Col BA, destinatario e utility sono copie
+// del BA e le scrive il DB: qui si mostrano, non si scelgono. Senza BA
+// (trasferimento, conto lavoro, riparazione) il destinatario lo sceglie
+// l'operatore. Se la causale vuole un cliente lo dice l'emissione, con la
+// capability (reason CLIENTE_MANCANTE): nessuna regola ricopiata qui.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { DATE_FORMAT } from '../../../core/constants'
@@ -48,22 +55,33 @@ function isLocked(field) {
   return !props.isModificabile || lockedFields.value.has(field)
 }
 
-// Il BA risolve cliente (destinatario_soggetto_ruolo lato BE) + utility. Mutiamo
-// il form via defineModel (form.value.*): resta lo stesso oggetto reattivo,
-// quindi il drawer reagisce al watch su billing_account_id (autosave bozza CREATE).
+// Col BA, destinatario e utility vengono dal BA (li scrive il DB): i due campi
+// si spengono e mostrano cio' che il BA dice.
+const conCliente = computed(() => form.value.billing_account_id != null)
+
+// Mutiamo il form via defineModel (form.value.*): resta lo stesso oggetto
+// reattivo, quindi il drawer reagisce al watch su billing_account_id /
+// destinatario (autosave bozza CREATE).
 function onBaSelected(item) {
   if (!item) {
     form.value.billing_account_id = null
     form.value.billing_account_obj = null
+    // ⚠️ Il destinatario RESTA (id e nome insieme): e' quello del BA tolto,
+    // come fa il DB su un BA tolto (`trgfn_ddt_normalize`), e senza BA si
+    // manda nel payload — l'operatore lo cambia se serve.
     return
   }
   form.value.billing_account_id = item.id
   form.value.billing_account_obj = item
-  // Coerenza utility/BA: se l'operatore non aveva selezionato utility, pre-compila
-  // quella del BA. Se gia' valorizzata e diversa, lascia intervenire il lookup.
-  if (!form.value.utility_id && item.utility_id) {
-    form.value.utility_id = item.utility_id
-  }
+  // La utility e' quella del BA (copia, la scrive il DB): il campo la mostra.
+  if (item.utility_id != null) form.value.utility_id = item.utility_id
+  // ⛔ Id e nome del destinatario si scrivono INSIEME, dal ruolo del BA: un
+  //    nome nuovo accanto all'id del BA precedente farebbe mostrare un
+  //    destinatario e mandarne un altro, se poi il BA si toglie.
+  form.value.destinatario_soggetto_ruolo_id = item.soggetto_ruolo_id ?? null
+  form.value.destinatario_obj = item.soggetto_ruolo_id != null
+    ? { soggetto_ruolo_id: item.soggetto_ruolo_id, ragione_sociale_completa: item.ragione_sociale_completa }
+    : null
 }
 
 function onBaClear() {
@@ -88,6 +106,15 @@ function onVettoreClear() {
   form.value.vettore_soggetto_ruolo_id = null
   form.value.vettore_obj = null
 }
+// Destinatario senza cliente: il terzista o il deposito.
+function onDestinatarioSelected(item) {
+  form.value.destinatario_soggetto_ruolo_id = item?.soggetto_ruolo_id ?? null
+  form.value.destinatario_obj = item || null
+}
+function onDestinatarioClear() {
+  form.value.destinatario_soggetto_ruolo_id = null
+  form.value.destinatario_obj = null
+}
 </script>
 
 <template>
@@ -106,25 +133,46 @@ function onVettoreClear() {
           :is-edit="isEdit"
           :disabled="isLocked('emittente_fiscale_id')" />
       </div>
+      <!-- Utility: col BA e' la sua (copia scritta dal DB) e si spegne; senza
+           BA filtra solo la ricerca del cliente, e non si salva. -->
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_utility') }}</label>
         <UtilityPerRuoloSelect v-model="form.utility_id"
+          v-tooltip.bottom="t('vendite.ddt.utility_dal_cliente_hint')"
           :placeholder="t('vendite.ddt.field_utility')"
-          :disabled="isLocked('utility_id')" />
+          :disabled="isLocked('billing_account_id') || conCliente" />
       </div>
     </div>
 
     <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('vendite.ddt.field_billing_account') }} <span v-if="!isEdit">*</span></label>
+        <label>{{ t('vendite.ddt.field_billing_account') }}</label>
         <BillingAccountLookup
           :model-value="form.billing_account_obj"
           :utility-id="form.utility_id"
+          :invalid="campiErrati.includes('billing_account_id')"
           :disabled="isLocked('billing_account_id')"
           :placeholder="t('vendite.ddt.field_billing_account_placeholder')"
           @select="onBaSelected"
           @clear="onBaClear" />
       </div>
+      <div class="form-field">
+        <label>
+          {{ t('vendite.ddt.field_destinatario') }}
+          <span v-if="!conCliente && !isLocked('destinatario_soggetto_ruolo_id')">*</span>
+        </label>
+        <SoggettoRuoloLookup
+          :model-value="form.destinatario_obj"
+          :invalid="campiErrati.includes('destinatario_soggetto_ruolo_id')"
+          :disabled="isLocked('destinatario_soggetto_ruolo_id') || conCliente"
+          :placeholder="t('vendite.ddt.field_destinatario_placeholder')"
+          @select="onDestinatarioSelected"
+          @clear="onDestinatarioClear" />
+        <small class="app-text-muted">{{ t('vendite.ddt.destinatario_dal_cliente_hint') }}</small>
+      </div>
+    </div>
+
+    <div class="form-grid-2col">
       <div class="form-field">
         <label>{{ t('vendite.ddt.field_data') }}</label>
         <DatePicker v-model="form.data"

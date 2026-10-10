@@ -31,13 +31,20 @@ from apps.core.services.service_errors import ServiceError
 
 logger = logging.getLogger("zeroerp.email")
 
-E_EMAIL = "E_EMAIL"
-
 # Le condizioni di configurazione che `E_EMAIL` accumulava e che non sono dati
 # errati (brief-db-codici-non-trovato-email-e-permessi §12, 2026-10-09). La
 # usano anche le bozze (`email_outbox_service`), che la importano da qui.
+# ⚠️ Dal 2026-10-10 (R-7) `E_EMAIL` non ha piu' punti di sollevamento in questo
+#    modulo: il template mancante era l'ultimo, e con lui e' uscito il
+#    parametro `error_code` di `resolve_and_render`.
 E_EMAIL_ACCOUNT_NON_CONFIGURATO = "E_EMAIL_ACCOUNT_NON_CONFIGURATO"
 E_EMAIL_ACCOUNT_NOT_FOUND = "E_EMAIL_ACCOUNT_NOT_FOUND"
+# Nessun template per questo invio, dopo il ripiego reparto -> sistema e
+# lingua. TECNICO come l'account mancante: il codice del template lo sceglie
+# il PROGRAMMA, e chi chiede la mail non puo' rimediare. ⚠️ Non e'
+# `E_EMAIL_TEMPLATE_NOT_FOUND` (404), che e' l'id scelto dall'amministratore
+# nel pannello (R-7 di brief-db-codici-non-trovato-email-e-permessi).
+E_EMAIL_TEMPLATE_NON_CONFIGURATO = "E_EMAIL_TEMPLATE_NON_CONFIGURATO"
 
 # Marker per account placeholder (seed iniziale senza SMTP reale).
 # Esposto come pubblico: consumato anche da `email_views._derive_test_capability`
@@ -158,7 +165,6 @@ class EmailDispatchService:
         unita_organizzativa_id: int | None = None,
         tipo_prestazione_id: int | None = None,
         lingua: str = "it",
-        error_code: str = E_EMAIL,
     ) -> tuple[dict[str, Any], dict[str, Any], str, str, str | None]:
         # 1. Risolvi template con fallback
         template = self._repo.resolve_template(
@@ -169,8 +175,12 @@ class EmailDispatchService:
         )
         ErrorManager.require(
             template is not None,
-            code=error_code,
-            message=f"Template email '{codice_template}' non trovato.",
+            code=E_EMAIL_TEMPLATE_NON_CONFIGURATO,
+            message=USER_MESSAGE_FALLBACK[E_EMAIL_TEMPLATE_NON_CONFIGURATO],
+            detail=(
+                f"codice_template={codice_template!r} "
+                f"unita_organizzativa_id={unita_organizzativa_id} lingua={lingua!r}"
+            ),
         )
         assert template is not None
 

@@ -1545,8 +1545,20 @@ per primo.
       {
         "vista": "dbops.vw_processi_programmazione_da_guardare",
         "descrizione": "PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa non tornano. DEVE restare VUOTA. …",
+        "significato": "Uno o più processi automatici non girano come dovrebbero.",
+        "azione": "Per ogni processo segui il rimedio indicato accanto alla sua causa.",
+        "chi_agisce": "SISTEMISTA",
         "conteggio": 1,
-        "righe": [ { "processo_codice": "apply_storicizza_weekly", "stato": "GIRA_E_NON_REGISTRA", "…": "…" } ],
+        "righe": [ { "processo_codice": "apply_storicizza_weekly", "stato": "GIRA_E_NON_REGISTRA", "causa": "GIRA_E_NON_REGISTRA", "…": "…" } ],
+        "cause": [
+          {
+            "causa": "GIRA_E_NON_REGISTRA",
+            "chi_agisce": "SVILUPPO",
+            "significato": "Un lavoro programmato è partito, ma non ha lasciato traccia della sua corsa.",
+            "azione": "Avvisa lo sviluppo: il lavoro si interrompe prima di riuscire a registrare l'esito.",
+            "righe": [ { "processo_codice": "apply_storicizza_weekly", "…": "…" } ]
+          }
+        ],
         "troncato": false,
         "elencabili": true,
         "errore": null,
@@ -1563,8 +1575,11 @@ per primo.
 |---|---|
 | `vista` | nome **qualificato collo schema**: due schemi possono avere viste omonime, e mezzo nome manderebbe a guardare quella sbagliata |
 | `descrizione` | il `COMMENT` della vista — è lì che sta la differenza fra «deve essere zero» e «deve calare» |
-| `conteggio` | `count(*)` **senza filtro e prima delle righe**: dice quanto sta fuori dalle prime consegnate |
+| `significato`, `azione` | il testo **per chi agisce** (`dbops.presidi_testi`, la riga senza variante), nella lingua di chi legge con ripiego su `it`. `null` se il presidio non ha testo: il pannello ripiega sulla `descrizione` |
+| `chi_agisce` | a chi tocca spegnere il presidio **nel suo insieme** (`AMMINISTRATORE`, `SISTEMISTA`, `SVILUPPO`) |
+| `conteggio` | le righe che chiedono un intervento, da `dbops.fn_conta_presidio` (filtro `colonna_stato` compreso): dice quanto sta fuori dalle prime consegnate |
 | `righe` | le prime N righe, con le colonne che la vista ha (forme diverse per vista) |
+| `cause` | solo per i presidi che dichiarano `colonna_variante` (oggi il presidio dei processi): le stesse `righe` **raggruppate per causa**, ognuna con il suo `chi_agisce`, `significato` e `azione` (`dbops.presidi_cause` + `presidi_testi`, ripiego per lingua dentro la causa). Altrove `[]`. ⛔ Una causa senza testo ha i tre campi a `null`: non eredita mai il testo del presidio, che darebbe il rimedio di un altro guasto. ⚠️ Raggruppa le righe **consegnate**, non le conta: i conteggi per causa aspettano R-2 di `brief-db-presidio-processi-testo-per-causa` §6.2 |
 | `troncato` | le righe mostrate non sono tutte — senza, venti su duecento si leggerebbero come «sono venti» |
 | `elencabili` | `false` sulle viste con perimetro (`security_invoker`): il conteggio arriva da `fn_conta_presidio`, le righe **no**, per contratto — «non elencabile» e «niente da elencare» vanno distinti |
 | `errore` | il presidio **non si è potuto leggere**: `conteggio` è `null` e qui c'è il perché. ⛔ Non è uno zero: il verde vuol dire «visto e vuoto» |

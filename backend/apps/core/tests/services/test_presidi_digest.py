@@ -40,6 +40,10 @@
 24. test_i_presidi_accesi_si_raggruppano_per_chi_agisce   ⭐ 06-10
 25. test_ogni_chi_agisce_ha_il_suo_titolo
 26. RigaCompattaTests.test_un_istante_della_riga_si_scrive_nell_ora_dell_azienda   B-6 un-solo-fuso
+27. test_le_righe_di_un_presidio_a_varianti_si_rendono_per_causa   ⭐ 10-10
+     brief-db-presidio-processi-testo-per-causa §5.4.3: ogni causa col suo
+     rimedio e il suo «chi agisce»; il nome della colonna dal catalogo.
+28. test_una_causa_senza_testo_non_prende_il_rimedio_del_presidio   ⛔ 10-10
 """
 
 from __future__ import annotations
@@ -62,6 +66,7 @@ from apps.core.db.presidi_repository import (
     NATURA_ZERO,
     PERIMETRO_DEFINER,
     PERIMETRO_LIBERO,
+    PresidiRepository,
     RigaPresidio,
 )
 from apps.core.services import presidi_digest
@@ -88,6 +93,7 @@ def _riga(vista: str, natura: str, **override: Any) -> RigaPresidio:
         "cadenza": CADENZA_GIORNALIERA,
         "perimetro": PERIMETRO_LIBERO,
         "nota": f"nota di {vista}",
+        "colonna_variante": None,
         # ⚠️ Senza testo per chi agisce, di default: e' il ripiego, e i casi
         #    col testo se lo costruiscono.
         "chi_agisce": None,
@@ -108,10 +114,12 @@ class _RepoFinto:
         righe: list[RigaPresidio],
         conteggi: dict[str, Any],
         righe_esempio: dict[str, list[dict[str, Any]]] | None = None,
+        testi_cause: dict[str, dict[str, dict[str, Any]]] | None = None,
     ) -> None:
         self._righe = righe
         self._conteggi = conteggi
         self._righe_esempio = righe_esempio or {}
+        self._testi_cause = testi_cause or {}
         self.viste_contate: list[str] = []
         self.viste_elencate: list[str] = []
 
@@ -132,6 +140,13 @@ class _RepoFinto:
         if riga["perimetro"] != PERIMETRO_LIBERO:
             return []
         return self._righe_esempio.get(riga["vista"], [])[:limite]
+
+    # ⭐ Il raggruppamento per causa e' quello VERO del repository: finto e'
+    #    solo il catalogo delle cause, che il test decide.
+    cause_delle_righe = PresidiRepository.cause_delle_righe
+
+    def testi_delle_cause(self, vista: str) -> dict[str, dict[str, Any]]:
+        return self._testi_cause.get(vista, {})
 
 
 # Scopo: un lettore del giornale dei run finto, per il battito. Risponde nella
@@ -775,6 +790,73 @@ class PresidiDigestTests(SimpleTestCase):
     #     CHECK (`test_presidi_catalogo`).
     def test_ogni_chi_agisce_ha_il_suo_titolo(self) -> None:
         self.assertEqual(set(TITOLI_CHI_AGISCE), set(CHI_AGISCE))
+
+    # 27. ⭐ PER CAUSA (brief-db-presidio-processi-testo-per-causa §5.4.3). Le
+    #     righe di un presidio con `colonna_variante` sono guasti diversi: ognuna
+    #     sta sotto la sua causa, col rimedio e il «chi agisce» di quella causa.
+    #     ⚠️ La colonna si chiama apposta `motivo` e non `causa`: il nome si
+    #     legge dal catalogo, e uno scritto nel codice qui non lo troverebbe.
+    def test_le_righe_di_un_presidio_a_varianti_si_rendono_per_causa(self) -> None:
+        repo = _RepoFinto(
+            [_riga(
+                "dbops.vw_zero", NATURA_ZERO, colonna_variante="motivo",
+                chi_agisce=CHI_AGISCE_SISTEMISTA,
+                significato="Segui il rimedio accanto alla causa.",
+            )],
+            {"dbops.vw_zero": 3},
+            {"dbops.vw_zero": [
+                {"processo": "p1", "motivo": "TIMER_FERMO"},
+                {"processo": "p2", "motivo": "NON_PROGRAMMATO"},
+                {"processo": "p3", "motivo": "TIMER_FERMO"},
+            ]},
+            {"dbops.vw_zero": {
+                "TIMER_FERMO": {
+                    "causa": "TIMER_FERMO", "chi_agisce": CHI_AGISCE_SISTEMISTA,
+                    "significato": "Il timer e' fermo.", "azione": "Riaccendi il timer.",
+                },
+                "NON_PROGRAMMATO": {
+                    "causa": "NON_PROGRAMMATO", "chi_agisce": CHI_AGISCE_SVILUPPO,
+                    "significato": "Nessun job lo sveglia.", "azione": "Completa il catalogo.",
+                },
+            }},
+        )
+        digest = calcola_digest(CADENZA_GIORNALIERA, repo=repo)
+        cause = digest.allarmi[0].cause
+        self.assertEqual(
+            [(c["causa"], [r["processo"] for r in c["righe"]]) for c in cause],
+            [("TIMER_FERMO", ["p1", "p3"]), ("NON_PROGRAMMATO", ["p2"])],
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        for resa in (testo, html.replace("&#x27;", "'")):
+            with self.subTest(resa=resa[:20]):
+                # Ogni rimedio sta sopra le SUE righe, non sopra quelle dell'altra.
+                self.assertLess(resa.index("Riaccendi il timer."), resa.index("processo=p1"))
+                self.assertLess(resa.index("processo=p3"), resa.index("Completa il catalogo."))
+                self.assertLess(resa.index("Completa il catalogo."), resa.index("processo=p2"))
+                self.assertIn(
+                    f"NON_PROGRAMMATO — {TITOLI_CHI_AGISCE[CHI_AGISCE_SVILUPPO]}", resa,
+                )
+
+    # 28. ⛔ Una causa senza testo NON prende il rimedio del presidio: sarebbe il
+    #     rimedio di un altro guasto, cioe' il difetto del brief §1. Si dice.
+    def test_una_causa_senza_testo_non_prende_il_rimedio_del_presidio(self) -> None:
+        repo = _RepoFinto(
+            [_riga(
+                "dbops.vw_zero", NATURA_ZERO, colonna_variante="motivo",
+                chi_agisce=CHI_AGISCE_SISTEMISTA, azione="Rimedio del presidio.",
+            )],
+            {"dbops.vw_zero": 2},
+            {"dbops.vw_zero": [{"motivo": "INVENTATA"}, {"motivo": None}]},
+        )
+        digest = calcola_digest(CADENZA_GIORNALIERA, repo=repo)
+        self.assertEqual(
+            [(c["causa"], c["azione"], c["chi_agisce"]) for c in digest.allarmi[0].cause],
+            [("INVENTATA", None, None), (None, None, None)],
+        )
+        _oggetto, testo, _html = componi_messaggio(digest)
+        self.assertEqual(testo.count("Rimedio del presidio."), 1)
+        self.assertIn("INVENTATA — causa non a catalogo — nessun testo per questa causa", testo)
+        self.assertIn("causa non indicata", testo)
 
 
 class RigaCompattaTests(SimpleTestCase):

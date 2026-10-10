@@ -128,20 +128,8 @@ class SearchRepository:
             )
             return rows_to_list(cursor)
 
-    # Scopo: Verifica che un tipo_ruolo_id abbia ricerca_visibile = true.
-    # Usato dalle view per validare il parametro tipo_ruolo_id.
-    def is_tipo_ruolo_visibile(self, tipo_ruolo_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT EXISTS(
-                    SELECT 1
-                      FROM config.tipi_ruoli
-                     WHERE id = %s
-                       AND ricerca_visibile = true
-                )
-                """,
-                [tipo_ruolo_id],
-            )
-            row = cursor.fetchone()
-        return bool(row and row[0])
+    # ⛔ `is_tipo_ruolo_visibile` RITIRATA (2026-10-10, Q-2 di
+    #    brief-db-codici-non-trovato-email-e-permessi): «il ruolo e'
+    #    ricercabile» lo dicono le due funzioni DB, col BB
+    #    `script.fn_predicato_soggetto_ruolo_visibile`. Il menu a tendina
+    #    continua a leggere la colonna (`list_tipi_ruoli_visibili`, sopra).

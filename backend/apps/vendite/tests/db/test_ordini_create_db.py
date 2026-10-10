@@ -71,10 +71,11 @@ class CreateOrdineDbTests(unittest.TestCase):
 
                     # (a) Il payload che `ordini_service.crea_ordine` passa al
                     #     repository, coi valori espliciti.
+                    # ⭐ Ruolo e utility NON si passano: li scrive il DB dal BA
+                    #    (brief-db-esecutivi-ba-coppia §10.2), e la rilettura
+                    #    sotto lo prova.
                     creato = repo.create_ordine(
-                        soggetto_ruolo_id=mondo["cliente_soggetto_ruolo_id"],
                         billing_account_id=mondo["billing_account_id"],
-                        utility_id=mondo["utility_id"],
                         emittente_fiscale_id=mondo["emittente_fiscale_id"],
                         valuta_id=valuta_id,
                         modalita_pagamento_id=None,
@@ -109,7 +110,6 @@ class CreateOrdineDbTests(unittest.TestCase):
                     # (b) Gli opzionali None: `data` al DEFAULT, il trigger
                     #     eredita `fatturazione_trigger`, `meta` None -> {}.
                     minimo = repo.create_ordine(
-                        soggetto_ruolo_id=mondo["cliente_soggetto_ruolo_id"],
                         billing_account_id=mondo["billing_account_id"],
                         stato_doc_ordine_id=stato_bozza_id,
                     )

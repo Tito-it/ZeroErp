@@ -129,7 +129,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     #    questo e' il ripiego di quando quegli argomenti non sono arrivati, quindi
     #    dice la regola e non l'elenco.
     "E_BA_EMITTENTE_CON_STORIA": "Il cliente ha gia' documenti numerati con l'emittente attuale: non si puo' spostare su un altro emittente. Se il cliente e' passato davvero all'altro emittente, si apre presso di lui una fornitura nuova; i documenti gia' emessi restano con chi li ha emessi.",
-    "E_BA_ISTANZA_IMMUTABILE": "Un billing account appartiene per sempre alla sua istanza e alla sua utility: per un'altra istanza o utility se ne crea uno nuovo.",
+    "E_BA_ISTANZA_IMMUTABILE": "Un billing account appartiene per sempre alla sua fornitura e al suo cliente: per un'altra istanza, utility o cliente se ne crea uno nuovo.",
     "E_BA_SOGGETTO_INCOERENTE_ISTANZA": "Soggetto del billing account diverso da quello dell'istanza utility.",
     "E_BILLING_ACCOUNT_UTILITY_NULL": "Billing account senza utility associata.",
     "E_BOM_IVA_DISCORDANTE": "Le aliquote IVA di articolo padre e componenti della distinta devono coincidere.",
@@ -151,6 +151,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CF_OBBLIGATORIO": "Codice fiscale obbligatorio.",
     "E_CHANGE_PASSWORD": "Errore cambio password.",
     "E_CHIUDE_LOTTO_SINGLETON": "Un solo stato puo' avere il flag chiude_lotto attivo.",
+    "E_CLIENTE_FORNITURA_IMMUTABILE": "Un cliente appartiene per sempre alla sua fornitura: per un'altra fornitura si crea un cliente nuovo, per un nuovo intestatario si usa il subentro.",
     "E_CLIENTE_NON_ATTIVO": "Il cliente non e' in stato attivo.",
     "E_CLIENTE_NON_TROVATO": "Cliente non trovato.",
     "E_CLIENTE_UTILITY_MISMATCH_BA": "Utility non coerente con il billing account del cliente.",
@@ -277,9 +278,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "Policy dati societari non configurata per questo tipo soggetto.",
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "Per questo tipo soggetto i dati societari non sono previsti.",
     "E_DB_ROLE_UNSAFE": "Errore interno di sicurezza sessione.",
-    "E_DDT_CAUSALE_IMMUTABILE": "La causale di trasporto non si puo' cambiare dopo l'emissione del DDT.",
+    "E_DDT_CAUSALE_IMMUTABILE": "La causale di trasporto si sceglie solo in bozza: dopo l'emissione la bolla e' quella.",
     "E_DDT_CAUSALE_OBBLIGATORIA": "Causale di trasporto obbligatoria per emettere il DDT.",
-    "E_DDT_CLIENTE_IMMUTABILE": "Cliente immutabile dopo la creazione: per cambiare cliente crea un nuovo DDT.",
+    "E_DDT_CLIENTE_IMMUTABILE": "Il cliente della bolla si sceglie solo in bozza: se e' sbagliato, annulla la bolla e creane una nuova.",
+    "E_DDT_CLIENTE_OBBLIGATORIO": "La causale della bolla manda la merce a un cliente: scegli il billing account prima di emetterla.",
     "E_DDT_EMISSIONE_SENZA_RIGHE": "DDT senza righe attive: impossibile emettere.",
     "E_DDT_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
     "E_DDT_MAGAZZINO_IMMUTABILE": "Il magazzino della bolla si sceglie solo in bozza: dopo l'emissione la merce e' gia' uscita da li'.",
@@ -315,6 +317,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DELETE_RIGA_DOC_REFERENZIATA": "Questa riga e' gia' stata usata in un reso o in una riconsegna: non si puo' togliere.",
     "E_DIAGNOSTICA_NON_REGISTRATA": "Una scrittura di diagnosi non e' andata a buon fine: il lavoro e' proseguito lo stesso.",
     "E_DISSOCIAZIONE_PARENT_CON_ATTIVITA": "Parent non rimovibile: esistono attivita' non fatturate sul billing account.",
+    "E_DOC_CLIENTE_DIVERSO_DA_BA": "Il cliente o la utility non corrispondono al billing account del documento: lasciali vuoti, li mette il billing account.",
+    "E_DOC_CLIENTE_DIVERSO_DA_SORGENTE": "Il cliente deve essere quello del documento da cui nasce.",
+    "E_DOC_EMITTENTE_FUORI_BOZZA": "L'azienda che emette il documento si sceglie solo in bozza: se e' sbagliata, annulla il documento e creane uno nuovo.",
     "E_DOC_LISTINO_EMITTENTE_DIVERSO": "Il listino scelto e' di un'altra azienda: il documento puo' usare solo un listino della sua azienda emittente.",
     "E_DOC_LISTINO_UTILITY_DIVERSA": "Il listino scelto e' di un'altra utility: il documento puo' usare solo un listino della sua utility.",
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "Eliminazione asset non consentita. Disattivare l'asset impostando valido_al.",
@@ -351,18 +356,21 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_PREZZO_PENDENTE": "Non si puo' procedere: ci sono prezzi ancora in attesa di approvazione.",
     "E_DOC_PREZZO_RIFIUTATO": "Non si puo' procedere: ci sono prezzi rifiutati dal responsabile.",
     "E_DOC_RIGA_NON_COMPOSITO": "L'articolo della riga non e' composito: impossibile aggiungere componenti.",
-    "E_DOC_RIGHE_LOCK_MONTAGGIO": "Il controllo sulle righe del documento e' configurato male nel database: segnalalo, non e' una situazione che dipende dai tuoi dati.",
+    "E_DOC_RIGHE_LOCK_MONTAGGIO": "Il controllo «si tocca solo in bozza» del documento (righe o testata) e' configurato male nel database: segnalalo, non e' una situazione che dipende dai tuoi dati.",
+    "E_DOC_SORGENTE_NON_TROVATA": "Il documento da cui nasce non esiste o non e' visibile.",
     "E_DOC_TIPO_NON_GESTITO": "Tipo di documento non gestito dal controllo di cancellazione: segnalalo, non e' una situazione che dipende dai tuoi dati.",
     "E_EMAIL": "Errore configurazione email.",
     "E_EMAIL_ACCOUNT_NON_CONFIGURATO": "Nessun account email configurato.",
     "E_EMAIL_ACCOUNT_NOT_FOUND": "Account email non trovato.",
     "E_EMAIL_ADMIN": "Operazione sulla configurazione email non riuscita.",
+    "E_EMAIL_ALLEGATI_LIMITE": "La mail ha gia' il numero massimo di allegati: togline uno per aggiungerne un altro.",
     "E_EMAIL_ALLEGATO_FILE_MANCANTE": "File dell'allegato non disponibile.",
     "E_EMAIL_ALLEGATO_NON_BOZZA": (
         "La mail non e' piu' in bozza: i suoi allegati si possono aggiungere, "
         "modificare o togliere solo finche' e' in bozza."
     ),
     "E_EMAIL_ALLEGATO_NOT_FOUND": "Allegato non trovato.",
+    "E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO": "Percorso dell'allegato non valido.",
     "E_EMAIL_BOZZA_NOT_FOUND": "Bozza non trovata.",
     "E_EMAIL_LOG_INESISTENTE": (
         "Impossibile registrare l'esito dell'invio: l'email indicata non esiste."
@@ -374,6 +382,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_EMAIL_LOG_NOT_FOUND": "Log email non trovato.",
     "E_EMAIL_NON_BOZZA": "Questa mail non e' piu' in bozza: non si puo' piu' modificare, inviare o annullare.",
     "E_EMAIL_OP": "Operazione email non riuscita.",
+    "E_EMAIL_TEMPLATE_NON_CONFIGURATO": "Nessun template email configurato per questo invio.",
     "E_EMAIL_TEMPLATE_NOT_FOUND": "Template email non trovato.",
     "E_EMITTENTE_ATTIVO_NON_VALIDO": "Emittente non selezionabile: inesistente, disattivato o fuori dal tuo perimetro.",
     "E_EMITTENTE_ATTIVO_TOKEN": "Refresh token richiesto per applicare il cambio di emittente.",
@@ -529,6 +538,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_INVITO_PORTALE": "Invito portale non inviabile.",
     "E_ISTANZA_EMITTENTI_DIVERSI": "I billing account di un'istanza sono tutti della stessa azienda emittente: questa operazione ne aggancerebbe uno a un'azienda diversa.",
     "E_ISTANZA_SENZA_BA": "Un'istanza nasce e vive insieme al suo billing account: non puo' restarne senza.",
+    "E_ISTANZA_SOGGETTO_IMMUTABILE": "Una fornitura appartiene per sempre al suo soggetto: se e' sul soggetto sbagliato si annulla e si ricrea.",
     "E_ISTANZA_UTILITY_SENZA_UTILITY": "Istanza utility senza utility dichiarata: serve almeno un riferimento (billing account, dati precontrattuali, cliente).",
     "E_IVA_CONTO_ACQ_ERR": "Il conto indicato per l'IVA acquisti non e' un conto di tipo Acquisto.",
     "E_IVA_CONTO_VEN_ERR": "Il conto indicato per l'IVA vendite non e' un conto di tipo Vendita.",
@@ -1181,6 +1191,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # misura del §10.1: 3 dei suoi punti dicevano 400 dove serve 500. E' un
     # difetto di MONTAGGIO del trigger — se ne accorge chi lo installa, mai
     # l'operatore — quindi il messaggio non gli chiede di correggere niente.
+    "E_TIPO_RUOLO_NON_RICERCABILE": "Questo tipo ruolo non si cerca nella ricerca universale.",
     "E_TITOLO_IVA_AMBITO_NON_AMMESSO": "Questo titolo IVA vale per tutte le merci: non ammette un elenco di voci. Togli le voci, oppure dichiara il titolo ristretto.",
     "E_TITOLO_IVA_AMBITO_SOVRAPPOSTO": "Esiste gia' un titolo IVA dello stesso tipo, valido nello stesso periodo, che copre la stessa merce allo stesso livello.",
     "E_TITOLO_IVA_ANNULLO_INCOERENTE": "La riga di annullo non corrisponde al movimento di plafond che dichiara di annullare: titolo diverso, oppure importo che non ne e' l'opposto esatto.",

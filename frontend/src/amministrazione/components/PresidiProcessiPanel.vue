@@ -41,6 +41,11 @@
 //    `significato`, `chi_agisce`): la descrizione di prima resta, chiusa, sotto
 //    «Dettaglio tecnico». ⛔ Senza testo (presidio non ancora tradotto per chi
 //    agisce) si ripiega sulla descrizione aperta, com'era: mai sul vuoto.
+// ⭐ PER CAUSA (2026-10-10, brief-db-presidio-processi-testo-per-causa §5.4.3).
+//    Dove le righe di un presidio sono guasti diversi, il backend le consegna
+//    raggruppate in `cause`, ognuna col suo rimedio e il suo «chi agisce»; il
+//    testo del presidio in testa resta, ed è quello neutro. ⚠️ Le cause sono
+//    quelle delle righe MOSTRATE: i conteggi per causa aspettano R-2 (§6.2).
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
@@ -83,6 +88,21 @@ function chiAgisce(p) {
 //        dettaglio tecnico, chiuso; se no è l'unica spiegazione, e resta aperta.
 function haTesto(p) {
   return Boolean(p.azione || p.significato)
+}
+
+// Scopo: le righe del presidio PER CAUSA, quando il backend le consegna così
+//        (`cause`, brief-db-presidio-processi-testo-per-causa §5.4.3): le righe
+//        di quei presidi sono guasti diversi, e il rimedio sta accanto a
+//        ciascuno. Senza cause, un gruppo solo con tutte le righe.
+// ⛔ Il raggruppamento lo fa il backend: qui non si legge nessuna colonna per
+//    nome — quale sia la colonna della causa lo dice il catalogo, e il client
+//    non lo sa.
+function perCausa(p) {
+  return Boolean(p.cause?.length)
+}
+
+function gruppiRighe(p) {
+  return perCausa(p) ? p.cause : [{ righe: p.righe }]
 }
 
 // Scopo: le colonne da mostrare per una riga di presidio. Le viste hanno forme
@@ -168,16 +188,44 @@ function cella(valore) {
         </details>
         <p v-else-if="p.descrizione" class="app-presidio-desc">{{ p.descrizione }}</p>
 
-        <table v-if="p.righe.length" class="app-presidio-righe">
-          <thead>
-            <tr><th v-for="c in colonne(p.righe)" :key="c">{{ c }}</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="(r, i) in p.righe" :key="i">
-              <td v-for="c in colonne(p.righe)" :key="c">{{ cella(r[c]) }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <!-- ⭐ Per causa, quando il presidio le ha: ogni gruppo di righe col
+             SUO rimedio e il SUO «chi agisce» sopra. Senza cause, un gruppo
+             solo senza titolo: la tabella è la stessa, scritta una volta. -->
+        <div
+          v-for="(g, gi) in gruppiRighe(p)"
+          :key="g.causa ?? `gruppo-${gi}`"
+          :class="{ 'app-presidio-causa': perCausa(p) }"
+        >
+          <template v-if="perCausa(p)">
+            <div class="app-presidio-testa">
+              <span class="app-mono app-presidio-nome">
+                {{ g.causa ?? t('amministrazione.processi.presidi_causa_non_indicata') }}
+              </span>
+              <Tag
+                v-if="chiAgisce(g)"
+                :value="t(chiAgisce(g).labelKey)"
+                :severity="chiAgisce(g).severity"
+              />
+            </div>
+            <p v-if="g.azione" class="app-presidio-azione">{{ g.azione }}</p>
+            <p v-if="g.significato" class="app-presidio-significato">{{ g.significato }}</p>
+            <!-- ⛔ Mai il rimedio del presidio al posto di quello della causa:
+                 sarebbe il rimedio di un altro guasto. Si dice che manca. -->
+            <p v-if="!haTesto(g)" class="app-presidio-troncato">
+              {{ t('amministrazione.processi.presidi_causa_senza_testo') }}
+            </p>
+          </template>
+          <table v-if="g.righe.length" class="app-presidio-righe">
+            <thead>
+              <tr><th v-for="c in colonne(g.righe)" :key="c">{{ c }}</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in g.righe" :key="i">
+                <td v-for="c in colonne(g.righe)" :key="c">{{ cella(r[c]) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- I presidi a zero, tutti insieme: la striscia dice «questi sono
@@ -208,6 +256,13 @@ function cella(valore) {
 .app-presidio-azione { margin: 0.5rem 0 0.2rem; font-weight: 600; }
 .app-presidio-significato { margin: 0 0 0.4rem; font-size: 0.9rem; }
 .app-presidio-chi { margin-bottom: 0.4rem; }
+/* Un gruppo di righe con la stessa causa: separato dal precedente, il rimedio
+   sopra le sue righe. */
+.app-presidio-causa {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--app-border-color);
+}
 .app-presidio-dettaglio > summary {
   cursor: pointer; font-size: 0.8rem; opacity: 0.7;
 }

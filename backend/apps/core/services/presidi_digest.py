@@ -58,6 +58,7 @@ from apps.core.db.presidi_repository import (
     NATURA_ZERO,
     PERIMETRO_DEFINER,
     PERIMETRO_LIBERO,
+    CausaPresidio,
     PresidiRepository,
 )
 from apps.core.db.processi_repository import ProcessiRepository
@@ -213,6 +214,15 @@ class VocePresidio:
     azione: str | None = None
     # ⭐ Decide il GRUPPO in cui la voce finisce (`_per_chi_agisce`).
     chi_agisce: str | None = None
+    # ⭐ LE RIGHE DI ESEMPIO PER CAUSA, col rimedio e il «chi agisce» di
+    #    ciascuna (`PresidiRepository.cause_delle_righe`, dal 2026-10-10): vuoto
+    #    dove il presidio ha un testo solo. Quando c'e', il testo del presidio e'
+    #    quello neutro («segui il rimedio accanto alla causa») e il rimedio sta
+    #    qui.
+    # ⚠️ Raggruppa il CAMPIONE: la voce resta nel gruppo del «chi agisce» del
+    #    presidio. Spostarla per causa vuole i conteggi per causa, che aspettano
+    #    R-2 del brief-db-presidio-processi-testo-per-causa §6.2.
+    cause: list[CausaPresidio] = field(default_factory=list)
     # ⭐ IL CONTEGGIO DICE N E L'ELENCO E' VUOTO, su una vista che il catalogo
     #    dichiara elencabile. Non e' un dettaglio: vuol dire che da qui quella
     #    vista non si legge — il numero arriva solo perche' passa dalla funzione
@@ -385,6 +395,7 @@ def calcola_digest(
         #    `vw_riferimenti_morti_da_sanare` si e' portata via il giro intero:
         #    l'isolamento c'era, e passava accanto al punto che falliva.
         righe: list[dict[str, Any]] = []
+        cause: list[CausaPresidio] = []
         try:
             conteggio = repo.conta(riga)
             # ⭐ LE RIGHE DI ESEMPIO SI CHIEDONO SOLO ALLE VISTE `ZERO`, e non e'
@@ -401,6 +412,7 @@ def calcola_digest(
             #    catalogo dice di se'.
             if conteggio and riga["natura"] == NATURA_ZERO:
                 righe = repo.prime_righe(riga, limite=righe_nel_messaggio)
+                cause = repo.cause_delle_righe(riga, righe)
         except Exception as exc:  # isolamento per presidio voluto
             logger.warning(
                 "presidi_digest.presidio_non_letto vista=%s errore=%s",
@@ -443,6 +455,7 @@ def calcola_digest(
             registro=riga["registro"],
             perimetro=riga["perimetro"],
             righe=righe,
+            cause=cause,
             # ⚠️ «Troncato» vuol dire «ce ne sono altre OLTRE a quelle che
             #    vedi», quindi presuppone che le righe siano state CHIESTE. Su
             #    un REGISTRO — dove non si chiedono — un `conteggio > 0` lo
@@ -679,8 +692,18 @@ def _voce_testo(v: VocePresidio) -> list[str]:
         r.append(f"      registro delle voci note: {v.registro}")
     if v.nota:
         r.append(f"      {_prefisso_nota(v)}{v.nota}")
-    for riga in v.righe:
-        r.append("      - " + _riga_compatta(riga))
+    if v.cause:
+        for c in v.cause:
+            r.append(f"      ▹ {_titolo_causa(c)}")
+            if c["significato"]:
+                r.append(f"          {c['significato']}")
+            if c["azione"]:
+                r.append(f"          → {c['azione']}")
+            for riga in c["righe"]:
+                r.append("          - " + _riga_compatta(riga))
+    else:
+        for riga in v.righe:
+            r.append("      - " + _riga_compatta(riga))
     if v.troncato:
         r.append(f"      … e altre {v.conteggio - len(v.righe)}")
     elif v.cieco:
@@ -704,6 +727,20 @@ def _voce_testo(v: VocePresidio) -> list[str]:
         #    non mancano — non sono state chieste, e la notizia e' il numero.
         r.append("      (righe non elencabili da qui: la vista ha un perimetro)")
     return r
+
+
+# Scopo: il titolo di un gruppo di righe con la stessa causa: la causa e a chi
+#        tocca, con le stesse parole dei gruppi del digest (`TITOLI_CHI_AGISCE`).
+# ⛔ Causa senza testo o senza nome: si dice, e non si prende in prestito il
+#    rimedio del presidio, che sarebbe quello di un altro guasto.
+def _titolo_causa(c: CausaPresidio) -> str:
+    nome = c["causa"] if c["causa"] is not None else "causa non indicata"
+    # ⚠️ `chi_agisce` e' NOT NULL in `dbops.presidi_cause`: None vuol dire che
+    #    la causa non e' a catalogo (o la riga non la dice).
+    chi = TITOLI_CHI_AGISCE.get(c["chi_agisce"] or "", "causa non a catalogo")
+    if not (c["significato"] or c["azione"]):
+        return f"{nome} — {chi} — nessun testo per questa causa"
+    return f"{nome} — {chi}"
 
 
 # Scopo: l'etichetta della nota quando sopra c'e' il testo per chi agisce: la
@@ -924,10 +961,25 @@ def _corpo_html(digest: Digest, quando: str) -> str:
                     p.append(
                         f"<br><span style=\"color:#666\">{e(_prefisso_nota(v))}{e(v.nota)}</span>"
                     )
-                if v.righe:
+                # ⭐ UN elenco solo, come la resa testo (`_voce_testo`): dentro,
+                #    le righe per causa o le righe semplici, poi «… e altre N».
+                #    Due copie della riga di troncamento divergerebbero.
+                if v.cause or v.righe:
                     p.append("<ul>")
-                    for riga in v.righe:
-                        p.append(f"<li>{e(_riga_compatta(riga))}</li>")
+                    if v.cause:
+                        for c in v.cause:
+                            p.append(f"<li><strong>{e(_titolo_causa(c))}</strong>")
+                            if c["significato"]:
+                                p.append(f"<br>{e(c['significato'])}")
+                            if c["azione"]:
+                                p.append(f"<br><strong>→ {e(c['azione'])}</strong>")
+                            p.append("<ul>")
+                            for riga in c["righe"]:
+                                p.append(f"<li>{e(_riga_compatta(riga))}</li>")
+                            p.append("</ul></li>")
+                    else:
+                        for riga in v.righe:
+                            p.append(f"<li>{e(_riga_compatta(riga))}</li>")
                     if v.troncato:
                         p.append(f"<li>… e altre {e(v.conteggio - len(v.righe))}</li>")
                     p.append("</ul>")

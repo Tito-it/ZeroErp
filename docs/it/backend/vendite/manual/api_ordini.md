@@ -105,9 +105,7 @@ Crea un ordine in `DRAFT`. `handle_post_json`.
 
 | Campo | Tipo | Note |
 | --- | --- | --- |
-| `billing_account_id` | int | cliente; se presente, `soggetto_ruolo_id` è derivato dal BA |
-| `soggetto_ruolo_id` | int | alternativa al BA (NOT NULL in testata) |
-| `utility_id` | int | |
+| `billing_account_id` | int | cliente, **obbligatorio** (D-1 di brief-db-esecutivi-ba-coppia). `soggetto_ruolo_id` e `utility_id` sono copie del BA: le scrive `trgfn_ordini_normalize` (BB `script.fn_cliente_dal_billing_account`) e non sono nel contratto (si scartano) |
 | `emittente_fiscale_id` | int | opzionale; se omesso, trigger lo valorizza da GUC |
 | `valuta_id`, `modalita_pagamento_id`, `termine_pagamento_id` | int | opzionali |
 | `fatturazione_trigger` | str | opzionale; default ereditato da BA |
@@ -167,16 +165,16 @@ DRAFT): contratto completo in [api_indirizzi_documento.md](api_indirizzi_documen
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 
 Solo in `DRAFT`. `request.data` (non `handle_post_json`, api.md). Campi
-aggiornabili: `utility_id`, `valuta_id`, `modalita_pagamento_id`,
-`termine_pagamento_id`, `fatturazione_trigger`, `agente_soggetto_ruolo_id`,
-`data`, `meta`.
+aggiornabili: `billing_account_id` (vedi sotto), `valuta_id`,
+`modalita_pagamento_id`, `termine_pagamento_id`, `fatturazione_trigger`,
+`agente_soggetto_ruolo_id`, `data`, `meta`. `utility_id` non c'e': e' una copia
+del BA, che sull'ordine non cambia.
 
-**Cliente immutabile post-creazione** (2026-06-04): `billing_account_id` **non**
-è aggiornabile (a differenza del create, dove deriva `soggetto_ruolo_id`).
-`vendite.ordini` denormalizza `soggetto_ruolo_id` (NOT NULL) accanto a
-`billing_account_id`. Un PATCH che **cambia** `billing_account_id` è rifiutato con
-`E_ORD_CLIENTE_IMMUTABILE`; lo stesso BA reinviato **invariato** è tollerato (il
-form FE lo può rimandare). Regola «cambiare cliente = nuovo ordine».
+**Cliente immutabile post-creazione** (2026-06-04): un PATCH che **cambia**
+`billing_account_id` è rifiutato con 409 `E_ORD_CLIENTE_IMMUTABILE`; lo stesso BA
+reinviato **invariato** passa (il form FE lo può rimandare). Regola «cambiare
+cliente = nuovo ordine». ⭐ Dal 2026-10-10 lo dice **solo il DB** (lock qui
+sotto): il BA arriva al DB e il service non ricopia piu' il controllo.
 
 **Difesa DB autoritativa atterrata** (DB-ORD-LOCK, 2026-06-04): `billing_account_id`
 **e** `soggetto_ruolo_id` sono immutabili su UPDATE via lock-columns data-driven
@@ -385,9 +383,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
   dirette su listini). Il gate prezzi L2/L3 stile contratti **non** è applicato:
   scelta ratificata (analisi §8.bis) — pricing **stile preventivo** (resolve +
   prezzo dal caller).
-- **Cliente immutabile in update**: `billing_account_id` fuori dalla whitelist
-  PATCH; cambio rifiutato con `E_ORD_CLIENTE_IMMUTABILE` (guard BE + lock-columns
-  DB autoritativo, vedi Update testata).
+- **Cliente immutabile in update**: cambio di `billing_account_id` rifiutato con
+  `E_ORD_CLIENTE_IMMUTABILE` dal lock-columns del DB (vedi Update testata).
 - **Scope emittente**: la vista è `security_invoker=on` (RLS attiva sulla tabella
   base); il filtro applicativo `fn_get_emittenti_scope_pk_ids` si somma
   (defense-in-depth). Un detail fuori scope torna **404**.
@@ -417,7 +414,9 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | --- | --- | --- |
 | `E_ORD_NOT_FOUND` | 404 | ordine/riga/componente inesistente o fuori scope |
 | `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, ecc.) |
-| `E_ORD_CLIENTE_IMMUTABILE` | 400 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (guard BE + lock-columns DB) |
+| `E_ORD_CLIENTE_IMMUTABILE` | 409 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (lock-columns DB) |
+| `E_DOC_CLIENTE_DIVERSO_DA_BA` | 400 | ruolo o utility diversi da quelli del BA (scrittura che li passa a mano; il service non li manda) |
+| `E_DOC_EMITTENTE_FUORI_BOZZA` | 409 | cambio di emittente fuori bozza (BB `trgfn_doc_testata_lock_fuori_bozza`) |
 | `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato sulla **testata** (modifica fuori DRAFT; delete bozza con righe → annullare) |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | righe e componenti si aggiungono/modificano/tolgono solo in bozza — dal 2026-09-22 è il codice del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (sugli ordini montato sul solo DELETE) e il pre-check BE lo usa uguale (`richiedi_righe_in_bozza`), con la frase a catalogo |
 | `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili (guard applicativo `conferma()`) |

@@ -22,10 +22,10 @@ con stato, ecc.). Il backend delega la logica alle funzioni DB
 | Parametro | Tipo | Obbl. | Default | Descrizione |
 |---|---|---|---|---|
 | `q` | string | Si | — | Termine di ricerca (min 3 caratteri). Cerca su `ragione_sociale_completa`, `id_fiscale_univoco_cf_piva`, `codice` soggetto e codice entita' dinamico |
-| `tipo_ruolo_id` | int | Si | — | ID tipo ruolo. Solo tipi con `ricerca_visibile = true` in `config.tipi_ruoli` |
+| `tipo_ruolo_id` | int | Si | — | ID tipo ruolo. Solo tipi con `ricerca_visibile = true` in `config.tipi_ruoli`: gli altri 404 `E_TIPO_RUOLO_NON_RICERCABILE`, un id inesistente 404 `E_TIPO_RUOLO_NON_TROVATO` (lo decide il DB, anche per la lista) |
 | `page` | int | No | 1 | Numero pagina |
 | `page_size` | int | No | 25 | Dimensione pagina (min 1, max 100) |
-| `order_by` | string | No | `ragione_sociale_completa` | Colonna di ordinamento. Valori ammessi: `ragione_sociale_completa`, `soggetto_codice`, `id_fiscale_univoco`, `utility_list` |
+| `order_by` | string | No | `ragione_sociale_completa` | Colonna di ordinamento. Valori ammessi: `ragione_sociale_completa`, `soggetto_codice`, `id_fiscale_univoco`. ⛔ `utility_list` ed `emittente_ragione_sociale` non sono ordinabili: sono aggregati calcolati per le sole righe della pagina (400 `E_SEARCH_VALIDATION`) |
 | `order_dir` | string | No | `ASC` | Direzione ordinamento: `ASC` o `DESC` |
 
 **Nota**: il parametro `comune_id` e' stato rimosso. Il filtro per comune nel livello 1
@@ -89,16 +89,26 @@ Campi di ogni riga per ramo:
 2026-10-08, in servizio dal DB il 2026-10-08):
 
 * **404 `E_SEARCH_NOT_FOUND`** quando il soggetto, con quel ruolo, non risulta a
-  chi guarda: non esiste, non ha quel ruolo, o — per `CL` — nessuno dei suoi
-  clienti e' nel perimetro. Inesistente e fuori perimetro escono uguali, di
+  chi guarda: non esiste, non ha quel ruolo, o il ruolo non ha nessuna riga
+  della sua entita' visibile (per `CL` nessun cliente nel perimetro, per `FO`
+  nessuna riga in `fornitori`). Inesistente e fuori perimetro escono uguali, di
   proposito: il 404 non rivela un cliente di un'altra azienda;
 * **200 con `righe: []`** solo quando il soggetto c'e' e il filtro `utility_id` non
   trova righe.
 
-Il perimetro dei clienti lo fa la **RLS** di `anagrafiche.clienti`, la stessa
-verifica per lista e dettaglio (`script.fn_check_soggetto_ruolo_visibile`). `FO`
-e gli altri ruoli non portano un'azienda nel modello: non si filtrano per
-emittente. Prova sul DB vero: `core/tests/db/test_search_detail_non_trovato_db.py`.
+**Una regola sola per «il soggetto-ruolo si mostra»** (dal 2026-10-10, R-6 di
+brief-db-codici-non-trovato-email-e-permessi), la stessa per lista e dettaglio:
+il BB `script.fn_predicato_soggetto_ruolo_visibile` legge
+`config.tipi_ruoli.entita_esistenza` — la tabella che fa esistere il ruolo (CL →
+`clienti`, FO → `fornitori`, VT → `vettori`, BANK_B → `bank_branches`) — e il
+soggetto-ruolo si mostra se ne ha almeno una riga visibile; un ruolo senza
+entita' si mostra se esiste. Il perimetro lo fa la **RLS** di quella tabella
+(per i clienti quella di `anagrafiche.clienti`); `fornitori`, `vettori` e
+`bank_branches` non portano un'azienda nel modello e non si filtrano per
+emittente. Lo stato dell'entita' non conta: un cliente chiuso o un fornitore
+disattivato si trovano, col loro stato. Lo stesso BB valida il tipo ruolo
+(inesistente o non ricercabile → 404): il backend non lo pre-controlla piu'.
+Prova sul DB vero: `core/tests/db/test_search_detail_non_trovato_db.py`.
 
 Esempio per CL:
 
@@ -198,10 +208,10 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 ## Regole
 
 - `q` obbligatorio, minimo 3 caratteri (validato da `require_min_search_length`)
-- `tipo_ruolo_id` obbligatorio, validato contro `ricerca_visibile = true` su `config.tipi_ruoli`
-- Scope emittente applicato **solo al tipo ruolo CL** (i rami FO e generici non hanno filtro emittente): utenti OPERATIVO con whitelist emittenti vedono solo soggetti nel proprio scope (tramite `PermissionResolver.get_emittenti_sr_ids`, che ritorna `soggetto_ruolo_id`). Il filtro SQL supporta il pattern gestore globale (`is_default=true` in `emittenti_fiscali_billing_account`)
+- `tipo_ruolo_id` obbligatorio e intero entro `integer` (va a `p_tipo_ruolo_id integer`: oltre, 400 prima del DB). Esistenza e `ricerca_visibile` li verifica il DB (404)
+- Perimetro dalla RLS dell'entita' del ruolo (vedi sopra): per `CL` operatori con whitelist emittenti vedono solo i clienti del proprio scope, col pattern gestore globale (`is_default=true` in `emittenti_fiscali_billing_account`). Il backend non passa uno scope
 - Throttling search attivo (`SearchBurstRateThrottle`, `is_search_endpoint = True`)
-- Hard cap 10.000 risultati nella funzione DB
+- Nessun tetto sui risultati (dal 2026-10-10): `total_count` è il numero vero delle corrispondenze, e ordine e pagina valgono su tutte. La funzione conta, ordina e taglia la pagina sulle colonne semplici, e calcola gli aggregati (`utility_list`, `emittente_ragione_sociale`) per le sole righe della pagina
 - Paginazione LIMIT/OFFSET + COUNT(*) OVER() in un solo round-trip
 - Il dettaglio (livello 2) e' caricato lazy — solo quando l'utente espande la riga
 
@@ -209,19 +219,21 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 
 | Codice | HTTP | Causa |
 |---|---|---|
-| `E_SEARCH_VALIDATION` | 400 | Parametro mancante, troppo corto (< 3 caratteri), tipo ruolo non visibile, paginazione fuori range |
-| `E_SEARCH_NOT_FOUND` | 404 | Dettaglio: soggetto inesistente, senza quel ruolo, o (per `CL`) senza clienti nel perimetro |
+| `E_SEARCH_VALIDATION` | 400 | Parametro mancante, troppo corto (< 3 caratteri), paginazione fuori range |
+| `E_TIPO_RUOLO_NON_RICERCABILE` | 404 | Lista e dettaglio: il tipo ruolo ha `ricerca_visibile = false` (dal DB; fino al 2026-10-10 era `E_SEARCH_VALIDATION` 400 dal backend) |
+| `E_TIPO_RUOLO_NON_TROVATO` | 404 | Lista e dettaglio: il tipo ruolo non esiste (la lista prima rispondeva zero righe) |
+| `E_SEARCH_NOT_FOUND` | 404 | Dettaglio: soggetto inesistente, senza quel ruolo, o senza righe visibili della sua entita' |
 | `E_VALIDATION_INPUT` | 400 | Parametro numerico non valido (page/page_size non numerici) |
 
 ## Dipendenze DB
 
 | Oggetto | Schema | Tipo |
 |---|---|---|
-| `fn_search_soggetti_universale` | `script` | Funzione — ricerca livello 1 (7 parametri: p_search_term, p_tipo_ruolo_id, p_emittente_ids, p_limit, p_offset, p_order_by, p_order_dir) |
-| `fn_get_search_detail` | `script` | Funzione — dettaglio livello 2 (4 parametri: soggetto_id, tipo_ruolo_id, utility_id opzionale, emittente_ids opzionale e **superato**). NULL = «non c'e'» |
-| `fn_check_soggetto_ruolo_visibile` | `script` | Funzione — «il soggetto-ruolo si mostra a chi guarda?»: filtro di riga della lista e verifica d'esistenza del dettaglio (dal 2026-10-08) |
+| `fn_search_soggetti_universale` | `script` | Funzione — ricerca livello 1 (6 parametri: p_search_term, p_tipo_ruolo_id, p_limit, p_offset, p_order_by, p_order_dir) |
+| `fn_get_search_detail` | `script` | Funzione — dettaglio livello 2 (3 parametri: soggetto_id, tipo_ruolo_id, utility_id opzionale). NULL = «non c'e'» |
+| `fn_predicato_soggetto_ruolo_visibile` | `script` | Funzione — la regola unica «il soggetto-ruolo si mostra a chi guarda», resa come predicato per lista e dettaglio; valida anche il tipo ruolo (dal 2026-10-10, al posto di `fn_check_soggetto_ruolo_visibile`) |
 | `fn_get_indirizzo` | `script` | Funzione — risoluzione indirizzo con catena fallback (usata nel livello 2) |
-| `tipi_ruoli` | `config` | Tabella — colonna `ricerca_visibile` |
+| `tipi_ruoli` | `config` | Tabella — colonne `ricerca_visibile` e `entita_esistenza` |
 | `fn_get_ba_emittente_sr_id` | `script` | Funzione — «quale emittente fattura questo billing account»; alimenta la colonna `emittente_ragione_sociale` del livello 1 (dal 2026-08-18) |
 
 ## File backend
@@ -231,9 +243,9 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
 | `apps/core/db/search_repository.py` | Repository — accesso DB |
 | `apps/core/api/search_view.py` | View API — `SearchUniversaleView`, `SearchDetailView`, `LookupTipiRuoliView` |
 | `apps/core/api/urls_v1.py` | Routing — `search/`, `search/<uuid>/detail/`, `lookup/tipi-ruoli/` |
-| `apps/core/services/error_policies_generated.py` | Classi errori — `E_SEARCH_VALIDATION`, `E_SEARCH_NOT_FOUND` |
+| `apps/core/services/error_policies_generated.py` | Classi errori — `E_SEARCH_VALIDATION`, `E_SEARCH_NOT_FOUND`, `E_TIPO_RUOLO_NON_RICERCABILE`, `E_TIPO_RUOLO_NON_TROVATO` |
 | `apps/core/tests/api/test_search_view.py` | Test unitari (mock DB) |
-| `apps/core/tests/db/test_search_detail_non_trovato_db.py` | Dettaglio sul DB vero: NULL per inesistente e senza ruolo, `righe: []` col filtro utility (opt-in `ZEROERP_TEST_DB_E2E`) |
+| `apps/core/tests/db/test_search_detail_non_trovato_db.py` | Dettaglio sul DB vero: NULL per inesistente, senza ruolo e fornitore senza la sua riga; `righe: []` col filtro utility; ruolo non ricercabile rifiutato dal DB su lista e dettaglio (opt-in `ZEROERP_TEST_DB_E2E`) |
 | `scripts/tests/smoke-test-core.sh` | Smoke test (sezioni 14-17) |
 
 ## Note di migrazione
@@ -242,8 +254,8 @@ nello stradario del comune e va inserita nuova. L'operatore cerca prima la via,
   (changeset Liquibase in Fase 1, step 1.0 del WIP)
 - Le funzioni DB `fn_search_soggetti_universale` e `fn_get_search_detail` devono essere
   presenti nello schema `script` (Fase 1, step 1.3 e 1.4)
-- `fn_search_soggetti_universale` ha signature a 7 parametri (`p_search_term`, `p_tipo_ruolo_id`, `p_emittente_ids`, `p_limit`, `p_offset`, `p_order_by`, `p_order_dir`). I 2 nuovi parametri di ordinamento sono opzionali (default `ragione_sociale_completa ASC`)
-- `fn_get_search_detail` ha 4 parametri (`p_soggetto_id`, `p_tipo_ruolo_id`, `p_utility_id` opzionale, `p_emittente_ids` opzionale). Restituisce `codice` nel JSONB per CL e FO
-- ⚠️ `p_emittente_ids` delle due funzioni e' **superato dal 2026-10-08 e non letto**: il perimetro lo fa la RLS. Dal 2026-10-09 il backend non lo passa piu' (repository e view); il ritiro dalla firma e' chiesto al team DB (R-5 del brief-db-codici-non-trovato-email-e-permessi)
+- `fn_search_soggetti_universale` ha signature a 6 parametri (`p_search_term`, `p_tipo_ruolo_id`, `p_limit`, `p_offset`, `p_order_by`, `p_order_dir`). I 2 parametri di ordinamento sono opzionali (default `ragione_sociale_completa ASC`)
+- `fn_get_search_detail` ha 3 parametri (`p_soggetto_id`, `p_tipo_ruolo_id`, `p_utility_id` opzionale). Restituisce `codice` nel JSONB per CL e FO
+- `p_emittente_ids` e' **uscito dalle due firme il 2026-10-10** (R-5 del brief-db-codici-non-trovato-email-e-permessi): il perimetro lo fa la RLS. Il repository chiama per nome e non lo passava gia' dal 2026-10-09
 - Lo smoke test sezione 14 gestisce gracefully il caso in cui la funzione DB non sia
   ancora disponibile

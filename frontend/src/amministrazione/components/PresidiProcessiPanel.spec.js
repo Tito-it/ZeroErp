@@ -15,6 +15,9 @@
 //   2) un badge per ciascuno dei tre valori di chi agisce
 //   3) senza testo: la descrizione resta aperta, nessun dettaglio tecnico
 //   4) non letto: niente azione né badge, l'errore resta
+//   5) per causa: ogni gruppo col suo rimedio e il suo badge sopra le sue righe
+//   6) causa senza testo: si dice, e non prende il rimedio del presidio
+//   7) senza cause: una tabella sola con tutte le righe, nessun titolo di causa
 // ------------------------------------------------------------
 
 import { describe, expect, it } from 'vitest'
@@ -88,5 +91,48 @@ describe('PresidiProcessiPanel — il testo per chi agisce', () => {
     expect(w.find('.app-presidio-azione').exists()).toBe(false)
     expect(w.find('.app-presidio-chi').exists()).toBe(false)
     expect(w.find('.app-presidio-significato').text()).toContain('Ci sono giri')
+  })
+
+  it('5) per causa: ogni gruppo col suo rimedio e il suo badge sopra le sue righe', () => {
+    const w = monta1(presidio({
+      chi_agisce: 'SISTEMISTA',
+      azione: null,
+      significato: 'Segui il rimedio accanto alla causa.',
+      righe: [{ id: 'p1' }, { id: 'p2' }],
+      cause: [
+        { causa: 'TIMER_FERMO', chi_agisce: 'SISTEMISTA', significato: 's1',
+          azione: 'Riaccendi il timer.', righe: [{ id: 'p1' }] },
+        { causa: 'NON_PROGRAMMATO', chi_agisce: 'SVILUPPO', significato: 's2',
+          azione: 'Completa il catalogo.', righe: [{ id: 'p2' }] },
+      ],
+    }))
+    const gruppi = w.findAll('.app-presidio-causa')
+    expect(gruppi).toHaveLength(2)
+    const secondo = gruppi[1].text()
+    expect(secondo).toContain('NON_PROGRAMMATO')
+    expect(secondo).toContain('amministrazione.processi.chi_agisce.sviluppo')
+    expect(secondo.indexOf('Completa il catalogo.')).toBeLessThan(secondo.indexOf('p2'))
+    expect(secondo).not.toContain('p1')
+    expect(gruppi[0].text()).not.toContain('Completa il catalogo.')
+  })
+
+  it('6) causa senza testo: si dice, e non prende il rimedio del presidio', () => {
+    const w = monta1(presidio({
+      azione: 'Rimedio del presidio.',
+      righe: [{ id: 'p1' }],
+      cause: [{ causa: null, chi_agisce: null, significato: null, azione: null,
+        righe: [{ id: 'p1' }] }],
+    }))
+    const gruppo = w.find('.app-presidio-causa')
+    expect(gruppo.text()).toContain('amministrazione.processi.presidi_causa_non_indicata')
+    expect(gruppo.text()).toContain('amministrazione.processi.presidi_causa_senza_testo')
+    expect(gruppo.text()).not.toContain('Rimedio del presidio.')
+  })
+
+  it('7) senza cause: una tabella sola con tutte le righe, nessun titolo di causa', () => {
+    const w = monta1(presidio({ righe: [{ id: 'p1' }, { id: 'p2' }], cause: [] }))
+    expect(w.findAll('.app-presidio-causa')).toHaveLength(0)
+    expect(w.findAll('table.app-presidio-righe')).toHaveLength(1)
+    expect(w.findAll('table.app-presidio-righe tbody tr')).toHaveLength(2)
   })
 })

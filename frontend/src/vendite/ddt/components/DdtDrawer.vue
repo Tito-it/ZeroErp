@@ -193,11 +193,11 @@ const pushCommessaDisabledAction = computed(() => caps.azioneNegata('can_push_co
   label_key: 'vendite.ddt.azione_push_commessa',
 }))
 
-// Campi bloccati lato UX. Una volta che il DDT esiste, il cliente NON e' piu'
-// modificabile: il BE deriva il destinatario_soggetto_ruolo dal billing_account
-// solo in create; un cambio BA lascerebbe il destinatario stantio → incoerenza
-// (E_DDT_CLIENTE_IMMUTABILE lato service). Cambiare cliente = nuovo DDT.
-const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id'] : []))
+// ⛔ Nessun campo bloccato per-campo (fino al 2026-10-10 il cliente lo era dopo
+// la creazione). Cliente e destinatario si scelgono in BOZZA (D-2 di
+// brief-db-esecutivi-ba-coppia: la bolla puo' nascere senza cliente e
+// riceverlo prima di emettere); fuori bozza la testata e' spenta da
+// `can_edit_testata`, e il DB blocca comunque le due colonne.
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
 // (sceglie via EmittenteFiscaleField in modalita' Select). Uniformato a
@@ -219,6 +219,9 @@ function defaultForm() {
     billing_account_id: null,
     // _obj per BillingAccountLookup (pattern restore lookup ricco).
     billing_account_obj: null,
+    // Senza cliente: il terzista o il deposito (col cliente lo scrive il DB).
+    destinatario_soggetto_ruolo_id: null,
+    destinatario_obj: null,
     valuta_id: null,
     // Corsia di instradamento: default differita (DEFAULT false a DB).
     fatturazione_immediata: false,
@@ -268,6 +271,12 @@ async function loadDetail(id = null) {
     utility_id: data.utility_id ?? null,
     billing_account_id: data.billing_account_id ?? null,
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
+    // Restore ricco dalla denominazione denormalizzata della vista, come
+    // mittente e vettore.
+    destinatario_soggetto_ruolo_id: data.destinatario_soggetto_ruolo_id ?? null,
+    destinatario_obj: data.destinatario_soggetto_ruolo_id
+      ? { soggetto_ruolo_id: data.destinatario_soggetto_ruolo_id, ragione_sociale_completa: data.destinatario_denominazione }
+      : null,
     valuta_id: data.valuta_id ?? null,
     fatturazione_immediata: data.fatturazione_immediata ?? false,
     data: parseIsoDate(data.data),
@@ -354,13 +363,14 @@ watch(() => props.visible, async (v) => {
 useBaFormDefaults({ form, isEdit, fetchDefaults: getDdtFormDefaults })
 
 // Costruisce il payload testata (create/update). Numeri e stringhe vuote → null:
-// il BE normalizza empty→NULL (empty_to_none). billing_account_id/
-// emittente_fiscale_id/data solo in create (immutabili/whitelist BE); qui
-// componiamo la whitelist comune.
-function buildTestataPayload({ includeBa = false } = {}) {
+// il BE normalizza empty→NULL (empty_to_none). emittente_fiscale_id solo in
+// create. ⛔ La utility non si manda: e' una copia del cliente, la scrive il DB
+// (qui filtra solo la ricerca). Il destinatario si manda solo SENZA cliente:
+// col cliente lo scrive il DB, e al cambio di cliente segue quello nuovo.
+function buildTestataPayload({ includeEmittente = false } = {}) {
   const f = form.value
   const payload = {
-    utility_id: f.utility_id || null,
+    billing_account_id: f.billing_account_id || null,
     valuta_id: f.valuta_id || null,
     fatturazione_immediata: !!f.fatturazione_immediata,
     data: f.data ? toDateString(f.data) : null,
@@ -377,8 +387,10 @@ function buildTestataPayload({ includeBa = false } = {}) {
     autista: f.autista || null,
     tracking_code: f.tracking_code || null,
   }
-  if (includeBa) {
-    payload.billing_account_id = f.billing_account_id || null
+  if (payload.billing_account_id == null) {
+    payload.destinatario_soggetto_ruolo_id = f.destinatario_soggetto_ruolo_id || null
+  }
+  if (includeEmittente) {
     // Opzionale per BE: se omesso (es. admin globale che non sceglie) il
     // trigger DB fa fallback dal billing_account.
     payload.emittente_fiscale_id = f.emittente_fiscale_id || null
@@ -387,7 +399,7 @@ function buildTestataPayload({ includeBa = false } = {}) {
 }
 
 // Auto-save bozza + abbandono bozza orfana via BB condiviso (B13, regola del 2).
-// Trigger: cliente (BA) valorizzato in CREATE. `close` e' l'uscita del
+// Trigger: cliente (BA) o, senza cliente, destinatario valorizzato in CREATE. `close` e' l'uscita del
 // drawer (`conferma-uscita` di AppDrawer); createdId resta ref del drawer.
 const { close } = useDrawerAutosaveBozza({
   emit,
@@ -397,10 +409,10 @@ const { close } = useDrawerAutosaveBozza({
   visible: () => props.visible,
   isEdit: () => isEdit.value,
   contentReady: () => contentReady.value,
-  triggerSources: () => form.value.billing_account_id,
-  isReady: (baId) => baId != null,
+  triggerSources: () => [form.value.billing_account_id, form.value.destinatario_soggetto_ruolo_id],
+  isReady: ([baId, destinatarioId]) => baId != null || destinatarioId != null,
   createDraftApi: createDdt,
-  buildDraftPayload: async () => buildTestataPayload({ includeBa: true }),
+  buildDraftPayload: async () => buildTestataPayload({ includeEmittente: true }),
   tabEntity: TAB_ENTITIES.DDT,
   fetchDetail: (id) => loadDetail(id),
   // Il BB preserva i campi compilati MENTRE la POST di creazione viaggia:
@@ -422,12 +434,12 @@ const { close } = useDrawerAutosaveBozza({
 
 const canSave = computed(() => {
   if (isReadonly.value) return false
-  return form.value.billing_account_id != null
+  return form.value.billing_account_id != null || form.value.destinatario_soggetto_ruolo_id != null
 })
 
 async function handleSave() {
   if (isEdit.value || createdId.value !== null) {
-    // UPDATE testata (DRAFT). billing_account_id NON aggiornabile (whitelist BE).
+    // UPDATE testata (DRAFT): cliente e destinatario compresi (si scelgono in bozza).
     const result = await execute(
       () => store.update(effectiveDdtId.value, buildTestataPayload()),
       { successMessage: t('vendite.ddt.ddt_salvato') },
@@ -443,7 +455,7 @@ async function handleSave() {
   } else {
     // Fallback CREATE manuale (auto-save non scattato): chiude dopo create.
     const result = await execute(
-      () => store.create(buildTestataPayload({ includeBa: true })),
+      () => store.create(buildTestataPayload({ includeEmittente: true })),
       { successMessage: t('vendite.ddt.ddt_creato') },
     )
     if (result !== null) emit('saved', result)
@@ -695,7 +707,6 @@ const drawerActions = computed(() => {
     <DdtForm
       :campi-errati="campiErrati"
       :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
-      :non-editable-fields="nonEditableFields"
       :record="detail"
       :is-edit="isEdit || createdId !== null" />
 
