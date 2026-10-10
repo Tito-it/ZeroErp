@@ -1,7 +1,7 @@
 # Brief DB — Il documento dopo la bozza: che cosa si cambia ancora
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-10. **A chi:** Tid; poi BE (§7).
-> **Origine:** §8 di [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md) e il suo §10.3
+> **Origine:** §8 di [brief-db-esecutivi-ba-coppia](../work-done/brief-db-esecutivi-ba-coppia.md) e il suo §10.3
 > («quali colonne di testata si riscrivono in fase chiusa»), ripreso dal §7 di
 > [brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md).
 > **Assorbe (2026-10-10):** brief-db-ordine-data-consegna-confermata-capability (scritto dalla

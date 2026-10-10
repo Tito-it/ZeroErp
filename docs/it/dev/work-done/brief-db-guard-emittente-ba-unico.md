@@ -1,7 +1,7 @@
 # Brief DB — L'azienda che emette è quella del cliente: una regola, sette copie
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-10. **A chi:** Tid; poi BE (§6).
-> **Origine:** §10.3 e §5.5 di [brief-db-esecutivi-ba-coppia](../work-in-progress/brief-db-esecutivi-ba-coppia.md), il
+> **Origine:** §10.3 e §5.5 di [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md), il
 > debito fuori perimetro: «i guard emittente ↔ BA sono sette copie quasi uguali; il giro che li
 > toccherà li estrae in un BB parametrico (regola del 2)».
 > **Stato:** ✅ **lato DB applicato su dbdev e verde** (Tid, 2026-10-10: «migrazione applicata, test

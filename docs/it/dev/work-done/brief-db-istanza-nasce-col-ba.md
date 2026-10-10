@@ -690,7 +690,7 @@ ripresa; il promemoria sta in PROJECT_CONTEXT § «Aperto — Media priorità».
 ### 7.5 Debiti e segnalazioni, aperti
 
 > **Aggiornamento 2026-10-10, all'archiviazione:** il primo punto è preso in carico da
-> [brief-db-esecutivi-ba-coppia](../work-in-progress/brief-db-esecutivi-ba-coppia.md). Il secondo
+> [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md). Il secondo
 > e il terzo sono ancora aperti e passano in PROJECT_CONTEXT § «Aperto — Media priorità». Il
 > quarto è chiuso: `test_resi_create_db` è verde sul DB di sviluppo (con `ZEROERP_TEST_DB_E2E=1`).
 
@@ -698,7 +698,7 @@ ripresa; il promemoria sta in PROJECT_CONTEXT § «Aperto — Media priorità».
   asimmetria che R-2 ha chiuso su preventivo, offerta e contratto (il BE ha ancora i commenti
   «ordine prospect con BA NULL», `ordini_repository`, `_indirizzi_repo_mixin`, `ddt_repository`,
   `ordine_document_context_builder`). → Brief aperto il 2026-10-09 su richiesta di Tid:
-  [brief-db-esecutivi-ba-coppia.md](../work-in-progress/brief-db-esecutivi-ba-coppia.md) (D21 del registro DB).
+  [brief-db-esecutivi-ba-coppia.md](brief-db-esecutivi-ba-coppia.md) (D21 del registro DB).
 * `script.fn_get_billing_account_by_istanza` non ha piu' consumatori nel BE: il team DB puo'
   ritirarla (§6.12.3).
 * Il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT`: la chiave

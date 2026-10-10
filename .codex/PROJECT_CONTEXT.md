@@ -315,12 +315,16 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - ✅ **La data minima del filtro «ritardo» delle dashboard: chiuso il 2026-10-10**
   (`work-done/brief-db-parametro-data-minima-ritardo-dashboard.md`): parametro `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA`,
   un solo controllo nel BE per le due dashboard, collaudo di Tid superato.
-- 📝 **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto**
-  (`work-in-progress/brief-db-esecutivi-ba-coppia.md`, D21, 2026-10-09): BA nullable, copie di utility e ruolo
-  non legate al BA, lock del BA solo sull'ordine; un ordine senza BA esce dal push in silenzio; gli anelli della
-  catena (ordine → DDT → reso) possono avere BA diversi. Lato DB applicato e verde su dbdev il 2026-10-10, in due
-  giri (`20261009-62…-92`, compreso l'emittente bloccato fuori bozza su sei documenti; `20261010-02…-07`, le copie
-  dal BA in un BB e la sorgente non trovata = errore). Resta la ricaduta BE/FE (§7, §9.6, §11.5 del brief).
+- ✅ **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto: chiuso il 2026-10-10**
+  (`work-done/brief-db-esecutivi-ba-coppia.md`, D21): l'ordine ha sempre il BA, il DDT lo vuole all'emissione
+  se la causale manda merce a un cliente, il reso ha quello del suo DDT; utility e ruolo legati al BA, un solo
+  BA lungo la catena, BA/destinatario/emittente fermi dopo la bozza. DB `20261009-62…-92` e `20261010-02…-07`,
+  BE/FE §12. Collaudo a video dei form di DDT e ordine da fare (Tid). Ciò che la chiusura ha trovato è D25 (sotto).
+- 📝 **Gli indirizzi del documento seguono il cliente**
+  (`work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md`, D25, 2026-10-10): su DDT, preventivo
+  e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
+  e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
+  nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. Al team DB, codice da scrivere.
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito
