@@ -18,12 +18,16 @@
 //   5) per causa: ogni gruppo col suo rimedio e il suo badge sopra le sue righe
 //   6) causa senza testo: si dice, e non prende il rimedio del presidio
 //   7) senza cause: una tabella sola con tutte le righe, nessun titolo di causa
+//   9) le date delle righe si leggono nell'ora dell'azienda, non in ISO grezzo
+//   8) per causa il conteggio (R-2): una causa oltre il campione c'è, col suo
+//      numero, e dice quante righe ne mostra; su una vista non elencabile no
 // ------------------------------------------------------------
 
 import { describe, expect, it } from 'vitest'
 
 const { monta } = await import('../../../test/montaggio')
 const { default: PresidiProcessiPanel } = await import('./PresidiProcessiPanel.vue')
+const { displayTimestamp } = await import('../../core/utils/date')
 
 function presidio(sovrascritture = {}) {
   return {
@@ -101,9 +105,9 @@ describe('PresidiProcessiPanel — il testo per chi agisce', () => {
       righe: [{ id: 'p1' }, { id: 'p2' }],
       cause: [
         { causa: 'TIMER_FERMO', chi_agisce: 'SISTEMISTA', significato: 's1',
-          azione: 'Riaccendi il timer.', righe: [{ id: 'p1' }] },
+          azione: 'Riaccendi il timer.', conteggio: 1, righe: [{ id: 'p1' }] },
         { causa: 'NON_PROGRAMMATO', chi_agisce: 'SVILUPPO', significato: 's2',
-          azione: 'Completa il catalogo.', righe: [{ id: 'p2' }] },
+          azione: 'Completa il catalogo.', conteggio: 1, righe: [{ id: 'p2' }] },
       ],
     }))
     const gruppi = w.findAll('.app-presidio-causa')
@@ -121,7 +125,7 @@ describe('PresidiProcessiPanel — il testo per chi agisce', () => {
       azione: 'Rimedio del presidio.',
       righe: [{ id: 'p1' }],
       cause: [{ causa: null, chi_agisce: null, significato: null, azione: null,
-        righe: [{ id: 'p1' }] }],
+        conteggio: 1, righe: [{ id: 'p1' }] }],
     }))
     const gruppo = w.find('.app-presidio-causa')
     expect(gruppo.text()).toContain('amministrazione.processi.presidi_causa_non_indicata')
@@ -134,5 +138,34 @@ describe('PresidiProcessiPanel — il testo per chi agisce', () => {
     expect(w.findAll('.app-presidio-causa')).toHaveLength(0)
     expect(w.findAll('table.app-presidio-righe')).toHaveLength(1)
     expect(w.findAll('table.app-presidio-righe tbody tr')).toHaveLength(2)
+  })
+
+  it('8) per causa il conteggio: anche oltre il campione, e quante righe ne mostra', () => {
+    const cause = [
+      { causa: 'A', chi_agisce: 'SISTEMISTA', significato: 's', azione: 'a',
+        conteggio: 3, righe: [{ id: 'p1' }] },
+      { causa: 'B', chi_agisce: 'SVILUPPO', significato: 's', azione: 'b',
+        conteggio: 7, righe: [] },
+    ]
+    const w = monta1(presidio({ conteggio: 10, righe: [{ id: 'p1' }], cause }))
+    const gruppi = w.findAll('.app-presidio-causa')
+    expect(gruppi.map((g) => g.find('.app-presidio-causa-conteggio').text())).toEqual(['3', '7'])
+    expect(gruppi[1].text()).toContain('amministrazione.processi.presidi_causa_mostrate')
+    expect(gruppi[1].find('table').exists()).toBe(false)
+
+    // Non elencabile: i numeri sì, la nota del campione no (la dice la testa).
+    const definer = monta1(presidio({ conteggio: 10, righe: [], elencabili: false, cause }))
+    const g2 = definer.findAll('.app-presidio-causa')
+    expect(g2.map((g) => g.find('.app-presidio-causa-conteggio').text())).toEqual(['3', '7'])
+    expect(definer.text()).not.toContain('amministrazione.processi.presidi_causa_mostrate')
+  })
+
+  it('9) le date delle righe si leggono nell\'ora dell\'azienda, non in ISO grezzo', () => {
+    const istante = '2026-10-09T13:47:54.044Z'
+    const w = monta1(presidio({
+      righe: [{ quando: istante, giorno: '2026-10-09', ingenuo: '2026-10-09 13:47', testo: 'x' }],
+    }))
+    const celle = w.findAll('table.app-presidio-righe tbody td').map((c) => c.text())
+    expect(celle).toEqual([displayTimestamp(istante), '09/10/2026', '2026-10-09 13:47', 'x'])
   })
 })

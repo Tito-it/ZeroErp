@@ -245,6 +245,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   archiviato il 2026-10-06): `dbops.presidi_testi` (significato + azione, per lingua) e `chi_agisce` su
   `dbops.presidi`; il pannello mostra azione → significato → a chi tocca, il digest raggruppa per chi agisce.
   Collaudo a video di Tid superato. I residui sono in § «Aperto — Media priorità».
+- **Il presidio dei processi dà il rimedio per causa: chiuso** (`work-done/brief-db-presidio-processi-testo-per-causa.md`,
+  archiviato il 2026-10-10): la causa è una colonna del panorama dei processi, `dbops.presidi_cause`
+  (causa → chi agisce) e `presidi_testi.variante` danno testo e destinatario per causa, il conteggio per
+  causa ha sede in `dbops.fn_conta_presidio_per_variante` (`fn_conta_presidio` ne è la somma). Il pannello
+  mostra ogni causa col suo conteggio e il suo rimedio; il digest manda ogni causa a chi deve agire.
+  Collaudo a video di Tid superato. Il residuo è in § «Aperto — Media priorità».
 - **Una credenziale senza veste si elimina dall'applicazione: chiuso** (`work-done/brief-db-elimina-credenziale-senza-veste.md`,
   archiviato il 2026-10-07): verbo `script.fn_elimina_credenziale` + check derivata da `pg_constraint` e fail-closed senza
   il ponte django, traccia in `config.credenziali_eliminate`, all'app tolto il `DELETE` su `django.auth_user`; BE/FE
@@ -382,6 +388,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   («presa e mai chiusa»), coerente con D3 di quel brief. Se la si vuole anche nel BE: `in_corso` dall'ultima
   corsa **vera**, con la sua data di avvio — un campo in più nella forma condivisa con la coda lavori. Da
   decidere, di Tid.
+- **La lista dei processi non dice se un processo gira adesso** (ereditato il 2026-10-10 dalla chiusura di
+  `work-done/brief-db-presidio-processi-testo-per-causa.md` §6.6): «Attivo» è il flag del catalogo, «Esito»
+  quello dell'ultima corsa registrata (per un servizio `SESSIONE`, l'avvio). Lo stato vivo (`OK`, `MUTO`,
+  `JOB_SPENTO`…) lo calcola già `dbops.vw_processi_programmazione`: una colonna «Stato» in `amm.processi`
+  vuole la riga nel seed della lista (DB) e la lettura nel repository. Proposta, da decidere di Tid.
 - **Presidi, i residui del brief dei testi per chi agisce** (ereditati il 2026-10-06 dalla chiusura di
   `work-done/brief-db-presidi-cosa-significa-cosa-fare.md`):
   - ✅ **due nomi di schermata sbagliati nel CSV** `80_data/sql/dbops/presidi_testi.csv` (§9.3): corretti nel

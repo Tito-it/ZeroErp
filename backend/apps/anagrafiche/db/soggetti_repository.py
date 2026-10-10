@@ -749,10 +749,14 @@ class SoggettiRepository:
         tipo_ruolo: str | None,
         emittente_ids: list[int] | None,
         limit: int,
+        con_ruolo: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         search_pattern = pattern_contiene(q)
         # Filtro tipo_ruolo: esclude per definizione le righe "senza ruolo"
         # (secondo ramo della UNION gated su tipo_ruolo IS NULL).
+        # `con_ruolo`: le esclude senza restringere il tipo, per i campi che
+        # salvano un soggetto_ruolo_id (es. destinatario del DDT): li' una riga
+        # "senza ruolo" non ha niente da salvare.
         cte = f"""
             WITH matches AS (
                 SELECT s.id AS soggetto_id,
@@ -781,6 +785,7 @@ class SoggettiRepository:
                         OR s.codice_fiscale ILIKE %s
                         OR s.partita_iva ILIKE %s)
                    AND %s::text IS NULL
+                   AND NOT %s::boolean
                    AND NOT EXISTS (
                        SELECT 1
                          FROM anagrafiche.soggetti_ruoli sr2
@@ -794,6 +799,7 @@ class SoggettiRepository:
             emittente_ids, emittente_ids,
             search_pattern, search_pattern, search_pattern,
             tipo_ruolo,
+            con_ruolo,
         ]
 
         count_sql = cte + "SELECT COUNT(*) FROM matches"  # noqa: S608

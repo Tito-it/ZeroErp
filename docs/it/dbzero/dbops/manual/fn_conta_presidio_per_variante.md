@@ -89,4 +89,4 @@ E gli stessi due limiti la rendono sicura:
 
 ---
 
-*Brief: `docs/it/dev/work-in-progress/brief-db-presidio-processi-testo-per-causa.md` §6.2 (R-2).*
+*Brief: `docs/it/dev/work-done/brief-db-presidio-processi-testo-per-causa.md` §6.2 (R-2).*

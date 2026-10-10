@@ -21,6 +21,7 @@ from apps.core.api.payload_validators import (
     optional_int,
     paginated_envelope,
     parse_list_params,
+    qp_bool_optional,
     qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
@@ -289,6 +290,15 @@ class SoggettiRuoliLookupView(DomainAPIView):
                 description="Filtra per codice tipo ruolo (CL, FO, ...). Esclude le righe 'senza ruolo'.",
             ),
             OpenApiParameter(
+                name="con_ruolo",
+                type=bool,
+                required=False,
+                description=(
+                    "true = solo righe con un ruolo, di qualunque tipo (esclude le righe "
+                    "'senza ruolo'). Assente o false: nessun filtro."
+                ),
+            ),
+            OpenApiParameter(
                 name="limit",
                 type=int,
                 required=False,
@@ -307,6 +317,8 @@ class SoggettiRuoliLookupView(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         q = request.query_params.get("q", "")
         tipo_ruolo = request.query_params.get("tipo_ruolo") or None
+        # Filtro del chiamante, non perimetro: assente = nessun filtro.
+        con_ruolo = qp_bool_optional(request.query_params.get("con_ruolo"), "con_ruolo")
 
         raw_limit = request.query_params.get("limit")
         limit_kwargs: dict = {}
@@ -322,6 +334,7 @@ class SoggettiRuoliLookupView(DomainAPIView):
             q=q,
             tipo_ruolo=tipo_ruolo,
             emittente_ids=emittente_ids,
+            con_ruolo=bool(con_ruolo),
             **limit_kwargs,
         )
         return success_response(result)

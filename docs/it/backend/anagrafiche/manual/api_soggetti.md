@@ -788,7 +788,9 @@ appena censiti. Non hanno istanze: l'istanza nasce col suo billing account, e il
 ruolo CLIENTE con la prima istanza (vedi
 [guide/generazione-cliente.md](../../../guide/generazione-cliente.md)).
 Consumato dal drawer pratiche per valorizzare `(soggetto_id,
-soggetto_ruolo_id)` in una selezione sola.
+soggetto_ruolo_id)` in una selezione sola, e dai campi del DDT che salvano un
+`soggetto_ruolo_id` (destinatario, vettore, mittente) con `con_ruolo=true`: li'
+una riga "senza ruolo" non ha niente da salvare.
 
 | | |
 |---|---|
@@ -801,6 +803,7 @@ soggetto_ruolo_id)` in una selezione sola.
 |---|---|---|---|
 | `q` | string | Si | Termine di ricerca (min 2 char). Matcha ragione sociale, CF, P.IVA |
 | `tipo_ruolo` | string | No | Filtra per codice tipo ruolo (`CL`, `FO`, ...). Esclude le righe "senza ruolo" |
+| `con_ruolo` | bool | No | `true`: solo righe con un ruolo, di qualunque tipo (esclude le righe "senza ruolo"). Assente o `false`: nessun filtro. Valore non riconosciuto: 400 `E_VALIDATION_INPUT` |
 | `limit` | int | No | Max risultati (default 20, max 50) |
 
 ### Risposta (200)
