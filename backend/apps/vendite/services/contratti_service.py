@@ -289,7 +289,7 @@ _FORBIDDEN_TESTATA_UPDATE: frozenset[str] = frozenset({
     "utility_id",
     # Post brief simmetria 2026-05-26: l'emittente fiscale e' immutabile in
     # update. Il BA e' gia' immutabile (riga sopra) e il guard DB
-    # `trgfn_contratti_guard_emittente_ba` rifiuta divergenze BA<->EF: un
+    # `script.trgfn_doc_guard_emittente_ba` rifiuta divergenze BA<->EF: un
     # patch su `emittente_fiscale_id` produrrebbe quindi solo rumore (errore
     # DB criptico al primo invio). Esclusione esplicita = errore parlante
     # lato applicativo.

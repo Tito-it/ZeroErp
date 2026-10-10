@@ -5,7 +5,7 @@
 -- Test: l'azienda che emette un documento e' quella del suo cliente — un
 --   building block (script.trgfn_doc_guard_emittente_ba) al posto di sette
 --   copie, un codice per i sei documenti, una frase con i nomi.
---   Brief: docs/it/dev/work-in-progress/brief-db-guard-emittente-ba-unico.md
+--   Brief: docs/it/dev/work-done/brief-db-guard-emittente-ba-unico.md
 --   ChangeSet 20261010-17 ... -19.
 --
 -- ⭐ I soggetti li FABBRICA (dbops.fn_pgtap_crea_emittente_operatore due

@@ -227,3 +227,5 @@ class JobRunLogRow(TypedDict):
     error_detail: str | None
     agent_host: str | None
     run_uuid: str
+    # Corsa saltata per lock occupato: chiusa e senza esito (`ok` None).
+    saltata: bool

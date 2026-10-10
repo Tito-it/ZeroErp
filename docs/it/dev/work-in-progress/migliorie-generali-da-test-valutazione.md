@@ -513,9 +513,10 @@ errore.
 > all'archiviazione (2026-10-08), chiusa lo stesso giorno; **D20** da ciò che
 > la sua chiusura ha trovato. **D21** dal lato BE/FE di
 > `brief-db-istanza-nasce-col-ba` (2026-10-09). **D23** dal giro R-6 di
-> `brief-db-codici-non-trovato-email-e-permessi` (2026-10-10).
+> `brief-db-codici-non-trovato-email-e-permessi` (2026-10-10). **D24** dal giro BE
+> di D22 (2026-10-10), che è chiusa.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D22, D23.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D23, D24.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -931,16 +932,6 @@ Dettaglio, decisioni di Tid (tutte chiuse il 2026-10-09) e forma proposta nel br
 2026-10-09, verde il 2026-10-10 (corsa completa di Tid, nessuna regressione); giro DB 2 (le decisioni del 2026-10-10) applicato e verde il 2026-10-10 (§11 del brief); resta la
 ricaduta BE/FE.
 
-### 🟡 D22 — L'emittente del documento e' quello del cliente: una regola, sette copie
-
-Trovato il 2026-10-09 (§5.5 di `brief-db-esecutivi-ba-coppia`): il guard «l'emittente del documento
-e' quello che il billing account risolve» e' scritto sette volte (preventivi, offerte, contratti,
-ordini, DDT, resi, commesse), con sei codici per lo stesso significato, frasi che mostrano nomi di
-colonna all'utente e il log senza la transazione.
-
-Dettaglio e decisioni attese nel brief
-[brief-db-guard-emittente-ba-unico.md](brief-db-guard-emittente-ba-unico.md). 🔧 Lato DB applicato e verde il 2026-10-10; resta la ricaduta BE (§8.6).
-
 ### 🟡 D23 — La testata dopo l'emissione: la regola completa sta solo nel backend
 
 Trovato il 2026-10-09 (§8 e §10.3 di `brief-db-esecutivi-ba-coppia`): quali colonne di testata si
@@ -961,6 +952,39 @@ non è la prima vera e le pagine possono ripetere o saltare soggetti.
 Dettaglio, due strade e decisioni attese nel brief
 [brief-db-ricerca-universale-tetto-10000.md](../work-done/brief-db-ricerca-universale-tetto-10000.md). ✅ Chiuso
 e archiviato il 2026-10-10 (strada B, via l'ordinamento per utility; DB `20261010-16`, BE/FE §7.4).
+
+### 🟡 D24 — Il presidio C2 non vede i building block trigger che ricevono il codice negli argomenti
+
+Trovato il 2026-10-10 chiudendo il lato BE di D22 (§9.2 di
+[brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md)). Il presidio
+C2 (`backend/apps/core/tests/test_ui_action_e_canale_campi.py`, «una promessa
+`highlight_form_fields` ha un sito che manda il campo») legge i siti PL/pgSQL da
+`dbops.vw_punti_canale_campo`, che trova il codice nel **corpo** della funzione. Un building block
+trigger lo riceve invece da `TG_ARGV` (`pg_trigger.tgargs`), e il `'campo'` lo mette nel contesto
+per conto suo: per la vista quel sito non esiste.
+
+* **Il caso che l'ha mostrato:** `E_DOC_EMITTENTE_BA_INCOERENTE` (BB
+  `script.trgfn_doc_guard_emittente_ba`, sei tabelle) promette il campo, e il campo arriva — provato
+  con una chiamata vera il 2026-10-10 su ordine, preventivo e contratto, `fields =
+  ('emittente_fiscale_id',)` — ma il verso 1 era rosso con «nessun sito». Lato BE è una riga in
+  `_ESENZIONI[("E_DOC_EMITTENTE_BA_INCOERENTE", 1)]`, motivata come esenzione della **misura**, non
+  della regola.
+* **Perché è un difetto della forma, non di un codice:** la stessa cecità vale per ogni BB che
+  prende il codice dagli argomenti. Un override `highlight_form_fields` su uno qualunque di quei
+  codici sarebbe rosso allo stesso modo, e un codice di quella forma che **non** manda il campo
+  passerebbe inosservato dal verso 2. Fatto datato (dbdev, 2026-10-10): otto funzioni ricevono un
+  codice `E_*` da `tgargs` (`trgfn_lock_columns`, `trgfn_doc_testata_lock_fuori_bozza`,
+  `trgfn_doc_righe_lock_fuori_bozza`, `trgfn_doc_guard_emittente_ba`,
+  `trgfn_doc_guard_chiusura_sorgente`, `trgfn_doc_ritira_commessa_attivita`,
+  `trgfn_fattura_satellite_guard_congelamento`, `trgfn_guard_fatturazione_immediata_immutabile`);
+  dei 24 codici così passati la vista ne vede due, `E_CODICE_NON_MODIFICABILE` ed
+  `E_COLONNA_NON_MODIFICABILE`, probabilmente perché nominati anche altrove.
+* **Richiesta al team DB:** insegnare alla vista la forma «BB trigger col codice negli argomenti» —
+  per ogni trigger che esegue una funzione con un codice `E_*` fra i `tgargs`, un sito per quel
+  codice, col canale campo della funzione (anche quando il `'campo'` dipende da una condizione,
+  come la classe del codice in `trgfn_doc_guard_emittente_ba`).
+* **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
+  di ritiro del presidio) e il BE la toglie.
 
 ---
 
@@ -1159,8 +1183,11 @@ D6 e il registro dei rossi in CI.
       chiuso e archiviato il 2026-10-09.
 * [ ] **D23** — la testata dopo l'emissione, colonna per colonna: brief
       `brief-db-testata-dopo-emissione` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
-* [ ] **D22** — il guard emittente <-> BA scritto sette volte: brief
-      `brief-db-guard-emittente-ba-unico` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+* [x] **D22** — il guard emittente <-> BA scritto sette volte: brief
+      `work-done/brief-db-guard-emittente-ba-unico` — chiuso e archiviato il 2026-10-10 (DB `20261010-17…-19`, BE §9).
+* [ ] **D24** — la vista del presidio C2 (`dbops.vw_punti_canale_campo`) non vede i BB trigger col
+      codice negli argomenti: al team DB (§3). Al rimedio, il BE toglie l'esenzione di
+      `E_DOC_EMITTENTE_BA_INCOERENTE`.
 * [x] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre
       il tetto): brief `work-done/brief-db-ricerca-universale-tetto-10000` — chiuso e archiviato il 2026-10-10 (DB `20261010-16`, BE/FE §7.4).
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
@@ -1545,6 +1572,23 @@ due codici in `error_policies_generated.py` + ripieghi) chiusa il 2026-10-04
 (`63deeb194`). Resta Q-2 (§3).
 
 ---
+
+### ✅ D22 — L'emittente del documento e' quello del cliente: una regola, una sede — chiusa il 2026-10-10
+
+Trovato il 2026-10-09 (§5.5 di `brief-db-esecutivi-ba-coppia`): il guard «l'emittente del documento
+e' quello che il billing account risolve» era scritto sette volte, con sei codici per lo stesso
+significato, frasi che mostravano nomi di colonna all'utente e il log senza la transazione. Che cosa
+è cambiato nel sistema:
+* un building block, `script.trgfn_doc_guard_emittente_ba`, montato sulle sette tabelle con lo stesso
+  nome e la stessa fascia dei trigger di prima; le sette funzioni sono ritirate (`20261010-17…-19`);
+* un codice per i sei documenti, `E_DOC_EMITTENTE_BA_INCOERENTE` (DATO_ERRATO, col campo), con una
+  frase che nomina le due aziende e il billing account; la commessa tiene il suo codice TECNICO, con
+  i segnaposto nello stesso ordine;
+* lato BE una voce di `ui_action` al posto di sei, le policy rigenerate, i ripieghi.
+
+Dettaglio nel brief
+[brief-db-guard-emittente-ba-unico.md](../work-done/brief-db-guard-emittente-ba-unico.md) (archiviato
+il 2026-10-10). Ciò che la chiusura ha trovato è **D24**.
 
 ### ✅ D20 — Righe e componenti: tre debiti rimasti dalla chiusura di D19 — chiusa il 2026-10-09
 

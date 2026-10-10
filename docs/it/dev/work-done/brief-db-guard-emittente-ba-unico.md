@@ -1,15 +1,17 @@
 # Brief DB — L'azienda che emette è quella del cliente: una regola, sette copie
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-10. **A chi:** Tid; poi BE (§6).
-> **Origine:** §10.3 e §5.5 di [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md), il
+> **Origine:** §10.3 e §5.5 di [brief-db-esecutivi-ba-coppia](../work-in-progress/brief-db-esecutivi-ba-coppia.md), il
 > debito fuori perimetro: «i guard emittente ↔ BA sono sette copie quasi uguali; il giro che li
 > toccherà li estrae in un BB parametrico (regola del 2)».
 > **Stato:** ✅ **lato DB applicato su dbdev e verde** (Tid, 2026-10-10: «migrazione applicata, test
 > verde»; §8): 3 changeSet `20261010-17…-19`, codice `E_DOC_EMITTENTE_BA_INCOERENTE` (id 1243), sei
-> codici ritirati, pgTAP nuovo a 10 test. 🔧 **Resta la ricaduta BE (§8.6).** Decisioni di Tid chiuse
-> il 2026-10-10 (§4).
-> **Nel registro dei difetti DB:** voce **D22** di `migliorie-generali-da-test-valutazione.md`, che
-> rimanda qui.
+> codici ritirati, pgTAP nuovo a 10 test. ✅ **Ricaduta BE fatta il 2026-10-10 (§9).** Decisioni di Tid
+> chiuse il 2026-10-10 (§4). ✅ **Chiuso e archiviato il 2026-10-10.** Il difetto trovato dal giro BE
+> (§9.2: la vista del presidio C2 non vede i BB trigger col codice negli argomenti) non è di questo
+> brief e vive come voce **D24** del registro.
+> **Nel registro dei difetti DB:** voce **D22** di `migliorie-generali-da-test-valutazione.md` (chiusa,
+> §7), che rimanda qui; il seguito è **D24**.
 
 ## 1. La regola
 
@@ -109,7 +111,7 @@ Le sette funzioni si ritirano nello stesso giro.
 
 * **Le altre colonne di testata in fase chiusa** (§8 di brief-db-esecutivi-ba-coppia): quali colonne
   di una testata si possono ancora cambiare dopo l'emissione. È una domanda di dominio, colonna per
-  colonna: brief suo. ➡️ [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md) (D23,
+  colonna: brief suo. ➡️ [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D23,
   aperto il 2026-10-10).
 
 ## 8. Giro DB — consegna (team DB, 2026-10-10)
@@ -207,7 +209,7 @@ reso lo prova il test 1. La prima stesura aveva il caso del DDT, ed era rosso pe
 * la corsa pgTAP: `test-guard-emittente-ba-unico-v1` (10/10 atteso anche come app) e
   `test-commesse-emittente-invariante-v1`.
 
-### 8.6 Ricaduta BE (dopo il passaggio su dbdev)
+### 8.6 Ricaduta BE (dopo il passaggio su dbdev) — ✅ fatta, §9
 
 * `backend/apps/core/services/error_ui_overrides.py`: le sei voci dei codici ritirati diventano una,
   per `E_DOC_EMITTENTE_BA_INCOERENTE`;
@@ -215,3 +217,36 @@ reso lo prova il test 1. La prima stesura aveva il caso del DDT, ed era rosso pe
   `E_COMMESSA_EMITTENTE_BA_INCOERENTE` allineata;
 * `docs/it/backend/vendite/manual/api_ordini.md` riga 459 nomina `trgfn_ordini_guard_emittente_ba`
   (ritirata): diventa `script.trgfn_doc_guard_emittente_ba`.
+
+## 9. Giro BE — consegna (2026-10-10)
+
+### 9.1 Fatto
+
+* **Policy rigenerate** (`genera_error_policies`, `--check` pulito): entrano
+  `E_DOC_EMITTENTE_BA_INCOERENTE` (DATO_ERRATO) e i sei ritiri in `CODICI_RITIRATI`. **Zero classi
+  cambiate.** Nello stesso rigenero entra `E_JOB_RUN_SALTATA_NON_CHIUDIBILE` di
+  `brief-db-corsa-saltata-non-e-una-corsa`, già a catalogo in git (il suo ripiego c'era già).
+* **`error_ui_overrides.py`:** le sei voci per documento diventano una,
+  `E_DOC_EMITTENTE_BA_INCOERENTE → highlight_form_fields`, con la ragione delle sei (l'emittente è un
+  input del form in tutti e sei i documenti). La commessa resta senza override (TECNICO).
+* **Ripieghi:** frase nuova per `E_DOC_EMITTENTE_BA_INCOERENTE`, frase della commessa allineata al
+  linguaggio della nuova («l'azienda indicata»). Le frasi dei sei ritirati restano, per leggere il
+  diario.
+* **Prova con una chiamata vera** (UPDATE annullato, contesto operatore) su ordine, preventivo e
+  contratto: il BE riceve il codice dal canale `CONSTRAINT`, `fields = ('emittente_fiscale_id',)`
+  dal canale `COLUMN`, e la frase coi nomi delle due aziende e il codice del BA. Nessun cambio di
+  contratto per i form.
+* Riferimenti alle funzioni ritirate: `api_ordini.md`, due commenti Python
+  (`commesse_repository`, `contratti_service`), la tabella dei codici di `guide/gestione-ddt.md`.
+
+### 9.2 ➡️ Spostato nel registro: D24 — la vista del presidio C2 non vede i BB trigger
+
+Il presidio `apps/core/tests/test_ui_action_e_canale_campi.py` (verso 1) era rosso su
+`E_DOC_EMITTENTE_BA_INCOERENTE` con «nessun sito», mentre la promessa del campo è mantenuta (§9.1):
+`dbops.vw_punti_canale_campo` legge il codice dal corpo della funzione, e il BB lo riceve dagli
+argomenti del trigger. Lato BE una riga in `_ESENZIONI[("E_DOC_EMITTENTE_BA_INCOERENTE", 1)]`,
+motivata come esenzione della **misura**; si ritira da sola quando la vista vedrà il sito.
+
+La cecità è della forma (otto funzioni, 24 codici su dbdev al 2026-10-10), non di questo brief: la
+richiesta al team DB, il fatto datato e il ritiro dell'esenzione stanno nella voce **D24** di
+[migliorie-generali-da-test-valutazione](../work-in-progress/migliorie-generali-da-test-valutazione.md).

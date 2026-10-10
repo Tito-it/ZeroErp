@@ -3,7 +3,7 @@
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-10. **A chi:** Tid; poi BE (§7).
 > **Origine:** §8 di [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md) e il suo §10.3
 > («quali colonne di testata si riscrivono in fase chiusa»), ripreso dal §7 di
-> [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md).
+> [brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md).
 > **Stato:** 📝 **aperto, decisioni tutte chiuse da Tid il 2026-10-10 (§6), nessun codice.** Il
 > prossimo passo è il giro DB: le colonne decise nel montaggio del BB fuori bozza di ogni documento,
 > un codice per famiglia, la forma per stato sul contratto (§5); poi il BE toglie i suoi «solo in

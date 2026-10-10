@@ -757,7 +757,7 @@ Fuori perimetro — all'archiviazione va in un **brief nuovo**, con la voce-rima
 
 * le **sette copie** del guard emittente <-> BA (ordini, DDT, resi, preventivi, offerte, contratti,
   commesse), annotate nel §5.5: regola del 2, un BB parametrico. ➡️ **Brief aperto il 2026-10-10**:
-  [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22);
+  [brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md) (D22);
 * la domanda generale del §8 sulle **altre** colonne di testata in fase chiusa. ➡️ **Brief aperto il
   2026-10-10**: [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md) (D23).
 
@@ -923,7 +923,7 @@ Dentro il giro:
 * ⚠️ **Due rossi sul DB vero che non sono di questo giro**: `test_error_policies_divergenza_db` e
   `test_ui_action_e_canale_campi` (promesse `highlight` di sei `*_EMITTENTE_BA_INCOERENTE`). Su
   dbdev e' stato applicato il 2026-10-10 alle 10:03 il giro DB di
-  [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md), che e' su
+  [brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md), che e' su
   `origin/dev/db-tid` ma non ancora in `dev/backend-tid`: il DB e' avanti rispetto a git, e le
   policy **non** si rigenerano finche' il commit non e' nel branch. Si chiudono col giro BE di quel
   brief.

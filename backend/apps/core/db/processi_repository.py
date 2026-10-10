@@ -282,8 +282,16 @@ class ProcessiRepository:
               FROM dbops.processi p
               LEFT JOIN LATERAL (
                    SELECT max(j.started_at) AS ultimo_run,
-                          count(*)          AS run_totali,
-                          (array_agg(j.ok ORDER BY j.started_at DESC))[1] AS ultimo_ok
+                          -- Le corse VERE, come `total_runs` di
+                          -- MaintenanceRepository.list_job_summary: una saltata
+                          -- non e' un'esecuzione.
+                          count(*) FILTER (WHERE NOT j.saltata) AS run_totali,
+                          -- L'esito e' dell'ultima corsa VERA: una saltata (lock
+                          -- occupato) e' segno di vita in `ultimo_run`, ma non ha
+                          -- fatto il lavoro. Stessa regola di `ultimo_esito` in
+                          -- dbops.vw_processi_programmazione (brief corsa-saltata D3).
+                          (array_agg(j.ok ORDER BY j.started_at DESC, j.id DESC)
+                               FILTER (WHERE NOT j.saltata))[1] AS ultimo_ok
                      FROM maintenance.job_run_log j
                     WHERE j.processo_codice = p.codice
               ) ur ON TRUE
@@ -402,7 +410,7 @@ class ProcessiRepository:
         data_sql = """
             SELECT j.id, j.jobname, j.stepname, j.origine,
                    j.started_at, j.ended_at, j.ok, j.message,
-                   j.rows_affected, j.error_code, j.auth_user_id,
+                   j.rows_affected, j.error_code, j.auth_user_id, j.saltata,
                    au.username AS auth_username,
                    COUNT(*) OVER () AS total_count
               FROM maintenance.job_run_log j

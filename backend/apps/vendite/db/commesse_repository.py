@@ -564,7 +564,8 @@ class CommesseRepository(EventLogRepositoryMixin):
         dal billing account (`anagrafiche.fn_get_emittente_fiscale_id`).
         Il valore che il BE ri-passava era quello che il database gli aveva
         appena dato dalle `fn_list_*_da_pushare`: un giro in piu' che, con
-        il guard `trgfn_commesse_guard_emittente_ba` in servizio, poteva
+        il guard emittente <-> BA in servizio (dal 2026-10-10 il BB
+        `script.trgfn_doc_guard_emittente_ba`), poteva
         solo essere ridondante o sbagliato.
         Piano: `brief-db-emittente-commessa-invariante` (D-2, lotto L5).
         """

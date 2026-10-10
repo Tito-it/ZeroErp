@@ -455,7 +455,8 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   (`UPDATE OF emittente_fiscale_id`, l'aliquota dipende dallo stato emittente).
 - Trigger testata: `trgfn_ordini_gen_numero`, `trgfn_ordini_normalize`,
   `script.trgfn_default_emittente_fiscale` (dal 2026-09-15 al posto di
-  `trgfn_ordini_default_emittente`), `trgfn_ordini_guard_emittente_ba`,
+  `trgfn_ordini_default_emittente`), `script.trgfn_doc_guard_emittente_ba` (dal 2026-10-10
+  al posto di `trgfn_ordini_guard_emittente_ba`),
   `trgfn_ordini_guard_transizione` (la vecchia
   `trgfn_ordini_guard_transizione_approvazione` è ritirata dal `20260512-28`), lock numero, immutabilità
   `canale_origine`.
