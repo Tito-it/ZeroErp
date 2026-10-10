@@ -66,8 +66,8 @@
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
 | trg_commesse_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_commesse_default_emittente()` |
-| trg_commesse_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_guard_emittente_ba()` |
-| trg_commesse_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_commesse_guard_emittente_ba()` |
+| trg_commesse_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Commessa', 'codice', 'emittente_soggetto_ruolo_id', 'E_COMMESSA_EMITTENTE_BA_INCOERENTE')` |
+| trg_commesse_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Commessa', 'codice', 'emittente_soggetto_ruolo_id', 'E_COMMESSA_EMITTENTE_BA_INCOERENTE')` |
 | trg_commesse_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_commesse_guard_transizione()` |
 | trg_commesse_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |
 | trg_commesse_a10_registri_fatturazione_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'registri_fatturazione', 'attivo', 'registro_id', 'id')` |

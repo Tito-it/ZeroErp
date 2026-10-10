@@ -102,7 +102,7 @@ l'ordine cambierebbe in silenzio: il test 8 di
 `COALESCE(NEW.emittente_fiscale_id, o.emittente_fiscale_id)`: **vince ciò che è
 già in `NEW`**. Se il default di sessione riempisse la colonna prima, un super
 admin con emittente attivo B che evade un ordine di A produrrebbe un DDT di B, e
-`trgfn_ddt_guard_emittente_ba` lo rifiuterebbe. L'argomento dice: *un documento
+`script.trgfn_doc_guard_emittente_ba` lo rifiuterebbe. L'argomento dice: *un documento
 che nasce da un altro documento eredita l'emittente di quello, non della
 sessione.* Non era un dettaglio d'implementazione della vecchia
 `trgfn_ddt_default_emittente`: era una regola, e il building block la conserva.

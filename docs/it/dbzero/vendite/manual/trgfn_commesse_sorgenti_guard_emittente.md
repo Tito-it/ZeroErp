@@ -6,7 +6,7 @@ Approfondimenti funzioni:
 >
 [script.fn_get_sorgente_emittente_sr_id](/dbzero/script/manual/fn_get_sorgente_emittente_sr_id)
 >
-[vendite.trgfn_commesse_guard_emittente_ba](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba)
+[script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba)
 >
 Approfondimenti tabelle:
 >

@@ -128,7 +128,7 @@ sorgente. Tre pezzi, tutti in `20_code`:
 | Oggetto                                                                                                     | Cosa fa                                          |
 | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | [`trgfn_commesse_default_emittente`](/dbzero/vendite/manual/trgfn_commesse_default_emittente)               | riempie la colonna quando arriva `NULL`          |
-| [`trgfn_commesse_guard_emittente_ba`](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba)             | rifiuta un valore diverso da quello derivato     |
+| [`script.trgfn_doc_guard_emittente_ba`](/dbzero/script/manual/trgfn_doc_guard_emittente_ba)             | rifiuta un valore diverso da quello derivato     |
 | [`trgfn_commesse_sorgenti_guard_emittente`](/dbzero/vendite/manual/trgfn_commesse_sorgenti_guard_emittente) | vieta di collegare sorgenti di emittenti diversi |
 
 ⇒ **Chi crea una commessa non deve sapere niente di emittenti.** Se lo passa e

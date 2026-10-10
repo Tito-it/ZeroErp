@@ -939,7 +939,7 @@ ordini, DDT, resi, commesse), con sei codici per lo stesso significato, frasi ch
 colonna all'utente e il log senza la transazione.
 
 Dettaglio e decisioni attese nel brief
-[brief-db-guard-emittente-ba-unico.md](brief-db-guard-emittente-ba-unico.md). 📝 Aperto, decisioni chiuse il 2026-10-10.
+[brief-db-guard-emittente-ba-unico.md](brief-db-guard-emittente-ba-unico.md). 🔧 Lato DB applicato e verde il 2026-10-10; resta la ricaduta BE (§8.6).
 
 ### 🟡 D23 — Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicono il vero
 
@@ -1149,7 +1149,7 @@ D6 e il registro dei rossi in CI.
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
 * [ ] **D22** — il guard emittente <-> BA scritto sette volte: brief
-      `brief-db-guard-emittente-ba-unico` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+      `brief-db-guard-emittente-ba-unico` (aperto il 2026-10-10; lato DB applicato e verde, resta il BE: §8.6).
 * [ ] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre
       il tetto): brief `brief-db-ricerca-universale-tetto-10000` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno; DB `20261010-16` applicato e verde; resta il BE/FE).
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief

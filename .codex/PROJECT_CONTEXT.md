@@ -323,7 +323,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   dal BA in un BB e la sorgente non trovata = errore). Resta la ricaduta BE/FE (§7, §9.6, §11.5 del brief).
 - 📝 **L'emittente del documento e' quello del cliente: una regola, sette copie**
   (`work-in-progress/brief-db-guard-emittente-ba-unico.md`, D22, 2026-10-10): il guard emittente <-> BA estratto in
-  un BB, un codice e una frase leggibile. Decisioni chiuse da Tid il 2026-10-10; codice da scrivere.
+  un BB, un codice e una frase leggibile. Lato DB applicato e verde il 2026-10-10 (`20261010-17…-19`); resta il BE (§8.6).
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

@@ -21,7 +21,7 @@
 > * [vendite.trgfn_ddt_gen_numero_emesso](/dbzero/vendite/funzioni/trgfn_ddt_gen_numero_emesso) / [vendite.trgfn_v_ddt_protect_num](/dbzero/vendite/funzioni/trgfn_v_ddt_protect_num) — numero assegnato a EMESSO e poi immutabile
 > * [vendite.trgfn_ddt_guard_indirizzi_obbligatori](/dbzero/vendite/funzioni/trgfn_ddt_guard_indirizzi_obbligatori) — indirizzo di consegna obbligatorio all'emissione
 > * [vendite.trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize) — eredità dal contesto (BA/utility/valuta/emittente)
-> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [vendite.trgfn_ddt_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ddt_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
 > * [vendite.fn_ddt_riga_componenti_init](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_init) / [vendite.fn_ddt_riga_componenti_preview](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_preview) — componenti BoM
 >
 > **Vedi anche** — API e service backend:
@@ -329,7 +329,7 @@ emittente). Reti di sicurezza a DB:
   `trgfn_ddt_normalize`; senza contesto utente non solleva e lascia decidere al
   `normalize` (dal cliente) o al vincolo;
 * se il DDT ha un cliente, l'emittente deve essere **coerente** con esso:
-  `trgfn_ddt_guard_emittente_ba` rifiuta le combinazioni incoerenti.
+  `script.trgfn_doc_guard_emittente_ba` rifiuta le combinazioni incoerenti.
 
 L'**etichetta** dell'emittente mostrata è sempre la **ragione sociale del
 soggetto** emittente, mai il codice tecnico del record.

@@ -64,7 +64,7 @@ RLS operatore (convenzione PK).
   via GUC `app.current_user_id` → `fn_resolve_emittente_for_user`. Skip se
   già valorizzato nel payload (admin globale / push).
 * **Coerenza BA**: guard `trg_ordini_a10_guard_emittente_ba_ins_upd`
-  ([trgfn_ordini_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ordini_guard_emittente_ba))
+  ([script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba))
   — emittente == `fn_get_emittente_fiscale_pk(billing_account_id)`, **skip se
   BA NULL** (a differenza di contratti, qui il BA è nullable).
 * **Scope scrittura**: write-guard `trg_ordini_a10_guard_emittente_scope_ins_upd`
