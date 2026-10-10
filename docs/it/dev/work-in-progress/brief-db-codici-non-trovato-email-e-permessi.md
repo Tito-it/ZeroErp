@@ -7,8 +7,15 @@
 > La parte che si poteva chiudere coi codici già a catalogo è fatta lato backend
 > (2026-10-08, righe E-4/E-5 dell'analisi). Restano i punti per cui **nessun codice
 > esistente dice la cosa giusta**: servono righe nuove nel catalogo.
-> **Stato:** ✅ DB applicato il 2026-10-08, pgTAP verdi (Tid). ✅ Giro BE fatto il 2026-10-09 (§9). ⏳ Restano le decisioni del §9.3.
-> **Da leggere per primo:** §1, poi §2.
+> **Stato (2026-10-10):** ✅ R-1…R-4: DB applicato il 2026-10-08, pgTAP verdi
+> (Tid); giro BE fatto il 2026-10-09 (§9). ✅ **R-5…R-9: giro DB applicato da Tid
+> il 2026-10-10, pgTAP verdi** (Tid: «migrazione applicata e test verdi»; §14): 8 changeSet
+> `20261010-08…-15`, 4 codici a catalogo (id 1239-1242), la colonna
+> `config.tipi_ruoli.entita_esistenza`, 1 pgTAP nuovo e 4 riallineati. R-8 è
+> **superato dal modello** (Q-5, Tid 2026-10-10). Partito dopo l'apply di
+> [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md) giro 1 e 2, come
+> deciso (Q-4). ⏳ Resta il backend: le richieste del §14.6.
+> **Da leggere per primo:** §1, poi il §14 (consegne del giro R-5…R-9).
 
 ## 1. Cosa si chiede
 
@@ -22,6 +29,19 @@
 R-1, R-2 e R-3: nessuna funzione DB solleva questi codici, li solleva il backend.
 Quindi niente `20_code` e niente pgTAP, solo righe a catalogo. R-4 è l'unica che
 tocca una funzione.
+
+**Stato delle richieste** (2026-10-09). Le prime quattro sono nate col brief, le
+altre dal giro BE (§10-§12), tutte approvate da Tid:
+
+| # | Cosa | Dove | Stato |
+| --- | --- | --- | --- |
+| R-1, R-2, R-3 | Undici codici a catalogo | §2-§4 | ✅ applicato 2026-10-08; BE fatto 2026-10-09 |
+| R-4 | «Non c'è» del dettaglio, perimetro dalla RLS | §5 | ✅ applicato 2026-10-08; BE fatto 2026-10-09 |
+| R-5 | Ritiro di `p_emittente_ids` e di `fn_get_emittenti_scope_sr_effettivo` | §10, §14 | ✅ applicato 2026-10-10, pgTAP verdi |
+| R-6 | Regola unica di «il soggetto-ruolo si mostra» su una colonna nuova di `tipi_ruoli` (Q-1), con `ricerca_visibile` nel DB (Q-2) | §11, §13, §14 | ✅ applicato 2026-10-10, pgTAP verdi; ricaduta BE §14.6 |
+| R-7 | Tre codici email a catalogo | §12.2, §14 | ✅ applicato 2026-10-10 (id 1240-1242); ricaduta BE §14.6 |
+| R-8 | `attivo` del soggetto nella check, lista e dettaglio d'accordo | §12.3, §13 | ✅ **superato dal modello** (Q-5, Tid 2026-10-10): cade anche il filtro morto della lista |
+| R-9 | Builder pgTAP fino al cliente | §12.4, §14 | ✅ applicato 2026-10-10, pgTAP verdi; copie Python al BE §14.6 |
 
 ## 2. R-1 — I «non trovato» dell'email
 
@@ -483,6 +503,12 @@ binding.
 
 *(sessione backend → team DB, 2026-10-09; opzione approvata da Tid)*
 
+> ⚠️ **Forma corretta dal §13** (Tid, 2026-10-09): la regola non legge
+> `entita_tabella` ma una **colonna nuova** di `tipi_ruoli` che accetta solo
+> tabelle (Q-1); `ricerca_visibile` entra nella stessa regola del DB (Q-2); lo
+> stato dell'entità non decide (Q-3). Dove questo paragrafo dice
+> `entita_tabella`, vale il §13.
+
 **Il difetto.** `script.fn_check_soggetto_ruolo_visibile` (§8.2) scrive `'CL'`
 come letterale. Così due stati che il modello ammette allo stesso modo hanno
 due risposte:
@@ -628,3 +654,214 @@ provare la regola invece di un rifiuto fabbricato dal mock.
 * **R-5** (§10): ritiro di `p_emittente_ids` e di
   `fn_get_emittenti_scope_sr_effettivo`. Il BE ha già smesso di passarlo.
 * **R-6** (§11): regola unica su `entita_tabella`, insieme a R-8.
+* **R-7** (§12.2): tre codici email a catalogo.
+* **R-8** (§12.3): `attivo` del soggetto nella check.
+* **R-9** (§12.4): builder pgTAP fino al cliente.
+
+## 13. Rilievi del team DB prima del giro R-5…R-9
+
+*(team DB, 2026-10-09: analisi del brief sul modello, prima di scrivere codice.
+Le domande si chiudono una alla volta con Tid; la risposta si scrive accanto.)*
+
+### 13.1 Domande aperte (Tid)
+
+| # | Domanda | Riguarda | Risposta |
+| --- | --- | --- | --- |
+| Q-1 | `entita_tabella` nasce per dire **dove si cerca il codice**; R-6 le fa dire anche **quale entità fa esistere il soggetto-ruolo**. Va bene un significato doppio (dichiarato nel `COMMENT` e presidiato), o serve una colonna separata? | R-6 | ✅ Tid, 2026-10-09: **colonna separata** (nome da fissare, es. `entita_esistenza`), che accetta **solo tabelle** (`relkind = 'r'`, niente viste: la RLS è quella della tabella, e il caso «vista senza `security_invoker`» non può nascere). Valore per ruolo: CL → `anagrafiche.clienti`, FO → `fornitori`, VT → `vettori`, BANK_B → `bank_branches`, EF → `emittenti_fiscali`; vuota → il soggetto-ruolo si mostra se esiste. `entita_tabella` resta alla sola ricerca del codice. La stessa tabella la leggono la verifica d'esistenza e le righe del dettaglio |
+| Q-2 | `ricerca_visibile` lo controlla solo il backend (`_require_tipo_ruolo_id`); le due funzioni DB accettano qualunque ruolo. Entra nella regola di «chi si vede» del DB, o resta un filtro del menu a tendina dichiarato tale? (Decide anche la domanda su EF del §11, che oggi ha `ricerca_visibile = false`.) | R-6 | ✅ Tid, 2026-10-09: **entra nel DB.** `fn_search_soggetti_universale` e `fn_get_search_detail` rifiutano da sole un ruolo con `ricerca_visibile = false` (codice a catalogo scelto dal team DB: il ruolo lo sceglie il programma dal menu, quindi è un chiamante sbagliato, non un dato di una persona). **Ricaduta BE:** il controllo `is_tipo_ruolo_visibile` di `_require_tipo_ruolo_id` si ritira nello stesso giro (sarebbe una seconda copia); il menu a tendina (`LookupTipiRuoliView`) continua a leggere la colonna. La domanda su EF del §11 cade: non è ricercabile |
+| Q-3 | Con R-8 conta l'`attivo` del **soggetto**. E quello dell'**entità**? Un fornitore con la sola riga `fornitori.attivo = false`, o un cliente chiuso, si mostra? | R-8 | ✅ Tid, 2026-10-09: **conta solo il soggetto.** Soggetto disattivato = anagrafica da non usare più → sparisce; cliente chiuso o fornitore disattivato = rapporto finito ma da consultare (fatture da incassare, resi, contestazioni) → **si trova**, e il dettaglio ne mostra lo stato. Lo stato dell'entità non entra nella check, e il `COMMENT` lo dice. pgTAP: cliente chiuso → in lista e nel dettaglio, con lo stato; fornitore con `attivo = false` → idem |
+| Q-5 | *(emersa scrivendo, 2026-10-10)* R-8 chiede di mettere `soggetti.attivo` nella regola unica. Il modello però non ammette un soggetto-ruolo col soggetto disattivato: non si disattiva un soggetto che ha ruoli (`trg_soggetti_a10_soggetti_ruoli_block_deact_upd`, `soggetti_ruoli` non ha un suo `attivo`, quindi conta ogni riga) e non si dà un ruolo a un soggetto disattivato (`trg_soggetti_ruoli_a10_soggetti_require_attivo_ins_upd`). R-8 serve ancora? | R-8 | ✅ Tid, 2026-10-10: **no, superato dal modello.** `attivo` non entra nella regola, ed esce anche il filtro `s.attivo = true` della lista, che non poteva scattare. L'invariante la tengono i due trigger; se `soggetti_ruoli` avrà un suo stato, la domanda si riapre lì. Nessun pgTAP: il caso non si costruisce |
+| Q-4 | R-9 e la riga a catalogo di R-7 si fanno **dopo** l'apply di `brief-db-esecutivi-ba-coppia` (FK composta `clienti` → billing account, id dei messaggi già a 1235), o in parallelo? | R-7, R-9 | ✅ Tid, 2026-10-09: **tutto dopo** l'apply di ba-coppia, R-5…R-9 in un giro. Quali passi sono indipendenti, se si cambia idea: nota in testa al brief |
+
+### 13.2 Rilievi tecnici (li risolve il team DB, nessuna decisione)
+
+* **R-6, forma del codice.** Il ruolo è un parametro della chiamata: la tabella
+  dell'entità si risolve **una volta**, e non serve un `EXPLAIN` per deciderlo
+  (regola zero). Con `EXECUTE` la check smette di essere `LANGUAGE sql`
+  inlineabile e girerebbe per riga nella lista; scrivere l'`EXISTS` dentro la
+  lista rifarebbe due copie. ⇒ BB che, dato il ruolo, rende il **predicato**, e
+  lista e dettaglio lo compongono nel proprio SQL dinamico.
+* **R-6, seconda copia nel dettaglio.** I rami `CASE 'CL'`/`'FO'` di
+  `fn_get_search_detail` leggono `clienti` e `fornitori` diretti; la verifica
+  d'esistenza leggerebbe `vw_clienti_codice_ba`. Oggi coincidono per testo, non
+  per costruzione: si allineano nello stesso giro.
+* **R-6, presidio** (forma decisa con Q-1). La colonna nuova accetta solo
+  tabelle, con `soggetto_ruolo_id`: guard sul modello di
+  `trgfn_tipi_ruoli_guard_entita_ref`. Nessuna vista, quindi nessun rischio di
+  una vista senza `security_invoker` che spegne il perimetro.
+* **R-6, RLS delle entità.** `fornitori`, `vettori`, `bank_branches` non hanno
+  RLS (la `scope_policy` `FORNITORE_OWNERSHIP` non è armata su una tabella): per
+  loro «visibile a chi guarda» vuol dire «esiste».
+* **R-5, censimento completo** oltre al §10: `GRANT EXECUTE` sulle firme nuove
+  (o verifica del loop di `ci_apply`); pagine `manual/` —
+  `fn_get_emittenti_scope_sr_effettivo.md` da cancellare, link in
+  `fn_check_ba_visible_for_emittenti.md` e `fn_search_soggetti_universale.md`;
+  commenti nel corpo di `fn_search_soggetti_universale` che la nominano; pgTAP
+  che citano le firme vecchie (`has_function`, privilegi) cercati per firma; il
+  fail-closed di `fn_get_emittenti_scope_sr_ids` deve restare provato altrove
+  quando cadono i test 10-11 di `test-scope-emittenti-fail-closed-v1`.
+* **R-9, copie pgTAP.** La copia a mano della riga `clienti` in
+  `test-search-scope-interno-v1` la ritira il team DB nello stesso giro del
+  builder (regola del 2); il §12.4 nomina solo le copie Python.
+* ⚠️ **Agganci con ba-coppia, giro 2 (team DB, 2026-10-10).** Dopo l'apply del giro 1,
+  [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md) ha un secondo giro (§10.4
+  di quel brief), deciso da Tid il 2026-10-10:
+  * **R-9 va dopo il giro 2**, non solo dopo il giro 1: il giro 2 riscrive
+    `anagrafiche.trgfn_clienti_sync_utility_from_ba` sul BB nuovo
+    `script.fn_cliente_dal_billing_account` (ruolo e utility del cliente, se mancano, li
+    mette il BA; se dissentono, `E_DOC_CLIENTE_DIVERSO_DA_BA`). Il builder potra' passare
+    solo il BA;
+  * **R-7: gli id 1237 e 1238 di `messaggi_errore.csv` li prende il giro 2**
+    (`E_DOC_CLIENTE_DIVERSO_DA_BA`, `E_DOC_SORGENTE_NON_TROVATA`): R-7 parte da 1239, da
+    ricontare sul file al momento di scrivere;
+  * R-5, R-6 e R-8 restano indipendenti.
+
+## 14. Consegne del giro R-5…R-9
+
+*(team DB, 2026-10-10)* — scritto e provato pre-apply; **applicato da Tid il 2026-10-10,
+pgTAP verdi** (Tid: «migrazione applicata e test verdi»).
+
+### 14.1 Cosa c'è
+
+| Richiesta | Dove | Note |
+| --- | --- | --- |
+| R-6 (Q-1) | `00_schema/config/20261010-08-alter-tipi-ruoli-add-entita-esistenza` | colonna `entita_esistenza text`, CHECK di forma `schema.tabella`; `COMMENT` nuovo anche su `entita_tabella` («solo ricerca del codice») |
+| R-6 (Q-1) | `20_code/config/20261010-09-update-trgfn-tipi-ruoli-guard-entita-esistenza` | il guard valida la colonna nuova: tabella esistente (relkind `r`/`p`, **mai una vista**) con `soggetto_ruolo_id`; il trigger scatta anche su `UPDATE OF entita_esistenza` |
+| R-6 (Q-1) | `80_data/sql/config/tipi_ruoli.csv` + mirror `20250812-02` | CL → `anagrafiche.clienti`, FO → `fornitori`, VT → `vettori`, BANK_B → `bank_branches`, EF → `emittenti_fiscali`; gli altri `NULL` |
+| R-6, Q-2, Q-3, Q-5 (BB) | `20_code/script/20261010-10-create-fn-predicato-soggetto-ruolo-visibile` | la regola unica: valida il tipo ruolo e rende il predicato su `soggetti_ruoli` |
+| R-5, R-6, Q-2 | `20_code/script/20261010-11-update-fn-get-search-detail-regola-unica` | firma senza `p_emittente_ids` (DROP + CREATE); verifica d'esistenza col predicato |
+| R-5, R-6, Q-2, Q-5 | `20_code/script/20261010-12-update-fn-search-soggetti-universale-regola-unica` | firma senza `p_emittente_ids` (era il **terzo** parametro); filtro di riga col predicato; via `s.attivo = true` |
+| R-6 (regola del 2) | `20_code/script/20261010-13-drop-fn-check-soggetto-ruolo-visibile` | ritirata la check col letterale `'CL'` |
+| R-5 | `20_code/script/20261010-14-drop-fn-get-emittenti-scope-sr-effettivo` | ritirata |
+| R-9 | `20_code/dbops/20261010-15-create-fn-pgtap-crea-cliente` | builder fino alla riga di `clienti`, con lo stato (default AT) e le date che lo stato pretende |
+| Q-2, R-7 | `codici_errore.csv` + `messaggi_errore.csv` (id 1239-1242) | `E_TIPO_RUOLO_NON_RICERCABILE`, `E_EMAIL_TEMPLATE_NON_CONFIGURATO`, `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO`, `E_EMAIL_ALLEGATI_LIMITE`; causa e soluzione scritte; nessun changeSet nuovo, li rilegge il mirror |
+| pgTAP | `script/test-search-regola-unica-visibile-v1` (**nuovo**, 17 test) | catalogo, regola su FO/VT/RE con soggetti costruiti, stato dell'entità, ruolo non ricercabile |
+| pgTAP | `script/test-search-scope-interno-v1` (21 → 10), `script/test-scope-emittenti-fail-closed-v1` (12 → 11), `script/test-search-soggetti-universale` (26 → 22), `anagrafiche/test-fn-get-evento-stato-corrente-cliente-v1` (fixture) | riallineati: §14.2 |
+| Doc `manual/` | `script/fn_predicato_soggetto_ruolo_visibile.md` (nuova), `fn_get_search_detail.md`, `fn_search_soggetti_universale.md`, `fn_check_ba_visible_for_emittenti.md`, `config/tipi_ruoli.md`, `config/trgfn_tipi_ruoli_guard_entita_ref.md` | cancellata `script/fn_get_emittenti_scope_sr_effettivo.md` (oggetto ritirato); `fn_check_soggetto_ruolo_visibile` non aveva una pagina |
+
+### 14.2 Le scelte del team DB
+
+* **Il BB rende un predicato, non risponde sì/no** (rilievo del §13.2). Il ruolo è
+  uno per chiamata: la regola si risolve una volta ed entra nell'SQL dinamico di lista
+  e dettaglio. Una check per riga farebbe un `EXECUTE` per ogni riga della lista;
+  l'`EXISTS` scritto nelle due funzioni sarebbe stato due copie. Il predicato nomina
+  l'alias di `soggetti_ruoli` del chiamante (validato come identificatore, quotato con
+  `%I`) e la tabella dal catalogo quotata `%I.%I`, senza passare da `regclass::text`.
+* **Il BB valida anche il tipo ruolo.** NULL o `<= 0`, inesistente, non ricercabile
+  sono la stessa domanda, e la facevano lista e dettaglio con due guardie diverse
+  (la lista non verificava nemmeno l'esistenza: un ruolo inesistente dava zero righe).
+  Ora la fa il BB, una volta. Effetto: la lista su un ruolo inesistente solleva
+  `E_TIPO_RUOLO_NON_TROVATO`.
+* **`E_TIPO_RUOLO_NON_RICERCABILE` è `NON_TROVATO` (404)**, come il fratello
+  `E_TIPO_RUOLO_NON_TROVATO`: l'id arriva dall'URL, e per la ricerca universale quel
+  ruolo «non c'è». Al Q-2 avevo detto «chiamante sbagliato», che faceva pensare a
+  `TECNICO`; ma chi manda la richiesta può rimediare cambiandola (api.md, «chi può
+  rimediare»), e i due fratelli devono rispondere uguale.
+* **`entita_esistenza` è `text` + CHECK di forma, non `regclass`**: un OID non segue
+  una `DROP` e nel seed dipende dalla macchina. ⚠️ Il guard è BEFORE ROW e parla
+  **prima** del CHECK: il CHECK resta la rete per le strade che non passano dai
+  trigger (il pgTAP lo prova con `anagrafiche.Clienti`, che il guard risolve e la
+  forma rifiuta).
+* **Il trigger del guard andava allargato**: scattava su `UPDATE OF entita_tabella,
+  entita_colonna_codice`, quindi l'UPDATE della sola colonna nuova lo saltava.
+  Trovato dal pgTAP nuovo (test 3-4) nella prova; ridefinito in `-09` (trigger
+  scritto a mano in `20260311-08`, non generato da `ci_apply`).
+* **I rami `CL` e `FO` del dettaglio restano**: danno la forma delle righe di ciascun
+  ruolo, non decidono chi si vede. Leggono `clienti` e `fornitori`, le tabelle che il
+  catalogo dà a quei ruoli: la coincidenza la pinna il test 2 del pgTAP nuovo
+  (rilievo «seconda copia nel dettaglio» del §13.2).
+* **R-5: `p_emittente_ids` esce dalla firma.** Nel dettaglio era l'ultimo; nella lista
+  era il **terzo**, e una chiamata per posizione con un `NULL` in terza posizione
+  oggi passerebbe `p_limit`. Il backend chiama per nome; i pgTAP che chiamavano per
+  posizione sono riallineati.
+* **R-5: la proprietà dei test ritirati non si perde.** I test 10-11 di
+  `test-scope-emittenti-fail-closed-v1` provavano «utente NULL = nessun accesso» sulla
+  funzione ritirata, che era un involucro della canonica: ora il test 10 lo prova su
+  `fn_get_emittenti_scope_sr_ids(NULL)`, che nessun test asseriva direttamente.
+* **R-9: il builder** (`dbops.fn_pgtap_crea_cliente`, stessi tre parametri di
+  `fn_pgtap_crea_cliente_ba` più lo stato) scrive la riga di `clienti` con ruolo e
+  istanza del BA (la utility la copia il trigger del giro 2 di ba-coppia), attivazione
+  oggi salvo pre-contratto e annullato, chiusura oggi per gli stati di macro `CH`.
+  Utility di default: la prima che non richiede il PDP. Senza `RETURNING`, come il suo
+  fratello. **Copie pgTAP ritirate**: `test-search-scope-interno-v1` e
+  `test-fn-get-evento-stato-corrente-cliente-v1` (erano esattamente «builder del BA +
+  INSERT a mano»). **Restano**, censite: le INSERT di `test-un-ba-un-cliente-v1`,
+  `test-clienti-sync-utility-pdp-policy`, `test-esecutivi-ba-coppia-v1` e
+  `rls/test-rls-clienti` (la riga di `clienti` è il **soggetto** del test: vincoli,
+  guard, RLS in scrittura); `create-cliente`, `test-fn-update-cliente-v1`,
+  `test-istanza-cliente-chain`, `test-simula-subentro`, `test-fn-disdetta-cliente`
+  (costruiscono una catena loro, con PDP o con colonne che il builder non scrive).
+* **R-7**: nella causa di `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO` è scritto che è anche
+  un caso da guardare per la sicurezza (un percorso che esce dall'archivio non nasce
+  usando l'applicazione).
+
+### 14.3 Effetti voluti, dichiarati
+
+* **Un fornitore senza la sua riga in `fornitori`** (e un vettore senza `vettori`, una
+  banca senza `bank_branches`) **non compare più** nella lista e il suo dettaglio è
+  `NULL` (404). È la regola di R-6: prima compariva con `righe: []`.
+* **Un ruolo non ricercabile** (emittente fiscale, gestore, risorsa umana, PSP,
+  processo automatico) lo rifiuta il DB. Il backend lo rifiutava già: cambia il codice
+  (da `E_SEARCH_VALIDATION` 400 a `E_TIPO_RUOLO_NON_RICERCABILE` 404), quando il BE
+  ritira il suo controllo (§14.6).
+* **La lista su un tipo ruolo inesistente** solleva `E_TIPO_RUOLO_NON_TROVATO` invece
+  di rispondere zero righe.
+* Cliente chiuso e fornitore disattivato **si ritrovano**, col loro stato (Q-3): era già
+  così, ora è scritto e provato.
+
+### 14.4 Prove fatte (pre-apply, scratch `zeroerp_ci` allineato a `20261010-07`, SQL estratto dagli YAML in transazione annullata)
+
+| Prova | Esito |
+| --- | --- |
+| SQL estratto degli otto changeSet + `sqlCheck` delle preCondition | ✅ passa; preCondition come attese (1, 1, 0, 0, 1) |
+| Firme dopo il giro | ✅ una funzione per nome; `fn_get_search_detail(uuid,integer,integer)`, `fn_search_soggetti_universale(text,integer,integer,integer,text,text)`, `RETURNS TABLE` invariato; `zeroerp_app` ha `EXECUTE` su BB e builder |
+| `plpgsql_check` su BB, dettaglio, lista, builder, guard | ✅ zero `error` |
+| Upsert **completo** dei CSV `tipi_ruoli`, `codici_errore`, `messaggi_errore` | ✅ tutte le righe scrivibili (12, 1023, 1019) |
+| Predicato per ogni ruolo ricercabile | ✅ CL/FO/VT/BANK_B → `EXISTS` sulla loro tabella; VE/DI/RE → `true` |
+| `script/test-search-regola-unica-visibile-v1` | ✅ 17/17. **Mutazione** (predicato sempre `true`): rossi 6, 7, 10, 16, 17, cioè esattamente i test che distinguono la regola nuova |
+| `script/test-search-scope-interno-v1` | ✅ 10/10 |
+| `script/test-scope-emittenti-fail-closed-v1`, `script/test-ba-emittente-risoluzione-v1`, `anagrafiche/test-fn-get-evento-stato-corrente-cliente-v1` | ✅ 11/11, 14/14, 8/8 |
+| Presidi trasversali, prima e dopo: `dbops/test-riferimenti-morti-v1`, `config/test-codici-errore-identita`, `config/test-codici-errore-obsoleto-dal`, `dbops/test-vw-codici-errore-motivo-nominato`, `script/test-catalogo-messaggi-errore-completo`, `config/test-costanti-catalogo-citate-dal-codice-v1`, `script/test-fn-get-messaggio-fallback-lingua`, `dbops/test-postura-proprietario-rls-v1`, `script/test-rubinetto-primo-motivo-v1` | ✅ tutti verdi, prima e dopo |
+| Guardrail statici (letterali, `runOnChange`, preCondition/seed, trigger d'automazione, grant batch, preambolo pgTAP, timestamp, v1 congelato) | ✅ |
+
+⚠️ **`script/test-search-soggetti-universale` sullo scratch muore al test 7**, prima e
+dopo (dopo l'apply, su dbdev, verde nella corsa di Tid): pesca i soggetti dai dati, e lo scratch non ha clienti (`ERRORE_FIXTURE` già in
+`baseline-rossi-scratch.tsv` e `baseline-rossi-ci.tsv`). Va lanciato **su dbdev dopo
+l'apply**: le modifiche sono le chiamate per posizione senza il `NULL` in terza
+posizione, la fixture su CL per nome, e via i test 23-26.
+
+⚠️ Le prove non coprono la corsa come `zeroerp_app` e l'apply vero: sono di Tid.
+
+### 14.5 Residui dichiarati
+
+* Le nove INSERT a mano su `clienti` che restano nei pgTAP (§14.2): non sono copie
+  della fixture, e restano dove sono.
+* Fuori perimetro: nella lista il tetto di 10.000 righe è un `LIMIT` nella prima CTE
+  **senza `ORDER BY`**. Oltre 10.000 corrispondenze, `total_count` e le pagine vengono
+  da un sottoinsieme qualunque. Non è nato in questo giro: ha un brief suo, aperto il
+  2026-10-10 su richiesta di Tid,
+  [brief-db-ricerca-universale-tetto-10000](brief-db-ricerca-universale-tetto-10000.md)
+  (voce D23 del registro).
+
+### 14.6 Per il backend, dopo l'apply
+
+1. **Q-2**: ritirare il controllo `is_tipo_ruolo_visibile` di `_require_tipo_ruolo_id`
+   (`core/api/search_view.py`, `core/db/search_repository.py`): sarebbe una seconda
+   copia della regola del DB. Il menu a tendina (`LookupTipiRuoliView`,
+   `list_tipi_ruoli_visibili`) continua a leggere la colonna. I test che si aspettano
+   `E_SEARCH_VALIDATION` per un ruolo non ricercabile passano a
+   `E_TIPO_RUOLO_NON_RICERCABILE` (404).
+2. **Catalogo**: `genera_error_policies` e i messaggi di ripiego per i quattro codici
+   nuovi (`E_TIPO_RUOLO_NON_RICERCABILE`, `E_EMAIL_TEMPLATE_NON_CONFIGURATO`,
+   `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO`, `E_EMAIL_ALLEGATI_LIMITE`).
+3. **R-7**: i tre punti del §12.2 passano ai codici nuovi; il parametro `error_code` di
+   `resolve_and_render` si toglie. Un test per codice.
+4. **R-9**: le copie della riga di `clienti` in `test_ricerca_liste_db` e
+   `test_search_detail_non_trovato_db` passano a `dbops.fn_pgtap_crea_cliente(...)`
+   (rende anche `cliente_id`).
+5. **R-6**: in `test_search_detail_non_trovato_db` il caso «fornitore senza la riga in
+   `fornitori`» → `None`; rilanciare il file sul DB vero anche per provare il binding
+   delle firme senza `p_emittente_ids`.
+6. **Doc**: `api_search_universale.md` — la regola su `entita_esistenza`, i codici
+   `E_TIPO_RUOLO_NON_RICERCABILE` ed `E_TIPO_RUOLO_NON_TROVATO` (anche dalla lista), le
+   firme senza `p_emittente_ids`.

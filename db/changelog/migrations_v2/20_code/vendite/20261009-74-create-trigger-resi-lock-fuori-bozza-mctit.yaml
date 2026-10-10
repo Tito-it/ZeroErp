@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL RESO FUORI BOZZA NON CAMBIA MAGAZZINO DI RIENTRO
+#   vendite.resi: trg_resi_a05_lock_fuori_bozza_upd sul BB
+#   vendite.trgfn_doc_testata_lock_fuori_bozza (20261009-70).
+#   Brief: brief-db-esecutivi-ba-coppia (regola del 2)
+#
+#   magazzino_id -> E_RESO_MAGAZZINO_IMMUTABILE: era il punto 1 di
+#   vendite.trgfn_resi_guard_magazzino, ritirato in -75. Stesso codice, stessa
+#   frase (VARIADIC: lo stato), stato VECCHIO.
+#
+# -- ⚠️ IL CLIENTE DEL RESO NON E' QUI, ED E' VOLUTO ---------------------
+#   Il §5.3 del brief chiedeva anche «il lock del BA fuori bozza, come sul
+#   DDT». Sul reso pero' il BA non si sceglie: e' quello del DDT sorgente,
+#   NULL compreso (D-3), e lo presidia su INSERT e su UPDATE
+#   vendite.trgfn_resi_guard_cliente_ddt (20261009-81). Il DDT sorgente e'
+#   CONSEGNATO (trgfn_resi_guard_ddt_consegnato), quindi fuori bozza, e il suo
+#   cliente e' bloccato (20261009-71): il BA del reso non puo' cambiare in
+#   nessuno stato. Un lock in piu' direbbe la stessa cosa una seconda volta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-74-create-trigger-resi-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261009-74-create-trigger-resi-lock-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.resi: trg_resi_a05_lock_fuori_bozza_upd sul BB vendite.trgfn_doc_testata_lock_fuori_bozza
+        per il magazzino di rientro. Brief: brief-db-esecutivi-ba-coppia.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_doc_testata_lock_fuori_bozza';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.resi'::regclass
+                     AND tgname = 'trg_resi_a05_lock_fuori_bozza_upd'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_resi_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.resi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                  'RESO', 'DRAFT',
+                  'magazzino_id', 'E_RESO_MAGAZZINO_IMMUTABILE');
+
+              COMMENT ON TRIGGER trg_resi_a05_lock_fuori_bozza_upd ON vendite.resi
+              IS 'Fuori bozza (stato VECCHIO diverso da DRAFT) il reso non cambia magazzino di rientro (E_RESO_MAGAZZINO_IMMUTABILE). BB vendite.trgfn_doc_testata_lock_fuori_bozza, fascia _a05_. Il cliente del reso non e'' qui: e'' quello del DDT sorgente in ogni stato (vendite.trgfn_resi_guard_cliente_ddt). Brief: brief-db-esecutivi-ba-coppia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_a05_lock_fuori_bozza_upd ON vendite.resi;

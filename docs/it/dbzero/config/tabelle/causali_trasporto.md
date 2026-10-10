@@ -19,6 +19,7 @@
 | user_update | text | NO | CURRENT_USER |
 | fatturabile | boolean | NO | false |
 | causale_magazzino | character varying(50) | YES |  |
+| richiede_cliente | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

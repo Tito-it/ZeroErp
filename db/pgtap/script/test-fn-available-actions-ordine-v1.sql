@@ -21,9 +21,11 @@
 -- Nota emittente: trgfn_ordini_default_emittente (20260601-21) richiede
 --   emittente_fiscale_id su INSERT quando la GUC app.current_user_id e' vuota.
 --   In pgTAP la GUC e' vuota: gli ordini passano emittente_fiscale_id esplicito.
---   Ordini con billing_account_id=NULL bypassano il guard di coerenza BA
---   (trgfn_ordini_guard_emittente_ba). L'ordine pushabile usa invece un BA
---   reale con emittente coerente via anagrafiche.fn_get_emittente_fiscale_pk.
+--   rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine senza BA non
+--   esiste piu'. L'ordine in bozza ha il BA di un cliente FABBRICATO
+--   (tmp_aao_cli, BA legato all'emittente dell'operatore dal trigger z90);
+--   quello pushabile usa un BA reale col SUO ruolo e il suo emittente
+--   (anagrafiche.fn_get_emittente_fiscale_pk).
 
 BEGIN;
 
@@ -61,6 +63,10 @@ SELECT plan(10);
 -- ============================================================
 -- Riferimenti minimi
 -- ============================================================
+CREATE TEMP TABLE tmp_aao_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('capability ordine');
+SET CONSTRAINTS ALL IMMEDIATE;
+
 CREATE TEMP TABLE tmp_refs_aao AS
 SELECT
   -- ⛔ L'emittente NON si pesca, si DERIVA (2026-09-23, guida pgTAP §5): con
@@ -97,10 +103,11 @@ WITH ins AS (
     stato_doc_ordine_id, valuta_id, data, storicizza, meta
   )
   SELECT
-    r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
+    c.soggetto_ruolo_id, c.billing_account_id,
+    anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
     r.stato_draft_id, r.valuta_id, DATE '2026-06-15',
     false, jsonb_build_object('test_scope', 'pgtap_fn_aa_ordine', 'stato', 'draft')
-  FROM tmp_refs_aao r
+  FROM tmp_refs_aao r, tmp_aao_cli c
   RETURNING id
 )
 SELECT * FROM ins;
@@ -128,7 +135,8 @@ WITH ins AS (
     stato_doc_ordine_id, valuta_id, data, storicizza, meta
   )
   SELECT
-    r.soggetto_ruolo_id, r.push_ba_id,
+    (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+    r.push_ba_id,
     anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
     r.stato_draft_id, r.valuta_id, DATE '2026-06-15',
     false, jsonb_build_object('test_scope', 'pgtap_fn_aa_ordine', 'stato', 'conf')

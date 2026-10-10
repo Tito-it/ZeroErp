@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
-| billing_account_id | bigint | YES |  |
+| billing_account_id | bigint | NO |  |
 | serie | character varying(8) | YES |  |
 | numero | character varying(20) | YES |  |
 | anno | smallint | YES |  |
@@ -36,7 +36,7 @@
 | termine_pagamento_id | bigint | YES |  |
 | fatturazione_trigger | character varying | NO |  |
 | canale_origine | config.canale_origine | NO | 'ADMIN'::config.canale_origine |
-| utility_id | integer | YES |  |
+| utility_id | integer | NO |  |
 | emittente_fiscale_id | bigint | NO |  |
 | agente_soggetto_ruolo_id | bigint | YES |  |
 | documento_origine_tipo | character varying(20) | YES |  |
@@ -55,6 +55,7 @@
 | CHECK | chk_ordini_sconto_tot_finito |  |
 | CHECK | chk_ordini_tasso_cambio_finito |  |
 | CHECK | chk_ordini_totale_doc_finito |  |
+| FOREIGN KEY | fk_ordini_ba_cliente | billing_account_id, soggetto_ruolo_id, utility_id |
 | FOREIGN KEY | fk_ordini_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_ordini_registro | registro_id |
 | FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |
@@ -84,6 +85,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_ordini_a05_lock_fuori_bozza_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('ORDINE', 'DRAFT', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA')` |
 | trg_ordini_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA')` |
 | trg_ordini_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_ordini_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
@@ -92,8 +94,8 @@
 | trg_ordini_a10_guard_delete_solo_bozza_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza()` |
 | trg_ordini_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_guard_emittente_ba()` |
 | trg_ordini_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_guard_emittente_ba()` |
-| trg_ordini_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_ordini_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_ordini_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_ordini_a10_guard_fatt_immediata_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('ORDINE_VENDITA')` |
 | trg_ordini_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_guard_transizione()` |
 | trg_ordini_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('billing_account_id', 'E_ORD_CLIENTE_IMMUTABILE', 'numero', 'E_CODICE_NON_MODIFICABILE', 'soggetto_ruolo_id', 'E_ORD_CLIENTE_IMMUTABILE')` |
@@ -111,7 +113,6 @@
 | trg_ordini_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_ordini_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_normalize()` |
 | trg_ordini_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_normalize()` |
-| trg_ordini_z90_ricalcola_totali_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_ricalcola_totali()` |
 | trg_ordini_z90_ritira_commessa_attivita_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita('ORDINE_VENDITA', 'stato_doc_ordine_id', 'config.stati_doc_ordini')` |
 | trg_ordini_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_id')` |
 | trg_ordini_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_id')` |

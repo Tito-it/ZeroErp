@@ -86,6 +86,7 @@
 - [fn_pgtap_cf_libero](funzioni/fn_pgtap_cf_libero.md) — (rev 2026-08-21)
 - [fn_pgtap_concedi_azione](funzioni/fn_pgtap_concedi_azione.md) — (scritta il 2026-09-24)
 - [fn_pgtap_crea_articolo](funzioni/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_pgtap_crea_cliente](funzioni/fn_pgtap_crea_cliente.md)
 - [fn_pgtap_crea_cliente_ba](funzioni/fn_pgtap_crea_cliente_ba.md)
 - [fn_pgtap_crea_commessa](funzioni/fn_pgtap_crea_commessa.md) — (rev 2026-10-07)
 - [fn_pgtap_crea_commessa_attivita](funzioni/fn_pgtap_crea_commessa_attivita.md) — (rev 2026-10-07)

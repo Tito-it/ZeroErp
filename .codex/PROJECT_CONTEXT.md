@@ -302,7 +302,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   il collaudo a video (§D.5 + §G.4) e l'archivio.
 - ⏳ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca**
   (`work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md`, richiesta BE del 2026-10-08, voci E-4/E-5/E-10
-  dell'analisi della doc API core): da fare.
+  dell'analisi della doc API core): R-1…R-4 applicati e BE fatto; **giro R-5…R-9 scritto e provato pre-apply il
+  2026-10-10** e applicato lo stesso giorno, pgTAP verdi (`20261010-08…-15`: regola unica di chi si vede nella ricerca su
+  `tipi_ruoli.entita_esistenza`, ritiro di `p_emittente_ids`, builder `dbops.fn_pgtap_crea_cliente`, quattro codici);
+  resta il BE (§14.6).
+- 📝 **Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicono il vero**
+  (`work-in-progress/brief-db-ricerca-universale-tetto-10000.md`, D23, 2026-10-10): il tetto della lista e' un
+  `LIMIT` senza `ORDER BY`. Decisioni chiuse da Tid il 2026-10-10: pagina sulle righe semplici, aggregati solo
+  per la pagina, via l'ordinamento per utility (nessun tetto). DB applicato e verde il 2026-10-10 (`20261010-16`);
+  resta il BE/FE (§7.3 del brief).
 - ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
   decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); BE/FE fatti il
   2026-10-08 (§7, non committati: la pratica sceglie la fornitura, cioe' il BA — D-10). Restano il collaudo a video e
@@ -310,7 +318,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto**
   (`work-in-progress/brief-db-esecutivi-ba-coppia.md`, D21, 2026-10-09): BA nullable, copie di utility e ruolo
   non legate al BA, lock del BA solo sull'ordine; un ordine senza BA esce dal push in silenzio; gli anelli della
-  catena (ordine → DDT → reso) possono avere BA diversi. Decisioni di Tid tutte chiuse il 2026-10-09: tocca al team DB.
+  catena (ordine → DDT → reso) possono avere BA diversi. Lato DB applicato e verde su dbdev il 2026-10-10, in due
+  giri (`20261009-62…-92`, compreso l'emittente bloccato fuori bozza su sei documenti; `20261010-02…-07`, le copie
+  dal BA in un BB e la sorgente non trovata = errore). Resta la ricaduta BE/FE (§7, §9.6, §11.5 del brief).
+- 📝 **L'emittente del documento e' quello del cliente: una regola, sette copie**
+  (`work-in-progress/brief-db-guard-emittente-ba-unico.md`, D22, 2026-10-10): il guard emittente <-> BA estratto in
+  un BB, un codice e una frase leggibile. Decisioni chiuse da Tid il 2026-10-10; codice da scrivere.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

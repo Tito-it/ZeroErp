@@ -104,7 +104,9 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
          r.stato_draft_id, r.valuta_id, DATE '2026-07-05', false,
          jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','orfano_a')
@@ -165,7 +167,9 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
          r.stato_draft_id, r.valuta_id, DATE '2026-07-06', false,
          jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','parz_b')
@@ -290,7 +294,9 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
          r.stato_draft_id, r.valuta_id, DATE '2026-07-07', false,
          jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','spedito_c')
@@ -330,15 +336,22 @@ SELECT ok(
 -- ============================================================
 -- 8) DRAFT -> ORDINE_NON_CONFERMATO (non-regressione v1)
 -- ============================================================
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine senza BA non esiste piu'.
+--   Il cliente si FABBRICA (BA legato all'emittente dell'operatore dal trigger z90).
+CREATE TEMP TABLE tmp_aa2_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('capability ordine v2');
+SET CONSTRAINTS ALL IMMEDIATE;
+
 CREATE TEMP TABLE tmp_ord_aa2_d AS
 WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id,
+         anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
          r.stato_draft_id, r.valuta_id, DATE '2026-07-08', false,
          jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','draft_d')
-  FROM tmp_refs_aa2 r
+  FROM tmp_refs_aa2 r, tmp_aa2_cli c
   RETURNING id)
 SELECT * FROM ins;
 

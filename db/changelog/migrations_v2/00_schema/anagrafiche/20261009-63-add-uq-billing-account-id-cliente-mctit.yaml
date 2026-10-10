@@ -1,0 +1,73 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BILLING ACCOUNT SI NOMINA INSIEME AL SUO CLIENTE E ALLA SUA UTILITY
+#   UNIQUE (id, soggetto_ruolo_id, utility_id) su anagrafiche.billing_account.
+#   Brief: brief-db-esecutivi-ba-coppia (§5.1, D-4, D-5, D-7)
+#
+# -- PERCHE' --------------------------------------------------------
+#   E' la destinazione delle FK composte a tre colonne di ordine (-64), DDT
+#   (-65), reso (-66) e cliente (-67): ciascuno porta billing_account_id E due
+#   copie di cio' che il BA gia' dice (il ruolo del cliente e la utility), e
+#   fino a oggi nessun vincolo le legava a lui. Una FK composta pretende un
+#   indice unico sulle colonne di destinazione.
+#   UN indice per quattro tabelle: due FK separate ((id, utility_id) e (id,
+#   soggetto_ruolo_id)) costerebbero due indici per lo stesso legame.
+#
+# -- PERCHE' NON BASTANO GLI INDICI CHE CI SONO -----------------------
+#   uq_billing_account_id_coppia (id, istanza_utility_id, utility_id) porta
+#   l'istanza e non il ruolo: e' la destinazione dei precontrattuali, che
+#   l'istanza ce l'hanno in testata. Ordine, DDT e reso l'istanza non ce
+#   l'hanno: la coppia la leggono dal BA. Il vincolo nuovo e' implicato dalla
+#   PK, quindi non puo' fallire sulle righe esistenti: nessuna preCondition.
+#
+# -- IL LOCK CHE LO RENDE DICHIARATO ---------------------------------
+#   Con NO ACTION una FK verso (id, soggetto_ruolo_id, ...) blocca il cambio
+#   di ruolo di un BA gia' usato con un 23503 grezzo. Da questo giro
+#   soggetto_ruolo_id e' bloccato in dbops.automation_lock_columns
+#   (E_BA_ISTANZA_IMMUTABILE, D-7), e il lock parla prima della FK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261009-63-add-uq-billing-account-id-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20261009-63-add-uq-billing-account-id-cliente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        UNIQUE (id, soggetto_ruolo_id, utility_id) su anagrafiche.billing_account: destinazione
+        delle FK composte di ordini, ddt, resi e clienti. Brief: brief-db-esecutivi-ba-coppia.
+      preConditions:
+        - onFail: HALT
+        - not:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_constraint
+                   WHERE conname = 'uq_billing_account_id_cliente'
+                     AND conrelid = 'anagrafiche.billing_account'::regclass;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.billing_account
+                ADD CONSTRAINT uq_billing_account_id_cliente
+                UNIQUE (id, soggetto_ruolo_id, utility_id);
+
+              COMMENT ON CONSTRAINT uq_billing_account_id_cliente ON anagrafiche.billing_account
+              IS 'Destinazione delle FK composte (billing_account_id, <ruolo del cliente>, utility_id) di vendite.ordini, vendite.ddt, vendite.resi e anagrafiche.clienti: il cliente e la utility di un documento sono quelli del SUO billing account. Implicato dalla PK, non aggiunge un vincolo sui dati del billing account. Gemello di uq_billing_account_id_coppia (la coppia istanza/utility dei precontrattuali). Brief: brief-db-esecutivi-ba-coppia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.billing_account DROP CONSTRAINT uq_billing_account_id_cliente;

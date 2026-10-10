@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# PRIMA L'IMMUTABILITA', POI LA COERENZA
+#   anagrafiche.billing_account:
+#     DROP trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
+#     CREATE trg_billing_account_a20_guard_soggetto_coerenza_istanza_ins_upd
+#   stessa funzione, stessi eventi, fascia _a20_.
+#   Brief: brief-db-esecutivi-ba-coppia (D-7)
+#
+# -- PERCHE' --------------------------------------------------------
+#   I BEFORE ROW girano in ordine alfabetico. «..._a10_guard_soggetto...»
+#   precede «..._a10_lock_columns_upd» (g < l): un UPDATE di soggetto_ruolo_id
+#   o di istanza_utility_id usciva con la frase della coerenza
+#   (E_BA_SOGGETTO_INCOERENTE_ISTANZA, o dal 20261009-68 E_SOGGETTI_RUOLI) e il
+#   lock dichiarato (E_BA_ISTANZA_IMMUTABILE) non parlava mai: ogni cambio di
+#   ruolo possibile e' gia' incoerente o di un altro tipo, quindi il lock su
+#   soggetto_ruolo_id sarebbe stato irraggiungibile. Se la colonna non si
+#   cambia, non ha senso dire se il valore nuovo era buono.
+#   Il trigger del lock lo genera l'automazione col nome fisso: si sposta
+#   questo. _a20_ c'e' gia' in anagrafiche (trg_clienti_a20_...).
+#
+#   ⚠️ Il guard resta su INSERT e UPDATE OF: sotto l'override di
+#   manutenzione (zeroerp.allow_lock_columns_override) il lock tace, e la
+#   coerenza deve restare presidiata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261009-69-create-trigger-billing-account-guard-ruolo-dopo-lock-mctit.yaml
+
+  - changeSet:
+      id: 20261009-69-create-trigger-billing-account-guard-ruolo-dopo-lock
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.billing_account: il guard del ruolo passa da _a10_ ad _a20_, dopo il lock di
+        colonna. Brief: brief-db-esecutivi-ba-coppia (D-7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*)
+                FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'trgfn_billing_account_guard_soggetto_coerenza_istanza';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
+                  ON anagrafiche.billing_account;
+
+              CREATE TRIGGER trg_billing_account_a20_guard_soggetto_coerenza_istanza_ins_upd
+                  BEFORE INSERT OR UPDATE OF istanza_utility_id, soggetto_ruolo_id
+                  ON anagrafiche.billing_account
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza();
+
+              COMMENT ON TRIGGER trg_billing_account_a20_guard_soggetto_coerenza_istanza_ins_upd
+                  ON anagrafiche.billing_account
+                  IS 'Guard del ruolo del BA: soggetto uguale a quello dell''istanza, ruolo di tipo CLIENTE. Fascia _a20_ dal 2026-10-09 (era _a10_): dopo trg_billing_account_a10_lock_columns_upd, perche'' su UPDATE del ruolo o dell''istanza parli l''immutabilita''. Brief: brief-db-esecutivi-ba-coppia (D-7).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_a20_guard_soggetto_coerenza_istanza_ins_upd
+                  ON anagrafiche.billing_account;
+              CREATE TRIGGER trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
+                  BEFORE INSERT OR UPDATE OF istanza_utility_id, soggetto_ruolo_id
+                  ON anagrafiche.billing_account
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza();

@@ -197,16 +197,18 @@ SELECT id FROM ins;
 --     comportamento di una porta aperta, adesso attraversa il guard come lo
 --     attraversa l'applicazione.
 
--- Ordine collegato all'offerta (documento_origine OFFERTA). BA=NULL + emittente
--- esplicito = niente guard emittente<->BA da soddisfare.
+-- Ordine collegato all'offerta (documento_origine OFFERTA).
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1/D-6): l'ordine ha sempre il
+--   BA, ed e' quello dell'offerta da cui nasce, col suo ruolo. Prima nasceva col
+--   BA NULL (per saltare il guard emittente<->BA) e col primo ruolo del database.
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
     documento_origine_tipo, documento_origine_id
 )
 SELECT
-    (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1),
-    NULL::bigint,
+    (SELECT c.soggetto_ruolo_id FROM tmp_push_cli c),
+    ctx.billing_account_id,
     ctx.emittente_fiscale_id,
     (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1),
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),

@@ -3,7 +3,7 @@
 -- pgTAP test per Zero ERP
 --
 -- Test: anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza
---       Trigger: trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd
+--       Trigger: trg_billing_account_a20_guard_soggetto_coerenza_istanza_ins_upd (a10 fino al 2026-10-09)
 --
 -- Migrations:
 --   20260502-16 (create-trgfn-billing-account-guard-soggetto-coerenza-istanza)
@@ -63,10 +63,12 @@ SELECT ok(
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'anagrafiche'
       AND c.relname = 'billing_account'
-      AND t.tgname  = 'trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd'
+      -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-7): fascia _a20_, dopo il
+      --   lock di colonna (20261009-69), perche' su UPDATE parli l'immutabilita'.
+      AND t.tgname  = 'trg_billing_account_a20_guard_soggetto_coerenza_istanza_ins_upd'
       AND NOT t.tgisinternal
   ),
-  '2. Trigger trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd presente'
+  '2. Trigger trg_billing_account_a20_guard_soggetto_coerenza_istanza_ins_upd presente'
 );
 
 -- ============================================================

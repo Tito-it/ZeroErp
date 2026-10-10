@@ -22,6 +22,11 @@
 #   `trgfn_tipi_ruoli_guard_entita_ref` lo rifiuterebbe come regclass. Nessuna
 #   cella era vuota prima di questa revisione.
 #   Brief: migliorie-generali-da-test-valutazione.md, D7.
+# ⚠️ 2026-10-10 — entra `entita_esistenza` (colonna 00_schema/config/20261010-08):
+#   la tabella le cui righe fanno esistere il soggetto-ruolo nella ricerca
+#   universale. Nessuna FK: il guard trgfn_tipi_ruoli_guard_entita_ref
+#   (20261010-09) la valida contro pg_class, e le cinque tabelle nominate
+#   esistono prima di 80_data. Brief: brief-db-codici-non-trovato-email-e-permessi, R-6.
 
 databaseChangeLog:
   - changeSet:
@@ -63,6 +68,7 @@ databaseChangeLog:
               - column: { name: ricerca_visibile, type: BOOLEAN }
               - column: { name: entita_tabella, type: STRING }
               - column: { name: entita_colonna_codice, type: STRING }
+              - column: { name: entita_esistenza, type: STRING }
 
   - changeSet:
       id: 20250812-90-upsert-tipi_ruoli

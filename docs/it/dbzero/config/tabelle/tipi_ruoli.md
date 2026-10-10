@@ -15,10 +15,12 @@
 | ricerca_visibile | boolean | NO | false |
 | entita_tabella | text | YES |  |
 | entita_colonna_codice | text | YES |  |
+| entita_esistenza | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_tipi_ruoli_entita_esistenza_forma |  |
 | PRIMARY KEY | pk_tipi_ruoli | id |
 | UNIQUE | uq_tipi_ruoli_codice | codice |
 | UNIQUE | uq_tipi_ruoli_codice_interno | codice_interno |

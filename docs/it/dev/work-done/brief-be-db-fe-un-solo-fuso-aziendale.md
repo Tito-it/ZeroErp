@@ -403,6 +403,18 @@ giorno operativo). Argomenti e risultato di ogni funzione sono **byte-identici**
   e in CI gira dopo il migrate. Un guardrail anticiperebbe solo l'avviso.
 - `script.fn_fuso_operativo` è la lettura che il backend userà (B-1): il `GRANT` a `zeroerp_app`
   c'è.
+- ⚠️ **Una categoria che il censimento del §3 non copriva: l'SQL salvato come DATO** (2026-10-10,
+  trovato dal runner ostile del T-5). `dbops/test-fn-non-editable-fields-conditional` rosso su dbdev
+  alle 00:16 (test 2-4): le tre regole di `dbops.lock_columns_conditional` su `catalogo.articoli`
+  chiedevano `validita @> CURRENT_DATE`, mentre il guard gemello
+  `trgfn_articoli_guard_flags_struttura_bom_attiva` era già passato a `fn_data_operativa()`. Nella
+  finestra notturna capability e guard rispondevano in due modi. Corretto da
+  `80_data/changelog/20261010-01` (forward-only: il seed `20260522-04` aggiorna solo `descrizione`
+  in `ON CONFLICT`); provato sullo scratch prima (rosso 2-4 in UTC) e dopo (4/4 in UTC,
+  Europe/Rome, Pacific/Kiritimati). ✅ Applicato su dbdev il 2026-10-10 (00:20): corsa pgTAP completa
+  di Tid verde, nessuna regressione. Il catalogo non ha altre righe di regole condizionali; resta da
+  chiedersi se altre tabelle portino espressioni SQL come testo (`condition_expr`, filtri salvati):
+  il presidio D-8 legge il catalogo delle funzioni, non i dati.
 
 ### 8.3 BE e FE
 

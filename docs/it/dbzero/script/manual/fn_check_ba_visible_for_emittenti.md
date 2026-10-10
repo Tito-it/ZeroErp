@@ -6,7 +6,7 @@ Approfondimenti funzioni:
 >
 [script.fn_get_ba_emittente_sr_id](/dbzero/script/manual/fn_get_ba_emittente_sr_id)
 >
-[script.fn_get_emittenti_scope_sr_effettivo](/dbzero/script/manual/fn_get_emittenti_scope_sr_effettivo)
+[script.fn_scope_ef_whitelist_via_efba](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_efba)
 >
 [script.fn_search_soggetti_universale](/dbzero/script/manual/fn_search_soggetti_universale)
 
@@ -51,9 +51,9 @@ questa funzione risponde a una domanda *puntuale* — «è fra i miei?» — e s
 insieme di riferimento quella domanda non ha una risposta affermativa onesta.
 
 > **La convenzione a tre stati la legge il chiamante, prima di arrivare qui.**
-> È quello che fa `fn_search_soggetti_universale`: accende il filtro solo se lo
-> scope effettivo *non* è `NULL`, e in quel caso `'{}'` produce zero risultati —
-> fail-closed.
+> È quello che fa l'adapter di policy `fn_scope_ef_whitelist_via_efba`: con lo
+> scope `NULL` (super admin) ammette tutto senza chiamare questo check, con
+> `'{}'` non ammette niente — fail-closed.
 
 ---
 
@@ -99,9 +99,12 @@ sarebbe rimasto rotto o la si sarebbe corretta due volte.
 
 ### Impatto e Vantaggi
 
-* usata dal ramo `CL` di `fn_search_soggetti_universale` e di
-  `fn_get_search_detail`: è il punto dove il perimetro emittente entra nella
-  ricerca;
+* la chiama l'adapter di policy `fn_scope_ef_whitelist_via_efba`, cioè la RLS
+  del billing account e dei suoi satelliti, fra cui `anagrafiche.clienti`: è da
+  lì che il perimetro emittente entra nella ricerca universale. Fino al
+  2026-10-08 le due funzioni della ricerca la chiamavano anche direttamente, con
+  un filtro a mano che era una seconda copia della policy: è stato tolto
+  (brief-db-codici-non-trovato-email-e-permessi);
 * `STABLE`, e **non più `PARALLEL SAFE`** dal `20260913-02`: la delegata
   `fn_get_ba_emittente_sr_id` legge la GUC di sessione e chiama
   `fn_resolve_emittente_for_user`, che non è `SAFE` — tenere la marcatura qui

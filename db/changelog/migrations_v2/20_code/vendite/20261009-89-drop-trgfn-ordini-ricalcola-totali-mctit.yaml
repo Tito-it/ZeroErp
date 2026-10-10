@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: il ricalcolo dei totali dell'ordine «dopo un cambio di emittente»
+#   DROP TRIGGER trg_ordini_z90_ricalcola_totali_upd ON vendite.ordini
+#   DROP FUNCTION vendite.trgfn_ordini_ricalcola_totali()
+#   Brief: brief-db-esecutivi-ba-coppia (§9.8, decisione di Tid del 2026-10-09)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Nato con 20260605-05: «il cambio di emittente puo' cambiare l'aliquota
+#   effettiva, dopo il cambio va ricalcolata la testata». Gestiva l'effetto di
+#   un cambio che nessuno aveva mai deciso di permettere. Da questo giro il
+#   cambio non esiste:
+#     * in bozza l'ordine ha sempre il BA (D-1) e il guard emittente <-> BA
+#       pretende l'emittente del BA, che e' uno;
+#     * fuori bozza lo vieta trg_ordini_a05_lock_fuori_bozza_upd (20261009-86).
+#   Il trigger non avrebbe piu' un caso in cui scattare con un valore diverso.
+#   I totali restano ricalcolati dai trigger delle RIGHE
+#   (trg_ordini_righe_z90_ricalcola_totali_*) e da
+#   vendite.fn_ricalcola_totali_ordine, che non si tocca.
+#
+# -- CENSIMENTO (2026-10-09) ------------------------------------------
+#   La funzione la chiama solo questo trigger (pg_trigger, pg_proc). Il pgTAP
+#   test-ordini-riepilogo-iva-totali-v1 la collaudava (test 5 e 15): riscritto
+#   nello stesso giro. La pagina manual/ omonima si cancella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-89-drop-trgfn-ordini-ricalcola-totali-mctit.yaml
+
+  - changeSet:
+      id: 20261009-89-drop-trgfn-ordini-ricalcola-totali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira vendite.trgfn_ordini_ricalcola_totali e trg_ordini_z90_ricalcola_totali_upd: l'emittente
+        dell'ordine non cambia piu' (D-1 + lock fuori bozza). Brief: brief-db-esecutivi-ba-coppia (9.8).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*)
+                FROM pg_trigger
+               WHERE tgrelid = 'vendite.ordini'::regclass
+                 AND tgname = 'trg_ordini_a05_lock_fuori_bozza_upd'
+                 AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ordini_z90_ricalcola_totali_upd ON vendite.ordini;
+              DROP FUNCTION IF EXISTS vendite.trgfn_ordini_ricalcola_totali();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si rimette da 20260605-05.
+              SELECT 1;

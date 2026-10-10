@@ -52,9 +52,8 @@ db/pgtap/vendite/test-contratti-overlap-draft-escluso-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-schema-step22-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-contratti-utilities-guard-tipo-classe-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-data-documento-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-ddt-causale-immutabile-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-ddt-componenti-senza-prezzo-v1.sql	ASSERZIONE
-db/pgtap/vendite/test-ddt-read-side-v1.sql	ASSERZIONE
+db/pgtap/vendite/test-ddt-read-side-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ddt-solo-trasporto-causale-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-diagnostica-gruppi-fatturabili-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-documenti-canali-sync-v1.sql	ERRORE_FIXTURE
@@ -87,7 +86,7 @@ db/pgtap/vendite/test-fn-contratto-righe-preview-nuovi-campi-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-fn-crea-revisione-preventivo.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-create-contratto-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-emit-attivita-propaga-audit-pricing-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-genera-ddt-da-ordine-v1.sql	ASSERZIONE
+db/pgtap/vendite/test-fn-genera-ddt-da-ordine-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-genera-ddt-riconsegna-eredita-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-genera-pratica-da-preventivo-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-get-or-create-lotto-emittente.sql	ERRORE_FIXTURE
@@ -99,12 +98,12 @@ db/pgtap/vendite/test-fn-list-commesse-emittibili-fatturazione-immediata-v1.sql	
 db/pgtap/vendite/test-fn-list-consumi-da-pushare-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-ddt-da-pushare-contatore-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-ddt-da-pushare-orfano-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-list-ddt-da-pushare-v1.sql	ASSERZIONE
+db/pgtap/vendite/test-fn-list-ddt-da-pushare-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-emittibili-lane.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-lotto-segnalazioni-job.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-lotto-segnalazioni.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-lotto-task-runs-paginata.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-fn-list-ordini-da-pushare-v1.sql	ASSERZIONE
+db/pgtap/vendite/test-fn-list-ordini-da-pushare-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-ordini-da-pushare-v3.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-preventivi-da-pushare-competenza-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-fn-list-preventivi-da-pushare-natura-aware-v1.sql	ERRORE_FIXTURE
@@ -145,7 +144,6 @@ db/pgtap/vendite/test-numero-prefisso-registro-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-offerta-righe-espanse.sql	ASSERZIONE
 db/pgtap/vendite/test-ordini-fatturazione-trigger-eredita-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ordini-guard-conferma-iva.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-ordini-guard-transizione-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-porta-oneri-contatore-cieco-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-porta-oneri-giro-completo-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-porta-oneri-v1.sql	ERRORE_FIXTURE

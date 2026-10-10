@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CAUSALE DICE SE LA MERCE VA A UN CLIENTE
+#   config.causali_trasporto.richiede_cliente boolean NOT NULL DEFAULT false.
+#   Brief: brief-db-esecutivi-ba-coppia (D-2, D-2-bis di Tid del 2026-10-09)
+#
+# -- PERCHE' UNA COLONNA E NON UNA REGOLA SU UN'ALTRA ----------------
+#   D-2 (b): il billing account serve su ogni DDT che manda merce A UN
+#   CLIENTE, non solo su quelli che si fatturano. Nessuna colonna di oggi lo
+#   dice:
+#     * `fatturabile` decide il push, non la controparte (omaggio e
+#       campionatura vanno a un cliente e non si fatturano);
+#     * `causale_magazzino = 'SCARICO_VEN'` lascia fuori il conto visione,
+#       che va a un cliente e non muove merce.
+#   Il criterio sta nel vocabolario, per codice di riga, non in un CASE sul
+#   codice (linee-guida-sql §6d).
+#
+# -- IL VALORE ---------------------------------------------------------
+#   Lo scrive il CSV di seed (80_data/sql/config/causali_trasporto.csv,
+#   mirror 20260709-11): si' VENDITA, OMAGGIO, CAMPIONATURA, CONTO_VISIONE;
+#   no TRASFERIMENTO (deposito nostro), CONTO_LAVORO e RIPARAZIONE
+#   (terzista), RESO (la bolla NOSTRA verso un fornitore, Lotto 4: il reso
+#   del cliente e' il documento vendite.resi, e segue D-3). Qui solo la
+#   colonna, col default false: una causale nuova nasce «senza cliente»
+#   finche' qualcuno non dice il contrario.
+#
+# -- CHI LA LEGGE ----------------------------------------------------
+#   script.fn_check_ddt_emittibile (motivo E_DDT_CLIENTE_OBBLIGATORIO,
+#   20261009-76), e attraverso di lei il gate all'emissione e la capability.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261009-62-alter-causali-trasporto-add-richiede-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20261009-62-alter-causali-trasporto-add-richiede-cliente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.causali_trasporto.richiede_cliente: la bolla con questa causale manda merce a un
+        cliente, quindi all'emissione vuole il billing account. Valore dal CSV di seed. Brief:
+        brief-db-esecutivi-ba-coppia (D-2, D-2-bis).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: causali_trasporto
+            - not:
+                - columnExists:
+                    schemaName: config
+                    tableName: causali_trasporto
+                    columnName: richiede_cliente
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.causali_trasporto
+                  ADD COLUMN richiede_cliente boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN config.causali_trasporto.richiede_cliente IS
+                  'La bolla con questa causale manda merce A UN CLIENTE, quindi all''emissione vuole '
+                  'il billing account (motivo E_DDT_CLIENTE_OBBLIGATORIO di script.fn_check_ddt_emittibile). '
+                  'Non coincide con fatturabile (omaggio e campionatura vanno a un cliente e non si '
+                  'fatturano) ne'' con causale_magazzino (il conto visione va a un cliente e non '
+                  'muove merce). Senza cliente: trasferimento fra depositi, conto lavoro, riparazione, '
+                  'dove il destinatario e'' un deposito o un terzista, e la causale RESO, che e'' la '
+                  'bolla nostra verso un fornitore (il reso del cliente e'' vendite.resi). Valore dal '
+                  'CSV di seed; default '
+                  'false, una causale nuova nasce senza cliente. Brief: brief-db-esecutivi-ba-coppia '
+                  '(D-2, D-2-bis di Tid del 2026-10-09).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.causali_trasporto DROP COLUMN IF EXISTS richiede_cliente;

@@ -50,33 +50,25 @@ SELECT plan(8);
 --   database ricostruito (la CI) la tabella e' vuota, tmp_ctx_cliente
 --   restava senza righe e la funzione moriva su p_cliente_id NULL con zero
 --   asserzioni. Ora la catena soggetto -> CL -> istanza -> BA viene da
---   dbops.fn_pgtap_crea_cliente_ba, e la riga di anagrafiche.clienti la
---   scrive il test (il builder si ferma al BA), nello stato PR come
+--   dbops.fn_pgtap_crea_cliente, nello stato PR come
 --   anagrafiche/create-cliente. L'utility e' una che NON richiede il PDP
 --   (config.utilities.richiede_pdp): il soggetto del test sono le date di
 --   sospensione, e un cliente su un'utility a PDP ne pretenderebbe uno.
+--   ⭐ rev 2026-10-10 (brief-db-codici-non-trovato-email-e-permessi R-9): la
+--   riga di anagrafiche.clienti la scrive il builder, non piu' questo file
+--   dopo fn_pgtap_crea_cliente_ba (regola del 2: le copie a mano erano gia'
+--   diverse fra loro).
 --   ⛔ Cio' che il builder scrive si legge in un'istruzione SEPARATA.
 -- =========================================================
-CREATE TEMP TABLE tmp_cli_ba AS
-SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
-    'evento stato corrente',
-    (SELECT u.id FROM config.utilities u
-      WHERE NOT u.richiede_pdp
-      ORDER BY u.id LIMIT 1));
-
 CREATE TEMP TABLE tmp_ctx_cliente AS
-WITH ins AS (
-    INSERT INTO anagrafiche.clienti (
-        soggetto_ruolo_id, istanza_utility_id, stato_cliente_id,
-        billing_account_id, utility_id
-    )
-    SELECT c.soggetto_ruolo_id, c.istanza_utility_id,
-           (SELECT sc.id FROM config.stati_cliente sc WHERE sc.codice_interno = 'PR'),
-           c.billing_account_id, c.utility_id
-      FROM tmp_cli_ba c
-    RETURNING id
-)
-SELECT id AS cliente_id FROM ins;
+SELECT c.cliente_id
+  FROM dbops.fn_pgtap_crea_cliente(
+           'evento stato corrente',
+           (SELECT u.id FROM config.utilities u
+             WHERE NOT u.richiede_pdp
+             ORDER BY u.id LIMIT 1),
+           NULL,
+           'PR') c;
 
 -- ============================================================
 -- 1) sosp NULL, riatt NULL -> (NULL, NULL)

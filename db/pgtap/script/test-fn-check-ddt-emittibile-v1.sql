@@ -61,7 +61,11 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('check ddt emittibile');
 CREATE TEMP TABLE tmp_chk_refs AS
 SELECT
   (SELECT billing_account_id FROM tmp_mondo_bb)                                              AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT billing_account_id FROM tmp_mondo_bb)) AS soggetto_ruolo_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,

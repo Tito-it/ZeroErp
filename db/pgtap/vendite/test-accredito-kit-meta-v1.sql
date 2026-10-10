@@ -79,7 +79,7 @@ SELECT
   ba.istanza_utility_id                        AS istanza_utility_id,
   script.fn_pgtap_emittente_operatore()        AS emittente_fiscale_id,
   script.fn_pgtap_emittente_sr_operatore()     AS emittente_sr_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1)                AS soggetto_ruolo_id,
+  ba.soggetto_ruolo_id                AS soggetto_ruolo_id,  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il ruolo del BA, non il primo del database
   -- Tre articoli DISTINTI e scelti con ORDER BY: il padre e i due componenti.
   -- Il suffisso #CMP: e' una stringa libera, ma usare articoli veri tiene la
   -- fixture vicina a quello che scrive il push.

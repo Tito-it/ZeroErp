@@ -13,7 +13,7 @@
 -- 6) Caso A: DDT da ordine con trigger CONFERMATO escluso
 -- 7) Caso B: DDT autonomo SPEDITO con billing_account restituito
 -- 8) Caso B: prezzo da ddt_righe.prezzo_unitario
--- 9) Caso B: DDT autonomo senza billing_account escluso
+-- 9) Caso B: DDT autonomo VENDITA senza billing_account non si emette (rev 2026-10-09)
 -- 10) Segment key formato corretto (DDT:<uid>:R:<riga_id>)
 -- 11) prezzo_bloccato = TRUE se prezzo presente
 -- 12) Filtro p_billing_account_id rispettato
@@ -75,9 +75,16 @@ SELECT
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1
   ) AS emittente_fiscale_id,
-  (SELECT sr.id
-     FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del
+  --   cliente e' quello del BA scelto sopra. Prima era «il primo ruolo del
+  --   database», scollegato dal BA: le FK composte fk_ordini_ba_cliente e
+  --   fk_ddt_ba_cliente lo rifiutano.
+  (SELECT ba.soggetto_ruolo_id
+     FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1
   ) AS soggetto_ruolo_id,
   -- ⭐ Articolo COSTRUITO e NON gestito a magazzino (rev 2026-10-02). Prima era
   --   «l'ultimo articolo attivo del catalogo»: se quello era gestito, la bolla
@@ -533,15 +540,16 @@ SELECT
   false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'no_ba')
 FROM tmp_ddt_no_ba d, tmp_refs_ddt r;
 
-SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_no_ba));
-
-SELECT ok(
-  NOT EXISTS (
-    SELECT 1
-    FROM vendite.fn_list_ddt_da_pushare(NULL, NULL, NULL) rd
-    WHERE rd.ddt_id = (SELECT id FROM tmp_ddt_no_ba)
-  ),
-  'Caso B: DDT autonomo senza billing_account escluso'
+-- ⭐ rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2): una bolla VENDITA
+--   manda merce a un cliente e senza billing account NON SI EMETTE (motivo
+--   E_DDT_CLIENTE_OBBLIGATORIO). Lo stato che questo caso costruiva — spedita
+--   senza BA, quindi esclusa dal push — il modello non lo ammette piu': il caso
+--   misura ora la regola che lo impedisce. L'esclusione SENZA_BA della diagnosi
+--   resta per un BA che chi legge non vede.
+SELECT throws_like(
+  format('SELECT pg_temp.spedisci(%s)', (SELECT id FROM tmp_ddt_no_ba)),
+  '%manda la merce a un cliente%',
+  'Caso B: DDT autonomo VENDITA senza billing_account non si emette (D-2)'
 );
 
 -- ============================================================

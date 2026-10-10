@@ -104,7 +104,10 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
+  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
          r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-05', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','orfano_a')
@@ -250,7 +253,10 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
+  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
          r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-06', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','orfano_b')
@@ -309,7 +315,10 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
+  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
          r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-07', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','spedito_c')
@@ -382,7 +391,10 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
+  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
          r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-08', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','draft_d')
@@ -413,7 +425,10 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA
+  --   (fk_ordini_ba_cliente), non il ruolo scelto a parte dai riferimenti.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
          r.stato_ord_draft_id, r.valuta_id, DATE '2026-07-08', false,
          jsonb_build_object('test_scope','pgtap_list_ordini_v3','fix','annullato_e')

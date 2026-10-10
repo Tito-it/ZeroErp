@@ -1,0 +1,72 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'EMITTENTE DEL PREVENTIVO SI SCEGLIE SOLO IN BOZZA
+#   vendite.preventivi: trg_preventivi_a05_lock_fuori_bozza_upd sul BB
+#   vendite.trgfn_doc_testata_lock_fuori_bozza (20261009-70), codice
+#   E_DOC_EMITTENTE_FUORI_BOZZA.
+#   Brief: brief-db-esecutivi-ba-coppia (§9.9, decisione di Tid del 2026-10-09)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il preventivo era l'unico documento con l'emittente bloccato, ma in modo
+#   ASSOLUTO e col codice sbagliato: dbops.automation_lock_columns, codice
+#   E_EMITTENTE_NON_MODIFICABILE — quello dell'associazione operatore <->
+#   emittente, la cui frase dice «L'emittente fiscale di un operatore e'
+#   immutabile…». Da oggi il preventivo segue la regola degli altri cinque
+#   documenti (§9.8): l'emittente si sceglie in bozza (dove lo lega al BA il
+#   guard emittente <-> BA), fuori bozza no.
+#   La riga del registro dei lock si SPEGNE (enabled = f, nota datata, come
+#   ddt.numero): la convergenza del 90_end rigenera
+#   trg_preventivi_a10_lock_columns_upd con il solo `numero`. Fra questo
+#   changeSet e la convergenza i due blocchi convivono, e su un preventivo
+#   fuori bozza parla questo (_a05_ < _a10_).
+#
+# -- CENSIMENTO (2026-10-09) ------------------------------------------
+#   Nessuna funzione e nessun pgTAP cambiano l'emittente di un preventivo;
+#   il backend non lo nomina (la sola menzione di E_EMITTENTE_NON_MODIFICABILE
+#   nel BE e' per l'associazione operatore-emittente).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-92-create-trigger-preventivi-lock-fuori-bozza-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261009-92-create-trigger-preventivi-lock-fuori-bozza-emittente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.preventivi: emittente_fiscale_id bloccato fuori bozza (E_DOC_EMITTENTE_FUORI_BOZZA) sul BB di testata, al posto del lock assoluto. Brief: brief-db-esecutivi-ba-coppia (9.9).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'trgfn_doc_testata_lock_fuori_bozza'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_preventivi_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.preventivi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                'PREVENTIVO', 'DRAFT',
+                'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA');
+
+              COMMENT ON TRIGGER trg_preventivi_a05_lock_fuori_bozza_upd ON vendite.preventivi
+              IS 'Fuori bozza (stato VECCHIO diverso da DRAFT) il preventivo non cambia l''azienda che lo emette (E_DOC_EMITTENTE_FUORI_BOZZA). Sostituisce il lock assoluto di automation_lock_columns, che usava il codice dell''associazione operatore-emittente. BB vendite.trgfn_doc_testata_lock_fuori_bozza, fascia _a05_. Brief: brief-db-esecutivi-ba-coppia (9.9).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_preventivi_a05_lock_fuori_bozza_upd ON vendite.preventivi;

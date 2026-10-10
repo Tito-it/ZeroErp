@@ -9,7 +9,7 @@
 --   2.  View riepilogo IVA ordine presente
 --   3.  Funzione fn_ricalcola_totali_ordine presente
 --   4.  Trigger statement-level su ordini_righe presenti (ins/upd/dlt)
---   5.  Trigger testata su cambio emittente presente
+--   5.  Il ricalcolo sul cambio di emittente e' ritirato (rev 2026-10-09)
 --   6.  Riferimenti minimi disponibili per test funzionali
 --   7.  Funzione su ordine senza righe -> totali zero
 --   8.  Stessa IVA -> una sola riga riepilogo
@@ -19,7 +19,7 @@
 --   12. Funzione aggiorna la testata sommando il riepilogo
 --   13. Trigger righe UPDATE ricalcola totali testata
 --   14. Trigger righe DELETE registrato con transition table
---   15. Trigger testata UPDATE emittente ricalcola totali
+--   15. L'emittente dell'ordine e' bloccato fuori bozza (rev 2026-10-09)
 --   16. BoM: la view base non legge ordini_righe_componenti
 --   17. La view riepilogo non espone id tecnico derivato
 --   18. Guard funzione: p_ordine_id NULL -> errore
@@ -111,18 +111,22 @@ SELECT is(
 );
 
 -- ============================================================
--- 5) Trigger testata su cambio emittente
+-- 5) Nessun ricalcolo «sul cambio di emittente»: l'emittente non cambia
 -- ============================================================
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, §9.8): trg_ordini_z90_
+--   ricalcola_totali_upd ricalcolava i totali dopo un cambio di emittente
+--   (20260605-05). Con il BA obbligatorio e un emittente per BA quel cambio
+--   non ha piu' un caso legittimo, e fuori bozza lo vieta il lock dichiarato
+--   (test 15): il trigger e' ritirato (20261009-89).
 SELECT ok(
-  EXISTS (
+  NOT EXISTS (
     SELECT 1
       FROM pg_trigger t
      WHERE t.tgrelid = 'vendite.ordini'::regclass
        AND t.tgname = 'trg_ordini_z90_ricalcola_totali_upd'
        AND NOT t.tgisinternal
-       AND pg_get_triggerdef(t.oid) ILIKE '%UPDATE OF emittente_fiscale_id%'
   ),
-  '5. trigger testata su UPDATE OF emittente_fiscale_id presente'
+  '5. il ricalcolo sul cambio di emittente e'' ritirato: l''emittente dell''ordine non cambia'
 );
 
 -- ============================================================
@@ -202,6 +206,15 @@ SELECT ok(
 
 CREATE TEMP TABLE tmp_ordiva_ordine(id bigint);
 
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine ha sempre il
+--   billing account, e il suo cliente e' il ruolo del BA. Prima nasceva col BA
+--   NULL e col ruolo dell'emittente come cliente. Il cliente si fabbrica: il
+--   trigger z90 lega il suo BA all'emittente dell'operatore in sessione, che
+--   e' quello dell'ordine (il guard di scope lo pretende).
+CREATE TEMP TABLE tmp_ordiva_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('ordini riepilogo iva');
+SET CONSTRAINTS ALL IMMEDIATE;
+
 WITH ins AS (
   INSERT INTO vendite.ordini (
     serie, numero, anno, data,
@@ -214,11 +227,11 @@ WITH ins AS (
     'ORDIVA-' || substr(md5(clock_timestamp()::text), 1, 10),
     2080,
     DATE '2080-06-01',
-    r.soggetto_ruolo_id,
-    NULL::bigint,
+    (SELECT c.soggetto_ruolo_id FROM tmp_ordiva_cli c),
+    (SELECT c.billing_account_id FROM tmp_ordiva_cli c),
     r.stato_doc_ordine_id,
     r.valuta_id,
-    r.emittente_fiscale_id,
+    anagrafiche.fn_get_emittente_fiscale_pk((SELECT c.billing_account_id FROM tmp_ordiva_cli c)),
     false,
     jsonb_build_object('test_scope', 'pgtap_ordini_riepilogo_iva')
   FROM tmp_ordiva_refs r
@@ -461,84 +474,25 @@ SELECT ok(
 );
 
 -- ============================================================
--- 15) Trigger testata UPDATE emittente ricalcola totali
+-- 15) L'emittente dell'ordine fuori bozza e' bloccato, dichiarato
 -- ============================================================
-UPDATE vendite.ordini
-   SET imponibile_tot = -777,
-       iva_tot = -777,
-       totale_doc = -777
- WHERE id = (SELECT id FROM tmp_ordiva_ordine);
-
--- ⛔ 2026-09-04 — QUESTO PASSO CAMBIA ATTORE, e non e' una scorciatoia.
---   `trg_ordini_z90_ricalcola_totali_upd` scatta SOLO su
---   `AFTER UPDATE OF emittente_fiscale_id` (verificato su `pg_get_triggerdef`):
---   non c'e' un'altra scrittura di testata che lo faccia partire, quindi il
---   passo non si puo' riscrivere su un'altra colonna.
---   ⚠️ E spostare un documento su un ALTRO emittente e' precisamente cio' che
---   `script.trgfn_guard_emittente_scope` nega a un operatore: la relazione
---   utente/emittente e' 1-a-1 (`config.user_emittenti_fiscali`), quindi nessun
---   operatore ha entrambi nel proprio perimetro. Non e' un limite della
---   fixture: e' la regola.
---   ⇒ L'unico attore che PUO' farlo e' il super admin, e il test si mette nei
---     suoi panni per il tempo di quella riga, poi torna operatore. Cosi' il
---     passo 15 collauda il trigger **attraverso** il guard invece che a guard
---     spento, e dice anche di chi e' quel potere.
-DO $sa$
-DECLARE
-    v_super integer;
-BEGIN
-    SELECT u.id INTO v_super
-      FROM django.auth_user u
-     WHERE script.fn_is_super_admin(u.id)
-     -- Ordine stabile: un contesto che cambia da solo produrrebbe un test
-     -- che passa a giorni alterni.
-     ORDER BY u.id
-     LIMIT 1;
-
-    IF v_super IS NOT NULL THEN
-        PERFORM script.fn_pgtap_set_contesto_operatore(v_super);
-    END IF;
-END
-$sa$;
-
-UPDATE vendite.ordini o
-   SET emittente_fiscale_id = r.emittente_fiscale_id_alt
-  FROM tmp_ordiva_refs r
- WHERE o.id = (SELECT id FROM tmp_ordiva_ordine)
-   AND r.emittente_fiscale_id_alt IS NOT NULL;
-
--- ⚠️ L'asserzione RESTA nel contesto del super admin, e il motivo e' il
---   secondo insegnamento di questo passo: appena il documento e' passato
---   all'altro emittente, l'operatore di partenza NON LO VEDE PIU' — la RLS lo
---   toglie dal suo perimetro. Letto da lui, il confronto non trovava righe e
---   `ok()` riceveva NULL: un rosso che sembra un trigger rotto e invece e' la
---   policy che funziona.
---   ⇒ Chi ha spostato il documento e' anche l'unico che puo' verificarne
---     l'esito. Il ritorno all'operatore avviene DOPO.
-SELECT CASE
-  WHEN NOT EXISTS (SELECT 1 FROM tmp_ordiva_ordine)
-  THEN skip('15. riferimenti insufficienti: ordine test non creato')
-  WHEN (SELECT emittente_fiscale_id_alt IS NULL FROM tmp_ordiva_refs)
-  THEN skip('15. secondo emittente fiscale non disponibile')
-  ELSE ok(
-    (
-      SELECT o.imponibile_tot = COALESCE(SUM(r.imponibile), 0)
-         AND o.iva_tot        = COALESCE(SUM(r.imposta), 0)
-         AND o.totale_doc     = COALESCE(SUM(r.totale_riga), 0)
-         AND o.imponibile_tot <> -777
-        FROM vendite.ordini o
-        LEFT JOIN vendite.vw_ordini_riepilogo_iva_dettaglio r
-          ON r.ordine_id = o.id
-       WHERE o.id = (SELECT id FROM tmp_ordiva_ordine)
-       GROUP BY o.id, o.imponibile_tot, o.iva_tot, o.totale_doc
-    ),
-    '15. trigger UPDATE emittente_fiscale_id ricalcola i totali testata'
-  )
-END;
-
--- Si torna all'operatore normale: i passi 16..18 devono girare come gira
--- l'applicazione, non con i poteri del super admin.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, §9.8): prima questo passo
+--   spostava l'ordine su un altro emittente (da super admin) per collaudare il
+--   ricalcolo dei totali. Il cambio non ha piu' un caso legittimo: in bozza lo
+--   lega al BA il guard emittente <-> BA, fuori bozza lo vieta il lock
+--   trg_ordini_a05_lock_fuori_bozza_upd (E_DOC_EMITTENTE_FUORI_BOZZA). Il
+--   comportamento lo prova test-esecutivi-ba-coppia-v1; qui il montaggio.
+SELECT ok(
+  EXISTS (
+    SELECT 1
+      FROM pg_trigger t
+     WHERE t.tgrelid = 'vendite.ordini'::regclass
+       AND t.tgname = 'trg_ordini_a05_lock_fuori_bozza_upd'
+       AND NOT t.tgisinternal
+       AND 'emittente_fiscale_id' = ANY (dbops.fn_trigger_argomenti(t.tgargs))
+  ),
+  '15. l''emittente dell''ordine e'' bloccato fuori bozza (BB di testata)'
+);
 
 -- ============================================================
 -- 16) BoM: la view base non legge direttamente i componenti
