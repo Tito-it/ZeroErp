@@ -42,7 +42,18 @@ BEGIN
     END IF;
 
     RETURN QUERY
-    WITH RECURSIVE trav AS (
+    WITH RECURSIVE
+    -- ⭐ rev 2026-10-10 (20261010-44): il grafo si legge UNA volta.
+    --   La vista costruisce l'intero grafo decorato (una CTE MATERIALIZED
+    --   sui nodi di tutti i documenti): letta nel passo iniziale e a ogni
+    --   livello della ricorsione, con un join a OR che non sa sfruttare,
+    --   costava ~0,6-0,8 s a chiamata (dbdev come app). Letta qui una volta
+    --   e attraversata come copia: ~0,18 s, righe identiche su tutti i 339
+    --   casi del grafo (ogni nodo con archi, nelle due direzioni).
+    archi AS MATERIALIZED (
+        SELECT * FROM vendite.vw_documento_lineage_archi
+    ),
+    trav AS (
         -- Livello 1: archi adiacenti al nodo di partenza nella direzione scelta.
         SELECT a.from_tipo_id, a.from_uid, a.from_codice,
                a.to_tipo_id, a.to_uid, a.to_codice,
@@ -58,7 +69,7 @@ BEGIN
                        || ':' ||
                    (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
                ] AS visited
-          FROM vendite.vw_documento_lineage_archi a
+          FROM archi a
          WHERE (p_direzione = 'avanti'   AND a.from_tipo_id = p_tipo_id AND a.from_uid = p_uid)
             OR (p_direzione = 'indietro' AND a.to_tipo_id   = p_tipo_id AND a.to_uid   = p_uid)
         UNION ALL
@@ -77,7 +88,7 @@ BEGIN
                    (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
                )
           FROM trav t
-          JOIN vendite.vw_documento_lineage_archi a
+          JOIN archi a
             ON (p_direzione = 'avanti'   AND a.from_tipo_id = t.cur_tipo AND a.from_uid = t.cur_uid)
             OR (p_direzione = 'indietro' AND a.to_tipo_id   = t.cur_tipo AND a.to_uid   = t.cur_uid)
          WHERE t.livello < 10
@@ -114,7 +125,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage(p_tipo_id bigint, p_uid text, p_direzione text)
-IS 'Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice_interno/to_natura_doc_codice_interno: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet.';
+IS 'Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice_interno/to_natura_doc_codice_interno: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet. ⭐ rev 2026-10-10 (20261010-44): la vista degli archi si legge UNA volta, in una CTE MATERIALIZED, e la ricorsione attraversa la copia: prima la vista — che costruisce l''intero grafo decorato — si rivalutava nel passo iniziale e a ogni livello, ~0,6-0,8 s a chiamata come app; ora ~0,18 s, righe identiche. brief-db-plancache-funzioni-con-query-incorporate §5.';
 ```
 
 ---
