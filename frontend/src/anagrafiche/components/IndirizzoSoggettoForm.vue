@@ -6,6 +6,7 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
+import InputMaiuscolo from '../../core/components/InputMaiuscolo.vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
@@ -179,7 +180,7 @@ const viaNoResultsGenerale = computed(() =>
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_estensione') }}</label>
-          <InputText :model-value="form.estensione_civico" @update:model-value="v => form.estensione_civico = (v || '').toUpperCase()" :disabled="disabled" />
+          <InputMaiuscolo v-model="form.estensione_civico" :disabled="disabled" />
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_palazzina') }}</label>

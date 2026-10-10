@@ -13,6 +13,7 @@ import { getIndirizzo } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import AppDrawer from '../../core/components/AppDrawer.vue'
+import InputMaiuscolo from '../../core/components/InputMaiuscolo.vue'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import StradarioAutocomplete from './StradarioAutocomplete.vue'
 import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
@@ -205,7 +206,7 @@ async function handleSave() {
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_estensione') }}</label>
-          <InputText :model-value="addr.form.estensione_civico" @update:model-value="v => addr.form.estensione_civico = (v || '').toUpperCase()" />
+          <InputMaiuscolo v-model="addr.form.estensione_civico" />
         </div>
         <div class="form-field">
           <label>{{ t('indirizzi.campo_palazzina') }}</label>

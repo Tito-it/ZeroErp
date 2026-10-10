@@ -7,6 +7,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
+import InputMaiuscolo from '../../core/components/InputMaiuscolo.vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
 
@@ -17,6 +18,12 @@ const { t } = useI18n()
 const form = defineModel('form', { type: Object, required: true })
 
 defineProps({
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`),
+  // dal padre via `useApiHandler().campiErrati`. Qui li manda il guard del
+  // canale FE (`anagrafiche.trgfn_dati_societari_guard_canale_fe`): canale `C`
+  // senza codice o codice fuori forma -> `codice_sdi`, canale `P` senza PEC ->
+  // `pec_fatturazione`.
+  campiErrati: { type: Array, default: () => [] },
   formeGiuridiche: { type: Array, default: () => [] },
   provinceLookup: { type: Object, default: null },
   showRea: { type: Boolean, default: false },
@@ -135,11 +142,22 @@ const destinatarioFeOptions = computed(() => [
     <div class="form-grid-2col">
       <div v-if="form.destinatario_fe === 'P'" class="form-field">
         <label>{{ t('dati_societari.pec_fatturazione') }}</label>
-        <InputText v-model="form.pec_fatturazione" :disabled="disabled" />
+        <InputText
+          v-model="form.pec_fatturazione"
+          :invalid="campiErrati.includes('pec_fatturazione')"
+          :disabled="disabled"
+        />
       </div>
       <div v-if="form.destinatario_fe === 'C'" class="form-field">
         <label>{{ t('dati_societari.codice_sdi') }}</label>
-        <InputText v-model="form.codice_sdi" :disabled="disabled" />
+        <!-- Il codice SDI e' in maiuscolo (lettere e cifre, 7 o 6 per la PA):
+             lo si trasforma mentre si digita. La forma la decide il DB. -->
+        <InputMaiuscolo
+          v-model="form.codice_sdi"
+          :invalid="campiErrati.includes('codice_sdi')"
+          maxlength="7"
+          :disabled="disabled"
+        />
       </div>
     </div>
   </div>
