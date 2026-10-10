@@ -302,21 +302,22 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
   il collaudo a video (§D.5 + §G.4) e l'archivio.
-- ⏳ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca**
-  (`work-in-progress/brief-db-codici-non-trovato-email-e-permessi.md`, richiesta BE del 2026-10-08, voci E-4/E-5/E-10
-  dell'analisi della doc API core): R-1…R-4 applicati e BE fatto; **giro R-5…R-9 scritto e provato pre-apply il
-  2026-10-10** e applicato lo stesso giorno, pgTAP verdi (`20261010-08…-15`: regola unica di chi si vede nella ricerca su
+- ✅ **Codici d'errore per email, «accesso riservato» e «non trovato» del dettaglio ricerca: chiuso il 2026-10-10**
+  (`work-done/brief-db-codici-non-trovato-email-e-permessi.md`, voci E-4/E-5/E-10 dell'analisi della doc API core):
+  R-1…R-4 e R-5…R-9 applicati, pgTAP verdi (`20261010-08…-15`: regola unica di chi si vede nella ricerca su
   `tipi_ruoli.entita_esistenza`, ritiro di `p_emittente_ids`, builder `dbops.fn_pgtap_crea_cliente`, quattro codici);
-  resta il BE (§14.6).
+  BE fatto (§9, §15).
 - ✅ **Ricerca universale senza tetto: chiuso il 2026-10-10**
   (`work-done/brief-db-ricerca-universale-tetto-10000.md`, D23): il tetto della lista era un `LIMIT` senza
   `ORDER BY`. Pagina sulle righe semplici, aggregati solo per la pagina, via l'ordinamento per utility (nessun
   tetto). DB `20261010-16`; BE/FE il 2026-10-10 (§7.4), con l'e2e che tiene allineato il mirror delle colonne
   ordinabili (`test_search_ordinamento_db`).
-- ⏳ **L'istanza nasce col billing account, sempre** (`work-in-progress/brief-db-istanza-nasce-col-ba.md`, D10-bis,
-  decisioni di Tid del 2026-10-08): **DB chiuso e applicato** (`20261008-50…-76`, nessuna regressione); BE/FE fatti il
-  2026-10-08 (§7, non committati: la pratica sceglie la fornitura, cioe' il BA — D-10). Restano il collaudo a video e
-  i debiti del §7.5.
+- ✅ **L'istanza nasce col billing account, sempre: chiuso il 2026-10-10** (`work-done/brief-db-istanza-nasce-col-ba.md`,
+  D10-bis): DB `20261008-50…-76`, BE/FE il 2026-10-08 (§7: la pratica sceglie la fornitura, cioe' il BA — D-10).
+  Collaudo del preventivo superato; quello delle pratiche e i debiti ancora aperti sono in § «Aperto — Media priorità».
+- ✅ **La data minima del filtro «ritardo» delle dashboard: chiuso il 2026-10-10**
+  (`work-done/brief-db-parametro-data-minima-ritardo-dashboard.md`): parametro `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA`,
+  un solo controllo nel BE per le due dashboard, collaudo di Tid superato.
 - 📝 **Ordine, DDT e reso: il cliente come su preventivo, offerta e contratto**
   (`work-in-progress/brief-db-esecutivi-ba-coppia.md`, D21, 2026-10-09): BA nullable, copie di utility e ruolo
   non legate al BA, lock del BA solo sull'ordine; un ordine senza BA esce dal push in silenzio; gli anelli della
@@ -344,6 +345,19 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   cambio di licenza.
 
 ### Aperto — Media priorità
+- **Residui di `work-done/brief-db-istanza-nasce-col-ba.md`** (ereditati il 2026-10-10 dalla chiusura):
+  - ⏭️ **collaudo a video delle pratiche** (§7.4): la tendina della fornitura (una riga per fornitura, con la
+    utility), nessun campo fornitura su chi non è cliente, offerta e contratto col cliente ereditato dalla
+    pratica. Rimandato da Tid: si fa alla ripresa del cantiere pratiche;
+  - **`script.fn_get_billing_account_by_istanza` senza consumatori nel BE**: il team DB può ritirarla (§6.12.3);
+  - **il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT`** di `fn_available_actions_preventivo`: lo ritira il DB,
+    poi la chiave `vendite.preventivi.push_commessa_reason.senza_billing_account` esce dai locales (§6.10.3).
+- **La coerenza tra codice fiscale e sesso ha una sede sola, e parziale** (DB + BE, ereditata il 2026-10-10
+  dalla chiusura di `work-done/brief-db-sesso-senza-default.md`, D5, rimandata da Tid il 2026-10-09): la
+  controlla solo `SoggettiService._valida_cf_congruenza`, e solo nella **creazione** di una persona fisica.
+  Una modifica (`PATCH`) di sesso o CF, o chi scrive senza passare dal BE, può mettere un CF da donna con
+  sesso `M`. `X` e i CF esteri non si possono confrontare. Da decidere, di Tid: se la regola scende nel
+  guard del DB, o resta nel BE estesa alla modifica.
 - **La corsa appesa non è «in corso» nella liveness del BE** (BE/FE, ereditata il 2026-10-10 dalla chiusura
   di `work-done/brief-db-corsa-saltata-non-e-una-corsa.md` §8.7): una corsa col processo vivo che tiene il
   lock, seguita da skip, ha come riga più recente la skip, chiusa; `job_liveness`/`list_job_summary` dicono

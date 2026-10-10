@@ -3,7 +3,7 @@
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09; **rivisto dal team DB** lo stesso giorno
 > (§2, §3, §4 e §5 riscritti sul contratto letto dalla doc auto-generata). **A chi:** team DB; poi
 > BE/FE (§7).
-> **Origine:** §7.5 di [brief-db-istanza-nasce-col-ba.md](brief-db-istanza-nasce-col-ba.md). Il suo R-2
+> **Origine:** §7.5 di [brief-db-istanza-nasce-col-ba.md](../work-done/brief-db-istanza-nasce-col-ba.md). Il suo R-2
 > ha reso `billing_account_id` NOT NULL e legato alla coppia (istanza, utility) su preventivo,
 > offerta e contratto. Chiudendo il lato BE/FE e' emerso che i documenti **esecutivi** di vendita
 > (ordine, DDT, reso) sono rimasti fuori: e' la stessa asimmetria, un livello piu' in basso.
@@ -115,7 +115,7 @@ non ce n'e' nessuna (AGENTS.md, regola zero).
 
 | # | Domanda | Proposta | Decisione di Tid |
 | --- | --- | --- | --- |
-| **D-1** | L'**ordine** ha sempre il BA? | **Si'.** L'ordine e' gia' legato a un ruolo (`soggetto_ruolo_id` NOT NULL) e ne blocca il BA; nasce dal preventivo o dall'offerta, che il BA lo hanno sempre, o standalone su un cliente. Un ordine senza fornitura non si sa a chi si fattura. ⚠️ **Conseguenza da accettare:** dopo [brief-db-istanza-nasce-col-ba](brief-db-istanza-nasce-col-ba.md) l'istanza nasce col BA, quindi un ruolo CLIENTE **senza fornitura non riceve ordini**. L'ordine «prospect» sparisce: e' voluto? | ✅ **Si'** (2026-10-09), conseguenza sul prospect compresa |
+| **D-1** | L'**ordine** ha sempre il BA? | **Si'.** L'ordine e' gia' legato a un ruolo (`soggetto_ruolo_id` NOT NULL) e ne blocca il BA; nasce dal preventivo o dall'offerta, che il BA lo hanno sempre, o standalone su un cliente. Un ordine senza fornitura non si sa a chi si fattura. ⚠️ **Conseguenza da accettare:** dopo [brief-db-istanza-nasce-col-ba](../work-done/brief-db-istanza-nasce-col-ba.md) l'istanza nasce col BA, quindi un ruolo CLIENTE **senza fornitura non riceve ordini**. L'ordine «prospect» sparisce: e' voluto? | ✅ **Si'** (2026-10-09), conseguenza sul prospect compresa |
 | **D-2** | Su quali **DDT** il BA e' obbligatorio? | Il modello ha gia' il discriminante, la causale (§2.2), e la diagnosi gia' mette `SOLO_TRASPORTO` prima di `SENZA_BA`. Resta da scegliere il perimetro: **(a)** solo causale `fatturabile` (`VENDITA`); **(b)** ogni causale che manda merce **al cliente** (`SCARICO_VEN`: anche `OMAGGIO` e `CAMPIONATURA`, che non si fatturano ma escono verso un cliente). Proposta del team DB: **(b)** — omaggio e campionatura sono consegne a un cliente, e il cliente a grana fine e' il BA; il «fatturabile» decide il push, non chi e' la controparte. ⚠️ Il criterio va scritto in una colonna del vocabolario delle causali (non per codice), e la diagnosi resta com'e' | ✅ **(b)** (2026-10-09): il BA serve su ogni DDT che manda merce a un cliente. Quali causali: D-2-bis |
 | **D-2-bis** | Con (b), **quali causali** vogliono il cliente? | Non si deriva da `causale_magazzino = 'SCARICO_VEN'`: il conto visione manda merce a un cliente e non ha causale di magazzino, quindi resterebbe fuori. Serve una colonna nuova in `config.causali_trasporto` (nome di lavoro `richiede_cliente boolean NOT NULL`), valorizzata nel CSV. Proposta per il seed: **si'** `VENDITA`, `OMAGGIO`, `CAMPIONATURA`, `CONTO_VISIONE`; **no** `TRASFERIMENTO` (deposito nostro), `CONTO_LAVORO` e `RIPARAZIONE` (terzista); **da dire** `RESO` (un DDT con causale reso porta merce a chi? se e' il rientro verso un fornitore, no) | ✅ **Come proposto** (2026-10-09): si' `VENDITA`, `OMAGGIO`, `CAMPIONATURA`, `CONTO_VISIONE`; no `TRASFERIMENTO`, `CONTO_LAVORO`, `RIPARAZIONE`, `RESO`. ⚠️ La causale di trasporto `RESO` e' la bolla **nostra verso un fornitore** (commento di `20260928-60`, Lotto 4); il reso **del cliente** e' un'altra cosa, il documento `vendite.resi`, e segue D-3 (BA del suo DDT). La riconsegna al cliente dopo un reso eredita la causale del DDT d'origine (`fn_genera_ddt_riconsegna`) |
 | **D-3** | Il **reso** ha il BA? | **Il BA del suo DDT, sempre.** Il reso non e' mai standalone (§2.1): la regola non e' «obbligatorio» ma «uguale a quello del DDT sorgente», NULL compreso — un reso da un conto visione senza BA resta senza BA. Non e' una decisione autonoma: segue D-2 | ✅ **Si'** (2026-10-09) |
@@ -130,7 +130,7 @@ Domanda di Tid: perche' `billing_account.soggetto_ruolo_id` non e' stato bloccat
 cose date per vere che non lo sono.
 
 **Nessuna decisione scritta di non bloccarlo.** R-1 di
-[brief-db-istanza-nasce-col-ba](brief-db-istanza-nasce-col-ba.md) (§6.2) blocca istanza e utility
+[brief-db-istanza-nasce-col-ba](../work-done/brief-db-istanza-nasce-col-ba.md) (§6.2) blocca istanza e utility
 perche' «sono l'identita' del BA»; il ruolo non e' mai nominato, ne' per tenerlo dentro ne' per
 lasciarlo fuori. Lo stesso per il manuale di `billing_account`, che dichiara immutabili istanza e
 utility (e `canale_origine`) e tace sul ruolo. E' una **dimenticanza**, non una scelta: lo stesso caso
@@ -185,7 +185,7 @@ ammesso e' proprio quello che non dovrebbe esistere.
 utility): `istanza_utility_id` e `utility_id` NOT NULL e `uq_billing_instance_utility`, che c'era gia'
 prima di R-1. Un'istanza con piu' utility ha piu' BA, uno per utility, e un soggetto ha tanti BA quante
 sono le sue forniture: e' il modello deciso il 2026-10-08 (D-5 e D-6 di
-[brief-db-istanza-nasce-col-ba](brief-db-istanza-nasce-col-ba.md); guida istanze, «Multi-utility»).
+[brief-db-istanza-nasce-col-ba](../work-done/brief-db-istanza-nasce-col-ba.md); guida istanze, «Multi-utility»).
 Tutti quei BA puntano allo **stesso** `soggetto_ruolo_id`, perche' il ruolo CLIENTE e' uno per
 soggetto: bloccare la colonna non costringe a creare BA in piu', vieta solo che un BA **gia' nato**
 cambi intestatario. La fattura unica su piu' forniture dello stesso cliente c'e' gia', ed e' un'altra

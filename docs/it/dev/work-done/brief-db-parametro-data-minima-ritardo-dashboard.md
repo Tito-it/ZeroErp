@@ -5,8 +5,10 @@
 > **Origine:** revisione del codice non committato del 2026-10-08 (tetto di
 > intervallo in `qp_int_optional`, `api.md` §Query params). **Decisione di Tid
 > (2026-10-08):** il limite è un parametro di configurazione, valore `2020-01-01`.
-> **Stato:** ✅ R-1 applicato a DB il 2026-10-09 (§5), pgTAP verde. ✅ §4 BE
-> fatto il 2026-10-09 (§6), da committare.
+> **Stato:** ✅ **Chiuso e archiviato il 2026-10-10.** R-1 applicato a DB il 2026-10-09
+> (§5), pgTAP verde. §4 BE fatto il 2026-10-09 (§6). Collaudo di Tid superato il
+> 2026-10-10 (§7). Il punto «quale oggi» del §6 è chiuso: il BE confronta con
+> `oggi_aziendale()`.
 
 ## 1. Cosa si chiede
 
@@ -130,3 +132,12 @@ solo per il §4 (BE).
   nell'intervallo), ma il filtro «ritardo» e `anzianita_giorni` delle due
   dashboard contano i giorni sulla data UTC, non su quella operativa
   (`script.fn_data_operativa`, che esiste proprio per questo).
+
+## 7. Collaudo (Tid, 2026-10-10)
+
+* A video, *Situazione aperta* e *Dashboard backlog*: le tendine del ritardo (tutti, 30, 60,
+  90), con lista ed export, funzionano come prima.
+* Dall'API, ripetendo la chiamata della pagina dagli strumenti del browser col solo
+  `ritardo_giorni` cambiato, su tutte e due le dashboard: `2474` (il 2020-01-01 visto dal
+  2026-10-10) passa; `2475` dà 400 `E_VENDITE_VALIDATION`, col detail che nomina la data
+  minima; `0` e `2000000` danno 400, mai un 500.

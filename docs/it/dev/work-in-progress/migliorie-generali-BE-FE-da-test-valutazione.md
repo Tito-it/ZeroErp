@@ -60,7 +60,7 @@
 > trova solo lanciandoli.
 > ✅ Lo stesso giorno **D10-bis** chiude la sua parte di lettura (§9): le 52
 > letture con lo skip, un difetto vero (i restore per id fuori scope), un BB e
-> un [brief DB](brief-db-istanza-nasce-col-ba.md). In §3 restano **D1-f, D2-b,
+> un [brief DB](../work-done/brief-db-istanza-nasce-col-ba.md). In §3 restano **D1-f, D2-b,
 > D3-b, D9-a, D10-bis** (la sola baseline smoke), **D12**.
 > ✅ Lo stesso giorno chiude **D1-f** (§9): `npm audit --audit-level=high` nel
 > job `ci-frontend`, acceso a zero. E chiude **D3-b** (§9): `check --deploy`
@@ -818,7 +818,7 @@ fabbricato); tre mutazioni, tre rossi.
 ⭐ **La domanda di modello che ne è uscita**: la regola «un'istanza è dell'emittente del suo
 BA» ha un buco solo se l'istanza può vivere senza BA. Decisione di Tid: *istanza e BA nascono
 insieme, sempre; resta differito solo il codice, prima della prima fattura*. L'applicazione la
-rispetta già, il contratto del DB no → [brief-db-istanza-nasce-col-ba.md](brief-db-istanza-nasce-col-ba.md).
+rispetta già, il contratto del DB no → [brief-db-istanza-nasce-col-ba.md](../work-done/brief-db-istanza-nasce-col-ba.md).
 
 ✅ **BB `richiedi_se_stesso_o_amministratore`** (`core/api/permissions.py`, regola del 2,
 ok Tid): il «solo i propri, oppure amministratore» di permessi effettivi e audit era scritto
