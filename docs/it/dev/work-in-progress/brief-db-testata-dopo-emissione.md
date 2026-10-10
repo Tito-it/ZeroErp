@@ -1,17 +1,19 @@
-# Brief DB — La testata di un documento dopo l'emissione: che cosa si cambia ancora
+# Brief DB — Il documento dopo la bozza: che cosa si cambia ancora
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-10. **A chi:** Tid; poi BE (§7).
 > **Origine:** §8 di [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md) e il suo §10.3
 > («quali colonne di testata si riscrivono in fase chiusa»), ripreso dal §7 di
 > [brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md).
-> **Stato:** 📝 **aperto, decisioni tutte chiuse da Tid il 2026-10-10 (§6), nessun codice.** Il
-> prossimo passo è il giro DB: le colonne decise nel montaggio del BB fuori bozza di ogni documento,
-> un codice per famiglia, la forma per stato sul contratto (§5); poi il BE toglie i suoi «solo in
+> **Assorbe (2026-10-10):** brief-db-ordine-data-consegna-confermata-capability (scritto dalla
+> sessione backend il 2026-10-09, archiviato in `work-done/` con un rimando qui). Era la stessa domanda
+> («fuori bozza, quali colonne si cambiano e in quale stato?») su una colonna di riga, e i due brief
+> fissavano la stessa forma per stato: ora è la **fase 1** di questo (§5-bis).
+> **Stato:** 📝 **aperto, decisioni tutte chiuse da Tid il 2026-10-10 (§5-bis.4, §6), nessun codice.**
+> ⛔ **Si comincia dalla fase 1** (§5-bis): il lettore del montaggio e la capability della data di
+> consegna confermata. È consegnabile da sola, e **il BE la aspetta** per il suo verbo: non attende
+> il resto del giro. Poi la fase 2: le colonne decise nel montaggio del BB fuori bozza di ogni
+> documento, un codice per famiglia, la forma per stato (§5); infine il BE toglie i suoi «solo in
 > DRAFT» (§7).
-> ⛔ **Si parte da un altro brief.** Questo giro **non comincia** finché non è chiuso R-1 di
-> [brief-db-ordine-data-consegna-confermata-capability](brief-db-ordine-data-consegna-confermata-capability.md):
-> lì nasce il lettore generico del montaggio e si fissa la forma per stato degli argomenti, che qui si
-> riusano (nota in fondo al §5). Cominciare da qui vorrebbe dire fissare quella forma due volte.
 > **Nel registro dei difetti DB:** voce **D23** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -164,13 +166,16 @@ al montaggio** del documento (un changeSet per documento), un codice per famigli
 CESSATO, serve la forma per stato del BB delle righe (argomenti «colonne» + «stati»), portata sulla
 testata.
 
-🔗 **Il lettore del montaggio (nota DB, 2026-10-10):** se il form deve spegnere i campi prima
-dell'errore (§7), serve una capability che legga **dal montaggio** quali colonne restano
-modificabili in quale stato. Lo stesso lettore lo chiede R-1 di
-[brief-db-ordine-data-consegna-confermata-capability](brief-db-ordine-data-consegna-confermata-capability.md)
-per la data di consegna confermata sulle righe: lì nasce **generico** sui due BB (righe e
-testata), e qui si riusa (regola del 2). La forma degli argomenti per stato portata sulla testata
-è quella che quel lettore sa leggere: si fissa una volta per entrambi.
+🔗 **Il lettore del montaggio:** se il form deve spegnere i campi prima dell'errore (§7), serve
+una capability che legga **dal montaggio** quali colonne restano modificabili in quale stato. È il
+lettore che nasce nella fase 1 (§5-bis), **generico** sui due BB (righe e testata): qui si riusa
+(regola del 2). La forma degli argomenti per stato portata sulla testata è quella che quel lettore
+sa leggere, e si fissa una volta sola, nella fase 1.
+
+🔎 **Una terza copia, da ritirare in questo giro (trovata il 2026-10-10):** le capability di
+ordine, DDT, contratto e offerta portano già una lista dei campi bloccati scritta a mano
+(`non_editable_fields`: `c_non_edit_tutti`, `c_non_edit_attivo`…), accanto al trigger e al backend.
+Il lettore della fase 1 è la sede che la sostituisce.
 
 🔗 **Ereditati da [brief-db-offerta-emissione-ed-erogazione](brief-db-offerta-emissione-ed-erogazione.md)
 (2026-10-10), da fare in questo giro:**
@@ -187,6 +192,88 @@ testata), e qui si riusa (regola del 2). La forma degli argomenti per stato port
   **di prima** e non la intralcia, come per il numero (§4.1): un caso costruito per documento lo
   prova, e un secondo prova che dopo, fuori bozza, cambiarla è rifiutato.
 
+## 5-bis. Fase 1 — il lettore del montaggio e la data di consegna confermata
+
+> Dal brief assorbito (sessione backend, 2026-10-09). **Origine:** §4.4 di
+> [brief-db-righe-e-componenti-debiti-residui](../work-done/brief-db-righe-e-componenti-debiti-residui.md)
+> (D-1 di Tid, 2026-10-08) e la voce «La promessa di consegna dopo la conferma» di PROJECT_CONTEXT
+> (decisione di Tid del 14-09). **Decisione di forma (Tid, 2026-10-09):** verbo dedicato **sopra una
+> capability letta dal DB**. Prima la capability, poi BE e FE. Il BE attende.
+
+### 5-bis.1 Il punto
+
+Dal `20261008-90` il lock delle righe d'ordine (`vendite.trgfn_doc_righe_lock_fuori_bozza`)
+lascia aperta fuori bozza una sola porta: un UPDATE della sola `data_consegna_confermata`
+quando l'ordine è in `CONFERMATO` o `PARZIALMENTE_EVASO` (argomenti `[4]` e `[5]` del
+montaggio). Il backend deve costruirci sopra il verbo che cambia la data dopo la conferma.
+
+Per proporre il verbo, il client deve sapere **quando** è ammesso. Oggi nessuna superficie lo
+dice:
+
+* `script.fn_available_actions_ordine` emette `can_edit_righe = (stato = 'DRAFT')`, che risponde
+  a un'altra domanda;
+* i due stati ammessi stanno **solo** negli argomenti del trigger.
+
+Se il backend li ricopiasse in Python (`{"CONFERMATO", "PARZIALMENTE_EVASO"}`) ci sarebbero due
+sedi della stessa regola, e al primo stato nuovo nella matrice risponderebbero in modo diverso
+(api.md §«Capability di riga»: *il backend trasporta, non deduce*). Il §4.1 del brief d'origine
+ha già scartato il flag di stato (`fase = IN_CORSO` comprende anche `SPEDITO` e `CONSEGNATO`).
+
+### 5-bis.2 Cosa si chiede
+
+| # | Cosa | Tipo | Bloccante per il BE |
+| --- | --- | --- | --- |
+| R-1 | Il **lettore del montaggio** e una **check** che dica se `data_consegna_confermata` si può cambiare fuori bozza su un ordine, e perché no. La regola si legge **dalla stessa sede del lock**, non da una copia | `20_code` + pgTAP | sì |
+| R-2 | La capability del documento in `script.fn_available_actions_ordine`: terna di famiglia 1 `can_edit_data_consegna_confermata` · `can_edit_data_consegna_confermata_reason` · `can_edit_data_consegna_confermata_reason_key`, prodotta da R-1 | `20_code` + pgTAP | sì |
+
+**R-1 — una sede sola per «in quali stati».** Strada decisa (D-F2): **leggere il montaggio**, cioè
+un lettore delle colonne e degli stati ammessi fuori bozza di un adottante, da `pg_trigger.tgargs`.
+Capability e lock leggono lo stesso dato: non possono divergere. Il lettore nasce **generico** sui
+due BB (righe e testata), non cucito su `vendite.ordini_righe`:
+
+* serve ai prelievi della bolla (`ubicazione_arrivo_id` in `EMESSO`/`SPEDITO`, `20261008-93`), che
+  hanno lo stesso problema senza un consumatore;
+* serve alla fase 2: la forma per stato portata sulla testata (D-8) è quella che questo lettore sa
+  leggere, e si fissa **qui**, una volta per entrambi.
+
+Scartate: (b) spostare la regola in una tabella letta da trigger e check (cambierebbe due montaggi);
+⛔ e una check con i due codici di stato scritti accanto a quelli del montaggio.
+
+**R-2 — cosa emette la capability.**
+
+* `true` quando lo stato dell'ordine è fra quelli ammessi da R-1;
+* `false` con un motivo negli altri stati. In `DRAFT` la data si scrive dalla riga
+  (`can_edit_righe`), quindi il motivo dice quello e non «non si può»; in `EVASO`, `ANNULLATO`
+  e negli altri, il motivo dice che lo stato non lo ammette più. I codici dei motivi e le
+  chiavi i18n li sceglie il team DB, sotto `vendite.ordini.*`: le chiavi nei `locales` le
+  aggiunge il FE (debito dichiarato, come per le altre `reason_key`).
+
+La capability è **di documento**, non di riga: la regola dipende solo dallo stato della
+testata, e il lock non guarda nient'altro della riga (nemmeno `attivo`).
+
+### 5-bis.3 Cosa farà il BE/FE, dopo la fase 1
+
+Per sapere cosa serve, non da fare ora. È la parte della fase 1 nel §7.
+
+* **BE:** un verbo `POST /api/v1/vendite/ordini/<ordine_id>/righe/<riga_id>/data-consegna-confermata/`,
+  corpo `{"data_consegna_confermata": "AAAA-MM-GG" | null}` (`null` toglie la promessa: la colonna
+  è nullable). Scrive la **sola** colonna; **nessun** pre-check di stato in Python: il cancello è il
+  lock, il 409 `E_RIGA_DOC_NON_BOZZA` passa com'è. `aggiorna_riga` resta «solo in bozza» per tutte
+  le colonne. Il dettaglio porta la terna sotto `capabilities` (forma annidata).
+* **FE:** nel drawer dell'ordine fuori bozza, un'azione sulla riga che apre un dialog col
+  DatePicker; spenta col motivo quando la capability è `false` (`npm run guard:capability` legge
+  la chiave dalla doc auto-generata).
+
+### 5-bis.4 Decisioni della fase 1
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| **D-F1** | La conferma d'ordine già stampata porta la data vecchia: cambiarla dopo genera un documento nuovo? | ✅ **No, la stampa resta quella** (Tid, 2026-10-10): la ristampa riproduce il documento di allora, la data nuova vive a video (righe, situazione merce) |
+| **D-F2** | R-1: leggere il montaggio, o spostare la regola in una tabella? | ✅ **Si legge il montaggio** (Tid, 2026-10-10): una funzione legge colonne e stati da `pg_trigger.tgargs`, generica sui due BB; nessuna tabella nuova |
+
+La terza decisione presa nello stesso giro (documenti chiusi: tutto fermo) riguarda la forma per
+stato di tutti e due i BB: è **D-8** nel §6.
+
 ## 6. Decisioni per Tid
 
 | # | Domanda | Proposta | Decisione di Tid |
@@ -199,8 +286,13 @@ testata), e qui si riusa (regola del 2). La forma degli argomenti per stato port
 | **D-5** | La sorgente (`sorgente_tipo_id`, `sorgente_uid`, i legami d'origine) | **bloccata fuori bozza** su tutti: decide il cliente ereditato (D-6 di ba-coppia) e la catena del documento | ✅ **Bloccata** (Tid, 2026-10-10) |
 | **D-6** | Il cliente di preventivo, offerta e contratto | **bloccato fuori bozza**, come sulla bolla | ✅ **Bloccato** (Tid, 2026-10-10) |
 | **D-7** | L'identità (famiglia 1) di ordine, preventivo, offerta e contratto | **bloccata fuori bozza**, come sulla bolla | ✅ **Bloccata** (Tid, 2026-10-10) |
+| **D-8** | Documento chiuso (annullato, contratto cessato): le colonne che restano aperte dopo l'emissione (famiglie 2-4, `valido_al`, CIG/CUP) si cambiano ancora? | **no, tutto fermo** | ✅ **Tutto fermo** (Tid, 2026-10-10): il BB della testata impara gli stati in cui una colonna resta aperta fuori bozza, come quello delle righe (`[4]`/`[5]`); la forma si fissa nella fase 1 (§5-bis, R-1) |
 
 ## 7. Ricaduta BE (dopo la consegna DB)
+
+**Dopo la fase 1:** il verbo della data di consegna confermata e il dialog FE (§5-bis.3).
+
+**Dopo la fase 2:**
 
 * **I «solo in DRAFT» della testata** di ordine, DDT, reso, preventivo e offerta, e la tabella per
   stato del contratto: con la regola nel DB sono una seconda copia. Si ritirano, e il backend mostra
@@ -210,6 +302,7 @@ testata), e qui si riusa (regola del 2). La forma degli argomenti per stato port
 
 ## 8. Fuori da questo brief
 
-* **Le righe**: hanno già la loro regola (BB `vendite.trgfn_doc_righe_lock_fuori_bozza`, con le
-  eccezioni per stato).
+* **Le regole delle righe**: le righe hanno già la loro (BB `vendite.trgfn_doc_righe_lock_fuori_bozza`,
+  con le eccezioni per stato) e qui non si ridecide. Ci entrano solo dalla fase 1: il lettore del
+  montaggio le legge, e la capability della data di consegna confermata è una colonna di riga.
 * **La commessa** (D-4).

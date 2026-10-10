@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | codice | character varying(50) | NO |  |
-| descrizione | character(100) | NO |  |
+| descrizione | character varying(100) | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
@@ -16,6 +16,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ambiti_descrizione_non_vuota |  |
 | PRIMARY KEY | pk_ambiti | id |
 | UNIQUE | uq_ambiti_codice | codice |
 

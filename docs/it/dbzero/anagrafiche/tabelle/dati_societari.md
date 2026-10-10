@@ -15,7 +15,7 @@
 | iscrizione_rea | character varying(30) | NO |  |
 | socio_unico | anagrafiche.socio_unico_enum | NO | 'SU'::anagrafiche.socio_unico_enum |
 | liquidazione | anagrafiche.liquidazione_enum | NO | 'LN'::anagrafiche.liquidazione_enum |
-| destinatario_fe | character(10) | NO |  |
+| destinatario_fe | character varying(10) | NO |  |
 | pec_fatturazione | character varying(100) | YES |  |
 | codice_sdi | character varying(10) | YES |  |
 | data_costituzione | date | YES |  |
@@ -31,6 +31,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_dati_societari_capitale_sociale_finito |  |
+| CHECK | chk_dati_societari_destinatario_fe_non_vuoto |  |
 | FOREIGN KEY | fk_dati_societari_forme_giuridiche | forma_giuridica_id |
 | FOREIGN KEY | fk_province_config | id_prov_iscri_rea |
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id |

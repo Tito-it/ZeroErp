@@ -1,0 +1,512 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RICREA LE VISTE DROPPATE DA 20261010-26 (anagrafiche)
+#   Brief: brief-db-character-n-spazi-di-riempimento.md §4 punto 2
+#
+#   La catena delle viste indirizzi, identica, dalle radici alle foglie: provincia_sigla e provincia_descrizione escono varchar invece di character(n).
+#
+#   Corpo vivo dal catalogo (pg_get_viewdef con nomi qualificati, letto il
+#   2026-10-10), non dagli YAML del 2026-04-02: la catena e' stata riscritta
+#   piu' volte da allora. Opzioni (security_invoker) e COMMENT riprodotti dal
+#   vivo; GRANT all'applicazione esplicito come nei changeSet sorelle (i
+#   privilegi del ruolo batch li da' il provisioning, §11.6).
+#   Ordine: le radici prima delle foglie. Gira nella stessa corsa del -26.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261010-29-recreate-catena-vw-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20261010-29-recreate-catena-vw-indirizzi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ricrea anagrafiche.vw_indirizzi_dettaglio, anagrafiche.vw_indirizzi_resolved_base, anagrafiche.vw_istanze_utilities_dettaglio, anagrafiche.vw_pdp, anagrafiche.vw_indirizzi_resolved_all, anagrafiche.vw_indirizzi_resolved_ruolo, anagrafiche.vw_indirizzi_resolved_soggetto, anagrafiche.vw_istanze_dati_precontrattuali_dettaglio dopo la conversione character(n) -> varchar
+        di 20261010-26. Brief: brief-db-character-n-spazi-di-riempimento.md §4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- anagrafiche.vw_indirizzi_dettaglio
+              CREATE VIEW anagrafiche.vw_indirizzi_dettaglio AS
+               SELECT idd.id AS indirizzo_dettaglio_id,
+                  idd.stradario_id,
+                  s.comune_id,
+                  idd.indirizzo_normalizzato,
+                  idd.via_norm,
+                  idd.civico,
+                  idd.estensione_civico,
+                  idd.palazzina,
+                  idd.scala,
+                  idd.piano,
+                  idd.interno,
+                  idd.altro,
+                  idd.civic_geoloc,
+                  idd.street_geoloc,
+                  idd.attivo,
+                  idd.storicizza,
+                  idd.tx_id,
+                  idd.data_insert,
+                  idd.user_insert,
+                  idd.data_update,
+                  idd.user_update,
+                  ic.comune AS descrizione_comune,
+                  ic.codice_postale AS cap,
+                  ic.provincia
+                 FROM anagrafiche.indirizzi_dettaglio idd
+                   JOIN config.stradario s ON s.id = idd.stradario_id
+                   JOIN script.vw_indirizzo_completo ic ON ic.id_stradario = idd.stradario_id;
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_dettaglio TO zeroerp_app;
+
+              -- anagrafiche.vw_indirizzi_resolved_base
+              CREATE VIEW anagrafiche.vw_indirizzi_resolved_base AS
+               SELECT b.scope,
+                  b.scope AS source,
+                  b.indirizzo_id,
+                  b.soggetto_id,
+                  b.soggetto_ruolo_id,
+                  b.istanza_utility_id,
+                  b.tipo_indirizzo_id,
+                  ti.codice::character varying(10) AS tipo_indirizzo_codice,
+                  ti.descrizione AS tipo_indirizzo_descrizione,
+                  b.indirizzo_dettaglio_id IS NOT NULL AS is_normalizzato,
+                  b.indirizzo_dettaglio_id,
+                  COALESCE(vidd.indirizzo_normalizzato, NULLIF(btrim(b.indirizzo_libero), ''::text), NULLIF(btrim(concat_ws(', '::text, NULLIF(btrim(b.postal_box::text), ''::text), NULLIF(btrim(b.sublocality::text), ''::text), NULLIF(btrim(b.locality::text), ''::text), NULLIF(btrim(b.administrative_area::text), ''::text))), ''::text)) AS indirizzo_display,
+                  b.indirizzo_libero,
+                  b.administrative_area,
+                  b.locality,
+                  b.sublocality,
+                  b.postal_box,
+                  COALESCE(vidd.comune_id, b.comune_id) AS comune_id,
+                  COALESCE(vidd.descrizione_comune, co_ai.descrizione, co_s.descrizione, ic.comune) AS comune_descrizione,
+                  COALESCE(vidd.cap, ic.codice_postale) AS cap,
+                  COALESCE(vidd.provincia, ic.provincia) AS provincia,
+                  COALESCE(pr_ai.id, pr_s.id) AS provincia_id,
+                  COALESCE(pr_ai.sigla, pr_s.sigla) AS provincia_sigla,
+                  COALESCE(pr_ai.descrizione, pr_s.descrizione) AS provincia_descrizione,
+                  COALESCE(re_ai.id, re_s.id) AS regione_id,
+                  COALESCE(re_ai.descrizione, re_s.descrizione) AS regione_descrizione,
+                  COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id) AS stato_id,
+                  st.descrizione AS stato_descrizione,
+                  st.codice_iso2 AS stato_iso2,
+                  COALESCE(b.codice_postale_id, cp_s.id) AS codice_postale_id,
+                  COALESCE(cp_ai.codice, cp_s.codice) AS cap_codice,
+                  vidd.stradario_id,
+                  vidd.via_norm,
+                  vidd.civico,
+                  vidd.estensione_civico,
+                  vidd.palazzina,
+                  vidd.scala,
+                  vidd.piano,
+                  vidd.interno,
+                  vidd.altro,
+                  COALESCE(vidd.civic_geoloc, vidd.street_geoloc, b.geoloc) AS geoloc,
+                  b.storicizza,
+                  b.tx_id,
+                  b.data_insert,
+                  b.user_insert,
+                  b.data_update,
+                  b.user_update,
+                  ti.codice_interno AS tipo_indirizzo_codice_interno
+                 FROM ( SELECT 'RUOLO'::text AS scope,
+                          i.id AS indirizzo_id,
+                          sr.soggetto_id,
+                          i.soggetto_ruolo_id,
+                          i.istanza_utility_id,
+                          i.tipo_indirizzo_id,
+                          i.indirizzo_dettaglio_id,
+                          i.indirizzo_libero,
+                          i.stato_id,
+                          i.administrative_area,
+                          i.locality,
+                          i.sublocality,
+                          i.postal_box,
+                          i.comune_id,
+                          i.codice_postale_id,
+                          i.geoloc,
+                          i.storicizza,
+                          i.tx_id,
+                          i.data_insert,
+                          i.user_insert,
+                          i.data_update,
+                          i.user_update
+                         FROM anagrafiche.indirizzi i
+                           JOIN anagrafiche.soggetti_ruoli sr ON sr.id = i.soggetto_ruolo_id
+                      UNION ALL
+                       SELECT 'SOGGETTO'::text AS scope,
+                          isg.id AS indirizzo_id,
+                          isg.soggetto_id,
+                          NULL::bigint AS soggetto_ruolo_id,
+                          NULL::bigint AS istanza_utility_id,
+                          isg.tipo_indirizzo_id,
+                          isg.indirizzo_dettaglio_id,
+                          isg.indirizzo_libero,
+                          isg.stato_id,
+                          isg.administrative_area,
+                          isg.locality,
+                          isg.sublocality,
+                          isg.postal_box,
+                          isg.comune_id,
+                          isg.codice_postale_id,
+                          isg.geoloc,
+                          isg.storicizza,
+                          isg.tx_id,
+                          isg.data_insert,
+                          isg.user_insert,
+                          isg.data_update,
+                          isg.user_update
+                         FROM anagrafiche.indirizzi_soggetti isg) b
+                   JOIN config.tipi_indirizzi ti ON ti.id = b.tipo_indirizzo_id
+                   LEFT JOIN anagrafiche.vw_indirizzi_dettaglio vidd ON vidd.indirizzo_dettaglio_id = b.indirizzo_dettaglio_id
+                   LEFT JOIN script.vw_indirizzo_completo ic ON ic.id_comune = b.comune_id
+                   LEFT JOIN config.stradario s ON s.id = vidd.stradario_id
+                   LEFT JOIN config.comuni co_s ON co_s.id = s.comune_id
+                   LEFT JOIN config.codici_postali cp_s ON cp_s.id = s.codice_postale_id
+                   LEFT JOIN config.comuni co_ai ON co_ai.id = b.comune_id
+                   LEFT JOIN config.codici_postali cp_ai ON cp_ai.id = b.codice_postale_id
+                   LEFT JOIN config.province pr_ai ON pr_ai.id = co_ai.provincia_id
+                   LEFT JOIN config.province pr_s ON pr_s.id = co_s.provincia_id
+                   LEFT JOIN config.regioni re_ai ON re_ai.id = pr_ai.regione_id
+                   LEFT JOIN config.regioni re_s ON re_s.id = pr_s.regione_id
+                   LEFT JOIN config.stati st ON st.id = COALESCE(b.stato_id, re_ai.stato_id, re_s.stato_id);
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_resolved_base TO zeroerp_app;
+
+              -- anagrafiche.vw_istanze_utilities_dettaglio
+              CREATE VIEW anagrafiche.vw_istanze_utilities_dettaglio AS
+               SELECT iu.id AS istanza_id,
+                  iu.codice AS istanza_codice,
+                  iu.proprietario_inquilino,
+                  iu.fittizia,
+                  iu.soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  iu.pdp_id,
+                  p.pdp AS pdp_codice,
+                  p.stato_pdp_id,
+                  sp.codice AS stato_pdp_codice,
+                  sp.descrizione AS stato_pdp_descrizione,
+                  p.utility_id,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  iu.parent_istanza_id,
+                  iu.indirizzo_dettaglio_id,
+                  idv.indirizzo_normalizzato,
+                  idv.via_norm,
+                  idv.civico,
+                  idv.estensione_civico,
+                  idv.palazzina,
+                  idv.scala,
+                  idv.piano,
+                  idv.interno,
+                  idv.altro,
+                  idv.civic_geoloc,
+                  idv.street_geoloc,
+                  idv.comune_id AS indirizzo_comune_id,
+                  ic.comune AS comune_descrizione,
+                  ic.provincia AS provincia_sigla,
+                  ic.codice_postale AS cap,
+                  ic.indirizzo_generale,
+                  ic.tipo_toponimo,
+                  ic.nome_strada,
+                  iu.tx_id,
+                  iu.data_insert,
+                  iu.user_insert,
+                  iu.data_update,
+                  iu.user_update,
+                  sp.codice_interno AS stato_pdp_codice_interno,
+                  u.codice_interno AS utility_codice_interno
+                 FROM anagrafiche.istanze_utilities iu
+                   JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   LEFT JOIN anagrafiche.pdp p ON p.id = iu.pdp_id
+                   LEFT JOIN config.stati_pdp sp ON sp.id = p.stato_pdp_id
+                   LEFT JOIN config.utilities u ON u.id = p.utility_id
+                   LEFT JOIN anagrafiche.vw_indirizzi_dettaglio idv ON idv.indirizzo_dettaglio_id = iu.indirizzo_dettaglio_id
+                   LEFT JOIN script.vw_indirizzo_completo ic ON ic.id_stradario = idv.stradario_id;
+
+              GRANT SELECT ON anagrafiche.vw_istanze_utilities_dettaglio TO zeroerp_app;
+
+              -- anagrafiche.vw_pdp
+              CREATE VIEW anagrafiche.vw_pdp WITH (security_invoker = on) AS
+               SELECT p.id AS pdp_id,
+                  p.pdp AS pdp_codice,
+                  p.utility_id,
+                  u.codice_interno AS utility_codice_interno,
+                  u.codice AS utility_codice,
+                  u.descrizione AS utility_descrizione,
+                  p.stato_pdp_id,
+                  sp.codice_interno AS stato_pdp_codice_interno,
+                  sp.codice AS stato_pdp_codice,
+                  sp.descrizione AS stato_pdp_descrizione,
+                  p.cliente_id,
+                  v.indirizzo_dettaglio_id,
+                  v.stradario_id,
+                  v.comune_id,
+                  v.descrizione_comune,
+                  v.cap,
+                  v.provincia,
+                  v.indirizzo_normalizzato,
+                  v.via_norm,
+                  v.civico,
+                  v.estensione_civico,
+                  v.palazzina,
+                  v.scala,
+                  v.piano,
+                  v.interno,
+                  v.altro,
+                  v.civic_geoloc,
+                  v.street_geoloc,
+                  v.attivo AS indirizzo_attivo,
+                  v.storicizza AS indirizzo_storicizza,
+                  v.tx_id AS indirizzo_tx_id,
+                  v.data_insert AS indirizzo_data_insert,
+                  v.user_insert AS indirizzo_user_insert,
+                  v.data_update AS indirizzo_data_update,
+                  v.user_update AS indirizzo_user_update
+                 FROM anagrafiche.pdp p
+                   JOIN anagrafiche.vw_indirizzi_dettaglio v ON v.indirizzo_dettaglio_id = p.indirizzo_dettaglio_id
+                   JOIN config.utilities u ON u.id = p.utility_id
+                   JOIN config.stati_pdp sp ON sp.id = p.stato_pdp_id
+                   LEFT JOIN anagrafiche.clienti c ON c.id = p.cliente_id;
+
+              GRANT SELECT ON anagrafiche.vw_pdp TO zeroerp_app;
+
+              -- anagrafiche.vw_indirizzi_resolved_all
+              CREATE VIEW anagrafiche.vw_indirizzi_resolved_all AS
+               SELECT scope,
+                  source,
+                  indirizzo_id,
+                  soggetto_id,
+                  soggetto_ruolo_id,
+                  istanza_utility_id,
+                  tipo_indirizzo_id,
+                  tipo_indirizzo_codice,
+                  tipo_indirizzo_descrizione,
+                  is_normalizzato,
+                  indirizzo_dettaglio_id,
+                  indirizzo_display,
+                  indirizzo_libero,
+                  administrative_area,
+                  locality,
+                  sublocality,
+                  postal_box,
+                  comune_id,
+                  comune_descrizione,
+                  cap,
+                  provincia,
+                  provincia_id,
+                  provincia_sigla,
+                  provincia_descrizione,
+                  regione_id,
+                  regione_descrizione,
+                  stato_id,
+                  stato_descrizione,
+                  stato_iso2,
+                  codice_postale_id,
+                  cap_codice,
+                  stradario_id,
+                  via_norm,
+                  civico,
+                  estensione_civico,
+                  palazzina,
+                  scala,
+                  piano,
+                  interno,
+                  altro,
+                  geoloc,
+                  storicizza,
+                  tx_id,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update
+                 FROM anagrafiche.vw_indirizzi_resolved_base;
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_resolved_all TO zeroerp_app;
+
+              -- anagrafiche.vw_indirizzi_resolved_ruolo
+              CREATE VIEW anagrafiche.vw_indirizzi_resolved_ruolo AS
+               SELECT scope,
+                  source,
+                  indirizzo_id,
+                  soggetto_id,
+                  soggetto_ruolo_id,
+                  istanza_utility_id,
+                  tipo_indirizzo_id,
+                  tipo_indirizzo_codice,
+                  tipo_indirizzo_descrizione,
+                  is_normalizzato,
+                  indirizzo_dettaglio_id,
+                  indirizzo_display,
+                  indirizzo_libero,
+                  administrative_area,
+                  locality,
+                  sublocality,
+                  postal_box,
+                  comune_id,
+                  comune_descrizione,
+                  cap,
+                  provincia,
+                  provincia_id,
+                  provincia_sigla,
+                  provincia_descrizione,
+                  regione_id,
+                  regione_descrizione,
+                  stato_id,
+                  stato_descrizione,
+                  stato_iso2,
+                  codice_postale_id,
+                  cap_codice,
+                  stradario_id,
+                  via_norm,
+                  civico,
+                  estensione_civico,
+                  palazzina,
+                  scala,
+                  piano,
+                  interno,
+                  altro,
+                  geoloc,
+                  storicizza,
+                  tx_id,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update
+                 FROM anagrafiche.vw_indirizzi_resolved_base
+                WHERE scope = 'RUOLO'::text;
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_resolved_ruolo TO zeroerp_app;
+
+              -- anagrafiche.vw_indirizzi_resolved_soggetto
+              CREATE VIEW anagrafiche.vw_indirizzi_resolved_soggetto AS
+               SELECT scope,
+                  source,
+                  indirizzo_id,
+                  soggetto_id,
+                  soggetto_ruolo_id,
+                  istanza_utility_id,
+                  tipo_indirizzo_id,
+                  tipo_indirizzo_codice,
+                  tipo_indirizzo_descrizione,
+                  is_normalizzato,
+                  indirizzo_dettaglio_id,
+                  indirizzo_display,
+                  indirizzo_libero,
+                  administrative_area,
+                  locality,
+                  sublocality,
+                  postal_box,
+                  comune_id,
+                  comune_descrizione,
+                  cap,
+                  provincia,
+                  provincia_id,
+                  provincia_sigla,
+                  provincia_descrizione,
+                  regione_id,
+                  regione_descrizione,
+                  stato_id,
+                  stato_descrizione,
+                  stato_iso2,
+                  codice_postale_id,
+                  cap_codice,
+                  stradario_id,
+                  via_norm,
+                  civico,
+                  estensione_civico,
+                  palazzina,
+                  scala,
+                  piano,
+                  interno,
+                  altro,
+                  geoloc,
+                  storicizza,
+                  tx_id,
+                  data_insert,
+                  user_insert,
+                  data_update,
+                  user_update
+                 FROM anagrafiche.vw_indirizzi_resolved_base
+                WHERE scope = 'SOGGETTO'::text;
+
+              GRANT SELECT ON anagrafiche.vw_indirizzi_resolved_soggetto TO zeroerp_app;
+
+              -- anagrafiche.vw_istanze_dati_precontrattuali_dettaglio
+              CREATE VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio WITH (security_invoker = on) AS
+               SELECT idp.id AS istanza_dati_precontrattuali_id,
+                  idp.istanza_utility_id,
+                  idp.utility_id AS istanza_dati_utility_id,
+                  idp.classe_utenza_id,
+                  cu.descrizione AS classe_utenza_descrizione,
+                  cu.codice AS classe_utenza_codice,
+                  tu.id AS tipo_utenza_id,
+                  tu.descrizione AS tipo_utenza_descrizione,
+                  tu.codice AS tipo_utenza_codice,
+                  idp.param_1_num,
+                  idp.param_2_txt,
+                  idp.meta,
+                  idp.tx_id,
+                  idp.storicizza,
+                  idp.data_insert,
+                  idp.user_insert,
+                  idp.data_update,
+                  idp.user_update,
+                  iud.istanza_id,
+                  iud.istanza_codice,
+                  iud.proprietario_inquilino,
+                  iud.fittizia,
+                  iud.soggetto_id,
+                  iud.ragione_sociale_completa,
+                  iud.id_fiscale_univoco_cf_piva,
+                  iud.pdp_id,
+                  iud.pdp_codice,
+                  iud.stato_pdp_id,
+                  iud.stato_pdp_codice,
+                  iud.stato_pdp_descrizione,
+                  iud.utility_id,
+                  iud.utility_codice,
+                  iud.utility_descrizione,
+                  iud.parent_istanza_id,
+                  iud.indirizzo_dettaglio_id,
+                  iud.indirizzo_normalizzato,
+                  iud.via_norm,
+                  iud.civico,
+                  iud.estensione_civico,
+                  iud.palazzina,
+                  iud.scala,
+                  iud.piano,
+                  iud.interno,
+                  iud.altro,
+                  iud.civic_geoloc,
+                  iud.street_geoloc,
+                  iud.indirizzo_comune_id,
+                  iud.comune_descrizione,
+                  iud.provincia_sigla,
+                  iud.cap,
+                  iud.indirizzo_generale,
+                  iud.tipo_toponimo,
+                  iud.nome_strada,
+                  iud.tx_id AS istanza_tx_id,
+                  iud.data_insert AS istanza_data_insert,
+                  iud.user_insert AS istanza_user_insert,
+                  iud.data_update AS istanza_data_update,
+                  iud.user_update AS istanza_user_update,
+                  iud.stato_pdp_codice_interno,
+                  iud.utility_codice_interno
+                 FROM anagrafiche.istanze_dati_precontrattuali idp
+                   JOIN anagrafiche.vw_istanze_utilities_dettaglio iud ON iud.istanza_id = idp.istanza_utility_id
+                   LEFT JOIN config.classi_utenze cu ON cu.id = idp.classe_utenza_id
+                   LEFT JOIN config.tipi_utenze tu ON tu.id = cu.tipo_utenza_id;
+
+              GRANT SELECT ON anagrafiche.vw_istanze_dati_precontrattuali_dettaglio TO zeroerp_app;

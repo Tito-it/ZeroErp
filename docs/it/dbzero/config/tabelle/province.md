@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| descrizione | character(80) | NO |  |
-| sigla | character(10) | NO |  |
+| descrizione | character varying(80) | NO |  |
+| sigla | character varying(10) | NO |  |
 | regione_id | integer | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
@@ -21,6 +21,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_province_descrizione_non_vuota |  |
+| CHECK | chk_province_sigla_forma |  |
 | FOREIGN KEY | fk_province_regione_id | regione_id |
 | PRIMARY KEY | pk_province | id |
 | UNIQUE | uq_province_sigla | sigla |
@@ -37,6 +39,8 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_province_a10_guard_sigla_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_province_guard_sigla()` |
+| trg_province_a10_guard_sigla_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION config.trgfn_province_guard_sigla()` |
 | trg_province_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_province_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

@@ -941,6 +941,8 @@ pezzi: chi scrive senza passare dai service cambia, per esempio, la valuta di un
 
 Dettaglio e decisioni nel brief
 [brief-db-testata-dopo-emissione.md](brief-db-testata-dopo-emissione.md). 📝 Aperto, decisioni chiuse il 2026-10-10.
+Dal 2026-10-10 il brief comprende, come fase 1 (§5-bis), la capability della data di consegna confermata
+(assorbito `brief-db-ordine-data-consegna-confermata-capability`): il lettore del montaggio nasce lì.
 
 ### 🟡 D23 — Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicono il vero
 
@@ -1182,7 +1184,8 @@ D6 e il registro dei rossi in CI.
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
 * [ ] **D23** — la testata dopo l'emissione, colonna per colonna: brief
-      `brief-db-testata-dopo-emissione` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+      `brief-db-testata-dopo-emissione` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere;
+      fase 1 = la capability della data di consegna confermata, brief assorbito lo stesso giorno).
 * [x] **D22** — il guard emittente <-> BA scritto sette volte: brief
       `work-done/brief-db-guard-emittente-ba-unico` — chiuso e archiviato il 2026-10-10 (DB `20261010-17…-19`, BE §9).
 * [ ] **D24** — la vista del presidio C2 (`dbops.vw_punti_canale_campo`) non vede i BB trigger col

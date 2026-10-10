@@ -33,6 +33,7 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_regioni_a10_guard_sigla_province_upd | AFTER | UPDATE | `EXECUTE FUNCTION config.trgfn_regioni_guard_sigla_province()` |
 | trg_regioni_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_regioni_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_regioni_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION config.trgfn_regioni_normalize()` |

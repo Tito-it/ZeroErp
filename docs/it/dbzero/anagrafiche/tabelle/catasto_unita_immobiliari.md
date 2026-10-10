@@ -11,10 +11,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| sezione_catastale | character(5) | YES |  |
-| foglio_catastale | character(5) | YES |  |
-| particella | character(5) | YES |  |
-| subalterno | character(5) | YES |  |
+| sezione_catastale | character varying(5) | YES |  |
+| foglio_catastale | character varying(5) | YES |  |
+| particella | character varying(5) | YES |  |
+| subalterno | character varying(5) | YES |  |
 | categoria_catastale | character varying(10) | YES |  |
 | classe_catastale | character varying(10) | YES |  |
 | rendita_catastale | numeric(12,2) | YES |  |
@@ -34,7 +34,11 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_catasto_unita_immobiliari_foglio_catastale_non_vuoto |  |
+| CHECK | chk_catasto_unita_immobiliari_particella_non_vuota |  |
 | CHECK | chk_catasto_unita_immobiliari_rendita_catastale_finito |  |
+| CHECK | chk_catasto_unita_immobiliari_sezione_catastale_non_vuota |  |
+| CHECK | chk_catasto_unita_immobiliari_subalterno_non_vuoto |  |
 | PRIMARY KEY | pk_catasto_unita_immobiliari | id |
 
 ## 📑 Indici

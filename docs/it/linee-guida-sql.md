@@ -785,6 +785,34 @@ ADD COLUMN importo numeric(18,6)
 
 Brief: `brief-db-valore-numerico-non-finito-nei-documenti` (§5.2).
 
+### 7e. ⛔ `character(n)` non si usa
+
+`character(n)` è un testo a lunghezza **fissa**: un valore più corto viene
+riempito di spazi fino a `n`, e chi lo legge riceve gli spazi. `PZ` in un
+`character(10)` si legge `'PZ        '`, e il drawer dei comuni mostrava
+«Potenza (PZ        )». Ogni lettore nuovo deve ricordarsi di toglierli, e
+chi se ne dimentica li mostra all'utente o li scrive in un documento.
+
+| Il valore | Il tipo |
+| --- | --- |
+| testo di lunghezza variabile (descrizioni, codici liberi) | `varchar(n)` o `text` |
+| codice a lunghezza fissa (una sigla, un codice ISO) | `varchar(n)` **con un `CHECK` sulla forma**: è il vincolo, non il tipo, a dire quanti caratteri |
+| firma o `RETURNS` di una funzione | mai `character`: senza lunghezza vale `character(1)`, e `RETURN QUERY` rifiuta un `varchar` dove la firma dice `bpchar` (a runtime, non al `CREATE`) |
+
+* Un `%TYPE` in firma su una colonna `character(n)` porta `bpchar` nella firma.
+  Quando la colonna si converte, le funzioni che la ancorano **vanno
+  ricreate**: il `%TYPE` è risolto al `CREATE` e non si riaggancia.
+* La conversione si fa sul posto: `ALTER COLUMN x TYPE varchar(n) USING
+  btrim(x)` (stessa `n`, nessun valore si tronca), dopo aver droppato le viste
+  che leggono la colonna; le ricrea un changeSet `20_code` nella stessa corsa.
+* Lo presidia `db/pgtap/dbops/test-character-n-v1.sql`: una colonna o una
+  funzione `bpchar` nuova lo rende rosso. Le colonne a lunghezza **esatta**
+  ereditate (ISO 3166, ISO 4217, flag a un carattere) stanno in un **registro
+  dichiarato** che può solo calare: lì il padding non nasce, ma la regola
+  della firma vale lo stesso.
+
+Brief: `brief-db-character-n-spazi-di-riempimento`.
+
 ---
 
 ### 8. Indici

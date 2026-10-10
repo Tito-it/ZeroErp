@@ -29,7 +29,7 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
   Tenere traccia degli stati societari tramite i campi enumerati `socio_unico` (se è “Socio Unico” o “Socio Multiplo”) e `liquidazione` (se la società è in liquidazione o meno).
 
 - **Dati di fatturazione elettronica**  
-  Conservare il codice SDI (`codice_sdi`) e la PEC dedicata (`pec_fatturazione`) utilizzati per l’invio di fatture elettroniche (B2B/B2C), oltre al “codice destinatario FE” (`destinatario_fe`).
+  Dire **come** arriva la fattura elettronica al cliente (`destinatario_fe`, il canale: PEC o codice SDI) e **dove**: la PEC dedicata (`pec_fatturazione`) o il codice destinatario SDI (`codice_sdi`).
 
 ---
 
@@ -56,9 +56,8 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
 - **Primary Key**  
   - `pk_dati_societari` su `id_dati_societari`, gestito da sequenza automatica.
 
-- **Unicità dei campi di fatturazione**  
-  - `uq_ds_codice_sdi` su `codice_sdi` (ogni codice SDI può appartenere a una sola azienda).  
-  - `uq_ds_pec_fatt` su `pec_fatturazione` (ogni PEC di fatturazione è univoca).
+- **Codice SDI e PEC non sono unici**  
+  Lo stesso codice SDI (quello di un intermediario, per esempio il software di fatturazione) e la stessa PEC (quella di un commercialista) servono più clienti. Fino al 2026-10-10 erano unici, e un secondo cliente dello stesso intermediario veniva rifiutato.
 
 - **Unicità iscrizione REA**  
   - `uq_ds_prov_cea` su (`id_prov_iscri_rea`, `iscrizione_rea`), garantendo che non esistano due aziende con la stessa iscrizione REA nella stessa provincia.
@@ -97,13 +96,13 @@ La tabella **`anagrafiche.dati_societari`** contiene i dati societari estesi per
   - `LS` = In liquidazione  
 
 - **`destinatario_fe`**  
-  Testo fino a 10 caratteri che contiene il “codice destinatario” per la fatturazione elettronica. Campo obbligatorio (ad uso interno).
+  Il **canale** della fattura elettronica: `P` = via PEC, `C` = via codice SDI, vuoto = nessun canale indicato (un cliente estero, o uno di cui non si sa ancora). Il canale scelto pretende il suo recapito: con `P` serve la PEC, con `C` il codice SDI. Se manca, il salvataggio si ferma con un messaggio che indica il campo da compilare.
 
 - **`pec_fatturazione`**  
-  PEC (Testo fino a 100 caratteri) dedicata alla fatturazione elettronica. Deve essere univoca o valorizzata a `NULL` se non disponibile.
+  PEC (testo fino a 100 caratteri) dedicata alla fatturazione elettronica. Obbligatoria quando il canale è `P`.
 
 - **`codice_sdi`**  
-  Testo fino a 10 caratteri che rappresenta il “codice SDI” per la fatturazione elettronica. Deve essere univoco o valorizzato a `NULL`.
+  Il codice destinatario che il Sistema di Interscambio assegna: **7 caratteri** (lettere maiuscole e cifre) per un'azienda o un professionista, **6** per una pubblica amministrazione. Obbligatorio quando il canale è `C`.
 
 - **`data_costituzione`**  
   Data di costituzione dell’azienda. Campo opzionale: può essere `NULL` se non disponibile.

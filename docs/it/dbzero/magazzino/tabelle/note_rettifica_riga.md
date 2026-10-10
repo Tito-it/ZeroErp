@@ -14,7 +14,7 @@
 | testo | text | YES |  |
 | testo_md | text | YES |  |
 | stile | character varying(16) | NO | 'NORMALE'::character varying |
-| lingua | character(5) | YES |  |
+| lingua | character varying(5) | YES |  |
 | visibile | boolean | NO | true |
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -27,6 +27,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_note_anchor_tipo |  |
+| CHECK | chk_note_lingua_non_vuota |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_rettifica_riga_anchor |  |
 | CHECK | chk_note_seq_pos |  |

@@ -295,9 +295,6 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   lo spento in attesa si copia senza marca nella revisione. DB `20261008-80` … `-94` e `20261009-03`, pgTAP verdi
   anche su `zeroerp_ci`. Lato BE (§5): test e smoke già in forma bozza → righe → transizione; il verbo della data
   passa al brief sotto; i debiti stanno in § «Aperto — Media priorità».
-- 📝 **Ordine: la capability della data di consegna confermata** (`work-in-progress/brief-db-ordine-data-consegna-confermata-capability.md`,
-  2026-10-09): prima la check e la capability a DB (una sede sola per gli stati, la stessa del lock), poi il verbo BE
-  e il dialog FE. Il BE attende. Una domanda a Tid sulla stampa (D-1).
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
@@ -329,10 +326,19 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito
   e' **D24** del registro DB (`migliorie-generali-da-test-valutazione.md`): la vista del presidio C2 non vede i BB
   trigger col codice in `TG_ARGV`, e il BE tiene un'esenzione su `E_DOC_EMITTENTE_BA_INCOERENTE` finche' non la vede.
-- 📝 **La testata di un documento dopo l'emissione** (`work-in-progress/brief-db-testata-dopo-emissione.md`, D23,
-  2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
+- 📝 **Il documento dopo la bozza: che cosa si cambia ancora** (`work-in-progress/brief-db-testata-dopo-emissione.md`,
+  D23, 2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
   Colonne divise in famiglie (identità, stampato, arriva dopo, note, condizioni commerciali). Decisioni chiuse
-  il 2026-10-10 (§6): decide il DB, il BE toglie i suoi «solo in DRAFT»; codice da scrivere.
+  il 2026-10-10: decide il DB, il BE toglie i suoi «solo in DRAFT»; documento chiuso = tutto fermo (D-8).
+  **Fase 1 (§5-bis), da fare per prima e consegnabile da sola:** il lettore del montaggio e la capability della
+  data di consegna confermata (assorbito il brief `brief-db-ordine-data-consegna-confermata-capability`); il BE
+  la attende per il suo verbo. Poi la fase 2, la testata. Codice da scrivere.
+- 📝 **Un testo non si riempie di spazi** (`work-in-progress/brief-db-character-n-spazi-di-riempimento.md`,
+  2026-10-10, da segnalazione BE: `Potenza (PZ        )` nel drawer comuni): colonne `character(n)` con dominio a
+  lunghezza variabile (sigla e descrizione provincia, `destinatario_fe`, …), tamponate a valle in tre punti.
+  Lato DB chiuso il 2026-10-10 (`20261010-26…-40`, applicati e verdi), compreso D-6: `destinatario_fe` è il
+  canale FE (P/C) e pretende il suo recapito. Restano le richieste a BE/FE (§6). Regola nuova: §7e di
+  `linee-guida-sql.md`, presidio `test-character-n-v1`.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
@@ -614,7 +620,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **Persistenza esito SDI**: `vendite.fatture_sdi` e `vendite.fatture_sdi_eventi` da popolare
 - **La promessa di consegna dopo la conferma** (BE, decisione di Tid del 14-09): dal
   `20261008-90` il DB lascia aperta la sola `data_consegna_confermata` in `CONFERMATO`/`PARZIALMENTE_EVASO`;
-  il verbo che la cambia è in `work-in-progress/brief-db-ordine-data-consegna-confermata-capability.md`
+  il verbo che la cambia è nella fase 1 (§5-bis) di `work-in-progress/brief-db-testata-dopo-emissione.md`
   (prima la capability a DB, decisione di Tid del 2026-10-09)
 - **Pratica di approvazione prezzo su revisione superata** (BE,
   `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal

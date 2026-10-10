@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_ruolo_id | bigint | NO |  |
-| descrizione | character(50) | NO |  |
-| cd_prod_software | character(20) | NO |  |
+| descrizione | character varying(50) | NO |  |
+| cd_prod_software | character varying(20) | NO |  |
 | valuta_id | integer | NO |  |
 | user_insert | text | NO | CURRENT_USER |
 | user_update | text | NO | CURRENT_USER |
@@ -21,6 +21,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_gestori_cd_prod_software_non_vuoto |  |
+| CHECK | chk_gestori_descrizione_non_vuota |  |
 | FOREIGN KEY | fk_soggetti_ruoli_anagrafiche | soggetto_ruolo_id |
 | FOREIGN KEY | fk_valute_config | valuta_id |
 | PRIMARY KEY | pk_gestori | id |
