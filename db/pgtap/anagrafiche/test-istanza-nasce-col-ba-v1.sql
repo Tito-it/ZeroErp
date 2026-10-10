@@ -39,9 +39,10 @@
 -- ⚠️ Non provato qui: lo spostamento del gestore globale
 --   (fn_guard_istanza_ba_gestore_globale). Con un operatore in sessione un BA
 --   senza collegamento risolve all'emittente di chi agisce (livello 2 di
---   script.fn_get_ba_emittente_sr_id), quindi il caso «uno collegato, uno no»
---   non si costruisce senza smontare il contesto del mondo. Dichiarato nel
---   brief (§6.8).
+--   script.fn_get_ba_emittente_sr_id): il caso «uno collegato, uno no» si
+--   costruisce nel contesto di un super admin senza azienda, e sta in
+--   anagrafiche/test-istanza-ba-gestore-globale-v1.sql (dal 2026-10-10,
+--   brief-db-istanza-nasce-col-ba-residui D-4).
 -- ------------------------------------------------------------
 
 BEGIN;

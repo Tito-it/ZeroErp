@@ -11,12 +11,12 @@
 --   - un'istanza ha tanti clienti quanti billing account, e un BA ne ha uno;
 --   - la pratica porta il BA del cliente di cui parla: nasce da un preventivo
 --     col BA del preventivo; il BA e' dell'istanza e del ruolo della pratica;
---   - «il BA dell'istanza» ha una risposta solo se il BA e' uno;
---   - lo stato del cliente per istanza non esiste piu' (vista e funzione
---     ritirate);
+--   - «il BA dell'istanza» non e' una domanda: il resolver per istanza e'
+--     ritirato (rev 2026-10-10), come lo stato del cliente per istanza (vista
+--     e funzione ritirate);
 --   - un gestore per ruolo.
 --
--- Elenco test (plan 13):
+-- Elenco test (plan 12):
 --    1) struttura: uq_clienti_billing_account c'e', uq_clienti_istanza_utility no
 --    2) due clienti sulla stessa istanza, su due BA -> vive
 --    3) un secondo cliente sullo stesso BA -> 23505 uq_clienti_billing_account
@@ -24,12 +24,14 @@
 --    5) pratica col BA ma senza ruolo -> E_PRATICHE_BA_NON_COERENTE
 --    6) pratica col BA ma senza istanza -> 23514 chk_pratiche_ba_con_istanza
 --    7) pratica col BA di un'altra istanza -> 23503 fk_pratiche_billing_account_istanza
---    8) fn_get_billing_account_by_istanza: istanza con due BA -> NULL
---    9) fn_get_billing_account_by_istanza: istanza con un BA -> quel BA
---   10) la vista view_clienti_istanza_states non c'e' piu'
---   11) la funzione fn_get_stato_cliente_by_istanza non c'e' piu'
---   12) struttura: uq_gestori_soggetto_ruolo c'e'
---   13) struttura: fn_resolve_termini_pagamento aggancia il cliente per BA
+--    8) la funzione fn_get_billing_account_by_istanza non c'e' piu'
+--       (rev 2026-10-10, brief-db-istanza-nasce-col-ba-residui R-4: fino a
+--       quel giorno i test 8-9 provavano «istanza con due BA -> NULL» e
+--       «istanza con un BA -> quel BA»)
+--    9) la vista view_clienti_istanza_states non c'e' piu'
+--   10) la funzione fn_get_stato_cliente_by_istanza non c'e' piu'
+--   11) struttura: uq_gestori_soggetto_ruolo c'e'
+--   12) struttura: fn_resolve_termini_pagamento aggancia il cliente per BA
 --       (il livello 3 lo provano i suoi pgTAP: qui si presidia la sola forma
 --       del join, che con piu' clienti per istanza sbaglierebbe in silenzio)
 --
@@ -51,7 +53,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 --   (mondo con emittente e operatore propri): preventivo, BA e pratica devono
 --   parlare dello STESSO emittente, quello del mondo.
 
-SELECT plan(13);
+SELECT plan(12);
 
 -- Il codice di dominio di un errore (canale CONSTRAINT su P0001), o SQLSTATE
 -- e nome del vincolo per gli errori di vincolo. NULL se non solleva.
@@ -255,49 +257,43 @@ SELECT CASE WHEN (SELECT pratica_id FROM t_v) IS NULL
 END;
 
 -- ============================================================
--- 8-9) «Il BA dell'istanza» solo se e' uno
+-- 8) «Il BA dell'istanza» non e' una domanda: il resolver e' ritirato
+--    ⚠️ rev 2026-10-10 (brief-db-istanza-nasce-col-ba-residui, R-4): con piu'
+--    utility per istanza il BA dell'istanza ha una risposta solo se e' uno,
+--    e il dettaglio pratica legge pratiche.billing_account_id (D-9).
 -- ============================================================
-SELECT is(
-    script.fn_get_billing_account_by_istanza((SELECT istanza_utility_id FROM t_w)),
-    NULL::bigint,
-    '8. fn_get_billing_account_by_istanza: istanza con due BA -> NULL (non sceglie)'
-);
-
-SELECT is(
-    script.fn_get_billing_account_by_istanza((SELECT istanza_b FROM t_v)),
-    (SELECT ba_b FROM t_v),
-    '9. fn_get_billing_account_by_istanza: istanza con un BA -> quel BA'
-);
+SELECT hasnt_function('script', 'fn_get_billing_account_by_istanza',
+    '8. script.fn_get_billing_account_by_istanza ritirata');
 
 -- ============================================================
--- 10-11) Lo stato del cliente per istanza e' ritirato (D-8)
+-- 9-10) Lo stato del cliente per istanza e' ritirato (D-8)
 -- ============================================================
 SELECT hasnt_view('script', 'view_clienti_istanza_states',
-    '10. script.view_clienti_istanza_states ritirata');
+    '9. script.view_clienti_istanza_states ritirata');
 
 SELECT hasnt_function('script', 'fn_get_stato_cliente_by_istanza',
-    '11. script.fn_get_stato_cliente_by_istanza ritirata');
+    '10. script.fn_get_stato_cliente_by_istanza ritirata');
 
 -- ============================================================
--- 12) Un gestore per ruolo
+-- 11) Un gestore per ruolo
 -- ============================================================
 SELECT ok(
     EXISTS (SELECT 1 FROM pg_constraint c
              WHERE c.conrelid = 'anagrafiche.gestori'::regclass
                AND c.conname = 'uq_gestori_soggetto_ruolo'
                AND c.contype = 'u'),
-    '12. gestori: un gestore per ruolo (uq_gestori_soggetto_ruolo)'
+    '11. gestori: un gestore per ruolo (uq_gestori_soggetto_ruolo)'
 );
 
 -- ============================================================
--- 13) I termini di pagamento: il cliente del BA, non dell'istanza
+-- 12) I termini di pagamento: il cliente del BA, non dell'istanza
 -- ============================================================
 SELECT ok(
     (SELECT p.prosrc ~ 'cl\.billing_account_id\s*=\s*ba\.id'
             AND p.prosrc !~ 'cl\.istanza_utility_id\s*=\s*ba\.istanza_utility_id'
        FROM pg_proc p
       WHERE p.oid = 'vendite.fn_resolve_termini_pagamento(bigint)'::regprocedure),
-    '13. fn_resolve_termini_pagamento aggancia il cliente per BA, non per istanza'
+    '12. fn_resolve_termini_pagamento aggancia il cliente per BA, non per istanza'
 );
 
 SELECT * FROM finish();

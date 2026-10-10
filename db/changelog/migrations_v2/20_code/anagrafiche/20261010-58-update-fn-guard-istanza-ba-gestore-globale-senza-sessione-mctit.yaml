@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.fn_guard_istanza_ba_gestore_globale: la coppia mista si cerca
+# per l'INSTALLAZIONE, non per chi agisce.
+#   Brief: brief-db-istanza-nasce-col-ba-residui (D-5, strada a, decisione di
+#   Tid del 2026-10-10)
+#
+# -- IL DIFETTO ---------------------------------------------------------
+#   Spostare l'azienda predefinita sposta tutti i BA senza collegamento. Il
+#   guard cercava le istanze con un BA collegato e uno no, e per ognuno dei
+#   BA scollegati delegava a fn_guard_istanza_ba_emittente, che risolve con
+#   script.fn_get_ba_emittente_sr_id: in sessione quel risolutore risponde
+#   «l'azienda di chi agisce» prima della predefinita. Se a spostare la
+#   predefinita era un utente con un'azienda, per il guard il BA scollegato
+#   restava a quell'azienda, e lo spostamento passava. A sessione finita (un
+#   job, un altro utente) il BA era della nuova predefinita e l'istanza su due
+#   aziende. Provato il 2026-10-10 su dbdev (transazione ritirata): con
+#   l'operatore del mondo in sessione lo spostamento passava.
+#
+# -- LA FORMA -----------------------------------------------------------
+#   La domanda del movimento e' sul modello: «dopo lo spostamento, di chi e'
+#   ogni BA per l'installazione?». La risponde il BB nuovo
+#   script.fn_get_ba_emittente_sr_id_installazione (20261010-57):
+#   collegamento, altrimenti la predefinita (gia' quella nuova: il trigger e'
+#   AFTER). Il guard cerca la prima coppia (BA scollegato, fratello di
+#   istanza) le cui due risposte sono diverse; IS DISTINCT FROM tratta un NULL
+#   come diverso (fail-closed, come fn_check_ba_coppia_emittente_omogenea).
+#   Restano esclusi, come prima, le coppie di due BA collegati (questo
+#   movimento non li sposta) e quelle di due scollegati (si spostano insieme:
+#   per il BB hanno la stessa risposta).
+#   Il rifiuto e' lo stesso di fn_guard_istanza_ba_emittente: stesso codice
+#   E_ISTANZA_EMITTENTI_DIVERSI, stessi valori nella frase (codice del BA,
+#   codice del fratello, codice dell'istanza) e stesse chiavi di contesto; gli
+#   emittenti del contesto sono quelli per l'installazione.
+#   ⚠️ Non si delega piu' al guard per BA: quello resta com'e' per i
+#   movimenti 1-3 (collegare, cambiare, togliere un collegamento), dove la
+#   sessione e' quella giusta da guardare.
+#
+# Corpo nuovo; firma, SECURITY DEFINER e search_path invariati (20261008-95).
+# Privilegi: CREATE OR REPLACE li conserva.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261010-58-update-fn-guard-istanza-ba-gestore-globale-senza-sessione-mctit.yaml
+
+  - changeSet:
+      id: 20261010-58-update-fn-guard-istanza-ba-gestore-globale-senza-sessione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_guard_istanza_ba_gestore_globale: la coppia mista si cerca con l'azienda dei BA per
+        l'installazione (script.fn_get_ba_emittente_sr_id_installazione), non per chi agisce. Brief:
+        brief-db-istanza-nasce-col-ba-residui (D-5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
+               RETURNS void
+               LANGUAGE plpgsql
+               SECURITY DEFINER
+               SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  r record;
+              BEGIN
+                  -- ⚠️ RAGGIO N: cambiare il gestore globale sposta in blocco
+                  --   l'emittente di TUTTI i BA senza collegamento specifico.
+                  --   La condizione che conta e' la coppia MISTA (uno collegato,
+                  --   uno no) nella stessa istanza.
+                  -- ⭐ rev 2026-10-10 (D-5): l'azienda di ogni BA si chiede per
+                  --   l'INSTALLAZIONE (script.fn_get_ba_emittente_sr_id_installazione),
+                  --   non per chi agisce. Con il risolutore di sessione un utente
+                  --   con un'azienda vedeva il BA scollegato restare alla SUA
+                  --   azienda, e lo spostamento passava.
+                  SELECT u.id                 AS ba_id,
+                         u.codice             AS ba_codice,
+                         f.id                 AS altro_id,
+                         f.codice             AS altro_codice,
+                         u.istanza_utility_id AS istanza_id,
+                         iu.codice            AS istanza_codice,
+                         script.fn_get_ba_emittente_sr_id_installazione(u.id) AS ef_ba,
+                         script.fn_get_ba_emittente_sr_id_installazione(f.id) AS ef_altro
+                    INTO r
+                    FROM anagrafiche.billing_account u
+                    JOIN anagrafiche.billing_account f
+                      ON f.istanza_utility_id = u.istanza_utility_id
+                     AND f.id <> u.id
+                    JOIN anagrafiche.istanze_utilities iu
+                      ON iu.id = u.istanza_utility_id
+                   WHERE NOT EXISTS (
+                             SELECT 1
+                               FROM anagrafiche.emittenti_fiscali_billing_account e
+                              WHERE e.billing_account_id = u.id)
+                     AND script.fn_get_ba_emittente_sr_id_installazione(u.id)
+                         IS DISTINCT FROM script.fn_get_ba_emittente_sr_id_installazione(f.id)
+                   ORDER BY u.id, f.id
+                   LIMIT 1;
+
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  -- Stesso rifiuto di fn_guard_istanza_ba_emittente: codice,
+                  -- valori della frase e chiavi di contesto.
+                  PERFORM script.fn_log_and_raise_error(
+                      'anagrafiche', 'fn_guard_istanza_ba_gestore_globale',
+                      'E_ISTANZA_EMITTENTI_DIVERSI',
+                      jsonb_build_object(
+                          'billing_account_id',       r.ba_id,
+                          'altro_billing_account_id', r.altro_id,
+                          'istanza_utility_id',       r.istanza_id,
+                          'emittente_sr',             r.ef_ba,
+                          'emittente_sr_altro',       r.ef_altro
+                      ),
+                      NULL::uuid,
+                      r.ba_codice::text,
+                      r.altro_codice::text,
+                      r.istanza_codice::text
+                  );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
+              IS 'Guard fail-fast per lo spostamento del gestore globale (is_default), che cambia in blocco l''emittente di tutti i BA senza collegamento specifico: verifica che nessuna istanza finisca su due emittenti. Cerca la prima coppia (BA non collegato, fratello di istanza) le cui aziende PER L''INSTALLAZIONE (script.fn_get_ba_emittente_sr_id_installazione: collegamento, altrimenti la predefinita) sono diverse, e solleva E_ISTANZA_EMITTENTI_DIVERSI con gli stessi valori di fn_guard_istanza_ba_emittente. Due collegati non si spostano, due non collegati si spostano insieme: conta la coppia MISTA. rev 2026-10-10 (20261010-58, D-5): fino a quel giorno delegava al guard per BA, che risolve PER CHI AGISCE; spostata da un utente con un''azienda, la predefinita passava sopra una coppia mista. Gemello di fn_guard_albero_ba_gestore_globale; lo stesso movimento ha anche il cancello fn_guard_ba_gestore_globale_storia, e i due si sommano. SECURITY DEFINER: legge billing_account, che ha la RLS. Brief: brief-db-istanza-nasce-col-ba (R-7), brief-db-istanza-nasce-col-ba-residui (D-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Manovra di emergenza: il corpo precedente e' 20261008-60 (search_path da 20261008-95) e si riapplica.
+              SELECT 1;

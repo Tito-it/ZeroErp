@@ -1,0 +1,55 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: anagrafiche.gestori, vincolo uq_gestori_singleton
+#   ALTER TABLE anagrafiche.gestori DROP CONSTRAINT uq_gestori_singleton
+#   Brief: brief-db-istanza-nasce-col-ba-residui (D-3, decisione di Tid del
+#   2026-10-10: «da ritirare»)
+#
+#   Il nome promette «un solo gestore nel sistema», la definizione no:
+#   EXCLUDE USING gist (id WITH =) WHERE id IS NOT NULL vieta due righe con lo
+#   STESSO id, cioe' ripete pk_gestori. Non ha mai impedito un secondo
+#   gestore. Le due regole vere hanno gia' una sede:
+#     - un solo gestore: anagrafiche.trgfn_gestori_guard, regola 1 (singleton);
+#     - un gestore per ruolo: uq_gestori_soggetto_ruolo (20261008-65).
+#   Un vincolo che sembra il singleton e non lo e' inganna chi legge lo
+#   schema (la pagina manual/ di gestori lo descriveva come la garanzia del
+#   singleton), e si toglie.
+#   ⚠️ Censimento del 2026-10-10: nessun changeSet di 80_data/90_end lo
+#   nomina, nessun pgTAP, nessun riferimento nel backend. Nasce nella prima
+#   generazione (baseline/101-others-anagrafiche, congelata), che su un
+#   database ricostruito gira prima di migrations_v2: il DROP la trova.
+#   L'estensione btree_gist resta: e' dell'installazione, non del vincolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261010-54-drop-uq-gestori-singleton-mctit.yaml
+
+  - changeSet:
+      id: 20261010-54-drop-uq-gestori-singleton
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira uq_gestori_singleton da anagrafiche.gestori: ripeteva la chiave primaria e non
+        impediva un secondo gestore (lo fa trgfn_gestori_guard). Brief:
+        brief-db-istanza-nasce-col-ba-residui (D-3).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.gestori DROP CONSTRAINT IF EXISTS uq_gestori_singleton;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il vincolo non vincolava niente: non si rimette.
+              SELECT 1;

@@ -32,7 +32,7 @@
 --
 -- ⚠️ I TEST 4 E 5 SONO RUBINETTI, non divieti. Le forme del path sono cinque
 --   (D6), e 18 DEFINER non elencavano pg_temp il 2026-09-12 (17 dal
---   2026-10-05) — quando non e' elencato PostgreSQL lo cerca per PRIMO per le
+--   2026-10-05, 16 dal 2026-10-10) — quando non e' elencato PostgreSQL lo cerca per PRIMO per le
 --   relazioni, che e' semantica e non stile. Vietarlo
 --   oggi farebbe nascere il file rosso, e un cancello rosso il primo giorno
 --   viene spento. La soglia PUO' SOLO CALARE: chi sana una DEFINER la abbassa
@@ -111,12 +111,15 @@ SELECT is(
 --   script.fn_get_testata_id_di_riga era nata senza pg_temp e aveva portato il
 --   conto a 19: si e' sanata lei, con il gemello da cui aveva copiato la forma
 --   (script.fn_get_stato_testata_documento), e la soglia e' scesa di uno.
+--   Test 4: 17 -> 16 il 2026-10-10 (20261010-59): sanata
+--   anagrafiche.fn_guard_albero_ba_gestore_globale, riscritta per D-5 di
+--   brief-db-istanza-nasce-col-ba-residui.
 SELECT cmp_ok(
     (SELECT count(*) FROM _definer
       WHERE search_path IS NOT NULL
         AND search_path NOT LIKE '%pg_temp%'),
-    '<=', 17::bigint,
-    '4. ⚠️ DEFINER con search_path senza pg_temp: al massimo 17 (rubinetto D6-bis, puo'' solo calare)'
+    '<=', 16::bigint,
+    '4. ⚠️ DEFINER con search_path senza pg_temp: al massimo 16 (rubinetto D6-bis, puo'' solo calare)'
 );
 
 SELECT cmp_ok(

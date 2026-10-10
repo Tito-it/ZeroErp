@@ -46,6 +46,15 @@ La condizione da presidiare e' quindi la **coppia mista**, non «esiste un
 albero». Un controllo scritto largo bloccherebbe operazioni legittime, e una
 funzione che infastidisce e' una funzione che qualcuno prima o poi disattiva.
 
+L'azienda di ogni billing account si chiede **per l'installazione**
+([`script.fn_get_ba_emittente_sr_id_installazione`](/dbzero/script/manual/fn_get_ba_emittente_sr_id_installazione)),
+non per chi sta agendo: dal 10-10-2026, perché con il risolutore di sessione uno
+spostamento fatto da un utente con la sua azienda passava sopra un albero misto.
+Il rifiuto è lo stesso di
+[`fn_guard_albero_ba_emittente`](/dbzero/anagrafiche/manual/fn_guard_albero_ba_emittente):
+`E_ALBERO_EMITTENTE_MISTO`. Prova: `db/pgtap/anagrafiche/test-istanza-ba-gestore-globale-v1.sql`
+(test 6) e `test-guard-albero-ba-omogeneo-v1.sql` (test 10-11).
+
 ---
 
 ### Impatto e Vantaggi

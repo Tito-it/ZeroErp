@@ -73,21 +73,23 @@ Le due chiavi sono sempre coerenti (entrambe `null` quando la capability è
 via key.
 
 **Reason di `can_push_commessa`** (rev 12-06-2026, brief smistamento — ordine
-di verifica: stato → testata → righe, la reason racconta il primo ostacolo da
-rimuovere):
+di verifica: fase chiusa → stato → righe, la reason racconta il primo ostacolo da
+rimuovere; il ramo «testata incompleta» è stato ritirato il 2026-10-10, perché
+BA e utility del preventivo sono `NOT NULL` — `brief-db-istanza-nasce-col-ba-residui` R-1):
 
 | Reason | Key | Quando |
 |---|---|---|
-| `PREVENTIVO_NON_ACCETTATO` | `preventivi.push_commessa_reason.non_accettato` | Fuori stato ACCETTATO |
-| `PREVENTIVO_SENZA_BILLING_ACCOUNT` | `preventivi.push_commessa_reason.senza_billing_account` | Testata incompleta (BA o utility NULL): il fix è compilarla, non "mancano righe" |
-| `PREVENTIVO_NESSUNA_RIGA_COMMESSA` | `preventivi.push_commessa_reason.nessuna_riga` | Nessun residuo servizi (nessuna riga o tutte già EMESSE) |
+| `PREVENTIVO_STATO_CHIUSO` | `vendite.preventivi.push_commessa_reason.stato_chiuso` | Stato di fase `CHIUSO` (evaso, annullato, rifiutato, scaduto) |
+| `PREVENTIVO_NON_ACCETTATO` | `vendite.preventivi.push_commessa_reason.non_accettato` | Non ancora ACCETTATO (bozza, emesso) |
+| `PREVENTIVO_NESSUNA_RIGA_COMMESSA` | `vendite.preventivi.push_commessa_reason.nessuna_riga` | Nessun residuo servizi (nessuna riga o tutte già instradate) |
 
 **Reason di `can_genera_ordine`** (rev 09-06-2026):
 
 | Reason | Key | Quando |
 |---|---|---|
-| `PREVENTIVO_NON_ACCETTATO` | `preventivi.genera_ordine_reason.non_accettato` | Fuori stato ACCETTATO |
-| `PREVENTIVO_NESSUNA_RIGA_ORDINE` | `preventivi.genera_ordine_reason.nessuna_riga` | Nessun residuo merce (nessuna riga o tutte già allocate) |
+| `PREVENTIVO_STATO_CHIUSO` | `vendite.preventivi.genera_ordine_reason.stato_chiuso` | Stato di fase `CHIUSO` |
+| `PREVENTIVO_NON_ACCETTATO` | `vendite.preventivi.genera_ordine_reason.non_accettato` | Non ancora ACCETTATO |
+| `PREVENTIVO_NESSUNA_RIGA_ORDINE` | `vendite.preventivi.genera_ordine_reason.nessuna_riga` | Nessun residuo merce (nessuna riga o tutte già allocate) |
 
 ### Dettaglio `non_editable_fields`
 

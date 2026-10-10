@@ -355,9 +355,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   - ⏭️ **collaudo a video delle pratiche** (§7.4): la tendina della fornitura (una riga per fornitura, con la
     utility), nessun campo fornitura su chi non è cliente, offerta e contratto col cliente ereditato dalla
     pratica. Rimandato da Tid: si fa alla ripresa del cantiere pratiche;
-  - **`script.fn_get_billing_account_by_istanza` senza consumatori nel BE**: il team DB può ritirarla (§6.12.3);
-  - **il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT`** di `fn_available_actions_preventivo`: lo ritira il DB,
-    poi la chiave `vendite.preventivi.push_commessa_reason.senza_billing_account` esce dai locales (§6.10.3).
+  - ✅ **il resolver per istanza e il motivo «senza billing account»**: passati il 2026-10-10 a
+    `work-in-progress/brief-db-istanza-nasce-col-ba-residui.md` (D25 del registro DB). **Lato DB chiuso il
+    2026-10-10**, applicato da Tid e pgTAP verdi (`20261010-50…-59`: via `script.fn_get_billing_account_by_istanza`, via il ramo
+    `PREVENTIVO_SENZA_BILLING_ACCOUNT` e i suoi due filtri gemelli nel residuo commessa e nella lista del push),
+    resta la richiesta al FE: la chiave `vendite.preventivi.push_commessa_reason.senza_billing_account` esce dai
+    locales (R-FE-1), più una riga di doc BE (R-BE-1). Dal §5 fatti D-1…D-5 (liste del push: via il filtro inutile sul BA, lo stato assente ferma invece di
+    aprire; ritirato `uq_gestori_singleton`; pgTAP dello spostamento dell'azienda predefinita; quello spostamento
+    non dipende più da chi lo fa — BB nuovo `script.fn_get_ba_emittente_sr_id_installazione`).
 - **La coerenza tra codice fiscale e sesso ha una sede sola, e parziale** (DB + BE, ereditata il 2026-10-10
   dalla chiusura di `work-done/brief-db-sesso-senza-default.md`, D5, rimandata da Tid il 2026-10-09): la
   controlla solo `SoggettiService._valida_cf_congruenza`, e solo nella **creazione** di una persona fisica.

@@ -10,6 +10,8 @@ Approfondimenti funzioni:
 >
 [script.fn_resolve_emittente_for_user](/dbzero/script/manual/fn_resolve_emittente_for_user) — la delegata del livello 2, la stessa del trigger z90
 >
+[script.fn_get_ba_emittente_sr_id_installazione](/dbzero/script/manual/fn_get_ba_emittente_sr_id_installazione) — la stessa domanda senza il livello 2 («per l'installazione»), per i guard dello spostamento della predefinita
+>
 [anagrafiche.fn_get_emittente_fiscale_pk](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_pk) e [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_id) — gli involucri che sollevano (PK e SR)
 >
 Approfondimenti tabelle:

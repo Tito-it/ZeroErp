@@ -28,6 +28,10 @@ delegati a `fn_list_ddt_da_pushare`.
   trigger CONFERMATO la fatturazione è ortogonale alla spedizione (fix «orfano
   da push», piano `piano-db-fix-orfano-push-ordine-confermato.md`);
 * **`fatturazione_trigger = ‘CONFERMATO’`** (esclusione reciproca con DDT);
+* nessun filtro sul billing account: `vendite.ordini.billing_account_id` è
+  `NOT NULL` (il filtro `IS NOT NULL` è stato ritirato il 2026-10-10, D-1 di
+  `brief-db-istanza-nasce-col-ba-residui`). ⚠️ Se il BA dell'ordine tornasse
+  nullable, il filtro tornerebbe necessario;
 * include solo righe attive con quantita` e prezzo validi;
 * esclude segmenti gia` emessi in `commesse_attivita` (idempotenza batch);
 * costruisce `segment_key` deterministica (`ORD:{uid}:R:{riga_id}`);

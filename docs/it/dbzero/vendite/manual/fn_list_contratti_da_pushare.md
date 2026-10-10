@@ -21,7 +21,12 @@ su piu` periodi il `segment_key` include il mese di competenza.
 
 ### Regole principali
 
-* considera contratti in stato documento `ATTIVO`;
+* considera contratti in stato documento `ATTIVO`. Se lo stato non si trova nel
+  catalogo (riga assente o spenta) la funzione solleva `E_CODICE`, come per la
+  sorgente: non lista mai contratti in uno stato qualunque (fino al 2026-10-10 il
+  filtro era `IS NULL OR` e in quel caso cadeva). Nessun filtro sul billing
+  account: la colonna è `NOT NULL` (D-1 e D-2 di
+  `brief-db-istanza-nasce-col-ba-residui`);
 * contratto in validita` (`valido_al IS NULL` o `>= competenza_mese/oggi`);
 * include solo righe attive con articolo valido;
 * esclude segmenti gia` emessi in `commesse_attivita` (idempotenza batch);

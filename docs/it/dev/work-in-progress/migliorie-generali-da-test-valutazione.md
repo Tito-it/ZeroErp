@@ -514,9 +514,10 @@ errore.
 > la sua chiusura ha trovato. **D21** dal lato BE/FE di
 > `brief-db-istanza-nasce-col-ba` (2026-10-09). **D23** dal giro R-6 di
 > `brief-db-codici-non-trovato-email-e-permessi` (2026-10-10). **D24** dal giro BE
-> di D22 (2026-10-10), che è chiusa.
+> di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
+> alla sua chiusura (2026-10-10).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D23, D24.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D23, D24, D25.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -988,6 +989,22 @@ per conto suo: per la vista quel sito non esiste.
 * **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
   di ritiro del presidio) e il BE la toglie.
 
+### 🟡 D25 — I residui di «l'istanza nasce col billing account»
+
+Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`: il resolver
+`script.fn_get_billing_account_by_istanza`, che il backend non chiama più, e il motivo
+`PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo, irraggiungibile perché BA e
+utility del preventivo sono `NOT NULL`. La stessa «testata incompleta» era scritta anche come filtro
+nel residuo commessa e nella lista del push.
+
+Dettaglio nel brief
+[brief-db-istanza-nasce-col-ba-residui.md](brief-db-istanza-nasce-col-ba-residui.md). 🔧 DB scritto e
+✅ lato DB chiuso il 2026-10-10 (`20261010-50…-59` applicati da Tid, pgTAP verdi); restano la chiave
+nei locales (FE) e una riga di doc (BE). Del §5 del brief sono fatte tutte: D-1 (via il filtro tautologico sul BA da ordini e contratti), D-2 (lo stato
+assente dal catalogo ferma le liste del push invece di aprirle), D-3 (ritirato
+`uq_gestori_singleton`), D-4 (il pgTAP dello spostamento dell'azienda predefinita) e D-5 (quello
+spostamento non dipende più da chi lo fa: i guard chiedono l'azienda dei BA per l'installazione).
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1193,6 +1210,9 @@ D6 e il registro dei rossi in CI.
       `E_DOC_EMITTENTE_BA_INCOERENTE`.
 * [x] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre
       il tetto): brief `work-done/brief-db-ricerca-universale-tetto-10000` — chiuso e archiviato il 2026-10-10 (DB `20261010-16`, BE/FE §7.4).
+* [ ] **D25** — i residui di `brief-db-istanza-nasce-col-ba` (resolver per istanza, motivo «senza
+      billing account» e i suoi due filtri gemelli): brief `brief-db-istanza-nasce-col-ba-residui`
+      (lato DB chiuso il 2026-10-10: applicato, pgTAP verdi, D-1…D-5 fatte; restano locales FE e una riga di doc BE).
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
       `brief-db-esecutivi-ba-coppia` (decisioni chiuse il 2026-10-09; lato DB, giro 1 e 2, applicato e verde; resta il BE/FE: §11.5).
 
