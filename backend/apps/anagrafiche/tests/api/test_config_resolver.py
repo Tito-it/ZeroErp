@@ -108,7 +108,7 @@ def _build_side_effect(mock_cur, ruolo_row, nature_rows, dettaglio_rows, dominio
 
 
 # Path per patchare il default lookup via ParameterRepository.
-_GET_PARAM_PATH = "apps.anagrafiche.db.soggetti_repository.ParameterRepository.get_parameter"
+_GET_PARAM_PATH = "apps.anagrafiche.db.soggetti_repository.ParameterRepository.get_parameter_se_dichiarato"
 
 
 @patch(_GET_PARAM_PATH, return_value=None)
@@ -315,7 +315,9 @@ class TestConfigResolverDefault(TestCase):
 
         self.assertIsNone(result["default_tipo_soggetto_dettaglio_id"])
 
-    # Scopo: get_parameter ritorna None (chiave non seedata) → default_id None.
+    # Scopo: parametro non dichiarato → None (get_parameter_se_dichiarato) → default_id None.
+    # ⚠️ Col mock il caso «non dichiarato» e' solo un None: che il DB non
+    #    sollevi lo prova test_dati_fiscali_societari_db (test 16).
     def test_config_resolver_default_assente(self, mock_conn, mock_get_param):
         from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 

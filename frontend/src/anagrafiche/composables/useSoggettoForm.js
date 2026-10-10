@@ -66,6 +66,13 @@ export function useSoggettoForm(options = {}) {
   const sessoPolicy = computed(() => tipoCorrente.value?.sesso_policy ?? null)
   const showSesso = computed(() => sessoPolicy.value != null && sessoPolicy.value !== 'NONE')
   const requireSesso = computed(() => sessoPolicy.value === 'REQUIRED')
+  // Regime fiscale della controparte: QUALI flag la natura ammette lo dice la
+  // configurazione (`cliente_pa_ammesso`, `split_payment_ammesso`), la regola
+  // la presidia il guard del DB (`trgfn_soggetti_guard_regime_pa`). Il form la
+  // LEGGE: un privato non e' mai una PA ne' in split payment, e i due campi
+  // non gli si propongono (brief-db-dati-fiscali-e-societari-del-soggetto, A).
+  const showClientePa = computed(() => !!tipoCorrente.value?.cliente_pa_ammesso)
+  const showSplitPayment = computed(() => !!tipoCorrente.value?.split_payment_ammesso)
 
   // ⭐ La proposta e' VISIBILE e si ritira se non serve piu': passando da
   //    privato a ditta individuale l'«M» proposto (non scelto) torna vuoto. Un
@@ -155,6 +162,8 @@ export function useSoggettoForm(options = {}) {
     requireDatiSocietari,
     showSesso,
     requireSesso,
+    showClientePa,
+    showSplitPayment,
     matriceIndirizzi,
     indirizziObbligatori,
     validate,

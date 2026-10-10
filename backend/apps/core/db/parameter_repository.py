@@ -41,6 +41,26 @@ _SQL_RESOLVE = """
     )
 """
 
+# ⭐ La stessa cascata, ma SOLO se il parametro e' dichiarato: la chiamata parte
+#    dalla riga di `config.parameters`, e senza riga non c'e' chiamata (nessuna
+#    riga in risposta). `fn_get_parameter_full` su un codice non dichiarato
+#    SOLLEVA `E_ERRORE_PARAMETRI_TABELLA`, ed e' giusto: chi chiede un parametro
+#    obbligatorio deve saperlo. Questa e' la lettura per chi lo dichiara
+#    facoltativo (2026-10-11).
+_SQL_RESOLVE_SE_DICHIARATO = """
+    SELECT script.fn_get_parameter_full(
+        p.code::text,
+        %s::bigint,
+        %s::integer,
+        %s::integer[],
+        %s::text,
+        %s::text,
+        %s::smallint
+    )
+      FROM config.parameters p
+     WHERE p.code = %s::text
+"""
+
 # Limite massimo codici per singola richiesta (difesa contro abuse).
 MAX_CODES = 20
 
@@ -117,9 +137,41 @@ class ParameterRepository:
             row = cursor.fetchone()
         return row[0] if row else None
 
+    # Scopo: Come `get_parameter`, per un parametro FACOLTATIVO: None se il
+    #        codice non e' dichiarato in `config.parameters` (o se il valore
+    #        risolto e' NULL), invece di `E_ERRORE_PARAMETRI_TABELLA`.
+    # ⭐ BB (regola del 2, ok Tid 2026-10-11): `get_parameters` e il default di
+    #    natura del risolutore per ruolo (`SoggettiRepository.get_config_resolver`).
+    #    Tutti e due dichiaravano «non trovato = escluso / None» e leggevano con la
+    #    funzione che SOLLEVA: un ruolo senza `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<ruolo>`
+    #    (il seed lo da' a CL e FO) mandava in errore il risolutore.
+    # ⛔ Non per un parametro che il modello pretende: li' l'errore e' il
+    #    contratto, e si usa `get_parameter`.
+    def get_parameter_se_dichiarato(
+        self,
+        code: str,
+        django_user_id: int | None = None,
+        group_ids: list[int] | None = None,
+        emittente_fiscale_id: int | None = None,
+        session_key: str | None = None,
+        function_name: str | None = None,
+        categoria_cliente_id: int | None = None,
+    ) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(_SQL_RESOLVE_SE_DICHIARATO, [
+                emittente_fiscale_id, django_user_id,
+                group_ids, session_key, function_name,
+                categoria_cliente_id, code,
+            ])
+            row = cursor.fetchone()
+        return row[0] if row else None
+
     # Scopo: Risolve N parametri in un'unica sessione DB.
     #        Restituisce un dizionario {code: valore_risolto}.
-    #        I codici non trovati vengono esclusi dal risultato.
+    #        I codici non dichiarati (e quelli che risolvono a NULL) vengono
+    #        esclusi dal risultato: lettura FACOLTATIVA, BB
+    #        `get_parameter_se_dichiarato`. Fino al 2026-10-11 un codice non
+    #        dichiarato faceva fallire l'intera richiesta.
     def get_parameters(
         self,
         codes: list[str],
@@ -130,18 +182,15 @@ class ParameterRepository:
     ) -> dict[str, str]:
         if not codes:
             return {}
-        safe_codes = codes[:MAX_CODES]
         results: dict[str, str] = {}
-        with connection.cursor() as cursor:
-            for code in safe_codes:
-                cursor.execute(_SQL_RESOLVE, [
-                    code, emittente_fiscale_id, django_user_id,
-                    group_ids, None, None,
-                    categoria_cliente_id,
-                ])
-                row = cursor.fetchone()
-                if row and row[0] is not None:
-                    results[code] = row[0]
+        for code in codes[:MAX_CODES]:
+            valore = self.get_parameter_se_dichiarato(
+                code, django_user_id=django_user_id, group_ids=group_ids,
+                emittente_fiscale_id=emittente_fiscale_id,
+                categoria_cliente_id=categoria_cliente_id,
+            )
+            if valore is not None:
+                results[code] = valore
         return results
 
     # Scopo: Restituisce la lista completa dei parametri con i valori risolti

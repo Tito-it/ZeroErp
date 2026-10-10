@@ -374,7 +374,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   dati societari non si salvano, serve il verbo di scrittura (decisione di Tid); (C) la forma giuridica non è legata
   alla natura, e il drawer la mostra vuota; (D) un titolo IVA si registra su qualunque soggetto (assorbito
   `brief-db-regime-fiscale-per-natura-soggetto`, ora solo rimando). ✅ Lato DB applicato e verde il 2026-10-10 (§8):
-  verbo `fn_scrivi_dati_societari` unica porta, regole per natura su flag, titoli e forma. Aperta D-4. Tocca a BE/FE: §5 e §8.3.
+  verbo `fn_scrivi_dati_societari` unica porta, regole per natura su flag, titoli e forma. ✅ BE/FE scritti e verdi
+  il 2026-10-10 (§9) e collaudati in-app il 2026-10-11, con due difetti trovati e corretti: il lookup delle forme
+  falliva sempre (colonna inesistente) e il cambio di natura in modifica non arrivava al DB. Resta aperta D-4.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

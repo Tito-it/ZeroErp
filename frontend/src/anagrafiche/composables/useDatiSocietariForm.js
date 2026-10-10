@@ -27,7 +27,11 @@ export function useDatiSocietariForm(options = {}) {
     // Fatturazione elettronica
     destinatario_fe: null,
     pec_fatturazione: '',
-    codice_sdi: ''
+    codice_sdi: '',
+    // ISO 'YYYY-MM-DD' o null (il DatePicker lo converte a video).
+    // ⚠️ Il verbo DB riceve lo STATO INTERO: un campo che il form non tiene
+    //    verrebbe azzerato al primo salvataggio in modifica (2026-10-10).
+    data_costituzione: null
   })
 
   // Forma giuridica corrente selezionata
@@ -78,6 +82,7 @@ export function useDatiSocietariForm(options = {}) {
     form.destinatario_fe = null
     form.pec_fatturazione = ''
     form.codice_sdi = ''
+    form.data_costituzione = null
   }
 
   // Scopo: Popola il form con dati esistenti (per edit mode).
@@ -91,6 +96,7 @@ export function useDatiSocietariForm(options = {}) {
     form.destinatario_fe = data.destinatario_fe ?? null
     form.pec_fatturazione = data.pec_fatturazione || ''
     form.codice_sdi = data.codice_sdi || ''
+    form.data_costituzione = data.data_costituzione ?? null
   }
 
   // Scopo: Il corpo da mandare al backend: SOLO cio' che il form mostra.

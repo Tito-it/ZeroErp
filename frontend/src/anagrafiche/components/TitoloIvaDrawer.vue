@@ -27,7 +27,7 @@ import { labelOrCode } from '../../core/utils/i18nLabel'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
-import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
+import { useGlobalLookup, invalidateLookup } from '../../core/composables/useGlobalLookup'
 import { lookupCodici } from '../../core/apiCore'
 import {
   getSoggettoTitoloIva,
@@ -37,6 +37,7 @@ import {
   deleteTitoloIvaAmbito,
   annullaTitoloIvaMovimento,
   createTitoloIvaForzatura,
+  lookupTipiTitoloIvaAmmessi,
 } from '../api/anagrafiche'
 import {
   useTitoloIvaAmbitiStore,
@@ -124,6 +125,25 @@ const { items: tipiTitolo } = useGlobalLookup(
   () => lookupCodici('config.tipi_titolo_iva'),
   { immediate: true },
 )
+// ⭐ Le OPZIONI del tipo sono quelle che la natura del soggetto ammette (parte
+//   D di brief-db-dati-fiscali-e-societari-del-soggetto): un privato vede la
+//   sola agevolazione 104, una societa' l'intento e l'uso industriale. E' una
+//   comodita': il rifiuto vero e' del guard del DB, col campo acceso.
+// ⚠️ `ha_plafond` resta letto dal lookup GENERICO qui sopra: e' una proprieta'
+//   del tipo, non del soggetto, e il ripiego sul dettaglio lo usa gia'.
+// ⚠️ La chiave e' PER SOGGETTO, e si invalida a ogni apertura: la natura del
+//   soggetto puo' cambiare fra un'apertura e l'altra, e la cache globale
+//   continuerebbe a offrire i tipi della natura vecchia. `aperture` rimonta il
+//   Select, che cosi' rilegge (la chiave di `useGlobalLookup` e' fissata al setup).
+const chiaveTipiAmmessi = computed(() => `anagrafiche.soggetti.${props.soggettoId}.titoli_iva.tipi`)
+const aperture = ref(0)
+const fetchTipiAmmessi = () => lookupTipiTitoloIvaAmmessi(props.soggettoId)
+// In modifica, il tipo che il titolo ha gia' resta visibile anche se la natura
+// non lo ammette piu' (marcato «non attiva» dal BB): un campo vuoto con un
+// valore dentro farebbe confermare cio' che non si vede.
+const voceTipoCorrente = computed(() => (detail.value
+  ? { id: detail.value.tipo_titolo_iva_id, descrizione: detail.value.tipo_descrizione }
+  : null))
 const tipoSelezionato = computed(
   () => tipiTitolo.value.find(x => x.id === form.value.tipo_titolo_iva_id) || null,
 )
@@ -247,6 +267,8 @@ function populateFromDetail(d) {
 watch(() => props.visible, async (val) => {
   if (!val) { fv.invalidate(); return }
   const v = fv.tag()
+  invalidateLookup(chiaveTipiAmmessi.value)
+  aperture.value += 1
   // Il form ambito riparte chiuso e vuoto: il drawer e' un'istanza sola, e un
   // ambito abbandonato sul titolo precedente finirebbe su questo.
   ambitoFormAperto.value = false
@@ -591,7 +613,11 @@ const fotoForzatura = useFotografiaDialog(() => ({ ...forzatura.value }), { visi
       <div class="form-field">
         <label>{{ t('anagrafiche.titoli_iva.field_tipo') }} *</label>
         <LookupSelect
-          v-model="form.tipo_titolo_iva_id" rel="config.tipi_titolo_iva"
+          :key="`${chiaveTipiAmmessi}#${aperture}`"
+          v-model="form.tipo_titolo_iva_id"
+          :fetcher="fetchTipiAmmessi" :lookup-key="chiaveTipiAmmessi"
+          :voce-corrente="voceTipoCorrente"
+          :invalid="campiErrati.includes('tipo_titolo_iva_id')"
           :disabled="isReadonly"
           :placeholder="t('anagrafiche.titoli_iva.select_tipo')" />
       </div>

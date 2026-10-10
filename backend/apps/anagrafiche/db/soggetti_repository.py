@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import json
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from apps.core.api.constants import DEFAULT_LIMIT
@@ -23,6 +25,7 @@ from apps.core.db._helpers import (
     rows_to_list,
     soglia_ricerca,
 )
+from apps.core.db.lookup_repository import SQL_TIPI_SOGGETTO_DETTAGLIO
 from apps.core.db.parameter_repository import ParameterRepository
 from apps.core.db.sql_write_helpers import execute_dynamic_update, sql_set_clause
 
@@ -139,6 +142,12 @@ SOGGETTO_UPDATE_COLS: frozenset[str] = frozenset({
     "partita_iva", "sesso", "data_nascita", "comune_id",
     # I0/D8 (2026-08-29): regime fiscale della controparte.
     "split_payment", "cliente_pa",
+    # La natura di dettaglio (2026-10-10, brief-db-dati-fiscali-e-societari-del-
+    # soggetto §8.3): il drawer la offriva in modifica (fra i
+    # `tipi_modificabili_ids`), ma fino a quel giorno la chiave non era nel
+    # contratto e il cambio non arrivava mai al DB. Cosa la natura nuova
+    # ammette (flag PA/split, forma giuridica, titoli IVA) lo giudicano i guard.
+    "tipo_soggetto_dettaglio_id",
 })
 # Alias frontend → colonna DB accettati da `update_soggetto`.
 SOGGETTO_UPDATE_ALIAS: dict[str, str] = {"comune_nascita_id": "comune_id"}
@@ -189,7 +198,7 @@ class SoggettiRepository:
                    s.cognome, s.nome, s.ragione_sociale,
                    tsd.descrizione AS tipo_descrizione,
                    tsd.id AS tipo_soggetto_dettaglio_id,
-                   ts.id AS natura_soggetto,
+                   ts.natura_soggetto,
                    (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                        'soggetto_ruolo_id', sr.id,
                        'codice', COALESCE(tr.codice_interno, tr.codice),
@@ -259,10 +268,13 @@ class SoggettiRepository:
             row = cursor.fetchone()
             return row[0] if row else None
 
-    # Scopo: Risolve la natura (PF/PG/ENC) dal tipo_soggetto_dettaglio_id.
+    # Scopo: Risolve la natura (l'enum `config.natura_soggetto_enum`: PF/PG/ENTE)
+    #        dal tipo_soggetto_dettaglio_id. Stesso significato di
+    #        `natura_soggetto` in lista, dettaglio e lookup (BB
+    #        `SQL_TIPI_SOGGETTO_DETTAGLIO`).
     def get_natura_by_tipo_id(self, tipo_id: int) -> str | None:
         sql = """
-            SELECT ts.id
+            SELECT ts.natura_soggetto::text
               FROM config.tipi_soggetto_dettaglio tsd
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
              WHERE tsd.id = %s
@@ -293,7 +305,7 @@ class SoggettiRepository:
                    p.sigla AS comune_nascita_provincia_sigla,
                    tsd.id AS tipo_soggetto_dettaglio_id,
                    tsd.descrizione AS tipo_descrizione,
-                   ts.id AS natura_soggetto,
+                   ts.natura_soggetto,
                    -- Tipi dettaglio ammessi in edit per questo soggetto:
                    -- stessa natura del corrente. Sostituisce il filtro
                    -- frontend (SoggettoForm.tipiSoggettoFiltrati).
@@ -445,6 +457,54 @@ class SoggettiRepository:
             "anagrafiche.soggetti", soggetto_id, mapped,  # type: ignore[arg-type]
             allowed=SOGGETTO_UPDATE_COLS,
         )
+
+    # Scopo: Crea o aggiorna i dati societari del soggetto col verbo DB
+    #        `anagrafiche.fn_scrivi_dati_societari` (STATO INTERO: un NULL scrive
+    #        NULL dove la colonna lo ammette; socio unico e liquidazione NULL
+    #        valgono il default di `config.parameters`).
+    # Risultato: l'id della riga di `anagrafiche.dati_societari`.
+    # ⛔ Mai un UPDATE diretto della tabella: dal `20261011-04` l'applicazione
+    #    non ha piu' i privilegi di scrittura, e il verbo e' la porta
+    #    (brief-db-dati-fiscali-e-societari-del-soggetto, B-5). Le regole
+    #    (forma per natura, REA e capitale per forma, canale FE) stanno nei
+    #    trigger della tabella e arrivano come errori di dominio col campo.
+    def scrivi_dati_societari(
+        self, soggetto_id: str, *,
+        forma_giuridica_id: int | None,
+        id_prov_iscri_rea: int | None,
+        iscrizione_rea: str | None,
+        capitale_sociale: Decimal | None,
+        socio_unico: str | None,
+        liquidazione: str | None,
+        destinatario_fe: str | None,
+        pec_fatturazione: str | None,
+        codice_sdi: str | None,
+        data_costituzione: date | None,
+    ) -> int:
+        sql = """
+            SELECT anagrafiche.fn_scrivi_dati_societari(
+                p_soggetto_id        := %s::uuid,
+                p_forma_giuridica_id := %s,
+                p_id_prov_iscri_rea  := %s,
+                p_iscrizione_rea     := %s,
+                p_capitale_sociale   := %s,
+                p_socio_unico        := %s::anagrafiche.socio_unico_enum,
+                p_liquidazione       := %s::anagrafiche.liquidazione_enum,
+                p_destinatario_fe    := %s,
+                p_pec_fatturazione   := %s,
+                p_codice_sdi         := %s,
+                p_data_costituzione  := %s::date
+            )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                soggetto_id, forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea,
+                capitale_sociale, socio_unico, liquidazione,
+                destinatario_fe, pec_fatturazione, codice_sdi, data_costituzione,
+            ])
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
 
     # =================================================================
     # Contatti
@@ -1000,15 +1060,8 @@ class SoggettiRepository:
         #    del seed — e i test unitari, con la connessione mockata, non lo
         #    vedevano. Trovato il 2026-09-26 dal primo test sul DB vero
         #    (`test_ricerca_full_db`, brief-db-be-fe-ricerca-soglia-per-lista §6 b).
-        sql_dettaglio = """
-            SELECT tsd.id, tsd.codice_interno, tsd.descrizione,
-                   ts.id AS tipo_soggetto_id,
-                   ts.natura_soggetto,
-                   tsd.cf_obbligatorio, tsd.piva_obbligatoria,
-                   tsd.formato_cf, tsd.formato_piva,
-                   tsd.dati_societari_policy, tsd.sesso_policy
-              FROM config.tipi_soggetto_dettaglio tsd
-              JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
+        sql_dettaglio = f"""
+            {SQL_TIPI_SOGGETTO_DETTAGLIO}
              WHERE (%s::varchar[] IS NULL OR ts.id = ANY(%s::varchar[]))
              ORDER BY tsd.codice_interno
         """
@@ -1047,7 +1100,11 @@ class SoggettiRepository:
         # Delega a ParameterRepository per coerenza con la firma di
         # script.fn_get_parameter_full.
         param_code = f"DEFAULT_TIPO_SOGGETTO_DETTAGLIO_{ruolo['codice']}"
-        default_codice = ParameterRepository().get_parameter(
+        # ⚠️ FACOLTATIVO (2026-10-11): il default e' una preferenza, non un
+        #    obbligo — il seed lo dichiara per CL e FO, e il FE ripiega sul primo
+        #    tipo ammesso. Con `get_parameter` un ruolo senza parametro
+        #    (RIS_UMANA, EF) mandava in errore tutto il risolutore.
+        default_codice = ParameterRepository().get_parameter_se_dichiarato(
             param_code, emittente_fiscale_id=emittente_fiscale_id,
         )
 
@@ -1077,6 +1134,9 @@ class SoggettiRepository:
         }
 
     # Scopo: Recupera dati societari del soggetto (se esistono).
+    # ⚠️ `data_costituzione` (2026-10-10): il verbo di scrittura riceve lo STATO
+    #    INTERO, quindi il form deve poter rimandare tutto cio' che la riga ha.
+    #    Un campo letto qui e non rimandato verrebbe azzerato al primo salvataggio.
     def get_dati_societari(self, soggetto_id: str) -> dict[str, Any] | None:
         sql = """
             SELECT ds.id, ds.forma_giuridica_id,
@@ -1086,7 +1146,8 @@ class SoggettiRepository:
                    ds.id_prov_iscri_rea, ds.iscrizione_rea,
                    ds.capitale_sociale,
                    ds.socio_unico, ds.liquidazione,
-                   ds.destinatario_fe, ds.pec_fatturazione, ds.codice_sdi
+                   ds.destinatario_fe, ds.pec_fatturazione, ds.codice_sdi,
+                   ds.data_costituzione::text
               FROM anagrafiche.dati_societari ds
               LEFT JOIN config.forme_giuridiche fg ON fg.id = ds.forma_giuridica_id
              WHERE ds.soggetto_id = %s::uuid

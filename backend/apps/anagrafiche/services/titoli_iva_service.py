@@ -94,6 +94,15 @@ class TitoliIvaService:
         self._repo = TitoliIvaRepository()
 
     # =================================================================
+    # Tipi ammessi (lookup del drawer)
+    # =================================================================
+
+    # Scopo: I tipi di titolo IVA ammessi dalla natura del soggetto, in
+    #        envelope di lookup `{"results": [...]}` (api.md §Lookup).
+    def list_tipi_ammessi(self, soggetto_id: str) -> dict[str, Any]:
+        return {"results": self._repo.list_tipi_ammessi_soggetto(soggetto_id)}
+
+    # =================================================================
     # Titoli
     # =================================================================
 

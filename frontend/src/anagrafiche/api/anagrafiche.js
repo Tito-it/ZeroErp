@@ -229,6 +229,13 @@ export function exportSoggettoTitoliIva(soggettoId, params = {}) {
   })
 }
 
+// Scopo: i tipi di titolo IVA che la natura del soggetto ammette (lookup del
+// drawer, brief-db-dati-fiscali-e-societari-del-soggetto parte D). Envelope
+// `{ results: [...] }`, con `ha_plafond`. La regola resta nel guard del DB.
+export function lookupTipiTitoloIvaAmmessi(soggettoId) {
+  return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/tipi/lookup/`)
+}
+
 export function getSoggettoTitoloIva(soggettoId, titoloId) {
   return api.get(`${BASE}/soggetti/${soggettoId}/titoli-iva/${titoloId}/`)
 }

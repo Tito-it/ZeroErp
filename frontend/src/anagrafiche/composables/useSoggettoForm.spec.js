@@ -8,6 +8,9 @@
 //        privato (REQUIRED) e solo in creazione, e ritira la proposta se il
 //        tipo cambia. Per la ditta individuale (OPTIONAL) il valore di partenza
 //        e' il vuoto; per societa' ed enti (NONE) il sesso non c'e'.
+//        Dal 2026-10-10 anche il regime fiscale (brief-db-dati-fiscali-e-
+//        societari-del-soggetto, A): cliente PA e split payment si mostrano
+//        solo dove la natura li ammette, letti dal lookup.
 // Note: si mocka il lookup dei tipi: qui si prova il form, non l'API.
 // ------------------------------------------------------------
 
@@ -16,9 +19,14 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('../../core/composables/useLookup', async () => {
   const { ref } = await import('vue')
   const tipi = [
-    { id: 1, codice_interno: 'PR', natura_soggetto: 'PF', sesso_policy: 'REQUIRED' },
-    { id: 2, codice_interno: 'DI', natura_soggetto: 'PF', sesso_policy: 'OPTIONAL' },
-    { id: 4, codice_interno: 'SP', natura_soggetto: 'PG', sesso_policy: 'NONE' },
+    { id: 1, codice_interno: 'PR', natura_soggetto: 'PF', sesso_policy: 'REQUIRED',
+      cliente_pa_ammesso: false, split_payment_ammesso: false },
+    { id: 2, codice_interno: 'DI', natura_soggetto: 'PF', sesso_policy: 'OPTIONAL',
+      cliente_pa_ammesso: false, split_payment_ammesso: false },
+    { id: 4, codice_interno: 'SP', natura_soggetto: 'PG', sesso_policy: 'NONE',
+      cliente_pa_ammesso: false, split_payment_ammesso: true },
+    { id: 5, codice_interno: 'ENC', natura_soggetto: 'ENTE', sesso_policy: 'NONE',
+      cliente_pa_ammesso: true, split_payment_ammesso: true },
   ]
   return {
     useLookup: () => ({ items: ref(tipi), loading: ref(false), loaded: ref(true), load: async () => {} }),
@@ -35,6 +43,7 @@ const { useSoggettoForm } = await import('./useSoggettoForm')
 const PR = 1
 const DI = 2
 const SP = 4
+const ENC = 5
 
 describe('useSoggettoForm — sesso dalla policy della natura', () => {
   it('nasce senza sesso: nessun default', () => {
@@ -96,5 +105,30 @@ describe('useSoggettoForm — sesso dalla policy della natura', () => {
     s.reset()
     s.form.tipo_soggetto_dettaglio_id = PR
     expect(s.form.sesso).toBe('M')
+  })
+})
+
+describe('useSoggettoForm — regime fiscale dalla natura', () => {
+  it('privato e ditta individuale: nessuno dei due flag', () => {
+    const s = useSoggettoForm()
+    for (const tipo of [PR, DI]) {
+      s.form.tipo_soggetto_dettaglio_id = tipo
+      expect([s.showClientePa.value, s.showSplitPayment.value]).toEqual([false, false])
+    }
+  })
+
+  it('societa\': lo split si, la PA no', () => {
+    const s = useSoggettoForm({ tipoForzato: SP })
+    expect([s.showClientePa.value, s.showSplitPayment.value]).toEqual([false, true])
+  })
+
+  it('ente: tutti e due', () => {
+    const s = useSoggettoForm({ tipoForzato: ENC })
+    expect([s.showClientePa.value, s.showSplitPayment.value]).toEqual([true, true])
+  })
+
+  it('senza tipo: nessuno dei due', () => {
+    const s = useSoggettoForm()
+    expect([s.showClientePa.value, s.showSplitPayment.value]).toEqual([false, false])
   })
 })

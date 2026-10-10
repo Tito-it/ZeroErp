@@ -38,6 +38,7 @@ non si distinguono. Gli endpoint girano sempre sotto JWT, quindi il contesto c'�
 | `GET`/`POST` | `.../{titolo_id}/movimenti/` | il registro, e la **forzatura** |
 | `POST` | `.../{titolo_id}/movimenti/{movimento_id}/annulla/` | ⭐ l'**annullo** di una forzatura |
 | `GET` | `soggetti/{soggetto_id}/titoli-iva/export/` | ⭐ export CSV/XLSX della lista del soggetto (DEF-1) |
+| `GET` | `soggetti/{soggetto_id}/titoli-iva/tipi/lookup/` | ⭐ i tipi di titolo che la natura del soggetto ammette (lookup del drawer) |
 | `GET` | `titoli-iva/sfondati/` | presidio cross-soggetto: i titoli oltre il tetto |
 
 ⚠️ **`titoli-iva/sfondati/` sta PRIMA delle rotte con `{soggetto_id}`** nel
@@ -100,6 +101,22 @@ Ora accetta `limit` / `offset` come ogni altra lista configurabile.
 - `filtri_applicati = None`: questa lista non ha filtri. Il soggetto è nel
   **path**, non è una scelta dell'operatore, e dichiararlo come filtro nell'
   intestazione del file sarebbe inventarne uno.
+
+### `GET soggetti/{soggetto_id}/titoli-iva/tipi/lookup/` — i tipi ammessi (dal 2026-10-10)
+
+Lookup dedicato (api.md §Lookup, pattern 2): il generico `config.tipi_titolo_iva`
+non sa filtrare per la natura del soggetto. Risponde `{"data": {"results": [...]}}`,
+senza paginazione; ogni voce porta `id`, `codice`, `codice_interno`,
+`descrizione`, `attivo`, `ha_plafond`.
+
+- Il filtro è il **predicato del guard**, `anagrafiche.fn_titolo_iva_ammesso`
+  (brief-db-dati-fiscali-e-societari-del-soggetto, parte D): nessuna riga di
+  matrice = nessun tipo, soggetto senza natura = nessun tipo. Un privato ha la
+  sola `AGEVOLATA_104`; una società l'intento e l'uso industriale.
+- ⚠️ È una **comodità del form**: un tipo non ammesso lo rifiuta comunque il DB,
+  `E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO` (400, `error.fields =
+  ["tipo_titolo_iva_id"]`).
+- Un soggetto inesistente torna la lista vuota, non un 404: è un lookup.
 
 ### `GET titoli-iva/sfondati/` — 🔴 ORA PAGINATA
 

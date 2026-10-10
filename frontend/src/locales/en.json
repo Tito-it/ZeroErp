@@ -482,6 +482,7 @@
       "chiude_commessa": "Closes the job",
       "chiude_lotto": "Closes the batch",
       "chiude_pratica": "Closes the case",
+      "cliente_pa_ammesso": "Public administration allowed",
       "codice": "Code",
       "codice_interno": "Internal code",
       "codice_iso": "ISO code",
@@ -573,6 +574,7 @@
       "simbolo": "Symbol",
       "soggetto_ruolo_conto_bancario_id": "Party bank account",
       "soggetto_ruolo_id": "Party (role)",
+      "split_payment_ammesso": "Split payment allowed",
       "stato_cliente_ia": "Customer state (AI)",
       "stato_id": "Country",
       "stato_iso2": "Country ISO2",
@@ -5179,7 +5181,9 @@
     "fe_pec": "PEC",
     "fe_sdi": "SDI code",
     "pec_fatturazione": "Invoicing PEC",
-    "codice_sdi": "SDI recipient code"
+    "codice_sdi": "SDI recipient code",
+    "data_costituzione": "Incorporation date",
+    "forma_non_ammessa": "not allowed for this subject type"
   },
   "note": {
     "titolo_default": "Notes",
