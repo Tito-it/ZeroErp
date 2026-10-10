@@ -13,7 +13,7 @@
 > `20261010-08…-15`, 4 codici a catalogo (id 1239-1242), la colonna
 > `config.tipi_ruoli.entita_esistenza`, 1 pgTAP nuovo e 4 riallineati. R-8 è
 > **superato dal modello** (Q-5, Tid 2026-10-10). Partito dopo l'apply di
-> [brief-db-esecutivi-ba-coppia](../work-in-progress/brief-db-esecutivi-ba-coppia.md) giro 1 e 2, come
+> [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md) giro 1 e 2, come
 > deciso (Q-4). ✅ **Backend fatto il 2026-10-10** (§15): tutti i punti del §14.6. ✅ **Chiuso e archiviato il
 > 2026-10-10** su richiesta di Tid.
 > **Da leggere per primo:** §1, poi il §14 (consegne del giro R-5…R-9).
@@ -705,7 +705,7 @@ Le domande si chiudono una alla volta con Tid; la risposta si scrive accanto.)*
   `test-search-scope-interno-v1` la ritira il team DB nello stesso giro del
   builder (regola del 2); il §12.4 nomina solo le copie Python.
 * ⚠️ **Agganci con ba-coppia, giro 2 (team DB, 2026-10-10).** Dopo l'apply del giro 1,
-  [brief-db-esecutivi-ba-coppia](../work-in-progress/brief-db-esecutivi-ba-coppia.md) ha un secondo giro (§10.4
+  [brief-db-esecutivi-ba-coppia](brief-db-esecutivi-ba-coppia.md) ha un secondo giro (§10.4
   di quel brief), deciso da Tid il 2026-10-10:
   * **R-9 va dopo il giro 2**, non solo dopo il giro 1: il giro 2 riscrive
     `anagrafiche.trgfn_clienti_sync_utility_from_ba` sul BB nuovo

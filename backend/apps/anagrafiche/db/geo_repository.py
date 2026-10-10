@@ -219,7 +219,8 @@ class GeoRepository:
     #    liste-datatable-grezze): la proiezione e' la stessa contro cui il
     #    trigger del catalogo valida i `campo_sorgente`. Fino al 2026-09-27 i
     #    JOIN stavano qui, e la sigla della provincia usciva con gli spazi in
-    #    coda (`character(n)`); la vista la da' con TRIM.
+    #    coda (`character(n)`). Dal `20261010-26` sigla e descrizione sono
+    #    `varchar` a DB, e la vista le da' come sono (brief character-n).
     def list_comuni(
         self, *, search: str | None = None, limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "descrizione", order_dir: str = "asc",
@@ -236,7 +237,7 @@ class GeoRepository:
             ordinamento=ordinamento, limit=limit, offset=offset,
         )
 
-    # Scopo: Dettaglio singolo provincia (la vista di lista: TRIM compreso).
+    # Scopo: Dettaglio singolo provincia (la stessa vista della lista).
     def get_provincia(self, pk: int) -> dict[str, Any] | None:
         return _dettaglio_geo(_PROVINCE, pk)
 
@@ -316,8 +317,9 @@ class GeoRepository:
 
     # Scopo: Lista paginata province.
     # ⭐ Legge `config.vw_province_lista` (§6.3 del brief liste-datatable-
-    #    grezze): descrizione e sigla escono gia' con TRIM, e la ricerca le
-    #    confronta cosi' come si vedono.
+    #    grezze): descrizione e sigla escono come sono (`varchar` a DB dal
+    #    `20261010-26`, niente piu' TRIM), e la ricerca le confronta cosi' come
+    #    si vedono.
     def list_province_paginated(
         self, *, search: str | None = None, regione_id: int | None = None,
         limit: int = DEFAULT_LIMIT, offset: int = 0,

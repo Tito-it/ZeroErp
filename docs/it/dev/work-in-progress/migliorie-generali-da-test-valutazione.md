@@ -514,9 +514,9 @@ errore.
 > la sua chiusura ha trovato. **D21** dal lato BE/FE di
 > `brief-db-istanza-nasce-col-ba` (2026-10-09). **D23** dal giro R-6 di
 > `brief-db-codici-non-trovato-email-e-permessi` (2026-10-10). **D24** dal giro BE
-> di D22 (2026-10-10), che è chiusa.
+> di D22 (2026-10-10), che è chiusa. **D25** dalla chiusura di D21 (2026-10-10).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D23, D24.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D23, D24, D25.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -918,20 +918,6 @@ dalla stessa data), con un commento sul perché.
   valutare dopo il censimento: senza sapere quali regole sono temporali, il
   presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
 
-### 🟠 D21 — Ordine, DDT e reso: il cliente puo' mancare, e le sue copie non sono legate
-
-Trovato il 2026-10-09 chiudendo il lato BE/FE di `brief-db-istanza-nasce-col-ba` (§7.5): R-2 ha reso
-`billing_account_id` NOT NULL e legato alla coppia su preventivo, offerta e contratto, e la fattura lo
-aveva gia'. Ordine, DDT e reso no: BA nullable, `utility_id` e ruolo di testata che nessun vincolo
-lega al BA, lock del BA solo sull'ordine. Un ordine senza BA esce dalla lista di push senza errore
-(il DDT no: la diagnosi ha il motivo `SENZA_BA`). E gli anelli della catena possono dissentire: una
-riga di DDT puo' evadere l'ordine di un altro cliente, e il reso puo' avere un BA diverso dal suo DDT.
-
-Dettaglio, decisioni di Tid (tutte chiuse il 2026-10-09) e forma proposta nel brief
-[brief-db-esecutivi-ba-coppia.md](brief-db-esecutivi-ba-coppia.md). 🔧 Lato DB applicato su dbdev il
-2026-10-09, verde il 2026-10-10 (corsa completa di Tid, nessuna regressione); giro DB 2 (le decisioni del 2026-10-10) applicato e verde il 2026-10-10 (§11 del brief); resta la
-ricaduta BE/FE.
-
 ### 🟡 D23 — La testata dopo l'emissione: la regola completa sta solo nel backend
 
 Trovato il 2026-10-09 (§8 e §10.3 di `brief-db-esecutivi-ba-coppia`): quali colonne di testata si
@@ -987,6 +973,19 @@ per conto suo: per la vista quel sito non esiste.
   come la classe del codice in `trgfn_doc_guard_emittente_ba`).
 * **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
   di ritiro del presidio) e il BE la toglie.
+
+### 🟠 D25 — Gli indirizzi del documento non seguono il cliente
+
+Trovato il 2026-10-10 chiudendo il lato BE/FE di D21 (§12.3 di `brief-db-esecutivi-ba-coppia`). Sul
+DDT, sul preventivo e sull'offerta il cliente si cambia in bozza, ma gli indirizzi gia' scritti
+dall'anagrafica del cliente di prima restano. La regola «l'indirizzo e' del cliente del documento» la tiene
+solo il backend, e solo quando l'indirizzo viene scritto. Il gate d'emissione guarda che l'indirizzo
+ci sia, non di chi e': una bolla si emette con la Consegna del cliente di prima.
+
+Dettaglio e decisioni di Tid (chiuse il 2026-10-10: la regola e l'auto-assegnazione dello slot di
+default vanno nel DB) nel brief
+[brief-db-indirizzi-documento-seguono-il-cliente.md](brief-db-indirizzi-documento-seguono-il-cliente.md).
+📝 Aperto, nessun codice.
 
 ---
 
@@ -1193,8 +1192,11 @@ D6 e il registro dei rossi in CI.
       `E_DOC_EMITTENTE_BA_INCOERENTE`.
 * [x] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre
       il tetto): brief `work-done/brief-db-ricerca-universale-tetto-10000` — chiuso e archiviato il 2026-10-10 (DB `20261010-16`, BE/FE §7.4).
-* [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
-      `brief-db-esecutivi-ba-coppia` (decisioni chiuse il 2026-10-09; lato DB, giro 1 e 2, applicato e verde; resta il BE/FE: §11.5).
+* [x] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
+      `work-done/brief-db-esecutivi-ba-coppia` — chiuso e archiviato il 2026-10-10 (DB `20261009-62…-92` e
+      `20261010-02…-07`, BE/FE §12).
+* [ ] **D25** — gli indirizzi del documento seguono il cliente: brief
+      `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
 
 ---
 
@@ -1575,6 +1577,25 @@ due codici in `error_policies_generated.py` + ripieghi) chiusa il 2026-10-04
 (`63deeb194`). Resta Q-2 (§3).
 
 ---
+
+### ✅ D21 — Ordine, DDT e reso parlano del cliente come preventivo, offerta e contratto — chiusa il 2026-10-10
+
+Trovato il 2026-10-09 chiudendo il lato BE/FE di `brief-db-istanza-nasce-col-ba` (§7.5). Ordine, DDT
+e reso avevano il BA nullable, copie di utility e ruolo che nessun vincolo legava al BA, e anelli della
+catena che potevano avere clienti diversi. Che cosa è cambiato nel sistema:
+* l'ordine ha sempre il BA; il DDT lo vuole all'emissione quando la causale manda merce a un cliente
+  (`config.causali_trasporto.richiede_cliente`); il reso ha il BA del suo DDT;
+* utility e ruolo di testata legati al BA da una FK a tre colonne, e scritti dal BB
+  `script.fn_cliente_dal_billing_account` se mancano; la catena ordine → DDT → reso ha un solo BA, e
+  una sorgente dichiarata ma non visibile è un errore;
+* il ruolo del BA, il soggetto dell'istanza e il cliente non cambiano intestatario (lock dichiarati);
+* BA, destinatario ed emittente si scelgono solo in bozza (BB `vendite.trgfn_doc_testata_lock_fuori_bozza`,
+  emittente bloccato fuori bozza su sei documenti);
+* lato BE il cliente del DDT si sceglie e si cambia in bozza, le copie Python ritirate.
+
+Dettaglio nel brief
+[brief-db-esecutivi-ba-coppia.md](../work-done/brief-db-esecutivi-ba-coppia.md) (archiviato il
+2026-10-10). Ciò che la chiusura ha trovato è **D25**; il debito fuori perimetro è D22 (chiusa) e D23.
 
 ### ✅ D22 — L'emittente del documento e' quello del cliente: una regola, una sede — chiusa il 2026-10-10
 

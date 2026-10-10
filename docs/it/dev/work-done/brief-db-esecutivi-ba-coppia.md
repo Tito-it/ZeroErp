@@ -3,13 +3,16 @@
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-09; **rivisto dal team DB** lo stesso giorno
 > (§2, §3, §4 e §5 riscritti sul contratto letto dalla doc auto-generata). **A chi:** team DB; poi
 > BE/FE (§7).
-> **Origine:** §7.5 di [brief-db-istanza-nasce-col-ba.md](../work-done/brief-db-istanza-nasce-col-ba.md). Il suo R-2
+> **Origine:** §7.5 di [brief-db-istanza-nasce-col-ba.md](brief-db-istanza-nasce-col-ba.md). Il suo R-2
 > ha reso `billing_account_id` NOT NULL e legato alla coppia (istanza, utility) su preventivo,
 > offerta e contratto. Chiudendo il lato BE/FE e' emerso che i documenti **esecutivi** di vendita
 > (ordine, DDT, reso) sono rimasti fuori: e' la stessa asimmetria, un livello piu' in basso.
-> **Stato al 2026-10-10:** ✅ **lato DB applicato su dbdev e verde, giro 1 e giro 2** (Tid: «migrazione
-> applicata, test verdi»; giro 2 al §11). 🔧 **Non chiuso**: resta la ricaduta BE/FE (§7, §9.6, §11.5),
-> e il debito fuori perimetro del §10.3 che all'archiviazione va in un brief nuovo.
+> **Stato al 2026-10-10:** ✅ **chiuso e archiviato.** Lato DB applicato su dbdev e verde, giro 1 e
+> giro 2 (§9, §11); lato BE/FE fatto (§12, commit `062b06368`). Il debito fuori perimetro e' in tre
+> brief: [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22, chiuso),
+> [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D23) e
+> [brief-db-indirizzi-documento-seguono-il-cliente](../work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md)
+> (D25, dal §12.3). Il collaudo a video dei form di DDT e ordine resta di Tid (§12.2).
 > **Dettaglio:** 31 changeSet
 > `20261009-62…-92`, tutti `EXECUTED` nel `databasechangelog` di dbdev (`-62…-82` alle 19:19, `-83…-85`
 > alle 19:30, `-86…-92` alle 23:46 del 2026-10-09). Il giro e' cresciuto due volte oltre il §5: il lock
@@ -19,7 +22,7 @@
 > forma il 2026-10-10 (§10.2), messe nel codice dal giro DB 2 (§11: 6 changeSet `20261010-02…-07`,
 > 2 codici a catalogo, pgTAP a 39 test, 4 pagine `manual/`), applicato e verde il 2026-10-10.
 > **Da leggere per primo, ora: §11** (e il §11.5 per il backend).
-> **Giro BE/FE fatto il 2026-10-10: §12** (con due punti aperti al §12.3).
+> **Giro BE/FE fatto il 2026-10-10: §12** (i due punti del §12.3 chiusi o passati a un brief nuovo).
 > **Nel registro dei difetti DB:** voce **D21** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -115,7 +118,7 @@ non ce n'e' nessuna (AGENTS.md, regola zero).
 
 | # | Domanda | Proposta | Decisione di Tid |
 | --- | --- | --- | --- |
-| **D-1** | L'**ordine** ha sempre il BA? | **Si'.** L'ordine e' gia' legato a un ruolo (`soggetto_ruolo_id` NOT NULL) e ne blocca il BA; nasce dal preventivo o dall'offerta, che il BA lo hanno sempre, o standalone su un cliente. Un ordine senza fornitura non si sa a chi si fattura. ⚠️ **Conseguenza da accettare:** dopo [brief-db-istanza-nasce-col-ba](../work-done/brief-db-istanza-nasce-col-ba.md) l'istanza nasce col BA, quindi un ruolo CLIENTE **senza fornitura non riceve ordini**. L'ordine «prospect» sparisce: e' voluto? | ✅ **Si'** (2026-10-09), conseguenza sul prospect compresa |
+| **D-1** | L'**ordine** ha sempre il BA? | **Si'.** L'ordine e' gia' legato a un ruolo (`soggetto_ruolo_id` NOT NULL) e ne blocca il BA; nasce dal preventivo o dall'offerta, che il BA lo hanno sempre, o standalone su un cliente. Un ordine senza fornitura non si sa a chi si fattura. ⚠️ **Conseguenza da accettare:** dopo [brief-db-istanza-nasce-col-ba](brief-db-istanza-nasce-col-ba.md) l'istanza nasce col BA, quindi un ruolo CLIENTE **senza fornitura non riceve ordini**. L'ordine «prospect» sparisce: e' voluto? | ✅ **Si'** (2026-10-09), conseguenza sul prospect compresa |
 | **D-2** | Su quali **DDT** il BA e' obbligatorio? | Il modello ha gia' il discriminante, la causale (§2.2), e la diagnosi gia' mette `SOLO_TRASPORTO` prima di `SENZA_BA`. Resta da scegliere il perimetro: **(a)** solo causale `fatturabile` (`VENDITA`); **(b)** ogni causale che manda merce **al cliente** (`SCARICO_VEN`: anche `OMAGGIO` e `CAMPIONATURA`, che non si fatturano ma escono verso un cliente). Proposta del team DB: **(b)** — omaggio e campionatura sono consegne a un cliente, e il cliente a grana fine e' il BA; il «fatturabile» decide il push, non chi e' la controparte. ⚠️ Il criterio va scritto in una colonna del vocabolario delle causali (non per codice), e la diagnosi resta com'e' | ✅ **(b)** (2026-10-09): il BA serve su ogni DDT che manda merce a un cliente. Quali causali: D-2-bis |
 | **D-2-bis** | Con (b), **quali causali** vogliono il cliente? | Non si deriva da `causale_magazzino = 'SCARICO_VEN'`: il conto visione manda merce a un cliente e non ha causale di magazzino, quindi resterebbe fuori. Serve una colonna nuova in `config.causali_trasporto` (nome di lavoro `richiede_cliente boolean NOT NULL`), valorizzata nel CSV. Proposta per il seed: **si'** `VENDITA`, `OMAGGIO`, `CAMPIONATURA`, `CONTO_VISIONE`; **no** `TRASFERIMENTO` (deposito nostro), `CONTO_LAVORO` e `RIPARAZIONE` (terzista); **da dire** `RESO` (un DDT con causale reso porta merce a chi? se e' il rientro verso un fornitore, no) | ✅ **Come proposto** (2026-10-09): si' `VENDITA`, `OMAGGIO`, `CAMPIONATURA`, `CONTO_VISIONE`; no `TRASFERIMENTO`, `CONTO_LAVORO`, `RIPARAZIONE`, `RESO`. ⚠️ La causale di trasporto `RESO` e' la bolla **nostra verso un fornitore** (commento di `20260928-60`, Lotto 4); il reso **del cliente** e' un'altra cosa, il documento `vendite.resi`, e segue D-3 (BA del suo DDT). La riconsegna al cliente dopo un reso eredita la causale del DDT d'origine (`fn_genera_ddt_riconsegna`) |
 | **D-3** | Il **reso** ha il BA? | **Il BA del suo DDT, sempre.** Il reso non e' mai standalone (§2.1): la regola non e' «obbligatorio» ma «uguale a quello del DDT sorgente», NULL compreso — un reso da un conto visione senza BA resta senza BA. Non e' una decisione autonoma: segue D-2 | ✅ **Si'** (2026-10-09) |
@@ -130,7 +133,7 @@ Domanda di Tid: perche' `billing_account.soggetto_ruolo_id` non e' stato bloccat
 cose date per vere che non lo sono.
 
 **Nessuna decisione scritta di non bloccarlo.** R-1 di
-[brief-db-istanza-nasce-col-ba](../work-done/brief-db-istanza-nasce-col-ba.md) (§6.2) blocca istanza e utility
+[brief-db-istanza-nasce-col-ba](brief-db-istanza-nasce-col-ba.md) (§6.2) blocca istanza e utility
 perche' «sono l'identita' del BA»; il ruolo non e' mai nominato, ne' per tenerlo dentro ne' per
 lasciarlo fuori. Lo stesso per il manuale di `billing_account`, che dichiara immutabili istanza e
 utility (e `canale_origine`) e tace sul ruolo. E' una **dimenticanza**, non una scelta: lo stesso caso
@@ -138,9 +141,9 @@ del codice offerta senza lock (riga 29 del CSV di `automation_lock_columns`).
 
 **I documenti lo danno gia' per fisso.**
 
-* [db-brief-ordini-lock-cliente](../work-done/db-brief-ordini-lock-cliente.md) §1: «la relazione
+* [db-brief-ordini-lock-cliente](db-brief-ordini-lock-cliente.md) §1: «la relazione
   BA → SR e' **1:1 deterministica**», ed e' la premessa del lock del cliente sull'ordine;
-* [brief-db-billing-account-cambio-emittente](../work-done/brief-db-billing-account-cambio-emittente.md)
+* [brief-db-billing-account-cambio-emittente](brief-db-billing-account-cambio-emittente.md)
   D-3: due BA dello stesso cliente sotto due emittenti «risalgono gia' alla stessa persona
   giuridica» tramite `soggetto_ruolo_id`. Se il ruolo si sposta, la risposta cambia senza che
   nessuno lo sappia;
@@ -185,7 +188,7 @@ ammesso e' proprio quello che non dovrebbe esistere.
 utility): `istanza_utility_id` e `utility_id` NOT NULL e `uq_billing_instance_utility`, che c'era gia'
 prima di R-1. Un'istanza con piu' utility ha piu' BA, uno per utility, e un soggetto ha tanti BA quante
 sono le sue forniture: e' il modello deciso il 2026-10-08 (D-5 e D-6 di
-[brief-db-istanza-nasce-col-ba](../work-done/brief-db-istanza-nasce-col-ba.md); guida istanze, «Multi-utility»).
+[brief-db-istanza-nasce-col-ba](brief-db-istanza-nasce-col-ba.md); guida istanze, «Multi-utility»).
 Tutti quei BA puntano allo **stesso** `soggetto_ruolo_id`, perche' il ruolo CLIENTE e' uno per
 soggetto: bloccare la colonna non costringe a creare BA in piu', vieta solo che un BA **gia' nato**
 cambi intestatario. La fattura unica su piu' forniture dello stesso cliente c'e' gia', ed e' un'altra
@@ -757,9 +760,9 @@ Fuori perimetro — all'archiviazione va in un **brief nuovo**, con la voce-rima
 
 * le **sette copie** del guard emittente <-> BA (ordini, DDT, resi, preventivi, offerte, contratti,
   commesse), annotate nel §5.5: regola del 2, un BB parametrico. ➡️ **Brief aperto il 2026-10-10**:
-  [brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md) (D22);
+  [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22);
 * la domanda generale del §8 sulle **altre** colonne di testata in fase chiusa. ➡️ **Brief aperto il
-  2026-10-10**: [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md) (D23).
+  2026-10-10**: [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D23).
 
 Dentro il giro:
 
@@ -923,12 +926,19 @@ Dentro il giro:
 * ⚠️ **Due rossi sul DB vero che non sono di questo giro**: `test_error_policies_divergenza_db` e
   `test_ui_action_e_canale_campi` (promesse `highlight` di sei `*_EMITTENTE_BA_INCOERENTE`). Su
   dbdev e' stato applicato il 2026-10-10 alle 10:03 il giro DB di
-  [brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md), che e' su
+  [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md), che e' su
   `origin/dev/db-tid` ma non ancora in `dev/backend-tid`: il DB e' avanti rispetto a git, e le
   policy **non** si rigenerano finche' il commit non e' nel branch. Si chiudono col giro BE di quel
   brief.
+  ✅ **Chiuso il 2026-10-10** dal giro BE di quel brief (commit `62811ab10`: `E_DOC_EMITTENTE_BA_INCOERENTE`
+  al posto dei sei codici, policy rigenerata).
 * ⚠️ **Da verificare (Tid)**: al cambio di cliente in bozza gli **indirizzi del documento** gia'
   assegnati (lo slot Consegna, auto-assegnato alla creazione dal ruolo del cliente) restano quelli
   del cliente di prima. Il guard di ownership del picker guarda il destinatario attuale, ma lo
   snapshot gia' scritto non si riallinea. Non l'ho toccato: se va riallineato, la sede e' il DB (o
   l'auto-assegnazione all'UPDATE del BA), e la domanda e' di modello.
+  ➡️ **Deciso da Tid il 2026-10-10, passato a un brief nuovo**:
+  [brief-db-indirizzi-documento-seguono-il-cliente](../work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md)
+  (D25). L'istruttoria ha trovato lo stesso buco su preventivo e offerta, e il gate d'emissione che
+  non guarda l'origine dell'indirizzo. La regola va nel DB, e con lei l'auto-assegnazione dello slot
+  di default.

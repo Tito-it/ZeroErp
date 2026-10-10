@@ -93,6 +93,23 @@ export function useDatiSocietariForm(options = {}) {
     form.codice_sdi = data.codice_sdi || ''
   }
 
+  // Scopo: Il corpo da mandare al backend: SOLO cio' che il form mostra.
+  // ⭐ Il form tiene i valori dei campi nascosti (si torna indietro e si
+  //    ritrovano), ma non li manda: un codice SDI scritto e poi lasciato per
+  //    il canale P arriverebbe al guard del DB, che lo rifiuta sul campo
+  //    `codice_sdi` — un campo che l'operatore non vede piu'. Stessa regola
+  //    per REA e capitale quando la forma giuridica non li prevede.
+  function toPayload() {
+    return {
+      ...form,
+      id_prov_iscri_rea: showRea.value ? form.id_prov_iscri_rea : null,
+      iscrizione_rea: showRea.value ? form.iscrizione_rea : '',
+      capitale_sociale: showCapitaleSociale.value ? form.capitale_sociale : null,
+      pec_fatturazione: form.destinatario_fe === 'P' ? form.pec_fatturazione : '',
+      codice_sdi: form.destinatario_fe === 'C' ? form.codice_sdi : ''
+    }
+  }
+
   return {
     form,
     formaCorrente,
@@ -102,6 +119,7 @@ export function useDatiSocietariForm(options = {}) {
     requireCapitaleSociale,
     validate,
     reset,
-    populate
+    populate,
+    toPayload
   }
 }

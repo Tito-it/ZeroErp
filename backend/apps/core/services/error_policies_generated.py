@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1025, di cui 111 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1029, di cui 111 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -415,6 +415,12 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO": "DATO_ERRATO",
     # dbops.fn_run_automations_date_validita non e riuscita a montare il guard delle date di validita (script.trgfn_guard_date_validita) su una tabella con valido_dal/valido_al. Nessun operatore lo provoca: e un difetto di struttura o di permessi di chi migra. Brief: brief-db-guard-date-validita.
     "E_DATE_VALIDITA": "TECNICO",
+    # Canale della fattura elettronica C (codice SDI) senza codice_sdi. Lo solleva anagrafiche.trgfn_dati_societari_guard_canale_fe; il CHECK chk_dati_societari_canale_fe_coerente resta la rete. DATO_ERRATO, campo codice_sdi. Frase chiusa. Brief: brief-db-character-n-spazi-di-riempimento (D-6, Tid 2026-10-10).
+    "E_DATI_SOCIETARI_CODICE_SDI_MANCANTE": "DATO_ERRATO",
+    # anagrafiche.dati_societari.codice_sdi non ha la forma del codice destinatario SDI: 7 caratteri maiuscoli o cifre (6 per la PA). Lo solleva anagrafiche.trgfn_dati_societari_guard_canale_fe; il CHECK chk_dati_societari_codice_sdi_forma resta la rete. DATO_ERRATO, campo codice_sdi. VARIADIC: il codice scritto. Brief: brief-db-character-n-spazi-di-riempimento (D-6, Tid 2026-10-10).
+    "E_DATI_SOCIETARI_CODICE_SDI_NON_VALIDO": "DATO_ERRATO",
+    # Canale della fattura elettronica P (PEC) senza pec_fatturazione. Lo solleva anagrafiche.trgfn_dati_societari_guard_canale_fe; il CHECK chk_dati_societari_canale_fe_coerente resta la rete. DATO_ERRATO, campo pec_fatturazione. Frase chiusa. Brief: brief-db-character-n-spazi-di-riempimento (D-6, Tid 2026-10-10).
+    "E_DATI_SOCIETARI_PEC_FATTURAZIONE_MANCANTE": "DATO_ERRATO",
     "E_DATI_SOCIETARI_REQUIRED_MANCANTI": "DATO_ERRATO",
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "NON_TROVATO",
     # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
@@ -1174,6 +1180,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_PROMO_INIZIATA_CAMPI_RISTRETTI": "CONFLITTO_STATO",
     "E_PROMO_RETROATTIVA": "DATO_ERRATO",
     "E_PROMO_SCADUTA_IMMUTABILE": "CONFLITTO_STATO",
+    # La sigla di una provincia non ha la forma ammessa (config.fn_sigla_provincia_ammessa): per una provincia italiana (regione di uno stato con codice_iso2 = IT) due lettere maiuscole, per ogni altra maiuscole e cifre da 1 a 10. Lo sollevano config.trgfn_province_guard_sigla (scrittura della provincia, campo sigla) e config.trgfn_regioni_guard_sigla_province (una regione che cambia stato, campo stato_id, nomina la prima provincia fuori regola). DATO_ERRATO: la sigla la scrive una persona nel form. Il CHECK chk_province_sigla_forma resta la rete. VARIADIC: sigla, nome della provincia. Brief: brief-db-character-n-spazi-di-riempimento (D-2, Tid 2026-10-10).
+    "E_PROVINCIA_SIGLA_NON_VALIDA": "DATO_ERRATO",
     "E_PULL_COMMESSA": "DATO_ERRATO",
     # Ritirato il 2026-09-07. Fermava lo step quando fallivano TUTTE le commesse di un giro di fatturazione, ma il rollback che si portava dietro cancellava anche le marcature d'esito appena scritte: il documento fallito spariva dal lotto e tornava a sembrare fatturabile in competenza, ed e' il difetto che ha aperto il cantiere (caso LTF-0009578 / ORD0036005, 2026-09-06). Dal 2026-09-07 il ramo «tutte fallite» si comporta come il parziale: l'esito si scrive in vendite.fatturazione_lotti_esiti e lo step si ferma SENZA sollevare, cosi' la contraddizione «lotto COMPLETATO con documenti in ERRORE» resta visibile al presidio vendite.vw_lotti_chiusi_con_gruppi_in_errore invece di sparire dentro un rollback. Non ha un codice sostituto, e non e' una dimenticanza: il caso non e' piu' un errore da sollevare, e' un esito da registrare. Non si cancella perche' dbops.error_log ha una FK NOT NULL verso config.messaggi_errore(id) e le righe gia' scritte sotto questo codice devono restare leggibili — e' il pattern obsoleto_dal, non attivo=false. Brief: brief-db-esito-gruppo-lotto P-6.
     # ⚠️ RITIRATO il 2026-09-07
