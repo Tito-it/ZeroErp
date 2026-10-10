@@ -6,6 +6,10 @@
 >
 • [dbops.presidi](/dbzero/dbops/manual/presidi) — *il catalogo da cui questa funzione legge tutto*
 >
+**Approfondimento funzioni:**
+>
+• [dbops.fn_conta_presidio_per_variante](/dbzero/dbops/manual/fn_conta_presidio_per_variante) — *il conteggio per causa, di cui questo è la somma*
+>
 **Approfondimento guide:**
 >
 • [Presidi e registri del debito](/guide/presidi-e-registri-del-debito)
@@ -13,9 +17,18 @@
 >
 
 ### 🎯 Scopo Principale
-(latest review 10-09-2026)
+(latest review 10-10-2026)
 
 Dice **quante righe di una vista di controllo chiedono un intervento**.
+
+> ⭐ **Dal 2026-10-10 è la somma del conteggio per causa.** Il lavoro — leggere
+> il catalogo, rifiutare una vista sconosciuta, applicare lo stato atteso,
+> attraversare i filtri per riga — lo fa
+> [`dbops.fn_conta_presidio_per_variante`](/dbzero/dbops/manual/fn_conta_presidio_per_variante),
+> e questa funzione somma i suoi gruppi. Così le due risposte non possono
+> divergere. Il resto di questa pagina descrive quel lavoro, ed è ancora vero:
+> è solo scritto in un posto solo. Per lo stesso motivo questa funzione non gira
+> più con i permessi del proprietario: non legge niente da sé.
 
 Una riga sola, in apparenza. Esiste per un difetto che non si vede guardando il
 codice, e che avrebbe reso bugiardo tutto il resto.

@@ -26,7 +26,8 @@
 --     cade nell'ALLARME, non nel silenzio
 -- 11) 🔴 il SECURITY DEFINER ha ancora il proprietario che serve: ogni tabella
 --     protetta letta da una vista DEFINER appartiene al proprietario della
---     funzione
+--     funzione che conta (dal 2026-10-10 la sede,
+--     fn_conta_presidio_per_variante: fn_conta_presidio ne e' la somma, INVOKER)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ I DUE VERSI VANNO LETTI INSIEME, ed e' il punto del file.
@@ -289,9 +290,13 @@ SELECT is(
            AND t.relowner <> (SELECT proowner FROM pg_proc pr
                                 JOIN pg_namespace pn ON pn.oid = pr.pronamespace
                                WHERE pn.nspname = 'dbops'
-                                 AND pr.proname = 'fn_conta_presidio')), ''),
+                                 -- ⚠️ dal 2026-10-10 la DEFINER che legge le viste e' la
+                                 --   sede del conteggio; fn_conta_presidio e' la sua somma,
+                                 --   INVOKER (20261010-41/-42). Nominare la somma qui
+                                 --   pinnerebbe il proprietario della funzione sbagliata.
+                                 AND pr.proname = 'fn_conta_presidio_per_variante')), ''),
     '',
-    'test 11 — ogni tabella protetta letta da una vista DEFINER appartiene al proprietario di fn_conta_presidio');
+    'test 11 — ogni tabella protetta letta da una vista DEFINER appartiene al proprietario della sede del conteggio (fn_conta_presidio_per_variante)');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidio-processi-testo-per-causa §6.2 — R-2, seconda meta'.
+#
+# ── Che cosa cambia ───────────────────────────────────────────────
+#   dbops.fn_conta_presidio smette di contare da se': torna la SOMMA dei
+#   gruppi di dbops.fn_conta_presidio_per_variante (-41), che e' da oggi la
+#   sede unica di perimetro, rifiuto e filtro di stato. Regola del 2: la
+#   copia si ritira nello STESSO giro dell'estrazione.
+#   Firma, tipo di ritorno e risposta invariati, ramo per ramo:
+#     · vista non a catalogo (o NULL) → E_PRESIDIO_NON_A_CATALOGO, ora
+#       sollevato dalla sede (il contesto del log nomina la funzione -41);
+#     · presidio senza variante → un gruppo solo, la somma e' il conteggio;
+#     · presidio con variante e zero righe → nessun gruppo: coalesce a 0,
+#       ⛔ mai NULL — un NULL al digest non e' «niente da guardare».
+#
+# ── ⚠️ Da SECURITY DEFINER a SECURITY INVOKER, ed e' voluto ─────────
+#   La DEFINER serviva a LEGGERE le viste da proprietario. Questa funzione
+#   ora non legge piu' niente: chiama una DEFINER del proprietario, che
+#   attraversa la RLS per conto suo. Lasciarla DEFINER sarebbe un privilegio
+#   senza motivo (linee-guida-sql §5b: «mai SECURITY DEFINER senza
+#   motivazione documentata»). Per chi la chiama non cambia niente: l'app ha
+#   EXECUTE su entrambe.
+#   ⚠️ search_path pinnato come prima: la chiamata e' qualificata.
+#
+# ── Censimento dei lettori (2026-10-10) ───────────────────────────
+#   · backend: apps/core/db/presidi_repository.py (conteggio del presidio), il
+#     test che ne legge l'SQL (test_presidi_repository): firma invariata;
+#   · pgTAP: dbops/test-catalogo-presidi-v1 (8-11), test-vw-email-da-guardare,
+#     test-sorgenti-orfane-v1, test-riferimenti-morti-v1,
+#     test-articoli-a-magazzino-prontezza-v1, vendite/test-lotti-fermi-…,
+#     vendite/test-annullamento-chiude-la-vita-v1, magazzino/…: chiamano il
+#     conteggio e ne leggono il numero, che non cambia. Il test 11 del
+#     catalogo, che risale al proprietario della DEFINER, ora nomina la sede
+#     (-41): e' lei che deve possedere le tabelle.
+#
+# ⛔ Corpo vivo dalla doc auto-generata (docs/it/dbzero/dbops/funzioni/
+#   fn_conta_presidio.md, = 20260910-06), non da uno YAML.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261010-42-update-fn-conta-presidio-somma-per-variante-mctit.yaml
+
+  - changeSet:
+      id: 20261010-42-update-fn-conta-presidio-somma-per-variante
+      author: mctit
+      failOnError: true
+      comment: >
+        dbops.fn_conta_presidio diventa la somma dei gruppi di
+        dbops.fn_conta_presidio_per_variante, sede unica di perimetro e filtro
+        di stato: le due risposte non possono divergere. Passa a SECURITY
+        INVOKER, perche' non legge piu' niente da se'. Firma e risposta
+        invariate. R-2 di brief-db-presidio-processi-testo-per-causa.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: |
+              SELECT COUNT(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'dbops'
+                 AND p.proname = 'fn_conta_presidio_per_variante';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_conta_presidio(
+                  p_vista dbops.presidi.vista%TYPE
+              ) RETURNS bigint
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              SET search_path TO 'pg_catalog', 'pg_temp'
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Contare le righe che CHIEDONO UN INTERVENTO su una vista
+                  --   di presidio: la somma dei gruppi del conteggio per
+                  --   variante.
+                  --
+                  -- ⛔ Il perimetro, il rifiuto di una vista non a catalogo e
+                  --   il filtro di stato NON si scrivono qui: stanno in
+                  --   dbops.fn_conta_presidio_per_variante, e solo li'. Una
+                  --   seconda copia del filtro divergerebbe dalla prima.
+                  -- ⚠️ coalesce: un presidio con variante e nessuna riga non
+                  --   ha gruppi, e la somma di niente e' NULL, non zero.
+                  -- =========================================================
+                  RETURN (SELECT coalesce(sum(c.conteggio), 0)::bigint
+                            FROM dbops.fn_conta_presidio_per_variante(p_vista) c);
+              END
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_conta_presidio(dbops.presidi.vista%TYPE) IS
+                  'Conta le righe che CHIEDONO UN INTERVENTO su una vista di presidio dichiarata in dbops.presidi: la SOMMA dei gruppi di dbops.fn_conta_presidio_per_variante, che e'' la sede unica del perimetro (una vista non a catalogo solleva E_PRESIDIO_NON_A_CATALOGO, non torna zero) e del filtro (colonna_stato, stato_atteso) letto dal catalogo. Dal 2026-10-10 e'' SECURITY INVOKER: non legge piu'' le viste da se'', e l''attraversamento della row level security (tre viste security_invoker su tabelle protette, che da un percorso senza GUC — un management command — tornerebbero ZERO per cecita'') lo fa la sede, DEFINER del proprietario. ⛔ Torna un bigint e MAI le righe. ⚠️ La colonna dbops.presidi.perimetro dice un''altra cosa, cioe'' se il chiamante puo'' anche ELENCARE le righe. Brief: brief-db-un-destinatario-per-i-presidi §4.1, brief-db-presidio-processi-testo-per-causa §6.2.';
+
+              -- ⚠️ Gia' concesso dal 20260910-06; CREATE OR REPLACE lo
+              --   conserva, e ripeterlo non costa niente (§11.8: il verso
+              --   largo e' idempotente).
+              GRANT EXECUTE ON FUNCTION dbops.fn_conta_presidio(dbops.presidi.vista%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare al corpo del 20260910-06 rimetterebbe una seconda
+              --   copia del filtro accanto alla sede (-41). Il verso di
+              --   ritiro e' un changeSet nuovo.
+              SELECT 1;

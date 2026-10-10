@@ -171,6 +171,11 @@ il presidio. Per questi presidi anche «a chi tocca» si legge per causa, da
 il valore del presidio nel suo insieme. Dettaglio in
 [`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi).
 
+Anche il **conteggio** si legge per causa, dal 2026-10-10:
+[`dbops.fn_conta_presidio_per_variante`](/dbzero/dbops/manual/fn_conta_presidio_per_variante)
+dice quante righe ci sono per ciascuna causa, perché il pannello e il digest
+mostrano solo un campione delle righe e da un campione non si contano i gruppi.
+
 ---
 
 ### ⛔ Che cosa NON sta qui
