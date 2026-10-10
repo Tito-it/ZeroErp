@@ -37,8 +37,9 @@ per restituire dati pronti per la UI con display fields. La POST delega a
     prima inviato dalla dashboard ma ignorato dalla view)
   - `risorsa_umana_id` (int, opzionale) — filtro operatore assegnato
   - `search` (string, opzionale) — ricerca ILIKE su codice, descrizione, ragione_sociale soggetto
-  - `data_da` (string ISO date, opzionale) — filtro data inserimento da (>=)
-  - `data_a` (string ISO date, opzionale) — filtro data inserimento a (<= fine giorno)
+  - `data_da` (string ISO date, opzionale) — filtro data inserimento, dal giorno indicato
+  - `data_a` (string ISO date, opzionale) — filtro data inserimento, fino al giorno indicato **incluso**
+  - i giorni sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09); una data malformata e' `400 E_VALIDATION_INPUT` (prima arrivava al DB come stringa: `500`)
   - `limit` (int, opzionale) — righe per pagina, default `50`, max `200`
   - `offset` (int, opzionale) — offset paginazione, default `0`
   - `order_by` (string, opzionale) — colonna ordinamento, default `data_insert`
@@ -55,7 +56,11 @@ per restituire dati pronti per la UI con display fields. La POST delega a
   - `priorita_id` (int, **obbligatorio**) — ID priorita' (> 0)
   - `soggetto_id` (UUID, opzionale) — UUID soggetto
   - `soggetto_ruolo_id` (int, opzionale) — FK a soggetti_ruoli (richiede soggetto_id)
-  - `istanza_utility_id` (int, opzionale) — FK a istanze_utilities (richiede soggetto_ruolo_id)
+  - `istanza_utility_id` (int, opzionale) — FK a istanze_utilities (richiede soggetto_id)
+  - `billing_account_id` (int, opzionale) — il cliente a grana fine di cui la pratica parla
+    (la fornitura: un BA per coppia istanza+utility). Deve essere del `soggetto_ruolo_id`
+    (`E_PRATICHE_BA_NON_COERENTE`); col solo BA l'istanza e' la sua, con entrambi devono
+    coincidere (`E_PRATICA_VALIDATION`, campo `billing_account_id`). Dal 2026-10-08
   - `risorsa_umana_id` (int, opzionale) — risorsa umana assegnata
   - `unita_organizzativa_id` (int, opzionale) — unita' organizzativa
   - `canale_origine_id` (int, opzionale) — canale di origine
@@ -137,18 +142,23 @@ Envelope paginata standard (`paginated_envelope`):
   bozza" futuro). Il trigger DB valorizza `data_apertura` anche alla creazione diretta in `APERTA`.
 - Il codice pratica `PRA-NNNNNNN` e' generato dal trigger DB via `config.sistema_codici`.
 - Validazione contesto anagrafico (service + trigger DB guard):
-  - `istanza_utility_id` richiede `soggetto_ruolo_id`
+  - `istanza_utility_id` richiede `soggetto_id` (non il ruolo: il trigger non lo pretende)
   - `soggetto_ruolo_id` richiede `soggetto_id`
   - Il ruolo deve appartenere al soggetto
   - L'istanza deve appartenere al soggetto
+  - Il billing account deve essere del ruolo (regola 5 del trigger, `E_PRATICHE_BA_NON_COERENTE`)
+    e della sua istanza (FK composta `fk_pratiche_billing_account_istanza`)
 - `is_search_endpoint = True` sulla view GET: attiva throttling `SearchBurstRateThrottle`.
 - Ordinamento GET: configurabile via `order_by`/`order_dir`, default `data_insert DESC`, tiebreaker `id`.
 - Whitelist colonne ordinamento: `codice`, `descrizione`, `data_apertura`, `data_scadenza`, `data_insert`, `tipo_prestazione_descrizione`, `stato_descrizione`, `priorita_descrizione`, `soggetto_display`, `risorsa_umana_display`.
-- (2026-06-15) Ogni riga espone `billing_account_id` **derivato** dall'istanza
-  (`script.fn_get_billing_account_by_istanza`): il BA del cliente attivo, `null` se
-  prospect. Single source of truth a DB (nessuna derivazione FE). Alimenta, aprendo
-  un documento dal flusso, l'eredità+lock cliente e il gating (offerta/contratto
-  richiedono BA). Non è un filtro di lista.
+- Ogni riga espone `billing_account_id`, **colonna della pratica** dal 2026-10-08
+  (brief-db-istanza-nasce-col-ba, D-9): il cliente di cui la pratica parla; `null` per le
+  pratiche di altri ruoli, interne o con la sola istanza. Fino a quella data era
+  derivato dall'istanza (`script.fn_get_billing_account_by_istanza`, ritirata il
+  2026-10-10, brief-db-istanza-nasce-col-ba-residui), che con piu' BA per istanza non
+  sa quale scegliere. Alimenta, aprendo un documento dal
+  flusso, l'eredità+lock cliente e il gating (offerta/contratto richiedono BA). Non è un
+  filtro di lista.
 - Paginazione offset: `COUNT(*)` + dati con `LIMIT/OFFSET`. Risposta via `paginated_envelope` (count, page, page_size, total_pages, results).
 - Parsing parametri via `parse_list_params` e `qp_int_strict` (building block core).
 
@@ -170,3 +180,4 @@ Envelope paginata standard (`paginated_envelope`):
 - I display fields eliminano la necessita' di lookup client-side per le colonne lista.
 - v2.2 (1 aprile 2026): risposta GET allineata a `paginated_envelope` (aggiunto page, page_size, total_pages). Parsing via `parse_list_params`/`qp_int_strict`. Aggiunti parametri `data_da`, `data_a`, `order_by`, `order_dir`.
 - v2.3 (14 giugno 2026): la pratica nasce direttamente in stato `APERTA` (non piu' `BOZZA`); `data_apertura` valorizzato dal trigger anche alla creazione diretta in `APERTA` (oltre alla transizione `BOZZA → APERTA`). Lo stato `BOZZA` resta nel modello.
+- v2.4 (8 ottobre 2026): POST accetta `billing_account_id`; il `billing_account_id` della GET si legge dalla colonna della pratica (brief-db-istanza-nasce-col-ba, D-9).

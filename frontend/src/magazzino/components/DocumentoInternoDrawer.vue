@@ -34,7 +34,6 @@
 import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DatePicker from 'primevue/datepicker'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
@@ -42,18 +41,17 @@ import Tag from 'primevue/tag'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import { useFooterDocumento } from '../../core/composables/useFooterDocumento'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { mapAvailableActionsToDrawerActions } from '../../core/composables/useDrawerActions'
 import { aspettoAzione } from '../../core/aspettoAzioni'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useFetchVersion } from '../../core/composables/useFetchVersion'
 import { useNotify } from '../../core/composables/useNotify'
@@ -87,7 +85,6 @@ const store = useDocumentiInterniStore(f.codice)
 const storeRighe = useDocumentoRigheStore(f.codice)
 const onClose = useDrawerClose(emit)
 const { loadDetailOrClose } = useDrawerDetailLoad(onClose)
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const { execute, loading: salvando, campiErrati } = useApiHandler()
 const { confirmAction } = useConfirmAction()
 const notify = useNotify()
@@ -104,10 +101,15 @@ const loading = ref(false)
 //    ⚠️ `isReadonly` e' dichiarata piu' sotto: il getter e' letto al click,
 //    non adesso.
 const {
-  formAperto, rigaInModifica, apriRiga, chiudiForm, azioneNuovaRiga,
+  formAperto, rigaInModifica, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
 } = useFormInline({
   padre: () => (props.visible ? props.documentoId : null),
   puoModificare: () => !isReadonly.value,
+  // D-8: cambiare riga col form modificato chiede (letto al clic). ⚠️ Solo la
+  //    fotografia della RIGA: cambiare riga non tocca la testata, e l'unione
+  //    `documento` chiederebbe per una testata modificata che resta li'.
+  confermaCambio: (procedi) =>
+    (rigaForm.value ? rigaForm.value.chiudiConConferma(procedi) : procedi()),
 })
 const pianoVisible = ref(false)
 
@@ -129,8 +131,25 @@ const form = ref(defaultForm())
 // La ricarica del dettaglio dopo una riga NON deve cancellare una descrizione
 // digitata e non salvata: il BB tiene la baseline e ripristina il pendente.
 const { preserva, reset: resetPreserva, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-// Uscita (X, ESC, clic fuori, Chiudi) con la testata non salvata: prima si chiede.
-const onChiudi = () => chiudiConConferma(onClose)
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): testata E riga aperta, una
+//    domanda sola — all'uscita e al cambio di riga. La fotografia della riga la
+//    tiene il suo form (`DocumentoInternoRigaForm`, `defineExpose`).
+const rigaForm = ref(null)
+const documento = unisciFotografie({ modificato, chiudiConConferma }, () => rigaForm.value)
+// L'ancora del form inline (`useFormInline`) e' il form della riga: il suo
+// `ref` serve gia' alla fotografia, quindi l'ancora lo segue invece di
+// prendersi un secondo `ref`. ⚠️ `flush: 'sync'`: l'ancora dev'essere legata
+// prima del `nextTick` in cui il BB fa scorrere il form in vista.
+watch(rigaForm, (el) => ancoraForm(el), { flush: 'sync' })
+// Il footer di un documento: la regola e' del BB (D-11), qui come per vendite.
+// ⚠️ `presente`: finche' il dettaglio non c'e' (caricamento, errore) niente
+//    Annulla/Salva su un form vuoto.
+const footerDrawer = useFooterDocumento({
+  formRigaAperto: () => formAperto.value,
+  modificabile: () => !isReadonly.value,
+  presente: () => detail.value != null,
+})
+const modificatoDocumento = documento.modificato
 
 function defaultForm() {
   return { data: null, descrizione: '' }
@@ -393,191 +412,184 @@ watch(
   },
   { immediate: true },
 )
-const suVisibile = gestoreVisibile(emit, onChiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- Il Salva della testata e' il footer del drawer, IN FONDO dopo la lista
+       (standard master-detail, punto 12); `FormFooter` nasconde da se' il
+       pulsante in readonly. ⚠️ Solo a form di riga chiuso: in form mode il
+       Salva della riga e' l'unico a video. `proteggi-corpo` spento: la sola
+       lettura protegge il solo pannello della testata, non la lista. -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t(`${f.i18n}.titolo_singolare`)"
+    :icon="f.haPiano ? NAV_ICONS.INVENTARI : NAV_ICONS.RETTIFICHE"
+    :width="DRAWER_WIDTH.WIDE"
+    :proteggi-corpo="false"
+    :modificato="modificatoDocumento"
+    :conferma-uscita="documento.chiudiConConferma"
+    :footer="footerDrawer"
+    :loading="salvando"
+    :save-disabled="!canSaveTestata"
+    :cancel-label="t('common.close')"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="onSalvaTestata"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :title="t(`${f.i18n}.titolo_singolare`)"
-        :icon="f.haPiano ? NAV_ICONS.INVENTARI : NAV_ICONS.RETTIFICHE"
-      />
-    </template>
+    <div v-if="loading && !detail" class="app-loading">
+      <i :class="STATUS_ICONS.CARICAMENTO" />
+    </div>
 
-    <div class="app-drawer-content">
-      <div v-if="loading && !detail" class="app-loading">
-        <i :class="STATUS_ICONS.CARICAMENTO" />
-      </div>
-
-      <template v-if="contentReady && detail">
-        <DrawerEntityHeader>
-          <Tag :value="`#${detail.id}`" severity="secondary" />
-          <span>
-            {{ detail.magazzino_codice }}
-            <span v-if="detail.magazzino_descrizione" class="app-drawer-header-muted">
-              · {{ detail.magazzino_descrizione }}
-            </span>
+    <template v-if="detail">
+      <DrawerEntityHeader>
+        <Tag :value="`#${detail.id}`" severity="secondary" />
+        <span>
+          {{ detail.magazzino_codice }}
+          <span v-if="detail.magazzino_descrizione" class="app-drawer-header-muted">
+            · {{ detail.magazzino_descrizione }}
           </span>
-          <span class="app-drawer-header-muted">
-            {{ t('magazzino.documenti_interni.del_data', { data: displayDate(detail.data) }) }}
-          </span>
-          <!-- Il magazzino a UBICAZIONI lo si dice in testata: decide se la riga
-               chiede l'ubicazione. -->
-          <Tag
-            v-if="detail.magazzino_usa_ubicazioni"
-            :value="t('magazzino.documenti_interni.usa_ubicazioni')"
-            severity="info"
-          />
-
-          <template #status>
-            <Tag
-              :value="statoDocumento(detail.stato)"
-              :severity="documentoInternoSeverity(detail.stato)"
-            />
-          </template>
-        </DrawerEntityHeader>
-
-        <!-- La nota di stato arriva dal blob (`capabilities.stato_info_key`): qui nessun
-             `v-if` sullo stato. Oggi e' `null` (R-1). -->
-        <DrawerActionsBar
-          :actions="drawerActions"
-          :info-key="capabilities.stato_info_key || ''"
+        </span>
+        <span class="app-drawer-header-muted">
+          {{ t('magazzino.documenti_interni.del_data', { data: displayDate(detail.data) }) }}
+        </span>
+        <!-- Il magazzino a UBICAZIONI lo si dice in testata: decide se la riga
+             chiede l'ubicazione. -->
+        <Tag
+          v-if="detail.magazzino_usa_ubicazioni"
+          :value="t('magazzino.documenti_interni.usa_ubicazioni')"
+          severity="info"
         />
 
-        <!-- ══ La testata ══ -->
-        <div class="app-drawer-section">
-          <h4>{{ t('magazzino.documenti_interni.sezione_testata') }}</h4>
-        </div>
-        <div :class="{ 'app-readonly': isReadonly }">
-          <div class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('magazzino.documenti_interni.campo_data') }} *</label>
-              <DatePicker
-                v-model="form.data"
-                :date-format="DATE_FORMAT"
-                show-icon
-                :invalid="campiErrati.includes('data')"
-              />
-              <small class="app-text-muted">
-                {{ t('magazzino.documenti_interni.data_aiuto') }}
-              </small>
-            </div>
-            <div v-if="f.conDescrizione" class="form-field">
-              <label>{{ t('magazzino.documenti_interni.campo_descrizione') }}</label>
-              <InputText
-                v-model="form.descrizione"
-                maxlength="500"
-                :invalid="campiErrati.includes('descrizione')"
-              />
-            </div>
+        <template #status>
+          <Tag
+            :value="statoDocumento(detail.stato)"
+            :severity="documentoInternoSeverity(detail.stato)"
+          />
+        </template>
+      </DrawerEntityHeader>
+
+      <!-- La nota di stato arriva dal blob (`capabilities.stato_info_key`): qui nessun
+           `v-if` sullo stato. Oggi e' `null` (R-1). -->
+      <DrawerActionsBar
+        :actions="drawerActions"
+        :info-key="capabilities.stato_info_key || ''"
+      />
+
+      <!-- ══ La testata ══ -->
+      <div class="app-drawer-section">
+        <h4>{{ t('magazzino.documenti_interni.sezione_testata') }}</h4>
+      </div>
+      <div :class="{ 'app-readonly': isReadonly }">
+        <div class="form-grid-2col">
+          <div class="form-field">
+            <label>{{ t('magazzino.documenti_interni.campo_data') }} *</label>
+            <DatePicker
+              v-model="form.data"
+              :date-format="DATE_FORMAT"
+              show-icon
+              :invalid="campiErrati.includes('data')"
+            />
+            <small class="app-text-muted">
+              {{ t('magazzino.documenti_interni.data_aiuto') }}
+            </small>
+          </div>
+          <div v-if="f.conDescrizione" class="form-field">
+            <label>{{ t('magazzino.documenti_interni.campo_descrizione') }}</label>
+            <InputText
+              v-model="form.descrizione"
+              maxlength="500"
+              :invalid="campiErrati.includes('descrizione')"
+            />
           </div>
         </div>
+      </div>
 
-        <!-- ══ Le righe ══ -->
-        <div class="app-drawer-section">
-          <h4>
-            {{ t('magazzino.documenti_interni.sezione_righe') }}
-            <span class="app-text-muted">({{ detail.righe_count ?? 0 }})</span>
-          </h4>
-        </div>
+      <!-- ══ Le righe ══ -->
+      <div class="app-drawer-section">
+        <h4>
+          {{ t('magazzino.documenti_interni.sezione_righe') }}
+          <span class="app-text-muted">({{ detail.righe_count ?? 0 }})</span>
+        </h4>
+      </div>
 
-        <!-- Fuori da DRAFT le righe sono congelate: lo si DICE, o l'assenza di
-             «Nuova riga» si legge come un difetto. -->
-        <Message
-          v-if="isWorkflowLocked && !readonlyPermessi"
-          severity="info"
-          :closable="false"
-          size="small"
-        >
-          {{ t('magazzino.documenti_interni.righe_congelate') }}
-        </Message>
+      <!-- Fuori da DRAFT le righe sono congelate: lo si DICE, o l'assenza di
+           «Nuova riga» si legge come un difetto. -->
+      <Message
+        v-if="isWorkflowLocked && !readonlyPermessi"
+        severity="info"
+        :closable="false"
+        size="small"
+      >
+        {{ t('magazzino.documenti_interni.righe_congelate') }}
+      </Message>
 
-        <!-- ⛔ «Non sono riuscito a leggere le righe» non e' «non ce ne sono». -->
-        <Message
-          v-if="storeRighe.erroreCaricamento"
-          severity="warn"
-          :closable="false"
-          size="small"
-        >
-          {{ t('common.righe_non_lette') }}
-        </Message>
+      <!-- ⛔ «Non sono riuscito a leggere le righe» non e' «non ce ne sono». -->
+      <Message
+        v-if="storeRighe.erroreCaricamento"
+        severity="warn"
+        :closable="false"
+        size="small"
+      >
+        {{ t('common.righe_non_lette') }}
+      </Message>
 
-        <DrawerTabLista
-          ref="listaRef"
-          :codice="f.listaRigheCodice"
-          :store="storeRighe"
-          :rows="storeRighe.items"
-          :total="storeRighe.totalRecords"
-          :loading="storeRighe.loading"
-          :paginator-options="paginatorProps"
-          :page="tablePage"
-          :sort-field="paginatorProps.sortField"
-          :sort-order="paginatorProps.sortOrder"
-          :page-actions="pageActions"
-          :dirty="dirty"
-          :perimetro-bloccato="perimetroBloccato"
-          @page="onPage"
-          @sort="onSort"
-          @row-click="apriRiga"
-          @config-loaded="onConfigLoaded"
-        >
-          <!-- La ricerca: le colonne le decide il catalogo della famiglia
-               (`ricerca_full`), il placeholder non le elenca. Sotto 3 caratteri
-               il termine non filtra; l'export porta la stessa `search`
-               (`paramsFiltro`). -->
-          <template #filtri-sempre>
-            <InputText
-              v-model="searchText"
-              class="app-filter-w-lg"
-              :placeholder="t('common.search')"
-            />
-          </template>
+      <DrawerTabLista
+        ref="listaRef"
+        :codice="f.listaRigheCodice"
+        :store="storeRighe"
+        :rows="storeRighe.items"
+        :total="storeRighe.totalRecords"
+        :loading="storeRighe.loading"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        :page-actions="pageActions"
+        :dirty="dirty"
+        :perimetro-bloccato="perimetroBloccato"
+        :riga-attiva="rigaInModifica?.id ?? null"
+        :righe-cliccabili="!isReadonly"
+        @page="onPage"
+        @sort="onSort"
+        @row-click="apriRiga"
+        @config-loaded="onConfigLoaded"
+      >
+        <!-- La ricerca: le colonne le decide il catalogo della famiglia
+             (`ricerca_full`), il placeholder non le elenca. Sotto 3 caratteri
+             il termine non filtra; l'export porta la stessa `search`
+             (`paramsFiltro`). -->
+        <template #filtri-sempre>
+          <InputText
+            v-model="searchText"
+            class="app-filter-w-lg"
+            :placeholder="t('common.search')"
+          />
+        </template>
 
-          <template #empty>
-            <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
-              <i :class="STATUS_ICONS.VUOTO" />
-              <p>{{ t(`${f.i18n}.nessuna_riga`) }}</p>
-            </div>
-          </template>
+        <template #empty>
+          <div v-if="!storeRighe.erroreCaricamento" class="app-empty-state">
+            <i :class="STATUS_ICONS.VUOTO" />
+            <p>{{ t(`${f.i18n}.nessuna_riga`) }}</p>
+          </div>
+        </template>
 
-          <template #actions="{ data }">
-            <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
-          </template>
-        </DrawerTabLista>
+        <template #actions="{ data }">
+          <RowActionsMenu :row="data" :actions="buildRowActions(data)" />
+        </template>
+      </DrawerTabLista>
 
-        <!-- Master-detail inline: il form vive SOTTO la lista. -->
-        <DocumentoInternoRigaForm
-          v-if="formAperto"
-          :famiglia="famiglia"
-          :documento="detail"
-          :riga="rigaInModifica"
-          @salvata="ricarica"
-          @annulla="chiudiForm"
-        />
-
-        <!-- Il Salva della testata: IN FONDO, dopo la lista (standard
-             master-detail, punto 12). `FormFooter` nasconde da se' il pulsante
-             in readonly (inject), e sta FUORI dal pannello protect. ⚠️ Solo a
-             form di riga chiuso: in form mode il Salva della riga e' l'unico
-             a video, e «Chiudi» spingerebbe il form sotto il fold. -->
-        <FormFooter
-          v-if="!formAperto"
-          :loading="salvando"
-          :disabled="!canSaveTestata"
-          :cancel-label="t('common.close')"
-          @save="onSalvaTestata"
-          @cancel="onChiudi"
-        />
-      </template>
-    </div>
+      <!-- Master-detail inline: il form vive SOTTO la lista. -->
+      <DocumentoInternoRigaForm
+        v-if="formAperto"
+        ref="rigaForm"
+        :famiglia="famiglia"
+        :documento="detail"
+        :riga="rigaInModifica"
+        @salvata="ricarica"
+        @annulla="chiudiForm"
+      />
+    </template>
 
     <ExportDialog
       v-model:visible="exportDialogVisible"
@@ -591,5 +603,5 @@ const suVisibile = gestoreVisibile(emit, onChiudi)
       :inventario-id="documentoId"
       :riepilogo="detail?.piano_riepilogo ?? null"
     />
-  </Drawer>
+  </AppDrawer>
 </template>

@@ -17,7 +17,9 @@
 # 10) Sessioni attive (/me/sessioni/) — lista altre sessioni
 # 11) Logout (/auth/logout/) — blacklist + evento LOGOUT
 # 12) Logout idempotente — token gia' blacklistato → 204
-# 13) (riservato)
+# 13) Password chiesta dentro la sessione — secondo-fattore/registra/ e
+#     change-password/: assente e sbagliata → 400 col codice del dominio (mai
+#     401), la giusta passa il cancello; poi un login che azzera i tentativi
 # 14) Ricerca universale (/core/search/) — ricerca soggetti per tipo ruolo
 # 15) Ricerca senza q → 400
 # 16) Ricerca q troppo corto → 400
@@ -27,12 +29,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-# Refresh JWT nel cookie HttpOnly: lettura dal Set-Cookie e ripresentazione.
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_refresh.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -119,41 +117,12 @@ echo "========================================="
 echo ""
 echo "-- 0. Autenticazione --"
 
-if [[ -z "$PASSWORD" ]]; then
-    echo -n "Password per utente '$USERNAME': "
-    read -rs PASSWORD
-    echo ""
-fi
-
-curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
+# Login vero (-D lo implica): il passo 1 prova il refresh dal suo cookie.
+smoke_login -D "${TMPFILE}.hdr"
 REFRESH=$(refresh_dal_set_cookie "${TMPFILE}.hdr")
 
-AUTH_STATUS=$(tail -1 "$TMPFILE")
-AUTH_BODY=$(sed '$d' "$TMPFILE")
-
-if [[ "$AUTH_STATUS" != "200" ]]; then
-    echo -e "${RED}ERRORE: autenticazione fallita (HTTP $AUTH_STATUS)${NC}"
-    echo "$AUTH_BODY" | head -c 300
-    exit 1
-fi
-
-TOKEN=$(json_get "$AUTH_BODY" ".access")
-if [[ -z "$TOKEN" ]]; then
-    echo -e "${RED}ERRORE: token JWT non trovato nella risposta${NC}"
-    exit 1
-fi
-
 # Estrai user_id dal token (payload JWT base64)
-USER_ID=$(echo "$TOKEN" | cut -d. -f2 | python3 -c "
-import sys, base64, json
-payload = sys.stdin.read().strip()
-padding = 4 - len(payload) % 4
-decoded = base64.urlsafe_b64decode(payload + '=' * padding)
-print(json.loads(decoded).get('user_id', ''))
-" 2>/dev/null)
+USER_ID=$(smoke_jwt_claim "$TOKEN" user_id)
 
 log_ok "JWT ottenuto per '$USERNAME' (user_id=$USER_ID)"
 
@@ -340,8 +309,9 @@ except Exception as e:
 echo ""
 echo "-- 11. Logout --"
 
-# Secondo login per ottenere un refresh fresco da usare per il logout
-curl -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
+# login esplicito: una SECONDA sessione, col refresh fresco da usare per il
+# logout; il suo esito e' un passo del test (log_fail), non un'uscita.
+curl_login -s -w '\n%{http_code}' -D "${TMPFILE}.hdr" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
     "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
@@ -371,6 +341,76 @@ if [[ "$LOGOUT_STATUS" == "200" ]]; then
 else
     log_fail "Secondo login per test logout fallito (HTTP $LOGOUT_STATUS)"
 fi
+
+# ================================================================
+# PASSWORD CHIESTA DENTRO LA SESSIONE
+# ================================================================
+echo ""
+echo "-- 13. Password chiesta dentro la sessione --"
+
+# Scopo: lo status atteso E il codice d'errore dell'envelope.
+check_codice() {
+    local label="$1" atteso="$2" codice="$3"
+    check "$label" "$atteso" ".error.code" || return 0
+    if [[ "$EXTRACTED" == "$codice" ]]; then
+        log_ok "  codice $codice"
+    else
+        log_fail "  atteso codice $codice, ricevuto '${EXTRACTED}'"
+    fi
+}
+
+# ⛔ UN tentativo sbagliato per endpoint, mai fino al blocco. Un tentativo
+#    sbagliato conta sul freno della credenziale (D-T2) e non c'e' un'API che
+#    azzeri il freno dei tentativi: arrivare al blocco fermerebbe per
+#    `login_blocco_minuti` ogni smoke dell'utente `smoke` da questa postazione.
+#    Che la password sbagliata CONTI fino al blocco lo prova il DB vero
+#    (`test_la_password_sbagliata_conta_e_frena_la_configurazione`); qui si
+#    prova il contratto sul server che gira. In fondo un login riuscito azzera
+#    la coppia credenziale + provenienza.
+SBAGLIATA="smoke-sbagliata-$(date +%s)"
+
+do_curl POST "/api/v1/auth/secondo-fattore/registra/" '{}'
+check_codice "registra/ senza password → 400" 400 "E_TOTP_PASSWORD_NON_VALIDA"
+
+do_curl POST "/api/v1/auth/secondo-fattore/registra/" "{\"password\":\"$SBAGLIATA\"}"
+check_codice "registra/ con la password sbagliata → 400 (non 401)" 400 "E_TOTP_PASSWORD_NON_VALIDA"
+
+# La password giusta passa il cancello. Solo con un device ATTIVO, che il DB
+# rifiuta di sostituire (409): cosi' la prova non tocca lo stato dell'utente.
+# Senza device, la giusta avvierebbe una configurazione vera.
+do_curl GET "/api/v1/auth/secondo-fattore/"
+STATO_SF=$(json_get "$LAST_BODY" ".data.stato")
+if [[ "$STATO_SF" == "ATTIVO" ]]; then
+    do_curl POST "/api/v1/auth/secondo-fattore/registra/" "{\"password\":\"$PASSWORD\"}"
+    check_codice "registra/ con la password giusta → oltre il cancello (409, device attivo)" 409 "E_TOTP_DEVICE_GIA_ATTIVO"
+else
+    log_info "registra/ con la password giusta saltato: device '${STATO_SF:-?}', avvierebbe una configurazione vera"
+fi
+
+do_curl POST "/api/v1/auth/change-password/" \
+    "{\"new_password\":\"Smoke-Nuova-2026!\",\"new_password_confirm\":\"Smoke-Nuova-2026!\"}"
+check_codice "change-password/ senza password attuale → 400" 400 "E_CHANGE_PASSWORD"
+
+# Con una nuova password DEBOLE: la verifica dell'attuale viene prima, quindi
+# risponde l'attuale sbagliata (e il tentativo conta) e non la nuova.
+do_curl POST "/api/v1/auth/change-password/" \
+    "{\"old_password\":\"$SBAGLIATA\",\"new_password\":\"x\",\"new_password_confirm\":\"x\"}"
+check_codice "change-password/ con l'attuale sbagliata → 400 (non 401)" 400 "E_CHANGE_PASSWORD"
+if [[ "$(json_get "$LAST_BODY" ".error.message")" == *"attuale"* ]]; then
+    log_ok "  risponde la password attuale, non la nuova debole"
+else
+    log_fail "  la risposta non parla della password attuale: $(echo "$LAST_BODY" | head -c 200)"
+fi
+
+# login esplicito: e' il login riuscito ad azzerare i due tentativi sbagliati
+# di questa sezione, e `smoke_login` riuserebbe SMOKE_TOKEN senza farne uno.
+curl_login -s -w '\n%{http_code}' \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
+    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
+LAST_STATUS=$(tail -1 "$TMPFILE")
+LAST_BODY=$(sed '$d' "$TMPFILE")
+check "login dopo i tentativi sbagliati (azzera il freno della coppia)" 200
 
 # ================================================================
 # RICERCA UNIVERSALE

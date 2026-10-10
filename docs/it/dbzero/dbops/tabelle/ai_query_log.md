@@ -14,12 +14,12 @@
 | input_text | text | NO |  |
 | tools_called | jsonb | YES |  |
 | response_text | text | YES |  |
-| provider | character varying | NO |  |
-| model | character varying | NO |  |
+| provider | character varying(50) | NO |  |
+| model | character varying(100) | NO |  |
 | tokens_input | integer | YES |  |
 | tokens_output | integer | YES |  |
 | duration_ms | integer | YES |  |
-| error_code | character varying | YES |  |
+| error_code | character varying(100) | YES |  |
 | cleanup_at | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

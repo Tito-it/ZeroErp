@@ -1,0 +1,167 @@
+// @vitest-environment jsdom
+// ------------------------------------------------------------
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Tid (Michele Carlo Titini)
+// Doc: JavaScript
+// Scopo: «Mostra permessi» della lista operatori (brief riepilogo-permessi,
+//        2026-10-06): sotto ogni riga le aree come chip, dalla sede unica a DB.
+//        Ha preso il posto della pagina «Riepilogo permessi».
+// Note: si monta la vista vera; sono finti i contorni — le API, lo scaffolding della pagina e `ListaConfigurabile`, ridotta a cio' che la
+//       vista le chiede (righe, `expandedRows`, slot `row-expansion`).
+//
+// Indice test:
+//   1) acceso l'interruttore, tutte le righe si aprono e il riepilogo si chiede
+//      in UNA chiamata
+//   2) le chip: area, livello, numero degli override, triangolo del tetto
+//   3) spento l'interruttore, le righe si chiudono
+//   4) un nuovo caricamento della lista scarta le chip vecchie e le richiede
+//   5) una lettura fallita lo dice sulla riga (non «caricamento» per sempre),
+//      e richiudendo e riaprendo la riga si riprova
+// ------------------------------------------------------------
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
+import { flushPromises } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+
+const getPermessiRiepilogo = vi.fn()
+
+vi.mock('../api/amministrazione', () => ({
+  listOperatori: vi.fn(),
+  listUnitaOrganizzative: vi.fn().mockResolvedValue({ data: { data: { results: [] } } }),
+  getPermessiRiepilogo: (...a) => getPermessiRiepilogo(...a),
+  getSetupStatus: vi.fn().mockResolvedValue({ data: { data: {} } }),
+}))
+vi.mock('../../core/composables/useListaConfigurabilePage', async () => {
+  const { ref } = await import('vue')
+  return {
+    useListaConfigurabilePage: () => ({
+      searchText: ref(''), onPage: vi.fn(), onSort: vi.fn(), applyFilters: vi.fn(),
+      paginatorProps: {}, tablePage: 1, listaRef: ref(null), dirty: ref(false),
+      onConfigLoaded: vi.fn(), pageActions: [], perimetroBloccato: ref(false),
+    }),
+  }
+})
+vi.mock('../../core/composables/useTabFreshness', () => ({ useTabFreshness: () => {} }))
+vi.mock('../../core/composables/useReadonlyMode', async (originale) => ({
+  ...(await originale()),
+  useReadonlyMode: () => ({ isReadonly: false, isBlocked: false }),
+}))
+
+const { monta } = await import('../../../test/montaggio')
+const { useOperatoriStore } = await import('../stores/operatori')
+const { default: OperatoriListView } = await import('./OperatoriListView.vue')
+
+const comeAxios = (data) => ({ data: { data } })
+
+// La lista finta: rende lo slot `row-expansion` delle righe aperte, come la vera.
+const ListaFinta = defineComponent({
+  name: 'ListaFinta',
+  props: { rows: { type: Array, default: () => [] }, expandedRows: { type: Object, default: null } },
+  setup(props, { slots }) {
+    return () => h('div', props.rows
+      .filter(r => props.expandedRows?.[r.auth_user_id])
+      .map(r => h('div', { class: 'riga-aperta', 'data-id': r.auth_user_id }, slots['row-expansion']?.({ data: r }))))
+  },
+})
+const Vuoto = defineComponent({ render: () => null })
+
+const RIGHE = [{ auth_user_id: 6, soggetto_cognome: 'Pochi' }, { auth_user_id: 9, soggetto_cognome: 'Rossi' }]
+const RIEPILOGO = [
+  { auth_user_id: 6, area_id: 2, area_descrizione: 'Anagrafiche', livello: 'TUTTO', override_count: 3, voci_limitate: 0 },
+  { auth_user_id: 6, area_id: 5, area_descrizione: 'Vendite', livello: 'BLOCCATO', override_count: 1, voci_limitate: 1 },
+  { auth_user_id: 9, area_id: 2, area_descrizione: 'Anagrafiche', livello: 'LETTURA', override_count: 0, voci_limitate: 0 },
+]
+
+let montata = null
+
+async function montaLista({ accesa = true } = {}) {
+  const w = montata = monta(OperatoriListView, {}, {
+    global: {
+      stubs: {
+        ListaConfigurabile: ListaFinta,
+        OperatoreDrawer: Vuoto,
+        OperatoriNonAssegnatiBanner: Vuoto,
+        PageActionsBar: Vuoto,
+      },
+    },
+  })
+  const store = useOperatoriStore()
+  store.fetchList = vi.fn()
+  store.items = [...RIGHE]
+  await flushPromises()
+  if (accesa) await interruttore(w, true)
+  return { w, store }
+}
+
+// Scopo: l'interruttore «Mostra permessi», come lo usa l'operatore.
+async function interruttore(w, acceso) {
+  const toggle = w.findComponent({ name: 'FiltroToggle' })
+  toggle.vm.$emit('update:modelValue', acceso)
+  toggle.vm.$emit('change', acceso)
+  await flushPromises()
+}
+
+const righeAperte = (w) => w.findAll('.riga-aperta').map(r => Number(r.attributes('data-id')))
+
+describe('OperatoriListView — «Mostra permessi»', () => {
+  // ⚠️ Store nuovo e vista smontata a ogni test: una vista rimasta montata
+  //    reagirebbe anche lei a `store.items`, e le chiamate si sommerebbero.
+  afterEach(() => { montata?.unmount(); montata = null })
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    getPermessiRiepilogo.mockReset().mockImplementation((ids) =>
+      Promise.resolve(comeAxios({ results: RIEPILOGO.filter(r => ids.includes(r.auth_user_id)) })))
+  })
+
+  it('1) acceso l\'interruttore, tutto si apre e il riepilogo si chiede una volta', async () => {
+    const { w } = await montaLista({ accesa: false })
+    expect(righeAperte(w)).toEqual([])
+    expect(getPermessiRiepilogo).not.toHaveBeenCalled()
+    await interruttore(w, true)
+    expect(righeAperte(w)).toEqual([6, 9])
+    expect(getPermessiRiepilogo).toHaveBeenCalledTimes(1)
+    expect(getPermessiRiepilogo.mock.calls[0][0].sort()).toEqual([6, 9])
+  })
+
+  it('2) le chip dicono area, livello, override e tetto', async () => {
+    const { w } = await montaLista()
+    const [anagrafiche, vendite] = w.find('.riga-aperta[data-id="6"]').findAll('.operatore-permessi-area')
+    expect(anagrafiche.text()).toContain('Anagrafiche')
+    expect(anagrafiche.text()).toContain('3')
+    expect(anagrafiche.find('.app-permessi-tetto-icona').exists()).toBe(false)
+    expect(vendite.find('.app-permessi-tetto-icona').exists()).toBe(true)
+    // Zero override: niente numero.
+    const rossi = w.find('.riga-aperta[data-id="9"]').find('.operatore-permessi-area')
+    expect(rossi.findComponent({ name: 'Badge' }).exists()).toBe(false)
+  })
+
+  it('3) spento l\'interruttore, le righe si chiudono', async () => {
+    const { w } = await montaLista()
+    await interruttore(w, false)
+    expect(righeAperte(w)).toEqual([])
+  })
+
+  it('4) un nuovo caricamento scarta le chip vecchie e le richiede', async () => {
+    const { w, store } = await montaLista()
+    expect(getPermessiRiepilogo).toHaveBeenCalledTimes(1)
+    store.items = [...RIGHE]
+    await flushPromises()
+    expect(getPermessiRiepilogo).toHaveBeenCalledTimes(2)
+    expect(righeAperte(w)).toEqual([6, 9])
+  })
+
+  it('5) una lettura fallita si dice, e si riprova riaprendo la riga', async () => {
+    getPermessiRiepilogo.mockRejectedValueOnce(new Error('rete'))
+    const { w } = await montaLista()
+    expect(w.find('.riga-aperta[data-id="6"]').text()).toContain('common.error_loading')
+
+    const lista = w.findComponent(ListaFinta)
+    lista.vm.$emit('update:expandedRows', {})
+    await flushPromises()
+    lista.vm.$emit('update:expandedRows', { 6: true })
+    await flushPromises()
+    expect(getPermessiRiepilogo).toHaveBeenCalledTimes(2)
+    expect(w.find('.riga-aperta[data-id="6"]').findAll('.operatore-permessi-area')).toHaveLength(2)
+  })
+})

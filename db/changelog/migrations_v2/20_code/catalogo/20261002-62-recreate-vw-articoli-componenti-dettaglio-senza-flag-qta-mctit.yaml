@@ -1,0 +1,119 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-1 — LA VISTA DELLA DISTINTA SENZA I DUE FLAG RITIRATI
+#   catalogo.vw_articoli_componenti_dettaglio (droppata da 20261002-60)
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura, parte A (D-1, sezione 4.1)
+#
+#   Forma viva di 20261001-44 (identica alla doc auto-gen), meno partecipa_qta e
+#   determina_qta_padre. Le altre colonne restano nel loro ordine. Chi la legge:
+#   la lista configurabile catalogo.articolo_componenti (nessuna colonna sulle
+#   due, lista_colonna.csv) e il repository della distinta (R-BE-A1).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261002-62-recreate-vw-articoli-componenti-dettaglio-senza-flag-qta-mctit.yaml
+
+  - changeSet:
+      id: 20261002-62-recreate-vw-articoli-componenti-dettaglio-senza-flag-qta
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vw_articoli_componenti_dettaglio ricreata (droppata da 20261002-60) senza
+        partecipa_qta e determina_qta_padre, ritirate dalla tabella. Brief:
+        brief-db-bom-flag-quantita-e-kit-in-fattura (D-1, sezione 4.1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - not:
+                - columnExists:
+                    schemaName: catalogo
+                    tableName: articoli_componenti
+                    columnName: determina_qta_padre
+            - not:
+                - viewExists:
+                    schemaName: catalogo
+                    viewName: vw_articoli_componenti_dettaglio
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+              SELECT ac.id,
+                  ac.prodotto_id,
+                  ac.componente_id,
+                  ac.coeff_qta,
+                  ac.obbligatorio,
+                  ac.valido_dal,
+                  ac.valido_al,
+                  ac.meta,
+                  ac.user_insert,
+                  ac.user_update,
+                  ac.data_insert,
+                  ac.data_update,
+                  ac.tx_id,
+                  ac.storicizza,
+                  ac.attivo,
+                  ac.note_target_tipo,
+                  ac.note_id,
+                  ap.codice AS prodotto_codice,
+                  ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  -- Capability di chiusura: una riga si chiude finche' non ha
+                  -- una data di fine. Sede UNICA dal 2026-09-28 (il repository
+                  -- ne aveva una copia).
+                  (ac.valido_al IS NULL) AS puo_chiudersi,
+                  CASE
+                      WHEN (ac.valido_al IS NULL) THEN ac.valido_dal
+                      ELSE NULL::date
+                  END AS data_min_chiusura,
+                  CASE
+                      WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, CURRENT_DATE)
+                      ELSE NULL::date
+                  END AS data_default_chiusura,
+                  CASE
+                      WHEN (ac.valido_al IS NULL) THEN NULL::text
+                      ELSE 'RIGA_GIA_CHIUSA'::text
+                  END AS motivo_non_chiudibile,
+                  -- ── dal 2026-10-01: tre modi al posto del booleano ────────
+                  ac.esposizione_in_fattura,
+                  ec.codice AS esposizione_in_fattura_codice,
+                  ec.etichetta_key AS esposizione_in_fattura_etichetta_key
+                FROM (((catalogo.articoli_componenti ac
+                  LEFT JOIN catalogo.articoli ap ON ((ap.id = ac.prodotto_id)))
+                  LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)))
+                  LEFT JOIN config.esposizioni_componente ec
+                         ON ((ec.codice_interno = ac.esposizione_in_fattura)));
+
+              COMMENT ON VIEW catalogo.vw_articoli_componenti_dettaglio IS
+                  'Righe della distinta base (componenti di un articolo) con codici e descrizioni di '
+                  'prodotto e componente, piu'' la capability di riga (puo_chiudersi, '
+                  'data_min_chiusura, data_default_chiusura, motivo_non_chiudibile) per «Chiudi '
+                  'riga». Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.5) e'' la SORGENTE '
+                  'UNICA delle righe: per la lista configurabile catalogo.articolo_componenti e per '
+                  'il repository, che prima ne rifaceva la proiezione e la capability in Python. '
+                  'Dal 2026-10-01 (brief-db-esposizione-componenti-kit-in-fattura) '
+                  'esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) al posto del '
+                  'booleano esposto_in_fattura, e in coda codice ed etichetta_key del modo da '
+                  'config.esposizioni_componente: la logica confronta esposizione_in_fattura, il '
+                  'codice e'' solo a video. Dal 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-fattura, '
+                  'D-1) senza partecipa_qta e determina_qta_padre, ritirate dalla tabella: nessuna '
+                  'logica le leggeva. Tutte le righe, anche le non attive e le chiuse: filtro e '
+                  'ordine li mette chi legge.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La forma vecchia nomina le colonne ritirate, che tornano solo col rollback
+              -- di -60 (subito dopo nel verso inverso): la ricrea quello.
+              DROP VIEW IF EXISTS catalogo.vw_articoli_componenti_dettaglio;

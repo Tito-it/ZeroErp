@@ -7,8 +7,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useReadonlyMode, useInjectBlocked } from '../../core/composables/useReadonlyMode'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useContoBancarioForm } from '../composables/useContoBancarioForm'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useSoggettoRuoloCollection } from '../composables/useSoggettoRuoloCollection'
@@ -20,11 +18,10 @@ import {
 } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS, READONLY_DOMAINS, READONLY_MODELS, RECAPITO_ICONS, STATUS_ICONS } from '../../core/constants'
 import ContoBancarioForm from './ContoBancarioForm.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import AccessoBloccatoPanel from '../../core/components/AccessoBloccatoPanel.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
-import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
@@ -59,6 +56,7 @@ const {
   listLoading,
   saving,
   formMode,
+  ancoraForm,
   formErrors,
   campiErrati,
   loadList: loadConti,
@@ -135,29 +133,26 @@ function usoSeverity(uso) {
   return map[uso] || 'secondary'
 }
 
-// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
-const onClose = useDrawerClose(emit)
-// Uscite dal drawer: con il form inline modificato si chiede prima.
-const chiudi = () => chiudiConConferma(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
+    :title="t('anagrafiche.conti_bancari.titolo')"
+    :icon="MANAGE_ICONS.CONTI_BANCARI"
+    :action="formMode === 'create' ? t('common.new') : t('common.edit')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificatoInline"
+    :conferma-uscita="chiudiConConferma"
+    :footer="formMode ? 'nessuno' : 'chiudi'"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificatoInline" :action="formMode === 'create' ? t('common.new') : t('common.edit')" :title="t('anagrafiche.conti_bancari.titolo')" :icon="MANAGE_ICONS.CONTI_BANCARI" />
-    </template>
-
     <!-- Livello oggetto BLOCCATO: pannello sostitutivo (safety net se
          l'utente raggiunge il drawer bypassando l'azione di riga). -->
     <AccessoBloccatoPanel v-if="isBlocked" />
-
-    <div v-else class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <template v-else>
       <!-- Loading -->
       <div v-if="listLoading" class="app-loading">
         <i :class="STATUS_ICONS.CARICAMENTO" />
@@ -209,11 +204,9 @@ const suVisibile = gestoreVisibile(emit, chiudi)
 
       </template>
 
-      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
-
       <!-- Form (aggiungi o modifica) -->
       <template v-if="formMode">
-        <div class="app-drawer-section">
+        <div :ref="ancoraForm" class="app-drawer-section">
           <h4>{{ formMode === 'edit' ? t('anagrafiche.conti_bancari.modifica_conto') : t('anagrafiche.conti_bancari.nuovo_conto') }}</h4>
         </div>
         <ContoBancarioForm
@@ -233,8 +226,8 @@ const suVisibile = gestoreVisibile(emit, chiudi)
           @cancel="annullaForm"
         />
       </template>
-    </div>
-  </Drawer>
+    </template>
+  </AppDrawer>
 </template>
 
 <style scoped>

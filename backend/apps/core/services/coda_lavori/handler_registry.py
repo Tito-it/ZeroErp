@@ -41,8 +41,10 @@ def register_handler(handler_code: str, handler: JobHandler) -> None:
 # Scopo: Risolve l'handler per un `handler_code`. Fail-loud parlante se non
 #        registrato: un job con handler mancante è un bug di cablaggio (seed DB
 #        senza il corrispondente `register_handler`), non un errore di dominio.
-def get_handler(handler_code: str) -> JobHandler:
-    handler = _REGISTRY.get(handler_code)
+# `str | None`: un codice assente (riga di coda senza `handler_code`) e' lo
+# stesso rifiuto di un codice sconosciuto, `E_HANDLER_NON_REGISTRATO`.
+def get_handler(handler_code: str | None) -> JobHandler:
+    handler = _REGISTRY.get(handler_code) if handler_code is not None else None
     ErrorManager.require(
         handler is not None,
         code=E_HANDLER_NON_REGISTRATO,

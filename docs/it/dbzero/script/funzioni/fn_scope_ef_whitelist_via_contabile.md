@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_contabile(p_auth_user_id integer, p_co
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_contabile(p_auth_user_id integer, p_contabile_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Come la gemella, ma partendo dalla DISTINTA: la riga
     -- contabile il canale non ce l'ha in colonna, ce l'ha la sua

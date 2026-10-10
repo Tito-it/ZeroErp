@@ -12,7 +12,7 @@
 | preventivo_id | bigint | NO |  |
 | iva_id | integer | YES |  |
 | natura_id | integer | YES |  |
-| esigibilita | character | YES |  |
+| esigibilita | character(1) | YES |  |
 | split_payment | boolean | YES |  |
 | imponibile | numeric | NO | 0 |
 | imposta | numeric | NO | 0 |
@@ -20,11 +20,14 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_preventivi_riepiloghi_iva_arrotondamento_finito |  |
+| CHECK | chk_preventivi_riepiloghi_iva_imponibile_finito |  |
+| CHECK | chk_preventivi_riepiloghi_iva_imposta_finito |  |
 | FOREIGN KEY | fk_preventivi_r_iva_iva | iva_id |
 | FOREIGN KEY | fk_preventivi_r_iva_natura | natura_id |
 | FOREIGN KEY | fk_preventivi_r_iva_preventivo | preventivo_id |

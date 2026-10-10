@@ -10,11 +10,11 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(255) | NO |  |
 | ordine | smallint | NO | 0 |
 | attivo | boolean | NO | true |
 | user_insert | text | NO | CURRENT_USER |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 

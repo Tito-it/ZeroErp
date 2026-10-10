@@ -11,12 +11,12 @@
 | id | integer | NO |  |
 | comune_id | integer | NO |  |
 | stradario_generale_id | integer | NO |  |
-| geoloc | USER-DEFINED | YES |  |
+| geoloc | geometry(Point,4326) | YES |  |
 | meta | jsonb | YES |  |
 | data_insert | timestamp with time zone | YES | now() |
 | user_insert | text | YES | CURRENT_USER |
 | data_update | timestamp with time zone | YES | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | codice_postale_id | integer | NO |  |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |

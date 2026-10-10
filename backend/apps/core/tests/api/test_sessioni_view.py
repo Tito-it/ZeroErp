@@ -35,7 +35,7 @@ Indice test eseguiti:
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest import TestCase
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -242,8 +242,8 @@ class SessioniAttiveListViewTests(TestCase):
         mock_repo = MagicMock()
         mock_repo.list_sessioni_attive_paginata.return_value = ([
             {"jti": "other-sid", "ultimo_evento": "LOGIN", "ip_address": "10.0.0.2",
-             "user_agent": "Chrome", "data_inizio": datetime(2026, 3, 9, 7, 0),
-             "data_ultimo_evento": datetime(2026, 3, 9, 9, 0)},
+             "user_agent": "Chrome", "data_inizio": datetime(2026, 3, 9, 7, 0, tzinfo=UTC),
+             "data_ultimo_evento": datetime(2026, 3, 9, 9, 0, tzinfo=UTC)},
         ], 1)
         MockRepo.return_value = mock_repo
         mock_resp.return_value = MagicMock(status_code=200)
@@ -572,9 +572,9 @@ class SessionAuditRepositoryTests(TestCase):
         ]
         mock_cursor.fetchall.return_value = [
             ("sid-1", "LOGIN", "10.0.0.1", "Firefox/100",
-             datetime(2026, 3, 9, 8, 0), datetime(2026, 3, 9, 8, 0)),
+             datetime(2026, 3, 9, 8, 0, tzinfo=UTC), datetime(2026, 3, 9, 8, 0, tzinfo=UTC)),
             ("sid-2", "REFRESH", "10.0.0.2", "Chrome/120",
-             datetime(2026, 3, 9, 7, 0), datetime(2026, 3, 9, 9, 0)),
+             datetime(2026, 3, 9, 7, 0, tzinfo=UTC), datetime(2026, 3, 9, 9, 0, tzinfo=UTC)),
         ]
         mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)

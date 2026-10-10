@@ -1,0 +1,163 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA VESTE SPENTA TIENE IL SUO TIPO: DISABILITATO ESCE DALLA TABELLA VIVA
+#   anagrafiche.identita_digitali: conversione delle righe DISABILITATO +
+#   CHECK chk_identita_digitali_ruolo_non_ritirato
+#   Brief: brief-db-be-fe-area-accessi, R-DB-1 e V-1, V-4 (sezione 7.2)
+#
+# -- PERCHE' ------------------------------------------------------------------------
+#   Le vesti portale e shop si spengono con attivo = false e tengono il tipo;
+#   l'operatore si spegneva scrivendo anche ruolo_applicativo = DISABILITATO, e il
+#   tipo si perdeva (V-1). Conseguenze: chi chiede «la veste e' utilizzabile?»
+#   doveva guardare due colonne, e il guard di coerenza non controllava piu'
+#   niente. Da qui «spenta» si legge solo da attivo (e dalla finestra).
+#
+# -- IL VALORE NELL'ENUM: RESTA, ed e' una scelta di modello ----------------------
+#   config.ruolo_applicativo tiene DISABILITATO. storico.identita_digitali porta le
+#   versioni passate delle vesti spente col tipo di allora: la storia e' un fatto,
+#   e ritirare il valore dal tipo vorrebbe dire riscriverla (e ricreare le ~30
+#   funzioni che nominano il tipo). Il valore resta quindi come voce STORICA: la
+#   tabella viva lo rifiuta (questo CHECK; prima ancora il guard di coerenza, -22,
+#   con E_RUOLO_APPLICATIVO_RITIRATO), e il COMMENT del tipo lo dice.
+#
+# -- LA CONVERSIONE (righe che oggi hanno DISABILITATO) ------------------------------
+#   Il tipo vero si ricava dalla STRUTTURA che il guard di coerenza pretende per
+#   OPERATORE (cosi' l'UPDATE non inciampa nel guard per una classificazione
+#   diversa dalla sua):
+#     · tecnica = true  e soggetto_ruolo di tipo PROC_AUTO   -> OPERATORE (processo)
+#     · tecnica = false e una risorsa umana sul soggetto_ruolo -> OPERATORE (persona)
+#   e attivo = false: DISABILITATO voleva dire spenta, e nessun lettore la trattava
+#   da utilizzabile. Lasciare attivo = true dove una riga lo avesse avrebbe ACCESO
+#   un accesso che oggi non c'e'.
+#   ⛔ Una riga che non si riconduce a nessuno dei due casi (V-4: dati di prova di
+#   dbdev) NON si salta in silenzio: il changeSet si FERMA e le elenca. Vanno
+#   cancellate a mano prima dell'apply (nessun changeSet: non sono seed). Su un DB
+#   da zero (CI) la tabella e' vuota qui e il ramo non si incontra.
+#   ⚠️ L'UPDATE attraversa i trigger della tabella: il guard di coerenza (ramo
+#   OPERATORE: persona fisica pura con RIS_UMANA, o PROC_AUTO), il guard sulla
+#   natura della credenziale (-23/-24), il blocco dei figli attivi su attivo
+#   (identita_scope_bindings) per una riga che fosse DISABILITATO con attivo = true,
+#   lo storico. Se uno rifiuta, il migrate si ferma su quella riga e lo dice: e' il
+#   comportamento voluto, non un ramo da aggirare.
+#
+# -- PERCHE' IN 00_schema, in un changeSet solo ---------------------------------------
+#   Il CHECK valida le righe che trova: la conversione deve precederlo nella stessa
+#   unita'. Nessuna preCondition sul contenuto di 80_data (linee-guida-sql 11.4).
+#   Il CHECK non lega una colonna a una riga di seed (il valore e' dell'enum).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261002-25-alter-identita-digitali-ruolo-non-ritirato-mctit.yaml
+
+  - changeSet:
+      id: 20261002-25-alter-identita-digitali-ruolo-non-ritirato
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        identita_digitali: le vesti DISABILITATO tornano OPERATORE con attivo = false (tipo
+        ricavato dalla struttura: PROC_AUTO con tecnica, risorsa umana senza); una riga non
+        riconducibile ferma il migrate e viene elencata (V-4). Poi CHECK
+        chk_identita_digitali_ruolo_non_ritirato: DISABILITATO resta nell'enum per la storia,
+        non nella tabella viva. Brief: brief-db-be-fe-area-accessi R-DB-1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: anagrafiche
+            tableName: identita_digitali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $conversione$
+              DECLARE
+                  v_orfane text;   -- elenco leggibile delle righe non riconducibili
+                  v_n      integer;
+              BEGIN
+                  -- ⛔ V-4: una veste DISABILITATO senza tipo ricavabile non sopravvive
+                  --   per sbaglio. Si elencano TUTTE prima di toccarne una.
+                  SELECT string_agg(format('identita %s (credenziale %s, soggetto_ruolo %s, tecnica %s)',
+                                           idg.id, idg.auth_user_id, idg.soggetto_ruolo_id,
+                                           idg.tecnica),
+                                    '; ' ORDER BY idg.id)
+                    INTO v_orfane
+                    FROM anagrafiche.identita_digitali idg
+                   WHERE idg.ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo
+                     AND NOT (
+                             (idg.tecnica
+                              AND EXISTS (SELECT 1
+                                            FROM anagrafiche.soggetti_ruoli sr
+                                            JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                                           WHERE sr.id = idg.soggetto_ruolo_id
+                                             AND tr.codice_interno = 'PROC_AUTO'))
+                          OR (NOT idg.tecnica
+                              AND EXISTS (SELECT 1
+                                            FROM anagrafiche.risorse_umane ru
+                                           WHERE ru.soggetto_ruolo_id = idg.soggetto_ruolo_id))
+                         );
+
+                  IF v_orfane IS NOT NULL THEN
+                      RAISE EXCEPTION USING
+                          MESSAGE = 'R-DB-1: vesti DISABILITATO senza un tipo ricavabile dalla struttura: '
+                                    || v_orfane,
+                          HINT    = 'V-4 di brief-db-be-fe-area-accessi: sono dati di prova, si '
+                                    'cancellano a mano prima dell''apply. Nessun ramo di conversione.';
+                  END IF;
+
+                  UPDATE anagrafiche.identita_digitali
+                     SET ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo,
+                         attivo            = false
+                   WHERE ruolo_applicativo = 'DISABILITATO'::config.ruolo_applicativo;
+                  GET DIAGNOSTICS v_n = ROW_COUNT;
+
+                  RAISE NOTICE 'R-DB-1: % vesti DISABILITATO riportate a OPERATORE spente', v_n;
+              END
+              $conversione$;
+
+              ALTER TABLE anagrafiche.identita_digitali
+                  ADD CONSTRAINT chk_identita_digitali_ruolo_non_ritirato
+                  CHECK (ruolo_applicativo <> 'DISABILITATO'::config.ruolo_applicativo);
+
+              COMMENT ON CONSTRAINT chk_identita_digitali_ruolo_non_ritirato
+                  ON anagrafiche.identita_digitali IS
+                  'DISABILITATO non e'' un tipo di veste: una veste si spegne con attivo = false e '
+                  'il suo tipo resta (V-1). Il valore resta nell''enum config.ruolo_applicativo '
+                  'solo perche'' lo porta la storia (storico.identita_digitali). Il guard '
+                  'trgfn_identita_digitali_guard_coerenza parla prima di questo vincolo, con '
+                  'E_RUOLO_APPLICATIVO_RITIRATO. Brief: brief-db-be-fe-area-accessi (R-DB-1).';
+
+              COMMENT ON TYPE config.ruolo_applicativo IS
+                  'Ruolo applicativo di una identita_digitale: determina la veste '
+                  'con cui l''utente si logga (namespace API, scope dati, profilo '
+                  'capability). Valori vivi: OPERATORE, CLIENTE_PORTALE, FORNITORE_PORTALE, '
+                  'SHOP_CUSTOMER, API_CLIENT. DISABILITATO e'' una voce STORICA (rev 2026-10-02, '
+                  'brief-db-be-fe-area-accessi R-DB-1): fino a quel giorno lo spegnimento '
+                  'dell''operatore lo scriveva al posto del tipo; ora una veste si spegne con '
+                  'attivo = false e tiene il tipo, e la tabella viva lo rifiuta '
+                  '(chk_identita_digitali_ruolo_non_ritirato). Resta nel tipo perche'' lo porta '
+                  'storico.identita_digitali.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ La conversione dei dati NON si annulla: quali righe erano
+              --   DISABILITATO lo dice storico.identita_digitali, e rimetterle a
+              --   DISABILITATO riaprirebbe il difetto. Si toglie il vincolo e si
+              --   ripristina il commento del tipo.
+              ALTER TABLE anagrafiche.identita_digitali
+                  DROP CONSTRAINT IF EXISTS chk_identita_digitali_ruolo_non_ritirato;
+
+              COMMENT ON TYPE config.ruolo_applicativo IS
+                  'Ruolo applicativo di una identita_digitale: determina la veste '
+                  'con cui l''utente si logga (namespace API, scope dati, profilo '
+                  'capability). Valori: OPERATORE, CLIENTE_PORTALE, FORNITORE_PORTALE, '
+                  'SHOP_CUSTOMER, API_CLIENT, DISABILITATO.';

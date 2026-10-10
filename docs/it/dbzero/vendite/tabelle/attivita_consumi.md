@@ -15,7 +15,7 @@
 | competenza_mese | date | NO |  |
 | periodo_dal | date | YES |  |
 | periodo_al | date | YES |  |
-| consumo_totale | numeric | YES |  |
+| consumo_totale | numeric(20,6) | YES |  |
 | uom_id | bigint | YES |  |
 | stato_calcolo | text | NO | 'OK'::text |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -29,6 +29,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_attivita_consumi_consumo_totale_finito |  |
 | CHECK | chk_attivita_consumi_stato_calcolo |  |
 | FOREIGN KEY | fk_attivita_consumi_ba | billing_account_id |
 | FOREIGN KEY | fk_attivita_consumi_fattura | fattura_id |

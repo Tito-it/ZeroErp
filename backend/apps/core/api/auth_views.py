@@ -23,6 +23,7 @@ from rest_framework.fields import empty
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.settings import api_settings as simplejwt_settings
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.core.api.jwt_audit_authentication import set_jwt_gucs
@@ -34,17 +35,19 @@ from apps.core.api.refresh_cookie import (
 )
 from apps.core.api.multi_veste_token_serializer import (
     AdminTokenSerializer,
+    MultiVesteTokenSerializer,
     PortaleTokenSerializer,
     ShopTokenSerializer,
     VesteNonAttivaError,
 )
 from apps.core.api.throttling import LoginRateThrottle
 from apps.core.db.auth_repository import AuthRepository
-from apps.core.db.secondo_fattore_repository import SecondoFattoreRepository
+from apps.core.db.secondo_fattore_repository import STATO_DEVICE_ATTIVO, SecondoFattoreRepository
 from apps.core.services import session_audit_service
 from apps.core.services.db_error_fields import structured_db_error_code
 from apps.core.services.nome_tentato import digest_nome_tentato, etichetta_log
-from apps.core.services.request_context import get_client_ip
+from apps.core.services.request_context import provenienza_obbligatoria, richiesta_django
+from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.sfida_secondo_fattore import DURATA_SFIDA_SECONDI, Sfida, emetti_sfida
 from apps.core.services.auth_constants import (
@@ -102,8 +105,33 @@ logger = logging.getLogger("security")
 _auth_repo = AuthRepository()
 _secondo_fattore_repo = SecondoFattoreRepository()
 
-# Lo stato del device col quale il login chiede il secondo passo.
-_DEVICE_ATTIVO = "ATTIVO"
+
+# Scopo: La veste del refresh presentato e' ancora UTILIZZABILE? Chiede la
+#        veste `identita_id` legata alla credenziale `user_id` (dai claim
+#        verificati) al repository, che la fa decidere al building block DB
+#        `script.fn_veste_utilizzabile` (accesa, nelle sue date, rapporto per
+#        l'operatore: brief-db-veste-utilizzabile). Claim assente (None) =
+#        False: ogni refresh nostro lo porta (`emetti_refresh_veste`), come gia'
+#        il claim `ruolo_applicativo`.
+#        La stessa regola la chiede `set_jwt_gucs` a ogni richiesta: una
+#        condizione nuova sulla veste si scrive nel building block, non qui.
+#
+# ⛔ D-5 (Tid, 2026-10-02): spegnere una veste (o farla uscire dalle sue
+#    date) chiude le sue sessioni al primo rinnovo, QUALUNQUE sia la strada
+#    che l'ha spenta — interruttore
+#    «Accesso attivo», «Disabilita», portale, shop, e le strade che verranno.
+#    Fino a quel giorno il controllo stava solo in `set_jwt_gucs`, DOPO la
+#    rotazione, e un esito negativo era un warning: il refresh ruotava per
+#    sempre una sessione che non poteva piu' fare nulla. La regola sta qui,
+#    in un posto solo; la blacklist dei singoli comandi e' la chiusura
+#    IMMEDIATA, non la regola.
+# ⚠️ Un guasto della lettura PROPAGA (500): non e' una prova che la veste sia
+#    utilizzabile, e il refresh non si concede su un dubbio.
+def _veste_utilizzabile(identita_id: int | None, user_id: int | None) -> bool:
+    if identita_id is None or not user_id:
+        return False
+    return _auth_repo.get_veste_utilizzabile(identita_id, user_id) is not None
+
 
 
 # Scopo: Chiude un accesso RIUSCITO, cioe' una sessione appena emessa per
@@ -135,7 +163,9 @@ def chiudi_accesso_riuscito(
     # serializer PRIMA del controllo della veste, cioe' anche per chi ha la
     # password giusta e nessun accesso a questa porta (E_VESTE_NON_ATTIVA) —
     # e, col secondo fattore, prima del codice.
-    update_last_login(None, user)
+    # Lo stub vuole il `sender` del segnale; il ricevitore non lo usa e
+    # SimpleJWT stesso passa None.
+    update_last_login(None, user)  # type: ignore[arg-type]
 
     # Il login NON passa dalla DRF auth chain (l'utente non e' ancora
     # autenticato a authenticate() time), quindi JwtAuditAuthentication NON
@@ -195,7 +225,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     # `serializer_class = None` + guard in post() rendono la base effettivamente
     # astratta: chiamare `AuditTokenObtainPairView.as_view()` direttamente
     # senza override di serializer_class solleva RuntimeError subito.
-    serializer_class = None  # type: ignore[assignment]
+    serializer_class: type[MultiVesteTokenSerializer] | None = None  # type: ignore[assignment]
 
     @extend_schema(summary="Login JWT con audit e blocco utente", responses={200: dict})
     # Scopo: Esegue il login JWT con check blocco utente e registrazione tentativi.
@@ -205,9 +235,6 @@ class AuditTokenObtainPairView(TokenObtainPairView):
         # (o subclass). Previene regressione silente: senza questa subclass
         # i claim JWT non conterrebbero identita_id/ruolo_applicativo e l'intero
         # flusso multi-face auth risulterebbe disallineato.
-        from apps.core.api.multi_veste_token_serializer import (
-            MultiVesteTokenSerializer,
-        )
         if self.serializer_class is None or not issubclass(
             self.serializer_class, MultiVesteTokenSerializer
         ):
@@ -217,25 +244,14 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                 "serializer_class subclass di MultiVesteTokenSerializer)."
             )
 
-        django_request = request._request if hasattr(request, "_request") else request
+        django_request = richiesta_django(request)
 
         # 0. La provenienza (IP fidato) e' la chiave del freno: senza, il
         #    freno non si puo' applicare e il login si rifiuta (fail-closed).
         #    Prima di cercare l'utente: la risposta non deve dipendere
         #    dall'esistenza dello username. Causa tipica: la richiesta non e'
         #    passata dalla catena di proxy dichiarata (DJANGO_TRUSTED_PROXY_COUNT).
-        provenienza = get_client_ip(django_request)
-        if provenienza is None:
-            logger.error(
-                "security.login_senza_provenienza remote_addr=%s xff=%s",
-                django_request.META.get("REMOTE_ADDR"),
-                django_request.META.get("HTTP_X_FORWARDED_FOR"),
-            )
-            raise ServiceError(
-                code="E_AUTH_CHIAMATA_NON_VALIDA",
-                message="Chiamata non valida al login: provenienza assente.",
-                detail="IP del chiamante non ricavabile dalla catena di proxy dichiarata.",
-            )
+        provenienza = provenienza_obbligatoria(django_request)
 
         # Il nome tentato come lo vedra' `authenticate` (vedi `_nome_tentato`).
         # None = la richiesta non porta un nome: il serializer rispondera' 400
@@ -295,6 +311,15 @@ class AuditTokenObtainPairView(TokenObtainPairView):
                     credenziale_id, nome_digest=digest, provenienza=provenienza,
                     successo=False,
                 )
+                # ⭐ Ogni password sbagliata nel log di sicurezza, non solo
+                #    quella che fa scattare il freno (2026-10-02): fino ad
+                #    allora i primi errori stavano solo a DB, mentre un codice
+                #    del secondo fattore sbagliato lasciava gia' la sua riga
+                #    (`security.secondo_fattore_fallito`).
+                logger.warning(
+                    "security.login_fallito %s provenienza=%s bloccato=%s",
+                    chi, provenienza, bool(result.get("bloccato")),
+                )
                 if result.get("bloccato"):
                     logger.warning(
                         "security.login_locked %s provenienza=%s tentativi=%s blocco_minuti=%s",
@@ -333,7 +358,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             #     successo sul freno, niente sessione: una sfida breve, e il
             #     secondo passo chiude l'accesso col codice
             #     (brief sicurezza §3.4-bis, T-2).
-            if _secondo_fattore_repo.get_device(user.id)["stato"] == _DEVICE_ATTIVO:
+            if _secondo_fattore_repo.get_device(user.id)["stato"] == STATO_DEVICE_ATTIVO:
                 if identita_id is None:
                     raise ServiceError(
                         code="E_AUTH_CHIAMATA_NON_VALIDA",
@@ -377,8 +402,10 @@ class AuditTokenObtainPairView(TokenObtainPairView):
     # lookup usava il valore grezzo: con « tid» non trovava la credenziale,
     # quindi blocco dell'admin, freno e attesa non si controllavano, mentre
     # `authenticate("tid")` faceva entrare. E due normalizzazioni diverse
-    # riaprono l'oracolo del nome (brief §13.3). Con l'email (L-4) si cambia
-    # il campo, e lookup e impronta lo seguono da soli.
+    # riaprono l'oracolo del nome (brief §13.3). ⭐ Il campo e' quello che la
+    # porta dichiara (`username_field` del serializer: il nome utente per
+    # admin, l'email per portale e shop dal 2026-10-06, L-4): lookup e
+    # impronta lo seguono da soli.
     # Ritorna None se il campo rifiuta il valore (assente, vuoto, non testo).
     def _nome_tentato(self, request: Request) -> str | None:
         dati = request.data
@@ -386,25 +413,32 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             return None
         # Senza contesto: i campi non ne dipendono, e cosi' il metodo non
         # chiede che `dispatch` abbia gia' impostato `self.request`.
-        campo = self.get_serializer_class()().fields[User.USERNAME_FIELD]
+        serializer = self._serializer_porta()()
+        campo = serializer.fields[serializer.username_field]
         try:
-            return campo.run_validation(dati.get(User.USERNAME_FIELD, empty))
+            return campo.run_validation(dati.get(serializer.username_field, empty))
         except ValidationError:
             return None
 
-    @staticmethod
-    # Scopo: Trova user Django per username (best-effort, non lancia errore).
-    # Stessa ricerca di `ModelBackend` (`get_by_natural_key`: uguaglianza
-    # esatta), sul nome gia' normalizzato da `_nome_tentato`.
+    # Scopo: Trova la credenziale del nome tentato (best-effort, non lancia
+    # errore), con la ricerca della porta (`trova_credenziale` del serializer:
+    # nome utente esatto per admin, email senza maiuscole per portale e shop),
+    # sul nome gia' normalizzato da `_nome_tentato`.
     # ⛔ Nessun `except`: un guasto del DB qui NON e' «nome inesistente». Fino
     # al 2026-09-25 un `except Exception` lo trasformava in `None`, e il login
     # proseguiva col freno sul nome tentato invece che sulla credenziale —
     # cioe' senza controllare il blocco dell'admin — mentre `authenticate`
     # poteva far entrare. Fail-closed: l'errore sale e il login si ferma.
-    def _find_user(username: str) -> User | None:
-        if not username:
-            return None
-        return User.objects.filter(username=username).first()
+    def _find_user(self, nome: str) -> User | None:
+        return self._serializer_porta().trova_credenziale(nome)
+
+    # Scopo: la classe del serializer della porta col tipo che questa view usa
+    #        (`username_field`, `trova_credenziale`). Lo garantisce il guard di
+    #        `post`, che rifiuta una porta senza `MultiVesteTokenSerializer`.
+    def _serializer_porta(self) -> type[MultiVesteTokenSerializer]:
+        classe = self.get_serializer_class()
+        assert issubclass(classe, MultiVesteTokenSerializer)
+        return classe
 
     @staticmethod
     # Scopo: Estrae user_id e sid dal refresh token nella response (no query DB extra).
@@ -415,7 +449,7 @@ class AuditTokenObtainPairView(TokenObtainPairView):
             return 0, None
         try:
             token = RefreshToken(refresh_str)
-            return int(token.get("user_id", 0)), str(token.get(JWT_CLAIM_SID, ""))
+            return int(token.get(simplejwt_settings.USER_ID_CLAIM, 0)), str(token.get(JWT_CLAIM_SID, ""))
         except Exception:
             return 0, None
 
@@ -438,7 +472,8 @@ class PortaleTokenView(AuditTokenObtainPairView):
     il blocco login e' legato ad auth_user (non a identita), e un
     cliente/fornitore che sbaglia password piu' volte deve comunque
     essere bloccato. Cambia solo il serializer per esporre la veste
-    CLIENTE_PORTALE | FORNITORE_PORTALE.
+    CLIENTE_PORTALE | FORNITORE_PORTALE. Si entra con l'EMAIL, non col nome
+    utente (L-4, D-9): corpo `{"email", "password"}`.
     """
 
     serializer_class = PortaleTokenSerializer
@@ -451,7 +486,7 @@ class ShopTokenView(AuditTokenObtainPairView):
     Stesso ciclo audit/throttle/blocco di AdminTokenView; cambia solo
     il serializer per esporre la veste SHOP_CUSTOMER. Stub PR-B4:
     il flusso utente completo (registrazione self-service, attivazione)
-    e' in PR-C.
+    e' in PR-C. Si entra con l'EMAIL (L-4, D-9): corpo `{"email", "password"}`.
     """
 
     serializer_class = ShopTokenSerializer
@@ -529,14 +564,32 @@ class AuditTokenRefreshView(TokenRefreshView):
             )
             raise VesteNonAttivaError()
 
+        # ⛔ Veste non piu' utilizzabile (spenta o fuori date): la sessione e'
+        #    chiusa, PRIMA della rotazione (D-5, `_veste_utilizzabile`). Si
+        #    blocca anche il refresh presentato, per sid:
+        #    una veste riaccesa dopo non resuscita la sessione — si rientra col
+        #    login. 401 e non il 403 del guard sopra: il token era buono, la
+        #    sessione non c'e' piu', e il client va al login come per ogni
+        #    refresh rifiutato.
+        user_id, sid = self._extract_claims(claims)
+        identita_id = _int_claim(claims, JWT_CLAIM_IDENTITA_ID)
+        if not _veste_utilizzabile(identita_id, user_id):
+            if user_id and sid:
+                blocca_token_sessioni(user_id, lambda s: s == sid)
+            logger.warning(
+                "security.refresh_veste_spenta user_id=%s identita_id=%s",
+                user_id, identita_id,
+            )
+            raise InvalidToken("Sessione chiusa: la veste non e' piu' utilizzabile.")
+
         # `_rinnova` risponde 200 o solleva: da qui in poi il rinnovo e' riuscito.
         response = self._rinnova(refresh_str)
         # Il refresh ruotato torna nel cookie, e dal corpo esce.
         sposta_refresh_nel_cookie(response, response.data)
-        django_request = request._request if hasattr(request, "_request") else request
-        # Audit e GUC dagli STESSI claim verificati del guard, non da una
-        # seconda lettura del token (la rotazione preserva i claim custom).
-        user_id, jti = self._extract_claims(claims)
+        django_request = richiesta_django(request)
+        # Audit e GUC dagli STESSI claim verificati del guard (letti sopra:
+        # `user_id`, `sid`, `identita_id`), non da una seconda lettura del
+        # token (la rotazione preserva i claim custom).
         # Hotfix BE-2.0ter: il refresh NON passa dalla DRF auth chain
         # (la request porta solo il refresh token nel cookie, niente
         # Authorization Bearer), quindi JwtAuditAuthentication NON
@@ -549,7 +602,6 @@ class AuditTokenRefreshView(TokenRefreshView):
                 # §8.3.4: il refresh token (anche dopo rotation) preserva
                 # il claim identita_id iniettato al login: quello del
                 # refresh in entrata basta per le GUC sulla veste giusta.
-                identita_id = _int_claim(claims, JWT_CLAIM_IDENTITA_ID)
                 gucs_ok = set_jwt_gucs(
                     username=username,
                     user_id=user_id,
@@ -570,7 +622,7 @@ class AuditTokenRefreshView(TokenRefreshView):
         session_audit_service.record_refresh(
             user_id=user_id,
             request=django_request,
-            jti=jti,
+            jti=sid,
         )
         return response
 
@@ -604,7 +656,7 @@ class AuditTokenRefreshView(TokenRefreshView):
     def _extract_claims(claims: dict) -> tuple[int, str | None]:
         raw_sid = claims.get(JWT_CLAIM_SID)
         sid = str(raw_sid) if raw_sid is not None else None
-        return _int_claim(claims, "user_id") or 0, sid
+        return _int_claim(claims, simplejwt_settings.USER_ID_CLAIM) or 0, sid
 
 
 # ── Refresh view per namespace (§8.3.5) ─────────────────────

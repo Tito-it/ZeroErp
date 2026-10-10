@@ -73,14 +73,24 @@ SELECT has_function('pratiche', 'fn_reconcile_sorgente', ARRAY['bigint','text'],
 -- ============================================================
 -- Riferimenti minimi (pattern test-guida-avanza-esito-proiettato)
 -- ============================================================
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): il preventivo ha
+--   sempre il suo billing account, quello della sua coppia (istanza, utility),
+--   e il guard dell'emittente pretende che il BA sia dell'emittente del
+--   documento. Fino a quel giorno la coppia si PESCAVA dal primo BA del
+--   database e il preventivo nasceva senza BA. Ora il cliente si COSTRUISCE,
+--   col BA legato esplicitamente all'emittente usato dal file.
+--   ⛔ Si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_tb_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'pgtap tb preventivo col BA', NULL,
+    (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1));
+
 CREATE TEMP TABLE tmp_tb_refs AS
 SELECT
-  (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-  (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1) AS utility_id,
+  (SELECT billing_account_id FROM tmp_tb_cli) AS billing_account_id,
+  (SELECT istanza_utility_id FROM tmp_tb_cli) AS istanza_utility_id,
+  (SELECT utility_id FROM tmp_tb_cli) AS utility_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE
     ORDER BY ef.id LIMIT 1) AS emittente_id,
@@ -149,11 +159,11 @@ VALUES ((SELECT tf_id FROM tmp_tb_w1), NULL),
 CREATE TEMP TABLE tmp_tb_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi
-    (numero, rev, istanza_utility_id, utility_id, validita_dal, validita_al, valuta_id,
+    (numero, rev, billing_account_id, istanza_utility_id, utility_id, validita_dal, validita_al, valuta_id,
      stato_doc_preventivo_id, data, fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT
     'PGTAP-TB-' || x.tag || '-' || substr(md5(clock_timestamp()::text || x.tag), 1, 8),
-    0, r.istanza_utility_id, r.utility_id, DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
+    0, r.billing_account_id, r.istanza_utility_id, r.utility_id, DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
     x.stato_id, DATE '2026-07-01', false, false,
     jsonb_build_object('test_scope','pgtap_tiebreak','tag',x.tag), r.emittente_id
   FROM tmp_tb_refs r

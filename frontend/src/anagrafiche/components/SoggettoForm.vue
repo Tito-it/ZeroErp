@@ -32,6 +32,10 @@ const props = defineProps({
   campiErrati: { type: Array, default: () => [] },
   tipiSoggetto: { type: Object, required: true },
   isPF: { type: Boolean, default: true },
+  // Dalla `sesso_policy` del tipo scelto, decisa in `useSoggettoForm`:
+  // NONE -> campo nascosto, REQUIRED -> asterisco, OPTIONAL -> vuoto ammesso.
+  showSesso: { type: Boolean, default: false },
+  requireSesso: { type: Boolean, default: false },
   showPartitaIva: { type: Boolean, default: false },
   tipoForzato: { type: Number, default: null },
   tipiAmmessiIds: { type: Array, default: null },
@@ -50,9 +54,12 @@ const props = defineProps({
   comuneNascitaItem: { type: Object, default: null }
 })
 
+// `X`: il sesso serve ma non si puo' stabilire (dati storici, CF estero o non
+// riconoscibile). Lo si sceglie esplicitamente; il vuoto vuol dire «non serve».
 const sessoOptions = [
   { label: t('common.sesso_m'), value: 'M' },
-  { label: t('common.sesso_f'), value: 'F' }
+  { label: t('common.sesso_f'), value: 'F' },
+  { label: t('common.sesso_x'), value: 'X' }
 ]
 
 // CF/PIVA bloccati: regola backend-driven via non_editable_fields (Fase 6 B4).
@@ -102,7 +109,8 @@ const canGeneraCF = computed(() =>
   props.isPF
   && form.value.cognome?.trim()
   && form.value.nome?.trim()
-  && form.value.sesso
+  // Il CF codifica solo M e F: con X (o vuoto) non si calcola.
+  && ['M', 'F'].includes(form.value.sesso)
   && form.value.data_nascita
   && form.value.comune_nascita_id
   && !props.disabled
@@ -209,10 +217,12 @@ async function onValidaPIVA() {
           @blur="form.nome = capitalizeWords(form.nome)" />
       </div>
       <div class="form-row-inline">
-        <div class="form-field" style="flex: 0 0 8rem;">
-          <label>{{ t('common.sesso') }}</label>
+        <div v-if="showSesso" class="form-field" style="flex: 0 0 11rem;">
+          <label>{{ t('common.sesso') }}{{ requireSesso ? ' *' : '' }}</label>
           <Select v-model="form.sesso" :options="sessoOptions"
-            option-label="label" option-value="value" :disabled="disabled" />
+            option-label="label" option-value="value" :disabled="disabled"
+            :show-clear="!requireSesso && !disabled"
+            :invalid="campiErrati.includes('sesso')" />
         </div>
         <div class="form-field" style="flex: 1;">
           <label>{{ t('common.data_nascita') }}</label>

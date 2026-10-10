@@ -35,8 +35,13 @@ cd "$(dirname "$0")"
 
 IN="../requirements.in"
 OUT="../requirements.txt"
+# Strumenti di sviluppo del backend (mypy e stub, 2026-10-08): stessa venv, lock
+# separato perche' il Dockerfile installa solo `requirements.txt`.
+IN_DEV="../requirements-dev.in"
+OUT_DEV="../requirements-dev.txt"
 
 [[ -f "$IN" ]] || { echo "Missing $IN"; exit 1; }
+[[ -f "$IN_DEV" ]] || { echo "Missing $IN_DEV"; exit 1; }
 [[ -n "${VIRTUAL_ENV:-}" ]] || { echo "Activate venv first (source .venv/bin/activate)"; exit 1; }
 
 # ⛔ Guard sull'ambiente ATTIVO, non solo sulla sua esistenza (2026-08-26).
@@ -70,9 +75,15 @@ python -m pip install -U pip
 # 3) Genera requirements.txt bloccato (risolve deps) a partire da requirements.in
 # --upgrade aggiorna alle versioni più recenti consentite dai range in requirements.in
 python -m piptools compile --upgrade "$IN" --output-file "$OUT"
+# ⚠️ DOPO il lock del backend, non prima: `requirements-dev.in` si vincola a
+#    `requirements.txt` (`-c`), quindi deve leggerlo gia' aggiornato.
+python -m piptools compile --upgrade "$IN_DEV" --output-file "$OUT_DEV"
 
-# 4) Sincronizza l'ambiente con requirements.txt (installa e rimuove pacchetti extra)
-python -m piptools sync "$OUT"
+# 4) Sincronizza l'ambiente con i DUE lock (installa e rimuove pacchetti extra)
+# ⛔ Entrambi nella stessa chiamata: `sync` RIMUOVE cio' che non sta nei file
+#    che riceve. Con il solo `requirements.txt` toglierebbe mypy e gli stub, e
+#    il cancello del type checker sparirebbe dalla macchina di sviluppo.
+python -m piptools sync "$OUT" "$OUT_DEV"
 
 # 5) Aggiorna pacchetti tool del venv non in requirements.in
 python -m pip install -U wheel setuptools 2>/dev/null || true
@@ -80,4 +91,4 @@ python -m pip install -U wheel setuptools 2>/dev/null || true
 # 6) Verifica integrità dipendenze
 python -m pip check
 
-echo "OK -> $OUT updated and venv synced"
+echo "OK -> $OUT e $OUT_DEV aggiornati, venv sincronizzata"

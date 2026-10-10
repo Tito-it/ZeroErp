@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Service per lookup istanze_utilities riutilizzabile cross-dominio
-#        (preventivi prospect senza BA, future utility-aware flows). Valida i
-#        parametri di ricerca, applica le regole di dominio (min lunghezza
-#        query, cap risultati) e delega al repository. Espone anche pre-check
-#        coerenza utility/istanza per migliorare UX prima del trigger DB.
+# Scopo: Service per il lookup delle forniture (istanze_utilities, una riga per
+#        billing account) riutilizzabile cross-dominio: la scelta del cliente
+#        per fornitura nel preventivo e nella pratica. Valida i parametri di
+#        ricerca, applica le regole di dominio (min lunghezza query, cap
+#        risultati) e delega al repository.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -81,9 +81,13 @@ class IstanzeUtilityService:
 
     # Scopo: Recupera una singola istanza_utility per restore dell'AutoComplete
     #        in modalita' edit (evita round-trip aggiuntivi nel frontend).
-    # Perimetro: sola lettura. Solleva E_ANAG_NOT_FOUND se inesistente.
+    # Perimetro: sola lettura, nello scope emittente del chiamante (lo stesso
+    #        della ricerca). Solleva E_ANAG_NOT_FOUND se inesistente O fuori
+    #        scope: un id fuori perimetro non rivela di esistere.
     # Risultato: dict riga arricchita pronta per success_response.
-    def get_lookup_by_id(self, istanza_utility_id: int) -> dict[str, Any]:
+    def get_lookup_by_id(
+        self, istanza_utility_id: int, *, emittente_ids: list[int] | None,
+    ) -> dict[str, Any]:
         function_name = "anagrafiche.istanze_utility_service.get_lookup_by_id"
         # Esclude bool (sottoclasse di int in Python).
         valid_id = (
@@ -101,12 +105,14 @@ class IstanzeUtilityService:
             log_to_db=False,
         )
         repository = IstanzeUtilityRepository()
-        result = repository.get_lookup_by_id(istanza_utility_id)
+        result = repository.get_lookup_by_id(
+            istanza_utility_id, emittente_ids=emittente_ids,
+        )
         ErrorManager.require(
             result is not None,
             code="E_ANAG_NOT_FOUND",
             message="Istanza utility non trovata.",
-            detail=f"Nessuna istanza_utility con id={istanza_utility_id}.",
+            detail=f"Nessuna istanza_utility con id={istanza_utility_id} nel perimetro dell'utente.",
             context={"istanza_utility_id": istanza_utility_id},
             function_name=function_name,
             log_to_db=False,

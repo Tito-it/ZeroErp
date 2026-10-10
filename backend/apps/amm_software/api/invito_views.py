@@ -16,6 +16,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import AdminAPIView
 from apps.core.api.success_responses import success_response
 from apps.anagrafiche.services.invito_operatore_service import InvitoOperatoreService
+from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 
 class InvitaOperatoreView(AdminAPIView):
@@ -25,7 +26,7 @@ class InvitaOperatoreView(AdminAPIView):
     # Scopo: Genera token invito, imposta password temporanea, invia email.
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         service = InvitoOperatoreService()
-        result = service.invia_invito(auth_user_id, invitato_da_user_id=request.user.id)
+        result = service.invia_invito(auth_user_id, invitato_da_user_id=utente_autenticato_id(request))
         return success_response(result)
 
 
@@ -36,5 +37,5 @@ class ReinviaInvitoView(AdminAPIView):
     # Scopo: Invalida token invito precedente e ne genera uno nuovo.
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         service = InvitoOperatoreService()
-        result = service.reinvia_invito(auth_user_id, invitato_da_user_id=request.user.id)
+        result = service.reinvia_invito(auth_user_id, invitato_da_user_id=utente_autenticato_id(request))
         return success_response(result)

@@ -11,7 +11,7 @@
 CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_offerte
 WITH (security_invoker=on) AS
 SELECT 'OFFERTE'::character varying AS area,
-    (date_trunc('month'::text, (COALESCE(o.validita_dal, (o.data_emissione)::date, (o.data_insert)::date))::timestamp with time zone))::date AS competenza_mese,
+    (date_trunc('month'::text, (COALESCE(o.validita_dal, script.fn_giorno_operativo(o.data_emissione), script.fn_giorno_operativo(o.data_insert)))::timestamp with time zone))::date AS competenza_mese,
     o.id AS documento_id,
     (o.uid)::text AS documento_uid,
     o.codice,
@@ -39,7 +39,7 @@ SELECT 'OFFERTE'::character varying AS area,
     sdo.codice AS stato_codice,
     sdo.fase,
     s.ragione_sociale_completa AS cliente_display,
-    COALESCE((o.data_emissione)::date, o.validita_dal, (o.data_insert)::date) AS data_riferimento
+    COALESCE(script.fn_giorno_operativo(o.data_emissione), o.validita_dal, script.fn_giorno_operativo(o.data_insert)) AS data_riferimento
    FROM (((((vendite.offerte_commerciali o
      JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
      LEFT JOIN vendite.contratti ct ON ((ct.offerta_id = o.id)))

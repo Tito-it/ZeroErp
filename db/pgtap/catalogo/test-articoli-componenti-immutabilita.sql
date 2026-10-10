@@ -16,14 +16,14 @@
 --   successivo. L'EXCLUDE constraint ex_articoli_componenti_no_overlap
 --   impedisce overlap tra versioni.
 --
--- Indice test (1..18):
+-- Indice test (1..18, senza 6 e 7: 16 asserzioni):
 --    1. DELETE -> raise E_BOM_MODIFICA_VIETATA
 --    2. UPDATE coeff_qta -> raise
 --    3. UPDATE componente_id -> raise
 --    4. UPDATE obbligatorio -> raise
---    5. UPDATE esposto_in_fattura -> raise
---    6. UPDATE partecipa_qta -> raise
---    7. UPDATE determina_qta_padre -> raise
+--    5. UPDATE esposizione_in_fattura -> raise
+--    6. (ritirato 2026-10-02: partecipa_qta non esiste piu', 20261002-60)
+--    7. (ritirato 2026-10-02: determina_qta_padre non esiste piu', 20261002-60)
 --    8. UPDATE valido_dal -> raise
 --    9. UPDATE validita (daterange nativo) -> raise
 --   10. UPDATE valido_al in avanti (chiusura) -> OK
@@ -65,7 +65,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(18);
+SELECT plan(16);
 
 -- =========================================================
 -- Setup: riga BoM di partenza
@@ -79,8 +79,8 @@ CREATE TEMP TABLE _t_bom AS
 SELECT
     dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-PRODOTTO')   AS prodotto_id,
     dbops.fn_pgtap_crea_articolo('PGT-BOM-IMM-COMPONENTE') AS componente_id,
-    (CURRENT_DATE - INTERVAL '30 days')::date  AS v_dal,
-    (CURRENT_DATE + INTERVAL '30 days')::date  AS v_al;
+    (script.fn_data_operativa() - INTERVAL '30 days')::date  AS v_dal,
+    (script.fn_data_operativa() + INTERVAL '30 days')::date  AS v_al;
 
 -- Prerequisito: il prodotto deve avere is_composito=true perche' il
 -- trigger trgfn_articoli_componenti_guard_is_composito accetti l'INSERT.
@@ -93,10 +93,10 @@ CREATE TEMP TABLE _t_bom_riga (riga_id uuid);
 
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposto_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
+        esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT prodotto_id, componente_id, 1, false, true, false, false, v_dal, v_al, true
+    SELECT prodotto_id, componente_id, 1, true, 'NASCOSTO', v_dal, v_al, true
       FROM _t_bom
     RETURNING id
 )
@@ -155,40 +155,24 @@ SELECT throws_ok(
 );
 
 -- =========================================================
--- 5) UPDATE esposto_in_fattura -> raise
+-- 5) UPDATE esposizione_in_fattura -> raise
+-- (con un valore a catalogo: la riga deve fallire per il guard, non per la FK)
 -- =========================================================
 SELECT throws_ok(
     format(
-        $sql$ UPDATE catalogo.articoli_componenti SET esposto_in_fattura = true WHERE id = %L::uuid $sql$,
+        $sql$ UPDATE catalogo.articoli_componenti SET esposizione_in_fattura = 'DESCRITTIVO' WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
     NULL, NULL,
-    '5. UPDATE esposto_in_fattura -> raise E_BOM_MODIFICA_VIETATA'
+    '5. UPDATE esposizione_in_fattura -> raise E_BOM_MODIFICA_VIETATA'
 );
 
 -- =========================================================
--- 6) UPDATE partecipa_qta -> raise
+-- 6), 7) RITIRATI il 2026-10-02: provavano UPDATE di partecipa_qta e
+-- determina_qta_padre, colonne ritirate dalla distinta (20261002-60,
+-- brief-db-bom-flag-quantita-e-kit-in-fattura D-1). Numerazione degli altri
+-- invariata.
 -- =========================================================
-SELECT throws_ok(
-    format(
-        $sql$ UPDATE catalogo.articoli_componenti SET partecipa_qta = true WHERE id = %L::uuid $sql$,
-        (SELECT riga_id FROM _t_bom_riga)
-    ),
-    NULL, NULL,
-    '6. UPDATE partecipa_qta -> raise E_BOM_MODIFICA_VIETATA'
-);
-
--- =========================================================
--- 7) UPDATE determina_qta_padre -> raise
--- =========================================================
-SELECT throws_ok(
-    format(
-        $sql$ UPDATE catalogo.articoli_componenti SET determina_qta_padre = true WHERE id = %L::uuid $sql$,
-        (SELECT riga_id FROM _t_bom_riga)
-    ),
-    NULL, NULL,
-    '7. UPDATE determina_qta_padre -> raise E_BOM_MODIFICA_VIETATA'
-);
 
 -- =========================================================
 -- 8) UPDATE valido_dal -> raise
@@ -228,7 +212,7 @@ SELECT throws_ok(
 SELECT lives_ok(
     format(
         $sql$ UPDATE catalogo.articoli_componenti
-                 SET valido_al = (CURRENT_DATE + INTERVAL '10 days')::date
+                 SET valido_al = (script.fn_data_operativa() + INTERVAL '10 days')::date
                WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
@@ -249,7 +233,7 @@ SELECT lives_ok(
 SELECT throws_like(
     format(
         $sql$ UPDATE catalogo.articoli_componenti
-                 SET valido_al = (CURRENT_DATE - INTERVAL '60 days')::date
+                 SET valido_al = (script.fn_data_operativa() - INTERVAL '60 days')::date
                WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
@@ -306,7 +290,7 @@ SELECT lives_ok(
     format(
         $sql$ UPDATE catalogo.articoli_componenti
                  SET attivo = true,
-                     valido_al = (CURRENT_DATE + INTERVAL '5 days')::date
+                     valido_al = (script.fn_data_operativa() + INTERVAL '5 days')::date
                WHERE id = %L::uuid $sql$,
         (SELECT riga_id FROM _t_bom_riga)
     ),
@@ -315,19 +299,19 @@ SELECT lives_ok(
 
 -- =========================================================
 -- 16) INSERT nuova riga con valido_dal successivo -> OK
--- Chiudo la riga esistente (gia' chiusa a CURRENT_DATE+5) e
+-- Chiudo la riga esistente (gia' chiusa a script.fn_data_operativa()+5) e
 -- inserisco una nuova riga con valido_dal successivo per verificare
 -- che l'EXCLUDE constraint accetti il pattern chiudi+inserisci.
 -- =========================================================
 SELECT lives_ok(
     format(
         $sql$ INSERT INTO catalogo.articoli_componenti (
-                  prodotto_id, componente_id, coeff_qta, partecipa_qta,
-                  obbligatorio, esposto_in_fattura, determina_qta_padre,
+                  prodotto_id, componente_id, coeff_qta,
+                  obbligatorio, esposizione_in_fattura,
                   valido_dal, valido_al, attivo
               )
-              SELECT prodotto_id, componente_id, 2, false, true, false, false,
-                     (CURRENT_DATE + INTERVAL '6 days')::date,
+              SELECT prodotto_id, componente_id, 2, true, 'NASCOSTO',
+                     (script.fn_data_operativa() + INTERVAL '6 days')::date,
                      NULL,
                      true
                 FROM _t_bom $sql$
@@ -351,10 +335,10 @@ SELECT lives_ok(
 -- =========================================================
 SELECT lives_ok(
     $sql$ UPDATE catalogo.articoli_componenti
-             SET valido_al = (CURRENT_DATE + INTERVAL '6 days')::date
+             SET valido_al = (script.fn_data_operativa() + INTERVAL '6 days')::date
            WHERE prodotto_id   = (SELECT prodotto_id   FROM _t_bom)
              AND componente_id = (SELECT componente_id FROM _t_bom)
-             AND valido_dal    = (CURRENT_DATE + INTERVAL '6 days')::date $sql$,
+             AND valido_dal    = (script.fn_data_operativa() + INTERVAL '6 days')::date $sql$,
     '17. UPDATE valido_al = valido_dal su riga creata oggi (chiusura same-day) -> OK'
 );
 
@@ -368,10 +352,10 @@ SELECT is(
        FROM catalogo.articoli_componenti
       WHERE prodotto_id   = (SELECT prodotto_id   FROM _t_bom)
         AND componente_id = (SELECT componente_id FROM _t_bom)
-        AND valido_dal    = (CURRENT_DATE + INTERVAL '6 days')::date),
+        AND valido_dal    = (script.fn_data_operativa() + INTERVAL '6 days')::date),
     daterange(
-        (CURRENT_DATE + INTERVAL '6 days')::date,
-        (CURRENT_DATE + INTERVAL '7 days')::date,
+        (script.fn_data_operativa() + INTERVAL '6 days')::date,
+        (script.fn_data_operativa() + INTERVAL '7 days')::date,
         '[)'
     ),
     '18. validita riga chiusa same-day = [oggi+6, oggi+7) (range 1 giorno)'

@@ -1,0 +1,120 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE anagrafiche.fn_guard_istanza_ha_ba: un'istanza non resta mai senza
+# billing account.
+#   Brief: brief-db-istanza-nasce-col-ba (R-1, §6.2)
+#
+# -- LA REGOLA ------------------------------------------------------
+#   Decisione di Tid del 2026-10-08: istanza e billing account nascono
+#   insieme, nella stessa transazione, sempre; un'istanza senza BA non e' uno
+#   stato del ciclo di vita, e' un dato fuori regola.
+#
+# -- DUE PORTE, UN GUARD -------------------------------------------
+#   La regola si rompe in due modi, e i due constraint trigger che la
+#   presidiano chiamano questo guard al COMMIT (regola del 2):
+#     1. nasce un'istanza senza BA —
+#        trg_istanze_utilities_z90_require_utility_dichiarata_ins (-56);
+#     2. si cancella l'ultimo BA di un'istanza che resta —
+#        trg_billing_account_z90_require_istanza_ha_ba_dlt (-57).
+#   La terza porta, spostare il BA su un'altra istanza, e' chiusa dal lock
+#   di colonna (automation_lock_columns, E_BA_ISTANZA_IMMUTABILE).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Istanza inesistente: niente da presidiare (e' stata cancellata nella
+#   stessa transazione, insieme ai suoi BA). Parametro NULL: idem — i
+#   chiamanti passano NEW.id / OLD.istanza_utility_id, NOT NULL.
+#   ⚠️ SECURITY DEFINER, come anagrafiche.fn_guard_albero_ba_emittente:
+#   billing_account ha la RLS, e da SECURITY INVOKER un BA fuori dal
+#   perimetro di chi scrive sarebbe invisibile — il guard direbbe «istanza
+#   senza BA» e rifiuterebbe un'operazione legittima.
+#   Il VARIADIC porta il codice dell'istanza, che l'operatore riconosce.
+#
+# Ritorno indietro: DROP (i due trigger che lo chiamano cadono coi loro
+# rollback).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261008-55-create-fn-guard-istanza-ha-ba-mctit.yaml
+
+  - changeSet:
+      id: 20261008-55-create-fn-guard-istanza-ha-ba
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce anagrafiche.fn_guard_istanza_ha_ba: solleva E_ISTANZA_SENZA_BA se l'istanza esiste
+        e non ha nessun billing account. Lo chiamano al COMMIT i constraint trigger sulla nascita
+        dell'istanza e sulla cancellazione del BA. Brief: brief-db-istanza-nasce-col-ba (R-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_istanza_ha_ba(
+                  p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_codice anagrafiche.istanze_utilities.codice%TYPE;
+              BEGIN
+                  -- ⚠️ SECURITY DEFINER: legge anagrafiche.billing_account,
+                  --   che ha la RLS. Da SECURITY INVOKER un BA fuori dal
+                  --   perimetro di chi scrive sarebbe invisibile, e il guard
+                  --   rifiuterebbe un'istanza che il suo BA ce l'ha.
+                  IF p_istanza_utility_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  SELECT iu.codice
+                    INTO v_codice
+                    FROM anagrafiche.istanze_utilities iu
+                   WHERE iu.id = p_istanza_utility_id;
+
+                  -- Istanza cancellata nella stessa transazione (insieme ai
+                  -- suoi BA): non c'e' piu' niente da presidiare.
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  IF EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.billing_account ba
+                       WHERE ba.istanza_utility_id = p_istanza_utility_id
+                  ) THEN
+                      RETURN;
+                  END IF;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'anagrafiche',
+                      'fn_guard_istanza_ha_ba',
+                      'E_ISTANZA_SENZA_BA',
+                      jsonb_build_object(
+                          'istanza_utility_id', p_istanza_utility_id
+                      ),
+                      NULL::uuid,
+                      v_codice::text
+                  );
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_istanza_ha_ba(bigint)
+              IS 'Guard fail-fast: un''istanza utility che esiste deve avere almeno un billing account (regola di Tid del 2026-10-08: istanza e BA nascono insieme, sempre). Solleva E_ISTANZA_SENZA_BA col codice dell''istanza. Istanza inesistente o parametro NULL: niente da presidiare. Lo chiamano al COMMIT due constraint trigger: trg_istanze_utilities_z90_require_utility_dichiarata_ins (nascita dell''istanza) e trg_billing_account_z90_require_istanza_ha_ba_dlt (cancellazione del BA); lo spostamento del BA lo chiude il lock di colonna E_BA_ISTANZA_IMMUTABILE. SECURITY DEFINER perche'' legge billing_account, che ha la RLS: da INVOKER un BA fuori perimetro sarebbe invisibile e il guard rifiuterebbe un''operazione legittima. Brief: brief-db-istanza-nasce-col-ba (R-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_istanza_ha_ba(bigint);

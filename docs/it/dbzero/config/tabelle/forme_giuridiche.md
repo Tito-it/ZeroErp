@@ -9,17 +9,17 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| stato_iso2 | character varying | NO |  |
+| stato_iso2 | character varying(2) | NO |  |
 | stato_id | bigint | YES |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(20) | NO |  |
+| descrizione | character varying(150) | NO |  |
 | rea_policy | text | NO | 'NONE'::text |
 | capitale_sociale_policy | text | NO | 'NONE'::text |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
-| user_update | text | YES |  |
+| user_update | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | YES |  |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | false |

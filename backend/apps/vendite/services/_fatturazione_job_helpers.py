@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 import hashlib
 from datetime import date, datetime
 from typing import Any
@@ -43,7 +45,7 @@ def parse_competenza_mese(raw: Any, *, error_code: str) -> date:
         context=contesto_terminale(),
     )
     try:
-        return datetime.strptime(str(raw), "%Y-%m-%d").date().replace(day=1)
+        return datetime.strptime(str(raw), "%Y-%m-%d").date().replace(day=1)  # noqa: DTZ007 — si legge una DATA (formato stretto), non un istante: il fuso non c'entra
     except ValueError as exc:
         raise ServiceError(
             code=error_code,
@@ -68,7 +70,7 @@ def parse_data_iso(raw: Any, *, error_code: str, campo: str) -> date | None:
     if raw in (None, ""):
         return None
     try:
-        return datetime.strptime(str(raw), "%Y-%m-%d").date()
+        return datetime.strptime(str(raw), "%Y-%m-%d").date()  # noqa: DTZ007 — si legge una DATA (formato stretto), non un istante: il fuso non c'entra
     except ValueError as exc:
         raise ServiceError(
             code=error_code,
@@ -229,7 +231,7 @@ def _concorda(n: int, singolare: str, plurale: str) -> str:
 #    {id, codice} (changeSet `20260909-63`).
 # ⚠️ Se i lotti fossero piu' d'uno si nomina il PRIMO e si dice che ce ne sono
 #    altri: un elenco dentro una frase di toast non si legge.
-def _motivo_trattenuto(d: dict[str, Any]) -> tuple[str, str]:
+def _motivo_trattenuto(d: Mapping[str, Any]) -> tuple[str, str]:
     n = d.get("n_trattenute") or 0
     lotti = d.get("lotti_trattenenti") or []
     codice = (lotti[0] or {}).get("codice") if lotti else None
@@ -244,7 +246,7 @@ def _motivo_trattenuto(d: dict[str, Any]) -> tuple[str, str]:
 
 
 def classifica_gruppo_non_servito(
-    d: dict[str, Any],
+    d: Mapping[str, Any],
     *,
     terne_fallite: frozenset[TernaKey] = frozenset(),
 ) -> tuple[str, str]:
@@ -367,7 +369,7 @@ def classifica_gruppo_non_servito(
 #        bloccata resta non servito). Ordine di input preservato: e' l'ordine in
 #        cui l'operatore ha spuntato le righe.
 def spiega_gruppi_non_serviti(
-    diagnosi: list[dict[str, Any]],
+    diagnosi: Sequence[Mapping[str, Any]],
     *,
     terne_fallite: frozenset[TernaKey] = frozenset(),
 ) -> list[dict[str, Any]]:

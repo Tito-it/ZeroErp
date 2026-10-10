@@ -8,7 +8,7 @@
 --   config.regimi_fiscali · emittenti_fiscali.regime_fiscale_rf (FK, NOT NULL,
 --   conferma) · dbops.vw_emittenti_regime_non_confermato
 -- Brief: brief-db-esigibilita-iva-per-cassa-emittente (D-1 ... D-11)
--- ChangeSet: 20261001-01 ... -17, 20261001-40 (D-12)
+-- ChangeSet: 20261001-01 ... -17, 20261001-40 (D-12), 20261002-40 ... -42 (sezione 10)
 -- ------------------------------------------------------------
 -- A cosa serve, in una frase
 --   Un emittente in IVA per cassa emetteva tutte le fatture a esigibilita'
@@ -50,10 +50,19 @@
 -- 19) il risolutore IVA risponde come la riga (stessa regola)
 -- 20) la FK rifiuta un regime fuori catalogo (23503)
 -- 21) il regime e' obbligatorio (23502)
--- 22) la conferma scritta col regime nuovo resta
--- 23) ⭐ il regime che cambia senza conferma azzera la conferma
--- 24) il presidio mostra l'emittente non confermato e tace dopo la conferma
--- 25) ⛔ una conferma senza autore e' rifiutata (23514)
+-- 22-33) la conferma la scrive il database (sezione 10, 20261002-40/-41/-42):
+-- 22) la INSERT non conferma, e il presidio mostra l'emittente
+-- 23) un UPDATE che non nomina il regime non conferma
+-- 24) ⭐ dichiarare il regime con lo stesso valore lo conferma (autore = GUC)
+-- 25) il presidio tace dopo la dichiarazione
+-- 26) cambiare il regime e' una dichiarazione, con l'autore nuovo
+-- 27) un UPDATE che non nomina il regime non tocca la conferma data
+-- 28) senza GUC l'autore e' CURRENT_USER
+-- 29) ⛔ la data della conferma non si scrive da fuori
+-- 30) ⛔ la forma di D-11 (regime + conferma insieme) e' rifiutata
+-- 31) ⛔ una INSERT con la conferma e' rifiutata
+-- 32) riscrivere le colonne uguali passa (il valore, non la menzione)
+-- 33) il CHECK di coppia resta (struttura)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -64,7 +73,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Contesto applicativo: RLS attiva, come gira l'applicazione.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(26);
+SELECT plan(34);
 
 -- ============================================================
 -- La fixture
@@ -101,8 +110,8 @@ SELECT 999902, 'PGTAP_NI', 'pgTAP non imponibile', 'pgTAP NI', 0,
 CREATE OR REPLACE FUNCTION pg_temp.fx_riga(p_nr integer, p_iva integer, p_esig char DEFAULT NULL)
 RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta, prezzo_unitario,
-                                     iva_id, esigibilita)
-  SELECT (SELECT fattura_id FROM tmp_ec), p_nr, 'Riga ' || p_nr, 1, 100, p_iva, p_esig
+                                     iva_id, esigibilita, competenza_dal, competenza_al)
+  SELECT (SELECT fattura_id FROM tmp_ec), p_nr, 'Riga ' || p_nr, 1, 100, p_iva, p_esig, script.fn_data_operativa(), script.fn_data_operativa()
   RETURNING id;
 $fx$;
 
@@ -243,7 +252,8 @@ UPDATE catalogo.articoli SET iva_id = (SELECT iva_ord FROM tmp_ec_iva)
 
 SELECT is(
   (SELECT COALESCE(r.esigibilita::text, 'NULL') || '/' || COALESCE(r.split_payment::text, 'NULL')
-     FROM vendite.fn_resolve_iva_riga((SELECT articolo_id FROM tmp_ec_art), current_date, 100.00,
+     -- ⚠️ p_imponibile NULL (l'anteprima): dal 20261004-15 un importo e' rifiutato.
+     FROM vendite.fn_resolve_iva_riga((SELECT articolo_id FROM tmp_ec_art), script.fn_data_operativa(), NULL,
                                       NULL, NULL,
                                       (SELECT cliente_soggetto_id FROM tmp_ec_iva),
                                       (SELECT emittente_fiscale_id FROM tmp_ec)) r),
@@ -270,47 +280,154 @@ SELECT throws_ok(
   '21) il regime e'' obbligatorio'
 );
 
+-- ============================================================
+-- 22-33) La conferma la scrive il database (sezione 10, 20261002-40/-41/-42)
+-- ============================================================
+-- ⭐ Un emittente NUOVO, non quello della fattura: quello e' l'azienda di chi
+--   agisce, gia' esistente, e la sua conferma dipende dalla storia della
+--   macchina. La riga nuova nasce da una INSERT, ed e' l'unico modo di avere
+--   una conferma vuota (da fuori non si azzera).
+CREATE TEMP TABLE tmp_rc AS
+SELECT e.emittente_fiscale_id, e.soggetto_ruolo_id
+  FROM dbops.fn_pgtap_crea_emittente() e;
+
+CREATE OR REPLACE FUNCTION pg_temp.fx_conferma()
+RETURNS text LANGUAGE sql AS $fx$
+  SELECT ef.regime_fiscale_rf || '|'
+         || COALESCE(ef.regime_fiscale_confermato_da, 'NULL') || '|'
+         || CASE WHEN ef.regime_fiscale_confermato_il IS NULL THEN 'NULL'
+                 WHEN ef.regime_fiscale_confermato_il = now() THEN 'ADESSO'
+                 ELSE 'ALTRA_DATA' END
+    FROM anagrafiche.emittenti_fiscali ef
+   WHERE ef.id = (SELECT emittente_fiscale_id FROM tmp_rc);
+$fx$;
+
+CREATE OR REPLACE FUNCTION pg_temp.fx_nel_presidio()
+RETURNS boolean LANGUAGE sql AS $fx$
+  SELECT EXISTS (SELECT 1 FROM dbops.vw_emittenti_regime_non_confermato v
+                  WHERE v.emittente_fiscale_id = (SELECT emittente_fiscale_id FROM tmp_rc));
+$fx$;
+
+SELECT is(
+  pg_temp.fx_conferma() || '|' || pg_temp.fx_nel_presidio()::text,
+  'RF01|NULL|NULL|true',
+  '22) la INSERT non conferma: RF01 di default, nessuna conferma, e il presidio lo mostra'
+);
+
 UPDATE anagrafiche.emittenti_fiscali
-   SET regime_fiscale_rf = 'RF01',
-       regime_fiscale_confermato_il = now(),
-       regime_fiscale_confermato_da = 'pgtap'
- WHERE id = (SELECT emittente_fiscale_id FROM tmp_ec);
+   SET brand_meta = '{"pgtap": "regime"}'::jsonb
+ WHERE id = (SELECT emittente_fiscale_id FROM tmp_rc);
 
 SELECT is(
-  (SELECT regime_fiscale_rf || '|' || regime_fiscale_confermato_da
-     FROM anagrafiche.emittenti_fiscali WHERE id = (SELECT emittente_fiscale_id FROM tmp_ec)),
-  'RF01|pgtap',
-  '22) la conferma scritta insieme al regime nuovo resta'
+  pg_temp.fx_conferma(),
+  'RF01|NULL|NULL',
+  '23) un UPDATE che non nomina il regime non conferma'
 );
 
-CREATE TEMP TABLE tmp_ec_presidio AS
-SELECT EXISTS (SELECT 1 FROM dbops.vw_emittenti_regime_non_confermato
-                WHERE emittente_fiscale_id = (SELECT emittente_fiscale_id FROM tmp_ec)) AS confermato_visibile;
+-- ⭐ Lo STESSO valore: e' cosi' che l'operatore conferma un RF01 che nessuno
+--   aveva dichiarato. L'autore viene dalla GUC, fissata qui per non dipendere
+--   dal contesto.
+SELECT set_config('app.jwt_user', 'pgtap.dichiarante', true);
 
-SELECT pg_temp.fx_regime('RF17');
+UPDATE anagrafiche.emittenti_fiscali
+   SET regime_fiscale_rf = 'RF01'
+ WHERE id = (SELECT emittente_fiscale_id FROM tmp_rc);
 
 SELECT is(
-  (SELECT COALESCE(regime_fiscale_confermato_il::text, 'NULL') || '|'
-          || COALESCE(regime_fiscale_confermato_da, 'NULL')
-     FROM anagrafiche.emittenti_fiscali WHERE id = (SELECT emittente_fiscale_id FROM tmp_ec)),
-  'NULL|NULL',
-  '23) il regime che cambia senza una conferma nuova azzera la conferma'
+  pg_temp.fx_conferma(),
+  'RF01|pgtap.dichiarante|ADESSO',
+  '24) ⭐ dichiarare il regime con lo stesso valore lo conferma: data e autore li scrive il database'
 );
 
 SELECT is(
-  (SELECT confermato_visibile FROM tmp_ec_presidio)::text || '|' ||
-  EXISTS (SELECT 1 FROM dbops.vw_emittenti_regime_non_confermato
-           WHERE emittente_fiscale_id = (SELECT emittente_fiscale_id FROM tmp_ec))::text,
-  'false|true',
-  '24) il presidio tace sull''emittente confermato e lo mostra quando la conferma si azzera'
+  pg_temp.fx_nel_presidio(),
+  false,
+  '25) il presidio tace sull''emittente dichiarato'
 );
 
-SELECT throws_ok(
-  format('UPDATE anagrafiche.emittenti_fiscali SET regime_fiscale_confermato_il = now() WHERE id = %s',
-         (SELECT emittente_fiscale_id FROM tmp_ec)),
-  '23514',
-  NULL,
-  '25) una conferma senza autore e'' rifiutata (chk_emittenti_fiscali_regime_conferma_coppia)'
+SELECT set_config('app.jwt_user', 'pgtap.altro', true);
+
+UPDATE anagrafiche.emittenti_fiscali
+   SET regime_fiscale_rf = 'RF17'
+ WHERE id = (SELECT emittente_fiscale_id FROM tmp_rc);
+
+SELECT is(
+  pg_temp.fx_conferma(),
+  'RF17|pgtap.altro|ADESSO',
+  '26) cambiare il regime e'' una dichiarazione: la conferma passa a chi l''ha scritto'
+);
+
+SELECT set_config('app.jwt_user', 'pgtap.terzo', true);
+
+UPDATE anagrafiche.emittenti_fiscali
+   SET brand_meta = '{"pgtap": "regime-2"}'::jsonb
+ WHERE id = (SELECT emittente_fiscale_id FROM tmp_rc);
+
+SELECT is(
+  pg_temp.fx_conferma(),
+  'RF17|pgtap.altro|ADESSO',
+  '27) un UPDATE che non nomina il regime non tocca la conferma data'
+);
+
+SELECT set_config('app.jwt_user', '', true);
+
+UPDATE anagrafiche.emittenti_fiscali
+   SET regime_fiscale_rf = 'RF01'
+ WHERE id = (SELECT emittente_fiscale_id FROM tmp_rc);
+
+SELECT is(
+  pg_temp.fx_conferma(),
+  'RF01|' || current_user || '|ADESSO',
+  '28) senza la GUC app.jwt_user l''autore e'' il ruolo del database'
+);
+
+SELECT throws_like(
+  format('UPDATE anagrafiche.emittenti_fiscali SET regime_fiscale_confermato_il = now() - interval ''1 day'' WHERE id = %s',
+         (SELECT emittente_fiscale_id FROM tmp_rc)),
+  '%la conferma del regime fiscale la scrive il database%',
+  '29) ⛔ la data della conferma non si scrive da fuori (E_EMITTENTE_REGIME_CONFERMA_DERIVATA)'
+);
+
+-- La forma di D-11: regime e conferma nella stessa scrittura. Il guard a10
+-- parla prima della derivazione a20, quindi vede i valori del chiamante.
+SELECT throws_like(
+  format('UPDATE anagrafiche.emittenti_fiscali SET regime_fiscale_rf = %L, '
+         'regime_fiscale_confermato_il = now() - interval ''1 day'', '
+         'regime_fiscale_confermato_da = %L WHERE id = %s',
+         'RF17', 'pgtap.form', (SELECT emittente_fiscale_id FROM tmp_rc)),
+  '%la conferma del regime fiscale la scrive il database%',
+  '30) ⛔ la forma di D-11 (regime e conferma insieme) e'' rifiutata: si scrive solo il regime'
+);
+
+SELECT throws_like(
+  format('INSERT INTO anagrafiche.emittenti_fiscali (soggetto_ruolo_id, codice, '
+         'regime_fiscale_confermato_il, regime_fiscale_confermato_da) '
+         'VALUES (%s, %L, now(), %L)',
+         (SELECT soggetto_ruolo_id FROM tmp_rc), 'PGTAPRC', 'pgtap.form'),
+  '%la conferma del regime fiscale la scrive il database%',
+  '31) ⛔ una INSERT con la conferma e'' rifiutata: la creazione non conferma mai'
+);
+
+-- Il valore, non la menzione: un salvataggio che riscrive tutta la riga nomina
+-- le due colonne con i valori che hanno gia'.
+SELECT lives_ok(
+  format('UPDATE anagrafiche.emittenti_fiscali '
+         'SET regime_fiscale_confermato_il = regime_fiscale_confermato_il, '
+         'regime_fiscale_confermato_da = regime_fiscale_confermato_da WHERE id = %s',
+         (SELECT emittente_fiscale_id FROM tmp_rc)),
+  '32) riscrivere le colonne di conferma con lo stesso valore passa'
+);
+
+-- ⚠️ Il guard ora parla prima del CHECK di coppia (23514), ma il CHECK
+--   presidia le strade che i trigger non percorrono: lo si tiene con
+--   un'asserzione sulla struttura.
+SELECT is(
+  (SELECT count(*)::integer FROM pg_catalog.pg_constraint c
+    WHERE c.conrelid = 'anagrafiche.emittenti_fiscali'::regclass
+      AND c.conname = 'chk_emittenti_fiscali_regime_conferma_coppia'
+      AND c.contype = 'c'),
+  1,
+  '33) il CHECK di coppia della conferma resta'
 );
 
 SELECT * FROM finish();

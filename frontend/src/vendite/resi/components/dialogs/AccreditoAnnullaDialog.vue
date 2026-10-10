@@ -24,11 +24,9 @@
 // e la nota di credito viene RIGENERATA al giro successivo, perché la merce
 // resa non è cambiata. Confonderle manda l'operatore sulla strada sbagliata
 // credendo di aver disfatto.
-import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
-import Textarea from 'primevue/textarea'
-import AppDialog from '../../../../core/components/AppDialog.vue'
+import MotivoDialog from '../../../../core/components/MotivoDialog.vue'
 import { useApiHandler } from '../../../../core/composables/useApiHandler'
 import { useNotify } from '../../../../core/composables/useNotify'
 import { annullaAccredito } from '../../api/resiApi'
@@ -56,48 +54,39 @@ const { t } = useI18n()
 const { execute, loading } = useApiHandler()
 const notify = useNotify()
 
-const motivo = ref('')
-const valido = computed(() => String(motivo.value ?? '').trim().length > 0)
-
-// Mai residui del giro precedente: il motivo di ieri su un annullo di oggi
-// sarebbe una traccia falsa, e la traccia è tutto ciò che resta.
-watch(() => props.visible, (aperto) => { if (aperto) motivo.value = '' })
-
-async function salva() {
+// Il motivo (obbligatorio), il suo azzeramento a ogni apertura e la fotografia
+// sono di `MotivoDialog`: qui solo il gesto.
+async function salva(motivo) {
   const rigaId = props.riga?.resi_riga_id ?? props.riga?.id
   const res = await execute(
-    () => annullaAccredito(props.riga.reso_id, rigaId, motivo.value),
+    () => annullaAccredito(props.riga.reso_id, rigaId, motivo),
   )
   if (res === null) return
   emit('update:visible', false)
   notify.success(t('vendite.resi.annullo_esito'))
   emit('annullato')
 }
-</script>
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).</script>
 
 <template>
-  <AppDialog
+  <MotivoDialog
     :visible="visible"
-    width="sm"
     :header="t('vendite.resi.annullo_header')"
+    :label="t('vendite.resi.annullo_motivo')"
+    obbligatorio
     :loading="loading"
     :readonly="readonly"
-    :save-disabled="!valido"
     :save-label="t('vendite.resi.annullo_salva')"
     save-severity="danger"
     @update:visible="emit('update:visible', $event)"
-    @save="salva"
-    @cancel="emit('update:visible', false)"
+    @conferma="salva"
   >
-    <p class="app-text-muted" style="margin-top: 0;">
+    <p class="app-text-muted">
       {{ t('vendite.resi.annullo_conferma') }}
     </p>
     <Message severity="warn" :closable="false" size="small">
       {{ t('vendite.resi.annullo_avviso_reset') }}
     </Message>
-    <div class="form-field" style="margin-top: 1rem;">
-      <label>{{ t('vendite.resi.annullo_motivo') }}</label>
-      <Textarea v-model="motivo" rows="3" fluid />
-    </div>
-  </AppDialog>
+  </MotivoDialog>
 </template>

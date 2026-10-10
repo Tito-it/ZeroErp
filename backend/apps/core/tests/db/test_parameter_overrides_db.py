@@ -3,26 +3,30 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Gli override di `config.parameter_overrides` scritti e cancellati dal
-#        backend sono «di livello puro» (una dimensione valorizzata, tutte le
-#        altre NULL), e un parametro inesistente non arriva all'INSERT. Sul
-#        DATABASE PROVVISTO, in una transazione sempre annullata.
+#        backend: uno per ambito, un upsert ripetuto aggiorna la stessa riga,
+#        la delete non tocca l'override di un altro, e un parametro inesistente
+#        non arriva all'INSERT. Sul DATABASE PROVVISTO, in una transazione
+#        sempre annullata.
 # Note: ⭐ Il caso che conta si COSTRUISCE: una riga MISTA (utente +
-#        categoria, utente + sessione) accanto a quella pura, o una riga pura
-#        SPENTA (`attivo = false`). Il modello le ammette (l'unicita' e' su
-#        tutte le dimensioni insieme, nessun CHECK, `attivo` nullable). Fino al
-#        2026-09-28 gli upsert non azzeravano tutte le dimensioni e la delete
-#        emittente guardava solo utente e gruppo (F-5); un codice inesistente
-#        era un `E_DATABASE` (E-9). La SQL e' la stessa per ogni livello
-#        (`_altre_dimensioni_nulle`): il perimetro per livello lo prova
-#        `test_parameter_repository_dimensioni`.
+#        categoria), un secondo utente, una riga SPENTA (`attivo` false o
+#        NULL, che il modello ammette). Dal 2026-10-07 le righe miste non
+#        nascono (`chk_parameter_overrides_un_ambito`, decisione di Tid) e
+#        l'unicita' d'ambito e' vera (`uq_overrides_full_scope_v5`, NULLS NOT
+#        DISTINCT): l'upsert ci si appoggia con `ON CONFLICT`. Prima il
+#        perimetro «puro» lo teneva il repository (F-5, 2026-09-28), e due
+#        upsert concorrenti potevano creare un doppione. Un codice inesistente
+#        era un `E_DATABASE` (E-9). La SQL e' la stessa per ogni livello: la
+#        prova per livello e' `test_parameter_repository_dimensioni`.
 # ------------------------------------------------------------
 
 """
 Indice test eseguiti:
 1) ParameterOverridesDbTests.test_parametro_inesistente_non_scrive_niente (E-9)
-2) ParameterOverridesDbTests.test_upsert_utente_non_tocca_la_riga_mista (F-5)
-3) ParameterOverridesDbTests.test_delete_utente_non_cancella_la_riga_mista (F-5)
-4) ParameterOverridesDbTests.test_upsert_riattiva_la_riga_spenta
+2) ParameterOverridesDbTests.test_riga_mista_non_nasce
+3) ParameterOverridesDbTests.test_upsert_ripetuto_aggiorna_la_stessa_riga
+4) ParameterOverridesDbTests.test_delete_non_tocca_l_override_di_un_altro
+5) ParameterOverridesDbTests.test_upsert_riattiva_la_riga_spenta
+6) ParameterOverridesDbTests.test_lettura_facoltativa_di_un_codice_non_dichiarato
 """
 
 from __future__ import annotations
@@ -30,12 +34,14 @@ from __future__ import annotations
 import unittest
 
 from django.contrib.auth.models import User
-from django.db import connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 
 from apps.core.db.parameter_repository import ParameterRepository
+from apps.core.services.db_error_fields import db_error_code
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 _CODICE_INESISTENTE = "ZZ_PARAMETRO_CHE_NON_ESISTE_TEST"
+_SQLSTATE_CHECK = "23514"
 
 
 class ParameterOverridesDbTests(unittest.TestCase):
@@ -72,56 +78,60 @@ class ParameterOverridesDbTests(unittest.TestCase):
             self.assertEqual(cur.fetchone()[0], 0)
         self._nel_mondo(azione)
 
-    # Scopo: ⭐ F-5 — l'upsert dell'override personale aggiorna solo la riga
-    # PURA dell'utente: una riga mista (utente + categoria cliente) non e'
-    # «sua». E' esattamente la dimensione che l'upsert non azzerava fino al
-    # 2026-09-28: col codice vecchio questa riga veniva sovrascritta.
-    def test_upsert_utente_non_tocca_la_riga_mista(self):
-        def azione(cur, param_id, code, uid):
+    # Scopo: ⭐ La premessa su cui il repository si appoggia: un override vale
+    # per UN ambito. Una riga utente + categoria la rifiuta il DB (`23514`),
+    # quindi la delete per id + scope non ha bisogno di filtrare le altre
+    # dimensioni. Fino al 2026-10-07 la riga nasceva, e i test 2-3 di allora
+    # provavano che upsert e delete non la toccassero (F-5).
+    def test_riga_mista_non_nasce(self):
+        def azione(cur, param_id, _code, uid):
             cur.execute(
                 "INSERT INTO anagrafiche.categorie_clienti (codice, descrizione, codice_interno) "
                 "VALUES ('ZZ_TEST_PAR', 'Categoria di test', 'ZZ_TEST_PAR') RETURNING id"
             )
             categoria_id = cur.fetchone()[0]
-            cur.execute(
-                "INSERT INTO config.parameter_overrides "
-                "(parameter_id, django_user_id, categoria_cliente_id, overridden_value) "
-                "VALUES (%s, %s, %s, 'misto') RETURNING id",
-                [param_id, uid, categoria_id],
-            )
-            id_misto = cur.fetchone()[0]
-
-            id_puro = ParameterRepository().upsert_user_override(code, uid, "puro")
-
-            self.assertIsNotNone(id_puro)
-            self.assertNotEqual(id_puro, id_misto)
-            cur.execute(
-                "SELECT overridden_value FROM config.parameter_overrides WHERE id = %s",
-                [id_misto],
-            )
-            self.assertEqual(cur.fetchone()[0], "misto")
-            # E un secondo upsert aggiorna la riga pura, non ne crea un'altra.
-            self.assertEqual(ParameterRepository().upsert_user_override(code, uid, "bis"), id_puro)
+            with self.assertRaises(IntegrityError) as ctx, transaction.atomic():
+                cur.execute(
+                    "INSERT INTO config.parameter_overrides "
+                    "(parameter_id, django_user_id, categoria_cliente_id, overridden_value) "
+                    "VALUES (%s, %s, %s, 'misto')",
+                    [param_id, uid, categoria_id],
+                )
+            self.assertEqual(getattr(ctx.exception.__cause__, "sqlstate", None), _SQLSTATE_CHECK)
         self._nel_mondo(azione)
 
-    # Scopo: ⭐ F-5 — la delete dell'override personale non cancella una
-    # riga mista, anche se ne conosce l'id.
-    def test_delete_utente_non_cancella_la_riga_mista(self):
-        def azione(cur, param_id, _code, uid):
+    # Scopo: ⭐ Un upsert ripetuto sullo stesso ambito aggiorna la riga che
+    # c'e': stesso id, valore nuovo, una riga sola. E' il vincolo d'ambito a
+    # trovarla (`ON CONFLICT`), non un match scritto nel repository.
+    def test_upsert_ripetuto_aggiorna_la_stessa_riga(self):
+        def azione(cur, param_id, code, uid):
+            primo = ParameterRepository().upsert_user_override(code, uid, "uno")
+            secondo = ParameterRepository().upsert_user_override(code, uid, "due")
+
+            self.assertIsNotNone(primo)
+            self.assertEqual(secondo, primo)
             cur.execute(
-                "INSERT INTO config.parameter_overrides "
-                "(parameter_id, django_user_id, session_key, overridden_value) "
-                "VALUES (%s, %s, 'sessione-test', 'misto') RETURNING id",
+                "SELECT count(*), max(overridden_value) FROM config.parameter_overrides "
+                "WHERE parameter_id = %s AND django_user_id = %s",
                 [param_id, uid],
             )
-            id_misto = cur.fetchone()[0]
-
-            self.assertFalse(ParameterRepository().delete_user_override(id_misto, uid))
-            cur.execute("SELECT 1 FROM config.parameter_overrides WHERE id = %s", [id_misto])
-            self.assertIsNotNone(cur.fetchone())
+            self.assertEqual(cur.fetchone(), (1, "due"))
         self._nel_mondo(azione)
 
-    # Scopo: ⭐ L'upsert su una riga pura SPENTA la riattiva (ok Tid
+    # Scopo: La delete dell'override personale cancella per id E utente: l'id
+    # dell'override di un altro utente non basta.
+    def test_delete_non_tocca_l_override_di_un_altro(self):
+        def azione(cur, _param_id, code, uid):
+            altro = User.objects.create(username="zz_test_parametri_altro").id
+            id_altrui = ParameterRepository().upsert_user_override(code, altro, "suo")
+
+            self.assertFalse(ParameterRepository().delete_user_override(id_altrui, uid))
+            cur.execute("SELECT 1 FROM config.parameter_overrides WHERE id = %s", [id_altrui])
+            self.assertIsNotNone(cur.fetchone())
+            self.assertTrue(ParameterRepository().delete_user_override(id_altrui, altro))
+        self._nel_mondo(azione)
+
+    # Scopo: ⭐ L'upsert su una riga SPENTA la riattiva (ok Tid
     # 2026-09-28): stesso id, valore nuovo, `attivo = true`. Prima rispondeva
     # con l'id e la riga restava spenta, cioe' invisibile alla lista e
     # ignorata dalla risoluzione. Anche `attivo` NULL: il modello lo ammette.
@@ -147,3 +157,24 @@ class ParameterOverridesDbTests(unittest.TestCase):
                     )
                     self.assertEqual(cur.fetchone(), ("nuovo", True))
                 self._nel_mondo(azione)
+
+    # Scopo: ⭐ BB `get_parameter_se_dichiarato` (2026-10-11): un codice non
+    # dichiarato e' None, non `E_ERRORE_PARAMETRI_TABELLA`; un codice
+    # dichiarato vale quanto la cascata. `get_parameters` lo esclude invece di
+    # far fallire la richiesta. `get_parameter` resta rigido: e' il contratto
+    # dei parametri obbligatori.
+    def test_lettura_facoltativa_di_un_codice_non_dichiarato(self):
+        def azione(_cur, _param_id, code, _uid):
+            repo = ParameterRepository()
+            self.assertIsNone(repo.get_parameter_se_dichiarato(_CODICE_INESISTENTE))
+            self.assertEqual(repo.get_parameter_se_dichiarato(code), repo.get_parameter(code))
+            risolti = repo.get_parameters([_CODICE_INESISTENTE, code])
+            self.assertNotIn(_CODICE_INESISTENTE, risolti)
+            if repo.get_parameter(code) is not None:
+                self.assertIn(code, risolti)
+            # Il rifiuto e' quello del catalogo, non un errore qualunque.
+            with self.assertRaises(DatabaseError) as ctx:
+                with transaction.atomic():
+                    repo.get_parameter(_CODICE_INESISTENTE)
+            self.assertEqual(db_error_code(ctx.exception), "E_ERRORE_PARAMETRI_TABELLA")
+        self._nel_mondo(azione)

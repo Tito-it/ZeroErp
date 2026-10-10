@@ -9,10 +9,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| codice_interno | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| schema_db | character varying | NO |  |
+| codice | character varying(50) | NO |  |
+| codice_interno | character varying(50) | NO |  |
+| descrizione | character varying(200) | NO |  |
+| schema_db | character varying(50) | NO |  |
 | attivo | boolean | NO | true |
 | ordinamento | smallint | NO | 0 |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -47,6 +47,9 @@
 | trg_aree_funzionali_a10_user_override_aree_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'user_override_aree', 'area_id', 'id', 'attivo')` |
 | trg_aree_funzionali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_aree_funzionali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_aree_funzionali_z90_notify_permessi_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
+| trg_aree_funzionali_z90_notify_permessi_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
+| trg_aree_funzionali_z90_notify_permessi_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
 
 ---
 {% include-markdown "signature-core.md" %}

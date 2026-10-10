@@ -9,10 +9,11 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 import json
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, limiti_pagina
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.core.services.error_manager import ErrorManager
@@ -27,6 +28,28 @@ from apps.vendite.types import (
     CommessaTestataRow,
     GruppoDiagnosi,
     GruppoEsitoGiro,
+)
+
+# Le colonne di PROVENIENZA del prezzo di una riga di commessa, che
+# `update_attivita_prezzo` scrive con il prezzo. ⭐ Sede unica: il building
+# block `apps/vendite/services/prezzo_riga_commessa.py` le importa da qui
+# (`CAMPI_PROVENIENZA`). Le prime nove esistono anche su
+# `attivita_fatturabili`; `listino_versione_id` solo sulla riga di commessa.
+# ⭐ `listino_riga_id` (2026-10-09, brief-db-riga-listino-propagata-dalla-
+# commessa): la riga di listino che ha dato il prezzo. Scriverla la rende
+# «propagata», cioe' immutabile (`trgfn_listini_righe_guard_stato`), finche'
+# una riga la cita ADESSO (D-1 del brief).
+COLONNE_PROVENIENZA_PREZZO: tuple[str, ...] = (
+    "prezzo_base_snapshot",
+    "origine_prezzo",
+    "tipo_variazione_applicata",
+    "valore_variazione_applicata",
+    "promo_id",
+    "contratto_id",
+    "categoria_cliente_id_snapshot",
+    "classe_utenza_id_snapshot",
+    "listino_riga_id",
+    "listino_versione_id",
 )
 
 # Repository SQL: incapsula accesso DB per commesse, commesse_attivita e push log.
@@ -228,6 +251,7 @@ class CommessaAttivitaInput:
     posticipa_al: date | None = None
     area_geografica_id: int | None = None
     listino_versione_id: int | None = None
+    listino_riga_id: int | None = None  # la riga di listino del prezzo (la rende «propagata»)
     sorgente_tipo_id: int | None = None
     sorgente_uid: str | None = None
     meta: dict[str, Any] | None = None
@@ -540,7 +564,8 @@ class CommesseRepository(EventLogRepositoryMixin):
         dal billing account (`anagrafiche.fn_get_emittente_fiscale_id`).
         Il valore che il BE ri-passava era quello che il database gli aveva
         appena dato dalle `fn_list_*_da_pushare`: un giro in piu' che, con
-        il guard `trgfn_commesse_guard_emittente_ba` in servizio, poteva
+        il guard emittente <-> BA in servizio (dal 2026-10-10 il BB
+        `script.trgfn_doc_guard_emittente_ba`), poteva
         solo essere ridondante o sbagliato.
         Piano: `brief-db-emittente-commessa-invariante` (D-2, lotto L5).
         """
@@ -811,8 +836,8 @@ class CommesseRepository(EventLogRepositoryMixin):
         (flag chiude/emittibile/modificabile, config testata, contatori righe):
         servono alla UI commesse per stato e azioni senza chiamate extra."""
 
-        def _int(v: object) -> int | None:
-            return int(v) if v is not None else None  # type: ignore[arg-type]
+        def _int(v: Any) -> int | None:
+            return int(v) if v is not None else None
 
         with connection.cursor() as cursor:
             cursor.execute(
@@ -909,7 +934,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [commessa_id])
             row = row_to_dict(cursor)
-            return CommessaTestataRow(**row) if row else None
+            return cast(CommessaTestataRow, row) if row else None
 
     # Colonne di testata scrivibili dall'operatore. ⛔ `data_apertura` NON c'e':
     # la scrive il default (`script.fn_data_operativa()`) alla nascita, e a
@@ -975,7 +1000,8 @@ class CommesseRepository(EventLogRepositoryMixin):
                     p_sorgente_uid => %s,
                     p_tipo_movimento => %s,
                     p_tipo_consumo => %s,
-                    p_meta => %s::jsonb
+                    p_meta => %s::jsonb,
+                    p_listino_riga_id => %s
                 )
                 """,
                 [
@@ -1016,6 +1042,7 @@ class CommesseRepository(EventLogRepositoryMixin):
                     inp.tipo_movimento,
                     inp.tipo_consumo,
                     self._to_jsonb_param(inp.meta),
+                    inp.listino_riga_id,
                 ],
             )
             row = cursor.fetchone()
@@ -1053,6 +1080,7 @@ class CommesseRepository(EventLogRepositoryMixin):
             "valuta_id": inp.valuta_id,
             "area_geografica_id": inp.area_geografica_id,
             "listino_versione_id": inp.listino_versione_id,
+            "listino_riga_id": inp.listino_riga_id,
             "prezzo_bloccato": inp.prezzo_bloccato,
             "pricing_mode": inp.pricing_mode,
             "prezzo_da_riallineare": inp.prezzo_da_riallineare,
@@ -1448,7 +1476,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         commessa_id: int,
         *,
         commessa_attivita_id: int | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIMIT_EVENTI,
         offset: int = 0,
     ) -> tuple[list[CommessaRegistroEventoRow], int]:
         where = ["ca.commessa_id = %s"]
@@ -1638,7 +1666,7 @@ class CommesseRepository(EventLogRepositoryMixin):
         stato_emissione: str | None = None,
         stato_approvazione: str | None = None,
         competenza_mese: date | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str = "asc",
@@ -1876,6 +1904,9 @@ class CommesseRepository(EventLogRepositoryMixin):
                     ca.articolo_id,
                     ca.uom_id,
                     ca.data_attivita,
+                    -- Il ripiego della data per il listino quando manca
+                    -- `data_attivita` (BB `prezzo_riga_commessa`, come nel push).
+                    ca.competenza_mese,
                     ca.meta,
                     -- Identita' e stato della riga: servono ai guard
                     -- dell'annullamento riga manuale (brief-annullamento-righe-
@@ -1910,14 +1941,39 @@ class CommesseRepository(EventLogRepositoryMixin):
             return row_to_dict(cursor)
 
     # Scopo: Aggiorna prezzo snapshot su commessa_attivita + prezzo_unitario su
-    #        attivita_fatturabili. Caller gestisce transazione.
+    #        attivita_fatturabili, e con il prezzo la sua PROVENIENZA
+    #        (`provenienza`: le colonne di `COLONNE_PROVENIENZA_PREZZO`, dal
+    #        building block `prezzo_riga_commessa`).
+    #        ⭐ Dal 2026-10-08 prezzo e provenienza si scrivono INSIEME: prima si
+    #        scriveva il solo prezzo, e la riga riallineata diceva un prezzo
+    #        nuovo con la versione di listino, l'origine e la base del prezzo
+    #        vecchio. Le nove colonne che `attivita_fatturabili` ha in comune si
+    #        propagano con il prezzo, alle stesse condizioni (riga non ancora
+    #        in fattura).
+    #        ⛔ `provenienza` deve avere ESATTAMENTE quelle colonne: una chiave
+    #        in meno lascerebbe in piedi un pezzo della provenienza vecchia
+    #        senza che nessuno se ne accorga, quindi si rifiuta.
     def update_attivita_prezzo(
         self,
         attivita_id: int,
         prezzo: str,
         prezzo_bloccato: bool,
         meta: dict[str, Any] | None,
+        *,
+        provenienza: dict[str, Any],
     ) -> None:
+        if set(provenienza) != set(COLONNE_PROVENIENZA_PREZZO):
+            raise ValueError(
+                "update_attivita_prezzo: provenienza con colonne "
+                f"{sorted(provenienza)}, attese {sorted(COLONNE_PROVENIENZA_PREZZO)}"
+            )
+        parametri = {
+            **provenienza,
+            "att_id": attivita_id,
+            "prezzo": prezzo,
+            "bloccato": prezzo_bloccato,
+            "meta": json.dumps(meta) if meta else None,
+        }
         # Guardrail atomicità (review 2026-07-08): 2 UPDATE sequenziali (commesse_attivita
         # + attivita_fatturabili) resi self-atomici. Il docstring dichiarava "caller gestisce
         # transazione": ora e' self-safe (nested=savepoint se il caller ha gia' un atomic).
@@ -1928,16 +1984,21 @@ class CommesseRepository(EventLogRepositoryMixin):
                    SET prezzo_snapshot = %(prezzo)s::numeric,
                        prezzo_bloccato = %(bloccato)s,
                        prezzo_da_riallineare = FALSE,
+                       prezzo_base_snapshot = %(prezzo_base_snapshot)s,
+                       origine_prezzo = %(origine_prezzo)s,
+                       tipo_variazione_applicata = %(tipo_variazione_applicata)s,
+                       valore_variazione_applicata = %(valore_variazione_applicata)s,
+                       promo_id = %(promo_id)s,
+                       contratto_id = %(contratto_id)s,
+                       categoria_cliente_id_snapshot = %(categoria_cliente_id_snapshot)s,
+                       classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
+                       listino_riga_id = %(listino_riga_id)s,
+                       listino_versione_id = %(listino_versione_id)s,
                        meta = %(meta)s::jsonb,
                        data_update = now()
                  WHERE id = %(att_id)s
                 """,
-                {
-                    "att_id": attivita_id,
-                    "prezzo": prezzo,
-                    "bloccato": prezzo_bloccato,
-                    "meta": json.dumps(meta) if meta else None,
-                },
+                parametri,
             )
             # Propaga su attivita_fatturabili (se esiste la riga collegata)
             cursor.execute(
@@ -1945,15 +2006,20 @@ class CommesseRepository(EventLogRepositoryMixin):
                 UPDATE vendite.attivita_fatturabili
                    SET prezzo_unitario = %(prezzo)s::numeric,
                        prezzo_bloccato = %(bloccato)s,
+                       prezzo_base_snapshot = %(prezzo_base_snapshot)s,
+                       origine_prezzo = %(origine_prezzo)s,
+                       tipo_variazione_applicata = %(tipo_variazione_applicata)s,
+                       valore_variazione_applicata = %(valore_variazione_applicata)s,
+                       promo_id = %(promo_id)s,
+                       contratto_id = %(contratto_id)s,
+                       categoria_cliente_id_snapshot = %(categoria_cliente_id_snapshot)s,
+                       classe_utenza_id_snapshot = %(classe_utenza_id_snapshot)s,
+                       listino_riga_id = %(listino_riga_id)s,
                        data_update = now()
                  WHERE commessa_attivita_id = %(att_id)s
                    AND fattura_riga_id IS NULL
                 """,
-                {
-                    "att_id": attivita_id,
-                    "prezzo": prezzo,
-                    "bloccato": prezzo_bloccato,
-                },
+                parametri,
             )
 
     # --- Gruppo 6: Event log ---

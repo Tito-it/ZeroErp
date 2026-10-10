@@ -8,7 +8,7 @@ CREATE FUNCTION fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text, p_
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text DEFAULT 'pgTAP'::text, p_valido_dal date DEFAULT CURRENT_DATE, p_valido_al date DEFAULT NULL::date)
+CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_listino(p_utility_id integer, p_etichetta text DEFAULT 'pgTAP'::text, p_valido_dal date DEFAULT script.fn_data_operativa(), p_valido_al date DEFAULT NULL::date)
  RETURNS TABLE(listino_id bigint, listino_versione_id bigint, tipologia_id smallint)
  LANGUAGE plpgsql
 AS $function$

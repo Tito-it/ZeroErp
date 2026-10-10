@@ -1,0 +1,439 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CHIAVE POLIMORFA SI RICONOSCE CON UNA SOLA REGOLA ANCHE IN LETTURA
+#   vendite.fn_get_sorgente_documento_ref e script.fn_get_sorgente_emittente_
+#   sr_id passano ai building block script.fn_sorgente_chiave_uuid / _id.
+#   Seguito di 20261005-24/-25, decisione di Tid del 2026-10-05 («fare un BB»).
+#   Nessun brief, su indicazione di Tid.
+#
+# -- IL DIFETTO ----------------------------------------------------------
+#   Dopo il 20261005-25 la regola «chiave in forma canonica» vive nei building
+#   block e la usano chi SALVA (guard, rubinetto) e chi CERCA lo stato
+#   (fn_stato_sorgente, vw_pratica_doc_sorgente). Questi due lettori tenevano
+#   ancora una loro copia: la regex uuid con le maiuscole e '^[0-9]+$' con gli
+#   zeri davanti. Regola del 2: le copie si ritirano.
+#   In piu', in fn_get_sorgente_documento_ref il ramo numerico faceva
+#   v_uid::bigint dopo '^[0-9]+$': un id fuori range sollevava 22003 dentro una
+#   LISTA, e la funzione dichiara di non sollevare mai.
+#   fn_get_sorgente_emittente_sr_id dichiarava gia' di volere la chiave
+#   CANONICA, e la controllava con le regex larghe.
+#
+# -- LA CURA -------------------------------------------------------------
+#   Le due regex lasciano il posto ai building block, sul valore RICEVUTO (non
+#   sulla copia senza spazi). Ogni funzione conserva il SUO modo di rispondere:
+#   documento_ref non solleva (chiave non canonica = riga a NULL, come prima per
+#   le chiavi incoerenti), emittente_sr_id e' fail-closed (E_SORG_FORMATO).
+#   emittente_sr_id e' SECURITY DEFINER con search_path 'pg_catalog','public':
+#   i building block si chiamano per nome qualificato, e al loro interno non
+#   c'e' nessun nome che dipenda dal search_path.
+#
+# -- RICADUTE ------------------------------------------------------------
+#   Una chiave non canonica (maiuscole, zeri davanti, spazi) che prima questi
+#   due lettori risolvevano ora non si risolve — come gia' non la risolvevano
+#   fn_stato_sorgente e il lineage. Fatto datato (dbdev come applicazione,
+#   2026-10-05): 0 chiavi non canoniche su 105 in commesse_attivita, 0 in
+#   commesse_sorgenti e pratiche_sorgenti. Chiamanti: fn_list_commessa_attivita,
+#   fn_annulla_commessa_attivita, fn_riferimento_gruppo_fatturabile,
+#   vw_dash_competenza_gruppi, il BE (vendite_repository) per documento_ref;
+#   fn_guard_commessa_sorgente_emittente e fn_check_commessa_sorgente_
+#   emittente_omogeneo per emittente_sr_id — tutti con chiavi lette dal
+#   database, cioe' scritte da guard e rubinetto.
+#
+# -- PROVA (prima dell'apply, dbdev, come zeroerp_app, 2026-10-05) -------
+#   SQL estratto da questo file, funzioni caricate come TEMP: confronto con le
+#   vive su tutte le chiavi visibili (stessi risultati) e sui casi limite
+#   (solo le forme non canoniche cambiano, il fuori range non solleva piu');
+#   pgTAP che le esercitano. Dettaglio nel messaggio di consegna.
+#
+# -- FORMA ---------------------------------------------------------------
+#   Corpi presi dal vivo (pg_proc), con le sole sezioni di formato
+#   sostituite. Firme ancorate come negli ultimi changeSet (20260820-04,
+#   20260826-50): nessun DROP, nessun overload. COMMENT: vivo piu' la
+#   revisione di oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261005-26-update-lettori-sorgente-chiave-canonica-bb-mctit.yaml
+
+  - changeSet:
+      id: 20261005-26-update-lettori-sorgente-chiave-canonica-bb
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_get_sorgente_documento_ref e fn_get_sorgente_emittente_sr_id riconoscono la chiave
+        polimorfa con i building block script.fn_sorgente_chiave_uuid / _id al posto delle loro
+        regex: una sola regola per chi salva e chi legge; niente piu' 22003 su un id fuori range.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "2"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_sorgente_chiave_id', 'fn_sorgente_chiave_uuid');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_get_sorgente_documento_ref(
+                      p_sorgente_tipo_id vendite.commesse_attivita.sorgente_tipo_id%TYPE,
+                      p_sorgente_uid     vendite.commesse_attivita.sorgente_uid%TYPE)
+               RETURNS TABLE (
+                      -- Tipi ESPLICITI e non %TYPE: il documento e' polimorfo,
+                      -- l'id appartiene a una tabella diversa per ogni riga.
+                      documento_id     bigint,
+                      documento_numero text)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  -- ⭐ rev 2026-10-05 (20261005-26): la chiave si riconosce con i building
+                  --   block script.fn_sorgente_chiave_uuid / _id, la stessa regola con cui la
+                  --   salvano il guard e il rubinetto e la cercano fn_stato_sorgente e
+                  --   vw_pratica_doc_sorgente. Qui c'era una copia della regex (il commento
+                  --   diceva gia' «una sola definizione»: ora lo e' davvero), piu' larga —
+                  --   maiuscole, zeri davanti — e un cast '^[0-9]+$'::bigint che su un numero
+                  --   fuori range sollevava 22003 dentro una lista, la cosa che questa
+                  --   funzione ha promesso di non fare.
+                  v_chiave_uuid script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE;
+                  v_chiave_id   script.vw_stato_sorgente.sorgente_chiave_id%TYPE;
+
+                  v_target   config.sorgenti.target_table%TYPE;
+                  v_selector config.sorgenti.key_selector%TYPE;
+                  v_label    config.sorgenti.label_selector%TYPE;
+                  v_uid      text := btrim(COALESCE(p_sorgente_uid, ''));
+                  v_id       bigint;
+                  v_numero   text;
+                  -- Frammento di SELECT per l'etichetta: `t.<col>::text` se la
+                  -- sorgente dichiara la colonna, altrimenti la costante NULL.
+                  -- Costruito con %I, quindi un nome bizzarro resta un
+                  -- identificatore quotato e non diventa sintassi.
+                  v_label_expr text;
+              BEGIN
+                  -- Una riga SEMPRE, anche quando non si risolve niente: i due
+                  -- OUT partono a NULL e si valorizzano solo se c'e' qualcosa.
+                  documento_id     := NULL;
+                  documento_numero := NULL;
+
+                  -- ⚠️ Nessun guard che solleva: i parametri mancanti sono il
+                  --    caso NORMALE di questa funzione — una voce manuale, un
+                  --    onere o una rettifica non hanno documento a monte. Un
+                  --    errore qui trasformerebbe una riga legittima in una
+                  --    lista rotta.
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 OR v_uid = '' THEN
+                      RETURN NEXT;
+                      RETURN;
+                  END IF;
+
+                  SELECT s.target_table, s.key_selector, s.label_selector
+                    INTO v_target, v_selector, v_label
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id;
+
+                  IF NOT FOUND OR v_target IS NULL OR v_selector IS NULL THEN
+                      RETURN NEXT;
+                      RETURN;
+                  END IF;
+
+                  -- `label_selector` NULL = la sorgente non ha un numero
+                  -- leggibile (ATTIVITA, ATTIVITA_CONSUMI, le *_RIGA). NON e'
+                  -- un errore e NON spegne l'id: si continua, l'etichetta resta
+                  -- NULL.
+                  v_label_expr := CASE
+                      WHEN v_label IS NULL THEN 'NULL::text'
+                      ELSE format('t.%I::text', v_label)
+                  END;
+
+                  -- ===== Il caso REALE: un uuid, qualunque sia il selector ====
+                  -- 🔴 Misurato il 2026-08-16 su vendite.commesse_attivita: 88
+                  --    righe su 88 hanno un UUID in `sorgente_uid`, comprese le
+                  --    44 da ORDINE_VENDITA e quella da DDT, che sono tipi a
+                  --    chiave `id`. La normalizzazione a id::text che fa
+                  --    fn_link_commessa_sorgente vale per commesse_sorgenti, non
+                  --    per questa colonna: qui il documento e' identificato dal
+                  --    suo uid e basta. Quindi si prova SEMPRE la traduzione.
+                  -- ⭐ Id ed etichetta nella STESSA lettura: e' la ragione per
+                  --    cui questa funzione ha sostituito la coppia.
+                  -- ⚠️ Sul valore RICEVUTO, non sulla copia ripulita: una chiave con spazi
+                  --   attorno non e' canonica, e altrove (stato, lineage) non si ritrova.
+                  v_chiave_uuid := script.fn_sorgente_chiave_uuid(p_sorgente_uid);
+                  IF v_chiave_uuid IS NOT NULL THEN
+                      -- La tabella arriva dal CATALOGO (regclass), non da un
+                      -- parametro: non c'e' testo di chiamante dentro il format.
+                      BEGIN
+                          EXECUTE format('SELECT t.id, %s FROM %s t WHERE t.uid = $1',
+                                         v_label_expr, v_target::text)
+                            INTO v_id, v_numero
+                            USING v_chiave_uuid;
+                      EXCEPTION WHEN undefined_column OR undefined_table THEN
+                          -- Una destinazione senza colonna uid — o un
+                          -- `label_selector` che nomina una colonna che non
+                          -- c'e' — e' un difetto di CATALOGO, non della riga
+                          -- che stiamo elencando. Il cancello che lo rende
+                          -- rumoroso e' nel pgTAP.
+                          -- ⚠️ E CADE TUTTO, id compreso, non solo l'etichetta:
+                          --    e' deliberato. Un ripiego che salva l'id e perde
+                          --    il solo numero renderebbe il refuso di catalogo
+                          --    ancora piu' difficile da vedere — una colonna
+                          --    vuota fra molte piene. Cosi' invece sparisce
+                          --    anche l'azione «apri», e qualcuno lo nota.
+                          RETURN NEXT;
+                          RETURN;
+                      END;
+
+                      documento_id     := v_id;
+                      documento_numero := v_numero;
+                      RETURN NEXT;
+                      RETURN;
+                  END IF;
+
+                  -- ===== Chiave gia' numerica =====
+                  -- Oggi non succede su commesse_attivita, ma la forma canonica
+                  -- di `config.sorgenti` la ammette (ed e' quella che vive in
+                  -- commesse_sorgenti): un id in forma testuale su un tipo a
+                  -- chiave `id` e' se stesso. L'id non costa una lettura;
+                  -- l'etichetta si', e solo se e' stata dichiarata.
+                  v_chiave_id := script.fn_sorgente_chiave_id(p_sorgente_uid);
+                  IF v_selector = 'id' AND v_chiave_id IS NOT NULL THEN
+                      v_id := v_chiave_id;
+
+                      IF v_label IS NOT NULL THEN
+                          BEGIN
+                              EXECUTE format('SELECT %s FROM %s t WHERE t.id = $1',
+                                             v_label_expr, v_target::text)
+                                INTO v_numero
+                                USING v_id;
+                          EXCEPTION WHEN undefined_column OR undefined_table THEN
+                              v_numero := NULL;
+                          END;
+                      END IF;
+
+                      documento_id     := v_id;
+                      documento_numero := v_numero;
+                      RETURN NEXT;
+                      RETURN;
+                  END IF;
+
+                  -- Tutto il resto e' un dato incoerente — un numero su un tipo
+                  -- a chiave uuid, o una stringa che non e' ne' l'uno ne'
+                  -- l'altro. Non si indovina: l'azione «apri» sparisce e
+                  -- l'etichetta resta vuota.
+                  RETURN NEXT;
+                  RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_get_sorgente_documento_ref(vendite.commesse_attivita.sorgente_tipo_id%TYPE, vendite.commesse_attivita.sorgente_uid%TYPE) IS
+                  'Il documento di origine di una riga a sorgente polimorfa, in DUE informazioni e UNA lettura: `documento_id` (l''id numerico, per l''azione «apri documento sorgente») e `documento_numero` (il numero che l''operatore legge — DDT0010839, ORD0000227, RESO0005122). Sostituisce vendite.fn_get_sorgente_documento_id, che faceva la sola prima meta'': una gemella per l''etichetta avrebbe voluto DUE EXECUTE per riga di lista e DUE copie della stessa regola di risoluzione. 🔴 La traduzione non e'' banale perche'' la chiave e'' polimorfa per costruzione: con config.sorgenti.key_selector = ''id'' il campo sorgente_uid contiene gia'' l''id in forma testuale, con ''uid'' contiene un UUID e l''id va LETTO sulla target_table — e nel dato reale (misurato 2026-08-16) 88 righe su 88 di commesse_attivita portano un UUID, ordini e DDT compresi. ⭐ L''ETICHETTA SI DICHIARA, NON SI INDOVINA: la colonna arriva da config.sorgenti.label_selector, gemella di key_selector — `numero` su preventivi, contratti, ordini, ddt, resi e fatture, `codice` su offerte commerciali e commesse. Un COALESCE(numero, codice) funzionerebbe oggi e diventerebbe una colonna vuota in silenzio alla terza convenzione. label_selector NULL (ATTIVITA, ATTIVITA_CONSUMI, le cinque *_RIGA) = nessun numero leggibile: `documento_numero` resta NULL e NON spegne `documento_id`. ⭐ RESTITUISCE SEMPRE UNA RIGA, anche tutta a NULL: una RETURNS TABLE che a volte torna zero righe funziona con LEFT JOIN LATERAL e CANCELLA la riga chiamante se un domani qualcuno scrive CROSS JOIN LATERAL per distrazione. ⚠️ NON SOLLEVA, ed e'' la differenza con vendite.fn_link_commessa_sorgente: quella scrive un legame e davanti a una chiave irrisolvibile alza E_SORG_NORM_NON_RISOLTA, perche'' un legame sbagliato e'' peggio di nessun legame; questa risponde a una lista, dove una sorgente non risolta deve solo far sparire l''azione — come per le voci manuali, gli oneri e le rettifiche, che un documento a monte non ce l''hanno per progetto. ⚠️ SECURITY INVOKER: le tabelle di destinazione hanno la RLS operatori, quindi NULL significa «non risolvibile O non visibile a chi chiede», non «non esiste». Richiesta BE del 2026-08-20 (punto 2), brief-design-note-credito-resi §40.1.4. ⭐ rev 2026-10-05 (20261005-26): la chiave si riconosce con i building block script.fn_sorgente_chiave_uuid / _id (forma CANONICA, mai un errore), la stessa regola del guard della sorgente polimorfa, del rubinetto fn_link_commessa_sorgente e dei lettori fn_stato_sorgente / vw_pratica_doc_sorgente. Prima una copia della regex, piu'' larga (maiuscole, zeri davanti), e un cast che su un id fuori range sollevava 22003 dentro una lista: ora quella chiave e'' semplicemente non risolta. Una chiave non canonica resta non risolta qui come altrove.';
+
+              CREATE OR REPLACE FUNCTION script.fn_get_sorgente_emittente_sr_id(
+                  p_sorgente_tipo_id config.sorgenti.id%TYPE,
+                  p_sorgente_uid     vendite.commesse_sorgenti.sorgente_uid%TYPE
+              )
+              RETURNS anagrafiche.soggetti_ruoli.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_target    regclass;
+                  v_selector  config.sorgenti.key_selector%TYPE;
+                  v_codice    config.sorgenti.codice_interno%TYPE;
+                  v_uid       text := btrim(p_sorgente_uid);
+                  v_colonna   text;        -- predicato sulla chiave: 'id' oppure 'uid'
+                  v_chiave    text;
+                  v_sr_id     anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ba_id     anagrafiche.billing_account.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dato (tipo sorgente, chiave canonica) dire CHI EMETTE
+                  --   quel documento, in convenzione soggetto_ruolo.
+                  --
+                  -- ⛔ NON si passa dal billing account, ed e' la correzione
+                  --   che ha fatto nascere questa funzione: su ordini,
+                  --   preventivi, ddt e resi il BA e' NULLABLE — uno stato
+                  --   LEGALE — mentre emittente_fiscale_id e' NOT NULL su
+                  --   tutte e sei le tabelle documento. Chiedere il cliente
+                  --   per sapere l'emittente e' la strada lunga, e su quattro
+                  --   tabelle e' una strada chiusa.
+                  --
+                  -- ⚠️ SECURITY DEFINER: le tabelle documento hanno la RLS.
+                  --   Da SECURITY INVOKER la sorgente di un altro emittente
+                  --   sarebbe invisibile e il chiamante concluderebbe «non
+                  --   esiste» invece di «e' di un altro».
+                  --
+                  -- ⛔ Fail-closed ovunque: mai un NULL silenzioso.
+                  -- =========================================================
+                  IF p_sorgente_tipo_id IS NULL OR p_sorgente_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Tipo sorgente non valorizzato',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id),
+                          NULL::uuid, COALESCE(p_sorgente_tipo_id::text, '<nessuno>'));
+                  END IF;
+
+                  SELECT s.target_table, s.key_selector, s.codice_interno
+                    INTO v_target, v_selector, v_codice
+                    FROM config.sorgenti s
+                   WHERE s.id = p_sorgente_tipo_id
+                     AND s.attivo = true;
+
+                  IF v_target IS NULL OR v_selector IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'Sorgente non attiva o senza target_table/key_selector',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'target_table', COALESCE(v_target::text, '<NULL>'),
+                                             'key_selector', COALESCE(v_selector, '<NULL>')),
+                          NULL::uuid, p_sorgente_tipo_id::text);
+                  END IF;
+
+                  IF v_uid IS NULL OR v_uid = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEY_MISSING',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'key_selector', v_selector),
+                          NULL::uuid, p_sorgente_tipo_id::text, v_selector);
+                  END IF;
+
+                  -- Formato della chiave secondo il catalogo. ⚠️ La chiave
+                  -- attesa e' quella CANONICA (quella che
+                  -- fn_link_commessa_sorgente NORMALIZZA in scrittura), non
+                  -- quella che il push passa in giro.
+                  -- ⭐ rev 2026-10-05 (20261005-26): «canonica» lo controllano ora i
+                  --   building block script.fn_sorgente_chiave_id / _uuid, la stessa regola
+                  --   del guard e dei lettori; prima le regex larghe accettavano '007' e le
+                  --   maiuscole, cioe' il commento qui sopra non era vero. Sul valore
+                  --   RICEVUTO, non sulla copia senza spazi. Chiamati per nome qualificato:
+                  --   questa funzione e' DEFINER con search_path stretto.
+                  IF v_selector = 'id' THEN
+                      IF script.fn_sorgente_chiave_id(p_sorgente_uid) IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', p_sorgente_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso id::text, ricevuto «', p_sorgente_uid, '»'));
+                      END IF;
+                      v_colonna := 'id';
+                  ELSIF v_selector = 'uid' THEN
+                      IF script.fn_sorgente_chiave_uuid(p_sorgente_uid) IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_FORMATO',
+                              jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                                 'sorgente_uid', p_sorgente_uid,
+                                                 'key_selector', v_selector),
+                              NULL::uuid, concat('atteso uuid, ricevuto «', p_sorgente_uid, '»'));
+                      END IF;
+                      v_colonna := 'uid';
+                  ELSE
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_KEYSEL',
+                          jsonb_build_object('sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'key_selector', v_selector),
+                          NULL::uuid, v_selector);
+                  END IF;
+
+                  -- ⚠️ UN SOLO parametro, con il cast NELLA query: passarne
+                  --   due (uno bigint e uno uuid, l'altro NULL) romperebbe
+                  --   l'EXECUTE — «too many parameters specified». La chiave
+                  --   viaggia come testo e la si converte qui.
+                  v_chiave := format('t.%I = $1::%s', v_colonna,
+                                     CASE WHEN v_colonna = 'id' THEN 'bigint' ELSE 'uuid' END);
+
+                  -- ── STRADA 1: la colonna SR, che e' gia' la risposta ──────
+                  --   commesse, fatture, fatturazione_lotti: nessuna
+                  --   traduzione, e' una copia.
+                  IF EXISTS (SELECT 1 FROM pg_attribute
+                              WHERE attrelid = v_target
+                                AND attname  = 'emittente_soggetto_ruolo_id'
+                                AND attnum   > 0 AND NOT attisdropped) THEN
+                      EXECUTE format('SELECT t.emittente_soggetto_ruolo_id FROM %s t WHERE %s',
+                                     v_target::text, v_chiave)
+                        INTO v_sr_id
+                       USING v_uid;
+
+                  -- ── STRADA 2: l'emittente del documento, tradotto in SR ──
+                  --   E' il caso dei SEI documenti, e la colonna e' NOT NULL
+                  --   su tutti e sei: e' il motivo per cui questa funzione
+                  --   esiste al posto di quella che chiedeva il cliente.
+                  ELSIF EXISTS (SELECT 1 FROM pg_attribute
+                                 WHERE attrelid = v_target
+                                   AND attname  = 'emittente_fiscale_id'
+                                   AND attnum   > 0 AND NOT attisdropped) THEN
+                      EXECUTE format('SELECT t.emittente_fiscale_id FROM %s t WHERE %s',
+                                     v_target::text, v_chiave)
+                        INTO v_ef_id
+                       USING v_uid;
+
+                      SELECT ef.soggetto_ruolo_id INTO v_sr_id
+                        FROM anagrafiche.emittenti_fiscali ef
+                       WHERE ef.id = v_ef_id;
+
+                  -- ── STRADA 3: il cliente, per chi l'emittente non ce l'ha ─
+                  --   attivita_consumi e attivita_fatturabili: nessuna colonna
+                  --   emittente, ma il billing account si'.
+                  ELSIF EXISTS (SELECT 1 FROM pg_attribute
+                                 WHERE attrelid = v_target
+                                   AND attname  = 'billing_account_id'
+                                   AND attnum   > 0 AND NOT attisdropped) THEN
+                      EXECUTE format('SELECT t.billing_account_id FROM %s t WHERE %s',
+                                     v_target::text, v_chiave)
+                        INTO v_ba_id
+                       USING v_uid;
+
+                      IF v_ba_id IS NOT NULL THEN
+                          v_sr_id := anagrafiche.fn_get_emittente_fiscale_id(v_ba_id);
+                      END IF;
+
+                  ELSE
+                      -- Nessuna delle tre: la sorgente non e' interrogabile.
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_CONF',
+                          jsonb_build_object('detail', 'target_table senza colonna emittente ne'' billing account',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'target_table', v_target::text),
+                          NULL::uuid, p_sorgente_tipo_id::text);
+                  END IF;
+
+                  -- ⛔ Documento inesistente, oppure esistente ma senza un
+                  --    emittente risolvibile: per il chiamante sono la stessa
+                  --    cosa — non si puo' dire chi lo emette — e un NULL qui
+                  --    disarmerebbe il guard a valle.
+                  IF v_sr_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'script', 'fn_get_sorgente_emittente_sr_id', 'E_SORG_EMITTENTE_NON_RISOLTO',
+                          jsonb_build_object('detail', 'documento inesistente o senza emittente risolvibile',
+                                             'sorgente_tipo_id', p_sorgente_tipo_id,
+                                             'sorgente_uid', v_uid,
+                                             'target_table', v_target::text),
+                          NULL::uuid, COALESCE(v_codice, p_sorgente_tipo_id::text), v_uid);
+                  END IF;
+
+                  RETURN v_sr_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_sorgente_emittente_sr_id(config.sorgenti.id%TYPE, vendite.commesse_sorgenti.sorgente_uid%TYPE) IS
+                  'Risolve «CHI EMETTE questo documento» per la sorgente polimorfa: dato (sorgente_tipo_id, chiave CANONICA secondo config.sorgenti.key_selector) restituisce il soggetto_ruolo dell''emittente. ⛔ SOSTITUISCE script.fn_get_sorgente_billing_account_id (20260826-43), che passava dal BILLING ACCOUNT ed era la strada sbagliata: letto sulla doc auto-gen il 2026-08-26, billing_account_id e'' NULLABLE su QUATTRO tabelle sorgente su sei (ordini, preventivi, ddt, resi) — uno stato LEGALE del modello — mentre emittente_fiscale_id e'' NOT NULL su tutte e sei. Il risolutore vecchio si fermava fail-closed su documenti perfettamente validi, e un guard che rifiuta uno stato che il modello ammette non e'' severo: e'' rotto. Trovato da un pgTAP (vendite/test-ordini-guard-transizione-v1, che crea ordini con billing_account_id NULL di proposito), non da un ragionamento. ⭐ La correzione rende il guard piu'' FORTE e non piu'' debole: la tentazione era «BA nullo -> salta il controllo», che e'' cio'' che fanno i sei guard fratelli (trgfn_ordini_guard_emittente_ba e famiglia, «Skip: nessun BA su cui ancorare la coerenza») — li'' e'' giusto perche'' quei guard confrontano PROPRIO il BA con l''emittente, qui si confrontano DUE EMITTENTI e non c''e'' niente da saltare. TRE STRADE, in ordine di direttezza: (1) emittente_soggetto_ruolo_id se la target ce l''ha — commesse, fatture, lotti: nessuna traduzione, e'' una copia; (2) emittente_fiscale_id tradotto in SR con il join 1:1 su anagrafiche.emittenti_fiscali — i sei documenti; (3) billing_account_id delegato ad anagrafiche.fn_get_emittente_fiscale_id — attivita_consumi e attivita_fatturabili, che l''emittente non ce l''hanno. Nessuna delle tre -> E_SORG_CONF. ⛔ FAIL-CLOSED ovunque, mai un NULL silenzioso: documento inesistente o senza emittente risolvibile -> E_SORG_EMITTENTE_NON_RISOLTO; chiave malformata -> E_SORG_FORMATO; key_selector fuori catalogo -> E_SORG_KEYSEL. ⚠️ SECURITY DEFINER: le tabelle documento hanno la RLS, e da SECURITY INVOKER la sorgente di un altro emittente sarebbe invisibile — il chiamante concluderebbe «non esiste» invece di «e'' di un altro». ⚠️ La chiave attesa e'' quella CANONICA, cioe'' quella che vendite.fn_link_commessa_sorgente normalizza in scrittura, non quella che il push passa (guida /guide/sorgente-polimorfa §4a). Piano: brief-db-emittente-commessa-invariante, L6. ⭐ rev 2026-10-05 (20261005-26): il formato CANONICO della chiave lo controllano i building block script.fn_sorgente_chiave_id / _uuid (chiamati per nome qualificato: DEFINER con search_path stretto), la stessa regola del guard della sorgente polimorfa e del rubinetto. Prima le regex larghe accettavano ''007'' e gli uuid maiuscoli, contro quanto la funzione dichiarava.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Corpi precedenti: documento_ref in 20260820-04, emittente_sr_id in
+              -- 20260826-50.
+              SELECT 1;

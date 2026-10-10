@@ -91,6 +91,8 @@ SELECT
     WHERE a.attivo IS TRUE AND a.is_composito = FALSE ORDER BY a.id LIMIT 1 OFFSET 1) AS art_serv_id,
   (SELECT s.id FROM config.stati_doc_preventivi s
     WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1) AS prev_accettato_id,
+  (SELECT s.id FROM config.stati_doc_preventivi s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE) AS prev_bozza_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS ord_confermato_id,
   (SELECT s.id FROM config.stati_doc_offerte s
@@ -209,6 +211,7 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tm
 UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_serv_id FROM tmp_df_refs)
  WHERE id = (SELECT art_serv_id FROM tmp_df_refs);
 
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le tre righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato prima del push — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_df_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -216,7 +219,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-DF-PREV', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.prev_bozza_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_dash_fatturazione'), r.emittente_fiscale_id
     FROM tmp_df_refs r
@@ -246,6 +249,7 @@ WITH ins AS (
     FROM tmp_df_prev p, tmp_df_refs r
   RETURNING id)
 SELECT * FROM ins;
+DO $porta$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_df_prev), 'ACCETTATO'); END $porta$;
 
 -- Push reale del ramo merce: crea ordine DRAFT + riga ordine.
 SELECT vendite.fn_push_preventivo_a_ordine((SELECT id FROM tmp_df_prev));
@@ -393,6 +397,44 @@ SELECT ok(
 -- ============================================================
 CREATE TEMP TABLE tmp_df_offerte (slot text, offerta_id bigint);
 
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo). Le offerte
+--   del fixture sono dell'emittente A e del primo BA dei dati: il listino si
+--   COSTRUISCE con A e con la utility del BA (tipologia: la prima che la utility
+--   ammette, come fn_pgtap_crea_listino), con una versione ATTIVA da oggi. Qui e'
+--   scritto a mano perche' il builder prende l'emittente di chi agisce, e il
+--   passaggio all'operatore di A viene dopo; il file gira da owner (marcatore in
+--   testa), quindi il guard di scope dei listini non scatta.
+--   ⚠️ Prima stesura dello stesso giorno: si cercava fra i dati un listino di A
+--   sulla utility del BA, e su dbdev non c'era (offerta con listino NULL).
+--   Listino e versione in due istruzioni: i trigger della versione rileggono il
+--   listino, e nella stessa istruzione non lo vedrebbero.
+CREATE TEMP TABLE tmp_df_listino AS
+WITH l AS (
+    INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
+    SELECT 'PGTAP_DF_' || substr(md5(clock_timestamp()::text || random()::text), 1, 12),
+           'Fixture pgTAP: dash fatturazione', r.utility_id,
+           (SELECT ltu.tipologia_id FROM config.listini_tipologie_utilities ltu
+              JOIN config.listini_tipologie lt ON lt.id = ltu.tipologia_id AND lt.attivo
+             WHERE ltu.utility_id = r.utility_id AND ltu.attivo
+             ORDER BY lt.ordinamento, lt.id LIMIT 1),
+           r.ef_a_sr
+      FROM tmp_df_refs r
+    RETURNING id
+)
+SELECT l.id AS listino_id, NULL::bigint AS listino_versione_id FROM l;
+
+WITH v AS (
+    INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
+    SELECT listino_id, 'PGTAP_DF_V1', script.fn_data_operativa(), 'ATTIVA' FROM tmp_df_listino
+    RETURNING id
+)
+UPDATE tmp_df_listino SET listino_versione_id = (SELECT id FROM v);
+
+UPDATE tmp_df_refs r
+   SET listino_id          = (SELECT listino_id FROM tmp_df_listino),
+       listino_versione_id = (SELECT listino_versione_id FROM tmp_df_listino);
+
 WITH ins AS (
   INSERT INTO vendite.offerte_commerciali (
     emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
@@ -443,7 +485,7 @@ INSERT INTO vendite.contratti (
   emittente_fiscale_id, meta)
 SELECT 'PGTAP-DF-CV-' || substr(md5(clock_timestamp()::text), 1, 8),
        r.billing_account_id, r.istanza_utility_id, r.utility_id,
-       CURRENT_DATE, NULL, r.contr_draft_id, CURRENT_DATE,
+       script.fn_data_operativa(), NULL, r.contr_draft_id, script.fn_data_operativa(),
        (SELECT offerta_id FROM tmp_df_offerte WHERE slot = 'ACC_FIGLIO_VIVO'),
        COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                 r.emittente_fiscale_id),
@@ -459,7 +501,7 @@ WITH ins AS (
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-DF-CA-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         CURRENT_DATE, NULL, r.contr_annullato_id, CURRENT_DATE,
+         script.fn_data_operativa(), NULL, r.contr_annullato_id, script.fn_data_operativa(),
          (SELECT offerta_id FROM tmp_df_offerte WHERE slot = 'ACC_FIGLIO_ABORTITO'),
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
@@ -515,8 +557,8 @@ WITH ins AS (
     emittente_fiscale_id, meta)
   SELECT 'PGTAP-DF-CT-' || substr(md5(clock_timestamp()::text), 1, 8),
          r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         (date_trunc('month', CURRENT_DATE) - interval '2 months')::date, NULL,
-         r.contr_attivo_id, (date_trunc('month', CURRENT_DATE) - interval '2 months')::date,
+         (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date, NULL,
+         r.contr_attivo_id, (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date,
          COALESCE(anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id),
                   r.emittente_fiscale_id),
          jsonb_build_object('test_scope','pgtap_dash_fatturazione')
@@ -534,7 +576,7 @@ SELECT ok(
       AND bool_and(v.motivo_fermo IS NULL)
       AND bool_and(v.unita_totali = 1)
       AND bool_and(v.competenza_mese IS NULL)
-      AND bool_and(v.data_riferimento = (date_trunc('month', CURRENT_DATE) - interval '2 months')::date)
+      AND bool_and(v.data_riferimento = (date_trunc('month', script.fn_data_operativa()) - interval '2 months')::date)
      FROM vendite.vw_dash_fatturazione_contratti v
     WHERE v.documento_id = (SELECT id FROM tmp_df_contratto)),
   '12. Contratto ATTIVO multi-mese: 1 SOLA riga (de-esploso), giudizio sospeso (transito/motivo NULL), data_riferimento = valido_dal'
@@ -553,11 +595,11 @@ INSERT INTO vendite.commesse_attivita (
 SELECT
   (SELECT id FROM tmp_df_commessa),
   'CONTR:' || (SELECT uid FROM tmp_df_contratto)::text || ':R:0:M:'
-           || to_char(date_trunc('month', CURRENT_DATE)::date, 'YYYY-MM'),
-  r.art_serv_id, r.istanza_utility_id, CURRENT_DATE, r.uom_id, 1,
-  date_trunc('month', CURRENT_DATE)::date,
-  date_trunc('month', CURRENT_DATE)::date,
-  (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date,
+           || to_char(date_trunc('month', script.fn_data_operativa())::date, 'YYYY-MM'),
+  r.art_serv_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+  date_trunc('month', script.fn_data_operativa())::date,
+  date_trunc('month', script.fn_data_operativa())::date,
+  (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
   r.tipo_doc_fiscale_id, r.valuta_id, 25.000000,
   'FIXED', 'APPROVATA', 'EMESSA',
   r.sorg_contratto_id, (SELECT uid FROM tmp_df_contratto)::text

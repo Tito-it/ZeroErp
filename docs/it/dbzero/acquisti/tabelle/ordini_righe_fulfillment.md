@@ -11,20 +11,21 @@
 | id | bigint | NO |  |
 | ordine_riga_id | bigint | NO |  |
 | ddt_riga_id | bigint | NO |  |
-| qta_ricevuta | numeric | NO |  |
-| note | character varying | YES |  |
+| qta_ricevuta | numeric(18,6) | NO |  |
+| note | character varying(200) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ordini_ful_a_qta_pos |  |
+| CHECK | chk_ordini_righe_fulfillment_qta_ricevuta_finito |  |
 | FOREIGN KEY | fk_ordini_ful_a_ddt_riga | ddt_riga_id |
 | FOREIGN KEY | fk_ordini_ful_a_ordine_riga | ordine_riga_id |
 | PRIMARY KEY | pk_fula | id |

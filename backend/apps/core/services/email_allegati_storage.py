@@ -20,10 +20,16 @@ import os
 from django.conf import settings
 
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 
-# Il codice degli errori operativi sulle email: lo usano questo modulo e le view
+# Il codice degli errori operativi sulle email: lo usano le view
 # (`email_views`), che lo importano da qui.
 E_EMAIL_OP = "E_EMAIL_OP"
+# Il percorso dell'allegato esce dalla radice. ⛔ TECNICO (500), non un dato
+# errato: il `file_path` viene dal database, non da una persona — e' un dato
+# corrotto o manomesso, un evento da guardare (R-7 di
+# brief-db-codici-non-trovato-email-e-permessi).
+E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO = "E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO"
 
 
 # Scopo: La radice degli allegati, letta da settings a runtime (i test la
@@ -41,6 +47,8 @@ def percorso_allegato(rel_path: str) -> str:
     abs_path = os.path.normpath(os.path.join(root, rel_path))
     ErrorManager.require(
         abs_path.startswith(root + os.sep),
-        code=E_EMAIL_OP, message="Path allegato non valido.",
+        code=E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO,
+        message=USER_MESSAGE_FALLBACK[E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO],
+        detail=f"file_path={rel_path!r}",
     )
     return abs_path

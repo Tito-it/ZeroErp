@@ -1,0 +1,189 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R4, R5, R6 — GLI OGGETTI EFFETTIVI DI UN OPERATORE, IN UN POSTO SOLO:
+#   script.fn_get_permessi_effettivi_oggetti(p_auth_user_id, p_app_label DEFAULT NULL,
+#                                            p_model_name DEFAULT NULL)
+#   Brief: brief-db-permessi-tetto-area, sezioni 1, 3 (D-1…D-3) e 4 (R4, R5, R6)
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   Il livello di un oggetto viveva in fn_resolve_livello_oggetto (override, se no l'area
+#   PASSATA DAL CHIAMANTE), mentre fn_get_user_object_permissions_map dava gli override
+#   GREZZI e il frontend riscriveva la catena (auth.js: override ?? area). Col tetto
+#   servono il livello effettivo in /me/ (R5) e la provenienza per il pannello (R6).
+#   ⭐ Qui la catena sta una volta: resolver puntuale (-57), mappa (-58) e pannello la leggono.
+#
+# -- LA CATENA ----------------------------------------------------------------------------------
+#   0. gate GUC diverso da OPERATORE -> BLOCCATO; 1. nessuna identita' OPERATORE -> BLOCCATO;
+#   2. super admin -> TUTTO, prima del tetto;
+#   3. l'area e' quella DELL'OGGETTO (script.fn_area_di_oggetto: area_model_overrides,
+#      altrimenti app_label), non quella del chiamante (R4); il suo livello da
+#      script.fn_resolve_livello_area;
+#   4. livello_specifico = override valido -> area (la catena di ieri);
+#      livello = script.fn_livello_con_tetto_area(override, area): il piu' restrittivo.
+#   limitato_da_area = livello diverso da livello_specifico: l'override e' piu' permissivo
+#   dell'area, ed e' dormiente (D-3). Un override piu' restrittivo dell'area NON e' limitato.
+#
+# -- DUE MODI -----------------------------------------------------------------------------------
+#   p_app_label e p_model_name entrambi NULL -> tutto il catalogo config.area_model_overrides,
+#   riservati compresi: e' il catalogo degli oggetti, e un override esiste solo per un suo
+#   oggetto (FK composita fk_user_override_oggetti_catalogo), quindi «oggetti con override
+#   ∪ catalogo» (R5) e' il catalogo. Un oggetto fuori catalogo vale la sua area di
+#   app_label: e' la regola di fn_area_di_oggetto, e il frontend la applica da se'.
+#   Almeno uno valorizzato -> UNA riga per quell'oggetto, a catalogo o no.
+#   I due rami in UNION ALL, mai in OR. Il livello d'area una volta per area distinta.
+#
+# -- FORMA --------------------------------------------------------------------------------------
+#   plpgsql, STABLE, INVOKER. Colonne qualificate, nomi propri nelle CTE (le colonne del
+#   RETURNS TABLE sono variabili OUT). livello_override e' il dato grezzo (anche fuori dal
+#   gate: e' cio' che il pannello mostra come scritto); specifico ed effettivo sono le
+#   risposte della catena.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-54-create-fn-get-permessi-effettivi-oggetti-mctit.yaml
+
+  - changeSet:
+      id: 20261004-54-create-fn-get-permessi-effettivi-oggetti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_permessi_effettivi_oggetti(p_auth_user_id, p_app_label DEFAULT NULL,
+        p_model_name DEFAULT NULL): per ogni oggetto del catalogo (o per uno) area
+        dell'oggetto, override, livello d'area, livello senza e con tetto, limitato_da_area.
+        Sede unica della catena degli oggetti (resolver, mappa di /me/, pannello). Brief:
+        brief-db-permessi-tetto-area R4, R5, R6.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "3"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script'
+                 AND p.proname IN ('fn_livello_con_tetto_area', 'fn_area_di_oggetto',
+                                   'fn_resolve_livello_area');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_permessi_effettivi_oggetti(
+                  p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE,
+                  p_app_label    config.user_override_oggetti.app_label%TYPE  DEFAULT NULL,
+                  p_model_name   config.user_override_oggetti.model_name%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  app_label         config.area_model_overrides.app_label%TYPE,
+                  model_name        config.area_model_overrides.model_name%TYPE,
+                  area_schema_db    config.aree_funzionali.schema_db%TYPE,
+                  livello_override  config.user_override_oggetti.livello%TYPE,
+                  livello_area      config.user_override_aree.livello%TYPE,
+                  livello_specifico config.user_override_oggetti.livello%TYPE,
+                  livello           config.user_override_oggetti.livello%TYPE,
+                  limitato_da_area  boolean   -- l'override allarga, il tetto lo ferma
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la catena degli oggetti di un operatore, col tetto d'area
+              --   (brief-db-permessi-tetto-area). Sede unica: la leggono
+              --   fn_resolve_livello_oggetto, fn_get_user_object_permissions_map e il
+              --   pannello permessi.
+              DECLARE
+                  v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+                  v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+              BEGIN
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      -- 1-2. Identita' OPERATORE attiva, super admin.
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := v_has_identita
+                                        AND script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  RETURN QUERY
+                  WITH voci AS (
+                      -- Tutto il catalogo degli oggetti (mappa di /me/, pannello).
+                      SELECT amo.app_label AS v_app, amo.model_name AS v_modello
+                        FROM config.area_model_overrides amo
+                       WHERE p_app_label IS NULL AND p_model_name IS NULL
+                      UNION ALL
+                      -- Un solo oggetto (resolver puntuale), a catalogo o no.
+                      SELECT p_app_label, p_model_name
+                       WHERE p_app_label IS NOT NULL OR p_model_name IS NOT NULL
+                  ),
+                  con_area AS (
+                      -- 3. L'area e' quella dell'oggetto, non quella del chiamante (R4).
+                      SELECT v.v_app, v.v_modello,
+                             script.fn_area_di_oggetto(v.v_app, v.v_modello) AS v_area
+                        FROM voci v
+                  ),
+                  livelli AS (
+                      SELECT d.l_area,
+                             script.fn_resolve_livello_area(p_auth_user_id, d.l_area) AS l_livello
+                        FROM (SELECT DISTINCT ca.v_area AS l_area FROM con_area ca) d
+                  ),
+                  grezzi AS (
+                      SELECT ca.v_app, ca.v_modello, ca.v_area,
+                             uoo.livello AS g_override, l.l_livello
+                        FROM con_area ca
+                        LEFT JOIN livelli l
+                          ON l.l_area IS NOT DISTINCT FROM ca.v_area
+                        LEFT JOIN config.user_override_oggetti uoo
+                          ON uoo.auth_user_id = p_auth_user_id
+                         AND uoo.app_label    = ca.v_app
+                         AND uoo.model_name   = ca.v_modello
+                         AND uoo.validita @> CURRENT_DATE
+                  ),
+                  calcolo AS (
+                      -- 4. Senza tetto (la catena di ieri) e col tetto.
+                      SELECT g.*,
+                             CASE
+                                 WHEN NOT v_has_identita THEN 'BLOCCATO'::config.livello_accesso
+                                 WHEN v_is_super          THEN 'TUTTO'::config.livello_accesso
+                                 ELSE COALESCE(g.g_override, g.l_livello,
+                                               'BLOCCATO'::config.livello_accesso)
+                             END AS c_specifico,
+                             CASE
+                                 WHEN NOT v_has_identita THEN 'BLOCCATO'::config.livello_accesso
+                                 WHEN v_is_super          THEN 'TUTTO'::config.livello_accesso
+                                 ELSE script.fn_livello_con_tetto_area(g.g_override, g.l_livello)
+                             END AS c_effettivo
+                        FROM grezzi g
+                  )
+                  SELECT c.v_app, c.v_modello, c.v_area, c.g_override, c.l_livello,
+                         c.c_specifico, c.c_effettivo,
+                         c.c_effettivo IS DISTINCT FROM c.c_specifico
+                    FROM calcolo c;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_permessi_effettivi_oggetti(config.user_override_oggetti.auth_user_id%TYPE, config.user_override_oggetti.app_label%TYPE, config.user_override_oggetti.model_name%TYPE) IS
+                  'Gli oggetti effettivi di un operatore, col tetto d''area (brief-db-permessi-tetto-area, D-1…D-3). Per ogni oggetto: area_schema_db (script.fn_area_di_oggetto: l''area e'' quella dell''oggetto, R4), livello_override (l''override valido, grezzo), livello_area (script.fn_resolve_livello_area), livello_specifico (la catena senza tetto: override, altrimenti area), livello (script.fn_livello_con_tetto_area: il piu'' restrittivo fra override e area) e limitato_da_area (l''override allarga e il tetto lo ferma: dormiente, D-3). Gate di contesto e identita'' OPERATORE assente -> BLOCCATO; super admin -> TUTTO, prima del tetto. p_app_label e p_model_name NULL -> tutto il catalogo config.area_model_overrides (un override esiste solo per un oggetto a catalogo); altrimenti una riga per l''oggetto chiesto, a catalogo o no. Sede UNICA della catena degli oggetti: la leggono script.fn_resolve_livello_oggetto, script.fn_get_user_object_permissions_map e il pannello permessi (backend). plpgsql, STABLE, INVOKER.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_get_permessi_effettivi_oggetti(config.user_override_oggetti.auth_user_id%TYPE, config.user_override_oggetti.app_label%TYPE, config.user_override_oggetti.model_name%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_permessi_effettivi_oggetti(integer, character varying, character varying);

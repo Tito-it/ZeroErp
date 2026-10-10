@@ -1,13 +1,14 @@
 ## 🔍 Documentazione Concettuale – Vista `vendite.vw_fattura_righe_esposte`
 
 > **Versione**: 2026-07-28 (brief-fix-importi-riga-fattura-zero §4.7-bis, D5 ·
-> migration `20260728-16`)
+> migration `20260728-16`) · rev 2026-10-01: tre modi di esporre un componente
+> (brief-db-esposizione-componenti-kit-in-fattura · `20261001-46`)
 
 > **Vedi anche**
 >
 [vendite.fatture_righe](/dbzero/vendite/tabelle/fatture_righe) — il dettaglio da cui deriva
 > [vendite.attivita_fatturabili](/dbzero/vendite/tabelle/attivita_fatturabili) — il livello sotto la riga
-> [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — `esposto_in_fattura`, la regola
+> [catalogo.articoli_componenti](/dbzero/catalogo/tabelle/articoli_componenti) — `esposizione_in_fattura`, la regola
 > [guida fatturazione](/guide/fatturazione) — §La riga di fattura: aggregazione, importo, esposizione
 
 ---
@@ -46,29 +47,59 @@ banale: la definizione è già qui.
 |---|---|
 | riga **non** di kit (`kit_key IS NULL`) | passa così com'è |
 | riga di **kit** | **una riga padre** che porta il totale del kit |
-| componenti con `kit_esposto_in_fattura = TRUE` | righe **descrittive** sotto il padre, **senza importo** |
+| componenti `NASCOSTO` | **non compaiono**: il loro valore è dentro il totale del padre |
+| componenti `DESCRITTIVO` | righe **descrittive** sotto il padre, **senza prezzo né importo**; il valore è dentro il totale del padre |
+| componenti `VALORIZZATO` | righe sotto il padre **con quantità, prezzo, sconto e importo suoi**, **fuori** dal totale del padre |
 
-I componenti con il flag a `false` **non compaiono**: il loro valore è già dentro
-il totale del padre. Da cui la proprietà che conta: **il totale del documento non
-cambia mai al variare dell'esposizione**.
+Il modo è `fatture_righe.kit_esposizione`, lo snapshot di
+`catalogo.articoli_componenti.esposizione_in_fattura` (rev 2026-10-01,
+`20261001-46`; fino a quel giorno era il booleano `kit_esposto_in_fattura`:
+`false` → `NASCOSTO`, `true` → `DESCRITTIVO`).
+
+⭐ **Un componente resta sempre legato al suo kit**, anche valorizzato: livello 1,
+stessa `kit_key`, stesso `ordinamento` del padre — mai una riga sciolta, come se
+fosse stato venduto da solo.
+
+**Il kit senza resto**: se tutti i componenti sono `VALORIZZATO`, la riga padre
+resta come **intestazione** con importo e prezzo `NULL` (non zero: zero direbbe
+«omaggio»), e i componenti sotto. Con valorizzati e descrittivi insieme, il padre
+porta la somma dei descrittivi.
+
+Da cui la proprietà che conta: **il totale del documento non cambia mai al
+variare dell'esposizione** — ogni componente sta o nel padre (`NASCOSTO`,
+`DESCRITTIVO`) o sulla sua riga (`VALORIZZATO`), mai in tutti e due, mai in
+nessuno.
 
 ---
 
 ### Convenzioni
 
-* **Quantità della riga padre** = **media** delle quantità dei componenti. In un
-  kit da 2 pezzi tutti i componenti portano 2 e il padre porta 2: la media dà 2.
-  ⚠️ Regge finché `coeff_qta_snapshot` vale 1 — vero su tutte le righe di
-  `ordini_righe_componenti` alla data. Con un coefficiente diverso la media
-  diventerebbe un numero che non corrisponde a nulla (un kit da 2 con un
-  componente a coefficiente 3 darebbe la media di `{2, 6, 6}`). Il rimedio, se
-  servirà, è congelare la quantità del padre alla generazione.
+* **Quantità e UoM della riga padre** (dal 2026-10-02, `20261002-64`) = quelle
+  della **riga padre del documento**, congelate su ogni componente alla generazione
+  (`fatture_righe.kit_qta`, `kit_uom_id`). Si leggono **componente per componente**,
+  cioè per `articolo_id` (le righe dello stesso componente, che la generazione separa
+  anche per prezzo, si sommano). Per questo una riga di kit ha **sempre** l'articolo
+  (`chk_fatture_righe_kit_articolo`, dal 2026-10-02): due componenti senza articolo
+  cadrebbero nello stesso gruppo e la quantità del kit raddoppierebbe, senza un errore.
+  Le quantità valgono se tutti i componenti dicono lo stesso numero di kit, valorizzati
+  compresi: un kit senza resto ha comunque la sua quantità. Se non lo dicono — una
+  nota di credito parziale, dove si rende un componente solo — quantità e prezzo
+  della riga padre sono `NULL`: il kit lì non ha una quantità, e il caso **non si
+  rifiuta**. Fino al 2026-10-01 erano **media** e **max** dei componenti: con
+  coefficienti diversi da 1 la media non voleva dire niente (il backend fermava la
+  fattura, R10), e in un kit di unità diverse (pezzi, metri, ore) l'unità era una a
+  caso.
+* **Periodo** (dal 2026-10-02): la riga padre si costruisce anche per
+  `competenza_dal`/`competenza_al`, quindi lo stesso kit fatturato su due mesi dà
+  **due** righe padre, come un articolo normale. Prima i due periodi finivano nella
+  stessa riga, con quantità 1 e prezzo doppio.
 * **`riga_nr` della riga padre** = quello del **primo** dei suoi componenti.
-* **Importo della riga padre** = **somma** dei componenti.
+* **Importo della riga padre** = **somma** dei componenti **non valorizzati**
+  (`NASCOSTO` e `DESCRITTIVO`); `NULL` se non ce ne sono.
 * **Prezzo unitario del padre** = derivato, `importo / quantità`. È il prezzo
   *implicito* della riga mostrata, non una lettura dal catalogo: quella può
   essere cambiata dopo l'emissione.
-* **Importo delle righe descrittive** = `NULL`, non zero. `NULL` dice «questa
+* **Prezzo e importo delle righe descrittive** = `NULL`, non zero. `NULL` dice «questa
   riga non porta importo», zero direbbe «vale zero». Chi somma ottiene comunque
   il totale corretto, perché `SUM` ignora i `NULL`.
 
@@ -80,9 +111,17 @@ cambia mai al variare dell'esposizione**.
 |---|---|
 | `tipo_riga` | `NORMALE` · `KIT_PADRE` · `KIT_COMPONENTE` · `PARTE_PLAFOND` |
 | `ordinamento` | il `riga_nr` del capogruppo: tiene i componenti insieme al proprio padre, e le parti insieme alla propria capofila |
-| `livello` | `0` padre, riga normale **o parte di plafond**; `1` componente descrittivo |
+| `livello` | `0` padre, riga normale **o parte di plafond**; `1` componente del kit (descrittivo **o valorizzato**) |
 | `fatture_righe_id` | la riga sottostante; **`NULL`** sulla riga padre, che è sintetizzata e non esiste come record |
 | `riga_capofila_id` | *(dal 2026-08-31)* la capofila di una riga spezzata dal plafond; vuoto su tutte le altre |
+| `esposizione` | *(dal 2026-10-01, in coda)* il modo del componente (`DESCRITTIVO` \| `VALORIZZATO`) sulle righe `KIT_COMPONENTE`; `NULL` altrove |
+| `competenza_dal`, `competenza_al` | *(dal 2026-10-02, in coda)* il periodo della riga, su ogni riga; sulla riga padre quello del suo gruppo |
+| `ha_periodo` | *(dal 2026-10-02, in coda)* `competenza_dal <> competenza_al`: la riga ha un **periodo** da stampare. È la regola unica per PDF, SDI (`DataInizioPeriodo`/`DataFinePeriodo`) e portale; una riga puntuale (`dal = al`) non stampa nulla |
+| `kit_riga_nr` | *(dal 2026-10-01, in coda)* il `riga_nr` della riga del kit a cui la riga appartiene, su `KIT_PADRE` e `KIT_COMPONENTE`; `NULL` sulle righe sciolte. È il legame che il tracciato SDI, a linee piatte, dovrà dichiarare: oggi coincide con `ordinamento`, ma `ordinamento` è un ordine, non un riferimento |
+
+⚠️ **Chi somma gli importi somma tutte le righe con importo valorizzato**, a
+qualunque livello: dal 2026-10-01 il livello 1 **non** significa più «senza
+importo» (un componente valorizzato ha il suo).
 
 Ordinamento canonico: `ORDER BY ordinamento, livello, riga_nr`.
 
@@ -101,16 +140,17 @@ Qui le due parti escono **entrambe, ognuna con il proprio importo**, allo
 `tipo_riga` = `PARTE_PLAFOND` sulla seconda.
 
 ⛔ **Non è il trattamento del kit, e la differenza è sostanziale.** Il kit
-*somma* le sue righe in una sola: farlo qui produrrebbe una linea sola nel file
+*somma* le sue righe non valorizzate in una sola: farlo qui produrrebbe una linea sola nel file
 elettronico, cioè cancellerebbe esattamente la ragione per cui la riga si è
 spezzata.
 
 ⛔ **E la parte non scende a `livello 1`.** In questa vista `livello 1` significa
-*«riga descrittiva, senza importo»* — è il patto su cui si regge la regola dei
-componenti di kit, che escono con importo `NULL`. La parte staccata dal plafond
-un importo suo ce l'ha, e nel totale ci deve stare: chi legge la vista saltando
-il livello 1, come la regola gli dice di fare, **perderebbe quel valore senza
-nessun errore**.
+*«componente sotto il suo kit»*: la parte staccata dal plafond non è un
+componente, è la stessa riga divisa in due, e sta allo stesso livello della
+capofila. (Fino al 2026-10-01 `livello 1` voleva dire anche *«senza importo»*, e
+chi saltava il livello 1 avrebbe perso il valore della parte; dal 2026-10-01 un
+componente valorizzato a livello 1 un importo ce l'ha, e quella lettura non è più
+lecita per nessuno.)
 
 ⭐ L'`ordinamento` condiviso è ciò che tiene le due parti **adiacenti** anche
 quando fra loro finisce un'altra riga dello stesso articolo a prezzo diverso.
@@ -121,8 +161,13 @@ documento, e niente direbbe che vengono dalla stessa origine.
 plafond finisce nei rami del kit, non in questo. Non è un buco — il
 raggruppamento del kit tiene già conto dell'IVA, quindi due trattamenti diversi
 producono due righe padre distinte, che è l'esito corretto — ma lì le due parti
-non si vedono come una sola origine. Il caso non è stato costruito perché oggi
-il backend non spezza i componenti di kit.
+non si vedono come una sola origine.
+⭐ Dal 2026-10-03 (`brief-db-bom-flag-quantita-e-kit-in-fattura` §11, D-5) il
+plafond spezza un kit come un'unità sola: ogni componente con la stessa frazione,
+le colonne kit copiate sulla parte. Le due metà, con IVA diverse, escono quindi
+come due righe padre, ciascuna con la sua quantità del kit (1,2 e 1,8 su un kit
+da 3). La frazione unica la calcola
+[fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe).
 
 ---
 

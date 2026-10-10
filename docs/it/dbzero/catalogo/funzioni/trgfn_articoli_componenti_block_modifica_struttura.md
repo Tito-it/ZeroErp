@@ -28,8 +28,9 @@ BEGIN
     --   1. DELETE -> bloccato sempre (E_BOM_MODIFICA_VIETATA).
     --   2. UPDATE dei campi di struttura -> bloccato
     --      (coeff_qta, componente_id, obbligatorio,
-    --      esposto_in_fattura, partecipa_qta,
-    --      determina_qta_padre, valido_dal).
+    --      esposizione_in_fattura, valido_dal).
+    --      Rev 20261002-61: partecipa_qta e determina_qta_padre
+    --      ritirate (20261002-60), nessuna logica le leggeva.
     --      Nota: validita rimossa dalla lista perche' e' ora
     --      STORED generated: PostgreSQL rifiuta scritture dirette
     --      prima che il trigger venga eseguito; in BEFORE trigger
@@ -68,9 +69,7 @@ BEGIN
         IF NEW.coeff_qta              IS DISTINCT FROM OLD.coeff_qta
            OR NEW.componente_id       IS DISTINCT FROM OLD.componente_id
            OR NEW.obbligatorio        IS DISTINCT FROM OLD.obbligatorio
-           OR NEW.esposto_in_fattura  IS DISTINCT FROM OLD.esposto_in_fattura
-           OR NEW.partecipa_qta       IS DISTINCT FROM OLD.partecipa_qta
-           OR NEW.determina_qta_padre IS DISTINCT FROM OLD.determina_qta_padre
+           OR NEW.esposizione_in_fattura IS DISTINCT FROM OLD.esposizione_in_fattura
            OR NEW.valido_dal          IS DISTINCT FROM OLD.valido_dal
         THEN
             PERFORM script.fn_log_and_raise_error(
@@ -95,7 +94,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION catalogo.trgfn_articoli_componenti_block_modifica_struttura()
-IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci). Ammette UPDATE di valido_al (chiusura), attivo, note, meta, audit. validita e'' STORED generated: scritture dirette rifiutate da PG. Error code: E_BOM_MODIFICA_VIETATA (387). Rev 20260924-01: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA); E_BOM_VALIDO_AL_INVALIDO ritirato.';
+IS 'Trigger function: blocca DELETE e UPDATE dei campi di struttura di catalogo.articoli_componenti (BoM immutabile, pattern chiudi+inserisci): coeff_qta, componente_id, obbligatorio, esposizione_in_fattura, valido_dal. Ammette UPDATE di valido_al (chiusura), attivo, note, meta, audit. validita e'' STORED generated: scritture dirette rifiutate da PG. Error code: E_BOM_MODIFICA_VIETATA (387). Rev 20260924-01: l''ordine delle date (valido_al non precede valido_dal) non e'' piu'' qui: ha una sede sola, script.trgfn_guard_date_validita (automazione DATE_VALIDITA); E_BOM_VALIDO_AL_INVALIDO ritirato. Rev 20261001-43: il campo di struttura esposto_in_fattura e'' ora esposizione_in_fattura (tre modi, brief-db-esposizione-componenti-kit-in-fattura). Rev 20261002-61: partecipa_qta e determina_qta_padre ritirate dalla tabella (20261002-60): nessuna logica le leggeva (brief-db-bom-flag-quantita-e-kit-in-fattura, D-1).';
 ```
 
 ---

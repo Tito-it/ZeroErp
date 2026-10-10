@@ -30,7 +30,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from django.test import SimpleTestCase
@@ -58,7 +58,7 @@ def _riga(override: dict[int, object] | None = None):
         4,                              # 13 area_geografica_id
         "Nord",                         # 14 area_geografica_descrizione
         72,                             # 15 emittente_soggetto_ruolo_id
-        datetime(2026, 7, 2, 10, 30),   # 16 data_insert
+        datetime(2026, 7, 2, 10, 30, tzinfo=UTC),   # 16 data_insert
         "mctit",                        # 17 user_insert
         "Emittente S.p.A.",             # 18 emittente_ragione_sociale
         5,                              # 19 n_fatture

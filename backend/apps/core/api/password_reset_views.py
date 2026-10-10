@@ -17,6 +17,7 @@ from typing import Any
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.http import JsonResponse
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.permissions import AllowAny
@@ -26,7 +27,7 @@ from rest_framework.views import APIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.payload_validators import password_digitata
 from apps.core.api.success_responses import success_response
-from apps.core.api.throttling import PasswordResetRateThrottle
+from apps.core.api.throttling import ConfermaTokenRateThrottle, PasswordResetRateThrottle
 from apps.core.db.auth_repository import AuthRepository
 from apps.core.services.auth_constants import NOME_SISTEMA_EMAIL
 from apps.core.services.auth_helpers import (
@@ -34,9 +35,12 @@ from apps.core.services.auth_helpers import (
     valida_nuova_password,
     validate_and_extract_token,
 )
+from apps.core.services.credenziale_ingresso import credenziale_per_email, credenziale_per_nome_utente
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.request_context import get_client_ip
+from apps.core.services.invito_veste import nome_visualizzato
+from apps.core.services.locale_formatters import format_datetime
+from apps.core.services.request_context import get_client_ip, richiesta_django
 from apps.core.services.token_service import TokenService
 
 logger = logging.getLogger("security")
@@ -53,11 +57,12 @@ _email_service = EmailDispatchService()
 
 
 # I corpi che i due gestori leggono. La richiesta risponde sempre lo stesso
-# messaggio (anche senza `username`): nessun dato su chi esiste.
+# messaggio (anche senza `identificativo`): nessun dato su chi esiste.
 _RESET_REQUEST_REQUEST = inline_serializer(
     name="CorePasswordResetRequestReq",
-    fields={"username": serializers.CharField()},
+    fields={"identificativo": serializers.CharField(help_text="Nome utente o email")},
 )
+
 _RESET_CONFIRM_REQUEST = inline_serializer(
     name="CorePasswordResetConfirmReq",
     fields={
@@ -66,6 +71,22 @@ _RESET_CONFIRM_REQUEST = inline_serializer(
         "new_password_confirm": serializers.CharField(),
     },
 )
+
+
+# Scopo: La credenziale di chi chiede il reset, dal nome utente O dall'email
+# (L-4, D-9: chi entra dal portale o dallo shop conosce la sua email, non un
+# nome utente). Con una «@» si cerca prima l'email (`credenziale_per_email`,
+# la regola del login per email); se non trova niente, il nome utente esatto,
+# perche' il modello non vieta una «@» in un nome utente. Vale per ogni
+# credenziale: la prova e' il possesso dell'email a cui arriva il link, e
+# restringere l'email ad alcune porte non proteggerebbe niente.
+def _credenziale_del_reset(identificativo: str) -> User | None:
+    if "@" in identificativo:
+        user = credenziale_per_email(identificativo)
+        if user is not None:
+            return user
+    return credenziale_per_nome_utente(identificativo)
+
 
 class PasswordResetRequestView(APIView):
     """POST: richiesta reset password — invia email con link.
@@ -76,19 +97,21 @@ class PasswordResetRequestView(APIView):
     throttle_classes = [PasswordResetRateThrottle]
 
     @extend_schema(request=_RESET_REQUEST_REQUEST, summary="Richiesta reset password", responses={200: dict})
-    # Scopo: Riceve username, cerca utente attivo con email configurata,
+    # Scopo: Riceve nome utente o email, cerca utente attivo con email configurata,
     #        genera token e invia email con link reset.
     #        Risponde sempre 200 per non rivelare se l'utente esiste.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
-            username = (payload.get("username") or "").strip()
+            # Un valore che non e' testo (numero, lista) vale come assente: la
+            # risposta resta la stessa, mai un 500 su un endpoint pubblico.
+            grezzo = payload.get("identificativo")
+            identificativo = grezzo.strip() if isinstance(grezzo, str) else ""
             _MSG = "Se l'utente esiste e ha un'email configurata, ricevera' un link per reimpostare la password."
-            if not username:
+            if not identificativo:
                 return {"message": _MSG}
 
-            # Cerca utente attivo per username
-            user = User.objects.filter(username=username, is_active=True).first()
-            if user and user.email:
+            user = _credenziale_del_reset(identificativo)
+            if user and user.is_active and user.email:
                 # Genera token reset: vale solo l'ultimo link chiesto, e i
                 # precedenti si spengono nella stessa transazione del nuovo.
                 with transaction.atomic():
@@ -114,7 +137,7 @@ class PasswordResetRequestView(APIView):
                         codice_template=_TEMPLATE_RESET,
                         destinatario=user.email,
                         variabili={
-                            "nome": user.first_name or user.username,
+                            "nome": nome_visualizzato(user.id, _auth_repo),
                             "azienda": NOME_SISTEMA_EMAIL,
                             "link": link,
                             "scadenza_ore": str(_RESET_SCADENZA_ORE),
@@ -126,7 +149,9 @@ class PasswordResetRequestView(APIView):
                 except Exception:
                     logger.exception("Errore invio email reset per user_id=%s", user.id)
 
-                logger.info("security.password_reset_requested user_id=%s username=%s", user.id, username)
+                # La credenziale per id, mai il valore digitato: puo' essere
+                # un'email, o una password finita nel campo sbagliato (B-11).
+                logger.info("security.password_reset_requested user_id=%s", user.id)
 
             # Risposta identica sia che l'utente esista o no
             return {"message": _MSG}
@@ -155,7 +180,7 @@ class PasswordResetConfirmView(APIView):
 
     permission_classes = [AllowAny]
     authentication_classes = []
-    throttle_classes = [PasswordResetRateThrottle]
+    throttle_classes = [ConfermaTokenRateThrottle]
 
     @extend_schema(request=_RESET_CONFIRM_REQUEST, summary="Conferma reset password", responses={200: dict})
     # Scopo: Consuma token, imposta nuova password, blacklista token JWT,
@@ -187,7 +212,7 @@ class PasswordResetConfirmView(APIView):
             # che il freno protegge — i tentativi si azzerano su TUTTE le
             # provenienze. ⛔ Il blocco dell'admin resta (D-B3): il reset
             # dimostra il possesso dell'email, non annulla una decisione.
-            ip = get_client_ip(request._request if hasattr(request, "_request") else request)
+            ip = get_client_ip(richiesta_django(request))
             with transaction.atomic():
                 _token_service.consume(token, _RESET_TOKEN_TIPO, ip=ip)
                 apply_new_password(
@@ -201,14 +226,15 @@ class PasswordResetConfirmView(APIView):
             # Invia email conferma
             uo_id = _auth_repo.get_unita_organizzativa_id(auth_user_id)
             try:
-                from datetime import datetime, timezone
                 _email_service.send_email(
                     codice_template=_TEMPLATE_CONFERMA,
                     destinatario=user.email,
                     variabili={
-                        "nome": user.first_name or user.username,
+                        "nome": nome_visualizzato(user.id, _auth_repo),
                         "azienda": NOME_SISTEMA_EMAIL,
-                        "data_cambio": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M"),
+                        # Ora dell'AZIENDA, formato del BB: fino al 2026-10-09
+                        # l'email scriveva l'ora UTC (B-6).
+                        "data_cambio": format_datetime(timezone.now()),
                     },
                     unita_organizzativa_id=uo_id,
                     ambito="SISTEMA",

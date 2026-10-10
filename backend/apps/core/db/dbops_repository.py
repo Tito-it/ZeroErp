@@ -8,16 +8,19 @@
 
 # Accesso SQL a funzioni dello schema dbops riusabili da tutti i domini applicativi.
 
+from datetime import date
 from typing import cast
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     colonne_identita,
     escape_ilike,
     fetch_paged_with_total,
     jsonb_out,
     pattern_contiene,
+    predicato_giorno_operativo,
     sql_order_clause,
 )
 from apps.core.db.tabelle_gestibili_repository import TabelleGestibiliRepository
@@ -73,7 +76,7 @@ LOOKUP_ORDER_COLONNE: tuple[str, ...] = ("codice", "descrizione")
 #   has_codice_interno → la tabella ha codice_interno (ricerca + codice_stabile)
 #   has_obsoleto       → la tabella ha obsoleto_dal (filtro includi_obsoleti,
 #                        stessa semantica della fn generica: esclude
-#                        obsoleto_dal <= CURRENT_DATE quando false)
+#                        obsoleto_dal <= fn_data_operativa() quando false)
 #   has_attivo         → (opzionale, default True) la tabella ha `attivo`.
 #                        A False il payload porta `attivo = NULL` e
 #                        `attivo_only` non filtra — la stessa cosa che fa
@@ -145,6 +148,45 @@ _LOOKUP_SPECIALIZZATE: dict[str, dict] = {
         "extra_col": "etichetta_key",
         "has_codice_interno": True,
         "has_obsoleto": True,
+        "has_attivo": False,
+    },
+    "config.esposizioni_componente": {
+        # etichetta_key: come per i registri, l'indirizzo i18n che il DB
+        # dichiara per ciascuno dei tre modi di esporre in fattura un
+        # componente di kit (NASCOSTO / DESCRITTIVO / VALORIZZATO). Il frontend
+        # lo rende con `useLookupEtichettato`: la scelta nella distinta e il
+        # modo per esteso nei componenti (brief-db-esposizione-componenti-kit-
+        # in-fattura, R-BE-6).
+        # ⚠️ Niente `attivo` e niente `obsoleto_dal` (§9.2): i tre valori sono
+        #    la semantica di `vw_fattura_righe_esposte`, non una configurazione.
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    # I tre vocabolari di una versione di template (formato del sorgente,
+    # formato e orientamento della pagina): le tendine del drawer della
+    # versione li rendono con `useLookupEtichettato` sul `codice_interno`, la
+    # chiave che la FK di `template_documenti_versioni` valida
+    # (brief-db-vocabolari-versione-template, R-BE-V1).
+    # ⚠️ Niente `attivo` e niente `obsoleto_dal` (§5.2): sono cio' che il
+    #    motore di stampa sa onorare, non una configurazione.
+    "documenti.formati_template": {
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    "documenti.formati_pagina": {
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
+        "has_attivo": False,
+    },
+    "documenti.orientamenti_pagina": {
+        "extra_col": "etichetta_key",
+        "has_codice_interno": True,
+        "has_obsoleto": False,
         "has_attivo": False,
     },
 }
@@ -245,7 +287,7 @@ class DbopsRepository:
         )
         obsoleto_pred = (
             "AND (%(includi_obsoleti)s IS TRUE"
-            " OR t.obsoleto_dal IS NULL OR t.obsoleto_dal > CURRENT_DATE)"
+            " OR t.obsoleto_dal IS NULL OR t.obsoleto_dal > (SELECT script.fn_data_operativa()))"
             if spec["has_obsoleto"]
             else ""
         )
@@ -444,7 +486,7 @@ class DbopsRepository:
         *,
         attivo_only: bool = True,
         search: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[DominioTaskRow], int]:
         search_pattern = pattern_contiene(search)
@@ -480,7 +522,7 @@ class DbopsRepository:
         dominio_codice: str | None = None,
         attivo_only: bool = True,
         search: str | None = None,
-        limit: int = 100,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[TaskRegistryRow], int]:
         search_pattern = pattern_contiene(search)
@@ -521,7 +563,7 @@ class DbopsRepository:
         task_code: str | None = None,
         dominio_codice: str | None = None,
         attivo_only: bool = True,
-        limit: int = 100,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[TaskRegistryImplRow], int]:
         rows, total_count = fetch_paged_with_total(
@@ -566,18 +608,22 @@ class DbopsRepository:
         *,
         status: str | None = None,
         function_name: str | None = None,
-        date_from: str | None = None,
-        date_to: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         search: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[AuditLogRow], int]:
         search_pattern = pattern_contiene(search)
+        # Giorni dell'azienda, `date_to` incluso (BB): fino al 2026-10-09 era
+        # `<= %s::timestamptz + 1 day`, mezzanotte della sessione e confine
+        # alto compreso.
+        giorno_sql, giorno_params = predicato_giorno_operativo("executed_at", date_from, date_to)
         # Guardia e filtro leggono lo STESSO valore: con la guardia sul nome
         # grezzo, «  » passava la guardia e finiva in `ILIKE NULL` (zero righe).
         function_pattern = pattern_contiene(function_name)
         rows, total_count = fetch_paged_with_total(
-            """
+            f"""
             SELECT id, function_name, executed_by, executed_at::text,
                    status, message, duration_ms, tx_id::text,
                    exec_mode, rule_type, dry_run, rows_affected,
@@ -586,19 +632,17 @@ class DbopsRepository:
               FROM dbops.audit_log
              WHERE (%s::text IS NULL OR status = %s)
                AND (%s::text IS NULL OR function_name ILIKE %s)
-               AND (%s::text IS NULL OR executed_at >= %s::timestamptz)
-               AND (%s::text IS NULL OR executed_at <= %s::timestamptz + interval '1 day')
+               AND {giorno_sql}
                AND (%s::text IS NULL
                     OR function_name ILIKE %s
                     OR message ILIKE %s)
              ORDER BY executed_at DESC, id DESC
              LIMIT %s OFFSET %s
-            """,
+            """,  # noqa: S608 — frammento del BB predicato_giorno_operativo (colonna validata), valori come parametri
             [
                 status, status,
                 function_pattern, function_pattern,
-                date_from, date_from,
-                date_to, date_to,
+                *giorno_params,
                 search_pattern, search_pattern, search_pattern,
                 limit, offset,
             ],
@@ -647,7 +691,7 @@ class DbopsRepository:
     #                   lingue del codice) → `ix_dbops_error_log_messaggio_errore_id`
     #   `tx_id`         esatto            → `ix_error_log_tx_id` (il PONTE dal
     #                   giornale agli appunti tecnici della stessa transazione)
-    #   `data_da`/`data_a` su `occurred_at` (`[da, a + 1 giorno)`) → `ix_error_log_occurred_at`
+    #   `data_da`/`data_a` su `occurred_at`, giorni dell'AZIENDA (BB `predicato_giorno_operativo`) → `ix_error_log_occurred_at`
     # ⚠️ I valori viaggiano nei `params`; l'SQL e' costante e l'ordinamento
     #    passa da `sql_order_clause` sulla whitelist.
     def list_error_logs(
@@ -659,7 +703,7 @@ class DbopsRepository:
         tx_id: str | None = None,
         data_da: str | None = None,
         data_a: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -673,21 +717,26 @@ class DbopsRepository:
             tiebreak="e.id",
         )
         prefisso = _prefisso_like(function_name.strip()) if function_name and function_name.strip() else None
+        # Giorni dell'azienda (BB). Le date arrivano ISO gia' validate dalla
+        # view (`_filtri_error_log`, che le tiene stringa per l'export).
+        giorno_sql, giorno_params = predicato_giorno_operativo(
+            "e.occurred_at",
+            date.fromisoformat(data_da) if data_da else None,
+            date.fromisoformat(data_a) if data_a else None,
+        )
         # Un WHERE per la pagina e per il suo conteggio di ripiego.
-        where_sql = """WHERE (%s::text IS NULL OR e.area = %s)
+        where_sql = f"""WHERE (%s::text IS NULL OR e.area = %s)
                AND (%s::text IS NULL OR e.function_name LIKE %s)
                AND (%s::text IS NULL OR e.messaggio_errore_id IN (
                         SELECT mm.id FROM config.messaggi_errore mm WHERE mm.codice = %s))
                AND (%s::uuid IS NULL OR e.tx_id = %s::uuid)
-               AND (%s::date IS NULL OR e.occurred_at >= %s::date)
-               AND (%s::date IS NULL OR e.occurred_at < %s::date + interval '1 day')"""
+               AND {giorno_sql}"""  # noqa: S608 — frammento del BB predicato_giorno_operativo (colonna validata), valori come parametri
         where_params = [
             area, area,
             prefisso, prefisso,
             codice, codice,
             tx_id, tx_id,
-            data_da, data_da,
-            data_a, data_a,
+            *giorno_params,
         ]
         righe, totale = fetch_paged_with_total(
             f"""

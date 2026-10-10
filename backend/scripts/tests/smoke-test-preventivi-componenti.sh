@@ -10,7 +10,7 @@
 # ------------------------------------------------------------
 # Indice test (0..N):
 #  0) Autenticazione JWT (UNA volta, no thundering throttle)
-#  1) Setup CASO A: PATCH BoM attiva -> esposto_in_fattura=TRUE
+#  1) Setup CASO A: articolo composito nuovo + riga BoM esposizione_in_fattura=DESCRITTIVO
 #  2) Discovery cliente + emittente (BA con utility + emittente attivo)
 #  3) Cleanup proattivo: delete preventivi smoke precedenti
 #  4) Crea preventivo DRAFT con suffisso unico (smoke-<EPOCH>)
@@ -22,15 +22,13 @@
 # 10) DELETE componente (se >1): verifica padre ricalcolato
 # 11) Guard transizione: tenta cambio stato verso ACCETTATO con prezzo
 #     PENDING (se applicabile) -> deve fallire E_PREVENTIVO_RIGHE_PRICING_PENDENTI
-# 12) Cleanup finale: delete preventivo + restore esposto_in_fattura=FALSE
+# 12) Cleanup finale: delete preventivo + chiudi BoM + disattiva articolo
 # ------------------------------------------------------------
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 # Fixture: clonare campi articolo `composito` esistente per il padre nuovo,
 # riusare componente2 esistente come componente esposto in fattura.
@@ -121,21 +119,7 @@ check_http() {
 # 0) AUTH
 # =====================================================
 log_step "0) Autenticazione JWT"
-if [[ -z "$PASSWORD" ]]; then
-    echo "ERROR: password mancante. Uso: $0 <password> oppure SMOKE_PASSWORD=...";
-    exit 2
-fi
-RESP=$(curl -s -w '\n%{http_code}' -X POST "${BASE_URL}/api/v1/admin/token/" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"${USERNAME}\",\"password\":\"${PASSWORD}\"}")
-STATUS=$(echo "$RESP" | tail -1)
-BODY=$(echo "$RESP" | sed '$d')
-if [[ "$STATUS" != "200" ]]; then
-    log_fail "Login HTTP $STATUS — $(echo "$BODY" | head -c 200)"
-    exit 2
-fi
-TOKEN=$(echo "$BODY" | python3 -c "import json,sys; print(json.load(sys.stdin).get('access',''))")
-if [[ -z "$TOKEN" ]]; then log_fail "Token vuoto"; exit 2; fi
+smoke_login --senza-prompt --uscita 2
 log_ok "Login OK (token ${#TOKEN} char)"
 
 # =====================================================
@@ -176,9 +160,7 @@ BOM_PAYLOAD=$(cat <<EOF
   "componente_id": "$COMPONENTE_REFERENCE_ID",
   "coeff_qta": 1,
   "obbligatorio": true,
-  "esposto_in_fattura": true,
-  "partecipa_qta": true,
-  "determina_qta_padre": false,
+  "esposizione_in_fattura": "DESCRITTIVO",
   "valido_dal": "$DATA_IERI_UTC",
   "valido_al": null
 }
@@ -190,7 +172,7 @@ check_http "POST BoM componente esposto" "200" || {
     exit 3
 }
 NEW_BOM_ROW_ID=$(json_get "$LAST_BODY" "data.id")
-log_info "Creata BoM riga id=$NEW_BOM_ROW_ID (esposto=TRUE)"
+log_info "Creata BoM riga id=$NEW_BOM_ROW_ID (esposizione=DESCRITTIVO)"
 
 # =====================================================
 # 2) Discovery cliente + emittente
@@ -223,7 +205,7 @@ DEFAULT_IVA_ID=$(json_get "$LAST_BODY" "data.iva_id")
 VALIDITA_AL=$(json_get "$LAST_BODY" "data.default_validita_al")
 log_info "utility=$UTILITY_ID istanza=$ISTANZA_ID valuta=$VALUTA_ID iva=$DEFAULT_IVA_ID validita_al=$VALIDITA_AL"
 
-# 2c) Emittente: utente tid e' admin globale (no emittente assegnato),
+# 2c) Emittente: l'utente degli smoke e' admin globale (no emittente assegnato),
 # devo passarlo esplicito. Scelgo il primo emittente attivo via lookup.
 do_curl GET "/api/v1/anagrafiche/emittenti-fiscali/?page_size=20"
 check_http "GET emittenti fiscali (per discovery)" "200" || exit 4

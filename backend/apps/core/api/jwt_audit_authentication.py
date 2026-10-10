@@ -109,9 +109,10 @@ class JwtSenzaSidError(AuthenticationFailed):
 
 
 class IdentitaNonAttivaError(AuthenticationFailed):
-    """Il claim `identita_id` non corrisponde a identita attiva.
+    """Il claim `identita_id` non corrisponde a una veste utilizzabile.
 
-    Scenari: identita disattivata o scaduta dopo l'emissione del JWT,
+    Scenari: veste spenta, uscita dalle sue date o col rapporto chiuso
+    dopo l'emissione del JWT (`script.fn_veste_utilizzabile`),
     identita_id non appartenente all'auth_user del JWT (token
     manomesso). Richiede nuovo login.
 
@@ -140,7 +141,7 @@ class IdentitaNonAttivaError(AuthenticationFailed):
 #          - app.jwt_user           -> username Django
 #          - app.current_user_id    -> auth_user.id
 #          - app.current_identita_id-> identita_digitali.id (vuoto se orfano)
-#          - app.ruolo_applicativo  -> ruolo_applicativo dell'identita attiva
+#          - app.ruolo_applicativo  -> ruolo_applicativo della veste
 #          - app.soggetto_ruolo_id  -> soggetti_ruoli.id dell'identita
 #
 #        Invariante "tutto o niente": i 3 GUC di identita sono popolati
@@ -163,7 +164,7 @@ class IdentitaNonAttivaError(AuthenticationFailed):
 #        a escalation/downgrade silenziosi (GUC con veste errata).
 #        I caller DEVONO fornire l'identita_id (dal claim JWT) o
 #        gestire il False (log + procedere con GUC vuote).
-#        Ritorna True se la coppia e' attiva, False altrimenti.
+#        Ritorna True se la coppia e' utilizzabile, False altrimenti.
 def set_jwt_gucs(
     *,
     username: str,
@@ -192,13 +193,19 @@ def set_jwt_gucs(
             # spento fino alla scadenza dell'access token. Lo SCOPE invece non
             # si rivalida qui: ci pensa il DB a ogni chiamata, e un claim fuori
             # perimetro produce insieme vuoto (fail-closed), non accesso.
+            # ⭐ `id_row` chiede «la veste vale oggi?» al building block DB
+            #    `script.fn_veste_utilizzabile` (accesa, nelle sue date,
+            #    rapporto per l'operatore: brief-db-veste-utilizzabile), lo
+            #    stesso che leggono login, refresh, secondo fattore e cambio
+            #    password (`AuthRepository`). Una condizione nuova si scrive
+            #    nel building block, non qui.
             cursor.execute(
                 """
                 WITH id_row AS (
                     SELECT id, ruolo_applicativo, soggetto_ruolo_id
                       FROM anagrafiche.identita_digitali
                      WHERE id = %s AND auth_user_id = %s
-                       AND attivo = true
+                       AND script.fn_veste_utilizzabile(id)
                 ), ef_row AS (
                     SELECT ef.id
                       FROM anagrafiche.emittenti_fiscali ef

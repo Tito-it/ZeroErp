@@ -54,7 +54,7 @@ E_VENDITE_FK = "E_VENDITE_FK"
 #    messaggio che parla di un campo obbligatorio invece che della famiglia.
 #    E' la ragione per cui qui c'e' una MAPPA e non un elenco di nomi
 #    (`feedback_normalize_guard_simmetrico`).
-_NEUTRI_SENZA_REGOLE_FISCALI: dict[str, object] = {
+_NEUTRI_SENZA_REGOLE_FISCALI: dict[str, Any] = {
     "limite_emissione_giorni": None,
     "limite_emissione_giorno_mese": None,
     "politica_data_documento": "OGGI",

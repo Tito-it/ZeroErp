@@ -1,0 +1,468 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_get_operatore_detail: LA CAPABILITY DELLA DATA DI FINE
+#   Brief: brief-db-veste-utilizzabile, giro 3 (sezione 10)
+#
+# ── ⛔ IL DIFETTO CHE CHIUDE ─────────────────────────────────────────
+#   Dal giro 2 (-19, -20) la data di fine messa all'ultimo SUPER_ADMIN senza
+#   scadenza e' rifiutata con E_PROFILO_ULTIMO_SUPER_ADMIN. Il drawer non lo
+#   sapeva prima: il campo «Valido al» (fine del RAPPORTO) restava acceso e
+#   l'amministratore scopriva il divieto da un 409. La regola c'e' gia', ed e'
+#   una: script.fn_check_ultimo_super_admin_attivo, la stessa del guard -20.
+#   Mancava il trasporto.
+#
+# ── ⭐ COSA CAMBIA ───────────────────────────────────────────────────
+#   Tre colonne in coda al RETURNS TABLE, nella famiglia del 20260927-02:
+#     can_set_valido_al      NOT is_last_sa (la condizione di can_disable)
+#     valido_al_reason       ULTIMO_SUPER_ADMIN, altrimenti NULL
+#     valido_al_reason_key   amministrazione.operatori.valido_al_reason.ultimo_super_admin
+#   Stesso CODICE di disable e demote, chiave PROPRIA: la frase dice quale
+#   gesto e' spento (linee-guida-sql §12.5.4, un verbo una colonna).
+#   ⚠️ La chiave sta dentro un CASE: scripts/check_i18n_keys.py non la vede.
+#   L'elenco buono e' il COMMENT qui sotto e il brief §10.
+#
+# ── ⚠️ DROP + CREATE ─────────────────────────────────────────────────
+#   RETURNS TABLE cambiato. Chiamanti: nel DB nessuna funzione; il backend fa
+#   SELECT * e legge per nome (AmmSoftwareRepository.get_operatore_detail), i
+#   pgTAP scelgono le colonne per nome. Privilegi: dai default del
+#   proprietario, come 20260927-02 (provato: proacl uguale prima e dopo).
+#   Corpo vivo = 20261002-30 (md5 di prosrc uguale al vivo su dbdev e
+#   zeroerp_ci il 2026-10-07), patchato con sostituzioni contate; firma e
+#   RETURNS TABLE gia' ancorati li', SECURITY INVOKER esplicito.
+#   Ritorno indietro: DROP + il corpo del -30 (il RETURNS torna quello di prima).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-27-update-fn-get-operatore-detail-capability-valido-al-mctit.yaml
+
+  - changeSet:
+      id: 20261007-27-update-fn-get-operatore-detail-capability-valido-al
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_get_operatore_detail: la terna can_set_valido_al / valido_al_reason /
+        valido_al_reason_key per la data di fine del rapporto (ULTIMO_SUPER_ADMIN, la
+        condizione di can_disable). RETURNS TABLE cambiato: DROP + CREATE.
+        Brief: brief-db-veste-utilizzabile §10.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_operatore_detail(integer);
+
+              CREATE OR REPLACE FUNCTION script.fn_get_operatore_detail(
+                  p_auth_user_id INTEGER
+              )
+              -- Tipi espliciti sulle colonne di django.* (lo schema nasce dopo
+              -- Liquibase: %TYPE fallirebbe in CI), sui conteggi, sulle
+              -- capability e sulle date rese a text; %TYPE su tutto il resto.
+              RETURNS TABLE (
+                  auth_user_id              INTEGER,
+                  username                  VARCHAR(150),
+                  email                     VARCHAR(254),
+                  first_name                VARCHAR(150),
+                  last_name                 VARCHAR(150),
+                  soggetto_cognome          anagrafiche.soggetti.cognome%TYPE,
+                  soggetto_nome             anagrafiche.soggetti.nome%TYPE,
+                  soggetto_id               anagrafiche.soggetti.id%TYPE,
+                  ragione_sociale_completa  anagrafiche.soggetti.ragione_sociale_completa%TYPE,
+                  codice_fiscale            anagrafiche.soggetti.codice_fiscale%TYPE,
+                  is_super_admin            BOOLEAN,
+                  ruolo_applicativo         TEXT,
+                  is_active                 BOOLEAN,
+                  unita_organizzativa_id    config.unita_organizzative.id%TYPE,
+                  unita_organizzativa_nome  config.unita_organizzative.descrizione%TYPE,
+                  risorsa_umana_id          anagrafiche.risorse_umane.id%TYPE,
+                  attivo                    anagrafiche.risorse_umane.attivo%TYPE,
+                  valido_dal                TEXT,
+                  valido_al                 TEXT,
+                  override_aree_count       BIGINT,
+                  override_azioni_count     BIGINT,
+                  emittenti_count           BIGINT,
+                  emittenti_descrizione     TEXT,
+                  last_login                TIMESTAMPTZ,
+                  invito_inviato_at         anagrafiche.identita_digitali.invito_inviato_at%TYPE,
+                  deve_cambiare_password    config.credenziali.deve_cambiare_password%TYPE,
+                  can_invite                BOOLEAN,
+                  invite_reason             TEXT,
+                  can_disable               BOOLEAN,
+                  disable_reason            TEXT,
+                  can_demote_super_admin    BOOLEAN,
+                  demote_reason             TEXT,
+                  veste_attiva              anagrafiche.identita_digitali.attivo%TYPE,
+                  invite_reason_key         TEXT,
+                  disable_reason_key        TEXT,
+                  demote_reason_key         TEXT,
+                  can_set_valido_al         BOOLEAN,
+                  valido_al_reason          TEXT,
+                  valido_al_reason_key      TEXT
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Update Chunk A Fase 7 (2026-04-29):
+                  --   Rimossa chiamata interna a script.fn_get_ruolo_sistema.
+                  --   Il campo ruolo_sistema (output text, contratto BE
+                  --   invariato) viene calcolato inline con CASE WHEN su
+                  --   fn_has_identita_attiva + fn_is_super_admin - stessa
+                  --   logica del wrapper legacy ma senza dispatch
+                  --   intermedio (un livello di chiamata in meno).
+                  --
+                  --   Drop output column rinviato a Chunk B post BE migrato.
+                  --
+                  -- Fase 1 cantiere emittente (2026-08-02):
+                  --   emittenti_descrizione aggrega la SOLA
+                  --   ragione_sociale_completa del soggetto. Il COALESCE su
+                  --   ef.descrizione e' caduto sia nel valore sia nell'ORDER BY
+                  --   dell'aggregazione: lasciarlo nell'ORDER BY avrebbe
+                  --   ordinato l'elenco per un campo non piu' mostrato.
+                  --
+                  -- Rev 20260925-54 (R-9 del piano BE/FE):
+                  --   UNA veste OPERATORE, non un JOIN: il modello ne ammette piu'
+                  --   d'una spenta (l'unique vale solo WHERE attivo), e il JOIN
+                  --   nudo restituiva una riga per veste. Si mostra quella attiva
+                  --   (al piu' una, per l'unique), altrimenti la spenta piu'
+                  --   recente. Con piu' vesti spente l'invito non e' offerto
+                  --   (fn_check_operatore_invitabile, rev -53).
+                  --   veste_attiva: lo stato di QUELLA veste (NULL se non ce n'e'
+                  --   nessuna). Ne' attivo (risorsa umana) ne' is_active
+                  --   (credenziale, derivato da tutte le vesti) lo dicevano.
+                  --   ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la
+                  --   regola «l'accesa, altrimenti la spenta piu' recente» non si
+                  --   scrive piu' qui: e' script.fn_veste_di_riferimento, che legge
+                  --   anche fn_get_user_profile (regola del 2). Dopo R-DB-1 un
+                  --   operatore spento dall'amministratore resta OPERATORE e compare
+                  --   qui per intero (prima, DISABILITATO, usciva con i campi vuoti).
+                  --
+                  -- Rev 20260927-01/-02 (brief §16):
+                  --   I motivi sono CODICI con la loro chiave i18n, non frasi.
+                  --   invite_reason/_key li inoltra dalla check (sede unica);
+                  --   disable e demote: ULTIMO_SUPER_ADMIN, una chiave per verbo.
+                  --
+                  -- Rev 20261007-27 (brief-db-veste-utilizzabile §10):
+                  --   la data di fine del RAPPORTO (risorse_umane.valido_al, il campo
+                  --   «Valido al» del drawer) ha la sua terna. Stessa condizione di
+                  --   can_disable: dal -17 fn_check_ultimo_super_admin_attivo chiede
+                  --   l'ultimo SUPER_ADMIN SENZA SCADENZA, e il guard -20 ferma la data
+                  --   di fine sul rapporto con la stessa regola. Chiave propria: la
+                  --   frase dice QUALE gesto e' spento. Chi ha gia' una data di fine
+                  --   non e' «senza scadenza»: risponde true, anche per toglierla.
+                  -- =========================================================
+                  RETURN QUERY
+                  WITH ctx AS (
+                      SELECT
+                          script.fn_check_operatore_invitabile(p_auth_user_id) AS inv_jsonb,
+                          script.fn_is_super_admin(p_auth_user_id) AS is_sa,
+                          script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) AS is_last_sa
+                  )
+                  SELECT
+                      au.id                                                  AS auth_user_id,
+                      au.username,
+                      au.email,
+                      au.first_name,
+                      au.last_name,
+                      COALESCE(s.cognome, au.last_name)                      AS soggetto_cognome,
+                      COALESCE(s.nome,    au.first_name)                     AS soggetto_nome,
+                      s.id                                                   AS soggetto_id,
+                      s.ragione_sociale_completa,
+                      s.codice_fiscale,
+                      ctx.is_sa                                              AS is_super_admin,
+                      id.ruolo_applicativo::text                             AS ruolo_applicativo,
+                      au.is_active,
+                      ru.unita_organizzativa_id,
+                      uo.descrizione                                         AS unita_organizzativa_nome,
+                      ru.id                                                  AS risorsa_umana_id,
+                      ru.attivo,
+                      ru.valido_dal::text                                    AS valido_dal,
+                      ru.valido_al::text                                     AS valido_al,
+                      COALESCE((SELECT COUNT(*) FROM config.user_override_aree uoa
+                                 WHERE uoa.auth_user_id = au.id), 0)         AS override_aree_count,
+                      COALESCE((SELECT COUNT(*) FROM config.user_override_azioni uoz
+                                 WHERE uoz.auth_user_id = au.id), 0)         AS override_azioni_count,
+                      COALESCE(ef_agg.cnt, 0)                                AS emittenti_count,
+                      ef_agg.descrizione                                     AS emittenti_descrizione,
+                      au.last_login,
+                      id.invito_inviato_at,
+                      -- rev 2026-09-25 (D-7): il flag e' della CREDENZIALE.
+                      script.fn_get_deve_cambiare_password(au.id),
+                      (ctx.inv_jsonb ->> 'invitabile')::boolean              AS can_invite,
+                      ctx.inv_jsonb ->> 'reason'                             AS invite_reason,
+                      NOT ctx.is_last_sa                                     AS can_disable,
+                      CASE WHEN ctx.is_last_sa
+                           THEN 'ULTIMO_SUPER_ADMIN'
+                           ELSE NULL
+                      END                                                    AS disable_reason,
+                      CASE WHEN ctx.is_sa
+                           THEN NOT ctx.is_last_sa
+                           ELSE NULL
+                      END                                                    AS can_demote_super_admin,
+                      CASE
+                           WHEN NOT ctx.is_sa  THEN NULL
+                           WHEN ctx.is_last_sa THEN 'ULTIMO_SUPER_ADMIN'
+                           ELSE NULL
+                      END                                                    AS demote_reason,
+                      id.attivo                                              AS veste_attiva,
+                      ctx.inv_jsonb ->> 'reason_key'                         AS invite_reason_key,
+                      CASE WHEN ctx.is_last_sa
+                           THEN 'amministrazione.operatori.disabilita_reason.ultimo_super_admin'
+                           ELSE NULL
+                      END                                                    AS disable_reason_key,
+                      CASE
+                           WHEN NOT ctx.is_sa  THEN NULL
+                           WHEN ctx.is_last_sa THEN 'amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin'
+                           ELSE NULL
+                      END                                                    AS demote_reason_key,
+                      NOT ctx.is_last_sa                                     AS can_set_valido_al,
+                      CASE WHEN ctx.is_last_sa
+                           THEN 'ULTIMO_SUPER_ADMIN'
+                           ELSE NULL
+                      END                                                    AS valido_al_reason,
+                      CASE WHEN ctx.is_last_sa
+                           THEN 'amministrazione.operatori.valido_al_reason.ultimo_super_admin'
+                           ELSE NULL
+                      END                                                    AS valido_al_reason_key
+                    FROM django.auth_user au
+                    LEFT JOIN anagrafiche.identita_digitali id
+                      ON id.id = script.fn_veste_di_riferimento(
+                                     au.id, 'OPERATORE'::config.ruolo_applicativo)
+                    LEFT JOIN anagrafiche.soggetti_ruoli sr
+                      ON sr.id = id.soggetto_ruolo_id
+                    LEFT JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = sr.id
+                    LEFT JOIN anagrafiche.soggetti s
+                      ON s.id = sr.soggetto_id
+                    LEFT JOIN config.unita_organizzative uo
+                      ON uo.id = ru.unita_organizzativa_id
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            COUNT(*) AS cnt,
+                            string_agg(
+                                s_ef.ragione_sociale_completa,
+                                ', '
+                                ORDER BY s_ef.ragione_sociale_completa
+                            ) AS descrizione
+                          FROM config.user_emittenti_fiscali uef
+                          JOIN anagrafiche.emittenti_fiscali ef
+                            ON ef.id = uef.emittente_fiscale_id
+                          LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                            ON sr_ef.id = ef.soggetto_ruolo_id
+                          LEFT JOIN anagrafiche.soggetti s_ef
+                            ON s_ef.id = sr_ef.soggetto_id
+                         WHERE uef.auth_user_id = au.id
+                    ) ef_agg ON true
+                    CROSS JOIN ctx
+                   WHERE au.id = p_auth_user_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_operatore_detail(integer) IS
+                  'Riga di dettaglio operatore + capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password. Rev 20260925-54 (R-9): UNA riga anche con piu'' vesti OPERATORE — quella attiva, altrimenti la spenta piu'' recente (data_insert, poi id) — e la colonna veste_attiva, lo stato di quella veste (NULL senza veste OPERATORE). ⭐ Rev 20260927-02 (brief-db-blocco-login-per-credenziale §16): i motivi sono CODICI con la chiave i18n, non frasi. invite_reason/invite_reason_key = reason/reason_key di fn_check_operatore_invitabile (codici e chiavi nel suo COMMENT). disable_reason = ULTIMO_SUPER_ADMIN, disable_reason_key = amministrazione.operatori.disabilita_reason.ultimo_super_admin. demote_reason = ULTIMO_SUPER_ADMIN, demote_reason_key = amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin. Tutti NULL quando l''azione e'' ammessa (e demote anche quando non si applica). Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la veste mostrata e'' script.fn_veste_di_riferimento(credenziale, OPERATORE), la regola che prima stava scritta qui; un operatore spento resta OPERATORE e compare per intero. Rev 20261007-27 (brief-db-veste-utilizzabile §10): can_set_valido_al / valido_al_reason / valido_al_reason_key, la data di fine del RAPPORTO (risorse_umane.valido_al, il campo Valido al del drawer). Stessa condizione di can_disable (fn_check_ultimo_super_admin_attivo: l''ultimo SUPER_ADMIN senza scadenza, la regola del guard sul rapporto): valido_al_reason = ULTIMO_SUPER_ADMIN, valido_al_reason_key = amministrazione.operatori.valido_al_reason.ultimo_super_admin; NULL quando ammessa. Un amministratore che ha gia'' una data di fine risponde true, anche per toglierla.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_operatore_detail(integer);
+
+              CREATE OR REPLACE FUNCTION script.fn_get_operatore_detail(
+                  p_auth_user_id INTEGER
+              )
+              -- Tipi espliciti sulle colonne di django.* (lo schema nasce dopo
+              -- Liquibase: %TYPE fallirebbe in CI), sui conteggi, sulle
+              -- capability e sulle date rese a text; %TYPE su tutto il resto.
+              RETURNS TABLE (
+                  auth_user_id              INTEGER,
+                  username                  VARCHAR(150),
+                  email                     VARCHAR(254),
+                  first_name                VARCHAR(150),
+                  last_name                 VARCHAR(150),
+                  soggetto_cognome          anagrafiche.soggetti.cognome%TYPE,
+                  soggetto_nome             anagrafiche.soggetti.nome%TYPE,
+                  soggetto_id               anagrafiche.soggetti.id%TYPE,
+                  ragione_sociale_completa  anagrafiche.soggetti.ragione_sociale_completa%TYPE,
+                  codice_fiscale            anagrafiche.soggetti.codice_fiscale%TYPE,
+                  is_super_admin            BOOLEAN,
+                  ruolo_applicativo         TEXT,
+                  is_active                 BOOLEAN,
+                  unita_organizzativa_id    config.unita_organizzative.id%TYPE,
+                  unita_organizzativa_nome  config.unita_organizzative.descrizione%TYPE,
+                  risorsa_umana_id          anagrafiche.risorse_umane.id%TYPE,
+                  attivo                    anagrafiche.risorse_umane.attivo%TYPE,
+                  valido_dal                TEXT,
+                  valido_al                 TEXT,
+                  override_aree_count       BIGINT,
+                  override_azioni_count     BIGINT,
+                  emittenti_count           BIGINT,
+                  emittenti_descrizione     TEXT,
+                  last_login                TIMESTAMPTZ,
+                  invito_inviato_at         anagrafiche.identita_digitali.invito_inviato_at%TYPE,
+                  deve_cambiare_password    config.credenziali.deve_cambiare_password%TYPE,
+                  can_invite                BOOLEAN,
+                  invite_reason             TEXT,
+                  can_disable               BOOLEAN,
+                  disable_reason            TEXT,
+                  can_demote_super_admin    BOOLEAN,
+                  demote_reason             TEXT,
+                  veste_attiva              anagrafiche.identita_digitali.attivo%TYPE,
+                  invite_reason_key         TEXT,
+                  disable_reason_key        TEXT,
+                  demote_reason_key         TEXT
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Update Chunk A Fase 7 (2026-04-29):
+                  --   Rimossa chiamata interna a script.fn_get_ruolo_sistema.
+                  --   Il campo ruolo_sistema (output text, contratto BE
+                  --   invariato) viene calcolato inline con CASE WHEN su
+                  --   fn_has_identita_attiva + fn_is_super_admin - stessa
+                  --   logica del wrapper legacy ma senza dispatch
+                  --   intermedio (un livello di chiamata in meno).
+                  --
+                  --   Drop output column rinviato a Chunk B post BE migrato.
+                  --
+                  -- Fase 1 cantiere emittente (2026-08-02):
+                  --   emittenti_descrizione aggrega la SOLA
+                  --   ragione_sociale_completa del soggetto. Il COALESCE su
+                  --   ef.descrizione e' caduto sia nel valore sia nell'ORDER BY
+                  --   dell'aggregazione: lasciarlo nell'ORDER BY avrebbe
+                  --   ordinato l'elenco per un campo non piu' mostrato.
+                  --
+                  -- Rev 20260925-54 (R-9 del piano BE/FE):
+                  --   UNA veste OPERATORE, non un JOIN: il modello ne ammette piu'
+                  --   d'una spenta (l'unique vale solo WHERE attivo), e il JOIN
+                  --   nudo restituiva una riga per veste. Si mostra quella attiva
+                  --   (al piu' una, per l'unique), altrimenti la spenta piu'
+                  --   recente. Con piu' vesti spente l'invito non e' offerto
+                  --   (fn_check_operatore_invitabile, rev -53).
+                  --   veste_attiva: lo stato di QUELLA veste (NULL se non ce n'e'
+                  --   nessuna). Ne' attivo (risorsa umana) ne' is_active
+                  --   (credenziale, derivato da tutte le vesti) lo dicevano.
+                  --   ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la
+                  --   regola «l'accesa, altrimenti la spenta piu' recente» non si
+                  --   scrive piu' qui: e' script.fn_veste_di_riferimento, che legge
+                  --   anche fn_get_user_profile (regola del 2). Dopo R-DB-1 un
+                  --   operatore spento dall'amministratore resta OPERATORE e compare
+                  --   qui per intero (prima, DISABILITATO, usciva con i campi vuoti).
+                  --
+                  -- Rev 20260927-01/-02 (brief §16):
+                  --   I motivi sono CODICI con la loro chiave i18n, non frasi.
+                  --   invite_reason/_key li inoltra dalla check (sede unica);
+                  --   disable e demote: ULTIMO_SUPER_ADMIN, una chiave per verbo.
+                  -- =========================================================
+                  RETURN QUERY
+                  WITH ctx AS (
+                      SELECT
+                          script.fn_check_operatore_invitabile(p_auth_user_id) AS inv_jsonb,
+                          script.fn_is_super_admin(p_auth_user_id) AS is_sa,
+                          script.fn_check_ultimo_super_admin_attivo(p_auth_user_id) AS is_last_sa
+                  )
+                  SELECT
+                      au.id                                                  AS auth_user_id,
+                      au.username,
+                      au.email,
+                      au.first_name,
+                      au.last_name,
+                      COALESCE(s.cognome, au.last_name)                      AS soggetto_cognome,
+                      COALESCE(s.nome,    au.first_name)                     AS soggetto_nome,
+                      s.id                                                   AS soggetto_id,
+                      s.ragione_sociale_completa,
+                      s.codice_fiscale,
+                      ctx.is_sa                                              AS is_super_admin,
+                      id.ruolo_applicativo::text                             AS ruolo_applicativo,
+                      au.is_active,
+                      ru.unita_organizzativa_id,
+                      uo.descrizione                                         AS unita_organizzativa_nome,
+                      ru.id                                                  AS risorsa_umana_id,
+                      ru.attivo,
+                      ru.valido_dal::text                                    AS valido_dal,
+                      ru.valido_al::text                                     AS valido_al,
+                      COALESCE((SELECT COUNT(*) FROM config.user_override_aree uoa
+                                 WHERE uoa.auth_user_id = au.id), 0)         AS override_aree_count,
+                      COALESCE((SELECT COUNT(*) FROM config.user_override_azioni uoz
+                                 WHERE uoz.auth_user_id = au.id), 0)         AS override_azioni_count,
+                      COALESCE(ef_agg.cnt, 0)                                AS emittenti_count,
+                      ef_agg.descrizione                                     AS emittenti_descrizione,
+                      au.last_login,
+                      id.invito_inviato_at,
+                      -- rev 2026-09-25 (D-7): il flag e' della CREDENZIALE.
+                      script.fn_get_deve_cambiare_password(au.id),
+                      (ctx.inv_jsonb ->> 'invitabile')::boolean              AS can_invite,
+                      ctx.inv_jsonb ->> 'reason'                             AS invite_reason,
+                      NOT ctx.is_last_sa                                     AS can_disable,
+                      CASE WHEN ctx.is_last_sa
+                           THEN 'ULTIMO_SUPER_ADMIN'
+                           ELSE NULL
+                      END                                                    AS disable_reason,
+                      CASE WHEN ctx.is_sa
+                           THEN NOT ctx.is_last_sa
+                           ELSE NULL
+                      END                                                    AS can_demote_super_admin,
+                      CASE
+                           WHEN NOT ctx.is_sa  THEN NULL
+                           WHEN ctx.is_last_sa THEN 'ULTIMO_SUPER_ADMIN'
+                           ELSE NULL
+                      END                                                    AS demote_reason,
+                      id.attivo                                              AS veste_attiva,
+                      ctx.inv_jsonb ->> 'reason_key'                         AS invite_reason_key,
+                      CASE WHEN ctx.is_last_sa
+                           THEN 'amministrazione.operatori.disabilita_reason.ultimo_super_admin'
+                           ELSE NULL
+                      END                                                    AS disable_reason_key,
+                      CASE
+                           WHEN NOT ctx.is_sa  THEN NULL
+                           WHEN ctx.is_last_sa THEN 'amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin'
+                           ELSE NULL
+                      END                                                    AS demote_reason_key
+                    FROM django.auth_user au
+                    LEFT JOIN anagrafiche.identita_digitali id
+                      ON id.id = script.fn_veste_di_riferimento(
+                                     au.id, 'OPERATORE'::config.ruolo_applicativo)
+                    LEFT JOIN anagrafiche.soggetti_ruoli sr
+                      ON sr.id = id.soggetto_ruolo_id
+                    LEFT JOIN anagrafiche.risorse_umane ru
+                      ON ru.soggetto_ruolo_id = sr.id
+                    LEFT JOIN anagrafiche.soggetti s
+                      ON s.id = sr.soggetto_id
+                    LEFT JOIN config.unita_organizzative uo
+                      ON uo.id = ru.unita_organizzativa_id
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            COUNT(*) AS cnt,
+                            string_agg(
+                                s_ef.ragione_sociale_completa,
+                                ', '
+                                ORDER BY s_ef.ragione_sociale_completa
+                            ) AS descrizione
+                          FROM config.user_emittenti_fiscali uef
+                          JOIN anagrafiche.emittenti_fiscali ef
+                            ON ef.id = uef.emittente_fiscale_id
+                          LEFT JOIN anagrafiche.soggetti_ruoli sr_ef
+                            ON sr_ef.id = ef.soggetto_ruolo_id
+                          LEFT JOIN anagrafiche.soggetti s_ef
+                            ON s_ef.id = sr_ef.soggetto_id
+                         WHERE uef.auth_user_id = au.id
+                    ) ef_agg ON true
+                    CROSS JOIN ctx
+                   WHERE au.id = p_auth_user_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_operatore_detail(integer) IS
+                  'Riga di dettaglio operatore + capability per il drawer admin (Fase 1 P1 2026-04-29; Fase 7 cleanup 2026-04-29: rimossa call interna fn_get_ruolo_sistema E rimossa colonna ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''). Migra in DB la query inline da Python e calcola capability via funzioni esistenti come single source of truth: fn_check_operatore_invitabile, fn_is_super_admin, fn_check_ultimo_super_admin_attivo. emittenti_descrizione aggrega la ragione_sociale_completa dei soggetti emittenti (Fase 1 cantiere emittente 2026-08-02: caduto il fallback su emittenti_fiscali.descrizione, valore e ORDER BY). LANGUAGE plpgsql STABLE. La colonna deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password. Rev 20260925-54 (R-9): UNA riga anche con piu'' vesti OPERATORE — quella attiva, altrimenti la spenta piu'' recente (data_insert, poi id) — e la colonna veste_attiva, lo stato di quella veste (NULL senza veste OPERATORE). ⭐ Rev 20260927-02 (brief-db-blocco-login-per-credenziale §16): i motivi sono CODICI con la chiave i18n, non frasi. invite_reason/invite_reason_key = reason/reason_key di fn_check_operatore_invitabile (codici e chiavi nel suo COMMENT). disable_reason = ULTIMO_SUPER_ADMIN, disable_reason_key = amministrazione.operatori.disabilita_reason.ultimo_super_admin. demote_reason = ULTIMO_SUPER_ADMIN, demote_reason_key = amministrazione.operatori.rimuovi_super_admin_reason.ultimo_super_admin. Tutti NULL quando l''azione e'' ammessa (e demote anche quando non si applica). Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la veste mostrata e'' script.fn_veste_di_riferimento(credenziale, OPERATORE), la regola che prima stava scritta qui; un operatore spento resta OPERATORE e compare per intero.';

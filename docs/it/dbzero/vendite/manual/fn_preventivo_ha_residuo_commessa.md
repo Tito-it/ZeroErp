@@ -9,8 +9,8 @@
 ---
 ### 🎯 Scopo Principale
 `TRUE` se il **push commessa avrebbe effetto** sul preventivo: esistono righe
-eleggibili (vista predicato unico) **e** la testata e' completa. E' la meta'
-"servizi" della coppia simmetrica di capability del modello split-per-natura.
+eleggibili (vista predicato unico). E' la meta' "servizi" della coppia
+simmetrica di capability del modello split-per-natura.
 
 ---
 
@@ -31,21 +31,22 @@ STABLE
 
 1. Guard standard su `p_preventivo_id` (NULL o <= 0 → `E_PARAMETRO_INVALIDO`).
 2. `EXISTS` sulla vista `vw_preventivi_righe_smistabili_commessa` (righe
-   attive, natura COMMESSA o NULL, non gia' EMESSE) **AND** requisiti di
-   testata: `billing_account_id IS NOT NULL AND utility_id IS NOT NULL`.
+   attive, natura COMMESSA o NULL, non ancora instradate in commessa).
 
-**Perche' la testata** (asimmetria voluta rispetto alla gemella ordine): il
-predicato del push commessa (`fn_list_preventivi_da_pushare`) richiede BA e
-utility; senza questo check la capability direbbe TRUE su preventivi che il
-push non listerebbe mai — capability e push divergenti.
+**Nessun requisito di testata.** `billing_account_id` e `utility_id` del
+preventivo sono `NOT NULL`: una testata «incompleta» non esiste, e capability e
+push (`fn_list_preventivi_da_pushare`) leggono lo stesso predicato di riga
+senza altro filtro. Fino al 2026-10-10 la funzione li ricontrollava, residuo di
+quando il preventivo poteva nascere senza cliente; da allora e' simmetrica alla
+gemella ordine (brief `brief-db-istanza-nasce-col-ba-residui`, R-2).
 
 ---
 
 ### Consumatori
 
 * `script.fn_available_actions_preventivo` — capability `can_push_commessa`
-  (`ACCETTATO AND fn_preventivo_ha_residuo_commessa`); il caso "righe ok ma
-  testata incompleta" produce la reason `PREVENTIVO_SENZA_BILLING_ACCOUNT`.
+  (`ACCETTATO AND fn_preventivo_ha_residuo_commessa`); se e' `FALSE` la reason
+  e' `PREVENTIVO_NESSUNA_RIGA_COMMESSA`.
 * Gate **EVASO** lato BE (`preventivi_service.py`): "tutte le righe smistate"
   = nessun residuo su entrambi i rami (questa fn + la gemella ordine).
 

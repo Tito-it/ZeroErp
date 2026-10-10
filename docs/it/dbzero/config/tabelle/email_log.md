@@ -11,19 +11,19 @@
 | id | bigint | NO |  |
 | email_account_id | integer | YES |  |
 | email_template_id | integer | YES |  |
-| destinatario | character varying | NO |  |
-| destinatari_cc | ARRAY | YES |  |
+| destinatario | character varying(255) | NO |  |
+| destinatari_cc | text[] | YES |  |
 | oggetto | text | NO |  |
 | corpo_inviato_html | text | YES |  |
 | corpo_inviato_testo | text | YES |  |
-| stato | character varying | NO | 'PENDING'::character varying |
+| stato | character varying(20) | NO | 'PENDING'::character varying |
 | errore | text | YES |  |
 | tentativi | integer | NO | 0 |
 | max_tentativi | integer | NO | 3 |
 | prossimo_tentativo | timestamp with time zone | YES |  |
 | inviato_at | timestamp with time zone | YES |  |
 | contesto_json | jsonb | NO | '{}'::jsonb |
-| ambito | character varying | NO | 'SISTEMA'::character varying |
+| ambito | character varying(20) | NO | 'SISTEMA'::character varying |
 | unita_organizzativa_id | integer | YES |  |
 | pratica_id | bigint | YES |  |
 | auth_user_id | integer | YES |  |

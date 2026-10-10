@@ -21,7 +21,7 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { DATE_FORMAT, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, oggiAziendale } from '../../core/utils/date'
 
 const { t } = useI18n()
 const { loading, campiErrati } = useApiHandler()
@@ -36,7 +36,7 @@ const emit = defineEmits(['update:visible'])
 const form = ref({
   articolo_obj: null,
   uom_id: null,
-  data_riferimento: new Date(),
+  data_riferimento: oggiAziendale(),
   ba_obj: null,
   utility_id: null,
   classe_utenza_id: null,
@@ -194,6 +194,7 @@ function close() {
 </script>
 
 <template>
+  <!-- conferma-uscita: nessuna — strumento di prova del prezzo: i campi sono parametri di interrogazione, non si salva niente (D-14) -->
   <AppDialog :visible="visible" @update:visible="v => emit('update:visible', v)"
     :header="t('vendite.listini.test_prezzo')" width="lg" close-only @cancel="close">
 

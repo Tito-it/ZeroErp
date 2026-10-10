@@ -26,22 +26,20 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
-import Drawer from 'primevue/drawer'
 import InputNumber from 'primevue/inputnumber'
 import Message from 'primevue/message'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 
-import AppDialog from '../../core/components/AppDialog.vue'
+import MotivoDialog from '../../core/components/MotivoDialog.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import FatturaLookup from '../../vendite/components/FatturaLookup.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
@@ -64,6 +62,7 @@ import {
   STATO_SISTEMAZIONE_CONFERMATA,
 } from '../vocabolari'
 import ConfermaSistemazioneDialog from './ConfermaSistemazioneDialog.vue'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -74,7 +73,6 @@ const emit = defineEmits(['update:visible', 'cambiata'])
 
 const { t } = useI18n()
 const { execute, loading, campiErrati } = useApiHandler()
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const isReadonly = useInjectReadonly()
 
 // ⭐ La lista degli atti vive in uno STORE dal 2026-09-02 (decisione di Tid):
@@ -94,7 +92,6 @@ const confermaVisible = ref(false)
 const attoDaConfermare = ref(null)
 const annullaVisible = ref(false)
 const attoDaAnnullare = ref(null)
-const motivoAnnullo = ref('')
 
 function defaultForm() {
   return { destinazione: null, importo: null, motivo: '' }
@@ -124,6 +121,18 @@ const canSave = computed(
     form.value.importo != null &&
     (!serveDestinatario.value || fatturaDestinazione.value?.id != null),
 )
+
+// ⭐ La decisione in compilazione e' lavoro dell'operatore: uscire dal drawer
+//    (X, ESC, clic fuori, Chiudi) con il form modificato chiede (2026-10-03).
+//    Il documento di destinazione si fotografa per id: il lookup lo riemette
+//    come oggetto nuovo. ⚠️ Dichiarata PRIMA dei watch `immediate` che la
+//    fissano.
+const decisione = computed(() => ({
+  ...form.value,
+  fattura_destinazione_id: fatturaDestinazione.value?.id ?? null,
+}))
+const { fissa, modificato, chiudiConConferma } =
+  useDrawerFormPreserve(decisione, { visibile: () => props.visible })
 
 // ⛔ Cambiando destinazione il documento di destinazione si azzera: su RIMBORSO
 //    e' VIETATO (il denaro esce, non c'e' un secondo documento) e mandarlo
@@ -168,6 +177,7 @@ watch(() => [props.visible, fatturaId.value], ([vis]) => {
     ? Number(props.eccedenza.eccedenza)
     : null
   fatturaDestinazione.value = null
+  fissa()
 }, { immediate: true })
 
 async function onRegistra() {
@@ -187,6 +197,7 @@ async function onRegistra() {
   if (esito === null) return
   form.value = defaultForm()
   fatturaDestinazione.value = null
+  fissa()
   reloadAll()
   // ⚠️ Si avvisa la lista anche se la riga NON sparira': i contatori delle
   //    bozze cambiano, e un elenco fermo direbbe «nessuno ci sta lavorando».
@@ -200,16 +211,15 @@ function apriConferma(atto) {
 
 function apriAnnullo(atto) {
   attoDaAnnullare.value = atto
-  motivoAnnullo.value = ''
   annullaVisible.value = true
 }
 
-async function onAnnulla() {
+async function onAnnulla(motivo) {
   const payload = {}
   // ⚠️ Il motivo si manda solo se scritto: il database sa se l'atto ne aveva
   //    gia' uno, e in quel caso il vuoto lascia quello che c'era. Ripetere qui
   //    l'obbligo sarebbe una seconda sede di una regola che il guard tiene.
-  if (motivoAnnullo.value.trim()) payload.motivo = motivoAnnullo.value.trim()
+  if (motivo) payload.motivo = motivo
   const esito = await execute(
     () => annullaSistemazione(attoDaAnnullare.value.id, payload),
     { successMessage: t('pagamenti.sistemazioni.annullata') },
@@ -298,243 +308,243 @@ function buildRowActions(atto) {
     },
   ]
 }
+
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- Footer «Chiudi» dal 2026-10-03 (AppDrawer): prima si usciva solo dalla
+       X. La sola lettura nasconde le azioni: il corpo resta cliccabile. -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
+    :title="t('pagamenti.sistemazioni.titolo')"
+    :icon="NAV_ICONS.ECCEDENZE"
+    :width="DRAWER_WIDTH.WIDE"
+    :proteggi-corpo="false"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    footer="chiudi"
     @update:visible="(v) => emit('update:visible', v)"
-    @after-show="onAfterShow"
   >
-    <template #header>
-      <DrawerTitle
-        :title="t('pagamenti.sistemazioni.titolo')"
-        :icon="NAV_ICONS.ECCEDENZE"
-      />
-    </template>
+    <template v-if="eccedenza">
+      <DrawerEntityHeader>
+        <Tag :value="eccedenza.fattura_numero || t('fattura_lookup.senza_numero')"
+          severity="secondary" />
+        <span class="app-drawer-header-muted">
+          {{ displayDate(eccedenza.fattura_data) }}
+        </span>
+        <span>{{ eccedenza.cliente_ragione_sociale || '—' }}</span>
 
-    <div class="app-drawer-content">
-      <template v-if="contentReady && eccedenza">
-        <DrawerEntityHeader>
-          <Tag :value="eccedenza.fattura_numero || t('fattura_lookup.senza_numero')"
-            severity="secondary" />
-          <span class="app-drawer-header-muted">
-            {{ displayDate(eccedenza.fattura_data) }}
-          </span>
-          <span>{{ eccedenza.cliente_ragione_sociale || '—' }}</span>
-
-          <template #status>
-            <!-- ⛔ IL VERSO PRIMA DI TUTTO: sbagliarlo significa rimborsare cio'
-                 che si deve incassare. -->
-            <Tag
-              v-if="eccedenza.chi_e_in_credito"
-              :value="etichettaCredito(eccedenza.chi_e_in_credito)"
-              :severity="severityCredito(eccedenza.chi_e_in_credito)"
-            />
-          </template>
-        </DrawerEntityHeader>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('pagamenti.eccedenze.col_eccedenza') }}</label>
-            <span>{{ formatCurrency(eccedenza.eccedenza) }}</span>
-          </div>
-          <div class="form-field">
-            <label>{{ t('pagamenti.eccedenze.col_totale_a_pagare') }}</label>
-            <span>{{ formatCurrency(eccedenza.totale_a_pagare) }}</span>
-          </div>
-          <!-- ⭐ Il totale del CLIENTE accanto a quello del documento: e' il
-               numero su cui la compensazione ha senso, e senza non si vede che
-               lo stesso cliente ha altri documenti scoperti. -->
-          <div class="form-field">
-            <label>{{ t('pagamenti.eccedenze.col_eccedenza_cliente') }}</label>
-            <span>{{ formatCurrency(eccedenza.eccedenza_cliente) }}</span>
-          </div>
-          <div class="form-field">
-            <label>{{ t('pagamenti.eccedenze.col_documenti_cliente') }}</label>
-            <span>{{ eccedenza.documenti_cliente ?? 0 }}</span>
-          </div>
-        </div>
-
-        <!-- ══ Che cosa e' stato deciso finora ══ -->
-        <div class="app-drawer-section">
-          <h4>{{ t('pagamenti.sistemazioni.sezione_atti') }}</h4>
-        </div>
-
-        <!-- ⛔ IL TERZO CASO HA LA SUA FRASE. «Non sono riuscito a leggerli»
-             non e' «non ce ne sono»: il secondo e' un'affermazione su cui
-             qualcuno decide di registrarne uno, il primo dice solo che non si
-             sa. Il BB della lista non puo' distinguerli — a lista vuota
-             mostrerebbe lo stesso empty-state — quindi la distinzione vive qui,
-             sopra la lista, e lo stato lo tiene lo store. -->
-        <Message
-          v-if="store.erroreCaricamento"
-          severity="warn"
-          :closable="false"
-          size="small"
-        >
-          {{ t('pagamenti.sistemazioni.atti_non_letti') }}
-        </Message>
-
-        <!-- ⭐ PAGINATA dal 2026-09-02 (decisione di Tid), e col pacchetto
-             standard: pagine, «Personalizza colonne», export. La ragione per
-             cui non lo era — «gli atti di UNA fattura sono pochi» — era una
-             previsione sui dati, e le previsioni sui dati non decidono la forma
-             di una lista.
-             ⚠️ `@row-click` non e' agganciato: la riga non apre niente, le
-             azioni stanno nel kebab. -->
-        <DrawerTabLista
-          ref="listaRef"
-          codice="pagamenti.sistemazioni_fattura"
-          :store="store"
-          :rows="store.items"
-          :total="store.totalRecords"
-          :loading="store.loading"
-          :paginator-options="paginatorProps"
-          :page="tablePage"
-          :sort-field="paginatorProps.sortField"
-          :sort-order="paginatorProps.sortOrder"
-          :page-actions="pageActions"
-          :dirty="dirty"
-          :perimetro-bloccato="perimetroBloccato"
-          @page="onPage"
-          @sort="onSort"
-          @config-loaded="onConfigLoaded"
-        >
-          <!-- La frase del dominio al posto dell'empty-state generico: «su
-               questo documento non ha ancora deciso nessuno» e' cio' che
-               l'operatore deve sapere per decidere lui.
-               ⛔ MA SOLO SE LA LETTURA E' RIUSCITA. Con `erroreCaricamento` la
-               tabella e' vuota per un'altra ragione, e affermare «non ce ne
-               sono» sotto un avviso che dice «non sono riuscito a leggerli»
-               sarebbe la contraddizione che quell'avviso esiste per evitare:
-               due frasi, una sola vera, e nessuna indicazione su quale. -->
-          <template #empty>
-            <span v-if="!store.erroreCaricamento">
-              {{ t('pagamenti.sistemazioni.nessun_atto') }}
-            </span>
-          </template>
-          <!-- FE-1: `destinazione` e `stato` sono codici grezzi
-               (`RIPORTO`/`BOZZA`…), non hanno un display field in JOIN: il
-               vocabolario vive in `pagamenti/vocabolari.js`. Senza questi due
-               slot la cella mostrerebbe il codice. -->
-          <template #cell-destinazione="{ data }">
-            {{ etichettaDestinazione(data.destinazione) }}
-          </template>
-          <template #cell-stato="{ data }">
-            <!-- ⚠️ Tradotto e fail-visible: uno stato nuovo si legge come
-                 CODICE, non come una parola inglese lasciata a video. -->
-            <Tag
-              :value="etichettaStato(data.stato)"
-              :severity="statoSistemazioneSeverity(data.stato)"
-            />
-          </template>
-          <template #cell-motivo="{ data }">{{ data.motivo || '—' }}</template>
-          <template #cell-data_esecuzione="{ data }">
-            <span v-if="data.data_esecuzione">
-              {{ displayTimestamp(data.data_esecuzione) }}
-            </span>
-            <span v-else class="app-text-muted">—</span>
-          </template>
-          <!-- ⚠️ Niente componente quando non c'e' nessuna azione: in variante
-               compatta il kebab si disegna comunque, e aprirebbe un menu vuoto
-               su un atto terminale. -->
-          <template #actions="{ data }">
-            <RowActionsMenu
-              v-if="buildRowActions(data).length"
-              :row="data"
-              :actions="buildRowActions(data)"
-            />
-            <span v-else class="app-text-muted">—</span>
-          </template>
-        </DrawerTabLista>
-
-        <!-- ══ La decisione ══ -->
-        <template v-if="!isReadonly">
-          <div class="app-drawer-section">
-            <h4>{{ t('pagamenti.sistemazioni.sezione_decisione') }}</h4>
-          </div>
-
-          <div class="form-grid">
-            <div class="form-grid-2col">
-              <div class="form-field">
-                <label>{{ t('pagamenti.sistemazioni.col_destinazione') }}</label>
-                <Select
-                  v-model="form.destinazione"
-                  :options="opzioniDestinazione"
-                  option-label="label"
-                  option-value="value"
-                  :placeholder="t('pagamenti.sistemazioni.campo_destinazione_placeholder')"
-                  :invalid="campiErrati.includes('destinazione')"
-                />
-              </div>
-              <div class="form-field">
-                <label>{{ t('pagamenti.sistemazioni.col_importo') }}</label>
-                <InputNumber
-                  v-model="form.importo"
-                  mode="currency"
-                  currency="EUR"
-                  locale="it-IT"
-                  :invalid="campiErrati.includes('importo')"
-                />
-                <!-- ⭐ Si puo' sistemare una PARTE: gli atti su un documento
-                     sono piu' di uno per natura. -->
-                <small class="app-text-muted">
-                  {{ t('pagamenti.sistemazioni.importo_aiuto') }}
-                </small>
-              </div>
-            </div>
-
-            <!-- ⛔ Solo dove il denaro va da qualche parte. Sul rimborso esce
-                 dal sistema, e un secondo documento non esiste. -->
-            <div v-if="serveDestinatario" class="form-field">
-              <label>{{ t('pagamenti.sistemazioni.campo_destinatario') }}</label>
-              <FatturaLookup
-                v-model="fatturaDestinazione"
-                :params="eccedenza.billing_account_id != null
-                  ? { billing_account_id: eccedenza.billing_account_id }
-                  : {}"
-                :invalid="campiErrati.includes('fattura_destinazione_id')"
-              />
-              <!-- ⚠️ La frase si mostra SOLO se il filtro c'e' davvero: dire
-                   «solo documenti dello stesso cliente» quando la tendina non e'
-                   ristretta sarebbe un'affermazione falsa proprio sul campo in
-                   cui l'errore costa di piu'. -->
-              <small v-if="eccedenza.billing_account_id != null" class="app-text-muted">
-                {{ t('pagamenti.sistemazioni.destinatario_aiuto') }}
-              </small>
-            </div>
-
-            <div class="form-field">
-              <label>{{ t('pagamenti.sistemazioni.col_motivo') }}</label>
-              <Textarea v-model="form.motivo" rows="2" auto-resize />
-              <small class="app-text-muted">
-                {{ t('pagamenti.sistemazioni.motivo_aiuto') }}
-              </small>
-            </div>
-
-            <div class="app-form-footer">
-              <Button
-                size="small"
-                :label="t('pagamenti.sistemazioni.registra_azione')"
-                :icon="MANAGE_ICONS.REGISTRA"
-                :loading="loading"
-                :disabled="!canSave"
-                @click="onRegistra"
-              />
-            </div>
-          </div>
+        <template #status>
+          <!-- ⛔ IL VERSO PRIMA DI TUTTO: sbagliarlo significa rimborsare cio'
+               che si deve incassare. -->
+          <Tag
+            v-if="eccedenza.chi_e_in_credito"
+            :value="etichettaCredito(eccedenza.chi_e_in_credito)"
+            :severity="severityCredito(eccedenza.chi_e_in_credito)"
+          />
         </template>
+      </DrawerEntityHeader>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('pagamenti.eccedenze.col_eccedenza') }}</label>
+          <span>{{ formatCurrency(eccedenza.eccedenza) }}</span>
+        </div>
+        <div class="form-field">
+          <label>{{ t('pagamenti.eccedenze.col_totale_a_pagare') }}</label>
+          <span>{{ formatCurrency(eccedenza.totale_a_pagare) }}</span>
+        </div>
+        <!-- ⭐ Il totale del CLIENTE accanto a quello del documento: e' il
+             numero su cui la compensazione ha senso, e senza non si vede che
+             lo stesso cliente ha altri documenti scoperti. -->
+        <div class="form-field">
+          <label>{{ t('pagamenti.eccedenze.col_eccedenza_cliente') }}</label>
+          <span>{{ formatCurrency(eccedenza.eccedenza_cliente) }}</span>
+        </div>
+        <div class="form-field">
+          <label>{{ t('pagamenti.eccedenze.col_documenti_cliente') }}</label>
+          <span>{{ eccedenza.documenti_cliente ?? 0 }}</span>
+        </div>
+      </div>
+
+      <!-- ══ Che cosa e' stato deciso finora ══ -->
+      <div class="app-drawer-section">
+        <h4>{{ t('pagamenti.sistemazioni.sezione_atti') }}</h4>
+      </div>
+
+      <!-- ⛔ IL TERZO CASO HA LA SUA FRASE. «Non sono riuscito a leggerli»
+           non e' «non ce ne sono»: il secondo e' un'affermazione su cui
+           qualcuno decide di registrarne uno, il primo dice solo che non si
+           sa. Il BB della lista non puo' distinguerli — a lista vuota
+           mostrerebbe lo stesso empty-state — quindi la distinzione vive qui,
+           sopra la lista, e lo stato lo tiene lo store. -->
+      <Message
+        v-if="store.erroreCaricamento"
+        severity="warn"
+        :closable="false"
+        size="small"
+      >
+        {{ t('pagamenti.sistemazioni.atti_non_letti') }}
+      </Message>
+
+      <!-- ⭐ PAGINATA dal 2026-09-02 (decisione di Tid), e col pacchetto
+           standard: pagine, «Personalizza colonne», export. La ragione per
+           cui non lo era — «gli atti di UNA fattura sono pochi» — era una
+           previsione sui dati, e le previsioni sui dati non decidono la forma
+           di una lista.
+           ⚠️ `@row-click` non e' agganciato: la riga non apre niente, le
+           azioni stanno nel kebab. -->
+      <DrawerTabLista
+        ref="listaRef"
+        codice="pagamenti.sistemazioni_fattura"
+        :store="store"
+        :rows="store.items"
+        :total="store.totalRecords"
+        :loading="store.loading"
+        :paginator-options="paginatorProps"
+        :page="tablePage"
+        :sort-field="paginatorProps.sortField"
+        :sort-order="paginatorProps.sortOrder"
+        :page-actions="pageActions"
+        :dirty="dirty"
+        :perimetro-bloccato="perimetroBloccato"
+        @page="onPage"
+        @sort="onSort"
+        @config-loaded="onConfigLoaded"
+      >
+        <!-- La frase del dominio al posto dell'empty-state generico: «su
+             questo documento non ha ancora deciso nessuno» e' cio' che
+             l'operatore deve sapere per decidere lui.
+             ⛔ MA SOLO SE LA LETTURA E' RIUSCITA. Con `erroreCaricamento` la
+             tabella e' vuota per un'altra ragione, e affermare «non ce ne
+             sono» sotto un avviso che dice «non sono riuscito a leggerli»
+             sarebbe la contraddizione che quell'avviso esiste per evitare:
+             due frasi, una sola vera, e nessuna indicazione su quale. -->
+        <template #empty>
+          <span v-if="!store.erroreCaricamento">
+            {{ t('pagamenti.sistemazioni.nessun_atto') }}
+          </span>
+        </template>
+        <!-- FE-1: `destinazione` e `stato` sono codici grezzi
+             (`RIPORTO`/`BOZZA`…), non hanno un display field in JOIN: il
+             vocabolario vive in `pagamenti/vocabolari.js`. Senza questi due
+             slot la cella mostrerebbe il codice. -->
+        <template #cell-destinazione="{ data }">
+          {{ etichettaDestinazione(data.destinazione) }}
+        </template>
+        <template #cell-stato="{ data }">
+          <!-- ⚠️ Tradotto e fail-visible: uno stato nuovo si legge come
+               CODICE, non come una parola inglese lasciata a video. -->
+          <Tag
+            :value="etichettaStato(data.stato)"
+            :severity="statoSistemazioneSeverity(data.stato)"
+          />
+        </template>
+        <template #cell-motivo="{ data }">{{ data.motivo || '—' }}</template>
+        <template #cell-data_esecuzione="{ data }">
+          <span v-if="data.data_esecuzione">
+            {{ displayTimestamp(data.data_esecuzione) }}
+          </span>
+          <span v-else class="app-text-muted">—</span>
+        </template>
+        <!-- ⚠️ Niente componente quando non c'e' nessuna azione: in variante
+             compatta il kebab si disegna comunque, e aprirebbe un menu vuoto
+             su un atto terminale. -->
+        <template #actions="{ data }">
+          <RowActionsMenu
+            v-if="buildRowActions(data).length"
+            :row="data"
+            :actions="buildRowActions(data)"
+          />
+          <span v-else class="app-text-muted">—</span>
+        </template>
+      </DrawerTabLista>
+
+      <!-- ══ La decisione ══ -->
+      <template v-if="!isReadonly">
+        <div class="app-drawer-section">
+          <h4>{{ t('pagamenti.sistemazioni.sezione_decisione') }}</h4>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-grid-2col">
+            <div class="form-field">
+              <label>{{ t('pagamenti.sistemazioni.col_destinazione') }}</label>
+              <Select
+                v-model="form.destinazione"
+                :options="opzioniDestinazione"
+                option-label="label"
+                option-value="value"
+                :placeholder="t('pagamenti.sistemazioni.campo_destinazione_placeholder')"
+                :invalid="campiErrati.includes('destinazione')"
+              />
+            </div>
+            <div class="form-field">
+              <label>{{ t('pagamenti.sistemazioni.col_importo') }}</label>
+              <InputNumber
+                v-model="form.importo"
+                mode="currency"
+                currency="EUR"
+                locale="it-IT"
+                :invalid="campiErrati.includes('importo')"
+              />
+              <!-- ⭐ Si puo' sistemare una PARTE: gli atti su un documento
+                   sono piu' di uno per natura. -->
+              <small class="app-text-muted">
+                {{ t('pagamenti.sistemazioni.importo_aiuto') }}
+              </small>
+            </div>
+          </div>
+
+          <!-- ⛔ Solo dove il denaro va da qualche parte. Sul rimborso esce
+               dal sistema, e un secondo documento non esiste. -->
+          <div v-if="serveDestinatario" class="form-field">
+            <label>{{ t('pagamenti.sistemazioni.campo_destinatario') }}</label>
+            <FatturaLookup
+              v-model="fatturaDestinazione"
+              :params="eccedenza.billing_account_id != null
+                ? { billing_account_id: eccedenza.billing_account_id }
+                : {}"
+              :invalid="campiErrati.includes('fattura_destinazione_id')"
+            />
+            <!-- ⚠️ La frase si mostra SOLO se il filtro c'e' davvero: dire
+                 «solo documenti dello stesso cliente» quando la tendina non e'
+                 ristretta sarebbe un'affermazione falsa proprio sul campo in
+                 cui l'errore costa di piu'. -->
+            <small v-if="eccedenza.billing_account_id != null" class="app-text-muted">
+              {{ t('pagamenti.sistemazioni.destinatario_aiuto') }}
+            </small>
+          </div>
+
+          <div class="form-field">
+            <label>{{ t('pagamenti.sistemazioni.col_motivo') }}</label>
+            <Textarea v-model="form.motivo" rows="2" auto-resize />
+            <small class="app-text-muted">
+              {{ t('pagamenti.sistemazioni.motivo_aiuto') }}
+            </small>
+          </div>
+
+          <div class="app-form-footer">
+            <Button
+              size="small"
+              :label="t('pagamenti.sistemazioni.registra_azione')"
+              :icon="MANAGE_ICONS.REGISTRA"
+              :loading="loading"
+              :disabled="!canSave"
+              @click="onRegistra"
+            />
+          </div>
+        </div>
       </template>
-    </div>
+    </template>
 
     <ExportDialog
       v-model:visible="exportDialogVisible"
       :loading="exportLoading"
       @confirm="onExportConfirm" />
-  </Drawer>
+  </AppDrawer>
 
   <ConfermaSistemazioneDialog
     v-model:visible="confermaVisible"
@@ -544,23 +554,14 @@ function buildRowActions(atto) {
 
   <!-- L'annullo chiede il PERCHE': una decisione scartata senza ragione non si
        ricostruisce, e resta a registro comunque. -->
-  <AppDialog
-    :visible="annullaVisible"
+  <MotivoDialog
+    v-model:visible="annullaVisible"
     :header="t('pagamenti.sistemazioni.annulla_titolo')"
-    width="sm"
+    :label="t('pagamenti.sistemazioni.col_motivo')"
+    :aiuto="t('pagamenti.sistemazioni.annullo_aiuto')"
     :loading="loading"
     :save-label="t('pagamenti.sistemazioni.annulla_azione')"
     save-severity="danger"
-    @update:visible="(v) => (annullaVisible = v)"
-    @save="onAnnulla"
-    @cancel="annullaVisible = false"
-  >
-    <div class="form-grid">
-      <div class="form-field">
-        <label>{{ t('pagamenti.sistemazioni.col_motivo') }}</label>
-        <Textarea v-model="motivoAnnullo" rows="3" auto-resize />
-        <small class="app-text-muted">{{ t('pagamenti.sistemazioni.annullo_aiuto') }}</small>
-      </div>
-    </div>
-  </AppDialog>
+    @conferma="onAnnulla"
+  />
 </template>

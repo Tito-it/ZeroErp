@@ -33,7 +33,7 @@ BEGIN
             SELECT 1 FROM catalogo.articoli_componenti
              WHERE prodotto_id = NEW.id
                AND attivo IS TRUE
-               AND validita @> CURRENT_DATE
+               AND validita @> (SELECT script.fn_data_operativa())
         ) INTO v_ha_figli_attivi;
 
         IF v_ha_figli_attivi THEN
@@ -60,7 +60,7 @@ BEGIN
             SELECT 1 FROM catalogo.articoli_componenti
              WHERE componente_id = NEW.id
                AND attivo IS TRUE
-               AND validita @> CURRENT_DATE
+               AND validita @> (SELECT script.fn_data_operativa())
         ) INTO v_e_figlio_attivo;
 
         IF v_e_figlio_attivo THEN

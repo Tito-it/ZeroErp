@@ -42,6 +42,7 @@ from django.db import connection
 from apps.core.db._helpers import (
     fetch_paged_with_total,
     row_to_dict,
+    rows_to_list,
     sql_order_clause,
 )
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
@@ -263,6 +264,32 @@ _MOVIMENTI_FROM_WHERE = """
 
 class TitoliIvaRepository:
     """Accesso DB per titoli IVA del soggetto, ambiti e registro movimenti."""
+
+    # =================================================================
+    # Tipi di titolo ammessi per il soggetto (lookup)
+    # =================================================================
+
+    # Scopo: I tipi di titolo IVA attivi che la natura del soggetto ammette,
+    #        con `ha_plafond` (il drawer mostra il tetto solo dove esiste).
+    # ⭐ Il filtro e' il PREDICATO DEL GUARD, `anagrafiche.fn_titolo_iva_ammesso`
+    #    (brief-db-dati-fiscali-e-societari-del-soggetto, parte D): nessuna riga
+    #    di matrice = nessun tipo ammesso, soggetto senza natura = nessun tipo.
+    #    E' una comodita' del form: la regola resta in
+    #    `trgfn_soggetti_titoli_iva_guard_tipo_soggetto`.
+    # ⚠️ Un soggetto inesistente torna la lista vuota, non un 404: e' un lookup.
+    def list_tipi_ammessi_soggetto(self, soggetto_id: str) -> list[dict[str, Any]]:
+        sql = """
+            SELECT tt.id, tt.codice, tt.codice_interno, tt.descrizione,
+                   tt.attivo, tt.ha_plafond
+              FROM config.tipi_titolo_iva tt
+              JOIN anagrafiche.soggetti s ON s.id = %s::uuid
+             WHERE tt.attivo
+               AND anagrafiche.fn_titolo_iva_ammesso(tt.id, s.tipo_soggetto_dettaglio_id)
+             ORDER BY tt.ordine, tt.descrizione, tt.id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [soggetto_id])
+            return rows_to_list(cursor)
 
     # =================================================================
     # Titoli
@@ -637,8 +664,8 @@ class TitoliIvaRepository:
     # Scopo: Registra una FORZATURA manuale.
     # ⛔ SOLO forzature, ed e' la decisione Q3: gli altri due tipi (FATTURA,
     #    NOTA_CREDITO) li scrive la pipeline con I4, passando da
-    #    `fn_consuma_plafond_titolo_iva`, che e' anche l'unica a prendere il lock
-    #    di D15-bis. Un endpoint che accettasse FATTURA consumerebbe plafond
+    #    `fn_consuma_plafond_titolo_iva_righe`, che e' anche l'unica a prendere
+    #    il lock di D15-bis. Un endpoint che accettasse FATTURA consumerebbe plafond
     #    SENZA una fattura.
     # ⚠️ `fattura_id`/`fattura_riga_id` restano NULL: lo impone
     #    `chk_stiva_movimenti_documento`, ed e' cio' che rende una forzatura

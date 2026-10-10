@@ -78,6 +78,36 @@ SELECT plan(7);
 --   quella assegnata a `v_motivi`, perimetro PESSIMISTA — sono le stesse, e
 --   stanno scritte nel commento della vista.
 -- ⚠️ Da qui in avanti questo file DIPENDE da quella vista.
+
+-- Il testimone del test 7 nasce PRIMA della fotografia qui sotto, perche' la
+--   canarina legga la stessa fotografia dei test 2-6 (vedi laggiu').
+CREATE FUNCTION pg_temp.pgtap_coda_variabile_appoggio() RETURNS void
+LANGUAGE plpgsql AS $f$
+DECLARE
+    v_motivi jsonb;
+    v_primo  jsonb;
+BEGIN
+    v_motivi := script.fn_check_sorgente_chiudibile(1::bigint, 'PGTAP');
+    IF jsonb_array_length(v_motivi) > 0 THEN
+        v_primo := v_motivi -> 0;
+        PERFORM script.fn_log_and_raise_error(
+            'dbops', 'pgtap_coda_variabile_appoggio', v_primo ->> 'codice',
+            '{}'::jsonb, NULL::uuid,
+            VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+    END IF;
+END
+$f$;
+
+-- ⭐ UNA FOTOGRAFIA, NON CINQUE LETTURE (2026-10-10). La vista scandisce
+--   pg_proc ed e' cara (~1,4 s a lettura come app, misurato il 2026-10-10 su
+--   dbdev): letta attraverso una TEMP VIEW dai test 2, 3, 4, 6 e di nuovo dal 7
+--   costava ~7 s. Fra le asserzioni non si crea e non si scrive niente, quindi
+--   il file ha un MOMENTO solo e la copia contiene esattamente le righe della
+--   vista viva. Si fotografa la vista intera, com'e': il filtro sui testimoni e
+--   l'aggregazione restano nella TEMP VIEW sopra, non riscritti nella copia.
+CREATE TEMP TABLE _vw_punti_primo_motivo AS
+SELECT * FROM dbops.vw_punti_primo_motivo;
+
 CREATE TEMP VIEW punti_primo_motivo AS
 SELECT sch,
        fn,
@@ -87,7 +117,7 @@ SELECT sch,
        --   perche' il sito sia in perimetro. Un presidio che sceglie il ramo
        --   ottimista assolve il caso che dovrebbe segnalare.
        coalesce(bool_or(check_emette_valori), false)       AS in_perimetro
-  FROM dbops.vw_punti_primo_motivo
+  FROM _vw_punti_primo_motivo
  WHERE fn !~ '^pgtap_'
  GROUP BY sch, fn;
 
@@ -154,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    30,
+    35,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -214,7 +244,38 @@ SELECT is(
     --   vendite.fn_conferma_reso (20260928-95), che alla conferma di un reso che
     --   fa rientrare merce solleva il primo motivo di script.fn_check_reso_merce
     --   (brief-db-magazzino-lotto-3-bis-carico-da-reso).
-    'le trenta funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-03: da 30 a 31. Un sito NUOVO, e nasce da un debito del
+    --   backend: script.fn_blocca_credenziale (20261003-02) solleva il primo
+    --   motivo di script.fn_check_credenziale_bloccabile (20261003-01), la
+    --   stessa funzione da cui il dettaglio credenziale spegne «Blocca accesso»
+    --   (brief-db-credenziale-verbi-amministratore R-DB-A5/A6).
+    -- ⭐ 2026-10-06: da 31 a 32. Un sito NUOVO nato sull'helper:
+    --   script.fn_elimina_credenziale (20261006-14) solleva il primo motivo di
+    --   script.fn_check_credenziale_eliminabile (20261006-13), la stessa
+    --   funzione da cui «Altri accessi» spegne «Elimina accesso». Due chiamate
+    --   (prima del DELETE e nella rete del 23503): si conta la FUNZIONE
+    --   (brief-db-elimina-credenziale-senza-veste §4.2).
+    -- ⭐ 2026-10-07: da 32 a 33. Un sito NUOVO nato sull'helper:
+    --   vendite.trgfn_contratti_freeze_listino_versione (20261007-45) solleva
+    --   il primo motivo di script.fn_check_listino_congelabile (20261007-41),
+    --   la stessa funzione da cui fn_available_actions_contratto spegne
+    --   «Attiva». La gemella dell'offerta,
+    --   vendite.trgfn_offerte_commerciali_guard_transizione (20261007-43), era
+    --   gia' nel conto per i prezzi: si conta la FUNZIONE, non le chiamate
+    --   (brief-db-offerta-emissione-ed-erogazione §C.1.3).
+    -- ⭐ 2026-10-07 (sera): da 33 a 34. Un sito NUOVO nato sull'helper:
+    --   script.trgfn_righe_guard_erogazione_perimetro (20261007-63), montato su
+    --   contratti_righe e offerte_commerciali_eccezioni, solleva il primo motivo
+    --   di script.fn_check_riga_erogazione (20261007-61). La lettura per il form,
+    --   vendite.fn_documento_riga_erogazioni, chiama la stessa check ma non solleva
+    --   (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3).
+    -- ⭐ 2026-10-08: da 34 a 35. Un sito NUOVO nato sull'helper:
+    --   script.trgfn_doc_guard_listino_documento (20261008-14), montato su
+    --   vendite.contratti e vendite.offerte_commerciali, solleva il primo motivo
+    --   di script.fn_check_listino_documento (20261008-13). La lettura per il
+    --   form, vendite.fn_listini_selezionabili, chiama la stessa check ma non
+    --   solleva (brief-db-offerta-emissione-ed-erogazione §F.2).
+    'le trentacinque funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la
@@ -244,25 +305,11 @@ SELECT ok(
 --    marcatore a `-> 0 ->> 'codice'`, questo diventa rosso.
 --    ⚠️ Il testimone e' escluso dai conteggi dei test 2-4 (`fn !~ '^pgtap_'`):
 --    un presidio che si conta addosso i propri semi sposta le sue soglie.
-CREATE FUNCTION pg_temp.pgtap_coda_variabile_appoggio() RETURNS void
-LANGUAGE plpgsql AS $f$
-DECLARE
-    v_motivi jsonb;
-    v_primo  jsonb;
-BEGIN
-    v_motivi := script.fn_check_sorgente_chiudibile(1::bigint, 'PGTAP');
-    IF jsonb_array_length(v_motivi) > 0 THEN
-        v_primo := v_motivi -> 0;
-        PERFORM script.fn_log_and_raise_error(
-            'dbops', 'pgtap_coda_variabile_appoggio', v_primo ->> 'codice',
-            '{}'::jsonb, NULL::uuid,
-            VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
-    END IF;
-END
-$f$;
-
+--    ⚠️ Il testimone (pg_temp.pgtap_coda_variabile_appoggio) e' creato nella
+--    Fixture, prima della fotografia: la canarina interroga la copia della
+--    vista, che e' la vista com'era con il testimone gia' dentro.
 SELECT ok(
-    EXISTS (SELECT 1 FROM dbops.vw_punti_primo_motivo
+    EXISTS (SELECT 1 FROM _vw_punti_primo_motivo
              WHERE sch ~ '^pg_temp' AND fn = 'pgtap_coda_variabile_appoggio'
                AND check_funzione = 'fn_check_sorgente_chiudibile'),
     'la vista riconosce la forma con la variabile d''appoggio e la lega alla sua check (canarina)');

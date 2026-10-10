@@ -23,7 +23,7 @@
 # crea proprie righe di commessa, un proprio lotto e proprie attivita' — e alla
 # fine non resta nulla. Rieseguibile all'infinito, anche in parallelo.
 #
-# Indice test (1..10):
+# Indice test (1..11):
 #   1  due attivita' con la STESSA chiave -> UNA riga, qta sommata
 #   2  la riga aggregata NON dichiara una sorgente singola
 #   3  entrambe le attivita' puntano alla riga (correlazione n->1)
@@ -32,10 +32,18 @@
 #   6  prezzo diverso -> riga separata (il prezzo sta nella chiave)
 #   7  la quantita' aggregata NON e' arrotondata
 #   8  componente di kit -> le 4 colonne di snapshot sono congelate
-#   9  la vista di esposizione produce KIT_PADRE + KIT_COMPONENTE
+#   9  la vista di esposizione produce KIT_PADRE + KIT_COMPONENTE (uno per
+#      componente non NASCOSTO)
 #  10  il totale della fattura non dipende da come il kit viene esposto
+#  11  il VALORIZZATO porta il suo importo, legato al kit (kit_riga_nr); il
+#      padre porta solo il DESCRITTIVO (brief-db-esposizione-componenti-kit-
+#      in-fattura, 2026-10-01)
+#  8c  quantita' e UoM del padre congelate dal meta (`kit_qta`, `kit_uom_id`):
+#      la fattura non le ricava piu' dai componenti (brief-db-bom-flag-
+#      quantita-e-kit-in-fattura R-BE-B2, 2026-10-02)
 # ------------------------------------------------------------
 
+import json
 import uuid
 from decimal import Decimal
 
@@ -63,6 +71,9 @@ SQL_TEMPLATE = """
 """
 
 FAIL: list[str] = []
+
+# Quanti kit rappresentano le attivita' componente dello smoke (meta `qta_padre`).
+KIT_QTA_PADRE = Decimal("1")
 
 
 # Scopo: Registra ed emette l'esito di una singola asserzione dello smoke.
@@ -217,24 +228,28 @@ with transaction.atomic():
         altri = [r[0] for r in cur.fetchall()]
         kit_ok = len(altri) >= 1
         if kit_ok:
-            for nome, art, esposto in [("K1", altri[0], True),
-                                       ("K2", t["articolo_id"], False)]:
+            for nome, art, esposizione in [("K1", altri[0], "VALORIZZATO"),
+                                           ("K2", t["articolo_id"], "DESCRITTIVO")]:
                 seg = kit_meta.segment_key_componente(kit_padre_segment, art)
-                meta_kit = (
-                    '{"%s": "%s", "%s": %s}'
-                    % (kit_meta.META_KEY_COMPONENTE_DI, t["articolo_id"],
-                       kit_meta.META_KEY_ESPOSTO_IN_FATTURA,
-                       "true" if esposto else "false")
-                )
+                # Il meta come lo scrive il push: padre, modo di esposizione e
+                # quantita' e UoM della RIGA PADRE (R-BE-B2). Senza le ultime
+                # due il servizio si ferma, ed e' giusto: nessun ripiego.
+                # Un kit, componenti a 2 ciascuno; la UoM e' quella del padre
+                # (l'articolo del template).
+                meta_kit = {
+                    kit_meta.META_KEY_COMPONENTE_DI: str(t["articolo_id"]),
+                    kit_meta.META_KEY_ESPOSIZIONE: esposizione,
+                    kit_meta.META_KEY_QTA_PADRE: str(KIT_QTA_PADRE),
+                    kit_meta.META_KEY_UOM_PADRE: t["uom_id"],
+                }
                 ca = crea_commessa_attivita(
                     cur, t, segment_key=seg, articolo_id=art,
                     quantita=Decimal("2.000000"), prezzo=Decimal("5.00"),
-                    meta=meta_kit,
+                    meta=json.dumps(meta_kit),
                 )
                 # `segment_key` va anche nel meta dell'AF: e' da li' che il
                 # servizio riconosce il componente (il push lo copia sempre).
-                meta_af = meta_kit[:-1] + ', "%s": "%s"}' % (
-                    kit_meta.META_KEY_SEGMENT_KEY, seg)
+                meta_af = json.dumps({**meta_kit, kit_meta.META_KEY_SEGMENT_KEY: seg})
                 af[nome] = crea_attivita_fatturabile(
                     cur, t, ca_id=ca, lock_batch_id=lock_batch_id,
                     quantita=Decimal("2.000000"), prezzo=Decimal("5.00"),
@@ -252,8 +267,9 @@ with transaction.atomic():
             """
             SELECT r.id, r.riga_nr, r.qta, r.prezzo_unitario, r.imponibile_riga,
                    r.sorgente_tipo_id, r.sorgente_uid, r.kit_key,
-                   r.kit_esposto_in_fattura, r.kit_articolo_padre_id,
-                   r.kit_descrizione_padre, r.meta, r.fattura_id
+                   r.kit_esposizione, r.kit_articolo_padre_id,
+                   r.kit_descrizione_padre, r.meta, r.fattura_id,
+                   r.kit_qta, r.kit_uom_id
               FROM vendite.fatture_righe r
               JOIN vendite.fatturazione_lotti_fatture lf ON lf.fattura_id = r.fattura_id
              WHERE lf.lotto_id = %s
@@ -263,7 +279,7 @@ with transaction.atomic():
         )
         # Il driver restituisce `jsonb` come stringa: stessa coercion che
         # applica il repository (e' il difetto che questo smoke ha scoperto).
-        righe = [tuple(r[:11]) + (coerce_jsonb_dict(r[11]), r[12])
+        righe = [tuple(r[:11]) + (coerce_jsonb_dict(r[11]), r[12], r[13], r[14])
                  for r in cur.fetchall()]
         for r in righe:
             print(f"  riga {r[1]}: qta={r[2]} x {r[3]} = {r[4]} | kit={r[7]} "
@@ -325,8 +341,31 @@ with transaction.atomic():
             esposizione = dict(cur.fetchall())
             check("9) la vista produce KIT_PADRE + KIT_COMPONENTE",
                   esposizione.get("KIT_PADRE") == 1
-                  and esposizione.get("KIT_COMPONENTE") == 1,
+                  and esposizione.get("KIT_COMPONENTE") == 2,
                   str(esposizione))
+            check("8c) quantita' e UoM del padre congelate dal meta",
+                  all(r[13] == KIT_QTA_PADRE and r[14] == t["uom_id"] for r in kit_righe),
+                  str([(r[13], r[14]) for r in kit_righe]))
+            check("8b) il modo e' congelato col suo codice",
+                  sorted(r[8] for r in kit_righe) == ["DESCRITTIVO", "VALORIZZATO"],
+                  str(sorted(r[8] for r in kit_righe)))
+
+            # 11) il valorizzato fuori dal padre, legato al kit
+            cur.execute(
+                "SELECT tipo_riga, esposizione, imponibile, kit_riga_nr, riga_nr "
+                "FROM vendite.vw_fattura_righe_esposte "
+                "WHERE fattura_id = %s AND kit_key IS NOT NULL", [fattura_id],
+            )
+            vista = cur.fetchall()
+            padre = [v for v in vista if v[0] == "KIT_PADRE"]
+            valorizzati = [v for v in vista if v[1] == "VALORIZZATO"]
+            descrittivi = [v for v in vista if v[1] == "DESCRITTIVO"]
+            check("11) valorizzato con importo, descrittivo senza, padre = descrittivo",
+                  len(padre) == 1 and len(valorizzati) == 1 and len(descrittivi) == 1
+                  and valorizzati[0][2] is not None and descrittivi[0][2] is None
+                  and padre[0][2] == next(r[4] for r in kit_righe if r[8] == "DESCRITTIVO")
+                  and valorizzati[0][3] == padre[0][3],
+                  str(vista))
 
             # 10) invariante R18: il totale non dipende dall'esposizione.
             cur.execute(

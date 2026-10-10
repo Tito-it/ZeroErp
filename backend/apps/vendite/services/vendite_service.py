@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Any
 
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.payload_helpers import translate_db_errors
@@ -26,7 +27,9 @@ from apps.core.services.list_helpers import (
     validate_order_params,
     validate_pagination,
 )
+from apps.core.services.parameter_service import ParameterService
 from apps.core.services.partitioned_note_service import PartitionedNoteService
+from apps.core.services.testata_guard import pagina_dopo_testata
 from apps.vendite.db.fatture_repository import FattureRepository
 from apps.vendite.db.note_repositories import NOTE_REPO_FATTURA
 from apps.vendite.db.vendite_repository import (
@@ -161,6 +164,58 @@ def _validate_enum(
     )
 
 
+# La data piu' vecchia che il filtro «ritardo» delle dashboard puo' chiedere
+# (brief-db-parametro-data-minima-ritardo-dashboard, decisione di Tid 2026-10-08).
+_PARAM_RITARDO_DATA_MINIMA = "VENDITE_DASHBOARD_RITARDO_DATA_MINIMA"
+
+
+# Scopo: La soglia «da oltre N giorni» delle dashboard aperto e backlog (lista
+#        ed export): assente, oppure un intero > 0 che non porti `oggi - N`
+#        prima di VENDITE_DASHBOARD_RITARDO_DATA_MINIMA. Fuori ->
+#        E_VENDITE_VALIDATION; niente normalizzazione silenziosa (DL-17).
+# ⭐ Il pavimento e' una scelta di DOMINIO (quanto indietro ha senso chiedere),
+#    non il tipo: il tetto `integer` di `qp_int_optional` resta, ma da solo
+#    lasciava passare N per cui `oggi - N giorni` esce da `timestamp`
+#    (`DataError`, cioe' un 500 al posto di un 400).
+# ⭐ Si legge il DEFAULT del parametro, non la cascata (D-1 del brief: limite
+#    uguale per tutti, nessun override previsto).
+# ⭐ Il confronto e' fra interi di giorni, mai `oggi - timedelta(N)`: con N
+#    enorme sarebbe Python a sollevare (OverflowError), di nuovo un 500.
+# ℹ️ Regola del 2: fino al 2026-10-09 il solo `> 0` era copiato nelle due
+#    dashboard, con due detail diversi.
+def _valida_ritardo_giorni(
+    ritardo_giorni: int | None,
+    *,
+    function_name: str,
+) -> None:
+    if ritardo_giorni is None:
+        return
+    ErrorManager.require(
+        ritardo_giorni > 0,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro ritardo_giorni non valido.",
+        detail="ritardo_giorni deve essere un intero positivo (o assente).",
+        context={"ritardo_giorni": ritardo_giorni},
+        function_name=function_name,
+    )
+    data_minima = ParameterService().get_default_date(_PARAM_RITARDO_DATA_MINIMA)
+    massimo = (oggi_aziendale() - data_minima).days
+    ErrorManager.require(
+        ritardo_giorni <= massimo,
+        code="E_VENDITE_VALIDATION",
+        message="Parametro ritardo_giorni non valido.",
+        detail=(
+            f"Il ritardo non puo' risalire prima del {data_minima.isoformat()}: "
+            f"oggi al massimo {massimo} giorni."
+        ),
+        context={
+            "ritardo_giorni": ritardo_giorni,
+            "data_minima": data_minima.isoformat(),
+        },
+        function_name=function_name,
+    )
+
+
 # Scopo: Costruisce l'envelope di risposta paginata standard.
 # Riutilizzabile da tutte le funzioni di lista dello schema vendite.
 def _build_list_response(
@@ -168,7 +223,7 @@ def _build_list_response(
     total_count: int,
     page: int,
     page_size: int,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     total_pages = math.ceil(total_count / page_size) if page_size > 0 else 0
     return {
         "count": total_count,
@@ -209,7 +264,7 @@ def fn_list_lotti(
     page_size: int = DEFAULT_LIMIT,
     solo_recuperi_mese: bool = False,
     includi_annullati: bool = False,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     offset = _validate_pagination(page, page_size, "vendite.vendite_service.fn_list_lotti")
     # ⛔ La scheda «Recuperi del mese» ha senso solo RISPETTO A UN MESE: senza,
     #    «competenza precedente» non ha un termine di paragone. Si rifiuta
@@ -356,7 +411,7 @@ _DASH_ANNO_MAX = 2100
 #        Scope emittente applicato in repo (RLS + whitelist), come la lista.
 def fn_lotti_mensile(
     *, anno: int, auth_user_id: int | None = None, includi_annullati: bool = False,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         isinstance(anno, int) and _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
         code="E_VENDITE_VALIDATION",
@@ -406,7 +461,7 @@ def fn_lotti_mensile(
 #        Il FE degrada a sola consultazione (nessuna azione), ma l'operatore
 #        vede comunque il lotto — una rottura delle capability non deve
 #        impedire la lettura dell'entita'.
-def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str, object]:
+def fn_get_lotto(*, lotto_id: int, auth_user_id: int | None = None) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_LOTTO_PARAMETRO_NON_COERENTE",
@@ -450,7 +505,7 @@ def fn_list_lotto_fatture(
     page: int = 1,
     page_size: int = DEFAULT_LIMIT,
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     # ⭐ L'helper condiviso, non un `if` scritto qui: l'export SALTA la
     # paginazione invece di violarne il tetto, ed e' la stessa regola di tutte
     # le altre liste esportabili del modulo.
@@ -462,13 +517,16 @@ def fn_list_lotto_fatture(
     #    con due `_validate_enum`: la direzione aveva qui un suo insieme
     #    `("asc", "desc")` case-sensitive, cioe' `DESC` era un 400 su questa
     #    lista e passava sulle altre. Il BB giudica con `order_dir_ammessa`.
-    sort_by, sort_dir = validate_order_params(
+    sort_by, direzione = validate_order_params(
         sort_by,
         sort_dir,
         allowed_columns=_SORT_BY_VALIDI,
         error_code="E_VENDITE_VALIDATION",
         function_name="vendite.vendite_service.fn_list_lotto_fatture",
     )
+    # Senza `nullable` il BB rifiuta la direzione assente: qui non e' None.
+    assert direzione is not None
+    sort_dir = direzione
     repository = VenditeRepository()
     results: list[LottoFattureRow]
     results, total_count = repository.list_lotto_fatture(
@@ -503,7 +561,7 @@ def fn_list_lotto_gruppi(
     page: int = 1,
     page_size: int = DEFAULT_LIMIT,
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     # ⚠️ Il vocabolario del DOCUMENTO, non quello comune: questa lista legge
     #    `fatturazione_lotti_esiti`, che dal 2026-09-08 ammette anche `ESCLUSO`.
     #    Con l'elenco comune il filtro «uscito dal giro» rispondeva **400 a una
@@ -572,7 +630,7 @@ class _CellaAperto:
 #        (DL-11).
 def _cella_aperto_fields(
     cella: _CellaAperto, *, con_valori: bool
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return {
         "n_documenti": cella.n_documenti,
         "valore_totale": str(cella.valore_totale) if con_valori else None,
@@ -593,7 +651,7 @@ def _cella_aperto_fields(
 # Perimetro: sola lettura; scope emittente DB-side (RLS invoker).
 # Risultato: dict {aree: [{area, n_documenti, valore_totale, fasi: [...]}] x4+,
 #        fasi: [...] x3+}.
-def fn_dash_aperto_riepilogo() -> dict[str, object]:
+def fn_dash_aperto_riepilogo() -> dict[str, Any]:
     repository = VenditeRepository()
     rows: list[DashApertoRiepilogoRow] = repository.list_dash_aperto_riepilogo()
 
@@ -613,7 +671,7 @@ def fn_dash_aperto_riepilogo() -> dict[str, object]:
             fasi_extra.append(r["fase"])
 
     fasi_tutte = list(DASH_APERTO_FASI) + fasi_extra
-    aree: list[dict[str, object]] = []
+    aree: list[dict[str, Any]] = []
     for area in list(DASH_APERTO_AREE) + aree_extra:
         # Aree euro note sempre con valori (zero esplicito anche a vuoto);
         # un'area extra li espone se la vista li fornisce.
@@ -662,16 +720,9 @@ def fn_dash_aperto_documenti(
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
-) -> dict[str, object]:
-    # Filtro ritardo opzionale: se presente deve essere un intero > 0 (una
-    # soglia di giorni non-positiva non ha senso; niente normalizzazione
-    # silenziosa — DL-17).
-    ErrorManager.require(
-        ritardo_giorni is None or ritardo_giorni > 0,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro ritardo_giorni non valido.",
-        detail="Deve essere un intero maggiore di zero.",
-        context={"ritardo_giorni": ritardo_giorni},
+) -> dict[str, Any]:
+    _valida_ritardo_giorni(
+        ritardo_giorni,
         function_name="vendite.vendite_service.fn_dash_aperto_documenti",
     )
     # Ordinamento server-side (convenzione order_by/order_dir come le liste
@@ -756,7 +807,7 @@ class _CellaCompetenza:
     # Con l'`append` di prima quello stato compariva DUE VOLTE nel payload.
     # 🔴 E si vedeva solo su luglio: ad agosto la cardinalita' non cambia
     # affatto, quindi provare il solo mese del rilievo avrebbe detto «a posto».
-    stati_fattura_per_stato: dict[str | None, dict[str, object]] = field(default_factory=dict)
+    stati_fattura_per_stato: dict[str | None, dict[str, Any]] = field(default_factory=dict)
     # ⭐ La quota RESIDUA dentro `EMESSA_NON_FATTURATA`. Sta a parte e non
     # sostituisce il totale, perche' la card deve dire DUE cose: quanto lavoro
     # e' fermo in quello stadio, e quanta parte di quel lavoro **chiede
@@ -832,7 +883,7 @@ def _cella_stadio_payload(
     cella: _CellaCompetenza,
     n_fatture: int | None = None,
     n_fatture_stato: str = DASH_FATTURE_NON_APPLICABILE,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     display = cella.valore_fatturato if stadio == "FATTURATA" else cella.valore
     return {
         "stadio": stadio,
@@ -896,7 +947,7 @@ def _cella_stadio_payload(
 def fn_dash_competenza_mensile(
     *,
     anno: int,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         _DASH_ANNO_MIN <= anno <= _DASH_ANNO_MAX,
         code="E_VENDITE_VALIDATION",
@@ -983,7 +1034,7 @@ def fn_dash_competenza_mensile(
             voce["n_in_ritardo"] += r["n_in_ritardo"]
             voce["valore_in_ritardo"] += Decimal(r["valore_in_ritardo"])
 
-    mesi: list[dict[str, object]] = []
+    mesi: list[dict[str, Any]] = []
     for mese_num in range(1, 13):
         competenza = date(anno, mese_num, 1).isoformat()
         stadi_mese = list(DASH_COMPETENZA_STADI) + stadi_extra.get(competenza, [])
@@ -1076,7 +1127,7 @@ def fn_dash_competenza_attivita(
     order_dir: str | None = None,
     page: int = 1,
     page_size: int = DEFAULT_LIMIT,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     _validate_enum(
         stadio,
         allowed=DASH_COMPETENZA_STADI,
@@ -1133,7 +1184,7 @@ def fn_dash_competenza_commesse(
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     _validate_enum(
         stadio,
         allowed=DASH_COMPETENZA_STADI,
@@ -1177,7 +1228,7 @@ MAX_ATTIVITA_RIPORTO = 200
 #        `E_ATTIVITA_GIA_DA_EMETTERE` dichiara a catalogo che incontrarlo
 #        significa che l'elenco a schermo era invecchiato.
 # Risultato: {"motivi": [...]} — lista vuota se il verbo e' ammesso su tutte.
-def fn_check_attivita_riportabili(*, attivita_fatturabili_ids: list[int]) -> dict[str, object]:
+def fn_check_attivita_riportabili(*, attivita_fatturabili_ids: list[int]) -> dict[str, Any]:
     function_name = "vendite.vendite_service.fn_check_attivita_riportabili"
     ids = _valida_ids_riporto(attivita_fatturabili_ids, function_name=function_name)
     repository = VenditeRepository()
@@ -1203,7 +1254,7 @@ def fn_check_attivita_riportabili(*, attivita_fatturabili_ids: list[int]) -> dic
 # Risultato: {"riportate": n, "riemesse_attivita": n}.
 def fn_riporta_attivita_da_emettere(
     *, attivita_fatturabili_ids: list[int],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.vendite_service.fn_riporta_attivita_da_emettere"
     ids = _valida_ids_riporto(attivita_fatturabili_ids, function_name=function_name)
     repository = VenditeRepository()
@@ -1261,8 +1312,7 @@ def _valida_ids_riporto(ids: object, *, function_name: str) -> list[int]:
     # Dedup con ordine preservato: due volte lo stesso id e' la stessa riga, e
     # la madre lo tratterebbe una volta sola — ma il conteggio a video direbbe
     # un numero diverso da quello che si e' spuntato.
-    visti: set[int] = set()
-    return [i for i in ids if not (i in visti or visti.add(i))]
+    return list(dict.fromkeys(ids))
 
 
 # Scopo: Elenco dei RESIDUI di un mese di competenza — le attivita' fatturabili
@@ -1283,7 +1333,7 @@ def fn_dash_competenza_residui(
     page_size: int = DEFAULT_LIMIT,
     # Export (BB `build_dash_export_response`), come le liste sorelle.
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     # ⚠️ Nessun parametro `stadio`: la lista E' uno stadio, anzi una delle
     #    tre situazioni dentro `EMESSA_NON_FATTURATA`. Accettarlo darebbe
     #    all'invocante l'illusione di poter allargare il perimetro del verbo.
@@ -1390,7 +1440,7 @@ def fn_dash_competenza_gruppi(
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     _validate_enum(
         stadio,
         allowed=DASH_COMPETENZA_STADI,
@@ -1496,7 +1546,7 @@ class _ClasseBacklog:
     valore_fermo_tot: Decimal = Decimal(0)
     unita_ferme_tot: int = 0
     anzianita_max_giorni: int | None = None
-    aree: list[dict[str, object]] = field(default_factory=list)
+    aree: list[dict[str, Any]] = field(default_factory=list)
 
 
 # Scopo: Restituisce i contatori di testata della Lente 2 Backlog: le 3
@@ -1509,7 +1559,7 @@ class _ClasseBacklog:
 # Perimetro: sola lettura; scope emittente DB-side (RLS invoker + GUC).
 # Risultato: dict {classi: [{classe, n_documenti, valore_fermo_tot,
 #        unita_ferme_tot, anzianita_max_giorni, aree: [...]}]}.
-def fn_dash_backlog_riepilogo() -> dict[str, object]:
+def fn_dash_backlog_riepilogo() -> dict[str, Any]:
     repository = VenditeRepository()
     rows = repository.list_dash_backlog_riepilogo()
 
@@ -1540,7 +1590,7 @@ def fn_dash_backlog_riepilogo() -> dict[str, object]:
             }
         )
 
-    classi: list[dict[str, object]] = []
+    classi: list[dict[str, Any]] = []
     for nome in list(DASH_BACKLOG_CLASSI) + classi_extra:
         c = acc.get(nome, _ClasseBacklog())
         classi.append(
@@ -1579,22 +1629,17 @@ def fn_dash_backlog_documenti(
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     _validate_enum(
         area,
         allowed=DASH_FATTURAZIONE_AREE,
         param_name="area",
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
-    # Filtro "fermo da oltre N giorni": soglia positiva o assente (una soglia
-    # non-positiva non ha senso; niente normalizzazione silenziosa). Speculare
-    # al filtro ritardo della Situazione aperta.
-    ErrorManager.require(
-        ritardo_giorni is None or ritardo_giorni > 0,
-        code="E_VENDITE_VALIDATION",
-        message="Parametro ritardo_giorni non valido.",
-        detail="ritardo_giorni deve essere un intero positivo (o assente).",
-        context={"ritardo_giorni": ritardo_giorni},
+    # Filtro "fermo da oltre N giorni": stessa regola del ritardo della
+    # Situazione aperta, nella stessa sede.
+    _valida_ritardo_giorni(
+        ritardo_giorni,
         function_name="vendite.vendite_service.fn_dash_backlog_documenti",
     )
     # Ordinamento server-side (convenzione order_by/order_dir come le liste
@@ -1642,7 +1687,7 @@ def fn_dash_competenza_errori(
     # Export (BB `build_dash_export_response`): valorizzato = perimetro intero
     # in una volta, paginazione saltata. Assente = lista paginata di sempre.
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     # Ordinamento server-side (8° lotto liste, 2026-08-03): whitelist +
     # direzione validate qui, fail-fast 400 — stessa forma delle altre liste
     # dash. Assenti -> ordine storico (eventi recenti prima).
@@ -1710,7 +1755,7 @@ LINEAGE_TIPI_DOCUMENTO: tuple[str, ...] = (
 # Risultato: dict {nodo, pratica|None, frontiera|None, avanti[], indietro[]}.
 def get_documento_passaggi(
     tipo_codice: str, documento_id: int
-) -> dict[str, object]:
+) -> dict[str, Any]:
     _validate_enum(
         tipo_codice,
         allowed=LINEAGE_TIPI_DOCUMENTO,
@@ -1769,7 +1814,7 @@ def get_documento_passaggi(
     assert nodo is not None
 
     # Pratica difensiva (Q5): oggetto solo se collegata.
-    pratica: dict[str, object] | None = None
+    pratica: dict[str, Any] | None = None
     if nodo["pratica_id"] is not None:
         pratica = {
             "pratica_id": nodo["pratica_id"],
@@ -1779,7 +1824,7 @@ def get_documento_passaggi(
 
     # Frontiera normalizzata: la summary, per costruzione, per un nodo senza
     # discendenti indica il nodo stesso -> per il FE e' "non transitato" (None).
-    frontiera: dict[str, object] | None = None
+    frontiera: dict[str, Any] | None = None
     is_self = (
         nodo["frontiera_tipo_id"] == nodo["tipo_id"]
         and nodo["frontiera_uid"] == nodo["uid"]
@@ -1922,7 +1967,7 @@ def get_fattura_dettaglio(
     *,
     fattura_id: int,
     auth_user_id: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     repository = VenditeRepository()
 
     # 1. IL CANCELLO (`_testata_fattura_o_404`).
@@ -2018,13 +2063,13 @@ def _valida_lettura_giornale(
 #    il client — mai sotto zero, perche' sul lotto e' una sottrazione e un
 #    `count` negativo romperebbe il paginatore senza nessun errore.
 def _envelope_giornale(
-    righe: list[dict[str, object]],
+    righe: list[dict[str, Any]],
     *,
     total_count: int,
     limit: int,
     offset: int,
     ritirate_nascoste: int,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     page = int(offset) // int(limit) + 1
     envelope = paginated_envelope(righe, max(0, int(total_count)), page, int(limit))
     envelope["ritirate_count"] = ritirate_nascoste
@@ -2033,26 +2078,22 @@ def _envelope_giornale(
 
 # Scopo: UNA PAGINA delle righe di una fattura, per la lista configurabile
 #        `vendite.fattura_righe` (brief-db-liste-righe-documento, lotto C).
-#        «Leggi prima la testata»: fuori scope e' un 404, non una lista vuota
-#        (la vista e' `security_invoker` e risponderebbe zero righe).
+#        «Leggi prima la testata» (BB core `pagina_dopo_testata`): fuori
+#        scope e' un 404, non una lista vuota (la vista e' `security_invoker`
+#        e risponderebbe zero righe). `auth_user_id` e' dello scope della
+#        testata; il resto e' il contratto della lista.
 def list_fattura_righe_pagina(
     fattura_id: int,
     *,
     auth_user_id: int | None = None,
-    search: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
-    limit: int,
-    offset: int = 0,
-    max_limit: int = MAX_LIMIT,
+    **opzioni: Any,
 ) -> tuple[list[dict[str, Any]], int]:
-    _testata_fattura_o_404(
-        VenditeRepository(), fattura_id,
-        auth_user_id=auth_user_id, function_name=_FN_FATTURA_RIGHE,
-    )
-    return FattureRepository().list_righe_pagina(
-        fattura_id, search=search, order_by=order_by, order_dir=order_dir,
-        limit=limit, offset=offset, max_limit=max_limit,
+    return pagina_dopo_testata(
+        lambda: _testata_fattura_o_404(
+            VenditeRepository(), fattura_id,
+            auth_user_id=auth_user_id, function_name=_FN_FATTURA_RIGHE,
+        ),
+        FattureRepository().list_righe_pagina, fattura_id, **opzioni,
     )
 
 
@@ -2082,13 +2123,13 @@ def list_fattura_righe_pagina(
 def get_fattura_giornale(
     *,
     fattura_id: int,
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
     includi_ritirate: bool = False,
     auth_user_id: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     _valida_lettura_giornale(
         limit=limit, offset=offset, order_by=order_by, order_dir=order_dir,
         function_name=_FN_FATTURA_GIORNALE,
@@ -2161,14 +2202,14 @@ _FN_LOTTO_GIORNALE = "vendite.vendite_service.get_lotto_giornale"
 def get_lotto_giornale(
     *,
     lotto_id: int,
-    limit: int = 25,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
     includi_info: bool = False,
     includi_ritirate: bool = False,
     auth_user_id: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         bool(lotto_id and lotto_id > 0),
         code="E_VENDITE_VALIDATION",
@@ -2259,11 +2300,11 @@ def get_giornale_trasversale(
     data_a: date | None = None,
     filo: str | None = None,
     solo_vive: bool = True,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     gravita_richiesta = [g.upper() for g in (gravita or []) if g] or ["ERROR"]
     ErrorManager.require(
         all(g in GIORNALE_GRAVITA for g in gravita_richiesta),
@@ -2340,7 +2381,7 @@ def fn_fondi_fattura_da_decidere(
     # Export: valorizzato = perimetro intero in una volta, paginazione saltata
     # (BB `_paging_o_export`). Assente = la lista paginata di sempre.
     max_rows: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     # Filtro motivo sulla whitelist ORDINATA dei quattro motivi della vista:
     # fail-fast 400 invece di una lista vuota silenziosa, che su un vocabolario
     # chiuso e' indistinguibile da «non c'e' niente da decidere».
@@ -2406,7 +2447,7 @@ _FN_CANCELLA_FONDO = "vendite.vendite_service.fn_cancella_fondo_fattura"
 #    all'operatore com'e', con la sua `soluzione`, il suo BERSAGLIO (la fattura,
 #    sorgente o figlia secondo il motivo) e la `cause` nel contesto — che e' cio'
 #    che distingue i tre motivi che parlano di denaro fra loro.
-def fn_cancella_fondo_fattura(*, fondo_source_id: int) -> dict[str, object]:
+def fn_cancella_fondo_fattura(*, fondo_source_id: int) -> dict[str, Any]:
     # ⚠️ `not isinstance(..., bool)` non e' pedanteria: in Python `bool` e'
     #    SOTTOCLASSE di `int`, quindi `isinstance(True, int)` e' vero e
     #    `True > 0` pure — un `True` arrivato per sbaglio sarebbe passato al
@@ -2465,7 +2506,7 @@ def get_situazione_merce(
     *,
     ordine_id: int | None = None,
     ddt_id: int | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     # Guard di programmazione, non di input utente: le due view di dominio
     # passano sempre e solo il proprio id.
     ErrorManager.require(
@@ -2559,7 +2600,7 @@ def list_fatture_rows(
     order_by: str = "data",
     order_dir: str = "desc",
     max_limit: int = MAX_LIMIT,
-) -> tuple[list[object], int]:
+) -> tuple[list[dict[str, Any]], int]:
     return FattureRepository().list_fatture(
         stato_codice=stato_codice,
         billing_account_id=billing_account_id,

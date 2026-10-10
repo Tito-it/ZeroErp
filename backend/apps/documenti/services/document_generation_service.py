@@ -7,7 +7,7 @@
 #         1. valida user + scope emittente (PermissionResolver);
 #         2. risolve template applicabile (override esplicito via id, oppure
 #            `is_default=true` per (sorgente_tipo, emittente, output));
-#         3. carica versione PUBBLICATA attiva (`validita @> CURRENT_DATE`);
+#         3. carica versione PUBBLICATA attiva (`validita @> oggi`, giorno dell'azienda);
 #         4. risolve context_builder via registry (`get_builder_del_template`,
 #            whitelist Decisione 18+74)
 #            e chiede al DB se la versione legge la forma dei dati del
@@ -45,8 +45,9 @@ from typing import Any
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import IntegrityError, transaction
-from django.utils import timezone
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
 from apps.core.services.parameter_service import ParameterService
@@ -539,7 +540,7 @@ class DocumentGenerationService:
         sorgente_tipo_id: int,
         sorgente_uid: str,
         sorgente_riga: int | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         search: str | None = None,
         order_by: str | None = None,
@@ -703,6 +704,7 @@ class DocumentGenerationService:
             ),
             detail=f"documento_id={documento_id}",
         )
+        assert versione_id is not None
         versione = self._repo.get_versione_by_id(int(versione_id))
         ErrorManager.require(
             versione is not None,
@@ -1151,8 +1153,8 @@ class DocumentGenerationService:
         assert row is not None
         return row
 
-    # Scopo: Carica la versione PUBBLICATA attiva su CURRENT_DATE. La data
-    #        viene presa dal DB-side via `CURRENT_DATE` (passata come
+    # Scopo: Carica la versione PUBBLICATA attiva OGGI, nel giorno
+    #        dell'azienda (`_today` = `oggi_aziendale()`, passata come
     #        parametro per testabilita': il service mocka `today`).
     def _resolve_versione_pubblicata(
         self, template_documento_id: int,
@@ -1503,7 +1505,7 @@ class DocumentGenerationService:
         return base[:_MAX_ALLEGATO_FILE_NAME_LEN]
 
     # Scopo: Hook per testabilita' della data corrente. Default = oggi
-    #        (timezone-aware) lato Python; il filtro DB usa
+    #        nel fuso dell'azienda (BB `fuso_aziendale`); il filtro DB usa
     #        `validita @> %s::date` con questo valore.
     def _today(self) -> _dt.date:
-        return timezone.localdate()
+        return oggi_aziendale()

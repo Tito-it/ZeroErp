@@ -9,7 +9,7 @@
 -- 3) Inserimento fattura di test
 -- 4) Numerazione fattura (numero=1)
 -- 5) Numerazione idempotente (numero invariato)
--- 6) Cleanup completato
+-- 6) La fattura numerata non si cancella (rev 2026-10-04: era «Cleanup completato»)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -124,7 +124,7 @@ WITH ins AS (
   )
   SELECT
     (SELECT id FROM tmp_reg_nf),
-    current_date,
+    script.fn_data_operativa(),
     (SELECT emittente_soggetto_ruolo_id FROM tmp_refs_nf),
     (SELECT billing_account_id FROM tmp_refs_nf),
     (SELECT utility_id FROM tmp_refs_nf),
@@ -164,7 +164,7 @@ SELECT ok(
 --   L'importo della riga lo calcola il trigger a20 (1 x 100 -> 100,00).
 --   brief-fix-importi-riga-fattura-zero §4.5.
 INSERT INTO vendite.fatture_righe (
-  fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta
+  fattura_id, riga_nr, descrizione, qta, prezzo_unitario, iva_id, meta, competenza_dal, competenza_al
 )
 SELECT
   (SELECT id FROM tmp_fattura_nf),
@@ -173,7 +173,7 @@ SELECT
   1::numeric,
   100::numeric,
   (SELECT id FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1),
-  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf));
+  jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti_nf)), script.fn_data_operativa(), script.fn_data_operativa();
 
 -- ⚠️ 2026-08-02: la fattura di test deve essere anche COERENTE.
 --   Il guard D-K (Fase 4b, E_FATTURA_NON_NUMERABILE_INCOERENTE) rifiuta un
@@ -219,26 +219,19 @@ SELECT is(
 );
 
 -- ============================================================
--- Cleanup
+-- 6) La fattura appena numerata non si cancella
 -- ============================================================
-UPDATE vendite.fatture
-SET storicizza = false
-WHERE id = (SELECT id FROM tmp_fattura_nf);
-
-UPDATE vendite.registri_fatturazione
-SET storicizza = false
-WHERE id = (SELECT id FROM tmp_reg_nf);
-
-DELETE FROM vendite.fatture
-WHERE id = (SELECT id FROM tmp_fattura_nf);
-
-DELETE FROM vendite.registri_fatturazione_progressivi
-WHERE registro_id = (SELECT id FROM tmp_reg_nf);
-
-DELETE FROM vendite.registri_fatturazione
-WHERE id = (SELECT id FROM tmp_reg_nf);
-
-SELECT ok(true, 'Cleanup completato');
+-- ⚠️ Rev 2026-10-04 (Q-4, brief-db-esclusioni-implicite): qui c'era una
+--   pulizia in coda (DELETE di fattura, progressivi e registro) chiusa da un
+--   ok(true). Era superflua — il file chiude in ROLLBACK — e dal guard
+--   vendite.trgfn_fatture_guard_numero_fiscale sarebbe rossa: cancellava una
+--   fattura NUMERATA. Al suo posto l'asserzione che quel guard esiste per fare.
+--   Il pattern si ferma prima e dopo il segnaposto del numero.
+SELECT throws_like(
+  $$DELETE FROM vendite.fatture WHERE id = (SELECT id FROM tmp_fattura_nf)$$,
+  '%ha già un numero fiscale: non si può cancellare%',
+  'La fattura numerata non si cancella (E_FATTURA_NUMERATA_NON_CANCELLABILE)'
+);
 
 SELECT * FROM finish();
 

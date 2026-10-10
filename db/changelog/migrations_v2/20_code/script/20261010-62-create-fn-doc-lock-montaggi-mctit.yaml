@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_doc_lock_montaggi(p_tabella)
+#   Il LETTORE DEL MONTAGGIO: i trigger «si tocca solo in bozza» montati su
+#   una tabella, con la regola che i loro argomenti dicono.
+#   Brief: brief-db-testata-dopo-emissione (fase 1, §5-bis, R-1; D-F2 di
+#   Tid, 2026-10-10: si legge il montaggio, nessuna tabella nuova)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Gli stati in cui la promessa di consegna si cambia dopo la conferma
+#   (CONFERMATO, PARZIALMENTE_EVASO) stanno solo negli argomenti del lock
+#   delle righe d'ordine (20261008-90). La capability deve leggerli da li':
+#   lock e capability leggono lo stesso dato, e con la stessa grammatica
+#   (script.fn_doc_lock_regola). Generico sui due building block e su ogni
+#   tabella: serve anche ai prelievi della bolla (ubicazione_arrivo_id in
+#   EMESSO/SPEDITO) e alla testata, nella fase 2.
+#
+# -- COME ----------------------------------------------------------------
+#   pg_trigger della tabella, i trigger che eseguono uno dei due building
+#   block e che scattano davvero (tgenabled O = origin, A = always: un
+#   trigger disabilitato, o solo in replica, non ferma niente e non deve
+#   spegnere niente). Gli argomenti da dbops.fn_trigger_argomenti, la regola
+#   da script.fn_doc_lock_regola. Una riga per trigger, in ordine di nome.
+#   LANGUAGE sql a stringa (non BEGIN ATOMIC): i nomi delle due funzioni si
+#   risolvono alla chiamata. pg_trigger e' leggibile da tutti; nessuna RLS.
+#   trigger_nome ancorato a pg_trigger.tgname; p_tabella regclass.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-62-create-fn-doc-lock-montaggi-mctit.yaml
+
+  - changeSet:
+      id: 20261010-62-create-fn-doc-lock-montaggi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo BB script.fn_doc_lock_montaggi: il lettore del montaggio dei building block «solo in
+        bozza» di una tabella, da pg_trigger.tgargs. Brief: brief-db-testata-dopo-emissione (R-1, D-F2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_doc_lock_montaggi(
+                  p_tabella regclass
+              )
+              RETURNS TABLE(
+                  trigger_nome pg_catalog.pg_trigger.tgname%TYPE,
+                  regola       jsonb
+              )
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- Scopo: i trigger «si tocca solo in bozza» montati su
+                  --   p_tabella, con la regola che i loro argomenti dicono
+                  --   (script.fn_doc_lock_regola). Il lettore del montaggio:
+                  --   la capability legge lo stesso dato del lock.
+                  -- ⚠️ Solo i trigger che scattano: O (origin) e A (always).
+                  --   Uno disabilitato non ferma niente, e non deve spegnere
+                  --   niente.
+                  SELECT t.tgname,
+                         script.fn_doc_lock_regola(
+                           CASE t.tgfoid
+                             WHEN 'vendite.trgfn_doc_righe_lock_fuori_bozza'::regproc   THEN 'RIGHE'
+                             WHEN 'vendite.trgfn_doc_testata_lock_fuori_bozza'::regproc THEN 'TESTATA'
+                           END,
+                           dbops.fn_trigger_argomenti(t.tgargs))
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = p_tabella
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled IN ('O', 'A')
+                     AND t.tgfoid IN ('vendite.trgfn_doc_righe_lock_fuori_bozza'::regproc,
+                                      'vendite.trgfn_doc_testata_lock_fuori_bozza'::regproc)
+                   ORDER BY t.tgname;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_doc_lock_montaggi(regclass)
+              IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1; D-F2 di Tid: si legge il montaggio, nessuna tabella nuova): il LETTORE DEL MONTAGGIO. I trigger montati su p_tabella che eseguono vendite.trgfn_doc_righe_lock_fuori_bozza o vendite.trgfn_doc_testata_lock_fuori_bozza e che scattano (tgenabled O o A), una riga per trigger in ordine di nome, con la regola che i loro argomenti dicono (pg_trigger.tgargs -> dbops.fn_trigger_argomenti -> script.fn_doc_lock_regola, la stessa grammatica del trigger). Lock e capability leggono cosi'' lo stesso dato e lo capiscono allo stesso modo. Lo usa script.fn_doc_colonna_modificabile.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_doc_lock_montaggi(regclass);

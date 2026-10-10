@@ -15,8 +15,8 @@
 #!/usr/bin/env python3
 import os, re
 from dotenv import load_dotenv
-import psycopg2
-from psycopg2.extras import DictCursor
+import psycopg
+from psycopg.rows import dict_row
 
 # Directory del file script e root del progetto
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -114,12 +114,23 @@ def gen_table_md(schema, table, cur):
     cmt_row = cur.fetchone()
     lines += _descrizione_md(cmt_row["commento"] if cmt_row else None)
     # Colonne
+    # Il tipo si prende da format_type(atttypid, atttypmod) e NON da
+    # information_schema.columns.data_type, che toglie il typmod: «numeric» per
+    # numeric(18,6) e numeric(15,2), «character varying» senza lunghezza,
+    # «USER-DEFINED» per un enum, «ARRAY» per un array. La scala di un numeric
+    # e' contratto: chi copia un valore da una colonna all'altra deve vederla
+    # (2026-10-04, la quota del plafond calcolata a 6 decimali e scritta a 2).
     cur.execute(
         """
-        SELECT column_name, data_type, is_nullable, column_default
-        FROM information_schema.columns
-        WHERE table_schema=%s AND table_name=%s
-        ORDER BY ordinal_position
+        SELECT c.column_name,
+               format_type(a.atttypid, a.atttypmod) AS data_type,
+               c.is_nullable, c.column_default
+        FROM information_schema.columns c
+        JOIN pg_attribute a
+          ON a.attrelid = format('%%I.%%I', c.table_schema, c.table_name)::regclass
+         AND a.attname = c.column_name
+        WHERE c.table_schema=%s AND c.table_name=%s
+        ORDER BY c.ordinal_position
         """, (schema, table)
     )
     cols = cur.fetchall()
@@ -835,8 +846,11 @@ def verifica_visibilita(cur):
     ciechi = cur.fetchall()
     if not ciechi:
         return
-    cur.execute("SELECT current_user, current_setting('search_path')")
-    utente, spath = cur.fetchone()
+    # Per nome, non per posizione: con `dict_row` uno spacchettamento
+    # `a, b = riga` restituisce le CHIAVI, non i valori, e non da' errore.
+    cur.execute("SELECT current_user AS utente, current_setting('search_path') AS spath")
+    r = cur.fetchone()
+    utente, spath = r["utente"], r["spath"]
     esempi = "\n  ".join(
         f"{r['sch']}.{r['tab']} — {r['reali']} vincoli nel catalogo, 0 visibili"
         for r in ciechi[:8]
@@ -856,7 +870,10 @@ def verifica_visibilita(cur):
 
 # Main
 def main():
-    conn = psycopg2.connect(dsn=DB_DSN, cursor_factory=DictCursor)
+    # ⚠️ autocommit: in una transazione unica ogni `::regclass` lascia un
+    #   AccessShareLock su ogni tabella fino alla fine del giro, e un DDL
+    #   concorrente (migrate, pgTAP) finisce in deadlock con lo script.
+    conn = psycopg.connect(DB_DSN, row_factory=dict_row, autocommit=True)
     cur = conn.cursor()
     # ⚠️ Il search_path NON puo' dipendere da chi lancia lo script.
     #   `information_schema.triggers.action_statement` qualifica il nome della
@@ -875,7 +892,7 @@ def main():
     conn.close()
 
 def main_v1():
-    conn = psycopg2.connect(dsn=DB_DSN, cursor_factory=DictCursor)
+    conn = psycopg.connect(DB_DSN, row_factory=dict_row)
     cur = conn.cursor()
     for schema in schemas:
         schema_dir = os.path.join(OUT_DIR, schema)

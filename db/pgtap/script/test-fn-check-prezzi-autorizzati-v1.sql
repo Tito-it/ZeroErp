@@ -26,6 +26,7 @@
 --  13) EMESSO con un prezzo rifiutato dopo l'emissione: «Accetta» spento
 --  14) EMESSO -> ACCETTATO con un prezzo rifiutato: BLOCCA
 --  15) EMESSO -> ANNULLATO con un prezzo rifiutato: PASSA
+--      ⚠️ 13-15 SKIP motivato dal 2026-10-08: caso non costruibile (20261008-91)
 --  16) il vecchio trigger a10 non c'e' piu'
 --  Contratto (D-4)
 --  17) una RIGA con prezzo in attesa (prima non contava): un motivo
@@ -37,14 +38,21 @@
 --  22) «Emetti» spento col motivo del prezzo (il listino c'e')
 --  23) BOZZA -> EMESSA con un prezzo in attesa: BLOCCA
 --  24) BOZZA -> EMESSA con prezzi autorizzati: PASSA
---  25) EMESSA con un componente d'eccezione rifiutato: «Accetta» spento
---  26) EMESSA -> ACCETTATA con un componente rifiutato: BLOCCA
+--  25) EMESSA: il prezzo di un componente non cambia piu' (righe fuori bozza)
+--  26) EMESSA coi prezzi autorizzati: «Accetta» acceso
+--      (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende R5a: prima
+--      «componente rifiutato dopo l'emissione: Accetta spento / BLOCCA», un
+--      caso che il lock delle righe dell'offerta ora rende impossibile)
 --  Ordine (D-6)
 --  27) componente REJECTED: un motivo
 --  28) «Conferma» spento col motivo, dalla bozza
 --  29) DRAFT -> CONFERMATO con un componente rifiutato: BLOCCA
 --  30) DRAFT -> CONFERMATO con prezzi autorizzati: PASSA
---  31) il RIENTRO EVASO -> CONFERMATO non chiede il prezzo (via d'uscita)
+--  31) EVASO: un componente non diventa rifiutato (componenti fuori bozza)
+--      (rev 2026-10-08, brief-db-righe-e-componenti-le-altre-famiglie §2.2:
+--      prima «il RIENTRO EVASO -> CONFERMATO con un componente rifiutato
+--      passa», un caso che il lock dei componenti dell'ordine ora rende
+--      impossibile)
 --  DDT (D-6)
 --  32) causale che vende + componente PENDING: il motivo nuovo in
 --      fn_check_ddt_emittibile, non piu' E_COMPONENTE_PREZZO_PENDENTE
@@ -60,8 +68,11 @@
 --  40) ... e la madre fn_crea_revisione_preventivo rifiuta
 --  41) col prezzo RIFIUTATO la revisione si crea (il rifiutato non blocca)
 --  42) ... e la riga della revisione porta il REJECTED: la copia resta
---  43) offerta EMESSA con un componente in attesa: «Crea revisione» spento
---  44) ... e la madre fn_crea_revisione_offerta rifiuta
+--      ⚠️ 39-42 SKIP motivato dal 2026-10-08: caso non costruibile (20261008-91)
+--  43) offerta EMESSA: un componente non torna in attesa (righe fuori bozza)
+--  44) ... e «Crea revisione» e' acceso: i prezzi sono quelli dell'emissione
+--      (rev 2026-10-04, R5a: prima «componente tornato in attesa: Crea
+--      revisione spento / la madre rifiuta», ora impossibile per costruzione)
 --
 -- Scopo:
 --  - ⭐ i casi si COSTRUISCONO: mondo, articoli, distinta base e documenti
@@ -73,6 +84,11 @@
 --    i guard di transizione sanno sollevare anche altro, e P0001 direbbe solo
 --    «errore di dominio», non quale.
 -- ------------------------------------------------------------
+
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   contratto e offerta stanno nel PERIMETRO dell'articolo. L'articolo del builder e' MERCE
+--   senza tipologia, che ammette UNA_TANTUM: l'erogazione, scritta CANONE per caso, ora e'
+--   UNA_TANTUM (stessa fonte FISSA, la quantita' si comporta uguale).
 
 BEGIN;
 
@@ -108,8 +124,8 @@ UPDATE catalogo.articoli SET is_composito = true
 --   documento (script.trgfn_componenti_guard_obbligatorio), e il caso 8 — un
 --   componente rifiutato e poi TOLTO — esiste solo per i facoltativi.
 INSERT INTO catalogo.articoli_componenti
-    (prodotto_id, componente_id, coeff_qta, valido_dal, esposto_in_fattura, obbligatorio)
-SELECT a.kit_id, a.cmp_id, 1, CURRENT_DATE - 30, true, false FROM _a a;
+    (prodotto_id, componente_id, coeff_qta, valido_dal, esposizione_in_fattura, obbligatorio)
+SELECT a.kit_id, a.cmp_id, 1, script.fn_data_operativa() - 30, 'DESCRITTIVO', false FROM _a a;
 
 CREATE TEMP TABLE _k AS
 SELECT a.kit_id, a.cmp_id,
@@ -173,7 +189,7 @@ BEGIN
             ('PGT-PZA-' || v_caso.tag || '-' || substring(md5(clock_timestamp()::text) FOR 6),
              (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'DRAFT'),
              c.utility_id, c.istanza_utility_id, c.billing_account_id,
-             CURRENT_DATE, c.emittente_fiscale_id)
+             script.fn_data_operativa(), c.emittente_fiscale_id)
         RETURNING id INTO v_prev;
 
         INSERT INTO vendite.preventivi_righe
@@ -186,10 +202,10 @@ BEGIN
         INSERT INTO vendite.preventivi_righe_componenti
             (riga_preventivo_id, articolo_componente_id, componente_id,
              coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo,
-             stato_approvazione_prezzo)
+             stato_approvazione_prezzo, uom_operativa_id)
         VALUES
             (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE',
-             v_caso.st_comp::config.stato_approvazione_prezzo)
+             v_caso.st_comp::config.stato_approvazione_prezzo, (SELECT uom_id FROM catalogo.articoli WHERE id = k.cmp_id))
         RETURNING id INTO v_comp;
 
         -- ⚠️ Lo stato della RIGA si scrive DOPO il componente, non alla
@@ -308,36 +324,22 @@ SELECT lives_ok(
     '12) DRAFT -> EMESSO con prezzi autorizzati: PASSA (controllo dell''11)'
 );
 
--- ⭐ Il modello lo ammette: nessun guard vieta di scrivere lo stato di
---   approvazione sulla riga di un preventivo gia' emesso. E' il caso che il
---   blocco verso ACCETTATO esiste a coprire.
-UPDATE vendite.preventivi_righe
-   SET stato_approvazione_prezzo = 'REJECTED'
- WHERE id = (SELECT riga_id FROM _p WHERE tag = 'emesso');
-
-SELECT is(
-    (SELECT a ->> 'reason_key'
-       FROM jsonb_array_elements(script.fn_available_actions_preventivo(
-              (SELECT prev_id FROM _p WHERE tag = 'emesso')) -> 'available_actions') a
-      WHERE a ->> 'target_state' = 'ACCETTATO' AND (a ->> 'enabled')::boolean IS FALSE),
-    'common.azione_reason.prezzo_rifiutato',
-    '13) EMESSO con un prezzo rifiutato: «Accetta» spento col motivo'
-);
-
-SELECT throws_like(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'ACCETTATO'),
-           (SELECT prev_id FROM _p WHERE tag = 'emesso')),
-    '%prezzi rifiutati dal responsabile%',
-    '14) EMESSO -> ACCETTATO con un prezzo rifiutato: BLOCCA'
-);
-
-SELECT lives_ok(
-    format('UPDATE vendite.preventivi SET stato_doc_preventivo_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'ANNULLATO'),
-           (SELECT prev_id FROM _p WHERE tag = 'emesso')),
-    '15) EMESSO -> ANNULLATO con un prezzo rifiutato: PASSA (via d''uscita)'
-);
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §4.5, decisione
+--   di Tid): SKIP MOTIVATO dei test 13-15. Il caso si costruiva scrivendo
+--   REJECTED sulla riga del preventivo gia' EMESSO («il modello lo ammette»):
+--   da 20261008-91 le righe del preventivo fuori bozza non si scrivono, e dalla
+--   bozza si esce solo coi prezzi autorizzati (11-12). «EMESSO con un prezzo
+--   rifiutato» non nasce piu' da nessuna porta. Il blocco verso ACCETTATO
+--   (Regola 3 del guard di transizione) e la reason della capability RESTANO
+--   come difesa in profondita'. ⚠️ Non e' la forma dei test 25-26 (offerta) e
+--   31 (ordine), che il 2026-10-04 erano stati riscritti nel rifiuto del lock:
+--   per il preventivo Tid ha scelto lo skip, che non cambia il soggetto del test.
+SELECT skip(
+    'preventivo EMESSO con un prezzo rifiutato dopo l''emissione («Accetta» spento, '
+    'ACCETTATO bloccato, ANNULLATO ammesso): caso non costruibile dalle porte del '
+    'modello da 20261008-91 (righe del preventivo solo in bozza); i controlli '
+    'restano come difesa in profondita''',
+    3);
 
 SELECT hasnt_trigger('vendite', 'preventivi',
     'trg_preventivi_a10_guard_transizione_approvazione_upd',
@@ -380,11 +382,12 @@ BEGIN
         -- Negoziato puro: la riga AGGIUNTA con un prezzo e' cio' che rende il
         -- contratto «non vuoto» (DOCUMENTO_SENZA_RIGHE non deve coprire il
         -- motivo che si vuole vedere).
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.contratti_righe
             (contratto_id, articolo_id, fonte_quantita_attesa, tipo_eccezione,
-             prezzo_unitario, qta_operativa)
+             prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES
-            (v_ctr, k.cmp_id, 'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 100, 1)
+            (v_ctr, k.cmp_id, 'FISSA', 'AGGIUNTA'::vendite.tipo_eccezione_contratto, 100, 1, 'UNA_TANTUM')
         RETURNING id INTO v_riga;
 
         UPDATE vendite.contratti_righe
@@ -467,25 +470,26 @@ BEGIN
         VALUES
             ('PGT-PZA-O-' || v_tag || '-' || substring(md5(clock_timestamp()::text) FOR 6),
              c.emittente_fiscale_id, c.billing_account_id, c.istanza_utility_id,
-             c.utility_id, l.listino_id, l.listino_versione_id, CURRENT_DATE,
+             c.utility_id, l.listino_id, l.listino_versione_id, script.fn_data_operativa(),
              (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'BOZZA'))
         RETURNING id INTO v_off;
 
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.offerte_commerciali_eccezioni
             (offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-             prezzo_unitario, qta_operativa)
+             prezzo_unitario, qta_operativa, tipo_erogazione)
         VALUES
             (v_off, CASE v_tag WHEN 'kit' THEN k.kit_id ELSE k.cmp_id END,
-             'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 100, 1)
+             'AGGIUNTA'::vendite.tipo_eccezione_contratto, 'FISSA', 100, 1, 'UNA_TANTUM')
         RETURNING id INTO v_ecc;
 
         v_comp := NULL;
         IF v_tag = 'kit' THEN
             INSERT INTO vendite.offerte_commerciali_eccezioni_componenti
                 (eccezione_offerta_id, articolo_componente_id, componente_id,
-                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
+                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
             VALUES
-                (v_ecc, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE')
+                (v_ecc, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = k.cmp_id))
             RETURNING id INTO v_comp;
         ELSE
             UPDATE vendite.offerte_commerciali_eccezioni
@@ -531,26 +535,28 @@ SELECT lives_ok(
     '24) BOZZA -> EMESSA con prezzi autorizzati: PASSA (controllo del 23)'
 );
 
--- Il rifiuto arriva dopo l'emissione, sul COMPONENTE dell'eccezione.
-UPDATE vendite.offerte_commerciali_eccezioni_componenti
-   SET stato_approvazione_prezzo = 'REJECTED'
- WHERE id = (SELECT comp_id FROM _o WHERE tag = 'kit');
-
-SELECT is(
-    (SELECT a ->> 'reason_key'
-       FROM jsonb_array_elements(script.fn_available_actions_offerta(
-              (SELECT offerta_id FROM _o WHERE tag = 'kit')) -> 'available_actions') a
-      WHERE a ->> 'target_state' = 'ACCETTATA' AND (a ->> 'enabled')::boolean IS FALSE),
-    'common.azione_reason.prezzo_rifiutato',
-    '25) EMESSA con un componente d''eccezione rifiutato: «Accetta» spento col motivo'
+-- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a; decisione
+--   di Tid, «lock pieno»): le righe di un'offerta si toccano solo in BOZZA, come
+--   quelle del contratto. Lo stato di approvazione di un componente non cambia
+--   piu' dopo l'emissione: la sua modifica ricalcola il prezzo della riga madre
+--   (trg_oce_comp_z90_ricalcola_padre), e quell'UPDATE e' fuori bozza. Il caso
+--   «componente rifiutato dopo l'emissione», che qui si costruiva con un UPDATE,
+--   non ha piu' una strada: il controllo verso ACCETTATA resta come rete.
+SELECT throws_like(
+    format($$UPDATE vendite.offerte_commerciali_eccezioni_componenti
+                SET stato_approvazione_prezzo = 'REJECTED' WHERE id = %s$$,
+           (SELECT comp_id FROM _o WHERE tag = 'kit')),
+    '%non e'' piu'' in bozza%',
+    '25) EMESSA: il prezzo di un componente non cambia piu'' (righe fuori bozza)'
 );
 
-SELECT throws_like(
-    format('UPDATE vendite.offerte_commerciali SET stato_doc_offerta_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_offerte s WHERE s.codice_interno = 'ACCETTATA'),
-           (SELECT offerta_id FROM _o WHERE tag = 'kit')),
-    '%prezzi rifiutati dal responsabile%',
-    '26) EMESSA -> ACCETTATA con un componente rifiutato: BLOCCA'
+SELECT is(
+    (SELECT (a ->> 'enabled')::boolean
+       FROM jsonb_array_elements(script.fn_available_actions_offerta(
+              (SELECT offerta_id FROM _o WHERE tag = 'kit')) -> 'available_actions') a
+      WHERE a ->> 'target_state' = 'ACCETTATA'),
+    true,
+    '26) EMESSA coi prezzi autorizzati all''emissione: «Accetta» acceso'
 );
 
 -- =========================================================
@@ -577,7 +583,7 @@ BEGIN
         VALUES
             (c.cliente_soggetto_ruolo_id, c.billing_account_id,
              (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
-             'SPEDITO', c.emittente_fiscale_id, CURRENT_DATE)
+             'SPEDITO', c.emittente_fiscale_id, script.fn_data_operativa())
         RETURNING id INTO v_ord;
 
         INSERT INTO vendite.ordini_righe
@@ -589,9 +595,9 @@ BEGIN
 
         INSERT INTO vendite.ordini_righe_componenti
             (riga_ordine_id, articolo_componente_id, componente_id,
-             coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
+             coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
         VALUES
-            (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE')
+            (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = k.cmp_id))
         RETURNING id INTO v_comp;
 
         IF v_tag = 'rifiutato' THEN
@@ -639,22 +645,25 @@ SELECT lives_ok(
 );
 
 -- ⭐ Il RIENTRO. La matrice riporta l'ordine da EVASO a CONFERMATO in
---   automatico quando l'evasione torna indietro. Un prezzo rimasto non
---   autorizzato sul documento non deve fermarlo: bloccherebbe l'annullamento a
---   valle, cioe' una via d'uscita (D-2).
+--   automatico quando l'evasione torna indietro, e un prezzo non autorizzato
+--   non deve fermarlo: e' una via d'uscita (D-2). Il guard lo dice ancora.
+-- 🔄 rev 2026-10-08 (20261008-34, brief-db-righe-e-componenti-le-altre-famiglie
+--   §2.2): il caso non si costruisce piu'. Sull'ordine la marca di approvazione
+--   ce l'hanno solo i componenti; l'ordine si conferma solo coi prezzi
+--   autorizzati (29), e dopo la conferma i componenti si toccano solo in bozza.
+--   Quindi un prezzo non diventa rifiutato su un ordine EVASO: il test prova
+--   questo. Stessa riscrittura dei test 26 e 44 sull'offerta (rev 2026-10-04).
 UPDATE vendite.ordini
    SET stato_doc_ordine_id = (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'EVASO')
  WHERE id = (SELECT ordine_id FROM _or WHERE tag = 'pulito');
 
-UPDATE vendite.ordini_righe_componenti
-   SET stato_approvazione_prezzo = 'REJECTED'
- WHERE id = (SELECT comp_id FROM _or WHERE tag = 'pulito');
-
-SELECT lives_ok(
-    format('UPDATE vendite.ordini SET stato_doc_ordine_id = %s WHERE id = %s',
-           (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'CONFERMATO'),
-           (SELECT ordine_id FROM _or WHERE tag = 'pulito')),
-    '31) il RIENTRO EVASO -> CONFERMATO con un componente rifiutato PASSA: non e'' una conferma'
+SELECT throws_like(
+    format($$UPDATE vendite.ordini_righe_componenti
+                SET stato_approvazione_prezzo = 'REJECTED'
+              WHERE id = %s$$,
+           (SELECT comp_id FROM _or WHERE tag = 'pulito')),
+    '%non e'' piu'' in bozza%',
+    '31) EVASO: un componente non diventa rifiutato dopo la conferma (componenti fuori bozza)'
 );
 
 -- =========================================================
@@ -677,13 +686,16 @@ BEGIN
     -- 'vende':  causale fatturabile — il prezzo si chiede;
     -- 'visione': conto visione — il documento non vende, il prezzo no.
     FOREACH v_tag IN ARRAY ARRAY['vende', 'visione'] LOOP
+        -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): col BA del cliente — la
+        --   causale vuole un cliente (D-2) e la utility senza BA viola
+        --   chk_ddt_ba_utility_insieme.
         INSERT INTO vendite.ddt
             (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id,
-             utility_id, causale_trasporto_id)
+             utility_id, billing_account_id, causale_trasporto_id)
         VALUES
             (c.cliente_soggetto_ruolo_id,
              (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'DRAFT'),
-             c.emittente_fiscale_id, c.utility_id,
+             c.emittente_fiscale_id, c.utility_id, c.billing_account_id,
              (SELECT ct.id FROM config.causali_trasporto ct
                WHERE ct.codice = CASE v_tag WHEN 'vende' THEN 'VENDITA' ELSE 'CONTO_VISIONE' END))
         RETURNING id INTO v_ddt;
@@ -697,9 +709,9 @@ BEGIN
 
         INSERT INTO vendite.ddt_righe_componenti
             (riga_ddt_id, articolo_componente_id, componente_id,
-             coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
+             coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
         VALUES
-            (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE')
+            (v_riga, k.bom_id, k.cmp_id, 1, 1, 10, 'MANUALE', (SELECT uom_id FROM catalogo.articoli WHERE id = k.cmp_id))
         RETURNING id INTO v_comp;
 
         UPDATE vendite.ddt_righe_componenti
@@ -793,69 +805,46 @@ UPDATE vendite.preventivi
    SET stato_doc_preventivo_id = (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'EMESSO')
  WHERE id = (SELECT prev_id FROM _p WHERE tag = 'rev');
 
--- Il prezzo passa in attesa dopo l'emissione: il modello lo ammette.
-UPDATE vendite.preventivi_righe
-   SET stato_approvazione_prezzo = 'PENDING'
- WHERE id = (SELECT riga_id FROM _p WHERE tag = 'rev');
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui §4.5, decisione
+--   di Tid): SKIP MOTIVATO dei test 39-42. Il caso si costruiva scrivendo
+--   PENDING, poi REJECTED, sulla riga del preventivo gia' EMESSO («il modello lo
+--   ammette»). Da 20261008-91 le righe del preventivo fuori bozza non si
+--   scrivono, e dalla bozza si esce solo coi prezzi autorizzati (test 11-12):
+--   un preventivo EMESSO con una riga attiva in attesa o rifiutata non nasce
+--   piu' da nessuna porta. Il gate «prima l'esito, poi la revisione»
+--   (script.fn_check_prezzi_in_attesa nella madre e nella capability) e la
+--   copia 1:1 del rifiutato RESTANO nel codice come difesa in profondita'.
+--   Della copia resta provato il ramo raggiungibile: il componente SPENTO
+--   rifiutato, in vendite/test-righe-e-componenti-debiti-residui-v1 (22, 24).
+SELECT skip(
+    'revisione di un preventivo EMESSO con una riga in attesa o rifiutata: caso non '
+    'costruibile dalle porte del modello da 20261008-91 (righe del preventivo solo in '
+    'bozza, uscita dalla bozza solo coi prezzi autorizzati); gate e copia restano '
+    'come difesa in profondita''',
+    4);
 
-SELECT is(
-    (SELECT (a ->> 'enabled') || ' / ' || (a ->> 'reason_key')
-       FROM jsonb_array_elements(script.fn_available_actions_preventivo(
-              (SELECT prev_id FROM _p WHERE tag = 'rev')) -> 'available_actions') a
-      WHERE a ->> 'key' = 'crea_revisione'),
-    'false / common.azione_reason.prezzo_pendente',
-    '39) preventivo EMESSO con un prezzo in attesa: «Crea revisione» c''e'', spento col motivo'
-);
-
+-- Offerta: l'eccezione-kit e' EMESSA (test 24).
+-- ⚠️ rev 2026-10-04 (R5a, «lock pieno»): un componente non torna in attesa dopo
+--   l'emissione — la nuova richiesta passa da una revisione, che nasce in BOZZA.
+--   Il caso che qui si costruiva con un UPDATE non ha piu' una strada; il gate
+--   «prezzo in attesa» di fn_crea_revisione_offerta resta come rete (lo provava sul
+--   preventivo il test 40, stesso building block: dal 2026-10-08 nemmeno li' il
+--   caso si costruisce, e il 40 e' uno skip motivato).
 SELECT throws_like(
-    format('SELECT * FROM vendite.fn_crea_revisione_preventivo(%s, ''pgtap'')',
-           (SELECT prev_id FROM _p WHERE tag = 'rev')),
-    '%prezzi ancora in attesa di approvazione%',
-    '40) ... e la madre fn_crea_revisione_preventivo rifiuta: prima l''esito, poi la revisione'
-);
-
--- L'esito arriva: il responsabile rifiuta.
-UPDATE vendite.preventivi_righe
-   SET stato_approvazione_prezzo = 'REJECTED'
- WHERE id = (SELECT riga_id FROM _p WHERE tag = 'rev');
-
-SELECT lives_ok(
-    format('SELECT * FROM vendite.fn_crea_revisione_preventivo(%s, ''pgtap'')',
-           (SELECT prev_id FROM _p WHERE tag = 'rev')),
-    '41) col prezzo RIFIUTATO la revisione si crea: il rifiutato non blocca la revisione'
+    format($$UPDATE vendite.offerte_commerciali_eccezioni_componenti
+                SET stato_approvazione_prezzo = 'PENDING' WHERE id = %s$$,
+           (SELECT comp_id FROM _o WHERE tag = 'kit')),
+    '%non e'' piu'' in bozza%',
+    '43) offerta EMESSA: un componente non torna in attesa (righe fuori bozza)'
 );
 
 SELECT is(
-    (SELECT r.stato_approvazione_prezzo::text
-       FROM vendite.preventivi p
-       JOIN vendite.preventivi_righe r ON r.preventivo_id = p.id
-      WHERE p.numero = (SELECT p0.numero FROM vendite.preventivi p0
-                         WHERE p0.id = (SELECT prev_id FROM _p WHERE tag = 'rev'))
-        AND p.id <> (SELECT prev_id FROM _p WHERE tag = 'rev')),
-    'REJECTED',
-    '42) ... e la riga della revisione porta il REJECTED: la copia resta (azzerarla farebbe passare il prezzo rifiutato)'
-);
-
--- Offerta: l'eccezione-kit e' EMESSA (test 24). Il suo componente torna in
--- attesa (una nuova richiesta).
-UPDATE vendite.offerte_commerciali_eccezioni_componenti
-   SET stato_approvazione_prezzo = 'PENDING'
- WHERE id = (SELECT comp_id FROM _o WHERE tag = 'kit');
-
-SELECT is(
-    (SELECT (a ->> 'enabled') || ' / ' || (a ->> 'reason_key')
+    (SELECT (a ->> 'enabled')::boolean
        FROM jsonb_array_elements(script.fn_available_actions_offerta(
               (SELECT offerta_id FROM _o WHERE tag = 'kit')) -> 'available_actions') a
       WHERE a ->> 'key' = 'crea_revisione'),
-    'false / common.azione_reason.prezzo_pendente',
-    '43) offerta EMESSA con un componente in attesa: «Crea revisione» c''e'', spento col motivo'
-);
-
-SELECT throws_like(
-    format('SELECT vendite.fn_crea_revisione_offerta(%s, ''pgtap'')',
-           (SELECT offerta_id FROM _o WHERE tag = 'kit')),
-    '%prezzi ancora in attesa di approvazione%',
-    '44) ... e la madre fn_crea_revisione_offerta rifiuta'
+    true,
+    '44) ... e «Crea revisione» e'' acceso: i prezzi sono quelli dell''emissione'
 );
 
 SELECT * FROM finish();

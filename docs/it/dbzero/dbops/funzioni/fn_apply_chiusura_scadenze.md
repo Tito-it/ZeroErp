@@ -133,7 +133,7 @@ AS $function$
                              SET %I = %L
                            WHERE %I = %L
                              AND %I IS NOT NULL
-                             AND %I < CURRENT_DATE
+                             AND %I < (SELECT script.fn_data_operativa())
                           $f$,
                           v_row.schema_tabella, v_row.nome_tabella,
                           v_row.col_stato,      v_row.stato_chiuso_codice,
@@ -221,7 +221,7 @@ AS $function$
                              SET %I = %L
                            WHERE %I = %L
                              AND %I IS NOT NULL
-                             AND %I < CURRENT_DATE
+                             AND %I < (SELECT script.fn_data_operativa())
                           $f$,
                           v_row.schema_tabella, v_row.nome_tabella,
                           v_row.col_stato,      v_id_chiuso::text,

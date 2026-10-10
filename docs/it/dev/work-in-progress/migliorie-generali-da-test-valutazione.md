@@ -39,6 +39,24 @@
 > giorno stesso. I numeri che stanno solo nel catalogo del database
 > (`vw_codici_errore_da_dichiarare` 545, `rls_perimetro_debito` 7) sono del
 > 20-09: la data è accanto.
+>
+> ⭐ **Aggiunto il 2026-10-04 — §2-bis, la valutazione qualitativa del
+> design**: modello dati, logica nelle funzioni, trigger/RLS, governo. Fino a
+> quel giorno il documento giudicava solo la catena che rende vero il
+> database, non il database. Le voci di §2-bis non sono ancora entrate in §3:
+> diventano difetti aperti solo con l'ok di Tid, una per una.
+>
+> ✅ **Verificata dal team DB lo stesso giorno, sul catalogo di dbdev** (§2-bis.8):
+> concorda nella sostanza; Q-2 e Q-6 sono **più larghe** di come scritte, Q-4 è
+> **più grave** (la corsa c'è), Q-3 scende a 🟠. Con l'ok di Tid sono entrate in
+> §3 come **D17** (Q-1…Q-4, brief `brief-db-esclusioni-implicite.md`) e in D8
+> (Q-5); Q-6 è diventata una regola delle linee guida. ✅ **D17 chiusa lo stesso
+> giorno tranne Q-2**, rimandata da Tid (§7 D17, §3 D17).
+>
+> ✅ **2026-10-05**: brief di D17 archiviato in `work-done/`. Le due voci «da
+> verificare» del suo censimento `UPDATE OF` sono state verificate: una è
+> innocua, l'altra è un difetto vero della catena delle istanze su un PDP ed è
+> entrata in §3 come **D18**.
 ---
 
 ## 0. Come si legge, e perché il metodo conta più del voto
@@ -210,17 +228,343 @@ PostgreSQL 18, Liquibase 5, `daterange`/`tstzrange` nativi su 18 tabelle (con
 
 ---
 
+## 2-bis. Il design del database — valutazione qualitativa (2026-10-04)
+
+> Fin qui il documento giudica la **catena che rende vero** il database: CI,
+> perimetro, presidi, registri. Questa sezione giudica **il database stesso**:
+> il modello dei dati, la logica scritta nelle funzioni, l'architettura
+> trasversale e il modo in cui il tutto è governato.
+>
+> **Fonti**: la doc auto-generata (`docs/it/dbzero/`), le pagine `manual/`, le
+> linee guida e i master Liquibase, letti il 2026-10-04 in quattro passate
+> indipendenti (modello · logica · trigger/RLS · governo). Nessun DB vivo,
+> nessuno YAML come fonte del DDL. ✔ = **ricontrollato sulla doc** prima di
+> scriverlo; gli altri rilievi vengono dalla lettura e non sono stati
+> ricontrollati uno per uno.
+>
+> ⛔ **Cosa non si giudica**: l'ordine di costruzione. Un anno sul solo DB prima
+> di BE e FE è una scelta (§4), ed è quella che ha reso economici i refactor
+> pesanti del modello. Qui si giudica **la forma** di ciò che è stato
+> costruito, non i tempi.
+
+### 2-bis.1 Il giudizio, in breve
+
+⭐ **Il metodo è eccellente; il modello è buono e disomogeneo.** Le parti nate
+da un incidente e poi chiuse da un cancello sono di qualità rara: numerazione
+fiscale, contratto dell'eccezione, automazioni dichiarative, pgTAP come
+applicazione. Le parti nate **per famiglia, una dopo l'altra**, sono simmetriche
+nei **nomi** e non nella **forma**: testate dei documenti, macchine a stati,
+identità dell'emittente. È la firma tipica di un modello cresciuto a cantieri.
+Nessun singolo pezzo è sbagliato, ma ogni dominio ha scelto la forma che serviva
+al suo cantiere.
+
+🔴 **Il punto più debole è un altro, ed è nascosto**: le esclusioni dalla
+sicurezza. La RLS e i blocchi reggono su **invarianti impliciti**: chi possiede
+cosa, una GUC che nessuno imposta, un utente che non è mai NULL. Sono giusti
+oggi, ma nessun cancello li tiene, e su un ERP sono i difetti che non danno
+errore.
+
+### 2-bis.2 Cosa è costruito bene
+
+* ⭐ **Il party model.** `soggetti` è l'entità unica, i ruoli stanno in
+  `soggetti_ruoli` (`UNIQUE(soggetto_id, tipo_ruolo_id)`), fornitore ed
+  emittente sono 1:1 sul ruolo, `billing_account` sta sopra il ruolo e le FK
+  puntano al ruolo, non al soggetto. La stessa persona è cliente, fornitore ed
+  emittente senza duplicare l'anagrafica.
+* ⭐ **Chiavi stabili per design.** `uuid DEFAULT uuidv7()` sui master;
+  `id bigint` interno più `uid uuid` sui documenti; `codice_interno` bloccato in
+  scrittura come chiave fra ambienti (linee guida §6b/6c).
+* ⭐ **Tempo e immutabilità dove servono.** Range nativi con `EXCLUDE` o
+  `WITHOUT OVERLAPS` (contratti, listini, distinta base); listini
+  BOZZA → ATTIVA → CHIUSA con righe immutabili; template pubblicati protetti;
+  il registro di magazzino si corregge **solo per storno**, in unità base.
+* ⭐ **Snapshot omogenei sui documenti.** Tutte le tabelle `*_indirizzi` hanno la
+  stessa forma (`snapshot jsonb`, origine, `UNIQUE(doc, tipo)`), e la fattura
+  congela cliente, emittente e termine di pagamento.
+* ⭐ **La numerazione fiscale.** `fn_get_next_progressivo`: advisory lock per
+  registro e serie, poi `FOR UPDATE` sul contatore. Il controllo della data sta
+  **sotto** il lock e legge il contatore, non `fatture` (che ha la RLS e
+  potrebbe nascondere righe). Le quattro copie di DDT, ordini, resi e commessa
+  sono confluite in `fn_assegna_numero_documento`.
+* ⭐ **Il contratto dell'eccezione.** Un solo punto solleva
+  (`fn_log_and_raise_error`): codice, campo ed entità in campi strutturati, log
+  fuori transazione, ripieghi che non perdono mai il codice. Il backend sceglie
+  lo status senza leggere il testo.
+* ⭐ **Operazioni a lotti atomiche e rieseguibili per costruzione.**
+  `fn_applica_fondi_lotto` è un solo statement; `fn_ricalcola_totali_fattura`
+  legge il saldo al netto del proprio contributo; `fn_scrivi_movimento` è
+  l'unica porta di scrittura del magazzino, con il TOCTOU analizzato per
+  iscritto; `FOR UPDATE SKIP LOCKED` dove si contende.
+* ⭐ **Le automazioni dichiarative.** Audit, `tx_id`, storico, blocco colonne e
+  `ATTIVO` si applicano **per regola** (schema/nome), con dry-run e controllo di
+  convergenza: una tabella nuova li eredita senza che qualcuno la elenchi.
+* ⭐ **Il perimetro RLS derivato dalle FK.** `vw_rls_perimetro_scoperto` vede la
+  figlia nuova da sola; lo storico congela lo scope al momento della scrittura;
+  le partizioni delle note sono usate per avere **FK vere** per tipo di
+  bersaglio, non per volume.
+* ⭐ **Il circuito incidente → divieto → cancello → template.** I divieti di
+  `linee-guida-sql.md` §11 spiegano il meccanismo, nominano l'incidente e
+  hanno un `guardrail_*.py` in CI; il pgTAP ha un template che spiega ogni
+  riga del preambolo, presidiato, e fixture che **costruiscono il mondo**
+  invece di cercarlo.
+
+### 2-bis.3 Rischi di modello — 🔴, da chiudere
+
+| #     | Rilievo                                                                                                                                                                                                                                                     | Conseguenza                                                                                                                                                                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q-1 ✔ | **Utente NULL = vede tutto, dentro la funzione chiamata dalle policy.** `script.fn_check_user_emittente_scope` risponde `true` con `p_auth_user_id IS NULL` («job batch»), e `fn_scope_ef_whitelist` la chiama. Le policy sono chiuse **solo** perché combinano `app.ruolo_applicativo = 'OPERATORE'` | Una sessione con il ruolo impostato e `app.current_user_id` vuoto (un difetto del middleware, una connessione riusata) vede **tutte** le aziende. Il «NULL = tutto» va dove c'è il ruolo `BYPASSRLS`, non in una funzione di policy |
+| Q-2 ✔ | **I blocchi si spengono con una GUC che chiunque imposta.** `zeroerp.allow_lock_columns_override` (blocco colonne, cioè anche `codice_interno`), la GUC di `trgfn_delete_block_by_guc`, `zeroerp.maintenance_reset_lotto_draft` (spegne da sola `trgfn_fatturazione_lotti_guard_stato`) | Le GUC personalizzate le imposta anche `zeroerp_app`: l'immutabilità è disciplina del backend, non un vincolo. Il progetto ha già il giudizio giusto — «una GUC è un cartello, non un cancello» (`trgfn_guard_emittente_scope`) — e il rimedio: legare il bypass al ruolo (`fn_is_proprietario_tabella`, come fa già `zeroerp.ddt_cambio_stato`) |
+| Q-3   | **L'esclusione dalla RLS regge su un invariante di proprietà implicito.** Le `SECURITY DEFINER` vedono oltre la RLS solo perché il loro owner possiede le tabelle e la RLS è senza `FORCE`; `fn_get_fattura_intestazione` lo scrive («con un `FORCE` va rivista»), mentre le linee guida §10.5 **raccomandano** `FORCE` | Chi seguisse la regola scritta romperebbe in silenzio i risolutori di scope. Serve un presidio che fallisca su `FORCE` acceso o su una `DEFINER` nuova non censita                                                       |
+| Q-4 ✔ | **Ritorno a DRAFT: voluto; resta una sola domanda di concorrenza.** Che `fn_riporta_lotto_a_draft` cancelli le fatture **pre-fiscali** del lotto è il disegno (RD-1, Tid 2026-10-04), e il controllo prima del lock è una scelta dichiarata («una chiamata invalida non deve serializzare»). Lo stesso disegno però **rifiuta** il lotto se una fattura è già numerata (`E_LOTTO_FATTURE_NUMERATE`) | 🟡 Non un difetto di disegno. La domanda aperta è solo se una numerazione **concorrente** possa entrare fra il controllo e `fn_cleanup_fatture_by_ids`: il lock nomina la funzione e non il lotto, e su `fatture` non c'è un guard `BEFORE DELETE` sul numero. Se lo stato del lotto (pipeline in esecuzione) esclude già i due percorsi insieme, il punto si chiude con un pgTAP che lo provi; altrimenti basta il guard sul numero come difesa in profondità |
+| Q-5 ✔ | **`acquisti` non ha il perimetro dell'emittente.** `acquisti.ordini` e `acquisti.ddt` non hanno `emittente_fiscale_id` né `registro_id`; l'unicità `(anno, serie, numero)` è **globale**, mentre `acquisti/manual/ddt.md` la vuole **per fornitore**, e senza `NULLS NOT DISTINCT` non vincola le righe con `serie` NULL | È esattamente il caso del §4: non un ritardo, ma una decisione di `vendite` (multi-emittente, RLS per emittente) non riportata su `acquisti`. Si chiude **nel modello**, prima di scrivere il comportamento |
+| Q-6 ✔ | **Lo stesso emittente ha due identità.** `preventivi`, `ordini`, `ddt`, `resi`, `contratti` e `offerte` portano `emittente_fiscale_id`; `fatture` e `registri_fatturazione` portano `emittente_soggetto_ruolo_id`. `trgfn_ordini_gen_numero` lo scrive: «due convenzioni per lo stesso emittente» | Ogni passaggio da un documento all'altro traduce. La coerenza registro ↔ emittente sta in trigger, non in una FK composta                                                                                           |
+
+### 2-bis.4 Debolezze — ⚠️, la forma diverge fra famiglie
+
+* **Testate dei documenti simmetriche solo nei nomi** ✔. Totali
+  `totale_imponibile/totale_documento` (preventivi) contro
+  `imponibile_tot/iva_tot/totale_doc` (ordini) contro `imposta_tot` (fatture);
+  `numero` è `varchar` ovunque e `bigint` in fattura; validità `validita_dal`
+  sui preventivi contro la regola §7b `valido_dal/valido_al`; unicità del
+  numero con `COALESCE(serie,'')` in fattura e `NULLS NOT DISTINCT` altrove;
+  `quantita` contro `qta`. La controparte è ancorata in quattro modi
+  (`billing_account_id NOT NULL`, BA più `istanza_utility_id`,
+  `soggetto_ruolo_id`, `destinatario_soggetto_ruolo_id`).
+  ⇒ Una vista o una funzione unica «sul documento» non si può scrivere.
+* **Quattro forme di macchina a stati.** Tabelle `config.transizioni_stati_*`;
+  tabelle con colonne diverse (`stati_doc_fiscale_transizioni`,
+  `stati_doc_offerte_transizioni`, e altre in `vendite`/`pagamenti`); un `CASE`
+  in una funzione `IMMUTABLE` (documento interno di magazzino); transizioni
+  cablate negli `IF` (stato del lotto, sistemazioni). Il lotto ha tre assi di
+  stato, uno da tabella, uno cablato, uno testo libero. E dove la transizione è
+  un dato, gli **effetti** restano cablati (`fn_cambia_stato_ddt` ramifica su
+  coppie di stati): aggiungere una riga di transizione non aggancia il
+  movimento di magazzino.
+* **Il contratto d'errore rispettato a metà.** `E_GENERICO` (vietato da §5b) in
+  `fn_set_fatturazione_lotto_stato`; due convenzioni per i parametri
+  (`E_PARAMETRO_INVALIDO` e `E_VENDITE_CHIAMATA_NON_VALIDA`); `p_area` ora
+  schema, ora dominio, ora `'database'`; nomi di parametro e di tabella dentro
+  la frase per l'operatore.
+* **Volatilità dichiarata falsa.** Funzioni `STABLE` (e una `STABLE PARALLEL
+  SAFE`) che sollevano tramite `fn_log_and_raise_error`, cioè **scrivono** via
+  dblink.
+* **Sicurezza delle madri divisa.** Le linee guida chiedono madri `SECURITY
+  INVOKER`; i verbi di magazzino e DDT sono `DEFINER`, ricopiano il filtro della
+  policy nella `WHERE` e controllano il permesso a DB, mentre altri passaggi lo
+  lasciano al backend («presidio permessi sul BE»). Due fonti di verità per i
+  permessi.
+* **Capability disomogenee.** Il principio è giusto e applicato bene dove c'è
+  (la stessa `fn_check_*` alimenta pulsante e madre). Ma `reason`/`reasons`
+  hanno due forme, `can_change_state` conta tutte le azioni nel DDT e solo le
+  abilitate altrove, e il blocco degli step della pipeline sta in Python
+  (`LottoPipelineRunner`).
+* **Tipi senza criterio.** PK dei cataloghi `integer`, `bigint` o `smallint`;
+  scala dei prezzi `numeric(15,6)`, `(18,6)`, senza limite, `(22,10)` lungo la
+  catena listino → preventivo → ordine → DDT, senza una regola nelle linee
+  guida (rischio di troncamento silenzioso); `split_payment` è `character
+  'S'/'N'` su `soggetti` e `boolean` su `fornitori` ✔; `fornitori.regime_fiscale`
+  è un `varchar` senza FK, mentre sugli emittenti c'è la FK ✔;
+  `billing_account.valuta_id` senza FK ✔.
+* **Tre modelli di riferimento polimorfo** (`sorgente_tipo_id + sorgente_uid`,
+  il modello testuale, `documento_origine_tipo + _id`), nessuno una FK vera.
+  L'integrità è centralizzata in guard generici, che è il meglio possibile, ma
+  la tracciabilità fra documenti dipende tutta dai trigger.
+* **Il costo per riga sugli aggiornamenti massivi.** `tx_id`, storico (che in
+  modo `PADRE` risale la catena), blocco colonne con `EXECUTE` dinamico e
+  `ATTIVO` (un controllo dinamico per ogni figlia, con la politica indici FK in
+  opt-in) si sommano. L'unico alleggerimento sono le GUC di Q-2.
+* **Storico debole nel tempo.** `valid_from/valid_to` a granularità di giorno,
+  l'INSERT non tracciato, il flag `storicizza` che esclude per riga: con più
+  modifiche nello stesso giorno, «com'era alla data X» è ambiguo. Il `tx_id`,
+  che dovrebbe ricucire le operazioni su più tabelle, ripiega su `uuid_nil` in
+  silenzio se manca il canale dblink.
+* **Tabelle nuove scoperte fino a `ci_apply`.** Audit, `tx_id` e storico li
+  crea la seconda passata (in sviluppo, pgAgent la sera): fra il migrate e il
+  giro, una tabella nuova scrive senza storia.
+
+### 2-bis.5 Governo ed evoluzione
+
+* ⚠️ **`linee-guida-sql.md` contiene due regolamenti.** La parte §1-§10 è un
+  elenco di convenzioni senza presidio, con paragrafi **numerati due volte**
+  (§8-§10 compaiono due volte, con un blocco YAML ripetuto); la parte §11-§12 è
+  fatta di divieti nati da incidenti e presidiati. Manca una gerarchia, e la
+  mappa «divieto → presidio» più utile sta in `.codex/AGENTS.md`, cioè nel file
+  che un nuovo sviluppatore non legge. Le linee guida mescolano anche regola e
+  diario («al 2026-08-20», «erano tredici fino al…»): invecchiano ogni
+  settimana.
+* ⚠️ **Le convenzioni di nome dei trigger sono in conflitto**, e il nome è ciò
+  che decide l'ordine di esecuzione. §2 dice `trg_<tabella>_<evento>`,
+  `linee-guida-trigger.md` dice le fasi `a05/a10/z90`; i trigger generati
+  usano altre forme (`trg_{table}_ins_upd_gen_tx_id`,
+  `trg_upd_{table}_audit_data_user`) e lo storico ne ha due. Una
+  normalizzazione che scattasse dopo lo storico renderebbe lo snapshot diverso
+  dalla riga salvata.
+* 🔴 **La regola su `UPDATE OF` è descritta male.** `linee-guida-trigger.md`
+  dice che il trigger «non scatta se non cambiano quelle colonne»: in
+  PostgreSQL scatta se la colonna è nel `SET`, a prescindere dal valore, e
+  **non** scatta se la colonna la cambia un altro trigger `BEFORE`. Un guard
+  `a10` costruito su quella frase si aggira con una normalizzazione.
+* 🔴 **Il residuo v1 non è isolato** ✔. `changelog-master-v2.yaml` include
+  `changelog-master.yaml`, che fa `includeAll` di `baseline/` e `migrations/`:
+  la prima generazione rigira in ogni migrate da zero, con centinaia di file
+  `runOnChange: true` che `guardrail_run_on_change.py` **non guarda** (presidia
+  solo `migrations_v2`), e con file come `… - Copia.yaml` e nomi con lo spazio
+  finale. Il bug di checksum del §11.1 può ripartire da lì. Rimedio: estendere
+  il cancello, o consolidare il v1 in una baseline unica.
+* 🔴 **La «fonte di verità» dei corpi è generata dal DB di sviluppo** ✔. In CI
+  `gen_db_docs.py` gira in modo `ci` (senza sorgenti SQL); la doc completa si
+  genera in locale e si committa. Il DB di sviluppo è quello che §11.1 e
+  §11.9 descrivono come divergente per costruzione, e nessun controllo confronta
+  la doc con un DB ricostruito da zero.
+* ⚠️ **`logicalFilePath` dichiarato obbligatorio e non presidiato**, con file
+  che ne sono privi e uno che punta ancora a un percorso v1; `nullValue` dei CSV
+  fra token `NULL` e cella vuota; `85_pgagent` mai eseguito in CI
+  (`MARK_RAN`), cioè il rischio dichiarato del primo deploy.
+* ⚠️ **La storia vive nei corpi.** COMMENT e blocchi `--` raccontano revisioni,
+  brief e lezioni, spesso più lunghi del codice. Sono preziosi, ma pesano su
+  lettura e diff e invecchiano con il codice che descrivono.
+* ⚠️ **Il bus factor.** Oggi un secondo sviluppatore DB seguirebbe i cancelli,
+  ma non saprebbe ragionare sulle eccezioni: il perché delle regole sta nei
+  brief e nella memoria dell'autore, e alcuni divieti richiedono di conoscere
+  il funzionamento interno di Liquibase.
+
+### 2-bis.6 Cosa fare, in ordine di conseguenza
+
+1. **Q-1, Q-2, Q-3**: togliere «NULL = tutto» dalle funzioni di policy; legare
+   ogni GUC di bypass al ruolo (`fn_is_proprietario_tabella`); un presidio
+   sull'invariante owner/RLS (`FORCE` acceso, `DEFINER` non censita).
+2. **Q-4**: provare con un pgTAP che numerazione e ritorno a DRAFT non
+   possono sovrapporsi; se possono, il guard «fattura con numero non si
+   cancella».
+3. **Q-5, Q-6**: decidere **nel modello di `acquisti`**, prima del suo
+   comportamento: emittente, registro, unicità per fornitore. E scegliere una
+   sola identità dell'emittente sui documenti.
+4. **Governo**: estendere `guardrail_run_on_change.py` al v1; generare la doc
+   completa dal DB che la CI ricostruisce e confrontarla con quella committata;
+   correggere `UPDATE OF` e la convenzione dei nomi; portare in testa a
+   `linee-guida-sql.md` la tabella «divieto → presidio» e togliere i paragrafi
+   doppi.
+5. **Forma comune delle famiglie** (testate, macchine a stati, capability,
+   scala monetaria): non un refactor generale, ma una **regola scritta** che il
+   prossimo cantiere (`acquisti`) applica dal primo changeSet.
+
+### 2-bis.7 Doc da allineare — non contano come difetti del modello
+
+* `script/manual/trgfn_storico_generic.md`: l'esempio dice `AFTER`, le altre
+  pagine `BEFORE`; dice che gli errori «non bloccano la DML», ma
+  `E_SNAPSHOT_CLOSE_ERROR` blocca; snapshot `NEW` contro «stato precedente».
+* Nome del trigger di storico: `trg_z90_{table}_…` contro `trg_<tab>_z90_…`.
+* `fn_scope_ef_whitelist.md`: il manuale dice «whitelist vuota = true» e
+  «inlineable, valutata una volta»; `fn_check_user_emittente_scope.md` e §10.9
+  dicono fail-closed e «chiamata per riga».
+* `fn_run_automations_attivo.md` parla di `automation_fk_exclusions` come
+  inerte; `automation_rules_tbl.md` la dice droppata.
+* Tre famiglie di GUC d'identità (`app.user_id`/`app.group_ids` in
+  `fn_set_gucs_conn`, `app.current_user_id` nelle policy, `app.jwt_user`
+  nell'audit), a livelli diversi (sessione/transazione).
+* `linee-guida-sql.md`: §10.3 usa `app.current_identita_id` (le policy vere usano
+  `app.current_user_id`) ✔; §3 dice «UUID PK per i master» mentre i documenti
+  sono `bigint` + `uid`; il vecchio §9 dice «`runAlways` o `runAlways: false`»;
+  §12.4 dice che `fn_available_actions_lotto`/`_commessa` non hanno il motivo,
+  ma il corpo emette `reasons`.
+* `linee-guida-trigger.md`: `_z90_` definito due volte, in due modi.
+* `fn_assegna_numero_documento`: il COMMENT dice `SECURITY DEFINER`, la
+  definizione no.
+* `anagrafiche/tabelle/soggetti.md`: un trigger usa `soggetti_ruoli.attivo`,
+  che la pagina di `soggetti_ruoli` non elenca.
+* Il generatore della doc: mostra gli `EXCLUDE` come `CREATE INDEX … gist` e
+  non fra i vincoli; non mostra precisione e scala di `numeric`/`varchar`;
+  `tools/gen_db_docs.md` indica `tools/gen_db_docs.py`, ma lo script è in
+  `scripts/`.
+
+### 2-bis.8 La verifica del team DB, e le decisioni di Tid (2026-10-04)
+
+> Fonte: il catalogo del database `zeroerp` di sviluppo (struttura, non
+> righe) e il codice del repo, letti il 2026-10-04. Le decisioni sono di Tid,
+> lo stesso giorno.
+
+| #     | Esito della verifica                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Decisione e destinazione                                                                                                                                                                         |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Q-1   | ✔ Confermato, ed è un **residuo**: il guard di scrittura aveva tolto «utente NULL = batch» il 2026-09-04 (passa senza utente solo chi bypassa la RLS, `row_security_active`), la lettura no. La famiglia è di **tre** funzioni: la canonica, `fn_scope_ef_whitelist_via_efba` (con un commento rimasto a prima del P-2a) e `fn_get_emittenti_scope_sr_effettivo`, che dava «tutto» alle due ricerche. Il BE imposta le GUC «tutto o niente»: serve un difetto applicativo, ma è il «backend che sbaglia» da cui il modello promette di proteggere | ✅ Utente NULL → nessun accesso, sulle tre. Chiuso il 2026-10-04 (§7 D17)                                                                                                                         |
+| Q-2   | ✔ Confermato e **più largo**: le GUC di bypass slegate dal ruolo sono **nove**, non tre (oltre alle tre citate: `allow_contabile_riga_delete_override`, `allow_user_emittente_delete_override`, `maintenance_allow_attivita_bypass`, `maintenance_allow_delete_logs`, `maintenance_indirizzi_dettaglio`, `maintenance_toponomastica`). Solo `ddt_cambio_stato` e `reso_cambio_stato` usano `fn_is_proprietario_tabella`. Il backend non ne accende nessuna | ⏳ **Rimandata** da Tid (proposta in **D17**: legare ogni bypass al proprietario; il ritorno a DRAFT passa da una madre DEFINER, approvata)                                                  |
+| Q-3   | ⚠️ Vero a metà. Su dbdev l'invariante **regge**: le 172 tabelle con RLS sono del migratore, nessuna ha `FORCE`. §10.5 chiede `FORCE` solo se la tabella fosse di `zeroerp_app`, quindi «chi seguisse la regola romperebbe» è esagerato. Il vuoto vero: **nessun presidio** guarda proprietario e `FORCE`, e l'invariante non è scritto                                                                                                                        | 🟠 ✅ Presidio di postura + invariante scritto in §10.5. Chiuso il 2026-10-04 (§7 D17)                                                                                                      |
+| Q-4   | 🔴 **Più grave di come scritta: la corsa c'è.** La check gira prima del lock, il lock nomina (funzione, lotto) e la numerazione non lo prende, il cleanup cancella per `id`. In più `numero` non era protetto: in EMESSA un UPDATE poteva toglierlo e la DELETE passare. Il pgTAP proposto non basta (servono due sessioni)                                                                                                                                       | ✅ Guard di tabella «una fattura numerata non si cancella e non cambia numero». Chiuso il 2026-10-04 (§7 D17)                                                                                     |
+| Q-5   | ✔ Confermato: niente emittente, niente registro, unicità globale senza `NULLS NOT DISTINCT`, e nessuna tabella di `acquisti` ha la RLS                                                                                                                                                                                                                                                                                                                            | Accorpata a **D8**: si chiude nel modello di `acquisti`, prima del comportamento                                                                                                                  |
+| Q-6   | ✔ Confermato e **più largo**: 22 tabelle con `emittente_fiscale_id`, 13 con `emittente_soggetto_ruolo_id`. Le chiavi sono 1:1: costo di traduzione, non dati sbagliati                                                                                                                                                                                                                                                                                         | ✅ **`emittente_soggetto_ruolo_id`** per ogni tabella nuova (linee-guida-sql §2); le esistenti convergono quando un cantiere ne tocca il modello                                                    |
+| v1    | ✔ Confermato: 374 file `runOnChange: true` sotto `baseline/` e `migrations/`, fuori dal raggio del §11.1                                                                                                                                                                                                                                                                                                                                                         | ✅ «Il v1 non si tocca»: `guardrail_v1_congelato.py` + manifesto, in CI; linee-guida-sql §11.11. Chiuso il 2026-10-04                                                                             |
+| UPDATE OF | ✔ Confermato, e **mordeva**: i cinque trigger di propagazione delle quantità ai componenti del kit erano `UPDATE OF quantita`, ma `quantita` la ricalcola un trigger BEFORE da `qta_operativa`. Il backend sui preventivi aggiorna solo `qta_operativa`: i componenti restavano con la quantità vecchia. Gli altri casi del censimento sono innocui (scritture solo da NULL, normalizzazioni idempotenti). I due «da verificare», visti il 2026-10-05: il registro di DDT e resi è innocuo (lo sceglie un lettore che filtra gli attivi); la catena delle istanze dei clienti **morde** | ✅ Doc corretta (linee-guida-trigger); trigger ricreati con `WHEN (OLD.quantita IS DISTINCT FROM NEW.quantita)` (`20261004-85/-86`). Chiuso il 2026-10-04. La catena delle istanze → **D18** |
+| Doc da dev | Vero, già noto («dev ≠ CI»)                                                                                                                                                                                                                                                                                                                                                                                                                                   | Resta in §2-bis.5, nessuna decisione                                                                                                                                                               |
+
+---
+
 ## 3. I difetti **aperti**, in ordine di conseguenza
 
 > ✅ **Le voci chiuse non stanno qui**: sono in **§7 «Attività svolte»**, con la
 > data e il rimando al brief — chiuse **per intero** D1, D2, D3, D4, D5, D10,
-> D13, D14; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
-> registri calati), D12 (la quantità).
+> D13, D14, D19; **in parte** D6 (i pin), D7 (il perimetro e il giro 2), D11 (i
+> registri calati), D12 (la quantità), D17 (tutto tranne Q-2).
 >
 > ⭐ **D15 è nata dalla chiusura di D14** (2026-09-22) e **D16** da un test
 > diventato rosso da solo (2026-09-23).
 >
-> Qui sotto, **solo il lavoro che resta**: D6, D7, D8, D9, D11, D12, D15, D16.
+> ⭐ **D17 è nata dalla valutazione qualitativa del 2026-10-04** (§2-bis.8), e
+> **D18** dal censimento `UPDATE OF` di D17 (2026-10-05). **D19** dal debito
+> che `brief-db-righe-esclusione-solo-non-si-vende` (§10.8) ha lasciato
+> all'archiviazione (2026-10-08), chiusa lo stesso giorno; **D20** da ciò che
+> la sua chiusura ha trovato. **D21** dal lato BE/FE di
+> `brief-db-istanza-nasce-col-ba` (2026-10-09). **D23** dal giro R-6 di
+> `brief-db-codici-non-trovato-email-e-permessi` (2026-10-10). **D24** dal giro BE
+> di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
+> alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
+> **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10).
+>
+> ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
+> numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
+> residui dell'istanza col BA); le due arrivate dopo sono diventate D26 (testata dopo l'emissione,
+> era D23) e D27 (indirizzi del documento, era D25). Brief e PROJECT_CONTEXT allineati lo stesso giorno.
+> Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
+> Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
+>
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D28.
+
+### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
+
+✅ **Il resto di D17 è chiuso il 2026-10-04** (§7): Q-4, Q-1, Q-3, `UPDATE OF`, v1.
+Resta la parte che Tid ha **rimandato** lo stesso giorno: dieci blocchi del DB si
+spengono con una GUC che anche l'applicazione può accendere (il lock di colonna,
+cioè anche `codice_interno`; il divieto di DELETE su clienti ed emittenti; otto
+guard del lotto e delle fatture…). Il backend non ne accende nessuna, ma un blocco
+che l'applicazione può spegnere da sola protegge solo finché l'applicazione non
+sbaglia. Proposta nel brief
+[brief-db-esclusioni-implicite.md](../work-done/brief-db-esclusioni-implicite.md) §4: un
+building block che lega il bypass al **proprietario delle tabelle** (la forma di
+`zeroerp.ddt_cambio_stato`), i verbi del lotto DEFINER (approvato), circa 45 pgTAP
+da riscrivere perché usano quelle GUC come scorciatoia di fixture.
+
+✅ **R-1 del brief chiusa dal BE il 2026-10-04**: i due codici nuovi di Q-4 in
+`error_policies_generated.py`, con i ripieghi (`63deeb194`).
+
+### 🔴 D18 — La catena delle istanze su un PDP si rompe quando un anello esce o entra
+
+Trovata il 2026-10-05 verificando il censimento `UPDATE OF` di D17. Su un PDP i
+clienti si succedono, e ogni istanza punta a quella del cliente precedente
+(`istanze_utilities.parent_istanza_id`, da cui il subentro clona il catasto). Il
+calcolo ha tre difetti, tutti sul modello:
+
+* **annullare un cliente non lo toglie dalla catena**: il trigger è `UPDATE OF
+  pdp_id, data_attivazione`, l'annullamento cambia lo stato, e `data_attivazione`
+  la azzera un altro trigger `BEFORE`. I due rami scritti per l'annullamento non
+  si raggiungono mai da un UPDATE;
+* **si ricalcola un anello, non la catena**: annullare, inserire in mezzo,
+  spostare una data, cambiare PDP o cancellare lascia sbagliato il **successore**;
+* **il calcolo legge sotto RLS**: il subentro attraversa le aziende, e il
+  predecessore di un'altra azienda per chi lavora non esiste.
+
+Proposta nel brief
+[brief-db-catena-istanze-pdp.md](brief-db-catena-istanze-pdp.md): un ricalcolo
+DEFINER della catena intera del PDP, da un trigger `AFTER` senza `OF`. Cinque
+decisioni aperte per Tid.
 
 ### 🟠 D6 — Resta solo D6-bis: i pin e il registro degli owner sono chiusi (§7)
 
@@ -314,7 +658,8 @@ asserzione: sono aree che *sembrano* coperte.
 La ricetta è stabilita e i builder ci sono (§7 D7: la riga di contesto che
 costruisce se il DB è vuoto, il BB di composizione
 `dbops.fn_pgtap_crea_mondo_cliente()`, i builder di fattura, filiale, gestore,
-operatore umano, PDP e listino). Resta applicarla, e ciò che il giro 2 ha
+operatore umano, PDP e listino, e dal 2026-10-07 quelli di **ordine, preventivo,
+commessa e attività di commessa**). Resta applicarla, e ciò che il giro 2 ha
 lasciato
 ([brief-db-fixture-che-costruiscono-giro-2.md](../work-done/brief-db-fixture-che-costruiscono-giro-2.md)
 §5, §7, §9, §11):
@@ -328,6 +673,12 @@ lasciato
 * ⏳ **lotto 3** — `pratiche` (37 a registro, quasi tutti verdi nella simulazione
   del 20-09) — e **lotto 4** — `vendite` (211), a famiglie: dash, resi,
   fatture, DDT, preventivi;
+* ⏳ **le copie a mano dei documenti di vendita** (2026-10-07): un ordine scritto
+  a mano in 54 pgTAP, un preventivo in 40, una commessa in 36, un'attività di
+  commessa in 32. I builder ci sono (`dbops.fn_pgtap_crea_ordine`, `_preventivo`,
+  `_commessa`, `_commessa_attivita`): si migrano con il lotto 4, per famiglia
+  ([brief-db-fixture-rls-documenti-costruiti.md](../work-done/brief-db-fixture-rls-documenti-costruiti.md)
+  §6);
 * ⏳ i file che fissano `SET LOCAL app.current_user_id = '1'` (28 al 22-09:
   l'utente 1 non esiste in CI) — una ricetta a sé, l'utente di sessione è
   quello del mondo costruito;
@@ -399,11 +750,22 @@ preciso di debito: le regole che *non* sono esprimibili come vincolo non hanno
 ancora un posto dove stare, e quando arriveranno la pressione sarà di scriverle
 nel backend — cioè fuori dal modello architetturale dichiarato.
 
-⚠️ E l'asimmetria con `vendite` non è un accidente di priorità: `acquisti`
+⚠️ Che il comportamento arrivi dopo il modello è l'ordine scelto (§4), non il
+difetto. Il difetto possibile è un altro, e sta sul modello: `acquisti`
 specchia il ciclo vendite, quindi ogni decisione presa di là (numerazione, serie,
 perimetro emittente, righe senza prezzo, lineage) **è una decisione presa anche
 di qua, che qui non è ancora scritta**. Più cresce `vendite`, più cresce il debito
 di `acquisti` senza che nessuno lo tocchi.
+
+🔴 **Il primo caso, verificato il 2026-10-04 (Q-5 di §2-bis):** `acquisti.ordini`
+e `acquisti.ddt` non hanno né emittente né registro; l'unicità
+`(anno, serie, numero)` è **globale**, mentre il DDT di un fornitore porta il
+numero **del fornitore** (unicità per fornitore, come vuole
+`acquisti/manual/ddt.md`), e senza `NULLS NOT DISTINCT` non vincola le righe con
+`serie` NULL; nessuna tabella dello schema ha la RLS. È la decisione di `vendite`
+(multi-emittente, RLS per emittente) non riportata su `acquisti`: si chiude nel
+modello, prima del comportamento. L'emittente si nomina
+`emittente_soggetto_ruolo_id` (Q-6, linee-guida-sql §2).
 
 ---
 
@@ -566,6 +928,117 @@ dalla stessa data), con un commento sul perché.
   valutare dopo il censimento: senza sapere quali regole sono temporali, il
   presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
 
+### 🟡 D26 — La testata dopo l'emissione: la regola completa sta solo nel backend
+
+Trovato il 2026-10-09 (§8 e §10.3 di `brief-db-esecutivi-ba-coppia`): quali colonne di testata si
+cambiano dopo l'emissione lo dice per intero solo il backend («testata modificabile solo in DRAFT» su
+ordine, DDT, reso, preventivo, offerta; una tabella per stato sul contratto). Il database ne blocca dei
+pezzi: chi scrive senza passare dai service cambia, per esempio, la valuta di un ordine confermato.
+
+Dettaglio e decisioni nel brief
+[brief-db-testata-dopo-emissione.md](brief-db-testata-dopo-emissione.md). 📝 Aperto, decisioni chiuse il 2026-10-10.
+Dal 2026-10-10 il brief comprende, come fase 1 (§5-bis), la capability della data di consegna confermata
+(assorbito `brief-db-ordine-data-consegna-confermata-capability`): il lettore del montaggio nasce lì.
+
+### 🟡 D23 — Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicono il vero
+
+Trovato il 2026-10-10 scrivendo R-6 di `brief-db-codici-non-trovato-email-e-permessi` (§14.5): la
+lista della ricerca universale tiene al massimo 10.000 corrispondenze con un `LIMIT` senza
+`ORDER BY`, poi conta, ordina e pagina su quelle. Oltre il tetto il totale è falso, la prima pagina
+non è la prima vera e le pagine possono ripetere o saltare soggetti.
+
+Dettaglio, due strade e decisioni attese nel brief
+[brief-db-ricerca-universale-tetto-10000.md](../work-done/brief-db-ricerca-universale-tetto-10000.md). ✅ Chiuso
+e archiviato il 2026-10-10 (strada B, via l'ordinamento per utility; DB `20261010-16`, BE/FE §7.4).
+
+### 🟡 D24 — Il presidio C2 non vede i building block trigger che ricevono il codice negli argomenti
+
+Trovato il 2026-10-10 chiudendo il lato BE di D22 (§9.2 di
+[brief-db-guard-emittente-ba-unico](../work-done/brief-db-guard-emittente-ba-unico.md)). Il presidio
+C2 (`backend/apps/core/tests/test_ui_action_e_canale_campi.py`, «una promessa
+`highlight_form_fields` ha un sito che manda il campo») legge i siti PL/pgSQL da
+`dbops.vw_punti_canale_campo`, che trova il codice nel **corpo** della funzione. Un building block
+trigger lo riceve invece da `TG_ARGV` (`pg_trigger.tgargs`), e il `'campo'` lo mette nel contesto
+per conto suo: per la vista quel sito non esiste.
+
+* **Il caso che l'ha mostrato:** `E_DOC_EMITTENTE_BA_INCOERENTE` (BB
+  `script.trgfn_doc_guard_emittente_ba`, sei tabelle) promette il campo, e il campo arriva — provato
+  con una chiamata vera il 2026-10-10 su ordine, preventivo e contratto, `fields =
+  ('emittente_fiscale_id',)` — ma il verso 1 era rosso con «nessun sito». Lato BE è una riga in
+  `_ESENZIONI[("E_DOC_EMITTENTE_BA_INCOERENTE", 1)]`, motivata come esenzione della **misura**, non
+  della regola.
+* **Perché è un difetto della forma, non di un codice:** la stessa cecità vale per ogni BB che
+  prende il codice dagli argomenti. Un override `highlight_form_fields` su uno qualunque di quei
+  codici sarebbe rosso allo stesso modo, e un codice di quella forma che **non** manda il campo
+  passerebbe inosservato dal verso 2. Fatto datato (dbdev, 2026-10-10): otto funzioni ricevono un
+  codice `E_*` da `tgargs` (`trgfn_lock_columns`, `trgfn_doc_testata_lock_fuori_bozza`,
+  `trgfn_doc_righe_lock_fuori_bozza`, `trgfn_doc_guard_emittente_ba`,
+  `trgfn_doc_guard_chiusura_sorgente`, `trgfn_doc_ritira_commessa_attivita`,
+  `trgfn_fattura_satellite_guard_congelamento`, `trgfn_guard_fatturazione_immediata_immutabile`);
+  dei 24 codici così passati la vista ne vede due, `E_CODICE_NON_MODIFICABILE` ed
+  `E_COLONNA_NON_MODIFICABILE`, probabilmente perché nominati anche altrove.
+* **Richiesta al team DB:** insegnare alla vista la forma «BB trigger col codice negli argomenti» —
+  per ogni trigger che esegue una funzione con un codice `E_*` fra i `tgargs`, un sito per quel
+  codice, col canale campo della funzione (anche quando il `'campo'` dipende da una condizione,
+  come la classe del codice in `trgfn_doc_guard_emittente_ba`).
+* **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
+  di ritiro del presidio) e il BE la toglie.
+
+### 🟡 D25 — I residui di «l'istanza nasce col billing account»
+
+Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`: il resolver
+`script.fn_get_billing_account_by_istanza`, che il backend non chiama più, e il motivo
+`PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo, irraggiungibile perché BA e
+utility del preventivo sono `NOT NULL`. La stessa «testata incompleta» era scritta anche come filtro
+nel residuo commessa e nella lista del push.
+
+Dettaglio nel brief
+[brief-db-istanza-nasce-col-ba-residui.md](brief-db-istanza-nasce-col-ba-residui.md). 🔧 DB scritto e
+✅ lato DB chiuso il 2026-10-10 (`20261010-50…-59` applicati da Tid, pgTAP verdi); restano la chiave
+nei locales (FE) e una riga di doc (BE). Del §5 del brief sono fatte tutte: D-1 (via il filtro tautologico sul BA da ordini e contratti), D-2 (lo stato
+assente dal catalogo ferma le liste del push invece di aprirle), D-3 (ritirato
+`uq_gestori_singleton`), D-4 (il pgTAP dello spostamento dell'azienda predefinita) e D-5 (quello
+spostamento non dipende più da chi lo fa: i guard chiedono l'azienda dei BA per l'installazione).
+
+### 🟡 D26-2 — Le funzioni che ripianificano a ogni chiamata
+
+Ereditato il 2026-10-10 dalla chiusura di `work-done/brief-db-segment-base-commesse-attivita`: una
+funzione plpgsql che chiama con un parametro una funzione SQL grande che si incorpora fa
+ripianificare la query a ogni chiamata (in modo `auto` la plancache preferisce i piani
+personalizzati). Curate e presidiate la capability del DDT e il lister dei DDT da spingere; il
+censimento delle altre e il lister senza filtri restano aperti.
+
+Dettaglio nel brief
+[brief-db-plancache-funzioni-con-query-incorporate.md](brief-db-plancache-funzioni-con-query-incorporate.md):
+aperto, non iniziato, due decisioni attese (§3).
+
+### 🟠 D27 — Gli indirizzi del documento non seguono il cliente
+
+Trovato il 2026-10-10 chiudendo il lato BE/FE di D21 (§12.3 di `brief-db-esecutivi-ba-coppia`). Sul
+DDT, sul preventivo e sull'offerta il cliente si cambia in bozza, ma gli indirizzi gia' scritti
+dall'anagrafica del cliente di prima restano. La regola «l'indirizzo e' del cliente del documento» la
+tiene solo il backend, e solo quando l'indirizzo viene scritto. Il gate d'emissione guarda che
+l'indirizzo ci sia, non di chi e': una bolla si emette con la Consegna del cliente di prima.
+
+Dettaglio e decisioni di Tid (chiuse il 2026-10-10: la regola e l'auto-assegnazione dello slot di
+default vanno nel DB) nel brief
+[brief-db-indirizzi-documento-seguono-il-cliente.md](brief-db-indirizzi-documento-seguono-il-cliente.md).
+📝 Aperto, nessun codice. ⚠️ La sezione era andata persa nella rinumerazione del 2026-10-10 (restava
+solo la riga della checklist): ripristinata lo stesso giorno.
+
+### 🟠 D28 — Le righe evase di un DDT da ordine si modificano senza il loro legame
+
+Trovato il 2026-10-10 nel collaudo a video di Tid. Su un DDT da ordine in bozza la riga evasa cambia
+quantita', articolo e unita' di misura con un `UPDATE`, e il fulfillment non lo vede: il guard del
+legame scatta solo quando il legame si scrive. Ordine 10, bolla corretta a 6: il magazzino scarica 6,
+l'ordine resta evaso per 10 e il residuo non si riapre. L'invariante «`qta_evasa` immutabile» del
+brief dell'evasione non ha un lock a DB.
+
+Dettaglio e decisioni di Tid (chiuse il 2026-10-10: riga evasa ferma; un verbo per correggere la
+quantita' in bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; righe a mano ammesse)
+nel brief [brief-db-ddt-righe-evase-dall-ordine.md](brief-db-ddt-righe-evase-dall-ordine.md).
+📝 Aperto, nessun codice.
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -573,6 +1046,14 @@ dalla stessa data), con un commento sul perché.
 * ⛔ **`contabilita` vuoto.** Fuori perimetro per decisione: se servirà, sarà un
   aggancio a una contabilità esterna, con la forma dettata dal sistema di
   destinazione. Zero test su zero oggetti non è un gap.
+* ⛔ **Un dominio modellato che aspetta il suo turno** (`acquisti`, e
+  `magazzino` prima dei suoi lotti). Il progetto è nato DB-first per scelta
+  (Tid, chiarita il 2026-10-04): un anno sul solo DB per fissare nomi,
+  trigger e regole, e poi BE e FE. Proprio l'assenza di consumatori ha reso
+  economici i refactor pesanti — rinomine di colonne, la ripartenza in
+  `migrations_v2` — che con BE e FE già scritti molti non si sarebbero fatti.
+  L'ordine di costruzione non si vota (§5); il difetto, se c'è, è una decisione
+  di `vendite` non riportata su `acquisti` (D8).
 * ⛔ **Il numero di trigger per tabella, di per sé.** È la conseguenza del numero
   di figlie. Il difetto è la *forma* del pattern (D9), non il conteggio.
 * ⚠️ **Il mix `VARCHAR + CHECK` vs tabella-lookup.** Febbraio chiedeva una guida:
@@ -598,7 +1079,7 @@ Il peso è **la conseguenza di un difetto in quell'area**, non la sua estensione
 | **Perimetro dei dati (RLS)**           | 🔴 alto  | **8/10**   | D2 e D3 chiusi l'11-09-2026: dominio documento protetto fino ai satelliti, versioni di storico con scope congelato, e due presidi a criterio (`vw_rls_perimetro_scoperto`, `vw_storico_scope_da_dichiarare`) che vedono le tabelle nuove. Restano le due policy inerti di `acquisti` (D4 → D8), a registro con la ragione; `shop.ricevute` armata il 12-09. D13 (il `RETURNING` del BA per gli operatori non di default) chiuso il 13-09 |
 | **Copertura test**                     | 🔴 alto  | **4/10**   | 714 file (26-09), ma su un DB ricostruito da zero la suite è rossa su **227 file su 714** (corsa CI del 26-09; il registro è ancora a 361 finché non si tolgono i rientrati). Il 38% delle funzioni non è mai nominato (D7)                                                                                                                                                                                                                                                                                          |
 | **Postura di sicurezza degli oggetti** | 🟠 medio | **7,5/10** | I tre invarianti di D5 presidiati per criterio (`search_path` dal 12-09, pin applicati). Non di più per i due rubinetti di D6-bis (il registro `sec_functions_owner` e la sync sono riservati al migratore dal 26-09)                                                                                                                                                                                                     |
-| **Simmetria del dominio**              | 🟠 medio | **4/10**   | `acquisti` e `magazzino` modellati e non scritti (D8). La decisione dell'11-09 («prossimo cantiere») dà al debito un verso, ma il voto misura il comportamento, che ancora non c'è: *una decisione non scrive il codice*                                                                                                                                                                                                                 |
+| **Simmetria del dominio**              | 🟠 medio | **non votata** (04-10) | Che lo strato di comportamento di `acquisti` e `magazzino` arrivi a lotti, dopo il modello, è l'**ordine di costruzione** scelto, non un difetto (§4). Il voto 4/10 dato fino al 04-10 misurava il calendario. Resta vero, ed è in D8, il punto **sul modello**: le decisioni prese su `vendite` valgono anche per `acquisti` |
 | **Osservabilità dei presidi**          | 🟠 medio | **7/10**   | D10 chiuso l'11-09-2026: le 30 viste hanno un destinatario che ha già riferito, e la classificazione è **dato** (`dbops.presidi`). Non 8+ per il debutto col rumore (processi ritirati in `vw_job_run_da_guardare`)                                                                                                                                                                                                                      |
 | **Gestione del debito**                | 🟠 medio | **6/10**   | Registri ben progettati; le liste lunghe restano lunghe, e ne è nata una nuova da 362 (D11)                                                                                                                                                                                                                                                                                                                                              |
 | **Pattern trigger e automazioni**      | 🟡 basso | **7,5/10** | Riuso raro (758 trigger da due funzioni), framework `ci_apply` eccellente; la forma per-figlia non scala e la fase è al 66% (D9)                                                                                                                                                                                                                                                                                                         |
@@ -731,6 +1212,12 @@ D6 e il registro dei rossi in CI.
       e si ribalta da solo. ⛔ È un **prerequisito** di qualunque cantiere che
       misuri un piano, non una miglioria — e finché non c'è, un guadagno
       dichiarato in millisecondi non è difendibile.
+* [ ] **D17** — Q-2, rimandata da Tid: legare le GUC di bypass al proprietario
+      delle tabelle (proposta in `work-done/brief-db-esclusioni-implicite.md`
+      §4). Il resto di D17 è chiuso (§7), R-1 del BE compresa.
+* [ ] **D18** — la catena delle istanze su un PDP: ricalcolo DEFINER della
+      catena intera da un trigger `AFTER` senza `OF`; brief
+      `work-in-progress/brief-db-catena-istanze-pdp.md`, da analizzare con Tid.
 
 ### 🟡 Struttura
 
@@ -743,6 +1230,31 @@ D6 e il registro dei rossi in CI.
 * [ ] **D16** — censire le regole del DB che leggono `current_date` e i pgTAP
       che le attraversano con una data scritta a mano; poi decidere se serve un
       guardrail statico.
+* [x] **D19** — allineare righe e componenti di preventivo, ordine e DDT a
+      contratto e offerta: chiusa il 2026-10-08 (§7).
+* [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
+      chiuso e archiviato il 2026-10-09.
+* [ ] **D26** — la testata dopo l'emissione, colonna per colonna: brief
+      `brief-db-testata-dopo-emissione` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere;
+      fase 1 = la capability della data di consegna confermata, brief assorbito lo stesso giorno).
+* [x] **D22** — il guard emittente <-> BA scritto sette volte: brief
+      `work-done/brief-db-guard-emittente-ba-unico` — chiuso e archiviato il 2026-10-10 (DB `20261010-17…-19`, BE §9).
+* [ ] **D24** — la vista del presidio C2 (`dbops.vw_punti_canale_campo`) non vede i BB trigger col
+      codice negli argomenti: al team DB (§3). Al rimedio, il BE toglie l'esenzione di
+      `E_DOC_EMITTENTE_BA_INCOERENTE`.
+* [x] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre
+      il tetto): brief `work-done/brief-db-ricerca-universale-tetto-10000` — chiuso e archiviato il 2026-10-10 (DB `20261010-16`, BE/FE §7.4).
+* [x] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
+      `work-done/brief-db-esecutivi-ba-coppia` — chiuso e archiviato il 2026-10-10 (DB `20261009-62…-92` e
+      `20261010-02…-07`, BE/FE §12).
+* [x] **D25** — i residui di «l'istanza nasce col billing account»: brief
+      `work-done/brief-db-istanza-nasce-col-ba-residui` — chiuso e archiviato il 2026-10-10 (DB `20261010-50…-59`, FE/BE §4).
+* [ ] **D27** — gli indirizzi del documento seguono il cliente: brief
+      `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+* [ ] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
+      `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
+* [ ] **D28** — le righe evase di un DDT da ordine: brief `brief-db-ddt-righe-evase-dall-ordine` (aperto il
+      2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
 
 ---
 
@@ -750,7 +1262,7 @@ D6 e il registro dei rossi in CI.
 
 > Questa sezione è il **rovescio di §3**: qui sta ciò che era un difetto e non lo
 > è più. Un numero che compare in **tutti e due** i posti (D6, D7, D11,
-> D12) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
+> D12, D17) non è una ripetizione: in §3 c'è **il lavoro che resta**, qui **quello
 > fatto**. ⭐ **D14 non è più in §3**: è chiusa, e ciò che la sua chiusura ha
 > scoperto è una voce nuova: **D15**, le statistiche che non esistono.
 >
@@ -863,6 +1375,16 @@ registro**, e da allora i rientrati li toglie
 `scripts/pgtap-baseline-ci-rientrati.sh` **leggendo il log della corsa**, non una
 mano. Il debito che resta è in §3 D7. Brief
 `brief-db-fixture-che-costruiscono-d7-d6-d4.md` (in `work-done/` dal 19-09).
+
+### ✅ D7 — I test RLS dei documenti costruiscono il loro documento — 2026-10-07
+
+I sette `rls/` che **cercavano** il documento da provare (commessa, DDT, ordine,
+preventivo, fattura) e andavano in soft-skip su un database ricostruito ora lo
+**costruiscono**, con due aziende (A lo possiede, B è l'estranea) e senza soft-skip.
+Quattro builder nuovi in `dbops` (ordine, preventivo, commessa, attività; gli ultimi due
+compongono le madri del dominio). Emersi e corretti due verdi dovuti ai dati, fra cui
+l'invarianza del lineage misurata sul grafo intero. Brief
+`brief-db-fixture-rls-documenti-costruiti.md` (in `work-done/`).
 
 ### ✅ D7 — Il giro 2: la fixture che costruisce il mondo — 20-09 → 24-09
 
@@ -1079,8 +1601,127 @@ distanza, ed è il motivo per cui è nata **D15**.
 reclama), i tre `LIKE` di `fn_accredita_riga_reso`, i preventivi come quarto
 adottante del BB delle righe in bozza, e tre voci BE.
 
+### ✅ D17 — Le esclusioni implicite, tranne Q-2 — chiusa il 2026-10-04
+
+Nata e chiusa nello stesso giorno dalla valutazione qualitativa (§2-bis). Erano
+invarianti veri ma non scritti, che quando smettono di valere non danno errore:
+
+* **Q-4** — una fattura numerata **non si cancella e non cambia numero**: guard di
+  tabella `_a05_` (`vendite.trgfn_fatture_guard_numero_fiscale`), due codici
+  `CONFLITTO_STATO`. Chiude la corsa fra la check del ritorno a DRAFT (prima del
+  lock) e la DELETE del cleanup, e il retro per cui un UPDATE poteva togliere il
+  numero prima della DELETE;
+* **Q-1** — **utente NULL = nessun accesso** nelle tre funzioni di scope che
+  dicevano il contrario (la canonica, l'adapter del billing account, lo scope delle
+  ricerche). Una sessione con la veste OPERATORE e senza utente vedeva tutte le
+  aziende; ora la policy vera, provata come applicazione, non vede niente;
+* **Q-3** — l'invariante «tabelle del migratore, applicazione senza proprietà,
+  `FORCE` spento» è **scritto** (linee-guida-sql §10.5, che prima consigliava il
+  contrario) e **presidiato** a criterio (`dbops/test-postura-proprietario-rls-v1`);
+* **`UPDATE OF`** — la regola in linee-guida-trigger era rovesciata, e **mordeva**:
+  la propagazione delle quantità ai componenti dei kit non scattava quando la
+  quantità la ricalcola un trigger BEFORE. Cinque trigger rifatti con `WHEN`;
+* **v1** — la prima generazione dei changelog **non si tocca**: cancello CI con
+  manifesto (linee-guida-sql §11.11);
+* **Q-6** — regola: l'emittente si nomina `emittente_soggetto_ruolo_id`
+  (linee-guida-sql §2). **Q-5** è passata in D8.
+
+Brief `work-done/brief-db-esclusioni-implicite.md` (archiviato il 2026-10-05);
+changeSet `20261004-80 → -86`, applicati su dev il 2026-10-04, pgTAP verdi,
+committato in `4617fabe6`. Il 2026-10-05 sono state verificate le due voci «da
+verificare» del censimento `UPDATE OF`: il registro di DDT e resi è innocuo, la
+catena delle istanze è un difetto vero ed è diventata **D18**. Ricaduta BE (R-1, i
+due codici in `error_policies_generated.py` + ripieghi) chiusa il 2026-10-04
+(`63deeb194`). Resta Q-2 (§3).
 
 ---
+
+### ✅ D21 — Ordine, DDT e reso parlano del cliente come preventivo, offerta e contratto — chiusa il 2026-10-10
+
+Trovato il 2026-10-09 chiudendo il lato BE/FE di `brief-db-istanza-nasce-col-ba` (§7.5). Ordine, DDT
+e reso avevano il BA nullable, copie di utility e ruolo che nessun vincolo legava al BA, e anelli della
+catena che potevano avere clienti diversi. Che cosa è cambiato nel sistema:
+* l'ordine ha sempre il BA; il DDT lo vuole all'emissione quando la causale manda merce a un cliente
+  (`config.causali_trasporto.richiede_cliente`); il reso ha il BA del suo DDT;
+* utility e ruolo di testata legati al BA da una FK a tre colonne, e scritti dal BB
+  `script.fn_cliente_dal_billing_account` se mancano; la catena ordine → DDT → reso ha un solo BA, e
+  una sorgente dichiarata ma non visibile è un errore;
+* il ruolo del BA, il soggetto dell'istanza e il cliente non cambiano intestatario (lock dichiarati);
+* BA, destinatario ed emittente si scelgono solo in bozza (BB `vendite.trgfn_doc_testata_lock_fuori_bozza`,
+  emittente bloccato fuori bozza su sei documenti);
+* lato BE il cliente del DDT si sceglie e si cambia in bozza, le copie Python ritirate.
+
+Dettaglio nel brief
+[brief-db-esecutivi-ba-coppia.md](../work-done/brief-db-esecutivi-ba-coppia.md) (archiviato il
+2026-10-10). Ciò che la chiusura ha trovato è **D27**; il debito fuori perimetro è D22 (chiusa) e D26.
+
+### ✅ D22 — L'emittente del documento e' quello del cliente: una regola, una sede — chiusa il 2026-10-10
+
+Trovato il 2026-10-09 (§5.5 di `brief-db-esecutivi-ba-coppia`): il guard «l'emittente del documento
+e' quello che il billing account risolve» era scritto sette volte, con sei codici per lo stesso
+significato, frasi che mostravano nomi di colonna all'utente e il log senza la transazione. Che cosa
+è cambiato nel sistema:
+* un building block, `script.trgfn_doc_guard_emittente_ba`, montato sulle sette tabelle con lo stesso
+  nome e la stessa fascia dei trigger di prima; le sette funzioni sono ritirate (`20261010-17…-19`);
+* un codice per i sei documenti, `E_DOC_EMITTENTE_BA_INCOERENTE` (DATO_ERRATO, col campo), con una
+  frase che nomina le due aziende e il billing account; la commessa tiene il suo codice TECNICO, con
+  i segnaposto nello stesso ordine;
+* lato BE una voce di `ui_action` al posto di sei, le policy rigenerate, i ripieghi.
+
+Dettaglio nel brief
+[brief-db-guard-emittente-ba-unico.md](../work-done/brief-db-guard-emittente-ba-unico.md) (archiviato
+il 2026-10-10). Ciò che la chiusura ha trovato è **D24**.
+
+### ✅ D25 — I residui di «l'istanza nasce col billing account» — chiusa il 2026-10-10
+
+Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`. Che cosa è
+cambiato nel sistema:
+* via il resolver `script.fn_get_billing_account_by_istanza`: il cliente lo dice il documento o la
+  pratica, non l'istanza;
+* via il motivo `PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo e i suoi due filtri
+  gemelli (residuo commessa, lista del push): BA e utility del preventivo sono `NOT NULL`. Lato FE
+  tolta la chiave dai locales;
+* liste del push di ordini e contratti senza il filtro inutile sul BA; lo stato di partenza assente
+  dal catalogo solleva `E_CODICE` invece di far cadere il filtro (D-2);
+* ritirato `uq_gestori_singleton`, che ripeteva la chiave primaria;
+* lo spostamento dell'azienda predefinita non dipende più da chi lo fa: i guard chiedono l'azienda dei
+  BA per l'installazione (BB `script.fn_get_ba_emittente_sr_id_installazione`), con il suo pgTAP.
+
+Dettaglio nel brief
+[brief-db-istanza-nasce-col-ba-residui.md](../work-done/brief-db-istanza-nasce-col-ba-residui.md)
+(archiviato il 2026-10-10; DB `20261010-50…-59`, pgTAP verdi anche su `zeroerp_ci`).
+
+### ✅ D20 — Righe e componenti: tre debiti rimasti dalla chiusura di D19 — chiusa il 2026-10-09
+
+Trovati il 2026-10-08 chiudendo D19 (`brief-db-righe-e-componenti-le-altre-famiglie`, §5). Tre
+punti:
+* righe d'ordine e di preventivo si cambiano ancora fuori bozza a DB (ora una riga kit no, una
+  semplice sì);
+* `user_update` nullable su circa 140 tabelle, e nessun presidio che fermi una tabella nuova;
+* un componente spento in attesa di approvazione passa nella revisione, legato alla pratica
+  della rev N (preventivo e offerta).
+
+Dettaglio e stato nel brief
+[brief-db-righe-e-componenti-debiti-residui.md](../work-done/brief-db-righe-e-componenti-debiti-residui.md)
+(archiviato il 2026-10-09).
+Decisi da Tid il 2026-10-08; DB scritto lo stesso giorno (`20261008-80` … `-94`), applicato su dev, pgTAP
+verdi anche su `zeroerp_ci` (2026-10-09); tre test non più costruibili sono skip motivati (§4.5).
+✅ **Chiuso lato DB**; ✅ lato BE chiuso il 2026-10-09 (§5 del brief): il verbo della data confermata
+passa a `brief-db-ordine-data-consegna-confermata-capability`, il ciclo della pratica resta debito
+dichiarato in PROJECT_CONTEXT.
+
+### ✅ D19 — Righe e componenti di preventivo, ordine e DDT come contratto e offerta — chiusa il 2026-10-08
+
+Brief `work-done/brief-db-righe-e-componenti-le-altre-famiglie.md`, changeSet `20261008-30` … `-35`,
+applicati da Tid il 2026-10-08 (pgTAP verdi, nessuna regressione). Che cosa è cambiato nel sistema:
+* la revisione del preventivo porta **tutti** i componenti, anche gli opzionali spenti (D-1 di Tid),
+  e li lega alla riga nuova per identità, come quella dell'offerta;
+* i componenti di preventivo, ordine e DDT si toccano solo in bozza (building block a livello RIGA);
+  i due lettori DEFINER conoscono le sei famiglie;
+* `user_update NOT NULL` su righe e componenti dei documenti di vendita;
+* i CHECK della quantità dei componenti si chiamano `_nz`, come dice la regola.
+Ciò che la chiusura ha trovato è **D20**.
+
 
 *Valutazione 2026-09-08 — perimetro DB. Le misure sono letture di struttura sul
 database di sviluppo `zeroerp` (PostgreSQL 18.6) e sul repo al commit `89d36ad1b`,
@@ -1093,4 +1734,6 @@ numero in entrambe le sezioni quando una voce ha due facce. **Riordinato il
 entrata D15 — le statistiche assenti, che la sua chiusura ha scoperto.
 **Riordinato il 2026-09-26**: D6 e D7 ridotti in §3 al lavoro che resta, il
 giro 2 di D7 riassunto in §7, `magazzino` uscito dalla fotografia di D8, numeri
-del repo rimisurati.*
+del repo rimisurati. **Aggiornato il 2026-10-05**: brief di D17 archiviato,
+nata D18 (la catena delle istanze), il blocco D17 di §7 riportato dopo la coda
+di D14, dove si era infilato.*

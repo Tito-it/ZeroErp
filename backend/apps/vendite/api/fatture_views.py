@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -192,7 +194,7 @@ _LISTA_CODICE_FATTURE = "vendite.fatture"
 #    fiscale: la NATURA, che separa le fatture dalle note di credito.
 # ⚠️ `data_da`/`data_a` filtrano la DATA DEL DOCUMENTO, non la competenza della
 #    commessa che l'ha generato: è la ragione per cui questa lista esiste.
-def _filtri_lista_fatture(qp) -> dict[str, object]:
+def _filtri_lista_fatture(qp) -> dict[str, Any]:
     f = extract_doc_list_filters(qp, with_utility=True)
     f["natura_doc_codice"] = qp_str(qp.get("natura_doc_codice"))
     # ⭐ Identificativo fiscale: e' il criterio con cui la lista SOGGETTI manda
@@ -351,9 +353,9 @@ _FatturaRigheLista, _FatturaRigheListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiFatturaRigheListaView(_FatturaRigheLista):
+class ApiFatturaRigheListaView(_FatturaRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.fattura_righe"
 
 
-class ApiFatturaRigheListaExportView(_FatturaRigheListaExport):
+class ApiFatturaRigheListaExportView(_FatturaRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.fattura_righe"

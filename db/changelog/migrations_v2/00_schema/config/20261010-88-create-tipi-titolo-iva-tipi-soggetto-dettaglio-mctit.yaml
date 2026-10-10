@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI PUO' ESSERE TITOLARE DI UN TITOLO IVA: LA MATRICE PER NATURA
+#   config.tipi_titolo_iva_tipi_soggetto_dettaglio
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D, §3bis.2)
+#
+# -- IL CASO --------------------------------------------------------
+#   anagrafiche.soggetti_titoli_iva accetta qualunque tipo di titolo su
+#   qualunque soggetto: una dichiarazione d'intento su un privato entra nel
+#   risolutore (vendite.fn_resolve_iva_riga, stadio B) e cambia l'aliquota
+#   delle sue righe. Ogni titolo ha invece un destinatario preciso
+#   (l'intento lo presenta un soggetto IVA, l'agevolazione L. 104 una persona
+#   fisica): la regola sta su (tipo di titolo, natura di dettaglio).
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Stampo: config.forme_giuridiche_tipi_soggetto_dettaglio, la matrice
+#     gemella sulla stessa natura (chiave composta, attivo, audit, tx_id).
+#     Niente surrogata: la coppia E' la riga, e il CSV del seed la usa come
+#     chiave del mirror.
+#   * Niente finestra di validita': una riga si RITIRA con attivo = false nel
+#     CSV, mai con un DELETE (D-6), e il guard del ritiro (20261010-94)
+#     scatta su quella transizione. Una data di fine in configurazione
+#     farebbe cadere un'ammissione in silenzio, a mezzanotte, senza che
+#     nessun guard la veda.
+#   * Niente storicizza: come la gemella, la matrice e' configurazione da
+#     CSV, e la storia ce l'ha git (nessun trigger di storico, quindi
+#     nessuna riga in dbops.storico_scope_policy).
+#   * ⭐ NESSUNA RIGA = NESSUN TITOLO AMMESSO (D-1): un dettaglio senza
+#     righe non e' «libero». Lo dichiarano il COMMENT e i guard.
+#   * Indice: la PK (tipo_titolo_iva_id, tipo_soggetto_dettaglio_id) copre la
+#     domanda dei guard e la FK verso il tipo di titolo. La FK verso il
+#     dettaglio la registra la fk_index_policy (opt-in, consentito false): la
+#     tabella ha una manciata di righe.
+#   Seed: 20261010-89 (CSV). Lettori: 20261010-90 e seguenti.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261010-88-create-tipi-titolo-iva-tipi-soggetto-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20261010-88-create-tipi-titolo-iva-tipi-soggetto-dettaglio
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Crea config.tipi_titolo_iva_tipi_soggetto_dettaglio: quali nature di dettaglio possono
+        essere titolari di quale tipo di titolo IVA. Nessuna riga = nessun titolo ammesso.
+        Ritiro con attivo = false. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: tipi_titolo_iva }
+            - tableExists:
+                { schemaName: config, tableName: tipi_soggetto_dettaglio }
+            - not:
+                - tableExists:
+                    { schemaName: config, tableName: tipi_titolo_iva_tipi_soggetto_dettaglio }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TABLE config.tipi_titolo_iva_tipi_soggetto_dettaglio (
+                  tipo_titolo_iva_id         bigint      NOT NULL,
+                  tipo_soggetto_dettaglio_id bigint      NOT NULL,
+                  attivo                     boolean     NOT NULL DEFAULT true,
+                  user_insert                text        NOT NULL DEFAULT CURRENT_USER,
+                  data_insert                timestamptz NOT NULL DEFAULT now(),
+                  user_update                text        NOT NULL DEFAULT CURRENT_USER,
+                  data_update                timestamptz,
+                  tx_id                      uuid,
+                  CONSTRAINT pk_tipi_titolo_iva_tipi_soggetto_dettaglio
+                      PRIMARY KEY (tipo_titolo_iva_id, tipo_soggetto_dettaglio_id),
+                  CONSTRAINT fk_tti_tsd_tipo_titolo_iva
+                      FOREIGN KEY (tipo_titolo_iva_id) REFERENCES config.tipi_titolo_iva (id),
+                  CONSTRAINT fk_tti_tsd_tipo_soggetto_dettaglio
+                      FOREIGN KEY (tipo_soggetto_dettaglio_id) REFERENCES config.tipi_soggetto_dettaglio (id)
+              );
+
+              COMMENT ON TABLE config.tipi_titolo_iva_tipi_soggetto_dettaglio IS
+                  'Matrice: quali nature di dettaglio (config.tipi_soggetto_dettaglio) possono essere titolari di quale tipo di titolo IVA (config.tipi_titolo_iva). L''intento lo presenta un soggetto IVA, mai un privato; l''agevolazione L. 104 spetta a una persona fisica. ⭐ Nessuna riga attiva per una coppia = titolo NON ammesso: un dettaglio senza righe non e'' libero (D-1). Una riga si ritira con attivo = false nel CSV, mai con un DELETE (D-6), e il ritiro e'' rifiutato finche'' esistono titoli vigenti che la usano. La leggono anagrafiche.fn_titolo_iva_ammesso e, attraverso lei, i guard sui titoli e sul cambio di natura del soggetto. Stampo: config.forme_giuridiche_tipi_soggetto_dettaglio. Seed dal CSV 80_data/sql/config/tipi_titolo_iva_tipi_soggetto_dettaglio.csv. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).';
+
+              COMMENT ON COLUMN config.tipi_titolo_iva_tipi_soggetto_dettaglio.attivo IS
+                  'false = la natura non ammette piu'' il tipo di titolo. E'' il solo modo di ritirare una riga (D-6): il guard trgfn_tipi_titolo_iva_tipi_soggetto_dettaglio_guard_ritiro rifiuta il passaggio finche'' esistono titoli vigenti di quel tipo su soggetti di quella natura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS config.tipi_titolo_iva_tipi_soggetto_dettaglio;

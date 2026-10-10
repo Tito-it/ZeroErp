@@ -1,0 +1,137 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI HA TOCCATO PER ULTIMO UNA RIGA SI SA SEMPRE — schema magazzino
+#   user_update SET NOT NULL su 16 tabelle:
+#     magazzino.assets
+#     magazzino.causali
+#     magazzino.eventi_assets
+#     magazzino.inventari
+#     magazzino.inventari_righe
+#     magazzino.lotti
+#     magazzino.magazzini
+#     magazzino.movimenti
+#     magazzino.movimenti_attesi
+#     magazzino.note
+#     magazzino.rettifiche
+#     magazzino.rettifiche_righe
+#     magazzino.trasferimenti
+#     magazzino.trasferimenti_righe
+#     magazzino.ubicazioni
+#     magazzino.valore_giacenza
+#   Brief: brief-db-righe-e-componenti-debiti-residui (§2, D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   linee-guida-sql §7: le colonne di audit sono NOT NULL. Il 20261008-31
+#   ha chiuso righe e componenti dei documenti di vendita; qui il resto,
+#   uno schema per changeSet (D-2 di Tid, 2026-10-08: un giro solo, col
+#   presidio dbops/test-user-update-not-null-v1).
+#
+# -- CHE COSA CAMBIA PER CHI SCRIVE -------------------------------------
+#   Niente. Ognuna ha script.trgfn_audit_data_user_generic (BEFORE INSERT
+#   OR UPDATE), che scrive user_update a ogni scrittura da app.jwt_user o
+#   CURRENT_USER: il vincolo dice nel DDL cio' che il trigger gia' fa.
+#   ⚠️ Il trigger lo generano le automazioni (ci_apply, o il job notturno):
+#   su un database da zero, alla prima passata, i seed di 80_data entrano
+#   PRIMA che esista. Per questo dove manca si mette anche il DEFAULT
+#   CURRENT_USER di §7 — senza, il seed scriverebbe NULL. Un seed con la
+#   cella vuota non e' un rischio: i loader con nullValue "" scrivono ''
+#   sulle colonne STRING (misurato su magazzino.causali.user_insert).
+#   DEFAULT aggiunto: magazzino.causali, magazzino.eventi_assets.
+#
+# -- TABELLE PARTIZIONATE ------------------------------------------------
+#   magazzino.note: il SET NOT NULL sulla madre scende a tutte le
+#   partizioni (le tabelle note_* dello schema), e il conteggio della
+#   preCondition sulla madre le comprende.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero NULL (expectedResult 0: un DB da zero la
+#   soddisfa, linee-guida-sql §11.4), come il 20261008-31. Se ce ne sono il
+#   migrate si ferma e si guardano a mano: nessun valore scelto dal migrate.
+#   Fatto datato (2026-10-08, dev): zero NULL su tutte.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/magazzino/20261008-84-alter-magazzino-user-update-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261008-84-alter-magazzino-user-update-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        user_update NOT NULL sullo schema magazzino (16 tabelle, DEFAULT CURRENT_USER dove mancava),
+        come vuole linee-guida-sql §7. Brief: brief-db-righe-e-componenti-debiti-residui (§2, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT (SELECT count(*) FROM magazzino.assets              WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.causali             WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.eventi_assets       WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.inventari           WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.inventari_righe     WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.lotti               WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.magazzini           WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.movimenti           WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.movimenti_attesi    WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.note                WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.rettifiche          WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.rettifiche_righe    WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.trasferimenti       WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.trasferimenti_righe WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.ubicazioni          WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM magazzino.valore_giacenza     WHERE user_update IS NULL);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE magazzino.causali             ALTER COLUMN user_update SET DEFAULT CURRENT_USER;
+              ALTER TABLE magazzino.eventi_assets       ALTER COLUMN user_update SET DEFAULT CURRENT_USER;
+              ALTER TABLE magazzino.assets              ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.causali             ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.eventi_assets       ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.inventari           ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.inventari_righe     ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.lotti               ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.magazzini           ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.movimenti           ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.movimenti_attesi    ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.note                ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.rettifiche          ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.rettifiche_righe    ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.trasferimenti       ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.trasferimenti_righe ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.ubicazioni          ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE magazzino.valore_giacenza     ALTER COLUMN user_update SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE magazzino.valore_giacenza     ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.ubicazioni          ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.trasferimenti_righe ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.trasferimenti       ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.rettifiche_righe    ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.rettifiche          ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.note                ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.movimenti_attesi    ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.movimenti           ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.magazzini           ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.lotti               ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.inventari_righe     ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.inventari           ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.eventi_assets       ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.causali             ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.assets              ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE magazzino.eventi_assets       ALTER COLUMN user_update DROP DEFAULT;
+              ALTER TABLE magazzino.causali             ALTER COLUMN user_update DROP DEFAULT;

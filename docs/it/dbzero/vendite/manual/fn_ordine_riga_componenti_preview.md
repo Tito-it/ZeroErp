@@ -2,7 +2,7 @@
 
 ### Scopo
 
-Preview read-only dei componenti BoM per il drawer riga ordine (pattern form atomic). Stesso comportamento di `fn_preventivo_riga_componenti_preview` ma tipizzato per la testata `ordini`. Proietta tutti i componenti attivi della BoM (modello unificato), inclusi `obbligatorio` e `esposto_in_fattura`. Consumata dal BE prima del save della riga composita.
+Preview read-only dei componenti BoM per il drawer riga ordine (pattern form atomic). Stesso comportamento di `fn_preventivo_riga_componenti_preview` ma tipizzato per la testata `ordini`. Proietta tutti i componenti attivi della BoM (modello unificato), inclusi `obbligatorio` ed `esposizione_in_fattura` (`NASCOSTO` | `DESCRITTIVO` | `VALORIZZATO`; fino al 2026-10-01 era il booleano `esposto_in_fattura`, rev `20261001-49`). Consumata dal BE prima del save della riga composita.
 
 > **Vedi anche**
 >
@@ -40,7 +40,7 @@ vendite.fn_ordine_riga_componenti_preview(
     origine_prezzo         vendite.ordini_righe_componenti.origine_prezzo%TYPE,
     resolver_error_reason  text,
     obbligatorio           boolean,
-    esposto_in_fattura     boolean
+    esposizione_in_fattura catalogo.articoli_componenti.esposizione_in_fattura%TYPE
 )
 ```
 
@@ -52,7 +52,7 @@ vendite.fn_ordine_riga_componenti_preview(
 | `p_utility_id` tipo | `preventivi.utility_id%TYPE` | `ordini.utility_id%TYPE` (nullable) |
 | `origine_prezzo` tipo | da `preventivi_righe_componenti` | da `ordini_righe_componenti` |
 | `obbligatorio` | proiettato (modello unificato) | identico |
-| `esposto_in_fattura` | proiettato (solo informativo) | identico |
+| `esposizione_in_fattura` | proiettata (solo informativa) | identico |
 
 ## Logica, output e pattern form atomic
 

@@ -28,12 +28,14 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import date
+from collections.abc import Callable
 from typing import Any
 
 from django.db import transaction
 
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
+from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
 from apps.core.services.fan_out import FanOutRunLogger, run_fan_out
 from apps.core.services.list_helpers import validate_enum_param
@@ -41,7 +43,11 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     make_db_errors_translator,
 )
-from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
+from apps.core.services.testata_guard import (
+    pagina_dopo_testata,
+    riga_del_padre_o_not_found,
+    testata_o_not_found,
+)
 from apps.core.services.value_normalizer import empty_to_none
 from apps.vendite.db.resi_repository import ResiRepository
 
@@ -61,8 +67,11 @@ E_VENDITE_FK = "E_VENDITE_FK"
 # nome vincolo). `vendite.resi`/`resi_righe` non hanno UNIQUE di dominio
 # scrivibili dal BE (uq_resi_anno_numero e' del trigger numerazione) -> solo FK.
 _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {}
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_resi_billing_account": (E_VENDITE_FK, "Cliente (billing account) non valido."),
+    # Rete sotto l'eredita' dal DDT (`trgfn_resi_normalize` e il guard D-6
+    # `trgfn_resi_guard_cliente_ddt`, che rispondono prima col loro codice).
+    "fk_resi_ba_cliente": FK_CLIENTE_DIVERSO_DA_BA,
     "fk_resi_destinatario_ruolo": (E_VENDITE_FK, "Destinatario non valido."),
     "fk_resi_emittente_fiscale": (E_VENDITE_FK, "Emittente fiscale non valido."),
     "fk_resi_sorgente_tipo": (E_VENDITE_FK, "Sorgente reso non valida."),
@@ -73,6 +82,14 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     "fk_resi_righe_testata": (E_VENDITE_FK, "Reso non valido."),
     "fk_resi_righe_tipo_reso": (E_VENDITE_FK, "Tipo reso non valido."),
     "fk_resi_righe_uom_operativa": (E_VENDITE_FK, "Unita' di misura non valida."),
+}
+# «BA e utility tutti e due o nessuno»: le eredita entrambe dal DDT.
+_CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
+    "chk_resi_ba_utility_insieme": (
+        E_VENDITE_VALIDATION,
+        "La utility del reso e' quella del suo billing account: senza billing account non c'e'.",
+        "billing_account_id",
+    ),
 }
 
 # ── Costanti di dominio ──
@@ -103,11 +120,15 @@ MAX_ACCREDITI_MASSIVI = 200
 
 # Scopo: Carica la testata reso o solleva E_RESO_NOT_FOUND (BB core
 #        `testata_o_not_found`, stesso nome del helper di ordini e DDT).
+# `getter` ammette il lettore leggero `get_stato_codice`, dove al chiamante
+# basta sapere che il documento esiste (stessa forma di
+# `offerte_service._get_offerta_or_raise`).
 def _get_testata_or_raise(
     repo: ResiRepository, reso_id: int, *, op: str,
-) -> dict[str, Any]:
+    getter: Callable[[int], Any] | None = None,
+) -> Any:
     return testata_o_not_found(
-        repo.get_reso, reso_id,
+        getter or repo.get_reso, reso_id,
         code="E_RESO_NOT_FOUND", message="Reso non trovato.",
         id_name="reso_id", function_name=f"{_FN}.{op}",
     )
@@ -202,7 +223,7 @@ def resolve_filtri_export_label(
 
 # Scopo: Dettaglio testata reso + capability data-driven (righe a parte via
 #        /righe/). Mirror get_ddt.
-def get_reso(reso_id: int) -> dict[str, object]:
+def get_reso(reso_id: int) -> dict[str, Any]:
     repo = ResiRepository()
     testata = _get_testata_or_raise(repo, reso_id, op="get_reso")
     # Capability da script.fn_available_actions_reso (matrice
@@ -228,23 +249,14 @@ def list_righe(reso_id: int) -> list[dict[str, Any]]:
 
 
 # Scopo: Una PAGINA delle righe del reso, per la lista configurabile
-#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina. Legge prima la
-#        testata come `list_righe`. Ritorna `(righe, totale)`.
-def list_righe_pagina(
-    reso_id: int,
-    *,
-    search: str | None = None,
-    order_by: str | None = None,
-    order_dir: str | None = None,
-    limit: int,
-    offset: int = 0,
-    max_limit: int = MAX_LIMIT,
-) -> tuple[list[dict[str, Any]], int]:
+#        (`GET …/righe/lista/`): ricerca, ordinamento e pagina dal BB del
+#        repository, dopo la testata (BB core `pagina_dopo_testata`).
+#        Ritorna `(righe, totale)`.
+def list_righe_pagina(reso_id: int, **opzioni: Any) -> tuple[list[dict[str, Any]], int]:
     repo = ResiRepository()
-    _get_testata_or_raise(repo, reso_id, op="list_righe_pagina")
-    return repo.list_righe_pagina(
-        reso_id, search=search, order_by=order_by, order_dir=order_dir,
-        limit=limit, offset=offset, max_limit=max_limit,
+    return pagina_dopo_testata(
+        lambda: _get_testata_or_raise(repo, reso_id, op="list_righe_pagina"),
+        repo.list_righe_pagina, reso_id, **opzioni,
     )
 
 
@@ -518,11 +530,19 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
     return {**creato, "righe_ids": righe_ids}
 
 
-# Scopo: Aggiorna testata reso (solo DRAFT; soli campi data/meta — il resto e'
-#        ereditato dal DDT sorgente e immutabile).
+# Scopo: Aggiorna testata reso (soli campi data/meta — il resto e' ereditato
+#        dal DDT sorgente e immutabile).
+#
+# Quali colonne si cambiano in quale stato lo dice il DB, colonna per colonna:
+# il lock di testata `vendite.trgfn_doc_testata_lock_fuori_bozza` (in bozza
+# tutto; dopo la conferma le sole note, ferme a reso annullato). Fino al
+# 2026-10-10 qui c'era un «solo in DRAFT» che ne era la seconda copia
+# (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del lock passa com'e'.
 def aggiorna_reso(reso_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = ResiRepository()
-    _assert_stato(repo, reso_id, _STATI_MODIFICABILI, op="aggiorna_reso")
+    # Prima la testata: fuori perimetro o inesistente e' un 404. Basta sapere
+    # che esiste: il lettore leggero, non la testata intera.
+    _get_testata_or_raise(repo, reso_id, op="aggiorna_reso", getter=repo.get_stato_codice)
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_RESO}
     ErrorManager.require(
         len(data) > 0,
@@ -917,6 +937,7 @@ def _crea_riga(
         message="qta_operativa obbligatoria (quantita' resa in unita' operativa).",
         function_name=fn,
     )
+    assert qta_operativa is not None
 
     if riga_nr is None:
         riga_nr = repo.next_riga_nr(reso_id)
@@ -1104,6 +1125,7 @@ _db_errors = make_db_errors_translator(
     fallback_message="Violazione vincolo DB su reso.",
     unique_constraints=_UNIQUE_CONSTRAINTS,
     fk_constraints=_FK_CONSTRAINTS,
+    check_constraints=_CHECK_CONSTRAINTS,
 )
 
 

@@ -66,7 +66,7 @@ BEGIN
             FROM vendite.listini_righe_componenti lrc_p
            WHERE lrc_p.listino_versione_id = p_listino_versione_id
              AND lrc_p.attivo              = TRUE
-             AND lrc_p.validita           @> CURRENT_DATE
+             AND lrc_p.validita           @> (SELECT script.fn_data_operativa())
       ) padri
       JOIN catalogo.articoli a
         ON a.id           = padri.articolo_padre_id
@@ -81,7 +81,7 @@ BEGIN
            WHERE lrc2.listino_versione_id = p_listino_versione_id
              AND lrc2.articolo_padre_id   = a.id
              AND lrc2.attivo              = TRUE
-             AND lrc2.validita           @> CURRENT_DATE
+             AND lrc2.validita           @> (SELECT script.fn_data_operativa())
       ) bsum
       CROSS JOIN LATERAL (
           SELECT jsonb_agg(jsonb_build_object(
@@ -94,7 +94,7 @@ BEGIN
               'coeff_qta',              ac.coeff_qta,
               'prezzo',                 lrc.prezzo,
               'obbligatorio',           ac.obbligatorio,
-              'esposto_in_fattura',     ac.esposto_in_fattura
+              'esposizione_in_fattura', ac.esposizione_in_fattura
           ) ORDER BY lrc.id) AS componenti
             FROM vendite.listini_righe_componenti lrc
             JOIN catalogo.articoli_componenti ac
@@ -106,13 +106,13 @@ BEGIN
            WHERE lrc.listino_versione_id = p_listino_versione_id
              AND lrc.articolo_padre_id   = a.id
              AND lrc.attivo              = TRUE
-             AND lrc.validita           @> CURRENT_DATE
+             AND lrc.validita           @> (SELECT script.fn_data_operativa())
       ) bcomp;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_espandi_listino_versione(p_listino_versione_id bigint, p_tipo_var character varying, p_valore_var numeric)
-IS 'Core condiviso: espande una versione listino in righe piatte (standalone + bundle) con prezzo da-listino (variazione globale solo su standalone, come da contratti) e BoM in jsonb (incl. articolo_componente_id). Consumato da fn_contratto_righe_preview e fn_offerta_righe_espanse. Nessuna eccezione di dominio.';
+IS 'Core condiviso: espande una versione listino in righe piatte (standalone + bundle) con prezzo da-listino (variazione globale solo su standalone, come da contratti) e BoM in jsonb (incl. articolo_componente_id). Consumato da fn_contratto_righe_preview e fn_offerta_righe_espanse. Nessuna eccezione di dominio. rev 2026-10-01: nel jsonb componenti la chiave esposto_in_fattura diventa esposizione_in_fattura (NASCOSTO | DESCRITTIVO | VALORIZZATO) (brief-db-esposizione-componenti-kit-in-fattura).';
 ```
 
 ---

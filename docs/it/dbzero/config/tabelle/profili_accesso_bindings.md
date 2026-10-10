@@ -12,7 +12,7 @@
 | profilo_accesso_id | integer | NO |  |
 | unita_organizzativa_id | integer | YES |  |
 | identita_digitale_id | bigint | YES |  |
-| ruolo_applicativo | USER-DEFINED | YES |  |
+| ruolo_applicativo | config.ruolo_applicativo | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
@@ -48,12 +48,15 @@
 | trg_profili_accesso_bindings_a10_guard_ultimo_super_admin_upd_d | AFTER | DELETE | `EXECUTE FUNCTION config.trgfn_profili_accesso_bindings_guard_ultimo_super_admin()` |
 | trg_profili_accesso_bindings_a10_profili_accesso_require_2ec6bd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'profili_accesso', 'attivo', 'profilo_accesso_id', 'id')` |
 | trg_profili_accesso_bindings_a10_profili_accesso_require_2ec6bd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'profili_accesso', 'attivo', 'profilo_accesso_id', 'id')` |
-| trg_profili_accesso_bindings_a10_unita_organizzative_req_b93e21 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_profili_accesso_bindings_a10_unita_organizzative_req_b93e21 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
+| trg_profili_accesso_bindings_a10_unita_organizzative_req_b93e21 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'unita_organizzative', 'attivo', 'unita_organizzativa_id', 'id')` |
 | trg_profili_accesso_bindings_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_profili_accesso_bindings_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_profili_accesso_bindings_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_profili_accesso_bindings_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_profili_accesso_bindings_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_profili_accesso_bindings_z90_notify_permessi_ins_upd_dlt | AFTER | DELETE | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
+| trg_profili_accesso_bindings_z90_notify_permessi_ins_upd_dlt | AFTER | UPDATE | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
+| trg_profili_accesso_bindings_z90_notify_permessi_ins_upd_dlt | AFTER | INSERT | `EXECUTE FUNCTION script.trgfn_notify_permessi_catalogo()` |
 | trg_profili_accesso_bindings_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('profili_accesso_bindings_id')` |
 | trg_profili_accesso_bindings_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('profili_accesso_bindings_id')` |
 

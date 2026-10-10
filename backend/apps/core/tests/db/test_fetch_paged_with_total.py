@@ -18,7 +18,10 @@ Indice test eseguiti:
 3) test_oltre_l_ultima_col_conteggio_del_chiamante
 4) test_prima_pagina_vuota_nessuna_rilettura
 5) test_query_che_non_sa_rileggersi_rifiutata_subito
-6) test_db_vero_oltre_l_ultima_pagina_totale_vero
+6) test_offset_ricavato_dalla_query
+7) test_offset_dichiarato_diverso_dalla_query_rifiutato
+8) test_parametri_con_nome_senza_offset_rifiutati
+9) test_db_vero_oltre_l_ultima_pagina_totale_vero
 """
 
 from __future__ import annotations
@@ -93,6 +96,33 @@ class FetchPagedWithTotalTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             fetch_paged_with_total(
                 "SELECT 1 LIMIT %(l)s OFFSET %(o)s", {"l": 10, "o": 0}, offset=0,
+            )
+
+
+    # ⭐ §9.6 punto 4 (2026-10-04): l'offset e' l'ultimo parametro della
+    #    query, e senza `offset=` il ripiego scatta lo stesso.
+    @patch(_CONN)
+    def test_offset_ricavato_dalla_query(self, conn) -> None:
+        cursor = _connessione(conn, [], [(1, 20)])
+        _, totale = fetch_paged_with_total(_SQL, ["x", 10, 20])
+        self.assertEqual(totale, 20)
+        self.assertEqual(cursor.execute.call_count, 2)
+
+    # ⛔ Due valori dello stesso numero che dicono cose diverse: uno e' sbagliato.
+    @patch(_CONN)
+    def test_offset_dichiarato_diverso_dalla_query_rifiutato(self, conn) -> None:
+        _connessione(conn, [(1, 1)])
+        with self.assertRaises(ValueError):
+            fetch_paged_with_total(_SQL, ["x", 10, 20], offset=0)
+
+    # Con i parametri con nome la query non lo dice: va dichiarato.
+    @patch(_CONN)
+    def test_parametri_con_nome_senza_offset_rifiutati(self, conn) -> None:
+        _connessione(conn, [(1, 1)])
+        with self.assertRaises(ValueError):
+            fetch_paged_with_total(
+                "SELECT 1 LIMIT %(l)s OFFSET %(o)s", {"l": 10, "o": 0},
+                fallback_count_sql="SELECT 1", fallback_params={},
             )
 
 

@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_rettifica(p_auth_user_id integer, p_re
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_rettifica(p_auth_user_id integer, p_rettifica_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: perimetro di una rettifica via il suo magazzino. Chiave di
     --   rettifiche_righe e delle note note_rettifica / note_rettifica_riga.

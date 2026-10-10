@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidi-cosa-significa-cosa-fare §4.2 — un presidio che puo'
+# accendersi non nasce senza sapere a chi tocca.
+#   CHECK chk_presidi_chi_agisce_se_allarma:
+#     natura = 'INVENTARIO' OR chi_agisce IS NOT NULL
+#
+# ── ⚠️ PERCHE' IN 90_end E NON ACCANTO ALLA COLONNA ─────────────────
+#   La colonna nasce in 00_schema/20261006-04, ma il valore lo scrive il
+#   mirror del CSV (80_data/20260910-08 e -35), che gira dopo. Su dbdev le
+#   righe esistono gia' con la colonna NULL: il vincolo, nato in 00_schema,
+#   sarebbe violato prima che il CSV lo soddisfi. 90_end gira dopo tutto
+#   80_data, su dbdev e su un database ricostruito da zero.
+#
+# ⚠️ Un INVENTARIO resta libero: non si accende, quindi non c'e' nessuno a cui
+#   tocchi spegnerlo. Se un giorno un INVENTARIO cambia natura, il vincolo lo
+#   obbliga a dire a chi tocca nella stessa riga del CSV.
+# ⚠️ L'aggiunta valida tutte le righe esistenti: se il CSV ne avesse lasciata
+#   una scoperta, il migrate si ferma qui con il nome del vincolo — fail-loud,
+#   che e' il punto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261006-07-check-presidi-chi-agisce-se-allarma-mctit.yaml
+
+  - changeSet:
+      id: 20261006-07-check-presidi-chi-agisce-se-allarma
+      author: mctit
+      failOnError: true
+      comment: >
+        CHECK chk_presidi_chi_agisce_se_allarma su dbops.presidi: chi_agisce
+        obbligatoria su ogni natura tranne INVENTARIO. In 90_end perche' il
+        valore lo scrive il mirror del CSV in 80_data.
+        brief-db-presidi-cosa-significa-cosa-fare §4.2.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: dbops
+            tableName: presidi
+            columnName: chi_agisce
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT count(*) FROM pg_catalog.pg_constraint
+               WHERE conrelid = 'dbops.presidi'::regclass
+                 AND conname = 'chk_presidi_chi_agisce_se_allarma';
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE dbops.presidi
+                  ADD CONSTRAINT chk_presidi_chi_agisce_se_allarma
+                  CHECK (natura = 'INVENTARIO' OR chi_agisce IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_presidi_chi_agisce_se_allarma ON dbops.presidi IS
+                  'Un presidio che puo'' accendersi non nasce senza sapere a chi tocca spegnerlo: chi_agisce e'' obbligatoria su ogni natura tranne INVENTARIO, che non si accende. Nato in 90_end perche'' il valore lo scrive il mirror del CSV in 80_data. Brief: brief-db-presidi-cosa-significa-cosa-fare §4.2.';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              ALTER TABLE dbops.presidi
+                  DROP CONSTRAINT IF EXISTS chk_presidi_chi_agisce_se_allarma;

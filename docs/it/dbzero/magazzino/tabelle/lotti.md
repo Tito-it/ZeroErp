@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| codice | character varying | NO |  |
+| codice | character varying(64) | NO |  |
 | data_arrivo | date | NO |  |
 | data_scadenza | date | YES |  |
 | attivo | boolean | NO | true |
@@ -20,7 +20,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

@@ -64,14 +64,9 @@ BEGIN;
 --       con eventi trigger in sospeso e' rifiutato da PostgreSQL, e la prima
 --       stesura di questo file falliva esattamente li' — nel FIXTURE, che vale
 --       copertura ZERO e non «parziale».
---   ⚠️ Il soggetto dell'operatore si crea DOPO, di proposito:
---   anagrafiche.soggetti ha tre guard DEFERRABLE INITIALLY DEFERRED dove la
---   deferralita' e' il CONTRATTO del dominio (si crea il soggetto, poi il suo
---   indirizzo, e la completezza si verifica al COMMIT). Anticipando quella
---   fixture, l'IMMEDIATE pretenderebbe l'indirizzo nell'istante dell'INSERT e
---   vieterebbe il pattern che il dominio ha scelto. ⚠️ Resta un buco
---   dichiarato: quei tre guard, qui, non vengono esercitati — stesso debito del
---   gemello test-rls-fatture-satelliti-functional.sql.
+--   ⭐ Rev 2026-10-07: l'operatore viene dalla madre
+--   (dbops.fn_pgtap_crea_operatore_umano), completo; dopo l'IMMEDIATE i vincoli
+--   non si riaprono piu', e i guard del suo soggetto si esercitano.
 
 SELECT plan(11);
 
@@ -123,7 +118,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emit_sr, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emit_sr, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, true, 100.00,
          jsonb_build_object('test_scope', 'pgtap_rls_fondi_source')
     FROM _refs r
@@ -168,70 +163,32 @@ SELECT ok(
 ALTER TABLE vendite.fatture_fondi_fattura_source ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vendite.fatture_fondi_fattura_source FORCE  ROW LEVEL SECURITY;
 
--- ⚠️ E ORA SI TORNA A `DEFERRED`, ed e' una riga che va letta invece che
---   saltata. `SET CONSTRAINTS ALL IMMEDIATE` vale per il RESTO della
---   transazione, non per l'istruzione che lo precede: lasciandolo acceso, la
---   fixture dell'operatore qui sotto morirebbe sui tre guard di
---   anagrafiche.soggetti, dove la deferralita' e' il CONTRATTO del dominio (si
---   crea il soggetto, poi il suo indirizzo, e la completezza si verifica al
---   COMMIT).
--- ⚠️ Il prezzo e' dichiarato: quei tre guard, in questo file, non vengono
---   esercitati. Non e' una svista ed e' lo stesso debito del gemello
---   test-rls-fatture-satelliti-functional.sql; si chiude COMPLETANDO la
---   fixture (indirizzo + contatti), non togliendo questa riga.
-SET CONSTRAINTS ALL DEFERRED;
 
--- auth_user + soggetto PF + SR RIS_UMANA + identita OPERATORE attiva.
+-- Un operatore umano, dalla madre.
 CREATE TEMP TABLE _op (auth_user_id int, soggetto_id uuid, sr_id bigint, identita_id bigint);
 
-DO $fix$
-DECLARE
-    v_uid int;
-    v_sog uuid;
-    v_sr  bigint;
-    v_idn bigint;
-BEGIN
-    INSERT INTO django.auth_user (username, password, is_active, is_staff,
-        is_superuser, first_name, last_name, email, date_joined)
-    VALUES ('_pgtap_rls_fondo_' || substring(md5(clock_timestamp()::text) from 1 for 8),
-        '!', true, false, false, '', '', '', now())
-    RETURNING id INTO v_uid;
-
-    -- CF/anagrafica identici agli altri test RLS (gia' validati): ogni test
-    -- gira in transazione propria con rollback, nessuna collisione.
-    v_sog := anagrafiche.fn_crea_soggetto_pf(
-        p_cognome           := 'PnzTestScopeEf',
-        p_nome              := 'Fdn',
-        p_codice_fiscale    := 'PNZFDN78A01L219Y',
-        p_email             := 'pgtap_rls_fondo_' || substring(md5(clock_timestamp()::text) from 1 for 6) || '@test.local',
-        p_data_nascita      := DATE '1978-01-01',
-        p_sesso             := 'M',
-        p_stato_iso2        := 'IT',
-        p_comune_nascita_id := (SELECT id FROM config.comuni ORDER BY id LIMIT 1),
-        p_tipo_contatto_id  := NULL);
-
-    v_sr := script.fn_get_or_create_soggetto_ruolo(
-        p_soggetto_id  := v_sog,
-        p_cd_int_ruolo := 'RIS_UMANA');
-
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    VALUES (v_sr, v_uid, 'OPERATORE', true)
-    RETURNING id INTO v_idn;
-
-    INSERT INTO _op VALUES (v_uid, v_sog, v_sr, v_idn);
-END
-$fix$;
+-- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
+--   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
+--   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
+--   l'emittente gli si da' con la funzione di dominio
+--   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
+--   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
+--   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
+--   operatore valido. Il builder esce con i vincoli IMMEDIATE: niente piu'
+--   finestra differita da riaprire per lui.
+INSERT INTO _op
+SELECT o.auth_user_id, o.soggetto_id, o.soggetto_ruolo_id, o.identita_id
+  FROM dbops.fn_pgtap_crea_operatore_umano('rls fondi') o;
 
 
 CREATE TEMP TABLE _res (caso text, esito boolean, n bigint);
 
 -- Helper: imposta la sessione operatore con la whitelist indicata.
--- ⚠️ L'override sul DELETE non e' decorativo: config.user_emittenti_fiscali e'
---   protetta da trgfn_user_emittenti_fiscali_guard_delete, che ammette la
---   cancellazione solo su utente cessato o con la GUC di manutenzione. Senza,
---   il file fallirebbe nel FIXTURE — e un file che fallisce nel fixture non
---   esegue nessuna asserzione: la sua copertura vale zero, non «parziale».
+-- ⚠️ Il DELETE sulla whitelist e' protetto da trgfn_user_emittenti_fiscali_guard_delete
+--   (solo utente cessato o GUC di manutenzione). Lo si attraversa con la
+--   funzione di dominio script.fn_change_user_emittenti_scope, che apre lei
+--   l'override: senza, il file fallirebbe nel FIXTURE, cioe' copertura zero.
 -- ⚠️ Il parametro e' un discriminante testuale e non la PK: PostgreSQL non
 --   ammette sottoquery negli argomenti di CALL.
 CREATE OR REPLACE PROCEDURE pg_temp.set_op(p_quale text)
@@ -245,15 +202,11 @@ BEGIN
                   ELSE NULL
               END;
 
-    PERFORM set_config('zeroerp.allow_user_emittente_delete_override', 'on', true);
-    DELETE FROM config.user_emittenti_fiscali
-     WHERE auth_user_id = (SELECT auth_user_id FROM _op);
-    PERFORM set_config('zeroerp.allow_user_emittente_delete_override', '', true);
-
-    IF v_emit IS NOT NULL THEN
-        INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-        VALUES ((SELECT auth_user_id FROM _op), v_emit) ON CONFLICT DO NOTHING;
-    END IF;
+    -- ⭐ Rev 2026-10-07: la whitelist si ripunta con la funzione di dominio,
+    --   che apre lei l'override del DELETE (un emittente o nessuno).
+    PERFORM script.fn_change_user_emittenti_scope(
+        (SELECT auth_user_id FROM _op),
+        CASE WHEN v_emit IS NULL THEN '{}'::bigint[] ELSE ARRAY[v_emit] END);
 
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
     PERFORM set_config('app.current_user_id', (SELECT auth_user_id FROM _op)::text, true);

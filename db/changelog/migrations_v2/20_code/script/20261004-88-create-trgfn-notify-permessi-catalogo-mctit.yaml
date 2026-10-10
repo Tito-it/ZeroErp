@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R2 — LA TRIGGER FUNCTION GENERICA: script.trgfn_notify_permessi_catalogo
+#   Brief: brief-db-permessi-catalogo-notify-cache, sezioni 3 (R2) e 6.3
+#
+# -- COSA FA ------------------------------------------------------------------------------------
+#   Chiama script.fn_notify_permessi_catalogo (-87) col nome della tabella su cui e'
+#   scattata (TG_TABLE_SCHEMA.TG_TABLE_NAME) e restituisce NULL. Nessun argomento di
+#   trigger: il nome lo dice PostgreSQL, e un argomento scritto a mano potrebbe dire il
+#   falso. Pensata per trigger AFTER ... FOR EACH STATEMENT (-89): non legge NEW/OLD.
+#
+# -- ⚠️ A ZERO RIGHE SCATTA LO STESSO -----------------------------------------------------------
+#   Un trigger per istruzione scatta anche su un UPDATE che non tocca righe: un avviso in
+#   piu', cioe' un invalidate_all innocuo. Non si filtra (servirebbero le transition table).
+#   E' anche cio' che permette al pgTAP di provare la consegna senza cambiare dati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-88-create-trgfn-notify-permessi-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261004-88-create-trgfn-notify-permessi-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_notify_permessi_catalogo(): trigger function generica per i trigger AFTER
+        per istruzione del catalogo permessi; chiama script.fn_notify_permessi_catalogo con
+        TG_TABLE_SCHEMA.TG_TABLE_NAME. Brief: brief-db-permessi-catalogo-notify-cache R2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_notify_permessi_catalogo';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_notify_permessi_catalogo()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: trigger AFTER ... FOR EACH STATEMENT sulle tabelle del catalogo
+              --   permessi: avvisa il backend che deve svuotare la cache permessi
+              --   (brief-db-permessi-catalogo-notify-cache). Il nome della tabella lo da'
+              --   PostgreSQL, non un argomento.
+              BEGIN
+                  PERFORM script.fn_notify_permessi_catalogo(
+                      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME
+                  );
+                  RETURN NULL;   -- AFTER per istruzione: ritorno ignorato
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_notify_permessi_catalogo() IS
+                  'Trigger function generica dei trigger z90 AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE FOR EACH STATEMENT sulle tabelle del catalogo permessi (config.azioni_processo, aree_funzionali, area_model_overrides, profili_accesso, profili_accesso_aree, profili_accesso_azioni, profili_accesso_bindings): chiama script.fn_notify_permessi_catalogo(TG_TABLE_SCHEMA.TG_TABLE_NAME), cioe'' NOTIFY permessi_catalogo al commit, e il backend svuota la cache permessi di tutti. Scatta anche su un''istruzione a zero righe: un avviso in piu'', innocuo. Nessun argomento di trigger. INVOKER. Brief: brief-db-permessi-catalogo-notify-cache R2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_notify_permessi_catalogo();

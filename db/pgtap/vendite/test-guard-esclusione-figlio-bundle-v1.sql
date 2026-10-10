@@ -7,8 +7,12 @@
 --
 -- Indice test (1..5):
 --   Struttura:
---   1)  Funzione trgfn_contratti_righe_guard_esclusione_figlio_bundle presente
---   2)  Trigger trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd presente
+--   1)  Funzione script.trgfn_righe_guard_esclusione_figlio_bundle presente (rev 2026-10-04)
+--   2)  Trigger trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd presente, sulla funzione generica
+--
+--   rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): la funzione e'
+--   generica per contratto e offerta (script); le esclusioni nascono VUOTE
+--   (prima portavano qta_operativa 1, che la regola nuova rifiuta).
 --
 --   Comportamento (COND: skip se nessun bundle in listini_righe_componenti):
 --   3)  ESCLUSIONE su figlio bundle nel listino del contratto → raise P0001
@@ -37,17 +41,6 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- Setup fixture
 -- ============================================================
 
-CREATE TEMP TABLE tmp_esc_ctx AS
-SELECT
-    ba.id                   AS ba_id,
-    ba.istanza_utility_id,
-    ba.utility_id,
-    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
-    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
-  FROM anagrafiche.billing_account ba
- ORDER BY ba.id
- LIMIT 1;
-
 -- Trova un bundle con componenti attivi in una versione operativa.
 -- Se non esiste alcun bundle nel DB, i test 3-5 vengono skippati.
 CREATE TEMP TABLE tmp_esc_bundle AS
@@ -59,12 +52,38 @@ SELECT
   FROM vendite.listini_righe_componenti lrc
   JOIN vendite.listini_versioni lv ON lv.id = lrc.listino_versione_id
  WHERE lrc.attivo  = TRUE
-   AND lrc.validita @> CURRENT_DATE
+   AND lrc.validita @> script.fn_data_operativa()
    AND lv.attivo   = TRUE
    AND lv.stato    IN ('ATTIVA', 'CHIUSA')
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
+   -- 2026-10-08 (§F.2): un bundle di un listino dell'emittente di chi agisce, perche'
+   --   il contratto del fixture e' suo.
+   AND EXISTS (SELECT 1 FROM vendite.listini l
+                WHERE l.id = lv.listino_id
+                  AND l.emittente_soggetto_ruolo_id = script.fn_pgtap_emittente_sr_operatore())
  ORDER BY lrc.id
  LIMIT 1;
+
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo). Il listino e'
+--   quello del bundle trovato nei dati (il soggetto del test), quindi il CLIENTE si
+--   costruisce sulla sua utility, legato dal z90 all'emittente di chi agisce; prima
+--   era il primo billing account in assoluto. Senza bundle la utility e' NULL, il
+--   builder prende la prima, e il contratto non nasce comunque.
+CREATE TEMP TABLE tmp_esc_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'esclusione figlio bundle',
+    (SELECT l.utility_id FROM vendite.listini l
+      WHERE l.id = (SELECT listino_id FROM tmp_esc_bundle LIMIT 1)));
+
+CREATE TEMP TABLE tmp_esc_ctx AS
+SELECT
+    c.billing_account_id    AS ba_id,
+    c.istanza_utility_id,
+    c.utility_id,
+    (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
+    (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
+  FROM tmp_esc_cli c;
 
 -- Articolo standalone nel listino del bundle (non è figlio di bundle)
 CREATE TEMP TABLE tmp_esc_standalone AS
@@ -95,16 +114,16 @@ SELECT plan(5);
 -- ============================================================
 
 -- ============================================================
--- 1) trgfn_contratti_righe_guard_esclusione_figlio_bundle presente
+-- 1) script.trgfn_righe_guard_esclusione_figlio_bundle presente
 -- ============================================================
 SELECT ok(
     EXISTS (
         SELECT 1 FROM pg_proc p
           JOIN pg_namespace n ON n.oid = p.pronamespace
-         WHERE n.nspname = 'vendite'
-           AND p.proname = 'trgfn_contratti_righe_guard_esclusione_figlio_bundle'
+         WHERE n.nspname = 'script'
+           AND p.proname = 'trgfn_righe_guard_esclusione_figlio_bundle'
     ),
-    '1) Funzione trgfn_contratti_righe_guard_esclusione_figlio_bundle presente'
+    '1) Funzione script.trgfn_righe_guard_esclusione_figlio_bundle presente'
 );
 
 -- ============================================================
@@ -119,6 +138,7 @@ SELECT ok(
          WHERE n.nspname = 'vendite'
            AND c.relname = 'contratti_righe'
            AND t.tgname  = 'trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd'
+           AND t.tgfoid  = 'script.trgfn_righe_guard_esclusione_figlio_bundle()'::regprocedure
            AND NOT t.tgisinternal
     ),
     '2) Trigger trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd presente'
@@ -135,8 +155,8 @@ SELECT CASE
     ELSE throws_ok(
         format(
             $$INSERT INTO vendite.contratti_righe(
-                contratto_id, articolo_id, tipo_eccezione, qta_operativa)
-              SELECT c.id, %L::uuid, 'ESCLUSIONE', 1.00
+                contratto_id, articolo_id, tipo_eccezione)
+              SELECT c.id, %L::uuid, 'ESCLUSIONE'
                 FROM vendite.contratti c WHERE c.numero = 'PGTAP_ESC_CNT'$$,
             (SELECT figlio_id FROM tmp_esc_bundle LIMIT 1)
         ),
@@ -157,8 +177,8 @@ SELECT CASE
     ELSE lives_ok(
         format(
             $$INSERT INTO vendite.contratti_righe(
-                contratto_id, articolo_id, tipo_eccezione, qta_operativa)
-              SELECT c.id, %L::uuid, 'ESCLUSIONE', 1.00
+                contratto_id, articolo_id, tipo_eccezione)
+              SELECT c.id, %L::uuid, 'ESCLUSIONE'
                 FROM vendite.contratti c WHERE c.numero = 'PGTAP_ESC_CNT'$$,
             (SELECT padre_id FROM tmp_esc_bundle LIMIT 1)
         ),
@@ -177,8 +197,8 @@ SELECT CASE
     ELSE lives_ok(
         format(
             $$INSERT INTO vendite.contratti_righe(
-                contratto_id, articolo_id, tipo_eccezione, qta_operativa)
-              SELECT c.id, %L::uuid, 'ESCLUSIONE', 1.00
+                contratto_id, articolo_id, tipo_eccezione)
+              SELECT c.id, %L::uuid, 'ESCLUSIONE'
                 FROM vendite.contratti c WHERE c.numero = 'PGTAP_ESC_CNT'$$,
             (SELECT articolo_id FROM tmp_esc_standalone LIMIT 1)
         ),

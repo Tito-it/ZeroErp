@@ -12,16 +12,16 @@
 | articolo_id | uuid | NO |  |
 | uom_id | bigint | NO |  |
 | is_base | boolean | NO | false |
-| factor_to_base | numeric | NO | 1 |
+| factor_to_base | numeric(18,6) | NO | 1 |
 | is_sell_uom | boolean | YES | false |
 | is_purchase_uom | boolean | YES | false |
 | is_logistic_uom | boolean | YES | false |
-| qty_step | numeric | YES | 1 |
-| rounding_mode | character varying | YES | 'HALF_UP'::character varying |
+| qty_step | numeric(18,6) | YES | 1 |
+| rounding_mode | character varying(16) | YES | 'HALF_UP'::character varying |
 | max_decimals | integer | YES | 6 |
 | forbid_fraction | boolean | YES | false |
 | require_lot | boolean | YES | false |
-| gtin | character varying | YES |  |
+| gtin | character varying(32) | YES |  |
 | valido_dal | date | YES |  |
 | valido_al | date | YES |  |
 | attivo | boolean | NO | true |
@@ -29,7 +29,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | validita | daterange | NO |  |
@@ -37,6 +37,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_articoli_uom_operativa_factor_to_base_finito |  |
+| CHECK | chk_articoli_uom_operativa_qty_step_finito |  |
 | CHECK | ck_artuomop_factor_pos |  |
 | CHECK | ck_artuomop_forbid_fraction_rules |  |
 | CHECK | ck_artuomop_max_decimals_range |  |

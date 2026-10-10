@@ -605,7 +605,9 @@ class PipelineStepExecutor:
             # diario e' accettabile; perdere il messaggio no.
             if task_run_id is not None and pipeline_id is not None:
                 try:
-                    exc.zeroerp_task_run_fallito = {
+                    # Attributo DINAMICO sull'eccezione: lo legge il runner con
+                    # `getattr(exc, "zeroerp_task_run_fallito", None)`.
+                    setattr(exc, "zeroerp_task_run_fallito", {  # noqa: B010 — attributo dinamico: assegnato col punto, mypy lo rifiuta (il tipo non lo dichiara)
                         "lotto_id": lotto_id,
                         "pipeline_id": pipeline_id,
                         "stato_doc_fiscale_id": stato_doc_fiscale_id,
@@ -624,7 +626,7 @@ class PipelineStepExecutor:
                             else db_error_code(exc) or "E_TASK"
                         ),
                         "error_message": messaggio_eccezione(exc),
-                    }
+                    })
                 except Exception:  # noqa: S110 - vedi commento sopra
                     pass
             raise

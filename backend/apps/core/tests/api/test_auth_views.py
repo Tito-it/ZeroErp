@@ -21,6 +21,7 @@ Indice test eseguiti:
  9c) AuditAuthViewsTests.test_login_fallito_registra_con_la_provenienza
  9d) AuditAuthViewsTests.test_login_riuscito_registra_e_legge_il_flag_della_credenziale
  9e) AuditAuthViewsTests.test_nome_inesistente_check_e_registrazione_sul_nome
+ 9e-bis) AuditAuthViewsTests.test_password_sbagliata_senza_freno_scrive_il_log — ogni password sbagliata nel log di sicurezza
  9f) AuditAuthViewsTests.test_nome_con_spazi_trova_la_credenziale_come_authenticate
  9g) AuditAuthViewsTests.test_nome_assente_nessuna_chiamata_al_db
  9h) AuditAuthViewsTests.test_guasto_nella_ricerca_ferma_il_login
@@ -50,6 +51,11 @@ Indice test eseguiti:
 28) RefreshCookieTests.test_nome_cookie_e_header_uguali_nei_tre_linguaggi
 29) RefreshCookieTests.test_post_con_refresh_riuscito_scrive_il_cookie
 30) RefreshCookieTests.test_post_con_refresh_fallito_non_scrive_il_cookie
+31) RefreshVesteSpentaTests.test_veste_utilizzabile_rinnova
+32) RefreshVesteSpentaTests.test_veste_spenta_401_senza_rotazione_e_sessione_bloccata
+33) RefreshVesteSpentaTests.test_veste_assente_401
+34) RefreshVesteSpentaTests.test_claim_identita_assente_401_senza_db
+35) RefreshVesteSpentaTests.test_guasto_lettura_veste_propaga
 """
 
 from unittest import TestCase
@@ -89,7 +95,7 @@ from apps.core.services.service_errors import ServiceError
 
 _SERVICE = "apps.core.api.auth_views.session_audit_service"
 _SET_GUCS = "apps.core.api.auth_views.set_jwt_gucs"
-_GET_IP = "apps.core.api.auth_views.get_client_ip"
+_GET_IP = "apps.core.services.request_context.get_client_ip"
 _IP = "203.0.113.7"
 _DIGEST_TID = digest_nome_tentato("tid")
 _RINNOVA = "apps.core.api.auth_views.AuditTokenRefreshView._rinnova"
@@ -98,6 +104,9 @@ _RINNOVA = "apps.core.api.auth_views.AuditTokenRefreshView._rinnova"
 _CLAIMS = "apps.core.api.auth_views.claims_refresh_firmati"
 # Il device del secondo fattore, che il login legge dopo la password giusta.
 _SECONDO_FATTORE = "apps.core.api.auth_views._secondo_fattore_repo"
+_VESTE_UTILIZZABILE = "apps.core.api.auth_views._veste_utilizzabile"
+_AUTH_REPO = "apps.core.api.auth_views._auth_repo"
+_BLOCCA = "apps.core.api.auth_views.blocca_token_sessioni"
 
 
 # Scopo: Spegne la lettura del device nel login: nessun secondo fattore.
@@ -109,6 +118,17 @@ def _senza_secondo_fattore(test: TestCase) -> MagicMock:
     repo.get_device.return_value = {"stato": "ASSENTE"}
     test.addCleanup(patcher.stop)
     return repo
+
+
+# Scopo: Tiene utilizzabile la veste del refresh (`_veste_utilizzabile`, D-5):
+#        i test del rinnovo che non parlano di veste spenta non devono leggere
+#        il DB.
+#        Il controllo vero lo prova `RefreshVesteSpentaTests`.
+def _veste_utilizzabile(test: TestCase) -> MagicMock:
+    patcher = patch(_VESTE_UTILIZZABILE, return_value=True)
+    mock = patcher.start()
+    test.addCleanup(patcher.stop)
+    return mock
 
 
 # Scopo: Una richiesta di refresh come la manda il browser: il refresh nel
@@ -130,6 +150,7 @@ class AuditAuthViewsTests(TestCase):
         self.mock_get_ip = patcher.start()
         self.addCleanup(patcher.stop)
         _senza_secondo_fattore(self)
+        _veste_utilizzabile(self)
 
     # Scopo: Verifica che login con successo chiami record_login con user_id e jti.
     @patch(f"{_SERVICE}.record_login")
@@ -461,9 +482,34 @@ class AuditAuthViewsTests(TestCase):
             None, nome_digest=digest, provenienza=_IP, successo=False,
         )
         testo = "\n".join(log.output)
+        self.assertIn("security.login_fallito", testo)
         self.assertIn("security.login_locked", testo)
         self.assertIn(f"nome={digest.hex()[:12]}", testo)
         self.assertNotIn(nome, testo)
+
+    # Scopo: Una password sbagliata che NON fa scattare il freno lascia
+    #        comunque la sua riga nel log di sicurezza (prima stava solo a DB).
+    @patch("apps.core.api.auth_views._auth_repo")
+    @patch.object(AuditTokenObtainPairView, "_find_user", return_value=None)
+    @patch("rest_framework_simplejwt.views.TokenObtainPairView.post")
+    def test_password_sbagliata_senza_freno_scrive_il_log(
+        self, mock_super_post, _mock_find_user, mock_repo
+    ):
+        mock_repo.registra_tentativo_login.return_value = {
+            "bloccato": False, "tentativi": 1, "minuti_rimanenti": 0, "attesa_secondi": 0,
+        }
+        mock_super_post.side_effect = AuthenticationFailed()
+        request = MagicMock()
+        request.data = {"username": "qualcuno"}
+
+        with self.assertLogs("security", level="WARNING") as log:
+            with self.assertRaises(AuthenticationFailed):
+                AdminTokenView().post(request)
+
+        testo = "\n".join(log.output)
+        self.assertIn("security.login_fallito", testo)
+        self.assertIn(f"provenienza={_IP} bloccato=False", testo)
+        self.assertNotIn("security.login_locked", testo)
 
     # Scopo: Il nome si normalizza come lo normalizza il serializer (spazi
     # tolti): « tid » deve trovare la credenziale di «tid» e avere la sua
@@ -618,6 +664,9 @@ class RefreshCrossNamespaceGuardTests(TestCase):
     Impedisce che un refresh portale venga girato su /admin/token/refresh/
     e viceversa (rumore semantico cross-path)."""
 
+    def setUp(self):
+        _veste_utilizzabile(self)
+
     def test_base_astratta_guard_solleva_runtime_error(self):
         """AuditTokenRefreshView e' astratta: `as_view()` diretto senza
         subclass → RuntimeError. Consistenza con §8.3.3 A1
@@ -723,6 +772,7 @@ class RefreshCookieTests(TestCase):
 
     def setUp(self):
         _senza_secondo_fattore(self)
+        _veste_utilizzabile(self)
 
     # Scopo: Gli attributi del cookie scritto: sono loro la protezione.
     def _assert_cookie_refresh(self, response, valore: str) -> None:
@@ -897,3 +947,102 @@ class RefreshCookieTests(TestCase):
         response = handle_post_json_con_refresh(Request(grezza, parsers=[JSONParser()]), _gestore)
         self.assertNotEqual(response.status_code, 200)
         self.assertNotIn(REFRESH_COOKIE_NAME, response.cookies)
+
+
+class RefreshVesteSpentaTests(TestCase):
+    """D-5 (Tid, 2026-10-02): una veste spenta chiude le sue sessioni al primo
+    rinnovo, qualunque strada l'abbia spenta. Il controllo sta PRIMA della
+    rotazione, e il refresh presentato si blocca per sid: una veste riaccesa
+    dopo non resuscita la sessione."""
+
+    _CLAIMS_VESTE = {
+        "ruolo_applicativo": RUOLO_APPLICATIVO_OPERATORE,
+        "user_id": "42", "identita_id": 7, "sid": "sid-x",
+    }
+
+    # Scopo: Veste utilizzabile → si rinnova, e la veste si cerca sulla credenziale
+    #        del token (id della veste + user_id, mai la sola veste).
+    @patch(f"{_SERVICE}.record_refresh")
+    @patch.object(AuditTokenRefreshView, "_resolve_username", return_value=None)
+    @patch(_BLOCCA)
+    @patch(_RINNOVA)
+    @patch(_AUTH_REPO)
+    @patch(_CLAIMS)
+    def test_veste_utilizzabile_rinnova(
+        self, mock_claims, mock_repo, mock_rinnova, mock_blocca, _resolve, _record,
+    ):
+        mock_claims.return_value = dict(self._CLAIMS_VESTE)
+        mock_repo.get_veste_utilizzabile.return_value = {"id": 7, "attivo": True}
+        mock_rinnova.return_value = Response({"access": "a", "refresh": "r"}, status=200)
+        response = AdminTokenRefreshView().post(_richiesta_refresh())
+        self.assertEqual(response.status_code, 200)
+        mock_repo.get_veste_utilizzabile.assert_called_once_with(7, 42)
+        mock_blocca.assert_not_called()
+
+    # Scopo: Veste non utilizzabile (spenta o fuori date: decide il DB) → 401,
+    #        nessuna rotazione, e la SOLA sessione del token presentato finisce
+    #        in blacklist (filtro per sid).
+    @patch(_BLOCCA)
+    @patch(_RINNOVA)
+    @patch(_AUTH_REPO)
+    @patch(_CLAIMS)
+    def test_veste_spenta_401_senza_rotazione_e_sessione_bloccata(
+        self, mock_claims, mock_repo, mock_rinnova, mock_blocca,
+    ):
+        mock_claims.return_value = dict(self._CLAIMS_VESTE)
+        mock_repo.get_veste_utilizzabile.return_value = None
+        with self.assertRaises(InvalidToken):
+            AdminTokenRefreshView().post(_richiesta_refresh())
+        mock_rinnova.assert_not_called()
+        mock_blocca.assert_called_once()
+        user_id, vale_sid = mock_blocca.call_args.args
+        self.assertEqual(user_id, 42)
+        self.assertTrue(vale_sid("sid-x"))
+        self.assertFalse(vale_sid("sid-altra"))
+        self.assertFalse(vale_sid(""))
+
+    # Scopo: Veste che non c'e' (o di un'altra credenziale: il repo filtra per
+    #        user_id e non la trova) → stesso esito della veste spenta.
+    @patch(_BLOCCA)
+    @patch(_RINNOVA)
+    @patch(_AUTH_REPO)
+    @patch(_CLAIMS)
+    def test_veste_assente_401(self, mock_claims, mock_repo, mock_rinnova, _blocca):
+        mock_claims.return_value = dict(self._CLAIMS_VESTE)
+        mock_repo.get_veste_utilizzabile.return_value = None
+        with self.assertRaises(InvalidToken):
+            AdminTokenRefreshView().post(_richiesta_refresh())
+        mock_rinnova.assert_not_called()
+
+    # Scopo: Claim `identita_id` assente → 401 senza leggere il DB: ogni
+    #        refresh nostro lo porta (grace 0, come per `ruolo_applicativo`).
+    @patch(_BLOCCA)
+    @patch(_RINNOVA)
+    @patch(_AUTH_REPO)
+    @patch(_CLAIMS)
+    def test_claim_identita_assente_401_senza_db(
+        self, mock_claims, mock_repo, mock_rinnova, _blocca,
+    ):
+        claims = dict(self._CLAIMS_VESTE)
+        del claims["identita_id"]
+        mock_claims.return_value = claims
+        with self.assertRaises(InvalidToken):
+            AdminTokenRefreshView().post(_richiesta_refresh())
+        mock_repo.get_veste_utilizzabile.assert_not_called()
+        mock_rinnova.assert_not_called()
+
+    # Scopo: Un guasto nella lettura della veste PROPAGA: il refresh non si
+    #        concede su un dubbio, e nemmeno si chiude la sessione.
+    @patch(_BLOCCA)
+    @patch(_RINNOVA)
+    @patch(_AUTH_REPO)
+    @patch(_CLAIMS)
+    def test_guasto_lettura_veste_propaga(
+        self, mock_claims, mock_repo, mock_rinnova, mock_blocca,
+    ):
+        mock_claims.return_value = dict(self._CLAIMS_VESTE)
+        mock_repo.get_veste_utilizzabile.side_effect = DatabaseError("giu'")
+        with self.assertRaises(DatabaseError):
+            AdminTokenRefreshView().post(_richiesta_refresh())
+        mock_rinnova.assert_not_called()
+        mock_blocca.assert_not_called()

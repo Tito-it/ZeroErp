@@ -27,7 +27,9 @@
 --   1) fixture: il kit e' misurato in unita' PADRE e la coda chiede 3
 --   2) il verbo crea DUE rettifiche, una per componente
 --   3) ⭐ ciascuna porta `componente_di` EREDITATO dalla riga rettificata
---   4) ⭐ e `esposto_in_fattura`, il secondo tasto che mancava
+--   4) ⭐ e `esposizione`, il secondo tasto che mancava (fino al 2026-10-01 si
+--      chiamava `esposto_in_fattura` ed era un booleano: tre modi da
+--      brief-db-esposizione-componenti-kit-in-fattura)
 --   5) `coeff_qta` continua ad arrivare (era l'unico che gia' passava)
 --   6) il segmento e' <spedizione>#RET:1#CMP:<componente> — il `#RET:` PRIMA
 --      del `#CMP:`, cosi' il kit_key della rettifica resta calcolabile
@@ -38,6 +40,12 @@
 --   8) ⭐ il guard nuovo: un kit i cui componenti NON portano `componente_di`
 --      viene rifiutato AL VERBO (E_ACCREDITO_KIT_SENZA_PADRE), e la riga
 --      NON esce dalla coda
+--   9) ⭐ la rettifica porta la SUA quantita' padre, -3, e non quella
+--      ereditata dalla riga rettificata (+10): R-DB-B8 di
+--      brief-db-bom-flag-quantita-e-kit-in-fattura, changeset 20261003-05.
+--      ⚠️ Prima di quel changeset e' ROSSO: la fixture scrive `qta_padre`
+--      come il push di oggi (R-BE-B2), e il meta ereditato la riportava
+--      positiva su componenti negativi
 --
 -- ⚠️ I componenti si creano con fn_upsert_commessa_attivita, che e' la stessa
 --    funzione che usa il push (BoMComponentExpander): il meta del kit lo
@@ -51,7 +59,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(8);
+SELECT plan(9);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -71,7 +79,7 @@ SELECT
   ba.istanza_utility_id                        AS istanza_utility_id,
   script.fn_pgtap_emittente_operatore()        AS emittente_fiscale_id,
   script.fn_pgtap_emittente_sr_operatore()     AS emittente_sr_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1)                AS soggetto_ruolo_id,
+  ba.soggetto_ruolo_id                AS soggetto_ruolo_id,  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il ruolo del BA, non il primo del database
   -- Tre articoli DISTINTI e scelti con ORDER BY: il padre e i due componenti.
   -- Il suffisso #CMP: e' una stringa libera, ma usare articoli veri tiene la
   -- fixture vicina a quello che scrive il push.
@@ -84,7 +92,10 @@ SELECT
   (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1) AS uom_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                                AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1)            AS iva_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo ORDER BY s.id LIMIT 1)     AS stato_ord_conf_id,
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
+  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+  --   righe non si scrivono piu' (20261008-90).
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo ORDER BY s.id LIMIT 1)     AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO'     AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO'    AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_ddt_spedito_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo ORDER BY s.id LIMIT 1)        AS stato_ddt_consegnato_id,
@@ -110,7 +121,7 @@ BEGIN
   SELECT * INTO r FROM tmp_refs_kit;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
           DATE '2026-07-15', 'CONSEGNATO', r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_accredito_kit'))
   RETURNING id INTO v_ord;
@@ -120,6 +131,8 @@ BEGIN
     qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
   VALUES (v_ord, 1, r.art_padre_id, 'Kit pgTAP', p_qta, p_qta, p_prezzo, r.iva_id,
           true, false, jsonb_build_object('test_scope','pgtap_accredito_kit'));
+  -- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
 
   v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
@@ -171,10 +184,13 @@ BEGIN
     -- ⭐ Il contratto kit, scritto come lo scrive il push.
     --    jsonb_strip_nulls: con p_padre NULL la chiave `componente_di` NON
     --    nasce, che e' esattamente il caso rotto del test 8.
+    --    Dal 2026-10-03 anche `qta_padre`, la quantita' della riga padre del
+    --    documento (R-BE-B2): quantita' del componente / coefficiente.
     p_meta                          => jsonb_strip_nulls(jsonb_build_object(
                                           'coeff_qta',           p_coeff,
                                           'componente_di',       p_padre,
-                                          'esposto_in_fattura',  true)));
+                                          'esposizione',         'DESCRITTIVO',
+                                          'qta_padre',           p_qta / p_coeff)));
 END $$ LANGUAGE plpgsql;
 
 -- Emette le attivita' della commessa e aggancia ognuna a una riga di fattura
@@ -205,9 +221,9 @@ BEGIN
   LOOP
       v_nr := v_nr + 1;
       INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione,
-          uom_id, qta, prezzo_unitario, iva_id, imponibile_riga)
+          uom_id, qta, prezzo_unitario, iva_id, imponibile_riga, competenza_dal, competenza_al)
       VALUES (v_fatt, v_nr, v_af.articolo_id, 'Riga kit pgTAP', r.uom_id,
-              v_af.quantita, 2.50, r.iva_id, v_af.quantita * 2.50)
+              v_af.quantita, 2.50, r.iva_id, v_af.quantita * 2.50, script.fn_data_operativa(), script.fn_data_operativa())
       RETURNING id INTO v_riga;
 
       UPDATE vendite.attivita_fatturabili
@@ -315,9 +331,9 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM vendite.commesse_attivita ca
     WHERE ca.id IN (SELECT commessa_attivita_id FROM tmp_acc_kit)
-      AND (ca.meta ->> 'esposto_in_fattura')::boolean IS TRUE),
+      AND ca.meta ->> 'esposizione' = 'DESCRITTIVO'),
   2,
-  '4) e portano `esposto_in_fattura`: la nota di credito prende la forma della fattura che rettifica'
+  '4) e portano `esposizione`: la nota di credito prende la forma della fattura che rettifica'
 );
 
 SELECT is(
@@ -384,6 +400,20 @@ SELECT throws_like(
          (SELECT resi_riga_id FROM tmp_kb_reso)),
   '%articolo padre%',
   '8) kit senza `componente_di`: rifiutato AL VERBO, prima che la riga esca dalla coda'
+);
+
+-- ============================================================
+-- 9) ⭐ LA QUANTITA' PADRE DELLA RETTIFICA (R-DB-B8). Il meta ereditato
+--    porterebbe +10, la quantita' padre della riga rettificata: il kit reso
+--    e' di 3, e la nota di credito lo dice col segno del componente.
+--    (::numeric e non il testo: v_quota ha la scala della sua colonna.)
+-- ============================================================
+SELECT is(
+  (SELECT count(*)::int FROM vendite.commesse_attivita ca
+    WHERE ca.id IN (SELECT commessa_attivita_id FROM tmp_acc_kit)
+      AND (ca.meta ->> 'qta_padre')::numeric = -3),
+  2,
+  '9) entrambe le rettifiche portano qta_padre = -3 (il kit reso), non +10 ereditato dalla riga rettificata'
 );
 
 SELECT * FROM finish();

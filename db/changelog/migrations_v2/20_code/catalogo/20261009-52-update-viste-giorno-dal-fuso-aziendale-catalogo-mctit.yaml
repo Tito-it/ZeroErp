@@ -1,0 +1,307 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# catalogo: LE VISTE LEGGONO IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3 (CURRENT_DATE) e D-5
+#   (istante -> giorno).
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   - CURRENT_DATE -> (SELECT script.fn_data_operativa()): la sottoquery
+#     scalare e' valutata una volta per istruzione, non per riga;
+#   - un timestamptz portato a giorno (::date, date_trunc) -> 
+#     script.fn_giorno_operativo(istante), nel fuso di SYSTEM_FUSO_ORARIO.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Colonne, nomi, tipi e ordine (le viste a valle non se ne accorgono).
+#   ⛔ security_invoker NON fa parte del corpo (pg_get_viewdef non lo
+#   stampa) e un CREATE OR REPLACE VIEW che non lo ripete lo AZZERA: ogni
+#   vista lo ripete com'e' oggi, anche nel rollback. Il corpo e' quello vivo,
+#   da pg_get_viewdef su zeroerp_ci il 2026-10-09, con le sole sostituzioni
+#   dette sopra.
+#
+# ── VISTE (2) ──────────────────────────────────────────────────
+#     - catalogo.vw_articoli_componenti_dettaglio (senza reloptions, come oggi)
+#     - catalogo.vw_articoli_dettaglio (senza reloptions, come oggi)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/catalogo/20261009-52-update-viste-giorno-dal-fuso-aziendale-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261009-52-update-viste-giorno-dal-fuso-aziendale-catalogo
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        catalogo: 2 viste leggono il giorno dell'azienda (fn_data_operativa,
+        fn_giorno_operativo) invece di quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 4
+            sql: |
+              SELECT (SELECT count(*) FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind = 'v'
+                         AND n.nspname || '.' || c.relname IN ('catalogo.vw_articoli_componenti_dettaglio', 'catalogo.vw_articoli_dettaglio'))
+                   + (SELECT count(*) FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script'
+                         AND p.proname IN ('fn_data_operativa', 'fn_giorno_operativo'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+               SELECT ac.id,
+                  ac.prodotto_id,
+                  ac.componente_id,
+                  ac.coeff_qta,
+                  ac.obbligatorio,
+                  ac.valido_dal,
+                  ac.valido_al,
+                  ac.meta,
+                  ac.user_insert,
+                  ac.user_update,
+                  ac.data_insert,
+                  ac.data_update,
+                  ac.tx_id,
+                  ac.storicizza,
+                  ac.attivo,
+                  ac.note_target_tipo,
+                  ac.note_id,
+                  ap.codice AS prodotto_codice,
+                  ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  (ac.valido_al IS NULL) AS puo_chiudersi,
+                      CASE
+                          WHEN (ac.valido_al IS NULL) THEN ac.valido_dal
+                          ELSE NULL::date
+                      END AS data_min_chiusura,
+                      CASE
+                          WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, (SELECT script.fn_data_operativa()))
+                          ELSE NULL::date
+                      END AS data_default_chiusura,
+                      CASE
+                          WHEN (ac.valido_al IS NULL) THEN NULL::text
+                          ELSE 'RIGA_GIA_CHIUSA'::text
+                      END AS motivo_non_chiudibile,
+                  ac.esposizione_in_fattura,
+                  ec.codice AS esposizione_in_fattura_codice,
+                  ec.etichetta_key AS esposizione_in_fattura_etichetta_key
+                 FROM (((catalogo.articoli_componenti ac
+                   LEFT JOIN catalogo.articoli ap ON ((ap.id = ac.prodotto_id)))
+                   LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)))
+                   LEFT JOIN config.esposizioni_componente ec ON (((ec.codice_interno)::text = (ac.esposizione_in_fattura)::text)));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
+               SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  (a.is_composito AND (NOT a.is_solo_componente)) AS puo_gestire_bom,
+                      CASE
+                          WHEN (a.is_composito AND (NOT a.is_solo_componente)) THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  (a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> (SELECT script.fn_data_operativa())) AND (ac.attivo = true))))) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni,
+                  a.requires_lotto
+                 FROM ((((((((catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
+                   LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
+                   LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id)))
+                   LEFT JOIN vendite.articoli_spesa s ON ((s.id = a.spesa_id)))
+                   LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
+                   LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)))
+                   LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)));
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_componenti_dettaglio AS
+               SELECT ac.id,
+                  ac.prodotto_id,
+                  ac.componente_id,
+                  ac.coeff_qta,
+                  ac.obbligatorio,
+                  ac.valido_dal,
+                  ac.valido_al,
+                  ac.meta,
+                  ac.user_insert,
+                  ac.user_update,
+                  ac.data_insert,
+                  ac.data_update,
+                  ac.tx_id,
+                  ac.storicizza,
+                  ac.attivo,
+                  ac.note_target_tipo,
+                  ac.note_id,
+                  ap.codice AS prodotto_codice,
+                  ap.descrizione AS prodotto_descrizione,
+                  acmp.codice AS componente_codice,
+                  acmp.descrizione AS componente_descrizione,
+                  (ac.valido_al IS NULL) AS puo_chiudersi,
+                      CASE
+                          WHEN (ac.valido_al IS NULL) THEN ac.valido_dal
+                          ELSE NULL::date
+                      END AS data_min_chiusura,
+                      CASE
+                          WHEN (ac.valido_al IS NULL) THEN GREATEST(ac.valido_dal, CURRENT_DATE)
+                          ELSE NULL::date
+                      END AS data_default_chiusura,
+                      CASE
+                          WHEN (ac.valido_al IS NULL) THEN NULL::text
+                          ELSE 'RIGA_GIA_CHIUSA'::text
+                      END AS motivo_non_chiudibile,
+                  ac.esposizione_in_fattura,
+                  ec.codice AS esposizione_in_fattura_codice,
+                  ec.etichetta_key AS esposizione_in_fattura_etichetta_key
+                 FROM (((catalogo.articoli_componenti ac
+                   LEFT JOIN catalogo.articoli ap ON ((ap.id = ac.prodotto_id)))
+                   LEFT JOIN catalogo.articoli acmp ON ((acmp.id = ac.componente_id)))
+                   LEFT JOIN config.esposizioni_componente ec ON (((ec.codice_interno)::text = (ac.esposizione_in_fattura)::text)));
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW catalogo.vw_articoli_dettaglio AS
+               SELECT a.id,
+                  a.codice,
+                  a.descrizione,
+                  a.descrizione_breve,
+                  a.uom_id,
+                  a.tipo_voce_id,
+                  a.gruppo_voce_id,
+                  a.spesa_id,
+                  a.iva_id,
+                  a.conto_contabile_vendita_id,
+                  a.conto_contabile_acquisto_id,
+                  a.is_composito,
+                  a.is_solo_componente,
+                  a.requires_serial,
+                  a.listino_tipologia_id,
+                  a.meta,
+                  a.user_insert,
+                  a.user_update,
+                  a.data_insert,
+                  a.data_update,
+                  a.tx_id,
+                  a.storicizza,
+                  a.attivo,
+                  a.note_target_tipo,
+                  a.note_id,
+                  u.id AS uom_ref_id,
+                  u.codice AS uom_codice,
+                  u.descrizione AS uom_descrizione,
+                  t.id AS tipologia_ref_id,
+                  t.codice AS tipologia_codice,
+                  t.descrizione AS tipologia_descrizione,
+                  g.id AS gruppo_ref_id,
+                  g.codice AS gruppo_codice,
+                  g.descrizione AS gruppo_descrizione,
+                  s.id AS spesa_ref_id,
+                  s.codice AS spesa_codice,
+                  s.descrizione AS spesa_descrizione,
+                  i.id AS iva_ref_id,
+                  i.codice AS iva_codice,
+                  i.descrizione AS iva_descrizione,
+                  i.aliquota_iva AS iva_aliquota_iva,
+                  lt.codice AS tipologia_listino_codice,
+                  lt.descrizione AS tipologia_listino_descrizione,
+                  (a.is_composito AND (NOT a.is_solo_componente)) AS puo_gestire_bom,
+                      CASE
+                          WHEN (a.is_composito AND (NOT a.is_solo_componente)) THEN NULL::text
+                          WHEN a.is_solo_componente THEN 'ARTICOLO_SOLO_COMPONENTE'::text
+                          ELSE 'ARTICOLO_NON_COMPOSITO'::text
+                      END AS motivo_non_gestibile_bom,
+                  (a.is_composito AND (EXISTS ( SELECT 1
+                         FROM catalogo.articoli_componenti ac
+                        WHERE ((ac.prodotto_id = a.id) AND (ac.validita @> CURRENT_DATE) AND (ac.attivo = true))))) AS has_componenti_alla_data,
+                  a.natura_vendita_id,
+                  nv.codice_interno AS natura_vendita_codice_interno,
+                  nv.descrizione AS natura_vendita_descrizione,
+                  nv.destinazione_tipo AS natura_vendita_destinazione_tipo,
+                  a.modo_approvvigionamento_id,
+                  ma.codice_interno AS modo_approvvigionamento_codice_interno,
+                  ma.descrizione AS modo_approvvigionamento_descrizione,
+                  a.gestito_a_magazzino,
+                  a.lead_time_giorni,
+                  a.requires_lotto
+                 FROM ((((((((catalogo.articoli a
+                   LEFT JOIN catalogo.unita_misura u ON ((u.id = a.uom_id)))
+                   LEFT JOIN vendite.articoli_tipologie t ON ((t.id = a.tipo_voce_id)))
+                   LEFT JOIN vendite.articoli_gruppi g ON ((g.id = a.gruppo_voce_id)))
+                   LEFT JOIN vendite.articoli_spesa s ON ((s.id = a.spesa_id)))
+                   LEFT JOIN config.iva i ON ((i.id = a.iva_id)))
+                   LEFT JOIN config.listini_tipologie lt ON ((lt.id = a.listino_tipologia_id)))
+                   LEFT JOIN config.nature_vendita nv ON ((nv.id = a.natura_vendita_id)))
+                   LEFT JOIN config.modi_approvvigionamento ma ON ((ma.id = a.modo_approvvigionamento_id)));

@@ -30,11 +30,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal
 
 import jwt
 from django.conf import settings
-from django.http import HttpRequest, HttpResponseBase
+from django.http import HttpRequest, HttpResponseBase, JsonResponse
 from rest_framework_simplejwt.exceptions import TokenBackendError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.state import token_backend
@@ -44,7 +44,7 @@ from apps.core.services.service_errors import ServiceError
 
 REFRESH_COOKIE_NAME = "zeroerp_refresh"
 REFRESH_COOKIE_PATH = "/api/v1/"
-REFRESH_COOKIE_SAMESITE = "Strict"
+REFRESH_COOKIE_SAMESITE: Literal["Strict"] = "Strict"
 
 # L'header che il frontend manda sul refresh, e che un altro sito non puo'
 # mandare. Il valore e' quello che le librerie mettono per convenzione.
@@ -141,7 +141,9 @@ def claims_refresh_firmati(refresh: str) -> dict[str, Any] | None:
     try:
         payload = jwt.decode(
             refresh,
-            token_backend.get_verifying_key(refresh),
+            # SimpleJWT annota `Token`, ma lui stesso la chiama col token
+            # grezzo (str) in `TokenBackend.decode`.
+            token_backend.get_verifying_key(refresh),  # type: ignore[arg-type]
             algorithms=[token_backend.algorithm],
             audience=token_backend.audience,
             issuer=token_backend.issuer,
@@ -168,7 +170,7 @@ def claims_refresh_firmati(refresh: str) -> dict[str, Any] | None:
 def handle_post_json_con_refresh(
     request: Any,
     handler: Callable[[dict[str, Any]], tuple[dict[str, Any], str]],
-) -> HttpResponseBase:
+) -> JsonResponse:
     emesso: dict[str, str] = {}
 
     def _gestore(payload: dict[str, Any]) -> dict[str, Any]:

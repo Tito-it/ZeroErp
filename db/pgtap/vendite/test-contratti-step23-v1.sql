@@ -10,7 +10,8 @@
 -- Indice test (1..13):
 --   Struttura:
 --   1)  Trigger freeze_listino_versione presente su contratti
---   2)  Trigger lock_post_attivazione presente su contratti
+--   2)  Le quattro colonne di pricing nel lock di testata fuori bozza (rev 2026-10-10: ritirato
+--       trg_contratti_a10_lock_post_attivazione_upd, brief-db-testata-dopo-emissione fase 2)
 --   3)  Il BB delle righe (trg_contratti_righe_a05_doc_righe_lock_fuori_bozza) presente su contratti_righe (rev 22-09)
 --
 --   Freeze versione e guard negoziato puro:
@@ -51,23 +52,43 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- Setup fixture
 -- ============================================================
 
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza tipi_utenze,
+--   legato dal z90 all'emittente di chi agisce; listino (versione ATTIVA da oggi)
+--   sulla stessa utility. Effetto: il test 6 non va piu' in skip. Un cliente nuovo
+--   non ha contratti che si sovrappongano a quelli del fixture.
+CREATE TEMP TABLE tmp_s23_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'step23',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_s23_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_s23_cli), 'step23');
+
 CREATE TEMP TABLE tmp_s23_ctx AS
 SELECT
-    ba.id                                                          AS ba_id,
-    ba.istanza_utility_id,
-    ba.utility_id,
+    c.billing_account_id                                           AS ba_id,
+    c.istanza_utility_id,
+    c.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO' LIMIT 1) AS id_attivo,
-    (SELECT id FROM vendite.listini WHERE attivo = TRUE ORDER BY id LIMIT 1)             AS listino_id
-  FROM anagrafiche.billing_account ba
- ORDER BY ba.id
- LIMIT 1;
+    (SELECT listino_id FROM tmp_s23_listino)                                             AS listino_id
+  FROM tmp_s23_cli c;
 
 -- 3 articoli per i test righe
 CREATE TEMP TABLE tmp_s23_arts AS
 SELECT id, row_number() OVER (ORDER BY id) AS rn
-  FROM catalogo.articoli
- WHERE attivo = TRUE AND is_composito = FALSE
+  FROM catalogo.articoli a
+ WHERE a.attivo = TRUE AND a.is_composito = FALSE
+   -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): l'articolo
+   --   sta nel PERIMETRO delle righe: senza tipologia (decide la natura, la utility del
+   --   cliente non conta) e con UNA_TANTUM/FISSA ammessa, chiesto alla sede unica.
+   AND a.listino_tipologia_id IS NULL
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
  ORDER BY id
  LIMIT 3;
 
@@ -76,7 +97,7 @@ CREATE TEMP TABLE tmp_s23_lv AS
 SELECT lv.id AS versione_id
   FROM vendite.listini_versioni lv
  WHERE lv.listino_id = (SELECT listino_id FROM tmp_s23_ctx LIMIT 1)
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
    AND lv.attivo = TRUE
  LIMIT 1;
 
@@ -92,8 +113,10 @@ SELECT 'PGTAP_S23_ATT',
   FROM tmp_s23_ctx c;
 
 -- Insert riga AGGIUNTA su ATT (mentre è DRAFT: lock non scatta)
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti ca, tmp_s23_arts a
  WHERE ca.numero = 'PGTAP_S23_ATT' AND a.rn = 1;
 
@@ -120,8 +143,10 @@ SELECT 'PGTAP_S23_NEG_OK',
        c.id_draft, '2072-01-01', '2072-12-31'
   FROM tmp_s23_ctx c;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'AGGIUNTA', 50.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'AGGIUNTA', 50.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti ca, tmp_s23_arts a
  WHERE ca.numero = 'PGTAP_S23_NEG_OK' AND a.rn = 2;
 
@@ -172,18 +197,21 @@ SELECT ok(
 );
 
 -- ============================================================
--- 2) Trigger lock_post_attivazione presente su contratti
+-- 2) Le quattro colonne di pricing sono bloccate fuori bozza
+--    rev 2026-10-10 (brief-db-testata-dopo-emissione, fase 2): il lock
+--    post-attivazione (solo ATTIVO, fascia a10) e' ritirato; le blocca il
+--    building block di testata in ogni stato fuori bozza, e parla prima del
+--    guard del listino. Si chiede al montaggio, col lettore.
 -- ============================================================
 SELECT ok(
-    EXISTS (
-        SELECT 1 FROM pg_trigger t
-          JOIN pg_class c      ON c.oid = t.tgrelid
-          JOIN pg_namespace ns ON ns.oid = c.relnamespace
-         WHERE ns.nspname = 'vendite'
-           AND c.relname  = 'contratti'
-           AND t.tgname   = 'trg_contratti_a10_lock_post_attivazione_upd'
-    ),
-    '2) Trigger trg_contratti_a10_lock_post_attivazione_upd presente su contratti'
+    (SELECT bool_and(NOT script.fn_doc_colonna_modificabile('vendite.contratti'::regclass, c.col::name, s.stato))
+       FROM (VALUES ('listino_id'), ('listino_versione_id'), ('tipo_variazione_globale'),
+                    ('valore_variazione_globale')) AS c(col),
+            (VALUES ('ATTIVO'), ('CESSATO'), ('ANNULLATO')) AS s(stato))
+    AND NOT EXISTS (SELECT 1 FROM pg_trigger t
+                     WHERE t.tgrelid = 'vendite.contratti'::regclass
+                       AND t.tgname = 'trg_contratti_a10_lock_post_attivazione_upd'),
+    '2) listino, versione e variazioni globali bloccati fuori bozza in ogni stato dal lock di testata; il lock post-attivazione non c''e'' piu'''
 );
 
 -- ============================================================
@@ -245,14 +273,18 @@ END;
 
 -- ============================================================
 -- 7) UPDATE listino_id su contratto ATTIVO -> bloccato
+--    2026-10-08 (§F.2): il listino nuovo e' quello coerente del fixture. Uno
+--    qualunque dei dati lo rifiuterebbe prima il guard del listino del documento
+--    («guard_l» < «lock_p»), con lo stesso SQLSTATE: il test sarebbe verde per il
+--    motivo sbagliato.
 -- ============================================================
 SELECT throws_ok(
     $$UPDATE vendite.contratti
-         SET listino_id = (SELECT id FROM vendite.listini WHERE attivo = TRUE ORDER BY id LIMIT 1)
+         SET listino_id = (SELECT listino_id FROM tmp_s23_ctx)
        WHERE numero = 'PGTAP_S23_ATT'$$,
     'P0001',
     NULL,
-    '7) UPDATE listino_id su contratto ATTIVO -> bloccato E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE'
+    '7) UPDATE listino_id su contratto ATTIVO -> bloccato (E_DOC_CONDIZIONI_FUORI_BOZZA dal 2026-10-10)'
 );
 
 -- ============================================================
@@ -282,8 +314,11 @@ SELECT lives_ok(
 -- 10) INSERT riga su contratto ATTIVO -> bloccato
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'AGGIUNTA', 10.00, 1.00
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+    --   senza, il P0001 atteso verrebbe dal guard nuovo e non da E_RIGA_DOC_NON_BOZZA.
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+             tipo_erogazione)
+      SELECT ca.id, a.id, 'AGGIUNTA', 10.00, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s23_arts a
        WHERE ca.numero = 'PGTAP_S23_ATT' AND a.rn = 2$$,
     'P0001',
@@ -322,8 +357,10 @@ SELECT throws_ok(
 -- 13) INSERT riga su contratto DRAFT -> ok
 -- ============================================================
 SELECT lives_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'AGGIUNTA', 20.00, 1.00
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+             tipo_erogazione)
+      SELECT ca.id, a.id, 'AGGIUNTA', 20.00, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s23_arts a
        WHERE ca.numero = 'PGTAP_S23_DRAFT' AND a.rn = 3$$,
     '13) INSERT riga su contratto DRAFT -> ok (lock non scatta)'

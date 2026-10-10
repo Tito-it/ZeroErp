@@ -36,6 +36,7 @@
 | CHECK | chk_vendite_contabili_automatica_dichiara |  |
 | CHECK | chk_vendite_contabili_corretta_non_se_stessa |  |
 | CHECK | chk_vendite_contabili_generata_non_dichiara |  |
+| CHECK | chk_vendite_contabili_importo_dichiarato_finito |  |
 | CHECK | chk_vendite_contabili_origine |  |
 | FOREIGN KEY | fk_vendite_contabili_centro_riscossione | centro_riscossione_id |
 | FOREIGN KEY | fk_vendite_contabili_corretta | contabile_corretta_id |

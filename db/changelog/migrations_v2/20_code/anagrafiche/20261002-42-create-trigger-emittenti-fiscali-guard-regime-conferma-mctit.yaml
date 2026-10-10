@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger trg_emittenti_fiscali_a10_guard_regime_conferma_ins_upd
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 10
+#
+#   Aggancia la funzione di -41. BEFORE INSERT e UPDATE OF
+#   regime_fiscale_confermato_il, regime_fiscale_confermato_da: le sole
+#   colonne che il guard giudica. Un UPDATE che non le nomina non lo fa
+#   scattare, e la derivazione a20 (che le scrive in NEW) non lo riattraversa.
+#
+#   ⚠️ Fascia a10 e non a20: deve parlare PRIMA di
+#   trg_emittenti_fiscali_a20_regime_conferma_upd, che scrive le due colonne.
+#   Dopo, vedrebbe i valori derivati e rifiuterebbe ogni dichiarazione.
+#   Fra i guard a10 della tabella l'ordine e' alfabetico, e nessun altro a10
+#   giudica queste colonne.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261002-42-create-trigger-emittenti-fiscali-guard-regime-conferma-mctit.yaml
+
+  - changeSet:
+      id: 20261002-42-create-trigger-emittenti-fiscali-guard-regime-conferma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_emittenti_fiscali_a10_guard_regime_conferma_ins_upd (BEFORE INSERT /
+        UPDATE OF regime_fiscale_confermato_il, regime_fiscale_confermato_da) su
+        anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma. Brief:
+        brief-db-esigibilita-iva-per-cassa-emittente, sezione 10.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'trgfn_emittenti_fiscali_guard_regime_conferma';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'anagrafiche.emittenti_fiscali'::regclass
+                     AND t.tgname = 'trg_emittenti_fiscali_a10_guard_regime_conferma_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_emittenti_fiscali_a10_guard_regime_conferma_ins_upd
+                  BEFORE INSERT OR UPDATE OF regime_fiscale_confermato_il, regime_fiscale_confermato_da
+                  ON anagrafiche.emittenti_fiscali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_emittenti_fiscali_guard_regime_conferma();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_emittenti_fiscali_a10_guard_regime_conferma_ins_upd
+                  ON anagrafiche.emittenti_fiscali;

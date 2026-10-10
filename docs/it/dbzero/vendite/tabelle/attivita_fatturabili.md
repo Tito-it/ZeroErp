@@ -13,52 +13,52 @@
 | billing_account_id | bigint | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | data_attivita | date | NO |  |
-| quantita | numeric | NO |  |
+| quantita | numeric(18,6) | NO |  |
 | competenza_mese | date | NO |  |
 | approvato | boolean | YES | false |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | user_insert | text | NO | CURRENT_USER |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | sorgente_riga | bigint | YES | 0 |
 | posticipa_al | date | YES |  |
 | sospesa | boolean | YES | false |
-| exclude_reason | character varying | YES |  |
+| exclude_reason | character varying(200) | YES |  |
 | lock_in_fatturazione | boolean | YES | false |
 | lock_batch_id | uuid | YES |  |
 | fattura_riga_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | uom_id | bigint | YES |  |
-| qta_operativa | numeric | YES |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | NO | 1 |
+| factor_to_base | numeric(18,6) | NO | 1 |
 | valuta_id | integer | YES |  |
-| prezzo_unitario | numeric | YES |  |
+| prezzo_unitario | numeric(20,8) | YES |  |
 | attivita_consumi_id | bigint | YES |  |
 | uid | uuid | NO | uuidv7() |
 | tipo_doc_fiscale_id | bigint | YES |  |
 | competenza_dal | date | NO |  |
 | competenza_al | date | NO |  |
 | area_geografica_id | bigint | YES |  |
-| stato_esecuzione | character varying | YES |  |
+| stato_esecuzione | character varying(16) | YES |  |
 | prezzo_bloccato | boolean | NO | false |
 | commessa_id | bigint | NO |  |
 | commessa_attivita_id | bigint | NO |  |
 | sorgente_origine_tipo_id | bigint | YES |  |
 | listino_riga_id | bigint | YES |  |
-| prezzo_base_snapshot | numeric | YES |  |
-| origine_prezzo | character varying | YES |  |
-| tipo_variazione_applicata | character varying | YES |  |
-| valore_variazione_applicata | numeric | YES |  |
+| prezzo_base_snapshot | numeric(22,10) | YES |  |
+| origine_prezzo | character varying(32) | YES |  |
+| tipo_variazione_applicata | character varying(16) | YES |  |
+| valore_variazione_applicata | numeric(10,4) | YES |  |
 | promo_id | bigint | YES |  |
 | contratto_id | bigint | YES |  |
 | categoria_cliente_id_snapshot | smallint | YES |  |
 | classe_utenza_id_snapshot | integer | YES |  |
-| tipo_movimento | character varying | NO | 'NORMALE'::character varying |
+| tipo_movimento | character varying(32) | NO | 'NORMALE'::character varying |
 | natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
 | fattura_riga_rettificata_id | bigint | YES |  |
 | fatturato | boolean | NO |  |
@@ -70,10 +70,16 @@
 | CHECK | chk_attivita_competenza_dal_al |  |
 | CHECK | chk_attivita_competenza_mese_primo |  |
 | CHECK | chk_attivita_fatt_stato_esecuzione |  |
+| CHECK | chk_attivita_fatturabili_factor_to_base_finito |  |
 | CHECK | chk_attivita_fatturabili_origine_prezzo |  |
+| CHECK | chk_attivita_fatturabili_prezzo_base_snapshot_finito |  |
+| CHECK | chk_attivita_fatturabili_prezzo_unitario_finito |  |
+| CHECK | chk_attivita_fatturabili_qta_operativa_finito |  |
+| CHECK | chk_attivita_fatturabili_quantita_finito |  |
 | CHECK | chk_attivita_fatturabili_rettificata_e_rettifica |  |
 | CHECK | chk_attivita_fatturabili_tipo_movimento |  |
 | CHECK | chk_attivita_fatturabili_tipo_variazione_applicata |  |
+| CHECK | chk_attivita_fatturabili_valore_variazione_applicata_finito |  |
 | FOREIGN KEY | attivita_fatturabili_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_attivita_fatturabili_area_geografica | area_geografica_id |
 | FOREIGN KEY | fk_attivita_fatturabili_articoli | articolo_id |
@@ -107,6 +113,7 @@
 | ix_attivita_fatturabili_competenza_mese | `CREATE INDEX ix_attivita_fatturabili_competenza_mese ON vendite.attivita_fatturabili USING btree (competenza_mese)` |
 | ix_attivita_fatturabili_fattura_riga_id | `CREATE INDEX ix_attivita_fatturabili_fattura_riga_id ON vendite.attivita_fatturabili USING btree (fattura_riga_id)` |
 | ix_attivita_fatturabili_fattura_riga_rettificata_id | `CREATE INDEX ix_attivita_fatturabili_fattura_riga_rettificata_id ON vendite.attivita_fatturabili USING btree (fattura_riga_rettificata_id) WHERE (fattura_riga_rettificata_id IS NOT NULL)` |
+| ix_attivita_fatturabili_listino_riga_id | `CREATE INDEX ix_attivita_fatturabili_listino_riga_id ON vendite.attivita_fatturabili USING btree (listino_riga_id) WHERE (listino_riga_id IS NOT NULL)` |
 | ix_attivita_fatturabili_lock | `CREATE INDEX ix_attivita_fatturabili_lock ON vendite.attivita_fatturabili USING btree (lock_in_fatturazione, lock_batch_id)` |
 | ix_attivita_fatturabili_origine_prezzo | `CREATE INDEX ix_attivita_fatturabili_origine_prezzo ON vendite.attivita_fatturabili USING btree (origine_prezzo)` |
 | ix_attivita_fatturabili_posticipa_sospesa | `CREATE INDEX ix_attivita_fatturabili_posticipa_sospesa ON vendite.attivita_fatturabili USING btree (posticipa_al, sospesa)` |

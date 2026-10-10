@@ -158,4 +158,23 @@ sbagliata, ed è stata il test a dirlo diventando rosso.
 
 ---
 
+### 🔄 rev 2026-10-05 — si calcola una volta per query
+
+Le sette liste di documento (preventivi, offerte, ordini, contratti, DDT, resi,
+fatture) leggono pratica, fase e frontiera da questa vista, unendola per tipo e
+`uid`. Con la sicurezza per riga attiva il database sceglieva di **rifare il
+calcolo per ogni riga della lista**: aprire la lista dei preventivi costava ~6
+secondi (conteggio più pagina). Da `20261005-20` gli archi si leggono una volta
+sola e il risultato si calcola **una volta per query**, poi si unisce alla lista:
+stesse colonne, stesse righe, ~0,45 s per lista (misure come applicazione su
+dbdev, 2026-10-05).
+
+⚠️ Chi legge la lineage di **un** documento paga ora il calcolo di tutto ciò che
+vede (prima lo pagava già in parte): resta più veloce di prima (0,75 → 0,43 s)
+perché gli archi si leggono una volta. Il costo fisso che rimane sta quasi tutto
+in `vw_documento_lineage_archi`: è il passo successivo, scritto nel brief
+`brief-db-liste-documento-lineage-lenta`.
+
+---
+
 {% include-markdown "signature-core.md" %}

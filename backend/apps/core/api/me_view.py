@@ -13,7 +13,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.cancello_obblighi import TUTTI_GLI_OBBLIGHI
+from apps.core.api.cancello_obblighi import TUTTI_GLI_OBBLIGHI, obblighi_in_vigore
 
 from apps.core.api.success_responses import success_response
 from apps.core.db.auth_repository import AuthRepository
@@ -23,6 +23,8 @@ from apps.core.services.auth_constants import (
     JWT_CLAIM_IDENTITA_ID,
 )
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
+from apps.core.services.fuso_aziendale import fuso_aziendale
+from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 
 class UserProfileView(DomainAPIView):
@@ -70,7 +72,7 @@ class UserProfileView(DomainAPIView):
                                     "Ruolo applicativo dell'identita' attiva: "
                                     "OPERATORE | CLIENTE_PORTALE | "
                                     "FORNITORE_PORTALE | SHOP_CUSTOMER | "
-                                    "API_CLIENT | DISABILITATO | null. "
+                                    "API_CLIENT | null. "
                                     "Emesso da script.fn_get_user_profile "
                                     "(GUC-first: la veste del JWT corrente)."
                                 ),
@@ -101,6 +103,46 @@ class UserProfileView(DomainAPIView):
                                     "Prodotta da script.fn_get_user_permissions_map."
                                 ),
                             ),
+                            "permessi_oggetto": serializers.DictField(
+                                help_text=(
+                                    "Livello EFFETTIVO per ogni oggetto del catalogo "
+                                    "config.area_model_overrides: "
+                                    "{'app_label.model_name': 'TUTTO'|'LETTURA'|'BLOCCATO'}. "
+                                    "Gia' risolto a DB (override, area dell'oggetto, "
+                                    "tetto d'area): il frontend lo legge, non lo ricalcola. "
+                                    "Un oggetto fuori catalogo vale l'area del suo app_label. "
+                                    "Prodotta da script.fn_get_user_object_permissions_map "
+                                    "(fino al 2026-10-04: i soli override grezzi)."
+                                ),
+                            ),
+                            "azioni_abilitate": serializers.DictField(
+                                help_text=(
+                                    "Azioni di processo: {permission_codename: bool}, "
+                                    "col tetto d'area (un'azione abilitata sotto "
+                                    "un'area che non arriva al suo livello_minimo_area "
+                                    "vale false). Prodotta da "
+                                    "script.fn_get_user_actions_map."
+                                ),
+                            ),
+                            "obblighi_pendenti": serializers.ListField(
+                                child=serializers.ChoiceField(choices=sorted(TUTTI_GLI_OBBLIGHI)),
+                                help_text=(
+                                    "Gli obblighi della credenziale che il cancello fa "
+                                    "rispettare, nell'ordine in cui si chiudono: il "
+                                    "frontend porta alla pagina del primo."
+                                ),
+                            ),
+                            "fuso_aziendale": serializers.CharField(
+                                help_text=(
+                                    "Nome IANA del fuso dell'azienda (es. "
+                                    "'Europe/Rome'), dal parametro "
+                                    "SYSTEM_FUSO_ORARIO via "
+                                    "script.fn_fuso_operativo. Il frontend "
+                                    "lo usa per l'«oggi» e per le ore a video: "
+                                    "un solo fuso in tutta l'applicazione, "
+                                    "non quello del browser."
+                                ),
+                            ),
                             "identita": serializers.DictField(
                                 allow_null=True,
                                 help_text=(
@@ -127,7 +169,8 @@ class UserProfileView(DomainAPIView):
     # sta usando l'utente tra le N attive possibili).
     def get(self, request: Request):
         repo = CoreRepository()
-        profile = repo.get_user_profile(request.user.id)
+        user_id = utente_autenticato_id(request)
+        profile = repo.get_user_profile(user_id)
         # `is_super_admin` e `ruolo_applicativo` arrivano SEMPRE dal top-level
         # di `script.fn_get_user_profile` (GUC-aware dal 20260421-03/-05), e
         # `ruolo_sistema` non viene emesso dalla Fase 7 (29-04-2026).
@@ -155,10 +198,18 @@ class UserProfileView(DomainAPIView):
         # dichiarerebbe `is_super_admin` in un campo e lo contraddirebbe
         # nell'altro. Una domanda, una risposta.
         profile["emittente_attivo"] = EmittenteAttivoService().descrivi(
-            request.user.id, self._emittente_attivo_del_jwt(request),
+            user_id, self._emittente_attivo_del_jwt(request),
             user=request.user,
             cache={"is_super_admin": bool(profile.get("is_super_admin"))},
         )
+        # Gli obblighi che il cancello fa rispettare, nell'ordine (brief
+        # sicurezza §3.4-bis, T-4): il guard del frontend porta alla pagina
+        # che chiude il primo. La regola e' una, quella del cancello.
+        profile["obblighi_pendenti"] = list(obblighi_in_vigore(user_id))
+        # Il fuso dell'azienda per il frontend (brief un-solo-fuso-aziendale,
+        # B-1): lo stesso valore che il backend usa, dalla stessa cache —
+        # niente seconda lettura del parametro.
+        profile["fuso_aziendale"] = fuso_aziendale().key
         return success_response(profile)
 
     # Scopo: Legge `emittente_attivo_id` dal JWT validato. Claim assente =
@@ -188,7 +239,7 @@ class UserProfileView(DomainAPIView):
             return None
         return AuthRepository().get_identita_dettaglio(
             identita_id=int(identita_id),
-            auth_user_id=int(request.user.id),
+            auth_user_id=utente_autenticato_id(request),
         )
 
     # Scopo: Calcola il flag is_admin_globale dal profilo. Regola Q1 del

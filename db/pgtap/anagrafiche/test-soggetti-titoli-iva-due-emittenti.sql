@@ -126,6 +126,24 @@ SELECT ok(
 CREATE TEMP TABLE tmp_2ef_fattura AS
 SELECT f.fattura_id AS id FROM dbops.fn_pgtap_crea_fattura('titoli IVA 2EF') f;
 
+-- ⚠️ Dal 2026-10-04 (20261004-05/-06, brief-db-bom-flag-quantita-e-kit-in-
+--   fattura §13) la forma a una riga e' ritirata e la madre vuole righe vere
+--   (l'imponibile passato deve essere quello della riga): due righe, 400 e 1000.
+CREATE TEMP TABLE tmp_2ef_righe AS
+WITH a AS (SELECT dbops.fn_pgtap_crea_articolo('PGTAP-2EF-ART') AS id),
+     u AS (SELECT u.id FROM catalogo.unita_misura u WHERE u.attivo IS TRUE ORDER BY u.id LIMIT 1),
+     ins AS (
+  INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, articolo_id, descrizione, uom_id,
+         qta, prezzo_unitario, iva_id, competenza_dal, competenza_al)
+  SELECT (SELECT id FROM tmp_2ef_fattura), v.nr, (SELECT id FROM a), 'Riga ' || v.nr,
+         (SELECT id FROM u), 1, v.imp, (SELECT iva_id FROM tmp_2ef_refs),
+         script.fn_data_operativa(), script.fn_data_operativa()
+    FROM (VALUES (1, 400.00), (2, 1000.00)) v(nr, imp)
+  RETURNING id, riga_nr)
+SELECT max(id) FILTER (WHERE riga_nr = 1) AS r400,
+       max(id) FILTER (WHERE riga_nr = 2) AS r1000
+  FROM ins;
+
 -- ============================================================
 -- 1) ⭐ I due titoli convivono: e' l'emittente in chiave
 -- ============================================================
@@ -157,10 +175,10 @@ SELECT is(
 -- ============================================================
 SELECT is(
     (SELECT c.quota_coperta
-       FROM anagrafiche.fn_consuma_plafond_titolo_iva(
+       FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
                 (SELECT id FROM tmp_2ef_titoli WHERE n = 1),
                 (SELECT id FROM tmp_2ef_fattura),
-                400.00, DATE '2026-06-15') c),
+                ARRAY[(SELECT r400 FROM tmp_2ef_righe)], ARRAY[400.00], DATE '2026-06-15') c),
     400.00::numeric,
     'Il titolo del primo emittente consuma 400 della sua capienza'
   );
@@ -186,10 +204,10 @@ SELECT is(
 --   fattura, in silenzio.
 SELECT is(
     (SELECT (c.quota_coperta, c.quota_ordinaria)::text
-       FROM anagrafiche.fn_consuma_plafond_titolo_iva(
+       FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
                 (SELECT id FROM tmp_2ef_titoli WHERE n = 2),
                 (SELECT id FROM tmp_2ef_fattura),
-                1000.00, DATE '2026-06-15') c),
+                ARRAY[(SELECT r1000 FROM tmp_2ef_righe)], ARRAY[1000.00], DATE '2026-06-15') c),
     '(1000.00,0.00)',
     'Il secondo emittente ha capienza INTERA: copre 1000, non 600'
   );

@@ -40,23 +40,47 @@ SELECT ok(
 -- ============================================================
 -- Setup fixture completa: contesti
 -- ============================================================
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   offerta stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra
+--   quelle della utility del cliente. Gli articoli si COSTRUISCONO (dbops.fn_pgtap_crea_articolo:
+--   MERCE senza tipologia, ammette UNA_TANTUM): prima erano i primi per id del database,
+--   che su dbdev sono PRODOTTI, e la utility del cliente preso dai dati (TEL) non li prevede.
+CREATE TEMP TABLE tmp_rev_fn_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-REVF-1') AS a1,
+       dbops.fn_pgtap_crea_articolo('PGT-REVF-2') AS a2,
+       dbops.fn_pgtap_crea_articolo('PGT-REVF-3') AS a3;
+
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza
+--   tipi_utenze (evita il guard tipo/classe sui satelliti utilities), legato
+--   dal z90 all'emittente di chi agisce (contesto gia' aperto); listino, con la
+--   sua versione ATTIVA da oggi, sulla stessa utility.
+CREATE TEMP TABLE tmp_rev_fn_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'crea revisione offerta',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_rev_fn_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_rev_fn_cli), 'crea revisione offerta');
+
 CREATE TEMP TABLE tmp_rev_fn_ctx AS
 SELECT
-    (SELECT ba.id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS billing_account_id,
-    (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-    (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS utility_id,
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
-    (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id_attiva,
-    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id LIMIT 1)  AS articolo_id_1,
-    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id OFFSET 1 LIMIT 1) AS articolo_id_2,
-    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id OFFSET 2 LIMIT 1) AS articolo_id_3,
+    (SELECT billing_account_id FROM tmp_rev_fn_cli) AS billing_account_id,
+    (SELECT istanza_utility_id FROM tmp_rev_fn_cli) AS istanza_utility_id,
+    (SELECT utility_id FROM tmp_rev_fn_cli) AS utility_id,
+    script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
+    (SELECT listino_id FROM tmp_rev_fn_listino) AS listino_id,
+    (SELECT listino_versione_id FROM tmp_rev_fn_listino) AS listino_versione_id_attiva,
+    (SELECT a1 FROM tmp_rev_fn_art) AS articolo_id_1,
+    -- rev 2026-10-04: l'articolo dell'AGGIUNTA sta FUORI dalla versione di listino
+    --   dell'offerta (guard script.trgfn_righe_guard_aggiunta_fuori_listino, ora
+    --   anche sull'offerta), e diverso dal primo. Rev 2026-10-07: costruito, quindi
+    --   fuori da ogni listino per costruzione.
+    (SELECT a2 FROM tmp_rev_fn_art) AS articolo_id_2,
+    (SELECT a3 FROM tmp_rev_fn_art) AS articolo_id_3,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA') AS stato_accettata_id,
@@ -77,10 +101,6 @@ WITH ins AS (
     RETURNING id
 )
 SELECT id FROM ins;
-
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
- WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
 
 -- Eccezioni rev.1: 2 attive + 1 inattiva
 -- tipo_erogazione UNA_TANTUM + fonte FISSA: combinazione ammessa da tutti i CHECK.
@@ -123,6 +143,13 @@ SELECT r1.id, ctx.articolo_id_3, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto
  WHERE ctx.articolo_id_3 IS NOT NULL
    AND ctx.articolo_id_3 <> ctx.articolo_id_1
    AND ctx.articolo_id_3 <> ctx.articolo_id_2;
+
+-- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
+--   dell'offerta si scrivono solo in BOZZA. L'emissione viene quindi DOPO le
+--   eccezioni, come in un'offerta vera; prima le si aggiungeva a rev.1 gia' EMESSA.
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_rev_fn_ctx)
+ WHERE id = (SELECT id FROM tmp_rev_fn_rev1);
 
 -- Utility rev.1 (1:1)
 INSERT INTO vendite.offerte_commerciali_utilities (

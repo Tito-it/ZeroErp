@@ -59,9 +59,18 @@ def _parse_date(value: Any) -> date | None:
         return value
     if isinstance(value, str):
         raw = value.strip()
-        if len(raw) >= 10:
+        # ⚠️ Una stringa con l'ORA e' un istante: il giorno e' quello
+        #    dell'azienda, non i primi dieci caratteri (che con un offset `Z` o
+        #    `+00:00` sono il giorno UTC). Fino al 2026-10-09 si tagliava e
+        #    basta (brief un-solo-fuso-aziendale B-6).
+        if len(raw) > 10:
             try:
-                return date.fromisoformat(raw[:10])
+                return in_ora_locale(datetime.fromisoformat(raw)).date()
+            except ValueError:
+                return None
+        if len(raw) == 10:
+            try:
+                return date.fromisoformat(raw)
             except ValueError:
                 return None
     return None

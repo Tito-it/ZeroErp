@@ -33,21 +33,47 @@
      ⚠️ Dal 2026-09-10 `_IN_ATTESA_DI_CATALOGO` e' VUOTA — il debito e' in pari,
      quindi questo test oggi gira a vuoto. E' la condizione giusta, non una
      copertura che manca: si riaccende da se' alla prossima vista in attesa.
+8. test_i_mirror_di_chi_agisce_seguono_il_check
+9. test_ogni_presidio_che_si_accende_arriva_col_testo_per_chi_agisce
+     ⭐ 2026-10-06: il join su `dbops.presidi_testi` GIRA sul database vero e
+     porta il testo. La completezza del catalogo la garantisce il pgTAP
+     `dbops/test-presidi-testi-v1`; qui si prova il TRASPORTO fino al Python.
+9-bis. test_il_testo_del_presidio_e_quello_senza_variante
+     ⛔ 2026-10-09: dove il catalogo dichiara `colonna_variante` la stessa
+     (vista, lingua) porta anche i testi per causa; il testo del presidio e'
+     quello con `variante IS NULL`.
+9-ter. test_ogni_causa_arriva_col_suo_testo
+     ⭐ 2026-10-10: `testi_delle_cause` gira sul database vero e porta, per
+     ogni causa del catalogo, chi agisce e il testo.
+9-quater. test_il_conteggio_per_causa_si_legge_come_tabella
+     ⭐ 2026-10-10 (R-2): `conta_per_variante` gira sul database vero e consegna
+     coppie (variante, conteggio), con varianti che il catalogo delle cause
+     conosce. Che la somma sia `fn_conta_presidio` lo garantisce il DB per
+     costruzione (pgTAP `test-conta-presidio-per-variante-v1` 9): qui si prova
+     il TRASPORTO — letta come `SELECT fn(…)` la tupla arriverebbe in un campo.
+10. test_una_lingua_senza_testo_ripiega_su_it
 """
 
 from __future__ import annotations
 
 from unittest import TestCase
 
+from django.db import connection
+
 from apps.core.db.presidi_repository import (
     _IN_ATTESA_DI_CATALOGO,
     CADENZA_MAI,
     CADENZE,
+    CHI_AGISCE,
     NATURA_CANCELLO,
     NATURA_INVENTARIO,
     NATURE,
     PERIMETRI,
     PresidiRepository,
+)
+from apps.core.middleware.user_language_middleware import (
+    DEFAULT_LANGUAGE as LINGUA_DEFAULT,
+    GUC_NAME,
 )
 from apps.core.services.presidi_digest import CADENZE_DEL_DIGEST
 from apps.core.tests.db_e2e import richiedi_db_provvisto, valori_check
@@ -187,4 +213,130 @@ class PresidiCatalogoGuardrail(TestCase):
             "queste viste sono ORA a catalogo: togliere la riga corrispondente "
             "da `_IN_ATTESA_DI_CATALOGO` in apps/core/db/presidi_repository.py "
             f"— il debito e' pagato ({rientrate}).",
+        )
+
+    # 8. Il quarto vocabolario: chi spegne il presidio. ⭐ Il suo ordine decide
+    #    i gruppi del digest, ma il confronto col CHECK e' sull'insieme.
+    def test_i_mirror_di_chi_agisce_seguono_il_check(self) -> None:
+        self.assertEqual(
+            set(CHI_AGISCE), valori_check("dbops.presidi", "chk_presidi_chi_agisce"),
+            "il vocabolario di chi agisce nel backend non segue il CHECK: un "
+            "valore nuovo finirebbe nel gruppo «senza indicazione» del digest e "
+            "senza badge nel pannello.",
+        )
+
+    # 9. ⭐ IL TRASPORTO DEL TESTO. Il modello dice che un presidio che si
+    #    accende (non INVENTARIO) ha chi agisce (`chk_presidi_chi_agisce_se_allarma`)
+    #    e la riga `it` (pgTAP): qui si prova che il join del repository li
+    #    porta davvero fino al Python — un join sulla colonna sbagliata
+    #    tornerebbe NULL per tutti, e il pannello ripiegherebbe in silenzio.
+    def test_ogni_presidio_che_si_accende_arriva_col_testo_per_chi_agisce(self) -> None:
+        si_accendono = [r for r in self.catalogo if r["natura"] != NATURA_INVENTARIO]
+        self.assertTrue(si_accendono, "nessun presidio che si accende: confronto a vuoto")
+        scoperti = sorted(
+            r["vista"] for r in si_accendono
+            if not (r["chi_agisce"] and r["significato"] and r["azione"])
+        )
+        self.assertEqual(
+            scoperti, [],
+            "presidi che si accendono senza testo per chi agisce: il pannello e "
+            "il digest ripiegherebbero sulla prosa tecnica.",
+        )
+
+    # 9-bis. ⛔ IL TESTO DEL PRESIDIO E' QUELLO SENZA VARIANTE, sul database
+    #     vero (brief-db-presidio-processi-testo-per-causa §5.4). Dove il
+    #     catalogo dichiara `colonna_variante`, la stessa (vista, lingua) porta
+    #     anche i testi per causa: un join che non li esclude ne restituisce uno
+    #     a caso, e il test 9 resterebbe verde perche' un testo c'e'.
+    #     ⭐ Si confronta col seed (contratto in `80_data`), non con le righe di
+    #     una vista: vale anche su un database ricostruito da zero.
+    #     ⚠️ E' un PRESIDIO DELLA GIUNTURA, non la prova del filtro: senza
+    #     `variante IS NULL` il `LIMIT 1` sceglie per ordine fisico, e il
+    #     2026-10-10 sul dbdev pescava proprio il generico (mutazione provata:
+    #     verde). La prova che morde e' il test 9 di `test_presidi_repository`,
+    #     che legge l'SQL; questo prova che la colonna c'e' e che la query gira.
+    def test_il_testo_del_presidio_e_quello_senza_variante(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT vista, significato
+                  FROM dbops.presidi_testi
+                 WHERE lingua = %s AND variante IS NULL
+                """,
+                [LINGUA_DEFAULT],
+            )
+            generico = dict(cur.fetchall())
+        confrontati = [r for r in self.catalogo if r["vista"] in generico]
+        self.assertTrue(confrontati, "nessun presidio con testo: confronto a vuoto")
+        self.assertEqual(
+            sorted(r["vista"] for r in confrontati
+                   if r["significato"] != generico[r["vista"]]),
+            [],
+        )
+
+    # 9-ter. ⭐ IL TESTO DELLE CAUSE GIRA SUL DATABASE VERO: per ogni presidio
+    #     che dichiara `colonna_variante`, ogni causa del catalogo arriva col
+    #     suo «chi agisce» e il suo testo. La completezza la garantisce il pgTAP
+    #     (`test-presidi-testi-v1` 16-17); qui si prova il TRASPORTO — un join
+    #     sulla colonna sbagliata tornerebbe NULL per tutte, e pannello e
+    #     digest direbbero «nessun testo per questa causa» ovunque.
+    def test_ogni_causa_arriva_col_suo_testo(self) -> None:
+        a_varianti = [r for r in self.catalogo if r["colonna_variante"]]
+        if not a_varianti:
+            self.skipTest("nessun presidio a catalogo dichiara colonna_variante")
+        with connection.cursor() as cur:
+            cur.execute("SELECT vista, causa FROM dbops.presidi_cause")
+            attese = cur.fetchall()
+        repo = self.repo
+        scoperte = []
+        for riga in a_varianti:
+            testi = repo.testi_delle_cause(riga["vista"])
+            for vista, causa in attese:
+                if vista != riga["vista"]:
+                    continue
+                t = testi.get(causa)
+                if not (t and t["chi_agisce"] and t["significato"] and t["azione"]):
+                    scoperte.append((vista, causa))
+        self.assertEqual(scoperte, [])
+
+    # 9-quater. ⭐ IL CONTEGGIO PER CAUSA SI LEGGE COME TABELLA, sul database
+    #     vero. ⚠️ Le righe dipendono da cosa e' acceso adesso, e zero righe e'
+    #     una risposta legittima: il test prova la FORMA di cio' che arriva e
+    #     che ogni variante non NULL sia a catalogo, non quante ce ne sono.
+    def test_il_conteggio_per_causa_si_legge_come_tabella(self) -> None:
+        a_varianti = [r for r in self.catalogo if r["colonna_variante"]]
+        if not a_varianti:
+            self.skipTest("nessun presidio a catalogo dichiara colonna_variante")
+        with connection.cursor() as cur:
+            cur.execute("SELECT vista, causa FROM dbops.presidi_cause")
+            a_catalogo = set(cur.fetchall())
+        for riga in a_varianti:
+            with self.subTest(vista=riga["vista"]):
+                for gruppo in self.repo.conta_per_variante(riga):
+                    self.assertEqual(set(gruppo), {"variante", "conteggio"})
+                    self.assertIsInstance(gruppo["conteggio"], int)
+                    self.assertGreater(gruppo["conteggio"], 0)
+                    if gruppo["variante"] is not None:
+                        self.assertIn((riga["vista"], gruppo["variante"]), a_catalogo)
+
+    # 10. ⭐ IL RIPIEGO SULLA LINGUA, sul database vero: con la GUC su una
+    #     lingua diversa da `it` il testo arriva comunque — la riga `it` e'
+    #     obbligatoria, le altre no. Senza ripiego un operatore in inglese
+    #     vedrebbe il pannello tornare alla prosa tecnica.
+    # ⛔ Una lingua che il catalogo NON PUO' avere, non `en`: il giorno in cui
+    #    arrivano le righe inglesi il test passerebbe leggendo quelle, e il
+    #    ripiego non lo proverebbe piu' nessuno — sempre verde.
+    # ⚠️ La GUC e' di sessione: si rimette com'era, come fa il middleware.
+    def test_una_lingua_senza_testo_ripiega_su_it(self) -> None:
+        with connection.cursor() as cur:
+            cur.execute("SELECT set_config(%s, 'zz', false)", [GUC_NAME])
+        try:
+            catalogo = PresidiRepository().list_catalogo()
+        finally:
+            with connection.cursor() as cur:
+                cur.execute("SELECT set_config(%s, '', false)", [GUC_NAME])
+        si_accendono = [r for r in catalogo if r["natura"] != NATURA_INVENTARIO]
+        self.assertTrue(si_accendono, "nessun presidio che si accende: confronto a vuoto")
+        self.assertEqual(
+            sorted(r["vista"] for r in si_accendono if not r["significato"]), [],
         )

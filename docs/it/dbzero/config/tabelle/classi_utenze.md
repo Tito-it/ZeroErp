@@ -9,19 +9,21 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| descrizione_breve | character varying | NO |  |
+| codice | character varying(20) | NO |  |
+| descrizione | character varying(100) | NO |  |
+| descrizione_breve | character varying(40) | NO |  |
 | tipo_utenza_id | integer | YES |  |
 | categoria_accisa_id | integer | YES |  |
-| pot_contratto_min_ee | numeric | NO |  |
-| pot_contratto_max_ee | numeric | NO |  |
+| pot_contratto_min_ee | numeric(9,3) | NO |  |
+| pot_contratto_max_ee | numeric(9,3) | NO |  |
 | tipi_tariffa_ee_id | integer | YES |  |
-| tipo_pod | character varying | NO |  |
+| tipo_pod | character varying(2) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_classi_utenze_pot_contratto_max_ee_finito |  |
+| CHECK | chk_classi_utenze_pot_contratto_min_ee_finito |  |
 | CHECK | chk_classi_utenze_tipo_pod |  |
 | FOREIGN KEY | fk_classi_utenze_categoria_accisa | categoria_accisa_id |
 | FOREIGN KEY | fk_classi_utenze_tipi_tariffa_ee | tipi_tariffa_ee_id |

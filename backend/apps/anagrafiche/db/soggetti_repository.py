@@ -10,8 +10,11 @@
 from __future__ import annotations
 
 import json
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     pattern_contiene,
     RicercaFull,
@@ -22,6 +25,7 @@ from apps.core.db._helpers import (
     rows_to_list,
     soglia_ricerca,
 )
+from apps.core.db.lookup_repository import SQL_TIPI_SOGGETTO_DETTAGLIO
 from apps.core.db.parameter_repository import ParameterRepository
 from apps.core.db.sql_write_helpers import execute_dynamic_update, sql_set_clause
 
@@ -88,40 +92,39 @@ _RUOLO_CL_SCOPE_SQL = """(
                  )
                )"""
 
-# Scopo: info istanze per le righe lookup contesto pratica (search +
-#        restore by-id ne condividono la proiezione): conteggio + istanza
-#        "unica" derivabile (id/codice valorizzati SOLO se il conteggio e' 1
-#        — pattern preventivi "istanza auto-derivata"). Perimetro per riga:
-#        - riga "senza ruolo" ({sr_ref} NULL): tutte le istanze del soggetto;
-#        - riga con ruolo: SOLO le istanze legate a quel ruolo via clienti
-#          (le forniture del cliente/BA) — coerente col filtro
-#          `soggetto_ruolo_id` del lookup istanze, evita derivazioni/scelte
-#          su istanze estranee al rapporto. Per i ruoli non-CL il conteggio
-#          e' 0 (clienti vive solo sul ramo CL).
-#        `{soggetto_ref}` / `{sr_ref}` = espressioni del contesto chiamante
-#        (es. "s.id"/"sr.id", "m.soggetto_id"/"m.soggetto_ruolo_id",
-#        "s.id"/"NULL::bigint"). Da usare come
-#        `LEFT JOIN LATERAL ({tpl}) ist ON true` + `_ISTANZE_INFO_SELECT`.
-_ISTANZE_INFO_LATERAL_TPL = """(
-                   SELECT COUNT(*)::int AS n_istanze,
-                          MAX(iu.id) AS _unica_id,
-                          MAX(iu.codice) AS _unica_codice
-                     FROM anagrafiche.istanze_utilities iu
-                    WHERE iu.soggetto_id = {soggetto_ref}
-                      AND (
-                            {sr_ref} IS NULL
-                         OR EXISTS (
-                              SELECT 1
-                                FROM anagrafiche.clienti cl
-                               WHERE cl.istanza_utility_id = iu.id
-                                 AND cl.soggetto_ruolo_id = {sr_ref}
-                            )
-                          )
+# Scopo: le forniture del ruolo per le righe lookup contesto pratica (search +
+#        restore by-id ne condividono la proiezione): conteggio dei billing
+#        account del ruolo + il BA «unico» derivabile (id/codice valorizzati
+#        SOLO se il conteggio e' 1 — il form non chiede niente). Il BA e' il
+#        cliente a grana fine di cui la pratica parla (D-9 di
+#        brief-db-istanza-nasce-col-ba): un ruolo CLIENTE ne ha uno per ogni
+#        coppia (istanza, utility).
+#        Perimetro per riga:
+#        - riga con ruolo: i BA di quel ruolo (`ba.soggetto_ruolo_id`), con o
+#          senza la riga cliente — coerente col filtro `soggetto_ruolo_id` del
+#          lookup istanze. Per i ruoli non-CL il conteggio e' 0;
+#        - riga "senza ruolo" ({sr_ref} NULL): 0. Un BA e' sempre di un ruolo e
+#          la pratica lo accetta solo dal suo ruolo (regola 5,
+#          E_PRATICHE_BA_NON_COERENTE); e un soggetto senza ruoli non ha
+#          istanze (D-3: il ruolo CLIENTE nasce con la prima).
+#        ⚠️ Fino al 2026-10-08 si contavano le ISTANZE legate al ruolo via
+#        `clienti`: un ruolo col BA e senza la riga cliente (la fase del
+#        preventivo) risultava senza forniture, e un'istanza con due utility
+#        contava uno.
+#        `{sr_ref}` = espressione del contesto chiamante ("sr.id",
+#        "m.soggetto_ruolo_id", "NULL::bigint"). Da usare come
+#        `LEFT JOIN LATERAL {tpl} forn ON true` + `_FORNITURE_SELECT`.
+_FORNITURE_LATERAL_TPL = """(
+                   SELECT COUNT(*)::int AS n_billing_account,
+                          MAX(ba.id) AS _unico_id,
+                          MAX(ba.codice) AS _unico_codice
+                     FROM anagrafiche.billing_account ba
+                    WHERE ba.soggetto_ruolo_id = {sr_ref}
                )"""
 
-_ISTANZE_INFO_SELECT = """ist.n_istanze,
-       CASE WHEN ist.n_istanze = 1 THEN ist._unica_id END AS istanza_unica_id,
-       CASE WHEN ist.n_istanze = 1 THEN ist._unica_codice END AS istanza_unica_codice"""
+_FORNITURE_SELECT = """forn.n_billing_account,
+       CASE WHEN forn.n_billing_account = 1 THEN forn._unico_id END AS billing_account_unico_id,
+       CASE WHEN forn.n_billing_account = 1 THEN forn._unico_codice END AS billing_account_unico_codice"""
 
 # ⛔ `MIN_SEARCH_LENGTH_SOGGETTI` non c'e' piu' (2026-09-26, brief-db-be-fe-
 #    ricerca-soglia-per-lista §6 b, decisione di Tid): la soglia del resolver
@@ -139,6 +142,12 @@ SOGGETTO_UPDATE_COLS: frozenset[str] = frozenset({
     "partita_iva", "sesso", "data_nascita", "comune_id",
     # I0/D8 (2026-08-29): regime fiscale della controparte.
     "split_payment", "cliente_pa",
+    # La natura di dettaglio (2026-10-10, brief-db-dati-fiscali-e-societari-del-
+    # soggetto §8.3): il drawer la offriva in modifica (fra i
+    # `tipi_modificabili_ids`), ma fino a quel giorno la chiave non era nel
+    # contratto e il cambio non arrivava mai al DB. Cosa la natura nuova
+    # ammette (flag PA/split, forma giuridica, titoli IVA) lo giudicano i guard.
+    "tipo_soggetto_dettaglio_id",
 })
 # Alias frontend → colonna DB accettati da `update_soggetto`.
 SOGGETTO_UPDATE_ALIAS: dict[str, str] = {"comune_nascita_id": "comune_id"}
@@ -166,7 +175,7 @@ class SoggettiRepository:
         self, *, search: str | None = None,
         tipo_soggetto_dettaglio_id: int | None = None,
         emittente_ids: list[int] | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str = "ragione_sociale_completa", order_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         ordinamento = sql_order_clause(
@@ -189,7 +198,7 @@ class SoggettiRepository:
                    s.cognome, s.nome, s.ragione_sociale,
                    tsd.descrizione AS tipo_descrizione,
                    tsd.id AS tipo_soggetto_dettaglio_id,
-                   ts.id AS natura_soggetto,
+                   ts.natura_soggetto,
                    (SELECT COALESCE(jsonb_agg(jsonb_build_object(
                        'soggetto_ruolo_id', sr.id,
                        'codice', COALESCE(tr.codice_interno, tr.codice),
@@ -259,10 +268,13 @@ class SoggettiRepository:
             row = cursor.fetchone()
             return row[0] if row else None
 
-    # Scopo: Risolve la natura (PF/PG/ENC) dal tipo_soggetto_dettaglio_id.
+    # Scopo: Risolve la natura (l'enum `config.natura_soggetto_enum`: PF/PG/ENTE)
+    #        dal tipo_soggetto_dettaglio_id. Stesso significato di
+    #        `natura_soggetto` in lista, dettaglio e lookup (BB
+    #        `SQL_TIPI_SOGGETTO_DETTAGLIO`).
     def get_natura_by_tipo_id(self, tipo_id: int) -> str | None:
         sql = """
-            SELECT ts.id
+            SELECT ts.natura_soggetto::text
               FROM config.tipi_soggetto_dettaglio tsd
               JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
              WHERE tsd.id = %s
@@ -293,7 +305,7 @@ class SoggettiRepository:
                    p.sigla AS comune_nascita_provincia_sigla,
                    tsd.id AS tipo_soggetto_dettaglio_id,
                    tsd.descrizione AS tipo_descrizione,
-                   ts.id AS natura_soggetto,
+                   ts.natura_soggetto,
                    -- Tipi dettaglio ammessi in edit per questo soggetto:
                    -- stessa natura del corrente. Sostituisce il filtro
                    -- frontend (SoggettoForm.tipiSoggettoFiltrati).
@@ -318,12 +330,19 @@ class SoggettiRepository:
 
     # Scopo: Crea soggetto PF chiamando la funzione DB building block.
     #        Obiettivo: INSERT soggetto + contatto default, tutto in funzione PG.
+    # ⛔ `sesso` e `tipo_soggetto_dettaglio_id` senza default, come a DB: la
+    #    natura e il sesso non si inventano (brief-db-sesso-senza-default D4).
+    #    `sesso=None` e' un valore legittimo (DI, OPTIONAL): se la natura lo
+    #    pretende, rifiuta il guard `trgfn_soggetti_guard_sesso_policy`.
     def crea_soggetto_pf(
         self, *, cognome: str, nome: str, codice_fiscale: str, email: str,
-        data_nascita: str | None = None, sesso: str = "M",
-        stato_iso2: str = "IT",
+        sesso: str | None, tipo_soggetto_dettaglio_id: int,
+        data_nascita: str | None = None,
+        # None = il default di `config.parameters`, risolto dalla funzione DB.
+        stato_iso2: str | None = None,
         comune_nascita_id: int | None = None,
         tipo_contatto_id: int | None = None,
+        partita_iva: str | None = None,
     ) -> str:
         sql = """
             SELECT anagrafiche.fn_crea_soggetto_pf(
@@ -335,13 +354,16 @@ class SoggettiRepository:
                 p_sesso             := %s,
                 p_stato_iso2        := %s,
                 p_comune_nascita_id := %s,
-                p_tipo_contatto_id  := %s
+                p_tipo_contatto_id  := %s,
+                p_tipo_soggetto_dettaglio_id := %s,
+                p_partita_iva       := %s
             )
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [
                 cognome, nome, codice_fiscale, email,
                 data_nascita, sesso, stato_iso2, comune_nascita_id, tipo_contatto_id,
+                tipo_soggetto_dettaglio_id, partita_iva,
             ])
             row = cursor.fetchone()
             assert row is not None
@@ -353,12 +375,14 @@ class SoggettiRepository:
     def crea_soggetto_pg(
         self, *, ragione_sociale: str, tipo_soggetto_dettaglio_id: int,
         email: str, codice_fiscale: str | None = None,
-        partita_iva: str | None = None, stato_iso2: str = "IT",
+        partita_iva: str | None = None, stato_iso2: str | None = None,
         forma_giuridica_id: int | None = None,
         id_prov_iscri_rea: int | None = None,
         iscrizione_rea: str | None = None,
         capitale_sociale: float | None = None,
-        socio_unico: str = "SU", liquidazione: str = "LN",
+        # None = i default di `config.parameters` (fn_crea_soggetto_pg): fino al
+        # 2026-10-09 qui c'erano "IT"/"SU"/"LN" cablati, una copia del dato.
+        socio_unico: str | None = None, liquidazione: str | None = None,
         destinatario_fe: str | None = None,
         pec_fatturazione: str | None = None,
         codice_sdi: str | None = None,
@@ -415,7 +439,9 @@ class SoggettiRepository:
         #    trasformerebbe un valore sbagliato in una violazione di NOT NULL —
         #    un errore piu' oscuro di quello che gia' c'e'. Il valore lo valida
         #    il service prima di arrivare qui.
-        _NULLABLE = {"codice_fiscale", "partita_iva", "data_nascita", "comune_id"}
+        # `sesso` (2026-10-09): il vuoto e' «non indicato», cioe' NULL — per la
+        #    DI e' ammesso; `''` lo rifiuterebbe il CHECK `chk_soggetti_sesso`.
+        _NULLABLE = {"codice_fiscale", "partita_iva", "sesso", "data_nascita", "comune_id"}
         # Copia con l'alias frontend → colonna DB applicato: `data` e' spesso
         # `request.data`, e non si muta l'input del chiamante.
         mapped = {SOGGETTO_UPDATE_ALIAS.get(k, k): v for k, v in data.items()}
@@ -431,6 +457,54 @@ class SoggettiRepository:
             "anagrafiche.soggetti", soggetto_id, mapped,  # type: ignore[arg-type]
             allowed=SOGGETTO_UPDATE_COLS,
         )
+
+    # Scopo: Crea o aggiorna i dati societari del soggetto col verbo DB
+    #        `anagrafiche.fn_scrivi_dati_societari` (STATO INTERO: un NULL scrive
+    #        NULL dove la colonna lo ammette; socio unico e liquidazione NULL
+    #        valgono il default di `config.parameters`).
+    # Risultato: l'id della riga di `anagrafiche.dati_societari`.
+    # ⛔ Mai un UPDATE diretto della tabella: dal `20261011-04` l'applicazione
+    #    non ha piu' i privilegi di scrittura, e il verbo e' la porta
+    #    (brief-db-dati-fiscali-e-societari-del-soggetto, B-5). Le regole
+    #    (forma per natura, REA e capitale per forma, canale FE) stanno nei
+    #    trigger della tabella e arrivano come errori di dominio col campo.
+    def scrivi_dati_societari(
+        self, soggetto_id: str, *,
+        forma_giuridica_id: int | None,
+        id_prov_iscri_rea: int | None,
+        iscrizione_rea: str | None,
+        capitale_sociale: Decimal | None,
+        socio_unico: str | None,
+        liquidazione: str | None,
+        destinatario_fe: str | None,
+        pec_fatturazione: str | None,
+        codice_sdi: str | None,
+        data_costituzione: date | None,
+    ) -> int:
+        sql = """
+            SELECT anagrafiche.fn_scrivi_dati_societari(
+                p_soggetto_id        := %s::uuid,
+                p_forma_giuridica_id := %s,
+                p_id_prov_iscri_rea  := %s,
+                p_iscrizione_rea     := %s,
+                p_capitale_sociale   := %s,
+                p_socio_unico        := %s::anagrafiche.socio_unico_enum,
+                p_liquidazione       := %s::anagrafiche.liquidazione_enum,
+                p_destinatario_fe    := %s,
+                p_pec_fatturazione   := %s,
+                p_codice_sdi         := %s,
+                p_data_costituzione  := %s::date
+            )
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [
+                soggetto_id, forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea,
+                capitale_sociale, socio_unico, liquidazione,
+                destinatario_fe, pec_fatturazione, codice_sdi, data_costituzione,
+            ])
+            row = cursor.fetchone()
+            assert row is not None
+            return int(row[0])
 
     # =================================================================
     # Contatti
@@ -724,9 +798,10 @@ class SoggettiRepository:
 
     # Scopo: Lookup ricco per la selezione contesto pratica — una riga per
     #        soggetto_ruolo + una riga "senza ruolo" per i soggetti privi di
-    #        qualunque ruolo (prospect puri: hanno solo istanze, il ruolo CL
-    #        nasce col BA — vedi guide/generazione-cliente.md). `n_istanze`
-    #        permette al FE di decidere se proporre il campo istanza.
+    #        qualunque ruolo (per esempio appena censiti: non hanno istanze,
+    #        il ruolo CLIENTE nasce con la prima — D-3 di
+    #        brief-db-istanza-nasce-col-ba). `n_billing_account` permette al FE
+    #        di decidere se proporre la scelta della fornitura.
     def search_ruoli_lookup(
         self,
         *,
@@ -734,10 +809,14 @@ class SoggettiRepository:
         tipo_ruolo: str | None,
         emittente_ids: list[int] | None,
         limit: int,
+        con_ruolo: bool = False,
     ) -> tuple[list[dict[str, Any]], int]:
         search_pattern = pattern_contiene(q)
         # Filtro tipo_ruolo: esclude per definizione le righe "senza ruolo"
         # (secondo ramo della UNION gated su tipo_ruolo IS NULL).
+        # `con_ruolo`: le esclude senza restringere il tipo, per i campi che
+        # salvano un soggetto_ruolo_id (es. destinatario del DDT): li' una riga
+        # "senza ruolo" non ha niente da salvare.
         cte = f"""
             WITH matches AS (
                 SELECT s.id AS soggetto_id,
@@ -766,6 +845,7 @@ class SoggettiRepository:
                         OR s.codice_fiscale ILIKE %s
                         OR s.partita_iva ILIKE %s)
                    AND %s::text IS NULL
+                   AND NOT %s::boolean
                    AND NOT EXISTS (
                        SELECT 1
                          FROM anagrafiche.soggetti_ruoli sr2
@@ -779,14 +859,15 @@ class SoggettiRepository:
             emittente_ids, emittente_ids,
             search_pattern, search_pattern, search_pattern,
             tipo_ruolo,
+            con_ruolo,
         ]
 
         count_sql = cte + "SELECT COUNT(*) FROM matches"  # noqa: S608
         data_sql = cte + f"""
             SELECT m.*,
-                   {_ISTANZE_INFO_SELECT}
+                   {_FORNITURE_SELECT}
               FROM matches m
-              LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="m.soggetto_id", sr_ref="m.soggetto_ruolo_id")} ist ON true
+              LEFT JOIN LATERAL {_FORNITURE_LATERAL_TPL.format(sr_ref="m.soggetto_ruolo_id")} forn ON true
              ORDER BY m.ragione_sociale_completa ASC NULLS LAST,
                       m.ruolo_codice ASC NULLS FIRST,
                       m.soggetto_ruolo_id ASC NULLS FIRST
@@ -809,11 +890,29 @@ class SoggettiRepository:
     #        in edit. Due chiavi alternative: soggetto_ruolo_id per le righe
     #        ruolo, soggetto_id per le righe "senza ruolo" (riga a ruolo NULL,
     #        indipendentemente dai ruoli che il soggetto possiede).
+    # Perimetro: la STESSA regola di scope della ricerca, non lo stesso
+    #        insieme di righe.
+    #        - Riga ruolo: `_RUOLO_CL_SCOPE_SQL`, identica alla ricerca.
+    #        - Riga «senza ruolo»: il soggetto e' visibile se NESSUNO dei suoi
+    #          ruoli e' fuori scope (lo scope tocca solo il ruolo CL: gli altri
+    #          ruoli non nascondono niente). ⚠️ E' PIU' LARGO della ricerca, di
+    #          proposito: la ricerca propone la riga «senza ruolo» solo ai
+    #          soggetti privi di qualunque ruolo, mentre il restore ricostruisce
+    #          una selezione GIA' FATTA, e il soggetto puo' aver preso ruoli
+    #          dopo. Un soggetto scelto quando non aveva ruoli resta quindi
+    #          ricostruibile dopo che e' diventato cliente, ma solo per chi quel
+    #          cliente lo vede; con soli ruoli non-CL, per chiunque.
+    #        `emittente_ids` obbligatorio: None e' il bypass, e va detto.
+    # ⛔ Fino al 2026-10-08 nessuno dei due rami lo applicava e la view, con
+    #    `skip_area_check`, non lo chiedeva: con un id si leggevano nome e CF
+    #    di soggetti di qualunque emittente (D10-bis).
+    # Risultato: riga lookup, o None se non trovata O fuori scope.
     def get_ruolo_lookup_by_id(
         self,
         *,
         soggetto_ruolo_id: int | None = None,
         soggetto_id: str | None = None,
+        emittente_ids: list[int] | None,
     ) -> dict[str, Any] | None:
         if soggetto_ruolo_id is not None:
             sql = f"""
@@ -824,14 +923,15 @@ class SoggettiRepository:
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
                        s.codice AS soggetto_codice,
-                       {_ISTANZE_INFO_SELECT}
+                       {_FORNITURE_SELECT}
                   FROM anagrafiche.soggetti_ruoli sr
                   JOIN anagrafiche.soggetti s ON s.id = sr.soggetto_id
                   JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
-                  LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="s.id", sr_ref="sr.id")} ist ON true
+                  LEFT JOIN LATERAL {_FORNITURE_LATERAL_TPL.format(sr_ref="sr.id")} forn ON true
                  WHERE sr.id = %s
+                   AND {_RUOLO_CL_SCOPE_SQL}
             """  # noqa: S608
-            params: list[Any] = [soggetto_ruolo_id]
+            params: list[Any] = [soggetto_ruolo_id, emittente_ids, emittente_ids]
         else:
             sql = f"""
                 SELECT s.id AS soggetto_id,
@@ -841,12 +941,19 @@ class SoggettiRepository:
                        s.ragione_sociale_completa,
                        s.id_fiscale_univoco_cf_piva AS id_fiscale,
                        s.codice AS soggetto_codice,
-                       {_ISTANZE_INFO_SELECT}
+                       {_FORNITURE_SELECT}
                   FROM anagrafiche.soggetti s
-                  LEFT JOIN LATERAL {_ISTANZE_INFO_LATERAL_TPL.format(soggetto_ref="s.id", sr_ref="NULL::bigint")} ist ON true
+                  LEFT JOIN LATERAL {_FORNITURE_LATERAL_TPL.format(sr_ref="NULL::bigint")} forn ON true
                  WHERE s.id = %s::uuid
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM anagrafiche.soggetti_ruoli sr
+                         JOIN config.tipi_ruoli tr ON tr.id = sr.tipo_ruolo_id
+                        WHERE sr.soggetto_id = s.id
+                          AND NOT {_RUOLO_CL_SCOPE_SQL}
+                   )
             """  # noqa: S608
-            params = [soggetto_id]
+            params = [soggetto_id, emittente_ids, emittente_ids]
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return row_to_dict(cursor)
@@ -876,24 +983,39 @@ class SoggettiRepository:
             return row_to_dict(cursor)
 
     # Scopo: Assegna ruolo a soggetto (get or create, idempotente).
-    # codice_ruolo puo' essere il campo `codice` o `codice_interno` di config.tipi_ruoli.
-    # La funzione DB accetta codice_interno: risolviamo con un sub-select.
-    def assign_ruolo(self, soggetto_id: str, codice_ruolo: str) -> int:
-        sql = """
-            SELECT script.fn_get_or_create_soggetto_ruolo(
-                %s::uuid,
-                COALESCE(
-                    (SELECT codice_interno FROM config.tipi_ruoli
-                     WHERE codice = %s OR codice_interno = %s LIMIT 1),
-                    %s
-                )
-            )
-        """
+    #        `codice_interno` e' gia' risolto dal chiamante
+    #        (`resolve_tipo_ruolo`, sede unica della risoluzione); un
+    #        codice sconosciuto passa com'e' e lo rifiuta la funzione DB col suo codice.
+    def assign_ruolo(self, soggetto_id: str, codice_interno: str) -> int:
         with connection.cursor() as cursor:
-            cursor.execute(sql, [soggetto_id, codice_ruolo, codice_ruolo, codice_ruolo])
+            cursor.execute(
+                "SELECT script.fn_get_or_create_soggetto_ruolo(%s::uuid, %s)",
+                [soggetto_id, codice_interno],
+            )
             row = cursor.fetchone()
             assert row is not None
             return int(row[0])
+
+    # Scopo: Il TIPO RUOLO dal codice del payload, che puo' essere il codice
+    #        (`CLIENTE`) o gia' il codice interno (`CL`): `{codice_interno,
+    #        codice, descrizione}`, o None se sconosciuto. Il codice interno e'
+    #        la chiave che il codice usa; codice e descrizione sono cio' che si
+    #        mostra all'utente.
+    # ⚠️ `codice` e `codice_interno` sono UNIQUE ciascuno, non fra loro: il
+    #    codice di una riga puo' essere il codice interno di un'altra. Vince il
+    #    `codice` (e' il campo del payload), e l'ORDER BY rende la scelta
+    #    deterministica invece di lasciarla al `LIMIT 1`.
+    def resolve_tipo_ruolo(self, codice_ruolo: str) -> dict[str, Any] | None:
+        sql = """
+            SELECT codice_interno, codice, descrizione
+              FROM config.tipi_ruoli
+             WHERE codice = %s OR codice_interno = %s
+             ORDER BY (codice = %s) DESC
+             LIMIT 1
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [codice_ruolo, codice_ruolo, codice_ruolo])
+            return row_to_dict(cursor)
 
     # =================================================================
     # Dati societari
@@ -928,8 +1050,8 @@ class SoggettiRepository:
               JOIN config.tipi_soggetto ts ON ts.id = trna.tipo_soggetto_id
              WHERE trna.tipo_ruolo_id = %s
                AND trna.attivo = true
-               AND (trna.valido_dal IS NULL OR trna.valido_dal <= CURRENT_DATE)
-               AND (trna.valido_al IS NULL OR trna.valido_al >= CURRENT_DATE)
+               AND (trna.valido_dal IS NULL OR trna.valido_dal <= (SELECT script.fn_data_operativa()))
+               AND (trna.valido_al IS NULL OR trna.valido_al >= (SELECT script.fn_data_operativa()))
         """
         # 3. Tipi soggetto dettaglio filtrati per nature ammesse
         # ⛔ `varchar[]`, non `bigint[]`: `config.tipi_soggetto.id` e' un codice
@@ -938,15 +1060,8 @@ class SoggettiRepository:
         #    del seed — e i test unitari, con la connessione mockata, non lo
         #    vedevano. Trovato il 2026-09-26 dal primo test sul DB vero
         #    (`test_ricerca_full_db`, brief-db-be-fe-ricerca-soglia-per-lista §6 b).
-        sql_dettaglio = """
-            SELECT tsd.id, tsd.codice_interno, tsd.descrizione,
-                   ts.id AS tipo_soggetto_id,
-                   ts.natura_soggetto,
-                   tsd.cf_obbligatorio, tsd.piva_obbligatoria,
-                   tsd.formato_cf, tsd.formato_piva,
-                   tsd.dati_societari_policy
-              FROM config.tipi_soggetto_dettaglio tsd
-              JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
+        sql_dettaglio = f"""
+            {SQL_TIPI_SOGGETTO_DETTAGLIO}
              WHERE (%s::varchar[] IS NULL OR ts.id = ANY(%s::varchar[]))
              ORDER BY tsd.codice_interno
         """
@@ -985,7 +1100,11 @@ class SoggettiRepository:
         # Delega a ParameterRepository per coerenza con la firma di
         # script.fn_get_parameter_full.
         param_code = f"DEFAULT_TIPO_SOGGETTO_DETTAGLIO_{ruolo['codice']}"
-        default_codice = ParameterRepository().get_parameter(
+        # ⚠️ FACOLTATIVO (2026-10-11): il default e' una preferenza, non un
+        #    obbligo — il seed lo dichiara per CL e FO, e il FE ripiega sul primo
+        #    tipo ammesso. Con `get_parameter` un ruolo senza parametro
+        #    (RIS_UMANA, EF) mandava in errore tutto il risolutore.
+        default_codice = ParameterRepository().get_parameter_se_dichiarato(
             param_code, emittente_fiscale_id=emittente_fiscale_id,
         )
 
@@ -1015,6 +1134,9 @@ class SoggettiRepository:
         }
 
     # Scopo: Recupera dati societari del soggetto (se esistono).
+    # ⚠️ `data_costituzione` (2026-10-10): il verbo di scrittura riceve lo STATO
+    #    INTERO, quindi il form deve poter rimandare tutto cio' che la riga ha.
+    #    Un campo letto qui e non rimandato verrebbe azzerato al primo salvataggio.
     def get_dati_societari(self, soggetto_id: str) -> dict[str, Any] | None:
         sql = """
             SELECT ds.id, ds.forma_giuridica_id,
@@ -1024,7 +1146,8 @@ class SoggettiRepository:
                    ds.id_prov_iscri_rea, ds.iscrizione_rea,
                    ds.capitale_sociale,
                    ds.socio_unico, ds.liquidazione,
-                   ds.destinatario_fe, ds.pec_fatturazione, ds.codice_sdi
+                   ds.destinatario_fe, ds.pec_fatturazione, ds.codice_sdi,
+                   ds.data_costituzione::text
               FROM anagrafiche.dati_societari ds
               LEFT JOIN config.forme_giuridiche fg ON fg.id = ds.forma_giuridica_id
              WHERE ds.soggetto_id = %s::uuid

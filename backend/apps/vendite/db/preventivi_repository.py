@@ -11,11 +11,11 @@
 
 import json
 from datetime import date
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -330,7 +330,7 @@ class PreventiviRepository(
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
-        return results, total_count
+        return cast("list[PreventivoListRow]", results), total_count
 
     # Scopo: Restituisce dettaglio singolo preventivo con tutte le decodifiche.
     # Usa query diretta (non vista lista) per includere campi extra (meta, storicizza, audit).
@@ -433,7 +433,7 @@ class PreventiviRepository(
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            return row_to_dict(cursor)
+            return cast("PreventivoDetailRow | None", row_to_dict(cursor))
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Righe (via vista vw_preventivi_righe_dettaglio)
@@ -697,7 +697,7 @@ class PreventiviRepository(
     #    senza errore. La visibilita' resta alla RLS (vista `security_invoker`).
     def list_revisioni(
         self, preventivo_id: int, *,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str | None = "rev", order_dir: str | None = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
@@ -974,8 +974,8 @@ class PreventiviRepository(
     # componente) + resolver_error_reason. Consumato dal FE per
     # pre-popolare la tabella componenti del drawer riga PRIMA del save.
     # Modello unificato 2026-05-13: tutti i componenti attivi sono
-    # restituiti (no filtro esposto_in_fattura), proiezione include
-    # `obbligatorio` (gate prezzo zero) e `esposto_in_fattura` (flag
+    # restituiti (no filtro sull'esposizione), proiezione include
+    # `obbligatorio` (gate prezzo zero) e `esposizione_in_fattura` (modo
     # presentazione fattura).
     def preview_componenti_riga(
         self,
@@ -1006,7 +1006,7 @@ class PreventiviRepository(
                    origine_prezzo,
                    resolver_error_reason,
                    obbligatorio,
-                   esposto_in_fattura
+                   esposizione_in_fattura
               FROM vendite.fn_preventivo_riga_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )
@@ -1163,7 +1163,7 @@ class PreventiviRepository(
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            return row_to_dict(cursor)
+            return cast("PreventivoSmistamentoRow | None", row_to_dict(cursor))
 
     # Scopo: Righe del Pannello Smistamento — una per riga attiva del preventivo,
     #        con natura, destinazione effettiva e `stato_smistamento` autorevole
@@ -1322,7 +1322,10 @@ class PreventiviRepository(
                 anagrafiche.fn_get_emittente_fiscale_pk(p.billing_account_id)
                     AS emittente_fiscale_id,
                 sr.soggetto_id::text AS soggetto_id,
-                ba.soggetto_ruolo_id
+                ba.soggetto_ruolo_id,
+                -- Il cliente a grana fine della pratica (D-9 di
+                -- brief-db-istanza-nasce-col-ba): il BA del documento.
+                ba.id AS billing_account_id
             FROM vendite.preventivi p
             JOIN anagrafiche.billing_account ba ON ba.id = p.billing_account_id
             JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
@@ -1375,7 +1378,7 @@ class PreventiviRepository(
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [preventivo_id])
-            return rows_to_list(cursor)
+            return cast("list[PreventivoPraticaRow]", rows_to_list(cursor))
 
     # ══════════════════════════════════════════════════════════
     #  LOOKUP — Risoluzione config per creazione

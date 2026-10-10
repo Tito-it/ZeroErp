@@ -13,6 +13,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db._helpers import get_or_create_soggetto_ruolo
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.core.db._helpers import (
@@ -87,6 +88,20 @@ EMITTENTE_UPDATE_ALLOWED: frozenset[str] = frozenset({
 })
 
 
+# ⭐ LA CONFERMA DEL REGIME FISCALE (§10 di brief-db-esigibilita-iva-per-cassa-
+#    emittente, applicato il 2026-10-02): data e autore li DERIVA il database.
+#    Ogni `UPDATE OF regime_fiscale_rf`, anche con lo stesso valore, e' una
+#    dichiarazione del regime e il trigger `trgfn_emittenti_fiscali_regime_
+#    conferma` scrive `confermato_il`/`_da` (autore da `app.jwt_user`).
+#    ⛔ Le due colonne di conferma non si scrivono da qui: il guard
+#    `trgfn_emittenti_fiscali_guard_regime_conferma` le RIFIUTA
+#    (`E_EMITTENTE_REGIME_CONFERMA_DERIVATA`). Restano fuori dalle whitelist
+#    di create e update, e il BB le ferma prima di arrivare al DB.
+#    ⚠️ Una INSERT non conferma mai (il default RF01 e un RF01 scelto sono
+#    indistinguibili): chi crea dichiarando il regime fa poi un UPDATE del
+#    regime nella stessa transazione (`EmittentiFiscaliService.crea_emittente`).
+
+
 class EmittentiFiscaliRepository:
     """Accesso DB per emittenti fiscali."""
 
@@ -139,6 +154,9 @@ class EmittentiFiscaliRepository:
     #    `skip_none=True`: le colonne opzionali a None si OMETTONO, cosi' il
     #    DEFAULT del DB resta attivo (la semantica di prima). Una chiave fuori
     #    `_CREATE_COLS` e' `RuntimeError`: i kwargs li scrive il service.
+    # ⛔ Le colonne della conferma NON sono in `_CREATE_COLS`: un kwarg
+    #    `regime_fiscale_confermato_*` e' un `RuntimeError` del BB. La INSERT
+    #    non conferma il regime nemmeno quando lo porta (vedi sopra).
     def create_emittente(self, **kwargs: Any) -> int:
         riga = execute_dynamic_insert(
             "anagrafiche.emittenti_fiscali", kwargs,
@@ -156,7 +174,7 @@ class EmittentiFiscaliRepository:
         self, *,
         search: str | None = None,
         attivo: bool | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = _EMITTENTI_ORDER_DEFAULT,
         order_dir: str = "asc",
@@ -210,6 +228,9 @@ class EmittentiFiscaliRepository:
                    ef.codice,
                    ef.attivo,
                    ef.regime_fiscale_rf,
+                   rf.descrizione         AS regime_fiscale_descrizione,
+                   ef.regime_fiscale_confermato_il,
+                   ef.regime_fiscale_confermato_da,
                    ef.bollo_auto,
                    ef.bollo_soglia,
                    ef.rounding_policy,
@@ -229,6 +250,9 @@ class EmittentiFiscaliRepository:
               JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ef.soggetto_ruolo_id
               JOIN anagrafiche.soggetti s        ON s.id  = sr.soggetto_id
               LEFT JOIN config.valute v          ON v.id  = ef.valuta_id
+              -- FK `fk_emittenti_fiscali_regimi_fiscali` + NOT NULL: la riga
+              -- c'e' sempre; LEFT per non perdere l'emittente se un domani no.
+              LEFT JOIN config.regimi_fiscali rf ON rf.codice_interno = ef.regime_fiscale_rf
              WHERE ef.id = %s
         """
         with connection.cursor() as cursor:
@@ -239,8 +263,10 @@ class EmittentiFiscaliRepository:
     # Aggiornamento
     # =================================================================
 
+    # ⛔ `regime_fiscale_rf` NON c'e' piu' (2026-10-01): e' NOT NULL con FK al
+    #    catalogo, e un vuoto portato a NULL diventava un 23502. Lo valida il
+    #    service, che rifiuta il vuoto con 400 sul campo.
     _UPDATE_NULLABLE = {
-        "regime_fiscale_rf",
         "rounding_policy",
         "bollo_soglia",
         "valuta_id",
@@ -250,6 +276,8 @@ class EmittentiFiscaliRepository:
     #        Il campo codice e' bloccato dal trigger DB (lock_columns) e va escluso.
     #        BB `execute_dynamic_update` (2026-09-26): whitelist RIGIDA
     #        `EMITTENTE_UPDATE_ALLOWED`, le chiavi le valida prima il service (400).
+    #        ⭐ Se `data` porta `regime_fiscale_rf` la UPDATE lo nomina, e il
+    #        database lo registra come conferma (vedi sopra).
     def update_emittente(self, emittente_id: int, data: dict[str, Any]) -> bool:
         # Copia: non si muta l'input del chiamante.
         valori = dict(data)
@@ -328,7 +356,7 @@ class EmittentiFiscaliBillingAccountRepository:
         emittente_soggetto_ruolo_id: int,
         *,
         search: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "billing_account_codice",
         order_dir: str = "asc",

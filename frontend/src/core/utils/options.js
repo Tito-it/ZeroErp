@@ -15,6 +15,13 @@ function voceTutti(t) {
   return { value: null, label: t('common.all') }
 }
 
+// Scopo: le opzioni di un filtro a VOCABOLARIO (stati, tipi) precedute dalla
+//        voce «tutti» — la stessa di `buildBoolOptions`, senza ricopiarla.
+//        `voci` = `[{ value, label }]` gia' tradotte.
+export function buildOptionsConTutti(t, voci) {
+  return [voceTutti(t), ...voci]
+}
+
 // Scopo: Ritorna le 3 opzioni standard per un Select "tri-state bool"
 // (tutti, si, no). Passare la funzione t di vue-i18n.
 export function buildBoolOptions(t) {

@@ -11,6 +11,7 @@ import { chiudiTuttiIDrawer } from '../core/composables/useDrawerChiusuraGlobale
 import { CODE } from '../pagamenti/vocabolari'
 import { FAMIGLIA } from '../magazzino/vocabolari'
 import { UOM_TABS } from '../catalogo/constants'
+import { ACCESSI_TABS } from '../amministrazione/constants'
 import AppLayout from '../core/components/AppLayout.vue'
 import HomeView from '../core/views/HomeView.vue'
 
@@ -23,6 +24,7 @@ const ROTTA_AVVIO_NON_RIUSCITO = 'avvio-non-riuscito'
 
 const UNIVERSAL_ROUTE_NAMES = new Set([
   'change-password',
+  'sicurezza',
   'forbidden',
   'not-found',
   ROTTA_AVVIO_NON_RIUSCITO
@@ -75,6 +77,16 @@ const router = createRouter({
       path: '/change-password',
       name: 'change-password',
       component: () => import('../core/views/ChangePasswordView.vue'),
+      meta: { requiresAuth: true }
+    },
+    // «Sicurezza dell'accesso» (secondo fattore): fuori dal layout come il
+    // cambio password, perche' con l'obbligo pendente il backend apre solo i
+    // suoi endpoint — dentro il layout l'avvio chiamerebbe API che rispondono
+    // 403 (brief sicurezza §3.4-bis, T-4).
+    {
+      path: '/sicurezza',
+      name: 'sicurezza',
+      component: () => import('../core/views/SicurezzaView.vue'),
       meta: { requiresAuth: true }
     },
     {
@@ -140,23 +152,36 @@ const router = createRouter({
         },
 
         // --- Amm. Software ---
+        // L'area «Accessi» (brief-db-be-fe-area-accessi, A-1): tre schede che
+        // censiscono tutte le credenziali. La voce «Operatori» e' diventata la
+        // prima scheda.
+        {
+          path: 'amm-software/accessi',
+          name: 'amm-software-accessi',
+          component: () => import('../amministrazione/views/AccessiView.vue'),
+          meta: { domain: 'amm-software', menuKey: 'accessi' }
+        },
+        // ⛔ Il vecchio indirizzo resta come redirect: i PREFERITI sono path
+        //    salvati (`useNavigationFavorites`), e un link rotto non lo vede
+        //    nessun test. Porta sulla scheda «Operatori».
         {
           path: 'amm-software/operatori',
           name: 'amm-software-operatori',
-          component: () => import('../amministrazione/views/OperatoriListView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'operatori' }
+          redirect: { name: 'amm-software-accessi', query: { tab: ACCESSI_TABS.OPERATORI } }
+        },
+        // Stessa ragione: la pagina «Riepilogo permessi» e' diventata «Mostra
+        // permessi» della lista operatori (2026-10-06). Ritirata senza
+        // redirect, un preferito salvato su di lei apriva «non trovato».
+        {
+          path: 'amm-software/permessi',
+          name: 'amm-software-permessi',
+          redirect: { name: 'amm-software-accessi', query: { tab: ACCESSI_TABS.OPERATORI } }
         },
         {
           path: 'amm-software/profili-reparto',
           name: 'amm-software-profili-reparto',
           component: () => import('../amministrazione/views/RepartiProfiloView.vue'),
           meta: { domain: 'amm-software', menuKey: 'profili-reparto' }
-        },
-        {
-          path: 'amm-software/permessi',
-          name: 'amm-software-permessi',
-          component: () => import('../amministrazione/views/PermessiRiepilogoView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'permessi' }
         },
         {
           path: 'amm-software/emittenti-fiscali',
@@ -221,24 +246,6 @@ const router = createRouter({
           meta: { domain: 'amm-software', menuKey: 'matrice-categorie-listini' }
         },
         {
-          path: 'amm-software/processi-automatici',
-          name: 'amm-software-processi-automatici',
-          component: () => import('../amministrazione/views/ProcessiAutomaticiListView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'processi-automatici' }
-        },
-        {
-          path: 'amm-software/audit-log',
-          name: 'amm-software-audit-log',
-          component: () => import('../amministrazione/views/AuditLogView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'audit-log' }
-        },
-        {
-          path: 'amm-software/error-log',
-          name: 'amm-software-error-log',
-          component: () => import('../amministrazione/views/ErrorLogListView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'error-log' }
-        },
-        {
           path: 'amm-software/email-accounts',
           name: 'amm-software-email-accounts',
           component: () => import('../amministrazione/views/EmailAccountsListView.vue'),
@@ -249,12 +256,6 @@ const router = createRouter({
           name: 'amm-software-email-templates',
           component: () => import('../amministrazione/views/EmailTemplatesListView.vue'),
           meta: { domain: 'amm-software', menuKey: 'email-templates' }
-        },
-        {
-          path: 'amm-software/email-log',
-          name: 'amm-software-email-log',
-          component: () => import('../amministrazione/views/EmailLogsListView.vue'),
-          meta: { domain: 'amm-software', menuKey: 'email-log' }
         },
         {
           path: 'amm-software/personalizzazioni-liste-tecniche',
@@ -412,6 +413,34 @@ const router = createRouter({
           name: 'strumenti-email',
           component: () => import('../strumenti/views/EmailLogView.vue'),
           meta: { domain: 'strumenti', menuKey: 'email' }
+        },
+        // Strumenti → Diagnostica (Tid 2026-10-06, prima in Amm. software): le
+        // viste restano in `amministrazione/` perche' endpoint e permesso
+        // (`AdminAPIView`) sono di li'. Il cancello super admin sta sul
+        // gruppo di menu `diagnostica` e lo applica il guard di voce.
+        {
+          path: 'strumenti/diagnostica/processi-automatici',
+          name: 'strumenti-diagnostica-processi-automatici',
+          component: () => import('../amministrazione/views/ProcessiAutomaticiListView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'processi-automatici' }
+        },
+        {
+          path: 'strumenti/diagnostica/audit-log',
+          name: 'strumenti-diagnostica-audit-log',
+          component: () => import('../amministrazione/views/AuditLogView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'audit-log' }
+        },
+        {
+          path: 'strumenti/diagnostica/error-log',
+          name: 'strumenti-diagnostica-error-log',
+          component: () => import('../amministrazione/views/ErrorLogListView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'error-log' }
+        },
+        {
+          path: 'strumenti/diagnostica/email-log',
+          name: 'strumenti-diagnostica-email-log',
+          component: () => import('../amministrazione/views/EmailLogsListView.vue'),
+          meta: { domain: 'strumenti', menuKey: 'email-log' }
         },
         {
           path: 'vendite/preventivi',
@@ -652,7 +681,7 @@ router.beforeEach(async (to) => {
     //    l'operatore restava su una home che rispondeva 401 a ogni gesto e ne
     //    usciva solo ricaricando (rilievo di Tid, 2026-09-04).
     // ⚠️ È la seconda metà della correzione, non un doppione: la prima azzera
-    //    lo stato nello store (`redirectToLogin` in `core/api.js`), questa
+    //    lo stato nello store (`redirectToLogin` in `core/uscitaSessione.js`), questa
     //    impedisce che una sessione creduta viva per qualunque ALTRA ragione
     //    ci rimandi indietro. Chi ha una sessione viva e digita /login
     //    continua a essere riportato alla home.
@@ -702,12 +731,20 @@ router.beforeEach(async (to) => {
     return { name: 'change-password' }
   }
 
+  // Guard secondo fattore obbligatorio e non configurato: dopo la password,
+  // nell'ordine del cancello degli obblighi del backend (`obblighi_pendenti`
+  // di `/core/me/`). La destinazione resta in `redirect`.
+  if (auth.mustConfigureSecondFactor && to.name !== 'sicurezza') {
+    const query = to.fullPath !== '/' ? { redirect: to.fullPath } : {}
+    return { name: 'sicurezza', query }
+  }
+
   // §8.5.4/§8.5.5 — Namespace multi-canale. Un utente autenticato puo'
   // navigare solo dentro il proprio namespace (`admin` per operatori,
   // `portale` per CLIENTE/FORNITORE_PORTALE, `shop` per SHOP_CUSTOMER).
   // Regole:
   //   - rotte universali (cambio password, forbidden, 404) esentate;
-  //   - veste senza namespace FE (API_CLIENT, DISABILITATO) → forbidden;
+  //   - veste senza namespace FE (API_CLIENT) → forbidden;
   //   - path in namespace diverso dalla veste → grace redirect alla home
   //     namespace (UX: utente portale che digita / → /portale, non 403).
   // La mappa ruolo→config e' in `constants.RUOLO_FE_NAMESPACE` — single

@@ -1,0 +1,85 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CLIENTE E' DEL SOGGETTO DEL SUO BILLING ACCOUNT
+#   anagrafiche.clienti: utility_id SET NOT NULL
+#   + FK (billing_account_id, soggetto_ruolo_id, utility_id)
+#     verso anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id).
+#   Brief: brief-db-esecutivi-ba-coppia (§4.1, D-7 punto 4)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Istanza e utility del cliente erano gia' legate al BA
+#   (fk_clienti_billing_account sull'istanza, il trigger
+#   trgfn_clienti_sync_utility_from_ba sulla utility); il ruolo no. Un cliente
+#   col BA di Rossi e il ruolo CLIENTE di Verdi oggi si scrive: e' la stessa
+#   copia slegata dell'ordine, un piano piu' in basso.
+#   trgfn_clienti_guard_ruolo_cliente controlla solo il TIPO del ruolo ('CL').
+#
+# -- LA FK ---------------------------------------------------------
+#   Stessa destinazione di ordine, DDT e reso (uq_billing_account_id_cliente,
+#   20261009-63). MATCH SIMPLE di default, ma qui tutte e tre le colonne sono
+#   NOT NULL: utility_id lo diventa adesso — il trigger
+#   trgfn_clienti_sync_utility_from_ba la valorizza gia' sempre (la copia dal
+#   BA se manca), e il NOT NULL si controlla dopo i BEFORE ROW.
+#   ⚠️ Il guard del trigger sulla utility (E_CLIENTE_UTILITY_MISMATCH_BA)
+#   RESTA: e' BEFORE ROW e parla prima della FK con una frase che dice quale
+#   dato e' sbagliato; la FK copre le strade che il trigger non percorre.
+#   ⚠️ Le quattro colonne della fornitura del cliente sono bloccate in
+#   dbops.automation_lock_columns (E_CLIENTE_FORNITURA_IMMUTABILE, 80_data):
+#   su UPDATE parla il lock, prima della FK.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   preCondition: zero clienti senza utility o con ruolo/utility diversi da
+#   quelli del BA (expectedResult 0).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261009-67-alter-clienti-ruolo-dal-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20261009-67-alter-clienti-ruolo-dal-billing-account
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.clienti: utility_id NOT NULL e FK composta verso il billing account del ruolo
+        e della utility del cliente. Brief: brief-db-esecutivi-ba-coppia (D-7, punto 4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM anagrafiche.clienti c
+                JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
+               WHERE c.utility_id IS NULL
+                  OR ba.soggetto_ruolo_id IS DISTINCT FROM c.soggetto_ruolo_id
+                  OR ba.utility_id        IS DISTINCT FROM c.utility_id;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.clienti
+                ALTER COLUMN utility_id SET NOT NULL;
+
+              ALTER TABLE anagrafiche.clienti
+                ADD CONSTRAINT fk_clienti_ba_cliente
+                FOREIGN KEY (billing_account_id, soggetto_ruolo_id, utility_id)
+                REFERENCES anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id);
+
+              COMMENT ON CONSTRAINT fk_clienti_ba_cliente ON anagrafiche.clienti
+              IS 'Il ruolo CLIENTE e la utility del cliente sono quelli del suo billing account: fino al 2026-10-09 il ruolo era controllato solo nel tipo (trgfn_clienti_guard_ruolo_cliente), e un cliente poteva avere il BA di un soggetto e il ruolo di un altro. L''istanza e'' legata da fk_clienti_billing_account. Gemelli: fk_ordini_ba_cliente, fk_ddt_ba_cliente, fk_resi_ba_cliente. Brief: brief-db-esecutivi-ba-coppia (D-7, punto 4).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.clienti DROP CONSTRAINT fk_clienti_ba_cliente;
+              ALTER TABLE anagrafiche.clienti ALTER COLUMN utility_id DROP NOT NULL;

@@ -9,18 +9,18 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | YES |  |
+| codice_interno | character varying(64) | NO |  |
+| codice | character varying(64) | NO |  |
+| descrizione | character varying(255) | YES |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
-| fase | character varying | NO |  |
-| esito | character varying | YES |  |
+| user_update | text | NO | CURRENT_USER |
+| fase | character varying(20) | NO |  |
+| esito | character varying(50) | YES |  |
 | terminale | boolean | NO | false |
 | pdf_mode | character varying | NO |  |
 | pdf_allow_allegati | boolean | NO |  |

@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_note_cliente(p_identita_id bigint, p_target_tipo charac
 CREATE OR REPLACE FUNCTION script.fn_scope_note_cliente(p_identita_id bigint, p_target_tipo character varying, p_target_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- ⚠️ Due famiglie soltanto, ed e' l'unione ESATTA di cio' che
     --   le partizioni gia' concedono: `note_fatture` ha la veste

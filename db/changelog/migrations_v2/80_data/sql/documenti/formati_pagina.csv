@@ -1,0 +1,4 @@
+id,codice_interno,codice,descrizione,etichetta_key,ordine
+1,A4,A4,"A4, 210 x 297 mm",documenti.formati_pagina.a4,10
+2,A3,A3,"A3, 297 x 420 mm",documenti.formati_pagina.a3,20
+3,LETTER,LETTER,"Letter, 8,5 x 11 pollici",documenti.formati_pagina.letter,30

@@ -74,6 +74,31 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
 SELECT plan(47);
 
+-- ⭐ LE VISTE SI LEGGONO UNA VOLTA SOLA (rev 2026-10-05). Ogni vista di lista
+--   calcola la frontiera con una ricorsione su TUTTO vendite.vw_documento_lineage_archi,
+--   qualunque sia il numero di righe: come applicazione (RLS attiva) e' un costo
+--   quasi fisso di ~0,7-3 s per lettura (misurato su dbdev il 2026-10-05:
+--   offerte 10 righe 0,78 s, preventivi 168 righe 3,1 s). I test 27, 28, 39 e 47
+--   le rileggevano 17 volte — ~23 s — e il 47 rivalutava un NOT EXISTS per riga.
+--   Si copiano qui, DOPO il contesto operatore: la copia contiene esattamente le
+--   righe che la RLS lascia vedere a quell'operatore, quindi le asserzioni non si
+--   indeboliscono — cambia quante volte si paga il filtro, non cosa si vede.
+--   ⚠️ Una colonna nuova da asserire si aggiunge QUI, o il test leggerebbe la vista
+--   di nuovo (e tornerebbe lento) o una copia che non la porta (e non compilerebbe).
+CREATE TEMP TABLE _lin_prev AS
+SELECT pratica_numero, n_pratiche, fase, frontiera_codice,
+       frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno
+  FROM vendite.vw_preventivi_lista;
+
+CREATE TEMP TABLE _lin_frontiera AS
+SELECT 'preventivi'::text AS vista, frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM _lin_prev
+UNION ALL SELECT 'offerte',   frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_offerte_commerciali_lista
+UNION ALL SELECT 'ordini',    frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_ordini_lista
+UNION ALL SELECT 'contratti', frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_contratti_lista
+UNION ALL SELECT 'ddt',       frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_ddt_lista
+UNION ALL SELECT 'resi',      frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_resi_lista
+UNION ALL SELECT 'fatture',   frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_fatture_lista;
+
 -- ---- 1..18: colonne nuove presenti sulle 6 viste ------------------------
 SELECT has_column('vendite', 'vw_preventivi_lista',          'pratica_numero',  'preventivi: pratica_numero');
 SELECT has_column('vendite', 'vw_preventivi_lista',          'fase',            'preventivi: fase');
@@ -142,7 +167,7 @@ SELECT is(
 
 -- ---- 27: invariante seed-agnostica --------------------------------------
 SELECT is(
-    (SELECT count(*)::int FROM vendite.vw_preventivi_lista
+    (SELECT count(*)::int FROM _lin_prev
       WHERE pratica_numero IS NULL AND n_pratiche > 0),
     0, 'invariante: pratica_numero NULL -> n_pratiche = 0');
 
@@ -170,14 +195,14 @@ SELECT is(
 --   E' la forma del test 23 qui sopra, che infatti non e' mai stato rosso.
 SELECT CASE
     WHEN EXISTS (
-        SELECT 1 FROM vendite.vw_preventivi_lista
+        SELECT 1 FROM _lin_prev
          WHERE pratica_numero IS NOT NULL
            AND frontiera_codice IS NOT NULL
            AND fase IS NOT NULL
     ) THEN
         is(
             (SELECT count(*)::int
-               FROM vendite.vw_preventivi_lista
+               FROM _lin_prev
               WHERE pratica_numero IS NOT NULL
                 AND frontiera_codice IS NOT NULL
                 AND fase IS NULL),
@@ -251,28 +276,10 @@ SELECT ok(EXISTS (SELECT 1 FROM pg_class c, unnest(c.reloptions) o
 -- ⚠️ Elenco esplicito anche qui, per la stessa ragione dei 31..37: una lista
 --    nuova non entra da sola, e non deve sembrare che ci sia.
 SELECT is(
-    (SELECT sum(n)::int FROM (
-        SELECT count(*) n FROM vendite.vw_preventivi_lista
-          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_offerte_commerciali_lista
-          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_ordini_lista
-          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_contratti_lista
-          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_ddt_lista
-          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_resi_lista
-          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_fatture_lista
-          WHERE frontiera_natura_doc_codice_interno IS NOT NULL AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')
-    ) x),
+    -- dalla copia delle sette viste (vedi in testa)
+    (SELECT count(*)::int FROM _lin_frontiera
+      WHERE frontiera_natura_doc_codice_interno IS NOT NULL
+        AND frontiera_tipo_id <> (SELECT id FROM config.sorgenti WHERE codice_interno='FATTURA')),
     0, 'liste: una natura di frontiera valorizzata implica una frontiera FATTURA');
 
 -- ---- 40..46: il codice del tipo di frontiera sulle SETTE liste ----------
@@ -302,28 +309,11 @@ SELECT has_column('vendite', 'vw_fatture_lista',             'frontiera_tipo_cod
 --    config.sorgenti: 'IN_CORSO' e 'NOTA_CREDITO' non ci sono, e la copia
 --    viene presa. Seed-agnostica: su un DB vuoto conta zero e asserisce zero.
 SELECT is(
-    (SELECT sum(n)::int FROM (
-        SELECT count(*) n FROM vendite.vw_preventivi_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_offerte_commerciali_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_ordini_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_contratti_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_ddt_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_resi_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
-        UNION ALL
-        SELECT count(*) FROM vendite.vw_fatture_lista WHERE frontiera_tipo_codice_interno IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM config.sorgenti s WHERE s.codice_interno = frontiera_tipo_codice_interno)
-    ) x),
+    -- dalla copia delle sette viste (vedi in testa)
+    (SELECT count(*)::int FROM _lin_frontiera f
+      WHERE f.frontiera_tipo_codice_interno IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM config.sorgenti s
+                         WHERE s.codice_interno = f.frontiera_tipo_codice_interno)),
     0, 'liste: frontiera_tipo_codice_interno e'' sempre un codice_interno di config.sorgenti');
 
 SELECT * FROM finish();

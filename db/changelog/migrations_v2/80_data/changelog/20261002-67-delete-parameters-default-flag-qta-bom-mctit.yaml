@@ -1,0 +1,77 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# D-1 — RITIRO DEI DUE PARAMETRI DI DEFAULT DEI FLAG RITIRATI
+#   config.parameters: CATALOGO_BOM_DEFAULT_PARTECIPA_QTA (id 23),
+#                      CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE (id 25)
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura, parte A (D-1, sezione 4.1)
+#
+# -- LA FORMA (linee-guida-sql 11.2) ---------------------------------------------
+#   Le righe sono uscite da 80_data/sql/config/parameters.csv nello stesso giro;
+#   il mirror (20250715-01, loadUpdateData) non cancella, quindi qui il DELETE
+#   forward-only, unica eccezione ammessa. Prima gli override che li nominano
+#   (fk_overrides_parameter, nessun ON DELETE). Per codice, non per id.
+#   Idempotente: su un database nuovo il CSV non le carica piu' e il DELETE
+#   tocca zero righe.
+#   Lettori: solo il drawer della distinta (default dei due campi, R-FE-A1).
+#   Nessuna funzione li legge; nessuna riga in parameter_fk_surrogate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261002-67-delete-parameters-default-flag-qta-bom-mctit.yaml
+
+  - changeSet:
+      id: 20261002-67-delete-parameters-default-flag-qta-bom
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritirati i parametri CATALOGO_BOM_DEFAULT_PARTECIPA_QTA e
+        CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE (e i loro override): default di due colonne
+        della distinta ritirate da 20261002-60. Righe tolte anche da parameters.csv. Brief:
+        brief-db-bom-flag-quantita-e-kit-in-fattura (D-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: parameters
+            - tableExists:
+                schemaName: config
+                tableName: parameter_overrides
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM config.parameter_overrides o
+               USING config.parameters p
+               WHERE p.id = o.parameter_id
+                 AND p.code IN ('CATALOGO_BOM_DEFAULT_PARTECIPA_QTA',
+                                'CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE');
+
+              DELETE FROM config.parameters
+               WHERE code IN ('CATALOGO_BOM_DEFAULT_PARTECIPA_QTA',
+                              'CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Le due righe come stavano nel CSV (gli override eventuali non tornano).
+              -- Vanno rimesse anche in parameters.csv.
+              INSERT INTO config.parameters (id, code, default_value, description, storicizza)
+              VALUES
+                (23, 'CATALOGO_BOM_DEFAULT_PARTECIPA_QTA', 'true',
+                 'Default partecipa_qta per nuove righe catalogo.articoli_componenti. Se true il componente concorre alla quantita'' del padre. Allineato con DEFAULT colonna DB (vedi 20260428-02). Override via config.parameter_overrides. Scope cascata: user -> group -> emittente -> default.',
+                 true),
+                (25, 'CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE', 'false',
+                 'Default determina_qta_padre per nuove righe catalogo.articoli_componenti. Se true la qty del componente determina la qty del padre (relazione inversa). Default false (caso normale: padre determina figli). Override via config.parameter_overrides. Scope cascata: user -> group -> emittente -> default.',
+                 true)
+              ON CONFLICT (id) DO NOTHING;

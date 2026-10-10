@@ -1,13 +1,18 @@
 <script setup>
-// Scopo: Autocomplete istanze_utilities server-side riutilizzabile cross-dominio.
+// Scopo: Autocomplete delle forniture server-side riutilizzabile cross-dominio:
+// una opzione per billing account, cioe' per coppia istanza+utility (dal
+// 2026-10-08; prima una per istanza con un BA «campione»). Il valore porta
+// l'istanza in `id` e il BA in `billing_account_id`.
 // Ricerca multi-campo (codice istanza, ragione sociale soggetto, indirizzo)
-// con scope emittente automatico via BA collegato all'istanza.
+// con scope emittente automatico sul BA della riga.
 // Display dropdown a 3 righe:
-//   primary: ragione sociale + tag utility (se BA dichiara utility) +
-//            badge "Solo istanza" se istanza orfana / "Fittizia" se fittizia
+//   primary: ragione sociale + tag utility del BA + badge "Fittizia" se fittizia
 //   secondary: codice istanza
-//   meta: indirizzo + (se BA) codice BA
-// Usato da: PreventiviForm (prospect senza BA), future utility-aware flows.
+//   meta: indirizzo + codice BA
+// ⚠️ Il badge "Solo istanza" (istanza senza BA) e' stato tolto il 2026-10-08:
+//    l'istanza nasce e vive col suo BA (brief-db-istanza-nasce-col-ba), quindi
+//    il caso non esiste piu'.
+// Usato da: PreventiviForm (scelta del cliente per fornitura), PraticaDrawer.
 import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useServerAutocomplete } from '../composables/useServerAutocomplete'
@@ -20,19 +25,17 @@ import { MANAGE_ICONS } from '../constants'
 const { t } = useI18n()
 
 const props = defineProps({
-  // Oggetto istanza completo {id, codice, fittizia, soggetto_id,
+  // Riga fornitura completa {id (istanza), codice, fittizia, soggetto_id,
   //   ragione_sociale_completa, indirizzo_display, pdp_id, pdp_codice,
   //   billing_account_id, billing_account_codice, utility_id, utility_codice,
   //   utility_descrizione, ...}
   modelValue: { type: Object, default: null },
-  // Filtro utility strict (post Strategia C ogni istanza dichiara utility via
-  // BA, dati_precontrattuali o clienti). Opzionale.
+  // Filtro utility: le forniture (BA) di quella utility. Opzionale.
   utilityId: { type: Number, default: null },
   // Filtro soggetto (UUID). Restringe la ricerca al solo soggetto.
   soggettoId: { type: String, default: null },
-  // Filtro ruolo (soggetto_ruolo_id). Restringe alle sole istanze legate a
-  // quel ruolo via clienti (le forniture del cliente/BA selezionato) —
-  // evita l'aggancio a istanze del soggetto estranee al rapporto cliente.
+  // Filtro ruolo (soggetto_ruolo_id). Restringe ai BA di quel ruolo (le
+  // forniture del cliente), con o senza la riga cliente.
   soggettoRuoloId: { type: Number, default: null },
   placeholder: { type: String, default: null },
   disabled: { type: Boolean, default: false }
@@ -71,10 +74,13 @@ const ac = useServerAutocomplete(async (query) => {
   onResponse,
 })
 
+// La riga e' una fornitura (un BA): la utility entra nel testo, o due righe
+// della stessa istanza su due utility si leggerebbero uguali dopo la scelta.
 function buildDisplay(r) {
   const parts = []
   if (r.ragione_sociale_completa) parts.push(r.ragione_sociale_completa)
   if (r.codice) parts.push(r.codice)
+  if (r.utility_codice) parts.push(r.utility_codice)
   if (r.indirizzo_display) parts.push(r.indirizzo_display)
   if (r.pdp_codice) parts.push(`PDP ${r.pdp_codice}`)
   return parts.join(' · ') || `#${r.id}`
@@ -94,9 +100,9 @@ function onClear() {
   emit('clear')
 }
 
-// Quando l'utility cambia, l'istanza selezionata potrebbe non essere piu'
+// Quando l'utility cambia, la fornitura selezionata potrebbe non essere piu'
 // coerente con la nuova utility. Azzera la selezione per forzare ricerca
-// nel contesto aggiornato. Si azzera solo se l'istanza dichiara utility
+// nel contesto aggiornato. Si azzera solo se la fornitura ha una utility
 // diversa da quella nuova (evita reset inutili su transizioni null → id).
 watch(() => props.utilityId, (newUtility, oldUtility) => {
   if (newUtility === oldUtility) return
@@ -130,9 +136,6 @@ watch(() => props.utilityId, (newUtility, oldUtility) => {
           </span>
           <span v-if="option.fittizia" class="app-lookup-badge">
             {{ t('istanza_utility.fittizia_badge') }}
-          </span>
-          <span v-if="!option.billing_account_id" class="app-lookup-badge">
-            {{ t('istanza_utility.solo_istanza_badge') }}
           </span>
         </div>
         <div class="app-lookup-option__secondary">

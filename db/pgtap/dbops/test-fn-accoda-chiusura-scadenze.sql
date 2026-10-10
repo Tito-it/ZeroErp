@@ -72,6 +72,17 @@ BEGIN
 END
 $roster$;
 
+-- ⭐ La condizione si COSTRUISCE: «nessun lavoro di chiusura per oggi».
+--   Su un database vivo il job orario (20261009-61) ha gia' chiuso la
+--   giornata delle aziende vere, e fn_accoda_chiusura_scadenze (20261009-46)
+--   le salta: il test vedrebbe meno accodati del roster senza che niente sia
+--   rotto (dbdev, 2026-10-09: 2 su 4). Si liberano le chiavi di oggi, come fa
+--   gia' il test 6 qui sotto; tutto si annulla col ROLLBACK.
+UPDATE dbops.coda_lavori
+   SET idempotency_key = idempotency_key || ':pgtap-prima'
+ WHERE job_type = 'CHIUSURA_SCADENZE'
+   AND idempotency_key LIKE 'CHIUSURA_SCADENZE:%:' || script.fn_data_operativa()::text;
+
 -- ============================================================
 -- La sveglia suona una volta
 -- ============================================================
@@ -116,7 +127,7 @@ SELECT is(
 SELECT is_empty(
     $$SELECT c.id FROM dbops.coda_lavori c
        WHERE c.job_type = 'CHIUSURA_SCADENZE'
-         AND c.idempotency_key LIKE 'CHIUSURA_SCADENZE:%:' || CURRENT_DATE::text
+         AND c.idempotency_key LIKE 'CHIUSURA_SCADENZE:%:' || script.fn_data_operativa()::text
          AND c.run_as <> 'OPERATORE'$$,
     '2. nessun lavoro di chiusura scadenze e'' accodato come SISTEMA'
 );
@@ -130,7 +141,7 @@ SELECT is_empty(
         JOIN dbops.vw_processi_roster r
           ON r.processo_codice = 'chiusura_scadenze_daily'
          AND c.idempotency_key = 'CHIUSURA_SCADENZE:' || r.emittente_codice
-                                 || ':' || CURRENT_DATE::text
+                                 || ':' || script.fn_data_operativa()::text
        WHERE c.job_type = 'CHIUSURA_SCADENZE'
          AND ( (c.scope->>'emittente_attivo_id')::bigint
                    IS DISTINCT FROM r.emittente_fiscale_id
@@ -161,9 +172,11 @@ SELECT is_empty(
           ON r.processo_codice = 'chiusura_scadenze_daily'
          AND c.scope->>'emittente_attivo_id' = r.emittente_fiscale_id::text
        WHERE c.job_type = 'CHIUSURA_SCADENZE'
-         AND c.data_insert >= CURRENT_DATE
+         AND c.data_insert >= script.fn_inizio_giorno_operativo(script.fn_data_operativa())
+         -- le chiavi che questo file rinomina apposta (:pgtap-prima, :pgtap-ieri)
+         AND c.idempotency_key NOT LIKE '%:pgtap-%'
          AND c.idempotency_key <> 'CHIUSURA_SCADENZE:' || r.emittente_codice
-                                   || ':' || CURRENT_DATE::text$$,
+                                   || ':' || script.fn_data_operativa()::text$$,
     '5. la chiave di idempotenza e'' (tipo, azienda, GIORNO), senza l''ora'
 );
 
@@ -208,7 +221,7 @@ BEGIN
     UPDATE dbops.coda_lavori
        SET idempotency_key = idempotency_key || ':pgtap-ieri'
      WHERE job_type = 'CHIUSURA_SCADENZE'
-       AND idempotency_key LIKE 'CHIUSURA_SCADENZE:%:' || CURRENT_DATE::text;
+       AND idempotency_key LIKE 'CHIUSURA_SCADENZE:%:' || script.fn_data_operativa()::text;
 
     v_out := dbops.fn_accoda_chiusura_scadenze();
     PERFORM set_config('pgtap.giro3', v_out::text, true);

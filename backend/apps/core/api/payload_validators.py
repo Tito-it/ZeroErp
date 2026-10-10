@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import math
-from datetime import date
+import re
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from rest_framework.exceptions import ParseError
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.request_parsers import oggetto_json, parse_iso_date
+from apps.core.services.payload_helpers import BIGINT_MAX, BIGINT_MIN
 from apps.core.services.service_errors import E_VALIDATION_INPUT, ServiceError
 
 # Validator centralizzati payload API (riusabili cross-domain).
@@ -43,12 +45,25 @@ def corpo_oggetto(request: Any) -> dict[str, Any]:
     try:
         return oggetto_json(request.data)
     except (ParseError, ValueError) as exc:
-        motivo = "invalid_json" if isinstance(exc, ParseError) else str(exc)
-        raise ServiceError(
-            code=E_VALIDATION_INPUT,
-            message=_MESSAGGIO_CORPO.get(motivo, _MESSAGGIO_CORPO["invalid_payload"]),
-            context={"motivo": motivo},
-        ) from exc
+        raise errore_corpo(exc) from exc
+
+
+# Scopo: ⭐ Il rifiuto di un corpo illeggibile o che non e' un oggetto, in UN
+#        posto: 400 `E_VALIDATION_INPUT` nell'envelope, con `context.motivo`
+#        (`invalid_json` / `invalid_payload`). Lo usano `corpo_oggetto` (view
+#        DRF) e `handle_post_json` (E-6, 2026-10-07: fino a quel giorno
+#        rispondeva `{"error": "invalid_json"}` fuori envelope — la stessa
+#        regola in due forme). `exc` e' il `ParseError` di DRF o il
+#        `ValueError` di `parse_json_body`/`oggetto_json`, che porta il motivo.
+def errore_corpo(exc: Exception) -> ServiceError:
+    motivo = "invalid_json" if isinstance(exc, ParseError) else str(exc)
+    if motivo not in _MESSAGGIO_CORPO:
+        motivo = "invalid_payload"
+    return ServiceError(
+        code=E_VALIDATION_INPUT,
+        message=_MESSAGGIO_CORPO[motivo],
+        context={"motivo": motivo},
+    )
 
 
 # Scopo: ⭐ Una password dal corpo COSI' COM'E' digitata: assente = "", un
@@ -105,29 +120,49 @@ def qp_int(raw: str | None, default: int) -> int:
         return default
 
 
-# Scopo: Converte parametro intero da query string; solleva ValueError se non numerico.
+# Scopo: Converte parametro intero da query string; solleva ValueError se non
+#        numerico o fuori da bigint (oltre, nessun intero PG lo regge: un 500).
 def qp_int_strict(raw: str | None, name: str, default: int) -> int:
     if raw is None:
         return default
     try:
-        return int(raw.strip())
+        valore = int(raw.strip())
     except (ValueError, AttributeError):
         raise ValueError(f"{name}_invalid") from None
+    if not BIGINT_MIN <= valore <= BIGINT_MAX:
+        raise ValueError(f"{name}_invalid")
+    return valore
 
 
 # Scopo: Parametro intero OPZIONALE da query string: None se assente o vuoto;
-#        solleva ValueError(f"{name}_invalid") se presente ma non numerico.
-#        Variante "optional" di qp_int_strict (che invece richiede un default).
-def qp_int_optional(raw: str | None, name: str) -> int | None:
+#        solleva ValueError(f"{name}_invalid") se presente ma non numerico, o
+#        fuori da [min_val, max_val]. Variante "optional" di qp_int_strict.
+# ⚠️ Il tetto e' il TIPO DOVE IL VALORE ARRIVA, non la colonna: un confronto
+#    `col = %s` regge qualunque intero (int4 = int8 si confronta), un PARAMETRO
+#    di funzione `integer` o un cast `::integer` no — 3000000000 diventa un
+#    bigint, la funzione non si risolve e la risposta e' un 500 al posto di un
+#    400. Default: bigint, sempre corretto (oltre, nessun intero PG). Chi passa
+#    il valore a un parametro `integer` dichiara `max_val=INTEGER_MAX` (e
+#    `min_val=INTEGER_MIN`), da `apps.core.services.payload_helpers`.
+def qp_int_optional(
+    raw: str | None,
+    name: str,
+    *,
+    min_val: int = BIGINT_MIN,
+    max_val: int = BIGINT_MAX,
+) -> int | None:
     if raw is None:
         return None
     cleaned = raw.strip()
     if cleaned == "":
         return None
     try:
-        return int(cleaned)
+        valore = int(cleaned)
     except ValueError as exc:
         raise ValueError(f"{name}_invalid") from exc
+    if not min_val <= valore <= max_val:
+        raise ValueError(f"{name}_invalid")
+    return valore
 
 
 # Scopo: Data ISO OPZIONALE da query string: None se assente o vuota;
@@ -222,6 +257,12 @@ def paginated_envelope(
     }
 
 
+# Un intero scritto in una stringa: solo cifre ASCII. ⛔ Non `str.isdigit()`:
+# accetta anche «²» o «٣», e il primo poi fa fallire `int()` con un ValueError
+# che non e' il `{key}_invalid` atteso dai chiamanti.
+_INTERO_DECIMALE_RE = re.compile(r"[0-9]+")
+
+
 # Scopo: Valida e converte il campo opzionale `int` mantenendo `None` se assente.
 def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = False) -> int | None:
     value = payload.get(key)
@@ -233,7 +274,7 @@ def optional_int(payload: dict[str, Any], key: str, *, zero_as_none: bool = Fals
         raise ValueError(f"{key}_invalid")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and value.strip().isdigit():
+    if isinstance(value, str) and _INTERO_DECIMALE_RE.fullmatch(value.strip()):
         return int(value.strip())
     raise ValueError(f"{key}_invalid")
 
@@ -262,6 +303,27 @@ def optional_iso_date(payload: dict[str, Any], key: str):
     if not isinstance(value, str):
         raise ValueError(f"{key}_invalid")
     return parse_iso_date(value)
+
+
+# Scopo: Valida e converte il campo opzionale ISTANTE (ISO 8601 con data e ora)
+#        mantenendo `None` se assente o vuoto. ⛔ L'OFFSET E' OBBLIGATORIO
+#        (`Z` o `+02:00`): senza, PostgreSQL leggerebbe l'ora nel fuso della
+#        SESSIONE (UTC), cioe' un'ora che nessuno ha scritto. Una stringa senza
+#        offset e' `ValueError` -> 400 `E_VALIDATION_INPUT`, non un'ipotesi.
+#        Brief un-solo-fuso-aziendale B-7 (2026-10-09).
+def optional_istante(payload: dict[str, Any], key: str) -> datetime | None:
+    value = payload.get(key)
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{key}_invalid")
+    try:
+        istante = datetime.fromisoformat(value.strip())
+    except ValueError as exc:
+        raise ValueError(f"{key}_invalid") from exc
+    if istante.tzinfo is None or istante.utcoffset() is None:
+        raise ValueError(f"{key}_senza_offset")
+    return istante
 
 
 # Scopo: Valida e converte il campo opzionale `uuid` mantenendo `None` se assente.

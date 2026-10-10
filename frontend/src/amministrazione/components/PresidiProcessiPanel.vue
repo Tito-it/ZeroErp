@@ -34,11 +34,25 @@
 //    descrizione intera, e il numero di presidi lo decide il catalogo DB: a
 //    17 viste e ~15.000 caratteri il pannello prendeva tutta la pagina e la
 //    lista dei processi finiva ad altezza zero, senza errore.
+// ⭐ PRIMA COSA FARE, POI COSA VUOL DIRE, POI A CHI TOCCA (brief-db-presidi-
+//    cosa-significa-cosa-fare §6, 2026-10-06). Il commento della vista è scritto
+//    per chi MANTIENE il presidio; chi legge questa schermata deve AGIRE, e ha
+//    due domande sole. Il testo per lui arriva dal catalogo (`azione`,
+//    `significato`, `chi_agisce`): la descrizione di prima resta, chiusa, sotto
+//    «Dettaglio tecnico». ⛔ Senza testo (presidio non ancora tradotto per chi
+//    agisce) si ripiega sulla descrizione aperta, com'era: mai sul vuoto.
+// ⭐ PER CAUSA (2026-10-10, brief-db-presidio-processi-testo-per-causa §5.4.3).
+//    Dove le righe di un presidio sono guasti diversi, il backend le consegna
+//    raggruppate in `cause`, ognuna col suo rimedio e il suo «chi agisce»; il
+//    testo del presidio in testa resta, ed è quello neutro. ⭐ Le cause sono
+//    TUTTE quelle accese, ognuna col suo `conteggio` (R-2, §6.4.4): anche una
+//    causa senza righe fra quelle mostrate, o su una vista che non si elenca.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import PresidioChip from './PresidioChip.vue'
+import { displayDate, displayTimestamp } from '../../core/utils/date'
 
 const { t } = useI18n()
 
@@ -57,6 +71,42 @@ const props = defineProps({
 const daGuardare = computed(() => props.presidi.filter((p) => p.da_guardare))
 const aZero = computed(() => props.presidi.filter((p) => !p.da_guardare))
 
+// Scopo: il badge di CHI SPEGNE il presidio, per ognuno dei tre valori del
+//        `CHECK chk_presidi_chi_agisce`. La frase e il colore sono
+//        presentazione; il valore lo decide il catalogo.
+// ⚠️ Un valore che questa mappa non conosce non ha badge, ma l'azione resta a
+//    video: il badge aggiunge «a chi tocca», non è la notizia.
+const CHI_AGISCE = {
+  AMMINISTRATORE: { labelKey: 'amministrazione.processi.chi_agisce.amministratore', severity: 'info' },
+  SISTEMISTA: { labelKey: 'amministrazione.processi.chi_agisce.sistemista', severity: 'warn' },
+  SVILUPPO: { labelKey: 'amministrazione.processi.chi_agisce.sviluppo', severity: 'secondary' },
+}
+
+function chiAgisce(p) {
+  return CHI_AGISCE[p.chi_agisce] ?? null
+}
+
+// Scopo: c'è il testo per chi agisce? Se sì la descrizione diventa il
+//        dettaglio tecnico, chiuso; se no è l'unica spiegazione, e resta aperta.
+function haTesto(p) {
+  return Boolean(p.azione || p.significato)
+}
+
+// Scopo: le righe del presidio PER CAUSA, quando il backend le consegna così
+//        (`cause`, brief-db-presidio-processi-testo-per-causa §5.4.3): le righe
+//        di quei presidi sono guasti diversi, e il rimedio sta accanto a
+//        ciascuno. Senza cause, un gruppo solo con tutte le righe.
+// ⛔ Il raggruppamento lo fa il backend: qui non si legge nessuna colonna per
+//    nome — quale sia la colonna della causa lo dice il catalogo, e il client
+//    non lo sa.
+function perCausa(p) {
+  return Boolean(p.cause?.length)
+}
+
+function gruppiRighe(p) {
+  return perCausa(p) ? p.cause : [{ righe: p.righe }]
+}
+
 // Scopo: le colonne da mostrare per una riga di presidio. Le viste hanno forme
 //        diverse e il pannello non le conosce: si leggono le chiavi che ci sono.
 // ⛔ Nessun elenco di colonne per vista: sarebbe un terzo posto in cui la forma
@@ -65,10 +115,25 @@ function colonne(righe) {
   return righe.length ? Object.keys(righe[0]) : []
 }
 
+// Scopo: la forma con cui il JSON trasporta un istante (`2026-10-09T13:47:54.044Z`,
+//        o con lo scostamento `+02:00`) e un giorno di calendario (`2026-10-09`).
+// ⚠️ Le colonne delle viste non hanno un tipo dichiarato qui (forme diverse per
+//    vista): il tipo si riconosce dalla FORMA, ed è affidabile perché la
+//    scrive il serializzatore del backend. ⛔ Senza fuso non è un istante: una
+//    stringa «ingenua» si lascia com'è, invece di leggerla in un fuso inventato.
+const ISTANTE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)$/
+const GIORNO = /^\d{4}-\d{2}-\d{2}$/
+
 // Scopo: valore di cella leggibile — `null` non è «vuoto», è «non si applica».
+// ⭐ Un istante si legge nell'ora dell'AZIENDA col BB delle date, come nel
+//    digest: fino al 2026-10-10 qui usciva grezzo, in UTC e in ISO.
 function cella(valore) {
   if (valore === null || valore === undefined) return '—'
   if (typeof valore === 'boolean') return valore ? t('common.yes') : t('common.no')
+  if (typeof valore === 'string') {
+    if (ISTANTE.test(valore)) return displayTimestamp(valore)
+    if (GIORNO.test(valore)) return displayDate(valore)
+  }
   return String(valore)
 }
 </script>
@@ -118,20 +183,81 @@ function cella(valore) {
 
         <p v-if="p.errore" class="app-presidio-errore">{{ p.errore }}</p>
 
-        <!-- ⭐ La descrizione è quella che il team DB ha scritto sulla vista:
-             è lì che sta la differenza fra «deve essere zero» e «deve calare». -->
-        <p v-if="p.descrizione" class="app-presidio-desc">{{ p.descrizione }}</p>
+        <!-- ⭐ Per chi agisce: prima cosa fare, poi cosa vuol dire, poi a chi
+             tocca. -->
+        <p v-if="p.azione" class="app-presidio-azione">{{ p.azione }}</p>
+        <p v-if="p.significato" class="app-presidio-significato">{{ p.significato }}</p>
+        <Tag
+          v-if="chiAgisce(p)"
+          class="app-presidio-chi"
+          :value="t(chiAgisce(p).labelKey)"
+          :severity="chiAgisce(p).severity"
+        />
 
-        <table v-if="p.righe.length" class="app-presidio-righe">
-          <thead>
-            <tr><th v-for="c in colonne(p.righe)" :key="c">{{ c }}</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="(r, i) in p.righe" :key="i">
-              <td v-for="c in colonne(p.righe)" :key="c">{{ cella(r[c]) }}</td>
-            </tr>
-          </tbody>
-        </table>
+        <!-- ⭐ La descrizione è quella che il team DB ha scritto sulla vista,
+             per chi mantiene il presidio. Accanto al testo per chi agisce è il
+             dettaglio tecnico, chiuso; da sola è l'unica spiegazione, aperta.
+             ⚠️ `<details>` nativo: apertura, tastiera e lettore di schermo
+             senza una riga di stato da tenere. -->
+        <details v-if="p.descrizione && haTesto(p)" class="app-presidio-dettaglio">
+          <summary>{{ t('amministrazione.processi.presidi_dettaglio_tecnico') }}</summary>
+          <p class="app-presidio-desc">{{ p.descrizione }}</p>
+        </details>
+        <p v-else-if="p.descrizione" class="app-presidio-desc">{{ p.descrizione }}</p>
+
+        <!-- ⭐ Per causa, quando il presidio le ha: ogni gruppo di righe col
+             SUO rimedio e il SUO «chi agisce» sopra. Senza cause, un gruppo
+             solo senza titolo: la tabella è la stessa, scritta una volta. -->
+        <div
+          v-for="(g, gi) in gruppiRighe(p)"
+          :key="g.causa ?? `gruppo-${gi}`"
+          :class="{ 'app-presidio-causa': perCausa(p) }"
+        >
+          <template v-if="perCausa(p)">
+            <div class="app-presidio-testa">
+              <span class="app-mono app-presidio-nome">
+                {{ g.causa ?? t('amministrazione.processi.presidi_causa_non_indicata') }}
+              </span>
+              <Tag
+                class="app-presidio-causa-conteggio"
+                :value="String(g.conteggio)"
+                severity="warn"
+              />
+              <Tag
+                v-if="chiAgisce(g)"
+                :value="t(chiAgisce(g).labelKey)"
+                :severity="chiAgisce(g).severity"
+              />
+              <!-- ⚠️ Le righe mostrate sono un campione del presidio: una causa
+                   può averne meno del suo conteggio, anche nessuna. Senza
+                   dirlo, tre righe su sette si leggerebbero «sono tre». Su una
+                   vista non elencabile lo dice già la testa del presidio. -->
+              <span
+                v-if="p.elencabili && g.righe.length < g.conteggio"
+                class="app-presidio-troncato"
+              >
+                {{ t('amministrazione.processi.presidi_causa_mostrate', { n: g.righe.length, tot: g.conteggio }) }}
+              </span>
+            </div>
+            <p v-if="g.azione" class="app-presidio-azione">{{ g.azione }}</p>
+            <p v-if="g.significato" class="app-presidio-significato">{{ g.significato }}</p>
+            <!-- ⛔ Mai il rimedio del presidio al posto di quello della causa:
+                 sarebbe il rimedio di un altro guasto. Si dice che manca. -->
+            <p v-if="!haTesto(g)" class="app-presidio-troncato">
+              {{ t('amministrazione.processi.presidi_causa_senza_testo') }}
+            </p>
+          </template>
+          <table v-if="g.righe.length" class="app-presidio-righe">
+            <thead>
+              <tr><th v-for="c in colonne(g.righe)" :key="c">{{ c }}</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in g.righe" :key="i">
+                <td v-for="c in colonne(g.righe)" :key="c">{{ cella(r[c]) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- I presidi a zero, tutti insieme: la striscia dice «questi sono
@@ -158,6 +284,23 @@ function cella(valore) {
 .app-presidio-nome { font-weight: 600; }
 .app-presidio-troncato { font-size: 0.8rem; opacity: 0.7; }
 .app-presidio-desc { margin: 0.4rem 0 0.6rem; font-size: 0.85rem; opacity: 0.85; }
+/* L'azione è la prima cosa che si legge: piena, non attenuata. */
+.app-presidio-azione { margin: 0.5rem 0 0.2rem; font-weight: 600; }
+.app-presidio-significato { margin: 0 0 0.4rem; font-size: 0.9rem; }
+.app-presidio-chi { margin-bottom: 0.4rem; }
+/* Un gruppo di righe con la stessa causa: separato dal precedente, il rimedio
+   sopra le sue righe. */
+.app-presidio-causa {
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--app-border-color);
+}
+/* Il conteggio di una causa: cifre a larghezza fissa, perché i gruppi stanno
+   uno sotto l'altro e i numeri si confrontano a colpo d'occhio. */
+.app-presidio-causa-conteggio { font-variant-numeric: tabular-nums; }
+.app-presidio-dettaglio > summary {
+  cursor: pointer; font-size: 0.8rem; opacity: 0.7;
+}
 /* Il motivo per cui un presidio non si è letto: si legge, non si attenua. */
 .app-presidio-errore {
   margin: 0.4rem 0 0.2rem;

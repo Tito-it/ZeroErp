@@ -11,19 +11,19 @@
 | id | bigint | NO |  |
 | template_documento_id | bigint | NO |  |
 | versione | integer | NO |  |
-| stato | character varying | NO | 'BOZZA'::character varying |
+| stato | character varying(30) | NO | 'BOZZA'::character varying |
 | titolo | text | NO |  |
-| formato_template | character varying | NO | 'HTML'::character varying |
+| formato_template | character varying(30) | NO | 'HTML'::character varying |
 | html_template | text | NO |  |
 | css_template | text | YES |  |
 | markdown_template | text | YES |  |
 | render_engine_id | bigint | NO |  |
-| page_format | character varying | NO | 'A4'::character varying |
-| page_orientation | character varying | NO | 'PORTRAIT'::character varying |
-| margin_top_mm | numeric | NO | 10 |
-| margin_right_mm | numeric | NO | 10 |
-| margin_bottom_mm | numeric | NO | 10 |
-| margin_left_mm | numeric | NO | 10 |
+| page_format | character varying(30) | NO | 'A4'::character varying |
+| page_orientation | character varying(20) | NO | 'PORTRAIT'::character varying |
+| margin_top_mm | numeric(8,2) | NO | 10 |
+| margin_right_mm | numeric(8,2) | NO | 10 |
+| margin_bottom_mm | numeric(8,2) | NO | 10 |
+| margin_left_mm | numeric(8,2) | NO | 10 |
 | valido_dal | date | YES |  |
 | valido_al | date | YES |  |
 | context_schema | jsonb | NO | '{}'::jsonb |
@@ -42,16 +42,20 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_template_documenti_versioni_context_schema_obj |  |
-| CHECK | chk_template_documenti_versioni_formato |  |
 | CHECK | chk_template_documenti_versioni_html_template_non_vuoto |  |
+| CHECK | chk_template_documenti_versioni_margin_bottom_mm_finito |  |
+| CHECK | chk_template_documenti_versioni_margin_left_mm_finito |  |
+| CHECK | chk_template_documenti_versioni_margin_right_mm_finito |  |
+| CHECK | chk_template_documenti_versioni_margin_top_mm_finito |  |
 | CHECK | chk_template_documenti_versioni_margini_non_neg |  |
-| CHECK | chk_template_documenti_versioni_orientation |  |
-| CHECK | chk_template_documenti_versioni_page_format |  |
 | CHECK | chk_template_documenti_versioni_stato |  |
 | CHECK | chk_template_documenti_versioni_titolo_non_vuoto |  |
 | CHECK | chk_template_documenti_versioni_valido_dal_pubblicata |  |
 | CHECK | chk_template_documenti_versioni_versione_contesto_pos |  |
 | CHECK | chk_template_documenti_versioni_versione_pos |  |
+| FOREIGN KEY | fk_template_documenti_versioni_formati_pagina | page_format |
+| FOREIGN KEY | fk_template_documenti_versioni_formati_template | formato_template |
+| FOREIGN KEY | fk_template_documenti_versioni_orientamenti_pagina | page_orientation |
 | FOREIGN KEY | template_documenti_versioni_render_engine_id_fkey | render_engine_id |
 | FOREIGN KEY | template_documenti_versioni_template_documento_id_fkey | template_documento_id |
 | PRIMARY KEY | template_documenti_versioni_pkey | id |

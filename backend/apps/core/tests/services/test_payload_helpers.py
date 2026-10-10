@@ -43,6 +43,7 @@ Indice test eseguiti:
 32) test_optional_bool_none                     — None -> None
 33) test_optional_bool_str                      — "true" rifiutato
 34) test_optional_bool_int                      — 1 rifiutato
+34b) test_require_bool_*                        — vero/falso passano; assente, None, "true" rifiutati col campo
 35) test_optional_meta_absent                   — assente -> None
 36) test_optional_meta_none                     — None esplicito -> {}
 37) test_optional_meta_dict                     — dict passa
@@ -88,6 +89,7 @@ Indice test eseguiti:
 76) test_optional_smallint_porta_il_campo         — 2026-09-21 (presidio C2 §3-bis.4): i tre rifiuti nominano `field`, come le sorelle
 77) test_optional_bool_porta_il_campo             — idem
 78) test_optional_meta_porta_il_campo             — idem, sui due rifiuti (JSON rotto, non oggetto)
+79) test_optional_upper                         — 2026-10-09 (regola del 2): strip + upper, vuoto -> None; non-stringa -> VALIDATION col campo
 """
 
 from decimal import Decimal
@@ -186,6 +188,20 @@ class TestExtractOptionalString(_Base):
         with self.assertRaisesValidation() as ctx:
             self.v.extract_optional_string({"descrizione": "abcdef"}, "descrizione", nullable=True, max_len=5)
         self.assertEqual(ctx.exception.context.get("field"), "descrizione")
+
+
+class TestOptionalUpper(_Base):
+    # 79. La forma di un codice a vocabolario maiuscolo (il sesso): prima era
+    #     scritta a mano in quattro punti, e `.strip()` su un non-stringa era
+    #     un 500. Il valore ammesso non lo giudica l'helper.
+    def test_optional_upper(self):
+        for raw, atteso in ((" x ", "X"), ("f", "F"), ("  ", None), (None, None), ("", None)):
+            with self.subTest(raw=raw):
+                self.assertEqual(self.v.optional_upper({"sesso": raw}, "sesso"), atteso)
+        self.assertIsNone(self.v.optional_upper({}, "sesso"))
+        with self.assertRaisesValidation() as ctx:
+            self.v.optional_upper({"sesso": 1}, "sesso")
+        self.assertEqual(ctx.exception.context.get("field"), "sesso")
 
 
 class TestRequirePositiveInt(_Base):
@@ -300,6 +316,21 @@ class TestOptionalBool(_Base):
     def test_optional_bool_int(self):
         with self.assertRaisesValidation():
             self.v.optional_bool({"attivo": 1}, "attivo")
+
+    def test_require_bool_true_false(self):
+        self.assertIs(self.v.require_bool({"attivo": True}, "attivo"), True)
+        self.assertIs(self.v.require_bool({"attivo": False}, "attivo"), False)
+
+    # Scopo: assente e None non sono «invariato»: il comando vuole il valore.
+    def test_require_bool_assente_o_none_rifiutato(self):
+        for corpo in ({}, {"attivo": None}):
+            with self.assertRaises(ServiceError) as ctx:
+                self.v.require_bool(corpo, "attivo")
+            self.assertEqual(ctx.exception.context.get("field"), "attivo", corpo)
+
+    def test_require_bool_str_rifiutato(self):
+        with self.assertRaisesValidation():
+            self.v.require_bool({"attivo": "true"}, "attivo")
 
 
 class TestDecimal(_Base):

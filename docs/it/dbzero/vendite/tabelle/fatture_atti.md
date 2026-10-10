@@ -11,17 +11,17 @@
 | id | bigint | NO |  |
 | fattura_id | bigint | NO |  |
 | contratto_id | bigint | NO |  |
-| id_documento | character varying | NO |  |
+| id_documento | character varying(30) | NO |  |
 | data_documento | date | NO |  |
-| codice_cig | character varying | YES |  |
-| codice_cup | character varying | YES |  |
-| codice_commessa | character varying | YES |  |
+| codice_cig | character varying(15) | YES |  |
+| codice_cup | character varying(15) | YES |  |
+| codice_commessa | character varying(100) | YES |  |
 | storicizza | boolean | NO | false |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

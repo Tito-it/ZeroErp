@@ -122,7 +122,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, v.totale,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti),
                             'ruolo', v.ruolo)
@@ -135,7 +135,7 @@ SELECT * FROM ins;
 CREATE TEMP TABLE tmp_rate AS
 WITH ins AS (
   INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo, meta)
-  SELECT f.id, v.n, current_date + v.n, v.importo,
+  SELECT f.id, v.n, script.fn_data_operativa() + v.n, v.importo,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'rata', v.et)
     FROM (VALUES ('F', 1, 100.00, 'R1'),
                  ('F', 2, 200.00, 'R2'),
@@ -150,8 +150,8 @@ SELECT * FROM ins;
 CREATE TEMP TABLE tmp_contabile AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa(),
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -199,7 +199,7 @@ SELECT throws_like(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
      billing_account_id, scadenza_id, stato_id, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_R1_PIENA', current_date, 100.00,
+SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_R1_PIENA', script.fn_data_operativa(), 100.00,
        (SELECT id FROM tmp_fatture WHERE ruolo = 'F'), r.billing_account_id,
        (SELECT id FROM tmp_rate WHERE etichetta = 'R1'), r.stato_abbinata_id,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
@@ -234,7 +234,7 @@ SELECT throws_like(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
      billing_account_id, scadenza_id, stato_id, forzata, motivo_forzatura, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_R1_FORZATA', current_date, 50.00,
+SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_R1_FORZATA', script.fn_data_operativa(), 50.00,
        (SELECT id FROM tmp_fatture WHERE ruolo = 'F'), r.billing_account_id,
        (SELECT id FROM tmp_rate WHERE etichetta = 'R1'), r.stato_abbinata_id,
        true, 'Il cliente ha pagato due volte lo stesso avviso',
@@ -290,7 +290,7 @@ SELECT is(
 SELECT throws_ok(
   format($q$INSERT INTO pagamenti.vendite_movimenti
              (contabile_riga_id, data_effettiva, data_registrazione, importo, scadenza_id)
-           SELECT cr.id, current_date, current_date, 1.00, %s
+           SELECT cr.id, script.fn_data_operativa(), script.fn_data_operativa(), 1.00, %s
              FROM pagamenti.vendite_contabili_righe cr
             WHERE cr.riferimento_ente = 'PGTAP_R1_PIENA'$q$,
          (SELECT id FROM tmp_rate WHERE etichetta = 'R2')),
@@ -313,8 +313,8 @@ SELECT ok(
 CREATE TEMP TABLE tmp_contabile_fondo AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_fondo_id FROM tmp_refs),
-    p_data_contabile        => current_date - 1,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa() - 1,
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -323,7 +323,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
      billing_account_id, scadenza_id, stato_id, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile_fondo), 'PGTAP_R3_FONDO', current_date, 50.00,
+SELECT (SELECT contabile_id FROM tmp_contabile_fondo), 'PGTAP_R3_FONDO', script.fn_data_operativa(), 50.00,
        (SELECT id FROM tmp_fatture WHERE ruolo = 'F'), r.billing_account_id,
        (SELECT id FROM tmp_rate WHERE etichetta = 'R3'), r.stato_abbinata_id,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
@@ -355,8 +355,8 @@ SELECT is(
 CREATE TEMP TABLE tmp_contabile_contraria AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date - 2,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa() - 2,
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -365,7 +365,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
      billing_account_id, scadenza_id, stato_id, forzata, motivo_forzatura, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile_contraria), 'PGTAP_R2_CONTRARIA', current_date, -30.00,
+SELECT (SELECT contabile_id FROM tmp_contabile_contraria), 'PGTAP_R2_CONTRARIA', script.fn_data_operativa(), -30.00,
        (SELECT id FROM tmp_fatture WHERE ruolo = 'F'), r.billing_account_id,
        (SELECT id FROM tmp_rate WHERE etichetta = 'R2'), r.stato_abbinata_id,
        true, 'Rimborso calcolato su un dato vecchio',
@@ -391,8 +391,8 @@ SELECT is(
 CREATE TEMP TABLE tmp_contabile_sospesa AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date - 3,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa() - 3,
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -401,7 +401,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
      billing_account_id, scadenza_id, stato_id, motivo_sospeso, meta)
-SELECT (SELECT contabile_id FROM tmp_contabile_sospesa), 'PGTAP_R3_SOSPESA', current_date, 999.00,
+SELECT (SELECT contabile_id FROM tmp_contabile_sospesa), 'PGTAP_R3_SOSPESA', script.fn_data_operativa(), 999.00,
        (SELECT id FROM tmp_fatture WHERE ruolo = 'F'), r.billing_account_id,
        (SELECT id FROM tmp_rate WHERE etichetta = 'R3'), r.stato_sospesa_id,
        'in attesa di capire di chi e''',

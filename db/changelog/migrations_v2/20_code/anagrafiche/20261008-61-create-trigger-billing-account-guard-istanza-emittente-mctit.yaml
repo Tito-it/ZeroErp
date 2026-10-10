@@ -1,0 +1,83 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BILLING ACCOUNT NUOVO NASCE SULL'EMITTENTE DEI SUOI FRATELLI DI ISTANZA
+#   NASCE anagrafiche.trgfn_billing_account_guard_istanza_emittente
+#   + trigger trg_billing_account_z95_guard_istanza_emittente_ins
+#     (AFTER INSERT ON anagrafiche.billing_account).
+#   Brief: brief-db-istanza-nasce-col-ba (R-7, §6.4)
+#
+# -- PERCHE' AFTER, E PERCHE' z95 -----------------------------------
+#   L'emittente del BA nuovo nasce dal collegamento creato da
+#   trg_billing_account_z90_link_ef_ins, che e' AFTER INSERT: un guard BEFORE
+#   leggerebbe l'emittente predefinito al posto di quello vero. z95 viene
+#   dopo z90 in ordine alfabetico, come trg_billing_account_z95_guard_albero_emittente_ins_upd.
+#   Quando il collegamento nasce, scatta anche il trigger sul collegamento
+#   (-62): i due controlli si ripetono sullo stesso BA, come per l'albero. Il
+#   trigger sul BA resta perche' senza sessione il collegamento non nasce (il
+#   BA risolve al predefinito) e quello sul collegamento non scatterebbe.
+#
+# -- SOLO INSERT ----------------------------------------------------
+#   istanza_utility_id e utility_id del BA sono bloccati dal lock di colonna
+#   (E_BA_ISTANZA_IMMUTABILE): un BA non cambia istanza, quindi non cambia
+#   fratelli. L'emittente cambia solo dal collegamento, presidiato da -62.
+#
+# Ritorno indietro: DROP del trigger e della funzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261008-61-create-trigger-billing-account-guard-istanza-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261008-61-create-trigger-billing-account-guard-istanza-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Trigger AFTER INSERT su billing_account: il BA nuovo risolve allo stesso emittente dei
+        fratelli di istanza (anagrafiche.fn_guard_istanza_ba_emittente). Brief:
+        brief-db-istanza-nasce-col-ba (R-7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_istanza_emittente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- Il lavoro sta nel guard, SECURITY DEFINER perche' deve
+                  -- vedere i fratelli di istanza anche fuori dal perimetro di
+                  -- chi scrive. Qui resta solo il quando.
+                  PERFORM anagrafiche.fn_guard_istanza_ba_emittente(NEW.id);
+                  RETURN NULL;   -- trigger AFTER: il valore di ritorno e' ignorato
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_istanza_emittente()
+              IS 'Trigger AFTER INSERT su anagrafiche.billing_account: delega ad anagrafiche.fn_guard_istanza_ba_emittente la verifica che il BA nuovo risolva allo stesso emittente degli altri BA della sua istanza (E_ISTANZA_EMITTENTI_DIVERSI). AFTER e z95 perche'' l''emittente del BA nasce dal collegamento creato da trg_billing_account_z90_link_ef_ins, AFTER INSERT. Solo INSERT: la coppia (istanza, utility) del BA e'' bloccata (E_BA_ISTANZA_IMMUTABILE) e l''emittente cambia solo dal collegamento (trgfn_efba_guard_istanza_emittente). Brief: brief-db-istanza-nasce-col-ba (R-7).';
+
+              CREATE TRIGGER trg_billing_account_z95_guard_istanza_emittente_ins
+                AFTER INSERT ON anagrafiche.billing_account
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_billing_account_guard_istanza_emittente();
+
+              COMMENT ON TRIGGER trg_billing_account_z95_guard_istanza_emittente_ins
+                ON anagrafiche.billing_account
+              IS 'Un''istanza ha billing account di un solo emittente (E_ISTANZA_EMITTENTI_DIVERSI). Dopo trg_billing_account_z90_link_ef_ins, che crea il collegamento all''emittente. Brief: brief-db-istanza-nasce-col-ba (R-7).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_z95_guard_istanza_emittente_ins ON anagrafiche.billing_account;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_billing_account_guard_istanza_emittente();

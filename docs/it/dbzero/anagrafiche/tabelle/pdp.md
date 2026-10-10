@@ -9,7 +9,7 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| pdp | character varying | NO |  |
+| pdp | character varying(30) | NO |  |
 | utility_id | bigint | NO |  |
 | indirizzo_dettaglio_id | bigint | NO |  |
 | cliente_id | bigint | YES |  |

@@ -23,6 +23,8 @@ Indice test eseguiti:
  9) test_portale_serializer_allowed_ruoli — solo clienti/fornitori portale
 10) test_shop_serializer_allowed_ruoli — solo SHOP_CUSTOMER
 11) test_password_non_ripulita_su_ogni_porta — la password arriva ad authenticate com'e' digitata (S-5)
+12) ChiaveIngressoPerPortaTests — nome utente per admin, email per portale e shop (L-4, D-9):
+    campo, normalizzazione, ricerca della credenziale, chiave passata ad `authenticate`
 """
 
 from unittest import TestCase
@@ -134,7 +136,7 @@ class MultiVesteTokenSerializerValidateTests(TestCase):
         """Happy path: l'identita esiste -> il refresh riceve i 2 claim
         custom e data viene rigenerato con i nuovi token."""
         mock_super_validate.side_effect = self._fake_super_validate
-        mock_repo.find_identita_attiva_for_ruoli.return_value = {
+        mock_repo.find_veste_utilizzabile_per_ruoli.return_value = {
             "id": 99,
             "soggetto_ruolo_id": 7,
             "ruolo_applicativo": RUOLO_APPLICATIVO_OPERATORE,
@@ -151,7 +153,7 @@ class MultiVesteTokenSerializerValidateTests(TestCase):
             JWT_CLAIM_RUOLO_APPLICATIVO, RUOLO_APPLICATIVO_OPERATORE
         )
         # Repo chiamato con i ruoli del namespace
-        mock_repo.find_identita_attiva_for_ruoli.assert_called_once_with(
+        mock_repo.find_veste_utilizzabile_per_ruoli.assert_called_once_with(
             auth_user_id=42,
             ruoli_applicativi=(RUOLO_APPLICATIVO_OPERATORE,),
         )
@@ -168,7 +170,7 @@ class MultiVesteTokenSerializerValidateTests(TestCase):
     def test_validate_veste_non_attiva(self, mock_repo, mock_super_validate):
         """Identita assente per il namespace -> VesteNonAttivaError (403)."""
         mock_super_validate.side_effect = self._fake_super_validate
-        mock_repo.find_identita_attiva_for_ruoli.return_value = None
+        mock_repo.find_veste_utilizzabile_per_ruoli.return_value = None
 
         ser = _AdminSerializerUnderTest()
         with self.assertRaises(VesteNonAttivaError) as ctx:
@@ -214,6 +216,55 @@ class PasswordComeDigitataTests(TestCase):
     def test_password_non_ripulita_su_ogni_porta(self):
         for cls in (AdminTokenSerializer, PortaleTokenSerializer, ShopTokenSerializer):
             with self.subTest(serializer=cls.__name__):
-                ser = cls(data={"username": " tid ", "password": " segreta "})
+                ser = cls()
                 self.assertEqual(ser.fields["password"].run_validation(" segreta "), " segreta ")
-                self.assertEqual(ser.fields["username"].run_validation(" tid "), "tid")
+                self.assertEqual(ser.fields[ser.username_field].run_validation(" tid "), "tid")
+
+
+class ChiaveIngressoPerPortaTests(TestCase):
+    """L-4, D-9: la chiave d'ingresso e' della porta — il nome utente per
+    admin, l'email per portale e shop. Il campo normalizza, e la ricerca della
+    credenziale segue lo stesso valore (lookup, `authenticate` e impronta del
+    freno leggono il campo)."""
+
+    def test_admin_entra_col_nome_utente_esatto(self):
+        ser = AdminTokenSerializer()
+        self.assertEqual(ser.username_field, "username")
+        # Il nome utente non si abbassa: `get_by_natural_key` e' esatto.
+        self.assertEqual(ser.fields["username"].run_validation(" Tid "), "Tid")
+        self.assertNotIn("email", ser.fields)
+
+    def test_portale_e_shop_entrano_con_l_email_normalizzata(self):
+        for cls in (PortaleTokenSerializer, ShopTokenSerializer):
+            with self.subTest(serializer=cls.__name__):
+                ser = cls()
+                self.assertEqual(ser.username_field, "email")
+                self.assertNotIn("username", ser.fields)
+                self.assertEqual(ser.fields["email"].run_validation("  Ada@Example.IT "), "ada@example.it")
+
+    @patch("apps.core.api.multi_veste_token_serializer.credenziale_per_nome_utente")
+    def test_admin_trova_la_credenziale_per_nome_utente(self, mock_per_nome):
+        AdminTokenSerializer.trova_credenziale("tid")
+        mock_per_nome.assert_called_once_with("tid")
+
+    @patch("apps.core.api.multi_veste_token_serializer.credenziale_per_email")
+    def test_portale_e_shop_trovano_la_credenziale_per_email(self, mock_per_email):
+        for cls in (PortaleTokenSerializer, ShopTokenSerializer):
+            mock_per_email.reset_mock()
+            cls.trova_credenziale("ada@example.it")
+            mock_per_email.assert_called_once_with("ada@example.it")
+
+    def test_authenticate_riceve_la_chiave_della_porta(self):
+        """Il validate di SimpleJWT passa ad `authenticate` il campo della porta:
+        `email=` arriva a `CredenzialePerEmailBackend`."""
+        user = MagicMock(id=5, is_active=True)
+        with patch("rest_framework_simplejwt.serializers.authenticate", return_value=user) as mock_auth, \
+                patch.object(PortaleTokenSerializer, "_auth_repo") as repo, \
+                patch.object(PortaleTokenSerializer, "get_token", return_value=MagicMock()), \
+                patch("apps.core.api.multi_veste_token_serializer.emetti_refresh_veste") as emetti:
+            repo.find_veste_utilizzabile_per_ruoli.return_value = {"id": 1, "ruolo_applicativo": RUOLO_APPLICATIVO_CLIENTE_PORTALE}
+            emetti.return_value = MagicMock(access_token="a")
+            ser = PortaleTokenSerializer(data={"email": " Ada@X.it ", "password": "p"})
+            self.assertTrue(ser.is_valid(), ser.errors)
+        self.assertEqual(mock_auth.call_args.kwargs["email"], "ada@x.it")
+        self.assertNotIn("username", mock_auth.call_args.kwargs)

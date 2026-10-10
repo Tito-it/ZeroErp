@@ -18,6 +18,15 @@
 --      2026-07-18: CONFERMATO ha fase CHIUSO — un reso confermato E' concluso,
 --      la ri-consegna e' un altro documento; l'annullo resta come storno)
 --   8) reso ANNULLATO -> esito NEGATIVO, terminale true
+--   10) ramo a chiave id ATTRAVERSO fn_stato_sorgente: il DDT CONSEGNATO si
+--       trova cercando la chiave numerica (rev 2026-10-05, 20261005-23)
+--   11) forma non canonica dell'id ('0' davanti) -> UNKNOWN, come il
+--       confronto testuale di prima
+--   12) la chiave nativa del ramo e' coerente col testo: sorgente_chiave_id =
+--       ddt.id e sorgente_chiave_uuid NULL
+--   13) script.vw_pratica_doc_sorgente risolve un collegamento a chiave id:
+--       una pratica col DDT CONSEGNATO come ROOT proietta POSITIVO/terminale
+--       (rev 2026-10-05, 20261005-24: la LATERAL per chiave nativa, ramo bigint)
 --   9) unicita': al piu' una riga per (sorgente_tipo_id, sorgente_uid) su
 --      entrambi i rami nuovi
 -- ------------------------------------------------------------
@@ -38,7 +47,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(13);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
 SET LOCAL app.current_user_id = '1';
@@ -60,7 +69,14 @@ SELECT
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
@@ -73,7 +89,10 @@ SELECT
   --   Oggi i due valori coincidono per caso — un solo emittente ha documenti —
   --   e proprio per questo il test passava: coincidenza, non costruzione.
   script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
+  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+  --   righe non si scrivono piu' (20261008-90).
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
@@ -94,7 +113,7 @@ BEGIN
   SELECT * INTO r FROM tmp_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
           DATE '2026-07-15', 'CONSEGNATO', r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_stato_sorgente'))
   RETURNING id INTO v_ord;
@@ -103,6 +122,8 @@ BEGIN
     qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
   VALUES (v_ord, 1, r.articolo_id, 'Riga proiezione', 10, 10, 25, r.iva_id, true, false,
           jsonb_build_object('test_scope','pgtap_stato_sorgente'));
+  -- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90).
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
   v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
@@ -217,6 +238,68 @@ SELECT is(
                                     (SELECT sorgente_reso_id FROM tmp_refs))
        GROUP BY 1,2 HAVING COUNT(*) > 1) dup),
   0, '9) al piu'' una riga per (sorgente_tipo_id, sorgente_uid) sui rami DDT e RESO');
+
+
+-- 10-12) La chiave si cerca nel suo TIPO (rev 2026-10-05, 20261005-23).
+--   fn_stato_sorgente cerca sorgente_chiave_id (bigint), non piu' il testo:
+--   e' l'unico confronto che sotto RLS arriva all'indice. Il ramo a chiave id
+--   si prova su un documento COSTRUITO qui, non su quelli che il DB contiene.
+SELECT results_eq(
+  format($$SELECT risolto, esito, terminale FROM pratiche.fn_stato_sorgente(%s, %L)$$,
+         (SELECT sorgente_ddt_id FROM tmp_refs), (SELECT ddt_id FROM tmp_cons)::text),
+  $$VALUES (true, 'POSITIVO'::text, true)$$,
+  '10) fn_stato_sorgente trova il DDT per chiave id (ramo bigint)');
+
+SELECT results_eq(
+  format($$SELECT risolto, stato_codice_interno FROM pratiche.fn_stato_sorgente(%s, %L)$$,
+         (SELECT sorgente_ddt_id FROM tmp_refs), '0' || (SELECT ddt_id FROM tmp_cons)::text),
+  $$VALUES (false, 'UNKNOWN'::text)$$,
+  '11) id in forma non canonica (zero davanti) -> UNKNOWN, come il confronto testuale');
+
+SELECT is(
+  (SELECT (v.sorgente_chiave_id, v.sorgente_chiave_uuid IS NULL) FROM script.vw_stato_sorgente v
+    WHERE v.sorgente_tipo_id=(SELECT sorgente_ddt_id FROM tmp_refs)
+      AND v.sorgente_uid=(SELECT ddt_id FROM tmp_cons)::text),
+  ((SELECT ddt_id FROM tmp_cons)::bigint, true),
+  '12) chiave nativa del ramo DDT coerente col testo: sorgente_chiave_id = id, uuid NULL');
+
+
+-- 13) La vista per pratica risolve un collegamento a chiave id (20261005-24).
+--   I test d'ancora di test-proiezione-stato-sorgente collegano solo preventivi
+--   (chiave uid) e commesse (senza ramo): il ramo bigint della LATERAL di
+--   vw_pratica_doc_sorgente si prova qui, su un DDT costruito da questo file.
+--   Pratica minima come nei test d'ancora; emittente DERIVATO da chi agisce.
+-- ⚠️ Tipo e pratica in DUE istruzioni: alla nascita del tipo il trigger di
+--   bootstrap ne pubblica la definizione di workflow a fine istruzione, e una
+--   pratica inserita nella stessa (CTE di scrittura) non la trova.
+CREATE TEMP TABLE tmp_prat_ddt_tp AS
+WITH ins AS (
+  INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo)
+  VALUES ('TEST_PSS_DDT', 'TEST_PSS_DDT', 'Tipo test proiezione DDT', true)
+  ON CONFLICT (codice_interno) DO UPDATE SET descrizione = EXCLUDED.descrizione
+  RETURNING id
+) SELECT id AS tp_id FROM ins;
+
+CREATE TEMP TABLE tmp_prat_ddt AS
+WITH ins AS (
+  INSERT INTO pratiche.pratiche (emittente_fiscale_id, tipo_prestazione_id, soggetto_id, stato_id, priorita_id)
+  VALUES (script.fn_pgtap_emittente_operatore(), (SELECT tp_id FROM tmp_prat_ddt_tp),
+          (SELECT id FROM anagrafiche.soggetti ORDER BY id LIMIT 1),
+          (SELECT id FROM config.stati_pratiche WHERE codice_interno = 'APERTA'),
+          (SELECT id FROM config.priorita_pratiche WHERE codice_interno = 'NORMALE'))
+  RETURNING id
+) SELECT id AS pratica_id FROM ins;
+
+INSERT INTO pratiche.pratiche_sorgenti (pratica_id, sorgente_tipo_id, sorgente_uid, ruolo_link, flusso_id)
+VALUES ((SELECT pratica_id FROM tmp_prat_ddt), (SELECT sorgente_ddt_id FROM tmp_refs),
+        (SELECT ddt_id FROM tmp_cons)::text, 'ROOT', NULL);
+
+SELECT results_eq(
+  $$SELECT risolto, esito, terminale
+      FROM script.vw_pratica_doc_sorgente
+     WHERE pratica_id = (SELECT pratica_id FROM tmp_prat_ddt)$$,
+  $$VALUES (true, 'POSITIVO'::text, true)$$,
+  '13) vw_pratica_doc_sorgente risolve il DDT collegato per chiave id (ramo bigint della LATERAL)');
 
 SELECT * FROM finish();
 ROLLBACK;

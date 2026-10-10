@@ -10,9 +10,9 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | pipeline_id | bigint | NO |  |
-| task_code | character varying | NO |  |
+| task_code | character varying(64) | NO |  |
 | annullabile | boolean | NO | true |
-| resume_mode | character varying | NO | 'RESET_STEP'::character varying |
+| resume_mode | character varying(16) | NO | 'RESET_STEP'::character varying |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |

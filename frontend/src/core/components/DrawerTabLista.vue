@@ -79,6 +79,11 @@ defineProps({
   sortField: { type: String, default: null },
   sortOrder: { type: Number, default: null },
   dataKey: { type: String, default: 'id' },
+  // La riga aperta nel form inline (valore di `dataKey`) e se il click apre
+  // le righe: inoltrate a <ListaConfigurabile>, che le evidenzia e spegne
+  // l'hover (vedi le due prop la').
+  rigaAttiva: { type: [String, Number], default: null },
+  righeCliccabili: { type: Boolean, default: true },
 
   // --- testata (dallo scaffolding) ---
   pageActions: { type: Array, default: () => [] },
@@ -210,6 +215,8 @@ defineExpose({
       :sort-field="sortField"
       :sort-order="sortOrder"
       :data-key="dataKey"
+      :riga-attiva="rigaAttiva"
+      :righe-cliccabili="righeCliccabili"
       @page="emit('page', $event)"
       @sort="emit('sort', $event)"
       @row-click="emit('row-click', $event)"

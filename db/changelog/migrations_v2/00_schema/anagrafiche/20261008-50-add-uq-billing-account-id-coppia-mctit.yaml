@@ -1,0 +1,57 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BILLING ACCOUNT SI NOMINA INSIEME ALLA SUA COPPIA (istanza, utility)
+#   UNIQUE (id, istanza_utility_id, utility_id) su anagrafiche.billing_account.
+#   Brief: brief-db-istanza-nasce-col-ba (R-2, §6.3)
+#
+# -- PERCHE' --------------------------------------------------------
+#   E' la destinazione delle FK composte dei tre documenti precontrattuali
+#   (preventivi -52, offerte -53, contratti -54): un documento porta
+#   billing_account_id E la coppia (istanza_utility_id, utility_id), e fino a
+#   oggi nessun vincolo diceva che il BA fosse quello della coppia. Una FK
+#   composta pretende un indice unico sulle colonne di destinazione.
+#
+# -- PERCHE' NON BASTANO GLI INDICI CHE CI SONO -----------------------
+#   uq_billing_account_id_istanza_utility (id, istanza_utility_id) serve la FK
+#   di anagrafiche.clienti e non porta la utility; uq_billing_instance_utility
+#   (istanza_utility_id, utility_id) non porta l'id. Il vincolo nuovo e'
+#   logicamente implicato dalla PK, quindi non puo' fallire sulle righe
+#   esistenti: nessuna preCondition sui dati.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261008-50-add-uq-billing-account-id-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261008-50-add-uq-billing-account-id-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        UNIQUE (id, istanza_utility_id, utility_id) su anagrafiche.billing_account: destinazione
+        delle FK composte di preventivi, offerte e contratti. Brief: brief-db-istanza-nasce-col-ba
+        (R-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.billing_account
+                ADD CONSTRAINT uq_billing_account_id_coppia
+                UNIQUE (id, istanza_utility_id, utility_id);
+
+              COMMENT ON CONSTRAINT uq_billing_account_id_coppia ON anagrafiche.billing_account
+              IS 'Destinazione delle FK composte (billing_account_id, istanza_utility_id, utility_id) di vendite.preventivi, vendite.offerte_commerciali e vendite.contratti: il billing account di un documento e'' quello della SUA coppia (istanza, utility). Implicato dalla PK, non aggiunge un vincolo sui dati del billing account. Brief: brief-db-istanza-nasce-col-ba (R-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.billing_account DROP CONSTRAINT uq_billing_account_id_coppia;

@@ -322,7 +322,7 @@ GET /api/v1/amm-software/email-log/{id}/
 ```
 
 Admin vede tutti gli ambiti. Filtri: `search`, `stato`, `ambito`, `pratica_id`,
-`unita_organizzativa_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`, `offset`,
+`unita_organizzativa_id`, `data_da`/`data_a` (`YYYY-MM-DD`, giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09), `data_a` incluso; malformate → 400), `limit`, `offset`,
 `order_by` (default `data_insert`), `order_dir` (default `desc`). Risposta paginata
 come le altre liste admin. `search`: le colonne le decide il catalogo della lista
 `config.email_log`; sotto 3 caratteri il termine non filtra (e' un registro, non
@@ -365,7 +365,10 @@ Regole sull'`ambito` (`E_EMAIL_OP`, 400):
 
 - assente o fuori elenco → rifiutato: chi crea una bozza dichiara di che cosa e';
 - diverso da `SISTEMA` → serve un'azienda attiva nel token: la bozza prende
-  l'emittente **attivo** di chi la crea (per `SISTEMA` resta vuoto);
+  l'emittente **attivo** di chi la crea (per `SISTEMA` resta vuoto). Senza
+  (modalita' «Tutti gli emittenti», di sola lettura) il rifiuto e'
+  `E_EMITTENTE_NON_RISOLTO` (400), lo stesso di ordini e contratti: il rimedio
+  e' scegliere l'azienda in alto;
 - `REPARTO` → `unita_organizzativa_id` obbligatorio.
 
 Risposta: bozza completa con oggetto/corpo pre-compilati (editabili dal frontend).
@@ -396,10 +399,11 @@ GET include lista allegati. PATCH accetta: `oggetto`, `corpo_html`, `corpo_testo
 **Chi puo' accedere** lo decide la RLS, in lettura e in scrittura (§Ambito e
 visibilita'): una bozza fuori perimetro non si legge, quindi esce come
 inesistente. Dal 2026-09-25 non c'e' piu' un controllo di proprieta' nella view.
-Bozza o allegato inesistente (o fuori perimetro) escono con `E_EMAIL_OP` —
-HTTP **400**, non 404.
-⚠️ Difetto noto (E-4): «non trovato» e «negato» escono come dato errato — vedi
-[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+Bozza inesistente (o fuori perimetro) esce con `E_EMAIL_BOZZA_NOT_FOUND`, HTTP
+**404**: le due cose escono uguali, di proposito, per non rivelare le bozze degli
+altri. Una bozza che non e' piu' `DRAFT` (gia' partita, in partenza o annullata)
+rifiuta modifica, invio e annullo con `E_EMAIL_NON_BOZZA` (409). Tutti i codici
+in §«Codici d'errore».
 ### Conferma e invia
 
 ```http
@@ -442,7 +446,8 @@ progettare per NON ri-inviare (lo SMTP e' gia' partito): recupero idempotente, n
 re-send.
 
 L'account di invio si risolve **prima** di portare la bozza a `READY`: se nessun
-account si risolve la chiamata fallisce con `E_OUTBOX` e la bozza **resta `DRAFT`**,
+account si risolve la chiamata fallisce con `E_EMAIL_ACCOUNT_NON_CONFIGURATO`
+(500: manca la configurazione, chi invia non puo' rimediare) e la bozza **resta `DRAFT`**,
 quindi si puo' riprovare o annullare. Fino al 2026-09-28 l'ordine era inverso e la
 bozza restava `READY`, ne' rinviabile ne' annullabile (F-1 dell'
 [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
@@ -524,7 +529,7 @@ Il perimetro **non** e' un filtro della view: lo applica la RLS su
 `config.email_log` per **ambito** ed **emittente** (§Ambito e visibilita'); in piu'
 il processo `send_pending_emails` vede le mail del suo perimetro, per poterle
 ritentare.
-Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`), `limit`,
+Filtri: `search`, `stato`, `pratica_id`, `data_da`/`data_a` (`YYYY-MM-DD`, giorni dell'azienda come sopra), `limit`,
 `offset`. `search` e' la ricerca della lista `config.email_log` (stessa query): le
 colonne le decide il suo catalogo, e sotto 3 caratteri il termine non filtra.
 
@@ -550,6 +555,42 @@ in `/amm-software/lookup/email-log-stati/` (solo super admin).
 
 ---
 
+## Codici d'errore
+
+Dal 2026-10-09 (brief-db-codici-non-trovato-email-e-permessi): i «non trovato»
+e le condizioni di stato hanno un codice proprio; dal 2026-10-10 (R-7) anche il
+template mancante, il percorso d'allegato fuori archivio e la mail piena.
+`E_EMAIL_OP`, `E_OUTBOX` ed `E_EMAIL_ADMIN` restano per i soli **dati errati**
+della richiesta (campo obbligatorio, chiave fuori contratto, tipo o dimensione
+del file), HTTP 400.
+
+| Codice | HTTP | Quando |
+| --- | --- | --- |
+| `E_EMAIL_BOZZA_NOT_FOUND` | 404 | bozza inesistente o fuori perimetro (dettaglio, modifica, invio, annullo, allegati) |
+| `E_EMAIL_NON_BOZZA` | 409 | la mail non e' piu' in bozza: modifica, invio, annullo |
+| `E_EMAIL_ALLEGATO_NON_BOZZA` | 409 | allegato aggiunto o tolto fuori bozza (codice del database) |
+| `E_EMAIL_ALLEGATO_NOT_FOUND` | 404 | allegato inesistente o fuori perimetro (download, rimozione) |
+| `E_EMAIL_ALLEGATO_FILE_MANCANTE` | 500 | la riga dell'allegato c'e', il file sullo storage no: guasto, non un «non trovato» |
+| `E_EMAIL_ACCOUNT_NON_CONFIGURATO` | 500 | nessun account email da cui spedire |
+| `E_EMAIL_TEMPLATE_NON_CONFIGURATO` | 500 | nessun template per l'invio, dopo il ripiego (mail di sistema e preparazione della bozza). Non e' `E_EMAIL_TEMPLATE_NOT_FOUND`: il codice del template lo sceglie il programma |
+| `E_EMAIL_ALLEGATO_PERCORSO_NON_VALIDO` | 500 | il `file_path` dell'allegato (dal database) esce dall'archivio: dato alterato, caso da guardare anche per la sicurezza. Download e invio si fermano; la cancellazione lo scrive nel log e prosegue |
+| `E_EMAIL_ALLEGATI_LIMITE` | 409 | la mail ha gia' il numero massimo di allegati |
+| `E_EMITTENTE_NON_RISOLTO` | 400 | bozza non di sistema senza azienda attiva (modalita' «Tutti gli emittenti») |
+| `E_EMAIL_ACCOUNT_NOT_FOUND` | 404 | admin: account inesistente (dettaglio, modifica, eliminazione, test) |
+| `E_EMAIL_TEMPLATE_NOT_FOUND` | 404 | admin: template inesistente (dettaglio, modifica, eliminazione, anteprima) |
+| `E_EMAIL_LOG_NOT_FOUND` | 404 | admin: riga del log inesistente o fuori perimetro |
+
+⚠️ `E_EMAIL_LOG_NOT_FOUND` non e' `E_EMAIL_LOG_INESISTENTE` (500): quello nasce
+nel database su un id che ha scritto il backend un istante prima; qui l'id lo
+sceglie l'amministratore.
+
+⭐ Una sede per lettura: la bozza la legge `EmailOutboxService.get_bozza` (i
+verbi del service e le due letture senza verbo); le view che chiamano un verbo
+**non** la rileggono prima. L'allegato passa da `_allegato_o_404`, account e
+template da `_account_o_404` / `_template_o_404` della view admin.
+
+---
+
 ## Risoluzione Account — Catena di Fallback
 
 ```text
@@ -557,7 +598,7 @@ Richiesta invio email (unita_organizzativa_id = 42)
   → fn_resolve_email_account(42)
   → 1. Account specifico del reparto 42 (attivo)
   → 2. Account di sistema (codice_interno = 'SISTEMA', attivo)
-  → NULL se nessuno trovato → errore E_EMAIL (E_OUTBOX nel flusso bozze)
+  → NULL se nessuno trovato → errore E_EMAIL_ACCOUNT_NON_CONFIGURATO (500)
 ```
 
 ## Risoluzione Template — Catena di Fallback (5 livelli)
@@ -570,7 +611,7 @@ Richiesta template (codice='INVITO', uo_id=42, tipo_prest_id=7, lingua='en')
   → 3. Sistema + tipo 7 + lingua 'en'
   → 4. Sistema + lingua 'en' (senza tipo)
   → 5. Sistema + lingua 'it' (fallback finale)
-  → NULL se nessuno trovato → errore E_EMAIL (E_OUTBOX nel flusso bozze)
+  → NULL se nessuno trovato → errore E_EMAIL_TEMPLATE_NON_CONFIGURATO (500)
 ```
 
 ## Rendering Variabili

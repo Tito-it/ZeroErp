@@ -262,10 +262,10 @@ BEGIN
     VALUES (
         p_riga_id,
         COALESCE(v_data_pagamento, v_data_contabile),
-        current_date,
+        (SELECT script.fn_data_operativa()),
         v_data_contabile,
         v_data_valuta,
-        current_date,
+        (SELECT script.fn_data_operativa()),
         v_importo,
         v_centro_id,
         jsonb_build_object('origine', 'POSTING_TARDIVO', 'contabile_codice', v_codice))

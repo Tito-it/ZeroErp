@@ -6,7 +6,7 @@
 |---------|------|----------|---------|
 | id | bigint | NO | nextval('storico.flussi_id_seq'::regclass) |
 | flussi_id | bigint | NO |  |
-| change_type | character | YES | 'A'::bpchar |
+| change_type | character(1) | YES | 'A'::bpchar |
 | tipo_operazione | smallint | YES |  |
 | snapshot | jsonb | YES |  |
 | user_insert | text | YES | CURRENT_USER |

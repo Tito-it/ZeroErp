@@ -9,168 +9,25 @@ CREATE FUNCTION fn_contratto_righe_preview(p_contratto_id bigint)
 
 ```sql
 CREATE OR REPLACE FUNCTION vendite.fn_contratto_righe_preview(p_contratto_id bigint)
- RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, tipo_variazione character varying, valore_variazione numeric, override_riga_id bigint, override_prezzo numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, prezzo_finale numeric, componenti jsonb, quantita numeric, qta_operativa numeric, tipo_erogazione character varying, fonte_quantita_attesa character varying, riga_key text, azioni text[], escludi_blocco_codice text)
+ RETURNS TABLE(articolo_id uuid, articolo_codice character varying, articolo_descrizione character varying, is_composito boolean, uom_id bigint, uom_codice character varying, prezzo_listino numeric, tipo_variazione character varying, valore_variazione numeric, override_riga_id bigint, override_prezzo numeric, tipo_eccezione vendite.tipo_eccezione_contratto, origine character varying, prezzo_finale numeric, componenti jsonb, quantita numeric, qta_operativa numeric, tipo_erogazione character varying, fonte_quantita_attesa character varying, riga_key text, azioni text[], escludi_blocco_codice text, ordine smallint, uom_operativa_id bigint)
  LANGUAGE plpgsql
  STABLE
 AS $function$
-
--- Scopo: righe drawer ContrattoRigheDrawer (output invariato).
--- Parte 1: core fn_espandi_listino_versione (standalone+bundle) +
---   overlay OVERRIDE/ESCLUSIONE via LEFT JOIN contratti_righe.
--- Parte 2: AGGIUNTA standalone+bundle da contratti_righe/_componenti.
--- Versione operativa: snapshot se ATTIVO, altrimenti lookup ATTIVA/CHIUSA.
--- rev 2026-09-28 (brief-db-liste-righe-documento, D-8.4): la funzione e' la
---   SORGENTE della lista vendite.contratto_righe, per le due forme del
---   contratto. Tre colonne in coda:
---   · riga_key: 'L:<articolo>:<uom>' per le righe del listino (uniche per
---     versione, articolo, UoM), 'A:<id>' per le AGGIUNTA (la loro riga);
---   · azioni: i verbi che l'origine ammette (SOVRASCRIVI_PREZZO, ESCLUDI,
---     MODIFICA, RIPRISTINA_LISTINO, RIPRISTINA_ARTICOLO, RIMUOVI);
---   · escludi_blocco_codice: il reason del PRIMO motivo di
---     script.fn_check_esclusione_articolo_contratto, NULL = ammesso. Lo
---     stesso predicato del guard: pulsante ed errore non divergono.
---   ⚠️ Il blocco «fuori bozza» NON e' qui: e' di documento
---     (trgfn_doc_righe_lock_fuori_bozza, capability del contratto).
-DECLARE
-    v_listino_id          vendite.contratti.listino_id%TYPE;
-    v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
-    v_tipo_var            vendite.contratti.tipo_variazione_globale%TYPE;
-    v_valore_var          vendite.contratti.valore_variazione_globale%TYPE;
+-- Scopo: le righe del drawer ContrattoRigheDrawer e la sorgente della
+--   lista vendite.contratto_righe (output invariato).
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R4): il
+--   corpo vive in vendite.fn_documento_righe_preview, comune con
+--   l'offerta (regola del 2); qui resta l'ingresso per il contratto.
+--   Storia del corpo: 20260516-04 … 20261004-14.
 BEGIN
-    SELECT c.listino_id, c.listino_versione_id,
-           c.tipo_variazione_globale, c.valore_variazione_globale
-      INTO v_listino_id, v_listino_versione_id, v_tipo_var, v_valore_var
-      FROM vendite.contratti c
-     WHERE c.id = p_contratto_id;
-
-    IF NOT FOUND THEN
-        RETURN;
-    END IF;
-
-    -- Versione operativa per contratti DRAFT senza snapshot (BOZZA esclusa).
-    IF v_listino_id IS NOT NULL AND v_listino_versione_id IS NULL THEN
-        -- rev 2026-09-28: la sede unica (brief-db-liste-righe-documento §8.15).
-v_listino_versione_id := vendite.fn_listino_versione_in_vigore(v_listino_id, CURRENT_DATE);
-    END IF;
-
-    -- PARTE 1: righe dal listino (core) + overlay eccezioni OVERRIDE/ESCLUSIONE.
-    IF v_listino_versione_id IS NOT NULL THEN
-        RETURN QUERY
-        SELECT
-            base.articolo_id,
-            base.articolo_codice,
-            base.articolo_descrizione,
-            base.is_composito,
-            base.uom_id,
-            base.uom_codice,
-            base.prezzo_listino,
-            v_tipo_var,
-            v_valore_var,
-            cr.id,
-            cr.prezzo_unitario,
-            cr.tipo_eccezione,
-            CASE
-                WHEN cr.tipo_eccezione = 'OVERRIDE'   THEN 'OVERRIDE'
-                WHEN cr.tipo_eccezione = 'ESCLUSIONE' THEN 'ESCLUSIONE'
-                ELSE                                       'DA_LISTINO'
-            END::varchar,
-            CASE
-                WHEN cr.tipo_eccezione = 'OVERRIDE'   THEN cr.prezzo_unitario
-                WHEN cr.tipo_eccezione = 'ESCLUSIONE' THEN NULL
-                ELSE                                       base.prezzo_da_listino
-            END,
-            base.componenti,
-            cr.quantita,
-            cr.qta_operativa,
-            cr.tipo_erogazione,
-            cr.fonte_quantita_attesa,
-            ('L:' || base.articolo_id::text || ':' || base.uom_id::text),
-            CASE
-                WHEN cr.tipo_eccezione = 'OVERRIDE'
-                    THEN ARRAY['MODIFICA', 'RIPRISTINA_LISTINO']
-                WHEN cr.tipo_eccezione = 'ESCLUSIONE'
-                    THEN ARRAY['MODIFICA', 'RIPRISTINA_ARTICOLO']
-                ELSE ARRAY['SOVRASCRIVI_PREZZO', 'ESCLUDI']
-            END,
-            -- Solo dove «Escludi» e' un'azione della riga (dal listino).
-            CASE
-                WHEN cr.tipo_eccezione IS NULL
-                    THEN script.fn_check_esclusione_articolo_contratto(
-                             p_contratto_id, base.articolo_id) -> 0 ->> 'reason'
-            END
-          FROM vendite.fn_espandi_listino_versione(
-                   v_listino_versione_id, v_tipo_var, v_valore_var
-               ) base
-          LEFT JOIN vendite.contratti_righe cr
-                 ON cr.contratto_id           = p_contratto_id
-                AND cr.articolo_id            = base.articolo_id
-                AND cr.tipo_eccezione         IN (
-                        'OVERRIDE'::vendite.tipo_eccezione_contratto,
-                        'ESCLUSIONE'::vendite.tipo_eccezione_contratto
-                    )
-                AND COALESCE(cr.attivo, TRUE) = TRUE;
-    END IF;
-
-    -- PARTE 2a: AGGIUNTA standalone (non in listino). JOIN diretto.
     RETURN QUERY
-    SELECT
-        a.id, a.codice, a.descrizione, FALSE,
-        a.uom_id, um.codice,
-        NULL::numeric, NULL::varchar, NULL::numeric,
-        cr.id, cr.prezzo_unitario, cr.tipo_eccezione,
-        'AGGIUNTA'::varchar, cr.prezzo_unitario, NULL::jsonb,
-        cr.quantita, cr.qta_operativa, cr.tipo_erogazione, cr.fonte_quantita_attesa,
-        ('A:' || cr.id::text), ARRAY['MODIFICA', 'RIMUOVI'], NULL::text
-      FROM vendite.contratti_righe cr
-      JOIN catalogo.articoli a
-        ON a.id = cr.articolo_id AND a.is_composito = FALSE AND a.attivo = TRUE
-      JOIN catalogo.unita_misura um ON um.id = a.uom_id
-     WHERE cr.contratto_id          = p_contratto_id
-       AND cr.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
-       AND COALESCE(cr.attivo, TRUE) = TRUE;
-
-    -- PARTE 2b: AGGIUNTA bundle (non in listino). Componenti da contratti_righe_componenti.
-    RETURN QUERY
-    SELECT
-        a.id, a.codice, a.descrizione, TRUE,
-        a.uom_id, um.codice,
-        NULL::numeric, NULL::varchar, NULL::numeric,
-        cr.id, cr.prezzo_unitario, cr.tipo_eccezione,
-        'AGGIUNTA'::varchar, cr.prezzo_unitario,
-        (
-            SELECT jsonb_agg(jsonb_build_object(
-                'articolo_componente_id', ac.id,
-                'componente_id',          af.id,
-                'componente_codice',      af.codice,
-                'componente_descrizione', af.descrizione,
-                'uom_id',                 af.uom_id,
-                'uom_codice',             umf.codice,
-                'coeff_qta',              crc.coeff_qta_snapshot,
-                'prezzo',                 crc.prezzo_unitario,
-                'obbligatorio',           ac.obbligatorio,
-                'esposto_in_fattura',     ac.esposto_in_fattura
-            ) ORDER BY crc.ordine, crc.id)
-              FROM vendite.contratti_righe_componenti crc
-              JOIN catalogo.articoli af ON af.id = crc.componente_id
-              JOIN catalogo.unita_misura umf ON umf.id = af.uom_id
-              JOIN catalogo.articoli_componenti ac ON ac.id = crc.articolo_componente_id
-             WHERE crc.riga_contratto_id = cr.id
-               AND crc.attivo            = TRUE
-        ),
-        cr.quantita, cr.qta_operativa, cr.tipo_erogazione, cr.fonte_quantita_attesa,
-        ('A:' || cr.id::text), ARRAY['MODIFICA', 'RIMUOVI'], NULL::text
-      FROM vendite.contratti_righe cr
-      JOIN catalogo.articoli a
-        ON a.id = cr.articolo_id AND a.is_composito = TRUE AND a.attivo = TRUE
-      JOIN catalogo.unita_misura um ON um.id = a.uom_id
-     WHERE cr.contratto_id          = p_contratto_id
-       AND cr.tipo_eccezione        = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
-       AND COALESCE(cr.attivo, TRUE) = TRUE;
+    SELECT *
+      FROM vendite.fn_documento_righe_preview('CONTRATTO', p_contratto_id);
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_contratto_righe_preview(p_contratto_id bigint)
-IS 'Le righe OPERATIVE di un contratto: parte 1 dal listino (core fn_espandi_listino_versione, standalone e bundle) con l''overlay delle eccezioni OVERRIDE/ESCLUSIONE; parte 2 le AGGIUNTA (standalone e bundle, componenti da contratti_righe_componenti). Versione del listino: fissata se il contratto e'' attivo, altrimenti la ATTIVA/CHIUSA valida oggi. ⭐ Dal 2026-09-28 (brief-db-liste-righe-documento, D-8.4) e'' la SORGENTE della lista configurabile vendite.contratto_righe, per le due forme del contratto (senza listino restano le sole AGGIUNTA), e porta tre colonne in coda: riga_key (L:<articolo>:<uom> per le righe del listino, A:<id> per le aggiunte: la chiave che prima il frontend inventava), azioni (i verbi che l''origine ammette: DA_LISTINO -> SOVRASCRIVI_PREZZO, ESCLUDI; OVERRIDE -> MODIFICA, RIPRISTINA_LISTINO; ESCLUSIONE -> MODIFICA, RIPRISTINA_ARTICOLO; AGGIUNTA -> MODIFICA, RIMUOVI) e escludi_blocco_codice (il reason del primo motivo di script.fn_check_esclusione_articolo_contratto, NULL = «Escludi» ammesso: lo stesso predicato del guard). Il blocco «fuori bozza» non e'' qui: e'' di documento. 22 colonne.';
+IS 'Le righe OPERATIVE di un contratto (listino + overlay OVERRIDE/ESCLUSIONE + AGGIUNTA standalone e bundle), con riga_key, azioni ed escludi_blocco_codice: SORGENTE della lista configurabile vendite.contratto_righe (D-8.4 del brief liste-righe-documento). 24 colonne. ⭐ Dal 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R4) e'' un involucro di vendite.fn_documento_righe_preview(''CONTRATTO'', id), il corpo comune con l''offerta (regola del 2): la storia delle regole (verbi per origine, UdM della riga, esposizione dei componenti, esclusione senza MODIFICA) e il contratto delle colonne stanno nel COMMENT di quella funzione. Firma e colonne invariate.';
 ```
 
 ---

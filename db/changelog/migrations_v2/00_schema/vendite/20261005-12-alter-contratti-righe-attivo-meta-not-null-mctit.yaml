@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ATTIVO E META DELLA RIGA DEL CONTRATTO: SEMPRE VALORIZZATI, COME SULL'OFFERTA
+#   vendite.contratti_righe.attivo  SET NOT NULL (default true, gia' presente)
+#   vendite.contratti_righe.meta    SET NOT NULL (default '{}', gia' presente)
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (§8.2 B4; decisione di
+#   Tid, 2026-10-04)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Sulla gemella dell'offerta le due colonne sono NOT NULL dalla nascita.
+#   Sul contratto no, e un NULL non ha un significato: una riga e' attiva o
+#   no, e un meta assente e' l'oggetto vuoto. «attivo IS TRUE» e «attivo =
+#   TRUE» danno risposte diverse proprio su quel NULL, e chi legge non
+#   dovrebbe doverlo sapere.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   Nessuna correzione automatica: decidere che un NULL di attivo voglia dire
+#   «attiva» sarebbe una scelta fatta dal migrate al posto di chi ha scritto
+#   la riga, e un UPDATE di bonifica incontrerebbe il lock «fuori bozza» sulle
+#   righe dei contratti gia' attivi. La preCondition pretende zero righe a NULL
+#   (expectedResult 0: un DB da zero la soddisfa, linee-guida-sql §11.4); se
+#   ce ne sono, il migrate si ferma e si guardano a mano.
+#   ⚠️ Non ALTER TYPE ... USING COALESCE: attivo e' nominata nella lista
+#   UPDATE OF dei trigger generati da ci_apply (block_deact, require_attivo),
+#   e un cambio di tipo li rifiuterebbe — su quei trigger non si fa DDL
+#   (linee-guida-sql §11.5). SET NOT NULL non e' un cambio di tipo.
+#
+# -- CHI SCRIVE -------------------------------------------------------
+#   Il push copia attivo e meta dall'offerta, dove sono NOT NULL. Il backend
+#   (ContrattiRepository.create_riga / update_riga) li ha nell'allowlist:
+#   da oggi un null ESPLICITO e' rifiutato dal DB, come sull'offerta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261005-12-alter-contratti-righe-attivo-meta-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261005-12-alter-contratti-righe-attivo-meta-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe: attivo e meta NOT NULL, come sulla gemella dell'offerta. Brief:
+        brief-db-righe-esclusione-solo-non-si-vende (§8.2 B4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM vendite.contratti_righe r
+               WHERE r.attivo IS NULL OR r.meta IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN attivo SET NOT NULL,
+                  ALTER COLUMN meta   SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ALTER COLUMN attivo DROP NOT NULL,
+                  ALTER COLUMN meta   DROP NOT NULL;

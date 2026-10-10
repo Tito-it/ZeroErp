@@ -12,12 +12,14 @@ Indice test eseguiti:
  3) test_modelli_vuoti_se_nessun_override    — `modelli` lista vuota se area non ha model
  4) test_admin_puo_vedere_altro_utente       — ADMIN puo' interrogare altri user_id
  5) test_operativo_negato_altro_utente       — OPERATIVO non puo' vedere altri user_id
- 6) test_utente_non_trovato                  — 404-equivalente se user_id inesistente
+ 6) test_utente_non_trovato                  — 404 E_AMM_UTENTE_NOT_FOUND se user_id inesistente (E-4)
  7) test_altro_utente_senza_veste_operatore  — S-6: la risposta dice la veste del CONSULTATO, non di chi guarda
 """
 
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
+
+from apps.core.tests._helpers.richiedente_mockato import RichiedenteMockatoMixin
 
 
 
@@ -41,9 +43,12 @@ def _make_area(codice: str, schema_db: str, descrizione: str) -> MagicMock:
     return area
 
 
-class ApiPermessiEffettiviViewTests(TestCase):
+class ApiPermessiEffettiviViewTests(RichiedenteMockatoMixin, TestCase):
     """Test per ApiPermessiEffettivi con verifica campo `modelli` (3.1 v2)."""
 
+    # ⚠️ Il resolver della VIEW risponde sull'utente CONSULTATO: `is_super`
+    #    dice se e' SUPER_ADMIN chi e' guardato. Chi guarda lo decide il
+    #    mixin (`richiedente_amministratore`).
     def _base_resolver_mock(self, mock_resolver, is_super: bool = False) -> None:
         """Scopo: Configura i valori di default del resolver per i test base."""
         mock_resolver.is_super_admin.return_value = is_super
@@ -156,7 +161,8 @@ class ApiPermessiEffettiviViewTests(TestCase):
     def test_admin_puo_vedere_altro_utente(self, mock_area_cls, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiEffettivi
 
-        self._base_resolver_mock(mock_resolver, is_super=True)
+        self.richiedente_amministratore()
+        self._base_resolver_mock(mock_resolver)
         mock_area_cls.objects.filter.return_value = []
 
         target = MagicMock()
@@ -182,7 +188,8 @@ class ApiPermessiEffettiviViewTests(TestCase):
 
         from apps.core.api.views import ApiPermessiEffettivi
 
-        self._base_resolver_mock(mock_resolver, is_super=True)
+        self.richiedente_amministratore()
+        self._base_resolver_mock(mock_resolver)
         mock_resolver.has_veste_operatore_attiva.return_value = False
         mock_area_cls.objects.filter.return_value = []
 
@@ -206,8 +213,6 @@ class ApiPermessiEffettiviViewTests(TestCase):
         from apps.core.api.views import ApiPermessiEffettivi
         from apps.core.services.service_errors import ServiceError
 
-        mock_resolver.is_super_admin.return_value = False
-
         request = _mock_request(user_id=5)
         view = ApiPermessiEffettivi()
 
@@ -215,15 +220,17 @@ class ApiPermessiEffettiviViewTests(TestCase):
             view.get(request, user_id=99)
 
         self.assertEqual(ctx.exception.code, "E_PERMESSO_NEGATO")
+        # Il diniego viene dalla domanda sul richiedente, non da un caso.
+        self.resolver_richiedente.is_super_admin.assert_called_once()
 
-    # Scopo: user_id inesistente solleva ServiceError.
+    # Scopo: user_id inesistente → 404 E_AMM_UTENTE_NOT_FOUND (E-4).
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
     def test_utente_non_trovato(self, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiEffettivi
         from apps.core.services.service_errors import ServiceError
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
         # Serve una vera classe Exception affinche' `except User.DoesNotExist` funzioni.
         DoesNotExist = type("DoesNotExist", (Exception,), {})
         User = MagicMock()
@@ -237,4 +244,5 @@ class ApiPermessiEffettiviViewTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             view.get(request, user_id=9999)
 
-        self.assertEqual(ctx.exception.code, "E_CORE_VALIDATION")
+        # E-4: 404, non piu' E_CORE_VALIDATION (400).
+        self.assertEqual(ctx.exception.code, "E_AMM_UTENTE_NOT_FOUND")

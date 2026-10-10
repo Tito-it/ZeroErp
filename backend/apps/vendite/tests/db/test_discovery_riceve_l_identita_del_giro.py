@@ -39,12 +39,12 @@
 
 from __future__ import annotations
 
-from datetime import date
 from unittest import TestCase
 from uuid import uuid4
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
@@ -71,7 +71,7 @@ class DiscoveryRiceveLIdentitaDelGiro(TestCase):
             # Il primo del mese corrente, e non una data scritta: un test con
             # una data cablata invecchia senza che nessuno se ne accorga.
             commesse = CommesseRepository().list_commesse_emittibili(
-                competenza_mese=date.today().replace(day=1),
+                competenza_mese=oggi_aziendale().replace(day=1),
                 emit_batch_id=str(uuid4()),
                 limit=5,
             )

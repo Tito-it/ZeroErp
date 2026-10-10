@@ -103,7 +103,7 @@ BEGIN
             (codice, competenza_mese, tipo_doc_fiscale_id,
              emittente_soggetto_ruolo_id, stato_doc_fiscale_id)
         SELECT 'PGTAP-TRAT-' || upper(r.caso),
-               date_trunc('month', CURRENT_DATE)::date,
+               date_trunc('month', script.fn_data_operativa())::date,
                t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
                -- ⭐ `codice_interno`, mai un id: e' la chiave stabile. E per il
                --   caso «senza stato» si lascia NULL apposta — la colonna e'

@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NASCE script.trgfn_doc_guard_listino_documento: un contratto o un'offerta
+# non si scrive con un listino di un'altra utility o di un altro emittente.
+#   Brief: brief-db-offerta-emissione-ed-erogazione §F.2 (F-2.2).
+#
+# -- LA FORMA -----------------------------------------------------------
+#   · UNA funzione per le due testate (regola del 2): le colonne si chiamano
+#     uguali (listino_id, utility_id, emittente_fiscale_id);
+#   · il predicato sta in script.fn_check_listino_documento (-13): qui si
+#     solleva soltanto il primo motivo, col campo listino_id
+#     (linee-guida-sql §12.5.2), con script.fn_raise_primo_motivo_se_presente;
+#   · TG_ARGV[0] = documento (CONTRATTO | OFFERTA), solo per il contesto;
+#   · montata in -15 su INSERT e su UPDATE quando cambiano listino, utility o
+#     emittente (le righe gia' scritte restano come sono, F-2.4), con un nome
+#     che viene DOPO a10_default_emittente (l'emittente lo puo' riempire lui
+#     all'INSERT) e dopo a10_guard_emittente_ba (un emittente incoerente col
+#     cliente si dice prima).
+#
+# Ritorno indietro: DROP (i trigger di -15 cadono col loro rollback).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261008-14-create-trgfn-doc-guard-listino-documento-mctit.yaml
+
+  - changeSet:
+      id: 20261008-14-create-trgfn-doc-guard-listino-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce script.trgfn_doc_guard_listino_documento: solleva il primo motivo di
+        script.fn_check_listino_documento sulle testate di contratto e offerta.
+        Brief: brief-db-offerta-emissione-ed-erogazione §F.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_listino_documento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.trgfn_doc_guard_listino_documento()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: rifiutare un contratto o un'offerta il cui listino non e'
+              --   della utility o dell'emittente del documento (F-2 di Tid,
+              --   2026-10-08): solleva il primo motivo di
+              --   script.fn_check_listino_documento, col campo listino_id. Il
+              --   predicato sta nella check: qui si solleva soltanto
+              --   (linee-guida-sql §12.5.2).
+              -- Uso:   BEFORE INSERT, e BEFORE UPDATE WHEN cambiano listino_id,
+              --        utility_id o emittente_fiscale_id, fascia _a10_, su
+              --        vendite.contratti e vendite.offerte_commerciali.
+              -- TG_ARGV[0]: documento (CONTRATTO | OFFERTA), solo per il contesto.
+              DECLARE
+                  -- Tipo nudo DICHIARATO: un selettore del trigger, nessuna colonna.
+                  v_documento text := TG_ARGV[0];
+                  v_motivi    jsonb;
+              BEGIN
+                  v_motivi := script.fn_check_listino_documento(
+                      NEW.listino_id, NEW.utility_id, NEW.emittente_fiscale_id);
+
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'vendite', TG_NAME::text,
+                      v_motivi,
+                      v_motivi -> 0 -> 'dettaglio' ->> 'campo',
+                      NEW.tx_id,
+                      jsonb_build_object('documento', v_documento,
+                                         'documento_id', NEW.id,
+                                         'utility_id', NEW.utility_id,
+                                         'emittente_fiscale_id', NEW.emittente_fiscale_id));
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_doc_guard_listino_documento()
+              IS 'Guard generico (vendite.contratti, vendite.offerte_commerciali): solleva il primo motivo di script.fn_check_listino_documento — E_DOC_LISTINO_UTILITY_DIVERSA o E_DOC_LISTINO_EMITTENTE_DIVERSO — col campo listino_id (canale COLUMN). Il listino di un documento è della sua utility e del suo emittente (decisione F-2 di Tid del 2026-10-08). TG_ARGV[0] = documento (CONTRATTO | OFFERTA), solo per il contesto. Montato BEFORE INSERT e BEFORE UPDATE quando cambiano listino_id, utility_id o emittente_fiscale_id (le righe già scritte restano come sono), dopo a10_default_emittente e a10_guard_emittente_ba. Listino NULL (negoziato puro del contratto): nessun rifiuto. Nasce il 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.trgfn_doc_guard_listino_documento();

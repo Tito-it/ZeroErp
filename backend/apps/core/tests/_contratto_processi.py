@@ -25,6 +25,7 @@ import csv
 import re
 from typing import TypedDict
 
+from apps.core.services.sveglie import Dovuto
 from apps.core.tests._repo import repo_root
 
 
@@ -88,6 +89,9 @@ _ULTIMO_GIORNO_SICURO = 28
 _FORME: tuple[tuple[re.Pattern[str], int | None], ...] = (
     # `*:0/N`  → ogni N minuti, dentro l'ora.
     (re.compile(r"^\*:0/(\d+)$"), None),
+    # `*:MM`   → una volta all'ora, al minuto MM (la sveglia delle sveglie
+    #           calendariali con `dovuto`, dal 2026-10-09).
+    (re.compile(r"^\*:[0-5]\d$"), _MINUTI_ORA),
     # `Mon *-*-* HH:MM` → una volta a settimana.
     # ⚠️ Gruppo NON catturante: l'unico gruppo che il parser legge e' quello
     #    del passo (`*:0/N`) o del giorno del mese (`*-*-DD`).
@@ -105,8 +109,13 @@ _FORME: tuple[tuple[re.Pattern[str], int | None], ...] = (
 # ⛔ Solleva su una forma sconosciuta: e' il contratto di questo helper.
 # ⚠️ `*:0/N` vuol dire «i minuti 0, N, 2N… DENTRO l'ora», poi si ricomincia
 #    al minuto 0 dell'ora dopo: con N che non divide 60 l'ultimo gap e' piu'
-#    corto, e con N >= 60 combacia solo il minuto 0 — cioe' il timer gira OGNI
-#    ORA, non ogni N minuti. Il massimo e' quindi `min(N, 60)`, non N.
+#    corto, e il massimo resta N.
+# ⛔ Con N >= 60 systemd RIFIUTA la specifica («Failed to parse calendar
+#    specification», verificato su systemd 257 il 2026-10-09): il timer non
+#    parte affatto. Fino a quel giorno questo parser rispondeva «ogni ora»
+#    (`min(N, 60)`) e il suo test lo fissava: un presidio che avrebbe dato
+#    verde a un unit che sull'host non si carica. La sveglia oraria si scrive
+#    `*:MM` (forma sopra).
 def intervallo_massimo_minuti(oncalendar: str) -> int:
     espressione = oncalendar.strip()
     for regex, minuti in _FORME:
@@ -117,7 +126,12 @@ def intervallo_massimo_minuti(oncalendar: str) -> int:
             passo = int(m.group(1))
             if passo <= 0:
                 raise ValueError(f"OnCalendar con passo non positivo: {oncalendar!r}")
-            return min(passo, _MINUTI_ORA)
+            if passo >= _MINUTI_ORA:
+                raise ValueError(
+                    f"OnCalendar {oncalendar!r}: systemd rifiuta un passo dei minuti "
+                    f">= {_MINUTI_ORA} (il timer non partirebbe); ogni ora si scrive '*:MM'"
+                )
+            return passo
         if m.groups() and int(m.group(1)) > _ULTIMO_GIORNO_SICURO:
             raise ValueError(
                 f"OnCalendar mensile oltre il giorno {_ULTIMO_GIORNO_SICURO}: "
@@ -128,3 +142,26 @@ def intervallo_massimo_minuti(oncalendar: str) -> int:
         f"forma di OnCalendar non conosciuta da questo parser: {oncalendar!r} — "
         f"insegnargliela in _FORME (con il suo intervallo), non allargare una regex"
     )
+
+
+# I minuti di un periodo di `dovuto` (sveglie calendariali): il mese al suo
+# massimo, come per gli OnCalendar mensili.
+_MINUTI_PERIODO_DOVUTO = {
+    "giorno": _MINUTI_GIORNO,
+    "settimana": 7 * _MINUTI_GIORNO,
+    "mese": 31 * _MINUTI_GIORNO,
+}
+
+
+# Scopo: l'intervallo MASSIMO fra due corse di una SVEGLIA. Senza `dovuto` e'
+#        quello del suo `OnCalendar`; con `dovuto` (brief un-solo-fuso-aziendale
+#        T-9) il timer si sveglia spesso ma il lavoro si fa una volta per
+#        periodo aziendale: il periodo piu' il passo della sveglia.
+# ⛔ Leggere il solo `OnCalendar` di una sveglia calendariale direbbe «ogni
+#    ora» a un digest settimanale: il confronto col contratto passerebbe
+#    raccontando una cosa falsa.
+def intervallo_massimo_sveglia(oncalendar: str, dovuto: Dovuto | None) -> int:
+    passo = intervallo_massimo_minuti(oncalendar)
+    if dovuto is None:
+        return passo
+    return _MINUTI_PERIODO_DOVUTO[dovuto.ogni] + passo

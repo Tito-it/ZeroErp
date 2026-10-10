@@ -141,7 +141,7 @@ SELECT isnt(
 -- 9) Veste spenta FUORI dalla sua finestra (comincia fra dieci giorni)
 -- ============================================================
 UPDATE anagrafiche.identita_digitali
-   SET valido_dal = CURRENT_DATE + 10
+   SET valido_dal = script.fn_data_operativa() + 10
  WHERE id = (SELECT identita_id FROM tmp_inv);
 
 SELECT is(
@@ -151,7 +151,7 @@ SELECT is(
     '9) veste spenta fuori finestra -> invitabile=false, VESTE_FUORI_FINESTRA');
 
 UPDATE anagrafiche.identita_digitali
-   SET valido_dal = CURRENT_DATE
+   SET valido_dal = script.fn_data_operativa()
  WHERE id = (SELECT identita_id FROM tmp_inv);
 
 -- ============================================================
@@ -181,7 +181,8 @@ SELECT m.auth_user_id AS user_id
            p_email                        := '_pgtap_inv_madre_' || substring(md5(clock_timestamp()::text) from 1 for 8) || '@example.com',
            p_password_hash                := 'pgtap-nessun-login',
            p_qualifica_id                 := (SELECT q.id FROM config.qualifiche q WHERE q.codice_interno = 'DIPENDENTE'),
-           p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('invitabile madre')) m;
+           p_indirizzo_resid_dettaglio_id := dbops.fn_pgtap_crea_indirizzo_dettaglio('invitabile madre'),
+           p_sesso := 'M') m;
 SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT is(

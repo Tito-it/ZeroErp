@@ -9,14 +9,14 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_iso | character varying | NO |  |
+| codice_iso | character varying(5) | NO |  |
 | descrizione | text | NO |  |
 | descrizione_locale | text | NO |  |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

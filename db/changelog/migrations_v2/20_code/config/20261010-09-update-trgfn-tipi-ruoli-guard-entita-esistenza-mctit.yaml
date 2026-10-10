@@ -1,0 +1,255 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# config.trgfn_tipi_ruoli_guard_entita_ref: VALIDA ANCHE entita_esistenza
+#   Brief: brief-db-codici-non-trovato-email-e-permessi (R-6, Q-1 di Tid del 2026-10-09)
+#
+# -- COSA CAMBIA ------------------------------------------------------
+#   Regola 5, nuova: entita_esistenza (20261010-08), se valorizzata, e'
+#   * una relazione che esiste;
+#   * una TABELLA (relkind 'r', o 'p' se partizionata): mai una vista. Il
+#     perimetro di chi guarda lo fa la RLS della tabella, e una vista senza
+#     security_invoker la spegnerebbe in silenzio;
+#   * con la colonna soggetto_ruolo_id, su cui la regola unica la aggancia.
+#   Stesso codice delle altre regole strutturali, E_TIPI_RUOLI_ENTITA_INVALIDA:
+#   la condizione e' una sola, «l'entita' configurata sul ruolo non e'
+#   valida», e il VARIADIC dice quale.
+#
+# -- IL TRIGGER --------------------------------------------------------
+#   trg_tipi_ruoli_a10_guard_entita_ref_ins_upd scattava su
+#   UPDATE OF entita_tabella, entita_colonna_codice (20260311-08): un UPDATE
+#   della sola entita_esistenza non passava dal guard. Si ridefinisce con la
+#   colonna nuova nell'elenco. E' un trigger scritto a mano in un changeSet,
+#   non generato da ci_apply: la DDL qui e' lecita (linee-guida-sql §11.5).
+#   Trovato dal pgTAP script/test-search-regola-unica-visibile-v1 (test 3-4)
+#   nella prova pre-apply.
+#
+# -- LA STRUTTURA ------------------------------------------------------
+#   La regola 1 usciva con RETURN NEW quando entita_tabella e' NULL: cosi' la
+#   regola 5 non sarebbe mai stata valutata per i ruoli senza ricerca per
+#   codice. Le regole 2-4 passano dentro un IF, e il RETURN e' uno solo, in
+#   fondo. Le regole 1-4 sono invariate nel contenuto.
+#
+# ⚠️ CORPO dalla doc auto-gen (l'ultimo YAML, 20260331-06, coincide).
+#   DECLARE ancorato dove c'e' una colonna di cui il valore e' il riflesso.
+#   Trigger function senza argomenti: nessuna firma da ancorare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261010-09-update-trgfn-tipi-ruoli-guard-entita-esistenza-mctit.yaml
+
+  - changeSet:
+      id: 20261010-09-update-trgfn-tipi-ruoli-guard-entita-esistenza
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard di config.tipi_ruoli valida anche entita_esistenza: relazione esistente, tabella
+        e non vista, con soggetto_ruolo_id; il trigger scatta anche sull'UPDATE di quella colonna.
+        Brief: brief-db-codici-non-trovato-email-e-permessi (R-6, Q-1).
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: tipi_ruoli
+            columnName: entita_esistenza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION config.trgfn_tipi_ruoli_guard_entita_ref()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_colonna_codice config.tipi_ruoli.entita_colonna_codice%TYPE;
+                  -- OID di catalogo della relazione: nessuna colonna di cui sia il riflesso.
+                  v_rel_oid        oid;
+                  -- relkind di pg_class: tipo di catalogo, nessuna colonna applicativa.
+                  v_relkind        "char";
+              BEGIN
+                  -- Regola 1: coerenza NULL
+                  IF NEW.entita_tabella IS NULL THEN
+                      IF NEW.entita_colonna_codice IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'config.trgfn_tipi_ruoli_guard_entita_ref',
+                              'E_PARAMETRO_INVALIDO',
+                              jsonb_build_object(
+                                  'detail', 'entita_colonna_codice deve essere NULL se entita_tabella e'' NULL',
+                                  'codice_interno', NEW.codice_interno,
+                                  'entita_colonna_codice', NEW.entita_colonna_codice
+                              ),
+                              NULL::uuid,
+                              'entita_colonna_codice non NULL senza entita_tabella'
+                          );
+                      END IF;
+                  ELSE
+                      -- Regola 2: entita_tabella deve essere un regclass valido
+                      v_rel_oid := to_regclass(NEW.entita_tabella);
+
+                      IF v_rel_oid IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'config.trgfn_tipi_ruoli_guard_entita_ref',
+                              'E_TIPI_RUOLI_ENTITA_INVALIDA',
+                              jsonb_build_object(
+                                  'codice_interno', NEW.codice_interno,
+                                  'entita_tabella', NEW.entita_tabella
+                              ),
+                              NULL::uuid,
+                              NEW.codice_interno,
+                              concat('tabella/vista ', NEW.entita_tabella, ' non trovata')
+                          );
+                      END IF;
+
+                      -- Regola 3: la tabella deve avere soggetto_ruolo_id
+                      IF NOT EXISTS (
+                          SELECT 1
+                            FROM pg_catalog.pg_attribute a
+                           WHERE a.attrelid = v_rel_oid
+                             AND a.attname  = 'soggetto_ruolo_id'
+                             AND a.attnum   > 0
+                             AND NOT a.attisdropped
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'config.trgfn_tipi_ruoli_guard_entita_ref',
+                              'E_TIPI_RUOLI_ENTITA_INVALIDA',
+                              jsonb_build_object(
+                                  'codice_interno', NEW.codice_interno,
+                                  'entita_tabella', NEW.entita_tabella
+                              ),
+                              NULL::uuid,
+                              NEW.codice_interno,
+                              concat(NEW.entita_tabella, ' manca colonna soggetto_ruolo_id')
+                          );
+                      END IF;
+
+                      -- Regola 4: colonna codice deve esistere
+                      v_colonna_codice := COALESCE(NEW.entita_colonna_codice, 'codice');
+
+                      IF NOT EXISTS (
+                          SELECT 1
+                            FROM pg_catalog.pg_attribute a
+                           WHERE a.attrelid = v_rel_oid
+                             AND a.attname  = v_colonna_codice
+                             AND a.attnum   > 0
+                             AND NOT a.attisdropped
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'config.trgfn_tipi_ruoli_guard_entita_ref',
+                              'E_TIPI_RUOLI_ENTITA_INVALIDA',
+                              jsonb_build_object(
+                                  'codice_interno', NEW.codice_interno,
+                                  'entita_tabella', NEW.entita_tabella,
+                                  'colonna_cercata', v_colonna_codice
+                              ),
+                              NULL::uuid,
+                              NEW.codice_interno,
+                              concat(NEW.entita_tabella, '.', v_colonna_codice, ' non trovata')
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Regola 5 (rev 2026-10-10, R-6): entita_esistenza e' una
+                  --   TABELLA esistente con soggetto_ruolo_id. Mai una vista:
+                  --   il perimetro lo fa la RLS della tabella, e una vista
+                  --   senza security_invoker la spegnerebbe in silenzio.
+                  IF NEW.entita_esistenza IS NOT NULL THEN
+                      SELECT c.oid, c.relkind
+                        INTO v_rel_oid, v_relkind
+                        FROM pg_catalog.pg_class c
+                       WHERE c.oid = to_regclass(NEW.entita_esistenza);
+
+                      IF v_rel_oid IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'config.trgfn_tipi_ruoli_guard_entita_ref',
+                              'E_TIPI_RUOLI_ENTITA_INVALIDA',
+                              jsonb_build_object(
+                                  'codice_interno', NEW.codice_interno,
+                                  'entita_esistenza', NEW.entita_esistenza
+                              ),
+                              NULL::uuid,
+                              NEW.codice_interno,
+                              concat('entita_esistenza: tabella ', NEW.entita_esistenza, ' non trovata')
+                          );
+                      END IF;
+
+                      IF v_relkind NOT IN ('r', 'p') THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'config.trgfn_tipi_ruoli_guard_entita_ref',
+                              'E_TIPI_RUOLI_ENTITA_INVALIDA',
+                              jsonb_build_object(
+                                  'codice_interno', NEW.codice_interno,
+                                  'entita_esistenza', NEW.entita_esistenza,
+                                  'relkind', v_relkind
+                              ),
+                              NULL::uuid,
+                              NEW.codice_interno,
+                              concat('entita_esistenza: ', NEW.entita_esistenza,
+                                     ' non e'' una tabella (le viste non sono ammesse: il perimetro lo fa la RLS della tabella)')
+                          );
+                      END IF;
+
+                      IF NOT EXISTS (
+                          SELECT 1
+                            FROM pg_catalog.pg_attribute a
+                           WHERE a.attrelid = v_rel_oid
+                             AND a.attname  = 'soggetto_ruolo_id'
+                             AND a.attnum   > 0
+                             AND NOT a.attisdropped
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database',
+                              'config.trgfn_tipi_ruoli_guard_entita_ref',
+                              'E_TIPI_RUOLI_ENTITA_INVALIDA',
+                              jsonb_build_object(
+                                  'codice_interno', NEW.codice_interno,
+                                  'entita_esistenza', NEW.entita_esistenza
+                              ),
+                              NULL::uuid,
+                              NEW.codice_interno,
+                              concat('entita_esistenza: ', NEW.entita_esistenza, ' manca colonna soggetto_ruolo_id')
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_tipi_ruoli_guard_entita_ref()
+              IS 'Guard INSERT/UPDATE su config.tipi_ruoli. entita_tabella (ricerca del codice): regclass valido, tabella o vista, con soggetto_ruolo_id e la colonna codice (entita_colonna_codice, default codice); se NULL, entita_colonna_codice deve essere NULL. entita_esistenza (rev 2026-10-10, brief-db-codici-non-trovato-email-e-permessi R-6): se valorizzata, una TABELLA esistente (relkind r o p, mai una vista: il perimetro lo fa la RLS della tabella) con soggetto_ruolo_id. Errore: E_TIPI_RUOLI_ENTITA_INVALIDA, E_PARAMETRO_INVALIDO per la coerenza dei NULL. ⚠️ Vale in scrittura: una tabella cancellata dopo la presidia il pgTAP script/test-search-regola-unica-visibile-v1.';
+
+              -- Il trigger scatta anche sull'UPDATE di entita_esistenza (prima solo
+              -- su entita_tabella ed entita_colonna_codice).
+              DROP TRIGGER IF EXISTS trg_tipi_ruoli_a10_guard_entita_ref_ins_upd ON config.tipi_ruoli;
+
+              CREATE TRIGGER trg_tipi_ruoli_a10_guard_entita_ref_ins_upd
+                BEFORE INSERT OR UPDATE OF entita_tabella, entita_colonna_codice, entita_esistenza
+                ON config.tipi_ruoli
+                FOR EACH ROW
+                EXECUTE FUNCTION config.trgfn_tipi_ruoli_guard_entita_ref();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Nessun rollback automatico: tornare indietro vuol dire rimettere
+              -- il corpo di 20260331-06 e il trigger di 20260311-08 (UPDATE OF
+              -- entita_tabella, entita_colonna_codice), prima di togliere la
+              -- colonna entita_esistenza (20261010-08), che corpo e trigger leggono.
+              SELECT 1;

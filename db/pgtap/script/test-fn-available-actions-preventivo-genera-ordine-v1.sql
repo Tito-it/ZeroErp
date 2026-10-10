@@ -74,6 +74,10 @@ UPDATE catalogo.articoli SET natura_vendita_id = (SELECT natura_merce_id FROM tm
  WHERE id = (SELECT articolo_id FROM tmp_refs);
 
 -- Preventivo ACCETTATO + riga MERCE.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la
+--   testata nasce DRAFT, prende la riga, poi passa ad ACCETTATO con
+--   dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu'
+--   (20261008-91).
 CREATE TEMP TABLE tmp_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -81,7 +85,7 @@ WITH ins AS (
     validita_dal, validita_al, valuta_id, stato_doc_preventivo_id, data,
     fatturazione_immediata, storicizza, meta, emittente_fiscale_id)
   SELECT 'PGTAP-CAP-ORD', 0, r.billing_account_id, r.istanza_utility_id, r.utility_id,
-         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_accettato_id,
+         DATE '2080-01-01', DATE '2080-12-31', r.valuta_id, r.stato_draft_id,
          DATE '2080-01-01', false, false,
          jsonb_build_object('test_scope','pgtap_cap_genera_ordine'), r.emittente_fiscale_id
     FROM tmp_refs r
@@ -93,6 +97,10 @@ INSERT INTO vendite.preventivi_righe (
 SELECT p.id, r.articolo_id, 3.000000, 12.000000, r.iva_id, true,
        jsonb_build_object('test_scope','pgtap_cap_genera_ordine')
   FROM tmp_prev p, tmp_refs r;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev), 'ACCETTATO');
+END $x$;
 
 -- Preventivo DRAFT (per test 2).
 CREATE TEMP TABLE tmp_prev_draft AS

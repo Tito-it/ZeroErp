@@ -38,10 +38,13 @@ from apps.vendite.api.views_offerte import (
     ApiOffertaEccezioneDetail,
     ApiOffertaEccezioni,
     ApiOffertaEccezionePreviewComponenti,
+    ApiOffertaRigaErogazioni,
     ApiOffertaGeneraOrdine,
     ApiOffertaPushContratto,
     ApiOffertaRegistraEsito,
     ApiOffertaRevisioni,
+    ApiOffertaRigheListaExportView,
+    ApiOffertaRigheListaView,
     ApiOffertaUtility,
     ApiOffertaUtilityDetail,
     ApiOfferteExportView,
@@ -133,6 +136,17 @@ urlpatterns = [
         name="vendite-offerta-contratto-sovrapposto",
     ),
     # Eccezioni.
+    # La lista configurabile `vendite.offerta_righe` su un percorso suo, come
+    # il contratto: `…/eccezioni/` resta eccezioni scritte + creazione.
+    path("<int:offerta_id>/righe/lista/", ApiOffertaRigheListaView.as_view(),
+         name="vendite-offerta-righe-lista"),
+    path("<int:offerta_id>/righe/lista/export/", ApiOffertaRigheListaExportView.as_view(),
+         name="vendite-offerta-righe-lista-export"),
+    # Le combinazioni erogazione/fonte di una riga con l'articolo dato, col
+    # default in testa: il form delle righe le legge invece di ricopiare la
+    # matrice (brief-db-offerta-emissione-ed-erogazione B-R4).
+    path("<int:offerta_id>/righe/erogazioni/", ApiOffertaRigaErogazioni.as_view(),
+         name="vendite-offerta-righe-erogazioni"),
     path(
         "<int:offerta_id>/eccezioni/",
         ApiOffertaEccezioni.as_view(),

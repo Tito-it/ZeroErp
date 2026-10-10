@@ -3,7 +3,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista dati societari con decodifiche forma giuridica e provincia, include identificativi tecnici.
+> Vista dati societari con decodifiche forma giuridica e provincia, include identificativi tecnici. destinatario_fe e' il canale FE (P = PEC, C = codice SDI), codice_sdi il codice (rev 20261010-38).
 
 ```sql
 CREATE OR REPLACE VIEW anagrafiche.vw_dati_societari AS

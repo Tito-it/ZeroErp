@@ -61,8 +61,8 @@ BEGIN
           FROM config.utilities_tipi_ruolo m
          WHERE m.utility_id = p_utility_id
            AND m.attivo = true
-           AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-           AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+           AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+           AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
     )
     INTO v_has_matrix;
 
@@ -78,8 +78,8 @@ BEGIN
          WHERE m.utility_id = p_utility_id
            AND m.tipo_ruolo_id = p_tipo_ruolo_id
            AND m.attivo = true
-           AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
-           AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+           AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+           AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
     )
     INTO v_is_allowed;
 

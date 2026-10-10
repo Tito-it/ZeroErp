@@ -9,11 +9,11 @@
 -- Indice test (1..10):
 --   1)  Tabella vendite.offerte_commerciali_eccezioni esiste
 --   2)  tipo_eccezione usa enum vendite.tipo_eccezione_contratto (B3)
---   3)  fonte_quantita_attesa NOT NULL
---   4)  CHECK chk_offerte_eccezioni_tipo_erog presente
---   5)  CHECK chk_offerte_eccezioni_fonte_qta presente
+--   3)  fonte_quantita_attesa obbligatoria sulle righe che non sono ESCLUSIONE (CHECK)
+--   4)  FK fk_offerte_commerciali_eccezioni_erogazione_fonte presente (rev 2026-10-07)
+--   5)  i CHECK della matrice erogazione/fonte sono ritirati
 --   6)  CHECK chk_offerte_eccezioni_coerenza_canone presente
---   7)  CHECK chk_offerte_eccezioni_coerenza_fonte_erogazione presente
+--   7)  la FK lega la coppia (tipo_erogazione, fonte_quantita_attesa)
 --   8)  CHECK chk_offerte_eccezioni_prezzo_per_tipo_eccezione presente
 --   9)  UNIQUE parziale uq_offerte_eccezioni_one_eccezione_per_articolo presente
 --  10)  Campi I4 assenti: stato_approvazione_prezzo e pratica_approvazione_prezzo_id
@@ -61,49 +61,48 @@ SELECT ok(
 );
 
 -- ============================================================
--- 3) fonte_quantita_attesa NOT NULL
+-- 3) fonte_quantita_attesa obbligatoria, tranne sull'ESCLUSIONE
 -- ============================================================
-SELECT ok(
-    EXISTS (
-        SELECT 1 FROM information_schema.columns
-         WHERE table_schema = 'vendite'
-           AND table_name   = 'offerte_commerciali_eccezioni'
-           AND column_name  = 'fonte_quantita_attesa'
-           AND is_nullable  = 'NO'
-    ),
-    '3) fonte_quantita_attesa NOT NULL (specchio contratti_righe I3)'
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R1): il NOT
+--   NULL scende al CHECK chk_offerte_eccezioni_fonte_per_tipo_eccezione,
+--   specchio del contratto. Un'esclusione non ha fonte.
+SELECT is(
+    (SELECT pg_get_constraintdef(c.oid) FROM pg_constraint c
+      WHERE c.conrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+        AND c.conname  = 'chk_offerte_eccezioni_fonte_per_tipo_eccezione'),
+    'CHECK (((tipo_eccezione = ''ESCLUSIONE''::vendite.tipo_eccezione_contratto) OR (fonte_quantita_attesa IS NOT NULL)))',
+    '3) fonte_quantita_attesa obbligatoria sulle righe che non sono ESCLUSIONE (specchio contratti_righe)'
 );
 
 -- ============================================================
--- 4) CHECK chk_offerte_eccezioni_tipo_erog (specchio chk_contrighe_tipo_erog)
+-- 4) FK fk_offerte_commerciali_eccezioni_erogazione_fonte su config.erogazioni_fonti
+--    ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.7, giro B1):
+--    erano i CHECK chk_offerte_eccezioni_tipo_erog / _fonte_qta /
+--    _coerenza_fonte_erogazione, ritirati da 20261007-54. La matrice e' un dato.
 -- ============================================================
 SELECT ok(
     EXISTS (
         SELECT 1 FROM pg_constraint c
-          JOIN pg_class t   ON t.oid = c.conrelid
-          JOIN pg_namespace n ON n.oid = t.relnamespace
-         WHERE n.nspname = 'vendite'
-           AND t.relname = 'offerte_commerciali_eccezioni'
-           AND c.conname = 'chk_offerte_eccezioni_tipo_erog'
-           AND c.contype = 'c'
+         WHERE c.conrelid  = 'vendite.offerte_commerciali_eccezioni'::regclass
+           AND c.conname   = 'fk_offerte_commerciali_eccezioni_erogazione_fonte'
+           AND c.contype   = 'f'
+           AND c.confrelid = 'config.erogazioni_fonti'::regclass
     ),
-    '4) CHECK chk_offerte_eccezioni_tipo_erog presente (I3)'
+    '4) FK fk_offerte_commerciali_eccezioni_erogazione_fonte su config.erogazioni_fonti presente'
 );
 
 -- ============================================================
--- 5) CHECK chk_offerte_eccezioni_fonte_qta (specchio chk_contrighe_fonte_qta)
+-- 5) I tre CHECK della matrice non ci sono piu': la sede e' una (la FK)
 -- ============================================================
 SELECT ok(
-    EXISTS (
+    NOT EXISTS (
         SELECT 1 FROM pg_constraint c
-          JOIN pg_class t   ON t.oid = c.conrelid
-          JOIN pg_namespace n ON n.oid = t.relnamespace
-         WHERE n.nspname = 'vendite'
-           AND t.relname = 'offerte_commerciali_eccezioni'
-           AND c.conname = 'chk_offerte_eccezioni_fonte_qta'
-           AND c.contype = 'c'
+         WHERE c.conrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+           AND c.conname IN ('chk_offerte_eccezioni_tipo_erog',
+                             'chk_offerte_eccezioni_fonte_qta',
+                             'chk_offerte_eccezioni_coerenza_fonte_erogazione')
     ),
-    '5) CHECK chk_offerte_eccezioni_fonte_qta presente (I3)'
+    '5) i CHECK della matrice erogazione/fonte sono ritirati (la FK e'' la sede unica)'
 );
 
 -- ============================================================
@@ -123,19 +122,18 @@ SELECT ok(
 );
 
 -- ============================================================
--- 7) CHECK chk_offerte_eccezioni_coerenza_fonte_erogazione
+-- 7) La FK lega la COPPIA (tipo_erogazione, fonte_quantita_attesa), nell'ordine
+--    del vocabolario (rev 2026-10-07: era il CHECK della coerenza)
 -- ============================================================
-SELECT ok(
-    EXISTS (
-        SELECT 1 FROM pg_constraint c
-          JOIN pg_class t   ON t.oid = c.conrelid
-          JOIN pg_namespace n ON n.oid = t.relnamespace
-         WHERE n.nspname = 'vendite'
-           AND t.relname = 'offerte_commerciali_eccezioni'
-           AND c.conname = 'chk_offerte_eccezioni_coerenza_fonte_erogazione'
-           AND c.contype = 'c'
-    ),
-    '7) CHECK chk_offerte_eccezioni_coerenza_fonte_erogazione presente (I3)'
+SELECT is(
+    (SELECT array_agg(a.attname ORDER BY k.ord)
+       FROM pg_constraint c
+       CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+       JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+      WHERE c.conrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+        AND c.conname  = 'fk_offerte_commerciali_eccezioni_erogazione_fonte'),
+    ARRAY['tipo_erogazione', 'fonte_quantita_attesa']::name[],
+    '7) la FK lega la coppia (tipo_erogazione, fonte_quantita_attesa)'
 );
 
 -- ============================================================

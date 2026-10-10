@@ -116,6 +116,7 @@ SELECT ok(
 -- ============================================================
 -- 1) Inserimento preventivo ACCETTATO con riga valida
 -- ============================================================
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_prev AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -130,7 +131,7 @@ WITH ins AS (
     r.billing_account_id, r.istanza_utility_id,
     r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_accettato_id, DATE '2026-06-01', false,
+    r.stato_bozza_id, DATE '2026-06-01', false,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev')
   FROM tmp_refs_prev r
   RETURNING id, uid
@@ -150,6 +151,10 @@ WITH ins AS (
   RETURNING id
 )
 SELECT * FROM ins;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev), 'ACCETTATO');
+END $porta$;
 
 -- Chiamata funzione senza filtri
 CREATE TEMP TABLE tmp_result_prev AS
@@ -252,6 +257,7 @@ SELECT ok(
 -- ============================================================
 -- 5) Riga con quantita zero esclusa
 -- ============================================================
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_prev_zero AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -266,7 +272,7 @@ WITH ins AS (
     r.billing_account_id, r.istanza_utility_id,
     r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_accettato_id, DATE '2026-06-01', false,
+    r.stato_bozza_id, DATE '2026-06-01', false,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev', 'case', 'zero_qta')
   FROM tmp_refs_prev r
   RETURNING id, uid
@@ -284,6 +290,10 @@ SELECT
   pz.id, r.articolo_id, 5.000000, 5.000000, 10.000000,
   r.iva_id, false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev', 'case', 'zero_qta')
 FROM tmp_prev_zero pz, tmp_refs_prev r;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_zero), 'ACCETTATO');
+END $porta$;
 
 CREATE TEMP TABLE tmp_result_prev_zero AS
 SELECT *

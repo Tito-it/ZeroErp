@@ -98,3 +98,10 @@ UPDATE flussi SET stato_id = <COMPLETATO>   -- solo alla TRANSIZIONE di stato
 * Cintura strutturale: indice UNIQUE parziale `uq_pratiche_flusso_origine_tipo` su `pratiche.pratiche(flusso_origine_id, tipo_prestazione_id)` — il doppio figlio e' impossibile anche per scritture fuori dal motore. Resta legittimo che un flusso generi pratiche di tipi **diversi** (regole multiple).
 * `pratica_padre_id` + `flusso_origine_id` consentono la **tracciabilita' bidirezionale** completa: dalla figlia risalire a pratica e flusso che l'hanno generata.
 * Test: `db/pgtap/pratiche/test-generazione-cross-pratica.sql`.
+
+---
+
+### Note di migrazione
+
+* **2026-10-08** (`20261008-69`): la figlia copia dalla madre anche `billing_account_id`, accanto a
+  soggetto, ruolo e istanza. Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).

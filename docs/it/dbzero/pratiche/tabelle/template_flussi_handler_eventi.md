@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | template_flusso_id | integer | NO |  |
-| evento | character varying | NO |  |
-| esito_richiesto | character varying | YES |  |
+| evento | character varying(20) | NO |  |
+| esito_richiesto | character varying(20) | YES |  |
 | handler_id | integer | NO |  |
 | handler_params | jsonb | NO | '{}'::jsonb |
 | sequenza | integer | NO | 0 |

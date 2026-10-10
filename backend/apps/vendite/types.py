@@ -28,7 +28,7 @@ class PipelineStepLogMeta(TypedDict):
 # rende l'aggregazione un'identita' esatta (somma(qi*p) = p*somma(qi)), e
 # raggruppare su un float la renderebbe approssimata.
 # `visibilita_componenti` e' uscita dal modello il 2026-07-28: non era la regola
-# di esposizione dei kit (quella e' `articoli_componenti.esposto_in_fattura`) e
+# di esposizione dei kit (quella e' `articoli_componenti.esposizione_in_fattura`) e
 # non aveva alcun consumatore vivo.
 class GroupAttivitaKey(TypedDict):
     articolo_id: str  # uuid (catalogo.articoli.id)
@@ -740,7 +740,7 @@ class CommessaRegistroEventoRow(TypedDict):
     evento: str
     # Il payload dell'evento, COM'E'. La forma cambia per evento e appiattirla
     # nel backend vorrebbe dire rifarlo a ogni evento nuovo.
-    dettaglio: dict[str, object]
+    dettaglio: dict[str, Any]
     # ⭐ Estratto a parte perche' e' l'unica chiave che piu' eventi condividono
     # ed e' la frase che l'operatore sta cercando.
     motivo: str | None
@@ -832,7 +832,7 @@ class PreventivoRigaComponenteRow(TypedDict):
     ordine: int | None
     attivo: bool
     obbligatorio: bool
-    esposto_in_fattura: bool
+    esposizione_in_fattura: str  # codice di config.esposizioni_componente
 
 
 class PreventivoRigaComponentePreviewRow(TypedDict):
@@ -849,7 +849,7 @@ class PreventivoRigaComponentePreviewRow(TypedDict):
     origine_prezzo: str | None
     resolver_error_reason: str | None
     obbligatorio: bool
-    esposto_in_fattura: bool
+    esposizione_in_fattura: str  # codice di config.esposizioni_componente
 
 
 # Componente BoM di riga contratto (modello unificato 2026-05-13). Specchio
@@ -880,7 +880,7 @@ class ContrattoRigaComponenteRow(TypedDict):
     ordine: int | None
     attivo: bool
     obbligatorio: bool
-    esposto_in_fattura: bool
+    esposizione_in_fattura: str  # codice di config.esposizioni_componente
 
 
 # Aggregato smistamento per ramo (vw_preventivi_smistamento, sostituisce la
@@ -1003,7 +1003,8 @@ class OffertaEccezioneRow(TypedDict):
     is_composito: bool
     tipo_eccezione: str
     tipo_erogazione: str | None
-    fonte_quantita_attesa: str
+    # NULL solo sull'ESCLUSIONE, che non porta dati di fatturazione (2026-10-04).
+    fonte_quantita_attesa: str | None
     periodicita: str | None
     generazione_canone: str | None
     competenza_canone: str | None
@@ -1012,7 +1013,7 @@ class OffertaEccezioneRow(TypedDict):
     qta_operativa: str | None
     uom_operativa_id: int | None
     uom_codice: str | None
-    factor_to_base: str
+    factor_to_base: str | None
     ordine: int | None
     attivo: bool
     meta: dict[str, Any]
@@ -1044,7 +1045,7 @@ class OffertaEccezioneComponenteRow(TypedDict):
     ordine: int | None
     attivo: bool
     obbligatorio: bool
-    esposto_in_fattura: bool
+    esposizione_in_fattura: str  # codice di config.esposizioni_componente
 
 
 class OffertaUtilityRow(TypedDict):
@@ -1102,7 +1103,7 @@ class DashApertoDocumentoRow(TypedDict):
     # Riga drill-down del serbatoio pre-commessa (vw_dash_aperto_documenti v2:
     # 4 aree documento, perimetro aperti-non-chiusi — is_transitato IS DISTINCT
     # FROM true AND fase<>CHIUSO, DL-14/15). anzianita_giorni derivata in SELECT
-    # (GREATEST(current_date - data_riferimento, 0)) come il gemello Backlog,
+    # (GREATEST(fn_data_operativa() - data_riferimento, 0)) come il gemello Backlog,
     # allinea la lettura al filtro "aperti da oltre N giorni" (DL-17).
     area: str
     documento_id: int

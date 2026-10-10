@@ -73,6 +73,7 @@ from unittest.mock import patch
 from django.db import connection, transaction
 from django.test import SimpleTestCase
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
 from apps.vendite.db import vendite_repository as vr
 from apps.vendite.db.vendite_repository import VenditeRepository
@@ -269,7 +270,7 @@ class LottiAnnullatiSulDatabaseTests(unittest.TestCase):
             _, vivi = repo.list_lotti(competenza_mese=None, **comuni, limit=1, offset=0)
             nascosti = repo.count_lotti_annullati(competenza_mese=None, auth_user_id=uid)
             self.assertEqual(tutti - vivi, nascosti)
-            anno = date.today().year
+            anno = oggi_aziendale().year
             mese_tutti = repo.count_lotti_per_mese(
                 anno=anno, auth_user_id=uid, includi_annullati=True,
             )

@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Scopo: Management command per disattivazione batch auth_user
-#        con finestra temporale scaduta. Wrapper Django per
+# Scopo: Management command per il riallineamento batch di
+#        `auth_user.is_active` alle vesti utilizzabili oggi (spegne chi non ne
+#        ha piu' una, accende chi ne ha una diventata valida). Wrapper Django per
 #        anagrafiche.fn_sync_auth_user_expired() con invalidazione
 #        cache permessi per gli utenti coinvolti.
 # Note: ⛔ ATTREZZO A MANO, non un processo programmato — e dal 2026-09-07 non
@@ -31,7 +32,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
+from apps.core.management.comando_aziendale import ComandoAziendale
 
 from apps.anagrafiche.db.anagrafiche_repository import AnagraficheRepository
 from apps.core.services.permissions_cache import invalidate_user
@@ -39,9 +41,9 @@ from apps.core.services.permissions_cache import invalidate_user
 logger = logging.getLogger(__name__)
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
-        "Disattiva auth_user per risorse umane con finestra temporale scaduta. "
+        "Riallinea auth_user.is_active alle vesti utilizzabili oggi (spegne e accende). "
         "Wrapper per anagrafiche.fn_sync_auth_user_expired() con invalidazione "
         "cache permessi."
     )
@@ -51,7 +53,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--dry-run",
             action="store_true",
-            help="Solo report: mostra gli utenti che sarebbero disattivati senza applicare modifiche.",
+            help="Solo report: mostra gli utenti che sarebbero riallineati senza applicare modifiche.",
         )
 
     # Scopo: Esegue la sync. ⛔ NESSUNA registrazione sul giornale dei run, e la
@@ -69,14 +71,14 @@ class Command(BaseCommand):
     def handle(self, *args: Any, **options: Any) -> None:
         self._esegui(options)
 
-    # Scopo: Esegue la sync batch degli utenti scaduti e ritorna il riepilogo.
+    # Scopo: Esegue il riallineamento batch e ritorna il riepilogo.
     # Flusso: UNA chiamata al repository, che esegue la funzione SQL e ritorna
     #         gli auth_user_id che ha DAVVERO modificato; poi invalida la cache
     #         permessi per ciascuno. In dry-run la corsa e' la stessa, ritirata.
     # ⛔ Fino al 2026-09-12 c'era una «fase 1» che elencava i candidati con una
     #    `WHERE` ricopiata in Python (e a meta': solo il ramo legacy, via la
-    #    vista `risorse_umane_auth_user` che il DB ritira). La regola «chi e'
-    #    scaduto» ora vive in una sede sola, la funzione DB, e il command legge
+    #    vista `risorse_umane_auth_user` che il DB ritira). La regola «chi vale
+    #    oggi» ora vive in una sede sola, a DB, e il command legge
     #    l'effetto (analisi-software-per-dati-morti §2.1, passo 1).
     def _esegui(self, options: Any) -> dict:
         dry_run: bool = options["dry_run"]
@@ -88,15 +90,15 @@ class Command(BaseCommand):
             if not affected_ids:
                 self.stdout.write(
                     self.style.SUCCESS(
-                        "Nessun utente con finestra temporale scaduta."
+                        "Nessun utente da riallineare."
                     )
                 )
-                return {"disattivati": 0, "cache_invalidata": 0}
+                return {"riallineati": 0, "cache_invalidata": 0}
 
             if dry_run:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"[DRY-RUN] {len(affected_ids)} utenti sarebbero disattivati: "
+                        f"[DRY-RUN] {len(affected_ids)} utenti sarebbero riallineati: "
                         f"auth_user_id = {affected_ids}"
                     )
                 )
@@ -110,19 +112,19 @@ class Command(BaseCommand):
 
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"Sync completata: {count} utenti disattivati, "
+                    f"Sync completata: {count} utenti riallineati, "
                     f"cache invalidata per {invalidated} utenti."
                 )
             )
 
             logger.info(
-                "sync_auth_user_active: disattivati=%d, cache_invalidata=%d, "
+                "sync_auth_user_active: riallineati=%d, cache_invalidata=%d, "
                 "auth_user_ids=%s",
                 count,
                 invalidated,
                 affected_ids,
             )
-            return {"disattivati": count, "cache_invalidata": invalidated}
+            return {"riallineati": count, "cache_invalidata": invalidated}
 
         except Exception as exc:
             logger.exception("Errore in sync_auth_user_active")

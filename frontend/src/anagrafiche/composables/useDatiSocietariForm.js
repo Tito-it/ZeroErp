@@ -27,7 +27,11 @@ export function useDatiSocietariForm(options = {}) {
     // Fatturazione elettronica
     destinatario_fe: null,
     pec_fatturazione: '',
-    codice_sdi: ''
+    codice_sdi: '',
+    // ISO 'YYYY-MM-DD' o null (il DatePicker lo converte a video).
+    // ⚠️ Il verbo DB riceve lo STATO INTERO: un campo che il form non tiene
+    //    verrebbe azzerato al primo salvataggio in modifica (2026-10-10).
+    data_costituzione: null
   })
 
   // Forma giuridica corrente selezionata
@@ -78,6 +82,7 @@ export function useDatiSocietariForm(options = {}) {
     form.destinatario_fe = null
     form.pec_fatturazione = ''
     form.codice_sdi = ''
+    form.data_costituzione = null
   }
 
   // Scopo: Popola il form con dati esistenti (per edit mode).
@@ -91,6 +96,24 @@ export function useDatiSocietariForm(options = {}) {
     form.destinatario_fe = data.destinatario_fe ?? null
     form.pec_fatturazione = data.pec_fatturazione || ''
     form.codice_sdi = data.codice_sdi || ''
+    form.data_costituzione = data.data_costituzione ?? null
+  }
+
+  // Scopo: Il corpo da mandare al backend: SOLO cio' che il form mostra.
+  // ⭐ Il form tiene i valori dei campi nascosti (si torna indietro e si
+  //    ritrovano), ma non li manda: un codice SDI scritto e poi lasciato per
+  //    il canale P arriverebbe al guard del DB, che lo rifiuta sul campo
+  //    `codice_sdi` — un campo che l'operatore non vede piu'. Stessa regola
+  //    per REA e capitale quando la forma giuridica non li prevede.
+  function toPayload() {
+    return {
+      ...form,
+      id_prov_iscri_rea: showRea.value ? form.id_prov_iscri_rea : null,
+      iscrizione_rea: showRea.value ? form.iscrizione_rea : '',
+      capitale_sociale: showCapitaleSociale.value ? form.capitale_sociale : null,
+      pec_fatturazione: form.destinatario_fe === 'P' ? form.pec_fatturazione : '',
+      codice_sdi: form.destinatario_fe === 'C' ? form.codice_sdi : ''
+    }
   }
 
   return {
@@ -102,6 +125,7 @@ export function useDatiSocietariForm(options = {}) {
     requireCapitaleSociale,
     validate,
     reset,
-    populate
+    populate,
+    toPayload
   }
 }

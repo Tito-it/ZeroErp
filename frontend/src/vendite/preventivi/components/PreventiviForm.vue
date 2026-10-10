@@ -73,8 +73,10 @@ function onBaClear() {
   onBaSelected(null)
 }
 
-// Pattern simmetrico al BA: l'istanza picker e' usato quando il prospect
-// non ha ancora un BA. La selezione popola id + obj nel form.
+// Pattern simmetrico al BA: il picker delle forniture (una riga per BA) e'
+// l'altra strada per scegliere il cliente, partendo dall'istanza. La selezione
+// popola id + obj nel form; il BA della coppia istanza+utility lo risolve il
+// backend (il preventivo ha sempre il BA, brief-db-istanza-nasce-col-ba R-2).
 function onIstanzaSelected(item) {
   if (!item) {
     form.value.istanza_utility_id = null
@@ -83,8 +85,8 @@ function onIstanzaSelected(item) {
   }
   form.value.istanza_utility_id = item.id
   form.value.istanza_utility_obj = item
-  // Coerenza utility/istanza: se utility non ancora valorizzata e l'istanza
-  // dichiara una utility (via BA campione), pre-compila. Il picker stesso
+  // Coerenza utility/istanza: se utility non ancora valorizzata, pre-compila
+  // quella della fornitura scelta (la utility del suo BA). Il picker stesso
   // gia' resetta la selezione su cambio utility incoerente.
   if (!form.value.utility_id && item.utility_id) {
     form.value.utility_id = item.utility_id
@@ -135,10 +137,10 @@ function onIstanzaClear() {
           @clear="onBaClear" />
       </div>
 
-      <!-- Istanza utility: obbligatoria post brief DB rev2.
-           Se BA selezionato l'istanza e' auto-derivata (picker disabilitato).
-           Se BA assente (preventivo prospect) il picker e' editabile e l'istanza
-           deve essere selezionata esplicitamente prima di poter salvare. -->
+      <!-- Istanza utility: obbligatoria. Se BA selezionato l'istanza e'
+           auto-derivata (picker nascosto). Senza BA il picker delle forniture
+           e' l'altra strada: si sceglie l'istanza, e il BA della coppia lo
+           risolve il backend al salvataggio. -->
       <div class="form-field">
         <label>{{ t('vendite.preventivi.field_istanza_utility') }} <span v-if="!isEdit">*</span></label>
         <IstanzaUtilityLookup

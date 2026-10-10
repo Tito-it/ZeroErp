@@ -7,7 +7,7 @@
 
 from django.urls import path
 
-from . import email_views, invito_views, views
+from . import accessi_views, email_views, invito_views, views
 
 urlpatterns = [
     # Operatori
@@ -15,7 +15,6 @@ urlpatterns = [
     path("operatori/credenziale-per-email/", views.CredenzialePerEmailView.as_view(), name="amm-operatori-credenziale-per-email"),
     path("operatori/<int:auth_user_id>/", views.OperatoriDetailView.as_view(), name="amm-operatori-detail"),
     path("operatori/<int:auth_user_id>/disabilita/", views.OperatoriDisabilitaView.as_view(), name="amm-operatori-disabilita"),
-    path("operatori/<int:auth_user_id>/riattiva/", views.OperatoriRiattivaView.as_view(), name="amm-operatori-riattiva"),
     # Override permessi operatore
     path("operatori/<int:auth_user_id>/override-aree/", views.OverrideAreeView.as_view(), name="amm-override-aree"),
     path("operatori/<int:auth_user_id>/override-azioni/", views.OverrideAzioniView.as_view(), name="amm-override-azioni"),
@@ -24,6 +23,10 @@ urlpatterns = [
     # Livelli EREDITATI dal profilo (sola lettura): la colonna «ereditato» del
     # pannello permessi. Non e' `reparti/<uo_id>/profilo/` — vedi la view.
     path("operatori/<int:auth_user_id>/permessi-ereditati/", views.PermessiEreditatiView.as_view(), name="amm-permessi-ereditati"),
+    # Permessi EFFETTIVI su azioni e oggetti, col tetto d'area (sola lettura):
+    # l'etichetta «limitata dall'area» del pannello. Non e' il `core`
+    # `users/<id>/permessi-effettivi/` — vedi la view.
+    path("operatori/<int:auth_user_id>/permessi-effettivi/", views.PermessiEffettiviOperatoreView.as_view(), name="amm-permessi-effettivi"),
     # Riepilogo permessi e audit
     path("permessi-riepilogo/", views.PermessiRiepilogoView.as_view(), name="amm-permessi-riepilogo"),
     path("audit-log/", views.AuditLogView.as_view(), name="amm-audit-log"),
@@ -61,6 +64,19 @@ urlpatterns = [
     path("emittenti-fiscali/form-defaults/", views.EmittentiFormDefaultsView.as_view(), name="amm-emittenti-form-defaults"),
     # Audit hardening + email log lookup (Fase 5)
     path("lookup/audit-sources/", views.AuditSourcesLookupView.as_view(), name="amm-audit-sources-lookup"),
+    # Area «Accessi» (brief-db-be-fe-area-accessi): le altre due liste che,
+    # con quella degli operatori, censiscono TUTTE le credenziali.
+    path("accessi/altri/", accessi_views.AccessiAltriListView.as_view(), name="amm-accessi-altri"),
+    path("accessi/sistema/", accessi_views.AccessiSistemaListView.as_view(), name="amm-accessi-sistema"),
+    # Le azioni della CREDENZIALE (valgono per tutte le sue vesti, A-4/A-5):
+    # blocco dell'amministratore e secondo fattore. Fino al 2026-10-02 il
+    # secondo fattore stava sotto `operatori/<id>/`: ritirato.
+    path("credenziali/<int:auth_user_id>/", accessi_views.CredenzialeDetailView.as_view(), name="amm-credenziali-detail"),
+    path("credenziali/<int:auth_user_id>/blocca/", accessi_views.CredenzialeBloccaView.as_view(), name="amm-credenziali-blocca"),
+    path("credenziali/<int:auth_user_id>/sblocca/", accessi_views.CredenzialeSbloccaView.as_view(), name="amm-credenziali-sblocca"),
+    path("credenziali/<int:auth_user_id>/secondo-fattore/", accessi_views.CredenzialeSecondoFattoreView.as_view(), name="amm-credenziali-secondo-fattore"),
+    path("credenziali/<int:auth_user_id>/secondo-fattore/obbligo/", accessi_views.CredenzialeSecondoFattoreObbligoView.as_view(), name="amm-credenziali-secondo-fattore-obbligo"),
+    path("credenziali/<int:auth_user_id>/secondo-fattore/disattiva/", accessi_views.CredenzialeSecondoFattoreDisattivaView.as_view(), name="amm-credenziali-secondo-fattore-disattiva"),
     # Invito operatore
     path("operatori/<int:auth_user_id>/invita/", invito_views.InvitaOperatoreView.as_view(), name="amm-operatori-invita"),
     path("operatori/<int:auth_user_id>/reinvia-invito/", invito_views.ReinviaInvitoView.as_view(), name="amm-operatori-reinvia-invito"),

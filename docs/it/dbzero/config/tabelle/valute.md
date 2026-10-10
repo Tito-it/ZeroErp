@@ -9,13 +9,13 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| iso_code | character | NO |  |
+| codice | character varying(50) | NO |  |
+| iso_code | character(3) | NO |  |
 | iso_num_code | smallint | YES |  |
-| descrizione | character varying | NO |  |
-| simbolo | character varying | NO |  |
+| descrizione | character varying(80) | NO |  |
+| simbolo | character varying(8) | NO |  |
 | user_insert | text | NO | CURRENT_USER |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 

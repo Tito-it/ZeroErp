@@ -29,6 +29,13 @@ finestra temporale di validità.
 ### Regole principali
 
 * univocità per `template_documento_id + versione`;
+* i valori ammessi di `formato_template`, `page_format` e `page_orientation`
+  stanno in tre vocabolari — `documenti.formati_template`,
+  `documenti.formati_pagina`, `documenti.orientamenti_pagina` — legati per FK
+  al loro `codice_interno` (dal 04-10-2026; prima erano tre `CHECK`). Si
+  leggono dal lookup generico per riempire le tendine e non si configurano:
+  niente `attivo`, e un valore nuovo nasce insieme al motore di stampa che lo
+  sa onorare;
 * `stato` ammessi:
   * `BOZZA`
   * `PUBBLICATA`

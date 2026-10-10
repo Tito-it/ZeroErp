@@ -20,14 +20,14 @@
 
 from __future__ import annotations
 
-from django.core.management.base import BaseCommand
+from apps.core.management.comando_aziendale import ComandoAziendale
 
 from apps.core.services.coda_lavori.drainer_service import draina_coda_lavori
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.processi import PROCESSO_DRAINA_CODA_LAVORI
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
         "Worker drainer della coda lavori generica (dbops.coda_lavori): claima i "
         "job eleggibili, li dispatcha per tipo (SISTEMA/OPERATORE) e ne aggiorna "

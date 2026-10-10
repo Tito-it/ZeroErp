@@ -129,7 +129,7 @@ CREATE FUNCTION pg_temp.fx_nc(p_prezzo numeric) RETURNS bigint LANGUAGE plpgsql 
 DECLARE
   v_id bigint;
 BEGIN
-  -- ⛔ La data e' current_date, MAI un letterale (rev 2026-09-23): il test 6
+  -- ⛔ La data e' script.fn_data_operativa(), MAI un letterale (rev 2026-09-23): il test 6
   --   NUMERA la nota, e la numerazione applica la finestra di emissione del
   --   registro («non piu' di N giorni fa»). Con DATE '2026-09-10' il test e'
   --   diventato rosso da solo il 23-09, a codice invariato. Il registro e'
@@ -138,7 +138,7 @@ BEGIN
                                billing_account_id, utility_id, stato_doc_fiscale_id,
                                tipo_doc_fiscale_id, valuta_id, termine_pagamento_id,
                                natura_doc_id, meta)
-  SELECT (SELECT id FROM tmp_reg_nc), current_date,
+  SELECT (SELECT id FROM tmp_reg_nc), script.fn_data_operativa(),
          r.emittente_soggetto_ruolo_id, r.billing_account_id, r.utility_id,
          r.stato_draft_id, r.tipo_doc_fiscale_id, r.valuta_id, r.termine_2r_id,
          r.natura_nc_id, jsonb_build_object('test_scope', 'pgtap_nc_rata_unica')
@@ -146,10 +146,10 @@ BEGIN
   RETURNING id INTO v_id;
 
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                     prezzo_unitario, iva_id, meta)
+                                     prezzo_unitario, iva_id, meta, competenza_dal, competenza_al)
   VALUES (v_id, 1, 'Riga test NC rata unica', -1::numeric, p_prezzo,
           (SELECT iva_id FROM tmp_refs_nc),
-          jsonb_build_object('test_scope', 'pgtap_nc_rata_unica'));
+          jsonb_build_object('test_scope', 'pgtap_nc_rata_unica'), script.fn_data_operativa(), script.fn_data_operativa());
 
   PERFORM vendite.fn_ricalcola_riepilogo_iva_fattura(v_id);
   PERFORM vendite.fn_ricalcola_totali_fattura(v_id);
@@ -180,7 +180,7 @@ SELECT ok(
 SELECT is(
   (SELECT s.data_scadenza FROM vendite.fatture_scadenze s
     WHERE s.fattura_id = (SELECT id FROM tmp_nc WHERE ruolo = 'A')),
-  (date_trunc('month', (current_date + 30)::timestamp) + interval '1 month - 1 day')::date,
+  (date_trunc('month', (script.fn_data_operativa() + 30)::timestamp) + interval '1 month - 1 day')::date,
   '3) ...alla PRIMA data del termine: fine mese di data + 30 (Q-C: la rata resta figlia del termine)'
 );
 
@@ -242,8 +242,8 @@ SELECT s.id AS scadenza_id, s.fattura_id, s.importo, f.billing_account_id
 CREATE TEMP TABLE tmp_contabile AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs_nc),
-    p_data_contabile        => current_date,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa(),
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', 'pgtap_nc_rata_unica'),
     p_origine               => 'MANUALE'
@@ -253,7 +253,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 SELECT lives_ok(
   format($q$INSERT INTO pagamenti.vendite_contabili_righe
              (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id, billing_account_id, scadenza_id, stato_id)
-           VALUES (%s, 'PGTAP_NC_RIMBORSO', current_date, -10.00, %s, %s, %s, %s)$q$,
+           VALUES (%s, 'PGTAP_NC_RIMBORSO', script.fn_data_operativa(), -10.00, %s, %s, %s, %s)$q$,
          (SELECT contabile_id FROM tmp_contabile),
          (SELECT fattura_id FROM tmp_rata_nc),
          (SELECT billing_account_id FROM tmp_rata_nc),
@@ -284,7 +284,7 @@ SELECT throws_like(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id, billing_account_id,
      scadenza_id, stato_id, forzata, motivo_forzatura)
-SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_NC_PAGATA', current_date, 15.00,
+SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_NC_PAGATA', script.fn_data_operativa(), 15.00,
        r.fattura_id, r.billing_account_id, r.scadenza_id,
        (SELECT stato_abbinata_id FROM tmp_refs_nc),
        true, 'Il cliente ha pagato la nota di credito'
@@ -318,8 +318,8 @@ SELECT s.id AS scadenza_id, s.fattura_id, s.importo, f.billing_account_id
 CREATE TEMP TABLE tmp_contabile_c AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs_nc),
-    p_data_contabile        => current_date - 1,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa() - 1,
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', 'pgtap_nc_rata_unica'),
     p_origine               => 'MANUALE'
@@ -328,7 +328,7 @@ SELECT pagamenti.fn_get_or_create_vendite_contabile(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id, billing_account_id,
      scadenza_id, stato_id, forzata, motivo_forzatura)
-SELECT (SELECT contabile_id FROM tmp_contabile_c), 'PGTAP_NC_SOVRA', current_date,
+SELECT (SELECT contabile_id FROM tmp_contabile_c), 'PGTAP_NC_SOVRA', script.fn_data_operativa(),
        r.importo - 20.00,                           -- oltre il credito, nel verso giusto
        r.fattura_id, r.billing_account_id, r.scadenza_id,
        (SELECT stato_abbinata_id FROM tmp_refs_nc),

@@ -14,8 +14,8 @@
 | emittente_soggetto_ruolo_id | bigint | NO |  |
 | classe_utenza_id | integer | YES |  |
 | listino_id | bigint | NO |  |
-| tipo_variazione | character varying | YES |  |
-| valore_variazione | numeric | YES |  |
+| tipo_variazione | character varying(16) | YES |  |
+| valore_variazione | numeric(10,4) | YES |  |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -32,6 +32,7 @@
 |------|------|---------|
 | CHECK | chk_categ_cli_listini_tipo_variazione |  |
 | CHECK | chk_categ_cli_listini_variazione_coerente |  |
+| CHECK | chk_categorie_clienti_listini_valore_variazione_finito |  |
 | FOREIGN KEY | fk_categ_cli_listini_categoria | categoria_cliente_id |
 | FOREIGN KEY | fk_categ_cli_listini_classe_utenza | classe_utenza_id |
 | FOREIGN KEY | fk_categ_cli_listini_emittente | emittente_soggetto_ruolo_id |

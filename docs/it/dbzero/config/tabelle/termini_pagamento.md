@@ -5,14 +5,14 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| codice_interno | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(32) | NO |  |
+| codice_interno | character varying(32) | NO |  |
+| descrizione | character varying(120) | NO |  |
 | numero_rate | smallint | NO |  |
 | intervallo | smallint | NO | 0 |
 | primo_offset_giorni | smallint | NO | 0 |
-| ripartizione | character varying | NO | 'UGUALI'::character varying |
-| arrotondamento_metodo | character varying | NO | 'HALF_UP'::character varying |
+| ripartizione | character varying(16) | NO | 'UGUALI'::character varying |
+| arrotondamento_metodo | character varying(12) | NO | 'HALF_UP'::character varying |
 | arrotondamento_decimali | smallint | NO | 2 |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |

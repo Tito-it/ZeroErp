@@ -106,7 +106,7 @@ SELECT fattura_id AS id FROM tmp_fattura_bb;
 CREATE TEMP TABLE tmp_rata AS
 WITH ins AS (
   INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo)
-  SELECT (SELECT id FROM tmp_fattura), 1, current_date + 1, 100.00
+  SELECT (SELECT id FROM tmp_fattura), 1, script.fn_data_operativa() + 1, 100.00
   RETURNING id
 ) SELECT * FROM ins;
 
@@ -124,7 +124,7 @@ CREATE TEMP TABLE tmp_originale AS
 WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
       (centro_riscossione_id, data_contabile, data_registrazione, stato_id, origine, meta)
-  SELECT r.centro_banca_id, current_date, current_date, r.stato_bozza_id, 'MANUALE',
+  SELECT r.centro_banca_id, script.fn_data_operativa(), script.fn_data_operativa(), r.stato_bozza_id, 'MANUALE',
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
   RETURNING id, codice
@@ -140,14 +140,14 @@ SELECT matches(
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
      billing_account_id, scadenza_id, stato_id, meta)
-SELECT (SELECT id FROM tmp_originale), v.rif, current_date, v.importo,
+SELECT (SELECT id FROM tmp_originale), v.rif, script.fn_data_operativa(), v.importo,
        (SELECT id FROM tmp_fattura), r.billing_account_id, (SELECT id FROM tmp_rata),
        r.stato_abbinata_id, jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_refs r, (VALUES ('PGTAP_C1', 60.00), ('PGTAP_C2', 40.00)) AS v(rif, importo);
 
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo, stato_id, motivo_sospeso, meta)
-SELECT (SELECT id FROM tmp_originale), 'PGTAP_C3', current_date, 25.00,
+SELECT (SELECT id FROM tmp_originale), 'PGTAP_C3', script.fn_data_operativa(), 25.00,
        r.stato_sospesa_id, 'in attesa di conferma',
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_refs r;
@@ -179,7 +179,7 @@ SELECT * FROM pagamenti.fn_posta_contabile((SELECT id FROM tmp_originale));
 --    stessa istruzione accuserebbe la funzione invece del test.
 CREATE TEMP TABLE tmp_correzione AS
 SELECT * FROM pagamenti.fn_crea_distinta_correzione(
-    (SELECT id FROM tmp_originale), current_date, 'importo digitato male');
+    (SELECT id FROM tmp_originale), script.fn_data_operativa(), 'importo digitato male');
 
 SELECT is((SELECT righe_create FROM tmp_correzione), 2,
   '4) Una riga di correzione per ogni riga POSTATA');

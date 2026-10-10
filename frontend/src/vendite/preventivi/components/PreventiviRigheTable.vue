@@ -7,6 +7,7 @@
 //        ⭐ Le colonne vengono dal catalogo (`vendite.preventivo_righe`, lista
 //        97) dal 2026-09-28: quelle che non entrano si ritirano nella riga
 //        espandibile (brief-db-liste-righe-documento).
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePreventiviStore } from '../stores/preventivi'
 import { usePreventivoRigheStore } from '../stores/preventivoRighe'
@@ -14,6 +15,7 @@ import { exportRigheLista } from '../api/preventiviApi'
 import CellaConfigurabile from '../../../core/components/CellaConfigurabile.vue'
 import { coerceJsonbToObject } from '../../../core/utils/meta'
 import { STATO_APPROVAZIONE } from '../../constants'
+import { unisciFotografie } from '../../../core/composables/useDrawerFormPreserve'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import PreventiviRigaForm from './PreventiviRigaForm.vue'
 import Tag from 'primevue/tag'
@@ -74,10 +76,17 @@ function approvazioneTooltip(data) {
   }
   return ''
 }
+
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): la fotografia della riga
+//    aperta, inoltrata al drawer per le sue uscite. La tiene il form di riga,
+//    che si registra presso la tabella (`registra` dello slot).
+const tabella = ref(null)
+defineExpose({ ...unisciFotografie(() => tabella.value) })
 </script>
 
 <template>
   <RigheMasterDetailTable
+    ref="tabella"
     codice="vendite.preventivo_righe"
     :store="righe"
     :parent-id="preventivoId"
@@ -108,8 +117,9 @@ function approvazioneTooltip(data) {
         />
       </div>
     </template>
-    <template #form="{ riga, onSaved, onComponentiChanged, onCancel }">
+    <template #form="{ riga, onSaved, onComponentiChanged, onCancel, registra }">
       <PreventiviRigaForm
+        :ref="registra"
         :preventivo-id="preventivoId"
         :billing-account-id="billingAccountId"
         :riga="riga"

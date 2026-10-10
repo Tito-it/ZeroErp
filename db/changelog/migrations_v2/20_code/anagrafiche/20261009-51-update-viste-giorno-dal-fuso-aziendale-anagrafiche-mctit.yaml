@@ -1,0 +1,222 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche: LE VISTE LEGGONO IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3 (CURRENT_DATE) e D-5
+#   (istante -> giorno).
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   - CURRENT_DATE -> (SELECT script.fn_data_operativa()): la sottoquery
+#     scalare e' valutata una volta per istruzione, non per riga;
+#   - un timestamptz portato a giorno (::date, date_trunc) -> 
+#     script.fn_giorno_operativo(istante), nel fuso di SYSTEM_FUSO_ORARIO.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Colonne, nomi, tipi e ordine (le viste a valle non se ne accorgono).
+#   ⛔ security_invoker NON fa parte del corpo (pg_get_viewdef non lo
+#   stampa) e un CREATE OR REPLACE VIEW che non lo ripete lo AZZERA: ogni
+#   vista lo ripete com'e' oggi, anche nel rollback. Il corpo e' quello vivo,
+#   da pg_get_viewdef su zeroerp_ci il 2026-10-09, con le sole sostituzioni
+#   dette sopra.
+#
+# ── VISTE (1) ──────────────────────────────────────────────────
+#     - anagrafiche.vw_conti_bancari_per_ruolo (senza reloptions, come oggi)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261009-51-update-viste-giorno-dal-fuso-aziendale-anagrafiche-mctit.yaml
+
+  - changeSet:
+      id: 20261009-51-update-viste-giorno-dal-fuso-aziendale-anagrafiche
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        anagrafiche: 1 viste leggono il giorno dell'azienda (fn_data_operativa,
+        fn_giorno_operativo) invece di quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 3
+            sql: |
+              SELECT (SELECT count(*) FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                       WHERE c.relkind = 'v'
+                         AND n.nspname || '.' || c.relname IN ('anagrafiche.vw_conti_bancari_per_ruolo'))
+                   + (SELECT count(*) FROM pg_proc p
+                        JOIN pg_namespace n ON n.oid = p.pronamespace
+                       WHERE n.nspname = 'script'
+                         AND p.proname IN ('fn_data_operativa', 'fn_giorno_operativo'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW anagrafiche.vw_conti_bancari_per_ruolo AS
+               WITH role_cand AS (
+                       SELECT sr.id AS soggetto_ruolo_id,
+                          r.uso,
+                          r.conto_bancario_id,
+                          r.id AS soggetto_ruolo_conto_id,
+                          NULL::bigint AS soggetto_conto_id,
+                          r.istanza_utility_id,
+                          r.predefinito,
+                          r.valido_dal,
+                          r.valido_al,
+                          r.data_update,
+                          'RUOLO'::character varying(10) AS fonte
+                         FROM ((anagrafiche.soggetti_ruoli sr
+                           JOIN anagrafiche.soggetti_ruoli_conti_bancari r ON ((r.soggetto_ruolo_id = sr.id)))
+                           JOIN anagrafiche.conti_bancari cb ON ((cb.id = r.conto_bancario_id)))
+                        WHERE (((r.valido_dal IS NULL) OR (r.valido_dal <= (SELECT script.fn_data_operativa()))) AND ((r.valido_al IS NULL) OR (r.valido_al >= (SELECT script.fn_data_operativa()))) AND (COALESCE(r.bloccato, false) = false) AND (cb.attivo = true))
+                      ), subj_cand AS (
+                       SELECT sr.id AS soggetto_ruolo_id,
+                          s.uso,
+                          s.conto_bancario_id,
+                          NULL::bigint AS soggetto_ruolo_conto_id,
+                          s.id AS soggetto_conto_id,
+                          NULL::bigint AS istanza_utility_id,
+                          s.predefinito,
+                          s.valido_dal,
+                          s.valido_al,
+                          s.data_update,
+                          'SOGGETTO'::character varying(10) AS fonte
+                         FROM ((anagrafiche.soggetti_ruoli sr
+                           JOIN anagrafiche.soggetti_conti_bancari s ON ((s.soggetto_id = sr.soggetto_id)))
+                           JOIN anagrafiche.conti_bancari cb ON ((cb.id = s.conto_bancario_id)))
+                        WHERE (((s.valido_dal IS NULL) OR (s.valido_dal <= (SELECT script.fn_data_operativa()))) AND ((s.valido_al IS NULL) OR (s.valido_al >= (SELECT script.fn_data_operativa()))) AND (COALESCE(s.bloccato, false) = false) AND (cb.attivo = true))
+                      )
+               SELECT soggetto_ruolo_id,
+                  uso,
+                  conto_bancario_id,
+                  soggetto_ruolo_conto_id,
+                  soggetto_conto_id,
+                  istanza_utility_id,
+                  fonte,
+                  predefinito,
+                  valido_dal,
+                  valido_al,
+                  data_update
+                 FROM ( SELECT role_cand.soggetto_ruolo_id,
+                          role_cand.uso,
+                          role_cand.conto_bancario_id,
+                          role_cand.soggetto_ruolo_conto_id,
+                          role_cand.soggetto_conto_id,
+                          role_cand.istanza_utility_id,
+                          role_cand.predefinito,
+                          role_cand.valido_dal,
+                          role_cand.valido_al,
+                          role_cand.data_update,
+                          role_cand.fonte
+                         FROM role_cand
+                      UNION ALL
+                       SELECT subj_cand.soggetto_ruolo_id,
+                          subj_cand.uso,
+                          subj_cand.conto_bancario_id,
+                          subj_cand.soggetto_ruolo_conto_id,
+                          subj_cand.soggetto_conto_id,
+                          subj_cand.istanza_utility_id,
+                          subj_cand.predefinito,
+                          subj_cand.valido_dal,
+                          subj_cand.valido_al,
+                          subj_cand.data_update,
+                          subj_cand.fonte
+                         FROM subj_cand) c
+                ORDER BY soggetto_ruolo_id, uso,
+                      CASE
+                          WHEN (((fonte)::text = 'RUOLO'::text) AND (istanza_utility_id IS NOT NULL)) THEN 1
+                          WHEN (((fonte)::text = 'RUOLO'::text) AND (istanza_utility_id IS NULL)) THEN 2
+                          WHEN ((fonte)::text = 'SOGGETTO'::text) THEN 3
+                          ELSE NULL::integer
+                      END, predefinito DESC, data_update DESC;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW anagrafiche.vw_conti_bancari_per_ruolo AS
+               WITH role_cand AS (
+                       SELECT sr.id AS soggetto_ruolo_id,
+                          r.uso,
+                          r.conto_bancario_id,
+                          r.id AS soggetto_ruolo_conto_id,
+                          NULL::bigint AS soggetto_conto_id,
+                          r.istanza_utility_id,
+                          r.predefinito,
+                          r.valido_dal,
+                          r.valido_al,
+                          r.data_update,
+                          'RUOLO'::character varying(10) AS fonte
+                         FROM ((anagrafiche.soggetti_ruoli sr
+                           JOIN anagrafiche.soggetti_ruoli_conti_bancari r ON ((r.soggetto_ruolo_id = sr.id)))
+                           JOIN anagrafiche.conti_bancari cb ON ((cb.id = r.conto_bancario_id)))
+                        WHERE (((r.valido_dal IS NULL) OR (r.valido_dal <= CURRENT_DATE)) AND ((r.valido_al IS NULL) OR (r.valido_al >= CURRENT_DATE)) AND (COALESCE(r.bloccato, false) = false) AND (cb.attivo = true))
+                      ), subj_cand AS (
+                       SELECT sr.id AS soggetto_ruolo_id,
+                          s.uso,
+                          s.conto_bancario_id,
+                          NULL::bigint AS soggetto_ruolo_conto_id,
+                          s.id AS soggetto_conto_id,
+                          NULL::bigint AS istanza_utility_id,
+                          s.predefinito,
+                          s.valido_dal,
+                          s.valido_al,
+                          s.data_update,
+                          'SOGGETTO'::character varying(10) AS fonte
+                         FROM ((anagrafiche.soggetti_ruoli sr
+                           JOIN anagrafiche.soggetti_conti_bancari s ON ((s.soggetto_id = sr.soggetto_id)))
+                           JOIN anagrafiche.conti_bancari cb ON ((cb.id = s.conto_bancario_id)))
+                        WHERE (((s.valido_dal IS NULL) OR (s.valido_dal <= CURRENT_DATE)) AND ((s.valido_al IS NULL) OR (s.valido_al >= CURRENT_DATE)) AND (COALESCE(s.bloccato, false) = false) AND (cb.attivo = true))
+                      )
+               SELECT soggetto_ruolo_id,
+                  uso,
+                  conto_bancario_id,
+                  soggetto_ruolo_conto_id,
+                  soggetto_conto_id,
+                  istanza_utility_id,
+                  fonte,
+                  predefinito,
+                  valido_dal,
+                  valido_al,
+                  data_update
+                 FROM ( SELECT role_cand.soggetto_ruolo_id,
+                          role_cand.uso,
+                          role_cand.conto_bancario_id,
+                          role_cand.soggetto_ruolo_conto_id,
+                          role_cand.soggetto_conto_id,
+                          role_cand.istanza_utility_id,
+                          role_cand.predefinito,
+                          role_cand.valido_dal,
+                          role_cand.valido_al,
+                          role_cand.data_update,
+                          role_cand.fonte
+                         FROM role_cand
+                      UNION ALL
+                       SELECT subj_cand.soggetto_ruolo_id,
+                          subj_cand.uso,
+                          subj_cand.conto_bancario_id,
+                          subj_cand.soggetto_ruolo_conto_id,
+                          subj_cand.soggetto_conto_id,
+                          subj_cand.istanza_utility_id,
+                          subj_cand.predefinito,
+                          subj_cand.valido_dal,
+                          subj_cand.valido_al,
+                          subj_cand.data_update,
+                          subj_cand.fonte
+                         FROM subj_cand) c
+                ORDER BY soggetto_ruolo_id, uso,
+                      CASE
+                          WHEN (((fonte)::text = 'RUOLO'::text) AND (istanza_utility_id IS NOT NULL)) THEN 1
+                          WHEN (((fonte)::text = 'RUOLO'::text) AND (istanza_utility_id IS NULL)) THEN 2
+                          WHEN ((fonte)::text = 'SOGGETTO'::text) THEN 3
+                          ELSE NULL::integer
+                      END, predefinito DESC, data_update DESC;

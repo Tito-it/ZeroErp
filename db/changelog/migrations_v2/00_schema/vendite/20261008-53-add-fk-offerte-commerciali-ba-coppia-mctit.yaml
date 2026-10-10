@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL BILLING ACCOUNT DELL'OFFERTA E' QUELLO DELLA SUA COPPIA
+#   FK (billing_account_id, istanza_utility_id, utility_id) di
+#   vendite.offerte_commerciali verso anagrafiche.billing_account
+#   (id, istanza_utility_id, utility_id).
+#   Brief: brief-db-istanza-nasce-col-ba (R-2, §6.3)
+#
+# -- PERCHE' --------------------------------------------------------
+#   billing_account_id e' NOT NULL da sempre, ma la sola FK semplice
+#   (fk_offerte_commerciali_billing_account) non lo legava alla coppia
+#   (istanza, utility) che l'offerta porta in testata: nessun vincolo ne'
+#   trigger di tabella lo verificava (censimento del 2026-10-08). Stessa forma
+#   del preventivo (20261008-52) e del contratto (-54): l'asimmetria fra le tre
+#   famiglie precontrattuali si chiude nello stesso giro.
+#   ⚠️ La FK semplice RESTA: il backend ne mappa il nome a una frase
+#   (offerte_service, «billing account inesistente»).
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   preCondition: zero offerte col BA di un'altra coppia (expectedResult 0).
+#   Se ce ne sono, il migrate si ferma e si correggono a mano (brief §6.7).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261008-53-add-fk-offerte-commerciali-ba-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261008-53-add-fk-offerte-commerciali-ba-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.offerte_commerciali: FK composta verso il billing account della stessa coppia
+        (istanza, utility). Brief: brief-db-istanza-nasce-col-ba (R-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM vendite.offerte_commerciali o
+                JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
+               WHERE ba.istanza_utility_id IS DISTINCT FROM o.istanza_utility_id
+                  OR ba.utility_id         IS DISTINCT FROM o.utility_id;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali
+                ADD CONSTRAINT fk_offerte_commerciali_ba_coppia
+                FOREIGN KEY (billing_account_id, istanza_utility_id, utility_id)
+                REFERENCES anagrafiche.billing_account (id, istanza_utility_id, utility_id);
+
+              COMMENT ON CONSTRAINT fk_offerte_commerciali_ba_coppia ON vendite.offerte_commerciali
+              IS 'Il billing account dell''offerta e'' quello della sua coppia (istanza, utility): fino al 2026-10-08 la sola FK semplice ammetteva il BA di un''altra istanza o di un''altra utility. Gemelli: fk_preventivi_ba_coppia, fk_contratti_ba_coppia. Brief: brief-db-istanza-nasce-col-ba (R-2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali DROP CONSTRAINT fk_offerte_commerciali_ba_coppia;

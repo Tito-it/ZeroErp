@@ -11,20 +11,20 @@
 | id | bigint | NO |  |
 | stradario_id | integer | NO |  |
 | civico | integer | YES |  |
-| estensione_civico | character varying | YES |  |
-| palazzina | character varying | YES |  |
-| interno | character varying | YES |  |
-| piano | character varying | YES |  |
-| civic_geoloc | USER-DEFINED | YES |  |
+| estensione_civico | character varying(10) | YES |  |
+| palazzina | character varying(50) | YES |  |
+| interno | character varying(10) | YES |  |
+| piano | character varying(10) | YES |  |
+| civic_geoloc | geometry(Point,4326) | YES |  |
 | altro | text | YES |  |
 | via_norm | text | NO |  |
 | civico_norm | text | NO |  |
-| street_geoloc | USER-DEFINED | YES |  |
+| street_geoloc | geometry(Point,4326) | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
-| scala | character varying | YES |  |
+| scala | character varying(10) | YES |  |
 | indirizzo_normalizzato | text | YES |  |
 | tx_id | uuid | YES |  |
 | attivo | boolean | NO | true |

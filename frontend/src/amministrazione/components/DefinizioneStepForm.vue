@@ -130,7 +130,7 @@ async function handleSave() {
       successMessage: t(isEdit.value ? 'amministrazione.definizioni_workflow.ed_msg_step_salvato' : 'amministrazione.definizioni_workflow.ed_msg_step_creato'),
     })
     if (res !== null) {
-      const stepId = res.data?.data?.step_id ?? props.step?.id ?? null
+      const stepId = res?.step_id ?? props.step?.id ?? null
       emit('saved', stepId)
     }
   } finally {

@@ -13,9 +13,9 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_dati_societari_requi
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-    v_policy       config.dati_societari_policy_enum;
-    v_cod_int_tipo text;
-    v_has_dati     boolean;
+    v_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
+    v_cod_int_tipo config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+    v_has_dati     boolean;   -- esito di un EXISTS: nessuna colonna da ancorare
 BEGIN
     /*
     Controllo esistenza dati_societari SOLO per i casi in cui
@@ -99,6 +99,8 @@ dati_societari_policy = ''REQUIRED'' esista una riga in anagrafiche.dati_societa
 
 In caso di violazione utilizza script.fn_log_and_raise_error con codice
 E_DATI_SOCIETARI_REQUIRED_MANCANTI.
+Rev 20261009-21 (brief-db-sesso-senza-default): la variabile della policy segue la colonna
+(%TYPE), come codice_interno, non il tipo, che e'' passato al generico config.presenza_policy_enum.
 ';
 ```
 

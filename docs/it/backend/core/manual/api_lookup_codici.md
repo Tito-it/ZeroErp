@@ -112,6 +112,7 @@ config `_LOOKUP_SPECIALIZZATE` in `dbops_repository.py` — regola del 2,
 | `config.tipi_titolo_iva`       | `ha_plafond`              | Mostra il campo plafond solo dove un tetto esiste (D10 titoli IVA) |
 | `pratiche.tipi_prestazione`    | `categoria`               | Raggruppamento tile della home pratiche      |
 | `config.registri_giornale`     | `etichetta_key`           | Tendina e colonna «Registro» del giornale trasversale: l'indirizzo i18n **dichiarato dal DB**, reso con `labelOrCode` (2026-09-19). ⚠️ **Senza `attivo`** (`has_attivo: False`): `attivo` arriva `NULL` e `attivo_only` non filtra — un consumatore che filtrasse `attivo === true` non vedrebbe niente |
+| `config.esposizioni_componente` | `etichetta_key`           | I tre modi di esporre in fattura un componente di kit (NASCOSTO / DESCRITTIVO / VALORIZZATO): la tendina della distinta e il modo per esteso nei componenti di riga, resi dal composable FE `useEsposizioniComponente` (2026-10-02). Chiave del valore: `codice_interno`. ⚠️ **Senza `attivo` né `obsoleto_dal`**: i tre valori sono la semantica di `vw_fattura_righe_esposte`, non una configurazione |
 
 Il nome API della colonna extra può differire dalla colonna fisica
 (`extra_expr`): es. `selezionabile_operatore` è derivato da `is_verdetto`

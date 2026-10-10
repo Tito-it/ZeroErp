@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RICREA anagrafiche.vw_dati_societari DROPPATA DA 20261010-37
+#   Brief: brief-db-character-n-spazi-di-riempimento.md D-6
+#
+#   Corpo vivo dal catalogo (pg_get_viewdef con nomi qualificati, 2026-10-10),
+#   identico: cambiano solo i tipi di destinatario_fe (varchar(1)) e codice_sdi
+#   (varchar(7)). Nessuna opzione security_invoker, come prima. COMMENT
+#   aggiornato sul significato di destinatario_fe. Stessa corsa del -37.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261010-38-recreate-vw-dati-societari-canale-fe-mctit.yaml
+
+  - changeSet:
+      id: 20261010-38-recreate-vw-dati-societari-canale-fe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ricrea anagrafiche.vw_dati_societari dopo 20261010-37 (canale FE).
+        Brief: brief-db-character-n-spazi-di-riempimento.md D-6.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE VIEW anagrafiche.vw_dati_societari AS
+               SELECT ds.id AS dati_societari_id,
+                  ds.soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  ds.forma_giuridica_id,
+                  fg.codice AS forma_giuridica_codice,
+                  fg.descrizione AS forma_giuridica_descrizione,
+                  ds.id_prov_iscri_rea AS provincia_iscrizione_rea_id,
+                  pr.sigla AS provincia_iscrizione_rea_sigla,
+                  pr.descrizione AS provincia_iscrizione_rea_descrizione,
+                  ds.iscrizione_rea,
+                  ds.capitale_sociale,
+                  ds.socio_unico,
+                  ds.liquidazione,
+                  ds.destinatario_fe,
+                  ds.pec_fatturazione,
+                  ds.codice_sdi,
+                  ds.data_costituzione,
+                  ds.storicizza,
+                  ds.tx_id,
+                  ds.data_insert,
+                  ds.user_insert,
+                  ds.data_update,
+                  ds.user_update
+                 FROM anagrafiche.dati_societari ds
+                   JOIN anagrafiche.soggetti s ON s.id = ds.soggetto_id
+                   LEFT JOIN config.forme_giuridiche fg ON fg.id = ds.forma_giuridica_id
+                   LEFT JOIN config.province pr ON pr.id = ds.id_prov_iscri_rea;
+
+              COMMENT ON VIEW anagrafiche.vw_dati_societari IS
+                'Vista dati societari con decodifiche forma giuridica e provincia, include identificativi tecnici. destinatario_fe e'' il canale FE (P = PEC, C = codice SDI), codice_sdi il codice (rev 20261010-38).';
+              GRANT SELECT ON anagrafiche.vw_dati_societari TO zeroerp_app;

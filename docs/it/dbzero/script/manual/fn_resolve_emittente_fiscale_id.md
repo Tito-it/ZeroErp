@@ -114,7 +114,7 @@ leggendo e nascerebbe una **ricorsione**.
 ### Chi la usa
 
 * [trgfn_guard_emittente_scope](/dbzero/script/funzioni/trgfn_guard_emittente_scope) — tutti e cinque i modi
-* [fn_scope_ef_whitelist_via_ente_incasso](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_ente_incasso)
+* [pagamenti.fn_get_emittente_distinta](/dbzero/pagamenti/funzioni/fn_get_emittente_distinta) — il modo `ente_incasso`
 * [fn_scope_ef_whitelist_via_contabile](/dbzero/script/funzioni/fn_scope_ef_whitelist_via_contabile)
 
 {% include-markdown "signature-core.md" %}

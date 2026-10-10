@@ -1,0 +1,140 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA CONFERMA DEL REGIME LA SCRIVE IL DATABASE (revisione di D-11)
+#   anagrafiche.trgfn_emittenti_fiscali_regime_conferma()
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 10
+#
+# -- PERCHE' ------------------------------------------------------
+#   Con D-11 la conferma (data e autore) la scriveva il form dell'emittente
+#   insieme al regime, e il trigger 20261001-12 la azzerava se il regime
+#   cambiava senza. La regola restava fuori dal database: ogni scrittore
+#   futuro del regime (un import, un batch, un altro endpoint) doveva
+#   ricordarsi di scrivere anche la conferma. Tid sceglie la forma delle code
+#   (dbops.trgfn_coda_archiviazione): chi scrive dichiara il FATTO, data e
+#   autore li DERIVA il trigger.
+#
+# -- LA REGOLA ----------------------------------------------------
+#   Trigger invariato: trg_emittenti_fiscali_a20_regime_conferma_upd,
+#   BEFORE UPDATE OF regime_fiscale_rf (20261001-13). Cambia il corpo:
+#   · regime_fiscale_rf nella SET, ANCHE con lo stesso valore, e' una
+#     dichiarazione: confermato_il := now(), confermato_da := app.jwt_user,
+#     o CURRENT_USER se la GUC manca. Lo stesso valore conta: e' il modo in
+#     cui l'operatore conferma un RF01 che nessuno aveva dichiarato;
+#   · un UPDATE che non nomina il regime non fa scattare il trigger, e la
+#     conferma resta com'e';
+#   · la INSERT non conferma mai (il trigger non e' in INSERT): un RF01
+#     scelto e un RF01 di default sono indistinguibili sulla riga nuova;
+#   · ⭐ riempire un regime VUOTO non e' una dichiarazione: e' il default di
+#     D-1 applicato dopo, cioe' il backfill 80_data/20261001-16. Il ramo non
+#     e' cosmetico: su un database ricostruito da zero l'80_data gira DOPO
+#     tutto il 20_code, quindi il backfill attraversa questo corpo, e senza il
+#     ramo «confermerebbe» col nome del migratore ogni RF01 messo dal default,
+#     svuotando il presidio dbops.vw_emittenti_regime_non_confermato proprio
+#     sul caso per cui esiste. Dopo il -17 (NOT NULL + FK al catalogo) un
+#     regime vuoto non esiste piu', e il ramo resta come regola, non come
+#     percorso vivo.
+#   Le due colonne di conferma non si scrivono da fuori: lo rifiuta il guard
+#   a10 di -41/-42, che parla PRIMA di questo trigger (a10 < a20) e quindi
+#   vede i valori del chiamante, non quelli derivati qui.
+#   ⛔ Il ramo «azzera» di 20261001-12 sparisce: un cambio di regime e'
+#   sempre una dichiarazione, quindi non esiste piu' un regime cambiato e
+#   non confermato.
+#
+#   In coda: i COMMENT delle due colonne (20261001-02 diceva «le scrive il
+#   form» e «si azzera da sola»: due frasi che da qui sono false).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261002-40-update-trgfn-emittenti-fiscali-regime-conferma-deriva-mctit.yaml
+
+  - changeSet:
+      id: 20261002-40-update-trgfn-emittenti-fiscali-regime-conferma-deriva
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_emittenti_fiscali_regime_conferma: un UPDATE che nomina
+        regime_fiscale_rf (anche con lo stesso valore) e' una dichiarazione, e il trigger
+        deriva regime_fiscale_confermato_il (now()) e _da (app.jwt_user, o CURRENT_USER).
+        Riempire un regime vuoto (il backfill D-1) non conferma. Aggiornati i COMMENT delle due
+        colonne. Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 10.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche'
+                 AND p.proname = 'trgfn_emittenti_fiscali_regime_conferma';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_emittenti_fiscali_regime_conferma()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: chi scrive il regime fiscale lo DICHIARA; data e autore
+              --   della conferma li deriva questa funzione, mai il chiamante.
+              -- Uso:   BEFORE UPDATE OF regime_fiscale_rf FOR EACH ROW (a20).
+              --   Il guard a10 trgfn_emittenti_fiscali_guard_regime_conferma
+              --   ha gia' rifiutato chi scriveva le due colonne da fuori.
+              BEGIN
+                  -- Riempire un regime vuoto e' il default D-1 applicato dopo
+                  -- (backfill 20261001-16), non una scelta di qualcuno: la
+                  -- conferma resta com'era, cioe' vuota.
+                  IF NULLIF(btrim(OLD.regime_fiscale_rf), '') IS NULL THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- UPDATE OF scatta anche quando la colonna e' riscritta con lo
+                  -- stesso valore, ed e' voluto: e' cosi' che si conferma un
+                  -- regime senza cambiarlo.
+                  NEW.regime_fiscale_confermato_il := now();
+                  NEW.regime_fiscale_confermato_da := COALESCE(
+                      NULLIF(btrim(current_setting('app.jwt_user', true)), ''),
+                      CURRENT_USER);
+                  RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_emittenti_fiscali_regime_conferma() IS
+                  'Deriva la conferma del regime fiscale (trigger a20, BEFORE UPDATE OF '
+                  'regime_fiscale_rf): un UPDATE che nomina il regime, anche con lo stesso valore, e'' '
+                  'una dichiarazione, e scrive regime_fiscale_confermato_il = now() e '
+                  'regime_fiscale_confermato_da = app.jwt_user (CURRENT_USER se la GUC manca). Un '
+                  'UPDATE che non nomina il regime non tocca la conferma; la INSERT non conferma mai; '
+                  'riempire un regime vuoto (il backfill del default RF01, D-1) non e'' una '
+                  'dichiarazione. Le due colonne non si scrivono da fuori: lo rifiuta il guard a10 '
+                  'trgfn_emittenti_fiscali_guard_regime_conferma. Non solleva. Brief: '
+                  'brief-db-esigibilita-iva-per-cassa-emittente (sezione 10, revisione di D-11).';
+
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali.regime_fiscale_confermato_il IS
+                  'Quando qualcuno ha dichiarato il regime fiscale di questo emittente. La scrive il '
+                  'database (trgfn_emittenti_fiscali_regime_conferma) a ogni UPDATE che nomina '
+                  'regime_fiscale_rf, anche con lo stesso valore; da fuori non si scrive '
+                  '(E_EMITTENTE_REGIME_CONFERMA_DERIVATA). NULL = nessuno l''ha mai dichiarato: '
+                  'il regime e'' quello della creazione o del default RF01 (D-1), ed e'' cio'' che '
+                  'mostra il presidio dbops.vw_emittenti_regime_non_confermato. In coppia con '
+                  'regime_fiscale_confermato_da. Brief: brief-db-esigibilita-iva-per-cassa-emittente '
+                  '(D-11, sezione 10).';
+              COMMENT ON COLUMN anagrafiche.emittenti_fiscali.regime_fiscale_confermato_da IS
+                  'Chi ha dichiarato il regime fiscale: app.jwt_user della scrittura, o il ruolo del '
+                  'database se la GUC manca. La scrive il database insieme a '
+                  'regime_fiscale_confermato_il; da fuori non si scrive.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' in 20261001-12: si ripristina riapplicandolo.
+              SELECT 1;

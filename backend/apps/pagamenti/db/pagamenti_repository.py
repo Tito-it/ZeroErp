@@ -22,7 +22,7 @@
 
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection
 
@@ -434,7 +434,7 @@ def _sql_stato_vivo(alias: str = "") -> str:
     p = f"{alias}." if alias else ""
     return (
         f"{p}attivo IS TRUE"
-        f" AND ({p}obsoleto_dal IS NULL OR {p}obsoleto_dal > CURRENT_DATE)"
+        f" AND ({p}obsoleto_dal IS NULL OR {p}obsoleto_dal > (SELECT script.fn_data_operativa()))"
     )
 
 
@@ -929,7 +929,7 @@ class PagamentiRepository:
         data_a: date | None = None,
         search: str | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[DistintaRow], int]:
@@ -980,7 +980,7 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(row) for row in rows], total
+        return [cast(DistintaRow, self._shape(row)) for row in rows], total
 
     # Scopo: Dettaglio di una distinta (testata + display + totali derivati).
     # Risultato: None se non esiste — o se il perimetro non la lascia vedere,
@@ -1012,7 +1012,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None
+        return cast(DistintaDettaglioRow, self._shape(rows[0])) if rows else None
 
     # ══════════════════════════════════════════════════════════════
     #  Distinte — scrittura
@@ -1052,7 +1052,7 @@ class PagamentiRepository:
             SELECT pagamenti.fn_get_or_create_vendite_contabile(
                 p_centro_riscossione_id := %s,
                 p_data_contabile        := %s,
-                p_data_registrazione    := COALESCE(%s, CURRENT_DATE),
+                p_data_registrazione    := COALESCE(%s, (SELECT script.fn_data_operativa())),
                 p_ente_incasso_id       := %s,
                 p_emittente_fiscale_id  := %s,
                 p_codice_stato_interno  := %s,
@@ -1159,7 +1159,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id)])
             rows = rows_to_list(cursor)
-        return [self._shape(row) for row in rows]
+        return [cast(RigaContabileRow, self._shape(row)) for row in rows]
 
     # Scopo: Le righe attive di una distinta come LISTA — pagina + totale in
     #        una valutazione, ordinamento dalla whitelist.
@@ -1221,7 +1221,7 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(row) for row in rows], total
+        return [cast(RigaContabileRow, self._shape(row)) for row in rows], total
 
     # Scopo: QUANTE righe attive di una distinta stanno in uno stato — il numero
     #        accanto a «Mostra scartate (N)» (BE-2, la forma di
@@ -1254,7 +1254,7 @@ class PagamentiRepository:
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(riga_id)])
             rows = rows_to_list(cursor)
-        return self._shape(rows[0]) if rows else None
+        return cast(RigaContabileRow, self._shape(rows[0])) if rows else None
 
     # Scopo: Crea una riga sotto una distinta — coi fatti E la destinazione.
     # ⚠️ Lo stato si risolve dal catalogo per codice: gli id sono smallint
@@ -1790,7 +1790,7 @@ class PagamentiRepository:
         data_a: date | None = None,
         search: str | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[RigaCodaRow], int]:
@@ -1835,7 +1835,7 @@ class PagamentiRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(row) for row in rows], total
+        return [cast(RigaCodaRow, self._shape(row)) for row in rows], total
 
     # Scopo: L'elenco delle rate uscite dalla banda di capienza.
     # ⭐ Senza questo elenco la forzatura sarebbe «un modo per nascondere, non
@@ -1851,7 +1851,7 @@ class PagamentiRepository:
         billing_account_id: int | None = None,
         search: str | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -1904,7 +1904,7 @@ class PagamentiRepository:
         centro_riscossione_id: int | None = None,
         attivo: bool | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -2027,8 +2027,8 @@ class PagamentiRepository:
                -- Le date di validita' ordinano e filtrano sempre: un conto
                -- scaduto non si propone. `COALESCE(valido_al, 'infinity')`
                -- perche' scadenza vuota = validita' infinita.
-               AND (src.valido_dal IS NULL OR src.valido_dal <= CURRENT_DATE)
-               AND COALESCE(src.valido_al, 'infinity'::date) >= CURRENT_DATE
+               AND (src.valido_dal IS NULL OR src.valido_dal <= (SELECT script.fn_data_operativa()))
+               AND COALESCE(src.valido_al, 'infinity'::date) >= (SELECT script.fn_data_operativa())
              ORDER BY src.predefinito DESC, cb.iban
         """  # noqa: S608 — _UTILITY_DEL_CONTO_JOIN costante di modulo, valori come parametri
         with connection.cursor() as cursor:
@@ -2087,7 +2087,7 @@ class PagamentiRepository:
         billing_account_id: int | None = None,
         search: str | None = None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -2454,7 +2454,7 @@ class PagamentiRepository:
         sql = """
             SELECT contabile_id, righe_create, righe_saltate, esito
               FROM pagamenti.fn_crea_distinta_correzione(
-                       %s, COALESCE(%s::date, CURRENT_DATE), %s)
+                       %s, COALESCE(%s::date, (SELECT script.fn_data_operativa())), %s)
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(contabile_id), data_contabile, motivo])

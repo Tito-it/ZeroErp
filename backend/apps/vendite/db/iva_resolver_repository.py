@@ -7,13 +7,12 @@
 #        (D21) e ritorna il composito del trattamento fiscale (D18).
 #
 #        ⛔ RITORNA UNA LISTA, SEMPRE. La funzione e' set-returning: una
-#        riga nel caso ordinario, DUE quando il plafond di un titolo
-#        finisce a meta' riga (P2 del brief madre), nell'ordine
-#        «prima la quota coperta dal titolo, poi il resto». Un
-#        `fetchone()` qui non fallisce: prende la parte coperta e butta
-#        il resto, cioe' applica un'esenzione a un imponibile che non ne
-#        ha diritto. E' il motivo per cui questo modulo espone una lista
-#        e non un dict.
+#        riga nell'anteprima, e nella domanda di CONSUMO due quando il
+#        titolo ha un tetto, nell'ordine «prima il titolo, poi
+#        l'ordinario». Un `fetchone()` qui non fallisce: prende il titolo e
+#        butta l'ordinario, cioe' il trattamento della parte che il plafond
+#        non copre. E' il motivo per cui questo modulo espone una lista e
+#        non un dict.
 #
 #        ⚠️ La funzione e' SECURITY INVOKER e legge
 #        `anagrafiche.soggetti_titoli_iva`, che ha la RLS: un chiamante
@@ -21,13 +20,13 @@
 #        ordinaria IN SILENZIO. Il guard sta nel service (P3), non qui.
 #
 #        Brief: docs/it/dev/work-in-progress/
-#               brief-be-fe-iva-fase-3-consumatori-risolutore.md (F2-a)
+#               brief-be-fe-iva-fase-3-consumatori-risolutore.md (F2-a),
+#               brief-db-bom-flag-quantita-e-kit-in-fattura.md §13 (C1)
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -54,16 +53,25 @@ _COLONNE = """
     r.titolo_iva_id
 """
 
+# ⛔ `p_imponibile` NON SI PASSA PIU': e' sempre NULL. Era la domanda di
+#    PROIEZIONE (la spezzatura sul residuo del momento), e il suo unico
+#    chiamante — il giro del plafond in fattura — e' passato alla domanda di
+#    CONSUMO (decisione C, brief-db-bom-flag-quantita-e-kit-in-fattura §13).
+#    Il parametro resta nella firma perche' la firma non si riordina.
+# ⚠️ `p_consumo` e' in CODA, dopo i tre parametri del dispatch che il guscio
+#    deriva da se': si passa per NOME, cosi' quei tre restano al loro default
+#    senza che qui li si debba nominare.
 _SQL = f"""
     SELECT {_COLONNE}
       FROM vendite.fn_resolve_iva_riga(
                %s::uuid,      -- p_articolo_id
                %s::date,      -- p_data_riferimento
-               %s::numeric,   -- p_imponibile
+               NULL::numeric, -- p_imponibile (vedi sopra)
                %s::bigint,    -- p_billing_account_id
                %s::integer,   -- p_utility_id
                %s::uuid,      -- p_soggetto_id
-               %s::bigint     -- p_emittente_fiscale_id
+               %s::bigint,    -- p_emittente_fiscale_id
+               p_consumo => %s::boolean
            ) AS r
 """  # noqa: S608 — colonne dalla costante di modulo _COLONNE, valori come parametri
 
@@ -72,13 +80,16 @@ class IvaResolverRepository:
     # Scopo: Invoca il guscio `vendite.fn_resolve_iva_riga` e restituisce la
     #        RIPARTIZIONE come lista di dict, nell'ordine prodotto dal DB.
     #
-    #        ⭐ `imponibile=None` NON e' un caso degenere: e' la modalita'
-    #        ANTEPRIMA, ed e' quella che i DOCUMENTI usano sempre (P1). Senza
-    #        importo la spezzatura non e' calcolabile e la funzione non la
-    #        inventa: torna UNA riga con `quota` a NULL, che dice quale
-    #        trattamento vale «sul primo euro». E' cio' che rende vera la
-    #        regola «sui documenti le righe non si spezzano»: non e' il BE a
-    #        garantirla, e' il ramo che il DB gia' aveva.
+    #        ⭐ Due domande, e `consumo` sceglie quale:
+    #
+    #        * `consumo=False`, l'ANTEPRIMA: quella che i DOCUMENTI usano
+    #          sempre (P1). Torna UNA riga con `quota` a NULL, il trattamento
+    #          «sul primo euro». E' cio' che rende vera la regola «sui
+    #          documenti le righe non si spezzano»;
+    #        * `consumo=True`, il GIRO del plafond in fattura: quale titolo
+    #          vale e i suoi due trattamenti, senza leggere il residuo. Con un
+    #          titolo a tetto DUE righe sempre (titolo, ordinario), altrimenti
+    #          una. La spezzatura la decide chi consuma, non il risolutore.
     #
     #        ⚠️ I tre parametri di contesto del dispatch (paese emittente,
     #        paese cliente, cessione di beni) NON si passano: il guscio li
@@ -89,7 +100,7 @@ class IvaResolverRepository:
         *,
         articolo_id: UUID | str,
         data_riferimento: date,
-        imponibile: Decimal | None = None,
+        consumo: bool = False,
         billing_account_id: int | None = None,
         utility_id: int | None = None,
         soggetto_id: UUID | str | None = None,
@@ -101,11 +112,11 @@ class IvaResolverRepository:
                 [
                     str(articolo_id),
                     data_riferimento,
-                    imponibile,
                     billing_account_id,
                     utility_id,
                     str(soggetto_id) if soggetto_id is not None else None,
                     emittente_fiscale_id,
+                    consumo,
                 ],
             )
             return rows_to_list(cursor)

@@ -8,6 +8,7 @@
 --
 -- Elenco test:
 --  1) GUC app.current_user_id assente -> INSERT passa, nessun mapping
+--     (rev 2026-10-04: senza RETURNING, vedi il test)
 --  2) Operatore con EF assegnato -> INSERT passa, mapping specifico creato
 --  3) Mapping non duplicato (idempotenza)
 --  4) Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata
@@ -140,27 +141,32 @@ BEGIN
     END IF;
 
     -- ⭐ FINESTRA DIFFERITA: `trg_istanze_utilities_z90_require_utility_dichiarata_ins`
-    --   e' un CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che pretende un
-    --   satellite (BA / dati precontrattuali / cliente). Il preambolo
-    --   obbligatorio lo fa scattare sul primo insert: si apre la finestra, si
-    --   costruisce istanza + satellite, e si RICHIUDE.
+    --   e' un CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che pretende il
+    --   billing account. Il preambolo obbligatorio lo fa scattare sul primo
+    --   insert: si apre la finestra qui.
+    --   ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): fino a quel
+    --   giorno ogni istanza si completava con una riga precontrattuale e la
+    --   finestra si richiudeva subito. Ora quella riga pretende il BA della sua
+    --   coppia, e il BA e' il SOGGETTO dei test 1-3: la finestra resta APERTA e
+    --   si richiude in coda al file, quando ogni istanza ha il suo BA. E' la
+    --   forma vera dell'operazione: istanza e BA nella stessa transazione.
+    --   Lo slot 4 riusa l'istanza dello slot 3: il suo INSERT e' rifiutato dal
+    --   guard BEFORE (test 4), quindi un'istanza sua resterebbe senza BA.
     SET CONSTRAINTS ALL DEFERRED;
 
-    FOR v_i IN 1..4 LOOP
+    FOR v_i IN 1..3 LOOP
         v_sfx := substring(md5(clock_timestamp()::text || v_i::text) from 1 for 8);
 
         INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
         VALUES (v_seed.soggetto_id, true, 'PGTAP-AUTOLINK-IU-' || v_i || '-' || v_sfx)
         RETURNING id INTO v_iu;
 
-        INSERT INTO anagrafiche.istanze_dati_precontrattuali (istanza_utility_id, utility_id)
-        VALUES (v_iu, v_seed.utility_id);
-
         INSERT INTO tmp_link_templates
-        VALUES (v_i, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, current_date);
+        VALUES (v_i, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, script.fn_data_operativa());
     END LOOP;
 
-    SET CONSTRAINTS ALL IMMEDIATE;
+    INSERT INTO tmp_link_templates
+    VALUES (4, v_iu, v_seed.soggetto_ruolo_id, v_seed.utility_id, script.fn_data_operativa());
 END $seed$;
 
 -- Tabella di appoggio per i risultati intermedi (creata fuori da qualunque
@@ -179,6 +185,14 @@ CREATE TEMP TABLE tmp_link_results (
 -- ============================================================
 SELECT set_config('app.current_user_id', '', true);
 
+-- ⚠️ Rev 2026-10-04 (Q-1, brief-db-esclusioni-implicite): l'id si prende
+--   PRIMA, dalla sequenza, e l'INSERT non ha RETURNING. Con la veste OPERATORE
+--   e l'utente vuoto la policy di lettura rls_billing_account_ef_whitelist
+--   (fn_scope_ef_whitelist_via_efba) risponde ora FALSE — prima diceva TRUE,
+--   «attore nullo = nessun filtro» — e il RETURNING, che passa dalla policy di
+--   lettura, verrebbe rifiutato. Il soggetto del test resta il trigger
+--   d'aggancio: la scrittura passa (WITH CHECK della policy _ins, solo veste),
+--   e il mapping si conta su emittenti_fiscali_billing_account, senza RLS.
 DO $$
 DECLARE
     v_template tmp_link_templates%ROWTYPE;
@@ -193,20 +207,22 @@ BEGIN
     -- Nessuna DELETE del «template»: lo slot e' un'istanza NUOVA, la UNIQUE
     -- (istanza_utility_id, utility_id) non e' in gioco. Vedi la nota del seed.
 
+    v_new_id := nextval('anagrafiche.billing_account_id_seq');
+
     INSERT INTO anagrafiche.billing_account (
-        codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
+        id, codice, istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
         -- NOT NULL arrivata dopo la scrittura di questo file.
         categoria_cliente_id
     )
     VALUES (
+        v_new_id,
         'PGTAP-AUTOLINK-1-' || floor(random()*1e9)::text,
         v_template.istanza_utility_id,
         v_template.soggetto_ruolo_id,
         v_template.utility_id,
         v_template.valido_dal,
         (SELECT id FROM anagrafiche.categorie_clienti WHERE codice_interno = 'STANDARD')
-    )
-    RETURNING id INTO v_new_id;
+    );
 
     SELECT COUNT(*)::int INTO v_mapping_count
       FROM anagrafiche.emittenti_fiscali_billing_account
@@ -370,6 +386,12 @@ SELECT is(
     'E_BA_ADMIN_GLOBALE_VIETATO',
     'Super admin senza emittente di lavoro + esistono emittenti -> INSERT bloccata (E_BA_ADMIN_GLOBALE_VIETATO)'
 );
+
+-- La finestra differita si richiude QUI: le istanze degli slot 1-3 hanno il
+-- loro billing account (test 1-3) e il constraint trigger lo verifica. Se uno
+-- dei test e' morto, la sua istanza e' senza BA e il file si ferma su
+-- E_ISTANZA_SENZA_BA: il rosso del test e' gia' stampato sopra.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 SELECT * FROM finish();
 ROLLBACK;

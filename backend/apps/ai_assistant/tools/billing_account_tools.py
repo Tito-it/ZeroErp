@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.ai_assistant.tools.base import AITool, EndpointGemello
 from apps.anagrafiche.api.views_billing_account import BillingAccountLookupView
 
@@ -72,7 +73,7 @@ class CercaBillingAccountTool(AITool):
 
         solo_validi_raw = params.get("solo_validi")
         solo_validi = True if solo_validi_raw is None else bool(solo_validi_raw)
-        valid_at: date | None = date.today() if solo_validi else None
+        valid_at: date | None = oggi_aziendale() if solo_validi else None
 
         svc = BillingAccountService()
         # Lo scope emittente lo risolve il service dall'utente, come per il

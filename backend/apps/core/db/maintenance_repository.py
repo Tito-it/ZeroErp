@@ -21,11 +21,18 @@
 #        senza la sua data e' esattamente il campo che invita a ricucire.
 # ------------------------------------------------------------
 
+from datetime import date, datetime
 from typing import Any
 
 from django.db import connection
 
-from apps.core.db._helpers import corsa_conclusa, fetch_paged_with_total, pattern_contiene
+from apps.core.api.constants import DEFAULT_LIMIT
+from apps.core.db._helpers import (
+    corsa_conclusa,
+    fetch_paged_with_total,
+    pattern_contiene,
+    predicato_giorno_operativo,
+)
 from apps.core.types import JobRunLogRow
 
 
@@ -41,9 +48,16 @@ from apps.core.types import JobRunLogRow
 #    entrambe: e' la ragione per cui il frammento sta qui e non dentro una
 #    delle due — prima erano due copie di `MAX` + `ARRAY_AGG … FILTER`, e il
 #    difetto stava in tutte e due.
+# ⭐ LA CORSA SALTATA (dal 2026-10-10, brief-db-corsa-saltata-non-e-una-corsa
+#    §8): la riga che `fn_job_run_start` scrive sul lock occupato nasce CHIUSA,
+#    senza esito (`ok` NULL) e con `saltata = true`. Per `recente` e' un segno di
+#    vita come le altre — la sveglia e' scattata (D3 di Tid) — e, chiusa, non
+#    risulta «in corso». Per `conclusa` NO: non ha fatto il lavoro, e
+#    l'ultima conclusa e' l'ultima corsa VERA. Senza il filtro una skip diventava
+#    l'ultima conclusa con «esito non scritto», e copriva l'esito di quella vera.
 def _cte_corse(conditions: list[str]) -> str:
     where_recente = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-    where_conclusa = "WHERE " + " AND ".join([*conditions, "ended_at IS NOT NULL"])
+    where_conclusa = "WHERE " + " AND ".join([*conditions, "ended_at IS NOT NULL", "NOT saltata"])
     return f"""
         recente AS (
             SELECT DISTINCT ON (jobname) jobname, started_at, ended_at
@@ -63,46 +77,78 @@ def _cte_corse(conditions: list[str]) -> str:
 class MaintenanceRepository:
     """Repository per job_run_log e funzioni maintenance."""
 
+    # Scopo: vero se la corsia `jobname` ha una corsa RIUSCITA (`ok`) partita
+    #        da `dal` in poi: il lavoro del periodo che comincia a `dal` e' fatto.
+    #        Lo chiede `e_dovuto`, l'`ExecCondition` delle sveglie calendariali
+    #        (brief un-solo-fuso-aziendale T-9).
+    # ⚠️ Una corsa FALLITA non conta: il lavoro non e' fatto, e la sveglia dopo
+    #    riprova. Una corsa IN CORSO non conta nemmeno: la sovrapposizione la
+    #    impedisce il lock del comando, e una riga rimasta aperta da un processo
+    #    morto non deve bloccare il periodo. Una corsa SALTATA (lock occupato)
+    #    nemmeno: dal 2026-10-10 nasce con `ok` NULL (brief corsa-saltata D2), e
+    #    `AND ok` la scarta da solo. Fino a quel giorno aveva `ok = true`, e una
+    #    sveglia saltata dietro una corsa poi fallita chiudeva il periodo.
+    def corsa_riuscita_dal(self, jobname: str, dal: datetime) -> bool:
+        with connection.cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM maintenance.job_run_log
+                     WHERE jobname = %s AND started_at >= %s AND ok
+                )
+                """,
+                [jobname, dal],
+            )
+            row = cur.fetchone()
+        assert row is not None
+        return bool(row[0])
+
     # Scopo: Restituisce la lista delle esecuzioni job con filtri opzionali su
     # jobname, esito (ok), intervallo temporale. Ordinamento cronologico decrescente.
     # Perimetro: sola lettura su maintenance.job_run_log.
+    # ⚠️ Ogni riga porta `saltata`: una skip ha `ok` NULL come una corsa APERTA,
+    #    e chi la mostra la distingue da `saltata`, non da `ok`. Il filtro `ok`
+    #    la esclude in entrambi i versi, ed e' giusto: non e' ne' riuscita ne'
+    #    fallita.
     def list_job_runs(
         self,
         *,
         jobname: str | None = None,
         ok: bool | None = None,
-        date_from: str | None = None,
-        date_to: str | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
         search: str | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[JobRunLogRow], int]:
         search_pattern = pattern_contiene(search)
+        # Giorni dell'azienda, `date_to` incluso (BB): fino al 2026-10-09 era
+        # `<= %s::timestamptz + 1 day`, mezzanotte della sessione e confine
+        # alto compreso.
+        giorno_sql, giorno_params = predicato_giorno_operativo("started_at", date_from, date_to)
         rows, total_count = fetch_paged_with_total(
-            """
+            f"""
             SELECT id, jobname, stepname,
                    started_at::text, ended_at::text,
                    ok, rows_affected, message,
                    error_code, error_detail,
-                   agent_host, run_uuid::text,
+                   agent_host, run_uuid::text, saltata,
                    COUNT(*) OVER () AS total_count
               FROM maintenance.job_run_log
              WHERE (%s::text IS NULL OR jobname = %s)
                AND (%s::boolean IS NULL OR ok = %s)
-               AND (%s::text IS NULL OR started_at >= %s::timestamptz)
-               AND (%s::text IS NULL OR started_at <= %s::timestamptz + interval '1 day')
+               AND {giorno_sql}
                AND (%s::text IS NULL
                     OR jobname ILIKE %s
                     OR stepname ILIKE %s
                     OR message ILIKE %s)
              ORDER BY started_at DESC, id DESC
              LIMIT %s OFFSET %s
-            """,
+            """,  # noqa: S608 — frammento del BB predicato_giorno_operativo (colonna validata), valori come parametri
             [
                 jobname, jobname,
                 ok, ok,
-                date_from, date_from,
-                date_to, date_to,
+                *giorno_params,
                 search_pattern, search_pattern, search_pattern, search_pattern,
                 limit, offset,
             ],
@@ -115,6 +161,7 @@ class MaintenanceRepository:
                 ok=r["ok"], rows_affected=r["rows_affected"], message=r["message"],
                 error_code=r["error_code"], error_detail=r["error_detail"],
                 agent_host=r["agent_host"], run_uuid=r["run_uuid"],
+                saltata=bool(r["saltata"]),
             )
             for r in rows
         ]
@@ -203,6 +250,9 @@ class MaintenanceRepository:
     #        (riga piu' recente, `::text` di PG per contratto storico),
     #        `in_corso` e `ultima_conclusa` (date in ISO-8601).
     # Utile per dashboard riepilogativa dei job schedulati.
+    # ⚠️ `total_runs` conta le corse VERE: una saltata (lock occupato) non e'
+    #    un'esecuzione, e «riuscite sul totale» la leggerebbe come un lavoro
+    #    mancato. Le saltate hanno il loro conteggio, `saltate_count`.
     #
     # Filtri OPZIONALI (default: nessuno → comportamento storico invariato):
     #  - `jobname_prefix`: tiene solo i job il cui nome inizia col prefisso
@@ -212,7 +262,7 @@ class MaintenanceRepository:
     #  - `meta_month_equals`: `(chiave, 'YYYY-MM-01')` — tiene i run ATTRIBUITI
     #    a quel mese, applicato PRIMA del GROUP BY (i conteggi risultano quindi
     #    relativi ai soli run che matchano). L'attribuzione è:
-    #        COALESCE(meta ->> chiave, mese di `started_at`)
+    #        COALESCE(meta ->> chiave, mese di `started_at` nel fuso dell'azienda)
     #    cioè il mese DICHIARATO dal run se c'è, altrimenti quello in cui il run
     #    è stato ESEGUITO.
     #    Il fallback non è una comodità: senza, il filtro non troverebbe MAI
@@ -225,7 +275,7 @@ class MaintenanceRepository:
     def list_job_summary(
         self,
         *,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         jobname_prefix: str | None = None,
         meta_month_equals: tuple[str, str] | None = None,
@@ -243,9 +293,13 @@ class MaintenanceRepository:
             chiave, mese = meta_month_equals
             if not chiave.replace("_", "").isalnum():
                 raise ValueError(f"chiave meta non ammessa: {chiave!r}")
+            # Il mese di `started_at` e' quello dell'AZIENDA (BB DB
+            # `fn_giorno_operativo`): fino al 2026-10-09 era `date_trunc` nel
+            # fuso della sessione, e un run della notte del 1° finiva nel mese prima.
             conditions.append(
                 f"COALESCE(meta ->> '{chiave}',"
-                " to_char(date_trunc('month', started_at), 'YYYY-MM-DD')) = %s"
+                " to_char(date_trunc('month', script.fn_giorno_operativo(started_at)::timestamp),"
+                " 'YYYY-MM-DD')) = %s"
             )
             params.append(str(mese))
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
@@ -254,15 +308,16 @@ class MaintenanceRepository:
             f"""
             WITH summary AS (
                 SELECT jobname,
-                       COUNT(*) AS total_runs,
+                       COUNT(*) FILTER (WHERE NOT saltata) AS total_runs,
                        COUNT(*) FILTER (WHERE ok = true) AS ok_count,
-                       COUNT(*) FILTER (WHERE ok = false) AS fail_count
+                       COUNT(*) FILTER (WHERE ok = false) AS fail_count,
+                       COUNT(*) FILTER (WHERE saltata) AS saltate_count
                   FROM maintenance.job_run_log
                   {where}
                  GROUP BY jobname
             ),
             {_cte_corse(conditions)}
-            SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count,
+            SELECT s.jobname, s.total_runs, s.ok_count, s.fail_count, s.saltate_count,
                    r.started_at::text AS last_run_at,
                    r.ended_at IS NULL AS in_corso,
                    c.started_at, c.ended_at, c.ok,
@@ -284,6 +339,7 @@ class MaintenanceRepository:
                 "total_runs": r["total_runs"],
                 "ok_count": r["ok_count"],
                 "fail_count": r["fail_count"],
+                "saltate_count": r["saltate_count"],
                 "last_run_at": r["last_run_at"],
                 "in_corso": bool(r["in_corso"]),
                 "ultima_conclusa": corsa_conclusa(r["started_at"], r["ended_at"], r["ok"]),

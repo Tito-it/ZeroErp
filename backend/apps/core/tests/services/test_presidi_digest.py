@@ -35,6 +35,20 @@
 19. test_l_esito_viaggia_con_la_sua_data_anche_quando_e_fallito   ⭐ 14-09, il lunedi'
 20. test_le_date_delle_corse_sono_in_ora_locale_come_la_testata   14-09, cosmesi
 21. test_una_corsa_conclusa_senza_esito_scritto_si_dice
+22. test_il_testo_per_chi_agisce_viene_prima_della_nota   ⭐ 06-10
+23. test_senza_testo_resta_la_sola_nota
+24. test_i_presidi_accesi_si_raggruppano_per_chi_agisce   ⭐ 06-10
+25. test_ogni_chi_agisce_ha_il_suo_titolo
+26. RigaCompattaTests.test_un_istante_della_riga_si_scrive_nell_ora_dell_azienda   B-6 un-solo-fuso
+27. test_le_righe_di_un_presidio_a_varianti_si_rendono_per_causa   ⭐ 10-10
+     brief-db-presidio-processi-testo-per-causa §5.4.3: ogni causa col suo
+     rimedio e il suo «chi agisce»; il nome della colonna dal catalogo.
+28. test_una_causa_senza_testo_non_prende_il_rimedio_del_presidio   ⛔ 10-10
+29. test_ogni_causa_va_a_chi_la_deve_spegnere_anche_oltre_il_campione   ⭐ 10-10, R-2
+     §6.4.3: una voce per (presidio, causa) nel gruppo del «chi agisce» della
+     causa; la causa che il campione non contiene arriva dal suo conteggio.
+     Oggetto e riepilogo restano per presidio.
+30. test_una_causa_con_piu_righe_del_campione_dice_quante_ne_mancano   10-10, R-2
 """
 
 from __future__ import annotations
@@ -43,21 +57,29 @@ import re
 from typing import Any
 from unittest.mock import patch
 
-from django.test import SimpleTestCase, override_settings
-from django.utils import timezone
+from django.test import SimpleTestCase
 
 from apps.core.db.presidi_repository import (
     CADENZA_GIORNALIERA,
     CADENZA_SETTIMANALE,
+    CHI_AGISCE,
+    CHI_AGISCE_AMMINISTRATORE,
+    CHI_AGISCE_SISTEMISTA,
+    CHI_AGISCE_SVILUPPO,
     NATURA_LAVORAZIONE,
     NATURA_REGISTRO,
     NATURA_ZERO,
     PERIMETRO_DEFINER,
     PERIMETRO_LIBERO,
+    PresidiRepository,
     RigaPresidio,
 )
 from apps.core.services import presidi_digest
+from apps.core.services.fuso_aziendale import fuso_aziendale_forzato
+from apps.core.services.locale_formatters import in_ora_locale
 from apps.core.services.presidi_digest import (
+    TITOLI_CHI_AGISCE,
+    TITOLO_CHI_AGISCE_ASSENTE,
     calcola_digest,
     componi_messaggio,
     jobname_corsia,
@@ -76,6 +98,12 @@ def _riga(vista: str, natura: str, **override: Any) -> RigaPresidio:
         "cadenza": CADENZA_GIORNALIERA,
         "perimetro": PERIMETRO_LIBERO,
         "nota": f"nota di {vista}",
+        "colonna_variante": None,
+        # ⚠️ Senza testo per chi agisce, di default: e' il ripiego, e i casi
+        #    col testo se lo costruiscono.
+        "chi_agisce": None,
+        "significato": None,
+        "azione": None,
         "descrizione": f"commento di {vista}",
         "esiste": True,
         "a_catalogo": True,
@@ -91,10 +119,17 @@ class _RepoFinto:
         righe: list[RigaPresidio],
         conteggi: dict[str, Any],
         righe_esempio: dict[str, list[dict[str, Any]]] | None = None,
+        testi_cause: dict[str, dict[str, dict[str, Any]]] | None = None,
+        per_causa: dict[str, list[tuple[str | None, int]]] | None = None,
     ) -> None:
         self._righe = righe
         self._conteggi = conteggi
         self._righe_esempio = righe_esempio or {}
+        self._testi_cause = testi_cause or {}
+        # ⚠️ Quello che risponderebbe `dbops.fn_conta_presidio_per_variante`:
+        #    lo decide il test. Su un presidio con `colonna_variante` e' anche il
+        #    suo totale (`conta_presidio`): `conteggi` li' non si legge.
+        self._per_causa = per_causa or {}
         self.viste_contate: list[str] = []
         self.viste_elencate: list[str] = []
 
@@ -115,6 +150,22 @@ class _RepoFinto:
         if riga["perimetro"] != PERIMETRO_LIBERO:
             return []
         return self._righe_esempio.get(riga["vista"], [])[:limite]
+
+    # ⭐ Il raggruppamento per causa e' quello VERO del repository: finti sono
+    #    solo i conteggi per causa e il catalogo delle cause, che il test decide.
+    cause_del_presidio = PresidiRepository.cause_del_presidio
+    # ⭐ Vero anche lui: decide QUALE lettura conta (il totale, o la somma per
+    #    causa), sopra i due lettori finti.
+    conta_presidio = PresidiRepository.conta_presidio
+
+    def conta_per_variante(self, riga: RigaPresidio) -> list[dict[str, Any]]:
+        return [
+            {"variante": v, "conteggio": n}
+            for v, n in self._per_causa.get(riga["vista"], [])
+        ]
+
+    def testi_delle_cause(self, vista: str) -> dict[str, dict[str, Any]]:
+        return self._testi_cause.get(vista, {})
 
 
 # Scopo: un lettore del giornale dei run finto, per il battito. Risponde nella
@@ -181,6 +232,11 @@ class PresidiDigestTests(SimpleTestCase):
         patcher = patch.object(presidi_digest, "connection")
         self.connessione = patcher.start()
         self.addCleanup(patcher.stop)
+        # Il fuso dell'azienda e' un'ipotesi del test, dichiarata: le ore attese
+        # nei messaggi (07:30, 09:47…) sono di Roma. Fino al 2026-10-09 la classe
+        # le supponeva senza dirlo, e col parametro ostile della CI (T-5) tre
+        # test erano rossi.
+        self.enterContext(fuso_aziendale_forzato("Europe/Rome"))
 
     # 1. ⭐ IL TEST DELLA FORMA (§5.5). Tutto a posto ⇒ niente invio. Senza
     #    questo, il digest diventa un messaggio quotidiano che ripete lo stesso
@@ -626,9 +682,9 @@ class PresidiDigestTests(SimpleTestCase):
     # 20. La testata era in ora locale e le corse in UTC («cosmesi» nella nota
     #     del team DB): il giornale risponde nel fuso della connessione, cioe'
     #     UTC. Ora tutte le date del messaggio passano dallo stesso punto, nel
-    #     fuso di `TIME_ZONE` — non in quello dell'host, che su un'unit systemd
-    #     puo' mancare.
-    @override_settings(TIME_ZONE="Europe/Rome")
+    #     fuso dell'azienda — non in quello dell'host, che su un'unit systemd
+    #     puo' mancare, ne' in `TIME_ZONE` ('UTC', neutro dal 2026-10-09).
+    @fuso_aziendale_forzato("Europe/Rome")
     def test_le_date_delle_corse_sono_in_ora_locale_come_la_testata(self) -> None:
         repo = _RepoFinto(
             [_riga("dbops.vw_zero", NATURA_ZERO, cadenza=CADENZA_SETTIMANALE)],
@@ -649,7 +705,7 @@ class PresidiDigestTests(SimpleTestCase):
             self.assertNotIn("05:00:12", corpo)
         # E la testata: stesso fuso, senza secondi (e' un'ora di lettura, non
         # una corsa da distinguere).
-        testata = timezone.localtime(digest.quando).strftime("%d-%m-%Y %H:%M")
+        testata = in_ora_locale(digest.quando).strftime("%d-%m-%Y %H:%M")
         self.assertIn(testata, testo)
 
     # 21. `job_run_log.ok` e' nullable e nessun CHECK lo lega a `ended_at`: una
@@ -671,3 +727,242 @@ class PresidiDigestTests(SimpleTestCase):
         self.assertIn("14-09-2026 07:00:12 (esito non scritto)", testo)
         self.assertNotIn("(ok)", testo)
         self.assertNotIn("FALLITA", testo)
+
+    # 22. ⭐ IL TESTO PER CHI AGISCE (brief-db-presidi-cosa-significa-cosa-fare
+    #     §6). Chi apre la mail ha due domande — cosa vuol dire, cosa faccio — e
+    #     la risposta viene PRIMA della nota, che e' scritta per chi mantiene il
+    #     presidio. Si prova sulle DUE rese: il testo e l'HTML.
+    def test_il_testo_per_chi_agisce_viene_prima_della_nota(self) -> None:
+        repo = _RepoFinto(
+            [_riga(
+                "dbops.vw_zero", NATURA_ZERO,
+                chi_agisce=CHI_AGISCE_AMMINISTRATORE,
+                significato="Ci sono lotti fermi.",
+                azione="Rilancia o annulla i lotti.",
+            )],
+            {"dbops.vw_zero": 1},
+        )
+        digest = calcola_digest(CADENZA_GIORNALIERA, repo=repo)
+        voce = digest.allarmi[0]
+        self.assertEqual(
+            (voce.significato, voce.azione, voce.chi_agisce),
+            ("Ci sono lotti fermi.", "Rilancia o annulla i lotti.",
+             CHI_AGISCE_AMMINISTRATORE),
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        for resa in (testo, html):
+            with self.subTest(resa=resa[:20]):
+                self.assertLess(resa.index("Ci sono lotti fermi."),
+                                resa.index("Rilancia o annulla i lotti."))
+                self.assertLess(resa.index("Rilancia o annulla i lotti."),
+                                resa.index("nota di dbops.vw_zero"))
+                self.assertIn("dettaglio tecnico", resa)
+
+    # 23. Senza testo (un presidio che il catalogo non ha ancora tradotto per
+    #     chi agisce) resta la nota com'era: nessuna riga vuota, nessuna
+    #     etichetta «dettaglio tecnico» sopra una frase che e' l'unica.
+    def test_senza_testo_resta_la_sola_nota(self) -> None:
+        repo = _RepoFinto([_riga("dbops.vw_zero", NATURA_ZERO)], {"dbops.vw_zero": 1})
+        _oggetto, testo, html = componi_messaggio(
+            calcola_digest(CADENZA_GIORNALIERA, repo=repo),
+        )
+        for resa in (testo, html):
+            with self.subTest(resa=resa[:20]):
+                self.assertIn("nota di dbops.vw_zero", resa)
+                self.assertNotIn("dettaglio tecnico", resa)
+                self.assertNotIn("→", resa)
+        # ⚠️ E finisce nel gruppo «senza indicazione», non sparisce.
+        self.assertIn(TITOLO_CHI_AGISCE_ASSENTE, testo)
+
+    # 24. ⭐ I GRUPPI. Prima cio' che si sistema dall'applicazione, poi cio' che
+    #     va inoltrato, in fondo cio' che non dice a chi tocca. L'ordine del
+    #     catalogo (alfabetico per vista) qui e' apposta il CONTRARIO, cosi' un
+    #     raggruppamento dimenticato non passa per caso.
+    def test_i_presidi_accesi_si_raggruppano_per_chi_agisce(self) -> None:
+        repo = _RepoFinto(
+            [
+                _riga("dbops.vw_a", NATURA_ZERO),
+                _riga("dbops.vw_b", NATURA_ZERO, chi_agisce=CHI_AGISCE_SVILUPPO),
+                _riga("dbops.vw_c", NATURA_ZERO, chi_agisce=CHI_AGISCE_SISTEMISTA),
+                _riga("dbops.vw_d", NATURA_ZERO, chi_agisce=CHI_AGISCE_AMMINISTRATORE),
+            ],
+            {"dbops.vw_a": 1, "dbops.vw_b": 1, "dbops.vw_c": 1, "dbops.vw_d": 1},
+        )
+        _oggetto, testo, html = componi_messaggio(
+            calcola_digest(CADENZA_GIORNALIERA, repo=repo),
+        )
+        attesi = [
+            (TITOLI_CHI_AGISCE[CHI_AGISCE_AMMINISTRATORE], "dbops.vw_d"),
+            (TITOLI_CHI_AGISCE[CHI_AGISCE_SISTEMISTA], "dbops.vw_c"),
+            (TITOLI_CHI_AGISCE[CHI_AGISCE_SVILUPPO], "dbops.vw_b"),
+            (TITOLO_CHI_AGISCE_ASSENTE, "dbops.vw_a"),
+        ]
+        for resa in (testo, html.replace("&#x27;", "'")):
+            with self.subTest(resa=resa[:20]):
+                posizioni = []
+                for titolo, vista in attesi:
+                    posizioni += [resa.index(titolo), resa.index(vista)]
+                self.assertEqual(posizioni, sorted(posizioni))
+
+    # 25. ⛔ Un valore del mirror senza titolo finirebbe fra i «senza
+    #     indicazione» in silenzio: il dizionario segue il mirror, che segue il
+    #     CHECK (`test_presidi_catalogo`).
+    def test_ogni_chi_agisce_ha_il_suo_titolo(self) -> None:
+        self.assertEqual(set(TITOLI_CHI_AGISCE), set(CHI_AGISCE))
+
+    # 27. ⭐ PER CAUSA (brief-db-presidio-processi-testo-per-causa §5.4.3). Le
+    #     righe di un presidio con `colonna_variante` sono guasti diversi: ognuna
+    #     sta sotto la sua causa, col rimedio e il «chi agisce» di quella causa.
+    #     ⚠️ La colonna si chiama apposta `motivo` e non `causa`: il nome si
+    #     legge dal catalogo, e uno scritto nel codice qui non lo troverebbe.
+    def test_le_righe_di_un_presidio_a_varianti_si_rendono_per_causa(self) -> None:
+        repo = _RepoFinto(
+            [_riga(
+                "dbops.vw_zero", NATURA_ZERO, colonna_variante="motivo",
+                chi_agisce=CHI_AGISCE_SISTEMISTA,
+                significato="Segui il rimedio accanto alla causa.",
+            )],
+            {"dbops.vw_zero": 3},
+            {"dbops.vw_zero": [
+                {"processo": "p1", "motivo": "TIMER_FERMO"},
+                {"processo": "p2", "motivo": "NON_PROGRAMMATO"},
+                {"processo": "p3", "motivo": "TIMER_FERMO"},
+            ]},
+            {"dbops.vw_zero": {
+                "TIMER_FERMO": {
+                    "causa": "TIMER_FERMO", "chi_agisce": CHI_AGISCE_SISTEMISTA,
+                    "significato": "Il timer e' fermo.", "azione": "Riaccendi il timer.",
+                },
+                "NON_PROGRAMMATO": {
+                    "causa": "NON_PROGRAMMATO", "chi_agisce": CHI_AGISCE_SVILUPPO,
+                    "significato": "Nessun job lo sveglia.", "azione": "Completa il catalogo.",
+                },
+            }},
+            per_causa={"dbops.vw_zero": [("TIMER_FERMO", 2), ("NON_PROGRAMMATO", 1)]},
+        )
+        digest = calcola_digest(CADENZA_GIORNALIERA, repo=repo)
+        cause = digest.allarmi[0].cause
+        self.assertEqual(
+            [(c["causa"], [r["processo"] for r in c["righe"]]) for c in cause],
+            [("TIMER_FERMO", ["p1", "p3"]), ("NON_PROGRAMMATO", ["p2"])],
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        for resa in (testo, html.replace("&#x27;", "'")):
+            with self.subTest(resa=resa[:20]):
+                # Ogni rimedio sta sopra le SUE righe, non sopra quelle dell'altra.
+                self.assertLess(resa.index("Riaccendi il timer."), resa.index("processo=p1"))
+                self.assertLess(resa.index("processo=p3"), resa.index("Completa il catalogo."))
+                self.assertLess(resa.index("Completa il catalogo."), resa.index("processo=p2"))
+                self.assertIn("dbops.vw_zero — NON_PROGRAMMATO", resa)
+                # ⛔ Il testo NEUTRO del presidio non si ripete sopra le cause:
+                #    ognuna porta il suo rimedio, e quello non dice niente.
+                self.assertNotIn("Segui il rimedio accanto alla causa.", resa)
+
+    # 28. ⛔ Una causa senza testo NON prende il rimedio del presidio: sarebbe il
+    #     rimedio di un altro guasto, cioe' il difetto del brief §1. Si dice.
+    def test_una_causa_senza_testo_non_prende_il_rimedio_del_presidio(self) -> None:
+        repo = _RepoFinto(
+            [_riga(
+                "dbops.vw_zero", NATURA_ZERO, colonna_variante="motivo",
+                chi_agisce=CHI_AGISCE_SISTEMISTA, azione="Rimedio del presidio.",
+            )],
+            {"dbops.vw_zero": 2},
+            {"dbops.vw_zero": [{"motivo": "INVENTATA"}, {"motivo": None}]},
+            per_causa={"dbops.vw_zero": [("INVENTATA", 1), (None, 1)]},
+        )
+        digest = calcola_digest(CADENZA_GIORNALIERA, repo=repo)
+        self.assertEqual(
+            [(c["causa"], c["azione"], c["chi_agisce"]) for c in digest.allarmi[0].cause],
+            [("INVENTATA", None, None), (None, None, None)],
+        )
+        _oggetto, testo, html = componi_messaggio(digest)
+        for resa in (testo, html):
+            with self.subTest(resa=resa[:20]):
+                self.assertNotIn("Rimedio del presidio.", resa)
+                self.assertIn("dbops.vw_zero — INVENTATA", resa)
+                self.assertIn("dbops.vw_zero — causa non indicata", resa)
+                self.assertEqual(resa.count("causa non a catalogo"), 1)
+                self.assertIn("la riga non dice la sua causa", resa)
+        # ⚠️ Senza «chi agisce» le due voci finiscono fra le «senza
+        #    indicazione», non nel gruppo del presidio (SISTEMISTA).
+        self.assertNotIn(TITOLI_CHI_AGISCE[CHI_AGISCE_SISTEMISTA], testo)
+        self.assertIn(TITOLO_CHI_AGISCE_ASSENTE, testo)
+
+    # 29. ⭐ R-2 (§6.4.3). Il presidio e' del sistemista; la causa dello sviluppo
+    #     sta OLTRE il campione (nessuna sua riga fra quelle lette) e arriva lo
+    #     stesso, dal suo conteggio, nel gruppo dello sviluppo. Prima di R-2 non
+    #     sarebbe arrivata da nessuna parte.
+    def test_ogni_causa_va_a_chi_la_deve_spegnere_anche_oltre_il_campione(self) -> None:
+        repo = _RepoFinto(
+            [_riga(
+                "dbops.vw_zero", NATURA_ZERO, colonna_variante="motivo",
+                chi_agisce=CHI_AGISCE_SISTEMISTA,
+            )],
+            {"dbops.vw_zero": 9},
+            {"dbops.vw_zero": [{"processo": "p1", "motivo": "TIMER_FERMO"}]},
+            {"dbops.vw_zero": {
+                "TIMER_FERMO": {
+                    "causa": "TIMER_FERMO", "chi_agisce": CHI_AGISCE_SISTEMISTA,
+                    "significato": "s-t", "azione": "Riaccendi il timer.",
+                },
+                "NON_PROGRAMMATO": {
+                    "causa": "NON_PROGRAMMATO", "chi_agisce": CHI_AGISCE_SVILUPPO,
+                    "significato": "s-n", "azione": "Completa il catalogo.",
+                },
+            }},
+            per_causa={"dbops.vw_zero": [("NON_PROGRAMMATO", 7), ("TIMER_FERMO", 2)]},
+        )
+        digest = calcola_digest(CADENZA_GIORNALIERA, repo=repo)
+        self.assertEqual(
+            [(c["causa"], c["conteggio"], len(c["righe"])) for c in digest.allarmi[0].cause],
+            [("NON_PROGRAMMATO", 7, 0), ("TIMER_FERMO", 2, 1)],
+        )
+        oggetto, testo, html = componi_messaggio(digest)
+        # ⚠️ Oggetto e riepilogo contano PRESIDI: uno, con nove righe.
+        self.assertIn("1 in allarme (9 righe)", oggetto)
+        self.assertEqual(digest.riepilogo()["allarmi"], 1)
+        for resa in (testo, html):
+            with self.subTest(resa=resa[:20]):
+                sistemista = resa.index(TITOLI_CHI_AGISCE[CHI_AGISCE_SISTEMISTA])
+                sviluppo = resa.index(TITOLI_CHI_AGISCE[CHI_AGISCE_SVILUPPO])
+                self.assertLess(sistemista, resa.index("dbops.vw_zero — TIMER_FERMO"))
+                self.assertLess(resa.index("dbops.vw_zero — TIMER_FERMO"), sviluppo)
+                self.assertLess(sviluppo, resa.index("dbops.vw_zero — NON_PROGRAMMATO"))
+                self.assertLess(sviluppo, resa.index("Completa il catalogo."))
+                self.assertIn("nessuna fra le righe di esempio (7 in tutto)", resa)
+
+    # 30. La voce di una causa con piu' righe di quelle mostrate lo dice col
+    #     numero della CAUSA, non del presidio.
+    def test_una_causa_con_piu_righe_del_campione_dice_quante_ne_mancano(self) -> None:
+        repo = _RepoFinto(
+            [_riga("dbops.vw_zero", NATURA_ZERO, colonna_variante="motivo")],
+            {"dbops.vw_zero": 10},
+            {"dbops.vw_zero": [{"motivo": "A"}, {"motivo": "A"}]},
+            per_causa={"dbops.vw_zero": [("A", 6), ("B", 4)]},
+        )
+        _oggetto, testo, html = componi_messaggio(
+            calcola_digest(CADENZA_GIORNALIERA, repo=repo),
+        )
+        self.assertIn("dbops.vw_zero — A: 6", testo)
+        for resa in (testo, html):
+            with self.subTest(resa=resa[:20]):
+                self.assertIn("dbops.vw_zero — A", resa)
+                self.assertIn("… e altre 4", resa)
+                self.assertIn("nessuna fra le righe di esempio (4 in tutto)", resa)
+                self.assertNotIn("… e altre 8", resa)
+
+
+class RigaCompattaTests(SimpleTestCase):
+    """Le righe di esempio di una vista nel messaggio (B-6)."""
+
+    # 26. Un istante della riga si scrive nell'ora dell'azienda e nel formato
+    #     del BB, come il resto del messaggio: fino al 2026-10-09 era `str()`,
+    #     cioe' UTC con `+00:00`.
+    @fuso_aziendale_forzato("Europe/Rome")
+    def test_un_istante_della_riga_si_scrive_nell_ora_dell_azienda(self) -> None:
+        from datetime import UTC, datetime
+
+        riga = {"id": 7, "quando": datetime(2026, 9, 14, 23, 30, 5, tzinfo=UTC), "nota": None}
+        self.assertEqual(
+            presidi_digest._riga_compatta(riga), "id=7, quando=15-09-2026 01:30:05, nota=—",
+        )

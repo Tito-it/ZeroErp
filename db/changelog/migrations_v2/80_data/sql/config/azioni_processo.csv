@@ -1,40 +1,40 @@
-id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,user_insert,data_update,user_update
-1,2,genera_fatture_lotti,Genera fatture da lotti,t,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
-2,2,genera_fattura,Genera singola fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
-3,2,approva_fattura,Approva fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
-4,2,emetti_fattura,Emetti fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres
-5,7,approva_rimessa,Approva rimessa di pagamento,f,f,{},2026-02-28 00:00:00+01,postgres,2026-08-25 00:00:00+02,mctit
-6,2,reset_lotto_draft,Reset lotto a stato DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
-7,2,reset_lotto_fattura_draft,Reset singola fattura lotto a DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
-8,2,run_commesse_push,Invio commesse a sistema esterno,f,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres
-9,2,prezzo_override_manuale,Modifica manuale prezzo,f,t,{},2026-04-17 00:00:00+02,postgres,2026-04-17 00:00:00+02,postgres
-10,2,approva_prezzo_override,Approva modifica prezzo,f,t,{},2026-04-23 00:00:00+02,postgres,2026-04-23 00:00:00+02,postgres
-11,2,cambia_stato_preventivi,Cambia stato preventivo (emetti/accetta/rifiuta/annulla),f,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres
-12,2,push_commessa_preventivi,Push preventivo a commessa per fatturazione,t,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres
-13,2,genera_pratica_preventivi,Genera pratica esecutiva da preventivo,f,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres
-14,11,documenti_template_manage,Gestione template e versioni documenti,f,t,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres
-15,11,documenti_asset_manage,"Gestione asset documentali (logo, firma, CSS, allegati)",f,t,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres
-16,9,ui_preset_manage,Gestione preset personalizzazioni liste,f,t,{},2026-05-08 00:00:00+02,postgres,2026-05-08 00:00:00+02,postgres
-17,9,ui_permesso_manage,Gestione permessi colonne personalizzazioni liste,f,t,{},2026-05-08 00:00:00+02,postgres,2026-05-08 00:00:00+02,postgres
-18,12,cambia_stato_pratica,"Cambio stato pratica (apertura, chiusura, annullamento)",t,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
-19,12,assegna_pratica,Assegnazione pratica a risorsa umana / unita organizzativa,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
-20,12,cambia_stato_flusso,"Cambio stato flusso pratica (avvio, completamento con esito)",f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
-21,12,genera_pratica_manuale,Generazione manuale pratica da flusso (regole auto=false),t,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
-22,12,sospendi_pratica,Sospensione pratica,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
-23,12,riattiva_pratica,Riattivazione pratica sospesa,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
-24,12,sospendi_flusso,Sospensione flusso pratica,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
-25,12,riattiva_flusso,Riattivazione flusso pratica sospeso,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres
-26,2,approva_attivita_commessa,Approva attivita di commessa per la fatturazione,f,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres
-27,2,numera_fatture_lotti,Numerazione fiscale fatture di lotto (irreversibile),t,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres
-28,13,code_manage,Gestione code di lavoro e stampa (vista e azioni cross-utente),f,t,{},2026-07-21 00:00:00+02,postgres,2026-07-21 00:00:00+02,postgres
-29,2,carica_voce_manuale,Carica voce manuale (onere) su commessa,f,t,{},2026-07-23 00:00:00+02,postgres,2026-07-23 00:00:00+02,postgres
-30,2,cambia_stato_commessa,Cambia stato commessa (chiudi/riapri/annulla),t,t,{},2026-07-27 00:00:00+02,postgres,2026-07-27 00:00:00+02,postgres
-31,2,accredita_riga_reso,Accredita riga di reso (genera la rettifica per la nota di credito),t,t,{},2026-08-18 00:00:00+02,mctit,2026-08-18 00:00:00+02,mctit
-32,7,registra_distinta,Registra la distinta contabile (crea i movimenti: irreversibile),t,t,{},2026-08-25 00:00:00+02,mctit,2026-08-25 00:00:00+02,mctit
-33,2,riporta_da_emettere,Riporta da emettere le attivita fatturabili residue,f,t,{},2026-08-26 00:00:00+02,mctit,2026-08-26 00:00:00+02,mctit
-34,2,governa_fondo_fattura,Governa il fondo fattura (cancella un atto non ancora eseguito: irreversibile),t,t,{},2026-08-31 00:00:00+02,mctit,2026-08-31 00:00:00+02,mctit
-35,13,processo_avvia,Avvio manuale di un processo dall interfaccia (Esegui ora su una sveglia di deploy: avvia un giro adesso),t,t,{},2026-09-14 00:00:00+02,mctit,2026-09-14 00:00:00+02,mctit
-36,6,registra_magazzino,"Registra inventario, rettifica o trasferimento interno di magazzino, e la consegna di una bolla di trasferimento (crea i movimenti: irreversibile)",t,t,{},2026-09-22 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit
-37,2,emetti_ddt,Emette una bolla o annulla una bolla emessa (se muove merce scarica o storna il magazzino: irreversibile),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit
-38,6,blocca_merce,Apre o libera un blocco manuale di merce a magazzino (riserva pezzi per qualcuno: ferma gli scarichi degli altri),f,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit
-39,2,conferma_reso,Conferma o annulla un reso (se fa rientrare merce carica o storna il magazzino),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit
+id,area_id,permission_codename,descrizione,pericolosa,attivo,meta,data_insert,user_insert,data_update,user_update,livello_minimo_area
+1,2,genera_fatture_lotti,Genera fatture da lotti,t,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres,TUTTO
+2,2,genera_fattura,Genera singola fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres,TUTTO
+3,2,approva_fattura,Approva fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres,TUTTO
+4,2,emetti_fattura,Emetti fattura,f,t,{},2026-02-28 00:00:00+01,postgres,2026-02-28 00:00:00+01,postgres,TUTTO
+5,7,approva_rimessa,Approva rimessa di pagamento,f,f,{},2026-02-28 00:00:00+01,postgres,2026-08-25 00:00:00+02,mctit,TUTTO
+6,2,reset_lotto_draft,Reset lotto a stato DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres,TUTTO
+7,2,reset_lotto_fattura_draft,Reset singola fattura lotto a DRAFT,t,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres,TUTTO
+8,2,run_commesse_push,Invio commesse a sistema esterno,f,t,{},2026-03-01 00:00:00+01,postgres,2026-03-01 00:00:00+01,postgres,TUTTO
+9,2,prezzo_override_manuale,Modifica manuale prezzo,f,t,{},2026-04-17 00:00:00+02,postgres,2026-04-17 00:00:00+02,postgres,TUTTO
+10,2,approva_prezzo_override,Approva modifica prezzo,f,t,{},2026-04-23 00:00:00+02,postgres,2026-04-23 00:00:00+02,postgres,TUTTO
+11,2,cambia_stato_preventivi,Cambia stato preventivo (emetti/accetta/rifiuta/annulla),f,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres,TUTTO
+12,2,push_commessa_preventivi,Push preventivo a commessa per fatturazione,t,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres,TUTTO
+13,2,genera_pratica_preventivi,Genera pratica esecutiva da preventivo,f,t,{},2026-05-02 00:00:00+02,postgres,2026-05-02 00:00:00+02,postgres,TUTTO
+14,11,documenti_template_manage,Gestione template e versioni documenti,f,t,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres,TUTTO
+15,11,documenti_asset_manage,"Gestione asset documentali (logo, firma, CSS, allegati)",f,t,{},2026-05-03 00:00:00+02,postgres,2026-05-03 00:00:00+02,postgres,TUTTO
+16,9,ui_preset_manage,Gestione preset personalizzazioni liste,f,t,{},2026-05-08 00:00:00+02,postgres,2026-05-08 00:00:00+02,postgres,TUTTO
+17,9,ui_permesso_manage,Gestione permessi colonne personalizzazioni liste,f,t,{},2026-05-08 00:00:00+02,postgres,2026-05-08 00:00:00+02,postgres,TUTTO
+18,12,cambia_stato_pratica,"Cambio stato pratica (apertura, chiusura, annullamento)",t,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
+19,12,assegna_pratica,Assegnazione pratica a risorsa umana / unita organizzativa,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
+20,12,cambia_stato_flusso,"Cambio stato flusso pratica (avvio, completamento con esito)",f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
+21,12,genera_pratica_manuale,Generazione manuale pratica da flusso (regole auto=false),t,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
+22,12,sospendi_pratica,Sospensione pratica,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
+23,12,riattiva_pratica,Riattivazione pratica sospesa,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
+24,12,sospendi_flusso,Sospensione flusso pratica,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
+25,12,riattiva_flusso,Riattivazione flusso pratica sospeso,f,t,{},2026-06-12 00:00:00+02,postgres,2026-06-12 00:00:00+02,postgres,TUTTO
+26,2,approva_attivita_commessa,Approva attivita di commessa per la fatturazione,f,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres,TUTTO
+27,2,numera_fatture_lotti,Numerazione fiscale fatture di lotto (irreversibile),t,t,{},2026-07-20 00:00:00+02,postgres,2026-07-20 00:00:00+02,postgres,TUTTO
+28,13,code_manage,Gestione code di lavoro e stampa (vista e azioni cross-utente),f,t,{},2026-07-21 00:00:00+02,postgres,2026-07-21 00:00:00+02,postgres,TUTTO
+29,2,carica_voce_manuale,Carica voce manuale (onere) su commessa,f,t,{},2026-07-23 00:00:00+02,postgres,2026-07-23 00:00:00+02,postgres,TUTTO
+30,2,cambia_stato_commessa,Cambia stato commessa (chiudi/riapri/annulla),t,t,{},2026-07-27 00:00:00+02,postgres,2026-07-27 00:00:00+02,postgres,TUTTO
+31,2,accredita_riga_reso,Accredita riga di reso (genera la rettifica per la nota di credito),t,t,{},2026-08-18 00:00:00+02,mctit,2026-08-18 00:00:00+02,mctit,TUTTO
+32,7,registra_distinta,Registra la distinta contabile (crea i movimenti: irreversibile),t,t,{},2026-08-25 00:00:00+02,mctit,2026-08-25 00:00:00+02,mctit,TUTTO
+33,2,riporta_da_emettere,Riporta da emettere le attivita fatturabili residue,f,t,{},2026-08-26 00:00:00+02,mctit,2026-08-26 00:00:00+02,mctit,TUTTO
+34,2,governa_fondo_fattura,Governa il fondo fattura (cancella un atto non ancora eseguito: irreversibile),t,t,{},2026-08-31 00:00:00+02,mctit,2026-08-31 00:00:00+02,mctit,TUTTO
+35,13,processo_avvia,Avvio manuale di un processo dall interfaccia (Esegui ora su una sveglia di deploy: avvia un giro adesso),t,t,{},2026-09-14 00:00:00+02,mctit,2026-09-14 00:00:00+02,mctit,TUTTO
+36,6,registra_magazzino,"Registra inventario, rettifica o trasferimento interno di magazzino, e la consegna di una bolla di trasferimento (crea i movimenti: irreversibile)",t,t,{},2026-09-22 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,TUTTO
+37,2,emetti_ddt,Emette una bolla o annulla una bolla emessa (se muove merce scarica o storna il magazzino: irreversibile),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,TUTTO
+38,6,blocca_merce,Apre o libera un blocco manuale di merce a magazzino (riserva pezzi per qualcuno: ferma gli scarichi degli altri),f,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,TUTTO
+39,2,conferma_reso,Conferma o annulla un reso (se fa rientrare merce carica o storna il magazzino),t,t,{},2026-09-28 00:00:00+02,mctit,2026-09-28 00:00:00+02,mctit,TUTTO

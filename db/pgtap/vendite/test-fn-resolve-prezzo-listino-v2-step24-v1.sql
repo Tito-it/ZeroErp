@@ -45,26 +45,58 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- Setup fixture
 -- ============================================================
 
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.2, A-D2): il
+--   listino e' COSTRUITO, con una versione valida da oggi. Prima era «il primo
+--   listino attivo per id» del DB, e il fixture ci ATTIVA dei contratti: da quel
+--   giorno un contratto con un listino senza versione in vigore non si attiva
+--   piu', e l'esito dipendeva da cosa c'era sulla macchina.
+--   I test 6-7 cercano una versione in vigore CON la riga dell'articolo 3: sul
+--   listino costruito (senza righe) fanno skip, come facevano gia' sul listino
+--   preso dai dati quando non aveva una versione in vigore.
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.6.5): il
+--   cliente e il billing account sono COSTRUITI (dbops.fn_pgtap_crea_cliente_ba),
+--   come il listino. Prima erano «il primo BA per id» del DB: su un database
+--   ricostruito da zero (CI) non c'e' nessun BA e il file era nel registro dei
+--   rossi di CI per questo.
+CREATE TEMP TABLE tmp_v2_cli AS
+SELECT billing_account_id, istanza_utility_id, utility_id
+  FROM dbops.fn_pgtap_crea_cliente_ba(
+    'resolve v2 step24',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_v2_listino AS
+SELECT listino_id FROM dbops.fn_pgtap_crea_listino(
+    (SELECT utility_id FROM tmp_v2_cli), 'resolve v2 step24');
+
 CREATE TEMP TABLE tmp_v2_ctx AS
 SELECT
-    ba.id                  AS ba_id,
+    ba.billing_account_id  AS ba_id,
     ba.istanza_utility_id,
     ba.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO' LIMIT 1) AS id_attivo,
     (SELECT id FROM catalogo.unita_misura       WHERE attivo = TRUE             ORDER BY id LIMIT 1) AS uom_id,
-    (SELECT id FROM vendite.listini             WHERE attivo = TRUE ORDER BY id LIMIT 1) AS listino_id,
+    (SELECT listino_id FROM tmp_v2_listino) AS listino_id,
     -- emittente_soggetto_ruolo_id: qualsiasi valore > 0 (non usato in STADIO 1)
     1::bigint AS emittente_soggetto_ruolo_id
-  FROM anagrafiche.billing_account ba
- ORDER BY ba.id
- LIMIT 1;
+  FROM tmp_v2_cli ba;
 
 -- 3 articoli non-composite per le eccezioni
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe
+--   stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra quelle
+--   della utility del cliente. Articoli SENZA tipologia (decide la natura) che ammettono
+--   UNA_TANTUM/FISSA, chiesto alla sede unica; le righe ereditano l'erogazione (era
+--   CANONE scritto a mano). Prima: i primi tre per id, che su dbdev sono PRODOTTI e la
+--   utility del cliente costruito (ENE) non li prevede.
 CREATE TEMP TABLE tmp_v2_arts AS
 SELECT id, row_number() OVER (ORDER BY id) AS rn
-  FROM catalogo.articoli
- WHERE attivo = TRUE AND is_composito = FALSE
+  FROM catalogo.articoli a
+ WHERE a.attivo = TRUE AND a.is_composito = FALSE
+   AND a.listino_tipologia_id IS NULL
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
  ORDER BY id
  LIMIT 3;
 
@@ -76,7 +108,7 @@ SELECT
   FROM vendite.listini_versioni lv
   JOIN vendite.listini_righe lr ON lr.listino_versione_id = lv.id
  WHERE lv.listino_id = (SELECT listino_id FROM tmp_v2_ctx LIMIT 1)
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
    AND lv.attivo = TRUE
    AND lr.articolo_id = (SELECT id FROM tmp_v2_arts WHERE rn = 3)
    AND lr.uom_id = (SELECT uom_id FROM tmp_v2_ctx LIMIT 1)
@@ -95,8 +127,10 @@ SELECT 'PGTAP_V2_OV',
        c.id_draft, '2070-01-01', '2070-12-31', c.listino_id
   FROM tmp_v2_ctx c WHERE c.listino_id IS NOT NULL;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'OVERRIDE', 111.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'OVERRIDE', 111.00, 1.00, NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_OV' AND a.rn = 1;
 
@@ -115,8 +149,10 @@ SELECT 'PGTAP_V2_ESC',
        c.id_draft, '2071-01-01', '2071-12-31', c.listino_id
   FROM tmp_v2_ctx c WHERE c.listino_id IS NOT NULL;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'ESCLUSIONE', NULL, 1.00
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): l'esclusione
+--   nasce vuota (la qta_operativa 1 era un dato di vendita, ora rifiutato).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario)
+SELECT ca.id, a.id, 'ESCLUSIONE', NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_ESC' AND a.rn = 2;
 
@@ -135,8 +171,10 @@ SELECT 'PGTAP_V2_AGG',
        c.id_draft, '2072-01-01', '2072-12-31'
   FROM tmp_v2_ctx c;
 
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'AGGIUNTA', 222.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'AGGIUNTA', 222.00, 1.00, NULL
   FROM vendite.contratti ca, tmp_v2_arts a
  WHERE ca.numero = 'PGTAP_V2_AGG' AND a.rn = 1;
 
@@ -313,7 +351,7 @@ END;
 -- ============================================================
 SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
-        gen_random_uuid(), 1, CURRENT_DATE, NULL, 1, 1, NULL::integer, NULL::uuid
+        gen_random_uuid(), 1, script.fn_data_operativa(), NULL, 1, 1, NULL::integer, NULL::uuid
     )$$,
     'P0001',
     NULL,
@@ -325,7 +363,7 @@ SELECT throws_ok(
 -- ============================================================
 SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
-        gen_random_uuid(), 0, CURRENT_DATE, 1, 1, 1, NULL::integer, NULL::uuid
+        gen_random_uuid(), 0, script.fn_data_operativa(), 1, 1, 1, NULL::integer, NULL::uuid
     )$$,
     'P0001',
     NULL,

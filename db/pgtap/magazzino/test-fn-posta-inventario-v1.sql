@@ -52,8 +52,8 @@ BEGIN
     v_art := dbops.fn_pgtap_crea_articolo('PGT-L2I-ART', true, false, false);
     v_lot := dbops.fn_pgtap_crea_articolo('PGT-L2I-LOT', true, true, false);
     v_nog := dbops.fn_pgtap_crea_articolo('PGT-L2I-NO', false, false, false);
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_lot, 'PGT-L2I-L1', current_date) RETURNING id INTO v_l1;
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_lot, 'PGT-L2I-L2', current_date) RETURNING id INTO v_l2;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_lot, 'PGT-L2I-L1', script.fn_data_operativa()) RETURNING id INTO v_l1;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_lot, 'PGT-L2I-L2', script.fn_data_operativa()) RETURNING id INTO v_l2;
     INSERT INTO _fix VALUES (v_mag, v_no, v_ux, v_uy, v_art, v_lot, v_nog, v_l1, v_l2);
 END $fix$;
 
@@ -62,7 +62,7 @@ END $fix$;
 -- ============================================================
 CREATE TEMP TABLE _inv1 AS SELECT NULL::bigint AS id;
 DO $i$ DECLARE v_id bigint; BEGIN
-    INSERT INTO magazzino.inventari (magazzino_id, data) SELECT mag, current_date - 1 FROM _fix RETURNING id INTO v_id;
+    INSERT INTO magazzino.inventari (magazzino_id, data) SELECT mag, script.fn_data_operativa() - 1 FROM _fix RETURNING id INTO v_id;
     INSERT INTO magazzino.inventari_righe (inventario_id, articolo_id, qta_contata, ubicazione_id, costo_unitario) SELECT v_id, art, 10, ux, 7 FROM _fix;
     UPDATE magazzino.inventari SET stato_mag_inventario = 'CONFIRM' WHERE id = v_id;
     UPDATE _inv1 SET id = v_id;
@@ -81,7 +81,7 @@ SELECT is(
 SELECT is((SELECT trim_scale(qta_sistema)::text FROM magazzino.inventari_righe WHERE inventario_id = (SELECT id FROM _inv1)), '0',
     '3) qta_sistema = 0 scritto sulla riga');
 SELECT is(
-    (SELECT (trim_scale(m.costo_unitario), c.codice_interno, m.data_mov::date = current_date - 1)::text FROM magazzino.movimenti m JOIN magazzino.causali c ON c.id = m.causale_id WHERE m.id = (SELECT movimento_id FROM _post1)),
+    (SELECT (trim_scale(m.costo_unitario), c.codice_interno, script.fn_giorno_operativo(m.data_mov) = script.fn_data_operativa() - 1)::text FROM magazzino.movimenti m JOIN magazzino.causali c ON c.id = m.causale_id WHERE m.id = (SELECT movimento_id FROM _post1)),
     '(7,INV_INIZIALE,t)',
     '4) il movimento porta il costo della riga, la causale INV_INIZIALE e la data dell''inventario');
 

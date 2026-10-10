@@ -1,0 +1,3379 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script: «OGGI» E' IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   CURRENT_DATE e' il giorno nel fuso della SESSIONE che esegue, e le
+#   sessioni non hanno tutte lo stesso fuso: il backend si connette in UTC,
+#   psql/Liquibase/pgAgent nel fuso del server. Fra la mezzanotte dell'azienda
+#   e quella della sessione, la stessa funzione risponde un giorno diverso
+#   secondo chi la chiama: una data documento di ieri, un guard di validita'
+#   che scatta o non scatta. Non dipende dai dati: e' la struttura, e vale per
+#   ogni installazione il cui fuso non coincide con quello della sessione.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Ogni CURRENT_DATE di codice diventa script.fn_data_operativa() (il giorno
+#   nel fuso di SYSTEM_FUSO_ORARIO, letto dalla sede unica
+#   script.fn_fuso_operativo, 20261009-40/41). Tre forme, scelte dal posto:
+#   - in un'istruzione SQL (WHERE, SELECT, VALUES, SQL dinamico):
+#     `(SELECT script.fn_data_operativa())` — la sottoquery scalare e'
+#     valutata UNA volta per istruzione, non per riga (misurato su
+#     zeroerp_ci il 2026-10-09: 20.000 righe, 122 ms per riga contro 2 ms);
+#   - in un'espressione PL/pgSQL (`:=`, IF, RETURN) la chiamata diretta,
+#     valutata una volta;
+#   - nel DEFAULT di un parametro la chiamata diretta: li' una sottoquery non
+#     e' ammessa.
+#   I commenti che citano CURRENT_DATE restano: raccontano la regola di prima.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firme, tipi, volatilita', sicurezza, commenti e GRANT delle funzioni (il
+#   CREATE OR REPLACE li conserva). Il corpo e' quello vivo, preso da
+#   pg_get_functiondef su zeroerp_ci il 2026-10-09 e confrontato con la doc
+#   auto-generata (identici), con la sola sostituzione di CURRENT_DATE.
+#
+# ── %TYPE: FIRMA, RETURNS TABLE, DECLARE ───────────────────────────
+#   Il corpo vivo (pg_get_functiondef) scioglie i %TYPE della firma: quelli
+#   gia' scritti nell'ultimo changeSet di ogni funzione sono stati RIPRESI
+#   (anche nel rollback), e in questo giro si sono ancorati i parametri, le
+#   colonne di RETURNS TABLE e le variabili che riflettono una colonna.
+#   Verificato in transazione annullata su zeroerp_ci: argomenti e risultato
+#   di ogni funzione restano byte-identici (nessun overload, nessun chiamante
+#   rotto). Restano a TIPO ESPLICITO, perche' non sono il riflesso di nessuna
+#   colonna, le voci elencate sotto per funzione: contatori, interruttori del
+#   chiamante, jsonb e testi di lavoro, valori calcolati o costanti tipizzate,
+#   chiavi polimorfe, il giorno operativo.
+#
+# ── FUNZIONI (15) ──────────────────────────────────────────────
+#     - script.fn_available_actions_contratto — tipo esplicito:
+#         v_stato_info_key, v_mot_attiva, v_actions, v_ha_righe, v_can_edit,
+#         v_can_righe, v_non_edit, c_non_edit_attivo, c_non_edit_tutti
+#     - script.fn_capability_promo_articolo — tipo esplicito: v_today,
+#         v_stato, v_can, v_reason, v_nedit, v_mindag, v_minal,
+#         c_nedit_iniziata, c_nedit_scaduta
+#     - script.fn_check_esclusione_articolo_documento — tipo esplicito:
+#         p_documento, p_documento_id, v_motivi, v_e_figlio_bundle.
+#         p_documento/p_documento_id sono una chiave POLIMORFA (preventivo,
+#         ordine, contratto…)
+#     - script.fn_check_listino_congelabile — tipo esplicito: p_documento
+#     - script.fn_check_operatore_invitabile — tipo esplicito: v_email,
+#         v_trovato, v_n_vesti, v_in_finestra
+#     - script.fn_get_indirizzo — tipo esplicito: indirizzo_completo, geoloc,
+#         is_normalizzato, v_rows_found
+#     - script.fn_get_indirizzo_by_soggetto — tipo esplicito: v_rows_found
+#     - script.fn_get_override_scaduti — tipo esplicito: p_giorni_tolleranza,
+#         tipo_override, override_id, auth_user_id, dettaglio, valido_al,
+#         giorni_scaduto. auth_user_id, valido_al e override_id arrivano dalla
+#         UNION di tre tabelle di override: ancorarli a una sola sarebbe
+#         arbitrario
+#     - script.fn_get_permessi_effettivi_azioni — tipo esplicito:
+#         limitata_da_area, v_has_identita, v_is_super
+#     - script.fn_get_permessi_effettivi_oggetti — tipo esplicito:
+#         limitato_da_area, v_has_identita, v_is_super
+#     - script.fn_get_user_permissions_map — tipo esplicito: v_has_identita,
+#         v_is_super
+#     - script.fn_guard_utility_tipo_ruolo — tipo esplicito: p_context,
+#         v_has_matrix, v_is_allowed
+#     - script.fn_resolve_livello_area — tutto ancorato
+#     - script.fn_veste_utilizzabile — tutto ancorato
+#     - script.trgfn_qta_from_operativa — tutto ancorato
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261009-49-update-oggi-dal-fuso-aziendale-script-mctit.yaml
+
+  - changeSet:
+      id: 20261009-49-update-oggi-dal-fuso-aziendale-script
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        script: CURRENT_DATE -> script.fn_data_operativa() in 15 funzioni, perche'
+        «oggi» e' il giorno dell'azienda (SYSTEM_FUSO_ORARIO) e non quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 16
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname = 'script' AND p.proname IN ('fn_available_actions_contratto', 'fn_capability_promo_articolo', 'fn_check_esclusione_articolo_documento', 'fn_check_listino_congelabile', 'fn_check_operatore_invitabile', 'fn_get_indirizzo', 'fn_get_indirizzo_by_soggetto', 'fn_get_override_scaduti', 'fn_get_permessi_effettivi_azioni', 'fn_get_permessi_effettivi_oggetti', 'fn_get_user_permissions_map', 'fn_guard_utility_tipo_ruolo', 'fn_resolve_livello_area', 'fn_veste_utilizzabile', 'trgfn_qta_from_operativa'))
+                  OR (n.nspname = 'script' AND p.proname = 'fn_fuso_operativo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_contratto(p_contratto_id vendite.contratti.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability del contratto per il detail API (pattern data-driven).
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_contratti (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato). "Vuoto" per il contratto:
+              --   negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo.
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. Serve alla frase di conferma
+              --   «portare il documento nello stato X»: il codice_interno non e'
+              --   quella forma (DRAFT -> Bozza) e tradurlo nel FE sarebbe una
+              --   seconda copia del vocabolario degli stati.
+              --   rev 2026-08-11: + stato_info_key, la nota che spiega cosa sta
+              --   succedendo quando il documento e' in uno stato chiuso. Arriva dal
+              --   `meta` dello stato, e viene emessa SEMPRE che lo stato la dichiari —
+              --   anche accanto a un'azione ancora abilitata: la nota spiega lo STATO,
+              --   non risponde a una barra vuota (decisione §5 di Tid, gia' applicata a
+              --   preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era
+              --   fra i cinque che non emettevano affatto il campo, mentre il drawer lo
+              --   legge gia': il cablaggio c'era ed era inerte.
+              --   ⚠️ La PROPRIETA' nel meta si chiama `nessuna_azione_key` mentre il
+              --   campo del blob si chiama `stato_info_key`. L'asimmetria e' voluta:
+              --   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
+              --   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare
+              --   il guard lo renderebbe verde per cecita'.
+              --   ⚠️ Il campo e' SEMPRE presente nel blob, col valore a null quando non
+              --   si applica: filtrare per presenza risponde vero per tutti i documenti,
+              --   va guardato il valore.
+              --   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
+              --   rev 2026-09-24: le azioni passano alla forma dell'ARRAY DEI MOTIVI
+              --   (come preventivo e ordine): enabled/reason/reason_key discendono da
+              --   `reasons`, che somma i prezzi non autorizzati verso ATTIVO (building
+              --   block script.fn_check_prezzi_autorizzati, lo stesso del guard di
+              --   transizione) e il generico «documento vuoto».
+              --   (brief-db-preventivi-congelamento-pricing, D-4/D-5).
+              --   rev 2026-10-07: verso ATTIVO, prima dei prezzi, il motivo del listino
+              --   senza versione in vigore (script.fn_check_listino_congelabile,
+              --   brief-db-offerta-emissione-ed-erogazione §C.1.2).
+              DECLARE
+                  -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+                  -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
+                  v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
+                  v_stato_cod    config.stati_doc_contratti.codice_interno%TYPE;
+                  v_stato_info_key text;
+                  v_stato_codice config.stati_doc_contratti.codice%TYPE;
+                  v_valido_dal   vendite.contratti.valido_dal%TYPE;
+                  v_listino_id   vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_mot_attiva   jsonb := '[]'::jsonb;
+                  v_pdf_mode     config.stati_doc_contratti.pdf_mode%TYPE;
+                  v_pdf_allow    config.stati_doc_contratti.pdf_allow_allegati%TYPE;
+                  v_actions      jsonb;
+                  v_ha_righe     boolean := false;
+                  v_can_edit     boolean;
+                  v_can_righe    boolean;
+                  v_non_edit     jsonb;
+                  c_non_edit_attivo CONSTANT jsonb :=
+                      '["billing_account_id","istanza_utility_id","utility_id","ambito",'
+                      '"valido_dal","parent_contratto_id","data","listino_id",'
+                      '"tipo_variazione_globale","valore_variazione_globale",'
+                      '"categoria_cliente_id_snapshot"]'::jsonb;
+                  c_non_edit_tutti CONSTANT jsonb :=
+                      '["billing_account_id","istanza_utility_id","utility_id","ambito",'
+                      '"valido_dal","valido_al","parent_contratto_id","data","listino_id",'
+                      '"tipo_variazione_globale","valore_variazione_globale",'
+                      '"categoria_cliente_id_snapshot","meta"]'::jsonb;
+              BEGIN
+                  -- Stato corrente: codice_interno + codice + valido_dal + listino + capability PDF.
+                  SELECT c.stato_doc_contratto_id, sdc.codice_interno, sdc.codice, c.valido_dal,
+                         c.listino_id, c.listino_versione_id, sdc.pdf_mode, sdc.pdf_allow_allegati,
+                         sdc.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_stato_codice, v_valido_dal,
+                         v_listino_id, v_listino_versione_id, v_pdf_mode, v_pdf_allow, v_stato_info_key
+                    FROM vendite.contratti c
+                    JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id
+                   WHERE c.id = p_contratto_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). Per il contratto NON e' un
+                  -- semplice conteggio: con listino non e' mai vuoto di sostanza
+                  -- (le righe arrivano dal listino); negoziato puro (listino_id
+                  -- NULL) e' vuoto senza almeno una AGGIUNTA attiva con prezzo.
+                  -- Specchia trgfn_contratti_freeze_listino_versione
+                  -- (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE).
+                  v_ha_righe := (v_listino_id IS NOT NULL)
+                      OR EXISTS (
+                          SELECT 1
+                            FROM vendite.contratti_righe cr
+                           WHERE cr.contratto_id = p_contratto_id
+                             AND cr.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                             AND cr.prezzo_unitario IS NOT NULL
+                             AND cr.attivo = TRUE
+                      );
+
+                  -- Motivi ostativi all'ATTIVAZIONE: i prezzi non autorizzati. E' il
+                  -- building block che trgfn_contratti_guard_transizione_stato usa per
+                  -- sollevare, quindi «Attiva» e guard non possono divergere.
+                  -- rev 2026-09-24, brief-db-preventivi-congelamento-pricing (D-4).
+                  -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.2,
+                  -- decisione A-D2 di Tid): PRIMA il listino. Senza una versione in vigore
+                  -- il contratto con listino non si attiva: lo stesso predicato,
+                  -- script.fn_check_listino_congelabile, con cui
+                  -- trgfn_contratti_freeze_listino_versione solleva e poi congela.
+                  v_mot_attiva := script.fn_check_listino_congelabile('CONTRATTO', v_listino_id, v_listino_versione_id)
+                               || script.fn_check_prezzi_autorizzati('vendite.contratti'::regclass,
+                                                                     p_contratto_id);
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',             t.meta->>'action_key',
+                              'target_state',    sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',       t.meta->>'label_key',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'requires_date',   COALESCE((t.meta->>'requires_date')::boolean, false),
+                              'outlined',        COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra (rev 2026-09-24).
+                              'enabled',         jsonb_array_length(m.motivi) = 0,
+                              'reason',          m.motivi -> 0 ->> 'reason',
+                              'reason_key',      m.motivi -> 0 ->> 'reason_key',
+                              'reasons',         m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_contratti t
+                  JOIN config.stati_doc_contratti sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo. Ordine:
+                  -- prima quelli specifici della destinazione, poi il generico
+                  -- «documento vuoto»; il primo e' quello che il FE mostra da solo.
+                  -- ⚠️ Il motivo «documento vuoto» e' lo stesso di prima, scritto nella
+                  --   forma di un motivo: stessi reason e reason_key.
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.codice_interno = 'ATTIVO'
+                                  THEN v_mot_attiva ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN jsonb_build_array(jsonb_build_object(
+                                           'codice',     NULL,
+                                           'reason',     'DOCUMENTO_SENZA_RIGHE',
+                                           'reason_key', 'common.azione_reason.senza_righe',
+                                           'dettaglio',  NULL))
+                                  ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Arricchimento delle sole azioni con data: somma chiavi,
+                  -- non tocca quelle gia' presenti.
+                  IF jsonb_array_length(v_actions) > 0 THEN
+                      SELECT jsonb_agg(
+                          CASE WHEN (elem->>'requires_date')::boolean IS TRUE
+                               THEN elem || jsonb_build_object(
+                                        'default_date', (SELECT script.fn_data_operativa())::text,
+                                        'min_date',     v_valido_dal::text
+                                    )
+                               ELSE elem
+                          END
+                      )
+                      INTO v_actions
+                      FROM jsonb_array_elements(v_actions) AS elem;
+                  END IF;
+
+                  v_can_edit  := (v_stato_cod IN ('DRAFT', 'ATTIVO'));
+                  v_can_righe := (v_stato_cod = 'DRAFT');
+                  v_non_edit  := CASE v_stato_cod
+                                     WHEN 'DRAFT'  THEN '[]'::jsonb
+                                     WHEN 'ATTIVO' THEN c_non_edit_attivo
+                                     ELSE               c_non_edit_tutti
+                                 END;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',   v_actions,
+                      'can_change_state',    jsonb_array_length(v_actions) > 0,
+                      'can_edit_testata',    v_can_edit,
+                      'can_edit_righe',      v_can_righe,
+                      'non_editable_fields', v_non_edit,
+                      'pdf',                 jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice_interno', v_stato_cod,
+                      'stato_info_key',       v_stato_info_key,
+                      'stato_codice',         v_stato_codice
+                  );
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_capability_promo_articolo(p_promo_id vendite.promo_articoli.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo:
+              --   Capability della promo articolo per il detail API (Fase 1
+              --   refactor frontend vendite). Calcola lo stato temporale da
+              --   CURRENT_DATE vs valido_dal/valido_al e restituisce i vincoli
+              --   di editing allineati al trigger guard DB.
+              --
+              --   Dispatch stati (specchio di trgfn_promo_articoli_guard_data_driven):
+              --     FUTURA   = CURRENT_DATE < valido_dal
+              --     INIZIATA = valido_dal <= CURRENT_DATE <= valido_al
+              --     SCADUTA  = CURRENT_DATE > valido_al
+              --
+              --   Whitelist editabilita' per stato (da trigger guard):
+              --     FUTURA:   tutto (date solo verso futuro — vincoli min_valido_*)
+              --     INIZIATA: descrizione, valido_al (>= oggi), meta
+              --     SCADUTA:  nulla (immutabile)
+              --
+              --   Fallback sicuro: NULL se la promo non esiste.
+              DECLARE
+                  v_dal    vendite.promo_articoli.valido_dal%TYPE;
+                  v_al     vendite.promo_articoli.valido_al%TYPE;
+                  v_today  CONSTANT date := script.fn_data_operativa();
+                  v_stato  text;
+                  v_can    boolean;
+                  v_reason text;
+                  v_nedit  jsonb;
+                  v_mindag text;
+                  v_minal  text;
+                  -- Campi immutabili in INIZIATA.
+                  -- Editabili: descrizione, valido_al, meta.
+                  c_nedit_iniziata CONSTANT jsonb :=
+                      '["codice","articolo_id","uom_id","tipo_variazione","valore_variazione","valido_dal","attivo"]'::jsonb;
+                  -- Tutti i campi dominio immutabili in SCADUTA.
+                  c_nedit_scaduta CONSTANT jsonb :=
+                      '["codice","descrizione","articolo_id","uom_id","tipo_variazione","valore_variazione","valido_dal","valido_al","attivo","meta"]'::jsonb;
+              BEGIN
+                  SELECT pa.valido_dal, pa.valido_al
+                    INTO v_dal, v_al
+                    FROM vendite.promo_articoli pa
+                   WHERE pa.id = p_promo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Dispatch: FUTURA -> INIZIATA -> SCADUTA.
+                  -- Le condizioni sono mutuamente esclusive; equivalente al
+                  -- dispatch SCADUTA->INIZIATA->FUTURA del trigger guard.
+                  IF v_today < v_dal THEN
+                      -- FUTURA: tutto editabile, ma date devono restare nel futuro.
+                      -- min_valido_dal = domani (trigger blocca valido_dal <= today).
+                      -- min_valido_al  = oggi   (trigger blocca valido_al < today).
+                      v_stato  := 'FUTURA';
+                      v_can    := true;
+                      v_reason := NULL;
+                      v_nedit  := '[]'::jsonb;
+                      v_mindag := (v_today + 1)::text;
+                      v_minal  := v_today::text;
+                  ELSIF v_today <= v_al THEN
+                      -- INIZIATA: whitelist ristretta. valido_dal immutabile.
+                      -- min_valido_al = oggi (trigger blocca valido_al < today).
+                      v_stato  := 'INIZIATA';
+                      v_can    := true;
+                      v_reason := NULL;
+                      v_nedit  := c_nedit_iniziata;
+                      v_mindag := NULL;
+                      v_minal  := v_today::text;
+                  ELSE
+                      -- SCADUTA: nulla e' modificabile per trigger guard.
+                      v_stato  := 'SCADUTA';
+                      v_can    := false;
+                      v_reason := 'PROMO_SCADUTA_IMMUTABILE';
+                      v_nedit  := c_nedit_scaduta;
+                      v_mindag := NULL;
+                      v_minal  := NULL;
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'stato_temporale',     v_stato,
+                      'can_update',          v_can,
+                      'can_update_reason',   v_reason,
+                      'non_editable_fields', v_nedit,
+                      'min_valido_dal',      v_mindag,
+                      'min_valido_al',       v_minal
+                  );
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_esclusione_articolo_documento(p_documento text, p_documento_id bigint, p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi per cui un articolo NON si puo' escludere
+              --   da un contratto o da un'offerta (p_documento = CONTRATTO |
+              --   OFFERTA). Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura.
+              -- Consumatori: il guard script.trgfn_righe_guard_esclusione_figlio_bundle
+              --   (solleva il PRIMO motivo) e vendite.fn_documento_righe_preview
+              --   (spegne «Escludi» sulla riga e dice perche').
+              -- Ritorna: [] se ammesso; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio, valori}.
+              -- ⚠️ p_documento e p_documento_id nudi DICHIARATI: un selettore
+              --   senza colonna-vocabolario e un id polimorfo (due testate).
+              DECLARE
+                  v_motivi              jsonb := '[]'::jsonb;
+                  v_listino_id          vendite.listini.id%TYPE;
+                  v_listino_versione_id vendite.listini_versioni.id%TYPE;
+                  v_e_figlio_bundle     boolean := false;
+              BEGIN
+                  SELECT lo.listino_id, lo.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.fn_documento_listino_operativo(p_documento, p_documento_id) lo;
+
+                  -- Nessuna versione operativa (nessun listino, documento che non
+                  -- c'e' o non si vede): nessun bundle da cui escludere. Chi
+                  -- scrive passa comunque dalla policy e dalle FK.
+                  IF v_listino_versione_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.listini_righe_componenti lrc
+                       WHERE lrc.listino_versione_id = v_listino_versione_id
+                         AND lrc.articolo_figlio_id  = p_articolo_id
+                         AND lrc.attivo              = TRUE
+                         AND lrc.validita           @> (SELECT script.fn_data_operativa())
+                  ) INTO v_e_figlio_bundle;
+
+                  -- ---- MOTIVO 1 — e' un componente di un bundle ------------------
+                  -- Il bundle si vende come unita': si esclude il padre, mai il
+                  -- singolo figlio. `valori` = l'articolo, il VARIADIC del messaggio.
+                  IF v_e_figlio_bundle THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA',
+                          'reason',     'FIGLIO_DI_BUNDLE',
+                          'reason_key', 'vendite.contratti.escludi_blocco.figlio_di_bundle',
+                          'dettaglio',  jsonb_build_object(
+                                            'documento',           p_documento,
+                                            'documento_id',        p_documento_id,
+                                            'articolo_id',         p_articolo_id,
+                                            'listino_id',          v_listino_id,
+                                            'listino_versione_id', v_listino_versione_id),
+                          'valori',     jsonb_build_array(p_articolo_id::text));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_listino_congelabile(p_documento text, p_listino_id vendite.listini.id%TYPE, p_listino_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- ⚠️ p_documento nudo DICHIARATO: un selettore (OFFERTA | CONTRATTO)
+              --   senza colonna-vocabolario, come in fn_documento_listino_operativo.
+              DECLARE
+                  v_versione vendite.listini_versioni.id%TYPE;
+                  v_stato    vendite.listini_versioni.stato%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire perche' un documento NON puo' congelare la sua versione
+                  --   di listino: l'offerta all'emissione, il contratto
+                  --   all'attivazione. '[]' = puo'. Non solleva: sollevare e'
+                  --   mestiere dei guard di transizione, che la CHIAMANO, come le
+                  --   capability che spengono il pulsante (linee-guida-sql §12.5.2).
+                  --
+                  --   La versione giudicata e' quella che verrebbe congelata:
+                  --   vendite.fn_listino_versione_operativa (la fissata, altrimenti
+                  --   quella in vigore oggi).
+                  --
+                  -- Motivi (il primo e' quello che il guard solleva):
+                  --   1. nessuna versione in vigore oggi (OFFERTA, CONTRATTO);
+                  --   2. la versione fissata non e' ATTIVA (solo OFFERTA: il
+                  --      contratto tiene la versione che l'offerta accettata gli ha
+                  --      portato, anche se nel frattempo si e' chiusa).
+                  --   Senza listino (negoziato puro del contratto): nessun motivo,
+                  --   lo giudica il guard del negoziato puro.
+                  -- =========================================================
+
+                  IF p_documento IS NULL OR p_documento NOT IN ('OFFERTA', 'CONTRATTO') THEN
+                      -- Errore di CHIAMANTE, non di dato: lo stesso codice del
+                      -- risolutore delle righe.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'script.fn_check_listino_congelabile',
+                          'E_DOC_TIPO_NON_GESTITO',
+                          jsonb_build_object('documento', p_documento),
+                          NULL::uuid,
+                          COALESCE(p_documento, '<null>'));
+                  END IF;
+
+                  IF p_listino_id IS NULL THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  v_versione := vendite.fn_listino_versione_operativa(p_listino_id, p_listino_versione_id);
+
+                  -- 1. Nessuna versione in vigore oggi: offerta.
+                  IF v_versione IS NULL AND p_documento = 'OFFERTA' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO',
+                          'reason',     'LISTINO_SENZA_VERSIONE_IN_VIGORE',
+                          'reason_key', 'vendite.offerte.azione_reason.listino_senza_versione_in_vigore',
+                          'dettaglio',  jsonb_build_object('listino_id', p_listino_id, 'data', (SELECT script.fn_data_operativa())),
+                          -- Frase chiusa: niente da infilare nei segnaposto.
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  -- 1. Nessuna versione in vigore oggi: contratto.
+                  IF v_versione IS NULL AND p_documento = 'CONTRATTO' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO',
+                          'reason',     'LISTINO_SENZA_VERSIONE_IN_VIGORE',
+                          'reason_key', 'vendite.contratti.azione_reason.listino_senza_versione_in_vigore',
+                          'dettaglio',  jsonb_build_object('listino_id', p_listino_id, 'data', (SELECT script.fn_data_operativa())),
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  IF p_documento = 'CONTRATTO' THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  -- 2. Offerta: la versione che congelerebbe dev'essere ATTIVA.
+                  --    Quella in vigore oggi lo e' per costruzione (una CHIUSA ha
+                  --    valido_al passato); qui risponde la versione FISSATA prima
+                  --    dell'emissione.
+                  SELECT lv.stato
+                    INTO v_stato
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = v_versione;
+                  IF v_stato IS DISTINCT FROM 'ATTIVA' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA',
+                          'reason',     'LISTINO_VERSIONE_NON_ATTIVA',
+                          'reason_key', 'vendite.offerte.azione_reason.listino_versione_non_attiva',
+                          'dettaglio',  jsonb_build_object('listino_id', p_listino_id,
+                                                           'listino_versione_id', v_versione,
+                                                           'stato_versione', v_stato),
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  RETURN jsonb_build_array();
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  -- Tipi espliciti: colonne di django.auth_user (niente %TYPE su Django).
+                  v_email            VARCHAR(254);
+                  -- Ancorata: e' il bool_or della colonna attivo delle vesti.
+                  v_veste_attiva     anagrafiche.identita_digitali.attivo%TYPE;
+                  -- Senza colonna di cui siano il riflesso: un flag «trovato», un
+                  -- conteggio, un predicato calcolato sulla finestra.
+                  v_trovato          boolean;
+                  v_n_vesti          integer;
+                  v_in_finestra      boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire se un operatore puo' ricevere l'invito che ACCENDE
+                  --   la sua veste OPERATORE (regola unica dell'invito,
+                  --   rev 20260925-43: la veste nasce spenta, la accende
+                  --   l'attivazione; il reinvito riapre una veste spenta).
+                  --
+                  -- Condizioni (in ordine: il primo motivo vince):
+                  --   1. auth_user valido ed esistente     UTENTE_NON_TROVATO
+                  --   2. almeno una veste OPERATORE        SENZA_VESTE_OPERATORE
+                  --   3. nessuna veste OPERATORE gia'
+                  --      attiva (D-8)                      VESTE_GIA_ATTIVA
+                  --   3-bis. UNA sola veste OPERATORE: con piu' vesti spente
+                  --      non si sa quale riaccendere
+                  --      (rev 20260925-53, R-9)            PIU_VESTI_SPENTE
+                  --   4. la veste nella sua finestra       VESTE_FUORI_FINESTRA
+                  --   5. auth_user ha un indirizzo email   SENZA_EMAIL
+                  --   ⛔ NON contano piu': last_login (D-8) e is_active
+                  --      (derivato dalle vesti: false per costruzione).
+                  --
+                  -- Ritorna:
+                  --   JSONB: {invitabile: bool, reason: text, reason_key: text,
+                  --           email: text}
+                  --   reason/reason_key NULL se invitabile.
+                  --   ⛔ Rev 20260927-01 (§16): il motivo e' un CODICE con la
+                  --   sua chiave i18n; la frase `motivo` e' ritirata — il
+                  --   testo vive nei locales, non nel payload.
+                  -- =========================================================
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'UTENTE_NON_TROVATO',
+                          'reason_key', 'amministrazione.operatori.invito_reason.utente_non_trovato',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  -- Credenziale + le sue vesti OPERATORE, AGGREGATE: il modello
+                  -- ammette piu' vesti spente sulla stessa credenziale, e
+                  -- prenderne una a caso deciderebbe per la prima che capita.
+                  SELECT true,
+                         au.email,
+                         count(idg.id),
+                         bool_or(idg.attivo),
+                         bool_or(    (idg.valido_dal IS NULL OR idg.valido_dal <= (SELECT script.fn_data_operativa()))
+                                 AND (idg.valido_al  IS NULL OR idg.valido_al  >= (SELECT script.fn_data_operativa())))
+                    INTO v_trovato, v_email, v_n_vesti, v_veste_attiva, v_in_finestra
+                    FROM django.auth_user au
+                    LEFT JOIN anagrafiche.identita_digitali idg
+                      ON idg.auth_user_id = au.id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   WHERE au.id = p_auth_user_id
+                   GROUP BY au.email;
+
+                  IF v_trovato IS NULL THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'UTENTE_NON_TROVATO',
+                          'reason_key', 'amministrazione.operatori.invito_reason.utente_non_trovato',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  IF v_n_vesti = 0 THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'SENZA_VESTE_OPERATORE',
+                          'reason_key', 'amministrazione.operatori.invito_reason.senza_veste_operatore',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  -- ⛔ D-8: veste gia' attiva → rifiuto. L'accesso c'e' gia': per
+                  --   una password dimenticata c'e' il reset, non l'invito.
+                  IF v_veste_attiva THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'VESTE_GIA_ATTIVA',
+                          'reason_key', 'amministrazione.operatori.invito_reason.veste_gia_attiva',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  -- ⛔ Rev 20260925-53 (R-9): piu' vesti spente e nessuna attiva.
+                  --   L'invito riaccende UNA veste, e qui non c'e' una regola che dica
+                  --   quale: il verbo del backend lo rifiuta gia'. La capability deve
+                  --   dire lo stesso, o il pulsante si offre e il verbo fallisce.
+                  IF v_n_vesti > 1 THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'PIU_VESTI_SPENTE',
+                          'reason_key', 'amministrazione.operatori.invito_reason.piu_vesti_spente',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  IF NOT v_in_finestra THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'VESTE_FUORI_FINESTRA',
+                          'reason_key', 'amministrazione.operatori.invito_reason.veste_fuori_finestra',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  IF v_email IS NULL OR trim(v_email) = '' THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'SENZA_EMAIL',
+                          'reason_key', 'amministrazione.operatori.invito_reason.senza_email',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'invitabile', true,
+                      'reason', NULL,
+                      'reason_key', NULL,
+                      'email', v_email
+                  );
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE, p_tipo_codice config.tipi_indirizzi.codice_interno%TYPE, p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(tipo_indirizzo config.tipi_indirizzi.codice_interno%TYPE, indirizzo_completo text, geoloc geometry, indirizzo_id anagrafiche.indirizzi.id%TYPE, soggetto_ruolo_id anagrafiche.indirizzi.soggetto_ruolo_id%TYPE, istanza_utility_id anagrafiche.indirizzi.istanza_utility_id%TYPE, tipo_indirizzo_id anagrafiche.indirizzi.tipo_indirizzo_id%TYPE, indirizzo_dettaglio_id anagrafiche.indirizzi.indirizzo_dettaglio_id%TYPE, indirizzo_libero anagrafiche.indirizzi.indirizzo_libero%TYPE, is_normalizzato boolean, stato_id config.stati.id%TYPE, stato_descrizione config.stati.descrizione%TYPE, stato_iso2 config.stati.codice_iso2%TYPE, regione_id config.regioni.id%TYPE, regione_descrizione config.regioni.descrizione%TYPE, provincia_id config.province.id%TYPE, provincia_sigla config.province.sigla%TYPE, provincia_descrizione config.province.descrizione%TYPE, comune_id config.comuni.id%TYPE, comune_descrizione config.comuni.descrizione%TYPE, codice_postale_id config.codici_postali.id%TYPE, cap_codice config.codici_postali.codice%TYPE, locality anagrafiche.indirizzi.locality%TYPE, administrative_area anagrafiche.indirizzi.administrative_area%TYPE, sublocality anagrafiche.indirizzi.sublocality%TYPE, postal_box anagrafiche.indirizzi.postal_box%TYPE)
+               LANGUAGE plpgsql
+               STABLE ROWS 10
+              AS $function$
+              DECLARE
+                  v_tipo_ruolo_id      anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+                  v_soggetto_id        anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_current_codice     config.tipi_indirizzi.codice_interno%TYPE;
+                  v_current_tipo_id    config.tipi_indirizzi.id%TYPE;
+                  v_fallback_tipo_id   config.tipi_ruolo_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                  v_rows_found         integer;
+                  v_visited_tipo_ids   config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
+              BEGIN
+                  /*
+                    Policy indirizzi a 3 livelli con fallback per tipo:
+                      FASE 1: ruolo + istanza specifica (se p_istanza_utility_id valorizzato)
+                      FASE 2: ruolo generico (istanza IS NULL)
+                      FASE 3: fallback soggetto (via fn_get_indirizzo_by_soggetto)
+                    Ogni fase segue la catena fallback in tipi_ruolo_tipi_indirizzo
+                    con protezione anti-loop circolare.
+                  */
+
+                  -- Recupera soggetto e tipo ruolo
+                  SELECT sr.tipo_ruolo_id, sr.soggetto_id
+                    INTO v_tipo_ruolo_id, v_soggetto_id
+                  FROM anagrafiche.soggetti_ruoli sr
+                  WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF v_tipo_ruolo_id IS NULL THEN RETURN; END IF;
+
+                  -- FASE 1: RUOLO + ISTANZA SPECIFICA
+                  IF p_istanza_utility_id IS NOT NULL THEN
+                      v_current_codice := p_tipo_codice;
+                      v_visited_tipo_ids := '{}'::integer[];
+                      LOOP
+                          -- Il tipo si confronta per ID (rev 20260923-49): la vista espone in
+                          -- tipo_indirizzo il CODICE (display, mutabile), il parametro e' il
+                          -- CODICE_INTERNO. Confrontati come testo non si incontravano mai.
+                          SELECT ti.id INTO v_current_tipo_id
+                          FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                          IF v_current_tipo_id IS NULL THEN EXIT; END IF;
+
+                          RETURN QUERY
+                          SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
+                              f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
+                              f.tipo_indirizzo_id, f.indirizzo_dettaglio_id, f.indirizzo_libero,
+                              f.is_normalizzato,
+                              f.stato_id, f.stato_descrizione, f.stato_iso2,
+                              f.regione_id, f.regione_descrizione,
+                              f.provincia_id, f.provincia_sigla, f.provincia_descrizione,
+                              f.comune_id, f.comune_descrizione,
+                              f.codice_postale_id, f.cap_codice,
+                              f.locality, f.administrative_area, f.sublocality, f.postal_box
+                          FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_istanza_utility_id) f
+                          WHERE f.tipo_indirizzo_id = v_current_tipo_id
+                            AND f.istanza_utility_id = p_istanza_utility_id;
+
+                          GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                          IF v_rows_found > 0 THEN RETURN; END IF;
+
+                          -- Cerca fallback per tipo indirizzo
+                          IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN EXIT; END IF;
+                          v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                          SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                          FROM config.tipi_ruolo_tipi_indirizzo m
+                          WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+                            AND m.tipo_indirizzo_id = v_current_tipo_id
+                            AND m.attivo = TRUE
+                            AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+                            AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
+                          LIMIT 1;
+                          IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
+
+                          SELECT ti.codice_interno INTO v_current_codice
+                          FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                          IF v_current_codice IS NULL THEN EXIT; END IF;
+                      END LOOP;
+                  END IF;
+
+                  -- FASE 2: RUOLO GENERICO (istanza_utility_id IS NULL)
+                  v_current_codice := p_tipo_codice;
+                  v_visited_tipo_ids := '{}'::integer[];
+                  LOOP
+                      -- Il tipo si confronta per ID (rev 20260923-49), come in FASE 1.
+                      SELECT ti.id INTO v_current_tipo_id
+                      FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                      IF v_current_tipo_id IS NULL THEN EXIT; END IF;
+
+                      RETURN QUERY
+                      SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
+                          f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
+                          f.tipo_indirizzo_id, f.indirizzo_dettaglio_id, f.indirizzo_libero,
+                          f.is_normalizzato,
+                          f.stato_id, f.stato_descrizione, f.stato_iso2,
+                          f.regione_id, f.regione_descrizione,
+                          f.provincia_id, f.provincia_sigla, f.provincia_descrizione,
+                          f.comune_id, f.comune_descrizione,
+                          f.codice_postale_id, f.cap_codice,
+                          f.locality, f.administrative_area, f.sublocality, f.postal_box
+                      FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id) f
+                      WHERE f.tipo_indirizzo_id = v_current_tipo_id
+                        AND f.istanza_utility_id IS NULL;
+
+                      GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                      IF v_rows_found > 0 THEN RETURN; END IF;
+
+                      -- Cerca fallback per tipo indirizzo
+                      IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN EXIT; END IF;
+                      v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                      SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+                        AND m.tipo_indirizzo_id = v_current_tipo_id
+                        AND m.attivo = TRUE
+                        AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+                        AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
+                      LIMIT 1;
+                      IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
+
+                      SELECT ti.codice_interno INTO v_current_codice
+                      FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                      IF v_current_codice IS NULL THEN EXIT; END IF;
+                  END LOOP;
+
+                  -- FASE 3: FALLBACK SOGGETTO
+                  RETURN QUERY
+                  SELECT
+                      r.tipo_indirizzo_codice,
+                      r.indirizzo_display,
+                      r.geoloc,
+                      r.indirizzo_id,
+                      p_soggetto_ruolo_id,
+                      r.istanza_utility_id,
+                      r.tipo_indirizzo_id,
+                      r.indirizzo_dettaglio_id,
+                      r.indirizzo_libero,
+                      r.is_normalizzato,
+                      r.stato_id,
+                      r.stato_descrizione,
+                      r.stato_iso2,
+                      r.regione_id,
+                      r.regione_descrizione,
+                      r.provincia_id,
+                      r.provincia_sigla,
+                      r.provincia_descrizione,
+                      r.comune_id,
+                      r.comune_descrizione,
+                      r.codice_postale_id,
+                      r.cap_codice,
+                      r.locality,
+                      r.administrative_area,
+                      r.sublocality,
+                      r.postal_box
+                  FROM script.fn_get_indirizzo_by_soggetto(v_soggetto_id, p_tipo_codice) r;
+
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzo_by_soggetto(p_soggetto_id anagrafiche.soggetti.id%TYPE, p_tipo_codice config.tipi_indirizzi.codice_interno%TYPE)
+               RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                v_current_codice config.tipi_indirizzi.codice_interno%TYPE := p_tipo_codice;
+                v_current_tipo_id config.tipi_indirizzi.id%TYPE;
+                v_fallback_tipo_id config.tipi_soggetto_dettaglio_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                v_rows_found integer;
+                v_visited_tipo_ids config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
+              BEGIN
+                /*
+                  Restituisce l'indirizzo di un soggetto per tipo_codice richiesto.
+                  Se non trova indirizzi per quel tipo, segue la catena di fallback
+                  configurata in config.tipi_soggetto_dettaglio_tipi_indirizzo
+                  fino a trovare un match o esaurire i fallback.
+
+                  Regole:
+                    - Recupera tipo_soggetto_dettaglio_id dal soggetto
+                    - Loop: cerca indirizzo per tipo corrente
+                    - Se trovato: ritorna. Se non trovato: segue fallback
+                    - Protezione anti-loop circolare via v_visited_tipo_ids
+                */
+
+                -- Recupera il tipo soggetto dettaglio per determinare la catena fallback
+                SELECT s.tipo_soggetto_dettaglio_id INTO v_tipo_soggetto_dettaglio_id
+                FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id;
+                IF v_tipo_soggetto_dettaglio_id IS NULL THEN RETURN; END IF;
+
+                LOOP
+                  -- Il tipo si confronta per ID (rev 20260923-49): la vista espone in
+                  -- tipo_indirizzo_codice il CODICE (display, mutabile), il parametro e' il
+                  -- CODICE_INTERNO. Confrontati come testo non si incontravano mai.
+                  SELECT ti.id INTO v_current_tipo_id
+                  FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                  IF v_current_tipo_id IS NULL THEN RETURN; END IF;
+
+                  -- Cerca indirizzi per il tipo corrente
+                  RETURN QUERY
+                  SELECT * FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                  WHERE r.soggetto_id = p_soggetto_id AND r.tipo_indirizzo_id = v_current_tipo_id;
+
+                  GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                  IF v_rows_found > 0 THEN RETURN; END IF;
+
+                  -- Nessun indirizzo trovato: cerca fallback
+                  -- Protezione anti-loop circolare
+                  IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN RETURN; END IF;
+                  v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                  -- Legge il fallback dalla matrice tipo_soggetto_dettaglio / tipo_indirizzo
+                  SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                  WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                    AND m.tipo_indirizzo_id = v_current_tipo_id
+                    AND m.attivo = TRUE
+                    AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+                    AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
+                  LIMIT 1;
+                  IF v_fallback_tipo_id IS NULL THEN RETURN; END IF;
+
+                  -- Risolve il codice del tipo fallback per il prossimo ciclo
+                  SELECT ti.codice_interno INTO v_current_codice
+                  FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                  IF v_current_codice IS NULL THEN RETURN; END IF;
+                END LOOP;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_override_scaduti(p_giorni_tolleranza integer DEFAULT 0)
+               RETURNS TABLE(tipo_override text, override_id bigint, auth_user_id integer, dettaglio text, valido_al date, giorni_scaduto integer)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce tutti gli override utente la cui data
+                --   valido_al e' scaduta (passata). Unisce le 3 tabelle
+                --   override: aree, oggetti, azioni.
+                --
+                -- Parametri:
+                --   p_giorni_tolleranza: ignora override scaduti da meno
+                --     di N giorni (default 0 = tutti gli scaduti).
+                --
+                -- Uso tipico:
+                --   SELECT * FROM script.fn_get_override_scaduti(0);
+                --   SELECT * FROM script.fn_get_override_scaduti(7);
+                -- =========================================================
+
+                RETURN QUERY
+
+                -- Override aree scaduti
+                SELECT
+                  'user_override_aree'::text      AS tipo_override,
+                  uoa.id                           AS override_id,
+                  uoa.auth_user_id,
+                  format('area: %s, livello: %s',
+                         af.codice, uoa.livello::text) AS dettaglio,
+                  uoa.valido_al,
+                  ((SELECT script.fn_data_operativa()) - uoa.valido_al)::integer AS giorni_scaduto
+                FROM config.user_override_aree uoa
+                JOIN config.aree_funzionali af ON af.id = uoa.area_id
+                WHERE uoa.valido_al IS NOT NULL
+                  AND uoa.valido_al < (SELECT script.fn_data_operativa()) - p_giorni_tolleranza
+
+                UNION ALL
+
+                -- Override oggetti scaduti
+                SELECT
+                  'user_override_oggetti'::text    AS tipo_override,
+                  uoo.id                            AS override_id,
+                  uoo.auth_user_id,
+                  format('model: %s.%s, livello: %s',
+                         uoo.app_label, uoo.model_name,
+                         uoo.livello::text)         AS dettaglio,
+                  uoo.valido_al,
+                  ((SELECT script.fn_data_operativa()) - uoo.valido_al)::integer AS giorni_scaduto
+                FROM config.user_override_oggetti uoo
+                WHERE uoo.valido_al IS NOT NULL
+                  AND uoo.valido_al < (SELECT script.fn_data_operativa()) - p_giorni_tolleranza
+
+                UNION ALL
+
+                -- Override azioni scaduti
+                SELECT
+                  'user_override_azioni'::text     AS tipo_override,
+                  uoaz.id                           AS override_id,
+                  uoaz.auth_user_id,
+                  format('azione: %s, abilitata: %s',
+                         ap.permission_codename,
+                         uoaz.abilitata::text)      AS dettaglio,
+                  uoaz.valido_al,
+                  ((SELECT script.fn_data_operativa()) - uoaz.valido_al)::integer AS giorni_scaduto
+                FROM config.user_override_azioni uoaz
+                JOIN config.azioni_processo ap ON ap.id = uoaz.azione_id
+                WHERE uoaz.valido_al IS NOT NULL
+                  AND uoaz.valido_al < (SELECT script.fn_data_operativa()) - p_giorni_tolleranza
+
+                ORDER BY giorni_scaduto DESC, tipo_override, auth_user_id;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_permessi_effettivi_azioni(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE, p_permission_codename config.azioni_processo.permission_codename%TYPE DEFAULT NULL::character varying)
+               RETURNS TABLE(permission_codename config.azioni_processo.permission_codename%TYPE, azione_id config.azioni_processo.id%TYPE, area_id config.azioni_processo.area_id%TYPE, attivo config.azioni_processo.attivo%TYPE, abilitata_specifica config.user_override_azioni.abilitata%TYPE, livello_area config.user_override_aree.livello%TYPE, livello_minimo_area config.azioni_processo.livello_minimo_area%TYPE, abilitata config.user_override_azioni.abilitata%TYPE, limitata_da_area boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la catena delle azioni di processo di un operatore, col tetto d'area
+              --   (brief-db-permessi-tetto-area). Sede unica: la leggono
+              --   fn_check_azione_processo, fn_get_user_actions_map e il pannello permessi.
+              DECLARE
+                  v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+                  v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+              BEGIN
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      -- 1-2. Identita' OPERATORE attiva, super admin.
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := v_has_identita
+                                        AND script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  RETURN QUERY
+                  WITH voci AS (
+                      -- Tutto il catalogo (mappa, pannello).
+                      SELECT ap.permission_codename AS v_codename, ap.id AS v_azione_id,
+                             ap.area_id AS v_area_id, ap.attivo AS v_attivo,
+                             ap.livello_minimo_area AS v_minimo
+                        FROM config.azioni_processo ap
+                       WHERE p_permission_codename IS NULL
+                      UNION ALL
+                      -- Una sola azione (resolver puntuale): la riga c'e' anche per un
+                      -- codename fuori catalogo, e li' vale il default.
+                      SELECT q.codename, ap.id, ap.area_id, ap.attivo, ap.livello_minimo_area
+                        FROM (VALUES (p_permission_codename)) q(codename)
+                        LEFT JOIN config.azioni_processo ap
+                          ON ap.permission_codename = q.codename
+                       WHERE p_permission_codename IS NOT NULL
+                  ),
+                  livelli AS (
+                      -- Il livello d'area: dalla sede della catena d'area, una volta per area.
+                      SELECT d.l_area_id,
+                             script.fn_resolve_livello_area(p_auth_user_id, d.l_schema_db) AS l_livello
+                        FROM (SELECT DISTINCT v.v_area_id AS l_area_id, af.schema_db AS l_schema_db
+                                FROM voci v
+                                JOIN config.aree_funzionali af ON af.id = v.v_area_id) d
+                  ),
+                  specifiche AS (
+                      -- 3. La catena senza tetto: override valido -> profilo -> negata.
+                      SELECT v.*, l.l_livello,
+                             CASE
+                                 WHEN NOT v_has_identita THEN false
+                                 WHEN v_is_super          THEN true
+                                 ELSE COALESCE(uoa.abilitata, e.abilitata, false)
+                             END AS s_specifica
+                        FROM voci v
+                        LEFT JOIN livelli l
+                          ON l.l_area_id = v.v_area_id
+                        LEFT JOIN config.user_override_azioni uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.azione_id    = v.v_azione_id
+                         AND uoa.validita @> (SELECT script.fn_data_operativa())
+                        LEFT JOIN script.fn_get_permessi_ereditati_azioni(p_auth_user_id) e
+                          ON e.azione_id = v.v_azione_id
+                  ),
+                  effettive AS (
+                      -- 4. Il tetto: il super admin lo precede, tutti gli altri lo subiscono.
+                      SELECT s.*,
+                             CASE
+                                 WHEN v_is_super THEN true
+                                 ELSE s.s_specifica
+                                      AND script.fn_area_consente_azione(s.l_livello, s.v_minimo)
+                             END AS s_effettiva
+                        FROM specifiche s
+                  )
+                  SELECT f.v_codename, f.v_azione_id, f.v_area_id, f.v_attivo,
+                         f.s_specifica, f.l_livello, f.v_minimo,
+                         f.s_effettiva,
+                         f.s_specifica AND NOT f.s_effettiva
+                    FROM effettive f;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_permessi_effettivi_oggetti(p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE, p_app_label config.user_override_oggetti.app_label%TYPE DEFAULT NULL::character varying, p_model_name config.user_override_oggetti.model_name%TYPE DEFAULT NULL::character varying)
+               RETURNS TABLE(app_label config.area_model_overrides.app_label%TYPE, model_name config.area_model_overrides.model_name%TYPE, area_schema_db config.aree_funzionali.schema_db%TYPE, livello_override config.user_override_oggetti.livello%TYPE, livello_area config.user_override_aree.livello%TYPE, livello_specifico config.user_override_oggetti.livello%TYPE, livello config.user_override_oggetti.livello%TYPE, limitato_da_area boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la catena degli oggetti di un operatore, col tetto d'area
+              --   (brief-db-permessi-tetto-area). Sede unica: la leggono
+              --   fn_resolve_livello_oggetto, fn_get_user_object_permissions_map e il
+              --   pannello permessi.
+              DECLARE
+                  v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+                  v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+              BEGIN
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      -- 1-2. Identita' OPERATORE attiva, super admin.
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := v_has_identita
+                                        AND script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  RETURN QUERY
+                  WITH voci AS (
+                      -- Tutto il catalogo degli oggetti (mappa di /me/, pannello).
+                      SELECT amo.app_label AS v_app, amo.model_name AS v_modello
+                        FROM config.area_model_overrides amo
+                       WHERE p_app_label IS NULL AND p_model_name IS NULL
+                      UNION ALL
+                      -- Un solo oggetto (resolver puntuale), a catalogo o no.
+                      SELECT p_app_label, p_model_name
+                       WHERE p_app_label IS NOT NULL OR p_model_name IS NOT NULL
+                  ),
+                  con_area AS (
+                      -- 3. L'area e' quella dell'oggetto, non quella del chiamante (R4).
+                      SELECT v.v_app, v.v_modello,
+                             script.fn_area_di_oggetto(v.v_app, v.v_modello) AS v_area
+                        FROM voci v
+                  ),
+                  livelli AS (
+                      SELECT d.l_area,
+                             script.fn_resolve_livello_area(p_auth_user_id, d.l_area) AS l_livello
+                        FROM (SELECT DISTINCT ca.v_area AS l_area FROM con_area ca) d
+                  ),
+                  grezzi AS (
+                      SELECT ca.v_app, ca.v_modello, ca.v_area,
+                             uoo.livello AS g_override, l.l_livello
+                        FROM con_area ca
+                        LEFT JOIN livelli l
+                          ON l.l_area IS NOT DISTINCT FROM ca.v_area
+                        LEFT JOIN config.user_override_oggetti uoo
+                          ON uoo.auth_user_id = p_auth_user_id
+                         AND uoo.app_label    = ca.v_app
+                         AND uoo.model_name   = ca.v_modello
+                         AND uoo.validita @> (SELECT script.fn_data_operativa())
+                  ),
+                  calcolo AS (
+                      -- 4. Senza tetto (la catena di ieri) e col tetto.
+                      SELECT g.*,
+                             CASE
+                                 WHEN NOT v_has_identita THEN 'BLOCCATO'::config.livello_accesso
+                                 WHEN v_is_super          THEN 'TUTTO'::config.livello_accesso
+                                 ELSE COALESCE(g.g_override, g.l_livello,
+                                               'BLOCCATO'::config.livello_accesso)
+                             END AS c_specifico,
+                             CASE
+                                 WHEN NOT v_has_identita THEN 'BLOCCATO'::config.livello_accesso
+                                 WHEN v_is_super          THEN 'TUTTO'::config.livello_accesso
+                                 ELSE script.fn_livello_con_tetto_area(g.g_override, g.l_livello)
+                             END AS c_effettivo
+                        FROM grezzi g
+                  )
+                  SELECT c.v_app, c.v_modello, c.v_area, c.g_override, c.l_livello,
+                         c.c_specifico, c.c_effettivo,
+                         c.c_effettivo IS DISTINCT FROM c.c_specifico
+                    FROM calcolo c;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_permissions_map(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+                  v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+                  v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Mappa livello accesso per tutte le aree funzionali
+                  --   attive (single roundtrip). JSONB { "schema": "LIV", ... }.
+                  --
+                  -- Catena (context-aware dal 21-04-2026):
+                  --   1. Guard parametro obbligatorio
+                  --   2. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> v_has_identita=false, v_is_super=false
+                  --      (il CASE nel jsonb_object_agg produce BLOCCATO
+                  --      per tutte le aree).
+                  --   3. Altrimenti pre-calcolo dei due flag.
+                  --   4. Per area attiva: override, poi ereditato
+                  --      (fn_get_permessi_ereditati_aree), poi BLOCCATO.
+                  -- Rev 20260925-85: l'ereditato non si ricalcola qui (erano le
+                  -- CTE livelli_user/best_per_area): lo da' il building block,
+                  -- sede unica dello spareggio e della veste OPERATORE (D-1, D-2).
+                  -- =========================================================
+
+                  -- 1. Guard parametro obbligatorio.
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_permissions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- 2-3. Gate contesto GUC + pre-calcolo flag.
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      -- Fail-closed: mappa produrra' BLOCCATO per ogni area.
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  -- 4. Aggregazione jsonb: override, poi ereditato, poi BLOCCATO.
+                  RETURN (
+                      SELECT COALESCE(
+                          jsonb_object_agg(
+                              af.schema_db,
+                              CASE
+                                  WHEN NOT v_has_identita
+                                      THEN 'BLOCCATO'
+                                  WHEN v_is_super
+                                      THEN 'TUTTO'
+                                  ELSE COALESCE(
+                                      uoa.livello,
+                                      e.livello,
+                                      'BLOCCATO'::config.livello_accesso
+                                  )::text
+                              END
+                          ),
+                          '{}'::jsonb
+                      )
+                        FROM config.aree_funzionali af
+                        LEFT JOIN config.user_override_aree uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.area_id = af.id
+                         AND uoa.validita @> (SELECT script.fn_data_operativa())
+                        LEFT JOIN script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
+                          ON e.area_id = af.id
+                       WHERE af.attivo = TRUE
+                  );
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_guard_utility_tipo_ruolo(p_utility_id config.utilities.id%TYPE, p_tipo_ruolo_id config.utilities_tipi_ruolo.tipo_ruolo_id%TYPE, p_context text DEFAULT NULL::text)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_has_matrix BOOLEAN := false;
+                  v_is_allowed BOOLEAN := false;
+              BEGIN
+                  -- Guard: parametri obbligatori e > 0
+                  IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_ERRORE_PARAMETRI',
+                          jsonb_build_object(
+                              'detail', 'p_utility_id obbligatorio e > 0',
+                              'p_utility_id', p_utility_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          concat('p_utility_id non valido: ', p_utility_id::text, ' context: ', p_context)
+                      );
+                  END IF;
+
+                  IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_ERRORE_PARAMETRI',
+                          jsonb_build_object(
+                              'detail', 'p_tipo_ruolo_id obbligatorio e > 0',
+                              'p_tipo_ruolo_id', p_tipo_ruolo_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          concat('p_tipo_ruolo_id non valido: ', p_tipo_ruolo_id::text, ' context: ', p_context)
+                      );
+                  END IF;
+
+                  -- NOTA: le due query EXISTS sulla matrice hanno condizioni
+                  -- identiche tranne tipo_ruolo_id. Scelta progettuale: si
+                  -- mantengono separate per rendere esplicito il pattern a 2 step
+                  -- (1: la matrice esiste? → fail-open se no; 2: il ruolo e'
+                  -- ammesso? → fail-close se no). Unificarle in una sola query
+                  -- con FILTER peggiorerebbe la leggibilita' senza beneficio
+                  -- prestazionale (tabella config con poche righe).
+
+                  -- 1) Esiste matrice attiva/valida per utility?
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.utilities_tipi_ruolo m
+                       WHERE m.utility_id = p_utility_id
+                         AND m.attivo = true
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+                         AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
+                  )
+                  INTO v_has_matrix;
+
+                  -- Fail-open: nessuna regola attiva/valida → nessun vincolo
+                  IF NOT v_has_matrix THEN
+                      RETURN;
+                  END IF;
+
+                  -- 2) Matrice presente: il ruolo deve essere esplicitamente ammesso
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.utilities_tipi_ruolo m
+                       WHERE m.utility_id = p_utility_id
+                         AND m.tipo_ruolo_id = p_tipo_ruolo_id
+                         AND m.attivo = true
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+                         AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
+                  )
+                  INTO v_is_allowed;
+
+                  IF NOT v_is_allowed THEN
+                      -- Fix: E_GENERICO → E_UTILITY_RUOLO_NON_AMMESSO
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_UTILITY_RUOLO_NON_AMMESSO',
+                          jsonb_build_object(
+                              'utility_id', p_utility_id,
+                              'tipo_ruolo_id', p_tipo_ruolo_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          p_tipo_ruolo_id::text,
+                          p_utility_id::text
+                      );
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_livello_area(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE, p_area_schema_db config.aree_funzionali.schema_db%TYPE)
+               RETURNS config.livello_accesso
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_livello    config.user_override_aree.livello%TYPE;
+                  v_ctx_ruolo  anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Risolve livello accesso area per un'area funzionale.
+                  --
+                  -- Catena (context-aware dal 21-04-2026):
+                  --   0. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> BLOCCATO (fail-closed).
+                  --   1. Assenza identita OPERATORE attiva -> BLOCCATO
+                  --   2. fn_is_super_admin -> TUTTO
+                  --   3. Override utente area (se valido temporalmente)
+                  --   4. Ereditato dal profilo: fn_get_permessi_ereditati_aree
+                  --      (sola veste OPERATORE; AD_HOC 1 > REPARTO 2 > PORTALE 3)
+                  --   5. Default -> BLOCCATO
+                  -- Rev 20260925-83: il passo 4 non riscrive lo spareggio, lo
+                  -- legge dal building block (sede unica, D-2) — e con esso la
+                  -- veste OPERATORE (D-1): prima contavano i profili di tutte le
+                  -- vesti dell'utente.
+                  -- =========================================================
+
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      RETURN 'BLOCCATO'::config.livello_accesso;
+                  END IF;
+
+                  -- 1. Identita OPERATORE attiva (helper DRY).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN 'BLOCCATO'::config.livello_accesso;
+                  END IF;
+
+                  -- 2. Super admin? Bypass totale.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN 'TUTTO'::config.livello_accesso;
+                  END IF;
+
+                  -- 3. Override utente area (invariato).
+                  SELECT uoa.livello
+                    INTO v_livello
+                    FROM config.user_override_aree uoa
+                    JOIN config.aree_funzionali af ON af.id = uoa.area_id
+                   WHERE uoa.auth_user_id = p_auth_user_id
+                     AND af.schema_db = p_area_schema_db
+                     AND uoa.validita @> (SELECT script.fn_data_operativa());
+
+                  IF FOUND THEN
+                      RETURN v_livello;
+                  END IF;
+
+                  -- 4. Ereditato dal profilo: una riga al massimo per area
+                  --    (DISTINCT ON nel building block, schema_db unico).
+                  SELECT e.livello
+                    INTO v_livello
+                    FROM script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
+                    JOIN config.aree_funzionali af
+                      ON af.id = e.area_id
+                   WHERE af.schema_db = p_area_schema_db;
+
+                  IF FOUND THEN
+                      RETURN v_livello;
+                  END IF;
+
+                  -- 5. Default sicuro.
+                  RETURN 'BLOCCATO'::config.livello_accesso;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_veste_utilizzabile(p_identita_id anagrafiche.identita_digitali.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT (EXISTS ( SELECT 1
+                          FROM ((anagrafiche.identita_digitali idg
+                            JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = idg.soggetto_ruolo_id)))
+                            JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                         WHERE ((idg.id = fn_veste_utilizzabile.p_identita_id) AND idg.attivo AND (idg.valido_dal <= (SELECT script.fn_data_operativa())) AND ((idg.valido_al IS NULL) OR (idg.valido_al >= (SELECT script.fn_data_operativa()))) AND s.attivo AND ((idg.ruolo_applicativo <> 'OPERATORE'::config.ruolo_applicativo) OR idg.tecnica OR (EXISTS ( SELECT 1
+                                  FROM anagrafiche.risorse_umane ru
+                                 WHERE ((ru.soggetto_ruolo_id = idg.soggetto_ruolo_id) AND ru.attivo AND (ru.valido_dal <= (SELECT script.fn_data_operativa())) AND ((ru.valido_al IS NULL) OR (ru.valido_al >= (SELECT script.fn_data_operativa())))))))))) AS "exists";
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- Parametri. Tipi nudi DICHIARATI: un interruttore del trigger e il NOME
+                -- di una colonna, nessuna colonna di cui siano il riflesso.
+                v_fill_factor_to_base boolean := false;
+                v_fonte_col           text    := NULL;
+                -- Il valore della fonte: la colonna fonte_quantita_attesa (gemella su
+                -- offerte_commerciali_eccezioni, stesso tipo).
+                v_fonte_val           vendite.contratti_righe.fonte_quantita_attesa%TYPE := NULL;
+
+                -- Mapping/policy
+                v_factor_map   catalogo.articoli_uom_operativa.factor_to_base%TYPE;
+                v_qty_step     catalogo.articoli_uom_operativa.qty_step%TYPE;
+                v_max_dec      catalogo.articoli_uom_operativa.max_decimals%TYPE;
+                v_forbid_frac  catalogo.articoli_uom_operativa.forbid_fraction%TYPE;
+
+                -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente).
+                -- numeric nudo DICHIARATO: arriva dal factor_to_base della riga, che su
+                -- sei tabelle ha scale diverse (resi_righe e' numeric senza scala): un
+                -- ancoraggio a numeric(18,6) lo arrotonderebbe in silenzio.
+                v_factor_used  numeric := 1;
+
+                BEGIN
+
+                -- ------------------------------------------------------------
+                -- script.trgfn_qta_from_operativa()
+                -- Sorgente unica: UoM/quantità OPERATIVA.
+                -- Su INSERT: calcola sempre quantita da qta_operativa.
+                -- Su UPDATE: short-circuit se nessun input operativo è cambiato.
+                --
+                -- TG_ARGV (opzionali):
+                --   [0] fill_factor_to_base :: boolean  (default FALSE)
+                --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
+                --   [1] fonte_nullability_col :: text   (default NULL)
+                --       Nome colonna della fonte della quantita' (fonte_quantita_attesa,
+                --       su contratti_righe e offerte_commerciali_eccezioni), letta via
+                --       to_jsonb(NEW). Con una fonte a valle (fn_fonte_porta_quantita =
+                --       false) quantita := NULL, sempre. Con qta_operativa NULL e una fonte
+                --       diversa da 'FISSA' (cioe' DERIVATA_COMPONENTI) -> RETURN NEW senza raise.
+                --
+                -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
+                --   e i due parametri che li governavano:
+                --     · [1] fill_uom_id_base -> scriveva NEW.uom_id. Nessuna delle sei
+                --       tabelle agganciate ha una colonna `uom_id`, e tutti e sei i
+                --       trigger passavano 'false': il ramo non era raggiungibile, e se
+                --       lo si fosse acceso avrebbe fatto fallire ogni riga.
+                --     · [2] target_col = 'quantita_fissa' -> `quantita_fissa` non
+                --       esiste in **nessuna** tabella del database, e tutti e sei i
+                --       trigger passavano 'quantita'. Un parametro con un solo valore
+                --       lecito e' una bugia nella firma.
+                --   Gli argomenti scalano: fonte_nullability_col era [3], ora e' [1].
+                --   Precedente: 20260804-29 (stesso ragionamento su p_scope).
+                -- ------------------------------------------------------------
+
+                -- 0) Parametri. Letti PRIMA del short-circuit (rev 2026-10-08): la fonte
+                --    serve anche su un UPDATE che non tocca gli input operativi.
+                IF TG_NARGS >= 1 THEN
+                  v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
+                END IF;
+                IF TG_NARGS >= 2 AND TG_ARGV[1] IS NOT NULL AND TG_ARGV[1] <> '' THEN
+                  v_fonte_col := TG_ARGV[1];
+                  v_fonte_val := to_jsonb(NEW) ->> v_fonte_col;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- Fonte a valle: quantita e' calcolata, e qui vale NULL (rev 2026-10-08,
+                -- brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).
+                -- Con una fonte che non porta la quantita' (script.fn_fonte_porta_quantita:
+                -- MANUALE, LETTURE, TIMESHEET) la quantita' arriva a valle: il DB porta
+                -- quantita a NULL a ogni INSERT e a ogni UPDATE, anche quando gli input
+                -- operativi non cambiano (DERIVATA_COMPONENTI -> MANUALE: qta_operativa era
+                -- gia' vuota, e il short-circuit qui sotto la lasciava). qta_operativa e'
+                -- l'input: se e' valorizzata la rifiuta il guard
+                -- trgfn_righe_guard_quantita_per_fonte, che gira prima di questo trigger.
+                --------------------------------------------------------------------
+                IF v_fonte_val IS NOT NULL
+                   AND NOT script.fn_fonte_porta_quantita(v_fonte_val) THEN
+                  NEW.quantita := NULL;
+                  RETURN NEW;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- short-circuit: solo su UPDATE dove nessun input operativo è cambiato.
+                -- Su INSERT: calcola sempre (qta_operativa + uom → quantita).
+                --------------------------------------------------------------------
+                IF TG_OP = 'UPDATE'
+                   AND NEW.qta_operativa    IS NOT DISTINCT FROM OLD.qta_operativa
+                   AND NEW.uom_operativa_id IS NOT DISTINCT FROM OLD.uom_operativa_id
+                   AND NEW.factor_to_base   IS NOT DISTINCT FROM OLD.factor_to_base THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'.
+                -- Le fonti a valle sono gia' uscite sopra: qui arriva solo una fonte che
+                -- porta la quantita' senza che la scriva l'operatore (DERIVATA_COMPONENTI).
+                IF NEW.qta_operativa IS NULL THEN
+                  IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    'application',
+                    'script.trgfn_qta_from_operativa',
+                    'E_QTA_MISSING',
+                    jsonb_build_object(
+                      'campo', 'qta_operativa',
+                      'schema', TG_TABLE_SCHEMA,
+                      'table',  TG_TABLE_NAME,
+                      'qualified_table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id
+                    ),
+                    NULL::uuid,
+                    'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'column', 'qta_operativa'
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 1) UoM operativa: se manca, fallback a UoM base articolo
+                --------------------------------------------------------------------
+                IF NEW.uom_operativa_id IS NULL THEN
+                  SELECT a.uom_id
+                    INTO NEW.uom_operativa_id
+                  FROM catalogo.articoli a
+                  WHERE a.id = NEW.articolo_id;
+                END IF;
+
+                IF NEW.uom_operativa_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'application','script.trgfn_qta_from_operativa',
+                    'E_UOM_MISSING',
+                    jsonb_build_object('campo', 'uom_operativa_id', 'articolo_id', NEW.articolo_id),
+                    NULL::uuid,
+                    'articolo_id', COALESCE(NEW.articolo_id::text, 'NULL')
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 2) Mapping factor/policy
+                --------------------------------------------------------------------
+                SELECT aum.factor_to_base,
+                      aum.qty_step,
+                      COALESCE(aum.max_decimals,6),
+                      aum.forbid_fraction
+                  INTO v_factor_map, v_qty_step, v_max_dec, v_forbid_frac
+                FROM catalogo.articoli_uom_operativa aum
+                WHERE aum.articolo_id = NEW.articolo_id
+                  AND aum.uom_id      = NEW.uom_operativa_id
+                  AND aum.attivo      = TRUE
+                  AND (aum.valido_dal IS NULL OR aum.valido_dal <= (SELECT script.fn_data_operativa()))
+                  AND (aum.valido_al  IS NULL OR aum.valido_al  >= (SELECT script.fn_data_operativa()))
+                LIMIT 1;
+
+                v_factor_map := COALESCE(v_factor_map, 1);
+
+                v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
+
+                IF v_fill_factor_to_base THEN
+                  IF NEW.factor_to_base IS NULL THEN
+                    NEW.factor_to_base := v_factor_used;
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 3) Policy su quantità operativa
+                --------------------------------------------------------------------
+                IF v_forbid_frac IS TRUE AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database','script.trgfn_qta_from_operativa',
+                    'E_QTA_OPERATIVA_NON_INTERA',
+                    jsonb_build_object(
+                      'campo', 'qta_operativa',
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id,
+                      'qta_operativa', NEW.qta_operativa
+                    ),
+                    NULL::uuid,
+                    'articolo_id', NEW.articolo_id::text,
+                    'uom_operativa_id', NEW.uom_operativa_id::text
+                  );
+                END IF;
+
+                IF v_qty_step IS NOT NULL AND v_qty_step > 0 THEN
+                  IF abs(NEW.qta_operativa / v_qty_step - ROUND(NEW.qta_operativa / v_qty_step)) > 1e-9 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','script.trgfn_qta_from_operativa',
+                      'E_QTA_OPER_STEP_INVALIDO',
+                      jsonb_build_object(
+                        'campo', 'qta_operativa',
+                        'articolo_id', NEW.articolo_id,
+                        'uom_operativa_id', NEW.uom_operativa_id,
+                        'qta_operativa', NEW.qta_operativa,
+                        'qty_step', v_qty_step
+                      ),
+                      NULL::uuid,
+                      'articolo_id',NEW.articolo_id::text,
+                      'uom_operativa_id',NEW.uom_operativa_id::text
+                    );
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 4) Calcolo finale della quantita' base
+                --------------------------------------------------------------------
+                NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
+
+                RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_available_actions_contratto(p_contratto_id vendite.contratti.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: capability del contratto per il detail API (pattern data-driven).
+              --   rev 2026-07-11: + blocco pdf {mode, allow_allegati} da
+              --   config.stati_doc_contratti (bottone PDF data-driven via capabilities).
+              --   rev 2026-07-16: + enabled/reason/reason_key da meta.requires_righe
+              --   (documento vuoto non avanza di stato). "Vuoto" per il contratto:
+              --   negoziato puro (listino_id NULL) senza AGGIUNTA attiva con prezzo.
+              --   rev 2026-08-06: + target_state_descrizione, la forma leggibile
+              --   dello stato di destinazione. Serve alla frase di conferma
+              --   «portare il documento nello stato X»: il codice_interno non e'
+              --   quella forma (DRAFT -> Bozza) e tradurlo nel FE sarebbe una
+              --   seconda copia del vocabolario degli stati.
+              --   rev 2026-08-11: + stato_info_key, la nota che spiega cosa sta
+              --   succedendo quando il documento e' in uno stato chiuso. Arriva dal
+              --   `meta` dello stato, e viene emessa SEMPRE che lo stato la dichiari —
+              --   anche accanto a un'azione ancora abilitata: la nota spiega lo STATO,
+              --   non risponde a una barra vuota (decisione §5 di Tid, gia' applicata a
+              --   preventivo/ordine/DDT con 20260810-04/-05/-06). Questo dominio era
+              --   fra i cinque che non emettevano affatto il campo, mentre il drawer lo
+              --   legge gia': il cablaggio c'era ed era inerte.
+              --   ⚠️ La PROPRIETA' nel meta si chiama `nessuna_azione_key` mentre il
+              --   campo del blob si chiama `stato_info_key`. L'asimmetria e' voluta:
+              --   scripts/check_i18n_keys.py trova le chiavi seminate per QUEL nome
+              --   (RE_SEED_KEY sui CSV, elenco _PROP_KEY), e rinominarla senza toccare
+              --   il guard lo renderebbe verde per cecita'.
+              --   ⚠️ Il campo e' SEMPRE presente nel blob, col valore a null quando non
+              --   si applica: filtrare per presenza risponde vero per tutti i documenti,
+              --   va guardato il valore.
+              --   brief-db-vie-uscita-operatore §12.6; attivita-urgenti-del-10-08 §3.
+              --   rev 2026-09-24: le azioni passano alla forma dell'ARRAY DEI MOTIVI
+              --   (come preventivo e ordine): enabled/reason/reason_key discendono da
+              --   `reasons`, che somma i prezzi non autorizzati verso ATTIVO (building
+              --   block script.fn_check_prezzi_autorizzati, lo stesso del guard di
+              --   transizione) e il generico «documento vuoto».
+              --   (brief-db-preventivi-congelamento-pricing, D-4/D-5).
+              --   rev 2026-10-07: verso ATTIVO, prima dei prezzi, il motivo del listino
+              --   senza versione in vigore (script.fn_check_listino_congelabile,
+              --   brief-db-offerta-emissione-ed-erogazione §C.1.2).
+              DECLARE
+                  -- Tipi nudi solo per valori CALCOLATI (azioni e motivi jsonb, flag,
+                  -- motivi e chiavi i18n composti): nessuna colonna di cui siano il riflesso.
+                  v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
+                  v_stato_cod    config.stati_doc_contratti.codice_interno%TYPE;
+                  v_stato_info_key text;
+                  v_stato_codice config.stati_doc_contratti.codice%TYPE;
+                  v_valido_dal   vendite.contratti.valido_dal%TYPE;
+                  v_listino_id   vendite.contratti.listino_id%TYPE;
+                  v_listino_versione_id vendite.contratti.listino_versione_id%TYPE;
+                  v_mot_attiva   jsonb := '[]'::jsonb;
+                  v_pdf_mode     config.stati_doc_contratti.pdf_mode%TYPE;
+                  v_pdf_allow    config.stati_doc_contratti.pdf_allow_allegati%TYPE;
+                  v_actions      jsonb;
+                  v_ha_righe     boolean := false;
+                  v_can_edit     boolean;
+                  v_can_righe    boolean;
+                  v_non_edit     jsonb;
+                  c_non_edit_attivo CONSTANT jsonb :=
+                      '["billing_account_id","istanza_utility_id","utility_id","ambito",'
+                      '"valido_dal","parent_contratto_id","data","listino_id",'
+                      '"tipo_variazione_globale","valore_variazione_globale",'
+                      '"categoria_cliente_id_snapshot"]'::jsonb;
+                  c_non_edit_tutti CONSTANT jsonb :=
+                      '["billing_account_id","istanza_utility_id","utility_id","ambito",'
+                      '"valido_dal","valido_al","parent_contratto_id","data","listino_id",'
+                      '"tipo_variazione_globale","valore_variazione_globale",'
+                      '"categoria_cliente_id_snapshot","meta"]'::jsonb;
+              BEGIN
+                  -- Stato corrente: codice_interno + codice + valido_dal + listino + capability PDF.
+                  SELECT c.stato_doc_contratto_id, sdc.codice_interno, sdc.codice, c.valido_dal,
+                         c.listino_id, c.listino_versione_id, sdc.pdf_mode, sdc.pdf_allow_allegati,
+                         sdc.meta->>'nessuna_azione_key'
+                    INTO v_stato_id, v_stato_cod, v_stato_codice, v_valido_dal,
+                         v_listino_id, v_listino_versione_id, v_pdf_mode, v_pdf_allow, v_stato_info_key
+                    FROM vendite.contratti c
+                    JOIN config.stati_doc_contratti sdc ON sdc.id = c.stato_doc_contratto_id
+                   WHERE c.id = p_contratto_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Precondizione "documento non vuoto" per le transizioni che la
+                  -- esigono (meta.requires_righe). Per il contratto NON e' un
+                  -- semplice conteggio: con listino non e' mai vuoto di sostanza
+                  -- (le righe arrivano dal listino); negoziato puro (listino_id
+                  -- NULL) e' vuoto senza almeno una AGGIUNTA attiva con prezzo.
+                  -- Specchia trgfn_contratti_freeze_listino_versione
+                  -- (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE).
+                  v_ha_righe := (v_listino_id IS NOT NULL)
+                      OR EXISTS (
+                          SELECT 1
+                            FROM vendite.contratti_righe cr
+                           WHERE cr.contratto_id = p_contratto_id
+                             AND cr.tipo_eccezione = 'AGGIUNTA'::vendite.tipo_eccezione_contratto
+                             AND cr.prezzo_unitario IS NOT NULL
+                             AND cr.attivo = TRUE
+                      );
+
+                  -- Motivi ostativi all'ATTIVAZIONE: i prezzi non autorizzati. E' il
+                  -- building block che trgfn_contratti_guard_transizione_stato usa per
+                  -- sollevare, quindi «Attiva» e guard non possono divergere.
+                  -- rev 2026-09-24, brief-db-preventivi-congelamento-pricing (D-4).
+                  -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.2,
+                  -- decisione A-D2 di Tid): PRIMA il listino. Senza una versione in vigore
+                  -- il contratto con listino non si attiva: lo stesso predicato,
+                  -- script.fn_check_listino_congelabile, con cui
+                  -- trgfn_contratti_freeze_listino_versione solleva e poi congela.
+                  v_mot_attiva := script.fn_check_listino_congelabile('CONTRATTO', v_listino_id, v_listino_versione_id)
+                               || script.fn_check_prezzi_autorizzati('vendite.contratti'::regclass,
+                                                                     p_contratto_id);
+
+                  SELECT COALESCE(
+                      jsonb_agg(
+                          jsonb_build_object(
+                              'key',             t.meta->>'action_key',
+                              'target_state',    sa.codice_interno,
+                              -- Forma leggibile della destinazione: la colonna
+                              -- accanto, nello stesso JOIN. Il FE non puo'
+                              -- derivarla dal codice.
+                              'target_state_descrizione', sa.descrizione,
+                              'label_key',       t.meta->>'label_key',
+                              'requires_confirm', COALESCE((t.meta->>'requires_confirm')::boolean, false),
+                              'requires_date',   COALESCE((t.meta->>'requires_date')::boolean, false),
+                              'outlined',        COALESCE((t.meta->>'outlined')::boolean, false),
+                              -- Tutto discende dall'array dei motivi: nessuna
+                              -- regola puo' mascherarne un'altra (rev 2026-09-24).
+                              'enabled',         jsonb_array_length(m.motivi) = 0,
+                              'reason',          m.motivi -> 0 ->> 'reason',
+                              'reason_key',      m.motivi -> 0 ->> 'reason_key',
+                              'reasons',         m.motivi
+                          )
+                          ORDER BY sa.ordine
+                      ),
+                      '[]'::jsonb
+                  )
+                  INTO v_actions
+                  FROM config.transizioni_stati_contratti t
+                  JOIN config.stati_doc_contratti sa ON sa.id = t.stato_a_id
+                  -- I motivi della destinazione, sommati in un array solo. Ordine:
+                  -- prima quelli specifici della destinazione, poi il generico
+                  -- «documento vuoto»; il primo e' quello che il FE mostra da solo.
+                  -- ⚠️ Il motivo «documento vuoto» e' lo stesso di prima, scritto nella
+                  --   forma di un motivo: stessi reason e reason_key.
+                  CROSS JOIN LATERAL (
+                      SELECT CASE WHEN sa.codice_interno = 'ATTIVO'
+                                  THEN v_mot_attiva ELSE '[]'::jsonb END
+                          || CASE WHEN COALESCE((t.meta->>'requires_righe')::boolean, false)
+                                       AND NOT v_ha_righe
+                                  THEN jsonb_build_array(jsonb_build_object(
+                                           'codice',     NULL,
+                                           'reason',     'DOCUMENTO_SENZA_RIGHE',
+                                           'reason_key', 'common.azione_reason.senza_righe',
+                                           'dettaglio',  NULL))
+                                  ELSE '[]'::jsonb END AS motivi
+                  ) m
+                  WHERE t.stato_da_id = v_stato_id
+                    AND t.attivo IS TRUE
+                    AND COALESCE((t.meta->>'manuale')::boolean, true) IS TRUE
+                    AND t.meta ? 'action_key'
+                    AND t.meta ? 'label_key';
+
+                  -- Arricchimento delle sole azioni con data: somma chiavi,
+                  -- non tocca quelle gia' presenti.
+                  IF jsonb_array_length(v_actions) > 0 THEN
+                      SELECT jsonb_agg(
+                          CASE WHEN (elem->>'requires_date')::boolean IS TRUE
+                               THEN elem || jsonb_build_object(
+                                        'default_date', CURRENT_DATE::text,
+                                        'min_date',     v_valido_dal::text
+                                    )
+                               ELSE elem
+                          END
+                      )
+                      INTO v_actions
+                      FROM jsonb_array_elements(v_actions) AS elem;
+                  END IF;
+
+                  v_can_edit  := (v_stato_cod IN ('DRAFT', 'ATTIVO'));
+                  v_can_righe := (v_stato_cod = 'DRAFT');
+                  v_non_edit  := CASE v_stato_cod
+                                     WHEN 'DRAFT'  THEN '[]'::jsonb
+                                     WHEN 'ATTIVO' THEN c_non_edit_attivo
+                                     ELSE               c_non_edit_tutti
+                                 END;
+
+                  RETURN jsonb_build_object(
+                      'available_actions',   v_actions,
+                      'can_change_state',    jsonb_array_length(v_actions) > 0,
+                      'can_edit_testata',    v_can_edit,
+                      'can_edit_righe',      v_can_righe,
+                      'non_editable_fields', v_non_edit,
+                      'pdf',                 jsonb_build_object('mode', v_pdf_mode, 'allow_allegati', v_pdf_allow),
+                      'stato_codice_interno', v_stato_cod,
+                      'stato_info_key',       v_stato_info_key,
+                      'stato_codice',         v_stato_codice
+                  );
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_capability_promo_articolo(p_promo_id vendite.promo_articoli.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo:
+              --   Capability della promo articolo per il detail API (Fase 1
+              --   refactor frontend vendite). Calcola lo stato temporale da
+              --   CURRENT_DATE vs valido_dal/valido_al e restituisce i vincoli
+              --   di editing allineati al trigger guard DB.
+              --
+              --   Dispatch stati (specchio di trgfn_promo_articoli_guard_data_driven):
+              --     FUTURA   = CURRENT_DATE < valido_dal
+              --     INIZIATA = valido_dal <= CURRENT_DATE <= valido_al
+              --     SCADUTA  = CURRENT_DATE > valido_al
+              --
+              --   Whitelist editabilita' per stato (da trigger guard):
+              --     FUTURA:   tutto (date solo verso futuro — vincoli min_valido_*)
+              --     INIZIATA: descrizione, valido_al (>= oggi), meta
+              --     SCADUTA:  nulla (immutabile)
+              --
+              --   Fallback sicuro: NULL se la promo non esiste.
+              DECLARE
+                  v_dal    vendite.promo_articoli.valido_dal%TYPE;
+                  v_al     vendite.promo_articoli.valido_al%TYPE;
+                  v_today  CONSTANT date := CURRENT_DATE;
+                  v_stato  text;
+                  v_can    boolean;
+                  v_reason text;
+                  v_nedit  jsonb;
+                  v_mindag text;
+                  v_minal  text;
+                  -- Campi immutabili in INIZIATA.
+                  -- Editabili: descrizione, valido_al, meta.
+                  c_nedit_iniziata CONSTANT jsonb :=
+                      '["codice","articolo_id","uom_id","tipo_variazione","valore_variazione","valido_dal","attivo"]'::jsonb;
+                  -- Tutti i campi dominio immutabili in SCADUTA.
+                  c_nedit_scaduta CONSTANT jsonb :=
+                      '["codice","descrizione","articolo_id","uom_id","tipo_variazione","valore_variazione","valido_dal","valido_al","attivo","meta"]'::jsonb;
+              BEGIN
+                  SELECT pa.valido_dal, pa.valido_al
+                    INTO v_dal, v_al
+                    FROM vendite.promo_articoli pa
+                   WHERE pa.id = p_promo_id;
+
+                  IF NOT FOUND THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Dispatch: FUTURA -> INIZIATA -> SCADUTA.
+                  -- Le condizioni sono mutuamente esclusive; equivalente al
+                  -- dispatch SCADUTA->INIZIATA->FUTURA del trigger guard.
+                  IF v_today < v_dal THEN
+                      -- FUTURA: tutto editabile, ma date devono restare nel futuro.
+                      -- min_valido_dal = domani (trigger blocca valido_dal <= today).
+                      -- min_valido_al  = oggi   (trigger blocca valido_al < today).
+                      v_stato  := 'FUTURA';
+                      v_can    := true;
+                      v_reason := NULL;
+                      v_nedit  := '[]'::jsonb;
+                      v_mindag := (v_today + 1)::text;
+                      v_minal  := v_today::text;
+                  ELSIF v_today <= v_al THEN
+                      -- INIZIATA: whitelist ristretta. valido_dal immutabile.
+                      -- min_valido_al = oggi (trigger blocca valido_al < today).
+                      v_stato  := 'INIZIATA';
+                      v_can    := true;
+                      v_reason := NULL;
+                      v_nedit  := c_nedit_iniziata;
+                      v_mindag := NULL;
+                      v_minal  := v_today::text;
+                  ELSE
+                      -- SCADUTA: nulla e' modificabile per trigger guard.
+                      v_stato  := 'SCADUTA';
+                      v_can    := false;
+                      v_reason := 'PROMO_SCADUTA_IMMUTABILE';
+                      v_nedit  := c_nedit_scaduta;
+                      v_mindag := NULL;
+                      v_minal  := NULL;
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'stato_temporale',     v_stato,
+                      'can_update',          v_can,
+                      'can_update_reason',   v_reason,
+                      'non_editable_fields', v_nedit,
+                      'min_valido_dal',      v_mindag,
+                      'min_valido_al',       v_minal
+                  );
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_esclusione_articolo_documento(p_documento text, p_documento_id bigint, p_articolo_id catalogo.articoli.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: elencare i motivi per cui un articolo NON si puo' escludere
+              --   da un contratto o da un'offerta (p_documento = CONTRATTO |
+              --   OFFERTA). Funzione PURA (fn_check_*): nessun raise di dominio,
+              --   nessuna scrittura.
+              -- Consumatori: il guard script.trgfn_righe_guard_esclusione_figlio_bundle
+              --   (solleva il PRIMO motivo) e vendite.fn_documento_righe_preview
+              --   (spegne «Escludi» sulla riga e dice perche').
+              -- Ritorna: [] se ammesso; altrimenti array ORDINATO di
+              --   {codice, reason, reason_key, dettaglio, valori}.
+              -- ⚠️ p_documento e p_documento_id nudi DICHIARATI: un selettore
+              --   senza colonna-vocabolario e un id polimorfo (due testate).
+              DECLARE
+                  v_motivi              jsonb := '[]'::jsonb;
+                  v_listino_id          vendite.listini.id%TYPE;
+                  v_listino_versione_id vendite.listini_versioni.id%TYPE;
+                  v_e_figlio_bundle     boolean := false;
+              BEGIN
+                  SELECT lo.listino_id, lo.listino_versione_id
+                    INTO v_listino_id, v_listino_versione_id
+                    FROM vendite.fn_documento_listino_operativo(p_documento, p_documento_id) lo;
+
+                  -- Nessuna versione operativa (nessun listino, documento che non
+                  -- c'e' o non si vede): nessun bundle da cui escludere. Chi
+                  -- scrive passa comunque dalla policy e dalle FK.
+                  IF v_listino_versione_id IS NULL THEN
+                      RETURN v_motivi;
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.listini_righe_componenti lrc
+                       WHERE lrc.listino_versione_id = v_listino_versione_id
+                         AND lrc.articolo_figlio_id  = p_articolo_id
+                         AND lrc.attivo              = TRUE
+                         AND lrc.validita           @> CURRENT_DATE
+                  ) INTO v_e_figlio_bundle;
+
+                  -- ---- MOTIVO 1 — e' un componente di un bundle ------------------
+                  -- Il bundle si vende come unita': si esclude il padre, mai il
+                  -- singolo figlio. `valori` = l'articolo, il VARIADIC del messaggio.
+                  IF v_e_figlio_bundle THEN
+                      v_motivi := v_motivi || jsonb_build_object(
+                          'codice',     'E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA',
+                          'reason',     'FIGLIO_DI_BUNDLE',
+                          'reason_key', 'vendite.contratti.escludi_blocco.figlio_di_bundle',
+                          'dettaglio',  jsonb_build_object(
+                                            'documento',           p_documento,
+                                            'documento_id',        p_documento_id,
+                                            'articolo_id',         p_articolo_id,
+                                            'listino_id',          v_listino_id,
+                                            'listino_versione_id', v_listino_versione_id),
+                          'valori',     jsonb_build_array(p_articolo_id::text));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_listino_congelabile(p_documento text, p_listino_id vendite.listini.id%TYPE, p_listino_versione_id vendite.listini_versioni.id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- ⚠️ p_documento nudo DICHIARATO: un selettore (OFFERTA | CONTRATTO)
+              --   senza colonna-vocabolario, come in fn_documento_listino_operativo.
+              DECLARE
+                  v_versione vendite.listini_versioni.id%TYPE;
+                  v_stato    vendite.listini_versioni.stato%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire perche' un documento NON puo' congelare la sua versione
+                  --   di listino: l'offerta all'emissione, il contratto
+                  --   all'attivazione. '[]' = puo'. Non solleva: sollevare e'
+                  --   mestiere dei guard di transizione, che la CHIAMANO, come le
+                  --   capability che spengono il pulsante (linee-guida-sql §12.5.2).
+                  --
+                  --   La versione giudicata e' quella che verrebbe congelata:
+                  --   vendite.fn_listino_versione_operativa (la fissata, altrimenti
+                  --   quella in vigore oggi).
+                  --
+                  -- Motivi (il primo e' quello che il guard solleva):
+                  --   1. nessuna versione in vigore oggi (OFFERTA, CONTRATTO);
+                  --   2. la versione fissata non e' ATTIVA (solo OFFERTA: il
+                  --      contratto tiene la versione che l'offerta accettata gli ha
+                  --      portato, anche se nel frattempo si e' chiusa).
+                  --   Senza listino (negoziato puro del contratto): nessun motivo,
+                  --   lo giudica il guard del negoziato puro.
+                  -- =========================================================
+
+                  IF p_documento IS NULL OR p_documento NOT IN ('OFFERTA', 'CONTRATTO') THEN
+                      -- Errore di CHIAMANTE, non di dato: lo stesso codice del
+                      -- risolutore delle righe.
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite',
+                          'script.fn_check_listino_congelabile',
+                          'E_DOC_TIPO_NON_GESTITO',
+                          jsonb_build_object('documento', p_documento),
+                          NULL::uuid,
+                          COALESCE(p_documento, '<null>'));
+                  END IF;
+
+                  IF p_listino_id IS NULL THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  v_versione := vendite.fn_listino_versione_operativa(p_listino_id, p_listino_versione_id);
+
+                  -- 1. Nessuna versione in vigore oggi: offerta.
+                  IF v_versione IS NULL AND p_documento = 'OFFERTA' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO',
+                          'reason',     'LISTINO_SENZA_VERSIONE_IN_VIGORE',
+                          'reason_key', 'vendite.offerte.azione_reason.listino_senza_versione_in_vigore',
+                          'dettaglio',  jsonb_build_object('listino_id', p_listino_id, 'data', CURRENT_DATE),
+                          -- Frase chiusa: niente da infilare nei segnaposto.
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  -- 1. Nessuna versione in vigore oggi: contratto.
+                  IF v_versione IS NULL AND p_documento = 'CONTRATTO' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO',
+                          'reason',     'LISTINO_SENZA_VERSIONE_IN_VIGORE',
+                          'reason_key', 'vendite.contratti.azione_reason.listino_senza_versione_in_vigore',
+                          'dettaglio',  jsonb_build_object('listino_id', p_listino_id, 'data', CURRENT_DATE),
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  IF p_documento = 'CONTRATTO' THEN
+                      RETURN jsonb_build_array();
+                  END IF;
+
+                  -- 2. Offerta: la versione che congelerebbe dev'essere ATTIVA.
+                  --    Quella in vigore oggi lo e' per costruzione (una CHIUSA ha
+                  --    valido_al passato); qui risponde la versione FISSATA prima
+                  --    dell'emissione.
+                  SELECT lv.stato
+                    INTO v_stato
+                    FROM vendite.listini_versioni lv
+                   WHERE lv.id = v_versione;
+                  IF v_stato IS DISTINCT FROM 'ATTIVA' THEN
+                      RETURN jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA',
+                          'reason',     'LISTINO_VERSIONE_NON_ATTIVA',
+                          'reason_key', 'vendite.offerte.azione_reason.listino_versione_non_attiva',
+                          'dettaglio',  jsonb_build_object('listino_id', p_listino_id,
+                                                           'listino_versione_id', v_versione,
+                                                           'stato_versione', v_stato),
+                          'valori',     jsonb_build_array()));
+                  END IF;
+
+                  RETURN jsonb_build_array();
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_operatore_invitabile(p_auth_user_id integer)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  -- Tipi espliciti: colonne di django.auth_user (niente %TYPE su Django).
+                  v_email            VARCHAR(254);
+                  -- Ancorata: e' il bool_or della colonna attivo delle vesti.
+                  v_veste_attiva     anagrafiche.identita_digitali.attivo%TYPE;
+                  -- Senza colonna di cui siano il riflesso: un flag «trovato», un
+                  -- conteggio, un predicato calcolato sulla finestra.
+                  v_trovato          boolean;
+                  v_n_vesti          integer;
+                  v_in_finestra      boolean;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire se un operatore puo' ricevere l'invito che ACCENDE
+                  --   la sua veste OPERATORE (regola unica dell'invito,
+                  --   rev 20260925-43: la veste nasce spenta, la accende
+                  --   l'attivazione; il reinvito riapre una veste spenta).
+                  --
+                  -- Condizioni (in ordine: il primo motivo vince):
+                  --   1. auth_user valido ed esistente     UTENTE_NON_TROVATO
+                  --   2. almeno una veste OPERATORE        SENZA_VESTE_OPERATORE
+                  --   3. nessuna veste OPERATORE gia'
+                  --      attiva (D-8)                      VESTE_GIA_ATTIVA
+                  --   3-bis. UNA sola veste OPERATORE: con piu' vesti spente
+                  --      non si sa quale riaccendere
+                  --      (rev 20260925-53, R-9)            PIU_VESTI_SPENTE
+                  --   4. la veste nella sua finestra       VESTE_FUORI_FINESTRA
+                  --   5. auth_user ha un indirizzo email   SENZA_EMAIL
+                  --   ⛔ NON contano piu': last_login (D-8) e is_active
+                  --      (derivato dalle vesti: false per costruzione).
+                  --
+                  -- Ritorna:
+                  --   JSONB: {invitabile: bool, reason: text, reason_key: text,
+                  --           email: text}
+                  --   reason/reason_key NULL se invitabile.
+                  --   ⛔ Rev 20260927-01 (§16): il motivo e' un CODICE con la
+                  --   sua chiave i18n; la frase `motivo` e' ritirata — il
+                  --   testo vive nei locales, non nel payload.
+                  -- =========================================================
+
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'UTENTE_NON_TROVATO',
+                          'reason_key', 'amministrazione.operatori.invito_reason.utente_non_trovato',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  -- Credenziale + le sue vesti OPERATORE, AGGREGATE: il modello
+                  -- ammette piu' vesti spente sulla stessa credenziale, e
+                  -- prenderne una a caso deciderebbe per la prima che capita.
+                  SELECT true,
+                         au.email,
+                         count(idg.id),
+                         bool_or(idg.attivo),
+                         bool_or(    (idg.valido_dal IS NULL OR idg.valido_dal <= CURRENT_DATE)
+                                 AND (idg.valido_al  IS NULL OR idg.valido_al  >= CURRENT_DATE))
+                    INTO v_trovato, v_email, v_n_vesti, v_veste_attiva, v_in_finestra
+                    FROM django.auth_user au
+                    LEFT JOIN anagrafiche.identita_digitali idg
+                      ON idg.auth_user_id = au.id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   WHERE au.id = p_auth_user_id
+                   GROUP BY au.email;
+
+                  IF v_trovato IS NULL THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'UTENTE_NON_TROVATO',
+                          'reason_key', 'amministrazione.operatori.invito_reason.utente_non_trovato',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  IF v_n_vesti = 0 THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'SENZA_VESTE_OPERATORE',
+                          'reason_key', 'amministrazione.operatori.invito_reason.senza_veste_operatore',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  -- ⛔ D-8: veste gia' attiva → rifiuto. L'accesso c'e' gia': per
+                  --   una password dimenticata c'e' il reset, non l'invito.
+                  IF v_veste_attiva THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'VESTE_GIA_ATTIVA',
+                          'reason_key', 'amministrazione.operatori.invito_reason.veste_gia_attiva',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  -- ⛔ Rev 20260925-53 (R-9): piu' vesti spente e nessuna attiva.
+                  --   L'invito riaccende UNA veste, e qui non c'e' una regola che dica
+                  --   quale: il verbo del backend lo rifiuta gia'. La capability deve
+                  --   dire lo stesso, o il pulsante si offre e il verbo fallisce.
+                  IF v_n_vesti > 1 THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'PIU_VESTI_SPENTE',
+                          'reason_key', 'amministrazione.operatori.invito_reason.piu_vesti_spente',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  IF NOT v_in_finestra THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'VESTE_FUORI_FINESTRA',
+                          'reason_key', 'amministrazione.operatori.invito_reason.veste_fuori_finestra',
+                          'email', v_email
+                      );
+                  END IF;
+
+                  IF v_email IS NULL OR trim(v_email) = '' THEN
+                      RETURN jsonb_build_object(
+                          'invitabile', false,
+                          'reason', 'SENZA_EMAIL',
+                          'reason_key', 'amministrazione.operatori.invito_reason.senza_email',
+                          'email', NULL
+                      );
+                  END IF;
+
+                  RETURN jsonb_build_object(
+                      'invitabile', true,
+                      'reason', NULL,
+                      'reason_key', NULL,
+                      'email', v_email
+                  );
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id anagrafiche.soggetti_ruoli.id%TYPE, p_tipo_codice config.tipi_indirizzi.codice_interno%TYPE, p_istanza_utility_id anagrafiche.istanze_utilities.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(tipo_indirizzo config.tipi_indirizzi.codice_interno%TYPE, indirizzo_completo text, geoloc geometry, indirizzo_id anagrafiche.indirizzi.id%TYPE, soggetto_ruolo_id anagrafiche.indirizzi.soggetto_ruolo_id%TYPE, istanza_utility_id anagrafiche.indirizzi.istanza_utility_id%TYPE, tipo_indirizzo_id anagrafiche.indirizzi.tipo_indirizzo_id%TYPE, indirizzo_dettaglio_id anagrafiche.indirizzi.indirizzo_dettaglio_id%TYPE, indirizzo_libero anagrafiche.indirizzi.indirizzo_libero%TYPE, is_normalizzato boolean, stato_id config.stati.id%TYPE, stato_descrizione config.stati.descrizione%TYPE, stato_iso2 config.stati.codice_iso2%TYPE, regione_id config.regioni.id%TYPE, regione_descrizione config.regioni.descrizione%TYPE, provincia_id config.province.id%TYPE, provincia_sigla config.province.sigla%TYPE, provincia_descrizione config.province.descrizione%TYPE, comune_id config.comuni.id%TYPE, comune_descrizione config.comuni.descrizione%TYPE, codice_postale_id config.codici_postali.id%TYPE, cap_codice config.codici_postali.codice%TYPE, locality anagrafiche.indirizzi.locality%TYPE, administrative_area anagrafiche.indirizzi.administrative_area%TYPE, sublocality anagrafiche.indirizzi.sublocality%TYPE, postal_box anagrafiche.indirizzi.postal_box%TYPE)
+               LANGUAGE plpgsql
+               STABLE ROWS 10
+              AS $function$
+              DECLARE
+                  v_tipo_ruolo_id      anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+                  v_soggetto_id        anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
+                  v_current_codice     config.tipi_indirizzi.codice_interno%TYPE;
+                  v_current_tipo_id    config.tipi_indirizzi.id%TYPE;
+                  v_fallback_tipo_id   config.tipi_ruolo_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                  v_rows_found         integer;
+                  v_visited_tipo_ids   config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
+              BEGIN
+                  /*
+                    Policy indirizzi a 3 livelli con fallback per tipo:
+                      FASE 1: ruolo + istanza specifica (se p_istanza_utility_id valorizzato)
+                      FASE 2: ruolo generico (istanza IS NULL)
+                      FASE 3: fallback soggetto (via fn_get_indirizzo_by_soggetto)
+                    Ogni fase segue la catena fallback in tipi_ruolo_tipi_indirizzo
+                    con protezione anti-loop circolare.
+                  */
+
+                  -- Recupera soggetto e tipo ruolo
+                  SELECT sr.tipo_ruolo_id, sr.soggetto_id
+                    INTO v_tipo_ruolo_id, v_soggetto_id
+                  FROM anagrafiche.soggetti_ruoli sr
+                  WHERE sr.id = p_soggetto_ruolo_id;
+
+                  IF v_tipo_ruolo_id IS NULL THEN RETURN; END IF;
+
+                  -- FASE 1: RUOLO + ISTANZA SPECIFICA
+                  IF p_istanza_utility_id IS NOT NULL THEN
+                      v_current_codice := p_tipo_codice;
+                      v_visited_tipo_ids := '{}'::integer[];
+                      LOOP
+                          -- Il tipo si confronta per ID (rev 20260923-49): la vista espone in
+                          -- tipo_indirizzo il CODICE (display, mutabile), il parametro e' il
+                          -- CODICE_INTERNO. Confrontati come testo non si incontravano mai.
+                          SELECT ti.id INTO v_current_tipo_id
+                          FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                          IF v_current_tipo_id IS NULL THEN EXIT; END IF;
+
+                          RETURN QUERY
+                          SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
+                              f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
+                              f.tipo_indirizzo_id, f.indirizzo_dettaglio_id, f.indirizzo_libero,
+                              f.is_normalizzato,
+                              f.stato_id, f.stato_descrizione, f.stato_iso2,
+                              f.regione_id, f.regione_descrizione,
+                              f.provincia_id, f.provincia_sigla, f.provincia_descrizione,
+                              f.comune_id, f.comune_descrizione,
+                              f.codice_postale_id, f.cap_codice,
+                              f.locality, f.administrative_area, f.sublocality, f.postal_box
+                          FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id, p_istanza_utility_id) f
+                          WHERE f.tipo_indirizzo_id = v_current_tipo_id
+                            AND f.istanza_utility_id = p_istanza_utility_id;
+
+                          GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                          IF v_rows_found > 0 THEN RETURN; END IF;
+
+                          -- Cerca fallback per tipo indirizzo
+                          IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN EXIT; END IF;
+                          v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                          SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                          FROM config.tipi_ruolo_tipi_indirizzo m
+                          WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+                            AND m.tipo_indirizzo_id = v_current_tipo_id
+                            AND m.attivo = TRUE
+                            AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
+                            AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+                          LIMIT 1;
+                          IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
+
+                          SELECT ti.codice_interno INTO v_current_codice
+                          FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                          IF v_current_codice IS NULL THEN EXIT; END IF;
+                      END LOOP;
+                  END IF;
+
+                  -- FASE 2: RUOLO GENERICO (istanza_utility_id IS NULL)
+                  v_current_codice := p_tipo_codice;
+                  v_visited_tipo_ids := '{}'::integer[];
+                  LOOP
+                      -- Il tipo si confronta per ID (rev 20260923-49), come in FASE 1.
+                      SELECT ti.id INTO v_current_tipo_id
+                      FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                      IF v_current_tipo_id IS NULL THEN EXIT; END IF;
+
+                      RETURN QUERY
+                      SELECT f.tipo_indirizzo, f.indirizzo_completo, f.geoloc,
+                          f.indirizzo_id, f.soggetto_ruolo_id, f.istanza_utility_id,
+                          f.tipo_indirizzo_id, f.indirizzo_dettaglio_id, f.indirizzo_libero,
+                          f.is_normalizzato,
+                          f.stato_id, f.stato_descrizione, f.stato_iso2,
+                          f.regione_id, f.regione_descrizione,
+                          f.provincia_id, f.provincia_sigla, f.provincia_descrizione,
+                          f.comune_id, f.comune_descrizione,
+                          f.codice_postale_id, f.cap_codice,
+                          f.locality, f.administrative_area, f.sublocality, f.postal_box
+                      FROM script.fn_get_indirizzi_by_ruolo(p_soggetto_ruolo_id) f
+                      WHERE f.tipo_indirizzo_id = v_current_tipo_id
+                        AND f.istanza_utility_id IS NULL;
+
+                      GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                      IF v_rows_found > 0 THEN RETURN; END IF;
+
+                      -- Cerca fallback per tipo indirizzo
+                      IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN EXIT; END IF;
+                      v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                      SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+                        AND m.tipo_indirizzo_id = v_current_tipo_id
+                        AND m.attivo = TRUE
+                        AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
+                        AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+                      LIMIT 1;
+                      IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
+
+                      SELECT ti.codice_interno INTO v_current_codice
+                      FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                      IF v_current_codice IS NULL THEN EXIT; END IF;
+                  END LOOP;
+
+                  -- FASE 3: FALLBACK SOGGETTO
+                  RETURN QUERY
+                  SELECT
+                      r.tipo_indirizzo_codice,
+                      r.indirizzo_display,
+                      r.geoloc,
+                      r.indirizzo_id,
+                      p_soggetto_ruolo_id,
+                      r.istanza_utility_id,
+                      r.tipo_indirizzo_id,
+                      r.indirizzo_dettaglio_id,
+                      r.indirizzo_libero,
+                      r.is_normalizzato,
+                      r.stato_id,
+                      r.stato_descrizione,
+                      r.stato_iso2,
+                      r.regione_id,
+                      r.regione_descrizione,
+                      r.provincia_id,
+                      r.provincia_sigla,
+                      r.provincia_descrizione,
+                      r.comune_id,
+                      r.comune_descrizione,
+                      r.codice_postale_id,
+                      r.cap_codice,
+                      r.locality,
+                      r.administrative_area,
+                      r.sublocality,
+                      r.postal_box
+                  FROM script.fn_get_indirizzo_by_soggetto(v_soggetto_id, p_tipo_codice) r;
+
+                  RETURN;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzo_by_soggetto(p_soggetto_id anagrafiche.soggetti.id%TYPE, p_tipo_codice config.tipi_indirizzi.codice_interno%TYPE)
+               RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                v_current_codice config.tipi_indirizzi.codice_interno%TYPE := p_tipo_codice;
+                v_current_tipo_id config.tipi_indirizzi.id%TYPE;
+                v_fallback_tipo_id config.tipi_soggetto_dettaglio_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                v_rows_found integer;
+                v_visited_tipo_ids config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
+              BEGIN
+                /*
+                  Restituisce l'indirizzo di un soggetto per tipo_codice richiesto.
+                  Se non trova indirizzi per quel tipo, segue la catena di fallback
+                  configurata in config.tipi_soggetto_dettaglio_tipi_indirizzo
+                  fino a trovare un match o esaurire i fallback.
+
+                  Regole:
+                    - Recupera tipo_soggetto_dettaglio_id dal soggetto
+                    - Loop: cerca indirizzo per tipo corrente
+                    - Se trovato: ritorna. Se non trovato: segue fallback
+                    - Protezione anti-loop circolare via v_visited_tipo_ids
+                */
+
+                -- Recupera il tipo soggetto dettaglio per determinare la catena fallback
+                SELECT s.tipo_soggetto_dettaglio_id INTO v_tipo_soggetto_dettaglio_id
+                FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id;
+                IF v_tipo_soggetto_dettaglio_id IS NULL THEN RETURN; END IF;
+
+                LOOP
+                  -- Il tipo si confronta per ID (rev 20260923-49): la vista espone in
+                  -- tipo_indirizzo_codice il CODICE (display, mutabile), il parametro e' il
+                  -- CODICE_INTERNO. Confrontati come testo non si incontravano mai.
+                  SELECT ti.id INTO v_current_tipo_id
+                  FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                  IF v_current_tipo_id IS NULL THEN RETURN; END IF;
+
+                  -- Cerca indirizzi per il tipo corrente
+                  RETURN QUERY
+                  SELECT * FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                  WHERE r.soggetto_id = p_soggetto_id AND r.tipo_indirizzo_id = v_current_tipo_id;
+
+                  GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                  IF v_rows_found > 0 THEN RETURN; END IF;
+
+                  -- Nessun indirizzo trovato: cerca fallback
+                  -- Protezione anti-loop circolare
+                  IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN RETURN; END IF;
+                  v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                  -- Legge il fallback dalla matrice tipo_soggetto_dettaglio / tipo_indirizzo
+                  SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                  WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                    AND m.tipo_indirizzo_id = v_current_tipo_id
+                    AND m.attivo = TRUE
+                    AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
+                    AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+                  LIMIT 1;
+                  IF v_fallback_tipo_id IS NULL THEN RETURN; END IF;
+
+                  -- Risolve il codice del tipo fallback per il prossimo ciclo
+                  SELECT ti.codice_interno INTO v_current_codice
+                  FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                  IF v_current_codice IS NULL THEN RETURN; END IF;
+                END LOOP;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_override_scaduti(p_giorni_tolleranza integer DEFAULT 0)
+               RETURNS TABLE(tipo_override text, override_id bigint, auth_user_id integer, dettaglio text, valido_al date, giorni_scaduto integer)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Restituisce tutti gli override utente la cui data
+                --   valido_al e' scaduta (passata). Unisce le 3 tabelle
+                --   override: aree, oggetti, azioni.
+                --
+                -- Parametri:
+                --   p_giorni_tolleranza: ignora override scaduti da meno
+                --     di N giorni (default 0 = tutti gli scaduti).
+                --
+                -- Uso tipico:
+                --   SELECT * FROM script.fn_get_override_scaduti(0);
+                --   SELECT * FROM script.fn_get_override_scaduti(7);
+                -- =========================================================
+
+                RETURN QUERY
+
+                -- Override aree scaduti
+                SELECT
+                  'user_override_aree'::text      AS tipo_override,
+                  uoa.id                           AS override_id,
+                  uoa.auth_user_id,
+                  format('area: %s, livello: %s',
+                         af.codice, uoa.livello::text) AS dettaglio,
+                  uoa.valido_al,
+                  (CURRENT_DATE - uoa.valido_al)::integer AS giorni_scaduto
+                FROM config.user_override_aree uoa
+                JOIN config.aree_funzionali af ON af.id = uoa.area_id
+                WHERE uoa.valido_al IS NOT NULL
+                  AND uoa.valido_al < CURRENT_DATE - p_giorni_tolleranza
+
+                UNION ALL
+
+                -- Override oggetti scaduti
+                SELECT
+                  'user_override_oggetti'::text    AS tipo_override,
+                  uoo.id                            AS override_id,
+                  uoo.auth_user_id,
+                  format('model: %s.%s, livello: %s',
+                         uoo.app_label, uoo.model_name,
+                         uoo.livello::text)         AS dettaglio,
+                  uoo.valido_al,
+                  (CURRENT_DATE - uoo.valido_al)::integer AS giorni_scaduto
+                FROM config.user_override_oggetti uoo
+                WHERE uoo.valido_al IS NOT NULL
+                  AND uoo.valido_al < CURRENT_DATE - p_giorni_tolleranza
+
+                UNION ALL
+
+                -- Override azioni scaduti
+                SELECT
+                  'user_override_azioni'::text     AS tipo_override,
+                  uoaz.id                           AS override_id,
+                  uoaz.auth_user_id,
+                  format('azione: %s, abilitata: %s',
+                         ap.permission_codename,
+                         uoaz.abilitata::text)      AS dettaglio,
+                  uoaz.valido_al,
+                  (CURRENT_DATE - uoaz.valido_al)::integer AS giorni_scaduto
+                FROM config.user_override_azioni uoaz
+                JOIN config.azioni_processo ap ON ap.id = uoaz.azione_id
+                WHERE uoaz.valido_al IS NOT NULL
+                  AND uoaz.valido_al < CURRENT_DATE - p_giorni_tolleranza
+
+                ORDER BY giorni_scaduto DESC, tipo_override, auth_user_id;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_permessi_effettivi_azioni(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE, p_permission_codename config.azioni_processo.permission_codename%TYPE DEFAULT NULL::character varying)
+               RETURNS TABLE(permission_codename config.azioni_processo.permission_codename%TYPE, azione_id config.azioni_processo.id%TYPE, area_id config.azioni_processo.area_id%TYPE, attivo config.azioni_processo.attivo%TYPE, abilitata_specifica config.user_override_azioni.abilitata%TYPE, livello_area config.user_override_aree.livello%TYPE, livello_minimo_area config.azioni_processo.livello_minimo_area%TYPE, abilitata config.user_override_azioni.abilitata%TYPE, limitata_da_area boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la catena delle azioni di processo di un operatore, col tetto d'area
+              --   (brief-db-permessi-tetto-area). Sede unica: la leggono
+              --   fn_check_azione_processo, fn_get_user_actions_map e il pannello permessi.
+              DECLARE
+                  v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+                  v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+              BEGIN
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      -- 1-2. Identita' OPERATORE attiva, super admin.
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := v_has_identita
+                                        AND script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  RETURN QUERY
+                  WITH voci AS (
+                      -- Tutto il catalogo (mappa, pannello).
+                      SELECT ap.permission_codename AS v_codename, ap.id AS v_azione_id,
+                             ap.area_id AS v_area_id, ap.attivo AS v_attivo,
+                             ap.livello_minimo_area AS v_minimo
+                        FROM config.azioni_processo ap
+                       WHERE p_permission_codename IS NULL
+                      UNION ALL
+                      -- Una sola azione (resolver puntuale): la riga c'e' anche per un
+                      -- codename fuori catalogo, e li' vale il default.
+                      SELECT q.codename, ap.id, ap.area_id, ap.attivo, ap.livello_minimo_area
+                        FROM (VALUES (p_permission_codename)) q(codename)
+                        LEFT JOIN config.azioni_processo ap
+                          ON ap.permission_codename = q.codename
+                       WHERE p_permission_codename IS NOT NULL
+                  ),
+                  livelli AS (
+                      -- Il livello d'area: dalla sede della catena d'area, una volta per area.
+                      SELECT d.l_area_id,
+                             script.fn_resolve_livello_area(p_auth_user_id, d.l_schema_db) AS l_livello
+                        FROM (SELECT DISTINCT v.v_area_id AS l_area_id, af.schema_db AS l_schema_db
+                                FROM voci v
+                                JOIN config.aree_funzionali af ON af.id = v.v_area_id) d
+                  ),
+                  specifiche AS (
+                      -- 3. La catena senza tetto: override valido -> profilo -> negata.
+                      SELECT v.*, l.l_livello,
+                             CASE
+                                 WHEN NOT v_has_identita THEN false
+                                 WHEN v_is_super          THEN true
+                                 ELSE COALESCE(uoa.abilitata, e.abilitata, false)
+                             END AS s_specifica
+                        FROM voci v
+                        LEFT JOIN livelli l
+                          ON l.l_area_id = v.v_area_id
+                        LEFT JOIN config.user_override_azioni uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.azione_id    = v.v_azione_id
+                         AND uoa.validita @> CURRENT_DATE
+                        LEFT JOIN script.fn_get_permessi_ereditati_azioni(p_auth_user_id) e
+                          ON e.azione_id = v.v_azione_id
+                  ),
+                  effettive AS (
+                      -- 4. Il tetto: il super admin lo precede, tutti gli altri lo subiscono.
+                      SELECT s.*,
+                             CASE
+                                 WHEN v_is_super THEN true
+                                 ELSE s.s_specifica
+                                      AND script.fn_area_consente_azione(s.l_livello, s.v_minimo)
+                             END AS s_effettiva
+                        FROM specifiche s
+                  )
+                  SELECT f.v_codename, f.v_azione_id, f.v_area_id, f.v_attivo,
+                         f.s_specifica, f.l_livello, f.v_minimo,
+                         f.s_effettiva,
+                         f.s_specifica AND NOT f.s_effettiva
+                    FROM effettive f;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_permessi_effettivi_oggetti(p_auth_user_id config.user_override_oggetti.auth_user_id%TYPE, p_app_label config.user_override_oggetti.app_label%TYPE DEFAULT NULL::character varying, p_model_name config.user_override_oggetti.model_name%TYPE DEFAULT NULL::character varying)
+               RETURNS TABLE(app_label config.area_model_overrides.app_label%TYPE, model_name config.area_model_overrides.model_name%TYPE, area_schema_db config.aree_funzionali.schema_db%TYPE, livello_override config.user_override_oggetti.livello%TYPE, livello_area config.user_override_aree.livello%TYPE, livello_specifico config.user_override_oggetti.livello%TYPE, livello config.user_override_oggetti.livello%TYPE, limitato_da_area boolean)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              -- Scopo: la catena degli oggetti di un operatore, col tetto d'area
+              --   (brief-db-permessi-tetto-area). Sede unica: la leggono
+              --   fn_resolve_livello_oggetto, fn_get_user_object_permissions_map e il
+              --   pannello permessi.
+              DECLARE
+                  v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+                  v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+                  v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+              BEGIN
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      -- 1-2. Identita' OPERATORE attiva, super admin.
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := v_has_identita
+                                        AND script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  RETURN QUERY
+                  WITH voci AS (
+                      -- Tutto il catalogo degli oggetti (mappa di /me/, pannello).
+                      SELECT amo.app_label AS v_app, amo.model_name AS v_modello
+                        FROM config.area_model_overrides amo
+                       WHERE p_app_label IS NULL AND p_model_name IS NULL
+                      UNION ALL
+                      -- Un solo oggetto (resolver puntuale), a catalogo o no.
+                      SELECT p_app_label, p_model_name
+                       WHERE p_app_label IS NOT NULL OR p_model_name IS NOT NULL
+                  ),
+                  con_area AS (
+                      -- 3. L'area e' quella dell'oggetto, non quella del chiamante (R4).
+                      SELECT v.v_app, v.v_modello,
+                             script.fn_area_di_oggetto(v.v_app, v.v_modello) AS v_area
+                        FROM voci v
+                  ),
+                  livelli AS (
+                      SELECT d.l_area,
+                             script.fn_resolve_livello_area(p_auth_user_id, d.l_area) AS l_livello
+                        FROM (SELECT DISTINCT ca.v_area AS l_area FROM con_area ca) d
+                  ),
+                  grezzi AS (
+                      SELECT ca.v_app, ca.v_modello, ca.v_area,
+                             uoo.livello AS g_override, l.l_livello
+                        FROM con_area ca
+                        LEFT JOIN livelli l
+                          ON l.l_area IS NOT DISTINCT FROM ca.v_area
+                        LEFT JOIN config.user_override_oggetti uoo
+                          ON uoo.auth_user_id = p_auth_user_id
+                         AND uoo.app_label    = ca.v_app
+                         AND uoo.model_name   = ca.v_modello
+                         AND uoo.validita @> CURRENT_DATE
+                  ),
+                  calcolo AS (
+                      -- 4. Senza tetto (la catena di ieri) e col tetto.
+                      SELECT g.*,
+                             CASE
+                                 WHEN NOT v_has_identita THEN 'BLOCCATO'::config.livello_accesso
+                                 WHEN v_is_super          THEN 'TUTTO'::config.livello_accesso
+                                 ELSE COALESCE(g.g_override, g.l_livello,
+                                               'BLOCCATO'::config.livello_accesso)
+                             END AS c_specifico,
+                             CASE
+                                 WHEN NOT v_has_identita THEN 'BLOCCATO'::config.livello_accesso
+                                 WHEN v_is_super          THEN 'TUTTO'::config.livello_accesso
+                                 ELSE script.fn_livello_con_tetto_area(g.g_override, g.l_livello)
+                             END AS c_effettivo
+                        FROM grezzi g
+                  )
+                  SELECT c.v_app, c.v_modello, c.v_area, c.g_override, c.l_livello,
+                         c.c_specifico, c.c_effettivo,
+                         c.c_effettivo IS DISTINCT FROM c.c_specifico
+                    FROM calcolo c;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_user_permissions_map(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE)
+               RETURNS jsonb
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_has_identita boolean;   -- flag calcolato (fn_has_identita_attiva)
+                  v_is_super     boolean;   -- flag calcolato (fn_is_super_admin)
+                  v_ctx_ruolo    anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Mappa livello accesso per tutte le aree funzionali
+                  --   attive (single roundtrip). JSONB { "schema": "LIV", ... }.
+                  --
+                  -- Catena (context-aware dal 21-04-2026):
+                  --   1. Guard parametro obbligatorio
+                  --   2. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> v_has_identita=false, v_is_super=false
+                  --      (il CASE nel jsonb_object_agg produce BLOCCATO
+                  --      per tutte le aree).
+                  --   3. Altrimenti pre-calcolo dei due flag.
+                  --   4. Per area attiva: override, poi ereditato
+                  --      (fn_get_permessi_ereditati_aree), poi BLOCCATO.
+                  -- Rev 20260925-85: l'ereditato non si ricalcola qui (erano le
+                  -- CTE livelli_user/best_per_area): lo da' il building block,
+                  -- sede unica dello spareggio e della veste OPERATORE (D-1, D-2).
+                  -- =========================================================
+
+                  -- 1. Guard parametro obbligatorio.
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_get_user_permissions_map',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('p_auth_user_id', p_auth_user_id),
+                          NULL::uuid,
+                          'p_auth_user_id obbligatorio e > 0.'
+                      );
+                  END IF;
+
+                  -- 2-3. Gate contesto GUC + pre-calcolo flag.
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      -- Fail-closed: mappa produrra' BLOCCATO per ogni area.
+                      v_has_identita := false;
+                      v_is_super     := false;
+                  ELSE
+                      v_has_identita := script.fn_has_identita_attiva(
+                                            p_auth_user_id,
+                                            'OPERATORE'::config.ruolo_applicativo);
+                      v_is_super     := script.fn_is_super_admin(p_auth_user_id);
+                  END IF;
+
+                  -- 4. Aggregazione jsonb: override, poi ereditato, poi BLOCCATO.
+                  RETURN (
+                      SELECT COALESCE(
+                          jsonb_object_agg(
+                              af.schema_db,
+                              CASE
+                                  WHEN NOT v_has_identita
+                                      THEN 'BLOCCATO'
+                                  WHEN v_is_super
+                                      THEN 'TUTTO'
+                                  ELSE COALESCE(
+                                      uoa.livello,
+                                      e.livello,
+                                      'BLOCCATO'::config.livello_accesso
+                                  )::text
+                              END
+                          ),
+                          '{}'::jsonb
+                      )
+                        FROM config.aree_funzionali af
+                        LEFT JOIN config.user_override_aree uoa
+                          ON uoa.auth_user_id = p_auth_user_id
+                         AND uoa.area_id = af.id
+                         AND uoa.validita @> CURRENT_DATE
+                        LEFT JOIN script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
+                          ON e.area_id = af.id
+                       WHERE af.attivo = TRUE
+                  );
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_guard_utility_tipo_ruolo(p_utility_id integer, p_tipo_ruolo_id integer, p_context text DEFAULT NULL::text)
+               RETURNS void
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_has_matrix BOOLEAN := false;
+                  v_is_allowed BOOLEAN := false;
+              BEGIN
+                  -- Guard: parametri obbligatori e > 0
+                  IF p_utility_id IS NULL OR p_utility_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_ERRORE_PARAMETRI',
+                          jsonb_build_object(
+                              'detail', 'p_utility_id obbligatorio e > 0',
+                              'p_utility_id', p_utility_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          concat('p_utility_id non valido: ', p_utility_id::text, ' context: ', p_context)
+                      );
+                  END IF;
+
+                  IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_ERRORE_PARAMETRI',
+                          jsonb_build_object(
+                              'detail', 'p_tipo_ruolo_id obbligatorio e > 0',
+                              'p_tipo_ruolo_id', p_tipo_ruolo_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          concat('p_tipo_ruolo_id non valido: ', p_tipo_ruolo_id::text, ' context: ', p_context)
+                      );
+                  END IF;
+
+                  -- NOTA: le due query EXISTS sulla matrice hanno condizioni
+                  -- identiche tranne tipo_ruolo_id. Scelta progettuale: si
+                  -- mantengono separate per rendere esplicito il pattern a 2 step
+                  -- (1: la matrice esiste? → fail-open se no; 2: il ruolo e'
+                  -- ammesso? → fail-close se no). Unificarle in una sola query
+                  -- con FILTER peggiorerebbe la leggibilita' senza beneficio
+                  -- prestazionale (tabella config con poche righe).
+
+                  -- 1) Esiste matrice attiva/valida per utility?
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.utilities_tipi_ruolo m
+                       WHERE m.utility_id = p_utility_id
+                         AND m.attivo = true
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+                         AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+                  )
+                  INTO v_has_matrix;
+
+                  -- Fail-open: nessuna regola attiva/valida → nessun vincolo
+                  IF NOT v_has_matrix THEN
+                      RETURN;
+                  END IF;
+
+                  -- 2) Matrice presente: il ruolo deve essere esplicitamente ammesso
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.utilities_tipi_ruolo m
+                       WHERE m.utility_id = p_utility_id
+                         AND m.tipo_ruolo_id = p_tipo_ruolo_id
+                         AND m.attivo = true
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= CURRENT_DATE)
+                         AND (m.valido_al IS NULL OR m.valido_al >= CURRENT_DATE)
+                  )
+                  INTO v_is_allowed;
+
+                  IF NOT v_is_allowed THEN
+                      -- Fix: E_GENERICO → E_UTILITY_RUOLO_NON_AMMESSO
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_guard_utility_tipo_ruolo',
+                          'E_UTILITY_RUOLO_NON_AMMESSO',
+                          jsonb_build_object(
+                              'utility_id', p_utility_id,
+                              'tipo_ruolo_id', p_tipo_ruolo_id,
+                              'context', p_context
+                          ),
+                          NULL::uuid,
+                          p_tipo_ruolo_id::text,
+                          p_utility_id::text
+                      );
+                  END IF;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_resolve_livello_area(p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE, p_area_schema_db config.aree_funzionali.schema_db%TYPE)
+               RETURNS config.livello_accesso
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_livello    config.user_override_aree.livello%TYPE;
+                  v_ctx_ruolo  anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Risolve livello accesso area per un'area funzionale.
+                  --
+                  -- Catena (context-aware dal 21-04-2026):
+                  --   0. Gate GUC: se app.ruolo_applicativo popolata e
+                  --      != OPERATORE -> BLOCCATO (fail-closed).
+                  --   1. Assenza identita OPERATORE attiva -> BLOCCATO
+                  --   2. fn_is_super_admin -> TUTTO
+                  --   3. Override utente area (se valido temporalmente)
+                  --   4. Ereditato dal profilo: fn_get_permessi_ereditati_aree
+                  --      (sola veste OPERATORE; AD_HOC 1 > REPARTO 2 > PORTALE 3)
+                  --   5. Default -> BLOCCATO
+                  -- Rev 20260925-83: il passo 4 non riscrive lo spareggio, lo
+                  -- legge dal building block (sede unica, D-2) — e con esso la
+                  -- veste OPERATORE (D-1): prima contavano i profili di tutte le
+                  -- vesti dell'utente.
+                  -- =========================================================
+
+                  -- 0. Gate contesto GUC (fail-closed su non-OPERATORE).
+                  v_ctx_ruolo := NULLIF(
+                      current_setting('app.ruolo_applicativo', true), ''
+                  )::config.ruolo_applicativo;
+
+                  IF v_ctx_ruolo IS NOT NULL
+                     AND v_ctx_ruolo <> 'OPERATORE'::config.ruolo_applicativo THEN
+                      RETURN 'BLOCCATO'::config.livello_accesso;
+                  END IF;
+
+                  -- 1. Identita OPERATORE attiva (helper DRY).
+                  IF NOT script.fn_has_identita_attiva(
+                             p_auth_user_id,
+                             'OPERATORE'::config.ruolo_applicativo) THEN
+                      RETURN 'BLOCCATO'::config.livello_accesso;
+                  END IF;
+
+                  -- 2. Super admin? Bypass totale.
+                  IF script.fn_is_super_admin(p_auth_user_id) THEN
+                      RETURN 'TUTTO'::config.livello_accesso;
+                  END IF;
+
+                  -- 3. Override utente area (invariato).
+                  SELECT uoa.livello
+                    INTO v_livello
+                    FROM config.user_override_aree uoa
+                    JOIN config.aree_funzionali af ON af.id = uoa.area_id
+                   WHERE uoa.auth_user_id = p_auth_user_id
+                     AND af.schema_db = p_area_schema_db
+                     AND uoa.validita @> CURRENT_DATE;
+
+                  IF FOUND THEN
+                      RETURN v_livello;
+                  END IF;
+
+                  -- 4. Ereditato dal profilo: una riga al massimo per area
+                  --    (DISTINCT ON nel building block, schema_db unico).
+                  SELECT e.livello
+                    INTO v_livello
+                    FROM script.fn_get_permessi_ereditati_aree(p_auth_user_id) e
+                    JOIN config.aree_funzionali af
+                      ON af.id = e.area_id
+                   WHERE af.schema_db = p_area_schema_db;
+
+                  IF FOUND THEN
+                      RETURN v_livello;
+                  END IF;
+
+                  -- 5. Default sicuro.
+                  RETURN 'BLOCCATO'::config.livello_accesso;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_veste_utilizzabile(p_identita_id anagrafiche.identita_digitali.id%TYPE)
+               RETURNS boolean
+               LANGUAGE sql
+               STABLE
+              BEGIN ATOMIC
+               SELECT (EXISTS ( SELECT 1
+                          FROM ((anagrafiche.identita_digitali idg
+                            JOIN anagrafiche.soggetti_ruoli sr ON ((sr.id = idg.soggetto_ruolo_id)))
+                            JOIN anagrafiche.soggetti s ON ((s.id = sr.soggetto_id)))
+                         WHERE ((idg.id = fn_veste_utilizzabile.p_identita_id) AND idg.attivo AND (idg.valido_dal <= CURRENT_DATE) AND ((idg.valido_al IS NULL) OR (idg.valido_al >= CURRENT_DATE)) AND s.attivo AND ((idg.ruolo_applicativo <> 'OPERATORE'::config.ruolo_applicativo) OR idg.tecnica OR (EXISTS ( SELECT 1
+                                  FROM anagrafiche.risorse_umane ru
+                                 WHERE ((ru.soggetto_ruolo_id = idg.soggetto_ruolo_id) AND ru.attivo AND (ru.valido_dal <= CURRENT_DATE) AND ((ru.valido_al IS NULL) OR (ru.valido_al >= CURRENT_DATE))))))))) AS "exists";
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                -- Parametri. Tipi nudi DICHIARATI: un interruttore del trigger e il NOME
+                -- di una colonna, nessuna colonna di cui siano il riflesso.
+                v_fill_factor_to_base boolean := false;
+                v_fonte_col           text    := NULL;
+                -- Il valore della fonte: la colonna fonte_quantita_attesa (gemella su
+                -- offerte_commerciali_eccezioni, stesso tipo).
+                v_fonte_val           vendite.contratti_righe.fonte_quantita_attesa%TYPE := NULL;
+
+                -- Mapping/policy
+                v_factor_map   catalogo.articoli_uom_operativa.factor_to_base%TYPE;
+                v_qty_step     catalogo.articoli_uom_operativa.qty_step%TYPE;
+                v_max_dec      catalogo.articoli_uom_operativa.max_decimals%TYPE;
+                v_forbid_frac  catalogo.articoli_uom_operativa.forbid_fraction%TYPE;
+
+                -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente).
+                -- numeric nudo DICHIARATO: arriva dal factor_to_base della riga, che su
+                -- sei tabelle ha scale diverse (resi_righe e' numeric senza scala): un
+                -- ancoraggio a numeric(18,6) lo arrotonderebbe in silenzio.
+                v_factor_used  numeric := 1;
+
+                BEGIN
+
+                -- ------------------------------------------------------------
+                -- script.trgfn_qta_from_operativa()
+                -- Sorgente unica: UoM/quantità OPERATIVA.
+                -- Su INSERT: calcola sempre quantita da qta_operativa.
+                -- Su UPDATE: short-circuit se nessun input operativo è cambiato.
+                --
+                -- TG_ARGV (opzionali):
+                --   [0] fill_factor_to_base :: boolean  (default FALSE)
+                --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
+                --   [1] fonte_nullability_col :: text   (default NULL)
+                --       Nome colonna della fonte della quantita' (fonte_quantita_attesa,
+                --       su contratti_righe e offerte_commerciali_eccezioni), letta via
+                --       to_jsonb(NEW). Con una fonte a valle (fn_fonte_porta_quantita =
+                --       false) quantita := NULL, sempre. Con qta_operativa NULL e una fonte
+                --       diversa da 'FISSA' (cioe' DERIVATA_COMPONENTI) -> RETURN NEW senza raise.
+                --
+                -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
+                --   e i due parametri che li governavano:
+                --     · [1] fill_uom_id_base -> scriveva NEW.uom_id. Nessuna delle sei
+                --       tabelle agganciate ha una colonna `uom_id`, e tutti e sei i
+                --       trigger passavano 'false': il ramo non era raggiungibile, e se
+                --       lo si fosse acceso avrebbe fatto fallire ogni riga.
+                --     · [2] target_col = 'quantita_fissa' -> `quantita_fissa` non
+                --       esiste in **nessuna** tabella del database, e tutti e sei i
+                --       trigger passavano 'quantita'. Un parametro con un solo valore
+                --       lecito e' una bugia nella firma.
+                --   Gli argomenti scalano: fonte_nullability_col era [3], ora e' [1].
+                --   Precedente: 20260804-29 (stesso ragionamento su p_scope).
+                -- ------------------------------------------------------------
+
+                -- 0) Parametri. Letti PRIMA del short-circuit (rev 2026-10-08): la fonte
+                --    serve anche su un UPDATE che non tocca gli input operativi.
+                IF TG_NARGS >= 1 THEN
+                  v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
+                END IF;
+                IF TG_NARGS >= 2 AND TG_ARGV[1] IS NOT NULL AND TG_ARGV[1] <> '' THEN
+                  v_fonte_col := TG_ARGV[1];
+                  v_fonte_val := to_jsonb(NEW) ->> v_fonte_col;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- Fonte a valle: quantita e' calcolata, e qui vale NULL (rev 2026-10-08,
+                -- brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).
+                -- Con una fonte che non porta la quantita' (script.fn_fonte_porta_quantita:
+                -- MANUALE, LETTURE, TIMESHEET) la quantita' arriva a valle: il DB porta
+                -- quantita a NULL a ogni INSERT e a ogni UPDATE, anche quando gli input
+                -- operativi non cambiano (DERIVATA_COMPONENTI -> MANUALE: qta_operativa era
+                -- gia' vuota, e il short-circuit qui sotto la lasciava). qta_operativa e'
+                -- l'input: se e' valorizzata la rifiuta il guard
+                -- trgfn_righe_guard_quantita_per_fonte, che gira prima di questo trigger.
+                --------------------------------------------------------------------
+                IF v_fonte_val IS NOT NULL
+                   AND NOT script.fn_fonte_porta_quantita(v_fonte_val) THEN
+                  NEW.quantita := NULL;
+                  RETURN NEW;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- short-circuit: solo su UPDATE dove nessun input operativo è cambiato.
+                -- Su INSERT: calcola sempre (qta_operativa + uom → quantita).
+                --------------------------------------------------------------------
+                IF TG_OP = 'UPDATE'
+                   AND NEW.qta_operativa    IS NOT DISTINCT FROM OLD.qta_operativa
+                   AND NEW.uom_operativa_id IS NOT DISTINCT FROM OLD.uom_operativa_id
+                   AND NEW.factor_to_base   IS NOT DISTINCT FROM OLD.factor_to_base THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'.
+                -- Le fonti a valle sono gia' uscite sopra: qui arriva solo una fonte che
+                -- porta la quantita' senza che la scriva l'operatore (DERIVATA_COMPONENTI).
+                IF NEW.qta_operativa IS NULL THEN
+                  IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
+                    RETURN NEW;
+                  END IF;
+                  PERFORM script.fn_log_and_raise_error(
+                    'application',
+                    'script.trgfn_qta_from_operativa',
+                    'E_QTA_MISSING',
+                    jsonb_build_object(
+                      'campo', 'qta_operativa',
+                      'schema', TG_TABLE_SCHEMA,
+                      'table',  TG_TABLE_NAME,
+                      'qualified_table', TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id
+                    ),
+                    NULL::uuid,
+                    'table',  TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    'column', 'qta_operativa'
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 1) UoM operativa: se manca, fallback a UoM base articolo
+                --------------------------------------------------------------------
+                IF NEW.uom_operativa_id IS NULL THEN
+                  SELECT a.uom_id
+                    INTO NEW.uom_operativa_id
+                  FROM catalogo.articoli a
+                  WHERE a.id = NEW.articolo_id;
+                END IF;
+
+                IF NEW.uom_operativa_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'application','script.trgfn_qta_from_operativa',
+                    'E_UOM_MISSING',
+                    jsonb_build_object('campo', 'uom_operativa_id', 'articolo_id', NEW.articolo_id),
+                    NULL::uuid,
+                    'articolo_id', COALESCE(NEW.articolo_id::text, 'NULL')
+                  );
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 2) Mapping factor/policy
+                --------------------------------------------------------------------
+                SELECT aum.factor_to_base,
+                      aum.qty_step,
+                      COALESCE(aum.max_decimals,6),
+                      aum.forbid_fraction
+                  INTO v_factor_map, v_qty_step, v_max_dec, v_forbid_frac
+                FROM catalogo.articoli_uom_operativa aum
+                WHERE aum.articolo_id = NEW.articolo_id
+                  AND aum.uom_id      = NEW.uom_operativa_id
+                  AND aum.attivo      = TRUE
+                  AND (aum.valido_dal IS NULL OR aum.valido_dal <= CURRENT_DATE)
+                  AND (aum.valido_al  IS NULL OR aum.valido_al  >= CURRENT_DATE)
+                LIMIT 1;
+
+                v_factor_map := COALESCE(v_factor_map, 1);
+
+                v_factor_used := COALESCE(NEW.factor_to_base, v_factor_map, 1);
+
+                IF v_fill_factor_to_base THEN
+                  IF NEW.factor_to_base IS NULL THEN
+                    NEW.factor_to_base := v_factor_used;
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 3) Policy su quantità operativa
+                --------------------------------------------------------------------
+                IF v_forbid_frac IS TRUE AND NEW.qta_operativa <> TRUNC(NEW.qta_operativa) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database','script.trgfn_qta_from_operativa',
+                    'E_QTA_OPERATIVA_NON_INTERA',
+                    jsonb_build_object(
+                      'campo', 'qta_operativa',
+                      'articolo_id', NEW.articolo_id,
+                      'uom_operativa_id', NEW.uom_operativa_id,
+                      'qta_operativa', NEW.qta_operativa
+                    ),
+                    NULL::uuid,
+                    'articolo_id', NEW.articolo_id::text,
+                    'uom_operativa_id', NEW.uom_operativa_id::text
+                  );
+                END IF;
+
+                IF v_qty_step IS NOT NULL AND v_qty_step > 0 THEN
+                  IF abs(NEW.qta_operativa / v_qty_step - ROUND(NEW.qta_operativa / v_qty_step)) > 1e-9 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database','script.trgfn_qta_from_operativa',
+                      'E_QTA_OPER_STEP_INVALIDO',
+                      jsonb_build_object(
+                        'campo', 'qta_operativa',
+                        'articolo_id', NEW.articolo_id,
+                        'uom_operativa_id', NEW.uom_operativa_id,
+                        'qta_operativa', NEW.qta_operativa,
+                        'qty_step', v_qty_step
+                      ),
+                      NULL::uuid,
+                      'articolo_id',NEW.articolo_id::text,
+                      'uom_operativa_id',NEW.uom_operativa_id::text
+                    );
+                  END IF;
+                END IF;
+
+                --------------------------------------------------------------------
+                -- 4) Calcolo finale della quantita' base
+                --------------------------------------------------------------------
+                NEW.quantita := ROUND(NEW.qta_operativa * v_factor_used, 6);
+
+                RETURN NEW;
+              END;
+              $function$;

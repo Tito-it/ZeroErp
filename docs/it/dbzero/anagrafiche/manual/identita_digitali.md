@@ -28,7 +28,13 @@ estendendolo a:
 * **Fornitori portale** (`FORNITORE_PORTALE`)
 * **Clienti shop self-service** (`SHOP_CUSTOMER`)
 * **Sistemi terzi integrati** (`API_CLIENT`)
-* **Identità disattivate** (`DISABILITATO`)
+
+⭐ **Una veste si spegne con `attivo = false` e tiene il suo tipo**, qualunque sia
+(dal 2026-10-02, brief `brief-db-be-fe-area-accessi`, R-DB-1). `DISABILITATO` è una voce **storica** dell'enum: fino a quel
+giorno lo spegnimento dell'operatore la scriveva al posto di `OPERATORE`, e la veste
+perdeva il tipo. La tabella viva la rifiuta (CHECK `chk_identita_digitali_ruolo_non_ritirato`,
+e prima ancora il guard di coerenza con `E_RUOLO_APPLICATIVO_RITIRATO`); resta nel
+tipo perché la porta `storico.identita_digitali`.
 
 Ogni record rappresenta **una veste** con cui un soggetto si logga nel sistema.
 Post 20-04-2026 (modello SSO multi-veste) un `auth_user` puo' avere **piu'
@@ -109,7 +115,18 @@ e il legame col processo vive in
     (CF obbligatorio, P.IVA vietata)
   * `CLIENTE_PORTALE` / `SHOP_CUSTOMER` → tipo `CL` (cliente)
   * `FORNITORE_PORTALE` → tipo `FO` (fornitore)
-  * `API_CLIENT` / `DISABILITATO` → nessun vincolo specifico
+  * `API_CLIENT` → nessun vincolo specifico; `DISABILITATO` → rifiutato
+    (`E_RUOLO_APPLICATIVO_RITIRATO`, dal 2026-10-02)
+* **Una credenziale è di una persona o di una macchina, non di tutte e due**
+  (dal 2026-10-02): tutte le vesti di un `auth_user_id`, anche spente, hanno la
+  stessa natura secondo [script.fn_veste_di_sistema](/dbzero/script/funzioni/fn_veste_di_sistema)
+  (`API_CLIENT` o `tecnica` = macchina). Lo impone
+  [trgfn_identita_digitali_guard_natura_credenziale](/dbzero/anagrafiche/funzioni/trgfn_identita_digitali_guard_natura_credenziale)
+  con `E_CREDENZIALE_PERSONA_E_SISTEMA`; le righe nate prima le segnala
+  [dbops.vw_credenziali_da_sanare](/dbzero/dbops/views/vw_credenziali_da_sanare).
+  Su questa regola poggia la categoria di una credenziale
+  ([script.fn_categoria_accesso](/dbzero/script/funzioni/fn_categoria_accesso)), cioè il
+  tab dell'area «Accessi» in cui sta.
 * **Tentativi sbagliati, blocco e cambio password obbligatorio NON sono della
   veste** (dal 2026-09-25): la password è una sola e vale per tutte le porte,
   quindi quello stato appartiene alla **credenziale** e sta in

@@ -16,6 +16,7 @@ Indice test eseguiti:
 6) SendEmailTests.test_send_email_account_not_found_raises
 7) SendEmailTests.test_send_email_with_cc
 8) TestConnectionTests.test_console_mode_returns_success
+8b) TestConnectionTests.test_account_inesistente_e_404
 9) ResolveTests.test_resolve_account_fallback
 10) ResolveTests.test_resolve_template_fallback
 
@@ -136,13 +137,16 @@ class SendEmailTests(TestCase):
         repo.resolve_template.return_value = None
 
         service = EmailDispatchService()
-        with self.assertRaises(ServiceError):
+        with self.assertRaises(ServiceError) as ctx:
             service.send_email(
                 ambito="SISTEMA",
                 codice_template="INESISTENTE",
                 destinatario="dest@example.com",
                 variabili={},
             )
+        # Manca la configurazione, come per l'account: 500 (R-7 di
+        # brief-db-codici-non-trovato-email-e-permessi).
+        self.assertEqual(ctx.exception.code, "E_EMAIL_TEMPLATE_NON_CONFIGURATO")
 
     # Scopo: Verifica che account non trovato lanci ServiceError.
     @patch(_SETTINGS)
@@ -158,13 +162,16 @@ class SendEmailTests(TestCase):
         repo.resolve_account.return_value = None
 
         service = EmailDispatchService()
-        with self.assertRaises(ServiceError):
+        with self.assertRaises(ServiceError) as ctx:
             service.send_email(
                 ambito="SISTEMA",
                 codice_template="TEST",
                 destinatario="dest@example.com",
                 variabili={},
             )
+        # Manca la configurazione: 500, lo stesso codice dell'invio di una
+        # bozza (brief-db-codici-non-trovato-email-e-permessi §12).
+        self.assertEqual(ctx.exception.code, "E_EMAIL_ACCOUNT_NON_CONFIGURATO")
 
     # Scopo: Verifica che destinatari_cc venga propagato al log.
     @patch(_SETTINGS)
@@ -216,6 +223,15 @@ class TestConnectionTests(TestCase):
         service = EmailDispatchService()
         result = service.test_connection(1)
         self.assertTrue(result["success"])
+
+    # Scopo: Account inesistente → 404 col codice dell'account, non il 400
+    #        generico `E_EMAIL`: l'id lo sceglie l'amministratore.
+    @patch(_REPO)
+    def test_account_inesistente_e_404(self, MockRepo):
+        MockRepo.return_value.get_account_with_password.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            EmailDispatchService().test_connection(9)
+        self.assertEqual(ctx.exception.code, "E_EMAIL_ACCOUNT_NOT_FOUND")
 
 
 class ResolveTests(TestCase):

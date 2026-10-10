@@ -19,11 +19,15 @@ AS $function$
 --   CREATE TEMP TABLE tmp_s AS
 --   SELECT dbops.fn_pgtap_crea_soggetto_pg('Banca Zero pgTAP') AS id;
 DECLARE
-    v_soggetto_id uuid;
-    v_piva        text;
-    v_prov_id     integer;
-    v_tipo_cont   integer;
-    v_n_ind       integer;
+    v_soggetto_id anagrafiche.soggetti.id%TYPE;
+    v_piva        anagrafiche.soggetti.partita_iva%TYPE;
+    v_prov_id     config.province.id%TYPE;
+    v_tipo_cont   config.tipi_contatti.id%TYPE;
+    v_n_ind       integer;   -- un conteggio: nessuna colonna da ancorare
+    v_forma_id    anagrafiche.dati_societari.forma_giuridica_id%TYPE;
+    v_rea_policy  config.forme_giuridiche.rea_policy%TYPE;
+    v_cap_policy  config.forme_giuridiche.capitale_sociale_policy%TYPE;
+    v_ds_policy   config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
 BEGIN
     v_piva := COALESCE(p_piva, dbops.fn_pgtap_piva_libera());
 
@@ -47,7 +51,10 @@ BEGIN
         storicizza, attivo
     )
     VALUES (
-        p_ragione_sociale, NULL, NULL, 'S', p_stato_id,
+        -- ⭐ Rev 20261009-29: sesso NULL, non 'S'. Per societa' ed enti il
+        --   sesso non si indica (sesso_policy NONE), e 'S' e' fuori dal
+        --   vocabolario (chk_soggetti_sesso). brief-db-sesso-senza-default.
+        p_ragione_sociale, NULL, NULL, NULL, p_stato_id,
         -- Per una persona giuridica italiana il codice fiscale
         -- coincide con la partita IVA, e il guard cf/piva lo esige.
         v_piva, v_piva, p_tipo_soggetto_dettaglio_id,
@@ -55,15 +62,46 @@ BEGIN
     )
     RETURNING id INTO v_soggetto_id;
 
-    INSERT INTO anagrafiche.dati_societari (
-        soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
-        socio_unico, liquidazione, destinatario_fe
-    )
-    -- ⚠️ uq_ds_prov_cea e' UNIQUE su (id_prov_iscri_rea,
-    --   iscrizione_rea): il numero REA si deriva dalla partita IVA,
-    --   che e' gia' unica per costruzione.
-    VALUES (v_soggetto_id, 10000.00, v_prov_id, 'REA-' || v_piva,
-            'SM', 'LN', '0000000');
+    -- ⭐ Rev 20261011-02 (brief-db-dati-fiscali-e-societari-del-soggetto):
+    --   i dati societari si scrivono col VERBO, come l'applicazione
+    --   (anagrafiche.fn_scrivi_dati_societari: dal 20261011-04 l'app non
+    --   scrive la tabella). E i valori li decide la configurazione, non la
+    --   fixture: la forma e' la prima AMMESSA dalla natura (C-1), REA e
+    --   capitale ci sono solo se la forma li prevede (B-6). Prima scriveva
+    --   sempre REA e capitale e nessuna forma: per un ente o una ditta
+    --   sarebbe ora un dato fuori regola.
+    --   Niente dati societari se la natura li vieta (dati_societari_policy NONE).
+    SELECT tsd.dati_societari_policy INTO v_ds_policy
+      FROM config.tipi_soggetto_dettaglio tsd WHERE tsd.id = p_tipo_soggetto_dettaglio_id;
+
+    SELECT m.forma_giuridica_id, fg.rea_policy, fg.capitale_sociale_policy
+      INTO v_forma_id, v_rea_policy, v_cap_policy
+      FROM config.forme_giuridiche_tipi_soggetto_dettaglio m
+      JOIN config.forme_giuridiche fg ON fg.id = m.forma_giuridica_id
+     WHERE m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+       AND fg.attivo
+       AND fg.stato_id = p_stato_id
+       AND anagrafiche.fn_forma_giuridica_ammessa(m.forma_giuridica_id, m.tipo_soggetto_dettaglio_id,
+                                                  script.fn_giorno_operativo(now()))
+     ORDER BY m.forma_giuridica_id
+     LIMIT 1;
+
+    IF v_ds_policy IS DISTINCT FROM 'NONE' THEN
+        -- ⚠️ uq_ds_prov_cea e' UNIQUE su (provincia, numero REA): il numero si
+        --   deriva dalla partita IVA, che e' gia' unica per costruzione.
+        PERFORM anagrafiche.fn_scrivi_dati_societari(
+            p_soggetto_id        := v_soggetto_id,
+            p_forma_giuridica_id := v_forma_id,
+            p_id_prov_iscri_rea  := CASE WHEN v_rea_policy <> 'NONE' THEN v_prov_id END,
+            p_iscrizione_rea     := CASE WHEN v_rea_policy <> 'NONE' THEN 'REA-' || v_piva END,
+            p_capitale_sociale   := CASE WHEN v_cap_policy <> 'NONE' THEN 10000.00 END,
+            p_socio_unico        := 'SM',
+            p_liquidazione       := 'LN',
+            p_destinatario_fe    := NULL,   -- nessun canale FE (rev 20261010-40)
+            p_pec_fatturazione   := NULL,
+            p_codice_sdi         := NULL,
+            p_data_costituzione  := NULL);
+    END IF;
 
     -- Gli indirizzi ammessi li decide la matrice per il
     -- TIPO SOGGETTO DETTAGLIO, non quella dei ruoli: si legge la
@@ -114,7 +152,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id integer, p_stato_id integer, p_piva text)
-IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md';
+IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md Rev 20261009-29 (brief-db-sesso-senza-default): il sesso e'' NULL (era ''S'', fuori vocabolario); una natura PF qui viene rifiutata dal guard del sesso, perche'' il builder non ne ha uno da dare. Rev 20261010-40 (brief-db-character-n-spazi-di-riempimento D-6): i dati societari nascono senza canale FE (destinatario_fe NULL), non piu'' con il codice ''0000000''. Rev 20261011-02: i dati societari passano dal verbo anagrafiche.fn_scrivi_dati_societari; forma = la prima ammessa dalla natura, REA e capitale solo se la forma li prevede, niente dati societari se la natura li vieta. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
 ```
 
 ---

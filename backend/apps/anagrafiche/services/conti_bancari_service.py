@@ -26,16 +26,19 @@ from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.error_codes import (
     E_ANAG_CONTO_NOT_FOUND,
     E_ANAG_CONTO_SOGGETTO_NOT_FOUND,
+    E_ANAG_DUPLICATO,
+    E_ANAG_FK,
     E_ANAG_NOT_FOUND,
     E_ANAG_VALIDAZIONE,
 )
 from apps.anagrafiche.services._validators import (
-    create_with_dedup,
     optional_str,
     require_str,
-    update_with_dedup,
 )
-from apps.core.services.payload_helpers import PayloadValidator
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    make_db_errors_translator,
+)
 
 
 # Contratti delle PATCH dei legami, validati QUI con 400 `E_ANAG_VALIDAZIONE`
@@ -50,6 +53,136 @@ _MESSAGE_LEGAME = "Payload conto bancario non valido."
 
 # Validator stateless del dominio (solo il codice errore): condivisibile.
 _V = PayloadValidator(validation_code=E_ANAG_VALIDAZIONE)
+
+# Vincoli DB dei due legami -> codici errore (E-7 di
+# analisi-be-difetti-emersi-verifica-doc-api-core, 2026-10-07). Prima ogni
+# `IntegrityError` usciva `E_ANAG_DUPLICATO` «gia' associato», anche per un
+# `uso` fuori elenco, date invertite o una FK violata. I nomi vengono dalla doc
+# auto-gen `dbzero/anagrafiche/tabelle/soggetti{,_ruoli}_conti_bancari.md`; le
+# unicita' del legame RUOLO sono indici parziali (con e senza istanza), non
+# vincoli, e il nome che PostgreSQL riporta e' quello dell'indice.
+# Terzo elemento = il campo del payload, solo dove la violazione ne ha UNO.
+_MSG_PREDEFINITO = "Esiste gia' un conto predefinito per questo uso."
+_MSG_INCASSO = (
+    "Il conto e' gia' il conto di incasso di un altro soggetto: "
+    "un conto di incasso appartiene a un soggetto solo."
+)
+# ⭐ Gli usi ammessi del legame, UN elenco: lo leggono il guard del payload
+#    (create e PATCH) e il messaggio del CHECK `chk_*_uso`, che lo rispecchia.
+#    Prima erano tre copie nello stesso file.
+_USI_LEGAME: tuple[str, ...] = ("INCASSO", "PAGAMENTO", "RIMBORSO", "GENERICO")
+_MSG_USO = f"Uso non ammesso (consentiti: {', '.join(_USI_LEGAME)})."
+_MSG_VALIDITA = "La fine validita' non puo' precedere l'inizio."
+_MSG_CONTO_FK = "Conto bancario non trovato nel registro."
+_MSG_LEGAME_NOT_FOUND = "Associazione conto bancario non trovata."
+
+_VINCOLI_LEGAME_SOGGETTO: dict[str, dict[str, tuple]] = {
+    "unique_constraints": {
+        "uq_soggetti_conti_bancari_soggetto_id_conto_id_uso": (
+            E_ANAG_DUPLICATO,
+            "Conto bancario gia' associato a questo soggetto per lo stesso uso.",
+        ),
+        "ix_soggetti_conti_bancari_predef_per_uso": (
+            E_ANAG_DUPLICATO, _MSG_PREDEFINITO, "predefinito",
+        ),
+        "ex_scb_conto_incasso_un_solo_soggetto": (E_ANAG_DUPLICATO, _MSG_INCASSO),
+    },
+    "check_constraints": {
+        "chk_soggetti_conti_bancari_uso": (E_ANAG_VALIDAZIONE, _MSG_USO, "uso"),
+        "chk_soggetti_conti_bancari_validita": (
+            E_ANAG_VALIDAZIONE, _MSG_VALIDITA, "valido_al",
+        ),
+    },
+    "fk_constraints": {
+        "fk_soggetti_conti_bancari_conti_bancari": (E_ANAG_FK, _MSG_CONTO_FK),
+        "fk_soggetti_conti_bancari_soggetti": (E_ANAG_FK, "Soggetto non trovato."),
+    },
+}
+
+_VINCOLI_LEGAME_RUOLO: dict[str, dict[str, tuple]] = {
+    "unique_constraints": {
+        "uq_src_bancari_ruolo_conto_uso_no_istanza": (
+            E_ANAG_DUPLICATO,
+            "Conto bancario gia' associato a questo ruolo per lo stesso uso.",
+        ),
+        "uq_src_bancari_ruolo_istanza_conto_uso": (
+            E_ANAG_DUPLICATO,
+            "Conto bancario gia' associato a questa istanza per lo stesso uso.",
+        ),
+        "uq_src_bancari_predefinito_no_istanza": (
+            E_ANAG_DUPLICATO, _MSG_PREDEFINITO, "predefinito",
+        ),
+        "uq_src_bancari_predefinito_istanza": (
+            E_ANAG_DUPLICATO, _MSG_PREDEFINITO, "predefinito",
+        ),
+        "ex_src_bancari_conto_incasso_un_solo_soggetto": (E_ANAG_DUPLICATO, _MSG_INCASSO),
+    },
+    "check_constraints": {
+        "chk_soggetti_ruoli_conti_bancari_uso": (E_ANAG_VALIDAZIONE, _MSG_USO, "uso"),
+        "chk_soggetti_ruoli_conti_bancari_validita": (
+            E_ANAG_VALIDAZIONE, _MSG_VALIDITA, "valido_al",
+        ),
+    },
+    "fk_constraints": {
+        "fk_soggetti_ruoli_conti_bancari_conti_bancari": (E_ANAG_FK, _MSG_CONTO_FK),
+        "fk_soggetti_ruoli_conti_bancari_soggetti_ruoli": (
+            E_ANAG_FK, "Ruolo del soggetto non trovato.",
+        ),
+        "fk_src_bancari_istanze_utilities": (
+            E_ANAG_FK, "Istanza utility non trovata.", "istanza_utility_id",
+        ),
+    },
+}
+
+
+# Traduttori degli errori DB dei due legami (BB `make_db_errors_translator`):
+# un vincolo non mappato esce `E_ANAG_VALIDAZIONE` generico (mai «duplicato»),
+# un RAISE di trigger col suo codice; `context.op` nomina l'operazione.
+_db_errors_legame_soggetto = make_db_errors_translator(
+    fn_prefix="anagrafiche.conto_soggetto",
+    fallback_code=E_ANAG_VALIDAZIONE,
+    fallback_message="Associazione conto bancario non valida.",
+    **_VINCOLI_LEGAME_SOGGETTO,
+)
+_db_errors_legame_ruolo = make_db_errors_translator(
+    fn_prefix="anagrafiche.conto_ruolo",
+    fallback_code=E_ANAG_VALIDAZIONE,
+    fallback_message="Associazione conto bancario non valida.",
+    **_VINCOLI_LEGAME_RUOLO,
+)
+
+
+# Scopo: un PATCH senza campi e' una richiesta malformata (400), non un legame
+#        inesistente: prima il repository rispondeva False e usciva 404.
+def _richiedi_campi(payload: dict[str, Any]) -> None:
+    ErrorManager.require(
+        bool(payload), code=E_ANAG_VALIDAZIONE, message="Nessun campo da aggiornare.",
+    )
+
+
+# Scopo: l'`uso` del payload normalizzato (maiuscolo, senza spazi) e validato
+#        contro `_USI_LEGAME`; None se assente o vuoto. UNA regola per create e
+#        PATCH: prima la PATCH lo passava grezzo e «incasso», accettato in
+#        create, in update cadeva sul CHECK del DB.
+def _normalizza_uso(payload: dict[str, Any]) -> str | None:
+    uso = optional_str(payload, "uso")
+    if not uso:
+        return None
+    uso_upper = uso.upper().strip()
+    ErrorManager.require(
+        uso_upper in _USI_LEGAME,
+        code=E_ANAG_VALIDAZIONE,
+        message=f"Tipo d'uso non valido: {uso}. {_MSG_USO}",
+        context={"field": "uso"},
+    )
+    return uso_upper
+
+
+# Scopo: il payload di una PATCH di legame con l'`uso` normalizzato (copia:
+#        `payload` e' spesso `request.data`, non si muta l'input).
+def _payload_patch(payload: dict[str, Any]) -> dict[str, Any]:
+    uso = _normalizza_uso(payload)
+    return {**payload, "uso": uso} if uso is not None else payload
 
 
 class ContiBancariService:
@@ -106,14 +239,12 @@ class ContiBancariService:
         # (dedup riutilizzabile, non corruzione, ma comunque scrittura sospesa).
         with transaction.atomic():
             conto_bancario_id = self._resolve_conto_bancario(payload)
-            result = create_with_dedup(
-                lambda: self._repo.create_conto_soggetto(
+            with _db_errors_legame_soggetto("crea"):
+                result: dict[str, Any] = self._repo.create_conto_soggetto(
                     soggetto_id,
                     conto_bancario_id=conto_bancario_id,
                     **legame_payload,
-                ),
-                "Conto bancario gia' associato a questo soggetto per lo stesso uso.",
-            )
+                )
         return result
 
     # Scopo: Aggiorna legame soggetto ↔ conto con ownership check.
@@ -124,17 +255,20 @@ class ContiBancariService:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_LEGAME_SOGGETTO_KEYS, message=_MESSAGE_LEGAME,
         )
+        _richiedi_campi(payload)
+        payload = _payload_patch(payload)
         self._require_soggetto_exists(soggetto_id)
         # Guard predefinito/bloccato: legge stato corrente per merge con payload
         current = self._repo.get_legame_flags_soggetto(conto_soggetto_id)
         self._guard_predefinito_bloccato(payload, current)
-        return update_with_dedup(
-            lambda: self._repo.update_conto_soggetto(
+        with _db_errors_legame_soggetto("aggiorna"):
+            updated = self._repo.update_conto_soggetto(
                 conto_soggetto_id, soggetto_id, payload,
-            ),
-            "Conto bancario gia' associato a questo soggetto per lo stesso uso.",
-            "Associazione conto bancario non trovata.",
+            )
+        ErrorManager.require(
+            updated, code=E_ANAG_NOT_FOUND, message=_MSG_LEGAME_NOT_FOUND,
         )
+        return {"updated": True}
 
     # Scopo: Elimina legame soggetto ↔ conto con ownership check.
     def delete_conto_soggetto(
@@ -144,7 +278,7 @@ class ContiBancariService:
         deleted = self._repo.delete_conto_soggetto(conto_soggetto_id, soggetto_id)
         ErrorManager.require(
             deleted, code=E_ANAG_CONTO_SOGGETTO_NOT_FOUND,
-            message="Associazione conto bancario non trovata.",
+            message=_MSG_LEGAME_NOT_FOUND,
         )
         return {"deleted": True}
 
@@ -212,14 +346,12 @@ class ContiBancariService:
         # fuori → riga IBAN registro orfana se la create legame falliva.
         with transaction.atomic():
             conto_bancario_id = self._resolve_conto_bancario(payload)
-            result = create_with_dedup(
-                lambda: self._repo.create_conto_ruolo(
+            with _db_errors_legame_ruolo("crea"):
+                result: dict[str, Any] = self._repo.create_conto_ruolo(
                     soggetto_ruolo_id,
                     conto_bancario_id=conto_bancario_id,
                     **legame_payload,
-                ),
-                "Conto bancario gia' associato a questo ruolo per lo stesso uso.",
-            )
+                )
         return result
 
     # Scopo: Aggiorna legame ruolo ↔ conto con ownership check.
@@ -230,16 +362,19 @@ class ContiBancariService:
         _V.validate_allowed_keys(
             payload, allowed=_UPDATE_LEGAME_RUOLO_KEYS, message=_MESSAGE_LEGAME,
         )
+        _richiedi_campi(payload)
+        payload = _payload_patch(payload)
         # Guard predefinito/bloccato: legge stato corrente per merge con payload
         current = self._repo.get_legame_flags_ruolo(conto_ruolo_id)
         self._guard_predefinito_bloccato(payload, current)
-        return update_with_dedup(
-            lambda: self._repo.update_conto_ruolo(
+        with _db_errors_legame_ruolo("aggiorna"):
+            updated = self._repo.update_conto_ruolo(
                 conto_ruolo_id, soggetto_ruolo_id, payload,
-            ),
-            "Conto bancario gia' associato a questo ruolo per lo stesso uso.",
-            "Associazione conto bancario non trovata.",
+            )
+        ErrorManager.require(
+            updated, code=E_ANAG_NOT_FOUND, message=_MSG_LEGAME_NOT_FOUND,
         )
+        return {"updated": True}
 
     # Scopo: Elimina legame ruolo ↔ conto con ownership check.
     def delete_conto_ruolo(
@@ -248,7 +383,7 @@ class ContiBancariService:
         deleted = self._repo.delete_conto_ruolo(conto_ruolo_id, soggetto_ruolo_id)
         ErrorManager.require(
             deleted, code=E_ANAG_CONTO_SOGGETTO_NOT_FOUND,
-            message="Associazione conto bancario non trovata.",
+            message=_MSG_LEGAME_NOT_FOUND,
         )
         return {"deleted": True}
 
@@ -266,8 +401,7 @@ class ContiBancariService:
             # Verifica che il conto esista
             conto = self._repo.get_conto_bancario(conto_id)
             ErrorManager.require(
-                conto is not None, code=E_ANAG_CONTO_NOT_FOUND,
-                message="Conto bancario non trovato nel registro.",
+                conto is not None, code=E_ANAG_CONTO_NOT_FOUND, message=_MSG_CONTO_FK,
             )
             return conto_id
 
@@ -323,18 +457,11 @@ class ContiBancariService:
     #        optional_bool ritorna sempre bool (mai None), quindi non si puo'
     #        distinguere "non inviato" da "inviato come False" dal valore di ritorno.
     def _extract_legame_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        _USI_VALIDI = {"INCASSO", "PAGAMENTO", "RIMBORSO", "GENERICO"}
         result: dict[str, Any] = {}
 
-        uso = optional_str(payload, "uso")
-        if uso:
-            uso_upper = uso.upper().strip()
-            ErrorManager.require(
-                uso_upper in _USI_VALIDI,
-                code=E_ANAG_VALIDAZIONE,
-                message=f"Tipo d'uso non valido: {uso}. Valori ammessi: INCASSO, PAGAMENTO, RIMBORSO, GENERICO.",
-            )
-            result["uso"] = uso_upper
+        uso = _normalizza_uso(payload)
+        if uso is not None:
+            result["uso"] = uso
 
         # Booleani: includi solo se la chiave e' presente nel payload
         for bool_key in ("predefinito", "verificato", "bloccato"):

@@ -13,20 +13,22 @@
 | fattura_riga_rettificata_id | bigint | NO |  |
 | qta | numeric | NO |  |
 | qta_partita | numeric | NO |  |
-| gruppo | character varying | NO |  |
+| gruppo | character varying(128) | NO |  |
 | commessa_attivita_id | bigint | NO |  |
-| note | character varying | YES |  |
+| note | character varying(255) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_resi_righe_accrediti_qta_finito |  |
+| CHECK | chk_resi_righe_accrediti_qta_partita_finito |  |
 | CHECK | k_resi_accrediti_qta_partita_pos |  |
 | CHECK | k_resi_accrediti_qta_pos |  |
 | FOREIGN KEY | fk_resi_accrediti_commessa_attivita | commessa_attivita_id |

@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_get_ba_emittente_sr_id_installazione(p_billing_account_id)
+#   «Di quale azienda e' questo billing account per l'INSTALLAZIONE»: il
+#   collegamento specifico, se c'e'; altrimenti l'azienda predefinita.
+#   Senza il livello «chi sta agendo».
+#   Brief: brief-db-istanza-nasce-col-ba-residui (D-5, strada a, decisione
+#   di Tid del 2026-10-10)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   script.fn_get_ba_emittente_sr_id risponde a tre livelli: collegamento,
+#   poi l'azienda di CHI AGISCE (in sessione), poi la predefinita. Il secondo
+#   livello serve all'istante della creazione (fra l'INSERT del BA e il
+#   trigger z90 che lo collega). Ma i guard dello spostamento della
+#   predefinita lo usavano per chiedere «dove va un BA scollegato»: con chi
+#   agisce in sessione rispondevano «resta all'azienda di chi agisce», e
+#   lasciavano passare uno spostamento che, appena la sessione finisce, mette
+#   un'istanza o un albero su due aziende. La domanda di quei guard e' sul
+#   modello e non deve dipendere da chi preme il pulsante: questa funzione e'
+#   quella domanda.
+#   ⭐ Non e' una copia del risolutore: risponde a un'ALTRA domanda («per
+#   l'installazione», non «per chi agisce»). Condivide i livelli 1 e 3, che
+#   sono due letture di riga; il risolutore resta com'e'.
+#
+#   LANGUAGE sql, STABLE, SECURITY INVOKER. Nomi tutti qualificati: la
+#   chiamano funzioni SECURITY DEFINER con search_path stretto.
+#   emittenti_fiscali_billing_account non ha RLS.
+#   Input NULL -> NULL (come il risolutore: «nessun BA» non e' «BA non
+#   collegato»). Predefinita assente e BA scollegato -> NULL: chi confronta
+#   lo tratta come diverso (fail-closed).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-57-create-fn-get-ba-emittente-sr-id-installazione-mctit.yaml
+
+  - changeSet:
+      id: 20261010-57-create-fn-get-ba-emittente-sr-id-installazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo BB script.fn_get_ba_emittente_sr_id_installazione: l'azienda di un BA per
+        l'installazione (collegamento, altrimenti la predefinita), senza chi agisce. Brief:
+        brief-db-istanza-nasce-col-ba-residui (D-5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_ba_emittente_sr_id_installazione(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+              RETURNS anagrafiche.emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id%TYPE
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- Scopo: «di quale azienda e' questo BA per l'installazione»:
+                  --   collegamento specifico, altrimenti la predefinita. Senza
+                  --   il livello «chi agisce» di script.fn_get_ba_emittente_sr_id.
+                  -- ⚠️ Il CASE esterno: un BA NULL non e' un BA non collegato,
+                  --   e non deve ricevere la predefinita.
+                  SELECT CASE
+                           WHEN p_billing_account_id IS NULL THEN NULL
+                           ELSE COALESCE(
+                                  -- 1) Collegamento specifico (al massimo uno:
+                                  --    uq_emittenti_fiscali_ba).
+                                  (SELECT efba.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account efba
+                                    WHERE efba.billing_account_id = p_billing_account_id),
+                                  -- 2) La predefinita dell'installazione (al
+                                  --    massimo una: uq_emittenti_fiscali_ba_default).
+                                  (SELECT d.emittente_soggetto_ruolo_id
+                                     FROM anagrafiche.emittenti_fiscali_billing_account d
+                                    WHERE d.is_default)
+                                )
+                         END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_ba_emittente_sr_id_installazione(anagrafiche.billing_account.id%TYPE)
+              IS 'L''azienda emittente (soggetto_ruolo_id) di un billing account per l''INSTALLAZIONE: il collegamento specifico in emittenti_fiscali_billing_account, altrimenti la predefinita (is_default). A differenza di script.fn_get_ba_emittente_sr_id non guarda chi agisce: e'' la risposta che vale anche fuori sessione (job, altri utenti). Serve ai guard dello spostamento della predefinita (fn_guard_istanza_ba_gestore_globale, fn_guard_albero_ba_gestore_globale), che con il risolutore di sessione lasciavano passare una coppia mista se a spostarla era un utente con un''azienda. Input NULL -> NULL; BA scollegato senza predefinita -> NULL (chi confronta lo tratta come diverso). Brief: brief-db-istanza-nasce-col-ba-residui (D-5).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_ba_emittente_sr_id_installazione(bigint);

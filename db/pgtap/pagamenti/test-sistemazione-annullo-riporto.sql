@@ -123,7 +123,7 @@ SELECT fattura_id AS id FROM tmp_dest_bb;
 --   di cento, e le sistemazioni hanno di che confermarsi.
 INSERT INTO pagamenti.vendite_movimenti
     (fattura_id, billing_account_id, data_effettiva, data_registrazione, importo, meta)
-SELECT (SELECT id FROM tmp_origine), r.billing_account_id, current_date, current_date, 200.00,
+SELECT (SELECT id FROM tmp_origine), r.billing_account_id, script.fn_data_operativa(), script.fn_data_operativa(), 200.00,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_refs r;
 

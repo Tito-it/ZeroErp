@@ -43,8 +43,11 @@ SELECT
     ba.categoria_cliente_id     AS categoria_id,
     ba.istanza_utility_id       AS istanza_utility_id,
     ba.utility_id               AS utility_id,
-    (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-       WHERE attivo IS TRUE ORDER BY id LIMIT 1) AS emittente_srid,
+    -- 2026-10-08 (§F.2): l'emittente e' quello del BA, non il primo per id: il
+    --   listino del contratto dev'essere del suo emittente (guard nuovo), e la riga
+    --   della matrice categorie_clienti_listini con lui.
+    (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+      WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)) AS emittente_srid,
     a.id                        AS articolo_id,
     a.uom_id                    AS uom_id,
     a.listino_tipologia_id      AS tipologia_id
@@ -52,6 +55,13 @@ SELECT
   JOIN catalogo.articoli a
     ON a.attivo IS TRUE
    AND a.listino_tipologia_id IS NOT NULL
+   -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la riga di
+   --   contratto del test 3 vuole la tipologia dell'articolo fra quelle della utility del
+   --   cliente (guard del perimetro).
+   AND EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                WHERE ltu.utility_id = ba.utility_id
+                  AND ltu.tipologia_id = a.listino_tipologia_id
+                  AND ltu.attivo)
  WHERE ba.categoria_cliente_id IS NOT NULL
    AND NOT EXISTS (
        SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
@@ -70,8 +80,8 @@ SELECT
        SELECT 1
          FROM config.utilities_tipi_ruolo utr
          JOIN anagrafiche.soggetti_ruoli sr
-           ON sr.id = (SELECT soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali
-                        WHERE attivo IS TRUE ORDER BY id LIMIT 1)
+           ON sr.id = (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+                        WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id))
         WHERE utr.utility_id = ba.utility_id
           AND utr.tipo_ruolo_id = sr.tipo_ruolo_id
           AND utr.attivo IS TRUE
@@ -88,19 +98,34 @@ SELECT
        SELECT 1 FROM vendite.contratti c
         WHERE c.istanza_utility_id = ba.istanza_utility_id
    )
+   -- 2026-10-08 (§F.2): e un listino della tipologia dell'articolo, della utility e
+   --   dell'emittente del BA (quello che tmp_ctx_listino sceglie qui sotto).
+   AND EXISTS (
+       SELECT 1 FROM vendite.listini l
+         JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+        WHERE l.attivo IS TRUE
+          AND l.tipologia_id = a.listino_tipologia_id
+          AND l.utility_id   = ba.utility_id
+          AND ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+   )
  ORDER BY ba.id, a.id
  LIMIT 1;
 
--- Listino di test: richiede solo tipologia coerente con l'articolo (il guard
+-- Listino di test: tipologia coerente con l'articolo (il guard
 -- trgfn_listini_righe_guard_tipologia verifica articolo.listino_tipologia_id =
--- listino.tipologia_id, non l'utility). L'utility del listino puo' essere
--- qualsiasi: nella matrice categorie_clienti_listini il listino e' un
--- "ponte" selezionato per (categoria, utility-del-BA, emittente, classe).
+-- listino.tipologia_id).
+-- ⚠️ 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: qui c'era scritto
+--   «l'utility del listino puo' essere qualsiasi». Non e' piu' vero: il listino di
+--   un contratto e' della sua utility e del suo emittente (guard nuovo). Articolo e
+--   tipologia vengono dai dati e sono il soggetto del test, quindi si FILTRA invece
+--   di ricostruire: stessa utility ed emittente del BA.
 CREATE TEMP TABLE tmp_ctx_listino AS
 SELECT l.id AS listino_id
   FROM vendite.listini l, tmp_ctx t
  WHERE l.tipologia_id = t.tipologia_id
    AND l.attivo       = TRUE
+   AND l.utility_id   = t.utility_id
+   AND l.emittente_soggetto_ruolo_id = t.emittente_srid
  ORDER BY l.id
  LIMIT 1;
 
@@ -117,13 +142,13 @@ SELECT isnt(
 -- Riduce a 1 test + 5 da qui; aggiorno plan a posteriori nei commenti se mancano setup.
 -- Creo la versione attiva del listino (se non c'e' gia' una che copre oggi).
 INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_V5_VER', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE
+SELECT l.listino_id, 'PGTAP_V5_VER', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
   FROM tmp_ctx_listino l
 WHERE NOT EXISTS (
     SELECT 1 FROM vendite.listini_versioni lv
      WHERE lv.listino_id = l.listino_id
        AND lv.attivo = TRUE
-       AND lv.validita @> CURRENT_DATE
+       AND lv.validita @> script.fn_data_operativa()
 )
 ON CONFLICT DO NOTHING;
 
@@ -132,7 +157,7 @@ SELECT lv.id AS versione_id, lv.listino_id
   FROM vendite.listini_versioni lv, tmp_ctx_listino l
  WHERE lv.listino_id = l.listino_id
    AND lv.attivo IS TRUE
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
  ORDER BY lv.id DESC
  LIMIT 1;
 
@@ -152,7 +177,7 @@ SELECT t.categoria_id, t.utility_id, t.emittente_srid,
        (SELECT id FROM config.classi_utenze ORDER BY id LIMIT 1),
        v.listino_id,
        'PERCENTUALE', -10,
-       CURRENT_DATE, CURRENT_DATE + 365
+       script.fn_data_operativa(), script.fn_data_operativa() + 365
   FROM tmp_ctx t, tmp_ctx_versione v;
 
 -- Seconda riga matrice: fallback classe NULL + variazione VALORE_FISSO -5
@@ -165,7 +190,7 @@ SELECT t.categoria_id, t.utility_id, t.emittente_srid,
        NULL,
        v.listino_id,
        'VALORE_FISSO', -5,
-       CURRENT_DATE, CURRENT_DATE + 365
+       script.fn_data_operativa(), script.fn_data_operativa() + 365
   FROM tmp_ctx t, tmp_ctx_versione v;
 
 -- 1) STADIO 2 CATEGORIA: match con classe specifica -> prezzo = 100 * (1 + (-10)/100) = 90
@@ -173,7 +198,7 @@ SELECT is(
     (SELECT prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -189,7 +214,7 @@ SELECT is(
     (SELECT prezzo_finale FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -217,13 +242,22 @@ INSERT INTO vendite.contratti(
     valido_dal, valido_al, listino_id, tipo_variazione_globale, valore_variazione_globale)
 SELECT 'PGTAP_V5_CONTR', t.ba_id, t.istanza_utility_id, t.utility_id,
        (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
-       CURRENT_DATE, CURRENT_DATE, v.listino_id, NULL, NULL
+       script.fn_data_operativa(), script.fn_data_operativa(), v.listino_id, NULL, NULL
   FROM tmp_ctx t, tmp_ctx_versione v;
 
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, prezzo_unitario,
-                                    tipo_eccezione, attivo, qta_operativa)
+                                    tipo_eccezione, attivo, qta_operativa, tipo_erogazione)
 SELECT c.id, t.articolo_id, 42,
-       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE, 1
+       -- rev 2026-10-07 (giro B3): erogazione VUOTA, la riga la eredita dalla tipologia
+       --   dell'articolo (era CANONE scritto a mano).
+       -- rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): la quantita' solo se la fonte
+       --   ereditata la porta (FISSA); con una fonte a valle (es. le LETTURE di un
+       --   articolo CONSUMO) resta vuota. L'articolo viene dai dati: si chiede alla sede unica.
+       'OVERRIDE'::vendite.tipo_eccezione_contratto, TRUE,
+       (SELECT 1 FROM vendite.fn_articolo_erogazioni(t.articolo_id) e
+         WHERE e.e_default AND e.fonte_quantita_attesa = 'FISSA'),
+       NULL
   FROM vendite.contratti c, tmp_ctx t
  WHERE c.numero = 'PGTAP_V5_CONTR';
 
@@ -236,7 +270,7 @@ SELECT is(
     (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -264,7 +298,7 @@ INSERT INTO vendite.promo_articoli(codice, descrizione, articolo_id, uom_id,
     tipo_variazione, valore_variazione, valido_dal, valido_al)
 SELECT 'PGTAP_V5_PROMO', 'Promo test', t.articolo_id, t.uom_id,
        'PREZZO_FISSO', 12.5,
-       CURRENT_DATE + 1, CURRENT_DATE + 365
+       script.fn_data_operativa() + 1, script.fn_data_operativa() + 365
   FROM tmp_ctx t;
 
 -- 🔴 IL CONTRATTO NON SI CANCELLA PIU': SCADE. Corretto il 2026-08-18.
@@ -273,7 +307,7 @@ SELECT 'PGTAP_V5_PROMO', 'Promo test', t.articolo_id, t.uom_id,
 --   anche il DELETE su un contratto ATTIVO, ed e' giusto — un contratto attivo
 --   non si smonta, si chiude.
 --   ⚠️ Cosi' il fixture dice anche una cosa piu' vera: il contratto vale FINO A
---   OGGI (`valido_al = CURRENT_DATE`), e le asserzioni che seguono chiedono il
+--   OGGI (`valido_al = script.fn_data_operativa()`), e le asserzioni che seguono chiedono il
 --   prezzo per DOMANI, quando non applica piu'. E' la stessa data in cui vive la
 --   promo. Nessuna cancellazione, nessuno stato forzato: due documenti con
 --   validita' diverse e una domanda posta nel giorno giusto.
@@ -282,7 +316,7 @@ SELECT is(
     (SELECT origine FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE + 1,   -- il giorno in cui la promo e' viva (vedi sopra)
+        script.fn_data_operativa() + 1,   -- il giorno in cui la promo e' viva (vedi sopra)
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -305,7 +339,7 @@ SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE + 1,   -- il contratto e' scaduto ieri: qui non applica
+        script.fn_data_operativa() + 1,   -- il contratto e' scaduto ieri: qui non applica
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -321,7 +355,7 @@ SELECT throws_ok(
     $$SELECT * FROM vendite.fn_resolve_prezzo_listino_v2(
         (SELECT articolo_id FROM tmp_ctx),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         999999999,
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),

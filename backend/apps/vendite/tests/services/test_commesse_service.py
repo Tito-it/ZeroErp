@@ -42,6 +42,8 @@ Indice test eseguiti:
 17) CommesseServiceTests.test_riallinea_prezzo_ok
 18) CommesseServiceTests.test_riallinea_prezzo_bloccato
 19) CommesseServiceTests.test_riallinea_prezzo_versione_cambiata_senza_conferma
+19a) CommesseServiceTests.test_riallinea_chiede_contesto_kit_e_ripiego_data
+19b) CommesseServiceTests.test_sblocca_senza_dati_per_il_listino_rifiutato
 19-bis) CommesseServiceTests.test_prezzi_attivita_fuori_scope_o_inesistente_404 (P-6 RLS)
 
 Azioni di stato commessa (#7 — fn_available_actions_commessa + cambia stato):
@@ -60,7 +62,7 @@ CommesseApprovazioneServiceTests (A-1/A-2 cockpit):
 
 CommessaPortaOneriServiceTests (porta oneri §A1):
 - test_aggiungi_onere_ok_deriva_istanza_da_ba / _istanza_esplicita_coincidente_ok
-- test_aggiungi_onere_istanza_esplicita_incoerente_raises
+- test_aggiungi_onere_istanza_esplicita_incoerente_raises / _commessa_senza_ba_raises
 - test_aggiungi_onere_payload_invalido / _commessa_not_found
 - test_aggiungi_onere_traduce_errori_madre / _errore_db_sconosciuto_fallback
 
@@ -86,11 +88,13 @@ CommessaTestataLeggibileTests (Blocco C di brief-db-modifiche-certe-ciclo-vendit
 """
 
 from decimal import Decimal
+from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from django.db import DatabaseError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.commesse_push_orchestrator import PushReport
 from apps.vendite.services.commesse_source_handlers import HandlerResult
@@ -157,8 +161,8 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pr_run_commesse_push(source_types=["SORGENTE_INESISTENTE"])
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail)
-        self.assertIn("PREVENTIVO", ctx.exception.detail)
+        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail or "")
+        self.assertIn("PREVENTIVO", ctx.exception.detail or "")
 
     # Scopo: _build_handlers costruisce solo handler per sorgenti attive in DB.
     def test_build_handlers_only_active_sources(self):
@@ -458,7 +462,7 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pr_run_commesse_push_one(sorgente_codice="SORGENTE_INESISTENTE", sorgente_uid=1)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
-        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail)
+        self.assertIn("SORGENTE_INESISTENTE", ctx.exception.detail or "")
 
     # Scopo: sorgente_uid non valido (None/0/negativo) → ServiceError validazione.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
@@ -509,7 +513,7 @@ class CommesseServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             pr_run_commesse_push_one(sorgente_codice="PREVENTIVO", sorgente_uid=7)
         self.assertEqual(ctx.exception.code, "E_COMMESSA_PUSH_PARZIALE_VIETATO")
-        self.assertIn("segment_key=PREV:abc:R:4", ctx.exception.detail)
+        self.assertIn("segment_key=PREV:abc:R:4", ctx.exception.detail or "")
 
     # Scopo: all-or-nothing su ERRORE — stesso pattern del PARZIALE
     # (ogni handler con errors → rollback totale + raise).
@@ -849,7 +853,7 @@ class CommesseServiceTests(TestCase):
             stato_emissione=None,
             stato_approvazione=None,
             competenza_mese=None,
-            limit=50,
+            limit=DEFAULT_LIMIT,
             offset=0,
             order_by="data_attivita",
             order_dir="desc",
@@ -964,6 +968,7 @@ class CommesseServiceTests(TestCase):
         "articolo_id": "019bbee2-5f6a-704f-bbd0-34ed84db252d",
         "uom_id": 1,
         "data_attivita": "2026-04-01",
+        "competenza_mese": "2026-04-01",
         "meta": None,
         # Le tre colonne aggiunte alla proiezione per i guard dell'annullamento
         # riga manuale (G3): la fixture deve rispettare la forma REALE del
@@ -977,7 +982,34 @@ class CommesseServiceTests(TestCase):
         "af_prezzo_unitario": "45.0000000000",
         "af_prezzo_bloccato": False,
         "fattura_riga_id": None,
+        # Dalla commessa: cio' che il listino chiede oltre alla riga.
+        "billing_account_id": 7,
+        "utility_id": 3,
+        "emittente_soggetto_ruolo_id": 11,
     }
+
+    # Scopo: la riga che `fn_resolve_prezzo_listino_v2` restituisce, con la
+    #        forma VERA del contratto (`prezzo_finale`, non `prezzo`: e' la
+    #        chiave sbagliata che teneva in piedi il 500 del 2026-04-15).
+    @staticmethod
+    def _risoluzione(prezzo: str, versione: int, **altro) -> dict:
+        return {
+            "prezzo_finale": prezzo,
+            "prezzo_base_snapshot": "50.0000000000",
+            "tipo_variazione_applicata": "PERCENTUALE",
+            "valore_variazione_applicata": "-8.0000",
+            "origine": "CATEGORIA",
+            "listino_id": 9,
+            "listino_versione_id": versione,
+            "listino_riga_id": 301,
+            "contratto_id": None,
+            "promo_id": None,
+            "categoria_cliente_listino_id": 4,
+            "categoria_cliente_id_snapshot": 2,
+            "classe_utenza_id_snapshot": None,
+            "tipo_eccezione": None,
+            **altro,
+        }
 
     # Scopo: N7 - variazione eccezionale su commessa modificabile OK.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
@@ -995,6 +1027,13 @@ class CommesseServiceTests(TestCase):
         repo.update_attivita_prezzo.assert_called_once()
         call_kwargs = repo.update_attivita_prezzo.call_args.kwargs
         self.assertTrue(call_kwargs["prezzo_bloccato"])
+        # Un prezzo scritto a mano dice di esserlo, e non porta la
+        # provenienza del listino (decisione di Tid 2026-10-08).
+        provenienza = call_kwargs["provenienza"]
+        self.assertEqual(provenienza["origine_prezzo"], "MANUALE")
+        self.assertIsNone(provenienza["listino_versione_id"])
+        self.assertIsNone(provenienza["listino_riga_id"])
+        self.assertIsNone(provenienza["prezzo_base_snapshot"])
 
     # Scopo: N7 - commessa in stato non modificabile rifiutata (flag data-driven
     #        stati_commessa.modificabile=false, es. CHIUSA/ANNULLATA).
@@ -1075,25 +1114,27 @@ class CommesseServiceTests(TestCase):
 
     # Scopo: N7 sblocco - sblocco prezzo bloccato OK.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
-    @patch("apps.vendite.services.commesse_service.ListiniRepository")
+    @patch("apps.vendite.services.commesse_service.PricingService")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
-    def test_sblocca_prezzo_ok(self, mock_comm_repo, mock_list_repo, mock_atomic):
+    def test_sblocca_prezzo_ok(self, mock_comm_repo, mock_pricing, mock_atomic):
         from apps.vendite.services.commesse_service import fn_sblocca_prezzo
 
         repo = mock_comm_repo.return_value
         att = dict(self._ATT_BASE)
         att["prezzo_bloccato"] = True
         repo.get_attivita_pricing.return_value = att
-
-        mock_list_repo.return_value.test_resolver.return_value = {
-            "prezzo": "45.0000000000",
-            "listino_versione_id": 101,
-        }
+        mock_pricing.return_value.resolve_prezzo.return_value = self._risoluzione(
+            "45.0000000000", 101,
+        )
 
         result = fn_sblocca_prezzo(10, 501, {"motivo": "errore variazione precedente"})
 
         self.assertFalse(result["prezzo_bloccato"])
         self.assertEqual(result["prezzo_ricalcolato"], "45.0000000000")
+        # Lo snapshot si riscrive intero: il prezzo E la sua provenienza.
+        provenienza = repo.update_attivita_prezzo.call_args.kwargs["provenienza"]
+        self.assertEqual(provenienza["origine_prezzo"], "CATEGORIA")
+        self.assertEqual(provenienza["listino_versione_id"], 101)
 
     # Scopo: N7 sblocco - prezzo non bloccato rifiutato.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
@@ -1111,23 +1152,31 @@ class CommesseServiceTests(TestCase):
 
     # Scopo: N5 - riallineamento OK su prezzo non bloccato.
     @patch("apps.vendite.services.commesse_service.transaction.atomic")
-    @patch("apps.vendite.services.commesse_service.ListiniRepository")
+    @patch("apps.vendite.services.commesse_service.PricingService")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
-    def test_riallinea_prezzo_ok(self, mock_comm_repo, mock_list_repo, mock_atomic):
+    def test_riallinea_prezzo_ok(self, mock_comm_repo, mock_pricing, mock_atomic):
         from apps.vendite.services.commesse_service import fn_riallinea_prezzo
 
         repo = mock_comm_repo.return_value
         repo.get_attivita_pricing.return_value = dict(self._ATT_BASE)
-
-        mock_list_repo.return_value.test_resolver.return_value = {
-            "prezzo": "46.0000000000",
-            "listino_versione_id": 101,
-        }
+        mock_pricing.return_value.resolve_prezzo.return_value = self._risoluzione(
+            "46.0000000000", 101,
+        )
 
         result = fn_riallinea_prezzo(10, 501, {})
 
         self.assertEqual(result["prezzo_nuovo"], "46.0000000000")
         self.assertFalse(result["versione_cambiata"])
+        provenienza = repo.update_attivita_prezzo.call_args.kwargs["provenienza"]
+        self.assertEqual(provenienza["prezzo_base_snapshot"], "50.0000000000")
+        self.assertEqual(provenienza["listino_versione_id"], 101)
+        self.assertEqual(provenienza["listino_riga_id"], 301)
+        # Il diario porta anche la riga di listino (D-1 del brief-db-riga-
+        # listino-propagata-dalla-commessa): quella vecchia torna modificabile.
+        voce = repo.update_attivita_prezzo.call_args.kwargs["meta"]["riallineamenti"][-1]
+        self.assertEqual(
+            (voce["listino_riga_id_precedente"], voce["listino_riga_id_nuovo"]), (301, 301),
+        )
 
     # Scopo: N5 - riallineamento su prezzo bloccato rifiutato.
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
@@ -1144,18 +1193,16 @@ class CommesseServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
 
     # Scopo: N5 - versione cambiata senza conferma restituisce warning.
-    @patch("apps.vendite.services.commesse_service.ListiniRepository")
+    @patch("apps.vendite.services.commesse_service.PricingService")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
-    def test_riallinea_prezzo_versione_cambiata_senza_conferma(self, mock_comm_repo, mock_list_repo):
+    def test_riallinea_prezzo_versione_cambiata_senza_conferma(self, mock_comm_repo, mock_pricing):
         from apps.vendite.services.commesse_service import fn_riallinea_prezzo
 
         repo = mock_comm_repo.return_value
         repo.get_attivita_pricing.return_value = dict(self._ATT_BASE)  # listino_versione_id=101
-
-        mock_list_repo.return_value.test_resolver.return_value = {
-            "prezzo": "48.0000000000",
-            "listino_versione_id": 202,  # diversa!
-        }
+        mock_pricing.return_value.resolve_prezzo.return_value = self._risoluzione(
+            "48.0000000000", 202,  # versione diversa!
+        )
 
         result = fn_riallinea_prezzo(10, 501, {})
 
@@ -1163,6 +1210,57 @@ class CommesseServiceTests(TestCase):
         self.assertTrue(result["richiede_conferma"])
         self.assertEqual(result["versione_originale_id"], 101)
         self.assertEqual(result["versione_attuale_id"], 202)
+        repo.update_attivita_prezzo.assert_not_called()
+
+    # Scopo: L0 piano-be-type-checker §4 — al resolver si chiede cio' che
+    #        chiede il push (BB `prezzo_riga_commessa`): il contesto del kit dal
+    #        `meta` e, senza `data_attivita`, la competenza.
+    @patch("apps.vendite.services.commesse_service.transaction.atomic")
+    @patch("apps.vendite.services.commesse_service.PricingService")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_riallinea_chiede_contesto_kit_e_ripiego_data(
+        self, mock_comm_repo, mock_pricing, mock_atomic,
+    ):
+        from apps.vendite.services.commesse_service import fn_riallinea_prezzo
+
+        repo = mock_comm_repo.return_value
+        att = dict(self._ATT_BASE)
+        att["data_attivita"] = None
+        att["meta"] = {"componente_di": "019bbee2-0000-7000-8000-00000000aaaa"}
+        repo.get_attivita_pricing.return_value = att
+        mock_pricing.return_value.resolve_prezzo.return_value = self._risoluzione(
+            "46.0000000000", 101,
+        )
+
+        fn_riallinea_prezzo(10, 501, {})
+
+        chiesto = mock_pricing.return_value.resolve_prezzo.call_args.kwargs
+        self.assertEqual(
+            chiesto["articolo_padre_contesto"], "019bbee2-0000-7000-8000-00000000aaaa",
+        )
+        self.assertEqual(chiesto["data_riferimento"], "2026-04-01")
+        self.assertEqual(
+            (chiesto["ba_id"], chiesto["utility_id"], chiesto["emittente_soggetto_ruolo_id"]),
+            (7, 3, 11),
+        )
+
+    # Scopo: L0 — una commessa senza utility non sa chiedere il prezzo al
+    #        listino: errore che lo dice, nessuna chiamata, nessun UPDATE.
+    @patch("apps.vendite.services.commesse_service.PricingService")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_sblocca_senza_dati_per_il_listino_rifiutato(self, mock_comm_repo, mock_pricing):
+        from apps.vendite.services.commesse_service import fn_sblocca_prezzo
+
+        repo = mock_comm_repo.return_value
+        att = dict(self._ATT_BASE)
+        att["prezzo_bloccato"] = True
+        att["utility_id"] = None
+        repo.get_attivita_pricing.return_value = att
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_sblocca_prezzo(10, 501, {"motivo": "x"})
+        self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        mock_pricing.return_value.resolve_prezzo.assert_not_called()
         repo.update_attivita_prezzo.assert_not_called()
 
     # Scopo: RLS scope emittente (P-6) — attivita fuori scope: get_attivita_pricing
@@ -1236,7 +1334,9 @@ class CommesseApprovazioneServiceTests(TestCase):
     def test_approva_commessa_attivita_righe_ids_invalido(self, mock_repo_cls):
         from apps.vendite.services.commesse_service import approva_commessa_attivita
 
-        for bad in ([], [0], [-1], ["x"], [True], "10", 10):
+        # Eterogenea di proposito: ogni caso e' un tipo che la firma non ammette.
+        casi_invalidi: tuple[Any, ...] = ([], [0], [-1], ["x"], [True], "10", 10)
+        for bad in casi_invalidi:
             with self.subTest(righe_ids=bad):
                 with self.assertRaises(ServiceError) as ctx:
                     approva_commessa_attivita(commessa_id=42, righe_ids=bad)
@@ -1416,7 +1516,7 @@ class CommessaPortaOneriServiceTests(TestCase):
 
     # Scopo: happy path — parametri inoltrati alla madre DB, istanza derivata
     #        dal billing account della commessa (campo assente nel payload).
-    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_aggiungi_onere_ok_deriva_istanza_da_ba(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
@@ -1445,9 +1545,9 @@ class CommessaPortaOneriServiceTests(TestCase):
         self.assertIsNone(kwargs["data_attivita"])
 
     # Scopo: istanza esplicita nel payload → ammessa SOLO se coincide con
-    #        quella derivata dal BA della commessa (modello 1:1 BA↔istanza,
+    #        quella derivata dal BA della commessa (un BA ha una sola istanza,
     #        guida gestione-delle-istanze-utility; review 2026-07-23, ok Tid).
-    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_aggiungi_onere_istanza_esplicita_coincidente_ok(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
@@ -1469,7 +1569,7 @@ class CommessaPortaOneriServiceTests(TestCase):
     #        rifiuto parlante, la madre DB non viene nemmeno chiamata (senza
     #        il guard si aggancerebbe l'onere all'istanza di un altro cliente:
     #        la FK verifica solo l'esistenza).
-    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_aggiungi_onere_istanza_esplicita_incoerente_raises(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
@@ -1487,6 +1587,33 @@ class CommessaPortaOneriServiceTests(TestCase):
             )
 
         self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+        # Il BA e' della commessa: l'operatore corregge l'istanza (BB
+        # `istanza_del_billing_account` con `campo="istanza_utility_id"`).
+        self.assertEqual(ctx.exception.context.get("field"), "istanza_utility_id")
+        repo.aggiungi_onere.assert_not_called()
+
+    # Scopo: commessa senza billing account (FK nullable, ON DELETE SET NULL):
+    #        l'onere non ha un'istanza a cui agganciarsi, ne' derivata ne'
+    #        verificabile → rifiuto parlante, col BA non si interroga niente.
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch("apps.vendite.services.commesse_service.CommesseRepository")
+    def test_aggiungi_onere_commessa_senza_ba_raises(self, mock_repo_cls, mock_ba_cls):
+        from apps.vendite.services.commesse_service import aggiungi_onere_commessa
+
+        repo = self._repo_ok(mock_repo_cls, billing_account_id=None)
+        for istanza in (None, 999):
+            with self.subTest(istanza_utility_id=istanza):
+                with self.assertRaises(ServiceError) as ctx:
+                    aggiungi_onere_commessa(
+                        commessa_id=42,
+                        articolo_onere_id="3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011",
+                        importo="10",
+                        tipo_doc_fiscale_id=7,
+                        istanza_utility_id=istanza,
+                    )
+                self.assertEqual(ctx.exception.code, "E_COMMESSA_VALIDATION")
+                self.assertEqual(ctx.exception.context.get("field"), "istanza_utility_id")
+        mock_ba_cls.return_value.get_istanza_utility_id.assert_not_called()
         repo.aggiungi_onere.assert_not_called()
 
     # Scopo: payload non valido → 400 parlante prima del round-trip DB.
@@ -1496,7 +1623,7 @@ class CommessaPortaOneriServiceTests(TestCase):
 
         repo = self._repo_ok(mock_repo_cls)
         uuid_ok = "3f1c9a52-0d5e-4c7b-9a10-2b6d8e4f0011"
-        casi = [
+        casi: list[tuple[dict[str, Any], str]] = [
             # (kwargs sovrascritti, motivo del rifiuto)
             ({"articolo_onere_id": "non-un-uuid"}, "articolo non UUID"),
             ({"articolo_onere_id": None}, "articolo assente"),
@@ -1510,7 +1637,7 @@ class CommessaPortaOneriServiceTests(TestCase):
             ({"commessa_id": 0}, "commessa non valida"),
         ]
         for override, descrizione in casi:
-            kwargs = {
+            kwargs: dict[str, Any] = {
                 "commessa_id": 42,
                 "articolo_onere_id": uuid_ok,
                 "importo": "10",
@@ -1543,7 +1670,7 @@ class CommessaPortaOneriServiceTests(TestCase):
 
     # Scopo: i guard della madre DB arrivano all'operatore col LORO codice
     #        (non E_DATABASE): e' un errore d'uso, non un guasto.
-    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_aggiungi_onere_traduce_errori_madre(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa
@@ -1576,7 +1703,7 @@ class CommessaPortaOneriServiceTests(TestCase):
 
     # Scopo: errore DB non riconosciuto → fallback di validazione, mai un 500
     #        muto sull'operatore.
-    @patch("apps.anagrafiche.db.billing_account_repository.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch("apps.vendite.services.commesse_service.CommesseRepository")
     def test_aggiungi_onere_errore_db_sconosciuto_fallback(self, mock_repo_cls, mock_ba_cls):
         from apps.vendite.services.commesse_service import aggiungi_onere_commessa

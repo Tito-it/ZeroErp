@@ -99,7 +99,7 @@ ed è collaudata»*. È anche il primo lotto che tocca **un altro dominio**
 deve poter sbagliare da solo»*. Adesso il registro è provato.
 
 ⚠️ **E tocca un dominio in esercizio.** Per la D-1 del
-[brief sul permesso nel verbo](brief-db-permesso-nel-verbo-di-scrittura.md), un
+[brief sul permesso nel verbo](../work-done/brief-db-permesso-nel-verbo-di-scrittura.md), un
 dominio esistente passa al modello *«una scrittura = un verbo»* quando un
 cantiere tocca le sue scritture. Questo lo fa: il cambio di stato della bolla
 diventa un verbo DB (D-L3-e).
@@ -575,7 +575,7 @@ molti più pgTAP: il censimento dei test sui DDT va fatto prima di scrivere.
   (§8-quater), [Lotto 1](../work-done/brief-db-magazzino-lotto-1-terreno-vuoto.md),
   [Lotto 2](../work-done/brief-db-magazzino-lotto-2-motore.md) (§3 D-L2-g,
   D-L2-h; §9), [verbi con permesso](../work-done/brief-db-magazzino-verbi-con-permesso.md),
-  [permesso nel verbo](brief-db-permesso-nel-verbo-di-scrittura.md) (D-1 → D-5).
+  [permesso nel verbo](../work-done/brief-db-permesso-nel-verbo-di-scrittura.md) (D-1 → D-5).
 - Le forme da copiare: il verbo → `magazzino.fn_posta_inventario` (DEFINER,
   `fn_guard_azione`, GUC `POSTED`, perimetro nella `WHERE`); la conferma che
   parla → `script.fn_check_ddt_emittibile` + `fn_raise_primo_motivo_se_presente`;
@@ -597,7 +597,7 @@ molti più pgTAP: il censimento dei test sui DDT va fatto prima di scrivere.
 | 2026-09-28 (notte) | 🔴 **Primo apply di Tid fermo in `80_data`** su `20260709-11` (mirror delle causali di trasporto): la cella vuota di `causale_magazzino` e' entrata come stringa `''`, non come `NULL` — il mirror aveva `nullValue: ""`, che su una colonna `STRING` non vale — e la FK verso `magazzino.causali` l'ha rifiutata. ⚠️ La prova pre-apply (§4-ter) **non poteva vederlo**: simulava il seed leggendo il CSV in Python, dove la cella vuota diventava `NULL`; il loader vero non lo fa. E' la trappola di linee-guida-sql §11.7. **Corretto**: token `NULL` nelle quattro celle e `nullValue: "NULL"` nel mirror, come `sorgenti.csv`. Applicati a quel punto `20260928-60 → -82`; restano il mirror e `90_end/20260928-83`, al prossimo migrate |
 | 2026-09-28 (notte) | 🔴 **Runner di Tid:** `vendite/test-ddt-righe-componenti-v1` test 12, trigger su `ddt_righe_componenti` 14 invece di 13. E' il `block_deact` che `ci_apply` genera per `vendite.ddt_righe_prelievi`, figlia via `ddt_riga_componente_id`: voluto (un componente con prelievi non si spegne). Aggiornato il numero esatto, con la ragione accanto. Censiti gli altri pgTAP che guardano i trigger delle tabelle padre dei prelievi e dei magazzini: nessun altro li **conta** — cercano per funzione o per nome |
 | 2026-09-28 (notte) | ✅ **Applicato e verde** (Tid): `20260928-60 → -83` `EXECUTED`, mirror `20260709-11` `RERAN` col token `NULL`, suite pgTAP verde col runner come app. Verificati sul catalogo la mappatura delle causali di trasporto (`NULL` veri su conto visione, reso, riparazione e conto lavoro) e la postura (niente `INSERT` su `movimenti_attesi`, niente `EXECUTE` su `fn_posta_ddt`). Il lato DB del Lotto 3 e' consegnato; restano le richieste a BE/FE (§6) e la CI da zero |
-| 2026-10-01 | 🧭 **Il registro di magazzino è un servizio dell'anello 2** (Tid): la dipendenza `vendite` → `magazzino` è verso l'interno; il verso inverso — `magazzino.fn_posta_ddt` nello schema `magazzino`, che legge le tabelle di `vendite` — si sposta in `vendite`. [brief-db-magazzino-registro-anello-interno](brief-db-magazzino-registro-anello-interno.md) — scritto lo stesso giorno: `vendite.fn_posta_ddt` (`20261001-18`), la `magazzino.fn_posta_ddt` ritirata in `90_end/20261001-24`, ⏳ da applicare |
+| 2026-10-01 | 🧭 **Il registro di magazzino è un servizio dell'anello 2** (Tid): la dipendenza `vendite` → `magazzino` è verso l'interno; il verso inverso — `magazzino.fn_posta_ddt` nello schema `magazzino`, che legge le tabelle di `vendite` — si sposta in `vendite`. [brief-db-magazzino-registro-anello-interno](../work-done/brief-db-magazzino-registro-anello-interno.md) — scritto lo stesso giorno: `vendite.fn_posta_ddt` (`20261001-18`), la `magazzino.fn_posta_ddt` ritirata in `90_end/20261001-24`, ⏳ da applicare |
 | 2026-09-29 | 📝 **Debito documentale chiuso** col giro del 3-bis: `magazzino/manual/movimenti_attesi` (i verbi del blocco, l'app in sola lettura) e `magazzino/manual/magazzini` (il predefinito unico per emittente e il default della bolla) |
 | 2026-09-29 | 🔴 **Due registri non censiti dal Lotto 3**, visti dal runner di Tid durante il 3-bis: `vendite.ddt_righe_prelievi` non era in `dbops.storico_scope_policy` (riga 123 aggiunta al CSV), e le esenzioni `movimenti_attesi.stato = CHIUSA` e `trasferimenti.stato_trasferimento = POSTED` di `dbops.stati_check_dichiarazioni` erano diventate debiti estinti (`fn_libera_blocco`, `fn_posta_trasferimento`): tolte dal CSV e da `80_data/changelog/20260929-03`. Dettaglio nel [brief del 3-bis](brief-db-magazzino-lotto-3-bis-carico-da-reso.md) |
 

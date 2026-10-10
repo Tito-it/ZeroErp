@@ -12,7 +12,7 @@
 --   5)  FK fk_prevrighe_comp_articolo_componente esiste
 --   6)  FK fk_prevrighe_comp_componente esiste
 --   7)  UNIQUE uq_prevrighe_comp_riga_art_comp esiste
---   8)  CHECK chk_prevrighe_comp_quantita_pos esiste
+--   8)  CHECK chk_prevrighe_comp_quantita_nz esiste (rinominato da _pos il 2026-10-08)
 --   9)  Trigger trgfn_componenti_check_prezzo_obbligatorio registrato
 --       (modello unificato: CHECK prezzo<>0 rimosso, sostituito da trigger condizionale)
 --   10) CHECK chk_prevrighe_comp_origine esiste
@@ -135,9 +135,9 @@ SELECT ok(
 -- =========================================================
 SELECT ok(
     EXISTS (SELECT 1 FROM information_schema.table_constraints
-             WHERE constraint_name = 'chk_prevrighe_comp_quantita_pos'
+             WHERE constraint_name = 'chk_prevrighe_comp_quantita_nz'
                AND table_schema = 'vendite' AND table_name = 'preventivi_righe_componenti'),
-    '8) CHECK chk_prevrighe_comp_quantita_pos esiste'
+    '8) CHECK chk_prevrighe_comp_quantita_nz esiste'
 );
 
 -- Modello unificato (20260513-06/07): CHECK prezzo_unitario<>0 droppato,
@@ -214,6 +214,7 @@ SELECT is(
         'trgfn_componenti_guard_coerenza_bom',
         'trgfn_componenti_guard_obbligatorio',
         'trgfn_componenti_ricalcola_padre',
+        'trgfn_doc_righe_lock_fuori_bozza',
         'trgfn_preventivi_righe_componenti_guard_pending',
         'trgfn_tx_id_managed'
     ],
@@ -253,7 +254,7 @@ SELECT is(
 -- 13) fn_preventivo_riga_componenti_init: p_riga_id NULL
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_preventivo_riga_componenti_init(NULL::bigint, 1::bigint, CURRENT_DATE) $$,
+    $$ SELECT vendite.fn_preventivo_riga_componenti_init(NULL::bigint, 1::bigint, script.fn_data_operativa()) $$,
     '%p_riga_id%',
     '13) fn_init: p_riga_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -262,7 +263,7 @@ SELECT throws_like(
 -- 14) fn_preventivo_riga_componenti_init: p_emittente_sr_id NULL
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_preventivo_riga_componenti_init(1::bigint, NULL::bigint, CURRENT_DATE) $$,
+    $$ SELECT vendite.fn_preventivo_riga_componenti_init(1::bigint, NULL::bigint, script.fn_data_operativa()) $$,
     '%p_emittente_sr_id%',
     '14) fn_init: p_emittente_sr_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -276,7 +277,7 @@ SELECT throws_like(
 --    Il pattern SALTA l'id interpolato — il messaggio 901 e'
 --    `Riga preventivo %s non trovata.` — altrimenti si rompe al primo id diverso.
 SELECT throws_like(
-    $$ SELECT vendite.fn_preventivo_riga_componenti_init(2147483647::bigint, 1::bigint, CURRENT_DATE) $$,
+    $$ SELECT vendite.fn_preventivo_riga_componenti_init(2147483647::bigint, 1::bigint, script.fn_data_operativa()) $$,
     '%Riga preventivo %non trovata%',
     '15) fn_init: riga_id inesistente -> raise E_PREVENTIVO_RIGA_NON_TROVATA'
 );
@@ -299,7 +300,7 @@ SELECT is(
                 SELECT vendite.fn_preventivo_riga_componenti_init(
                     (SELECT riga_id FROM nc),
                     1::bigint,
-                    CURRENT_DATE
+                    script.fn_data_operativa()
                 )
             )
         END
@@ -324,7 +325,7 @@ SELECT is(
                 SELECT vendite.fn_preventivo_riga_componenti_init(
                     (SELECT riga_id FROM comp),
                     1::bigint,
-                    CURRENT_DATE
+                    script.fn_data_operativa()
                 )
             )
         END
@@ -380,21 +381,28 @@ SELECT ok(
 --    selezione e' LO STESSO del guard (`ac.validita @> p.data`): la fixture non
 --    puo' piu' scegliere una riga che il guard rifiutera', e il test smette di
 --    dipendere da quanto tempo e' passato. Nessuna asserzione cambiata.
+-- ⚠️ Rev. 2026-10-08 — stessa lezione, un guard in piu': dal 20261008-34 i
+--    componenti di un preventivo fuori bozza li respinge il lock (fascia
+--    _a05_, prima del CHECK). La fixture sceglie solo righe di preventivi in
+--    DRAFT: altrimenti il rosso parlerebbe del lock e non del CHECK.
+--    Brief: brief-db-righe-e-componenti-le-altre-famiglie §4.
 -- =========================================================
 SELECT CASE
     WHEN NOT EXISTS (
              SELECT 1 FROM vendite.preventivi_righe pr
                JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+               JOIN config.stati_doc_preventivi sp ON sp.id = p.stato_doc_preventivo_id
                JOIN catalogo.articoli a  ON a.id = pr.articolo_id
               WHERE a.is_composito = TRUE
+                AND sp.codice_interno = 'DRAFT'
                 AND EXISTS (
                     SELECT 1 FROM catalogo.articoli_componenti ac
                      WHERE ac.prodotto_id = a.id
-                       AND ac.esposto_in_fattura = TRUE
+                       AND ac.esposizione_in_fattura <> 'NASCOSTO'
                        AND ac.validita @> p.data
                 )
          )
-    THEN skip('19) prerequisiti non disponibili (nessuna riga composita con BoM esposta valida alla data documento)')
+    THEN skip('19) prerequisiti non disponibili (nessuna riga composita di un preventivo in DRAFT con BoM esposta valida alla data documento)')
     ELSE throws_like(
         $$
         DO $inner$
@@ -406,12 +414,14 @@ SELECT CASE
             SELECT pr.id INTO v_riga_id
               FROM vendite.preventivi_righe pr
               JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              JOIN config.stati_doc_preventivi sp ON sp.id = p.stato_doc_preventivo_id
               JOIN catalogo.articoli a  ON a.id = pr.articolo_id
              WHERE a.is_composito = TRUE
+               AND sp.codice_interno = 'DRAFT'
                AND EXISTS (
                    SELECT 1 FROM catalogo.articoli_componenti ac
                     WHERE ac.prodotto_id = a.id
-                      AND ac.esposto_in_fattura = TRUE
+                      AND ac.esposizione_in_fattura <> 'NASCOSTO'
                       AND ac.validita @> p.data
                )
              LIMIT 1;
@@ -423,14 +433,14 @@ SELECT CASE
               JOIN vendite.preventivi p ON p.id = pr.preventivo_id
               JOIN catalogo.articoli_componenti ac ON ac.prodotto_id = pr.articolo_id
              WHERE pr.id = v_riga_id
-               AND ac.esposto_in_fattura = TRUE
+               AND ac.esposizione_in_fattura <> 'NASCOSTO'
                AND ac.validita @> p.data
              LIMIT 1;
 
             INSERT INTO vendite.preventivi_righe_componenti
                 (riga_preventivo_id, articolo_componente_id, componente_id,
-                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo)
-            VALUES (v_riga_id, v_bom_id, v_comp_id, 1, 1, 10, 'VALORE_INVALIDO');
+                 coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id)
+            VALUES (v_riga_id, v_bom_id, v_comp_id, 1, 1, 10, 'VALORE_INVALIDO', (SELECT uom_id FROM catalogo.articoli WHERE id = v_comp_id));
         END
         $inner$
         $$,
@@ -442,14 +452,21 @@ END;
 -- =========================================================
 -- 20) guard pending: UPDATE campo struttura su PENDING -> raise
 --     Skip se nessun componente in PENDING nel DB.
+-- ⚠️ Rev. 2026-10-08 — solo componenti di preventivi in DRAFT: fuori bozza
+--    dal 20261008-34 parla prima il lock (fascia _a05_), e il test proverebbe
+--    il lock invece del guard pending.
 -- =========================================================
 SELECT CASE
     WHEN NOT EXISTS (
-             SELECT 1 FROM vendite.preventivi_righe_componenti
-              WHERE stato_approvazione_prezzo =
+             SELECT 1 FROM vendite.preventivi_righe_componenti prc
+               JOIN vendite.preventivi_righe pr ON pr.id = prc.riga_preventivo_id
+               JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+               JOIN config.stati_doc_preventivi sp ON sp.id = p.stato_doc_preventivo_id
+              WHERE prc.stato_approvazione_prezzo =
                     'PENDING'::config.stato_approvazione_prezzo
+                AND sp.codice_interno = 'DRAFT'
          )
-    THEN skip('20) nessun componente in stato PENDING in questo DB')
+    THEN skip('20) nessun componente in stato PENDING su un preventivo in DRAFT in questo DB')
     ELSE throws_like(
         $$
         DO $inner$
@@ -458,8 +475,12 @@ SELECT CASE
         BEGIN
             SELECT prc.id INTO v_comp_id
               FROM vendite.preventivi_righe_componenti prc
+              JOIN vendite.preventivi_righe pr ON pr.id = prc.riga_preventivo_id
+              JOIN vendite.preventivi p ON p.id = pr.preventivo_id
+              JOIN config.stati_doc_preventivi sp ON sp.id = p.stato_doc_preventivo_id
              WHERE prc.stato_approvazione_prezzo =
                    'PENDING'::config.stato_approvazione_prezzo
+               AND sp.codice_interno = 'DRAFT'
              LIMIT 1;
 
             UPDATE vendite.preventivi_righe_componenti

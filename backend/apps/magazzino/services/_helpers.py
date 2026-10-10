@@ -22,7 +22,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal, overload
 
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import PayloadValidator
@@ -75,6 +75,14 @@ def ordinamento_validato(
 # Scopo: Un `articolo_id` letto da query string o da un parametro di firma,
 #        come UUID canonico; `None` se assente e non obbligatorio. Un valore
 #        che non e' un UUID e' un 400 col campo, non un errore del database.
+@overload
+def articolo_uuid(
+    valore: Any, *, obbligatorio: Literal[True], function_name: str
+) -> str: ...
+@overload
+def articolo_uuid(
+    valore: Any, *, obbligatorio: bool, function_name: str
+) -> str | None: ...
 def articolo_uuid(
     valore: Any, *, obbligatorio: bool, function_name: str
 ) -> str | None:

@@ -11,11 +11,11 @@
 | id | bigint | NO |  |
 | email_outbox_id | bigint | YES |  |
 | email_log_id | bigint | YES |  |
-| nome_file | character varying | NO |  |
-| mime_type | character varying | NO |  |
+| nome_file | character varying(255) | NO |  |
+| mime_type | character varying(100) | NO |  |
 | dimensione_bytes | bigint | NO |  |
-| file_path | character varying | NO |  |
-| origine | character varying | NO | 'UPLOAD'::character varying |
+| file_path | character varying(512) | NO |  |
+| origine | character varying(20) | NO | 'UPLOAD'::character varying |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

@@ -180,7 +180,7 @@ class OffertaDocumentContextBuilder(DocumentContextBuilder):
                 "modalita": self._resolve_modalita(testata),
                 "tipo_variazione_globale": testata.get("tipo_variazione_globale"),
                 "valore_variazione_globale": format_misura(
-                    testata.get("valore_variazione_globale")
+                    testata.get("valore_variazione_globale"), campo="valore_variazione_globale"
                 ),
             },
             "contratto": {

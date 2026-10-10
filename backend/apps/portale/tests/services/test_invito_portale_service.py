@@ -9,7 +9,8 @@
 """
 Indice test eseguiti:
 1)  InvitoPortaleTests.test_invia_invito_cliente_happy_path
-2)  InvitoPortaleTests.test_invia_invito_cliente_not_found
+2)  InvitoPortaleTests.test_invia_invito_cliente_not_found — 404 E_CLIENTE_NON_TROVATO (E-4)
+2b) InvitoPortaleTests.test_invia_invito_fornitore_not_found — 404 E_FORNITORE_NON_TROVATO (E-4)
 3)  InvitoPortaleTests.test_invia_invito_fornitore_happy_path
 4)  InvitoPortaleTests.test_email_vuota_solleva
 5)  InvitoPortaleTests.test_reinvia_invalida_precedente
@@ -26,7 +27,7 @@ Indice test eseguiti:
 15) GetStatoAccessiTests.test_cliente_include_portale_e_shop
 16) GetStatoAccessiTests.test_fornitore_solo_portale
 17) GetStatoAccessiTests.test_cliente_not_found_solleva
-18) DisattivaVesteTests.test_disattiva_cliente_portale_attivo_invalida_token
+18) DisattivaVesteTests.test_disattiva_cliente_portale_attivo_invalida_token — anche sessioni della veste e cache
 19) DisattivaVesteTests.test_disattiva_cliente_nessuna_identita_noop
 20) DisattivaVesteTests.test_disattiva_fornitore_portale
 21) DisattivaVesteTests.test_disattiva_cliente_identita_gia_disattiva_idempotente
@@ -44,6 +45,9 @@ _AUTH_REPO = f"{_SVC_PATH}.AuthRepository"
 # il service lo costruisce, e i suoi collaboratori si fingono li'.
 _BB = "apps.core.services.invito_veste"
 _TOKEN_SVC = f"{_BB}.TokenService"
+# Le chiusure della veste spenta stanno nel BB (`InvitoVeste.chiudi_veste_spenta`).
+_BLOCCA = f"{_BB}.blocca_token_sessioni"
+_INVALIDATE = f"{_BB}.invalidate_user"
 _EMAIL_SVC = f"{_BB}.EmailDispatchService"
 _SETTINGS = f"{_BB}.settings"
 
@@ -72,7 +76,7 @@ class InvitoPortaleTests(TestCase):
             "nome": None,
             "codice_fiscale": None,
         }
-        repo.find_auth_user_by_email.return_value = None  # utente nuovo
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = None  # utente nuovo
         repo.create_auth_user_portale.return_value = 200
         MockAuth.return_value.auth_user_ha_password.return_value = False  # segnaposto `!`
         repo.find_identita_portale.return_value = None  # identita nuova
@@ -117,7 +121,8 @@ class InvitoPortaleTests(TestCase):
         auth.set_deve_cambiare_password.assert_not_called()
         auth.set_invito_inviato_at.assert_called_once_with(200, identita_id=500)
 
-    # Scopo: BA inesistente -> ServiceError E_INVITO_PORTALE, nessun side-effect.
+    # Scopo: cliente inesistente -> 404 E_CLIENTE_NON_TROVATO (E-4: prima
+    # E_INVITO_PORTALE, cioe' 400), nessun side-effect.
     @patch(_REPO)
     def test_invia_invito_cliente_not_found(self, MockRepo):
         MockRepo.return_value.get_cliente_info.return_value = None
@@ -128,7 +133,20 @@ class InvitoPortaleTests(TestCase):
                 email="a@b.it",
                 invitato_da_user_id=1,
             )
-        self.assertEqual(ctx.exception.code, "E_INVITO_PORTALE")
+        self.assertEqual(ctx.exception.code, "E_CLIENTE_NON_TROVATO")
+
+    # Scopo: fornitore inesistente -> 404 E_FORNITORE_NON_TROVATO (E-4).
+    @patch(_REPO)
+    def test_invia_invito_fornitore_not_found(self, MockRepo):
+        MockRepo.return_value.get_fornitore_info.return_value = None
+        from apps.portale.services.invito_portale_service import InvitoPortaleService
+        with self.assertRaises(ServiceError) as ctx:
+            InvitoPortaleService().invia_invito_fornitore(
+                fornitore_id=999,
+                email="a@b.it",
+                invitato_da_user_id=1,
+            )
+        self.assertEqual(ctx.exception.code, "E_FORNITORE_NON_TROVATO")
 
     # Scopo: Flusso invito fornitore — stesso scheletro, ruolo FORNITORE_PORTALE.
     @patch(_SETTINGS)
@@ -151,7 +169,7 @@ class InvitoPortaleTests(TestCase):
             "codice_fiscale": None,
             "pec_email": "pec@fornitore.test",
         }
-        repo.find_auth_user_by_email.return_value = None
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 201
         MockAuth.return_value.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
@@ -227,7 +245,7 @@ class InvitoPortaleTests(TestCase):
             "attivo": False,
             "invito_inviato_at": None,
         }
-        repo.find_auth_user_by_email.return_value = 200
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 200
         MockAuth.return_value.set_deve_cambiare_password.return_value = True
         MockAuth.return_value.set_invito_inviato_at.return_value = True
         MockToken.return_value.create.return_value = "new_tk"
@@ -273,7 +291,7 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        repo.find_auth_user_by_email.return_value = 200  # creato dal primo invito
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 200  # creato dal primo invito
         MockAuth.return_value.auth_user_ha_password.return_value = False  # mai attivato
         repo.find_identita_portale.return_value = {
             "identita_id": 500,
@@ -332,7 +350,7 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        repo.find_auth_user_by_email.return_value = 999  # auth_user gia' esistente
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999  # auth_user gia' esistente
         MockAuth.return_value.auth_user_ha_password.return_value = True  # ... con una password vera
         repo.find_identita_portale.return_value = None  # ma identita CLIENTE_PORTALE nuova
         repo.create_identita_portale.return_value = 501
@@ -399,7 +417,7 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        repo.find_auth_user_by_email.return_value = 999  # esistente → flow CROSS
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999  # esistente → flow CROSS
         MockAuth.return_value.auth_user_ha_password.return_value = True
         # Identita CROSS gia' creata in passato ma disattivata (invito
         # scaduto o revoca admin): riattivazione deve avvenire SOLO con
@@ -450,7 +468,7 @@ class InvitoPortaleTests(TestCase):
             "soggetto_id": "u",
             "ragione_sociale": "ACME",
         }
-        repo.find_auth_user_by_email.return_value = 999  # email esistente → CROSS
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999  # email esistente → CROSS
         repo.find_identita_portale.return_value = {
             "identita_id": 500,
             "auth_user_id": 999,
@@ -496,7 +514,7 @@ class InvitoPortaleTests(TestCase):
         }
         # auth_user risolto via email = 999 ma identita esistente punta
         # ad auth_user = 888 (incoerenza).
-        repo.find_auth_user_by_email.return_value = 999
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999
         repo.find_identita_portale.return_value = {
             "identita_id": 500,
             "auth_user_id": 888,
@@ -558,7 +576,7 @@ class InvitoShopCustomerTests(TestCase):
             "ragione_sociale": "ACME Shop",
             "cognome": None, "nome": None, "codice_fiscale": None,
         }
-        repo.find_auth_user_by_email.return_value = None
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 300
         MockAuth.return_value.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
@@ -622,7 +640,7 @@ class InvitoShopCustomerTests(TestCase):
             "ragione_sociale": "ACME Shop",
             "cognome": None, "nome": None, "codice_fiscale": None,
         }
-        repo.find_auth_user_by_email.return_value = None
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = None
         repo.create_auth_user_portale.return_value = 300
         MockAuth.return_value.auth_user_ha_password.return_value = False
         repo.find_identita_portale.return_value = None
@@ -663,7 +681,7 @@ class InvitoShopCustomerTests(TestCase):
             "cognome": None, "nome": None, "codice_fiscale": None,
         }
         # Email gia' nota: l'auth_user esiste come operatore o altra veste.
-        repo.find_auth_user_by_email.return_value = 999
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999
         MockAuth.return_value.auth_user_ha_password.return_value = True
         repo.find_identita_portale.return_value = None  # nessuna SHOP ancora
         repo.create_identita_portale.return_value = 700
@@ -722,7 +740,7 @@ class InvitoShopCustomerTests(TestCase):
             "identita_id": 700, "auth_user_id": 999,
             "attivo": False, "invito_inviato_at": None,
         }
-        repo.find_auth_user_by_email.return_value = 999
+        MockAuth.return_value.find_auth_user_id_per_email.return_value = 999
         # Flow CROSS: la credenziale ha una password vera. Riprende l'identita
         # gia' presente e la lascia disattivata (la attiva il token).
         MockAuth.return_value.auth_user_ha_password.return_value = True
@@ -800,11 +818,19 @@ class GetStatoAccessiTests(TestCase):
         from apps.portale.services.invito_portale_service import InvitoPortaleService
         with self.assertRaises(ServiceError) as ctx:
             InvitoPortaleService().get_stato_accessi_cliente(999)
-        self.assertEqual(ctx.exception.code, "E_INVITO_PORTALE")
+        self.assertEqual(ctx.exception.code, "E_CLIENTE_NON_TROVATO")
 
 
 class DisattivaVesteTests(TestCase):
     """Test soft-revoke veste cliente + fornitore."""
+
+    # ⛔ Sessioni e cache si chiudono anche qui (A-5, D-5): senza questi mock
+    #    la blacklist andrebbe sul DB di sviluppo, e il test resterebbe verde.
+    def setUp(self):
+        for nome, attr in ((_BLOCCA, "mock_blocca"), (_INVALIDATE, "mock_invalidate")):
+            patcher = patch(nome)
+            setattr(self, attr, patcher.start())
+            self.addCleanup(patcher.stop)
 
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
@@ -839,6 +865,9 @@ class DisattivaVesteTests(TestCase):
         MockToken.return_value.invalidate_for_identita.assert_called_once_with(
             ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 10, 500,
         )
+        # D-5: le sessioni della SOLA veste spenta; A-5: la cache.
+        self.mock_blocca.assert_called_once_with(10, identita_id=500)
+        self.mock_invalidate.assert_called_once_with(10)
 
     @patch(_REPO)
     def test_disattiva_cliente_nessuna_identita_noop(self, MockRepo):
@@ -859,6 +888,7 @@ class DisattivaVesteTests(TestCase):
         self.assertFalse(result["disattivato"])
         self.assertEqual(result["stato"], "NESSUNO")
         repo.disattiva_identita.assert_not_called()
+        self.mock_blocca.assert_not_called()
 
     @patch(_TOKEN_SVC)
     @patch(_AUTH_REPO)
@@ -884,6 +914,7 @@ class DisattivaVesteTests(TestCase):
         )
         self.assertTrue(result["disattivato"])
         self.assertEqual(result["identita_id"], 600)
+        self.mock_blocca.assert_called_once_with(20, identita_id=600)
 
     @patch(_TOKEN_SVC)
     @patch(_REPO)
@@ -919,3 +950,5 @@ class DisattivaVesteTests(TestCase):
         MockToken.return_value.invalidate_for_identita.assert_called_once_with(
             ("INVITO_PORTALE", "ATTIVAZIONE_PORTALE_CROSS"), 10, 500,
         )
+        # Anche su una veste gia' spenta: chiude le sessioni rimaste vive.
+        self.mock_blocca.assert_called_once_with(10, identita_id=500)

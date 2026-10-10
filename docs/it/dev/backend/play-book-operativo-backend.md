@@ -319,8 +319,10 @@ sudo ${APP_DIR}/backend/bin/install-timers.sh
 ```
 
 Lo script renderizza i template (placeholder `__APP_DIR__`, `__APP_USER__`,
-`__ONCALENDAR__`, `__COMANDO__`), li copia in `/etc/systemd/system`, fa
-`daemon-reload` e **accende solo le sveglie con `abilita: true`**. Ogni unit
+`__ONCALENDAR__`, `__COMANDO__`), li copia in `/etc/systemd/system`,
+**spegne e toglie** le sveglie installate che `sveglie.json` non dichiara più
+(§16.3-bis), fa `daemon-reload` e **accende solo le sveglie con
+`abilita: true`**. Ogni unit
 lancia `bin/run-command.sh <comando>`, che legge `env.sh` come
 `start-gunicorn.sh`; systemd aggiunge `EnvironmentFile=.env.systemd`.
 
@@ -349,6 +351,8 @@ systemctl enable --now zeroerp-fatturazione-immediata.timer zeroerp-fatturazione
 Si abilitano i **`.timer`**; un run manuale si fa col `.service`. Dall'interfaccia
 c'è «Esegui ora» (§16.5).
 
+Tutti i comandi per servizio (start, stop, log, ricette): [Servizi ZeroERP — i comandi](servizi-zeroerp-comandi.md).
+
 ### 15.2) Validare i template in locale
 
 Senza root né systemctl, la stessa prova che gira in CI (job `validate-deploy`):
@@ -369,7 +373,7 @@ unica del dichiarato di deploy. Lo leggono in due:
 
 | Chi | Cosa ne prende |
 | --- | --- |
-| `backend/bin/install-timers.sh` | `oncalendar` e `comando` da sostituire nei template, e la lista di cosa accendere (`abilita`) |
+| `backend/bin/install-timers.sh` | `oncalendar` e `comando` da sostituire nei template, la lista di cosa accendere (`abilita`), e per differenza cosa ritirare dall'host (§16.3-bis) |
 | `apps.core.services.sveglie` (backend) | le unit di ogni processo (per la mail del guardiano del digest), la cadenza da confrontare col contratto (`test_contratto_liveness_vs_deploy`), il `comando` che «Esegui ora» lancia (§16.4) e `avvio_manuale` (§16.5) |
 
 ⛔ La **tolleranza di liveness** non sta qui: è un contratto del processo e vive
@@ -383,13 +387,22 @@ in due posti prima o poi dissente.
 | `zeroerp-coda-lavori` | `draina_coda_lavori` | timer | `*:0/1` | ✅ |
 | `zeroerp-coda-stampa` | `draina_coda_stampa` | timer | `*:0/2` | ✅ |
 | `zeroerp-fatturazione-immediata` | `run_fatturazione_batch --modalita immediata` | timer | `*:0/2` | ⛔ emette documenti |
-| `zeroerp-fatturazione-differita` | `run_fatturazione_batch --modalita differita` | timer | `*-*-01 02:00` | ⛔ idem |
+| `zeroerp-fatturazione-differita` | `run_fatturazione_batch --modalita differita` | timer | `*:00` + dovuto: il 1° dalle 00:00 aziendali | ⛔ idem |
 | `zeroerp-send-pending-emails` | `send_pending_emails` | timer | `*:0/5` | ✅ |
-| `zeroerp-digest-presidi-giornaliero` | `digest_presidi --cadenza giornaliera` | timer | `*-*-* 07:00` | ✅ |
-| `zeroerp-digest-presidi-settimanale` | `digest_presidi --cadenza settimanale` | timer | `Mon *-*-* 07:30` | ✅ |
-| `zeroerp-listen-cambio-reparto` | `listen_cambio_reparto` | **servizio** | — | ✅ |
+| `zeroerp-digest-presidi-giornaliero` | `digest_presidi --cadenza giornaliera` | timer | `*:00` + dovuto: ogni giorno dalle 07:00 aziendali | ✅ |
+| `zeroerp-digest-presidi-settimanale` | `digest_presidi --cadenza settimanale` | timer | `*:00` + dovuto: il lunedi' dalle 07:30 aziendali | ✅ |
+| `zeroerp-listen-permessi` | `listen_permessi` | **servizio** | — | ✅ |
 
 La fonte è il JSON: questa tabella lo descrive, non lo sostituisce.
+
+⭐ **Le sveglie calendariali** (dal 2026-10-09, brief un-solo-fuso-aziendale T-4/T-9): il timer
+si sveglia ogni ora (`*:00`, nel fuso dell'host, che non conta) e il `.service` porta
+`ExecCondition=… run-command.sh e_dovuto <unit>`, che esce 0 se il periodo **aziendale** è
+cominciato e la corsia non ha ancora una corsa riuscita, 1 (salta, senza errore) altrimenti,
+255 (unit fallita) su un guasto. Per vedere cosa ha deciso: `journalctl -u <unit>` (la riga
+«dovuto dal …» / «non ancora dovuto» / «già fatto dal …»). «Esegui ora» lancia il `comando`
+e non passa dall'`ExecCondition`: esegue sempre. ⚠️ Dopo l'aggiornamento serve
+`sudo backend/bin/install-timers.sh` per rendere i template nuovi.
 
 Lo presidia il backend:
 `apps/core/tests/services/test_sveglie.py::test_ogni_processo_del_backend_ha_una_sveglia`
@@ -401,10 +414,22 @@ lo faccia partire; `test_nessun_template_orfano` guarda il verso opposto.
 * **timer** (`Type=oneshot` + `.timer`): si abilita il **`.timer`**; per un run
   manuale si lancia il `.service`.
 * **servizio** (`Type=simple` + `Restart=always`, **nessun `.timer`**): oggi
-  solo `listen_cambio_reparto`, un listener `LISTEN/NOTIFY` sempre acceso. Si
-  abilita il **`.service`**. Scrive **un solo run**, quello di avvio: sul
-  giornale dice «sono partito alle ore X», non «sono vivo adesso». Per questo la
-  sua `tolleranza_minuti` è `null`.
+  solo `listen_permessi`, un listener `LISTEN/NOTIFY` sempre acceso sui canali
+  `cambio_reparto` e `permessi_catalogo`. Si abilita il **`.service`**. Scrive
+  **un solo run**, quello di avvio: sul giornale dice «sono partito alle ore
+  X», non «sono vivo adesso». Per questo la sua `tolleranza_minuti` è `null`.
+  ⭐ Dal 2026-10-09 **sonda la connessione** (`SELECT 1` a ogni giro del
+  poll; non scrive sul giornale, il segno di vita resta la sessione): un riavvio
+  della macchina del DB lasciava il socket «aperto» lato client, e il
+  listener restava acceso per systemd ma sordo, segnato `MUTO` finché
+  qualcuno non lo riavviava. Ora si riconnette da solo in pochi secondi
+  (header di `notify_listener.py`).
+
+ℹ️ Fino al 2026-10-05 si chiamava `zeroerp-listen-cambio-reparto` (command
+`listen_cambio_reparto`). Sugli host già installati l'unità vecchia la spegne e
+la toglie `install-timers.sh` al primo giro (§16.3-bis). Finché il servizio non
+riparte col nome nuovo, il panorama dei processi segna `listen_permessi`
+`MUTO`: la riga 46 di `dbops.processi` cerca una sessione con quel nome.
 
 ### 16.3) Aggiungere una sveglia
 
@@ -416,10 +441,37 @@ lo faccia partire; `test_nessun_template_orfano` guarda il verso opposto.
    scritta a mano;
 3. `sudo backend/bin/install-timers.sh`.
 
+### 16.3-bis) Togliere o rinominare una sveglia
+
+Si toglie (o si rinomina) la voce in `deploy/sveglie.json` e il suo template in
+`deploy/systemd/`, poi si lancia `sudo backend/bin/install-timers.sh`. Niente
+passi a mano sull'host: l'installer cerca in `/etc/systemd/system` le
+**sveglie** installate, cioè gli unit il cui `ExecStart` **comincia** con
+`backend/bin/run-command.sh` di questo checkout (la firma di ogni template,
+§16.4). Decide la firma, non il nome. Quelle che il dichiarato non produce più
+le **spegne e toglie** (`systemctl disable --now`, poi il file), col loro
+`.timer`, prima del `daemon-reload`. Si ritira anche il `.timer` rimasto a una
+sveglia dichiarata, per esempio quando una voce passa da `timer` a `servizio`. Il piano le
+stampa come `RITIRA`, anche in `--render-only`.
+
+* i `.timer` si spengono prima dei `.service`, così un timer non rilancia il
+  servizio che si sta spegnendo;
+* se uno spegnimento fallisce, l'installer si ferma senza cancellare il file;
+* ⛔ **un unit che non lancia `run-command.sh` non si tocca**: per esempio
+  `zeroerp-gunicorn` (§8) o un altro unit del play-book. Gli `zeroerp-*` di
+  questo tipo il piano li stampa come `ESTRANEO`, per chi legge. Una citazione
+  del wrapper in un commento non conta: si guarda la sola riga `ExecStart=`. 🔴 La prima versione (2026-10-05) guardava il solo prefisso,
+  e al primo giro sul dbdev ha spento e cancellato `zeroerp-gunicorn.service`:
+  backend giù, ripristinato dal §8. Il test 8 ora semina proprio quel caso;
+* ⚠️ una sveglia creata a mano sull'host (wrapper `run-command.sh`) fuori da
+  `sveglie.json`, al giro successivo viene ritirata. Una sveglia si dichiara;
+* ℹ️ cosa fa il processo sul catalogo DB (`dbops.processi`: riga ritirata con
+  `obsoleto_dal`) è un'altra metà, del team DB.
+
 | Prova | Che cosa dice | Dove gira |
 | --- | --- | --- |
 | `systemd-analyze verify` sui template renderizzati | gli unit **sono validi** | CI, `validate-deploy` |
-| `backend/scripts/tests/test-install-timers.sh` | si accendono **quelli giusti**; nessun template con `ExecStart` cablato; l'unit reso porta esattamente l'argv del JSON | CI, `validate-deploy` |
+| `backend/scripts/tests/test-install-timers.sh` | si accendono **quelli giusti**; nessun template con `ExecStart` cablato; l'unit reso porta esattamente l'argv del JSON; una sveglia non più dichiarata si spegne e si toglie, `zeroerp-gunicorn` e il resto no (test 8) | CI, `validate-deploy` |
 | `apps/core/tests/services/test_sveglie.py` | ogni processo ha una sveglia, nessun template orfano, il comando esiste | CI, suite Django |
 
 ⚠️ `test-install-timers.sh` usa un `systemctl` finto che esce sempre `0`: il

@@ -12,7 +12,7 @@
 | fattura_sorgente_id | bigint | NO |  |
 | tipo_fondo_fattura_id | bigint | NO |  |
 | importo | numeric | NO |  |
-| stato | character varying | NO |  |
+| stato | character varying(20) | NO |  |
 | fattura_figlia_id | bigint | YES |  |
 | data_assegnazione | timestamp with time zone | YES |  |
 | user_assegnazione | text | YES |  |
@@ -28,12 +28,13 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
-| origine | character varying | NO | 'AUTOMATICA'::character varying |
+| origine | character varying(20) | NO | 'AUTOMATICA'::character varying |
 | motivo | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_fondi_fattura_source_importo_finito |  |
 | CHECK | chk_fondi_source_importo_non_zero |  |
 | CHECK | chk_fondi_source_motivo_obbligatorio |  |
 | CHECK | chk_fondi_source_origine |  |

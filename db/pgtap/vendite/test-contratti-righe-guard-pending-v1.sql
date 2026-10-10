@@ -78,14 +78,22 @@ CREATE TEMP TABLE tmp_pnd_art AS
 SELECT a.id
   FROM catalogo.articoli a
  WHERE a.attivo = TRUE AND a.is_composito = FALSE
+   -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): l'articolo
+   --   sta nel PERIMETRO delle righe: senza tipologia (decide la natura, la utility del
+   --   cliente non conta) e con UNA_TANTUM/FISSA ammessa, chiesto alla sede unica.
+   AND a.listino_tipologia_id IS NULL
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
  ORDER BY a.id
  LIMIT 1;
 
 -- Riga contratto AGGIUNTA (prezzo valorizzato, qta_operativa richiesta
 -- da trgfn_qta_from_operativa, tipo_eccezione richiesto NOT NULL dal refactor)
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
 INSERT INTO vendite.contratti_righe(
-    contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT c.id, a.id, 'AGGIUNTA', 100.00, 1.00
+    contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+    tipo_erogazione)
+SELECT c.id, a.id, 'AGGIUNTA', 100.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti c, tmp_pnd_art a
  WHERE c.numero = 'PGTAP_PND_CNT';
 

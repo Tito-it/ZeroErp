@@ -705,6 +705,14 @@ _ESERCIZI: dict[str, Esercizio] = {
             "apps.vendite.db.contratti_repository", "ContrattoRigheListaRepository"
         ).list_righe_pagina(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
     ),
+    # Le righe di un'offerta (2026-10-05, brief-db-righe-esclusione-solo-non-si-
+    # vende §8.1): gemella della 103, sorgente `fn_offerta_righe_preview`.
+    "vendite.offerta_righe": Esercizio(
+        dove="core/db/righe_lista_mixin.py::list_righe_pagina (OffertaRigheListaRepository)",
+        chiama=lambda ob, od: _r(
+            "apps.vendite.db.offerte_repository", "OffertaRigheListaRepository"
+        ).list_righe_pagina(_ID_FINTO, limit=1, offset=0, **_ordine(ob, od)),
+    ),
     "vendite.commesse_attivita": Esercizio(
         dove="vendite/db/commesse_repository.py::list_commessa_attivita",
         # ⚠️ `fn_list_commessa_attivita` rifiuta una commessa inesistente: qui

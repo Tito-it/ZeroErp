@@ -45,6 +45,34 @@
 #        Chiavi di riga: quelle della vista (`riga_key`, `fatture_righe_id`,
 #        `riga_rettificata_documento` parlante…); via `id`, `livello` e
 #        `riga_rettificata_fattura_numero` della forma 1.
+#
+#        ⭐ FORMA 3 dal 2026-10-02 (brief-db-esposizione-componenti-kit-in-
+#        fattura, R-BE-7): un componente porta il suo modo (`esposizione`:
+#        DESCRITTIVO | VALORIZZATO) e, se VALORIZZATO, `prezzo_unitario`,
+#        `sconto_percentuale` e `importo_riga` suoi, FUORI dal totale del
+#        padre; un padre senza resto (tutti valorizzati) ha `importo_riga`
+#        NULL. Una versione scritta per la forma 2 su questi dati stamperebbe
+#        il kit senza l'importo dei valorizzati e la fattura non tornerebbe
+#        coi totali: per questo e' una forma nuova, non chiavi in piu'.
+#
+#        ⭐ FORMA 4 dal 2026-10-02 (brief-db-esigibilita-iva-per-cassa-
+#        emittente §11, R-3): `annotazioni`, la lista `{codice, testo}` delle
+#        annotazioni di legge del documento (oggi l'IVA per cassa, art. 32-bis
+#        DL 83/2012), nell'ordine dato da `vendite.fn_annotazioni_fattura`;
+#        lista vuota quando non ce ne sono. Le decide il database: una
+#        versione scritta per la forma 3 stamperebbe una fattura RF17 senza
+#        l'annotazione obbligatoria, ed e' per questo una forma nuova.
+#
+#        ⭐ FORMA 5 dal 2026-10-02 (brief-db-bom-flag-quantita-e-kit-in-
+#        fattura, R-BE-B6): una riga di primo livello porta il suo periodo —
+#        `competenza_dal`, `competenza_al` (date in italiano, con le gemelle
+#        `_iso`) e `ha_periodo`, vero quando `dal != al` (D-3.1: la regola e'
+#        della vista, qui si trasporta). Lo stesso kit su due periodi sono
+#        due righe, e la quantita' del kit e' quella della riga padre del
+#        documento: NULL quando i componenti non dicono lo stesso numero di
+#        kit (nota di credito parziale), insieme al prezzo. Una versione
+#        scritta per la forma 4 stamperebbe due righe identiche per due mesi
+#        diversi, e un kit senza quantita' come se l'avesse: forma nuova.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -78,7 +106,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
 
     CODE = "FATTURA"
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
-    CONTEXT_VERSION = 2
+    CONTEXT_VERSION = 5
 
     # Scopo: Iniezione opzionale dei repository per testabilità (mock). In
     #        runtime il default va benissimo: l'istanza è singleton di processo
@@ -97,8 +125,9 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #         1. guard id positivo;
     #         2. testata via `get_fattura_testata` (None → NOT_FOUND);
     #         3. righe (primo livello, kit coi componenti dentro) + riepilogo
-    #            IVA (tabella reale fatture_riepiloghi_iva);
-    #         4. compone la shape della forma `CONTEXT_VERSION` (2).
+    #            IVA (tabella reale fatture_riepiloghi_iva) + annotazioni di
+    #            legge (decise dal DB);
+    #         4. compone la shape della forma `CONTEXT_VERSION` (5).
     def build_context(
         self,
         sorgente_id: int,
@@ -130,6 +159,10 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             for r in self._repo.list_fattura_riepilogo_iva(sorgente_id)
         ]
         scadenze = self._repo.list_fattura_scadenze(sorgente_id)
+        annotazioni = [
+            {"codice": a["codice"], "testo": a["testo"]}
+            for a in self._repo.list_fattura_annotazioni(sorgente_id)
+        ]
 
         return {
             "fattura": self._shape_fattura(testata),
@@ -137,6 +170,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             "righe": righe,
             "riepilogo_iva": riepilogo_iva,
             "scadenze": [self._shape_scadenza(s) for s in scadenze],
+            "annotazioni": annotazioni,
             # `_meta`: parametri di rendering stabili a parità di chiamata
             # (locale, utente). NON inserire qui timestamp/random: il
             # `context_hash` deve restare deterministico per il dedup logico
@@ -199,19 +233,19 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             },
             "bollo_applicato": testata.get("bollo_applicato"),
             "totali": {
-                "imponibile": format_importo(testata.get("imponibile_tot")),
-                "imposta": format_importo(testata.get("imposta_tot")),
+                "imponibile": format_importo(testata.get("imponibile_tot"), campo="imponibile_tot"),
+                "imposta": format_importo(testata.get("imposta_tot"), campo="imposta_tot"),
                 # alias `iva` (nome usato dal template) dell'imposta totale
-                "iva": format_importo(testata.get("imposta_tot")),
-                "sconto": format_importo(testata.get("sconto_tot")),
-                "bollo": format_importo(testata.get("bollo_importo")),
-                "arrotondamento": format_importo(testata.get("arrotondamento_attuale")),
-                "documento": format_importo(testata.get("totale_doc")),
-                "a_pagare": format_importo(testata.get("totale_a_pagare")),
+                "iva": format_importo(testata.get("imposta_tot"), campo="imposta_tot"),
+                "sconto": format_importo(testata.get("sconto_tot"), campo="sconto_tot"),
+                "bollo": format_importo(testata.get("bollo_importo"), campo="bollo_importo"),
+                "arrotondamento": format_importo(testata.get("arrotondamento_attuale"), campo="arrotondamento_attuale"),
+                "documento": format_importo(testata.get("totale_doc"), campo="totale_doc"),
+                "a_pagare": format_importo(testata.get("totale_a_pagare"), campo="totale_a_pagare"),
                 "valuta_codice": testata.get("valuta_codice"),
                 # Il tasso di cambio e' una MISURA, non denaro: `1.00000000`
                 # si legge «1,00», ma un cambio 0,8732 conserva le sue cifre.
-                "tasso_cambio": format_misura(testata.get("tasso_cambio")),
+                "tasso_cambio": format_misura(testata.get("tasso_cambio"), campo="tasso_cambio"),
             },
             # Campi «ricchi» del template. Chiavi SEMPRE presenti (StrictUndefined
             # → chiave mancante = errore); il template le guarda con {% if %},
@@ -261,15 +295,38 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
     #        componenti esposti di un kit come LISTA (`[]` fuori dai kit: il
     #        template scorre `riga.componenti` senza chiedersi se c'e').
     #        `componenti` arriva gia' decodificato dal repository
-    #        (`_righe_jsonb`): NULL fuori dai kit.
+    #        (`_righe_jsonb`): NULL fuori dai kit. Forma 3: i numeri di un
+    #        componente seguono le regole della riga (prezzo e sconto come
+    #        misure, importo come importo); su un DESCRITTIVO sono NULL e
+    #        restano NULL — e' cio' che dice al template «nel totale del kit».
+    #        Forma 5: il periodo della riga, e `quantita`/`prezzo_unitario`
+    #        NULL su un kit che non ha una quantita' (restano NULL: il
+    #        formattatore li preserva).
     def _shape_riga(self, riga: dict[str, Any]) -> dict[str, Any]:
         r = formatta_campi(
             riga,
             misure=("quantita", "prezzo_unitario", "sconto_percentuale"),
             importi=("iva_aliquota", "importo_riga"),
         )
+        # Le date escono come stringhe, come quelle di testata: il contesto
+        # si serializza (hash, ristampa fedele) e il template non formatta.
+        # ⛔ Lettura STRETTA (`riga[...]`, non `.get`): le tre colonne sono
+        #    del contratto di `vw_fattura_righe_lista`, e una colonna sparita
+        #    o rinominata deve fermare la stampa — con `.get` diventerebbe
+        #    «nessun periodo» su ogni riga, senza nessun errore.
+        for campo in ("competenza_dal", "competenza_al"):
+            valore = riga[campo]
+            r[campo] = format_date_it(valore)
+            r[f"{campo}_iso"] = format_date_iso(valore)
+        # ⛔ Non si ricalcola: «si stampa il periodo quando dal != al» e' la
+        #    regola della vista (D-3.1), e una copia qui potrebbe divergere.
+        r["ha_periodo"] = bool(riga["ha_periodo"])
         r["componenti"] = [
-            formatta_campi(dict(c), misure=("quantita",))
+            formatta_campi(
+                dict(c),
+                misure=("quantita", "prezzo_unitario", "sconto_percentuale"),
+                importi=("importo_riga",),
+            )
             for c in (r.get("componenti") or [])
         ]
         return r
@@ -284,7 +341,7 @@ class FatturaDocumentContextBuilder(DocumentContextBuilder):
             "nr": s.get("numero_rata"),
             "data": format_date_it(s.get("data_scadenza")),
             "data_iso": format_date_iso(s.get("data_scadenza")),
-            "importo": format_importo(s.get("importo")),
+            "importo": format_importo(s.get("importo"), campo="importo"),
             "modalita_codice": meta.get("modalita_codice"),
         }
 

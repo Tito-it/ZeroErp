@@ -33,6 +33,7 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineRiepilogoIva,
     ApiOrdineRigaComponenteDetail,
     ApiOrdineRigaComponentiList,
+    ApiOrdineRigaDataConsegnaConfermata,
     ApiOrdineRigaDetail,
     ApiOrdineRigaPreviewComponenti,
     ApiOrdineRighe,
@@ -110,6 +111,11 @@ urlpatterns = [
          name="vendite-ordine-righe-preview-componenti"),
     path("<int:ordine_id>/righe/<int:riga_id>/", ApiOrdineRigaDetail.as_view(),
          name="vendite-ordine-riga-detail"),
+    # La promessa di consegna dopo la conferma: verbo dedicato, la regola e'
+    # del lock delle righe (brief-db-testata-dopo-emissione, fase 1).
+    path("<int:ordine_id>/righe/<int:riga_id>/data-consegna-confermata/",
+         ApiOrdineRigaDataConsegnaConfermata.as_view(),
+         name="vendite-ordine-riga-data-consegna-confermata"),
 
     # Componenti BoM
     path("<int:ordine_id>/righe/<int:riga_id>/componenti/",

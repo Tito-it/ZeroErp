@@ -2,7 +2,7 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-30. **A chi:** team DB; richieste al backend e al
 > frontend (`dev/backend-tid`) in §6.
-> **Origine:** §9.7 di [brief-db-liste-righe-documento.md](../work-in-progress/brief-db-liste-righe-documento.md).
+> **Origine:** §9.7 di [brief-db-liste-righe-documento.md](brief-db-liste-righe-documento.md).
 > ✅ **Decisioni di Tid (2026-09-29):** strada 3 — l'elenco delle misure vive in UNA sede, il
 > database, e il frontend lo legge da lì; e **anche le misure di default** stanno nel catalogo.
 > **Stato: ✅ CHIUSO il 2026-09-30.** Tutte le parti sono fatte, applicate, committate e

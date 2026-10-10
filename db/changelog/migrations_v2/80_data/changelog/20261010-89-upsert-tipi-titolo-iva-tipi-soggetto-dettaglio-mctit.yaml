@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL SEED DELLA MATRICE TITOLI IVA x NATURA
+#   config.tipi_titolo_iva_tipi_soggetto_dettaglio (20261010-88)
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D, D-2, D-3)
+#
+# -- I VALORI (decisi da Tid il 2026-10-10) -----------------------------
+#   INTENTO, USO_INDUSTRIALE  -> DI, SP, SC, ENC (chiunque abbia partita IVA)
+#   AGEVOLATA_104             -> PR (solo il privato: D-3)
+#   COOPERATIVA               -> nessuna riga finche' D-4 e' aperta: con D-1
+#                                non e' ammesso su nessun soggetto.
+#   Gli id sono quelli dei due CSV di catalogo (tipi_titolo_iva.csv,
+#   tipi_soggetto_dettaglio.csv), che li fissano: 1 INTENTO, 2 USO_INDUSTRIALE,
+#   3 AGEVOLATA_104; 1 PR, 2 DI, 3 SC, 4 SP, 5 ENC.
+#
+# -- LA FORMA -----------------------------------------------------------
+#   Mirror del CSV (runOnChange + validCheckSums ANY, legittimo in 80_data,
+#   linee-guida-sql §11.1-§11.2): una riga si cambia nel CSV. Il mirror NON
+#   cancella: una riga si ritira con attivo = f (D-6), e il guard del ritiro
+#   (20261010-94) la rifiuta se ci sono titoli vigenti che la usano.
+#   nullValue "NULL": il NULL si scrive col suo token, mai a cella vuota
+#   (linee-guida-sql §11.7). Oggi nessuna cella e' nulla.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261010-89-upsert-tipi-titolo-iva-tipi-soggetto-dettaglio-mctit.yaml
+
+  - changeSet:
+      id: 20261010-89-upsert-tipi-titolo-iva-tipi-soggetto-dettaglio
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed di config.tipi_titolo_iva_tipi_soggetto_dettaglio dal CSV: INTENTO e USO_INDUSTRIALE
+        per DI, SP, SC, ENC; AGEVOLATA_104 per PR; COOPERATIVA nessuna riga (D-4 aperta).
+        Brief: brief-db-dati-fiscali-e-societari-del-soggetto (D-2, D-3).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: tipi_titolo_iva_tipi_soggetto_dettaglio
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/tipi_titolo_iva_tipi_soggetto_dettaglio.csv
+            tableName: tipi_titolo_iva_tipi_soggetto_dettaglio
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "tipo_titolo_iva_id,tipo_soggetto_dettaglio_id"
+            columns:
+              - column: { name: tipo_titolo_iva_id, type: NUMERIC }
+              - column: { name: tipo_soggetto_dettaglio_id, type: NUMERIC }
+              - column: { name: attivo, type: BOOLEAN }
+              - column: { name: user_insert, type: STRING }
+              - column: { name: data_insert, type: STRING }
+              - column: { name: user_update, type: STRING }
+              - column: { name: data_update, type: STRING }

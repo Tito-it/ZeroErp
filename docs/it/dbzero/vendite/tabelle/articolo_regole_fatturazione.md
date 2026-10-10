@@ -10,14 +10,14 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| calcolo_qta_padre | character varying | NO | 'fissa'::character varying |
+| calcolo_qta_padre | character varying(28) | NO | 'fissa'::character varying |
 | arrotondamento_importi_dec | smallint | NO | 2 |
 | arrotondamento_quantita_dec | smallint | NO | 3 |
-| metodo_arrotondamento_importi | character varying | NO | 'HALF_UP'::character varying |
-| metodo_arrotondamento_quantita | character varying | NO | 'HALF_UP'::character varying |
+| metodo_arrotondamento_importi | character varying(12) | NO | 'HALF_UP'::character varying |
+| metodo_arrotondamento_quantita | character varying(12) | NO | 'HALF_UP'::character varying |
 | meta | jsonb | YES | '{}'::jsonb |
 | user_insert | text | NO | CURRENT_USER |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 | tx_id | uuid | YES |  |

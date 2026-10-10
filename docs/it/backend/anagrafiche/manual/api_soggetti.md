@@ -98,10 +98,10 @@ i tipi indirizzo obbligatori non compilati, secondo la matrice indirizzi del tip
 | `nome` | string | Si (PF) | Nome della persona fisica |
 | `ragione_sociale` | string | Si (PG) | Ragione sociale della persona giuridica |
 | `codice_fiscale` | string | Si (PF), facoltativo (PG) | Codice fiscale — validato per congruenza (PF) |
-| `partita_iva` | string | No | Partita IVA |
+| `partita_iva` | string | No | Partita IVA — anche per la ditta individuale (PF), dove la pretende il DB |
 | `stato_iso2` | string | No | Codice ISO2 dello stato (default: `IT`) |
 | `data_nascita` | string (ISO) | No | Data di nascita (PF), formato `YYYY-MM-DD` |
-| `sesso` | string | No | `M` o `F` (PF, default: `M`) |
+| `sesso` | string | Secondo il tipo | `M`, `F` o `X` («serve, ma non si puo' stabilire»); vuoto = non indicato. **Nessun default**: quando serve lo dice `sesso_policy` del tipo (vedi sotto) |
 | `auto_clone` | bool | No | Clona indirizzo per tipi obbligatori mancanti (default: `true`) |
 | `contatto` | object | Si | Contatto principale (vedi sotto) |
 | `contatto.nominativo` | string | Si | Nome del contatto |
@@ -123,6 +123,21 @@ i tipi indirizzo obbligatori non compilati, secondo la matrice indirizzi del tip
 >   `tipo_contatto_id`) → solleva `E_CONTATTO_INCOMPLETO` con
 >   `context.missing` (lista campi mancanti) per highlight UI
 > - `VALID` (`nominativo` + `tipo_contatto_id` presenti) → procede
+
+> **Sesso e natura (brief-db-sesso-senza-default, 2026-10-09)**: il backend
+> non controlla il sesso e non lo inventa. Una persona fisica nasce con il
+> **tipo scelto** (privato `PR` o ditta individuale `DI`) e la sua partita IVA:
+> fino a quella data nasceva sempre `PR` e la P.IVA si perdeva. La regola la
+> tiene il guard `anagrafiche.trgfn_soggetti_guard_sesso_policy`, che legge
+> `config.tipi_soggetto_dettaglio.sesso_policy`:
+>
+> | `sesso_policy` | Tipi | Sesso vuoto | `M`/`F`/`X` |
+> | --- | --- | --- | --- |
+> | `REQUIRED` | privato | `E_SESSO_OBBLIGATORIO` (400) | ✅ |
+> | `OPTIONAL` | ditta individuale | ✅ | ✅ |
+> | `NONE` | societa', enti | ✅ | `E_SESSO_NON_AMMESSO` (400) |
+>
+> I due rifiuti portano `error.fields = ["sesso"]`; valgono anche sulla `PATCH`.
 | `dati_societari` | object | No | Dati societari (solo PG, vedi sotto) |
 | `dati_societari.forma_giuridica_id` | int | No | ID forma giuridica |
 | `dati_societari.id_prov_iscri_rea` | int | No | Provincia iscrizione REA |
@@ -311,8 +326,35 @@ Aggiorna uno o piu' campi del soggetto. Invia solo i campi da modificare.
 | `ragione_sociale` | string | Ragione sociale (PG) |
 | `codice_fiscale` | string | Codice fiscale |
 | `partita_iva` | string | Partita IVA |
+| `sesso` | string | `M`, `F`, `X`; vuoto = `NULL`. Lo giudica il guard secondo `sesso_policy` (vedi la creazione) |
+| `data_nascita`, `comune_nascita_id` | string (ISO) / int | Dati di nascita (PF) |
+| `cliente_pa`, `split_payment` | string | `S` / `N` (minuscole e spazi normalizzati). Ammessi solo dove la natura lo dice (`cliente_pa_ammesso`, `split_payment_ammesso` del lookup dei tipi): altrimenti `E_CLIENTE_PA_NON_AMMESSO` / `E_SPLIT_PAYMENT_NON_AMMESSO` (400, `error.fields` = il flag) |
+| `tipo_soggetto_dettaglio_id` | int | La natura di dettaglio (fra i `tipi_modificabili_ids`). Cosa la natura nuova ammette — flag, forma giuridica, titoli IVA in vigore — lo giudicano i guard del DB |
+| `dati_societari` | object | La sezione dati societari, **stato intero**: crea o aggiorna la riga col verbo `anagrafiche.fn_scrivi_dati_societari`. Chiavi: `forma_giuridica_id`, `id_prov_iscri_rea`, `iscrizione_rea`, `capitale_sociale`, `socio_unico`, `liquidazione`, `destinatario_fe`, `pec_fatturazione`, `codice_sdi`, `data_costituzione`. Una chiave assente vale `null` |
 
-Inviare solo i campi che si intende modificare.
+Inviare solo i campi che si intende modificare. ⚠️ Fa eccezione `dati_societari`:
+se c'e', porta la sezione **intera** (il verbo non distingue «non toccare» da
+«svuota»).
+
+**Ordine e atomicita'** (dal 2026-10-10, brief-db-dati-fiscali-e-societari-del-soggetto):
+prima l'UPDATE del soggetto, poi il verbo dei dati societari, nella **stessa
+transazione**. Natura e forma giuridica si cambiano cosi' nello stesso
+salvataggio: il guard della forma la confronta con la natura nuova, e il guard
+al COMMIT (`trgfn_soggetti_guard_forma_giuridica_natura`) vede le due
+scritture insieme. Con i soli `dati_societari` il soggetto non si tocca, e un
+soggetto inesistente risponde `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` (404).
+
+**Rifiuti dei guard, col campo da accendere** (`error.fields`):
+
+| Codice | Status | Campo |
+| --- | --- | --- |
+| `E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO` | 400 | `forma_giuridica_id` |
+| `E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA` | 400 | `forma_giuridica_id` (natura cambiata, forma no) |
+| `E_REA_OBBLIGATORIO` / `E_REA_NON_AMMESSO` | 400 | `iscrizione_rea` |
+| `E_CAPITALE_SOCIALE_OBBLIGATORIO` / `E_CAPITALE_SOCIALE_NON_AMMESSO` | 400 | `capitale_sociale` |
+| `E_DATI_SOCIETARI_CODICE_SDI_*`, `E_DATI_SOCIETARI_PEC_FATTURAZIONE_MANCANTE` | 400 | `codice_sdi` / `pec_fatturazione` |
+| `E_CLIENTE_PA_NON_AMMESSO` / `E_SPLIT_PAYMENT_NON_AMMESSO` | 400 | `cliente_pa` / `split_payment` |
+| `E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI` | 409 | — (chiudere prima il titolo in vigore) |
 
 ### Risposta (200)
 
@@ -388,9 +430,16 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | `telefono` | string | No | Telefono |
 | `cellulare` | string | No | Cellulare |
 | `pec` | string | No | PEC |
-| `tipo_contatto_id` | int | No | ID tipo contatto |
+| `tipo_contatto_id` | int | Si | ID tipo contatto (uno per tipo sul soggetto) |
 | `unita_organizzativa_id` | int | No | ID unita' organizzativa |
 | `note` | string | No | Note |
+
+> **Rifiuti (dal 2026-10-09, BB `crea_contatto_validato`)**: il contatto deve
+> essere valido (`nominativo` + `tipo_contatto_id`), altrimenti
+> `400 E_CONTATTO_INCOMPLETO` con i campi mancanti in `error.fields`. Un
+> contatto per tipo: un secondo contatto con lo stesso tipo risponde
+> `409 E_ANAG_DUPLICATO` col campo `tipo_contatto_id`. Fino a quella data
+> entrambi uscivano come `400 E_DATABASE` generico.
 
 ### Risposta (200)
 
@@ -714,7 +763,27 @@ assegnato, non viene duplicato.
 
 | Campo | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
-| `codice_ruolo` | string | Si | Codice del ruolo da assegnare (es. `CLI`, `FOR`, `VET`) |
+| `codice_ruolo` | string | Si | Codice (`GESTORE`) o codice interno (`GE`) del tipo ruolo |
+| `indirizzi` | array | Secondo il ruolo | Indirizzi **del ruolo**, stessa forma della creazione soggetto. Necessari per i ruoli con indirizzi obbligatori (`config.tipi_ruolo_tipi_indirizzo`, es. GE) |
+
+> **Ruoli con un flusso dedicato (dal 2026-10-09)**: `CL`, `FO`, `EF` e
+> `RIS_UMANA` non si assegnano da qui: `400 E_ANAG_VALIDAZIONE` sul campo
+> `codice_ruolo`, con il rimando al flusso (Clienti, Fornitori, Emittenti
+> fiscali, Risorse umane). Il ruolo è solo il primo anello della loro catena:
+> un CL nasce con la prima istanza e il suo billing account, e creato «nudo»
+> da qui non aveva clienti né era visibile a un operatore con emittente.
+
+> **Indirizzi del ruolo (dal 2026-10-09)**: gli obbligatori del ruolo (per GE
+> la sede legale `SEDELEG` e la fatturazione `FATT`) sono indirizzi del **ruolo**, non
+> del soggetto: li pretende il guard differito
+> `anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required` al commit. Ruolo e
+> indirizzi nascono nella stessa transazione, con `create_indirizzi_ruolo`
+> (come nei flussi clienti e fornitori): il primo indirizzo viene clonato per
+> ogni obbligatorio mancante. Senza `indirizzi`, un ruolo che ne ha di
+> obbligatori risponde `E_INDIRIZZO_OBBLIGATORIO_MANCANTE` (prima di questa
+> data l'endpoint non li accettava, quindi per quei ruoli rispondeva sempre
+> così). Ogni indirizzo deve essere ammesso anche per il tipo soggetto
+> (`config.tipi_soggetto_dettaglio_tipi_indirizzo`).
 
 ### Risposta (200)
 
@@ -732,7 +801,7 @@ assegnato, non viene duplicato.
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   "https://host/api/v1/anagrafiche/soggetti/a1b2c3d4-.../ruoli/" \
-  -d '{"codice_ruolo": "FOR"}'
+  -d '{"codice_ruolo": "GESTORE", "indirizzi": [{"tipo_indirizzo_codice": "SEDELEG", "indirizzo_dettaglio_id": 123}]}'
 ```
 
 ### 9.3 Lookup ricco soggetti-ruoli (selezione contesto pratica)
@@ -740,11 +809,14 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" \
 Ricerca cross-dominio per autocomplete: restituisce **una riga per
 `soggetto_ruolo`** ("Rossi Srl — Cliente", "Rossi Srl — Fornitore" come
 opzioni distinte) piu' **una riga "senza ruolo"** (`soggetto_ruolo_id` e
-`ruolo_codice` NULL) per i soggetti privi di qualunque ruolo — i prospect
-puri delle utility, che hanno solo istanze (il ruolo CL nasce col BA, vedi
+`ruolo_codice` NULL) per i soggetti privi di qualunque ruolo — per esempio
+appena censiti. Non hanno istanze: l'istanza nasce col suo billing account, e il
+ruolo CLIENTE con la prima istanza (vedi
 [guide/generazione-cliente.md](../../../guide/generazione-cliente.md)).
 Consumato dal drawer pratiche per valorizzare `(soggetto_id,
-soggetto_ruolo_id)` in una selezione sola.
+soggetto_ruolo_id)` in una selezione sola, e dai campi del DDT che salvano un
+`soggetto_ruolo_id` (destinatario, vettore, mittente) con `con_ruolo=true`: li'
+una riga "senza ruolo" non ha niente da salvare.
 
 | | |
 |---|---|
@@ -757,6 +829,7 @@ soggetto_ruolo_id)` in una selezione sola.
 |---|---|---|---|
 | `q` | string | Si | Termine di ricerca (min 2 char). Matcha ragione sociale, CF, P.IVA |
 | `tipo_ruolo` | string | No | Filtra per codice tipo ruolo (`CL`, `FO`, ...). Esclude le righe "senza ruolo" |
+| `con_ruolo` | bool | No | `true`: solo righe con un ruolo, di qualunque tipo (esclude le righe "senza ruolo"). Assente o `false`: nessun filtro. Valore non riconosciuto: 400 `E_VALIDATION_INPUT` |
 | `limit` | int | No | Max risultati (default 20, max 50) |
 
 ### Risposta (200)
@@ -773,19 +846,21 @@ soggetto_ruolo_id)` in una selezione sola.
         "ragione_sociale_completa": "Azienda ConTutto",
         "id_fiscale": "01234567890",
         "soggetto_codice": "SOG-00042",
-        "n_istanze": 1,
-        "istanza_unica_id": 197,
-        "istanza_unica_codice": "IFO-0000051"
+        "n_billing_account": 1,
+        "billing_account_unico_id": 412,
+        "billing_account_unico_codice": "BA-0000412"
       },
       {
         "soggetto_id": "b2c3d4e5-...",
         "soggetto_ruolo_id": null,
         "ruolo_codice": null,
         "ruolo_descrizione": null,
-        "ragione_sociale_completa": "Prospect Senza Ruolo",
-        "id_fiscale": "PRSPCT80A01H501U",
+        "ragione_sociale_completa": "Soggetto Senza Ruolo",
+        "id_fiscale": "SGGSNZ80A01H501U",
         "soggetto_codice": "SOG-00043",
-        "n_istanze": 2
+        "n_billing_account": 0,
+        "billing_account_unico_id": null,
+        "billing_account_unico_codice": null
       }
     ],
     "total_count": 2,
@@ -796,17 +871,21 @@ soggetto_ruolo_id)` in una selezione sola.
 
 Note:
 
-- `n_istanze`: perimetro per riga — righe "senza ruolo" = tutte le istanze
-  del soggetto; righe con ruolo = SOLO le istanze legate a quel ruolo via
-  `clienti` (le forniture del cliente/BA; per i ruoli non-CL e' 0). Il FE lo
-  usa per decidere se proporre il campo "Istanza utility" (lookup
+- `n_billing_account`: le **forniture** del ruolo, cioe' i suoi billing
+  account (uno per coppia istanza+utility), con o senza la riga cliente. Per i
+  ruoli non-CL e per le righe "senza ruolo" e' 0: un BA e' sempre di un ruolo
+  CLIENTE, e la pratica lo accetta solo dal suo ruolo
+  (`E_PRATICHE_BA_NON_COERENTE`). Il FE lo usa per decidere se proporre il
+  campo "Fornitura" (lookup
   `/anagrafiche/istanze-utility/lookup/?soggetto_id=...&soggetto_ruolo_id=...`,
-  filtrato con lo stesso perimetro).
-- `istanza_unica_id` / `istanza_unica_codice`: valorizzati SOLO se il
-  conteggio di cui sopra e' 1 — per il ruolo CL il FE auto-deriva l'istanza e
-  nasconde il picker (pattern preventivi "istanza da BA"); con piu' istanze
-  restano NULL e la scelta e' dell'operatore (combo ristretta alle forniture
-  del cliente).
+  una riga per BA, filtrato con lo stesso perimetro).
+- `billing_account_unico_id` / `billing_account_unico_codice`: valorizzati SOLO
+  se il conteggio e' 1 — il FE auto-deriva il BA della pratica e nasconde il
+  picker; con piu' BA restano NULL e la scelta e' dell'operatore.
+- ⚠️ Fino al 2026-10-08 i campi erano `n_istanze` / `istanza_unica_*` e
+  contavano le istanze legate al ruolo via `clienti`: un ruolo col BA e senza
+  la riga cliente risultava senza forniture, e un'istanza con due utility
+  contava uno (brief-db-istanza-nasce-col-ba, D-9).
 - Scope emittente sul ruolo CL: stesso comportamento della lista ruoli (un
   operatore scoped vede il CL solo se il soggetto ha un cliente su un BA dei
   suoi emittenti). Le righe "senza ruolo" non sono scoped.
@@ -828,9 +907,26 @@ Chiavi **alternative** in query string — esattamente una delle due:
 | `soggetto_ruolo_id` | int | Restore di una riga ruolo |
 | `soggetto_id` | string (UUID) | Restore di una riga "senza ruolo" |
 
-Risposta: stessa shape della riga di `results` in 9.3 (incl. `n_istanze`).
+Risposta: stessa shape della riga di `results` in 9.3 (incl. `n_billing_account`).
 Errori: `E_ANAG_VALIDAZIONE` (zero o due chiavi, UUID malformato, id non
-positivo), `E_ANAG_NOT_FOUND` (record inesistente).
+positivo), `E_ANAG_NOT_FOUND` (record inesistente **o fuori scope**).
+
+**Perimetro**: la stessa **regola** di scope emittente della ricerca 9.3,
+non lo stesso insieme di righe.
+
+* **Riga ruolo** (`soggetto_ruolo_id`): identica alla ricerca — vale la regola
+  del ruolo CL.
+* **Riga «senza ruolo»** (`soggetto_id`): il soggetto è restituito se
+  **nessuno** dei suoi ruoli è fuori scope (lo scope tocca solo il ruolo CL).
+  ⚠️ È **più largo** della ricerca, di proposito: la ricerca propone la riga
+  «senza ruolo» solo ai soggetti privi di qualunque ruolo, il restore
+  ricostruisce una selezione già fatta, e il soggetto può aver preso ruoli
+  dopo. Un soggetto scelto quando non aveva ruoli resta ricostruibile dopo che
+  è diventato cliente, ma solo da chi quel cliente lo vede; con soli ruoli
+  diversi da CL, da chiunque.
+
+Un id fuori scope risponde come un id inesistente: non rivela di esistere. ⛔ Fino al 2026-10-08 il restore non
+applicava nessuno scope (la view ha `skip_area_check`).
 
 ---
 
@@ -909,7 +1005,7 @@ Tutti i campi sono obbligatori.
 | `cognome` | string | Si | Cognome |
 | `nome` | string | Si | Nome |
 | `data_nascita` | string (ISO) | Si | Data di nascita, formato `YYYY-MM-DD` |
-| `sesso` | string | Si | `M` o `F` |
+| `sesso` | string | Si | `M` o `F`. Con `X` il calcolo e' rifiutato (`E_ANAG_VALIDAZIONE`, campo `sesso`): il codice fiscale codifica solo M e F |
 | `comune_nascita_id` | int | Si | ID del comune di nascita (per ricavare il codice catastale) |
 
 ### Risposta (200)
@@ -975,7 +1071,10 @@ Usato per adattare ricerca soggetti e form di creazione al ruolo target
         "piva_obbligatoria": false,
         "formato_cf": "ALFANUM_16",
         "formato_piva": "NON_APPLICABILE",
-        "dati_societari_policy": "NONE"
+        "dati_societari_policy": "NONE",
+        "sesso_policy": "REQUIRED",
+        "cliente_pa_ammesso": false,
+        "split_payment_ammesso": false
       }
     ],
     "default_tipo_soggetto_dettaglio_id": 1,

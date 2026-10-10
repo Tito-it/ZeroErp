@@ -5,21 +5,18 @@
 // Usa useIndirizzoBase per logica condivisa (CAP, duplicato, via nuova).
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useIndirizziStore } from '../stores/indirizzi'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useIndirizzoBase, buildCivicoPart } from '../composables/useIndirizzoBase'
 import { getIndirizzo } from '../api/anagrafiche'
 import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import FormFooter from '../../core/components/FormFooter.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
+import InputMaiuscolo from '../../core/components/InputMaiuscolo.vue'
 import ComuneAutocomplete from './ComuneAutocomplete.vue'
 import StradarioAutocomplete from './StradarioAutocomplete.vue'
 import StradarioGeneraleAutocomplete from './StradarioGeneraleAutocomplete.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
@@ -27,23 +24,15 @@ import Checkbox from 'primevue/checkbox'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
 
-
-
 const props = defineProps({
   visible: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
   itemId: { type: Number, default: null }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
 const emit = defineEmits(['update:visible', 'saved'])
 
 const { t } = useI18n()
-const isReadonly = useInjectReadonly()
 const store = useIndirizziStore()
 const { execute, loading } = useApiHandler()
 const addr = useIndirizzoBase()
@@ -56,7 +45,6 @@ const attivo = ref(true)
 // indirizzo del composable piu' il toggle `attivo`, visti come un oggetto solo.
 const formSalvato = computed(() => ({ ...addr.form, attivo: attivo.value }))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 const isCreate = computed(() => props.mode === 'create')
 const canSave = computed(() => {
@@ -130,131 +118,126 @@ async function handleSave() {
     }
   }
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @after-show="onAfterShow"
+    :title="t('indirizzi.indirizzo')"
+    :icon="NAV_ICONS.INDIRIZZO"
+    :action="isCreate ? t('common.new') : t('common.edit')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave || addressNotFound"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificato" :action="isCreate ? t('common.new') : t('common.edit')" :title="t('indirizzi.indirizzo')" :icon="NAV_ICONS.INDIRIZZO" />
-    </template>
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <!-- Localizzazione -->
-      <div class="form-grid">
-        <template v-if="isCreate">
+    <!-- Localizzazione -->
+    <div class="form-grid">
+      <template v-if="isCreate">
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_comune') }} *</label>
+          <ComuneAutocomplete v-model="addr.form.comune_id" />
+        </div>
+
+        <template v-if="!addr.form.via_nuova">
           <div class="form-field">
-            <label>{{ t('indirizzi.campo_comune') }} *</label>
-            <ComuneAutocomplete v-model="addr.form.comune_id" />
-          </div>
-
-          <template v-if="!addr.form.via_nuova">
-            <div class="form-field">
-              <label>{{ t('indirizzi.campo_via') }} *</label>
-              <StradarioAutocomplete
-                v-model="addr.form.via_obj"
-                :comune-id="addr.form.comune_id"
-                :disabled="!addr.form.comune_id"
-              />
-            </div>
-          </template>
-
-          <div class="form-field">
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <Checkbox v-model="addr.form.via_nuova" :binary="true" input-id="via-nuova" />
-              <label for="via-nuova">{{ t('indirizzi.via_non_presente') }}</label>
-            </div>
-          </div>
-
-          <template v-if="addr.form.via_nuova">
-            <div class="form-field">
-              <label>{{ t('indirizzi.campo_via') }} *</label>
-              <StradarioGeneraleAutocomplete v-model="addr.form.via_obj" />
-            </div>
-          </template>
-
-          <!-- CAP: sempre visibile (auto-set da stradario, fallback da comune) -->
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_cap') }} *</label>
-            <Select
-              v-model="addr.form.codice_postale_id"
-              :options="addr.capOptions.value"
-              option-label="codice"
-              option-value="id"
-              :placeholder="t('indirizzi.campo_cap')"
-              :loading="addr.loadingCap.value"
+            <label>{{ t('indirizzi.campo_via') }} *</label>
+            <StradarioAutocomplete
+              v-model="addr.form.via_obj"
+              :comune-id="addr.form.comune_id"
               :disabled="!addr.form.comune_id"
             />
           </div>
         </template>
 
-        <!-- Edit: localizzazione read-only -->
-        <template v-else-if="editDetail">
-          <div class="form-field">
-            <label>{{ t('indirizzi.col_indirizzo') }}</label>
-            <InputText :model-value="editDetail.indirizzo_normalizzato" disabled />
+        <div class="form-field">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <Checkbox v-model="addr.form.via_nuova" :binary="true" input-id="via-nuova" />
+            <label for="via-nuova">{{ t('indirizzi.via_non_presente') }}</label>
           </div>
+        </div>
+
+        <template v-if="addr.form.via_nuova">
           <div class="form-field">
-            <label>{{ t('indirizzi.col_comune') }}</label>
-            <InputText :model-value="`${editDetail.descrizione_comune} (${editDetail.provincia})`" disabled />
+            <label>{{ t('indirizzi.campo_via') }} *</label>
+            <StradarioGeneraleAutocomplete v-model="addr.form.via_obj" />
           </div>
         </template>
-      </div>
 
-      <!-- Civico -->
-      <div class="form-grid mt-1">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_civico') }}</label>
-            <InputNumber v-model="addr.form.civico" :use-grouping="false" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_estensione') }}</label>
-            <InputText :model-value="addr.form.estensione_civico" @update:model-value="v => addr.form.estensione_civico = (v || '').toUpperCase()" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_palazzina') }}</label>
-            <InputText v-model="addr.form.palazzina" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_scala') }}</label>
-            <InputText v-model="addr.form.scala" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_piano') }}</label>
-            <InputText v-model="addr.form.piano" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_interno') }}</label>
-            <InputText v-model="addr.form.interno" />
-          </div>
+        <!-- CAP: sempre visibile (auto-set da stradario, fallback da comune) -->
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_cap') }} *</label>
+          <Select
+            v-model="addr.form.codice_postale_id"
+            :options="addr.capOptions.value"
+            option-label="codice"
+            option-value="id"
+            :placeholder="t('indirizzi.campo_cap')"
+            :loading="addr.loadingCap.value"
+            :disabled="!addr.form.comune_id"
+          />
         </div>
+      </template>
 
-        <div v-if="!isCreate" class="form-field">
-          <label>{{ t('indirizzi.campo_attivo') }}</label>
-          <ToggleSwitch v-model="attivo" />
+      <!-- Edit: localizzazione read-only -->
+      <template v-else-if="editDetail">
+        <div class="form-field">
+          <label>{{ t('indirizzi.col_indirizzo') }}</label>
+          <InputText :model-value="editDetail.indirizzo_normalizzato" disabled />
         </div>
-      </div>
-
-      <Message v-for="(msg, i) in addr.indirizzoWarnings.value" :key="i" severity="info" size="small" class="mt-1">
-        {{ msg }}
-      </Message>
-
-      <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
-        {{ t('anagrafiche.indirizzo_soggetto.replace_non_trovato') }}
-      </Message>
-
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave || addressNotFound"
-        @save="handleSave"
-        @cancel="chiudi"
-      />
+        <div class="form-field">
+          <label>{{ t('indirizzi.col_comune') }}</label>
+          <InputText :model-value="`${editDetail.descrizione_comune} (${editDetail.provincia})`" disabled />
+        </div>
+      </template>
     </div>
-  </Drawer>
+
+    <!-- Civico -->
+    <div class="form-grid mt-1">
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_civico') }}</label>
+          <InputNumber v-model="addr.form.civico" :use-grouping="false" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_estensione') }}</label>
+          <InputMaiuscolo v-model="addr.form.estensione_civico" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_palazzina') }}</label>
+          <InputText v-model="addr.form.palazzina" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_scala') }}</label>
+          <InputText v-model="addr.form.scala" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_piano') }}</label>
+          <InputText v-model="addr.form.piano" />
+        </div>
+        <div class="form-field">
+          <label>{{ t('indirizzi.campo_interno') }}</label>
+          <InputText v-model="addr.form.interno" />
+        </div>
+      </div>
+
+      <div v-if="!isCreate" class="form-field">
+        <label>{{ t('indirizzi.campo_attivo') }}</label>
+        <ToggleSwitch v-model="attivo" />
+      </div>
+    </div>
+
+    <Message v-for="(msg, i) in addr.indirizzoWarnings.value" :key="i" severity="info" size="small" class="mt-1">
+      {{ msg }}
+    </Message>
+
+    <Message v-if="addressNotFound" severity="warn" size="small" class="mt-1">
+      {{ t('anagrafiche.indirizzo_soggetto.replace_non_trovato') }}
+    </Message>
+  </AppDrawer>
 </template>

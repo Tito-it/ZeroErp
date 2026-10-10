@@ -72,6 +72,40 @@ esplicito passa comunque il parametro, che vince.
 conta chi non si è ancora dichiarato — guardando l'**ultima** corsa, non lo
 storico: le righe vecchie hanno l'autore vuoto per sempre e non sono sanabili.
 
+### ⭐ Rev 2026-10-10 — una corsa saltata non è una corsa riuscita
+
+Quando il lock della corsia è occupato il lavoro non parte, ma il giornale ne
+tiene traccia: la sveglia c'è stata. Fino al 2026-10-10 quella riga nasceva con
+`ok = true`, e l'unica cosa che la distingueva da una corsa vera era il **testo**
+del `message`. Ogni lettore la contava come riuscita.
+
+| colonna | sulla riga saltata |
+| --- | --- |
+| `saltata` | `true` (`boolean NOT NULL DEFAULT false`) |
+| `ok` | `NULL`: non ha fatto lavoro, quindi non ha esito |
+| `ended_at` | valorizzato: nasce già chiusa |
+
+Il CHECK `chk_job_run_log_saltata` tiene insieme le tre cose. La scrivono solo i
+due rami del lock occupato, in `fn_job_run_start` e `fn_run_and_log`, e
+`fn_job_run_end` rifiuta di chiuderla (`E_JOB_RUN_SALTATA_NON_CHIUDIBILE`).
+
+⭐ **Che cosa ne fa chi legge** dipende dalla domanda:
+
+| domanda | la riga saltata | dove |
+| --- | --- | --- |
+| «il lavoro è riuscito?» | si scarta da sola (`ok IS TRUE`) | ogni lettore |
+| «qual è l'ultima corsa **vera**?» | esclusa | [vw_job_run_da_guardare](/dbzero/maintenance/manual/vw_job_run_da_guardare), `ultimo_esito` di [vw_processi_programmazione](/dbzero/dbops/manual/vw_processi_programmazione) |
+| «la sveglia è viva?» | **contata**: prova che il timer si è svegliato | `giornale_ultima_corsa` e `giornale_ultima_corsa_pgagent` di vw_processi_programmazione |
+
+⛔ Il testo `'skip: another run in progress'` resta nel `message` per chi legge il
+giornale, ma non è il marcatore: un filtro sul testo sarebbe una seconda sede
+della stessa regola.
+
+⚠️ Le skip scritte prima del 2026-10-10 hanno `saltata = false` e `ok = true`:
+non sono state bonificate (decisione di Tid).
+
+Brief: `brief-db-corsa-saltata-non-e-una-corsa`.
+
 ---
 
 ### Percorsi di scrittura

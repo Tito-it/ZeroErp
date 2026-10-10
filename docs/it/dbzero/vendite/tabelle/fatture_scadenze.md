@@ -12,18 +12,19 @@
 | fattura_id | bigint | NO |  |
 | numero_rata | smallint | NO |  |
 | data_scadenza | date | NO |  |
-| importo | numeric | NO |  |
+| importo | numeric(18,6) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_scadenze_importo_finito |  |
 | FOREIGN KEY | fk_fatture_scadenze_fattura | fattura_id |
 | PRIMARY KEY | pk_fatture_scadenze | id |
 

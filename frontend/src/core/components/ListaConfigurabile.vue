@@ -85,7 +85,7 @@
 //    La sola larghezza che il catalogo non conosce e' quella dei pulsanti
 //    inline della colonna azioni: la dichiara il chiamante con `azioni-inline`.
 
-import { computed, ref, onMounted, watch, useSlots } from 'vue'
+import { computed, nextTick, ref, onMounted, watch, useSlots } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
@@ -94,6 +94,7 @@ import Button from 'primevue/button'
 import { MANAGE_ICONS } from '../constants'
 import { etichettaColonna } from '../utils/i18nLabel'
 import { useListaConfig } from '../composables/useListaConfig'
+import { drawerAperti } from '../composables/useDrawerInCima'
 import {
   useResponsiveColumns,
   larghezzaAzioniInline,
@@ -178,6 +179,19 @@ const props = defineProps({
   selectionMode: { type: String, default: 'single' },
   // Data key per riga.
   dataKey: { type: String, default: 'id' },
+  // ⭐ LA RIGA APERTA NEL FORM INLINE del contenitore (il suo valore di
+  //    `dataKey`), evidenziata (2026-10-04, §9.6 punto 2 del brief-db-liste-
+  //    righe-documento, Tid: «si evidenzia»). Con il form sotto la lista,
+  //    senza l'evidenza non si vede QUALE riga si sta modificando — la
+  //    `DataTable` grezza di prima la mostrava selezionata. `null` = nessuna.
+  // ⭐ Dal 2026-10-04 la riga aperta in un DRAWER si evidenzia da sola (vedi
+  //    `rigaApertaDalClic`): questa prop serve quando il «dove sono» non nasce
+  //    da un click (form inline, deep-link), e quando c'e' VINCE.
+  rigaAttiva: { type: [String, Number], default: null },
+  // Le righe si aprono col click? `false` (documento non modificabile, sola
+  // lettura): niente hover ne' cursore a mano, che prometterebbero un click
+  // che non fa niente.
+  righeCliccabili: { type: Boolean, default: true },
   // Override prop paginator: tipicamente `paginatorProps` di useSearchTable.
   // Mergiato con i default del pattern (top + jump + 1/N + rowsOptions).
   // Le prop esplicite del caller hanno precedenza sui default.
@@ -651,6 +665,51 @@ function onSort(event) {
   emit('sort', risolto)
 }
 
+// ⭐ LA RIGA APERTA IN UN DRAWER (2026-10-04, Tid): aprendo un drawer da una
+//    riga, la lista sotto il velo deve dire QUALE riga e' aperta. Lo sa da
+//    sola, senza che le pagine lo dichiarino: al click si ricorda la chiave
+//    e quanti drawer erano aperti (la pila di `useDrawerInCima`); la riga
+//    resta attiva finche' ce n'e' di piu' — il drawer nato da quel click, o
+//    un suo figlio — e si spegne quando quel drawer si chiude.
+// ⚠️ Un click che NON apre un drawer (form inline sotto la lista) si
+//    dimentica subito: altrimenti il primo drawer aperto dopo, da un «Nuovo»
+//    o da F6, evidenzierebbe una riga che non c'entra.
+// ⚠️ Il drawer deve aprirsi nello stesso giro del click (`editRow` lo fa): uno
+//    che si apre dopo un'attesa non viene riconosciuto e la riga non si
+//    evidenzia. In quel caso il caller passa `riga-attiva`.
+const rigaCliccata = ref(null)
+const livelloAlClic = ref(0)
+const rigaApertaDalClic = computed(() =>
+  rigaCliccata.value != null && drawerAperti() > livelloAlClic.value ? rigaCliccata.value : null,
+)
+watch(
+  () => drawerAperti(),
+  (n) => { if (n <= livelloAlClic.value) rigaCliccata.value = null },
+)
+async function ricordaRigaCliccata(chiave) {
+  rigaCliccata.value = chiave
+  livelloAlClic.value = drawerAperti()
+  await nextTick()
+  if (drawerAperti() <= livelloAlClic.value && rigaCliccata.value === chiave) {
+    rigaCliccata.value = null
+  }
+}
+
+// La riga evidenziata: quella dichiarata dal caller, o quella aperta dal click.
+const rigaEvidenziata = computed(() => props.rigaAttiva ?? rigaApertaDalClic.value)
+
+// Scopo: le classi della riga: quella attiva (form o drawer aperti su di
+//        lei), e le righe che il click non apre. Le regole di stile stanno in
+//        main.css (§ «Riga attiva e righe non cliccabili»).
+function classeRiga(data) {
+  const classi = []
+  if (rigaEvidenziata.value != null && data?.[props.dataKey] === rigaEvidenziata.value) {
+    classi.push('app-riga-attiva')
+  }
+  if (!props.righeCliccabili) classi.push('app-riga-non-cliccabile')
+  return classi
+}
+
 function onRowClick(event) {
   // Il click sul toggler dell'expander NON deve propagarsi come row-click
   // (altrimenti il chevron aprirebbe ANCHE il drawer del caller).
@@ -662,6 +721,9 @@ function onRowClick(event) {
   ) {
     return
   }
+  // Prima dell'emit: il caller apre il drawer DENTRO l'emit, e la pila va
+  // letta com'era prima.
+  if (props.righeCliccabili) ricordaRigaCliccata(event.data?.[props.dataKey] ?? null)
   emit('row-click', event.data)
 }
 
@@ -841,6 +903,7 @@ defineExpose({
       :sort-order="sortOrder"
       :selection-mode="selectionMode"
       :data-key="dataKey"
+      :row-class="classeRiga"
       v-model:expandedRows="expandedRows"
       @page="onPage"
       @sort="onSort"

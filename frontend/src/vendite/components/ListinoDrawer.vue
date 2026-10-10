@@ -6,18 +6,14 @@ import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useListiniStore } from '../stores/listini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useUtilityDefaultId } from '../../core/composables/useUtilityDefaultId'
 import { useAuthStore } from '../../stores/auth'
-import { DRAWER_WIDTH, STATUS_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import TipologiaListinoSelect from './TipologiaListinoSelect.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
@@ -25,7 +21,6 @@ import Message from 'primevue/message'
 const { t } = useI18n()
 const store = useListiniStore()
 const { execute, loading, campiErrati } = useApiHandler()
-const isReadonly = useInjectReadonly()
 const auth = useAuthStore()
 
 // Default utility globale: il parametro DEFAULT_UTILITY stocca un codice_interno
@@ -46,10 +41,6 @@ const form = ref({})
 // chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
 const detail = ref(null)
-
-// Deferimento contenuto (pattern feedback_content_ready_after_show
-// centralizzato in useDrawerContentReady).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Flag di soppressione reset tipologia durante il caricamento iniziale in edit.
 // Evita che il watch su form.value.utility_id azzeri la tipologia che loadDetail
@@ -93,7 +84,7 @@ async function loadDetail() {
 }
 
 watch(() => props.visible, async (v) => {
-  if (!v) return  // contentReady reset gestito da useDrawerContentReady
+  if (!v) return
   // Carica il default utility (parameter + lookup) prima di resetForm:
   // defaultForm() legge utilityDefaultId.value gia' risolto a id locale.
   await loadUtilityDefault()
@@ -150,7 +141,7 @@ async function handleSave() {
       () => store.update(props.listinoId, payload),
       { successMessage: t('vendite.listini.listino_salvato') }
     )
-    if (result !== null) { emit('saved', result); close() }
+    if (result !== null) { fissa(); emit('saved', result); chiudiDopoSalvataggio() }
   } else {
     // emittente_soggetto_ruolo_id: pricing v5 §3.1 — dimensione NOT NULL del
     // listino. FK verso soggetti_ruoli (NON emittenti_fiscali): il RUOLO
@@ -166,87 +157,81 @@ async function handleSave() {
       () => store.create(payload),
       { successMessage: t('vendite.listini.listino_creato') }
     )
-    if (result !== null) { emit('saved', result); close() }
+    if (result !== null) { fissa(); emit('saved', result); chiudiDopoSalvataggio() }
   }
 }
 
-function close() {
+
+// Uscita dopo il salvataggio, diretta (la fotografia e' gia' fissata). ⛔ Non
+// chiamarla `close`: in `<script setup>` un `close()` senza dichiarazione
+// risolve in silenzio a `window.close()` — e' il difetto trovato il 2026-10-03,
+// quando la funzione locale era stata tolta e le chiamate erano rimaste.
+function chiudiDopoSalvataggio() {
   emit('update:visible', false)
   emit('cancelled')
 }
-
-// Uscite per volonta' dell'utente: con modifiche non salvate si chiede prima.
-const chiudi = () => chiudiConConferma(close)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.STANDARD }" :dismissable="true"
-    @after-show="onAfterShow">
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('vendite.listini.listino')"
-        :icon="NAV_ICONS.LISTINI"
-      />
-    </template>
-
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <template v-if="contentReady">
-        <!-- Solo in creazione: su quale emittente nasce il listino, o che
-             prima va scelto (super admin su «Tutti gli emittenti»). -->
-        <Message v-if="!isEdit && auth.emittenteScritturaSoggettoRuoloId == null" severity="warn" :closable="false">
-          {{ t('vendite.listini.banner_scegli_emittente') }}
-        </Message>
-        <Message v-else-if="!isEdit && auth.emittenteScritturaNome" severity="info" :closable="false">
-          {{ t('vendite.listini.banner_emittente_corrente', { nome: auth.emittenteScritturaNome }) }}
-        </Message>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('vendite.listini.field_codice') }} *</label>
-            <InputText v-model="form.codice" :disabled="isEdit"
-              :invalid="campiErrati.includes('codice')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.listini.field_utility') }} *</label>
-            <UtilityPerRuoloSelect v-model="form.utility_id"
-              :placeholder="t('vendite.listini.field_utility')" />
-          </div>
-        </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('vendite.listini.field_tipologia') }} *</label>
-            <TipologiaListinoSelect v-model="form.tipologia_id"
-              :utility-id="form.utility_id" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.listini.field_descrizione') }} *</label>
-            <InputText v-model="form.descrizione"
-              :invalid="campiErrati.includes('descrizione')"
-            />
-          </div>
-        </div>
-
-        <div v-if="isEdit" class="form-grid">
-          <div class="form-field">
-            <label>{{ t('indirizzi.campo_attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo"
-              :invalid="campiErrati.includes('attivo')"
-            />
-          </div>
-        </div>
-
-      </template>
-
-      <div v-else class="app-loading">
-        <i :class="STATUS_ICONS.CARICAMENTO"></i>
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('vendite.listini.listino')"
+    :icon="NAV_ICONS.LISTINI"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
+  >
+    <!-- Solo in creazione: su quale emittente nasce il listino, o che
+         prima va scelto (super admin su «Tutti gli emittenti»). -->
+    <Message v-if="!isEdit && auth.emittenteScritturaSoggettoRuoloId == null" severity="warn" :closable="false">
+      {{ t('vendite.listini.banner_scegli_emittente') }}
+    </Message>
+    <Message v-else-if="!isEdit && auth.emittenteScritturaNome" severity="info" :closable="false">
+      {{ t('vendite.listini.banner_emittente_corrente', { nome: auth.emittenteScritturaNome }) }}
+    </Message>
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_codice') }} *</label>
+        <InputText v-model="form.codice" :disabled="isEdit"
+          :invalid="campiErrati.includes('codice')"
+        />
       </div>
-
-      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_utility') }} *</label>
+        <UtilityPerRuoloSelect v-model="form.utility_id"
+          :placeholder="t('vendite.listini.field_utility')" />
+      </div>
     </div>
-  </Drawer>
+
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_tipologia') }} *</label>
+        <TipologiaListinoSelect v-model="form.tipologia_id"
+          :utility-id="form.utility_id" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_descrizione') }} *</label>
+        <InputText v-model="form.descrizione"
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
+    </div>
+
+    <div v-if="isEdit" class="form-grid">
+      <div class="form-field">
+        <label>{{ t('indirizzi.campo_attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo"
+          :invalid="campiErrati.includes('attivo')"
+        />
+      </div>
+    </div>
+  </AppDrawer>
 </template>

@@ -1,0 +1,148 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# timestamp-senza-fuso: ammesso — `data::timestamp AT TIME ZONE <fuso>` e' il modo di avere la mezzanotte di un giorno IN un fuso; il timestamp e' un passaggio dell'espressione e non arriva in nessuna colonna (che diventano timestamptz).
+# storico.comuni, storico.indirizzi_dettaglio, storico.indirizzi — LE FINESTRE
+# DI VALIDITA' COME TUTTE LE ALTRE OMBRE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-5/D-6.
+#
+# ── IL FATTO ────────────────────────────────────────────────────────
+#   Su 117 ombre di `storico`, 114 hanno `valid_from timestamptz DEFAULT now()`
+#   e `valid_to timestamptz`: e' la forma che dbops.fn_ensure_storico_table da'
+#   a ogni ombra che crea. Tre dissentono, ed erano gia' state lasciate fuori
+#   dal giro V-3 (20260920-03: «comuni e indirizzi_dettaglio, che e' un'altra
+#   storia»):
+#   - storico.comuni, storico.indirizzi_dettaglio: valid_from e valid_to di
+#     tipo DATE, DEFAULT CURRENT_DATE;
+#   - storico.indirizzi: valid_from timestamptz ma DEFAULT CURRENT_DATE.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   script.trgfn_storico_generic apre e chiude le finestre con
+#   CURRENT_TIMESTAMP. Su una colonna DATE l'assegnazione la tronca al giorno
+#   nel fuso della SESSIONE che scrive: due istanti dello stesso giorno
+#   aziendale potevano finire in due giorni, e fn_get_snapshot_as_of
+#   (p_as_of timestamptz) confrontava un istante con una data castata,
+#   anch'essa nel fuso della sessione. Con le colonne timestamptz il trigger
+#   scrive l'istante vero e nessun cast resta.
+#
+# ── ⚠️ IL USING SCEGLIE L'OROLOGIO PER RIGA, DAL RUOLO CHE HA SCRITTO ───
+#   Le date esistenti sono il giorno di CURRENT_TIMESTAMP nel fuso di chi ha
+#   scritto, ed e' il ruolo a dirlo (user_insert = CURRENT_USER, come in
+#   20260920-03): zeroerp_app (backend Django) scrive in UTC, gli altri ruoli
+#   nel fuso del server (Europe/Rome). La ricostruzione fedele e' la
+#   mezzanotte di QUEL giorno in QUEL fuso: l'ora vera e' persa, il giorno no.
+#   ⚠️ 'Europe/Rome' qui e' un FATTO STORICO (il fuso del server che ha
+#   scritto queste righe), non il fuso dell'azienda: per questo non si legge
+#   SYSTEM_FUSO_ORARIO. Su un database da zero le ombre sono vuote e il USING
+#   non valuta niente.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   L'indice ix_storico_comuni_valid si ricostruisce da solo. Nessuna vista
+#   dipende da queste colonne (pg_depend su zeroerp_ci, 2026-10-09); l'unico
+#   trigger sulle tre ombre e' quello di tx_id, che non nomina colonne.
+#   fn_ensure_storico_table fa CREATE TABLE IF NOT EXISTS: non rilegge il tipo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/storico/20261009-58-alter-storico-comuni-indirizzi-dettaglio-validita-timestamptz-mctit.yaml
+
+  - changeSet:
+      id: 20261009-58-alter-storico-comuni-indirizzi-dettaglio-validita-timestamptz
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        storico.comuni e storico.indirizzi_dettaglio: valid_from/valid_to da date a
+        timestamptz (USING per ruolo che ha scritto), DEFAULT now() su valid_from anche in
+        storico.indirizzi. Le tre ombre prendono la forma delle altre 114.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 5
+            sql: |
+              SELECT count(*)
+                FROM pg_attribute a
+                JOIN pg_class c ON c.oid = a.attrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'storico'
+                 AND ((c.relname IN ('comuni', 'indirizzi_dettaglio')
+                       AND a.attname IN ('valid_from', 'valid_to')
+                       AND a.atttypid = 'date'::regtype)
+                   OR (c.relname = 'indirizzi'
+                       AND a.attname = 'valid_from'
+                       AND a.atttypid = 'timestamptz'::regtype));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ L'orologio si sceglie per RIGA dal ruolo che ha scritto: vedi intestazione.
+              ALTER TABLE storico.comuni
+                  ALTER COLUMN valid_from DROP DEFAULT,
+                  ALTER COLUMN valid_from TYPE timestamptz
+                      USING CASE WHEN user_insert = 'zeroerp_app'
+                                 THEN valid_from::timestamp AT TIME ZONE 'UTC'
+                                 ELSE valid_from::timestamp AT TIME ZONE 'Europe/Rome' END,
+                  ALTER COLUMN valid_to TYPE timestamptz
+                      USING CASE WHEN user_insert = 'zeroerp_app'
+                                 THEN valid_to::timestamp AT TIME ZONE 'UTC'
+                                 ELSE valid_to::timestamp AT TIME ZONE 'Europe/Rome' END,
+                  ALTER COLUMN valid_from SET DEFAULT now();
+
+              ALTER TABLE storico.indirizzi_dettaglio
+                  ALTER COLUMN valid_from DROP DEFAULT,
+                  ALTER COLUMN valid_from TYPE timestamptz
+                      USING CASE WHEN user_insert = 'zeroerp_app'
+                                 THEN valid_from::timestamp AT TIME ZONE 'UTC'
+                                 ELSE valid_from::timestamp AT TIME ZONE 'Europe/Rome' END,
+                  ALTER COLUMN valid_to TYPE timestamptz
+                      USING CASE WHEN user_insert = 'zeroerp_app'
+                                 THEN valid_to::timestamp AT TIME ZONE 'UTC'
+                                 ELSE valid_to::timestamp AT TIME ZONE 'Europe/Rome' END,
+                  ALTER COLUMN valid_from SET DEFAULT now();
+
+              -- Gia' timestamptz: cambia solo il DEFAULT (era la mezzanotte della
+              -- sessione, ora l'istante, come le altre 114 ombre).
+              ALTER TABLE storico.indirizzi
+                  ALTER COLUMN valid_from SET DEFAULT now();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Rollback: torna a DATE nel fuso dello stesso ruolo che ha scritto.
+              ALTER TABLE storico.comuni
+                  ALTER COLUMN valid_from DROP DEFAULT,
+                  ALTER COLUMN valid_from TYPE date
+                      USING CASE WHEN user_insert = 'zeroerp_app'
+                                 THEN (valid_from AT TIME ZONE 'UTC')::date
+                                 ELSE (valid_from AT TIME ZONE 'Europe/Rome')::date END,
+                  ALTER COLUMN valid_to TYPE date
+                      USING CASE WHEN user_insert = 'zeroerp_app'
+                                 THEN (valid_to AT TIME ZONE 'UTC')::date
+                                 ELSE (valid_to AT TIME ZONE 'Europe/Rome')::date END,
+                  ALTER COLUMN valid_from SET DEFAULT CURRENT_DATE;
+
+              ALTER TABLE storico.indirizzi_dettaglio
+                  ALTER COLUMN valid_from DROP DEFAULT,
+                  ALTER COLUMN valid_from TYPE date
+                      USING CASE WHEN user_insert = 'zeroerp_app'
+                                 THEN (valid_from AT TIME ZONE 'UTC')::date
+                                 ELSE (valid_from AT TIME ZONE 'Europe/Rome')::date END,
+                  ALTER COLUMN valid_to TYPE date
+                      USING CASE WHEN user_insert = 'zeroerp_app'
+                                 THEN (valid_to AT TIME ZONE 'UTC')::date
+                                 ELSE (valid_to AT TIME ZONE 'Europe/Rome')::date END,
+                  ALTER COLUMN valid_from SET DEFAULT CURRENT_DATE;
+
+              ALTER TABLE storico.indirizzi
+                  ALTER COLUMN valid_from SET DEFAULT CURRENT_DATE;

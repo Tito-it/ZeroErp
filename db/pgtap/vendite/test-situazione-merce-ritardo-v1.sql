@@ -45,14 +45,15 @@
 --   ritardo contato su una riga gia' evasa passerebbe inosservato.
 --
 -- ⚠️ IL MONDO SI COSTRUISCE: azienda, cliente, articolo. L'ordine CONFERMATO
---   si inserisce direttamente in quello stato (l'INSERT non passa dalla
---   matrice delle transizioni, di proposito) e la spedizione del test 9 e'
+--   nasce DRAFT, prende la riga e passa a CONFERMATO con
+--   dbops.fn_pgtap_porta_a_stato (rev 2026-10-08, 20261008-90: fuori bozza le
+--   righe non si scrivono piu') e la spedizione del test 9 e'
 --   un DDT VERO: vendite.fn_genera_ddt_da_ordine + causale VENDITA + stati
 --   fino a CONSEGNATO, come in test-vw-situazione-merce-ordine-v1.
 --
--- ⚠️ CURRENT_DATE anche qui: la vista conta con la data della sessione (e'
---   un indicatore, non una data documento), e il test calcola l'attesa con la
---   stessa data, nella stessa transazione.
+-- ⚠️ script.fn_data_operativa() anche qui: la vista conta i giorni dal giorno
+--   dell'azienda (e' un indicatore, non una data documento), e il test calcola
+--   l'attesa con lo stesso giorno, nella stessa transazione.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -128,23 +129,29 @@ DO $ctx$ BEGIN
     PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo));
 END $ctx$;
 
--- Helper: un ordine nello stato dato, con una riga da p_qta.
-CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_stato_id bigint, p_qta numeric)
+-- Helper: un ordine nello stato dato, con una riga da p_qta (e, se data, la
+-- richiesta del cliente scritta sulla riga in bozza).
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa allo stato voluto con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
+CREATE OR REPLACE FUNCTION pg_temp.mk_ordine(p_stato_id bigint, p_qta numeric,
+                                             p_richiesta date DEFAULT NULL)
 RETURNS TABLE(ordine_id bigint, ordine_riga_id bigint) AS $$
-DECLARE v_ord bigint; v_orr bigint;
+DECLARE v_ord bigint; v_orr bigint; v_stato text;
 BEGIN
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, utility_id, stato_doc_ordine_id,
                               valuta_id, data, fatturazione_trigger, emittente_fiscale_id, meta)
-  SELECT c.soggetto_ruolo_id, c.billing_account_id, c.utility_id, p_stato_id,
-         r.valuta_id, CURRENT_DATE - 10, 'SPEDITO', m.emittente_fiscale_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id, c.utility_id, r.stato_ord_draft_id,
+         r.valuta_id, script.fn_data_operativa() - 10, 'SPEDITO', m.emittente_fiscale_id,
          jsonb_build_object('test_scope', 'pgtap_situazione_merce_ritardo')
     FROM _cliente c, _mondo m, _refs r
   RETURNING id INTO v_ord;
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                    qta_operativa, quantita, prezzo_unitario, iva_id)
-  SELECT v_ord, 1, a.articolo_id, 'Riga ritardo', p_qta, p_qta, 25, r.iva_id
+                                    qta_operativa, quantita, prezzo_unitario, iva_id,
+                                    data_consegna_richiesta_cliente)
+  SELECT v_ord, 1, a.articolo_id, 'Riga ritardo', p_qta, p_qta, 25, r.iva_id, p_richiesta
     FROM _articolo a, _refs r
   RETURNING id INTO v_orr;
+  SELECT s.codice_interno INTO v_stato FROM config.stati_doc_ordini s WHERE s.id = p_stato_id;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, v_stato);
   RETURN QUERY SELECT v_ord, v_orr;
 END $$ LANGUAGE plpgsql;
 
@@ -178,33 +185,38 @@ SELECT is(
     'true|NULL',
     '3) riga impegnata con residuo 10 (da_spedire = 10) e nessuna data: giorni_ritardo NULL (nessun riferimento)');
 
-UPDATE vendite.ordini_righe SET data_consegna_richiesta_cliente = CURRENT_DATE - 5
- WHERE id = (SELECT ordine_riga_id FROM _a);
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la richiesta del
+--   cliente fuori bozza non si scrive piu' (20261008-90: l'eccezione e' la sola
+--   data_consegna_confermata). Dal test 4 in poi la riga e' una seconda, _a2, che
+--   nasce con la richiesta a -5 scritta IN BOZZA e poi e' confermata; la promessa
+--   (5-7) resta un UPDATE su CONFERMATO, l'eccezione ammessa.
+CREATE TEMP TABLE _a2 AS
+SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10, script.fn_data_operativa() - 5);
 
 SELECT is(
-    (SELECT s.giorni_ritardo FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a)),
+    (SELECT s.giorni_ritardo FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a2)),
     5,
     '4) solo la richiesta del cliente, 5 giorni fa: 5 giorni di ritardo');
 
-UPDATE vendite.ordini_righe SET data_consegna_confermata = CURRENT_DATE - 3
- WHERE id = (SELECT ordine_riga_id FROM _a);
+UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() - 3
+ WHERE id = (SELECT ordine_riga_id FROM _a2);
 
 SELECT is(
-    (SELECT s.giorni_ritardo FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a)),
+    (SELECT s.giorni_ritardo FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a2)),
     3,
     '5) con la promessa a -3 accanto alla richiesta a -5: 3 — la promessa vince (decisione 2026-09-14)');
 
-UPDATE vendite.ordini_righe SET data_consegna_confermata = CURRENT_DATE + 2
- WHERE id = (SELECT ordine_riga_id FROM _a);
+UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() + 2
+ WHERE id = (SELECT ordine_riga_id FROM _a2);
 
 SELECT is(
-    (SELECT s.giorni_ritardo FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a)),
+    (SELECT s.giorni_ritardo FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a2)),
     0,
     '6) promessa fra 2 giorni: 0 — c''e'' da spedire e NON e'' tardi (non NULL)');
 
 SELECT is(
-    (SELECT (s.data_consegna_richiesta_cliente = CURRENT_DATE - 5)::text || '/' || (s.data_consegna_confermata = CURRENT_DATE + 2)::text
-       FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a)),
+    (SELECT (s.data_consegna_richiesta_cliente = script.fn_data_operativa() - 5)::text || '/' || (s.data_consegna_confermata = script.fn_data_operativa() + 2)::text
+       FROM vendite.vw_situazione_merce_ordine s WHERE s.ordine_riga_id = (SELECT ordine_riga_id FROM _a2)),
     'true/true',
     '7) le due date della riga escono dalla vista tali e quali');
 
@@ -214,7 +226,7 @@ SELECT is(
 CREATE TEMP TABLE _b AS
 SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_draft_id FROM _refs), 10);
 
-UPDATE vendite.ordini_righe SET data_consegna_richiesta_cliente = CURRENT_DATE - 30
+UPDATE vendite.ordini_righe SET data_consegna_richiesta_cliente = script.fn_data_operativa() - 30
  WHERE id = (SELECT ordine_riga_id FROM _b);
 
 SELECT is(
@@ -226,10 +238,13 @@ SELECT is(
 -- ⭐ Spedita per intero: DDT vero da 10, consegnato. Promessa scaduta a -3.
 CREATE TEMP TABLE _c AS
 SELECT * FROM pg_temp.mk_ordine((SELECT stato_ord_confermato_id FROM _refs), 10);
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la promessa si
+--   scrive PRIMA della spedizione, a ordine CONFERMATO (l'eccezione di 20261008-90):
+--   spedito per intero l'ordine e' EVASO e la riga non si tocca piu'.
+UPDATE vendite.ordini_righe SET data_consegna_confermata = script.fn_data_operativa() - 3
+ WHERE id = (SELECT ordine_riga_id FROM _c);
 CREATE TEMP TABLE _c_ddt AS
 SELECT pg_temp.mk_spedizione((SELECT ordine_id FROM _c), (SELECT ordine_riga_id FROM _c), 10) AS ddt_id;
-UPDATE vendite.ordini_righe SET data_consegna_confermata = CURRENT_DATE - 3
- WHERE id = (SELECT ordine_riga_id FROM _c);
 
 SELECT is(
     (SELECT (s.da_spedire = 0)::text || '|' || COALESCE(s.giorni_ritardo::text, 'NULL')

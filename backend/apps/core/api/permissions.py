@@ -24,11 +24,11 @@ from rest_framework.request import Request
 from apps.core.services.auth_constants import (
     RUOLI_PORTALE,
     RUOLI_SHOP,
-    RUOLO_APPLICATIVO_DISABILITATO,
     RUOLO_APPLICATIVO_OPERATORE,
 )
 from apps.core.services.permissions_cache import load_user_cache, save_user_cache
 from apps.core.services.permissions_resolver import LIVELLO_MAP, PermissionResolver
+from apps.core.services.service_errors import ServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,6 @@ class MotivoDiniego(StrEnum):
     NESSUNA_PERMISSION_CLASS = "nessuna_permission_class"
     PERMISSION_CLASS_NON_VALUTABILE = "permission_class_non_valutabile"
     ADMIN_NEGATO = "admin_negato"
-    DISABILITATO = "DISABILITATO"
     AZIONE_NEGATA = "azione_negata"
     AZIONE_SCONOSCIUTA = "azione_sconosciuta"
     AREA_NON_DEFINITA = "area_non_definita"
@@ -208,8 +207,37 @@ class IsAdminZeroERP(BasePermission):
             "security.admin_denied user_id=%s path=%s",
             user.id, request.path,
         )
+        # ⭐ Il codice viaggia con `self.code` fino all'envelope (E-5, come
+        #    `E_REPARTO_SENZA_PROFILO`): senza, usciva `E_PERMISSION_DENIED`
+        #    e la frase mirata non arrivava (brief-db-codici-non-trovato-
+        #    email-e-permessi R-2).
+        self.code = "E_ACCESSO_RISERVATO_ADMIN"
         self.message = "Accesso riservato agli amministratori."
         return False
+
+
+# Scopo: BB — una lettura sui dati di UN utente (`user_id` dal percorso) e'
+#        ammessa a lui stesso o a un amministratore; altrimenti 403
+#        `E_PERMESSO_NEGATO`. Regola del 2 (ok Tid, 2026-10-08): la
+#        scrivevano per conto loro permessi effettivi e audit permessi.
+# ⭐ «Amministratore» non si riscrive qui: lo decide `IsAdminZeroERP.valuta`
+#    (superuser Django o SUPER_ADMIN), la sede di quel significato.
+# ⚠️ Serve alle view con `skip_area_check`, dove la catena non guarda piu'
+#    niente: il controllo sta nel corpo, e il presidio
+#    `test_skip_area_check_registro` (che legge gli attributi) non lo vede.
+#    `detail` dice al chiamante CHE COSA non si puo' consultare.
+def richiedi_se_stesso_o_amministratore(
+    user: Any, user_id: int, *, cache: dict[str, Any], detail: str,
+) -> None:
+    if user_id == user.id:
+        return
+    if IsAdminZeroERP.valuta(user, None, method="", cache=cache).consentito:
+        return
+    raise ServiceError(
+        code="E_PERMESSO_NEGATO",
+        message="Non hai i permessi per questa operazione.",
+        detail=detail,
+    )
 
 
 class ZeroERPPermission(BasePermission):
@@ -233,6 +261,10 @@ class ZeroERPPermission(BasePermission):
       livello si chiede su quell'oggetto e sulla sua area; ``None`` ricade
       sull'area della classe. Valutata sulla classe, senza richiesta, nega
     """
+
+    # Codice del 403, scritto a ogni diniego (DRF lo legge con getattr):
+    # solo annotazione, nessun valore di classe.
+    code: str | None
 
     # Mapping azione ViewSet -> tipo di accesso CRUD richiesto
     ACTION_REQUIRES: dict[str, str] = {
@@ -317,10 +349,13 @@ class ZeroERPPermission(BasePermission):
         if user.is_superuser:
             return _CONSENTITO
 
-        # Check ruolo applicativo (DISABILITATO => negato subito)
+        # ⛔ Niente piu' «ruolo DISABILITATO => negato» (ritirato il 2026-10-02,
+        #    brief-db-be-fe-area-accessi R-DB-1): una veste spenta tiene il suo
+        #    tipo e ha `attivo = false`, e la tabella rifiuta DISABILITATO. Chi
+        #    ha solo vesti spente non ha un'identita' attiva: niente GUC di
+        #    veste, niente SUPER_ADMIN, e il livello d'area lo nega piu' sotto.
+        # Il ruolo serve ancora al messaggio del diniego d'area (`_esito_livello`).
         ruolo_app = PermissionResolver.get_ruolo_applicativo(user, cache=cache)
-        if ruolo_app == RUOLO_APPLICATIVO_DISABILITATO:
-            return EsitoPermesso(consentito=False, motivo=MotivoDiniego.DISABILITATO)
         # SUPER_ADMIN bypass — single source of truth per il privilegio admin.
         if PermissionResolver.is_super_admin(user, cache=cache):
             return _CONSENTITO
@@ -454,13 +489,8 @@ class ZeroERPPermission(BasePermission):
         user = request.user
         motivo = esito.motivo
         self.message = _MSG_PERMESSO_NEGATO
-        if motivo is MotivoDiniego.DISABILITATO:
-            logger.warning(
-                "security.permission_denied user_id=%s reason=DISABILITATO path=%s",
-                user.id, request.path,
-            )
-            self.message = "Utente disabilitato. Contattare l'amministratore."
-        elif motivo is MotivoDiniego.AZIONE_NEGATA:
+        self.code = None
+        if motivo is MotivoDiniego.AZIONE_NEGATA:
             logger.warning(
                 "security.permission_denied user_id=%s reason=azione_negata azione=%s path=%s",
                 user.id, esito.azione, request.path,
@@ -505,10 +535,16 @@ class ZeroERPPermission(BasePermission):
         if ruolo_app == RUOLO_APPLICATIVO_OPERATORE and not PermissionResolver.has_profilo_applicabile_per_area(
             user, area_schema_db, cache=cache
         ):
+            # ⭐ Il codice viaggia con `self.code` (DRF lo mette in
+            #    `detail.code`, e `drf_exception_handler` lo legge): senza,
+            #    usciva `E_PERMISSION_DENIED` col messaggio generico e questa
+            #    frase non arrivava mai al client (E-5, 2026-10-08).
+            self.code = "E_REPARTO_SENZA_PROFILO"
             self.message = (
                 "Il reparto non ha ancora un profilo permessi configurato."
             )
         else:
+            self.code = None
             self.message = _MSG_PERMESSO_NEGATO
 
     @staticmethod
@@ -610,6 +646,8 @@ class PortaleBasePermission(BasePermission):
             "security.portale_denied user_id=%s ruolo=%s path=%s",
             user.id, ruolo, request.path,
         )
+        # Codice nell'envelope: vedi `IsAdminZeroERP` (R-2).
+        self.code = "E_ACCESSO_RISERVATO_PORTALE"
         self.message = "Accesso riservato agli utenti portale."
         return False
 
@@ -639,13 +677,11 @@ class ShopBasePermission(BasePermission):
         if ruolo in RUOLI_SHOP:
             return True
 
-        if ruolo == RUOLO_APPLICATIVO_DISABILITATO:
-            self.message = "Utente disabilitato."
-            return False
-
         logger.warning(
             "security.shop_denied user_id=%s ruolo=%s path=%s",
             user.id, ruolo, request.path,
         )
+        # Codice nell'envelope: vedi `IsAdminZeroERP` (R-2).
+        self.code = "E_ACCESSO_RISERVATO_SHOP"
         self.message = "Accesso riservato ai clienti shop."
         return False

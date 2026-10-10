@@ -3,7 +3,7 @@
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-25. **A chi:** Tid (decisioni,
 > §4), poi team DB e team backend/frontend (§6).
 > **Origine:** decisione **D-3** di
-> [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md)
+> [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md)
 > (§7.1), con la **D-5** per la forma del permesso. È il secondo brief operativo
 > del modello, dopo [brief-db-magazzino-verbi-con-permesso.md](brief-db-magazzino-verbi-con-permesso.md).
 > **Stato: ✅ CHIUSO il 2026-09-28.** Tutte le parti sono fatte, applicate e

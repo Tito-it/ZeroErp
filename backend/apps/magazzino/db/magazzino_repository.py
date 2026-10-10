@@ -40,11 +40,12 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection
 
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     pattern_contiene,
     RicercaFull,
     add_ricerca_full_condition,
@@ -503,7 +504,7 @@ class MagazzinoRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(r) for r in rows], total  # type: ignore[return-value]
+        return [cast(DocumentoInternoRow, self._shape(r)) for r in rows], total
 
     # Scopo: La testata, o `None` se non esiste / non e' visibile.
     def get_documento(
@@ -682,7 +683,7 @@ class MagazzinoRepository:
             limit=limit,
             offset=offset,
         )
-        return [self._shape(r) for r in rows], total  # type: ignore[return-value]
+        return [cast(RigaDocumentoInternoRow, self._shape(r)) for r in rows], total
 
     # Scopo: Una riga DELLA testata indicata: la coppia (documento, riga) e'
     #        la risorsa dell'URL, e una riga di un altro documento non c'e'.
@@ -957,12 +958,10 @@ class MagazzinoRepository:
         if causale_id is not None:
             conditions.append("mv.causale_id = %s")
             params.append(int(causale_id))
-        if data_da is not None:
-            conditions.append("mv.data_mov >= %s::date")
-            params.append(data_da)
-        if data_a is not None:
-            conditions.append("mv.data_mov < (%s::date + INTERVAL '1 day')")
-            params.append(data_a)
+        # Giorni dell'AZIENDA, `data_a` incluso (BB, brief un-solo-fuso-aziendale B-4).
+        giorno_sql, giorno_params = predicato_giorno_operativo("mv.data_mov", data_da, data_a)
+        conditions.append(giorno_sql)
+        params.extend(giorno_params)
         if sorgente_codice_interno is not None:
             conditions.append("sg.codice_interno = %s")
             params.append(sorgente_codice_interno)

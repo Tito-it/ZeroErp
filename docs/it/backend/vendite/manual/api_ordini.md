@@ -105,9 +105,7 @@ Crea un ordine in `DRAFT`. `handle_post_json`.
 
 | Campo | Tipo | Note |
 | --- | --- | --- |
-| `billing_account_id` | int | cliente; se presente, `soggetto_ruolo_id` è derivato dal BA |
-| `soggetto_ruolo_id` | int | alternativa al BA (NOT NULL in testata) |
-| `utility_id` | int | |
+| `billing_account_id` | int | cliente, **obbligatorio** (D-1 di brief-db-esecutivi-ba-coppia). `soggetto_ruolo_id` e `utility_id` sono copie del BA: le scrive `trgfn_ordini_normalize` (BB `script.fn_cliente_dal_billing_account`) e non sono nel contratto (si scartano) |
 | `emittente_fiscale_id` | int | opzionale; se omesso, trigger lo valorizza da GUC |
 | `valuta_id`, `modalita_pagamento_id`, `termine_pagamento_id` | int | opzionali |
 | `fatturazione_trigger` | str | opzionale; default ereditato da BA |
@@ -166,17 +164,17 @@ DRAFT): contratto completo in [api_indirizzi_documento.md](api_indirizzi_documen
 
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 
-Solo in `DRAFT`. `request.data` (non `handle_post_json`, api.md). Campi
-aggiornabili: `utility_id`, `valuta_id`, `modalita_pagamento_id`,
-`termine_pagamento_id`, `fatturazione_trigger`, `agente_soggetto_ruolo_id`,
-`data`, `meta`.
+In bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': dopo la conferma restano aperte le note, ferme a ordine fatturato o annullato. `corpo_oggetto(request)` (non `handle_post_json`, api.md). Campi
+aggiornabili: `billing_account_id` (vedi sotto), `valuta_id`,
+`modalita_pagamento_id`, `termine_pagamento_id`, `fatturazione_trigger`,
+`agente_soggetto_ruolo_id`, `data`, `meta`. `utility_id` non c'e': e' una copia
+del BA, che sull'ordine non cambia.
 
-**Cliente immutabile post-creazione** (2026-06-04): `billing_account_id` **non**
-è aggiornabile (a differenza del create, dove deriva `soggetto_ruolo_id`).
-`vendite.ordini` denormalizza `soggetto_ruolo_id` (NOT NULL) accanto a
-`billing_account_id`. Un PATCH che **cambia** `billing_account_id` è rifiutato con
-`E_ORD_CLIENTE_IMMUTABILE`; lo stesso BA reinviato **invariato** è tollerato (il
-form FE lo può rimandare). Regola «cambiare cliente = nuovo ordine».
+**Cliente immutabile post-creazione** (2026-06-04): un PATCH che **cambia**
+`billing_account_id` è rifiutato con 409 `E_ORD_CLIENTE_IMMUTABILE`; lo stesso BA
+reinviato **invariato** passa (il form FE lo può rimandare). Regola «cambiare
+cliente = nuovo ordine». ⭐ Dal 2026-10-10 lo dice **solo il DB** (lock qui
+sotto): il BA arriva al DB e il service non ricopia piu' il controllo.
 
 **Difesa DB autoritativa atterrata** (DB-ORD-LOCK, 2026-06-04): `billing_account_id`
 **e** `soggetto_ruolo_id` sono immutabili su UPDATE via lock-columns data-driven
@@ -291,6 +289,7 @@ La response espone `commesse_ids` (commesse toccate dal push), oltre a
 | `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM con override prezzi opzionali (`componenti_overrides`, vedi sotto) |
 | `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). `request.data` |
 | `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT) |
+| `POST /<id>/righe/<riga_id>/data-consegna-confermata/` | La promessa di consegna **dopo la conferma** (2026-10-10, sotto) |
 
 Payload riga (create): `articolo_id` (obbligatorio), `descrizione`, `quantita`,
 `qta_operativa`, `uom_operativa_id`, `factor_to_base`, `prezzo_unitario`,
@@ -311,10 +310,20 @@ quanto chiesto); una data malformata è un **400** col campo
 lista ordini espone `data_consegna_richiesta_cliente_min` dalla vista
 (`vw_ordini_lista`), il `min()` sulle righe attive. ⚠️ **Fatto di modello
 dichiarato nel brief (§5.5, 1-bis) e non deciso qui**: le righe si scrivono solo
-in `DRAFT`, ma la promessa si decide **alla conferma** e può cambiare dopo — il
-DB non mette nessun guard di stato su questa colonna, di proposito. Serve un
-verbo suo per la data confermata su ordine `CONFERMATO` (stampo: gli override
-di prezzo) o un dialog di conferma che la raccolga: non è di questo cantiere.
+in `DRAFT`, ma la promessa si decide **alla conferma** e può cambiare dopo.
+
+⭐ **Il verbo della promessa dopo la conferma** (dal 2026-10-10,
+[brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)
+fase 1): `POST /<id>/righe/<riga_id>/data-consegna-confermata/`, corpo
+`{"data_consegna_confermata": "AAAA-MM-GG" | null}` (`null` toglie la promessa).
+Scrive la **sola** colonna; ogni altra chiave è un 400. ⛔ Nessun pre-check di
+stato nel backend: in quali stati la data si cambia lo dice il lock delle righe
+(`trgfn_doc_righe_lock_fuori_bozza`, oggi `CONFERMATO` e `PARZIALMENTE_EVASO`), e
+il 409 `E_RIGA_DOC_NON_BOZZA` passa com'è. Il dettaglio porta sotto `capabilities`
+la terna `can_edit_data_consegna_confermata` · `_reason` · `_reason_key`, letta
+dallo stesso montaggio: in `DRAFT` è spenta col motivo `ORDINE_IN_BOZZA` (la data
+si scrive modificando la riga). Risposta: `{ordine_id, riga_id, data_consegna_confermata}`.
+`PATCH /<id>/righe/<riga_id>/` resta «solo in bozza» per tutte le colonne.
 
 ### Componenti BoM (CASO A)
 
@@ -322,7 +331,7 @@ di prezzo) o un dialog di conferma che la raccolga: non è di questo cantiere.
 | --- | --- |
 | `POST /<id>/righe/preview-componenti/` | Preview read-only dei componenti BoM (pre-save). Payload: `articolo_id`, `uom_operativa_id`, `quantita` |
 | `GET /<id>/righe/<riga_id>/componenti/` | Lista componenti persistiti (`?solo_attivi=true`) |
-| `PATCH /<id>/righe/<riga_id>/componenti/<componente_id>/` | Aggiorna componente (solo DRAFT): `prezzo_unitario`, `attivo`, `esposto_in_fattura`, `meta` |
+| `PATCH /<id>/righe/<riga_id>/componenti/<componente_id>/` | Aggiorna componente (solo DRAFT): `prezzo_unitario`, `attivo`, `meta`. Il modo di esposizione in fattura è della distinta (`esposizione_in_fattura` in lettura), non della riga |
 | `DELETE /<id>/righe/<riga_id>/componenti/<componente_id>/` | Soft-delete componente (`attivo=FALSE`, solo DRAFT) |
 
 **Override prezzi componente pre-save** (CREATE riga composita, simmetria
@@ -385,9 +394,8 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
   dirette su listini). Il gate prezzi L2/L3 stile contratti **non** è applicato:
   scelta ratificata (analisi §8.bis) — pricing **stile preventivo** (resolve +
   prezzo dal caller).
-- **Cliente immutabile in update**: `billing_account_id` fuori dalla whitelist
-  PATCH; cambio rifiutato con `E_ORD_CLIENTE_IMMUTABILE` (guard BE + lock-columns
-  DB autoritativo, vedi Update testata).
+- **Cliente immutabile in update**: cambio di `billing_account_id` rifiutato con
+  `E_ORD_CLIENTE_IMMUTABILE` dal lock-columns del DB (vedi Update testata).
 - **Scope emittente**: la vista è `security_invoker=on` (RLS attiva sulla tabella
   base); il filtro applicativo `fn_get_emittenti_scope_pk_ids` si somma
   (defense-in-depth). Un detail fuori scope torna **404**.
@@ -417,7 +425,9 @@ Liste: `paginated_envelope` (`count`, `page`, `page_size`, `total_pages`,
 | --- | --- | --- |
 | `E_ORD_NOT_FOUND` | 404 | ordine/riga/componente inesistente o fuori scope |
 | `E_ORD_VALIDAZIONE` | 400 | payload non valido (cliente mancante, campi vuoti, `billing_account_id` non numerico, ecc.) |
-| `E_ORD_CLIENTE_IMMUTABILE` | 400 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (guard BE + lock-columns DB) |
+| `E_ORD_CLIENTE_IMMUTABILE` | 409 | tentativo di cambiare `billing_account_id`/`soggetto_ruolo_id` in update (lock-columns DB) |
+| `E_DOC_CLIENTE_DIVERSO_DA_BA` | 400 | ruolo o utility diversi da quelli del BA (scrittura che li passa a mano; il service non li manda) |
+| `E_DOC_EMITTENTE_FUORI_BOZZA` | 409 | cambio di emittente fuori bozza (BB `trgfn_doc_testata_lock_fuori_bozza`) |
 | `E_ORD_STATO_TRANSIZIONE` | 409 | operazione non ammessa nello stato sulla **testata** (modifica fuori DRAFT; delete bozza con righe → annullare) |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | righe e componenti si aggiungono/modificano/tolgono solo in bozza — dal 2026-09-22 è il codice del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (sugli ordini montato sul solo DELETE) e il pre-check BE lo usa uguale (`richiedi_righe_in_bozza`), con la frase a catalogo |
 | `E_ORD_NESSUNA_RIGA` | 409 | conferma/push senza righe eleggibili (guard applicativo `conferma()`) |
@@ -456,7 +466,8 @@ preesistono; gli `E_ORD_*` aggiunti con questo scheletro).
   (`UPDATE OF emittente_fiscale_id`, l'aliquota dipende dallo stato emittente).
 - Trigger testata: `trgfn_ordini_gen_numero`, `trgfn_ordini_normalize`,
   `script.trgfn_default_emittente_fiscale` (dal 2026-09-15 al posto di
-  `trgfn_ordini_default_emittente`), `trgfn_ordini_guard_emittente_ba`,
+  `trgfn_ordini_default_emittente`), `script.trgfn_doc_guard_emittente_ba` (dal 2026-10-10
+  al posto di `trgfn_ordini_guard_emittente_ba`),
   `trgfn_ordini_guard_transizione` (la vecchia
   `trgfn_ordini_guard_transizione_approvazione` è ritirata dal `20260512-28`), lock numero, immutabilità
   `canale_origine`.

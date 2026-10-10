@@ -10,9 +10,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
 from typing import Any
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.ai_assistant.tools.base import AITool
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ def build_system_prompt(user: Any, tools: list[AITool]) -> str:
     )
 
     # Data corrente
-    today = date.today()
+    today = oggi_aziendale()
     sections.append(
         f"DATA CORRENTE: {today.isoformat()} ({_day_name_it(today.weekday())}). "
         f"Usa questa data per risolvere riferimenti temporali come "

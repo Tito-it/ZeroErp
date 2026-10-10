@@ -1,0 +1,105 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI HA TOCCATO PER ULTIMO UNA RIGA DI DOCUMENTO SI SA SEMPRE
+#   user_update SET NOT NULL su righe e componenti dei documenti di vendita:
+#     vendite.preventivi_righe,   vendite.preventivi_righe_componenti,
+#     vendite.ordini_righe,       vendite.ordini_righe_componenti,
+#     vendite.ddt_righe,          vendite.ddt_righe_componenti,
+#     vendite.contratti_righe,    vendite.contratti_righe_componenti,
+#     vendite.offerte_commerciali_eccezioni,
+#     vendite.resi_righe,         vendite.fatture_righe
+#   Brief: brief-db-righe-e-componenti-le-altre-famiglie (§2.3)
+#
+# -- PERCHE' --------------------------------------------------------
+#   linee-guida-sql §7: le colonne di audit sono NOT NULL. Su queste
+#   tabelle user_update era nullable, tranne sul componente dell'offerta
+#   (vendite.offerte_commerciali_eccezioni_componenti), che il
+#   20261005-14 ha lasciato com'era: «il debito e' delle altre tabelle».
+#   E' quel debito.
+#
+# -- CHE COSA CAMBIA PER CHI SCRIVE -------------------------------------
+#   Niente. Tutte e undici hanno script.trgfn_audit_data_user_generic
+#   (BEFORE INSERT OR UPDATE), che scrive user_update a OGNI scrittura
+#   da app.jwt_user o CURRENT_USER: un NULL non passa nemmeno se lo si
+#   chiede. Il vincolo dice nel DDL cio' che il trigger gia' fa.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero NULL su tutte e undici (expectedResult
+#   0: un DB da zero la soddisfa, linee-guida-sql §11.4), come il
+#   20261005-14. Se ce ne sono, il migrate si ferma e si guardano a mano:
+#   nessun valore scelto dal migrate. Una bonifica con UPDATE qui non si
+#   potrebbe fare comunque: passerebbe dai lock «fuori bozza» delle righe.
+#
+# -- IL PERIMETRO ---------------------------------------------------
+#   Righe e componenti di documento, e basta. user_update e' nullable su
+#   molte altre tabelle (§5.2 del brief): e' un debito piu' largo, che
+#   chiede un presidio e un giro suo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261008-31-alter-righe-componenti-user-update-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261008-31-alter-righe-componenti-user-update-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        user_update NOT NULL su righe e componenti dei documenti di vendita (undici tabelle), come
+        sul componente dell'offerta e come vuole linee-guida-sql §7. Brief:
+        brief-db-righe-e-componenti-le-altre-famiglie (§2.3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT (SELECT count(*) FROM vendite.preventivi_righe              WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.preventivi_righe_componenti   WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ordini_righe                  WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ordini_righe_componenti       WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ddt_righe                     WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.ddt_righe_componenti          WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.contratti_righe               WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.contratti_righe_componenti    WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.resi_righe                    WHERE user_update IS NULL)
+                   + (SELECT count(*) FROM vendite.fatture_righe                 WHERE user_update IS NULL);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.preventivi_righe              ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.preventivi_righe_componenti   ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ordini_righe                  ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ordini_righe_componenti       ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ddt_righe                     ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.ddt_righe_componenti          ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.contratti_righe               ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.contratti_righe_componenti    ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.resi_righe                    ALTER COLUMN user_update SET NOT NULL;
+              ALTER TABLE vendite.fatture_righe                 ALTER COLUMN user_update SET NOT NULL;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.fatture_righe                 ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.resi_righe                    ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.contratti_righe_componenti    ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.contratti_righe               ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ddt_righe_componenti          ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ddt_righe                     ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ordini_righe_componenti       ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.ordini_righe                  ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.preventivi_righe_componenti   ALTER COLUMN user_update DROP NOT NULL;
+              ALTER TABLE vendite.preventivi_righe              ALTER COLUMN user_update DROP NOT NULL;

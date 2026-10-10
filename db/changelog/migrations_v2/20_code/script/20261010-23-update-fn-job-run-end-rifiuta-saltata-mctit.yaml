@@ -1,0 +1,154 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⛔ UNA CORSA SALTATA NON SI CHIUDE.
+#   Brief: brief-db-corsa-saltata-non-e-una-corsa §8.1 e §8.3 punto 4
+#
+#   script.fn_job_run_end chiudeva qualunque riga e ne riscriveva `ok`: chiamata
+#   su una riga saltata, le avrebbe dato un esito e l'avrebbe fatta passare per
+#   una corsa vera — il marcatore cancellato dalla porta di scrittura stessa.
+#   Ora rifiuta, con E_JOB_RUN_SALTATA_NON_CHIUDIBILE (TECNICO, ok Tid
+#   2026-10-10): chiudere una corsa mai presa e' un chiamante rotto, non un
+#   dato da correggere.
+#   ⚠️ Prima del CHECK chk_job_run_log_saltata questo e' il punto che parla:
+#   senza il guard il chiamante riceverebbe un 23514 sul vincolo, che dice
+#   «riga invalida» e non «non dovevi chiudere questa corsa».
+#
+# ⭐ Nessun chiamante e' toccato. Il backend (apps/core/services/job_run.py,
+#   JobRunHandle) con acquired = false NON chiama fn_job_run_end; nessuna
+#   funzione DB la chiama; i pgTAP la chiamano solo su corse vere (censimento
+#   2026-10-10). Il vecchio commento «end-dopo-skip non possiede il lock»
+#   descriveva un percorso tollerato che non usa piu' nessuno.
+# ⚠️ Una skip scritta PRIMA del 2026-10-10 ha saltata = false (nessuna
+#   bonifica, D4): per lei resta il comportamento di prima, compreso il ramo
+#   v_already_ended che non rilascia un lock non posseduto.
+#
+# ⚠️ Corpo dal 20260618-03, identico al vivo (prosrc confrontato su
+#   zeroerp_ci, 2026-10-10). Firma gia' ancorata, invariata. ACL invariate
+#   (CREATE OR REPLACE le conserva; REVOKE da PUBLIC gia' in 20260618-03).
+#
+# Verifica: db/pgtap/maintenance/test-job-run-saltata-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-23-update-fn-job-run-end-rifiuta-saltata-mctit.yaml
+
+  - changeSet:
+      id: 20261010-23-update-fn-job-run-end-rifiuta-saltata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_job_run_end rifiuta una riga saltata
+        (E_JOB_RUN_SALTATA_NON_CHIUDIBILE, TECNICO): chiuderla le darebbe un
+        esito. brief-db-corsa-saltata-non-e-una-corsa §8.3.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists:
+                { schemaName: maintenance, tableName: job_run_log, columnName: saltata }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: |
+                  SELECT COUNT(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script'
+                     AND p.proname = 'fn_job_run_end';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_job_run_end(
+                  p_id            maintenance.job_run_log.id%TYPE,
+                  p_ok            maintenance.job_run_log.ok%TYPE,
+                  p_message       maintenance.job_run_log.message%TYPE       DEFAULT NULL,
+                  p_rows_affected maintenance.job_run_log.rows_affected%TYPE DEFAULT NULL,
+                  p_error_code    maintenance.job_run_log.error_code%TYPE    DEFAULT NULL,
+                  p_error_detail  maintenance.job_run_log.error_detail%TYPE  DEFAULT NULL,
+                  p_meta          maintenance.job_run_log.meta%TYPE          DEFAULT NULL,
+                  p_lock_key      text                                        DEFAULT NULL  -- non e' una colonna
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path = pg_catalog, pg_temp
+              AS $function$
+              DECLARE
+                c_lock_class constant int := hashtext('zeroerp:job_run_log');
+                -- `boolean` esplicito: e' derivato (ended_at IS NOT NULL), non
+                -- il riflesso di una colonna.
+                v_already_ended boolean;
+                v_saltata       maintenance.job_run_log.saltata%TYPE;
+                v_jobname       maintenance.job_run_log.jobname%TYPE;
+              BEGIN
+                SELECT (l.ended_at IS NOT NULL), l.saltata, l.jobname
+                  INTO v_already_ended, v_saltata, v_jobname
+                  FROM maintenance.job_run_log l
+                 WHERE l.id = p_id;
+
+                -- ⛔ Rev 2026-10-10: una corsa SALTATA non si chiude. Non ha
+                --   fatto lavoro e nasce gia' chiusa, senza esito (CHECK
+                --   chk_job_run_log_saltata): chiuderla le scriverebbe un esito
+                --   e la farebbe passare per una corsa vera. Chi riceve
+                --   acquired = false da fn_job_run_start salta il lavoro e non
+                --   chiama questa funzione. brief-db-corsa-saltata-non-e-una-corsa.
+                -- ⚠️ TECNICO: lo produce solo un chiamante rotto. Niente
+                --   `campo` ne' bersaglio: su un 500 non c'e' gesto da offrire.
+                IF v_saltata THEN
+                  PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'script.fn_job_run_end',
+                      'E_JOB_RUN_SALTATA_NON_CHIUDIBILE',
+                      jsonb_build_object('job_run_id', p_id, 'jobname', v_jobname),
+                      NULL::uuid,
+                      p_id::text,
+                      v_jobname);
+                END IF;
+
+                UPDATE maintenance.job_run_log
+                   SET ended_at      = clock_timestamp(),
+                       ok            = p_ok,
+                       message       = COALESCE(p_message, message),
+                       rows_affected = COALESCE(p_rows_affected, rows_affected),
+                       error_code    = p_error_code,
+                       error_detail  = p_error_detail,
+                       meta          = COALESCE(p_meta, meta)
+                 WHERE id = p_id;
+
+                -- Sblocca SOLO se un lock e' realmente posseduto da questo flusso:
+                -- una riga gia' chiusa (doppia chiusura, o una skip scritta prima
+                -- del 2026-10-10 con saltata = false) non possiede il lock ->
+                -- niente unlock/warning.
+                IF p_lock_key IS NOT NULL AND NOT COALESCE(v_already_ended, TRUE) THEN
+                  PERFORM pg_advisory_unlock(c_lock_class, hashtext(p_lock_key));
+                END IF;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_job_run_end(
+                  maintenance.job_run_log.id%TYPE,
+                  maintenance.job_run_log.ok%TYPE,
+                  maintenance.job_run_log.message%TYPE,
+                  maintenance.job_run_log.rows_affected%TYPE,
+                  maintenance.job_run_log.error_code%TYPE,
+                  maintenance.job_run_log.error_detail%TYPE,
+                  maintenance.job_run_log.meta%TYPE,
+                  text)
+              IS 'Chiude una corsa aperta da script.fn_job_run_start: esito, messaggio, righe toccate, errore e meta; rilascia l''advisory lock della corsia solo se questo flusso lo possiede (la riga era ancora aperta). SECURITY DEFINER con search_path fisso: e'' la porta di scrittura del giornale per chi non ha UPDATE su maintenance.job_run_log. ⛔ Rev 2026-10-10: rifiuta una corsa SALTATA (E_JOB_RUN_SALTATA_NON_CHIUDIBILE, TECNICO). Non ha fatto lavoro e nasce chiusa senza esito: chiuderla le scriverebbe un esito e la farebbe passare per una corsa vera. Chi riceve acquired = false salta il lavoro e non chiama questa funzione. Brief: brief-db-corsa-saltata-non-e-una-corsa §8.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Tornare al corpo del 20260618-03 riaprirebbe la porta da cui
+              --   una skip diventa una corsa vera. Il verso di ritiro e' un
+              --   changeSet nuovo.
+              SELECT 1;

@@ -74,14 +74,18 @@ Sono considerati parte della struttura della BoM e quindi non modificabili:
 | `coeff_qta` | Cambia il coefficiente quantitativo del componente. |
 | `componente_id` | Cambia il componente collegato al prodotto. |
 | `obbligatorio` | Cambia la presenza obbligatoria del componente. |
-| `esposto_in_fattura` | Cambia il comportamento di esposizione documentale. |
-| `partecipa_qta` | Cambia la partecipazione del componente alla quantita'. |
-| `determina_qta_padre` | Cambia la derivazione della quantita' del prodotto padre. |
+| `esposizione_in_fattura` | Cambia come il componente si vede in fattura (`NASCOSTO` \| `DESCRITTIVO` \| `VALORIZZATO`) e, per il `VALORIZZATO`, quanto vale la riga del kit. Fino al 2026-10-01 era il booleano `esposto_in_fattura` (rev `20261001-43`). |
 | `valido_dal` | Cambia l'inizio della validita' storica. |
 | `validita` | Cambia il range derivato della validita'. |
 
 `validita` e' una colonna generata da `valido_dal` e `valido_al`: PostgreSQL ne
 rifiuta la scrittura diretta prima che il trigger giri.
+
+Fino al 2026-10-02 la lista comprendeva anche `partecipa_qta` e
+`determina_qta_padre`: ritirate dalla tabella (`20261002-60`, corpo `20261002-61`)
+perche' nessuna logica le leggeva. Il trigger e' stato ricreato con la lista
+`UPDATE OF` senza le due colonne: si verifica su `pg_trigger.tgattr`, non sulla
+doc auto-generata, che stampa l'evento senza colonne.
 
 ---
 

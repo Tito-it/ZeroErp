@@ -28,7 +28,7 @@ DECLARE
     v_soggetto_ruolo_id    vendite.ordini.soggetto_ruolo_id%TYPE;
     v_emittente_sr_id      anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
     v_fatt_trigger         vendite.ordini.fatturazione_trigger%TYPE;
-    v_data                 date := CURRENT_DATE;
+    v_data                 vendite.ordini.data%TYPE := script.fn_data_operativa();
     v_n_residue            integer;
     v_ordine_id            vendite.ordini.id%TYPE;
     v_new_riga_id          vendite.ordini_righe.id%TYPE;

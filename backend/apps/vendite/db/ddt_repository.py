@@ -129,8 +129,9 @@ class DdtRepository(
     _indirizzi_ambito = "DDT"
     _indirizzi_documento_table = "vendite.ddt"
     # Ancora ownership/auto-default = DESTINATARIO (chi riceve la merce),
-    # NOT NULL in testata: coerente col picker FE e regge BA NULL
-    # (DDT da evasione di ordine prospect).
+    # NOT NULL in testata: coerente col picker FE. Col BA e' il ruolo del BA
+    # (`fk_ddt_ba_cliente`); senza — causale che non manda merce a un
+    # cliente — e' il terzista o il deposito, e resta l'unica ancora.
     _indirizzi_doc_sr_column = "destinatario_soggetto_ruolo_id"
 
     # ══════════════════════════════════════════════════════════
@@ -361,16 +362,16 @@ class DdtRepository(
     #        (prefill FE dal profilo, mirror ordini — uniformazione 2026-07-13);
     #        se None lo risolve `trgfn_ddt_normalize` dal billing_account (o
     #        dall'ordine sorgente per i DDT da evasione).
-    #        `destinatario_soggetto_ruolo_id` e `stato_doc_ddt_id` (DRAFT)
-    #        obbligatori.
+    #        `stato_doc_ddt_id` (DRAFT) obbligatorio. Destinatario e utility,
+    #        col BA, li scrive `trgfn_ddt_normalize` (la utility non si passa
+    #        mai: e' copia del BA); senza BA il destinatario e' del chiamante.
     def create_ddt(
         self,
         *,
-        destinatario_soggetto_ruolo_id: int,
+        destinatario_soggetto_ruolo_id: int | None,
         stato_doc_ddt_id: int,
         billing_account_id: int | None = None,
         emittente_fiscale_id: int | None = None,
-        utility_id: int | None = None,
         valuta_id: int | None = None,
         mittente_soggetto_ruolo_id: int | None = None,
         vettore_soggetto_ruolo_id: int | None = None,
@@ -396,7 +397,6 @@ class DdtRepository(
             "stato_doc_ddt_id": stato_doc_ddt_id,
             "billing_account_id": billing_account_id,
             "emittente_fiscale_id": emittente_fiscale_id,
-            "utility_id": utility_id,
             "valuta_id": valuta_id,
             "mittente_soggetto_ruolo_id": mittente_soggetto_ruolo_id,
             "vettore_soggetto_ruolo_id": vettore_soggetto_ruolo_id,
@@ -426,7 +426,8 @@ class DdtRepository(
     #    sta nel service, `ddt_service.UPDATE_KEYS_DDT / UPDATE_KEYS_RIGA`): se il service ne aggiunge una, va aggiunta
     #    qui — e dimenticarlo e' un errore che si vede, non un campo perso.
     TESTATA_UPDATE_COLUMNS: frozenset[str] = frozenset({
-        "utility_id", "valuta_id", "mittente_soggetto_ruolo_id",
+        "billing_account_id", "destinatario_soggetto_ruolo_id",
+        "valuta_id", "mittente_soggetto_ruolo_id",
         "vettore_soggetto_ruolo_id", "causale_trasporto_id", "aspetto_bene_id",
         "modalita_addebito_trasporto_id", "num_colli", "peso_lordo", "peso_netto",
         "volume", "targa", "autista", "tracking_code", "data", "meta",
@@ -616,7 +617,7 @@ class DdtRepository(
                    origine_prezzo,
                    resolver_error_reason,
                    obbligatorio,
-                   esposto_in_fattura
+                   esposizione_in_fattura
               FROM vendite.fn_ddt_riga_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )
@@ -648,7 +649,7 @@ class DdtRepository(
         righe_json = json.dumps(righe) if righe is not None else None
         sql = (
             "SELECT vendite.fn_genera_ddt_da_ordine("
-            "%s, %s::jsonb, COALESCE(%s, CURRENT_DATE))"
+            "%s, %s::jsonb, COALESCE(%s, (SELECT script.fn_data_operativa())))"
         )
         with connection.cursor() as cursor:
             cursor.execute(sql, [int(ordine_id), righe_json, data])
@@ -673,15 +674,10 @@ class DdtRepository(
     #  LOOKUP — Risoluzione config per creazione/transizioni
     # ══════════════════════════════════════════════════════════
 
-    # Scopo: soggetto_ruolo_id del cliente a partire dal billing_account. La
-    #        testata DDT ha `destinatario_soggetto_ruolo_id` NOT NULL mentre il FE
-    #        seleziona il billing_account (cliente=BA): si deriva qui, come ordini.
-    def get_soggetto_ruolo_id_by_ba(self, billing_account_id: int) -> int | None:
-        sql = "SELECT soggetto_ruolo_id FROM anagrafiche.billing_account WHERE id = %s"
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [billing_account_id])
-            row = cursor.fetchone()
-            return row[0] if row else None
+    # ⛔ `get_soggetto_ruolo_id_by_ba` RITIRATA (2026-10-10): il destinatario
+    #    col BA lo scrive `trgfn_ddt_normalize` col BB
+    #    `script.fn_cliente_dal_billing_account` (brief-db-esecutivi-ba-coppia
+    #    §9.6, §10.2 domanda 2). Derivarlo qui era la quarta copia della regola.
 
     # Scopo: id di uno stato DDT via codice_interno (immutabile).
     def get_stato_id_by_codice(self, codice_interno: str) -> int | None:

@@ -28,7 +28,9 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
+from apps.core.services.fuso_aziendale import oggi_aziendale
+from apps.core.management.comando_aziendale import ComandoAziendale
 
 from apps.core.services.job_run import ORIGINE_CRON, registered_job
 from apps.core.services.processi import PROCESSO_RUN_FATTURAZIONE_BATCH
@@ -38,7 +40,15 @@ from apps.vendite.services.fatturazione_produttore_service import (
 )
 
 
-class Command(BaseCommand):
+# Scopo: il nome della corsia su `maintenance.job_run_log`. Sede unica: lo
+#        scrive questo comando e lo dichiara `dovuto.jobname` in sveglie.json
+#        (`test_sveglie` prova che coincidano), da cui `e_dovuto` sa se il
+#        lavoro del mese e' gia' fatto.
+def jobname_corsia(modalita: str) -> str:
+    return f"run_fatturazione_batch:{modalita}"
+
+
+class Command(ComandoAziendale):
     help = (
         "Driver batch fatturazione: per la corsia scelta scopre le commesse "
         "emittibili e completa la pipeline lotto per ogni emittente. "
@@ -66,9 +76,9 @@ class Command(BaseCommand):
     # Scopo: Risolve la competenza (default = primo del mese corrente).
     def _resolve_competenza(self, raw: str | None) -> date:
         if not raw:
-            return date.today().replace(day=1)
+            return oggi_aziendale().replace(day=1)
         try:
-            return datetime.strptime(raw, "%Y-%m-%d").date().replace(day=1)
+            return datetime.strptime(raw, "%Y-%m-%d").date().replace(day=1)  # noqa: DTZ007 — si legge una DATA (formato stretto), non un istante: il fuso non c'entra
         except ValueError as exc:
             raise CommandError(f"--competenza non valida (atteso YYYY-MM-DD): {raw}") from exc
 
@@ -79,7 +89,7 @@ class Command(BaseCommand):
         # ⚠️ Il jobname porta la CORSIA (`:immediata`/`:differita`), il codice
         # processo no: sono due cose diverse, ed e' il motivo per cui il BB non
         # deriva l'attore dal nome del job.
-        job_id = f"run_fatturazione_batch:{modalita}"
+        job_id = jobname_corsia(modalita)
         with registered_job(
             job_id,
             processo_codice=PROCESSO_RUN_FATTURAZIONE_BATCH,

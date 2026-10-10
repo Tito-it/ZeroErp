@@ -11,15 +11,15 @@
 | id | bigint | NO |  |
 | email_account_id | integer | YES |  |
 | email_template_id | integer | YES |  |
-| ambito | character varying | NO | 'SISTEMA'::character varying |
+| ambito | character varying(20) | NO | 'SISTEMA'::character varying |
 | unita_organizzativa_id | integer | YES |  |
 | pratica_id | bigint | YES |  |
-| destinatario | character varying | NO |  |
-| destinatari_cc | ARRAY | YES |  |
+| destinatario | character varying(255) | NO |  |
+| destinatari_cc | text[] | YES |  |
 | oggetto | text | NO |  |
 | corpo_html | text | NO |  |
 | corpo_testo | text | YES |  |
-| stato | character varying | NO | 'DRAFT'::character varying |
+| stato | character varying(20) | NO | 'DRAFT'::character varying |
 | contesto_json | jsonb | NO | '{}'::jsonb |
 | auth_user_id | integer | YES |  |
 | creato_da_user_id | integer | YES |  |

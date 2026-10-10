@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | fittizia | boolean | NO | false |
-| codice | character varying | NO |  |
-| proprietario_inquilino | character | NO | 'I'::bpchar |
+| codice | character varying(30) | NO |  |
+| proprietario_inquilino | character(1) | NO | 'I'::bpchar |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
@@ -51,17 +51,17 @@
 |------|--------|--------|--------|
 | trg_istanze_utilities_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_gen_codice()` |
 | trg_istanze_utilities_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_gen_codice()` |
-| trg_istanze_utilities_a10_indirizzi_dettaglio_require_at_222826 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
 | trg_istanze_utilities_a10_indirizzi_dettaglio_require_at_222826 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
-| trg_istanze_utilities_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_CODICE_NON_MODIFICABILE')` |
+| trg_istanze_utilities_a10_indirizzi_dettaglio_require_at_222826 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'indirizzi_dettaglio', 'attivo', 'indirizzo_dettaglio_id', 'id')` |
+| trg_istanze_utilities_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice', 'E_CODICE_NON_MODIFICABILE', 'soggetto_id', 'E_ISTANZA_SOGGETTO_IMMUTABILE')` |
 | trg_istanze_utilities_a10_soggetti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_istanze_utilities_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_istanze_utilities_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_istanze_utilities_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_istanze_utilities_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_istanze_utilities_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_istanze_utilities_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_normalize()` |
 | trg_istanze_utilities_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_normalize()` |
+| trg_istanze_utilities_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_normalize()` |
 | trg_istanze_utilities_z90_require_utility_dichiarata_ins | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_istanze_utilities_require_utility_dichiarata()` |
 | trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()` |
 | trg_iu_z40_sync_catasto_unita_indirizzo_aft_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_iu_sync_catasto_unita_indirizzo()` |

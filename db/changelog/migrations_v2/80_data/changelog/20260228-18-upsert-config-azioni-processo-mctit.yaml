@@ -46,3 +46,6 @@ databaseChangeLog:
                   type: STRING
                   defaultValue: "NOW()"
               - column: { name: user_update, type: STRING }
+              # 2026-10-04 (20261004-50, brief-db-permessi-tetto-area R1): il minimo
+              # d'area dell'azione. Colonna in coda al CSV principale (§11.2).
+              - column: { name: livello_minimo_area, type: STRING }

@@ -3,6 +3,8 @@
 // Ref: backend/apps/vendite/api/urls_offerte.py (mount in urls_v1.py: /vendite/offerte/).
 
 import api from '../../../core/api'
+import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
+import { makeRigaErogazioniApi } from '../../_shared/righe/erogazioniRigaApi'
 
 const BASE = '/vendite/offerte'
 
@@ -126,11 +128,20 @@ export function getContrattoSovrapposto(id) {
   return api.get(`${BASE}/${id}/contratto-sovrapposto/`)
 }
 
-// --- Eccezioni (CRUD, solo BOZZA in write) ---
+// --- Righe: la LISTA configurabile (`vendite.offerta_righe`, 106) ---
+// Pagina + export su `…/righe/lista/`: le righe OPERATIVE dell'offerta, cioe'
+// `vendite.fn_offerta_righe_preview` — listino con le eccezioni sopra, piu' le
+// aggiunte, coi verbi del DB — come il contratto (brief-db-righe-esclusione-
+// solo-non-si-vende §8.1, 2026-10-05). ⚠️ `GET …/eccezioni/` (le eccezioni
+// scritte) non ha piu' un consumatore qui: il drawer legge la lista, il
+// dettaglio dell'offerta porta gia' le eccezioni (note, conteggio).
+export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
 
-export function listEccezioni(offertaId) {
-  return api.get(`${BASE}/${offertaId}/eccezioni/`)
-}
+// Come si puo' erogare un articolo su una riga dell'offerta: le combinazioni
+// (erogazione, fonte) ammesse, il default in testa (BB `makeRigaErogazioniApi`).
+export const { listRigaErogazioni } = makeRigaErogazioniApi(BASE)
+
+// --- Eccezioni (scritture, solo BOZZA) ---
 
 export function createEccezione(offertaId, payload) {
   return api.post(`${BASE}/${offertaId}/eccezioni/`, payload)

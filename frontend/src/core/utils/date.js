@@ -1,6 +1,187 @@
 // Scopo: Utility centralizzata per formattazione date.
 // Tutte le conversioni Date → stringa per API backend passano da qui.
 // Evita il bug toISOString() che converte in UTC (mezzanotte locale → giorno prima in UTC).
+//
+// ⭐ UN SOLO FUSO, QUELLO DELL'AZIENDA (dal 2026-10-09, brief
+//    brief-be-db-fe-un-solo-fuso-aziendale, F-1/F-2/F-4 e decisione T-1).
+//    Il fuso e' un DATO del database (`SYSTEM_FUSO_ORARIO`), arriva dal profilo
+//    (`fuso_aziendale` di `/core/me/`) e lo consegna qui `impostaFusoAziendale`
+//    (store auth, a ogni lettura del profilo). Il fuso del PC dell'utente NON
+//    conta: «oggi», l'ora di un istante e l'ora che l'operatore digita sono
+//    quelli dell'azienda, gli stessi dei documenti, dei PDF e degli export.
+//
+//    Due specie di valori, e non vanno confuse:
+//    - un GIORNO di calendario (`'YYYY-MM-DD'`, il valore dei DatePicker senza
+//      ora) si tiene in una `Date` LOCALE a mezzanotte (`parseIsoDate`,
+//      `oggiAziendale`): e' solo il contenitore dei tre numeri, il fuso non
+//      c'entra;
+//    - un ISTANTE (`timestamptz`, stringa ISO con offset) si legge con
+//      `parseIstante` e si mostra con `displayTimestamp`/`displayTime`, che lo
+//      convertono nel fuso dell'azienda.
+//    ⛔ `new Date()` per «oggi», `new Date('YYYY-MM-DD')` (mezzanotte UTC: nei
+//       fusi negativi e' il giorno prima), `setHours(0,0,0,0)` e
+//       `toLocale*String` senza fuso stanno solo qui: lo presidia
+//       `datePresidio.spec.js`.
+//    ⚠️ Prima che il profilo arrivi (pagine di login) il fuso non e' noto, e
+//       le funzioni usano quello del browser: li' non si mostrano date di
+//       dominio. Non e' un ripiego dei dati: e' la sola informazione che c'e'.
+
+// ── Il fuso dell'azienda ────────────────────────────────────────────────────
+
+let _fuso = null
+const _formatter = new Map()
+
+/**
+ * Imposta il fuso dell'azienda (nome IANA, es. `Europe/Rome`). La chiama lo
+ * store auth a ogni lettura del profilo. Un nome che il browser non conosce
+ * non si imposta (e si dice in console): resterebbe un fuso inventato.
+ *
+ * @param {string|null} nome
+ */
+export function impostaFusoAziendale(nome) {
+  if (!nome) {
+    _fuso = null
+    return
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: nome })
+    _fuso = nome
+  } catch {
+    console.error(`fuso dell'azienda sconosciuto al browser: ${nome}`)
+    _fuso = null
+  }
+}
+
+/** Il fuso dell'azienda impostato, o null se il profilo non e' ancora arrivato. */
+export function fusoAziendale() {
+  return _fuso
+}
+
+// Scopo: le parti di calendario e d'orologio di un istante NEL FUSO
+//        DELL'AZIENDA: `{ y, m, d, hh, mi, ss }` (mese 1-12).
+function partiNelFuso(istante) {
+  const chiave = _fuso ?? ''
+  let fmt = _formatter.get(chiave)
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: _fuso ?? undefined,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    })
+    _formatter.set(chiave, fmt)
+  }
+  const p = {}
+  for (const { type, value } of fmt.formatToParts(istante)) p[type] = value
+  return {
+    y: Number(p.year), m: Number(p.month), d: Number(p.day),
+    hh: Number(p.hour), mi: Number(p.minute), ss: Number(p.second),
+  }
+}
+
+const _2 = (n) => String(n).padStart(2, '0')
+
+/** L'istante di adesso. Sede unica del «now»: chi lo vuole lo chiede qui. */
+export function adesso() {
+  return new Date()
+}
+
+/**
+ * Un ISTANTE da una stringa ISO con offset (com'e' un `timestamptz` nel JSON)
+ * o da una `Date`. `null` se assente o illeggibile.
+ *
+ * @param {string|Date|null} v
+ * @returns {Date|null}
+ */
+export function parseIstante(v) {
+  if (!v) return null
+  const d = v instanceof Date ? v : new Date(v)
+  return isNaN(d.getTime()) ? null : d
+}
+
+/**
+ * OGGI nel fuso dell'azienda, come `Date` locale a mezzanotte (il contenitore
+ * di un giorno di calendario, come quelli dei DatePicker).
+ *
+ * @returns {Date}
+ */
+export function oggiAziendale() {
+  const p = partiNelFuso(adesso())
+  return new Date(p.y, p.m - 1, p.d)
+}
+
+/** Come `oggiAziendale()`, in `'YYYY-MM-DD'`. */
+export function oggiAziendaleString() {
+  return toDateString(oggiAziendale())
+}
+
+/**
+ * Il GIORNO (`'YYYY-MM-DD'`) in cui cade un istante, nel fuso dell'azienda:
+ * le 23:30 UTC del 14 sono il 15 a Roma.
+ *
+ * @param {string|Date|null} ts
+ * @returns {string|null}
+ */
+export function giornoAziendale(ts) {
+  const d = parseIstante(ts)
+  if (!d) return null
+  const p = partiNelFuso(d)
+  return `${p.y}-${_2(p.m)}-${_2(p.d)}`
+}
+
+/**
+ * Il mese `'YYYY-MM'` di un giorno di calendario (`Date` locale o
+ * `'YYYY-MM-DD'`). Sede unica della concatenazione.
+ *
+ * @param {Date|string|null} d
+ * @returns {string|null}
+ */
+export function toMeseString(d) {
+  const s = toDateStringOrNull(d)
+  return s ? s.substring(0, 7) : null
+}
+
+/**
+ * Un istante mostrato come l'OROLOGIO DELL'AZIENDA in una `Date` locale: le
+ * sue ore e i suoi minuti locali sono quelli dell'azienda. Serve a precaricare
+ * un DatePicker con l'ora (F-4): l'operatore legge l'ora dell'azienda, non
+ * quella del suo PC. Il ritorno e' `oraAziendaleComeIstante`.
+ *
+ * @param {string|Date|null} ts
+ * @returns {Date|null}
+ */
+export function istanteComeOraAziendale(ts) {
+  const d = parseIstante(ts)
+  if (!d) return null
+  const p = partiNelFuso(d)
+  return new Date(p.y, p.m - 1, p.d, p.hh, p.mi, p.ss)
+}
+
+/**
+ * L'ISTANTE di un'ora dell'azienda digitata in un DatePicker: la `Date` locale
+ * porta data e ora DELL'AZIENDA nei suoi campi locali, e si risolve nel fuso
+ * dell'azienda (non in quello del PC). Inverso di `istanteComeOraAziendale`.
+ * ⚠️ Nell'ora che il cambio legale salta l'istante e' quello dopo il salto.
+ *
+ * @param {Date|null} d
+ * @returns {Date|null}
+ */
+export function oraAziendaleComeIstante(d) {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return null
+  const comeUtc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(),
+    d.getHours(), d.getMinutes(), d.getSeconds())
+  // Due passi: l'offset del fuso si legge all'istante candidato, che puo'
+  // stare dall'altra parte di un cambio legale rispetto alla prima stima.
+  let istante = comeUtc - _offsetMs(new Date(comeUtc))
+  istante = comeUtc - _offsetMs(new Date(istante))
+  return new Date(istante)
+}
+
+// Scopo: lo scarto in millisecondi fra l'orologio dell'azienda e UTC a un istante.
+function _offsetMs(istante) {
+  const p = partiNelFuso(istante)
+  const comeUtc = Date.UTC(p.y, p.m - 1, p.d, p.hh, p.mi, p.ss)
+  return comeUtc - Math.floor(istante.getTime() / 1000) * 1000
+}
 
 /**
  * Converte un valore data in stringa YYYY-MM-DD per invio al backend.
@@ -17,9 +198,16 @@
  * @param {string|Date|null} d - Valore data
  * @returns {string} - Stringa 'DD/MM/YYYY' o stringa vuota
  */
+// ⭐ Una stringa con l'ORA e' un istante: il giorno e' quello dell'azienda
+//    (`giornoAziendale`), non i primi dieci caratteri, che col JSON in `Z`
+//    sarebbero il giorno UTC (fino al 2026-10-09, F-1).
+// ⚠️ Separatore `T` (JSON) o spazio: un `timestamptz::text` del backend arriva
+//    come `'2026-09-14 23:30:00+00'`, ed e' un istante come l'altro.
 export function displayDate(d) {
   if (!d) return ''
-  const s = typeof d === 'string' ? d : toDateString(d)
+  const s = typeof d === 'string'
+    ? (d.length > 10 && (d[10] === 'T' || d[10] === ' ') ? (giornoAziendale(d) ?? d) : d)
+    : toDateString(d)
   if (!s || s.length < 10) return s || ''
   const [y, m, day] = s.substring(0, 10).split('-')
   return `${day}/${m}/${y}`
@@ -32,33 +220,40 @@ export function displayDate(d) {
  * @param {string|Date|null} ts - Valore timestamp
  * @returns {string} - Stringa 'DD/MM/YYYY, HH:mm:ss' o stringa vuota
  */
+// ⭐ Nel fuso dell'AZIENDA, non del browser (T-1, dal 2026-10-09).
 export function displayTimestamp(ts) {
-  if (!ts) return ''
-  const d = ts instanceof Date ? ts : new Date(ts)
-  if (isNaN(d.getTime())) return ''
-  const day = String(d.getDate()).padStart(2, '0')
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const y = d.getFullYear()
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  const ss = String(d.getSeconds()).padStart(2, '0')
-  return `${day}/${m}/${y}, ${hh}:${mm}:${ss}`
+  const d = parseIstante(ts)
+  if (!d) return ''
+  const p = partiNelFuso(d)
+  return `${_2(p.d)}/${_2(p.m)}/${p.y}, ${_2(p.hh)}:${_2(p.mi)}:${_2(p.ss)}`
 }
 
 /**
- * Formatta solo l'ora (HH:mm) di un timestamp, in fuso locale.
+ * Formatta solo l'ora (HH:mm) di un timestamp, nel fuso dell'AZIENDA.
  * Accetta: stringa ISO, Date, null/undefined.
  *
  * @param {string|Date|null} ts - Valore timestamp
  * @returns {string} - Stringa 'HH:mm' o stringa vuota
  */
 export function displayTime(ts) {
-  if (!ts) return ''
-  const d = ts instanceof Date ? ts : new Date(ts)
-  if (isNaN(d.getTime())) return ''
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${hh}:${mm}`
+  const d = parseIstante(ts)
+  if (!d) return ''
+  const p = partiNelFuso(d)
+  return `${_2(p.hh)}:${_2(p.mi)}`
+}
+
+/**
+ * La DATA di oggi da mostrare (topbar): giorno della settimana, giorno, mese
+ * e anno nella lingua data, nel fuso dell'azienda.
+ *
+ * @param {string} locale - es. 'it-IT'
+ * @returns {string}
+ */
+export function displayOggiEsteso(locale) {
+  return adesso().toLocaleDateString(locale, {
+    timeZone: _fuso ?? undefined,
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  })
 }
 
 // ⛔ SU UNA INVALID DATE QUESTA FUNZIONE PRODUCE "NaN-NaN-NaN", E DEVE
@@ -146,7 +341,21 @@ export function parseIsoDate(s) {
 }
 
 /**
- * Ritorna una Date locale a mezzanotte = oggi + N giorni.
+ * Il nome del giorno della settimana `indice` (0 = lunedi', come
+ * `dovuto.giorno` delle sveglie) nella lingua data. Un giorno di calendario
+ * qualunque di quel nome, quindi nessun fuso in gioco.
+ *
+ * @param {number} indice - 0 (lunedi') … 6 (domenica)
+ * @param {string} locale - es. 'it-IT'
+ * @returns {string}
+ */
+export function nomeGiornoSettimana(indice, locale) {
+  // Il 1° gennaio 2024 e' un lunedi'.
+  return new Date(2024, 0, 1 + Number(indice)).toLocaleDateString(locale, { weekday: 'long' })
+}
+
+/**
+ * Ritorna una Date locale a mezzanotte = OGGI DELL'AZIENDA + N giorni.
  * Helper standard per i parameters lead-gg dei `defaultForm()` (Fase 2
  * refactor frontend vendite). Centralizzare evita pattern ripetuto
  * `const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() + N)`
@@ -156,10 +365,28 @@ export function parseIsoDate(s) {
  * @returns {Date} - Date locale a mezzanotte.
  */
 export function addDaysToToday(n) {
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
+  const d = oggiAziendale()
   if (n) d.setDate(d.getDate() + Number(n))
   return d
+}
+
+/**
+ * Un giorno di calendario (`Date` o `'YYYY-MM-DD'`) a mezzanotte locale, per
+ * i confronti fra giorni (`a < b`) senza l'ora. `null` se assente o illeggibile.
+ * Sede unica di `setHours(0, 0, 0, 0)`.
+ *
+ * @param {Date|string|null} d
+ * @returns {Date|null}
+ */
+export function giornoDi(d) {
+  if (!d) return null
+  if (d instanceof Date) {
+    if (isNaN(d.getTime())) return null
+    const g = new Date(d.getTime())
+    g.setHours(0, 0, 0, 0)
+    return g
+  }
+  return parseIsoDate(d)
 }
 
 /**

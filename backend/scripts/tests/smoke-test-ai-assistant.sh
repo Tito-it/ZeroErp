@@ -16,10 +16,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 # --- Colori output ---
 RED='\033[0;31m'
@@ -66,21 +64,8 @@ echo "=========================================="
 # --- 0) Autenticazione JWT ---
 echo ""
 echo "--- 0) Autenticazione ---"
-if [[ -z "$PASSWORD" ]]; then
-  echo -e "  ${RED}SKIP${NC} PASSWORD non fornita. Uso: $0 <password>"
-  exit 1
-fi
-
-do_post "$BASE_URL/api/v1/admin/token/" \
-  "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}"
-if [[ "$LAST_STATUS" == "200" ]]; then
-  TOKEN=$(extract "['access']")
-  log_ok "Login OK — token ottenuto"
-else
-  log_fail "Login fallito (HTTP $LAST_STATUS)"
-  echo "$LAST_BODY"
-  exit 1
-fi
+smoke_login --senza-prompt
+log_ok "Login OK — token ottenuto"
 
 # --- 1) Query AI con provider mock ---
 echo ""

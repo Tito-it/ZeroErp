@@ -216,10 +216,13 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
-/* Errore del login sopra i campi, fuori dal flusso: sta nello spazio del
-   padding-top del cerchio e cresce verso l'alto, cosi' campi, pulsante e
-   link restano fermi qualunque sia la lunghezza del messaggio. */
-.login-error--sopra {
+/* L'esito (errore o successo) sopra i campi, fuori dal flusso: sta nello
+   spazio del padding-top del cerchio e cresce verso l'alto, cosi' campi,
+   pulsante e link restano fermi — e dentro il cerchio — qualunque sia la
+   lunghezza del messaggio. Si ancora al form (`.login-card > .login-form`,
+   position: relative): il form dev'essere figlio diretto della card.
+   Lo usano il login e il reset della password (richiesta e conferma). */
+.login-esito--sopra {
   position: absolute;
   left: 0;
   right: 0;
@@ -229,10 +232,14 @@
 .login-success {
   padding: 0.6rem 0.75rem;
   border-radius: 6px;
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
+  background: var(--app-login-success-bg);
+  border: 1px solid var(--app-login-success-border);
+  color: var(--app-login-success-color);
   font-size: var(--app-font-size-sm);
+  font-weight: 600;
   text-align: center;
+  box-shadow: var(--app-login-success-shadow);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
 /* Icona info requisiti password — accanto alla label, tooltip al hover */
@@ -321,4 +328,90 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85),
                0 0 10px rgba(255, 255, 255, 0.7),
                0 0 20px rgba(255, 255, 255, 0.45);
+}
+
+/* ── Pagina auth LUNGA (SicurezzaView): rettangolo ad altezza libera ────────
+   Il cerchio (`login-card`) e' calibrato su due o tre campi: centro fisso,
+   `overflow: hidden`, padding-top che porta i campi al centro del raggio. La
+   configurazione del secondo fattore (QR, chiave, dieci codici, conferma) ne
+   esce di molto, e cio' che sta fuori dal cerchio veniva tagliato (collaudo di
+   Tid, 2026-10-02). Qui la card cresce col contenuto e la pagina scorre. */
+.login-page--scorre {
+  align-items: flex-start;
+  overflow-y: auto;
+  padding: 2rem 1rem;
+}
+
+.login-page--scorre .login-bg {
+  position: fixed;
+}
+
+/* Centrata con i margini automatici e non con `align-items: center`: quando
+   la card e' piu' alta della finestra i margini si azzerano e si parte
+   dall'alto, mentre `center` la taglierebbe sopra. Corta (stato attivo),
+   resta al centro (Tid, 2026-10-02). */
+.login-card.login-card--pagina {
+  margin: auto 0;
+  width: min(34rem, 100%);
+  height: auto;
+  border-radius: 1rem;
+  padding: 2rem 2rem 1.5rem;
+  overflow: visible;
+}
+
+.login-card--pagina > .login-form {
+  max-width: 100%;
+}
+
+/* ── «Sicurezza dell'accesso» (SicurezzaView): il secondo fattore ───────────
+   Il QR su fondo bianco anche in tema scuro: le app di autenticazione lo
+   leggono come lo stampa `segno`, nero su bianco. */
+.secondo-fattore-configurazione {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.secondo-fattore-qr {
+  align-self: center;
+  width: 12rem;
+  height: 12rem;
+  padding: 0.5rem;
+  background: #fff;
+  border-radius: 0.5rem;
+}
+
+.secondo-fattore-nota {
+  margin: 0;
+  color: #fff;
+  font-size: var(--app-font-size-sm);
+  text-align: center;
+}
+
+.secondo-fattore-segreto {
+  align-self: center;
+  padding: 0.25rem 0.5rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 0.25rem;
+  letter-spacing: 0.08em;
+  word-break: break-all;
+}
+
+.secondo-fattore-codici {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 1rem;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  list-style: none;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 0.5rem;
+}
+
+@media (max-width: 767.98px) {
+  .secondo-fattore-codici {
+    grid-template-columns: 1fr;
+  }
 }

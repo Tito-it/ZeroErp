@@ -30,8 +30,9 @@
 --   2. un operatore di un ALTRO emittente NON lo vede            (ramo USING)
 --   3. un operatore di un ALTRO emittente NON puo' scriverlo     (ramo WITH CHECK)
 --   4. senza `app.ruolo_applicativo` non si vede niente          (il cancello)
---   5. ⚠️ svuotando SOLO `app.current_user_id` la riga TORNA visibile —
---      il fail-closed lo da' il RUOLO, non l'utente
+--   5. svuotando SOLO `app.current_user_id` la riga resta invisibile —
+--      chiude anche l'utente, non solo il ruolo (rev 2026-10-05: fino a
+--      20261004-82 l'utente NULL era «job batch» e la riga tornava visibile)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -61,8 +62,8 @@ WITH c AS (
         (codice, billing_account_id, utility_id, competenza_dal, competenza_al)
     SELECT 'PGTAP-EV-' || cl.billing_account_id,
            cl.billing_account_id, cl.utility_id,
-           date_trunc('month', CURRENT_DATE)::date,
-           (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date
+           date_trunc('month', script.fn_data_operativa())::date,
+           (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date
       FROM _cliente cl
     RETURNING id, emittente_soggetto_ruolo_id
 )
@@ -146,11 +147,13 @@ SELECT is(
     'gate: senza app.ruolo_applicativo la policy e'' fail-closed'
 );
 
--- 5) ⚠️ E il cancello e' il RUOLO, non l'utente. Con la veste OPERATORE e
---    `app.current_user_id` VUOTO la riga torna visibile: la regola 1 di
---    script.fn_check_user_emittente_scope tratta l'utente assente come «job
---    batch, nessun filtro». Non e' un difetto da correggere qui — e' il motivo
---    per cui un test di perimetro NON si scrive svuotando l'utente.
+-- 5) ⭐ Chiude anche l'UTENTE, non solo il ruolo. Con la veste OPERATORE e
+--    `app.current_user_id` VUOTO la riga resta invisibile: dal changeSet
+--    20261004-82 script.fn_check_user_emittente_scope risponde false con
+--    l'utente NULL (brief-db-esclusioni-implicite, Q-1). Fino a quel giorno
+--    questa asserzione pinnava il contrario — l'utente assente come «job
+--    batch, nessun filtro», la riga visibile — cioe' il difetto che Q-1 ha
+--    chiuso: una veste impostata senza utente vedeva tutte le aziende.
 DO $ctx3$ BEGIN
     PERFORM set_config('app.ruolo_applicativo', 'OPERATORE', true);
     PERFORM set_config('app.current_user_id',   '',          true);
@@ -159,8 +162,8 @@ END $ctx3$;
 SELECT is(
     (SELECT count(*)::int FROM vendite.event_log el
       WHERE el.id = (SELECT event_id FROM _ev)),
-    1,
-    'svuotare solo app.current_user_id NON e'' fail-closed: il cancello e'' il ruolo'
+    0,
+    'svuotare solo app.current_user_id e'' fail-closed: con la veste e senza utente non si vede niente'
 );
 
 ALTER TABLE vendite.event_log NO FORCE ROW LEVEL SECURITY;

@@ -135,8 +135,15 @@ SELECT
       AND ba.istanza_utility_id IS NOT NULL
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1)                        AS utility_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1)                        AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE
       AND COALESCE(a.is_composito, FALSE) IS FALSE
@@ -148,6 +155,8 @@ SELECT
     WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ordini s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE LIMIT 1)      AS stato_ord_draft_id,
   (SELECT s.id FROM config.sorgenti s
     WHERE s.codice_interno = 'ORDINE_VENDITA' LIMIT 1) AS sorgente_ordine_id,
   (SELECT s.id FROM config.sorgenti s
@@ -172,7 +181,7 @@ WITH ins AS (
     soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id,
     fatturazione_immediata, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-01', 'CONFERMATO', r.emittente_fiscale_id,
          true, false,
          jsonb_build_object('test_scope', 'pgtap_fi_simmetria_imm')
@@ -186,7 +195,7 @@ WITH ins AS (
     soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id,
     fatturazione_immediata, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-01', 'CONFERMATO', r.emittente_fiscale_id,
          false, false,
          jsonb_build_object('test_scope', 'pgtap_fi_simmetria_dif')
@@ -211,6 +220,14 @@ SELECT o.id, 1, r.articolo_id, 'Riga simmetria flag',
        1.000000, 1.000000, 10.000000, 0.000000, r.iva_id,
        true, false, jsonb_build_object('test_scope', 'pgtap_fi_simmetria')
 FROM tmp_ord_dif o, tmp_refs_fi r;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): le testate nascono DRAFT,
+-- prendono le righe, poi passano a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_imm), 'CONFERMATO');
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord_dif), 'CONFERMATO');
+END $x$;
 
 -- ============================================================
 -- TEST 6-7 (G9): il valore proiettato segue la COLONNA.

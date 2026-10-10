@@ -2,9 +2,9 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
@@ -13,11 +13,11 @@ import { useApiHandler } from '../composables/useApiHandler'
 import { usePagination } from '../composables/usePagination'
 import { useContextStore } from '../../stores/context'
 import { DRAWER_WIDTH, MANAGE_ICONS, RICERCA, STATUS_ICONS, TIPO_RUOLO } from '../constants'
+import { ROTTA_LISTA_PER_TIPO_RUOLO, ROTTA_LISTA_SOGGETTI, rottaListaTipoRuolo } from '../navigation'
 import { termineCorto } from '../utils/listParams'
-import DrawerTitle from './DrawerTitle.vue'
+import AppDrawer from './AppDrawer.vue'
 import SearchDetailTable from './details/SearchDetailTable.vue'
 import { useAuthStore } from '../../stores/auth'
-import { useDrawerContentReady } from '../composables/useDrawerContentReady'
 
 
 
@@ -31,10 +31,6 @@ const props = defineProps({
   visible: { type: Boolean, required: true }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
 
 // Stato ricerca
@@ -161,17 +157,11 @@ const ENTITA_ID_KEY = {
   [TIPO_RUOLO.FORNITORE]: 'fornitore_id'
 }
 
-// Mappa tipo ruolo codice -> nome rotta lista corrispondente
-const TIPO_RUOLO_ROUTES = {
-  [TIPO_RUOLO.CLIENTE]: 'anagrafiche-clienti',
-  [TIPO_RUOLO.FORNITORE]: 'anagrafiche-fornitori',
-}
-
-// Rotte che possono gestire il contesto senza navigazione (hanno watcher su ctx)
+// Rotte che possono gestire il contesto senza navigazione (hanno watcher su ctx):
+// sono le liste d'arrivo di `rottaListaTipoRuolo`, tutte e sole.
 const CONTEXT_AWARE_ROUTES = new Set([
-  'anagrafiche-soggetti',
-  'anagrafiche-clienti',
-  'anagrafiche-fornitori',
+  ROTTA_LISTA_SOGGETTI,
+  ...Object.values(ROTTA_LISTA_PER_TIPO_RUOLO),
 ])
 
 // Scopo: imposta il contesto globale dall'entita' selezionata, chiude il drawer.
@@ -199,7 +189,7 @@ function handleSetContext(row) {
   // Naviga solo se la pagina corrente non gestisce il contesto
   const currentRoute = router.currentRoute.value.name
   if (!CONTEXT_AWARE_ROUTES.has(currentRoute)) {
-    const routeName = TIPO_RUOLO_ROUTES[codice] || 'anagrafiche-soggetti'
+    const routeName = rottaListaTipoRuolo(codice)
     const query = searchTerm.value ? { search: searchTerm.value } : {}
     router.push({ name: routeName, query })
   }
@@ -208,7 +198,7 @@ function handleSetContext(row) {
 // Scopo: naviga alla scheda anagrafica completa del soggetto
 function handleOpenDetail() {
   const codice = selectedTipoRuolo.value?.codice
-  const routeName = TIPO_RUOLO_ROUTES[codice] || 'anagrafiche-soggetti'
+  const routeName = rottaListaTipoRuolo(codice)
   const query = searchTerm.value ? { search: searchTerm.value } : {}
   emit('update:visible', false)
   router.push({ name: routeName, query })
@@ -226,19 +216,20 @@ watch(() => props.visible, (newVal) => {
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). Drawer di
+       consultazione: footer «Chiudi», come ogni drawer che mostra una lista
+       (fino a quel giorno non ne aveva, e si usciva solo dalla X). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.WIDE }"
-    :modal="true"
-    :dismissable="true"
-    @update:visible="emit('update:visible', $event)"
-    @after-show="onAfterShow"
+    :title="t('search.title')"
+    :icon="MANAGE_ICONS.RICERCA"
+    :width="DRAWER_WIDTH.WIDE"
+    :proteggi-corpo="false"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :title="t('search.title')" :icon="MANAGE_ICONS.RICERCA" />
-    </template>
-    <div v-if="contentReady" class="app-drawer-content search-drawer-content">
+    <div class="search-drawer-content">
       <!-- Filtri ricerca -->
       <div class="search-filters">
         <div class="search-row-primary">
@@ -311,11 +302,13 @@ watch(() => props.visible, (newVal) => {
         <Column field="soggetto_codice" :header="t('search.col_code')" sortable style="width: 90px" />
         <Column field="ragione_sociale_completa" :header="t('search.col_name')" sortable />
         <Column field="id_fiscale_univoco" :header="t('search.col_fiscal_id')" sortable style="width: 160px" />
+        <!-- ⛔ Non ordinabile (2026-10-10, brief-db-ricerca-universale-tetto-10000
+             D-2): è un aggregato che il DB calcola per le sole righe della
+             pagina, e `p_order_by` lo rifiuta. -->
         <Column
           v-if="selectedTipoRuolo?.codice === TIPO_RUOLO.CLIENTE"
           field="utility_list"
           :header="t('search.col_utility')"
-          sortable
           style="width: 80px"
         >
           <template #body="{ data }">
@@ -352,14 +345,18 @@ watch(() => props.visible, (newVal) => {
         </template>
       </DataTable>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>
 
 /* Layout base ereditato da .app-drawer-content (main.css) */
 .search-drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-drawer-gap);
   height: 100%;
+  min-width: 0;
 }
 
 .search-filters {

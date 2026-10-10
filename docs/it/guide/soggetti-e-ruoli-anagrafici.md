@@ -1,6 +1,6 @@
 # Guida — Soggetti e Ruoli Anagrafici
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 9 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend e analisti funzionali
 >
@@ -108,15 +108,22 @@ Ogni soggetto ha una **natura** definita su due livelli:
 
 La natura determina automaticamente quali dati sono obbligatori:
 
-| Tipo                   | Natura | CF obbligatorio | PIVA obbligatoria | Dati societari |
-| ---------------------- | ------ | :-------------: | :---------------: | -------------- |
-| PR (Privato)           | PF     |       si        |        no         | vietati        |
-| DI (Ditta Individuale) | PF     |       si        |        si         | vietati        |
-| SP (Soc. Persone)      | PG     |       si        |        si         | opzionali      |
-| SC (Soc. Capitali)     | PG     |       si        |        si         | obbligatori    |
-| ENC (Ente)             | ENC    |       si        |        si         | obbligatori    |
+| Tipo                   | Natura | CF obbligatorio | PIVA obbligatoria | Dati societari | Sesso          |
+| ---------------------- | ------ | :-------------: | :---------------: | -------------- | -------------- |
+| PR (Privato)           | PF     |       si        |        no         | vietati        | obbligatorio   |
+| DI (Ditta Individuale) | PF     |       si        |        si         | opzionali      | facoltativo    |
+| SP (Soc. Persone)      | PG     |       si        |        si         | opzionali      | non si indica  |
+| SC (Soc. Capitali)     | PG     |       si        |        si         | obbligatori    | non si indica  |
+| ENC (Ente)             | ENC    |       si        |        si         | opzionali      | non si indica  |
 
 In pratica: un privato non deve avere dati societari (forma giuridica, REA, capitale sociale), mentre una S.r.l. li deve avere obbligatoriamente. Il sistema verifica automaticamente queste regole tramite trigger.
+
+**Il sesso non ha mai un valore di comodo.** Lo sceglie chi lo vede: `M` o `F`, oppure
+`X` quando serve ma non si puo' stabilire (un dato storico, un codice fiscale estero o
+non riconoscibile). Un campo vuoto vuol dire «non serve», ed e' ammesso solo dove la
+natura lo prevede. Una ditta individuale e' una persona con un'attivita' in proprio:
+il sesso si puo' indicare, ma non e' richiesto. Il dettaglio sta nella
+[tabella soggetti](/dbzero/anagrafiche/manual/soggetti).
 
 La validazione distingue due aspetti separati:
 
@@ -204,7 +211,11 @@ Non tutti i ruoli hanno una tabella dedicata. Solo quelli che richiedono dati ag
 
 I ruoli **REFERENTE** (RE), **VENDITORE** (VE), **DISTRIBUTORE** (DI) e **BANCA** (BANK) non hanno tabella specializzata: operano solo tramite il record in `soggetti_ruoli` e le tabelle trasversali (contatti, conti bancari).
 
-Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → soggetti_ruoli.id` con vincolo UNIQUE: un solo record specializzato per ruolo assegnato. I dati appartengono solo al ruolo pertinente — le condizioni di pagamento del cliente non si mescolano con quelle del fornitore, anche se il soggetto e lo stesso.
+Tutte le tabelle specializzate si collegano tramite `soggetto_ruolo_id → soggetti_ruoli.id`. I dati appartengono solo al ruolo pertinente — le condizioni di pagamento del cliente non si mescolano con quelle del fornitore, anche se il soggetto e lo stesso.
+
+Per quasi tutti i ruoli il collegamento ha un vincolo UNIQUE: **un solo record specializzato per ruolo assegnato** (fornitori, vettori, PSP, risorse umane, emittenti fiscali; per i gestori dal 2026-10-08).
+
+⚠️ **L'eccezione e il CLIENTE.** Un cliente non e «la persona come cliente», ma **una sua fornitura**: un soggetto con un solo ruolo CLIENTE puo avere il gas a casa e la luce in ufficio, cioe due billing account e due clienti, tutti sullo stesso ruolo. Su `anagrafiche.clienti` non c'e — e non ci deve essere — un vincolo di unicita sul ruolo: la regola e **un cliente per ogni billing account** (decisa il 2026-10-08, vincolo `uq_clienti_billing_account`, al posto del vecchio «un cliente per istanza») (vedi [Gestione delle istanze utility](/guide/gestione-delle-istanze-utility#ogni-istanza-nasce-col-suo-billing-account)).
 
 ---
 
@@ -560,7 +571,7 @@ erDiagram
         bigint soggetto_ruolo_id FK
     }
 
-    soggetti_ruoli ||--o| clienti : "specializza"
+    soggetti_ruoli ||--o{ clienti : "specializza"
     soggetti_ruoli ||--o| fornitori : "specializza"
     soggetti_ruoli ||--o| gestori : "specializza"
     soggetti_ruoli ||--o| risorse_umane : "specializza"

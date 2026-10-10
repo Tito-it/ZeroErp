@@ -111,7 +111,7 @@ _MAX_LARGHEZZA = 4000
 _MAX_ORDINE = 100000
 
 # Mapping vincoli DB -> codice + messaggio applicativo.
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_ui_lista_colonna_lista_codice": (
         E_COLONNA_VALIDATION,
         "Esiste gia' una colonna con questo codice nella lista.",
@@ -119,14 +119,14 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_lista_colonna_lista_definizione": (
         E_COLONNA_VALIDATION,
         "lista_id non valido (FK su ui.lista_definizione).",
     ),
 }
 
-_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "chk_ui_lista_colonna_azione_non_esportabile": (
         E_COLONNA_VALIDATION,
         "Le colonne di tipo 'azione' non possono essere esportabili.",
@@ -529,14 +529,14 @@ class ListaColonnaAdminService:
             "ricercabile_full", "sensibile", "attivo",
         ):
             if flag in payload:
-                value = self._v.optional_bool(payload, flag)
+                valore_flag = self._v.optional_bool(payload, flag)
                 ErrorManager.require(
-                    value is not None,
+                    valore_flag is not None,
                     code=E_COLONNA_VALIDATION,
                     message=f"Il campo '{flag}' non puo' essere NULL.",
                     detail=f"field={flag}",
                 )
-                data[flag] = bool(value)
+                data[flag] = bool(valore_flag)
 
         # Normalize esportabile su tipo_colonna='azione': considera il
         # tipo_colonna nuovo (se presente nel payload) o quello corrente.

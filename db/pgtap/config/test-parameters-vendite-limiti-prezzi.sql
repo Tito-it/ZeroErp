@@ -87,9 +87,9 @@ SELECT is(
 -- Setup: user di test + override.
 -- Nota: parameter_overrides NON ha scope_code/scope_value: lo scope e'
 -- determinato dalle colonne django_user_id/django_group_id/emittente_fiscale_id
--- valorizzate (NULL = wildcard). Unique uq_overrides_full_scope_v3 su
--- (parameter_id, emittente_fiscale_id, django_user_id, django_group_id,
--- session_key, function_name).
+-- valorizzate (NULL = wildcard). Unique uq_overrides_full_scope_v5 NULLS NOT
+-- DISTINCT su (parameter_id, emittente_fiscale_id, django_user_id,
+-- django_group_id, categoria_cliente_id, session_key, function_name).
 CREATE TEMP TABLE tmp_l2_test AS
 SELECT id AS user_id
 FROM django.auth_user
@@ -111,7 +111,13 @@ FROM tmp_l2_test t
 WHERE EXISTS (
     SELECT 1
     FROM tmp_l2_test
-  );
+  )
+-- Col vincolo v5 NULLS NOT DISTINCT (20261007-70) l'ambito e' uno: se sul DB
+-- esiste gia' un override puro per questo parametro e questo ambito, lo si
+-- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
+-- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 INSERT INTO config.parameter_overrides (
     parameter_id,
     overridden_value,
@@ -128,7 +134,13 @@ FROM tmp_l2_test t
 WHERE EXISTS (
     SELECT 1
     FROM tmp_l2_test
-  );
+  )
+-- Col vincolo v5 NULLS NOT DISTINCT (20261007-70) l'ambito e' uno: se sul DB
+-- esiste gia' un override puro per questo parametro e questo ambito, lo si
+-- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
+-- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 SELECT is(
     script.fn_get_parameter_full(
       'VENDITE_MAX_SCONTO_PCT',

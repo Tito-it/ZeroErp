@@ -17,13 +17,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -34,10 +36,13 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
+from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._riga_erogazioni_views import RigaErogazioniView
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
+from apps.vendite.db.offerte_repository import OffertaRigheListaRepository
 from apps.vendite.services import offerte_service
 from apps.vendite.services.offerte_service import OfferteService
 from apps.core.api.openapi_params import param_ricerca_full
@@ -84,7 +89,9 @@ _OFFERTA_PATCH_REQUEST = schema_da_contratto(
 )
 _ECCEZIONE_CREATE_REQUEST = schema_da_contratto(
     "VenditeOffertaEccezioneCreateReq", offerte_service.CREATE_KEYS_ECCEZIONE,
-    obbligatorie=("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"),
+    # La fonte non e' fra le obbligatorie: l'ESCLUSIONE nasce senza (2026-10-04),
+    # e sulle righe che si fatturano la riempie il trigger DB dall'erogazione.
+    obbligatorie=("articolo_id", "tipo_eccezione"),
 )
 _ECCEZIONE_PATCH_REQUEST = schema_da_contratto(
     "VenditeOffertaEccezionePatchReq", offerte_service.UPDATE_KEYS_ECCEZIONE,
@@ -598,6 +605,39 @@ class ApiOffertaRevisioni(DomainAPIView):
 
 
 # =================================================================
+# Righe: la lista configurabile `vendite.offerta_righe` (106)
+# =================================================================
+# Pagina ed export dal factory condiviso `build_lista_figlia_views`, come le
+# righe del contratto (brief-db-righe-esclusione-solo-non-si-vende §8.1). La
+# closure legge il global di modulo a call-time: i patch dei test sul service
+# restano validi.
+# ⚠️ `GET …/eccezioni/` resta la lettura delle eccezioni SCRITTE (e il POST di
+#    creazione): la lista e' su `…/righe/lista/`, e legge le righe OPERATIVE
+#    (listino + eccezioni) dalla funzione, coi verbi del DB.
+_OffertaRigheLista, _OffertaRigheListaExport = build_lista_figlia_views(
+    schema_prefix="OffertaRighe",
+    operation_id="vendite_offerte_righe_lista",
+    area_funzionale="vendite",
+    lista_emittente_param=EMITTENTE_DOCUMENTO_PARAM,
+    url_kwarg="offerta_id",
+    model_permission=("vendite", "offerta_commerciale"),
+    pagina_call=lambda documento_id, **kw: OfferteService().list_righe_pagina(documento_id, **kw),
+    colonne_ordinabili=OffertaRigheListaRepository.righe_colonne_ordinabili(),
+    ordine_assente=OffertaRigheListaRepository.righe_ordine_di_partenza(),
+)
+
+
+# ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
+#    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
+class ApiOffertaRigheListaView(_OffertaRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
+    lista_codice = "vendite.offerta_righe"
+
+
+class ApiOffertaRigheListaExportView(_OffertaRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
+    lista_codice = "vendite.offerta_righe"
+
+
+# =================================================================
 # Eccezioni
 # =================================================================
 
@@ -631,7 +671,7 @@ class ApiOffertaEccezioni(DomainAPIView):
         return success_response(
             OfferteService().crea_eccezione(
                 offerta_id, corpo_oggetto(request),
-                auth_user_id=get_scope_user_id(request),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 
@@ -654,7 +694,7 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
         return success_response(
             OfferteService().aggiorna_eccezione(
                 offerta_id, eccezione_id, corpo_oggetto(request),
-                auth_user_id=get_scope_user_id(request),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 
@@ -682,6 +722,22 @@ class ApiOffertaEccezioneDetail(DomainAPIView):
 #   PATCH/DELETE /eccezioni/<eid>/componenti/<cid>/  -> CRUD singolo
 
 
+class ApiOffertaRigaErogazioni(RigaErogazioniView):
+    """GET /api/v1/vendite/offerte/<id>/righe/erogazioni/?articolo_id=<uuid>
+
+    Come si puo' erogare l'articolo su una riga dell'offerta: le combinazioni
+    ammesse col default in testa (base `RigaErogazioniView`, gemella del
+    contratto).
+    """
+
+    model_permission = ("vendite", "offerta_commerciale")
+    url_kwarg = "offerta_id"
+
+    # Scopo: le combinazioni dal service dell'offerta.
+    def elenco(self, documento_id: int, articolo_id: Any) -> list[dict[str, Any]]:
+        return OfferteService().list_erogazioni_riga(documento_id, articolo_id)
+
+
 class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
     """POST /api/v1/vendite/offerte/<id>/eccezioni/preview-componenti/
 
@@ -699,9 +755,9 @@ class ApiOffertaEccezionePreviewComponenti(DomainAPIView):
         responses={200: PREVIEW_COMPONENTI_RESPONSE},
     )
     def post(self, request: Request, offerta_id: int) -> JsonResponse:
-        auth_user_id = get_scope_user_id(request)
+        auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
+        def _handler(payload: dict[str, Any]) -> list[dict[str, Any]]:
             articolo_id = str(payload.get("articolo_id") or "")
             uom_raw = payload.get("uom_operativa_id")
             uom_operativa_id = int(uom_raw) if uom_raw not in (None, "") else None

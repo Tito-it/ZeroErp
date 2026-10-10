@@ -5,9 +5,7 @@
 import { ref, shallowRef, markRaw, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { cambiaStatoFlusso } from '../api/pratiche-api'
 import { lookupCodici } from '../../core/apiCore'
@@ -19,12 +17,10 @@ import { getDomainCompletion } from '../flussoDomainCompletionRegistry'
 import { DRAWER_WIDTH, STATO_FLUSSO, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { statoFlussoSeverity, esitoFlussoSeverity } from '../../core/utils/severity'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import PraticaContextHeader from './PraticaContextHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
 import FlussoAssegnaDialog from './FlussoAssegnaDialog.vue'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
@@ -169,17 +165,14 @@ const showEsitoDominioInfo = computed(() =>
 // pratiche.azioni_ui), risolta nel registry FE → drawer di dominio da aprire.
 const uiActivity = computed(() => getUiActivity(props.flusso?.template_azione_ui_key))
 // Gating cliente attivo: alcune attività (offerta/contratto) richiedono il BA.
-// Il flusso espone il BA risolto della pratica (NULL = prospect).
+// Il flusso espone il BA della pratica (colonna, D-9 di brief-db-istanza-nasce-col-ba;
+// NULL = pratica di un altro ruolo, interna o con la sola istanza).
 const hasActiveClient = computed(() => props.flusso?.pratica_billing_account_id != null)
 const uiActivityVisible = computed(
   () => !effectiveReadonly.value
     && !!uiActivity.value
     && (!uiActivity.value.requiresActiveClient || hasActiveClient.value),
 )
-
-// Deferimento contenuto: il drawer ha solo Select statico + Textarea, ma
-// applichiamo il pattern per coerenza con gli altri drawer entita'.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -380,153 +373,137 @@ async function onDomainComplete() {
   if (result !== null) { emit('saved'); emit('update:visible', false) }
 }
 
-const onClose = useDrawerClose(emit)
-const chiudi = () => chiudiConConferma(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- Il footer segue lo stato del flusso: l'esito da registrare, il
+       completamento di dominio (etichetta sua), oppure il solo «Chiudi». -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="flusso?.template_flusso_descrizione || t('pratiche.flusso_generico')"
+    :icon="NAV_ICONS.PRATICHE"
+    :action="t('pratiche.flusso_esecuzione')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :readonly="effectiveReadonly"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :footer="showEsitoForm || showDomainComplete ? 'form' : 'chiudi'"
+    :loading="loading"
+    :save-disabled="showEsitoForm && !esito"
+    :save-label="!showEsitoForm && showDomainComplete ? t(domainCompletion.label) : null"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="showEsitoForm ? onCompleta() : onDomainComplete()"
   >
-    <template #header>
-      <DrawerTitle
-        :action="t('pratiche.flusso_esecuzione')"
-        :modificato="modificato"
-        :title="flusso?.template_flusso_descrizione || t('pratiche.flusso_generico')"
-        :icon="NAV_ICONS.PRATICHE"
-      />
-    </template>
+    <template v-if="flusso">
 
-    <div v-if="flusso" class="app-drawer-content" :class="{ 'app-readonly': effectiveReadonly }">
-      <template v-if="contentReady">
-
-      <!-- Header standard contesto pratica (BB PraticaContextHeader):
-           numero pratica + soggetto + data apertura + id fiscale, identico
-           su ogni drawer di esecuzione flusso. "Completa con esito" resta
-           inline come transizione con dati di processo (form esito
-           obbligatorio). -->
-      <PraticaContextHeader
-        :codice="flusso.pratica_codice"
-        :pratica-id="flusso.pratica_id"
-        :soggetto="flusso.pratica_soggetto_display"
-        :data-apertura="flusso.pratica_data_apertura"
-        :id-fiscale="flusso.pratica_soggetto_id_fiscale"
-      >
-        <template #status>
-          <Tag :value="statoDescrizione" :severity="statoFlussoSeverity(stato)" />
-        </template>
-      </PraticaContextHeader>
-
-      <DrawerActionsBar :actions="drawerActions" />
-
-      <!-- La descrizione dell'attivita' e' gia' nel titolo del drawer: niente campo
-           "Template" per l'operatore (era gergo di configurazione). In modalita'
-           tecnica (super-admin) riespone codice + descrizione del template. -->
-      <div v-if="tecnico" class="form-field">
-        <label>{{ t('pratiche.flusso_col_template') }}</label>
-        <span class="form-value">{{ flusso.template_flusso_codice }} — {{ flusso.template_flusso_descrizione }}</span>
-      </div>
-
-      <!-- Assegnazione corrente del flusso (reparto + operatore), display fields
-           dal BE. Mostrata solo se almeno uno valorizzato. -->
-      <div v-if="flusso.unita_organizzativa_descrizione || flusso.risorsa_umana_display"
-           class="form-grid-2col">
-        <div v-if="flusso.unita_organizzativa_descrizione" class="form-field">
-          <label>{{ t('pratiche.flusso_reparto') }}</label>
-          <span class="form-value">{{ flusso.unita_organizzativa_descrizione }}</span>
-        </div>
-        <div v-if="flusso.risorsa_umana_display" class="form-field">
-          <label>{{ t('pratiche.flusso_assegnatario') }}</label>
-          <span class="form-value">{{ flusso.risorsa_umana_display }}</span>
-        </div>
-      </div>
-
-      <!-- Form esito inline: completamento manuale su IN_CORSO oppure modalita
-           CONTESTUALE su DA_ESEGUIRE (avvio+esito in un'unica azione). Resta inline
-           (transizione con dati di processo, non comprimibile a `command` del BB). -->
-      <div v-if="showEsitoForm" class="flusso-actions">
-        <h4>{{ stato === STATO_FLUSSO.DA_ESEGUIRE
-          ? t('pratiche.flusso_avvia_e_registra_esito')
-          : t('pratiche.flusso_completa_con_esito') }}</h4>
-        <div class="form-grid">
-          <div class="form-field">
-            <label>{{ t('pratiche.flusso_esito') }} *</label>
-            <Select
-              v-model="esito"
-              :options="esitiOptions"
-              option-label="label" option-value="value"
-              :placeholder="t('pratiche.flusso_esito')"
-            />
-            <!-- Lookup esiti fallito o vuoto: senza feedback l'operatore resta
-                 bloccato (Salva disabilitato) senza capire perche'. -->
-            <small
-              v-if="!esitiLoading && !esitiOptions.length"
-              class="p-error"
-            >
-              {{ t('pratiche.flusso_esiti_non_disponibili') }}
-            </small>
-          </div>
-          <div class="form-field">
-            <label>{{ t('pratiche.flusso_note_esito') }}</label>
-            <Textarea v-model="noteEsito" rows="3" auto-resize />
-          </div>
-        </div>
-      </div>
-
-      <!-- Completamento di DOMINIO (es. SMISTAMENTO): niente picker esito — il BE
-           calcola l'esito di ramo dallo split gia' eseguito nel Pannello e completa
-           lo step. Una sola azione conferma; il BE rifiuta se restano righe non
-           smistate (residuo merce/servizi) con errore parlante. -->
-      <div v-if="showDomainComplete" class="flusso-actions">
-        <h4>{{ t(domainCompletion.label) }}</h4>
-        <p class="flusso-domain-hint">{{ t('pratiche.flusso_completa_dominio_hint') }}</p>
-      </div>
-
-      <!-- Step DOMINIO senza azione di completamento cablata: niente picker
-           verdetti (il DB lo rifiuterebbe) — solo un messaggio: l'esito lo
-           produce il processo di dominio. -->
-      <div v-else-if="showEsitoDominioInfo" class="flusso-actions">
-        <p class="flusso-domain-hint">{{ t('pratiche.flusso_esito_dominio_senza_azione') }}</p>
-      </div>
-
-      <!-- COMPLETATO: Mostra esito (readonly) -->
-      <div v-if="stato === STATO_FLUSSO.COMPLETATO" class="form-grid">
-        <div class="form-field">
-          <label>{{ t('pratiche.flusso_esito') }}</label>
-          <Tag :value="flusso.esito_descrizione || flusso.esito" :severity="esitoFlussoSeverity(flusso.esito)" />
-        </div>
-        <div v-if="flusso.note_esito" class="form-field">
-          <label>{{ t('pratiche.flusso_note_esito') }}</label>
-          <span class="form-value">{{ flusso.note_esito }}</span>
-        </div>
-      </div>
-
-      <!-- Footer standard: in IN_CORSO il completamento esito usa il BB
-           FormFooter (Annulla + Salva), niente pulsante Chiudi separato.
-           Negli altri stati (Avvia in alto / COMPLETATO / sola lettura) resta
-           il solo Chiudi. -->
-      <FormFooter
-        v-if="showEsitoForm"
-        :loading="loading"
-        :disabled="!esito"
-        @save="onCompleta"
-        @cancel="chiudi"
-      />
-      <FormFooter
-        v-else-if="showDomainComplete"
-        :loading="loading"
-        :save-label="t(domainCompletion.label)"
-        @save="onDomainComplete"
-        @cancel="chiudi"
-      />
-      <FormFooter v-else close-only @cancel="chiudi" />
+    <!-- Header standard contesto pratica (BB PraticaContextHeader):
+         numero pratica + soggetto + data apertura + id fiscale, identico
+         su ogni drawer di esecuzione flusso. "Completa con esito" resta
+         inline come transizione con dati di processo (form esito
+         obbligatorio). -->
+    <PraticaContextHeader
+      :codice="flusso.pratica_codice"
+      :pratica-id="flusso.pratica_id"
+      :soggetto="flusso.pratica_soggetto_display"
+      :data-apertura="flusso.pratica_data_apertura"
+      :id-fiscale="flusso.pratica_soggetto_id_fiscale"
+    >
+      <template #status>
+        <Tag :value="statoDescrizione" :severity="statoFlussoSeverity(stato)" />
       </template>
+    </PraticaContextHeader>
+
+    <DrawerActionsBar :actions="drawerActions" />
+
+    <!-- La descrizione dell'attivita' e' gia' nel titolo del drawer: niente campo
+         "Template" per l'operatore (era gergo di configurazione). In modalita'
+         tecnica (super-admin) riespone codice + descrizione del template. -->
+    <div v-if="tecnico" class="form-field">
+      <label>{{ t('pratiche.flusso_col_template') }}</label>
+      <span class="form-value">{{ flusso.template_flusso_codice }} — {{ flusso.template_flusso_descrizione }}</span>
     </div>
+
+    <!-- Assegnazione corrente del flusso (reparto + operatore), display fields
+         dal BE. Mostrata solo se almeno uno valorizzato. -->
+    <div v-if="flusso.unita_organizzativa_descrizione || flusso.risorsa_umana_display"
+         class="form-grid-2col">
+      <div v-if="flusso.unita_organizzativa_descrizione" class="form-field">
+        <label>{{ t('pratiche.flusso_reparto') }}</label>
+        <span class="form-value">{{ flusso.unita_organizzativa_descrizione }}</span>
+      </div>
+      <div v-if="flusso.risorsa_umana_display" class="form-field">
+        <label>{{ t('pratiche.flusso_assegnatario') }}</label>
+        <span class="form-value">{{ flusso.risorsa_umana_display }}</span>
+      </div>
+    </div>
+
+    <!-- Form esito inline: completamento manuale su IN_CORSO oppure modalita
+         CONTESTUALE su DA_ESEGUIRE (avvio+esito in un'unica azione). Resta inline
+         (transizione con dati di processo, non comprimibile a `command` del BB). -->
+    <div v-if="showEsitoForm" class="flusso-actions">
+      <h4>{{ stato === STATO_FLUSSO.DA_ESEGUIRE
+        ? t('pratiche.flusso_avvia_e_registra_esito')
+        : t('pratiche.flusso_completa_con_esito') }}</h4>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>{{ t('pratiche.flusso_esito') }} *</label>
+          <Select
+            v-model="esito"
+            :options="esitiOptions"
+            option-label="label" option-value="value"
+            :placeholder="t('pratiche.flusso_esito')"
+          />
+          <!-- Lookup esiti fallito o vuoto: senza feedback l'operatore resta
+               bloccato (Salva disabilitato) senza capire perche'. -->
+          <small
+            v-if="!esitiLoading && !esitiOptions.length"
+            class="p-error"
+          >
+            {{ t('pratiche.flusso_esiti_non_disponibili') }}
+          </small>
+        </div>
+        <div class="form-field">
+          <label>{{ t('pratiche.flusso_note_esito') }}</label>
+          <Textarea v-model="noteEsito" rows="3" auto-resize />
+        </div>
+      </div>
+    </div>
+
+    <!-- Completamento di DOMINIO (es. SMISTAMENTO): niente picker esito — il BE
+         calcola l'esito di ramo dallo split gia' eseguito nel Pannello e completa
+         lo step. Una sola azione conferma; il BE rifiuta se restano righe non
+         smistate (residuo merce/servizi) con errore parlante. -->
+    <div v-if="showDomainComplete" class="flusso-actions">
+      <h4>{{ t(domainCompletion.label) }}</h4>
+      <p class="flusso-domain-hint">{{ t('pratiche.flusso_completa_dominio_hint') }}</p>
+    </div>
+
+    <!-- Step DOMINIO senza azione di completamento cablata: niente picker
+         verdetti (il DB lo rifiuterebbe) — solo un messaggio: l'esito lo
+         produce il processo di dominio. -->
+    <div v-else-if="showEsitoDominioInfo" class="flusso-actions">
+      <p class="flusso-domain-hint">{{ t('pratiche.flusso_esito_dominio_senza_azione') }}</p>
+    </div>
+
+    <!-- COMPLETATO: Mostra esito (readonly) -->
+    <div v-if="stato === STATO_FLUSSO.COMPLETATO" class="form-grid">
+      <div class="form-field">
+        <label>{{ t('pratiche.flusso_esito') }}</label>
+        <Tag :value="flusso.esito_descrizione || flusso.esito" :severity="esitoFlussoSeverity(flusso.esito)" />
+      </div>
+      <div v-if="flusso.note_esito" class="form-field">
+        <label>{{ t('pratiche.flusso_note_esito') }}</label>
+        <span class="form-value">{{ flusso.note_esito }}</span>
+      </div>
+    </div>
+
+    <!-- Footer standard: in IN_CORSO il completamento esito usa il BB
+         FormFooter (Annulla + Salva), niente pulsante Chiudi separato.
+         Negli altri stati (Avvia in alto / COMPLETATO / sola lettura) resta
+         il solo Chiudi. -->
+    </template>
 
     <!-- Dialog assegnazione: reparto + operatore del reparto. Su saved chiude il
          drawer (emit saved) → il parent ricarica percorso/coda/lista. -->
@@ -549,7 +526,7 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       :readonly="effectiveReadonly"
       @confirm="onCompletionConfirm"
     />
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

@@ -1,0 +1,99 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL DDT FUORI BOZZA NON CAMBIA CAUSALE, CLIENTE NE' MAGAZZINO
+#   vendite.ddt: trg_ddt_a05_lock_fuori_bozza_upd sul BB
+#   vendite.trgfn_doc_testata_lock_fuori_bozza (20261009-70).
+#   Brief: brief-db-esecutivi-ba-coppia (§5.2)
+#
+# -- LE COLONNE ---------------------------------------------------------
+#   * causale_trasporto_id -> E_DDT_CAUSALE_IMMUTABILE: era di
+#     trg_ddt_a10_guard_causale_immutabile_upd, ritirato in -72;
+#   * billing_account_id, utility_id, destinatario_soggetto_ruolo_id ->
+#     E_DDT_CLIENTE_IMMUTABILE: NUOVO. Il DDT gia' emesso poteva cambiare
+#     cliente con un UPDATE (§3 del brief, ultimo punto). Le tre colonne
+#     insieme perche' sono la controparte: col BA la FK fk_ddt_ba_cliente
+#     (20261009-65) lega destinatario e utility al BA, e bloccarne una sola
+#     lascerebbe alle altre un 23503 grezzo. Senza BA il destinatario e' il
+#     deposito o il terzista, ed e' stampato sul documento come il cliente.
+#     Il codice esiste gia': lo solleva il backend (ddt_service.aggiorna_ddt)
+#     con la stessa regola, piu' stretta (vedi §7 del brief);
+#   * magazzino_id, magazzino_arrivo_id -> E_DDT_MAGAZZINO_IMMUTABILE: era il
+#     punto 1 di vendite.trgfn_ddt_guard_magazzino, ritirato in -73.
+#   Ogni colonna parla col suo codice: le frasi restano tre.
+#
+# -- ⚠️ FASCIA _a05_ --------------------------------------------------------
+#   Prima dei guard _a10_ che giudicano il valore nuovo
+#   (trg_ddt_a10_guard_magazzino_ins_upd: arrivo solo per il trasferimento,
+#   magazzino dell'emittente) e di trg_ddt_z10_guard_cliente_sorgente_ins_upd
+#   (20261009-79). Le due copie ritirate erano _a10_: il verdetto non cambia,
+#   cambia solo chi parla prima.
+#
+# -- CENSIMENTO DEGLI SCRITTORI (2026-10-09, corpi vivi su zeroerp_ci) -------
+#   Nessuna funzione aggiorna BA, utility o destinatario di un DDT dopo la
+#   nascita; il backend aggiorna la testata solo in DRAFT
+#   (ddt_service._STATI_MODIFICABILI) e il BA mai (E_DDT_CLIENTE_IMMUTABILE).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-71-create-trigger-ddt-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261009-71-create-trigger-ddt-lock-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ddt: trg_ddt_a05_lock_fuori_bozza_upd sul BB vendite.trgfn_doc_testata_lock_fuori_bozza
+        per causale, cliente (BA, utility, destinatario) e magazzino. Brief:
+        brief-db-esecutivi-ba-coppia.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*)
+                    FROM pg_proc p
+                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite'
+                     AND p.proname = 'trgfn_doc_testata_lock_fuori_bozza';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*)
+                    FROM pg_trigger
+                   WHERE tgrelid = 'vendite.ddt'::regclass
+                     AND tgname = 'trg_ddt_a05_lock_fuori_bozza_upd'
+                     AND NOT tgisinternal;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ddt_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.ddt
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                  'DDT', 'DRAFT',
+                  'causale_trasporto_id',           'E_DDT_CAUSALE_IMMUTABILE',
+                  'billing_account_id',             'E_DDT_CLIENTE_IMMUTABILE',
+                  'utility_id',                     'E_DDT_CLIENTE_IMMUTABILE',
+                  'destinatario_soggetto_ruolo_id', 'E_DDT_CLIENTE_IMMUTABILE',
+                  'magazzino_id',                   'E_DDT_MAGAZZINO_IMMUTABILE',
+                  'magazzino_arrivo_id',            'E_DDT_MAGAZZINO_IMMUTABILE');
+
+              COMMENT ON TRIGGER trg_ddt_a05_lock_fuori_bozza_upd ON vendite.ddt
+              IS 'Fuori bozza (stato VECCHIO diverso da DRAFT) il DDT non cambia causale (E_DDT_CAUSALE_IMMUTABILE), cliente — billing account, utility, destinatario (E_DDT_CLIENTE_IMMUTABILE) — ne'' magazzino di partenza e di arrivo (E_DDT_MAGAZZINO_IMMUTABILE). BB vendite.trgfn_doc_testata_lock_fuori_bozza, fascia _a05_. Brief: brief-db-esecutivi-ba-coppia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_a05_lock_fuori_bozza_upd ON vendite.ddt;

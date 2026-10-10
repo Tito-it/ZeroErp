@@ -9,8 +9,8 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| valid_from | date | NO | CURRENT_DATE |
-| valid_to | date | YES |  |
+| valid_from | timestamp with time zone | NO | now() |
+| valid_to | timestamp with time zone | YES |  |
 | data_insert | timestamp with time zone | YES | now() |
 | user_insert | text | YES | CURRENT_USER |
 | comuni_id | integer | YES |  |
@@ -18,7 +18,7 @@
 | tx_id | uuid | YES |  |
 | snapshot | jsonb | YES |  |
 | tipo_operazione | smallint | YES |  |
-| change_type | character | NO | 'A'::bpchar |
+| change_type | character(1) | NO | 'A'::bpchar |
 | origine_schema | text | NO |  |
 | scope_emittente_fiscale_id | bigint | YES |  |
 

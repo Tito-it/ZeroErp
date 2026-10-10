@@ -10,11 +10,11 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | tipo_documento_output_id | bigint | NO |  |
-| codice | character varying | NO |  |
-| codice_interno | character varying | NO |  |
+| codice | character varying(120) | NO |  |
+| codice_interno | character varying(120) | NO |  |
 | descrizione | text | NO |  |
 | sorgente_tipo_id | bigint | NO |  |
-| context_builder_code | character varying | NO |  |
+| context_builder_code | character varying(160) | NO |  |
 | file_name_pattern | text | YES |  |
 | emittente_fiscale_id | bigint | NO |  |
 | is_default | boolean | NO | false |

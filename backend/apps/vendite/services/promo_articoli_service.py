@@ -20,6 +20,8 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import (
@@ -116,7 +118,7 @@ _MESSAGE = "Payload promo non valido."
 
 
 # Mapping vincoli DB -> codici errore applicativi (word boundary match).
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_promo_articoli_codice": (
         E_VENDITE_DUPLICATO,
         "Esiste gia' una promo con questo codice.",
@@ -127,7 +129,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Esiste gia' una promo attiva per questo (articolo, uom) nel periodo indicato.",
     ),
 }
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_promo_articoli_articolo": (
         E_VENDITE_FK,
         "Articolo inesistente.",
@@ -160,7 +162,7 @@ class PromoArticoliService:
         uom_id: int | None = None,
         tipo_variazione: str | None = None,
         valid_at: date | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "valido_dal",
         order_dir: str = "desc",
@@ -407,6 +409,7 @@ class PromoArticoliService:
     ) -> Decimal | None:
         # La coercizione (bool e NaN rifiutati) e' del BB `PayloadValidator`;
         # qui resta la coerenza col tipo, che e' di dominio.
+        value: Decimal | None
         if required:
             value = self._v.require_decimal(payload, "valore_variazione", message=_MESSAGE)
         else:
@@ -455,7 +458,7 @@ class PromoArticoliService:
     #        per costruzione. Coerente con la decisione DB nel trigger
     #        trgfn_promo_articoli_guard_data_driven.
     def _assert_create_non_retroattiva(self, data: dict[str, Any]) -> None:
-        today = date.today()
+        today = oggi_aziendale()
         ErrorManager.require(
             data["valido_dal"] > today,
             code=E_PROMO_RETROATTIVA,
@@ -482,7 +485,7 @@ class PromoArticoliService:
         current: dict[str, Any],
         data: dict[str, Any],
     ) -> None:
-        today = date.today()
+        today = oggi_aziendale()
         cur_dal = current["valido_dal"]
         cur_al = current["valido_al"]
 

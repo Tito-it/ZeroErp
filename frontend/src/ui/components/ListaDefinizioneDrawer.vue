@@ -12,20 +12,15 @@
 //          - Niente readonly: pagina tecnica SUPER_ADMIN-only
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Textarea from 'primevue/textarea'
 import Checkbox from 'primevue/checkbox'
 import Message from 'primevue/message'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useUiDefinizioneAdminStore } from '../stores/uiDefinizioneAdmin'
-
-
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -33,11 +28,6 @@ const props = defineProps({
   recordId: { type: Number, default: null },
   recordData: { type: Object, default: null },
 })
-
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -126,103 +116,86 @@ async function onSave() {
   }
 }
 
-function onCancel() {
-  emit('cancelled')
-  emit('update:visible', false)
-}
-const chiudi = () => chiudiConConferma(onCancel)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :modal="true"
-    :dismissable-mask="false"
-    @after-show="onAfterShow"
+    :title="t('ui.admin.definizione')"
+    :icon="MANAGE_ICONS.LIST"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="onSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('ui.admin.definizione')"
-        :icon="MANAGE_ICONS.LIST"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content">
-      <div class="form-grid">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('ui.admin.definizione_codice') }}</label>
-            <InputText v-model="form.codice" maxlength="80"
-              :invalid="campiErrati.includes('codice')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('ui.admin.definizione_schema_dati') }}</label>
-            <InputText v-model="form.schema_dati" maxlength="80"
-              :invalid="campiErrati.includes('schema_dati')"
-            />
-          </div>
-        </div>
-
+    <div class="form-grid">
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('ui.admin.definizione_descrizione') }}</label>
-          <InputText v-model="form.descrizione" maxlength="200"
-            :invalid="campiErrati.includes('descrizione')"
+          <label>{{ t('ui.admin.definizione_codice') }}</label>
+          <InputText v-model="form.codice" maxlength="80"
+            :invalid="campiErrati.includes('codice')"
           />
         </div>
-
         <div class="form-field">
-          <label>{{ t('ui.admin.definizione_vista_sql') }}</label>
-          <InputText v-model="form.vista_sql" maxlength="120"
-            :invalid="campiErrati.includes('vista_sql')"
+          <label>{{ t('ui.admin.definizione_schema_dati') }}</label>
+          <InputText v-model="form.schema_dati" maxlength="80"
+            :invalid="campiErrati.includes('schema_dati')"
           />
-          <Message
-            severity="info"
-            :closable="false"
-            size="small"
-            class="mt-025"
-          >
-            {{ t('ui.admin.definizione_vista_sql_hint') }}
-          </Message>
         </div>
+      </div>
 
-        <div class="form-field">
-          <label>{{ t('ui.admin.definizione_note') }}</label>
-          <Textarea v-model="form.note" rows="3" auto-resize
-            :invalid="campiErrati.includes('note')"
-          />
-        </div>
+      <div class="form-field">
+        <label>{{ t('ui.admin.definizione_descrizione') }}</label>
+        <InputText v-model="form.descrizione" maxlength="200"
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
 
-        <div class="form-field form-field-inline">
-          <Checkbox v-model="form.attivo" binary input-id="ui-def-attivo"
-            :invalid="campiErrati.includes('attivo')"
-          />
-          <label for="ui-def-attivo">{{ t('common.active') }}</label>
-        </div>
+      <div class="form-field">
+        <label>{{ t('ui.admin.definizione_vista_sql') }}</label>
+        <InputText v-model="form.vista_sql" maxlength="120"
+          :invalid="campiErrati.includes('vista_sql')"
+        />
         <Message
-          v-if="!form.attivo"
-          severity="warn"
+          severity="info"
           :closable="false"
           size="small"
+          class="mt-025"
         >
-          {{ t('ui.admin.definizione_disattivata_hint') }}
+          {{ t('ui.admin.definizione_vista_sql_hint') }}
         </Message>
       </div>
-    </div>
 
-    <FormFooter v-if="contentReady"
-      :loading="loading"
-      :disabled="!canSave"
-      @save="onSave"
-      @cancel="chiudi"
-    />
-  </Drawer>
+      <div class="form-field">
+        <label>{{ t('ui.admin.definizione_note') }}</label>
+        <Textarea v-model="form.note" rows="3" auto-resize
+          :invalid="campiErrati.includes('note')"
+        />
+      </div>
+
+      <div class="form-field form-field-inline">
+        <Checkbox v-model="form.attivo" binary input-id="ui-def-attivo"
+          :invalid="campiErrati.includes('attivo')"
+        />
+        <label for="ui-def-attivo">{{ t('common.active') }}</label>
+      </div>
+      <Message
+        v-if="!form.attivo"
+        severity="warn"
+        :closable="false"
+        size="small"
+      >
+        {{ t('ui.admin.definizione_disattivata_hint') }}
+      </Message>
+    </div>
+  </AppDrawer>
 </template>
 
 <style scoped>

@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_cliente_ownership(p_identita_id bigint, p_cliente_sr_id
 CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership(p_identita_id bigint, p_cliente_sr_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Match diretto: il target soggetto_ruolo e' quello
     -- dell'identita, e l'identita e' in veste CLIENTE_PORTALE
@@ -25,12 +25,13 @@ AS $function$
          WHERE id.id                = p_identita_id
            AND id.soggetto_ruolo_id = p_cliente_sr_id
            AND id.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
-           AND id.attivo            = true
+           -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+           AND script.fn_veste_utilizzabile(id.id)
     );
 $function$
 
 COMMENT ON FUNCTION script.fn_scope_cliente_ownership(p_identita_id bigint, p_cliente_sr_id bigint)
-IS 'Scope policy CLIENTE_OWNERSHIP: ritorna true se il soggetto_ruolo cliente target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste CLIENTE_PORTALE o SHOP_CUSTOMER attiva. STABLE, inlineable.';
+IS 'Scope policy CLIENTE_OWNERSHIP: ritorna true se il soggetto_ruolo cliente target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste CLIENTE_PORTALE o SHOP_CUSTOMER attiva. STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''identita'' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa: una veste scaduta non vede piu'' i suoi dati.';
 ```
 
 ---

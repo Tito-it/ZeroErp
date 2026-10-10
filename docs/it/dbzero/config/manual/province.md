@@ -18,6 +18,10 @@ La tabella **`config.province`** censisce le province all’interno di uno stato
 * **Associazione con la regione**
   Il campo `regione_id` collega ogni provincia alla propria regione di appartenenza, garantendo coerenza nella gerarchia geografica.
 
+* **Com'è fatta la sigla**
+  La sigla si legge com'è scritta, senza spazi in coda. Per una provincia **italiana** (la sua regione appartiene all'Italia) sono **due lettere maiuscole**, come chiede anche la fattura elettronica. Per una provincia di un altro stato: lettere maiuscole e cifre, al massimo dieci.
+  La regola vale anche quando una regione cambia stato: una regione non passa all'Italia finché una sua provincia ha una sigla diversa da due lettere. Una sigla fuori regola si rifiuta con un messaggio che nomina la provincia (`E_PROVINCIA_SIGLA_NON_VALIDA`).
+
 * **Campo `extra_country` (JSONB)**
   Permette di memorizzare metadati aggiuntivi, il cui contenuto può variare a seconda dello stato:
 

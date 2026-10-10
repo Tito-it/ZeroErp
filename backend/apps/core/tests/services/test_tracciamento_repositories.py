@@ -41,9 +41,9 @@ _COLONNE = {
              "handler_code", "is_default", "attivo", "total_count"),
     "job_runs": ("id", "jobname", "stepname", "started_at", "ended_at", "ok",
                  "rows_affected", "message", "error_code", "error_detail",
-                 "agent_host", "run_uuid", "total_count"),
+                 "agent_host", "run_uuid", "saltata", "total_count"),
     "job_summary": ("jobname", "total_runs", "ok_count", "fail_count",
-                    "last_run_at", "in_corso", "started_at", "ended_at", "ok",
+                    "saltate_count", "last_run_at", "in_corso", "started_at", "ended_at", "ok",
                     "total_count"),
 }
 
@@ -188,13 +188,14 @@ class TestMaintenanceJobRuns(TestCase):
             (1, "apply_storicizza_weekly", "step_1",
              "2026-03-01 10:00:00+00", "2026-03-01 10:00:05+00",
              True, 42, "done", None, None,
-             "10.0.0.1", "uuid-abc", 1),
+             "10.0.0.1", "uuid-abc", False, 1),
         ], _COLONNE["job_runs"])
         repo = MaintenanceRepository()
         results, count = repo.list_job_runs(limit=50, offset=0)
         self.assertEqual(count, 1)
         self.assertEqual(results[0]["jobname"], "apply_storicizza_weekly")
         self.assertTrue(results[0]["ok"])
+        self.assertFalse(results[0]["saltata"])
 
     # Scopo: Verifica lista vuota.
     @patch(_CONN)
@@ -218,9 +219,9 @@ class TestMaintenanceJobSummary(TestCase):
         avvio = datetime(2026, 3, 1, 10, 0, tzinfo=UTC)
         fine = datetime(2026, 3, 1, 10, 0, 5, tzinfo=UTC)
         _mock_cursor(mock_conn, [
-            # jobname, total, ok, fail, last_run_at::text, in_corso,
+            # jobname, total, ok, fail, saltate, last_run_at::text, in_corso,
             # conclusa.started_at, conclusa.ended_at, conclusa.ok, total_count
-            ("apply_storicizza_weekly", 10, 9, 1,
+            ("apply_storicizza_weekly", 10, 9, 1, 2,
              "2026-03-01 10:00:00+00", False, avvio, fine, True, 1),
         ], _COLONNE["job_summary"])
         repo = MaintenanceRepository()
@@ -228,6 +229,7 @@ class TestMaintenanceJobSummary(TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(results[0]["total_runs"], 10)
         self.assertEqual(results[0]["ok_count"], 9)
+        self.assertEqual(results[0]["saltate_count"], 2)
         # La forma delle corse (2026-09-14): `in_corso` dalla riga piu'
         # recente, l'ultima conclusa con data ED esito insieme, in ISO-8601.
         self.assertFalse(results[0]["in_corso"])
@@ -275,7 +277,8 @@ class TestMaintenanceJobSummary(TestCase):
         # esecuzione — senza il COALESCE i run che non scrivono la chiave (tutti
         # quelli storici) non matcherebbero mai alcun mese.
         self.assertIn("meta ->> 'competenza'", sql)
-        self.assertIn("date_trunc('month', started_at)", sql)
+        # ... e il mese di esecuzione e' quello dell'AZIENDA (BB DB), non della sessione.
+        self.assertIn("date_trunc('month', script.fn_giorno_operativo(started_at)::timestamp)", sql)
         self.assertIn("COALESCE", sql)
         # Il filtro è PRIMA del GROUP BY: i conteggi sono relativi ai soli run
         # che matchano, non al totale del job.

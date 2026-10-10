@@ -7,11 +7,13 @@
 -- cantiere «vie d'uscita per l'operatore», 20260804-33/34/35; capability
 -- push/ordine gated dal residuo):
 -- 1) Preventivo inesistente → NULL
--- 2) Preventivo ACCETTATO (senza righe/BA) → solo 'annulla' (EVASO automatico
+-- 2) Preventivo ACCETTATO (senza righe) → solo 'annulla' (EVASO automatico
 --    escluso; push/genera gated dal residuo). Asserito come insieme di chiavi.
 -- 3) Preventivo DRAFT, azione ANNULLATO → key='annulla' valorizzato (regressione bug meta={})
 -- 4) Preventivo DRAFT, azione ANNULLATO → label_key='vendite.preventivi.azione_annulla' valorizzato
--- 5) Preventivo ACCETTATO senza BA/righe → can_push_commessa=false, reason SENZA_BILLING_ACCOUNT
+-- 5) Preventivo ACCETTATO senza righe → can_push_commessa=false, reason NESSUNA_RIGA_COMMESSA
+--    (rev 2026-10-08: il preventivo ha sempre il BA — brief-db-istanza-nasce-col-ba R-2 —
+--    e il motivo SENZA_BILLING_ACCOUNT non e' piu' raggiungibile)
 -- 6) Preventivo DRAFT → 2 azioni manuali (emetti + annulla)
 -- 7) Preventivo DRAFT → tutte le azioni hanno key valorizzato (nessun null da meta={})
 -- 8) Guard namespace i18n: label_key (da seed) e reason_key (da capability)
@@ -54,6 +56,7 @@ SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('cap preventivo');
 
 CREATE TEMP TABLE tmp_refs_aa AS
 SELECT
+  (SELECT billing_account_id FROM tmp_mondo_aa) AS billing_account_id,
   (SELECT istanza_utility_id FROM tmp_mondo_aa) AS istanza_utility_id,
   (SELECT utility_id FROM tmp_mondo_aa) AS utility_id,
   (SELECT v.id
@@ -77,7 +80,7 @@ SELECT
 CREATE TEMP TABLE tmp_prev_aa_accettato AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, istanza_utility_id, utility_id,
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data, fatturazione_immediata,
     storicizza, meta, emittente_fiscale_id
@@ -85,7 +88,7 @@ WITH ins AS (
   SELECT
     'PGTAP-AA-ACCT-' || substr(md5(clock_timestamp()::text), 1, 8),
     0,
-    r.istanza_utility_id, r.utility_id,
+    r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_accettato_id, DATE '2026-06-01', false,
     false, '{"test_scope":"pgtap_fn_available_actions"}'::jsonb,
@@ -99,7 +102,7 @@ SELECT * FROM ins;
 CREATE TEMP TABLE tmp_prev_aa_draft AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, istanza_utility_id, utility_id,
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data, fatturazione_immediata,
     storicizza, meta, emittente_fiscale_id
@@ -107,7 +110,7 @@ WITH ins AS (
   SELECT
     'PGTAP-AA-DRF-' || substr(md5(clock_timestamp()::text), 1, 8),
     0,
-    r.istanza_utility_id, r.utility_id,
+    r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
     r.stato_draft_id, DATE '2026-06-01', false,
     false, '{"test_scope":"pgtap_fn_available_actions","stato":"draft"}'::jsonb,
@@ -194,20 +197,26 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST 5) Preventivo ACCETTATO senza billing account ne' righe →
+-- TEST 5) Preventivo ACCETTATO senza righe →
 --         can_push_commessa=false (rev 12-06-2026: capability con
---         residuo + testata) con reason SENZA_BILLING_ACCOUNT,
---         can_edit_testata=false. I casi positivi (misto, righe
+--         residuo + testata) con reason NESSUNA_RIGA_COMMESSA,
+--         can_edit_testata=true (dal 2026-10-10: in ACCETTATO note e
+--         competenza si cambiano, D-9/D-10), cliente e termine no. I casi positivi (misto, righe
 --         eleggibili) sono in test-fn-preventivo-ha-residuo-commessa-v1.
+--         ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): fino a quel
+--         giorno il preventivo nasceva anche senza BA e il motivo atteso era
+--         SENZA_BILLING_ACCOUNT. Ora il BA c'e' sempre: il motivo e' quello
+--         delle righe.
 -- ============================================================
 SELECT ok(
   (SELECT (script.fn_available_actions_preventivo(p.id)->>'can_push_commessa')::boolean IS FALSE
       AND (script.fn_available_actions_preventivo(p.id)->>'can_push_commessa_reason')
-          = 'PREVENTIVO_SENZA_BILLING_ACCOUNT'
-      AND (script.fn_available_actions_preventivo(p.id)->>'can_edit_testata')::boolean IS FALSE
+          = 'PREVENTIVO_NESSUNA_RIGA_COMMESSA'
+      AND (script.fn_available_actions_preventivo(p.id)->>'can_edit_testata')::boolean IS TRUE
+      AND (script.fn_available_actions_preventivo(p.id)->'non_editable_fields') @> '["billing_account_id","termine_pagamento_id"]'
      FROM tmp_prev_aa_accettato p
   ),
-  'fn_available_actions_preventivo ACCETTATO senza BA/righe: can_push_commessa=false, reason SENZA_BILLING_ACCOUNT'
+  'fn_available_actions_preventivo ACCETTATO senza righe: can_push_commessa=false, reason NESSUNA_RIGA_COMMESSA'
 );
 
 -- ============================================================

@@ -9,16 +9,17 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(16) | NO |  |
+| descrizione | character varying(120) | NO |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | YES | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | fatturabile | boolean | NO | false |
-| causale_magazzino | character varying | YES |  |
+| causale_magazzino | character varying(50) | YES |  |
+| richiede_cliente | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

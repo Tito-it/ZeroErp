@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 
-from django.core.management.base import BaseCommand
+from apps.core.management.comando_aziendale import ComandoAziendale
 from django.db import connection
 
 from apps.core.db._helpers import rows_to_list
@@ -40,7 +40,7 @@ from apps.core.services.processi import PROCESSO_SEND_PENDING_EMAILS
 logger = logging.getLogger("zeroerp.email")
 
 
-class Command(BaseCommand):
+class Command(ComandoAziendale):
     help = (
         "Processa la coda email: PENDING sempre, piu' FAILED e RETRY finche' "
         "restano tentativi. Svegliato da un timer systemd."

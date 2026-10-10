@@ -1,6 +1,6 @@
 # Guida — Risorse Umane e Accessi al Software
 
-> **Ultimo aggiornamento**: 25 settembre 2026
+> **Ultimo aggiornamento**: 7 ottobre 2026
 >
 > **Destinatari**: sviluppatori database, backend, integratori e analisti funzionali
 >
@@ -140,6 +140,17 @@ Ogni risorsa umana deve riferire un `soggetto_ruolo_id` con tipo ruolo **RISORSA
 
 Se `valido_al` e valorizzato, deve essere >= `valido_dal`. Il check `chk_risorse_umane_date` lo garantisce.
 
+⭐ **Le date del rapporto contano anche per l'accesso.** Un operatore entra solo se la sua
+veste e accesa e nelle sue date **e** il suo rapporto e attivo e nelle sue date: l'accesso
+finisce al piu tardi quando finisce il rapporto. La data «Valido al» che l'amministratore
+imposta nel dettaglio dell'operatore e quella del rapporto, e chiude l'accesso dal giorno
+dopo; svuotata, il rapporto torna senza scadenza. La regola
+completa sta in un posto solo, [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+(dal 07-10-2026). La chiedono il login, ogni richiesta, il rinnovo della sessione, il
+secondo passo del secondo fattore e il cambio password: una veste che esce dalle sue date
+a sessione aperta perde la sessione alla richiesta successiva, e al login nuovo riceve lo
+stesso rifiuto di una veste spenta.
+
 ### R4 — Collegamento a Django (solo persona fisica pura)
 <a id="r4--collegamento-a-django-solo-persona-fisica-pura"></a>
 
@@ -171,7 +182,7 @@ Il primo livello decide **cosa puo fare** l'utente. E il campo `identita_digital
 
 * **`OPERATORE` con binding `SUPER_ADMIN`**: bypass completo — accede a tutto senza verifiche
 * **`OPERATORE`**: eredita i permessi dal profilo del suo reparto, con eventuali override individuali
-* **`DISABILITATO`** (oppure `attivo = false`): bloccato su ogni endpoint protetto (403)
+* **veste non utilizzabile oggi** (spenta, fuori dalle sue date, o con il rapporto chiuso): bloccata su ogni endpoint protetto. Il valore `DISABILITATO` non esiste piu: una veste spenta resta del suo tipo, con `attivo = false`
 
 > Per l'architettura completa della catena di risoluzione: vedi [Architettura Permessi e Autorizzazioni](/guide/architettura-permessi-e-autorizzazioni).
 
@@ -181,7 +192,7 @@ Il secondo livello decide **se l'utente puo entrare**. Una veste `DISABILITATO` 
 
 **Come funziona.** La funzione [`anagrafiche.fn_sync_auth_user_is_active`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_is_active) riceve un `auth_user_id` e calcola lo stato atteso di `auth_user.is_active`:
 
-* l'account resta **attivo** se **esiste almeno una** identita *utilizzabile*: veste `attivo = true`, `ruolo_applicativo <> 'DISABILITATO'`, data corrente dentro la finestra `[valido_dal, valido_al]` ([R3](#r3--validita-temporale)) e **soggetto attivo** (`anagrafiche.soggetti.attivo`)
+* l'account resta **attivo** se **esiste almeno una** veste *utilizzabile oggi*, secondo [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile): accesa, con la data di oggi dentro le sue date, soggetto attivo e, per l'operatore, rapporto attivo e nelle sue date ([R3](#r3--validita-temporale))
 * altrimenti `is_active = false`, e il login viene bloccato
 
 ⚠️ La condizione e un **OR fra le vesti**, non un AND: se un utente ha tre vesti e due vengono disattivate, deve poter entrare con la terza. Il blocco della singola veste sospesa non passa da `is_active` — lo applicano il namespace API e le policy di visibilita dei dati. Solo quando **nessuna** veste resta utilizzabile l'account si spegne.
@@ -194,9 +205,9 @@ Il secondo livello decide **se l'utente puo entrare**. Una veste `DISABILITATO` 
 | Cambio stato veste   | `trg_identita_digitali_z90_sync_auth_user_active_upd` | UPDATE di `attivo` su `identita_digitali`                         |
 | Nuova veste          | `trg_identita_digitali_z90_sync_auth_user_active_ins` | INSERT su `identita_digitali`                                     |
 
-**Scadenze overnight.** I trigger reagiscono a UPDATE espliciti: se ieri sera `valido_al` e scaduto e nessuno ha toccato nulla, nessun trigger parte. Se ne occupa la funzione batch [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita ogni giorno alle 06:00 dal job schedulato: trova le identita con finestra scaduta ancora collegate a un `auth_user` attivo e le disattiva. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
+**Scadenze overnight.** I trigger reagiscono a UPDATE espliciti: se ieri sera `valido_al` e scaduto e nessuno ha toccato nulla, nessun trigger parte. Se ne occupa la funzione batch [`anagrafiche.fn_sync_auth_user_expired`](/dbzero/anagrafiche/funzioni/fn_sync_auth_user_expired), eseguita ogni giorno alle 06:00 dal job schedulato: riallinea gli account alla data di oggi **nei due versi**, con la stessa regola della sync: spegne quelli che hanno delle vesti ma nessuna piu utilizzabile (veste scaduta, oppure rapporto scaduto) e **accende** quelli che ne hanno una diventata valida oggi (data di inizio arrivata). Fino al 07-10-2026 spegneva e basta, e un accesso con data di inizio futura restava spento anche il giorno in cui partiva. Al posto del job si puo usare il management command Django `sync_auth_user_active`, che offre la stessa funzionalita — con un `--dry-run` per il solo report, senza modifiche — ed e la via da preferire quando si vuole far girare il controllo a mano.
 
-**Invalidazione cache permessi.** Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente disattivato, cosi il blocco e immediato e non deve attendere la scadenza naturale della cache (TTL 300s). Per le disattivazioni real-time dei trigger la cache si rinnova alla scadenza del TTL; il listener LISTEN/NOTIFY (vedi [Cambio reparto](#cambio-reparto)) e il pattern event-driven su cui estendere anche questi scenari.
+**Invalidazione cache permessi.** Il management command `sync_auth_user_active` invalida automaticamente la cache permessi per ogni utente riallineato (spento o acceso), cosi il blocco e immediato e non deve attendere la scadenza naturale della cache (TTL 300s). Per le disattivazioni real-time dei trigger la cache si rinnova alla scadenza del TTL; il listener LISTEN/NOTIFY (vedi [Cambio reparto](#cambio-reparto)) e il pattern event-driven su cui estendere anche questi scenari.
 
 ---
 
@@ -224,7 +235,7 @@ Le tabelle coinvolte:
 * `config.user_override_aree`, `config.user_override_oggetti`, `config.user_override_azioni` — eccezioni individuali
 * `config.user_emittenti_fiscali` — il perimetro di emittenti fiscali su cui l'utente puo operare (fail-closed: senza righe non vede nessun emittente)
 
-**Ambito emittente fiscale:** in un sistema multi-emittente (piu soggetti che emettono fatture), la tabella `config.user_emittenti_fiscali` consente di restringere su quali emittenti un utente puo operare. ⚠️ **Dal 2026-08-18 e fail-closed**: se l'utente non ha righe non vede NESSUN emittente — la riga mancante e un errore di configurazione, non un permesso (prima valeva il contrario). L'unico attore legittimamente multi-emittente e il SUPER_ADMIN, che passa da `fn_is_super_admin` e non da questa tabella. Chi resta senza assegnazione compare in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe. Questo ambito e ortogonale ai permessi reparto: un utente puo avere accesso alla fatturazione (profilo reparto) ma essere limitato a un solo emittente (whitelist). L'enforcement avviene sia a livello API (`EmittenteFiscaleScopeMixin`) che a livello DB (trigger `fn_check_user_emittente_scope`).
+**Ambito emittente fiscale:** in un sistema multi-emittente (piu soggetti che emettono fatture), la tabella `config.user_emittenti_fiscali` consente di restringere su quali emittenti un utente puo operare. ⚠️ **Dal 2026-08-18 e fail-closed**: se l'utente non ha righe non vede NESSUN emittente — la riga mancante e un errore di configurazione, non un permesso (prima valeva il contrario). L'unico attore legittimamente multi-emittente e il SUPER_ADMIN, che passa da `fn_is_super_admin` e non da questa tabella. Chi resta senza assegnazione compare in `dbops.vw_operatori_senza_emittente`, che deve restare a zero righe. Questo ambito e ortogonale ai permessi reparto: un utente puo avere accesso alla fatturazione (profilo reparto) ma essere limitato a un solo emittente (whitelist). L'enforcement avviene sia a livello API (la condizione di scope dei repository, `add_emittente_scope_condition`) che a livello DB (trigger `fn_check_user_emittente_scope`).
 
 **Permessi e scope non sono la stessa cosa.** I permessi dicono *cosa* l'utente puo fare; lo **scope** dice *su quali righe*. Lo scope si esprime con policy dichiarative che il DB applica da solo — `BA_OWNERSHIP` (i billing account dell'utente), `FORNITORE_OWNERSHIP`, `EF_WHITELIST` (il perimetro degli emittenti) — tramite funzioni `script.fn_scope_*` pensate per essere risolte inline dal pianificatore.
 
@@ -256,9 +267,30 @@ Quando una risorsa cambia ufficio o reparto, basta un UPDATE di `risorse_umane.u
 
 Il sistema si occupa automaticamente di aggiornare la cache. Quando `unita_organizzativa_id` cambia, il trigger `trg_risorse_umane_z90_notify_cambio_reparto_upd` emette una notifica PostgreSQL sul canale `cambio_reparto`, con dentro gli id della risorsa, del vecchio e del nuovo reparto e dell'account Django.
 
-Il listener backend (`CambioRepartoListener`, avviato con `python manage.py listen_cambio_reparto`) intercetta la notifica e chiama `invalidate_user(auth_user_id)` per l'utente spostato. Il meccanismo e trasparente: qualsiasi strada che modifica il reparto (API, management command, operazione diretta sul DB, import massivo) ottiene l'invalidazione automatica, senza doverla ricordare caso per caso.
+Il listener backend (`PermessiListener`, avviato con `python manage.py listen_permessi`) intercetta la notifica e chiama `invalidate_user(auth_user_id)` per l'utente spostato. Lo stesso processo ascolta anche il canale `permessi_catalogo` (cambio del catalogo o dei profili dei permessi, che svuota la cache di tutti: [architettura dei permessi §6.1](architettura-permessi-e-autorizzazioni.md)). Il meccanismo e trasparente: qualsiasi strada che modifica il reparto (API, management command, operazione diretta sul DB, import massivo) ottiene l'invalidazione automatica, senza doverla ricordare caso per caso.
 
 Il listener usa una connessione psycopg3 dedicata con riconnessione automatica (backoff esponenziale) in caso di caduta della connessione a PostgreSQL. Va eseguito come processo long-running (systemd, supervisor, o in foreground durante lo sviluppo).
+
+### L'ultimo amministratore non scade
+<a id="lultimo-amministratore-non-scade"></a>
+
+Il sistema deve avere sempre **almeno un `SUPER_ADMIN` senza scadenza**: accesso
+utilizzabile oggi, **nessuna data di fine** né sull'accesso né sul rapporto di lavoro,
+credenziale non bloccata ([fn_identita_super_admin_senza_scadenza](/dbzero/script/funzioni/fn_identita_super_admin_senza_scadenza),
+dal 07-10-2026).
+
+Perché «senza scadenza» e non solo «attivo»: una data che passa non scrive niente, e
+nessun controllo può fermare il calendario. Se tutti gli amministratori avessero una
+data di fine, il giorno dopo l'ultima il sistema resterebbe senza amministratori. Per
+questo la regola si applica quando la data di fine viene **scritta**: a un
+amministratore si può dare una data di fine (o spegnerlo, o bloccarne la credenziale)
+solo finché ne resta un altro che non scade. Altrimenti l'operazione è rifiutata con
+`E_PROFILO_ULTIMO_SUPER_ADMIN`.
+
+Nel dettaglio dell'operatore, per l'ultimo amministratore senza scadenza, restano spenti
+col motivo l'interruttore dell'accesso, il ruolo di amministratore e il campo «Valido al».
+Un amministratore che ha **già** una data di fine non è «l'ultimo»: si spegne liberamente,
+e la sua data si può cambiare o togliere.
 
 ### Cambio qualifica
 
@@ -294,12 +326,16 @@ solo le risorse attive.
 
 Il vincolo di unicita ([R5](#r5--unicita-per-persona)) garantisce un solo record per persona in `risorse_umane`. Non e possibile creare un secondo record — e non serve: per il rientro di un ex-dipendente si **riattiva il record esistente**.
 
-La sequenza e l'inversa della cessazione:
+La sequenza e l'inversa della cessazione, e si fa in due tempi, da due persone diverse:
 
-1. Riattivare la risorsa: UPDATE `risorse_umane.attivo = true`, aggiornare `valido_dal`/`valido_al`
-2. Riattivare la veste: UPDATE `identita_digitali.attivo = true` — il trigger di sync imposta `auth_user.is_active = true` e il login viene riabilitato
+1. **L'amministratore reinvia l'invito** (drawer dell'operatore, «Reinvia invito»). Nella stessa transazione del token la risorsa si riapre: `risorse_umane.attivo = true`, e `valido_al` si azzera se è già arrivata (una fine rapporto futura resta); `valido_dal` resta l'inizio del rapporto. La veste resta spenta.
+2. **La persona attiva il link**: la veste si accende (`identita_digitali.attivo = true`), il trigger di sync imposta `auth_user.is_active = true` e il login torna possibile. Chi ha gia una password conferma con un clic.
 
-**Perche questo ordine?** E il verso inverso della cessazione, e la ragione e la stessa: la veste attiva e cio che tiene in piedi l'accesso, la risorsa attiva e cio che la rende sensata. Riattivando prima la risorsa si evita la finestra in cui la veste risulta attiva su una persona non ancora in forza.
+L'interruttore «Accesso attivo» del drawer spegne soltanto: da spento resta fermo, e non c'e un comando che riaccenda la veste direttamente.
+
+**Perche questo ordine?** E il verso inverso della cessazione, e la ragione e la stessa: la veste attiva e cio che tiene in piedi l'accesso, la risorsa attiva e cio che la rende sensata. Riaprendo prima la risorsa si evita la finestra in cui la veste risulta attiva su una persona non ancora in forza.
+
+**Perché in due tempi?** Riaprire il rapporto è una decisione dell'amministratore; riaprire la porta è un gesto della persona. Così nessuna veste torna attiva senza che la persona lo sappia.
 
 ### Assegnazione emittente fiscale (scope operativo)
 
@@ -413,12 +449,21 @@ L'invito **non** lo accende: la password la sceglie la persona nell'attivazione 
 
 ### Cambio password volontario
 
-L'operatore puo' cambiare la propria password in qualsiasi momento da **Profilo → Cambia password**
-(rotta `/change-password`). Il flusso richiede:
+L'operatore puo' cambiare la propria password in qualsiasi momento: clic sul
+**badge dell'utente** in alto a sinistra (le iniziali, o «Super Admin») →
+**«Cambia password»** (rotta `/change-password`; «Torna all'applicazione» per
+uscirne senza cambiarla). Il flusso richiede:
 
 1. Password attuale (verifica identita')
 2. Nuova password (passa i 4 validators Django)
 3. Conferma nuova password
+
+La password attuale ha lo **stesso freno del login**: sbagliata conta come un
+tentativo fallito, e al blocco della postazione la sessione da cui si stava
+provando si **chiude** e si torna al login («Sessione chiusa: troppe password
+sbagliate…»). Lo stesso vale per la password chiesta da «Sicurezza
+dell'accesso». Le altre sessioni della persona restano aperte: chiuderle tutte
+darebbe a chi ne tiene una rubata il modo di buttare fuori il titolare.
 
 Al successo: password aggiornata, tutti i token JWT precedenti invalidati,
 nuova coppia JWT rilasciata, profilo ricaricato.
@@ -515,6 +560,52 @@ Ogni evento di autenticazione viene registrato in `dbops.sessioni_utente`:
 | INVITO_INVIATO   | Invito operatore       | user_id, admin_id                   |
 
 ---
+
+
+### Secondo fattore di autenticazione
+
+Dopo la password, un codice di sei cifre che cambia ogni 30 secondi, generato da
+un'app sul telefono (Google Authenticator, Microsoft Authenticator, Aegis, 2FAS…).
+È della **credenziale**: un dispositivo per persona, valido su tutte le porte.
+
+**Chi deve usarlo.** Obbligo = flag sulla credenziale **oppure** un profilo che lo
+richiede:
+
+| Fonte | Chi la decide |
+| --- | --- |
+| Flag sulla credenziale | Il SUPER_ADMIN, dal drawer dell'operatore («Obbligatorio per questo accesso») |
+| Profilo con «richiede il secondo fattore» | Chi amministra i profili (per il reparto: editor del profilo di reparto) |
+| Profilo SUPER_ADMIN | Sempre: non si spegne (vincolo a DB) |
+
+L'obbligo segue i profili: chi riceve il reparto lo ha, chi lo lascia non più.
+Senza obbligo, chiunque può attivarlo lo stesso.
+
+**Come si configura.** Badge dell'utente in alto a sinistra → «Sicurezza
+dell'accesso», con la password dell'accesso; con l'obbligo
+pendente la pagina si apre da sola dopo il login, e il backend non risponde ad
+altro (403 `E_TOTP_CONFIGURAZIONE_RICHIESTA`). Si inquadra il QR con l'app (o si
+scrive la chiave), si conservano i **dieci codici di recupero** (ognuno vale una
+volta, mostrati una volta sola), si conferma col primo codice.
+
+**Al login.** Dopo la password la scheda chiede il codice; «Non hai il telefono?»
+accetta un codice di recupero. Un codice sbagliato conta come una password
+sbagliata (stesso freno). Lo stesso codice non vale due volte.
+
+**Dalla pagina Sicurezza**, dietro un codice: codici di recupero nuovi (i vecchi
+non valgono più), disattivazione (per esempio per cambiare telefono: con
+l'obbligo, si configura di nuovo subito).
+
+**L'amministratore (SUPER_ADMIN)** vede lo stato nel drawer dell'operatore, accende
+o spegne l'obbligo sulla credenziale e, per un telefono perso, **disattiva** il
+dispositivo con un motivo. Le sessioni già aperte restano. Ogni disattivazione
+lascia l'evento `TOTP_DISABILITATO` nel registro delle sessioni, con chi, perché e
+da dove.
+
+**Il caso senza via d'uscita** (l'unico SUPER_ADMIN senza telefono né codici): lo
+sblocca il DBA dal server, procedura nel
+[runbook](../dev/infra/comandi-utili-run-book.md), «Sblocco del secondo fattore».
+
+Contratto degli endpoint: [API secondo fattore](../backend/core/manual/api_secondo_fattore.md).
 
 ## Diagrammi ER
 
@@ -654,7 +745,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | `trg_risorse_umane_z90_sync_auth_user_active_upd`     | AFTER UPDATE di `attivo`, `valido_dal`, `valido_al` su `risorse_umane`          | Reagisce a cambio stato della risorsa                                                         |
 | `trg_identita_digitali_z90_sync_auth_user_active_upd` | AFTER UPDATE di `attivo` su `identita_digitali`                                 | Reagisce a cambio stato di una veste                                                          |
 | `trg_identita_digitali_z90_sync_auth_user_active_ins` | AFTER INSERT su `identita_digitali`                                             | Reagisce alla creazione di una veste                                                          |
-| `fn_sync_auth_user_expired`                           | Job schedulato giornaliero (06:00) o management command `sync_auth_user_active` | Disattiva in batch le vesti con finestra scaduta                                              |
+| `fn_sync_auth_user_expired`                           | Job schedulato giornaliero (06:00) o management command `sync_auth_user_active` | Riallinea in batch gli account alla data di oggi: spegne gli scaduti, accende chi diventa valido |
 
 ### Invalidazione cache al cambio reparto
 
@@ -662,7 +753,7 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | ----------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------- |
 | `fn_notify_cambio_reparto`                | Chiamata dal trigger sotto                                                     | Emette `NOTIFY cambio_reparto` con gli id utili al listener   |
 | `trg_risorse_umane_notify_cambio_reparto` | AFTER UPDATE di `unita_organizzativa_id` su `risorse_umane` (solo se cambiato) | Invoca `fn_notify_cambio_reparto` con vecchio e nuovo reparto |
-| `CambioRepartoListener` (backend)         | Processo long-running (`listen_cambio_reparto`)                                | Ascolta `NOTIFY cambio_reparto` e chiama `invalidate_user()`  |
+| `PermessiListener` (backend)              | Processo long-running (`listen_permessi`)                                      | Ascolta `NOTIFY cambio_reparto` e chiama `invalidate_user()`  |
 
 ### Guard e vincoli
 
@@ -671,7 +762,8 @@ I contatti non sostituiscono le risorse umane, ma possono riferirle quando serve
 | `trgfn_risorse_umane_guard_ruolo`                  | BEFORE INSERT/UPDATE su `risorse_umane`                | Verifica che il ruolo sia RIS_UMANA                                                                                                                           |
 | `trgfn_risorse_umane_guard_identita_attiva`        | BEFORE UPDATE di `attivo` su `risorse_umane`           | Rifiuta di spegnere una risorsa che ha ancora una veste `OPERATORE` attiva (`E_RISORSA_UMANA_IDENTITA_ATTIVA`)                                                |
 | `trgfn_identita_digitali_guard_coerenza`           | BEFORE INSERT/UPDATE su `identita_digitali`            | Verifica la coerenza fra veste e tipo di soggetto-ruolo, e la persona fisica pura per `OPERATORE` ([R4](#r4--collegamento-a-django-solo-persona-fisica-pura)) |
-| `trgfn_identita_digitali_guard_ultimo_super_admin` | AFTER UPDATE su `identita_digitali`                    | Presidia il caso limite dell'ultimo `SUPER_ADMIN`: il sistema non resta senza                                                                                 |
+| `trgfn_identita_digitali_guard_ultimo_super_admin` | AFTER UPDATE di `attivo` e date su `identita_digitali` | Presidia l'ultimo `SUPER_ADMIN` **senza scadenza** ([sotto](#lultimo-amministratore-non-scade)): rifiuta di spegnerlo, di dargli una data di fine, di spostarne l'inizio nel futuro |
+| `trgfn_risorse_umane_guard_ultimo_super_admin`     | AFTER UPDATE di `attivo`, date e ruolo su `risorse_umane` | Lo stesso sul **rapporto** dell'ultimo `SUPER_ADMIN` senza scadenza (dal 07-10-2026) |
 | `trgfn_prevent_deactivate_if_children`             | BEFORE UPDATE su `risorse_umane` e `identita_digitali` | Blocca la disattivazione finche esistono figli attivi: per la risorsa commesse, pratiche e flussi; per la veste i binding di profilo e di scope               |
 | `trgfn_child_requires_active_parent`               | AFTER INSERT/UPDATE su `risorse_umane`                 | Verifica che i genitori (qualifiche, soggetti, unita organizzative) siano attivi                                                                              |
 
@@ -785,7 +877,7 @@ Il segnale che serve e vedere PostgreSQL con molte connessioni aperte rispetto a
 
 ### Il listener LISTEN/NOTIFY non passa dal pool
 
-Il `CambioRepartoListener` (vedi [Cambio reparto](#cambio-reparto)) usa una connessione psycopg3 **dedicata e persistente**, perche LISTEN richiede una connessione stabile che non viene mai rilasciata. In produzione con pgbouncer va configurato per connettersi **direttamente** a PostgreSQL, bypassando il pool: in modalita *transaction* il pool riassegnerebbe la connessione e il listener smetterebbe di ascoltare.
+Il `PermessiListener` (vedi [Cambio reparto](#cambio-reparto)) usa una connessione psycopg3 **dedicata e persistente**, perche LISTEN richiede una connessione stabile che non viene mai rilasciata. In produzione con pgbouncer va configurato per connettersi **direttamente** a PostgreSQL, bypassando il pool: in modalita *transaction* il pool riassegnerebbe la connessione e il listener smetterebbe di ascoltare.
 
 ---
 
@@ -793,9 +885,9 @@ Il `CambioRepartoListener` (vedi [Cambio reparto](#cambio-reparto)) usa una conn
 
 * Usa `risorse_umane` solo per descrivere **persone interne** (dipendenti, consulenti, collaboratori). I referenti esterni vanno su `contatti`.
 * Per il rientro di un ex-dipendente, **riattiva il record esistente** — non crearne uno nuovo.
-* Per sospendere un utente, metti la sua veste a `ruolo_applicativo = 'DISABILITATO'` (oppure `attivo = false`): la sync di `is_active` segue automaticamente.
+* Per sospendere un utente, spegni la sua veste (`attivo = false`, il tipo resta): la sync di `is_active` segue automaticamente. `DISABILITATO` non e piu un valore ammesso di `ruolo_applicativo`.
 * Per disattivare una risorsa che ha ancora una veste attiva, ricorda l'ordine: **veste prima, risorsa dopo** — il guard sulla risorsa rifiuta l'ordine inverso.
-* Per riattivare: **risorsa prima, veste dopo**.
+* Per riattivare: **risorsa prima, veste dopo** — la risorsa la riapre il reinvio dell'invito, la veste la accende la persona attivando.
 * Al cambio reparto la cache viene invalidata automaticamente — non serve intervento manuale.
 * Mantieni una policy chiara su `attivo` e periodi di validita: la scadenza overnight lavora ogni notte, ma la disattivazione esplicita e sempre preferibile per cessazioni programmate.
 * Per il primo accesso, usa sempre il flusso di **invito**: l'admin non deve comunicare password a voce o via messaggio.

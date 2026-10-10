@@ -9,16 +9,16 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | uuid | NO | uuidv7() |
-| numero | character varying | NO |  |
-| data_emissione | date | NO | CURRENT_DATE |
+| numero | character varying(40) | NO |  |
+| data_emissione | date | NO | script.fn_data_operativa() |
 | soggetto_ruolo_id | bigint | NO |  |
 | billing_account_id | bigint | NO |  |
 | ordine_shop_id | bigint | YES |  |
-| totale_lordo | numeric | NO |  |
-| totale_iva | numeric | NO | 0 |
-| pagamento_metodo | character varying | NO |  |
-| pagamento_esito | character varying | NO | 'PENDING'::character varying |
-| canale_origine | USER-DEFINED | NO | 'SHOP'::config.canale_origine |
+| totale_lordo | numeric(15,2) | NO |  |
+| totale_iva | numeric(15,2) | NO | 0 |
+| pagamento_metodo | character varying(40) | NO |  |
+| pagamento_esito | character varying(20) | NO | 'PENDING'::character varying |
+| canale_origine | config.canale_origine | NO | 'SHOP'::config.canale_origine |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
@@ -30,6 +30,8 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ricevute_totale_iva_finito |  |
+| CHECK | chk_ricevute_totale_lordo_finito |  |
 | CHECK | chk_shop_ricevute_canale_shop |  |
 | CHECK | chk_shop_ricevute_pagamento_esito |  |
 | CHECK | chk_shop_ricevute_totali_non_neg |  |

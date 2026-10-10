@@ -87,7 +87,7 @@ DECLARE
 BEGIN
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id)
-    SELECT 'PGTAP-ESITO-MIRATO', date_trunc('month', CURRENT_DATE)::date,
+    SELECT 'PGTAP-ESITO-MIRATO', date_trunc('month', script.fn_data_operativa())::date,
            t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id
       FROM tmp_esito t
     RETURNING id INTO v_mirato;
@@ -102,7 +102,7 @@ BEGIN
     --   fino al 2026-09-07 non aveva nessun posto dove essere marcato.
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id)
-    SELECT 'PGTAP-ESITO-MASSA', date_trunc('month', CURRENT_DATE)::date,
+    SELECT 'PGTAP-ESITO-MASSA', date_trunc('month', script.fn_data_operativa())::date,
            t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id
       FROM tmp_esito t
     RETURNING id INTO v_massa;
@@ -380,7 +380,7 @@ BEGIN
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
          stato_lotto)
-    SELECT 'PGTAP-CONTRADDIZIONE', date_trunc('month', CURRENT_DATE)::date,
+    SELECT 'PGTAP-CONTRADDIZIONE', date_trunc('month', script.fn_data_operativa())::date,
            t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id, 'COMPLETATO'
       FROM tmp_esito t
     RETURNING id INTO v_lotto_id;

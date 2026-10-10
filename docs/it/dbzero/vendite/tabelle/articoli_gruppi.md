@@ -9,11 +9,11 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(20) | NO |  |
+| descrizione | character varying(100) | NO |  |
 | attivo | boolean | NO | true |
 | user_insert | text | NO | CURRENT_USER |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | NO | now() |
 

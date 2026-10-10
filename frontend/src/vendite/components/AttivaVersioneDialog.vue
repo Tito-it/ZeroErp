@@ -19,11 +19,13 @@ import { DATE_FORMAT } from '../../core/constants'
 import AppDialog from '../../core/components/AppDialog.vue'
 // DataTable grezza: anteprima dry_run delle versioni che l'attivazione
 // chiuderebbe, dentro il dialog di conferma — non paginata, non configurabile.
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import DatePicker from 'primevue/datepicker'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
@@ -107,6 +109,9 @@ async function onDateChange(newDate) {
     // contesto attuale del dialog usiamo il `dataValidoDal` locale per la
     // preview (che chiede al BE i nuovi auto-close calcolati sul DB).
     await loadPreview()
+    // La data e' gia' salvata: e' la nuova base della fotografia, o uscire
+    // chiederebbe «modifiche non salvate» per una modifica gia' a DB.
+    fotografia.fissa()
   } catch (err) {
     dateError.value = err?.response?.data?.error?.message || t('common.error_generic')
     // Rollback UI: ripristina la data precedente nel DatePicker.
@@ -135,6 +140,9 @@ async function handleConfirm() {
 function close() {
   emit('update:visible', false)
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ dataValidoDal: dataValidoDal.value }), { visibile: () => props.visible })
 </script>
 
 <template>
@@ -142,6 +150,7 @@ function close() {
        il `loading` del salvataggio lo copre gia' il BB, questo secondo
        lavoro in volo e' solo di questo dialog. -->
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     @update:visible="v => emit('update:visible', v)"
     :header="t('vendite.listini.attiva_versione_titolo')"

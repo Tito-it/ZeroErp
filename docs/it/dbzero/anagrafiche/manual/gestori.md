@@ -56,8 +56,10 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 - **Primary Key**  
   - `pk_gestori` su `id` (seriale intero generato automaticamente).
 
-- **Riga singleton per gestore**  
-  - Il vincolo `uq_gestori_singleton EXCLUDE USING gist ((1) WITH =) WHERE (id IS NOT NULL)` assicura che esista al massimo una sola riga nella tabella `gestori`. In tal modo, zero o un record potranno rappresentare il gestore di Zero ERP.
+- **Un solo gestore nel sistema**  
+  - Lo impone il guard `anagrafiche.trgfn_gestori_guard` (regola 1, `E_GESTORE_SINGLETON_VIOLATO`): zero o un record rappresentano il gestore di Zero ERP. Non c'è un vincolo di tabella che lo dica.
+  - Un gestore per ruolo: `uq_gestori_soggetto_ruolo` su `soggetto_ruolo_id`.
+  - Il vincolo `uq_gestori_singleton`, che dal nome sembrava il singleton, è stato ritirato il 2026-10-10: vietava solo due righe con lo stesso `id`, cioè ripeteva la chiave primaria (`brief-db-istanza-nasce-col-ba-residui`, D-3).
 
 - **Riferimento obbligatorio a soggetto**  
   - `soggetto_id` deve sempre esistere in `anagrafiche.soggetti`.  
@@ -107,7 +109,7 @@ La tabella **`anagrafiche.gestori`** rappresenta l’azienda stessa che utilizza
 ### Vantaggi Operativi
 
 - **Singleton azienda gestore**  
-  Grazie al vincolo di esclusione su `(1)`, si garantisce che esista al massimo una sola riga che rappresenta l’azienda “gestore”. Ciò semplifica la logica applicativa, perché non è necessario gestire più istanze di gestore.
+  Il guard della tabella garantisce che esista al massimo una sola riga che rappresenta l’azienda “gestore”. Ciò semplifica la logica applicativa, perché non è necessario gestire più istanze di gestore.
 
 - **Controllo automatico del ruolo**  
   Il trigger `check_ruolo_gestore` impedisce l’inserimento di record non validi, assicurando che il soggetto collegato abbia già il ruolo “Gestore” in `anagrafiche.soggetti_ruoli`.
@@ -165,3 +167,13 @@ erDiagram
 {% include-markdown "signature-core.md" %}
 
 ---
+
+---
+
+### Un gestore per ruolo (dal 2026-10-08)
+
+`uq_gestori_soggetto_ruolo` = `UNIQUE (soggetto_ruolo_id)`, come le altre specializzazioni dei
+ruoli (fornitori, vettori, PSP, risorse umane, emittenti fiscali). L'indice dedicato
+`ix_anagrafiche_gestori_soggetto_ruolo_id`, che il vincolo rende ridondante, lo toglie la policy
+degli indici delle FK. ⚠️ `uq_gestori_singleton`, nonostante il nome, e' un indice GiST non unico
+su `id`: non vincola niente. Brief: brief-db-istanza-nasce-col-ba (R-9).

@@ -13,18 +13,24 @@ CREATE OR REPLACE FUNCTION script.trgfn_qta_from_operativa()
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-  -- Parametri
+  -- Parametri. Tipi nudi DICHIARATI: un interruttore del trigger e il NOME
+  -- di una colonna, nessuna colonna di cui siano il riflesso.
   v_fill_factor_to_base boolean := false;
   v_fonte_col           text    := NULL;
-  v_fonte_val           text    := NULL;
+  -- Il valore della fonte: la colonna fonte_quantita_attesa (gemella su
+  -- offerte_commerciali_eccezioni, stesso tipo).
+  v_fonte_val           vendite.contratti_righe.fonte_quantita_attesa%TYPE := NULL;
 
   -- Mapping/policy
-  v_factor_map   numeric;
-  v_qty_step     numeric;
-  v_max_dec      int;
-  v_forbid_frac  boolean;
+  v_factor_map   catalogo.articoli_uom_operativa.factor_to_base%TYPE;
+  v_qty_step     catalogo.articoli_uom_operativa.qty_step%TYPE;
+  v_max_dec      catalogo.articoli_uom_operativa.max_decimals%TYPE;
+  v_forbid_frac  catalogo.articoli_uom_operativa.forbid_fraction%TYPE;
 
-  -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente)
+  -- Fattore effettivo usato per i calcoli (rispetta snapshot se presente).
+  -- numeric nudo DICHIARATO: arriva dal factor_to_base della riga, che su
+  -- sei tabelle ha scale diverse (resi_righe e' numeric senza scala): un
+  -- ancoraggio a numeric(18,6) lo arrotonderebbe in silenzio.
   v_factor_used  numeric := 1;
 
   BEGIN
@@ -39,10 +45,11 @@ DECLARE
   --   [0] fill_factor_to_base :: boolean  (default FALSE)
   --       Se TRUE e NEW.factor_to_base è NULL, salva lo snapshot del fattore usato.
   --   [1] fonte_nullability_col :: text   (default NULL)
-  --       Nome colonna che governa la nullabilita' di qta_operativa.
-  --       Se valorizzato e qta_operativa IS NULL: legge il valore di quella colonna
-  --       via to_jsonb(NEW). Se != 'FISSA' (e non NULL) -> RETURN NEW senza raise.
-  --       Usare per tabelle con fonte_quantita_attesa (es. contratti_righe).
+  --       Nome colonna della fonte della quantita' (fonte_quantita_attesa,
+  --       su contratti_righe e offerte_commerciali_eccezioni), letta via
+  --       to_jsonb(NEW). Con una fonte a valle (fn_fonte_porta_quantita =
+  --       false) quantita := NULL, sempre. Con qta_operativa NULL e una fonte
+  --       diversa da 'FISSA' (cioe' DERIVATA_COMPONENTI) -> RETURN NEW senza raise.
   --
   -- rev 2026-08-04 (bonifica riferimenti morti, F5) — tolti due rami morti
   --   e i due parametri che li governavano:
@@ -58,6 +65,33 @@ DECLARE
   --   Precedente: 20260804-29 (stesso ragionamento su p_scope).
   -- ------------------------------------------------------------
 
+  -- 0) Parametri. Letti PRIMA del short-circuit (rev 2026-10-08): la fonte
+  --    serve anche su un UPDATE che non tocca gli input operativi.
+  IF TG_NARGS >= 1 THEN
+    v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
+  END IF;
+  IF TG_NARGS >= 2 AND TG_ARGV[1] IS NOT NULL AND TG_ARGV[1] <> '' THEN
+    v_fonte_col := TG_ARGV[1];
+    v_fonte_val := to_jsonb(NEW) ->> v_fonte_col;
+  END IF;
+
+  --------------------------------------------------------------------
+  -- Fonte a valle: quantita e' calcolata, e qui vale NULL (rev 2026-10-08,
+  -- brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).
+  -- Con una fonte che non porta la quantita' (script.fn_fonte_porta_quantita:
+  -- MANUALE, LETTURE, TIMESHEET) la quantita' arriva a valle: il DB porta
+  -- quantita a NULL a ogni INSERT e a ogni UPDATE, anche quando gli input
+  -- operativi non cambiano (DERIVATA_COMPONENTI -> MANUALE: qta_operativa era
+  -- gia' vuota, e il short-circuit qui sotto la lasciava). qta_operativa e'
+  -- l'input: se e' valorizzata la rifiuta il guard
+  -- trgfn_righe_guard_quantita_per_fonte, che gira prima di questo trigger.
+  --------------------------------------------------------------------
+  IF v_fonte_val IS NOT NULL
+     AND NOT script.fn_fonte_porta_quantita(v_fonte_val) THEN
+    NEW.quantita := NULL;
+    RETURN NEW;
+  END IF;
+
   --------------------------------------------------------------------
   -- short-circuit: solo su UPDATE dove nessun input operativo è cambiato.
   -- Su INSERT: calcola sempre (qta_operativa + uom → quantita).
@@ -69,21 +103,12 @@ DECLARE
     RETURN NEW;
   END IF;
 
-  -- 0) Parametri
-  IF TG_NARGS >= 1 THEN
-    v_fill_factor_to_base := lower(coalesce(TG_ARGV[0],'')) IN ('1','t','true','y','yes');
-  END IF;
-  IF TG_NARGS >= 2 AND TG_ARGV[1] IS NOT NULL AND TG_ARGV[1] <> '' THEN
-    v_fonte_col := TG_ARGV[1];
-  END IF;
-
-  -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'
+  -- Verifica qta_operativa: NULL consentito se la fonte non e' 'FISSA'.
+  -- Le fonti a valle sono gia' uscite sopra: qui arriva solo una fonte che
+  -- porta la quantita' senza che la scriva l'operatore (DERIVATA_COMPONENTI).
   IF NEW.qta_operativa IS NULL THEN
-    IF v_fonte_col IS NOT NULL THEN
-      v_fonte_val := to_jsonb(NEW) ->> v_fonte_col;
-      IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
-        RETURN NEW;
-      END IF;
+    IF v_fonte_val IS NOT NULL AND v_fonte_val <> 'FISSA' THEN
+      RETURN NEW;
     END IF;
     PERFORM script.fn_log_and_raise_error(
       'application',
@@ -135,8 +160,8 @@ DECLARE
   WHERE aum.articolo_id = NEW.articolo_id
     AND aum.uom_id      = NEW.uom_operativa_id
     AND aum.attivo      = TRUE
-    AND (aum.valido_dal IS NULL OR aum.valido_dal <= CURRENT_DATE)
-    AND (aum.valido_al  IS NULL OR aum.valido_al  >= CURRENT_DATE)
+    AND (aum.valido_dal IS NULL OR aum.valido_dal <= (SELECT script.fn_data_operativa()))
+    AND (aum.valido_al  IS NULL OR aum.valido_al  >= (SELECT script.fn_data_operativa()))
   LIMIT 1;
 
   v_factor_map := COALESCE(v_factor_map, 1);
@@ -197,7 +222,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.trgfn_qta_from_operativa()
-IS 'Calcola quantita (base) da qta_operativa * factor. TG_ARGV[0]=fill_factor_to_base, [1]=fill_uom_id_base, [2]=target_col (default quantita). TG_ARGV[3]=fonte_nullability_col: se valorizzato e qta_operativa IS NULL, legge il valore di quella colonna; se != FISSA -> RETURN NEW senza raise. Short-circuit limitato a UPDATE senza variazioni agli input operativi: su INSERT calcola sempre quantita da qta_operativa (fix bug INSERT FISSA). Rev 2026-05-27.';
+IS 'Calcola quantita (UoM base) da qta_operativa * fattore: quantita è una colonna CALCOLATA, la scrive solo questo trigger. TG_ARGV[0] = fill_factor_to_base (snapshot del fattore in factor_to_base se NULL); TG_ARGV[1] = colonna della fonte della quantità (fonte_quantita_attesa, su vendite.contratti_righe e vendite.offerte_commerciali_eccezioni). Con una fonte a valle (script.fn_fonte_porta_quantita = false: MANUALE, LETTURE, TIMESHEET) porta quantita a NULL a ogni INSERT e UPDATE, anche se gli input operativi non cambiano; qta_operativa valorizzata la rifiuta prima il guard script.trgfn_righe_guard_quantita_per_fonte. Con qta_operativa NULL: E_QTA_MISSING, salvo una fonte diversa da FISSA (DERIVATA_COMPONENTI). Short-circuit su UPDATE senza variazioni agli input operativi; su INSERT calcola sempre. Rev 2026-05-27 (short-circuit), 2026-08-04 (rami morti), 2026-10-08 (fonte a valle: brief-db-offerta-emissione-ed-erogazione §F.1, F-1.1).';
 ```
 
 ---

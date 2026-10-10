@@ -34,7 +34,7 @@ La tabella **`config.user_emittenti_fiscali`** definisce l'**ambito operativo** 
 
 * Legare in modo univoco un operatore al proprio emittente fiscale.
 * Discriminare gli **admin globali** (utenti senza riga, ruolo `ADMIN`) dagli **admin di emittente** (utenti con 1 riga, ruolo `ADMIN`) e dagli **operatori standard** (utenti con 1 riga, ruolo `OPERATIVO`).
-* Fornire il dato per il **filtering queryset** (`EmittenteFiscaleScopeMixin`) e per il **defense‑in‑depth** DB (trigger guard su `billing_account`, fatture, ordini, pagamenti).
+* Fornire il dato per lo **scope delle letture** (condizione dei repository, `add_emittente_scope_condition`, via `script.fn_get_emittenti_scope_*`) e per il **defense‑in‑depth** DB (trigger guard su `billing_account`, fatture, ordini, pagamenti).
 
 ---
 
@@ -73,7 +73,7 @@ La tabella **`config.user_emittenti_fiscali`** definisce l'**ambito operativo** 
 
 | Livello | Meccanismo | Dove |
 |---------|-----------|------|
-| **Django** | `EmittenteFiscaleScopeMixin` filtra il queryset | View DRF |
+| **Django** | La condizione di scope (`add_emittente_scope_condition`) filtra la query | Repository |
 | **DB** | Trigger guard sulle tabelle operative + funzioni `script.fn_check_user_*` | Tabelle `billing_account`, `fatture`, `ordini`, `pagamenti` |
 
 Il livello DB è un **defense‑in‑depth**: garantisce che nessun bypass applicativo possa inserire dati su emittenti non autorizzati.

@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| codice_interno | character varying | YES |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(50) | NO |  |
+| codice_interno | character varying(50) | YES |  |
+| descrizione | character varying(200) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |

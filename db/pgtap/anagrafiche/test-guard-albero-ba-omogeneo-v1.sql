@@ -128,7 +128,7 @@ BEGIN
         VALUES (r.soggetto_id, true, 'TST-P1-IU-' || upper(e)) RETURNING id INTO v_iu;
         INSERT INTO anagrafiche.billing_account
                (istanza_utility_id, soggetto_ruolo_id, utility_id, categoria_cliente_id, valido_dal)
-        VALUES (v_iu, r.soggetto_ruolo_id, r.utility_id, r.categoria_cliente_id, CURRENT_DATE)
+        VALUES (v_iu, r.soggetto_ruolo_id, r.utility_id, r.categoria_cliente_id, script.fn_data_operativa())
         RETURNING id INTO v_ba;
         INSERT INTO _t_ba VALUES (e, v_ba);
     END LOOP;

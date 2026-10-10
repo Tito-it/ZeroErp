@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN'ISTANZA, UN EMITTENTE — ANCHE QUANDO SI SPOSTA IL GESTORE GLOBALE
+#   NASCE anagrafiche.fn_guard_istanza_ba_gestore_globale().
+#   Brief: brief-db-istanza-nasce-col-ba (R-7, §6.4)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Un billing account senza collegamento specifico in
+#   emittenti_fiscali_billing_account risolve all'emittente predefinito
+#   (is_default). Spostare il predefinito sposta IN BLOCCO l'emittente di tutti
+#   quei BA: una riga sola puo' mettere un'istanza su due emittenti, se ha un
+#   BA collegato e uno no. E' il movimento a raggio N che sull'albero presidia
+#   anagrafiche.fn_guard_albero_ba_gestore_globale: questo e' il suo gemello
+#   sui fratelli di istanza.
+#
+# -- LA FORMA -------------------------------------------------------
+#   Come il gemello: si guardano SOLO i BA senza collegamento che hanno almeno
+#   un fratello di istanza. Due fratelli entrambi senza collegamento si
+#   spostano insieme e restano omogenei; entrambi collegati non si spostano.
+#   Conta la coppia MISTA, e la trova fn_guard_istanza_ba_emittente (-59).
+#   SECURITY DEFINER: legge billing_account, che ha la RLS.
+#   ⚠️ Lo stesso movimento ha gia' un altro cancello,
+#   anagrafiche.fn_guard_ba_gestore_globale_storia (vietato se c'e' storia):
+#   questo chiede un'altra cosa, e i due si sommano.
+#
+# Ritorno indietro: DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261008-60-create-fn-guard-istanza-ba-gestore-globale-mctit.yaml
+
+  - changeSet:
+      id: 20261008-60-create-fn-guard-istanza-ba-gestore-globale
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce anagrafiche.fn_guard_istanza_ba_gestore_globale: lo spostamento dell'emittente
+        predefinito non mette un'istanza su due emittenti. Gemello di
+        fn_guard_albero_ba_gestore_globale. Brief: brief-db-istanza-nasce-col-ba (R-7).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  r record;
+              BEGIN
+                  -- ⚠️ RAGGIO N: cambiare il gestore globale sposta in blocco
+                  --   l'emittente di TUTTI i BA senza collegamento specifico.
+                  --   Si guardano solo quelli che hanno un fratello di istanza:
+                  --   la condizione che conta e' la coppia MISTA (uno collegato,
+                  --   uno no), e la trova fn_guard_istanza_ba_emittente.
+                  FOR r IN
+                      SELECT ba.id
+                        FROM anagrafiche.billing_account ba
+                       WHERE NOT EXISTS (
+                                 SELECT 1
+                                   FROM anagrafiche.emittenti_fiscali_billing_account e
+                                  WHERE e.billing_account_id = ba.id)
+                         AND EXISTS (
+                                 SELECT 1
+                                   FROM anagrafiche.billing_account f
+                                  WHERE f.istanza_utility_id = ba.istanza_utility_id
+                                    AND f.id <> ba.id)
+                       ORDER BY ba.id
+                  LOOP
+                      PERFORM anagrafiche.fn_guard_istanza_ba_emittente(r.id);
+                  END LOOP;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_istanza_ba_gestore_globale()
+              IS 'Guard fail-fast per lo spostamento del gestore globale (is_default), che cambia in blocco l''emittente di tutti i BA senza collegamento specifico: verifica che nessuna istanza finisca su due emittenti. Guarda i soli BA non collegati che hanno un fratello di istanza (la condizione e'' la coppia MISTA) e delega a fn_guard_istanza_ba_emittente (E_ISTANZA_EMITTENTI_DIVERSI). Gemello di fn_guard_albero_ba_gestore_globale; lo stesso movimento ha anche il cancello fn_guard_ba_gestore_globale_storia, e i due si sommano. SECURITY DEFINER: legge billing_account, che ha la RLS. Brief: brief-db-istanza-nasce-col-ba (R-7).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_istanza_ba_gestore_globale();

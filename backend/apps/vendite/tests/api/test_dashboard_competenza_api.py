@@ -34,6 +34,7 @@ from unittest.mock import Mock, patch
 from django.core.cache import cache
 from django.test import Client
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.tests._helpers.jwt_mock import JwtMockedApiTest
 
 _MENSILE_RESPONSE = {
@@ -147,7 +148,7 @@ class DashboardCompetenzaApiTests(JwtMockedApiTest):
         mocked_fn.return_value = _MENSILE_RESPONSE
         self.client.get(self._URL)
         kwargs = mocked_fn.call_args.kwargs
-        self.assertEqual(kwargs["anno"], date.today().year)
+        self.assertEqual(kwargs["anno"], oggi_aziendale().year)
 
     # Scopo: Anno non numerico -> 400 (qp_int_strict).
     @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))

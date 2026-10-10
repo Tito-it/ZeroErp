@@ -21,7 +21,12 @@ su piu` periodi il `segment_key` include il mese di competenza.
 
 ### Regole principali
 
-* considera contratti in stato documento `ATTIVO`;
+* considera contratti in stato documento `ATTIVO`. Se lo stato non si trova nel
+  catalogo (riga assente o spenta) la funzione solleva `E_CODICE`, come per la
+  sorgente: non lista mai contratti in uno stato qualunque (fino al 2026-10-10 il
+  filtro era `IS NULL OR` e in quel caso cadeva). Nessun filtro sul billing
+  account: la colonna è `NOT NULL` (D-1 e D-2 di
+  `brief-db-istanza-nasce-col-ba-residui`);
 * contratto in validita` (`valido_al IS NULL` o `>= competenza_mese/oggi`);
 * include solo righe attive con articolo valido;
 * esclude segmenti gia` emessi in `commesse_attivita` (idempotenza batch);
@@ -127,5 +132,20 @@ Presidio a valle: dopo il push il flag non è più modificabile sul documento
 ([`trgfn_guard_fatturazione_immediata_immutabile`](/dbzero/vendite/funzioni/trgfn_guard_fatturazione_immediata_immutabile)).
 
 Brief: `brief-db-emissione-fattura-per-documento-sorgente` PARTE B (step B3).
+
+### Le esclusioni non si fatturano, e l'erogazione non si indovina (rev 2026-10-04)
+
+Dal changeSet `20261004-33`:
+
+* le righe `ESCLUSIONE` **non si listano**. Un'esclusione dice che il contratto
+  non vende quell'articolo: non è una riga da fatturare. Prima arrivava in
+  commessa senza prezzo, e per quell'articolo il calcolo del prezzo risponde
+  `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`;
+* `tipo_consumo` è l'erogazione della riga, **senza ripiego** su `CANONE`.
+  L'erogazione è obbligatoria su ogni riga che non è un'esclusione (vedi
+  [`trgfn_righe_guard_erogazione_obbligatoria`](/dbzero/script/funzioni/trgfn_righe_guard_erogazione_obbligatoria)),
+  quindi su ogni riga che questa funzione restituisce.
+
+Brief: `brief-db-erogazione-obbligatoria-righe-fatturate` (R4).
 
 {% include-markdown "signature-core.md" %}

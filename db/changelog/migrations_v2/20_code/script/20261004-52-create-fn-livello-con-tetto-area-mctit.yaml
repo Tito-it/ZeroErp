@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R4 — LA REGOLA DEL TETTO PER UN OGGETTO, IN UNA SEDE SOLA: script.fn_livello_con_tetto_area
+#   Brief: brief-db-permessi-tetto-area, sezioni 1 e 4 (R4, R5, R6)
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   Fino a oggi l'override su un oggetto SOSTITUIVA il livello dell'area («il piu' specifico
+#   vince»): TUTTO su anagrafiche.cliente con Anagrafiche BLOCCATO dava accesso pieno.
+#   Dal D-1 lo specifico puo' solo restringere: il livello effettivo e' il piu' restrittivo
+#   fra lo specifico e l'area. Il confronto lo usa il building block degli oggetti
+#   effettivi (-54), che alimenta il resolver puntuale, la mappa di /me/ e il pannello: sta
+#   qui, una volta.
+#
+# -- ⛔ L'ENUM E' ROVESCIATO ----------------------------------------------------------------------
+#   TUTTO < LETTURA < BLOCCATO: «il piu' restrittivo» e' GREATEST. GREATEST ignora i NULL:
+#   senza specifico vale l'area, cioe' il fallback di prima. Area NULL vale BLOCCATO
+#   (fail-closed): un tetto che non si conosce non concede niente.
+#
+# -- FORMA --------------------------------------------------------------------------------------
+#   Pura, IMMUTABLE, INVOKER. Parametri e RETURNS ancorati: lo specifico e' il riflesso di
+#   user_override_oggetti.livello, l'area di user_override_aree.livello.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-52-create-fn-livello-con-tetto-area-mctit.yaml
+
+  - changeSet:
+      id: 20261004-52-create-fn-livello-con-tetto-area
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_livello_con_tetto_area(p_livello_specifico, p_livello_area): il livello
+        effettivo di un oggetto, il piu' restrittivo fra lo specifico e l'area (GREATEST, enum
+        TUTTO < LETTURA < BLOCCATO). Sede unica del tetto per gli oggetti. Pura, IMMUTABLE.
+        Brief: brief-db-permessi-tetto-area R4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_livello_con_tetto_area(
+                  p_livello_specifico config.user_override_oggetti.livello%TYPE,
+                  p_livello_area      config.user_override_aree.livello%TYPE
+              )
+              RETURNS config.user_override_oggetti.livello%TYPE
+              LANGUAGE plpgsql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: il livello effettivo di un oggetto sotto il tetto della sua area
+              --   (brief-db-permessi-tetto-area): lo specifico puo' solo restringere.
+              -- ⛔ L'enum config.livello_accesso e' ordinato TUTTO < LETTURA < BLOCCATO:
+              --   il piu' restrittivo e' GREATEST, che ignora i NULL (senza specifico
+              --   vale l'area). Area NULL vale BLOCCATO (fail-closed).
+              BEGIN
+                  RETURN GREATEST(p_livello_specifico,
+                                  COALESCE(p_livello_area, 'BLOCCATO'::config.livello_accesso));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_livello_con_tetto_area(config.user_override_oggetti.livello%TYPE, config.user_override_aree.livello%TYPE) IS
+                  'Regola pura del tetto d''area per un oggetto: il livello effettivo e'' il piu'' restrittivo fra quello specifico (override sull''oggetto) e quello dell''area. Lo specifico puo'' solo restringere, mai allargare (D-1). ⛔ L''enum livello_accesso e'' ordinato TUTTO < LETTURA < BLOCCATO: il piu'' restrittivo e'' GREATEST; specifico NULL -> vale l''area; area NULL -> BLOCCATO (fail-closed). Sede unica del confronto: la chiama script.fn_get_permessi_effettivi_oggetti (e da li'' fn_resolve_livello_oggetto, fn_get_user_object_permissions_map e il pannello permessi). IMMUTABLE, INVOKER. Brief: brief-db-permessi-tetto-area R4.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_livello_con_tetto_area(config.user_override_oggetti.livello%TYPE, config.user_override_aree.livello%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_livello_con_tetto_area(config.livello_accesso, config.livello_accesso);

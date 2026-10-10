@@ -39,8 +39,8 @@ Obiettivi principali:
 * **Fonte quantita attesa** (`fonte_quantita_attesa`) → origine della quantita attesa (vedi sezione dedicata).
 * **Periodicita** (`periodicita`) → intervallo di fatturazione (mensile, bimestrale, ecc.).
 * **Generazione/competenza canone** (`generazione_canone`, `competenza_canone`) → canone anticipato/posticipato e competenza.
-* **Prezzo unitario** (`prezzo_unitario`) e **quantita** (`quantita`) → base per righe a canone o una‑tantum.
-* **Meta** (`meta`) → estensioni specifiche (parametri di tariffa, flag tecnici, mapping esterni).
+* **Prezzo unitario** (`prezzo_unitario`, `numeric(18,6)` dal 2026-10-05) e **quantita** (`quantita`) → base per righe a canone o una‑tantum.
+* **Meta** (`meta`) → estensioni specifiche (parametri di tariffa, flag tecnici, mapping esterni). Sempre valorizzato (`NOT NULL`, default `{}`), come `attivo` (default `true`), dal 2026-10-05.
 
 ---
 
@@ -64,9 +64,17 @@ su INSERT e resetta la fonte se il cambio di `tipo_erogazione` rende la combinaz
 | `LETTURE` | Quantita da letture utility | No — tag "Da letture utility" |
 | `DERIVATA_COMPONENTI` | Quantita calcolata dai componenti BoM del padre composito | No — tag "Derivata dai componenti" |
 
-Per `DERIVATA_COMPONENTI`: la colonna `quantita` viene **scritta automaticamente** dal trigger
-`trg_contratti_righe_z90_propaga_qta_componenti_upd` a partire dai componenti — non e’ editabile dall’utente
-ma non e’ vuota nel DB.
+⚠️ **Per `DERIVATA_COMPONENTI` questa pagina diceva** che `quantita` la scrive
+`trg_contratti_righe_z90_propaga_qta_componenti_upd` a partire dai componenti. **Non è così**
+(verificato il 2026-10-08): quel trigger propaga la quantità dal padre **ai** componenti. Sulla
+riga DERIVATA nessuno calcola `quantita`: resta quella mandata o rimasta da una FISSA. Domanda
+aperta in `brief-db-offerta-emissione-ed-erogazione` §F.4.3.
+
+⭐ **`quantita` è calcolata** (dal 2026-10-08): con una fonte a valle (MANUALE, LETTURE,
+TIMESHEET; `script.fn_fonte_porta_quantita` = false) `script.trgfn_qta_from_operativa` la porta a
+NULL a ogni INSERT e UPDATE; il guard `script.trgfn_righe_guard_quantita_per_fonte` rifiuta solo
+`qta_operativa` (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`, campo `qta_operativa`). Rete:
+`chk_contrighe_quantita_per_fonte`. Brief `brief-db-offerta-emissione-ed-erogazione` §F.1.
 
 #### Matrice coerenza (legenda: ✅ default · 🟢 secondaria · 🟡 rara/edge · ❌ vietata)
 
@@ -152,12 +160,14 @@ AGGIUNTA    → prezzo_unitario IS NOT NULL
 #### Guard AGGIUNTA fuori listino
 
 Il trigger `trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd`
-(→ [`trgfn_contratti_righe_guard_aggiunta_fuori_listino`](/dbzero/vendite/funzioni/trgfn_contratti_righe_guard_aggiunta_fuori_listino))
-impedisce di usare `tipo_eccezione='AGGIUNTA'` per articoli **già presenti nel listino**:
+(→ [`script.trgfn_righe_guard_aggiunta_fuori_listino`](/dbzero/script/funzioni/trgfn_righe_guard_aggiunta_fuori_listino),
+la stessa funzione dell'offerta dal 2026-10-04) impedisce di usare `tipo_eccezione='AGGIUNTA'` per articoli **già presenti nel listino**:
 
 * **Contratto senza listino** (`listino_id IS NULL`): nessun check, AGGIUNTA sempre valida.
-* **Contratto DRAFT** (`listino_versione_id IS NULL`): verifica nella versione attiva del listino a `CURRENT_DATE`.
+* **Contratto DRAFT** (`listino_versione_id IS NULL`): verifica nella versione in vigore oggi.
 * **Contratto ATTIVO** (`listino_versione_id IS NOT NULL`): verifica nella versione fissata all'attivazione.
+
+La versione la dice [`vendite.fn_documento_listino_operativo`](/dbzero/vendite/funzioni/fn_documento_listino_operativo), comune a contratto e offerta.
 
 Se l'articolo è già nel listino → `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO` (id 450). L'operatore deve usare `OVERRIDE` invece di `AGGIUNTA`.
 
@@ -172,17 +182,85 @@ INSERT/UPDATE/DELETE in ATTIVO, CESSATO e ANNULLATO → `E_RIGA_DOC_NON_BOZZA`.
 La copia dedicata ai contratti (che bloccava il solo ATTIVO) è stata ritirata il
 2026-09-22; il codice 452 resta al lock della testata.
 
+#### Un'esclusione non si modifica (2026-10-04)
+
+Una riga `ESCLUSIONE` dice una cosa sola: il contratto non vende quell'articolo
+del listino. Si crea (Escludi) e si cancella (Ripristina articolo, `DELETE`), e
+basta: prezzo, quantità, UoM, erogazione e fonte non la riguardano. Il trigger
+`trg_contratti_righe_a05_guard_esclusione_immutabile_upd`
+(→ [`script.trgfn_righe_guard_esclusione_immutabile`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_immutabile), la stessa dell'offerta)
+rifiuta ogni `UPDATE` che cambi qualcosa di diverso dalle colonne tecniche →
+`E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE`. Anche `attivo`: un'esclusione spenta
+terrebbe occupato il posto dell'articolo in `uq_contrighe_one_eccezione_per_articolo`.
+
+#### Il tipo di una riga non si cambia (2026-10-04)
+
+`tipo_eccezione` è bloccato da un lock di colonna (registro
+`dbops.automation_lock_columns`) → `E_CONTRATTO_RIGA_TIPO_ECCEZIONE_IMMUTABILE`.
+Ogni tipo ha i suoi dati e i suoi controlli, che valgono quando la riga nasce:
+un `OVERRIDE` portato a `ESCLUSIONE` sul posto creerebbe un'esclusione senza
+passare da Escludi. Per cambiare tipo si elimina la riga e se ne crea una nuova.
+
+#### Una riga che si fattura dice come si eroga (2026-10-04)
+
+Ogni riga che non è `ESCLUSIONE` (oggi `OVERRIDE` e `AGGIUNTA`) finisce in
+fattura, e la fattura deve sapere come conteggiarla: `tipo_erogazione` è
+obbligatoria. Sull'esclusione è vuota, perché non si fattura (sezione seguente). Il trigger
+`trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd`
+(→ [`trgfn_righe_guard_erogazione_obbligatoria`](/dbzero/script/funzioni/trgfn_righe_guard_erogazione_obbligatoria))
+rifiuta l'`INSERT` o l'`UPDATE` che la lascia vuota → `E_RIGA_EROGAZIONE_OBBLIGATORIA`,
+col campo `tipo_erogazione` da evidenziare. Dietro c'è il vincolo
+`chk_contrighe_erogazione_per_tipo_eccezione`. La stessa regola vale sulle righe
+dell'offerta, da cui il contratto le copia.
+
+#### Un'esclusione non porta dati di vendita (2026-10-04)
+
+L'esclusione dice solo «questo articolo non si vende». Prezzo, quantità,
+quantità operativa, unità di misura, fattore, erogazione, fonte, periodicità,
+generazione e competenza del canone **restano vuoti**: lo dice il vincolo
+`chk_contrighe_esclusione_senza_dati`, e a parlare all'operatore è il trigger
+`trg_contratti_righe_a10_guard_esclusione_senza_dati_ins`
+(→ [`script.trgfn_righe_guard_esclusione_senza_dati`](/dbzero/script/funzioni/trgfn_righe_guard_esclusione_senza_dati))
+→ `E_RIGA_ESCLUSIONE_CON_DATI`, col campo da svuotare.
+
+* `fonte_quantita_attesa` non è più `NOT NULL`: è obbligatoria (vincolo
+  `chk_contrighe_fonte_per_tipo_eccezione`) solo sulle righe che non sono
+  esclusioni.
+* I due trigger che riempiono la riga — fonte di default e quantità dall'unità
+  operativa — **saltano l'esclusione** (`WHEN` sul trigger): sono funzioni
+  generiche, e chi sa che l'esclusione non ha quantità è la tabella.
+* Le stesse regole valgono sulle righe dell'offerta, che il contratto copia.
+
 ---
+
+#### Gli stessi tipi della riga dell'offerta (2026-10-05)
+
+Il push copia la riga dell'offerta nel contratto così com'è: un valore valido
+sull'offerta non deve poter fallire qui. Dal 2026-10-05 le due tabelle hanno gli
+stessi tipi su ogni colonna comune: `prezzo_unitario` è `numeric(18,6)` (era
+`(15,6)`: un prezzo oltre il miliardo passava sull'offerta e moriva al push), i
+quattro codici di erogazione (`fonte_quantita_attesa`, `periodicita`,
+`generazione_canone`, `competenza_canone`) sono `varchar(32)`. Anche
+`attivo` e `meta` sono diventati obbligatori, come sull'offerta. Lo presidia
+`db/pgtap/vendite/test-righe-gemelle-secondo-giro-v1.sql` (test 1, 3), che
+confronta le due tabelle colonna per colonna: una divergenza futura è un rosso.
+Brief: `brief-db-righe-esclusione-solo-non-si-vende` §8.2 B2, B4.
 
 ### Vincoli e trigger rilevanti
 
 * **FK principali**: contratto, articolo, UoM operativa.
 * **Trigger**:
-  * `trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd` — blocca AGGIUNTA per articoli già in listino (Step 2.2).
-  * `trg_contratti_righe_a10_default_fonte_qta_ins_upd` — normalizza `fonte_quantita_attesa` al default su INSERT e su UPDATE con tipo cambiato (20260519-06; ri-bindato alla funzione generica `script.trgfn_righe_default_fonte_qta` in 20260531-10).
-  * `trg_contratti_righe_a10_qta_from_operativa_ins_upd` — calcolo quantita base da operativa.
+  * `trg_contratti_righe_a05_guard_esclusione_immutabile_upd` — una riga ESCLUSIONE non si modifica (2026-10-04).
+  * lock di colonna su `tipo_eccezione` (generato dal registro `dbops.automation_lock_columns`, 2026-10-04).
+  * `trg_contratti_righe_a10_guard_erogazione_obbligatoria_ins_upd` — una riga che si fattura vuole `tipo_erogazione` (2026-10-04).
+  * `trg_contratti_righe_a10_guard_aggiunta_fuori_listino_ins_upd` — blocca AGGIUNTA per articoli già in listino (Step 2.2; funzione generica dal 2026-10-04).
+  * `trg_contratti_righe_a10_guard_esclusione_figlio_bundle_ins_upd` — si esclude il bundle, non il suo componente.
+  * `trg_contratti_righe_a10_guard_esclusione_senza_dati_ins` — un'esclusione non porta dati di vendita (2026-10-04).
+  * `trg_contratti_righe_a10_default_fonte_qta_ins_upd` — normalizza `fonte_quantita_attesa` al default su INSERT e su UPDATE con tipo cambiato (20260519-06; ri-bindato alla funzione generica `script.trgfn_righe_default_fonte_qta` in 20260531-10). Salta l'esclusione dal 2026-10-04.
+  * `trg_contratti_righe_a10_qta_from_operativa_ins_upd` — calcolo quantita base da operativa. Salta l'esclusione dal 2026-10-04.
   * `trg_contratti_righe_a10_note_contratto_block_deact_upd` — blocca disattivazioni se presenti note figlie.
   * `trg_contratti_righe_a10_articoli_require_attivo_ins_upd` — articolo attivo obbligatorio.
+* **Componenti**: i componenti di una riga composita (`vendite.contratti_righe_componenti`) seguono la regola delle righe — si toccano solo in DRAFT — col loro trigger `_a05_` (dal 2026-10-05).
 
 ---
 
@@ -192,6 +270,7 @@ La copia dedicata ai contratti (che bloccava il solo ATTIVO) è stata ritirata i
 * Impostare `tipo_erogazione` e `fonte_quantita_attesa` in modo coerente con la logica di calcolo.
 * Inserire in `meta` i soli parametri non coperti da colonne core.
 * Disattivare una riga (`attivo = false`) solo dopo aver gestito le note collegate.
+* Un'esclusione non si disattiva e non si modifica: si cancella («Ripristina articolo»).
 
 ---
 

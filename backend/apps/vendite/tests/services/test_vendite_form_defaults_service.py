@@ -31,6 +31,7 @@ from datetime import date, timedelta
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services.vendite_form_defaults_service import (
     fn_get_contratto_form_defaults,
@@ -93,8 +94,8 @@ class TestContrattoFormDefaults(TestCase):
         result = fn_get_contratto_form_defaults(billing_account_id=None)
         self.assertEqual(result["billing_account_id"], None)
         self.assertEqual(result["categoria_cliente_id_snapshot"], None)
-        self.assertEqual(result["default_data"], date.today().isoformat())
-        self.assertEqual(result["default_valido_dal"], date.today().isoformat())
+        self.assertEqual(result["default_data"], oggi_aziendale().isoformat())
+        self.assertEqual(result["default_valido_dal"], oggi_aziendale().isoformat())
 
     @patch(f"{_MOD}.resolve_valuta_default", return_value={})
     @patch(_BA_REPO)
@@ -145,7 +146,7 @@ class TestContrattoFormDefaults(TestCase):
         cur.fetchone.return_value = None
         mock_resolver_conn.cursor.return_value.__enter__.return_value = cur
         result = fn_get_contratto_form_defaults(billing_account_id=None)
-        self.assertEqual(result["default_data"], date.today().isoformat())
+        self.assertEqual(result["default_data"], oggi_aziendale().isoformat())
 
     @patch(_BA_REPO)
     @patch(_PARAM)
@@ -323,7 +324,7 @@ class TestPreventivoFormDefaults(TestCase):
         mock_resolver_conn.cursor.return_value.__enter__.return_value = cur
         result = fn_get_preventivo_form_defaults(billing_account_id=None)
         self.assertEqual(result["billing_account_id"], None)
-        expected = (date.today() + timedelta(days=30)).isoformat()
+        expected = (oggi_aziendale() + timedelta(days=30)).isoformat()
         self.assertEqual(result["default_validita_al"], expected)
         self.assertEqual(result["valuta_id"], None)
         self.assertEqual(result["termine_pagamento_id"], None)
@@ -435,7 +436,7 @@ class TestListinoVersioneFormDefaults(TestCase):
         ]
         result = fn_get_versione_new_defaults(listino_id=12)
         self.assertEqual(result["listino_id"], 12)
-        self.assertEqual(result["default_valido_dal"], date.today().isoformat())
+        self.assertEqual(result["default_valido_dal"], oggi_aziendale().isoformat())
         self.assertTrue(result["has_existing_draft"])
         self.assertEqual(len(result["existing_drafts"]), 1)
         self.assertEqual(result["existing_drafts"][0]["codice_versione"], "v_draft")
@@ -460,7 +461,7 @@ class TestListinoVersioneFormDefaults(TestCase):
         self.assertEqual(result["min_valido_dal"], "2026-01-01")
         self.assertEqual(
             result["default_valido_dal"],
-            (date.today() + timedelta(days=1)).isoformat(),
+            (oggi_aziendale() + timedelta(days=1)).isoformat(),
         )
         # is_retroactive_default deve riflettere SOLO default_valido_dal vs oggi.
         # Lead_gg=+1 -> default in futuro -> non retroattivo.
@@ -501,7 +502,7 @@ class TestListinoVersioneFormDefaults(TestCase):
             "valido_al": None,
         }
         result = fn_get_versione_close_defaults(listino_id=12, versione_id=33)
-        self.assertEqual(result["default_valido_al"], date.today().isoformat())
+        self.assertEqual(result["default_valido_al"], oggi_aziendale().isoformat())
         self.assertEqual(result["current_valido_al"], None)
         self.assertFalse(result["has_existing_chiusura"])
 

@@ -152,7 +152,7 @@ class AssetPerRenderDbTests(unittest.TestCase):
             repo, emittente, asset_id = self._asset(cur)
             cur.execute(
                 "UPDATE documenti.template_asset "
-                "SET valido_dal = CURRENT_DATE - 10, valido_al = CURRENT_DATE - 1 "
+                "SET valido_dal = script.fn_data_operativa() - 10, valido_al = script.fn_data_operativa() - 1 "
                 "WHERE id = %s",
                 [asset_id],
             )

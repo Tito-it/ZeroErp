@@ -8,7 +8,7 @@ CREATE FUNCTION fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb, p_dat
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb DEFAULT NULL::jsonb, p_data date DEFAULT CURRENT_DATE)
+CREATE OR REPLACE FUNCTION vendite.fn_genera_ddt_da_ordine(p_ordine_id bigint, p_righe jsonb DEFAULT NULL::jsonb, p_data date DEFAULT script.fn_data_operativa())
  RETURNS bigint
  LANGUAGE plpgsql
 AS $function$
@@ -25,7 +25,7 @@ DECLARE
     v_riga            RECORD;
     v_residuo_base    numeric;
     v_qta_op          numeric;
-    v_riga_nr         integer := 0;
+    v_riga_nr         vendite.ddt_righe.riga_nr%TYPE := 0;
     v_n_evase         integer := 0;
     -- Il BERSAGLIO dei due rifiuti di evasione. ⚠️ `jsonb` esplicito: e' un
     -- frammento del context, non il valore di una colonna.
@@ -88,7 +88,7 @@ BEGIN
         data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
         sorgente_tipo_id, sorgente_uid)
     VALUES (
-        COALESCE(p_data, CURRENT_DATE), v_stato_draft_id, v_dest_ruolo_id,
+        COALESCE(p_data, (SELECT script.fn_data_operativa())), v_stato_draft_id, v_dest_ruolo_id,
         v_sorg_ord_id, v_ordine_uid)
     RETURNING id INTO v_ddt_id;
 

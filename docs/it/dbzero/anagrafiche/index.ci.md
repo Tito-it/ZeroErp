@@ -44,12 +44,12 @@
 - [fn_check_ba_coppia_emittente_omogenea](manual/fn_check_ba_coppia_emittente_omogenea.md) — (latest review 18-08-26)
 - [fn_check_fornitore_attivo](manual/fn_check_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_check_fornitore_attivo()`** verifica in modo puramente booleano se un fornitore puo' essere usato nei flussi operativi del ciclo passivo, in particolare per ordini e DDT.
 - [fn_check_titolo_iva_ambito](manual/fn_check_titolo_iva_ambito.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
-- [fn_consuma_plafond_titolo_iva](manual/fn_consuma_plafond_titolo_iva.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_consuma_plafond_titolo_iva_righe](manual/fn_consuma_plafond_titolo_iva_righe.md) — (funzione nata il 2026-10-03, `20261003-07`; rev 2026-10-04, `20261004-06`)
 - [fn_crea_auth_user](manual/fn_crea_auth_user.md) — (latest review 13-03-2026) Building block atomico per la creazione di un record `auth_user` (Django). Gestisce la validazione dei parametri e i guard di unicita' su username e email.
 - [fn_crea_indirizzo_soggetto](manual/fn_crea_indirizzo_soggetto.md) — (latest review 13-03-2026)
 - [fn_crea_operatore_v2](manual/fn_crea_operatore_v2.md)
 - [fn_crea_risorsa_umana_v2](manual/fn_crea_risorsa_umana_v2.md)
-- [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md) — (latest review 13-03-2026) Building block atomico per la creazione di un soggetto Persona Fisica (natura PR = Privato) con contatto default obbligatorio.
+- [fn_crea_soggetto_pf](manual/fn_crea_soggetto_pf.md) — (latest review 09-10-2026) Building block atomico per la creazione di un soggetto **persona fisica** — privato (PR) o ditta individuale (DI) — con contatto default obbligatorio.
 - [fn_crea_soggetto_pg](manual/fn_crea_soggetto_pg.md) — (latest review 14-03-2026) Building block atomico per la creazione di un soggetto Persona Giuridica con contatto default obbligatorio e dati societari (condizionali alla `dati_societari_policy` del tipo soggetto).
 - [fn_create_indirizzo](manual/fn_create_indirizzo.md) — (latest review 08-07-2026)
 - [fn_get_emittente_fiscale_id](manual/fn_get_emittente_fiscale_id.md) — (last review 07-04-2026)
@@ -62,6 +62,9 @@
 - [fn_guard_ba_cambio_emittente](manual/fn_guard_ba_cambio_emittente.md) — (latest review 26-08-26)
 - [fn_guard_ba_gestore_globale_storia](manual/fn_guard_ba_gestore_globale_storia.md) — (latest review 26-08-26)
 - [fn_guard_fornitore_attivo](manual/fn_guard_fornitore_attivo.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_guard_fornitore_attivo()`** applica una verifica fail-fast sul fornitore prima di consentirne l'uso nei flussi operativi del ciclo passivo, in particolare ordini e DDT.
+- [fn_guard_istanza_ba_emittente](manual/fn_guard_istanza_ba_emittente.md) — (latest review 08-10-26)
+- [fn_guard_istanza_ba_gestore_globale](manual/fn_guard_istanza_ba_gestore_globale.md) — (latest review 08-10-26)
+- [fn_guard_istanza_ha_ba](manual/fn_guard_istanza_ha_ba.md) — (latest review 08-10-26)
 - [fn_lookup_utilities_per_ba](manual/fn_lookup_utilities_per_ba.md) — (latest review 22-04-2026) La funzione **`anagrafiche.fn_lookup_utilities_per_ba()`** restituisce le utility selezionabili per un billing account, incrociando due vincoli:
 - [fn_notify_cambio_reparto](manual/fn_notify_cambio_reparto.md) — (latest review 10-03-2026) La funzione **`anagrafiche.fn_notify_cambio_reparto()`** emette una notifica PostgreSQL sul canale `cambio_reparto` quando una risorsa umana viene spostata da un'unita' organizzativa a un'altra.
 - [fn_search_indirizzi_dettaglio](manual/fn_search_indirizzi_dettaglio.md) — (latest review 28-11-25) La funzione **`anagrafiche.fn_search_indirizzi_dettaglio`** fornisce un **punto unico di ingresso** per la ricerca degli indirizzi di dettaglio normalizzati, appoggiandosi alla vista:
@@ -72,9 +75,11 @@
 - [trgfn_billing_account_gen_codice](manual/trgfn_billing_account_gen_codice.md) — (rev 2026-08-21)
 - [trgfn_billing_account_guard_admin_globale](manual/trgfn_billing_account_guard_admin_globale.md)
 - [trgfn_billing_account_guard_albero_emittente](manual/trgfn_billing_account_guard_albero_emittente.md) — (latest review 18-08-26)
+- [trgfn_billing_account_guard_istanza_emittente](manual/trgfn_billing_account_guard_istanza_emittente.md) — (latest review 08-10-26)
 - [trgfn_billing_account_guard_normalize](manual/trgfn_billing_account_guard_normalize.md) — (latest review 28-12-25) Il trigger `anagrafiche.trgfn_billing_account_guard_normalize` applica le **validazioni di business** e normalizza i campi, mentre la generazione del `codice` e' demandata al sistema automatico basato su `config.sistema_codici`.
 - [trgfn_billing_account_guard_soggetto_coerenza_istanza](manual/trgfn_billing_account_guard_soggetto_coerenza_istanza.md) — (latest review 02-05-2026)
 - [trgfn_billing_account_link_ef](manual/trgfn_billing_account_link_ef.md)
+- [trgfn_billing_account_require_istanza_ha_ba](manual/trgfn_billing_account_require_istanza_ha_ba.md) — (latest review 08-10-26)
 - [trgfn_clienti_guard_ruolo_cliente](manual/trgfn_clienti_guard_ruolo_cliente.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “cliente”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_clienti_set_parent_istanza](manual/trgfn_clienti_set_parent_istanza.md) — (latest update 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_parent_istanza()` ha il compito di **mantenere la catena lineare delle istanze** (`istanze_utilities.parent_istanza_id`) per ciascun **PDP** quando viene inserito o attivato un nuovo cliente.
 - [trgfn_clienti_set_periodo](manual/trgfn_clienti_set_periodo.md) — (latest review 09-12-25) La funzione `anagrafiche.trgfn_clienti_set_periodo()` è una **trigger function di dominio** che ha il compito di:
@@ -83,12 +88,14 @@
 - [trgfn_clienti_sync_utility_from_ba](manual/trgfn_clienti_sync_utility_from_ba.md) — (latest review 15-02-26) La trigger function **`anagrafiche.trgfn_clienti_sync_utility_from_ba()`** garantisce la **coerenza** tra:
 - [trgfn_contatti_set_default_contatto](manual/trgfn_contatti_set_default_contatto.md) — (latest review 03-12-25) * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_normalize](manual/trgfn_conti_bancari_normalize.md) — (latest review 15-12-26) La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
-- [trgfn_dati_societari_guard_forma_giuridica](manual/trgfn_dati_societari_guard_forma_giuridica.md) — (latest review 28-12-25) Garantire la **coerenza paese** tra il soggetto e la forma giuridica associata nei dati societari.
+- [trgfn_dati_societari_guard_forma_giuridica](manual/trgfn_dati_societari_guard_forma_giuridica.md)
 - [trgfn_dati_societari_guard_tipo_soggetto](manual/trgfn_dati_societari_guard_tipo_soggetto.md) — (latest review 03-12-25) Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
 - [trgfn_efba_guard_albero_emittente](manual/trgfn_efba_guard_albero_emittente.md) — (latest review 18-08-26)
+- [trgfn_efba_guard_istanza_emittente](manual/trgfn_efba_guard_istanza_emittente.md) — (latest review 08-10-26)
 - [trgfn_efba_guard_storia_emittente](manual/trgfn_efba_guard_storia_emittente.md) — (latest review 26-08-26)
 - [trgfn_emittenti_fiscali_default_bootstrap](manual/trgfn_emittenti_fiscali_default_bootstrap.md) — (latest review 23-01-2026) La funzione `anagrafiche.trgfn_emittenti_fiscali_default_bootstrap()` crea in modo automatico la **riga di default** nel mapping emittenti fiscali quando viene inserito il **primo emittente**.
 - [trgfn_emittenti_fiscali_default_guard](manual/trgfn_emittenti_fiscali_default_guard.md) — La funzione `anagrafiche.trgfn_emittenti_fiscali_default_guard()` garantisce che esista **esattamente un** emittente fiscale di default.
+- [trgfn_emittenti_fiscali_guard_regime_conferma](manual/trgfn_emittenti_fiscali_guard_regime_conferma.md)
 - [trgfn_emittenti_fiscali_guard_ruolo_emi_fis](manual/trgfn_emittenti_fiscali_guard_ruolo_emi_fis.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_guard_ruolo_emi_fis()`** garantisce che ogni record in `anagrafiche.emittenti_fiscali` sia collegato a un `soggetto_ruolo_id` valido e coerente con il ruolo di **emittente fiscale** (`codice_interno = 'EF'`).
 - [trgfn_emittenti_fiscali_normalize](manual/trgfn_emittenti_fiscali_normalize.md) — (latest review 12-03-2026) La trigger function **`anagrafiche.trgfn_emittenti_fiscali_normalize()`** e' attualmente una **no-op controllata**: non modifica `NEW`, ma mantiene esplicitato nel flusso trigger che la normalizzazione locale non e' necessaria e che l'eventuale generazione del `codice` resta demandata al sistema automatico basato su `config.sistema_codici`.
 - [trgfn_emittenti_fiscali_regime_conferma](manual/trgfn_emittenti_fiscali_regime_conferma.md)
@@ -98,6 +105,7 @@
 - [trgfn_gestori_guard](manual/trgfn_gestori_guard.md) — (latest review 03-12-25) La funzione **`anagrafiche.trgfn_gestori_guard()`** è una **funzione trigger di guardia di dominio** per la tabella `anagrafiche.gestori`.
 - [trgfn_gestori_guard_ruolo_gestore](manual/trgfn_gestori_guard_ruolo_gestore.md) — (latest review 05-12-25) - **Centralizzare l’assegnazione del ruolo “Gestore”**     Delegare a `script.fn_guard_soggetto_ruolo ` la logica di inserimento o verifica del linking table, evitando duplicazioni di codice.
 - [trgfn_identita_digitali_guard_coerenza](manual/trgfn_identita_digitali_guard_coerenza.md) — (latest review 04-09-2026 — biforcazione sul flag `tecnica`; prima: 18-04-2026) La trigger function **`anagrafiche.trgfn_identita_digitali_guard_coerenza()`** verifica la coerenza tra il **ruolo applicativo** di una identità digitale e il **tipo di soggetto_ruolo** a cui è collegata.
+- [trgfn_identita_digitali_guard_natura_credenziale](manual/trgfn_identita_digitali_guard_natura_credenziale.md)
 - [trgfn_identita_digitali_guard_ultimo_super_admin](manual/trgfn_identita_digitali_guard_ultimo_super_admin.md) — (latest review 19-04-2026)
 - [trgfn_identita_digitali_sync_auth_user_active](manual/trgfn_identita_digitali_sync_auth_user_active.md) — (latest review 18-04-2026)
 - [trgfn_indirizzi_base_normalize](manual/trgfn_indirizzi_base_normalize.md) — (latest review 28-12-25) Normalizzare i campi base di `anagrafiche.indirizzi` in base alla presenza del collegamento a `indirizzi_dettaglio`.
@@ -120,6 +128,7 @@
 - [trgfn_resellers_normalize](manual/trgfn_resellers_normalize.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_resellers_normalize()`** e' oggi una **no-op**: non modifica il record `NEW` e ritorna semplicemente il contenuto ricevuto dal trigger.
 - [trgfn_risorse_umane_guard_identita_attiva](manual/trgfn_risorse_umane_guard_identita_attiva.md) — (nata il 12-09-2026, `20_code/anagrafiche/20260912-18`; decisione Tid, analisi `analisi-software-per-dati-morti` §6.2)
 - [trgfn_risorse_umane_guard_ruolo](manual/trgfn_risorse_umane_guard_ruolo.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_guard_ruolo()`** garantisce che ogni riga di `anagrafiche.risorse_umane` sia collegata a un `soggetto_ruolo_id` di tipo **RIS_UMANA** e che tale ruolo punti allo stesso `soggetto_id` presente nel record della risorsa umana.
+- [trgfn_risorse_umane_guard_ultimo_super_admin](manual/trgfn_risorse_umane_guard_ultimo_super_admin.md) — (nata il 07-10-2026, `20_code/anagrafiche/20261007-20`; brief `brief-db-veste-utilizzabile`, decisione di Tid)
 - [trgfn_risorse_umane_notify_cambio_reparto](manual/trgfn_risorse_umane_notify_cambio_reparto.md) — (latest review 10-03-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_notify_cambio_reparto()`** emette una notifica PostgreSQL quando una risorsa umana cambia `unita_organizzativa_id`.
 - [trgfn_risorse_umane_sync_auth_user_active](manual/trgfn_risorse_umane_sync_auth_user_active.md) — (latest review 18-04-2026) La trigger function **`anagrafiche.trgfn_risorse_umane_sync_auth_user_active()`** sincronizza `django.auth_user.is_active` quando cambiano gli attributi di stato della tabella `anagrafiche.risorse_umane`.
 - [trgfn_sepa_mandati_guard](manual/trgfn_sepa_mandati_guard.md) — (latest review 29-12-25) Garantire che un mandato SEPA sia coerente quando e' in stato **ATTIVO** e normalizzare i campi di input sensibili (`umr`, `iban_snapshot`).
@@ -145,6 +154,8 @@
 - [trgfn_vettori_normalize](manual/trgfn_vettori_normalize.md) — (rev 2026-08-21)
 
 ## 🔍 Views (manuale)
+- [vw_accessi_altri](manual/vw_accessi_altri.md)
+- [vw_accessi_sistema](manual/vw_accessi_sistema.md)
 - [vw_clienti_codice_ba](manual/vw_clienti_codice_ba.md) — (rev 2026-08-21)
 - [vw_clienti_lista](manual/vw_clienti_lista.md) — (rev 2026-08-21)
 - [vw_conti_bancari_per_ruolo](manual/vw_conti_bancari_per_ruolo.md) — (latest review 25-03-26)

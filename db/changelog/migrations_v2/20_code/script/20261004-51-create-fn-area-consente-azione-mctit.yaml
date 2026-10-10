@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R3 — LA REGOLA DEL TETTO PER UN'AZIONE, IN UNA SEDE SOLA: script.fn_area_consente_azione
+#   Brief: brief-db-permessi-tetto-area, sezioni 1, 3 (D-4) e 4 (R2, R3)
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   «L'area consente l'azione» e' un confronto fra il livello d'area dell'operatore e il
+#   minimo dichiarato dall'azione (-50). Lo usano il building block delle azioni effettive
+#   (-53, che alimenta il resolver puntuale, la mappa e il pannello) e la fixture pgTAP
+#   che concede un'azione (-59). Due copie del confronto divergono al primo ritocco
+#   (regola del 2): sta qui.
+#
+# -- ⛔ L'ENUM E' ROVESCIATO ----------------------------------------------------------------------
+#   config.livello_accesso e' ordinato TUTTO < LETTURA < BLOCCATO (pg_enum): «arriva al
+#   minimo» si scrive livello <= minimo. Un >= a occhio concederebbe tutto a chi e'
+#   bloccato. Il pgTAP prova tutti e due i versi.
+#
+# -- FORMA --------------------------------------------------------------------------------------
+#   Pura: niente tabelle, niente sessione. IMMUTABLE, INVOKER. NULL da qualunque parte vale
+#   no (fail-closed): un'area che non si conosce non consente niente.
+#   Parametri ancorati: il livello d'area e' il riflesso di user_override_aree.livello, il
+#   minimo e' la colonna del -50. RETURNS boolean: e' la risposta della regola.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-51-create-fn-area-consente-azione-mctit.yaml
+
+  - changeSet:
+      id: 20261004-51-create-fn-area-consente-azione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_area_consente_azione(p_livello_area, p_livello_minimo) RETURNS boolean: la
+        regola del tetto d'area per un'azione di processo (livello_area <= minimo, enum
+        TUTTO < LETTURA < BLOCCATO), sede unica. Pura, IMMUTABLE, fail-closed sui NULL.
+        Brief: brief-db-permessi-tetto-area R3.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            { schemaName: config, tableName: azioni_processo, columnName: livello_minimo_area }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_area_consente_azione(
+                  p_livello_area   config.user_override_aree.livello%TYPE,
+                  p_livello_minimo config.azioni_processo.livello_minimo_area%TYPE
+              )
+              RETURNS boolean   -- risposta della regola, non la proiezione di una colonna
+              LANGUAGE plpgsql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: dire se il livello d'area di un operatore consente un'azione di
+              --   processo che dichiara il minimo p_livello_minimo (brief-db-permessi-tetto-area).
+              -- ⛔ L'enum config.livello_accesso e' ordinato TUTTO < LETTURA < BLOCCATO:
+              --   «arriva al minimo» e' livello <= minimo.
+              -- NULL da qualunque parte vale no (fail-closed).
+              BEGIN
+                  RETURN COALESCE(p_livello_area <= p_livello_minimo, false);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_area_consente_azione(config.user_override_aree.livello%TYPE, config.azioni_processo.livello_minimo_area%TYPE) IS
+                  'Regola pura del tetto d''area per un''azione di processo: true se il livello d''area dell''operatore arriva al minimo che l''azione dichiara (config.azioni_processo.livello_minimo_area). ⛔ L''enum livello_accesso e'' ordinato TUTTO < LETTURA < BLOCCATO: consente se livello_area <= minimo. NULL da qualunque parte -> false (fail-closed). Sede unica del confronto: la chiamano script.fn_get_permessi_effettivi_azioni (e da li'' fn_check_azione_processo, fn_get_user_actions_map e il pannello permessi) e la fixture dbops.fn_pgtap_concedi_azione. IMMUTABLE, INVOKER. Brief: brief-db-permessi-tetto-area R3.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_area_consente_azione(config.user_override_aree.livello%TYPE, config.azioni_processo.livello_minimo_area%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_area_consente_azione(config.livello_accesso, config.livello_accesso);

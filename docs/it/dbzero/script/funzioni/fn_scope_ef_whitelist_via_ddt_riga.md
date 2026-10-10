@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_ddt_riga(p_auth_user_id integer, p_rig
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_ddt_riga(p_auth_user_id integer, p_riga_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: come sopra, ma partendo da una RIGA di DDT — e' la
     --   chiave che porta vendite.ddt_righe_componenti.

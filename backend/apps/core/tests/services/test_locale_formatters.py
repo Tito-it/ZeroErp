@@ -20,6 +20,7 @@
 #    25. un_istante_naive_non_si_tocca
 #    26. il_giorno_di_un_datetime_e_quello_locale
 #    27. l_export_scrive_l_ora_locale   ⭐ il percorso degli export
+#    28. il_fuso_del_processo_non_conta ⭐ TIME_ZONE e fuso attivo a Tokyo
 #   format_bool
 #     8. format_bool_true_si
 #     9. format_bool_false_no
@@ -47,6 +48,9 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from django.test import SimpleTestCase, override_settings
+from django.utils import timezone
+
+from apps.core.services.fuso_aziendale import fuso_aziendale_forzato
 
 from apps.core.services.locale_formatters import (
     format_bool,
@@ -65,7 +69,7 @@ class FormatDateTests(SimpleTestCase):
     def test_format_date_da_datetime(self) -> None:
         # datetime e' anche date: prendi solo la parte data
         self.assertEqual(
-            format_date(datetime(2026, 5, 10, 17, 30)),
+            format_date(datetime(2026, 5, 10, 17, 30)),  # noqa: DTZ001 — naive apposta: un istante senza fuso non si converte
             "10-05-2026",
         )
 
@@ -84,17 +88,17 @@ class FormatDateTests(SimpleTestCase):
 class FormatDatetimeTests(SimpleTestCase):
     def test_format_datetime_default_no_seconds(self) -> None:
         self.assertEqual(
-            format_datetime(datetime(2026, 5, 10, 17, 30, 45)),
+            format_datetime(datetime(2026, 5, 10, 17, 30, 45)),  # noqa: DTZ001 — naive apposta: un istante senza fuso non si converte
             "10-05-2026 17:30",
         )
 
     def test_format_datetime_with_seconds(self) -> None:
         self.assertEqual(
-            format_datetime(datetime(2026, 5, 10, 17, 30, 45), with_seconds=True),
+            format_datetime(datetime(2026, 5, 10, 17, 30, 45), with_seconds=True),  # noqa: DTZ001 — naive apposta: un istante senza fuso non si converte
             "10-05-2026 17:30:45",
         )
 
-    @override_settings(TIME_ZONE="Europe/Rome")
+    @fuso_aziendale_forzato("Europe/Rome")
     def test_format_datetime_da_iso_con_tz(self) -> None:
         # ISO con offset esplicito: si scrive in ora LOCALE, senza TZ
         # visibile. A maggio Roma e' +02:00, quindi l'offset del valore e'
@@ -105,7 +109,6 @@ class FormatDatetimeTests(SimpleTestCase):
         )
 
 
-@override_settings(TIME_ZONE="Europe/Rome")
 class FusoLocaleTests(SimpleTestCase):
     """Il fuso e' parte del formato (decisione di Tid, 2026-09-14).
 
@@ -113,10 +116,17 @@ class FusoLocaleTests(SimpleTestCase):
     valore PORTAVA, e con `USE_TZ` la connessione consegna UTC: ogni export
     stampava ore UTC mentre le liste a video le mostravano giuste. Emerso sul
     digest dei presidi (testata locale, corse UTC).
+
+    Il fuso e' un'ipotesi del test, dichiarata col BB (dal 2026-10-09 non e'
+    piu' `TIME_ZONE`, che vale 'UTC' ed e' neutro).
     """
 
+    # Scopo: Fissa il fuso dell'azienda a Roma per ogni test della classe.
+    def setUp(self) -> None:
+        self.enterContext(fuso_aziendale_forzato("Europe/Rome"))
+
     # 24. Un istante aware — com'e' ogni timestamptz letto dal DB — si scrive
-    #     nell'ora di `TIME_ZONE`, non in quella che porta. A settembre Roma
+    #     nell'ora dell'azienda, non in quella che porta. A settembre Roma
     #     e' +02:00: le 09:47 UTC sono le 11:47.
     def test_un_istante_aware_si_scrive_in_ora_locale(self) -> None:
         istante = datetime(2026, 9, 14, 9, 47, 32, tzinfo=UTC)
@@ -134,7 +144,7 @@ class FusoLocaleTests(SimpleTestCase):
     # 25. Un naive non porta un fuso: non c'e' niente da convertire, e
     #     `localtime` su un naive solleverebbe. Resta com'e'.
     def test_un_istante_naive_non_si_tocca(self) -> None:
-        naive = datetime(2026, 9, 14, 9, 47, 32)
+        naive = datetime(2026, 9, 14, 9, 47, 32)  # noqa: DTZ001 — naive apposta: un istante senza fuso non si converte
         self.assertIs(in_ora_locale(naive), naive)
         self.assertEqual(format_datetime(naive), "14-09-2026 09:47")
         self.assertEqual(format_datetime("2026-09-14T09:47:32"), "14-09-2026 09:47")
@@ -159,6 +169,16 @@ class FusoLocaleTests(SimpleTestCase):
         )
         self.assertEqual(format_for_export(istante), "14-09-2026 11:47")
         self.assertNotIn("09:47", format_for_export(istante))
+
+    # 28. ⭐ Il fuso del PROCESSO non conta: con `TIME_ZONE` (e il fuso attivo)
+    #     a Tokyo l'ora resta quella dell'azienda. Fino al 2026-10-09 la
+    #     conversione seguiva `TIME_ZONE`, una seconda copia del parametro.
+    @override_settings(TIME_ZONE="Asia/Tokyo")
+    def test_il_fuso_del_processo_non_conta(self) -> None:
+        istante = datetime(2026, 9, 14, 9, 47, 32, tzinfo=UTC)
+        with timezone.override("Asia/Tokyo"):
+            self.assertEqual(format_datetime(istante), "14-09-2026 11:47")
+            self.assertEqual(format_date(datetime(2026, 9, 14, 23, 30, tzinfo=UTC)), "15-09-2026")
 
 
 class FormatBoolTests(SimpleTestCase):
@@ -228,7 +248,7 @@ class FormatForExportDispatcherTests(SimpleTestCase):
     def test_dispatcher_tipo_dato_datetime(self) -> None:
         self.assertEqual(
             format_for_export(
-                datetime(2026, 5, 10, 17, 30),
+                datetime(2026, 5, 10, 17, 30),  # noqa: DTZ001 — naive apposta: un istante senza fuso non si converte
                 tipo_dato="datetime",
             ),
             "10-05-2026 17:30",

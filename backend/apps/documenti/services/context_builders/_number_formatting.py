@@ -27,6 +27,14 @@
 #          quantita' di 1,234567 mc perderebbe la misura del contatore. Cosi'
 #          invece «5.000000» si legge «5,00» — che e' cio' che si voleva — e
 #          «0.153000» resta «0,153».
+#
+#        ⛔ UN NUMERO CHE NON E' UN NUMERO FERMA LA GENERAZIONE (decisione di
+#        Tid, 2026-10-09, opzione C di brief-db-valore-numerico-non-finito-nei-
+#        documenti): NaN e infiniti non si stampano come «NaN» e non si
+#        nascondono dietro un trattino. Il DB li rifiuta su ogni colonna
+#        `numeric` (CHECK `chk_*_finito`), ma non vede dentro il `context_json`
+#        congelato che la ristampa rilegge: questa e' la sola difesa su quel
+#        percorso. Per questo ogni formattatore riceve il nome del `campo`.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -34,10 +42,13 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
+from apps.core.services.error_manager import ErrorManager
 from apps.core.services.locale_formatters import (
     DECIMAL_SEPARATOR,
     THOUSANDS_SEPARATOR,
 )
+
+E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO = "E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO"
 
 # Decimali dei valori "di misura" (quantita', prezzi unitari, coefficienti):
 # padding fino al minimo, troncatura oltre il massimo.
@@ -65,6 +76,35 @@ def _to_decimal(value: Any) -> Decimal | None:
     return None
 
 
+# Scopo: converte come `_to_decimal` e in piu' pretende un numero FINITO.
+#        Invariante rotta (classe TECNICO): il campo e il valore vanno nel
+#        dettaglio e nel contesto, per chi diagnostica — la frase del catalogo
+#        e' senza segnaposto (§6.3 del brief).
+def _to_decimal_finito(value: Any, campo: str) -> Decimal | None:
+    d = _to_decimal(value)
+    if d is None or d.is_finite():
+        return d
+    ErrorManager.raise_error(
+        code=E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO,
+        message="Il documento non si può generare: un valore numerico non è un numero.",
+        detail=f"Il campo «{campo}» vale {value!r}: NaN e infiniti non si stampano.",
+        context={"field": campo, "valore": str(value)},
+        function_name="documenti.context_builders._to_decimal_finito",
+        log_to_db=True,
+    )
+
+
+# Scopo: l'esponente di un Decimal FINITO. Per NaN e infiniti `as_tuple()`
+#        rende una lettera ('n', 'N', 'F'), non un int: ci si arriva solo dopo
+#        `_to_decimal_finito`, e il controllo esplicito lo dice anche al type
+#        checker (prima il segno meno sulla lettera era un TypeError anonimo).
+def _esponente(d: Decimal) -> int:
+    exp = d.as_tuple().exponent
+    if isinstance(exp, str):
+        raise TypeError(f"Decimal non finito: {d!r}")
+    return exp
+
+
 # Scopo: rende un Decimal in stile italiano (virgola decimale, punto per le
 #        migliaia). Riusa i separatori di `locale_formatters`: il formato
 #        italiano si decide in un posto solo.
@@ -75,7 +115,7 @@ def _rendi(d: Decimal, *, thousands: bool) -> str:
         segno = ""
         if int_part.startswith("-"):
             segno, int_part = "-", int_part[1:]
-        gruppi = []
+        gruppi: list[str] = []
         while len(int_part) > 3:
             gruppi.insert(0, int_part[-3:])
             int_part = int_part[:-3]
@@ -86,19 +126,20 @@ def _rendi(d: Decimal, *, thousands: bool) -> str:
 
 # Scopo: formatta un valore di MISURA (quantita', prezzo unitario,
 #        coefficiente): minimo 2 decimali, massimo 6, zeri superflui tolti.
-#        None-preserving; valore non numerico restituito invariato.
-def format_misura(value: Any) -> Any:
-    d = _to_decimal(value)
+#        None-preserving; valore non numerico restituito invariato; valore
+#        non finito → E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO col `campo`.
+def format_misura(value: Any, *, campo: str) -> Any:
+    d = _to_decimal_finito(value, campo)
     if d is None:
         return value
     # Oltre il massimo si arrotonda (ROUND_HALF_UP come UI/Excel, mai
     # banker's rounding: su un documento la meta' deve salire).
-    if -d.as_tuple().exponent > _MAX_DECIMALI_MISURA:
+    if -_esponente(d) > _MAX_DECIMALI_MISURA:
         d = d.quantize(Decimal(10) ** -_MAX_DECIMALI_MISURA, rounding=ROUND_HALF_UP)
     # `normalize` toglie gli zeri finali ma su interi produce la notazione
     # esponenziale (5E+1): il quantize successivo la riporta a posizionale.
     d = d.normalize()
-    decimali_attuali = max(0, -d.as_tuple().exponent)
+    decimali_attuali = max(0, -_esponente(d))
     if decimali_attuali < _MIN_DECIMALI_MISURA:
         d = d.quantize(Decimal(10) ** -_MIN_DECIMALI_MISURA)
     return _rendi(d, thousands=True)
@@ -107,9 +148,10 @@ def format_misura(value: Any) -> Any:
 # Scopo: formatta un IMPORTO in denaro: sempre 2 decimali, con migliaia.
 #        Nessun simbolo di valuta — quello lo mette il template, che sa se
 #        la colonna ha gia' l'intestazione.
-#        None-preserving; valore non numerico restituito invariato.
-def format_importo(value: Any) -> Any:
-    d = _to_decimal(value)
+#        None-preserving; valore non numerico restituito invariato; valore
+#        non finito → E_DOCUMENTI_VALORE_NUMERICO_NON_FINITO col `campo`.
+def format_importo(value: Any, *, campo: str) -> Any:
+    d = _to_decimal_finito(value, campo)
     if d is None:
         return value
     d = d.quantize(Decimal(10) ** -_DECIMALI_IMPORTO, rounding=ROUND_HALF_UP)
@@ -128,8 +170,8 @@ def formatta_campi(
     out = dict(riga)
     for chiave in misure:
         if chiave in out:
-            out[chiave] = format_misura(out[chiave])
+            out[chiave] = format_misura(out[chiave], campo=chiave)
     for chiave in importi:
         if chiave in out:
-            out[chiave] = format_importo(out[chiave])
+            out[chiave] = format_importo(out[chiave], campo=chiave)
     return out

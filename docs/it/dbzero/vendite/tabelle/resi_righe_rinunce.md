@@ -11,18 +11,19 @@
 | id | bigint | NO |  |
 | resi_riga_id | bigint | NO |  |
 | qta | numeric | NO |  |
-| note | character varying | YES |  |
+| note | character varying(255) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_resi_righe_rinunce_qta_finito |  |
 | CHECK | k_resi_rinunce_qta_pos |  |
 | FOREIGN KEY | fk_resi_rinunce_resi_riga | resi_riga_id |
 | PRIMARY KEY | pk_resi_rinunce | id |

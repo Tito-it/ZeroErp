@@ -9,16 +9,16 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | YES |  |
+| codice | character varying(50) | NO |  |
+| descrizione | character varying(200) | YES |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
-| codice_interno | character varying | NO |  |
+| codice_interno | character varying(50) | NO |  |
 | chiude_commessa | boolean | NO | false |
 | emittibile | boolean | NO | false |
 | modificabile | boolean | NO | true |
-| fase | character varying | NO |  |
+| fase | character varying(20) | NO |  |
 | is_abortito | boolean | NO | false |
 
 ## 🔒 Vincoli

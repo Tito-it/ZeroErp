@@ -46,6 +46,11 @@ LANGUAGE plpgsql
 
 ### Comportamento (regole)
 
+* **No-op senza aggancio** (rev 2026-10-05): se il documento non è collegato a nessuna pratica
+  (nessuna riga visibile di `pratiche_sorgenti` su tipo e uid) → ritorna 0 **prima** di
+  leggerne lo stato. Il risultato sarebbe 0 comunque; il controllo viene prima perché leggere lo
+  stato di un documento costa molto più che cercarne gli agganci, e il trigger chiama questa
+  funzione a ogni cambio di stato, anche dei documenti che non stanno in nessuna pratica.
 * **No-op senza verdetto** (D): se `fn_stato_sorgente.esito IS NULL` (es. EMESSO) → ritorna 0.
 * **Due salti** (D-B2): la matrice transizioni **non** ammette `DA_ESEGUIRE→COMPLETATO` diretta;
   se il milestone è `DA_ESEGUIRE` passa da `IN_CORSO`, poi `COMPLETATO` (come il BE

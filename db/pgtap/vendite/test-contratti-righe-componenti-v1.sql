@@ -12,13 +12,13 @@
 --   5)  FK fk_contrighe_comp_articolo_componente esiste
 --   6)  FK fk_contrighe_comp_componente esiste
 --   7)  UNIQUE uq_contrighe_comp_riga_art_comp esiste
---   8)  CHECK chk_contrighe_comp_quantita_pos esiste
+--   8)  CHECK chk_contrighe_comp_quantita_nz: nome e definizione (quantita <> 0)
 --   9)  Trigger trgfn_componenti_check_prezzo_obbligatorio registrato
 --       (modello unificato: CHECK prezzo<>0 rimosso, sostituito da trigger condizionale)
 --   10) CHECK chk_contrighe_comp_origine esiste
 --   11) FK fk_contrighe_comp_riga coperta da un indice
 --   12) Colonna quantita presente su contratti_righe (rename da quantita_fissa)
---   13) Tutti i 13 trigger registrati sulla tabella
+--   13) Tutti i 14 trigger registrati sulla tabella
 --       (+2 da modello unificato: prezzo_obbligatorio + guard_obbligatorio)
 --   14) Trigger propaga_qta registrato su contratti_righe
 --   15) Trigger qta_from_operativa usa 'quantita' (non 'quantita_fissa')
@@ -122,9 +122,17 @@ SELECT has_unique(
 -- =========================================================
 -- 8) CHECK quantita <> 0
 -- =========================================================
-SELECT has_check(
-    'vendite', 'contratti_righe_componenti',
-    '8) CHECK chk_contrighe_comp_quantita_pos esiste'
+-- ⚠️ Rev. 2026-10-08 (20261008-30): il vincolo si chiama _nz, non _pos — vieta
+--    lo zero, non il negativo. Prima qui c'era has_check(schema, tabella,
+--    descrizione), che verifica che esista UN check qualunque: il nome stava
+--    solo nella descrizione. Ora si leggono nome e definizione dal catalogo.
+SELECT is(
+    (SELECT pg_get_constraintdef(c.oid)
+       FROM pg_constraint c
+      WHERE c.conrelid = 'vendite.contratti_righe_componenti'::regclass
+        AND c.conname  = 'chk_contrighe_comp_quantita_nz'),
+    'CHECK ((quantita <> (0)::numeric))',
+    '8) CHECK chk_contrighe_comp_quantita_nz: quantita <> 0'
 );
 
 -- =========================================================
@@ -172,16 +180,19 @@ SELECT has_column(
 );
 
 -- =========================================================
--- 13) Trigger registrati sulla tabella (13 attesi)
+-- 13) Trigger registrati sulla tabella (14 attesi)
 --     +2 da modello unificato 20260513: prezzo_obbligatorio, guard_obbligatorio
+--     +1 dal 2026-10-05 (20261005-17): il lock «solo in bozza» a livello RIGA,
+--        trg_contratti_righe_componenti_a05_doc_bozza_ins_upd_dlt
+--        (brief-db-righe-esclusione-solo-non-si-vende §8.2 B3)
 -- =========================================================
 SELECT is(
     (SELECT COUNT(DISTINCT trigger_name)::integer
        FROM information_schema.triggers
       WHERE event_object_schema = 'vendite'
         AND event_object_table  = 'contratti_righe_componenti'),
-    13,
-    '13) 13 trigger registrati su contratti_righe_componenti'
+    14,
+    '13) 14 trigger registrati su contratti_righe_componenti'
 );
 
 -- =========================================================
@@ -213,7 +224,7 @@ SELECT ok(
 -- 16) fn_contratto_riga_componenti_init: p_riga_id NULL -> raise
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_contratto_riga_componenti_init(NULL, 1, current_date) $$,
+    $$ SELECT vendite.fn_contratto_riga_componenti_init(NULL, 1, script.fn_data_operativa()) $$,
     '%Parametro non valido%',
     '16) fn_contratto_riga_componenti_init: p_riga_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -222,7 +233,7 @@ SELECT throws_like(
 -- 17) fn_contratto_riga_componenti_init: p_emittente_sr_id NULL -> raise
 -- =========================================================
 SELECT throws_like(
-    $$ SELECT vendite.fn_contratto_riga_componenti_init(1, NULL, current_date) $$,
+    $$ SELECT vendite.fn_contratto_riga_componenti_init(1, NULL, script.fn_data_operativa()) $$,
     '%Parametro non valido%',
     '17) fn_contratto_riga_componenti_init: p_emittente_sr_id NULL -> raise E_PARAMETRO_INVALIDO'
 );
@@ -236,7 +247,7 @@ SELECT throws_like(
 --    Il pattern SALTA l'id interpolato — il messaggio 897 e'
 --    `Riga contratto %s non trovata.` — altrimenti si rompe al primo id diverso.
 SELECT throws_like(
-    $$ SELECT vendite.fn_contratto_riga_componenti_init(2147483647, 1, current_date) $$,
+    $$ SELECT vendite.fn_contratto_riga_componenti_init(2147483647, 1, script.fn_data_operativa()) $$,
     '%Riga contratto %non trovata%',
     '18) fn_contratto_riga_componenti_init: riga inesistente -> raise E_CONTRATTO_RIGA_NON_TROVATA'
 );
@@ -259,7 +270,7 @@ SELECT CASE
               WHERE NOT COALESCE(a.is_composito, FALSE)
               LIMIT 1),
             1,
-            current_date
+            script.fn_data_operativa()
         )),
         0,
         '19) fn_contratto_riga_componenti_init: articolo non composito -> RETURN 0'
@@ -280,7 +291,7 @@ SELECT CASE
         (SELECT vendite.fn_contratto_riga_componenti_init(
             (SELECT id FROM vendite.contratti_righe WHERE quantita IS NULL LIMIT 1),
             1,
-            current_date
+            script.fn_data_operativa()
         )),
         0,
         '20) fn_contratto_riga_componenti_init: quantita NULL -> RETURN 0 (riga a consumo)'
@@ -299,7 +310,7 @@ SELECT CASE
         (SELECT vendite.fn_contratto_riga_componenti_init(
             (SELECT riga_contratto_id FROM vendite.contratti_righe_componenti LIMIT 1),
             1,
-            current_date
+            script.fn_data_operativa()
         )),
         0,
         '21) fn_contratto_riga_componenti_init: idempotenza -> 0 alla seconda chiamata'
@@ -322,12 +333,12 @@ SELECT CASE
     ELSE throws_like(
         $q$ INSERT INTO vendite.contratti_righe_componenti (
                 riga_contratto_id, articolo_componente_id, componente_id,
-                coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo
+                coeff_qta_snapshot, quantita, prezzo_unitario, origine_prezzo, uom_operativa_id
             ) VALUES (
                 (SELECT id FROM vendite.contratti_righe LIMIT 1),
                 (SELECT id FROM catalogo.articoli_componenti LIMIT 1),
                 (SELECT componente_id FROM catalogo.articoli_componenti LIMIT 1),
-                1, 1, 1, 'VALORE_NON_VALIDO'
+                1, 1, 1, 'VALORE_NON_VALIDO', (SELECT a.uom_id FROM catalogo.articoli a WHERE a.id = (SELECT componente_id FROM catalogo.articoli_componenti LIMIT 1))
             ) $q$,
         '%',
         '23) INSERT con origine_prezzo non valido bloccato (CHECK o guard BoM)'
@@ -411,51 +422,14 @@ SELECT ok(
 --     (SUM figli) farebbe scattare il CHECK -> errore.
 --     Data-dependent: skip se nessuna riga composito+ESCLUSIONE valida.
 -- =========================================================
-SELECT CASE
-    WHEN NOT EXISTS (
-        SELECT 1 FROM vendite.contratti_righe cr
-          JOIN catalogo.articoli a ON a.id = cr.articolo_id
-         WHERE COALESCE(a.is_composito, FALSE)
-           AND cr.tipo_eccezione = 'ESCLUSIONE'
-           AND cr.quantita IS NOT NULL
-         LIMIT 1
-    )
-    THEN skip('28) nessuna riga composito+ESCLUSIONE con quantita NOT NULL disponibile')
-    ELSE is(
-        (
-            -- RETURN 0 senza sollevare il CHECK
-            SELECT vendite.fn_contratto_riga_componenti_init(
-                (SELECT cr.id FROM vendite.contratti_righe cr
-                   JOIN catalogo.articoli a ON a.id = cr.articolo_id
-                  WHERE COALESCE(a.is_composito, FALSE)
-                    AND cr.tipo_eccezione = 'ESCLUSIONE'
-                    AND cr.quantita IS NOT NULL
-                  LIMIT 1),
-                1,
-                current_date
-            )
-        )
-        -- nessun componente inserito per quella riga
-        + (SELECT COUNT(*)::integer FROM vendite.contratti_righe_componenti crc
-            WHERE crc.riga_contratto_id = (
-                SELECT cr.id FROM vendite.contratti_righe cr
-                  JOIN catalogo.articoli a ON a.id = cr.articolo_id
-                 WHERE COALESCE(a.is_composito, FALSE)
-                   AND cr.tipo_eccezione = 'ESCLUSIONE'
-                   AND cr.quantita IS NOT NULL
-                 LIMIT 1))
-        -- prezzo padre ancora NULL -> +0; altrimenti +1000 (fa fallire il test)
-        + (SELECT CASE WHEN cr.prezzo_unitario IS NULL THEN 0 ELSE 1000 END
-             FROM vendite.contratti_righe cr
-             JOIN catalogo.articoli a ON a.id = cr.articolo_id
-            WHERE COALESCE(a.is_composito, FALSE)
-              AND cr.tipo_eccezione = 'ESCLUSIONE'
-              AND cr.quantita IS NOT NULL
-            LIMIT 1),
-        0,
-        '28) fn_contratto_riga_componenti_init: ESCLUSIONE composito -> 0, nessun componente, prezzo padre NULL'
-    )
-END;
+-- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): il caso non
+--   esiste piu' per costruzione. Un'esclusione non porta quantita'
+--   (chk_contrighe_esclusione_senza_dati, guard E_RIGA_ESCLUSIONE_CON_DATI), quindi
+--   una riga composito+ESCLUSIONE con quantita' NOT NULL non si puo' scrivere, e
+--   l'init su un'esclusione e' no-op gia' per la quantita' assente. Il test cercava
+--   quella riga nei dati: oggi passerebbe solo per coincidenza. Si dichiara, non si
+--   lascia verde a vuoto.
+SELECT skip('28) composito+ESCLUSIONE con quantita'' NOT NULL: impossibile per costruzione dal 2026-10-04 (un''esclusione non porta quantita'')', 1);
 
 SELECT * FROM finish();
 ROLLBACK;

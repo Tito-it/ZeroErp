@@ -59,7 +59,7 @@ BEGIN
     --   controlla in qualunque stato: fn_accoda_lavoro dedupe
     --   solo fra PENDING/IN_CORSO, e un lavoro gia' FATTO non
     --   deve far partire il successivo un'ora dopo.
-    v_key := 'guardiano_digest:' || CURRENT_DATE::text;
+    v_key := 'guardiano_digest:' || script.fn_data_operativa()::text;
     IF EXISTS (SELECT 1
                  FROM dbops.coda_lavori c
                 WHERE c.job_type = v_job_type

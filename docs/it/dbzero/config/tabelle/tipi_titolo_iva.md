@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice_interno | character varying(64) | NO |  |
+| codice | character varying(64) | NO |  |
+| descrizione | character varying(160) | NO |  |
 | ha_plafond | boolean | NO |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | NO | 0 |
@@ -42,6 +42,7 @@
 |------|--------|--------|--------|
 | trg_tipi_titolo_iva_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
 | trg_tipi_titolo_iva_a10_soggetti_titoli_iva_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('anagrafiche', 'soggetti_titoli_iva', 'tipo_titolo_iva_id', 'id', 'attivo')` |
+| trg_tipi_titolo_iva_a10_tipi_titolo_iva_tipi_soggetto_de_8953f3 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'tipi_titolo_iva_tipi_soggetto_dettaglio', 'tipo_titolo_iva_id', 'id', 'attivo')` |
 | trg_tipi_titolo_iva_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_tipi_titolo_iva_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 

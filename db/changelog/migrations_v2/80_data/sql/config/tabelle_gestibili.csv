@@ -87,3 +87,7 @@ id,codice_interno,schema_tabella,nome_tabella,app_label,model_name,lookup,pannel
 86,vendite.stati_commessa,vendite,stati_commessa,vendite,stati_commessa,true,true
 87,vendite.tipi_fondi_fattura,vendite,tipi_fondi_fattura,vendite,tipi_fondi_fattura,true,true
 88,config.regimi_fiscali,config,regimi_fiscali,config,regimi_fiscali,true,false
+89,config.esposizioni_componente,config,esposizioni_componente,config,esposizioni_componente,true,false
+90,documenti.formati_template,documenti,formati_template,documenti,formati_template,true,false
+91,documenti.formati_pagina,documenti,formati_pagina,documenti,formati_pagina,true,false
+92,documenti.orientamenti_pagina,documenti,orientamenti_pagina,documenti,orientamenti_pagina,true,false

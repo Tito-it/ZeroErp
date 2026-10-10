@@ -40,9 +40,14 @@ def get_idempotency_key() -> str | None:
 # --------------- HTTP request helpers ---------------
 
 import ipaddress
+import logging
+from typing import Any
 
 from django.conf import settings
 from django.http import HttpRequest
+
+from apps.core.services.auth_constants import JWT_CLAIM_SID
+from apps.core.services.service_errors import ServiceError
 
 
 # Scopo: Estrae l'IP del client dalla request, fidandosi solo dei proxy dichiarati.
@@ -68,6 +73,56 @@ def get_client_ip(request: HttpRequest) -> str | None:
     if len(valori) < proxy_fidati:
         return None
     return _normalizza_ip(valori[-proxy_fidati])
+
+
+# Scopo: La `HttpRequest` di Django sotto la `Request` di DRF (o la richiesta
+#        stessa, se e' gia' di Django): per i BB che leggono `META` e `path`
+#        e per chi li chiama. ⭐ Regola del 2 (2026-10-02): era scritto a mano
+#        in dieci view.
+def richiesta_django(request: Any) -> HttpRequest:
+    return getattr(request, "_request", request)
+
+
+# Scopo: Il `sid` (la sessione) del JWT della richiesta corrente; None se la
+#        richiesta non porta un token (una `HttpRequest` di Django, un test).
+#        ⭐ Regola del 2 (2026-10-03): era `_get_current_sid` di
+#        `sessioni_view`; il secondo consumatore e' il freno della password
+#        dentro una sessione, che chiude QUELLA sessione.
+def sid_corrente(request: Any) -> str | None:
+    auth = getattr(request, "auth", None)
+    return str(auth.get(JWT_CLAIM_SID, "")) if auth else None
+
+
+# Scopo: La provenienza di una richiesta di autenticazione, o il rifiuto:
+#        la provenienza e' la chiave del freno sulla credenziale, e senza il
+#        freno non si applica (fail-closed). Causa tipica del rifiuto: la
+#        richiesta non e' passata dalla catena di proxy dichiarata
+#        (DJANGO_TRUSTED_PROXY_COUNT). Accetta la `Request` di DRF o la
+#        `HttpRequest` di Django.
+#        ⭐ Regola del 2: login, secondo passo e self-service del secondo
+#        fattore. Fino al 2026-10-02 il BB dava il solo errore e la lettura
+#        era copiata nei tre chiamanti: ora e' una.
+def provenienza_obbligatoria(request: Any) -> str:
+    django_request = richiesta_django(request)
+    provenienza = get_client_ip(django_request)
+    if provenienza is None:
+        raise _errore_provenienza_assente(django_request)
+    return provenienza
+
+
+# Scopo: Il rifiuto senza provenienza; il log di sicurezza lo scrive qui.
+def _errore_provenienza_assente(request: HttpRequest) -> ServiceError:
+    logging.getLogger("security").error(
+        "security.provenienza_assente path=%s remote_addr=%s xff=%s",
+        request.path,
+        request.META.get("REMOTE_ADDR"),
+        request.META.get("HTTP_X_FORWARDED_FOR"),
+    )
+    return ServiceError(
+        code="E_AUTH_CHIAMATA_NON_VALIDA",
+        message="Chiamata non valida: provenienza assente.",
+        detail="IP del chiamante non ricavabile dalla catena di proxy dichiarata.",
+    )
 
 
 # Scopo: Valida un indirizzo IP (v4/v6) e lo riporta in forma canonica; None se non lo e'.

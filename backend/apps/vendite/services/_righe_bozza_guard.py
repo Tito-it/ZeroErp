@@ -10,7 +10,7 @@
 # PERCHE' ESISTE (decisione B di Tid, 2026-09-22, brief-db-partita-merce-per-
 # documento §12.4). Dal 22-09 il database rifiuta INSERT/UPDATE/DELETE sulle
 # righe di un documento fuori bozza con un building block solo
-# (`vendite.trgfn_doc_righe_lock_fuori_bozza`, montato su `ddt_righe`,
+# (`vendite.trgfn_doc_righe_lock_fuori_bozza`, allora montato su `ddt_righe`,
 # `contratti_righe` e — per il solo DELETE — `ordini_righe`) e un codice solo.
 # I pre-check Python della stessa regola erano QUATTORDICI siti in tre service
 # e rispondevano con TRE codici diversi (`E_DDT_STATO_TRANSIZIONE`,
@@ -19,12 +19,16 @@
 #
 # ⭐ La regola e' UNA e ha un nome a catalogo: chiunque la sollevi la chiama
 # cosi'. Il pre-check resta — e' un 409 «prima di scrivere», defense-in-depth
-# come il filtro di scope — ed e' l'UNICO cancello dove il DB non arriva
-# ancora, per decisione: gli ordini in INSERT/UPDATE (la promessa di consegna
-# dopo la conferma, PROJECT_CONTEXT), i preventivi (quarto adottante
-# candidato) e i componenti di riga. Quando il DB coprira' anche quelli, il
-# pre-check sara' un doppione CON LO STESSO CODICE, e toglierlo sara' neutro
-# per l'API.
+# come il filtro di scope. Dal 2026-10-08 il DB copre TUTTI i documenti che
+# lo chiamano (brief-db-righe-e-componenti-debiti-residui, D-1): componenti
+# delle tre famiglie (`20261008-34`), righe d'ordine e di preventivo sulle tre
+# porte (`20261008-90`/`-91`). Il pre-check e' quindi un doppione CON LO STESSO
+# CODICE, e toglierlo sarebbe neutro per l'API.
+# ⚠️ Sulle righe d'ordine il DB ha UN'eccezione che questo BB non ha:
+# `data_consegna_confermata` resta scrivibile in CONFERMATO/PARZIALMENTE_EVASO.
+# Qui non si ricopia: la portera' il verbo dedicato, che legge la capability
+# dal DB (brief-db-ordine-data-consegna-confermata-capability) e non passa da
+# questo guard. `aggiorna_riga` resta «solo in bozza» per tutte le colonne.
 #
 # ⚠️ La frase e' composta qui con i tre valori del catalogo (etichetta del
 # documento, stato, verbo) — e' il caso in cui il chiamante i valori li ha, e

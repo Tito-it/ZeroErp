@@ -45,6 +45,7 @@
 |------|--------|--------|--------|
 | trg_listini_tipologie_a10_articoli_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'articoli', 'listino_tipologia_id', 'id', 'attivo')` |
 | trg_listini_tipologie_a10_listini_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'listini', 'tipologia_id', 'id', 'attivo')` |
+| trg_listini_tipologie_a10_listini_tipologie_erogazioni_b_8a5a43 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'listini_tipologie_erogazioni', 'tipologia_id', 'id', 'attivo')` |
 | trg_listini_tipologie_a10_listini_tipologie_utilities_bl_13ca28 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'listini_tipologie_utilities', 'tipologia_id', 'id', 'attivo')` |
 | trg_listini_tipologie_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_listini_tipologie_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

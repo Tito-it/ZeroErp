@@ -98,13 +98,22 @@ SELECT is(
 -- ⭐ FINESTRA DIFFERITA. Un'istanza utility non e' un INSERT, e' una SAGA:
 --   `trg_istanze_utilities_z90_require_utility_dichiarata_ins` e' un
 --   CONSTRAINT TRIGGER DEFERRABLE INITIALLY DEFERRED che al COMMIT pretende
---   almeno un satellite (billing_account, istanze_dati_precontrattuali o
---   cliente) — un'istanza senza satellite non e' uno stato legale del modello.
+--   il billing account (dal 2026-10-08, brief-db-istanza-nasce-col-ba R-1:
+--   prima bastava un satellite qualunque) — un'istanza senza BA non e' uno
+--   stato legale del modello.
 --   Il preambolo obbligatorio (SET CONSTRAINTS ALL IMMEDIATE) lo fa scattare sul
 --   PRIMO insert, cioe' prima che il satellite possa esistere: e' li' che questo
 --   file moriva, con ZERO asserzioni eseguite.
 --   Si apre la finestra, si costruisce l'istanza CON il suo satellite, e si
 --   RICHIUDE: la verifica non si perde, si sposta dove il modello la vuole.
+-- Il ruolo CLIENTE del soggetto, che il BA pretende: si crea PRIMA di aprire
+-- la finestra, perche' gli helper dbops.fn_pgtap_* escono con i vincoli
+-- IMMEDIATE e dentro la finestra farebbero scattare il controllo
+-- dell'istanza prima che il BA esista. ⛔ Si legge in un'istruzione separata.
+CREATE TEMP TABLE tmp_sr_test AS
+SELECT dbops.fn_pgtap_crea_soggetto_ruolo(s.id, 'CL'::character varying) AS soggetto_ruolo_id
+  FROM tmp_soggetto_test s;
+
 SET CONSTRAINTS ALL DEFERRED;
 
 WITH ins AS (
@@ -134,11 +143,18 @@ SELECT *
 INTO TEMP TABLE tmp_istanza_test
 FROM ins;
 
--- Il satellite. Fra i tre ammessi si sceglie `istanze_dati_precontrattuali`
--- perche' e' il piu' leggero (due sole colonne obbligatorie): qui serve a
--- rendere l'istanza uno stato legale, non e' il soggetto del test.
-INSERT INTO anagrafiche.istanze_dati_precontrattuali (istanza_utility_id, utility_id)
-SELECT i.id, u.id
+-- Il billing account GAS: qui serve a rendere l'istanza uno stato legale,
+-- non e' il soggetto del test. ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba,
+-- R-1): fino a quel giorno il satellite era la riga precontrattuale, «la piu'
+-- leggera»; ora quella riga pretende il BA della sua coppia, e il BA a sua
+-- volta il ruolo CLIENTE del soggetto (D-3: il ruolo nasce con l'istanza).
+INSERT INTO anagrafiche.billing_account
+    (istanza_utility_id, soggetto_ruolo_id, utility_id, categoria_cliente_id)
+SELECT i.id,
+       (SELECT soggetto_ruolo_id FROM tmp_sr_test),
+       u.id,
+       (SELECT cc.id FROM anagrafiche.categorie_clienti cc
+         WHERE cc.codice_interno = 'STANDARD')
   FROM tmp_istanza_test i, tmp_utility_gas u;
 
 -- Saga completa: il guard differito scatta QUI, su un'istanza finita.

@@ -54,13 +54,15 @@ class CreaRichiestaApprovazioneTests(TestCase):
 
         repo = MagicMock()
         repo.get_preventivo.return_value = {
-            "id": 1, "uid": "X-001", "numero_documento": "P-001",
+            # La forma VERA di `get_preventivo` (`PreventivoDetailRow`): `numero`.
+            "id": 1, "uid": "X-001", "numero": "P-001",
             "istanza_utility_id": 99,
         }
         repo.resolve_contesto_pratica.return_value = {
             "emittente_fiscale_id": 11,
             "soggetto_id": "soggetto-uuid",
             "soggetto_ruolo_id": 22,
+            "billing_account_id": 33,
         }
         mock_repo_cls.return_value = repo
         mock_crea_pratica.return_value = 12345
@@ -87,6 +89,10 @@ class CreaRichiestaApprovazioneTests(TestCase):
         self.assertEqual(crea_kwargs["priorita_id"], 2)
         self.assertEqual(crea_kwargs["soggetto_id"], "soggetto-uuid")
         self.assertEqual(crea_kwargs["istanza_utility_id"], 99)
+        # Il cliente a grana fine della pratica e' il BA del documento (D-9).
+        self.assertEqual(crea_kwargs["billing_account_id"], 33)
+        # La pratica si descrive col NUMERO del preventivo, non con l'id.
+        self.assertIn("preventivo P-001", crea_kwargs["descrizione"])
         # La pratica nasce gia' APERTA da crea_pratica: nessun transito esplicito.
         mock_cambia_stato.assert_not_called()
         # Email best-effort invocata (non solleva nemmeno se fallisce).

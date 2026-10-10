@@ -68,7 +68,7 @@ WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
     (codice, centro_riscossione_id, data_contabile, data_registrazione, meta)
   SELECT 'RCGD_A_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         r.centro_id, current_date, current_date,
+         r.centro_id, script.fn_data_operativa(), script.fn_data_operativa(),
          '{"test_scope":"pgtap_righe_contabili_guard_dati"}'::jsonb
     FROM tmp_rcgd r
   RETURNING id
@@ -201,7 +201,7 @@ WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
     (codice, centro_riscossione_id, data_contabile, data_registrazione, meta)
   SELECT 'RCGD_B_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         r.centro_id, current_date + 1, current_date,
+         r.centro_id, script.fn_data_operativa() + 1, script.fn_data_operativa(),
          '{"test_scope":"pgtap_righe_contabili_guard_dati"}'::jsonb
     FROM tmp_rcgd r
   RETURNING id

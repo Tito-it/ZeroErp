@@ -86,6 +86,7 @@ ZeroErp/db/changelog/
 │  │  ├─ vendite/
 │  │  └─ …
 │  │
+│  ├─ 70_dati_sistema/             # Dati di SISTEMA che il codice legge (prima di ogni seed)
 │  ├─ 80_data/                     # Dati / configurazioni (loadUpdateData)
 │  ├─ 85_pgagent/                  # Job di scheduling (pgAgent)
 │  └─ 90_end/                      # Step finali (runAlways / apply policy)
@@ -111,7 +112,19 @@ ZeroErp/db/changelog/
 
   che viene **generato automaticamente** in base al timestamp nel nome file (`YYYYMMDD-NN`).
 
-* Le cartelle `80_data`, `85_pgagent`, `90_end` sono **escluse dall’autogen** e vengono incluse **a blocchi** nel master v2.
+* Le cartelle `70_dati_sistema`, `80_data`, `85_pgagent`, `90_end` sono **escluse dall’autogen** e vengono incluse **a blocchi** nel master v2.
+
+* ⭐ **`70_dati_sistema`: i dati senza cui il codice non gira.** Un dato che una funzione, un
+  trigger o un `DEFAULT` legge (oggi: il fuso dell'azienda `SYSTEM_FUSO_ORARIO`, letto da
+  `script.fn_fuso_operativo`) non può nascere in `80_data`: su un database ricostruito da zero
+  tutto `00_schema`/`20_code` gira prima di tutto `80_data`, e il primo seed che passa da quel
+  codice prima del dato si ferma. Questa fase gira subito dopo il codice e prima di ogni seed.
+  ⚠️ Una cartella dentro `00_schema` non servirebbe: l'autogen ordina per `YYYYMMDD-NN`, non per
+  cartella. Ci vanno **pochi** changeSet, uno per dato, e le stesse regole di `80_data`
+  (`runOnChange` lecito, niente `dbms:` in un `runOnChange`, niente preCondition sul contenuto
+  di `80_data`): li presidiano `guardrail_run_on_change.py` e `guardrail_precondition_seed.py`.
+  Il valore resta nel CSV di `80_data/sql/`, sede unica. Nata con il cantiere del fuso
+  (`brief-be-db-fe-un-solo-fuso-aziendale`, T-8, 2026-10-09).
 
 ---
 
@@ -129,7 +142,10 @@ databaseChangeLog:
       file: migrations_v2/changelog-autogen.yaml
       relativeToChangelogFile: true
 
-  # 3) Dati, job e step finali (gestiti a blocchi)
+  # 3) Dati di sistema che il codice legge, poi dati, job e step finali (a blocchi)
+  - includeAll:
+      path: migrations_v2/70_dati_sistema
+      relativeToChangelogFile: true
   - includeAll:
       path: migrations_v2/80_data
       relativeToChangelogFile: true
@@ -145,9 +161,10 @@ databaseChangeLog:
 
 1. Storia legacy v1
 2. **DDL + CODE v2** (ordine temporale globale)
-3. Import dati / configurazioni
-4. Job pgAgent
-5. Step finali
+3. Dati di sistema che il codice legge (`70_dati_sistema`)
+4. Import dati / configurazioni
+5. Job pgAgent
+6. Step finali
 
 ---
 

@@ -187,7 +187,7 @@ WITH tutti AS (
         (soggetto_ruolo_id, istanza_utility_id, stato_cliente_id,
          billing_account_id, data_attivazione)
     SELECT t.soggetto_ruolo_id, t.istanza_utility_id, c.stato_cliente_id,
-           t.billing_account_id, CURRENT_DATE
+           t.billing_account_id, script.fn_data_operativa()
       FROM tutti t CROSS JOIN _catalogo c
     RETURNING id, billing_account_id
 )
@@ -196,14 +196,25 @@ SELECT t.lato, t.canale, t.billing_account_id, t.soggetto_ruolo_id,
   FROM tutti t JOIN ins i ON i.billing_account_id = t.billing_account_id;
 
 -- L'identita' di shop: stessa persona giuridica del cliente A, veste SHOP.
+-- ⛔ Con un ACCESSO SUO, non quello dell'operatore di A: l'operatore di
+--   fn_pgtap_crea_emittente_operatore e' un utente TECNICO (un processo), e
+--   dall'area Accessi il guard trg_identita_digitali_a10_guard_natura_credenziale
+--   rifiuta una veste di persona sulla credenziale di un processo. Il test non
+--   ha mai avuto bisogno che fossero la stessa credenziale: il contesto shop si
+--   da' con app.current_identita_id e app.current_user_id vuoto (test 8-11).
 CREATE TEMP TABLE _shop AS
-WITH i AS (
+WITH u AS (
+    INSERT INTO django.auth_user (username, password, is_active, is_staff, is_superuser,
+                                  first_name, last_name, email, date_joined)
+    VALUES ('_pgtap_rlscli_shop_' || substring(md5(clock_timestamp()::text) FROM 1 FOR 8),
+            '!', true, false, false, '', '', '', now())
+    RETURNING id
+), i AS (
     INSERT INTO anagrafiche.identita_digitali
         (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT b.soggetto_ruolo_id, m.auth_user_id,
+    SELECT b.soggetto_ruolo_id, u.id,
            'SHOP_CUSTOMER'::config.ruolo_applicativo, true
-      FROM _ba_shop b CROSS JOIN _mondi m
-     WHERE m.lato = 'A'
+      FROM _ba_shop b CROSS JOIN u
     RETURNING id
 )
 SELECT id AS identita_id FROM i;
@@ -309,7 +320,7 @@ BEGIN
              billing_account_id, data_attivazione)
         VALUES (v_b.soggetto_ruolo_id, v_b.istanza_utility_id,
                 (SELECT stato_cliente_id FROM _catalogo),
-                v_b.billing_account_id, CURRENT_DATE);
+                v_b.billing_account_id, script.fn_data_operativa());
         PERFORM set_config('pgtap.op_scrittura', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation OR raise_exception THEN
         PERFORM set_config('pgtap.op_scrittura', 'RIFIUTATA', true);

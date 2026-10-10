@@ -96,7 +96,7 @@ class TestAuthRepository(TestCase):
         from apps.core.db.auth_repository import AuthRepository
 
         repo = AuthRepository()
-        result = repo.find_identita_attiva_for_ruoli(auth_user_id=1, ruoli_applicativi=[])
+        result = repo.find_veste_utilizzabile_per_ruoli(auth_user_id=1, ruoli_applicativi=[])
 
         self.assertIsNone(result)
         mock_conn.cursor.assert_not_called()
@@ -120,14 +120,16 @@ class TestAuthRepository(TestCase):
         from apps.core.db.auth_repository import AuthRepository
 
         repo = AuthRepository()
-        result = repo.find_identita_attiva_for_ruoli(
+        result = repo.find_veste_utilizzabile_per_ruoli(
             auth_user_id=42, ruoli_applicativi=("OPERATORE", "CLIENTE_PORTALE")
         )
 
         self.assertEqual(result, {"id": 99, "soggetto_ruolo_id": 7, "ruolo_applicativo": "OPERATORE"})
         sql, params = mock_cursor.execute.call_args[0]
         self.assertIn("anagrafiche.identita_digitali", sql)
-        self.assertIn("attivo = true", sql)
+        # La regola «utilizzabile» la decide il DB: il Python non la riscrive.
+        self.assertIn("script.fn_veste_utilizzabile(id)", sql)
+        self.assertNotIn("attivo = true", sql)
         self.assertIn("ruolo_applicativo::text = ANY", sql)
         self.assertEqual(params[0], 42)
         self.assertEqual(params[1], ["OPERATORE", "CLIENTE_PORTALE"])
@@ -143,7 +145,7 @@ class TestAuthRepository(TestCase):
         from apps.core.db.auth_repository import AuthRepository
 
         repo = AuthRepository()
-        result = repo.find_identita_attiva_for_ruoli(
+        result = repo.find_veste_utilizzabile_per_ruoli(
             auth_user_id=42, ruoli_applicativi=("OPERATORE",)
         )
 

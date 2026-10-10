@@ -25,23 +25,23 @@ from uuid import UUID
 
 from django.db import DatabaseError, transaction
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import validate_order_params
 from apps.core.services.payload_helpers import (
-    MISSING as _MISSING,
+    MissingType as _MissingType,
     PayloadValidator,
     translate_db_errors,
 )
 from apps.anagrafiche.services.anagrafiche_service import AnagraficheService
+from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.vendite.db.commesse_repository import (
     ATTIVITA_SORT_COLUMNS,
     TIPO_MOVIMENTO_RETTIFICA,
     TIPO_MOVIMENTO_VALUES,
     CommesseRepository,
 )
-from apps.vendite.db.listini_repository import ListiniRepository
 from apps.vendite.services.commesse_push_orchestrator import (
     CommessaPushOrchestrator,
     PushReport,
@@ -54,6 +54,12 @@ from apps.vendite.services.commesse_source_handlers import (
     HandlerOrdini,
     HandlerPreventivi,
 )
+from apps.vendite.services.prezzo_riga_commessa import (
+    argomenti_resolver,
+    provenienza_da_resolver,
+    provenienza_manuale,
+)
+from apps.vendite.services.pricing_service import PricingService
 
 # Registry: codice config.sorgenti → handler class.
 # Permette costruzione dinamica basata sulle sorgenti attive in DB.
@@ -534,7 +540,7 @@ def aggiorna_commessa_testata(commessa_id: int, payload: dict[str, Any]) -> dict
     descrizione = _V_TESTATA.extract_optional_string(
         payload, "descrizione", nullable=True, function_name=function_name,
     )
-    if descrizione is not _MISSING:
+    if not isinstance(descrizione, _MissingType):
         ErrorManager.require(
             descrizione is None or len(descrizione) <= _DESCRIZIONE_MAX,
             code="E_COMMESSA_VALIDATION",
@@ -905,53 +911,37 @@ def aggiungi_onere_commessa(
         )
     assert stato is not None
 
-    # Istanza utility: il modello e' 1:1 — «una istanza referenzia un solo
-    # billing account e un billing account ha una sola istanza» (guida
-    # gestione-delle-istanze-utility) — quindi la derivazione dal BA della
+    # Istanza utility: un billing account ha UNA sola istanza (FK NOT NULL,
+    # immutabile: E_BA_ISTANZA_IMMUTABILE) — un'istanza invece ne ha uno per
+    # utility (brief-db-istanza-nasce-col-ba; fino al 2026-10-09 qui si diceva
+    # «modello 1:1») — quindi la derivazione dal BA della
     # commessa e' ESATTA e l'istanza esplicita del chiamante DEVE coincidere
     # con quella derivata: senza il confronto si potrebbe agganciare l'onere
     # all'istanza di un ALTRO cliente (la FK verifica solo l'esistenza —
-    # review 2026-07-23, ok Tid). La FK sul BA e' nullable (ON DELETE SET
-    # NULL): il caso None e' intercettato dal require piu' sotto.
-    from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
-
-    istanza_derivata = BillingAccountRepository().get_istanza_utility_id(
-        stato["billing_account_id"]
-    )
-    if istanza_utility_id is None:
-        istanza_utility_id = istanza_derivata
-    else:
-        ErrorManager.require(
-            istanza_derivata is not None
-            and int(istanza_utility_id) == int(istanza_derivata),
-            code="E_COMMESSA_VALIDATION",
-            message="Istanza utility non coerente con la commessa.",
-            detail=(
-                f"istanza_utility_id={istanza_utility_id} non e' l'istanza del "
-                f"billing account {stato["billing_account_id"]} della commessa "
-                f"(attesa: {istanza_derivata})."
-            ),
-            context={
-                "commessa_id": commessa_id,
-                "billing_account_id": stato["billing_account_id"],
-                "istanza_utility_id": istanza_utility_id,
-            },
-            function_name=_fn,
-            log_to_db=True,
-        )
+    # review 2026-07-23, ok Tid). La regola e' il BB
+    # `istanza_del_billing_account` (lo stesso di pratica e preventivo); qui
+    # l'errore cade sull'ISTANZA, perche' il BA e' della commessa e l'operatore
+    # non lo sceglie.
+    # La FK sul BA della commessa e' nullable (ON DELETE SET NULL): senza BA
+    # l'onere non ha un'istanza a cui agganciarsi, ne' derivata ne' verificabile.
+    billing_account_id = stato["billing_account_id"]
     ErrorManager.require(
-        bool(istanza_utility_id and istanza_utility_id > 0),
+        billing_account_id is not None,
         code="E_COMMESSA_VALIDATION",
-        message="Istanza utility non risolvibile.",
-        detail=(
-            "istanza_utility_id non passata e non derivabile dal billing account "
-            f"{stato["billing_account_id"]} della commessa."
-        ),
-        context={"commessa_id": commessa_id, "billing_account_id": stato["billing_account_id"]},
+        message="Istanza utility non risolvibile: la commessa non ha un billing account.",
+        detail=f"commessa_id={commessa_id} senza billing_account_id.",
+        context={"field": "istanza_utility_id", "commessa_id": commessa_id},
         function_name=_fn,
         log_to_db=True,
     )
-    assert istanza_utility_id is not None
+    assert billing_account_id is not None
+    istanza_utility_id = istanza_del_billing_account(
+        billing_account_id,
+        istanza_utility_id,
+        code="E_COMMESSA_VALIDATION",
+        function_name=_fn,
+        campo="istanza_utility_id",
+    )
 
     try:
         attivita_id = repo.aggiungi_onere(
@@ -989,7 +979,7 @@ def fn_list_commessa_attivita(
     stato_emissione: str | None = None,
     stato_approvazione: str | None = None,
     competenza_mese: str | None = None,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,
@@ -1225,6 +1215,47 @@ def _parse_motivo(
     return motivo
 
 
+# Scopo: Helper — il prezzo di una riga dal listino, OGGI: `prezzo_finale` del
+#        resolver e la provenienza da scrivere accanto (building block
+#        `prezzo_riga_commessa`, lo stesso del push). Lo usano riallinea e
+#        sblocca.
+#        ⛔ Passa dal `PricingService` (`resolve_prezzo`, quello che SOLLEVA):
+#        qui un prezzo che il listino non sa dare e' un errore da mostrare,
+#        non un'assenza da salvare. Fino al 2026-10-08 i due percorsi
+#        chiamavano `ListiniRepository.test_resolver`, tolto il 2026-04-15:
+#        un 500 su entrambi, che il test mockato fabbricava da se'.
+def _prezzo_dal_listino(
+    att: dict[str, Any],
+    *,
+    function_name: str,
+) -> tuple[str, dict[str, Any]]:
+    argomenti = argomenti_resolver(
+        articolo_id=att.get("articolo_id"),
+        uom_id=att.get("uom_id"),
+        data_attivita=att.get("data_attivita"),
+        competenza_mese=att.get("competenza_mese"),
+        billing_account_id=att.get("billing_account_id"),
+        utility_id=att.get("utility_id"),
+        emittente_soggetto_ruolo_id=att.get("emittente_soggetto_ruolo_id"),
+        meta=_V.optional_meta(att, "meta", function_name=function_name),
+    )
+    ErrorManager.require(
+        argomenti is not None,
+        code="E_COMMESSA_VALIDATION",
+        message="Prezzo non ricalcolabile dal listino per questa riga.",
+        detail=(
+            "Alla riga o alla sua commessa manca un dato che il listino chiede "
+            "(articolo, unita' di misura, data, cliente, utility o emittente)."
+        ),
+        context={"attivita_id": att.get("id")},
+        function_name=function_name,
+        log_to_db=True,
+    )
+    assert argomenti is not None
+    risultato = PricingService().resolve_prezzo(**argomenti)
+    return str(risultato["prezzo_finale"]), provenienza_da_resolver(risultato)
+
+
 # --- N5: Riallineamento prezzo ---
 
 # Scopo: Ricalcola il prezzo da listino per un'attivita` non ancora fatturata
@@ -1234,7 +1265,7 @@ def fn_riallinea_prezzo(
     commessa_id: int,
     attivita_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.commesse_service.fn_riallinea_prezzo"
 
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
@@ -1253,19 +1284,13 @@ def fn_riallinea_prezzo(
     )
 
     # Risolve il prezzo attuale dal listino
-    listini_repo = ListiniRepository()
-    resolver_result = listini_repo.test_resolver(
-        articolo_id=att["articolo_id"],
-        uom_id=att["uom_id"],
-        data_riferimento=att["data_attivita"],
-        billing_account_id=att.get("billing_account_id"),
-        utility_id=att.get("utility_id"),
-        emittente_soggetto_ruolo_id=att.get("emittente_soggetto_ruolo_id"),
-    )
+    nuovo_prezzo, provenienza = _prezzo_dal_listino(att, function_name=function_name)
 
-    # Guard: versione cambiata
+    # Guard: versione cambiata. ⚠️ Vive perche' la versione si SCRIVE: il push
+    # la registra dal 2026-10-08, e il riallineamento qui sotto la aggiorna —
+    # senza, il secondo riallineamento richiederebbe conferma per sempre.
     versione_originale = att.get("listino_versione_id")
-    versione_attuale = resolver_result.get("listino_versione_id")
+    versione_attuale = provenienza["listino_versione_id"]
     versione_cambiata = versione_originale is not None and versione_attuale != versione_originale
 
     if versione_cambiata and not payload.get("conferma_versione_diversa"):
@@ -1274,11 +1299,10 @@ def fn_riallinea_prezzo(
             "versione_originale_id": versione_originale,
             "versione_attuale_id": versione_attuale,
             "prezzo_attuale": str(att["prezzo_snapshot"]),
-            "prezzo_ricalcolato": str(resolver_result["prezzo"]),
+            "prezzo_ricalcolato": nuovo_prezzo,
             "richiede_conferma": True,
         }
 
-    nuovo_prezzo = str(resolver_result["prezzo"])
     repo = CommesseRepository()
 
     meta = _V.optional_meta(att, "meta", function_name="commesse_service.fn_riallinea_prezzo") or {}
@@ -1289,6 +1313,11 @@ def fn_riallinea_prezzo(
         "prezzo_nuovo": nuovo_prezzo,
         "listino_versione_id_precedente": versione_originale,
         "listino_versione_id_nuovo": versione_attuale,
+        # La riga di listino del prezzo vecchio: dopo il riallineamento non la
+        # cita piu' nessuno e torna modificabile (D-1 del brief-db-riga-listino-
+        # propagata-dalla-commessa); la storia del prezzo resta leggibile qui.
+        "listino_riga_id_precedente": att.get("listino_riga_id"),
+        "listino_riga_id_nuovo": provenienza["listino_riga_id"],
     })
     meta["riallineamenti"] = riallineamenti
 
@@ -1299,6 +1328,7 @@ def fn_riallinea_prezzo(
             prezzo=nuovo_prezzo,
             prezzo_bloccato=False,
             meta=meta,
+            provenienza=provenienza,
         )
 
     return {
@@ -1320,7 +1350,7 @@ def fn_variazione_prezzo_eccezionale(
     commessa_id: int,
     attivita_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.commesse_service.fn_variazione_prezzo_eccezionale"
 
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
@@ -1352,6 +1382,7 @@ def fn_variazione_prezzo_eccezionale(
         "motivo": motivo,
         "stato_commessa": str(att["commessa_stato"]),
         "listino_versione_id_riferimento": att.get("listino_versione_id"),
+        "listino_riga_id_riferimento": att.get("listino_riga_id"),
     })
     meta["variazioni_eccezionali"] = variazioni
 
@@ -1362,6 +1393,11 @@ def fn_variazione_prezzo_eccezionale(
             prezzo=str(nuovo_prezzo),
             prezzo_bloccato=True,
             meta=meta,
+            # Un prezzo scritto a mano dice di esserlo: origine MANUALE e
+            # niente provenienza da listino (decisione di Tid 2026-10-08).
+            # Versione e riga di riferimento restano nel diario qui sopra: la riga
+            # di listino, non piu' citata, torna modificabile (D-1).
+            provenienza=provenienza_manuale(),
         )
 
     return {
@@ -1380,7 +1416,7 @@ def fn_sblocca_prezzo(
     commessa_id: int,
     attivita_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.commesse_service.fn_sblocca_prezzo"
 
     att = _get_attivita_pricing_or_raise(commessa_id, attivita_id, function_name=function_name)
@@ -1401,17 +1437,7 @@ def fn_sblocca_prezzo(
     motivo = _parse_motivo(payload, function_name=function_name)
 
     # Ricalcola dal resolver
-    listini_repo = ListiniRepository()
-    resolver_result = listini_repo.test_resolver(
-        articolo_id=att["articolo_id"],
-        uom_id=att["uom_id"],
-        data_riferimento=att["data_attivita"],
-        billing_account_id=att.get("billing_account_id"),
-        utility_id=att.get("utility_id"),
-        emittente_soggetto_ruolo_id=att.get("emittente_soggetto_ruolo_id"),
-    )
-
-    nuovo_prezzo = str(resolver_result["prezzo"])
+    nuovo_prezzo, provenienza = _prezzo_dal_listino(att, function_name=function_name)
     repo = CommesseRepository()
 
     meta = _V.optional_meta(att, "meta", function_name="commesse_service.fn_sblocca_prezzo") or {}
@@ -1431,6 +1457,7 @@ def fn_sblocca_prezzo(
             prezzo=nuovo_prezzo,
             prezzo_bloccato=False,
             meta=meta,
+            provenienza=provenienza,
         )
 
     return {
@@ -1558,9 +1585,9 @@ def fn_commessa_registro(
     *,
     commessa_id: int,
     commessa_attivita_id: int | None = None,
-    limit: int = 100,
+    limit: int = DEFAULT_LIMIT_EVENTI,
     offset: int = 0,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     ErrorManager.require(
         1 <= int(limit) <= _REGISTRO_MAX_LIMIT,
         code="E_COMMESSA_VALIDATION",
@@ -1601,7 +1628,7 @@ def annulla_attivita_manuale(
     commessa_id: int,
     attivita_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.commesse_service.annulla_attivita_manuale"
 
     # Scoping riga<->commessa: la `WHERE` di get_attivita_pricing filtra su

@@ -34,8 +34,74 @@ export function disabilitaOperatore(authUserId) {
   return api.post(`${BASE}/operatori/${authUserId}/disabilita/`)
 }
 
-export function riattivaOperatore(authUserId) {
-  return api.post(`${BASE}/operatori/${authUserId}/riattiva/`)
+// ⛔ Niente `riattivaOperatore` (ritirato il 2026-10-04, D-3): un operatore
+//    spento si riattiva col reinvio dell'invito (`reinviaInvito`).
+
+// --- Area «Accessi» (brief-db-be-fe-area-accessi) ---
+// I due tab accanto agli operatori: insieme censiscono TUTTE le credenziali,
+// ognuna in un tab solo (la categoria la decide il DB).
+
+// Scopo: le persone senza veste operatore (portale, shop, nessuna veste).
+export function listAccessiAltri(params = {}) {
+  return api.get(`${BASE}/accessi/altri/`, { params })
+}
+
+// Scopo: le credenziali delle macchine (utenti tecnici dei processi, API_CLIENT).
+export function listAccessiSistema(params = {}) {
+  return api.get(`${BASE}/accessi/sistema/`, { params })
+}
+
+// --- La CREDENZIALE: azioni che valgono per tutte le sue vesti (A-4, A-5) ---
+// ⛔ Non stanno sotto `/operatori/`: una persona senza veste operatore non si
+//    raggiunge da li'. Fino al 2026-10-02 il secondo fattore stava sotto
+//    `operatori/<id>/secondo-fattore/`: ritirato.
+
+// Scopo: lo stato della credenziale (blocco dell'amministratore, capability).
+export function getCredenziale(authUserId) {
+  return api.get(`${BASE}/credenziali/${authUserId}/`)
+}
+
+// Scopo: blocca la credenziale su tutte le porte e chiude le sue sessioni.
+export function bloccaCredenziale(authUserId, motivo) {
+  return api.post(
+    `${BASE}/credenziali/${authUserId}/blocca/`,
+    { motivo },
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// Scopo: elimina una credenziale che non ha mai avuto una veste. Il gesto e'
+//        irreversibile: la chiave fa rispondere il doppio invio come il primo.
+export function eliminaCredenziale(authUserId) {
+  return api.delete(
+    `${BASE}/credenziali/${authUserId}/`,
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// Scopo: toglie il blocco dell'amministratore.
+export function sbloccaCredenziale(authUserId) {
+  return api.post(
+    `${BASE}/credenziali/${authUserId}/sblocca/`,
+    {},
+    { headers: { 'Idempotency-Key': generateIdempotencyKey() } },
+  )
+}
+
+// Scopo: lo stato del secondo fattore della credenziale, e se l'obbligo viene
+//        dalla credenziale o da un profilo (brief sicurezza §3.4-bis, T-4).
+export function getSecondoFattoreCredenziale(authUserId) {
+  return api.get(`${BASE}/credenziali/${authUserId}/secondo-fattore/`)
+}
+
+// Scopo: accende o spegne l'obbligo sulla CREDENZIALE.
+export function impostaObbligoSecondoFattore(authUserId, valore) {
+  return api.post(`${BASE}/credenziali/${authUserId}/secondo-fattore/obbligo/`, { valore })
+}
+
+// Scopo: cancella il device della credenziale (telefono perso), col motivo.
+export function disattivaSecondoFattoreCredenziale(authUserId, motivo) {
+  return api.post(`${BASE}/credenziali/${authUserId}/secondo-fattore/disattiva/`, { motivo })
 }
 
 // --- Invito operatore ---
@@ -92,8 +158,13 @@ export function putEmittentiScope(authUserId, payload) {
 
 // --- Riepilogo permessi ---
 
-export function getPermessiRiepilogo(params = {}) {
-  return api.get(`${BASE}/permessi-riepilogo/`, { params })
+// Scopo: il riepilogo PER AREA degli operatori indicati — una riga per
+//        (operatore, area attiva) con `livello`, `override_count`,
+//        `voci_limitate` (`script.fn_get_permessi_riepilogo_aree`). Si chiede
+//        per gli id di una PAGINA della lista operatori, o per uno solo (il
+//        pannello permessi).
+export function getPermessiRiepilogo(authUserIds) {
+  return api.get(`${BASE}/permessi-riepilogo/`, { params: { auth_user_ids: authUserIds.join(',') } })
 }
 
 // --- Processi automatici (registro + presidi + utenti tecnici) ---
@@ -203,8 +274,12 @@ export function getProfiloReparto(uoId) {
   return api.get(`${BASE}/reparti/${uoId}/profilo/`)
 }
 
-export function putProfiloReparto(uoId, aree, azioni) {
-  return api.put(`${BASE}/reparti/${uoId}/profilo/`, { aree, azioni })
+// `richiedeSecondoFattore`: il segno del profilo (chi lo riceve deve usare il
+// secondo fattore). `undefined` = non si manda, e il backend lo lascia com'e'.
+export function putProfiloReparto(uoId, aree, azioni, richiedeSecondoFattore) {
+  const corpo = { aree, azioni }
+  if (richiedeSecondoFattore !== undefined) corpo.richiede_secondo_fattore = richiedeSecondoFattore
+  return api.put(`${BASE}/reparti/${uoId}/profilo/`, corpo)
 }
 
 // --- Email Accounts ---
@@ -271,6 +346,14 @@ export function listUnitaOrganizzative() {
 //    AREA, che sta gia' in `aree`.
 export function getPermessiEreditati(authUserId) {
   return api.get(`${BASE}/operatori/${authUserId}/permessi-ereditati/`)
+}
+
+// Permessi EFFETTIVI su azioni e oggetti, col tetto d'area gia' applicato a DB
+// (brief-db-permessi-tetto-area): per ogni voce il valore senza tetto, quello
+// applicato e `limitata_da_area` / `limitato_da_area`. Alimenta l'etichetta
+// «limitata dall'area» del pannello. ⛔ Il tetto non si ricalcola nel FE.
+export function getPermessiEffettivi(authUserId) {
+  return api.get(`${BASE}/operatori/${authUserId}/permessi-effettivi/`)
 }
 
 export function listAreeFunzionali() {

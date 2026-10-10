@@ -22,11 +22,12 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_offerte_commerciali_utilities_param_1_num_finito |  |
 | FOREIGN KEY | fk_offerte_utilities_classe_utenza | classe_utenza_id |
 | FOREIGN KEY | fk_offerte_utilities_istanza_dati_precontrattuali | istanza_dati_precontrattuali_id |
 | FOREIGN KEY | fk_offerte_utilities_istanza_utility | istanza_utility_id |

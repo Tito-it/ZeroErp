@@ -1,0 +1,384 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PANNELLO «PASSAGGI» LEGGE IL GRAFO UNA VOLTA
+#   vendite.fn_documento_lineage(bigint, text, text)
+#   Brief: brief-db-plancache-funzioni-con-query-incorporate §5 (D-4).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   vendite.vw_documento_lineage_archi costruisce l'INTERO grafo decorato:
+#   13 rami in UNION ALL per gli archi e una CTE MATERIALIZED con i nodi di
+#   tutti i documenti (stato, natura, codice). La funzione la nominava due
+#   volte — nel passo iniziale e nel termine ricorsivo — con un join a OR fra
+#   le due direzioni che non sa sfruttare: la vista si rivalutava a ogni
+#   livello, e il recinto MATERIALIZED impedisce a qualunque filtro di
+#   scendere nei rami.
+#   Fatti datati 2026-10-10, dbdev come app: vista intera ~190 ms (archi
+#   grezzi ~130, nodi ~40); la funzione ~0,6-0,8 s a chiamata, anche su un
+#   nodo SENZA archi.
+#
+# ── LA CURA ─────────────────────────────────────────────────────────
+#   La vista si legge una volta, in una CTE MATERIALIZED `archi` dentro la
+#   funzione, e la ricorsione attraversa la copia. Nessun'altra riga cambia:
+#   firma, RETURNS TABLE (con i suoi %TYPE), controlli dei parametri, guardia
+#   dei cicli, ordinamento.
+#   Prova (2026-10-10, dbdev come app, copia pg_temp della funzione): su tutti
+#   i 339 casi del grafo — ogni nodo con archi, nelle due direzioni — righe
+#   IDENTICHE (708 per parte, EXCEPT ALL a zero nei due versi); tempo
+#   283 s → 60 s, ~836 → ~177 ms a chiamata.
+#
+# ── COSA RESTA ──────────────────────────────────────────────────────
+#   ~0,18 s e' il costo di costruire l'intero grafo una volta. Scendere ai
+#   millisecondi vuol dire costruire solo gli archi del nodo chiesto
+#   (seminati per chiave, come la partita merce): un cantiere a parte.
+#
+# Corpo di partenza: 20260829-02 (ultima revisione), verificato uguale al
+#   corpo vivo prima della modifica.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261010-44-update-fn-documento-lineage-grafo-una-volta-mctit.yaml
+
+  - changeSet:
+      id: 20261010-44-update-fn-documento-lineage-grafo-una-volta
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_documento_lineage legge vw_documento_lineage_archi una volta, in una CTE
+        MATERIALIZED, e la ricorsione attraversa la copia: ~0,8 → ~0,18 s a chiamata, righe identiche.
+        Firma e RETURNS TABLE invariati.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname = 'fn_documento_lineage';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage(
+                  p_tipo_id   config.sorgenti.id%TYPE,
+                  -- ⚠️ p_uid NON e' ancorabile: e' la chiave POLIMORFA del nodo — uuid per
+                  --    preventivi e offerte, id per tutto il resto, secondo il key_selector
+                  --    di config.sorgenti — resa a text. Non e' il riflesso di UNA colonna.
+                  p_uid       text,
+                  -- ⚠️ idem p_direzione: 'avanti'|'indietro' non e' il valore di una colonna.
+                  p_direzione text DEFAULT 'avanti'
+              )
+               RETURNS TABLE(
+                             -- livello e ordine li CALCOLA il traversal: non c'e' colonna.
+                             livello                 integer,
+                             ordine                  integer,
+                             -- la lettera diagnostica nasce nella vista archi, non in tabella.
+                             arco                    text,
+                             ruolo                   vendite.commesse_sorgenti.ruolo_link%TYPE,
+                             from_tipo_id            config.sorgenti.id%TYPE,
+                             -- from_uid/to_uid e from_codice/to_codice: stessa ragione di
+                             -- p_uid — chiave polimorfa e `numero` di otto tabelle diverse.
+                             from_uid                text,
+                             from_codice             text,
+                             to_tipo_id              config.sorgenti.id%TYPE,
+                             to_uid                  text,
+                             to_codice               text,
+                             -- lo stato arriva dalla UNION di otto config.stati_doc_*:
+                             -- nessuna singola colonna da ancorare.
+                             to_stato_codice_interno character varying,
+                             to_fase                 character varying,
+                             to_is_abortito          boolean,
+                             is_ramo_inverso         boolean,
+                             -- ⭐ rev 2026-08-20: la NATURA dei due estremi. Senza, nel
+                             --    pannello «Passaggi» due nodi FATTURA della stessa commessa
+                             --    — la fattura e la nota di credito che la rettifica — sono
+                             --    la stessa riga scritta due volte: stesso tipo, stesso
+                             --    stato, e `codice` NULL finche' non sono numerati.
+                             from_natura_doc_codice_interno  config.nature_doc_fiscale.codice_interno%TYPE,
+                             to_natura_doc_codice_interno    config.nature_doc_fiscale.codice_interno%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- Guard parametri (AGENTS: ID numerici NOT NULL e > 0).
+                  IF p_tipo_id IS NULL OR p_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_tipo_id obbligatorio e > 0',
+                                             'p_tipo_id', p_tipo_id),
+                          NULL::uuid,
+                          concat('p_tipo_id non valido: ', COALESCE(p_tipo_id::text, 'NULL')));
+                  END IF;
+
+                  IF p_uid IS NULL OR btrim(p_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_uid obbligatorio (chiave nodo)'),
+                          NULL::uuid,
+                          'p_uid non valido (NULL o vuoto)');
+                  END IF;
+
+                  IF p_direzione IS NULL OR p_direzione NOT IN ('avanti', 'indietro') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_direzione deve essere avanti|indietro',
+                                             'p_direzione', p_direzione),
+                          NULL::uuid,
+                          concat('p_direzione non valido: ', COALESCE(p_direzione, 'NULL')));
+                  END IF;
+
+                  RETURN QUERY
+                  WITH RECURSIVE
+                  -- ⭐ rev 2026-10-10 (20261010-44): il grafo si legge UNA volta.
+                  --   La vista costruisce l'intero grafo decorato (una CTE MATERIALIZED
+                  --   sui nodi di tutti i documenti): letta nel passo iniziale e a ogni
+                  --   livello della ricorsione, con un join a OR che non sa sfruttare,
+                  --   costava ~0,6-0,8 s a chiamata (dbdev come app). Letta qui una volta
+                  --   e attraversata come copia: ~0,18 s, righe identiche su tutti i 339
+                  --   casi del grafo (ogni nodo con archi, nelle due direzioni).
+                  archi AS MATERIALIZED (
+                      SELECT * FROM vendite.vw_documento_lineage_archi
+                  ),
+                  trav AS (
+                      -- Livello 1: archi adiacenti al nodo di partenza nella direzione scelta.
+                      SELECT a.from_tipo_id, a.from_uid, a.from_codice,
+                             a.to_tipo_id, a.to_uid, a.to_codice,
+                             a.to_stato_codice_interno, a.to_fase, a.to_is_abortito,
+                             a.ruolo, a.arco, a.is_ramo_inverso,
+                             a.from_natura_doc_codice_interno, a.to_natura_doc_codice_interno,
+                             1 AS livello,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END AS cur_tipo,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_uid    ELSE a.from_uid    END AS cur_uid,
+                             ARRAY[
+                                 p_tipo_id::text || ':' || p_uid,
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                     || ':' ||
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                             ] AS visited
+                        FROM archi a
+                       WHERE (p_direzione = 'avanti'   AND a.from_tipo_id = p_tipo_id AND a.from_uid = p_uid)
+                          OR (p_direzione = 'indietro' AND a.to_tipo_id   = p_tipo_id AND a.to_uid   = p_uid)
+                      UNION ALL
+                      -- Espansione: dal nodo corrente segui gli archi nella stessa direzione.
+                      SELECT a.from_tipo_id, a.from_uid, a.from_codice,
+                             a.to_tipo_id, a.to_uid, a.to_codice,
+                             a.to_stato_codice_interno, a.to_fase, a.to_is_abortito,
+                             a.ruolo, a.arco, a.is_ramo_inverso,
+                             a.from_natura_doc_codice_interno, a.to_natura_doc_codice_interno,
+                             t.livello + 1,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_uid    ELSE a.from_uid    END,
+                             t.visited || (
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                     || ':' ||
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                             )
+                        FROM trav t
+                        JOIN archi a
+                          ON (p_direzione = 'avanti'   AND a.from_tipo_id = t.cur_tipo AND a.from_uid = t.cur_uid)
+                          OR (p_direzione = 'indietro' AND a.to_tipo_id   = t.cur_tipo AND a.to_uid   = t.cur_uid)
+                       WHERE t.livello < 10
+                         AND NOT (
+                             (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                 || ':' ||
+                             (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                         ) = ANY (t.visited)
+                  )
+                  -- Cast espliciti al tipo dichiarato dalla RETURNS TABLE: la union di
+                  -- vw_documento_lineage_nodi.codice risolve a varchar, quindi from_codice/
+                  -- to_codice arrivano varchar mentre la firma li vuole text (PG e' rigido
+                  -- sul match esatto, SQLSTATE 42804).
+                  SELECT t.livello::integer,
+                         (ROW_NUMBER() OVER (ORDER BY t.livello,
+                                                      t.from_tipo_id, t.from_uid,
+                                                      t.to_tipo_id, t.to_uid))::integer AS ordine,
+                         t.arco::text, t.ruolo::varchar,
+                         t.from_tipo_id, t.from_uid::text, t.from_codice::text,
+                         t.to_tipo_id, t.to_uid::text, t.to_codice::text,
+                         t.to_stato_codice_interno::varchar, t.to_fase::varchar, t.to_is_abortito,
+                         -- ⭐ rev 2026-08-20: NON si ricalcola piu' `t.arco = 'R'`. La
+                         --    proprieta' arriva da vw_documento_lineage_archi, che e' l'unica
+                         --    sede dell'elenco dei rami di ritorno. Con l'arrivo dell'arco N
+                         --    (nota di credito) quella lettera era scritta a mano in tre
+                         --    posti: qui e nei due WHERE della summary. Il posto dimenticato
+                         --    non avrebbe dato nessun errore — solo un ramo di ritorno reso
+                         --    come avanzamento del flusso.
+                         t.is_ramo_inverso,
+                         t.from_natura_doc_codice_interno::varchar, t.to_natura_doc_codice_interno::varchar
+                    FROM trav t
+                   ORDER BY ordine;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_documento_lineage(bigint, text, text)
+              IS 'Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice_interno/to_natura_doc_codice_interno: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet. ⭐ rev 2026-10-10 (20261010-44): la vista degli archi si legge UNA volta, in una CTE MATERIALIZED, e la ricorsione attraversa la copia: prima la vista — che costruisce l''intero grafo decorato — si rivalutava nel passo iniziale e a ogni livello, ~0,6-0,8 s a chiamata come app; ora ~0,18 s, righe identiche. brief-db-plancache-funzioni-con-query-incorporate §5.';
+      rollback:
+        # Il corpo di 20260829-02, per intero (stessa firma: CREATE OR REPLACE basta).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage(
+                  p_tipo_id   config.sorgenti.id%TYPE,
+                  -- ⚠️ p_uid NON e' ancorabile: e' la chiave POLIMORFA del nodo — uuid per
+                  --    preventivi e offerte, id per tutto il resto, secondo il key_selector
+                  --    di config.sorgenti — resa a text. Non e' il riflesso di UNA colonna.
+                  p_uid       text,
+                  -- ⚠️ idem p_direzione: 'avanti'|'indietro' non e' il valore di una colonna.
+                  p_direzione text DEFAULT 'avanti'
+              )
+               RETURNS TABLE(
+                             -- livello e ordine li CALCOLA il traversal: non c'e' colonna.
+                             livello                 integer,
+                             ordine                  integer,
+                             -- la lettera diagnostica nasce nella vista archi, non in tabella.
+                             arco                    text,
+                             ruolo                   vendite.commesse_sorgenti.ruolo_link%TYPE,
+                             from_tipo_id            config.sorgenti.id%TYPE,
+                             -- from_uid/to_uid e from_codice/to_codice: stessa ragione di
+                             -- p_uid — chiave polimorfa e `numero` di otto tabelle diverse.
+                             from_uid                text,
+                             from_codice             text,
+                             to_tipo_id              config.sorgenti.id%TYPE,
+                             to_uid                  text,
+                             to_codice               text,
+                             -- lo stato arriva dalla UNION di otto config.stati_doc_*:
+                             -- nessuna singola colonna da ancorare.
+                             to_stato_codice_interno character varying,
+                             to_fase                 character varying,
+                             to_is_abortito          boolean,
+                             is_ramo_inverso         boolean,
+                             -- ⭐ rev 2026-08-20: la NATURA dei due estremi. Senza, nel
+                             --    pannello «Passaggi» due nodi FATTURA della stessa commessa
+                             --    — la fattura e la nota di credito che la rettifica — sono
+                             --    la stessa riga scritta due volte: stesso tipo, stesso
+                             --    stato, e `codice` NULL finche' non sono numerati.
+                             from_natura_doc_codice_interno  config.nature_doc_fiscale.codice_interno%TYPE,
+                             to_natura_doc_codice_interno    config.nature_doc_fiscale.codice_interno%TYPE)
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- Guard parametri (AGENTS: ID numerici NOT NULL e > 0).
+                  IF p_tipo_id IS NULL OR p_tipo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_tipo_id obbligatorio e > 0',
+                                             'p_tipo_id', p_tipo_id),
+                          NULL::uuid,
+                          concat('p_tipo_id non valido: ', COALESCE(p_tipo_id::text, 'NULL')));
+                  END IF;
+
+                  IF p_uid IS NULL OR btrim(p_uid) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_uid obbligatorio (chiave nodo)'),
+                          NULL::uuid,
+                          'p_uid non valido (NULL o vuoto)');
+                  END IF;
+
+                  IF p_direzione IS NULL OR p_direzione NOT IN ('avanti', 'indietro') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'vendite.fn_documento_lineage', 'E_ERRORE_PARAMETRI',
+                          jsonb_build_object('detail', 'p_direzione deve essere avanti|indietro',
+                                             'p_direzione', p_direzione),
+                          NULL::uuid,
+                          concat('p_direzione non valido: ', COALESCE(p_direzione, 'NULL')));
+                  END IF;
+
+                  RETURN QUERY
+                  WITH RECURSIVE trav AS (
+                      -- Livello 1: archi adiacenti al nodo di partenza nella direzione scelta.
+                      SELECT a.from_tipo_id, a.from_uid, a.from_codice,
+                             a.to_tipo_id, a.to_uid, a.to_codice,
+                             a.to_stato_codice_interno, a.to_fase, a.to_is_abortito,
+                             a.ruolo, a.arco, a.is_ramo_inverso,
+                             a.from_natura_doc_codice_interno, a.to_natura_doc_codice_interno,
+                             1 AS livello,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END AS cur_tipo,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_uid    ELSE a.from_uid    END AS cur_uid,
+                             ARRAY[
+                                 p_tipo_id::text || ':' || p_uid,
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                     || ':' ||
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                             ] AS visited
+                        FROM vendite.vw_documento_lineage_archi a
+                       WHERE (p_direzione = 'avanti'   AND a.from_tipo_id = p_tipo_id AND a.from_uid = p_uid)
+                          OR (p_direzione = 'indietro' AND a.to_tipo_id   = p_tipo_id AND a.to_uid   = p_uid)
+                      UNION ALL
+                      -- Espansione: dal nodo corrente segui gli archi nella stessa direzione.
+                      SELECT a.from_tipo_id, a.from_uid, a.from_codice,
+                             a.to_tipo_id, a.to_uid, a.to_codice,
+                             a.to_stato_codice_interno, a.to_fase, a.to_is_abortito,
+                             a.ruolo, a.arco, a.is_ramo_inverso,
+                             a.from_natura_doc_codice_interno, a.to_natura_doc_codice_interno,
+                             t.livello + 1,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END,
+                             CASE WHEN p_direzione = 'avanti' THEN a.to_uid    ELSE a.from_uid    END,
+                             t.visited || (
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                     || ':' ||
+                                 (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                             )
+                        FROM trav t
+                        JOIN vendite.vw_documento_lineage_archi a
+                          ON (p_direzione = 'avanti'   AND a.from_tipo_id = t.cur_tipo AND a.from_uid = t.cur_uid)
+                          OR (p_direzione = 'indietro' AND a.to_tipo_id   = t.cur_tipo AND a.to_uid   = t.cur_uid)
+                       WHERE t.livello < 10
+                         AND NOT (
+                             (CASE WHEN p_direzione = 'avanti' THEN a.to_tipo_id ELSE a.from_tipo_id END)::text
+                                 || ':' ||
+                             (CASE WHEN p_direzione = 'avanti' THEN a.to_uid ELSE a.from_uid END)
+                         ) = ANY (t.visited)
+                  )
+                  -- Cast espliciti al tipo dichiarato dalla RETURNS TABLE: la union di
+                  -- vw_documento_lineage_nodi.codice risolve a varchar, quindi from_codice/
+                  -- to_codice arrivano varchar mentre la firma li vuole text (PG e' rigido
+                  -- sul match esatto, SQLSTATE 42804).
+                  SELECT t.livello::integer,
+                         (ROW_NUMBER() OVER (ORDER BY t.livello,
+                                                      t.from_tipo_id, t.from_uid,
+                                                      t.to_tipo_id, t.to_uid))::integer AS ordine,
+                         t.arco::text, t.ruolo::varchar,
+                         t.from_tipo_id, t.from_uid::text, t.from_codice::text,
+                         t.to_tipo_id, t.to_uid::text, t.to_codice::text,
+                         t.to_stato_codice_interno::varchar, t.to_fase::varchar, t.to_is_abortito,
+                         -- ⭐ rev 2026-08-20: NON si ricalcola piu' `t.arco = 'R'`. La
+                         --    proprieta' arriva da vw_documento_lineage_archi, che e' l'unica
+                         --    sede dell'elenco dei rami di ritorno. Con l'arrivo dell'arco N
+                         --    (nota di credito) quella lettera era scritta a mano in tre
+                         --    posti: qui e nei due WHERE della summary. Il posto dimenticato
+                         --    non avrebbe dato nessun errore — solo un ramo di ritorno reso
+                         --    come avanzamento del flusso.
+                         t.is_ramo_inverso,
+                         t.from_natura_doc_codice_interno::varchar, t.to_natura_doc_codice_interno::varchar
+                    FROM trav t
+                   ORDER BY ordine;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_documento_lineage(bigint, text, text)
+              IS 'Traversal ricorsivo del grafo di genealogia documenti (pannello «Passaggi»): ritorna la catena degli archi dal nodo di partenza, con livello/ordine per il rendering e lo stato di ogni tappa. Sorgente unica: vendite.vw_documento_lineage_archi. STABLE, SECURITY INVOKER: la RLS emittente delle viste security_invoker resta applicata. Cycle guard sul percorso (set dei visitati) e livello < 10. ⭐ rev 2026-08-20 — DUE COSE, entrambe per la nota di credito. (1) espone from_natura_doc_codice_interno/to_natura_doc_codice_interno: senza, due nodi FATTURA della stessa commessa — la fattura e la nota di credito che la rettifica — erano la stessa riga scritta due volte (stesso tipo, stesso stato, `codice` NULL finche'' non numerati). (2) is_ramo_inverso non e'' piu'' ricalcolato qui come `arco = ''R''` ma arriva dalla vista, che e'' l''unica sede dell''elenco dei rami di ritorno: con l''arco N quella lettera viveva in TRE posti e il terzo dimenticato non avrebbe dato errori, solo un ramo di ritorno reso come avanzamento. ⛔ La firma e'' cambiata (RETURNS TABLE), quindi questa revisione e'' un DROP + CREATE: il DROP porta via i GRANT, ri-concessi a zeroerp_app nello stesso changeSet.';

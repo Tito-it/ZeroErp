@@ -129,6 +129,16 @@ giorno in cui il brief ne contava trentuno e argomentava proprio così.
 | Senza un motivo scritto la riga non si aggiunge | **vincolo del database** (`nota` non vuota) |
 | Una vista nuova non può nascere fuori dal catalogo | **test** (`test-catalogo-presidi-v1.sql`, verso 1) |
 | Una riga che non trova più la sua vista va tolta | **test** (stesso file, verso 2) |
+| Un presidio che può accendersi dice a chi tocca spegnerlo | **vincolo del database** (`chi_agisce`, dal 2026-10-06) |
+| …e con quali parole: cosa vuol dire, cosa fare | **test** (`test-presidi-testi-v1.sql`), perché il testo sta in un'altra tabella |
+
+⭐ **Il catalogo parla a due lettori diversi.** La `nota` e il commento della
+vista sono scritti per chi **mantiene** il presidio; chi lo legge nel pannello o
+nel digest deve invece **agire**, e ha due domande sole. Per lui ci sono il
+`significato` e l'`azione` di
+[`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi), e il *chi* in
+`chi_agisce` (amministratore, sistemista, sviluppo). I due testi non si
+sostituiscono: si scrive quello che manca.
 
 ⚠️ **E il debito si tiene con un registro, non con una soglia.** La tentazione è
 una colonna «oggi sono 508, l'allarme scatta a 509». Un numero vede solo il

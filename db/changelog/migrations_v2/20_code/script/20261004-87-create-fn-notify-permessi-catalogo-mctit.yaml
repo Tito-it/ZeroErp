@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# R1 — L'AVVISO «IL CATALOGO DEI PERMESSI E' CAMBIATO»: script.fn_notify_permessi_catalogo
+#   Brief: brief-db-permessi-catalogo-notify-cache, sezioni 2, 3 (R1) e 6.4
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   Il backend tiene in cache i permessi risolti. Chi scrive il catalogo o i profili fuori
+#   dall'applicazione (seed al migrate, psql) non svuotava niente: fino al TTL gli utenti
+#   lavoravano coi permessi vecchi. Questa funzione emette NOTIFY sul canale
+#   'permessi_catalogo'; il listener del backend (processo listen_permessi) chiama
+#   invalidate_all. E' lo schema del cambio di reparto (anagrafiche.fn_notify_cambio_reparto),
+#   ma l'avviso riguarda tutti, non un utente.
+#
+# -- DUE CONSUMATORI ----------------------------------------------------------------------------
+#   1. la trigger function generica (-88) sulle sette tabelle del catalogo (-89);
+#   2. la LEVA MANUALE: SELECT script.fn_notify_permessi_catalogo('manuale') dopo una
+#      correzione fuori dall'app su una tabella che il trigger non copre (per esempio
+#      anagrafiche.identita_digitali). E' la sede unica del nome del canale lato DB.
+#
+# -- FORMA --------------------------------------------------------------------------------------
+#   NOTIFY e' transazionale: parte al commit, non parte su rollback, e PostgreSQL fonde i
+#   payload identici della stessa transazione (un mirror CSV che tocca N righe = un avviso).
+#   Payload JSON {"tabella": p_tabella}: al backend serve solo sapere che c'e' stato un
+#   cambio, la tabella e' per il log. Guard: p_tabella NOT NULL e non vuota, come il guard
+#   di fn_notify_cambio_reparto. VOLATILE (ha un effetto), INVOKER.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-87-create-fn-notify-permessi-catalogo-mctit.yaml
+
+  - changeSet:
+      id: 20261004-87-create-fn-notify-permessi-catalogo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_notify_permessi_catalogo(p_tabella text) RETURNS void: emette NOTIFY sul
+        canale permessi_catalogo con payload {"tabella": ...}, al commit. Il backend svuota
+        la cache permessi di tutti. Sede unica del nome del canale lato DB; la chiamano la
+        trigger function delle sette tabelle del catalogo e la leva manuale.
+        Brief: brief-db-permessi-catalogo-notify-cache R1.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_notify_permessi_catalogo(
+                  p_tabella text   -- schema.tabella che e' cambiata, o 'manuale'
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              VOLATILE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: avvisare il backend che il catalogo o i profili dei permessi sono
+              --   cambiati, perche' svuoti la cache permessi di tutti (invalidate_all).
+              --   Canale 'permessi_catalogo', payload {"tabella": p_tabella}. Parte al
+              --   commit; su rollback no (brief-db-permessi-catalogo-notify-cache).
+              BEGIN
+                  IF p_tabella IS NULL OR btrim(p_tabella) = '' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'script.fn_notify_permessi_catalogo',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tabella', 'valore', p_tabella),
+                          NULL::uuid,
+                          'p_tabella deve essere NOT NULL e non vuoto'
+                      );
+                  END IF;
+
+                  PERFORM pg_notify(
+                      'permessi_catalogo',
+                      jsonb_build_object('tabella', p_tabella)::text
+                  );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_notify_permessi_catalogo(text) IS
+                  'Emette NOTIFY sul canale permessi_catalogo con payload JSON {"tabella": p_tabella}: il listener del backend (processo listen_permessi) svuota la cache permessi di tutti (invalidate_all). Transazionale: parte al commit, non su rollback, payload identici della stessa transazione fusi in uno. Sede unica del nome del canale lato DB. Due consumatori: script.trgfn_notify_permessi_catalogo (trigger z90 per istruzione sulle sette tabelle del catalogo permessi) e la LEVA MANUALE SELECT script.fn_notify_permessi_catalogo(''manuale'') dopo una correzione fuori dall''app su una tabella che il trigger non copre (es. anagrafiche.identita_digitali, user_override_*). p_tabella NULL o vuoto -> E_PARAMETRO_INVALIDO. VOLATILE, INVOKER. Brief: brief-db-permessi-catalogo-notify-cache R1.';
+
+              GRANT EXECUTE ON FUNCTION script.fn_notify_permessi_catalogo(text) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_notify_permessi_catalogo(text);

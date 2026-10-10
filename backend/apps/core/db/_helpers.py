@@ -7,6 +7,7 @@ import logging
 import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
+from datetime import date
 from types import MappingProxyType
 from typing import Any
 
@@ -105,6 +106,43 @@ def jsonb_out(value: Any) -> Any:
     if isinstance(value, str):
         return json.loads(value)
     return value
+
+
+# Il nome di colonna (con alias facoltativo) che `predicato_giorno_operativo`
+# accetta: finisce interpolato nell'SQL, quindi si ferma qui tutto il resto.
+_COLONNA_ISTANTE = re.compile(r"[a-z_][a-z0-9_]*(\.[a-z_][a-z0-9_]*)?")
+
+
+# Scopo: IL FILTRO PER GIORNO su una colonna ISTANTE (`timestamptz`): «la
+#        colonna cade nei giorni da `da` ad `a`, inclusi» — nel fuso
+#        dell'AZIENDA, non della sessione. Ritorna `(sql, params)`: un
+#        frammento da mettere in AND e i suoi parametri, nell'ordine.
+#        Brief un-solo-fuso-aziendale B-4 (decisione di Tid, 2026-10-09).
+#
+#        ⭐ I confini li calcola il DB (`script.fn_inizio_giorno_operativo`,
+#        sede unica del fuso): `col >= inizio(da) AND col < inizio(a + 1)`.
+#        La funzione sta sui CONFINI e non sulla colonna, cosi' il predicato
+#        resta servito dall'indice sulla colonna.
+#        ⭐ UNA forma per ogni sede: l'SQL e' costante (non dipende da quali
+#        filtri ci sono), con la guardia `%s::date IS NULL OR …`. Django lega i
+#        parametri lato client, quindi il planner vede un letterale e la
+#        guardia si semplifica: col valore resta il solo confronto (indice),
+#        senza valore il ramo sparisce.
+#        ⛔ MAI `col >= %s::date` (la mezzanotte della SESSIONE, UTC), mai
+#        `col::date` (il giorno della sessione, e niente indice), mai il `+1
+#        giorno` calcolato in Python: sono le quattro forme che questo BB ritira.
+# ⚠️ Per una colonna `date` confrontata con una data non serve: non ha il
+#    difetto (decisione 2 del brief). Serve dove la colonna e' un istante.
+def predicato_giorno_operativo(
+    colonna: str, da: date | None, a: date | None,
+) -> tuple[str, list[date | None]]:
+    if not _COLONNA_ISTANTE.fullmatch(colonna):
+        raise ValueError(f"colonna non ammessa nel filtro per giorno: {colonna!r}")
+    sql = (
+        f"(%s::date IS NULL OR {colonna} >= script.fn_inizio_giorno_operativo(%s::date))"
+        f" AND (%s::date IS NULL OR {colonna} < script.fn_inizio_giorno_operativo(%s::date + 1))"
+    )
+    return sql, [da, da, a, a]
 
 
 def escape_ilike(value: str) -> str:
@@ -680,6 +718,9 @@ def sql_order_clause(
                 sql_order_direction(order_dir, default_desc=default_desc)
             )
             return f"{default_clause}, {tiebreak} {verso}"
+        # Il controllo «uno dei due» qui sopra garantisce `default` non None
+        # quando `default_clause` lo e'.
+        assert default is not None
         colonna = default
         direzione = sql_order_direction(order_dir, default_desc=default_desc)
     else:
@@ -824,7 +865,7 @@ def fetch_paged_with_total(
     data_sql: str,
     params: list[Any] | dict[str, Any],
     *,
-    offset: int,
+    offset: int | None = None,
     fallback_count_sql: str | None = None,
     fallback_params: list[Any] | dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
@@ -851,12 +892,21 @@ def fetch_paged_with_total(
     ⛔ Fino al 2026-09-28 il ripiego era facoltativo e ~25 liste non lo
     avevano: oltre l'ultima pagina il totale usciva 0, e il frontend
     (`useListaStoreCore`, che ora arretra da solo) non sapeva dove tornare.
-    `offset` e' obbligatorio per lo stesso motivo: senza, il ripiego non
-    scatta mai.
+    L'offset serve per lo stesso motivo: senza, il ripiego non scatta mai.
+
+    ⭐ **L'offset si ricava dalla query quando la query lo porta** (2026-10-04,
+    §9.6 punto 4 del brief-db-liste-righe-documento, Tid): con parametri
+    posizionali e la coda `LIMIT %s OFFSET %s` l'offset E' `params[-1]`, e
+    passarlo anche a parte era un secondo valore della stesso numero, libero di
+    divergere. Lo si passa (`offset=`) solo quando la query non lo dice da sé
+    (parametri con nome). ⛔ Passato E ricavabile, deve coincidere: due valori
+    diversi sono un errore del chiamante, e il ripiego scatterebbe (o no) sul
+    numero sbagliato.
 
     Regola del 2 (2026-07-18): unifica il pattern COUNT-OVER inline dei
     repository con la variante fallback nata per le code resi.
     """
+    offset = _offset_della_pagina(data_sql, params, offset)
     rilettura = None
     if fallback_count_sql is None:
         # ⛔ Si verifica SEMPRE, non solo quando serve: una query che non sa
@@ -876,10 +926,38 @@ def fetch_paged_with_total(
                 cursor.execute(*rilettura)
                 _, total_count = extract_paginated(cursor)
             else:
+                # Senza rilettura c'e' sempre il conteggio dato (vedi sopra).
+                assert fallback_count_sql is not None
                 cursor.execute(fallback_count_sql, fallback_params or [])
                 row = cursor.fetchone()
                 total_count = row[0] if row else 0
     return results, total_count
+
+
+# Scopo: l'offset della pagina per `fetch_paged_with_total`: dalla coda
+#        `LIMIT %s OFFSET %s` dei parametri posizionali quando c'e', altrimenti
+#        quello dichiarato. Vedi la docstring del BB per il perche'.
+def _offset_della_pagina(
+    data_sql: str, params: list[Any] | dict[str, Any], dichiarato: int | None,
+) -> int:
+    ricavabile = isinstance(params, list) and len(params) >= 2 and bool(
+        _CODA_LIMIT_OFFSET.search(data_sql)
+    )
+    if not ricavabile:
+        if dichiarato is None:
+            raise ValueError(
+                "fetch_paged_with_total: la query non porta l'offset nei parametri "
+                "posizionali (`LIMIT %s OFFSET %s` in coda): va passato `offset=`"
+            )
+        return dichiarato
+    assert isinstance(params, list)
+    dalla_query = int(params[-1])
+    if dichiarato is not None and int(dichiarato) != dalla_query:
+        raise ValueError(
+            f"fetch_paged_with_total: offset={dichiarato} diverso da quello della "
+            f"query ({dalla_query}): uno dei due e' sbagliato"
+        )
+    return dalla_query
 
 
 def fetch_con_sonda(

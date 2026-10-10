@@ -15,7 +15,7 @@
 #        e non vedono la SQL; `EXPLAIN` dice che la SQL parte, non che TROVA.
 # Note: ⚠️ Il mondo si COSTRUISCE, non si cerca (regola zero, .codex/AGENTS.md):
 #       azienda, operatore, cliente, articolo, listino, promo, preventivo e la
-#       sua attivita' di competenza, un contratto con la sua riga nascono dai BB `dbops.fn_pgtap_*` e dalle
+#       sua attivita' di competenza, un contratto con la sua riga e un'offerta sul listino nascono dai BB `dbops.fn_pgtap_*` e dalle
 #       madri di dominio, in transazione ANNULLATA e col contesto operatore
 #       aperto dal builder. Le famiglie di documento sono SEED (contratto, non
 #       fotografia): se ne ritocca una riga, sempre in transazione annullata.
@@ -33,10 +33,15 @@ from uuid import uuid4
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto, verifica_ricerca_colonna_per_colonna
+from apps.core.tests.db_e2e import (
+    Annulla,
+    richiedi_db_provvisto,
+    verifica_ricerca_colonna_per_colonna,
+)
 from apps.vendite.db.contratti_repository import ContrattoRigheListaRepository
 from apps.vendite.db.famiglie_repository import FamiglieDocumentoRepository
 from apps.vendite.db.listini_repository import ListiniRepository
+from apps.vendite.db.offerte_repository import OffertaRigheListaRepository
 from apps.vendite.db.promo_articoli_repository import PromoArticoliRepository
 from apps.vendite.db.vendite_repository import VenditeRepository
 
@@ -101,7 +106,7 @@ _FIXTURE: tuple[str, ...] = (
             (codice, descrizione, articolo_id, uom_id, tipo_variazione, valore_variazione,
              valido_dal, valido_al)
         SELECT 'RVPRM-' || %(sfx)s, 'Promo ricdescprm', a.id, a.uom_id, 'PERCENTUALE', 5,
-               current_date + 1, current_date + 30
+               script.fn_data_operativa() + 1, script.fn_data_operativa() + 30
           FROM catalogo.articoli a
          WHERE a.id = (SELECT articolo_id FROM _art)
         RETURNING id
@@ -194,7 +199,7 @@ _FIXTURE: tuple[str, ...] = (
                stato_doc_contratto_id, valido_dal, valido_al)
         SELECT 'RVCNT-' || %(sfx)s, m.billing_account_id, m.istanza_utility_id, m.utility_id,
                (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
-               current_date, current_date + 365
+               script.fn_data_operativa(), script.fn_data_operativa() + 365
           FROM _mondo m
         RETURNING id
     )
@@ -203,13 +208,43 @@ _FIXTURE: tuple[str, ...] = (
     """
     CREATE TEMP TABLE _cnt_riga AS
     WITH ins AS (
+        -- Erogazione e fonte VUOTE: le eredita dall'articolo (B-R2 di
+        -- brief-db-offerta-emissione-ed-erogazione). Scritte a mano, il guard
+        -- del perimetro le giudicherebbe sulla tipologia, e qui sono incidentali.
+        -- ⭐ La quantita' solo se la fonte ereditata e' FISSA: con una fonte a
+        -- valle il DB la rifiuta (E_RIGA_QUANTITA_CON_FONTE_A_VALLE, §E.2), e
+        -- quale fonte l'articolo porti lo dice la sede unica, non il test.
         INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
-               tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
-        SELECT (SELECT contratto_id FROM _cnt), a.id, 'AGGIUNTA', 40.00, 'CANONE', 'FISSA', 1, 1, a.uom_id
-          FROM catalogo.articoli a WHERE a.id = (SELECT articolo_id FROM _art)
+               quantita, qta_operativa, uom_operativa_id)
+        SELECT (SELECT contratto_id FROM _cnt), a.id, 'AGGIUNTA', 40.00, q.qta, q.qta, a.uom_id
+          FROM catalogo.articoli a
+          CROSS JOIN LATERAL (
+              SELECT CASE WHEN ae.fonte_quantita_attesa = 'FISSA' THEN 1 END AS qta
+                FROM vendite.fn_articolo_erogazioni(a.id) ae
+               WHERE ae.e_default
+          ) q
+         WHERE a.id = (SELECT articolo_id FROM _art)
         RETURNING id
     )
     SELECT id AS riga_id FROM ins
+    """,
+    # ── Le righe di un'offerta (lista 106, 2026-10-05) ─────────────────────
+    # Gemella della 103 sulla stessa funzione comune. L'offerta vuole un
+    # listino (`listino_id` NOT NULL): quello del mondo, in vigore oggi, quindi
+    # la riga e' quella DEL LISTINO sull'articolo costruito, con chiave
+    # `L:<articolo>:<uom>` — l'altra gamba della funzione rispetto al contratto.
+    """
+    CREATE TEMP TABLE _off AS
+    WITH ins AS (
+        INSERT INTO vendite.offerte_commerciali (emittente_fiscale_id, billing_account_id,
+               istanza_utility_id, utility_id, listino_id, validita_dal, stato_doc_offerta_id)
+        SELECT m.emittente_fiscale_id, m.billing_account_id, m.istanza_utility_id, m.utility_id,
+               (SELECT listino_id FROM _lst), script.fn_data_operativa(),
+               (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
+          FROM _mondo m
+        RETURNING id
+    )
+    SELECT id AS offerta_id FROM ins
     """,
     # ── La famiglia di documento: SEED, se ne ritocca una riga ─────────────
     # ⭐ `codice` e' la colonna nuova (changeSet `20260924-03…-07`), mutabile:
@@ -227,10 +262,6 @@ _FIXTURE: tuple[str, ...] = (
     SELECT id AS famiglia_id FROM upd
     """,
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 class RicercaListeVenditeDbTests(unittest.TestCase):
@@ -324,11 +355,24 @@ class RicercaListeVenditeDbTests(unittest.TestCase):
                     )[0],
                     chiave="riga_key",
                 )
+                cur.execute(
+                    "SELECT o.offerta_id, 'L:' || a.id || ':' || a.uom_id"
+                    " FROM _off o, catalogo.articoli a WHERE a.id = (SELECT articolo_id FROM _art)"
+                )
+                offerta, riga_offerta = cur.fetchone()
+                verifica_ricerca_colonna_per_colonna(
+                    self, cur, "vendite.offerta_righe", riga_offerta,
+                    {"articolo_codice": f"RVART-{sfx}", "articolo_descrizione": "ricdescart"},
+                    lambda t: OffertaRigheListaRepository().list_righe_pagina(
+                        offerta, search=t, limit=200,
+                    )[0],
+                    chiave="riga_key",
+                )
                 verifica_ricerca_colonna_per_colonna(
                     self, cur, "vendite.famiglie_documento", famiglia,
                     {"codice": f"RVFAM-{sfx}", "descrizione": "ricdescfam", "prefisso_default": "RVX/"},
                     lambda t: FamiglieDocumentoRepository().list_famiglie(search=t, limit=200)[0],
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

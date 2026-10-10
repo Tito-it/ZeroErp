@@ -34,8 +34,14 @@ from typing import Any, TypedDict
 from django.db import connection
 
 from apps.core.db._helpers import rows_to_list
+# ⭐ Il nome della GUC e la lingua di ripiego hanno UNA sede, il middleware che
+#    la imposta: ricopiarli qui sarebbe la seconda.
+from apps.core.middleware.user_language_middleware import (
+    DEFAULT_LANGUAGE as LINGUA_DEFAULT,
+    GUC_NAME as GUC_LINGUA,
+)
 
-# ⚠️ MIRROR DICHIARATI dei tre `CHECK` di `dbops.presidi`, e non una seconda
+# ⚠️ MIRROR DICHIARATI dei quattro `CHECK` di `dbops.presidi`, e non una seconda
 #    definizione: la regola sta a database e questi nomi servono al Python per
 #    poterla nominare (quali nature vanno in quale elenco del digest, quale
 #    cadenza sta girando, quando si possono mostrare le righe).
@@ -61,6 +67,18 @@ CADENZE = (CADENZA_GIORNALIERA, CADENZA_SETTIMANALE, CADENZA_MAI)
 PERIMETRO_LIBERO = "LIBERO"
 PERIMETRO_DEFINER = "DEFINER"
 PERIMETRI = (PERIMETRO_LIBERO, PERIMETRO_DEFINER)
+
+# ⭐ CHI LO SPEGNE (`chk_presidi_chi_agisce`, brief-db-presidi-cosa-significa-
+#    cosa-fare D-3). L'ORDINE DELLA TUPLA E' UN DATO: e' quello in cui il digest
+#    raggruppa i presidi accesi — prima cio' che chi legge puo' sistemare da se',
+#    poi cio' che va inoltrato.
+# ⚠️ `NULL` e' ammesso dal modello solo sugli `INVENTARIO`
+#    (`chk_presidi_chi_agisce_se_allarma`), che non si accendono: chi legge
+#    tratta comunque il `None`, e lo mette in fondo.
+CHI_AGISCE_AMMINISTRATORE = "AMMINISTRATORE"
+CHI_AGISCE_SISTEMISTA = "SISTEMISTA"
+CHI_AGISCE_SVILUPPO = "SVILUPPO"
+CHI_AGISCE = (CHI_AGISCE_AMMINISTRATORE, CHI_AGISCE_SISTEMISTA, CHI_AGISCE_SVILUPPO)
 
 # Il nome della vista arriva da una TABELLA e finisce interpolato nell'SQL che
 # ne legge le righe. ⛔ Il `CHECK chk_presidi_vista_qualificata` lo garantisce
@@ -88,6 +106,20 @@ class RigaPresidio(TypedDict):
     cadenza: str
     perimetro: str
     nota: str
+    # ⭐ LA COLONNA DELLA VISTA CHE DICE LA CAUSA DI OGNI RIGA (dal 2026-10-09):
+    #    quando c'e', le righe sono guasti diversi, e testo e «chi agisce» si
+    #    leggono per causa (`cause_del_presidio`). ⛔ Il nome si legge da qui,
+    #    mai scritto nel codice.
+    colonna_variante: str | None
+    # ⭐ IL TESTO PER CHI AGISCE (`dbops.presidi_testi`, dal 2026-10-06): cosa
+    #    vuol dire una riga e cosa fare per spegnerla, nella lingua di chi legge
+    #    con ripiego su `it`. La `nota` e la `descrizione` restano scritte per
+    #    chi MANTIENE il presidio: sono un altro lettore, non un doppione.
+    # ⚠️ `None` quando il presidio non ha testo (un `INVENTARIO`, o una vista in
+    #    attesa di catalogo): chi rende ripiega sulla descrizione, mai sul vuoto.
+    chi_agisce: str | None
+    significato: str | None
+    azione: str | None
     # ⭐ La prosa che il team DB ha scritto sulla vista: e' li' che sta la
     #    differenza fra «DEVE restare VUOTA» e «e' un registro che deve CALARE».
     #    Si legge da `obj_description`, non si ricopia.
@@ -99,6 +131,35 @@ class RigaPresidio(TypedDict):
     # ⛔ Vedi `_IN_ATTESA_DI_CATALOGO`: `False` solo per il debito dichiarato,
     #    che dal 2026-09-10 e' a zero righe — quindi oggi vale sempre `True`.
     a_catalogo: bool
+
+
+# Scopo: un gruppo di righe di un presidio con la stessa CAUSA, col testo e il
+#        «chi agisce» di quella causa (`dbops.presidi_cause` + `presidi_testi`).
+# ⚠️ `causa` None = la riga non dice la sua causa; una causa che il catalogo non
+#    conosce arriva col suo nome e senza testo. In tutti e due i casi
+#    `significato`, `azione` e `chi_agisce` sono None, e ⛔ non si ripiega sul
+#    testo del presidio: darebbe il rimedio di un altro guasto (§5.4.2).
+class CausaPresidio(TypedDict):
+    causa: str | None
+    chi_agisce: str | None
+    significato: str | None
+    azione: str | None
+    # ⭐ Quante righe del presidio hanno questa causa, da
+    #    `dbops.fn_conta_presidio_per_variante` (R-2, 2026-10-10): il numero
+    #    vero, non quello del campione. ⚠️ Mai meno delle `righe` consegnate:
+    #    conteggio e campione sono due letture, e fra l'una e l'altra puo'
+    #    accendersi una riga (`cause_del_presidio`).
+    conteggio: int
+    # Le righe del CAMPIONE con questa causa: possono essere zero anche con
+    # `conteggio` > 0 (la causa sta oltre il campione, o il perimetro non le
+    # lascia elencare).
+    righe: list[dict[str, Any]]
+
+
+# Scopo: una riga di `dbops.fn_conta_presidio_per_variante`.
+class ConteggioVariante(TypedDict):
+    variante: str | None
+    conteggio: int
 
 
 # ⚠️ IL DEBITO DICHIARATO DELLE VISTE NON ANCORA A CATALOGO — oggi A ZERO.
@@ -122,6 +183,50 @@ class RigaPresidio(TypedDict):
 #    `_decora_in_attesa` non li percorre nessuno: sono DORMIENTI, non morti.
 _IN_ATTESA_DI_CATALOGO: tuple[RigaPresidio, ...] = ()
 
+# ⭐ La lingua del testo si sceglie COME per `config.messaggi_errore`
+#    (`script.fn_get_messaggio`): la GUC che il middleware imposta per richiesta,
+#    poi `it`. ⚠️ `NULLIF` perche' il middleware, a fine richiesta, la riporta a
+#    stringa vuota e non la toglie: su una connessione riusata il vuoto vuol dire
+#    «nessuna lingua», non una lingua che si chiama ''.
+# ⛔ Il ripiego e' PER PRESIDIO, non per pagina: una traduzione che manca su una
+#    vista sola fa parlare in italiano quella vista, non tutto il pannello.
+# ⚠️ Dal management command del digest la GUC non c'e': si legge `it`, che e'
+#    la lingua obbligatoria (il pgTAP `dbops/test-presidi-testi-v1` la pretende).
+# ⛔ `variante IS NULL` e' il testo DEL PRESIDIO (dal 2026-10-09,
+#    brief-db-presidio-processi-testo-per-causa §5.4): dove il catalogo dichiara
+#    `colonna_variante`, `presidi_testi` porta anche un testo per ogni causa
+#    delle righe, nella stessa (vista, lingua). Senza il filtro il `LIMIT 1`
+#    pescherebbe una riga qualsiasi fra il generico e le cause — cioe' il
+#    rimedio di una causa a caso scritto come testo dell'intero presidio.
+# ⭐ UNA SEDE SOLA PER LA SCELTA DELLA LINGUA, due lettori: il testo del
+#    presidio (`variante IS NULL`) e il testo di ogni causa (`variante = causa`).
+#    Cambia solo QUALE testo si cerca; la cascata «lingua richiesta, poi `it`» e'
+#    la stessa, e due copie divergerebbero al primo ritocco.
+def _testo_per_lingua(condizione_variante: str) -> str:
+    return f"""
+    CROSS JOIN (
+        SELECT COALESCE(NULLIF(current_setting(%s, true), ''), %s) AS richiesta,
+               %s::text                                           AS ripiego
+    ) lingua
+    LEFT JOIN LATERAL (
+        SELECT pt.significato, pt.azione
+          FROM dbops.presidi_testi pt
+         WHERE pt.vista = p.vista
+           AND {condizione_variante}
+           AND pt.lingua IN (lingua.richiesta, lingua.ripiego)
+         ORDER BY (pt.lingua = lingua.richiesta) DESC
+         LIMIT 1
+    ) t ON TRUE
+"""  # noqa: S608 — la condizione e' una costante del modulo, i valori sono parametri
+
+
+_TESTO_PER_LINGUA = _testo_per_lingua("pt.variante IS NULL")
+# ⛔ Il ripiego per lingua resta DENTRO la causa: una causa senza la riga nella
+#    lingua chiesta parla `it` della STESSA causa, mai il testo generico — che
+#    darebbe il rimedio sbagliato, cioe' il difetto del brief §1 (§5.4.2).
+_TESTO_PER_CAUSA = _testo_per_lingua("pt.variante = c.causa")
+_TESTO_PER_LINGUA_PARAMS = (GUC_LINGUA, LINGUA_DEFAULT, LINGUA_DEFAULT)
+
 _COLONNE_CATALOGO = """
     p.vista,
     p.natura,
@@ -132,6 +237,10 @@ _COLONNE_CATALOGO = """
     p.cadenza,
     p.perimetro,
     p.nota,
+    p.colonna_variante,
+    p.chi_agisce,
+    t.significato,
+    t.azione,
     obj_description(to_regclass(p.vista), 'pg_class') AS descrizione,
     (to_regclass(p.vista) IS NOT NULL)               AS esiste,
     TRUE                                             AS a_catalogo
@@ -160,7 +269,8 @@ class PresidiRepository:
         self, *, cadenze: tuple[str, ...] | None = None,
     ) -> list[RigaPresidio]:
         condizioni = ["p.attivo", "p.obsoleto_dal IS NULL"]
-        params: list[Any] = []
+        # ⚠️ I parametri del join vengono PRIMA, nell'ordine in cui compaiono.
+        params: list[Any] = [*_TESTO_PER_LINGUA_PARAMS]
         if cadenze is not None:
             condizioni.append("p.cadenza = ANY(%s)")
             params.append(list(cadenze))
@@ -169,6 +279,7 @@ class PresidiRepository:
                 f"""
                 SELECT {_COLONNE_CATALOGO}
                   FROM dbops.presidi p
+                  {_TESTO_PER_LINGUA}
                  WHERE {' AND '.join(condizioni)}
                 """,  # noqa: S608 — frammenti costanti, i valori sono parametri
                 params,
@@ -216,6 +327,48 @@ class PresidiRepository:
         assert valore is not None  # count e fn_conta_presidio tornano una riga
         return int(valore[0])
 
+    # Scopo: Quante righe di questa vista chiedono un intervento, PER VALORE
+    #        della colonna che il catalogo nomina in `colonna_variante` (R-2 del
+    #        brief-db-presidio-processi-testo-per-causa, 2026-10-10).
+    #
+    # ⭐ E' la SEDE del conteggio a database: `fn_conta_presidio` ne e' la
+    #    somma, quindi filtro e perimetro sono gli stessi per costruzione.
+    # ⚠️ Una riga per valore presente, i valori a zero non escono; `variante`
+    #    NULL e' un gruppo a se' («causa non indicata»). Su un presidio senza
+    #    variante risponde una riga sola `(NULL, n)`.
+    # ⛔ `SELECT … FROM fn(…)` e non `SELECT fn(…)`: la seconda consegna la tupla
+    #    in un campo solo (§7.4 del brief).
+    def conta_per_variante(self, riga: RigaPresidio) -> list[ConteggioVariante]:
+        vista = self._vista_valida(riga["vista"])
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT variante, conteggio "
+                "FROM dbops.fn_conta_presidio_per_variante(%s)",
+                [vista],
+            )
+            return [
+                {"variante": variante, "conteggio": int(conteggio)}
+                for variante, conteggio in cursor.fetchall()
+            ]
+
+    # Scopo: Il conteggio di un presidio e, dove il catalogo nomina una
+    #        `colonna_variante`, i conteggi per causa da cui discende: UNA
+    #        lettura sola. `(n, None)` per un presidio senza cause.
+    #
+    # ⭐ Il totale e' la SOMMA dei conteggi per causa, non una seconda lettura
+    #    di `fn_conta_presidio`: quella funzione ne e' gia' la somma a database,
+    #    e due letture prese in due momenti potevano dire un totale e delle
+    #    cause che non tornano. Cosi' tornano per costruzione.
+    # ⚠️ Solo per le viste a catalogo: quelle in attesa passano da `conta`, e
+    #    la funzione per causa le rifiuterebbe come `fn_conta_presidio`.
+    def conta_presidio(
+        self, riga: RigaPresidio,
+    ) -> tuple[int, list[ConteggioVariante] | None]:
+        if riga["a_catalogo"] and riga["colonna_variante"]:
+            conteggi = self.conta_per_variante(riga)
+            return sum(c["conteggio"] for c in conteggi), conteggi
+        return self.conta(riga), None
+
     # Scopo: Le prime righe di una vista, per chi le puo' vedere.
     #
     # ⛔ Su `perimetro = DEFINER` NON si elencano, e il guard sta qui e non nel
@@ -238,6 +391,85 @@ class PresidiRepository:
         with connection.cursor() as cursor:
             cursor.execute(f"SELECT * FROM {vista} LIMIT %s", [limite])  # noqa: S608
             return rows_to_list(cursor)
+
+    # Scopo: Le CAUSE accese di un presidio, ognuna col suo conteggio, il suo
+    #        testo, il suo «chi agisce» e le righe del campione che le
+    #        appartengono. `[]` se il presidio non dichiara `colonna_variante`:
+    #        allora vale il testo del presidio, come prima.
+    #
+    # ⭐ L'unica sede del raggruppamento: pannello e digest lo chiedono qui, e non
+    #    possono raccontare la stessa causa in due modi.
+    # ⭐ SI PARTE DAI CONTEGGI, non dal campione (§6.4.2 del brief, dal
+    #    2026-10-10): ogni causa accesa arriva, anche quella che sta oltre le
+    #    prime righe o su una vista che non si elenca. Raggruppare il solo
+    #    campione dava numeri sbagliati, e una causa oltre la quinta riga non
+    #    arrivava mai a chi la deve spegnere.
+    # ⚠️ Conteggio e campione sono DUE letture: una riga accesa fra l'una e
+    #    l'altra porta una causa che i conteggi non hanno, o una in piu' di
+    #    quante ne contavano. Non si scarta (e' un guasto vero): il gruppo nasce
+    #    o cresce, e il suo conteggio non e' mai meno delle righe che mostra.
+    # ⭐ L'ordine e' quello della funzione (per valore, il NULL in coda): un
+    #    riordino qui sarebbe una seconda regola.
+    # ⭐ I conteggi per causa li riceve da `conta_presidio` (la stessa lettura
+    #    del totale), non li rilegge: `None` = presidio senza cause.
+    def cause_del_presidio(
+        self, riga: RigaPresidio, righe: list[dict[str, Any]],
+        conteggi: list[ConteggioVariante] | None,
+    ) -> list[CausaPresidio]:
+        colonna = riga["colonna_variante"]
+        if not colonna or conteggi is None:
+            return []
+        if not conteggi and not righe:
+            return []
+        testi = self.testi_delle_cause(riga["vista"])
+
+        def _gruppo(causa: str | None, conteggio: int) -> CausaPresidio:
+            # ⛔ Causa NULL o fuori catalogo: testo e «chi agisce» a None, mai
+            #    quelli del presidio — sarebbero il rimedio di un altro guasto.
+            testo = testi.get(causa) if causa is not None else None
+            return {
+                "causa": causa,
+                "chi_agisce": testo["chi_agisce"] if testo else None,
+                "significato": testo["significato"] if testo else None,
+                "azione": testo["azione"] if testo else None,
+                "conteggio": conteggio,
+                "righe": [],
+            }
+
+        gruppi: dict[str | None, CausaPresidio] = {
+            c["variante"]: _gruppo(c["variante"], c["conteggio"]) for c in conteggi
+        }
+        for r in righe:
+            valore = r.get(colonna)
+            # ⚠️ La funzione consegna la variante come testo (`::text`): la
+            #    colonna della vista puo' avere un tipo suo.
+            causa = None if valore is None else str(valore)
+            if causa not in gruppi:
+                gruppi[causa] = _gruppo(causa, 0)
+            gruppi[causa]["righe"].append(r)
+        for g in gruppi.values():
+            g["conteggio"] = max(g["conteggio"], len(g["righe"]))
+        return list(gruppi.values())
+
+    # Scopo: Il catalogo delle cause di un presidio: per ogni causa chi la spegne
+    #        e il testo, nella lingua di chi legge con ripiego su `it` della
+    #        stessa causa.
+    # ⚠️ LEFT JOIN sul testo: una causa senza testo e' un pgTAP rosso
+    #    (`test-presidi-testi-v1` 16), ma se succede la causa arriva lo stesso,
+    #    col suo «chi agisce» e il testo a None — non sparisce.
+    def testi_delle_cause(self, vista: str) -> dict[str, dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT c.causa, c.chi_agisce, t.significato, t.azione
+                  FROM dbops.presidi p
+                  JOIN dbops.presidi_cause c ON c.vista = p.vista
+                  {_TESTO_PER_CAUSA}
+                 WHERE p.vista = %s
+                """,  # noqa: S608 — frammenti costanti, i valori sono parametri
+                [*_TESTO_PER_LINGUA_PARAMS, vista],
+            )
+            return {r["causa"]: r for r in rows_to_list(cursor)}
 
     # Scopo: Lo stato dei presidi per il PANNELLO: per ogni vista che deve
     #        restare vuota, quante righe ha, che cosa significa e le prime.
@@ -274,9 +506,16 @@ class PresidiRepository:
             if riga["natura"] != NATURA_ZERO:
                 continue
             try:
-                conteggio = self.conta(riga)
+                conteggio, conteggi = self.conta_presidio(riga)
                 righe = (
                     self.prime_righe(riga, limite=righe_per_presidio)
+                    if (con_righe and conteggio) else []
+                )
+                # ⚠️ Anche senza righe (perimetro DEFINER): le cause e i loro
+                #    numeri arrivano dalla funzione, non dall'elenco. La lettura
+                #    leggera del pallino non le chiede.
+                cause = (
+                    self.cause_del_presidio(riga, righe, conteggi)
                     if (con_righe and conteggio) else []
                 )
             except Exception as exc:  # isolamento per presidio
@@ -287,8 +526,17 @@ class PresidiRepository:
                 esito.append({
                     "vista": riga["vista"],
                     "descrizione": riga["descrizione"],
+                    # ⭐ Il significato si consegna (dice COSA non si e'
+                    #    potuto guardare); l'azione e chi agisce NO: rimediano
+                    #    a righe accese, e qui il guasto e' la lettura — chi
+                    #    legge non deve «rilanciare i lotti» di un presidio
+                    #    che non si e' visto.
+                    "significato": riga["significato"],
+                    "azione": None,
+                    "chi_agisce": None,
                     "conteggio": None,
                     "righe": [],
+                    "cause": [],
                     "troncato": False,
                     "elencabili": riga["perimetro"] == PERIMETRO_LIBERO,
                     "errore": str(exc),
@@ -306,8 +554,19 @@ class PresidiRepository:
                 #    catalogo: il pannello ha lo spazio per il contratto intero,
                 #    a differenza di un messaggio di posta.
                 "descrizione": riga["descrizione"],
+                # ⭐ Il testo per chi agisce (brief-db-presidi-cosa-significa-
+                #    cosa-fare §6): il pannello lo mette DAVANTI alla
+                #    descrizione, che resta come dettaglio tecnico.
+                "significato": riga["significato"],
+                "azione": riga["azione"],
+                "chi_agisce": riga["chi_agisce"],
                 "conteggio": conteggio,
                 "righe": righe,
+                # ⭐ Le stesse righe per CAUSA, col rimedio accanto (brief-db-
+                #    presidio-processi-testo-per-causa §5.4.3): vuoto dove il
+                #    presidio ha un testo solo. Il pannello rende queste invece
+                #    di `righe` quando ci sono.
+                "cause": cause,
                 # ⚠️ «Troncato» presuppone che le righe siano state chieste: su
                 #    una vista con perimetro l'elenco e' vuoto per contratto, e
                 #    un `troncato` vero li' fa scrivere a video «prime 0 righe».

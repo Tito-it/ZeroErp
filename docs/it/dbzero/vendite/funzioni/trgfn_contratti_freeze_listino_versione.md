@@ -17,16 +17,20 @@ AS $function$
 --   listino e verifica la coerenza del negoziato puro.
 -- A) listino_id IS NULL: verifica almeno una AGGIUNTA con prezzo.
 --    Errore: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).
--- B) listino_id NOT NULL + listino_versione_id IS NULL: fissa versione
---    operativa (stato IN ('ATTIVA','CHIUSA')) a CURRENT_DATE.
---    FIX Bug A: BOZZA esclusa dal lookup — non viene mai congelata.
---    Se non trovata: attivazione consentita con versione NULL (warning UI, §4.4).
--- C) listino_versione_id già valorizzato: nessuna azione.
+-- B) listino_id NOT NULL: congela la versione operativa,
+--    vendite.fn_listino_versione_operativa (la fissata, altrimenti quella
+--    in vigore oggi). Se non ce n'e' una il contratto NON si attiva
+--    (rev 2026-10-07, decisione A-D2 di Tid, brief-db-offerta-emissione-
+--    ed-erogazione §C.1.2): primo motivo di
+--    script.fn_check_listino_congelabile, lo stesso della capability.
+--    Prima si attivava con la versione NULL (§4.4 del 2026-05-18) e da li'
+--    il risolutore delle righe lo faceva galleggiare sulla versione in
+--    vigore di ogni giorno: l'opposto di «congela all'attivazione».
+-- C) listino_versione_id gia' valorizzato (dal push dell'offerta): resta.
 -- Esce senza effetti su qualsiasi transizione diversa da DRAFT→ATTIVO.
 DECLARE
     v_codice_da   config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a    config.stati_doc_contratti.codice_interno%TYPE;
-    v_versione_id vendite.listini_versioni.id%TYPE;
 BEGIN
     SELECT
         max(CASE WHEN id = OLD.stato_doc_contratto_id THEN codice_interno END),
@@ -62,25 +66,23 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- Con listino: fissa versione operativa snapshot se non già valorizzata.
-    -- stato IN ('ATTIVA','CHIUSA'): BOZZA non è operativa, mai snapshot.
-    IF NEW.listino_versione_id IS NULL THEN
-        -- rev 2026-09-28: la sede unica (brief-db-liste-righe-documento §8.15).
-v_versione_id := vendite.fn_listino_versione_in_vigore(NEW.listino_id, CURRENT_DATE);
+    -- Con listino: prima il predicato, poi il congelamento (rev 2026-10-07).
+    PERFORM script.fn_raise_primo_motivo_se_presente(
+        'vendite', TG_NAME::text,
+        script.fn_check_listino_congelabile('CONTRATTO', NEW.listino_id, NEW.listino_versione_id),
+        NULL,
+        NEW.tx_id,
+        jsonb_build_object('contratto_id', NEW.id, 'numero', NEW.numero));
 
-        -- Se trovata: fissa snapshot. Se non trovata (§4.4): attivazione
-        -- consentita con listino_versione_id NULL (UI mostrerà warning).
-        IF v_versione_id IS NOT NULL THEN
-            NEW.listino_versione_id := v_versione_id;
-        END IF;
-    END IF;
+    NEW.listino_versione_id := vendite.fn_listino_versione_operativa(
+        NEW.listino_id, NEW.listino_versione_id);
 
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_freeze_listino_versione()
-IS 'Freeze versione listino su DRAFT→ATTIVO. Negoziato puro (listino_id NULL): richiede almeno una AGGIUNTA con prezzo. Con listino: fissa versione operativa (stato IN (''ATTIVA'',''CHIUSA'')) a CURRENT_DATE in listino_versione_id. BOZZA non viene mai congelata (Bug A fix 2026-05-16). Versione non trovata: attivazione consentita, listino_versione_id resta NULL. Errore negoziato puro senza righe: E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE (451).';
+IS 'Trigger BEFORE UPDATE su vendite.contratti, solo su DRAFT->ATTIVO. Negoziato puro (listino_id NULL): richiede almeno una AGGIUNTA attiva con prezzo (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE). Con listino: solleva il primo motivo di script.fn_check_listino_congelabile(''CONTRATTO'', ...) — nessuna versione in vigore oggi, E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO — e congela listino_versione_id := vendite.fn_listino_versione_operativa (la fissata, altrimenti quella in vigore oggi). Una versione già fissata (dal push dell''offerta) resta anche se nel frattempo si è chiusa: è quella che il cliente ha accettato. Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.2, decisione A-D2 di Tid): prima il contratto si attivava con la versione NULL (§4.4 del 2026-05-18) e il risolutore delle righe lo faceva galleggiare sulla versione in vigore di ogni giorno. La capability script.fn_available_actions_contratto legge la stessa check e spegne «Attiva» col motivo.';
 ```
 
 ---

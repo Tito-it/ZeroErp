@@ -39,11 +39,11 @@ BEGIN
     format('area: %s, livello: %s',
            af.codice, uoa.livello::text) AS dettaglio,
     uoa.valido_al,
-    (CURRENT_DATE - uoa.valido_al)::integer AS giorni_scaduto
+    ((SELECT script.fn_data_operativa()) - uoa.valido_al)::integer AS giorni_scaduto
   FROM config.user_override_aree uoa
   JOIN config.aree_funzionali af ON af.id = uoa.area_id
   WHERE uoa.valido_al IS NOT NULL
-    AND uoa.valido_al < CURRENT_DATE - p_giorni_tolleranza
+    AND uoa.valido_al < (SELECT script.fn_data_operativa()) - p_giorni_tolleranza
 
   UNION ALL
 
@@ -56,10 +56,10 @@ BEGIN
            uoo.app_label, uoo.model_name,
            uoo.livello::text)         AS dettaglio,
     uoo.valido_al,
-    (CURRENT_DATE - uoo.valido_al)::integer AS giorni_scaduto
+    ((SELECT script.fn_data_operativa()) - uoo.valido_al)::integer AS giorni_scaduto
   FROM config.user_override_oggetti uoo
   WHERE uoo.valido_al IS NOT NULL
-    AND uoo.valido_al < CURRENT_DATE - p_giorni_tolleranza
+    AND uoo.valido_al < (SELECT script.fn_data_operativa()) - p_giorni_tolleranza
 
   UNION ALL
 
@@ -72,11 +72,11 @@ BEGIN
            ap.permission_codename,
            uoaz.abilitata::text)      AS dettaglio,
     uoaz.valido_al,
-    (CURRENT_DATE - uoaz.valido_al)::integer AS giorni_scaduto
+    ((SELECT script.fn_data_operativa()) - uoaz.valido_al)::integer AS giorni_scaduto
   FROM config.user_override_azioni uoaz
   JOIN config.azioni_processo ap ON ap.id = uoaz.azione_id
   WHERE uoaz.valido_al IS NOT NULL
-    AND uoaz.valido_al < CURRENT_DATE - p_giorni_tolleranza
+    AND uoaz.valido_al < (SELECT script.fn_data_operativa()) - p_giorni_tolleranza
 
   ORDER BY giorni_scaduto DESC, tipo_override, auth_user_id;
 END

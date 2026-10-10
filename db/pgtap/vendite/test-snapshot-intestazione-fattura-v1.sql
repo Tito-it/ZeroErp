@@ -157,7 +157,7 @@ WITH ins AS (
     registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
     tipo_doc_fiscale_id, stato_doc_fiscale_id, valuta_id, meta
   )
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
          r.billing_account_id, r.tipo_doc_fiscale_id, v.stato_id, r.valuta_id,
          jsonb_build_object('test', 'pgtap_snapshot_intestazione', 'caso', v.caso)
     FROM tmp_refs_int r
@@ -321,7 +321,7 @@ SELECT throws_ok(
 --     testata di una fattura emessa — contabilizzazione compresa.
 -- ============================================================
 SELECT lives_ok(
-  format($$ UPDATE vendite.fatture SET data_contabilizzazione = current_date
+  format($$ UPDATE vendite.fatture SET data_contabilizzazione = script.fn_data_operativa()
              WHERE id = %s $$,
          (SELECT id FROM tmp_fatture_int WHERE caso = 'congelata')),
   '12) sulla stessa fattura DEFINITIVA un''altra colonna resta scrivibile'

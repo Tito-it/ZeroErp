@@ -186,6 +186,11 @@ Cioè: nelle tabelle di collegamento polimorfe (`pratiche.pratiche_sorgenti`,
   formato ed esistenza su INSERT/UPDATE di `pratiche_sorgenti` e
   `commesse_sorgenti`.
 
+⭐ **Dal 2026-10-05 «formato» vuol dire forma canonica**: la chiave si salva esattamente
+come la scrive il database (`id::text`, `uid::text` minuscolo con i trattini), perché è
+in quella forma che la cercano i lettori. Una sola regola per chi scrive e per chi legge:
+`script.fn_sorgente_chiave_id` / `script.fn_sorgente_chiave_uuid`.
+
 > Nota COMMESSA: `target_table` del tipo è `vendite.commesse` (fix 2026-07-18:
 > il seed storico puntava a `vendite.commesse_attivita`, il marker di pipeline —
 > ma i link di collegamento usano l'id della **commessa**, ed è contro

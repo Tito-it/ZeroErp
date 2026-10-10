@@ -3,7 +3,7 @@
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-09-24. **A chi:** team DB; una
 > richiesta minore al backend (§6).
 > **Origine:** decisione **D-4** di
-> [brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md)
+> [brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md)
 > — il primo cantiere del modello «una scrittura = un verbo», applicato alla porta
 > del Lotto 2
 > ([brief-db-magazzino-lotto-2-motore.md](brief-db-magazzino-lotto-2-motore.md),

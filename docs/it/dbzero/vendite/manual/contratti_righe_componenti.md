@@ -69,6 +69,7 @@ La migration `20260511-31` ha rinominato la colonna `quantita_fissa` → `quanti
 | `componente_id` | FK all'articolo componente (`articoli.id`) — denormalizzato |
 | `coeff_qta_snapshot` | Snapshot `articoli_componenti.coeff_qta` al momento della creazione |
 | `quantita` | Calcolata dal trigger `_m50_calcola_quantita` come `coeff_qta_snapshot × quantita_padre` |
+| `uom_operativa_id` | UoM **del componente** (non del kit), `NOT NULL` dal 2026-10-02 (`20261002-66`): la valorizza la funzione `_init` dalla UoM dell'articolo componente. Un kit può essere fatto di unità diverse (pezzi, metri, ore); il ripiego sulla UoM del padre è ritirato |
 | `prezzo_unitario` | Prezzo del componente (suggerito dal resolver, modificabile L1/L2/L3) |
 | `origine_prezzo` | `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE` |
 | `prezzo_resolver_context` | JSONB con emittente, BA, data, utility_id, istanza_utility_id |
@@ -80,6 +81,7 @@ La migration `20260511-31` ha rinominato la colonna `quantita_fissa` → `quanti
 
 | Trigger | Timing | Fase | Funzione |
 |---|---|---|---|
+| `_a05_doc_bozza_ins_upd_dlt` (dal 2026-10-05) | BEFORE INS/UPD/DLT | `_a05_` | `vendite.trgfn_doc_righe_lock_fuori_bozza('CONTRATTO', 'riga_contratto_id', 'DRAFT', 'RIGA')` |
 | `_a10_guard_bom_coerenza_ins_upd` | BEFORE INS/UPD | `_a10_` | `script.trgfn_componenti_guard_coerenza_bom` |
 | `_m50_calcola_quantita_ins_upd` | BEFORE INS/UPD | `_m50_` | `script.trgfn_componenti_calcola_quantita` |
 | `_audit_data_user_ins_upd` | BEFORE INS/UPD | — | `script.trgfn_audit_data_user_generic` |
@@ -94,6 +96,7 @@ Sulla riga padre `contratti_righe` è registrato anche `_z90_propaga_qta_compone
 
 ### Note operative
 
+- **Solo in bozza** (dal 2026-10-05): un componente si aggiunge, modifica e toglie solo col contratto in DRAFT (`E_RIGA_DOC_NON_BOZZA`, la regola delle righe, montata a livello RIGA: il trigger risale dalla riga al contratto). Prima lo fermava solo il ricalcolo della riga madre, un effetto che arrivava dopo i controlli del componente. Brief: `brief-db-righe-esclusione-solo-non-si-vende` §8.2 B3.
 - **FK ON DELETE CASCADE**: l'eliminazione di una `contratti_righe` elimina automaticamente tutti i suoi componenti.
 - **UNIQUE (riga_contratto_id, articolo_componente_id)**: un componente BoM al massimo una volta per riga padre.
 - **Righe a consumo**: `contratti_righe.quantita` nullable — se NULL la fn_init ritorna 0 senza inserire componenti. Il BE deve aggiornare la quantita prima di poter inizializzare.

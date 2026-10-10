@@ -37,7 +37,7 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 _FIXTURE: tuple[str, ...] = (
     """
@@ -46,10 +46,6 @@ _FIXTURE: tuple[str, ...] = (
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
@@ -104,8 +100,8 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     [template_id],
                 )
                 self.assertEqual(cur.fetchone(), ("Aggiornata", True))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. Asset: create + update metadati con `meta` dict.
@@ -138,8 +134,8 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     [asset_id],
                 )
                 self.assertEqual(cur.fetchone(), ("Asset aggiornato", True, "a" * 64))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. Documento generato + file + evento: RETURNING id, uid e jsonb oggetto.
@@ -228,8 +224,8 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     [evento_id],
                 )
                 self.assertEqual(cur.fetchone(), ("object", 10))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 4. Versione: create/update con jsonb dict e corpo non strippato, poi
@@ -296,6 +292,6 @@ class ScrittureDinamicheDocumentiDbTests(unittest.TestCase):
                     [clone["id"]],
                 )
                 self.assertEqual(cur.fetchone(), (2, "BOZZA", html, css, True, True))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

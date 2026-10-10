@@ -48,19 +48,26 @@ policy RLS (difesa-in-profondità §V sviluppo-concentrico).
 
 | Caso | Risultato |
 |------|-----------|
-| Identità inesistente / non attiva | `false` |
-| Identità in veste non-cliente (es. OPERATORE, FORNITORE_PORTALE, DISABILITATO) | `false` |
+| Identità inesistente / non utilizzabile oggi | `false` |
+| Identità in veste non-cliente (es. OPERATORE, FORNITORE_PORTALE, API_CLIENT) | `false` |
 | BA inesistente | `false` |
 | BA appartiene a un altro `soggetto_ruolo` | `false` |
-| Identità CLIENTE_PORTALE o SHOP_CUSTOMER attiva + BA con stesso SR | `true` |
+| Identità CLIENTE_PORTALE o SHOP_CUSTOMER utilizzabile oggi + BA con stesso SR | `true` |
+
+⭐ **Dal 07-10-2026** (brief `brief-db-veste-utilizzabile`): l'identità deve essere
+**utilizzabile oggi** secondo
+[script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+(accesa, nelle sue date, soggetto attivo), non solo accesa. Prima una veste
+scaduta, ma ancora accesa, continuava a vedere i suoi dati.
+
 
 ---
 
 ### Regole implementative
 
-* `LANGUAGE sql`, `STABLE`: inlineable dal planner.
+* `LANGUAGE sql`, `STABLE`.
 * `%TYPE` su firma per allineamento alle colonne sorgente.
-* Gate `id.attivo = true` nel WHERE per defense-in-depth.
+* Gate `script.fn_veste_utilizzabile(id.id)` nel WHERE per defense-in-depth (era `id.attivo = true` fino al 07-10-2026).
 * Single `EXISTS`: short-circuit alla prima corrispondenza.
 
 ---
@@ -71,7 +78,7 @@ policy RLS (difesa-in-profondità §V sviluppo-concentrico).
 identita_digitali.soggetto_ruolo_id
     = billing_account.soggetto_ruolo_id  (join diretto)
 AND identita_digitali.id = p_identita_id
-AND identita_digitali.attivo = true
+AND script.fn_veste_utilizzabile(identita_digitali.id)
 AND identita_digitali.ruolo_applicativo IN ('CLIENTE_PORTALE', 'SHOP_CUSTOMER')
 AND billing_account.id = p_billing_account_id
 ```

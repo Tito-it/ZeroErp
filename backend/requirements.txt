@@ -6,7 +6,7 @@
 #
 annotated-types==0.8.0
     # via pydantic
-anthropic==1.11.0
+anthropic==1.12.1
     # via -r ../requirements.in
 anyio==4.15.1
     # via
@@ -32,7 +32,7 @@ cryptography==50.0.2
     # via -r ../requirements.in
 cssselect2==0.10.1
     # via weasyprint
-django==6.1.1
+django==6.1.2
     # via
     #   -r ../requirements.in
     #   django-redis
@@ -41,7 +41,7 @@ django==6.1.1
     #   drf-spectacular
 django-redis==7.0.0
     # via -r ../requirements.in
-djangorestframework==3.18.1
+djangorestframework==3.18.3
     # via
     #   -r ../requirements.in
     #   djangorestframework-simplejwt
@@ -78,7 +78,7 @@ jsonschema==4.26.0
     # via drf-spectacular
 jsonschema-specifications==2025.9.1
     # via jsonschema
-markupsafe==3.0.3
+markupsafe==3.0.4
     # via jinja2
 openpyxl==3.1.5
     # via -r ../requirements.in
@@ -92,13 +92,13 @@ psycopg==3.3.6
     # via -r ../requirements.in
 psycopg-binary==3.3.6
     # via -r ../requirements.in
-pycparser==3.0
+pycparser==3.1
     # via cffi
-pydantic==2.13.5
+pydantic==2.14.0
     # via
     #   -r ../requirements.in
     #   anthropic
-pydantic-core==2.46.5
+pydantic-core==2.50.0
     # via pydantic
 pydyf==0.12.1
     # via weasyprint
@@ -120,7 +120,7 @@ referencing==0.37.0
     # via
     #   jsonschema
     #   jsonschema-specifications
-rpds-py==2026.6.3
+rpds-py==2026.9.1
     # via
     #   jsonschema
     #   referencing

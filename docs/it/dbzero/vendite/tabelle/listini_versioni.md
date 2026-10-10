@@ -10,10 +10,10 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | listino_id | bigint | NO |  |
-| codice_versione | character varying | NO |  |
+| codice_versione | character varying(64) | NO |  |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
-| stato | character varying | NO | 'BOZZA'::character varying |
+| stato | character varying(16) | NO | 'BOZZA'::character varying |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |

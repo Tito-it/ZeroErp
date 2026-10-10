@@ -34,6 +34,9 @@
 --   colonna intera di uno schema di dominio che finisce in `auth_user_id` o
 --   `_user_id` (creato_da_user_id, generato_da_user_id, django_user_id).
 --   Le tabelle interne di django.* sono fuori dal perimetro: sono di Django.
+--   Le colonne che per progetto nominano una credenziale che non c'e' piu'
+--   sono ECCEZIONI DICHIARATE nella lente (dal 2026-10-06:
+--   config.credenziali_eliminate.auth_user_id).
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -61,7 +64,16 @@ SELECT n.nspname || '.' || c.relname || '.' || a.attname AS colonna,
    AND a.atttypid IN ('integer'::regtype, 'bigint'::regtype, 'smallint'::regtype)
    AND (a.attname = 'auth_user_id' OR a.attname LIKE '%\_user\_id')
    AND n.nspname IN ('vendite', 'acquisti', 'magazzino', 'pagamenti', 'pratiche',
-                     'documenti', 'anagrafiche', 'catalogo', 'config', 'shop', 'ui');
+                     'documenti', 'anagrafiche', 'catalogo', 'config', 'shop', 'ui')
+   -- ⛔ ECCEZIONI DICHIARATE: colonne con la forma di un puntatore che per
+   --   progetto NON puntano a una riga viva. Una voce in piu' qui e' una
+   --   decisione, non un rimedio a un rosso.
+   --   · config.credenziali_eliminate.auth_user_id (2026-10-06,
+   --     brief-db-elimina-credenziale-senza-veste §7.2): la traccia di una
+   --     credenziale ELIMINATA. La riga descritta non esiste piu'; una FK
+   --     impedirebbe proprio il DELETE che la traccia racconta.
+   AND (n.nspname, c.relname, a.attname) NOT IN (
+         ('config', 'credenziali_eliminate', 'auth_user_id'));
 
 -- Il ponte c'e' su questo database? Due condizioni, entrambe necessarie:
 --   django.auth_user esiste E almeno una FK verso di essa esiste. Sul DB

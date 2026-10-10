@@ -20,22 +20,24 @@
 from __future__ import annotations
 
 from django.http import JsonResponse
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.payload_validators import qp_int_optional
 from apps.core.api.success_responses import success_response
+from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
 from apps.vendite.services.vendite_lookups_service import (
     fn_list_ambiti_contratto,
-    fn_list_listini_selezionabili_contratti,
+    fn_list_listini_selezionabili,
     fn_list_tipi_variazione_contratto,
     fn_list_tipi_variazione_promo,
 )
 
 
 def _lookup_response_schema(name: str):
-    # Scopo: factory per schema OpenAPI uniforme delle 4 lookup view.
+    # Scopo: factory per schema OpenAPI uniforme delle 3 lookup statiche.
     return {
         200: inline_serializer(
             name=name,
@@ -81,25 +83,67 @@ class ApiAmbitiContrattoLookup(DomainAPIView):
         return success_response(fn_list_ambiti_contratto())
 
 
-class ApiListiniSelezionabiliContrattoLookup(DomainAPIView):
-    # Scopo: Lookup dinamico dei listini selezionabili come riferimento di un
-    #        contratto. Filtra `vendite.listini` per `attivo=TRUE` + esistenza
-    #        di almeno una `listini_versioni` con `stato='ATTIVA' AND attivo`
-    #        (decisione 2026-05-18 §4.4 refactor-contratti-modalita). Sostituisce
-    #        `LookupSelect rel='vendite.listini'` nel ContrattoDrawer: senza
-    #        questo filtro l'operatore vedrebbe anche i listini senza versione
-    #        operativa, il cui salvataggio viene rifiutato dal guard service
-    #        `E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA` (UX a doppio passo).
-    #        Forma payload uniforme `{id, codice, descrizione}` (no paginazione).
+class ApiListiniSelezionabiliLookup(DomainAPIView):
+    """GET /vendite/lookup/listini-selezionabili/?utility_id=&emittente_fiscale_id=
+
+    I listini che un contratto o un'offerta di questa utility e di questo
+    emittente puo' scegliere: la lettura del DB (`vendite.fn_listini_selezionabili`),
+    lo stesso predicato del guard che rifiuta un listino di un'altra utility o
+    di un altro emittente (`E_DOC_LISTINO_UTILITY_DIVERSA`,
+    `E_DOC_LISTINO_EMITTENTE_DIVERSO`). ⛔ Il backend la trasporta, non la deduce.
+    Sui VALORI del form (utility ed emittente scelti), perche' in creazione il
+    documento non esiste; uno dei due assente → nessun listino. Envelope dei
+    lookup `{"results": [...]}`, senza paginazione (brief-db-offerta-emissione-
+    ed-erogazione F-2.3).
+    """
+
     area_funzionale = "vendite"
     model_permission = ("vendite", "listino")
 
-    @extend_schema(responses=_lookup_response_schema(
-        "VenditeListiniSelezionabiliContrattoLookupResponse",
-    ))
-    # Scopo: Restituisce la lista listini selezionabili per i contratti.
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="utility_id", type=int, required=False,
+                description="La utility del documento. Assente: nessun listino.",
+            ),
+            OpenApiParameter(
+                name="emittente_fiscale_id", type=int, required=False,
+                description=(
+                    "L'emittente fiscale del documento (id di "
+                    "`anagrafiche.emittenti_fiscali`). Assente: nessun listino."
+                ),
+            ),
+        ],
+        responses={200: inline_serializer(
+            name="VenditeListiniSelezionabiliLookupResponse",
+            fields={"data": inline_serializer(
+                name="VenditeListiniSelezionabiliLookupData",
+                fields={"results": serializers.ListField(
+                    child=inline_serializer(
+                        name="VenditeListinoSelezionabile",
+                        fields={
+                            "id": serializers.IntegerField(),
+                            "codice": serializers.CharField(),
+                            "descrizione": serializers.CharField(),
+                        },
+                    ),
+                )},
+            )},
+        )},
+    )
+    # Scopo: i listini sceglibili per (utility, emittente) del form, 400 su un
+    #        valore non numerico o fuori dal tipo del parametro della funzione
+    #        (`utility_id integer`, `emittente_fiscale_id bigint`): oltre, la
+    #        chiamata non si risolverebbe a DB, un 500.
     def get(self, request: Request) -> JsonResponse:
-        del request
-        return success_response(fn_list_listini_selezionabili_contratti())
-
-
+        qp = request.query_params
+        utility_id = qp_int_optional(
+            qp.get("utility_id"), "utility_id",
+            min_val=INTEGER_MIN, max_val=INTEGER_MAX,
+        )
+        emittente_fiscale_id = qp_int_optional(
+            qp.get("emittente_fiscale_id"), "emittente_fiscale_id",
+        )
+        return success_response({
+            "results": fn_list_listini_selezionabili(utility_id, emittente_fiscale_id),
+        })

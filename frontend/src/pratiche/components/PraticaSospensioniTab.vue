@@ -9,7 +9,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fetchSospensioni } from '../api/pratiche-api'
-import { displayTimestamp } from '../../core/utils/date'
+import { displayTimestamp, parseIstante, adesso } from '../../core/utils/date'
 import Tag from 'primevue/tag'
 import { MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
 
@@ -30,8 +30,9 @@ function isAttiva(s) {
 // Scopo: durata leggibile della sospensione (chiusa: inizio→fine; attiva:
 // inizio→ora). Solo display, nessuna logica di dominio: il DB resta l'autorita'.
 function durata(s) {
-  const inizio = new Date(s.data_inizio)
-  const fine = s.data_fine ? new Date(s.data_fine) : new Date()
+  const inizio = parseIstante(s.data_inizio)
+  const fine = s.data_fine ? parseIstante(s.data_fine) : adesso()
+  if (!inizio || !fine) return null
   const ms = fine - inizio
   if (!(ms > 0)) return null
   const minuti = Math.floor(ms / 60000)

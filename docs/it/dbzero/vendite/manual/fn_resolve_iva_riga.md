@@ -57,8 +57,12 @@ cambia.
   Chi li conosce già li passa e risparmia le letture.
 * Lo smistamento guarda il **paese dell'emittente**; in assenza si assume `IT`.
 * Un paese non implementato **solleva**, non tace.
-* ⛔ **Sola lettura.** Non consuma il plafond di un titolo, non scrive niente:
-  la ripartizione che ritorna è una **proiezione** sul residuo di adesso.
+* `p_consumo` (dal 2026-10-04, **in coda** alla firma) apre la domanda del **giro
+  del plafond** in fattura. Il default `false` lascia tutto com'era. Vedi sotto.
+* ⛔ **Sola lettura.** Non consuma il plafond di un titolo, non scrive niente, e non
+  dice quanto il titolo copre: lo decide
+  [fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe)
+  sul netto della fattura.
 * ⛔ **Non controlla se il documento è congelato**: quella è una proprietà del
   documento, ed è responsabilità di chi chiama.
 
@@ -70,7 +74,7 @@ Ritorna **una o più righe**, ciascuna con:
 
 | Campo | Cosa dice |
 | --- | --- |
-| `quota` | la parte di imponibile coperta da questa riga (`NULL` in anteprima) |
+| `quota` | sempre `NULL` dal 2026-10-04 (la proiezione con l'importo è ritirata): resta perché la firma non si riordina. Quanto copre il titolo lo dice la madre del consumo |
 | `iva_id` | il codice IVA da applicare |
 | `aliquota` | la percentuale, già risolta per lo stato dell'emittente |
 | `natura_codice` | la natura dell'operazione (`N1`…`N7`), quando c'è |
@@ -117,22 +121,37 @@ SELECT * FROM vendite.fn_resolve_iva_riga(
   p_data_riferimento => CURRENT_DATE
 );
 
--- La riga vera, con tutto quello che si sa
+-- Il giro del plafond in fattura: quale titolo, e i due trattamenti
 SELECT * FROM vendite.fn_resolve_iva_riga(
   p_articolo_id          => :articolo_id,
   p_data_riferimento     => :data_documento,
-  p_imponibile           => :imponibile,
   p_billing_account_id   => :billing_account_id,
   p_utility_id           => :utility_id,
   p_soggetto_id          => :soggetto_cliente_id,
-  p_emittente_fiscale_id => :emittente_fiscale_id
+  p_emittente_fiscale_id => :emittente_fiscale_id,
+  p_consumo              => true
 );
 ```
 
-> ⚠️ **Il risultato può avere DUE righe**, ed è il caso normale quando il plafond
-> di una dichiarazione d'intento finisce a metà riga: la prima parte va al titolo,
-> il resto torna all'aliquota ordinaria. Chi consuma deve iterare, non prendere
-> `LIMIT 1`. L'ordine è parte del contratto: **prima la quota coperta**.
+### Le due domande
+
+| Come si chiama | Chi la fa | Cosa risponde |
+| --- | --- | --- |
+| senza importo, `p_consumo = false` (anteprima) | i documenti, i form | **una riga**, `quota` NULL: il trattamento del primo euro — il titolo se ha ancora capienza, l'ordinario se è esaurito |
+| senza importo, `p_consumo = true` (consumo) | il giro del plafond in fattura | con un titolo **a tetto**, **due righe sempre**, `quota` NULL: prima il titolo, poi l'ordinario. Senza titolo o con un titolo senza tetto, una riga |
+
+⛔ **Un importo solleva, con qualunque domanda.** La terza, la **proiezione**
+(`p_imponibile` valorizzato), è **ritirata** dal 2026-10-04 (`20261004-15`): il suo
+unico chiamante era il giro del plafond, passato al consumo. Il parametro resta
+nella firma, che non si riordina, e il guscio lo inoltra
+all'implementazione del paese, che lo rifiuta (`E_IVA_RESOLVE_NON_INVOCABILE`).
+
+> ⚠️ **Nel consumo il residuo non si legge.** Il plafond si consuma sul **netto**
+> della fattura (decisione C di Tid, 2026-10-04): una riga negativa restituisce
+> capienza alle righe prima, e una proiezione riga per riga non può saperlo. Per
+> questo, anche a residuo zero, il titolo resta nella risposta: è la madre del
+> consumo a dire che non copre più niente. Chi consuma deve iterare, non prendere
+> `LIMIT 1`, e l'ordine è parte del contratto.
 
 ---
 

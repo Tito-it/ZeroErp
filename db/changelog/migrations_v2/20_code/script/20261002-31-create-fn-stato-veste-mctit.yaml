@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_stato_veste(identita_id): LO STATO DI UNA VESTE, CALCOLATO SOLO A DB
+#   Brief: brief-db-be-fe-area-accessi, A-7 e R-DB-A2 (sezione 7.4)
+#
+# -- PERCHE' ------------------------------------------------------------------------
+#   Lo stato di una veste lo calcolava il backend (apps/portale/db/
+#   portale_repository.py, stato_veste + get_stato_identita) per la scheda di
+#   cliente e fornitore. Ora lo legge anche la vista degli «Altri accessi»
+#   (-33): due lettori, una regola, e la regola sta a DB (A-7). Il backend ritira
+#   il suo calcolo e legge questa funzione.
+#
+# -- LA REGOLA, portata COM'E' (quattro stati) -----------------------------------------
+#   ATTIVO       la veste e' accesa (attivo = true)
+#   PENDING      spenta, con un invito pendente, e l'email di QUEL token e' partita
+#                (invito_inviato_at >= emissione del token: la spedizione puo' stare
+#                nella stessa transazione dell'emissione, stesso now())
+#   NON_SPEDITO  spenta, con un invito pendente, ma l'email di quel token non e'
+#                partita (invito_inviato_at nullo o precedente al token)
+#   DISATTIVO    spenta, nessun invito pendente
+#   «Invito pendente» = un token non usato e non scaduto che porta nel meta
+#   l'identita_id della veste. Con piu' token pendenti valgono la scadenza e
+#   l'emissione piu' recenti (MAX), come nel backend.
+#   NESSUNO (nessuna veste) non e' uno stato di una veste: e' l'assenza della riga,
+#   e resta a chi cerca la veste (la scheda, o nessun_accesso nella vista).
+#
+# -- UNA DIFFERENZA DAL BACKEND, dichiarata (e perche' non cambia niente) --------------
+#   Il backend filtrava anche il TIPO del token sui due della porta della veste
+#   (INVITO_* e ATTIVAZIONE_*_CROSS, in apps/core/services/invito_veste.py). Qui
+#   no: il token di una veste si riconosce dall'identita_id nel meta, che scrive
+#   SOLO l'emissione di un invito (InvitoVeste.emetti, letto il 2026-10-02: il reset
+#   password scrive meta {"richiesto_da": ...}). Ricopiare a DB la mappa delle
+#   porte sarebbe una seconda copia di una costante del backend, e divergerebbe
+#   alla prima porta nuova. ⚠️ Se un giorno un token che NON e' un invito portera'
+#   identita_id nel meta, questa regola lo contera': e' il punto da guardare.
+#
+# -- FORMA -----------------------------------------------------------------------------
+#   LANGUAGE sql BEGIN ATOMIC, STABLE: legge anagrafiche.identita_digitali e
+#   config.token_monouso (niente django.*). Una riga per una veste che esiste,
+#   ZERO righe per un id assente (chiave di un JOIN LATERAL, nessun guard).
+#   token_scade_at e' la scadenza del token pendente piu' lontano (NULL se non ce
+#   n'e'): la scheda la usa per «scade tra N ore».
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261002-31-create-fn-stato-veste-mctit.yaml
+
+  - changeSet:
+      id: 20261002-31-create-fn-stato-veste
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_stato_veste(identita_id): ATTIVO / PENDING / NON_SPEDITO / DISATTIVO e la
+        scadenza dell'invito pendente. La regola dello stato accessi portata a DB com'era nel
+        backend (A-7): la leggono la vista degli Altri accessi e la scheda di cliente e
+        fornitore. Brief: brief-db-be-fe-area-accessi R-DB-A2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                schemaName: config
+                tableName: token_monouso
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'script' AND p.proname = 'fn_stato_veste';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_stato_veste(
+                  p_identita_id anagrafiche.identita_digitali.id%TYPE)
+              RETURNS TABLE(
+                  stato          text,   -- codice calcolato: ATTIVO / PENDING / NON_SPEDITO / DISATTIVO
+                  token_scade_at config.token_monouso.scadenza%TYPE)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              BEGIN ATOMIC
+                  SELECT CASE
+                             WHEN idg.attivo
+                                 THEN 'ATTIVO'
+                             WHEN tk.scade_at IS NULL
+                                 THEN 'DISATTIVO'
+                             -- ⭐ l'email di QUESTO token e' partita: >= perche'
+                             --   emissione e spedizione possono condividere now()
+                             WHEN idg.invito_inviato_at IS NOT NULL
+                                  AND idg.invito_inviato_at >= tk.emesso_at
+                                 THEN 'PENDING'
+                             ELSE 'NON_SPEDITO'
+                         END,
+                         tk.scade_at
+                    FROM anagrafiche.identita_digitali idg
+                    LEFT JOIN LATERAL (
+                        -- Il token della VESTE (identita_id nel meta), non della
+                        -- credenziale: cliente e fornitore portale della stessa
+                        -- persona condividono i tipi di token.
+                        SELECT max(t.scadenza)    AS scade_at,
+                               max(t.data_insert) AS emesso_at
+                          FROM config.token_monouso t
+                         WHERE t.auth_user_id = idg.auth_user_id
+                           AND t.meta ->> 'identita_id' = idg.id::text
+                           AND NOT t.utilizzato
+                           AND t.scadenza > now()
+                    ) tk ON true
+                   WHERE idg.id = p_identita_id;
+              END;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION script.fn_stato_veste(anagrafiche.identita_digitali.id%TYPE) IS
+                  'Lo stato di UNA veste, calcolato solo a DB (A-7): ATTIVO (accesa), PENDING '
+                  '(spenta, invito pendente e la sua email partita: invito_inviato_at >= emissione '
+                  'del token), NON_SPEDITO (spenta, invito pendente, email di quel token non '
+                  'partita), DISATTIVO (spenta, nessun invito pendente). Invito pendente = token di '
+                  'config.token_monouso non usato e non scaduto con l''identita_id della veste nel '
+                  'meta (lo scrive solo l''emissione di un invito); con piu'' token vale il MAX di '
+                  'scadenza ed emissione. token_scade_at = scadenza del token pendente piu'' lontano. '
+                  'Zero righe per un id assente. La regola e'' quella che il backend calcolava in '
+                  'portale_repository.stato_veste, portata com''era; NESSUNO (nessuna veste) resta '
+                  'a chi cerca la veste. La leggono anagrafiche.vw_accessi_altri e lo stato accessi '
+                  'della scheda di cliente e fornitore. Brief: brief-db-be-fe-area-accessi (A-7, R-DB-A2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_stato_veste(bigint);

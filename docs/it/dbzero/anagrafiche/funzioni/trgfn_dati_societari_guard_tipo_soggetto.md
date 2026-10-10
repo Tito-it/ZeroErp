@@ -13,8 +13,8 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto(
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-v_cod_int_tipo   text;
-v_policy         config.dati_societari_policy_enum;
+v_cod_int_tipo   config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+v_policy         config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
 BEGIN
 /*
   Recupero:
@@ -93,8 +93,11 @@ IS '
 Function che controlla, in fase di INSERT/UPDATE su anagrafiche.dati_societari, che:
 - il soggetto collegato esista in anagrafiche.soggetti;
 - per il tipo_soggetto_dettaglio associato sia configurata una policy dati_societari_policy
-diversa da ''NONE'' (enum config.dati_societari_policy_enum).
+diversa da ''NONE'' (tipo config.presenza_policy_enum).
 In caso di violazione utilizza script.fn_log_and_raise_error con codici errore specifici.
+Rev 20261009-20 (brief-db-sesso-senza-default): la variabile della policy segue la colonna
+(%TYPE), come codice_interno, non il tipo, che e'' passato da config.dati_societari_policy_enum al generico
+config.presenza_policy_enum.
 ';
 ```
 

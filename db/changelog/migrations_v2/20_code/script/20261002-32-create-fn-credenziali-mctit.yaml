@@ -1,0 +1,103 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_credenziali(): TUTTE LE CREDENZIALI, ANCHE QUELLE SENZA VESTE
+#   Brief: brief-db-be-fe-area-accessi, R-DB-A2 / A2-bis (sezione 7.4)
+#
+# -- PERCHE' ------------------------------------------------------------------------
+#   Il tab «Altri accessi» deve mostrare anche le credenziali SENZA alcuna veste
+#   (A-2, badge «Nessun accesso»), e quelle non stanno in nessuna tabella del DB:
+#   l'unica sorgente che le enumera e' django.auth_user. Una vista pero' non puo'
+#   nominare django.*: si risolve alla CREATE, e durante il migrate le tabelle di
+#   Django non esistono (le crea manage.py migrate, dopo Liquibase; in CI non
+#   arrivano affatto). Il precedente e' script.fn_get_auth_user_stato, che fa la
+#   stessa cosa per UNA credenziale: questa le enumera tutte, con le colonne che le
+#   viste dell'area Accessi mostrano. Due domande diverse (una riga per id contro
+#   l'elenco), non una copia.
+#
+# -- FORMA -----------------------------------------------------------------------------
+#   LANGUAGE plpgsql (late-bound: nessun riferimento a django.* si risolve alla
+#   CREATE), STABLE, SECURITY INVOKER: chi legge e' zeroerp_app, che su
+#   django.auth_user ha SELECT, o un job che gira come proprietario. Tipi
+#   ESPLICITI, mai %TYPE su colonne di django (si risolverebbe alla CREATE).
+#   ⛔ Niente password, niente flag di Django che il DB non governa (is_staff,
+#   is_superuser): la funzione da' cio' che le viste mostrano, non la riga.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261002-32-create-fn-credenziali-mctit.yaml
+
+  - changeSet:
+      id: 20261002-32-create-fn-credenziali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_credenziali(): l'elenco delle credenziali (django.auth_user) con username,
+        email, nome, cognome, is_active, last_login. Accessore plpgsql late-bound: le viste
+        dell'area Accessi ne hanno bisogno per vedere anche le credenziali senza veste, e una
+        vista non puo' nominare django.*. Brief: brief-db-be-fe-area-accessi R-DB-A2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_credenziali';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_credenziali()
+              -- ⚠️ Tipi espliciti: colonne di django.auth_user, che alla CREATE non esiste.
+              RETURNS TABLE(
+                  auth_user_id integer,
+                  username     text,
+                  email        text,
+                  nome         text,
+                  cognome      text,
+                  is_active    boolean,
+                  last_login   timestamptz)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- Tutte, senza filtro: anche le spente e quelle senza veste. Chi
+                  -- legge decide cosa mostrare (le viste dell'area Accessi le
+                  -- ripartiscono con script.fn_categoria_accesso).
+                  RETURN QUERY
+                  SELECT au.id,
+                         au.username::text,
+                         NULLIF(btrim(au.email), '')::text,
+                         NULLIF(btrim(au.first_name), '')::text,
+                         NULLIF(btrim(au.last_name), '')::text,
+                         au.is_active,
+                         au.last_login
+                    FROM django.auth_user au;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_credenziali() IS
+                  'L''elenco delle CREDENZIALI (django.auth_user), tutte: anche spente e senza alcuna '
+                  'veste. Colonne: auth_user_id, username, email, nome, cognome (stringhe vuote di '
+                  'Django rese NULL), is_active, last_login. Esiste perche'' una VISTA non puo'' '
+                  'nominare django.* (si risolve alla CREATE, e le tabelle di Django le crea manage.py '
+                  'migrate dopo Liquibase), mentre una funzione plpgsql e'' late-bound: le viste '
+                  'anagrafiche.vw_accessi_altri e vw_accessi_sistema passano da qui. Gemella per '
+                  'elenco di script.fn_get_auth_user_stato (una credenziale per id). Niente password '
+                  'ne'' flag di Django che il DB non governa. Brief: brief-db-be-fe-area-accessi (R-DB-A2).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_credenziali();

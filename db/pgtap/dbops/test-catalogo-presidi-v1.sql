@@ -26,7 +26,8 @@
 --     cade nell'ALLARME, non nel silenzio
 -- 11) 🔴 il SECURITY DEFINER ha ancora il proprietario che serve: ogni tabella
 --     protetta letta da una vista DEFINER appartiene al proprietario della
---     funzione
+--     funzione che conta (dal 2026-10-10 la sede,
+--     fn_conta_presidio_per_variante: fn_conta_presidio ne e' la somma, INVOKER)
 --
 -- ────────────────────────────────────────────────────────────────
 -- ⭐ I DUE VERSI VANNO LETTI INSIEME, ed e' il punto del file.
@@ -182,9 +183,12 @@ SELECT throws_ok(
     'test 6 — una riga con la nota vuota e'' rifiutata dal database');
 
 SELECT throws_ok(
-    $$INSERT INTO dbops.presidi (vista, natura, cadenza, perimetro, nota)
+    -- ⚠️ chi_agisce valorizzata apposta (2026-10-06): senza, la riga la
+    --   rifiuterebbe ANCHE chk_presidi_chi_agisce_se_allarma, e il 23514
+    --   passerebbe per il vincolo sbagliato.
+    $$INSERT INTO dbops.presidi (vista, natura, cadenza, perimetro, nota, chi_agisce)
       VALUES ('dbops.vw_pgtap_cancello_muto', 'CANCELLO', 'MAI', 'LIBERO',
-              'un cancello che non dice dove vive')$$,
+              'un cancello che non dice dove vive', 'SVILUPPO')$$,
     '23514', NULL,
     'test 7 — una riga CANCELLO senza presidiato_da e'' rifiutata dal database');
 
@@ -206,12 +210,14 @@ SELECT * FROM (VALUES (1), (2), (3), (4)) AS t(n);
 -- ⚠️ Le viste PRIMA delle righe di catalogo: e' l'ordine in cui il test 3
 --   pretende che stiano le cose, e una fixture che lo viola insegnerebbe il
 --   contrario a chi la copia.
+-- ⚠️ chi_agisce dal 2026-10-06: un presidio che si accende deve dire a chi
+--   tocca (chk_presidi_chi_agisce_se_allarma, brief-db-presidi-cosa-significa-cosa-fare).
 INSERT INTO dbops.presidi (vista, natura, colonna_stato, stato_atteso,
-                           cadenza, perimetro, nota)
+                           cadenza, perimetro, nota, chi_agisce)
 VALUES ('pgtap_presidi_fixture.vw_finta', 'ZERO', 'stato', 'DEBITO_DICHIARATO',
-        'MAI', 'LIBERO', 'fixture pgTAP del catalogo dei presidi'),
+        'MAI', 'LIBERO', 'fixture pgTAP del catalogo dei presidi', 'SVILUPPO'),
        ('pgtap_presidi_fixture.vw_finta_intera', 'ZERO', NULL, NULL,
-        'MAI', 'LIBERO', 'fixture pgTAP: conteggio della vista intera');
+        'MAI', 'LIBERO', 'fixture pgTAP: conteggio della vista intera', 'SVILUPPO');
 
 -- ============================================================
 -- 8) Una vista non a catalogo non si conta: SOLLEVA
@@ -284,9 +290,13 @@ SELECT is(
            AND t.relowner <> (SELECT proowner FROM pg_proc pr
                                 JOIN pg_namespace pn ON pn.oid = pr.pronamespace
                                WHERE pn.nspname = 'dbops'
-                                 AND pr.proname = 'fn_conta_presidio')), ''),
+                                 -- ⚠️ dal 2026-10-10 la DEFINER che legge le viste e' la
+                                 --   sede del conteggio; fn_conta_presidio e' la sua somma,
+                                 --   INVOKER (20261010-41/-42). Nominare la somma qui
+                                 --   pinnerebbe il proprietario della funzione sbagliata.
+                                 AND pr.proname = 'fn_conta_presidio_per_variante')), ''),
     '',
-    'test 11 — ogni tabella protetta letta da una vista DEFINER appartiene al proprietario di fn_conta_presidio');
+    'test 11 — ogni tabella protetta letta da una vista DEFINER appartiene al proprietario della sede del conteggio (fn_conta_presidio_per_variante)');
 
 SELECT * FROM finish();
 ROLLBACK;

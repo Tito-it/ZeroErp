@@ -34,7 +34,7 @@ Indice test eseguiti:
 from unittest import TestCase
 from unittest.mock import patch
 
-from django.db import IntegrityError
+from apps.core.tests.db_error_fakes import SQLSTATE_UNICITA, make_integrity_error
 
 from apps.core.services.service_errors import ServiceError
 
@@ -69,7 +69,7 @@ class TestToponomasticaService(TestCase):
     @patch(IND_REPO)
     def test_create_toponomastica_duplicate(self, mock_ind, mock_geo):
         """IntegrityError → ServiceError E_ANAG_DUPLICATO."""
-        mock_geo.return_value.create_toponomastica.side_effect = IntegrityError("unique")
+        mock_geo.return_value.create_toponomastica.side_effect = make_integrity_error(SQLSTATE_UNICITA)
         from apps.anagrafiche.services.geo_service import GeoService
         with self.assertRaises(ServiceError) as ctx:
             GeoService().create_toponomastica({"descrizione": "Via"})
@@ -146,7 +146,7 @@ class TestProvinceService(TestCase):
     @patch(GEO_REPO)
     @patch(IND_REPO)
     def test_create_provincia_duplicate(self, mock_ind, mock_geo):
-        mock_geo.return_value.create_provincia.side_effect = IntegrityError("unique")
+        mock_geo.return_value.create_provincia.side_effect = make_integrity_error(SQLSTATE_UNICITA)
         from apps.anagrafiche.services.geo_service import GeoService
         with self.assertRaises(ServiceError) as ctx:
             GeoService().create_provincia({"descrizione": "Test", "sigla": "TS"})
@@ -167,7 +167,7 @@ class TestRegioniService(TestCase):
     @patch(GEO_REPO)
     @patch(IND_REPO)
     def test_create_regione_duplicate(self, mock_ind, mock_geo):
-        mock_geo.return_value.create_regione.side_effect = IntegrityError("unique")
+        mock_geo.return_value.create_regione.side_effect = make_integrity_error(SQLSTATE_UNICITA)
         from apps.anagrafiche.services.geo_service import GeoService
         with self.assertRaises(ServiceError) as ctx:
             GeoService().create_regione({"descrizione": "Lombardia"})

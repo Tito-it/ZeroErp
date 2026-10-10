@@ -70,6 +70,7 @@ class TestPermessiEreditatiView(TestCase):
         rimedi opposti per chi amministra.
         """
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 7}
         mock_repo.get_permessi_ereditati.return_value = SAMPLE_EREDITATI
         mock_repo_cls.return_value = mock_repo
@@ -92,6 +93,7 @@ class TestPermessiEreditatiView(TestCase):
         distinguere l'assenza dallo zero.
         """
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 7}
         mock_repo.get_permessi_ereditati.return_value = {"aree": [], "azioni": []}
         mock_repo_cls.return_value = mock_repo
@@ -111,6 +113,7 @@ class TestPermessiEreditatiView(TestCase):
         risposta sbagliata al posto di un errore.
         """
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = None
         mock_repo_cls.return_value = mock_repo
 

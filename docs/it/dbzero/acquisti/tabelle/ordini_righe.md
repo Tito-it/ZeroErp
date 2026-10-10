@@ -12,11 +12,11 @@
 | ordine_id | bigint | NO |  |
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(150) | NO |  |
 | uom_id | bigint | YES |  |
-| qta | numeric | NO |  |
-| prezzo_unitario | numeric | NO |  |
-| sconto_percentuale | numeric | YES | 0 |
+| qta | numeric(18,6) | NO |  |
+| prezzo_unitario | numeric(18,6) | NO |  |
+| sconto_percentuale | numeric(5,2) | YES | 0 |
 | iva_id | integer | YES |  |
 | stato_doc_ordine_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
@@ -27,8 +27,8 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
-| hash_contenuto | character varying | YES |  |
+| user_update | text | NO | CURRENT_USER |
+| hash_contenuto | character varying(64) | YES |  |
 | sorgente_uid | uuid | YES |  |
 | data_consegna_richiesta | date | YES |  |
 | data_consegna_confermata_fornitore | date | YES |  |
@@ -39,6 +39,9 @@
 | CHECK | chk_ordini_ao_r_przz_pos |  |
 | CHECK | chk_ordini_ao_r_qta_pos |  |
 | CHECK | chk_ordini_ao_r_sconto |  |
+| CHECK | chk_ordini_righe_prezzo_unitario_finito |  |
+| CHECK | chk_ordini_righe_qta_finito |  |
+| CHECK | chk_ordini_righe_sconto_percentuale_finito |  |
 | FOREIGN KEY | fk_ao_r_articolo | articolo_id |
 | FOREIGN KEY | fk_ao_r_iva | iva_id |
 | FOREIGN KEY | fk_ao_r_sorgente_tipo | sorgente_tipo_id |

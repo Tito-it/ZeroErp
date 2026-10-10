@@ -119,10 +119,10 @@ WITH ins AS (
     stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_commessa_fd),
          'PGTAP-FD-SEG-' || substr(md5(clock_timestamp()::text), 1, 12),
-         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-         date_trunc('month', current_date)::date,
-         date_trunc('month', current_date)::date,
-         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+         date_trunc('month', script.fn_data_operativa())::date,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 1.000000, 'FIXED',
          'BOZZA', 'NON_EMESSA', NULL, NULL
     FROM tmp_refs_fd r
@@ -159,10 +159,10 @@ WITH ins AS (
     r.articolo_id,
     r.istanza_utility_id,
     r.billing_account_id,
-    current_date,
-    date_trunc('month', current_date)::date,
-    date_trunc('month', current_date)::date,
-    (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+    script.fn_data_operativa(),
+    date_trunc('month', script.fn_data_operativa())::date,
+    date_trunc('month', script.fn_data_operativa())::date,
+    (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
     1,
     true,
     false,
@@ -202,11 +202,11 @@ SELECT is(
   (
     SELECT count(*)::int
     FROM vendite.fn_select_attivita_fatturabili(
-      p_competenza_mese => date_trunc('month', current_date)::date,
+      p_competenza_mese => date_trunc('month', script.fn_data_operativa())::date,
       p_tipo_doc_fiscale_id => (SELECT tipo_doc_fiscale_id FROM tmp_refs_fd),
       p_lock_batch_id => (SELECT lock_batch_id FROM tmp_costanti_fd),
       p_lock => true,
-      p_data_fatturazione => current_date,
+      p_data_fatturazione => script.fn_data_operativa(),
       p_billing_account_id => (SELECT billing_account_id FROM tmp_refs_fd),
       p_utility_id => (SELECT utility_id FROM tmp_refs_fd),
       p_valuta_id => (SELECT valuta_id FROM tmp_refs_fd),

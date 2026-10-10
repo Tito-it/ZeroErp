@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_attivita_fatturabile(p_auth_user_id in
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_attivita_fatturabile(p_auth_user_id integer, p_attivita_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: perimetro emittente di un'attivita' fatturabile,
     --   risalendo alla COMMESSA.

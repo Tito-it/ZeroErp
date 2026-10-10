@@ -110,7 +110,7 @@ BEGIN
         motivo, annulla_movimento_id)
     VALUES (
         v_mov.titolo_iva_id, 'FORZATURA', - v_mov.imponibile,
-        CURRENT_DATE, p_motivo, p_movimento_id)
+        (SELECT script.fn_data_operativa()), p_motivo, p_movimento_id)
     RETURNING id INTO v_new_id;
 
     RETURN v_new_id;

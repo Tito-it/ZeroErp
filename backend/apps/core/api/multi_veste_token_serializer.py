@@ -10,6 +10,8 @@
 #   ha alcuna identita valida per il namespace — distinto dal 401
 #   credenziali errate per non innescare blocco-tentativi.
 #   Usato da AdminTokenView / PortaleTokenView / ShopTokenView (§8.3.3).
+#   La chiave d'ingresso e' della porta (L-4, D-9): il nome utente per admin,
+#   l'email per portale e shop (`_IngressoPerEmailSerializer`).
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -17,7 +19,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from rest_framework import status
+from django.contrib.auth.models import User
+from rest_framework import serializers, status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -31,6 +34,11 @@ from apps.core.services.auth_constants import (
     RUOLO_APPLICATIVO_FORNITORE_PORTALE,
     RUOLO_APPLICATIVO_OPERATORE,
     RUOLO_APPLICATIVO_SHOP_CUSTOMER,
+)
+from apps.core.services.credenziale_ingresso import (
+    credenziale_per_email,
+    credenziale_per_nome_utente,
+    normalizza_email,
 )
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
 
@@ -107,14 +115,28 @@ class MultiVesteTokenSerializer(SidTokenObtainPairSerializer):
     allowed_ruoli_applicativi: Sequence[str] = ()
     _auth_repo: AuthRepository = AuthRepository()
 
+    # Scopo: La credenziale del nome tentato, cercata come la cerca
+    # `authenticate` per questa porta (best-effort, None se non c'e'). Qui la
+    # chiave e' il nome utente: stessa ricerca di `ModelBackend`
+    # (`get_by_natural_key`, uguaglianza esatta). Le porte che entrano per
+    # email la ridefiniscono (`_IngressoPerEmailSerializer`).
+    # ⛔ Il nome arriva gia' normalizzato dal campo del serializer: lookup,
+    #    `authenticate` e impronta del freno leggono lo STESSO valore.
+    @classmethod
+    def trova_credenziale(cls, nome: str) -> User | None:
+        return credenziale_per_nome_utente(nome)
+
     # Scopo: Esegue validate SimpleJWT standard + risoluzione identita veste
     # + injection dei claim custom. Fallisce se l'utente non ha la veste.
     def validate(self, attrs: dict) -> dict:
         # Step 1: verifica credenziali. super() popola self.user.
         data = super().validate(attrs)
+        # `super().validate` solleva AuthenticationFailed se la credenziale non
+        # passa: qui `self.user` c'e' per costruzione.
+        assert self.user is not None
 
         # Step 2: risolve l'identita dell'utente per la veste del namespace.
-        identita = self._auth_repo.find_identita_attiva_for_ruoli(
+        identita = self._auth_repo.find_veste_utilizzabile_per_ruoli(
             auth_user_id=self.user.id,
             ruoli_applicativi=self.allowed_ruoli_applicativi,
         )
@@ -135,6 +157,33 @@ class MultiVesteTokenSerializer(SidTokenObtainPairSerializer):
         return data
 
 
+# Scopo: Il campo d'ingresso delle porte per email: `CharField` (spazi ai bordi
+# tolti, vuoto rifiutato) piu' la normalizzazione dell'email. Nessun controllo
+# di formato: un valore che non e' un'email non trova una credenziale e conta
+# come un nome tentato qualunque, con le stesse risposte.
+class EmailIngressoField(serializers.CharField):
+    def to_internal_value(self, data: Any) -> str:
+        return normalizza_email(super().to_internal_value(data))
+
+
+class _IngressoPerEmailSerializer(MultiVesteTokenSerializer):
+    """Base delle porte che entrano con l'EMAIL (portale, shop: L-4, D-9).
+
+    Il campo del corpo e' `email`, e `authenticate(email=…)` arriva a
+    `CredenzialePerEmailBackend`. ⭐ Regola del 2: due porte, una sede.
+    """
+
+    username_field = "email"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields[self.username_field] = EmailIngressoField(write_only=True)
+
+    @classmethod
+    def trova_credenziale(cls, nome: str) -> User | None:
+        return credenziale_per_email(nome)
+
+
 # ── Sottoclassi concrete per namespace (§8.3.3) ─────────────
 # Ogni namespace di login espone SOLO il suo subset di ruoli_applicativi.
 # Un operatore che tenta /portale/token/ o un cliente che tenta /admin/token/
@@ -147,8 +196,8 @@ class AdminTokenSerializer(MultiVesteTokenSerializer):
     allowed_ruoli_applicativi = (RUOLO_APPLICATIVO_OPERATORE,)
 
 
-class PortaleTokenSerializer(MultiVesteTokenSerializer):
-    """Login per /api/v1/portale/token/ — clienti e fornitori del portale."""
+class PortaleTokenSerializer(_IngressoPerEmailSerializer):
+    """Login per /api/v1/portale/token/ — clienti e fornitori del portale, con l'email."""
 
     allowed_ruoli_applicativi = (
         RUOLO_APPLICATIVO_CLIENTE_PORTALE,
@@ -156,7 +205,7 @@ class PortaleTokenSerializer(MultiVesteTokenSerializer):
     )
 
 
-class ShopTokenSerializer(MultiVesteTokenSerializer):
-    """Login per /api/v1/shop/token/ — shop B2C autenticato."""
+class ShopTokenSerializer(_IngressoPerEmailSerializer):
+    """Login per /api/v1/shop/token/ — shop B2C autenticato, con l'email."""
 
     allowed_ruoli_applicativi = (RUOLO_APPLICATIVO_SHOP_CUSTOMER,)

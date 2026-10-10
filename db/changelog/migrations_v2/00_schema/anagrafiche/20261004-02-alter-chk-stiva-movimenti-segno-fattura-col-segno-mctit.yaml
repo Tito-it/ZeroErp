@@ -1,0 +1,90 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN MOVIMENTO FATTURA PUO' ESSERE NEGATIVO
+#   anagrafiche.soggetti_titoli_iva_movimenti.chk_stiva_movimenti_segno
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §13 (decisione C di Tid, 2026-10-04).
+#
+#   Il plafond si consuma sul NETTO della fattura: le righe negative (uno
+#   sconto, un componente di kit negativo) restituiscono capienza. Il
+#   movimento di una riga negativa e' negativo, e resta di tipo FATTURA: il
+#   tipo dice QUALE documento l'ha prodotto, e una riga negativa di fattura
+#   e' la fattura che si nettizza, non una nota di credito. Scriverla
+#   NOTA_CREDITO farebbe dire al registro che c'e' un documento che non
+#   esiste.
+#
+#   FATTURA > 0  ->  FATTURA <> 0. Lo zero resta vietato: non e' un
+#   movimento. NOTA_CREDITO (< 0, P4) e FORZATURA (<> 0) invariati.
+#
+#   ⚠️ Il conto sotto zero resta impossibile: lo rifiuta l'accumulatore a
+#   ogni riga, e la madre (20261004-06) scrive prima i positivi.
+#
+# Presidio: anagrafiche/test-consuma-plafond-titolo-iva-righe-v1.sql (lo
+#   sconto, il kit con componente negativo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261004-02-alter-chk-stiva-movimenti-segno-fattura-col-segno-mctit.yaml
+
+  - changeSet:
+      id: 20261004-02-alter-chk-stiva-movimenti-segno-fattura-col-segno
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.soggetti_titoli_iva_movimenti: chk_stiva_movimenti_segno ammette un
+        movimento FATTURA negativo (la riga negativa di una fattura restituisce plafond).
+        Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §13.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conname = 'chk_stiva_movimenti_segno'
+                 AND conrelid = 'anagrafiche.soggetti_titoli_iva_movimenti'::regclass
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  DROP CONSTRAINT chk_stiva_movimenti_segno;
+
+              -- Il segno segue il tipo. Zero non e' un movimento: e' una riga che non
+              -- muove niente e sporca il registro. ⭐ FATTURA col segno della riga che
+              -- lo produce (decisione C, 2026-10-04): una riga negativa di fattura
+              -- restituisce plafond, e resta FATTURA perche' il documento e' quello.
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  ADD CONSTRAINT chk_stiva_movimenti_segno
+                      CHECK (
+                          (tipo_movimento = 'FATTURA'      AND imponibile <> 0)
+                       OR (tipo_movimento = 'NOTA_CREDITO' AND imponibile < 0)
+                       OR (tipo_movimento = 'FORZATURA'    AND imponibile <> 0)
+                      );
+
+              COMMENT ON TABLE anagrafiche.soggetti_titoli_iva_movimenti IS
+                  'Il REGISTRO del consumo di plafond di un titolo IVA (D5 di brief-db-be-iva-risolutore-e-regime-cliente, approvata da Tid il 2026-08-27). Ogni riga di fattura consumata, ogni nota di credito e ogni forzatura manuale e'' una riga; ⭐ dal 2026-10-04 (decisione C, brief-db-bom-flag-quantita-e-kit-in-fattura §13) un movimento FATTURA porta il SEGNO della sua riga: il plafond si consuma sul NETTO della fattura, e una riga negativa (uno sconto, un componente di kit negativo) restituisce capienza. Resta FATTURA perche'' il tipo dice quale documento l''ha prodotto, non il verso; anagrafiche.soggetti_titoli_iva.imponibile_utilizzato e'' la loro somma, mantenuta dal trigger dell''accumulatore. ⭐ Perche'' un registro e non una colonna: P3 chiede un valore MEMORIZZATO — serve a poterlo ridurre a mano quando esistono fatturazioni fuori dal sistema — ma un numero memorizzato E forzabile diverge in silenzio da cio'' che rappresenta, e su un plafond quel numero e'' precisamente quello che l''Agenzia delle Entrate verifica. Col registro la forzatura ha un motivo, un autore e una data; il consumo e'' algebrico senza casi speciali per la nota di credito (P4); e la riconciliazione col fatturato e'' una query, non un''indagine. Non e'' un pattern nuovo: vendite.resi_righe_riconsegne e le rettifiche di vw_partite_merce fanno gia'' cosi''. ⚠️ Una FORZATURA non nomina nessuna fattura, ed e'' il suo senso: registra cio'' che il sistema NON ha fatturato. Senza il CHECK diventerebbe la scorciatoia per scrivere un consumo di fattura saltando anagrafiche.fn_consuma_plafond_titolo_iva_righe, che e'' l''unica a prendere il lock e a calcolare la spezzatura. ⭐ La UNIQUE parziale e'' la rete sotto al lock di D15-bis: il lock serializza due transizioni a DEFINITIVA in corsa, questa ferma la ripetizione a distanza di tempo. Sulle forzature non si applica, perche'' due correzioni identiche nello stesso giorno possono essere due fatti distinti. ⚠️ data_movimento e'' NOT NULL SENZA default: nessun now(), la data la porta chi scrive. Stesso vincolo di firma di D14 sul risolutore, e per la stessa ragione — il lotto puo'' girare il giorno dopo. ⛔ Nessun ON DELETE CASCADE verso il titolo, al contrario degli AMBITI: un ambito e'' una clausola, un movimento e'' un fatto contabile. rev 2026-08-29.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Fallisce se nel registro c'e' gia' un movimento FATTURA negativo:
+              --    e' giusto, il rollback non puo' cancellare un fatto contabile.
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  DROP CONSTRAINT chk_stiva_movimenti_segno;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                  ADD CONSTRAINT chk_stiva_movimenti_segno
+                      CHECK (
+                          (tipo_movimento = 'FATTURA'      AND imponibile > 0)
+                       OR (tipo_movimento = 'NOTA_CREDITO' AND imponibile < 0)
+                       OR (tipo_movimento = 'FORZATURA'    AND imponibile <> 0)
+                      );

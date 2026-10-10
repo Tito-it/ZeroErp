@@ -41,12 +41,14 @@ avviene tramite la tabella di mapping `anagrafiche.emittenti_fiscali_billing_acc
   [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva)).
 * `regime_fiscale_confermato_il` / `regime_fiscale_confermato_da` dicono **chi ha
   dichiarato** il regime e quando: con un default, un RF01 dichiarato e uno messo
-  dal default sarebbero la stessa riga. Le scrive il form dell'emittente; se il
-  regime cambia senza una conferma nuova si **azzerano** da sole
-  ([trgfn_emittenti_fiscali_regime_conferma](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_regime_conferma)).
+  dal default sarebbero la stessa riga. ⭐ Dal 2026-10-02 le **scrive il database**:
+  un `UPDATE` che nomina il regime, anche con lo stesso valore, è una dichiarazione
+  ([trgfn_emittenti_fiscali_regime_conferma](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_regime_conferma));
+  la `INSERT` non conferma mai, e da fuori le due colonne non si scrivono
+  ([trgfn_emittenti_fiscali_guard_regime_conferma](/dbzero/anagrafiche/funzioni/trgfn_emittenti_fiscali_guard_regime_conferma)).
   Un emittente attivo senza conferma compare nel presidio
   [dbops.vw_emittenti_regime_non_confermato](/dbzero/dbops/views/vw_emittenti_regime_non_confermato).
-  Brief: `brief-db-esigibilita-iva-per-cassa-emittente` (D-1, D-9, D-11).
+  Brief: `brief-db-esigibilita-iva-per-cassa-emittente` (D-1, D-9, D-11, sezione 10).
 * `bollo_auto`, `bollo_soglia`, `valuta_id` e `rounding_policy` sono configurazioni
   operative dell'emissione e appartengono al ruolo emittente.
 * `rounding_policy`, quando valorizzata, usa gli stessi valori ammessi della

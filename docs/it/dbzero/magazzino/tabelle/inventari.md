@@ -10,10 +10,10 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
-| data | date | NO | CURRENT_DATE |
-| stato_mag_inventario | character varying | NO | 'DRAFT'::character varying |
+| data | date | NO | script.fn_data_operativa() |
+| stato_mag_inventario | character varying(16) | NO | 'DRAFT'::character varying |
 | magazzino_id | bigint | NO |  |
-| descrizione | character varying | YES |  |
+| descrizione | character varying(255) | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -22,7 +22,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | sorgente_riga | bigint | YES |  |
 
 ## 🔒 Vincoli

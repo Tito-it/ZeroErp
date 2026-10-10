@@ -8,7 +8,6 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { displayTimestamp } from '../../core/utils/date'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Password from 'primevue/password'
@@ -16,10 +15,8 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
 import { useEmailAccountsStore } from '../stores/emailAccounts'
@@ -35,10 +32,6 @@ const props = defineProps({
   accountId: Number
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const { t } = useI18n()
@@ -175,133 +168,114 @@ async function handleTest() {
     testLoading.value = false
   }
 }
-// Uscita per volonta' dell'utente (Annulla, X, ESC, clic fuori): con
-// modifiche non salvate si chiede prima.
-const chiudi = () => chiudiConConferma(() => {
-  emit('update:visible', false)
-  emit('cancelled')
-})
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :dismissable="true"
-    @after-show="onAfterShow"
+    :title="t('amministrazione.email_account_title')"
+    :icon="NAV_ICONS.ACCOUNT_EMAIL"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="saving"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('amministrazione.email_account_title')"
-        :icon="NAV_ICONS.ACCOUNT_EMAIL"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_codice') }}</label>
-            <InputText v-model="form.codice" :disabled="isEdit || isReadonly" fluid
-              :invalid="campiErrati.includes('codice')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo" :disabled="isReadonly"
-              :invalid="campiErrati.includes('attivo')"
-            />
-          </div>
-        </div>
-
+    <div class="form-grid">
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('amministrazione.email_descrizione') }}</label>
-          <InputText v-model="form.descrizione" :disabled="isReadonly" fluid
-            :invalid="campiErrati.includes('descrizione')"
+          <label>{{ t('amministrazione.email_codice') }}</label>
+          <InputText v-model="form.codice" :disabled="isEdit || isReadonly" fluid
+            :invalid="campiErrati.includes('codice')"
           />
         </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_smtp_host') }}</label>
-            <InputText v-model="form.smtp_host" :disabled="isReadonly" fluid />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_smtp_port') }}</label>
-            <InputNumber v-model="form.smtp_port" :min="1" :max="65535" :disabled="isReadonly" fluid />
-          </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_attivo') }}</label>
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadonly"
+            :invalid="campiErrati.includes('attivo')"
+          />
         </div>
+      </div>
 
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_smtp_tls') }}</label>
-            <ToggleSwitch v-model="form.smtp_use_tls" :disabled="isReadonly" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_smtp_ssl') }}</label>
-            <ToggleSwitch v-model="form.smtp_use_ssl" :disabled="isReadonly" />
-          </div>
+      <div class="form-field">
+        <label>{{ t('amministrazione.email_descrizione') }}</label>
+        <InputText v-model="form.descrizione" :disabled="isReadonly" fluid
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_smtp_host') }}</label>
+          <InputText v-model="form.smtp_host" :disabled="isReadonly" fluid />
         </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_smtp_username') }}</label>
-            <InputText v-model="form.smtp_username" :disabled="isReadonly" fluid />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_smtp_password') }}</label>
-            <Password v-model="form.smtp_password" :feedback="false" toggleMask fluid
-                     :disabled="isReadonly"
-                     :placeholder="isEdit ? t('amministrazione.email_smtp_password_placeholder') : ''" />
-          </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_smtp_port') }}</label>
+          <InputNumber v-model="form.smtp_port" :min="1" :max="65535" :disabled="isReadonly" fluid />
         </div>
+      </div>
 
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_from') }}</label>
-            <InputText v-model="form.email_from" :disabled="isReadonly" fluid />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.email_reply_to') }}</label>
-            <InputText v-model="form.email_reply_to" :disabled="isReadonly" fluid />
-          </div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_smtp_tls') }}</label>
+          <ToggleSwitch v-model="form.smtp_use_tls" :disabled="isReadonly" />
         </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_smtp_ssl') }}</label>
+          <ToggleSwitch v-model="form.smtp_use_ssl" :disabled="isReadonly" />
+        </div>
+      </div>
 
-        <div v-if="isEdit && !isReadonly" class="email-test-row">
-          <span v-tooltip.top="!canTest && testReasonKey ? t(testReasonKey) : null">
-            <Button
-              :label="t('amministrazione.email_test_connection')"
-              :icon="MANAGE_ICONS.TEST_CONNESSIONE"
-              :loading="testLoading"
-              :disabled="!canTest"
-              outlined
-              size="small"
-              @click="handleTest"
-            />
-          </span>
-          <div class="email-last-test">
-            <span class="email-last-test-label">{{ t('amministrazione.email_last_test_label') }}:</span>
-            <Tag :value="lastTestLabel" :severity="lastTestSeverity" />
-            <span v-if="lastTestAtFormatted" class="email-last-test-at">{{ lastTestAtFormatted }}</span>
-          </div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_smtp_username') }}</label>
+          <InputText v-model="form.smtp_username" :disabled="isReadonly" fluid />
+        </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_smtp_password') }}</label>
+          <Password v-model="form.smtp_password" :feedback="false" toggleMask fluid
+                   :disabled="isReadonly"
+                   :placeholder="isEdit ? t('amministrazione.email_smtp_password_placeholder') : ''" />
+        </div>
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_from') }}</label>
+          <InputText v-model="form.email_from" :disabled="isReadonly" fluid />
+        </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.email_reply_to') }}</label>
+          <InputText v-model="form.email_reply_to" :disabled="isReadonly" fluid />
+        </div>
+      </div>
+
+      <div v-if="isEdit && !isReadonly" class="email-test-row">
+        <span v-tooltip.top="!canTest && testReasonKey ? t(testReasonKey) : null">
+          <Button
+            :label="t('amministrazione.email_test_connection')"
+            :icon="MANAGE_ICONS.TEST_CONNESSIONE"
+            :loading="testLoading"
+            :disabled="!canTest"
+            outlined
+            size="small"
+            @click="handleTest"
+          />
+        </span>
+        <div class="email-last-test">
+          <span class="email-last-test-label">{{ t('amministrazione.email_last_test_label') }}:</span>
+          <Tag :value="lastTestLabel" :severity="lastTestSeverity" />
+          <span v-if="lastTestAtFormatted" class="email-last-test-at">{{ lastTestAtFormatted }}</span>
         </div>
       </div>
     </div>
-
-    <template #footer>
-      <FormFooter
-        :loading="saving"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
-      />
-    </template>
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>

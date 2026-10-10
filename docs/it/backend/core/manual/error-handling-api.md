@@ -41,8 +41,7 @@ La logica condivisa e` centralizzata in:
 
 - Mapping centralizzato in `ErrorPolicyRegistry`: codice → classe (`CLASSE_PER_CODICE` in `error_policies_generated.py`), classe → HTTP status e `ui_action` (`error_policies.py`).
 - Traduzione delle eccezioni (`ErrorTranslator.to_api_error`): `ServiceError` → suo codice; `ValueError`/`TypeError` → `E_VALIDATION_INPUT`; `DatabaseError` → codice applicativo estratto dal DB, altrimenti `E_DATABASE` (`E_DATABASE_RETRYABLE` se ritentabile); altro → `E_GENERICO`.
-- Eccezione: dentro `handle_post_json` un `ValueError` produce `400 {"error": "invalid_payload"}` (e il JSON non valido `{"error": "invalid_json"}`), con `error` stringa e non oggetto.
-  > ⚠️ Difetto noto (E-6): envelope incoerente, codice e messaggio del `ValueError` si perdono. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Nessuna eccezione per `handle_post_json` (dal 2026-10-07, E-6): un `ValueError` dell'handler passa dal translator come altrove, e un corpo illeggibile o non oggetto esce 400 `E_VALIDATION_INPUT` col `context.motivo` (BB `errore_corpo`).
 - I domini devono usare `ErrorManager.require(...)` / `ErrorManager.raise_error(...)`.
 - Le view API dominio **non devono** usare `try/except Exception` generici: il middleware globale gestisce il fallback.
 - Middleware globale intercetta eccezioni non gestite solo su path `/api/*`, lasciando invariato il comportamento Django su pagine non API e su eccezioni `Http404`/`PermissionDenied`/`SuspiciousOperation`.
@@ -77,8 +76,19 @@ dell'eccezione) e `ui_action`; lo status HTTP resta quello dell'eccezione DRF.
 `meta.request_id` / `meta.idempotency_key` compaiono solo se disponibili.
 Le eccezioni che non producono un codice passano invariate nel formato default DRF.
 
-> ⚠️ Difetto noto (E-5): i messaggi mirati impostati da `ZeroERPPermission` vengono
-> sostituiti dalla frase di `E_PERMISSION_DENIED`. Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+Il codice si cerca in quest'ordine: quello dell'**istanza** (`detail.code`,
+se è un `E_*`), poi il `default_code` `E_*` della classe, poi la mappa per
+classe (`PermissionDenied` → `E_PERMISSION_DENIED`, …). Il primo è la strada
+con cui una permission dice **perché** nega: DRF trasforma il suo attributo
+`code` in `detail.code`. Così `ZeroERPPermission` manda
+`E_REPARTO_SENZA_PROFILO` (403) per l'operatore il cui reparto non ha un
+profilo applicabile all'area (dal 2026-10-08).
+
+Allo stesso modo le tre porte «riservate» dicono a chi lo sono (dal
+2026-10-09): `IsAdminZeroERP` → `E_ACCESSO_RISERVATO_ADMIN`,
+`PortaleBasePermission` → `E_ACCESSO_RISERVATO_PORTALE`, `ShopBasePermission` →
+`E_ACCESSO_RISERVATO_SHOP`, tutti 403. Prova sul percorso DRF intero:
+`core/tests/api/test_email_e_permessi_codici_mirati.py`.
 
 ## Dipendenze DB
 

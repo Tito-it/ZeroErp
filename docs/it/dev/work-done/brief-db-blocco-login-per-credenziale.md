@@ -170,7 +170,7 @@ Per entrambe:
   su colonne di Django;
 - ⛔ **porta chiusa all'app** fin dalla nascita, come vuole il modello «una
   scrittura = un verbo» per i domini nuovi
-  ([brief-db-permesso-nel-verbo-di-scrittura.md](../work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md),
+  ([brief-db-permesso-nel-verbo-di-scrittura.md](brief-db-permesso-nel-verbo-di-scrittura.md),
   D-1): `zeroerp_app` non ha `INSERT`/`UPDATE`/`DELETE` né `SELECT` diretti.
   Legge e scrive **solo** attraverso le funzioni del §3, `SECURITY DEFINER` del
   proprietario. ⚠️ *Corretto in esecuzione (§11.2): il `SELECT` all'app

@@ -14,16 +14,14 @@ CREATE OR REPLACE FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
  STABLE
 AS $function$
 DECLARE
+    -- jsonb: oggetti composti qui, nessuna colonna dietro.
     v_result                  jsonb;
     v_utente                  jsonb;
     -- Blocco identita
     v_identita_id             anagrafiche.identita_digitali.id%TYPE;
     v_ruolo_applicativo       anagrafiche.identita_digitali.ruolo_applicativo%TYPE;
-    v_ruolo_applicativo_out   text;  -- output top-level GUC-aware (§20260421-05)
-    v_identita_attiva         anagrafiche.identita_digitali.attivo%TYPE;
-    v_identita_val_dal        anagrafiche.identita_digitali.valido_dal%TYPE;
-    v_identita_val_al         anagrafiche.identita_digitali.valido_al%TYPE;
-    v_is_super_admin          boolean;
+    v_ruolo_applicativo_out   text;  -- output top-level GUC-aware (§20260421-05): viene da una GUC (testo) o dal ruolo, non da una colonna sola
+    v_is_super_admin          boolean;  -- esito di fn_is_super_admin: nessuna colonna dietro
     -- Blocco risorse_umane
     v_risorsa_umana_id        anagrafiche.risorse_umane.id%TYPE;
     v_soggetto_ruolo_id       anagrafiche.risorse_umane.soggetto_ruolo_id%TYPE;
@@ -68,6 +66,15 @@ BEGIN
     --   OPERATORE + risorse_umane via soggetto_ruolo. Top-level
     --   ruolo_applicativo GUC-aware (20260421-05); top-level
     --   is_super_admin context-aware (20260421-03).
+    --
+    -- ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1):
+    --   la veste OPERATORE e' quella di riferimento della credenziale
+    --   (script.fn_veste_di_riferimento: l'accesa, o la spenta piu'
+    --   recente), non una qualunque. Fino a R-DB-1 lo spegnimento
+    --   scriveva DISABILITATO e le vesti spente uscivano dal JOIN da
+    --   sole; ora restano OPERATORE, e un JOIN nudo poteva prendere la
+    --   spenta accanto all'accesa e rifiutare il login. «Disabilitato»
+    --   si legge solo da attivo.
     -- =========================================================
 
     IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
@@ -91,9 +98,6 @@ BEGIN
            ),
            id.id,
            id.ruolo_applicativo,
-           id.attivo,
-           id.valido_dal,
-           id.valido_al,
            ru.id,
            ru.soggetto_ruolo_id,
            ru.qualifica_id,
@@ -110,9 +114,6 @@ BEGIN
       INTO v_utente,
            v_identita_id,
            v_ruolo_applicativo,
-           v_identita_attiva,
-           v_identita_val_dal,
-           v_identita_val_al,
            v_risorsa_umana_id,
            v_soggetto_ruolo_id,
            v_qualifica_id,
@@ -128,8 +129,8 @@ BEGIN
            v_uo_descrizione
       FROM django.auth_user au
       LEFT JOIN anagrafiche.identita_digitali id
-        ON id.auth_user_id = au.id
-       AND id.ruolo_applicativo = 'OPERATORE'
+        ON id.id = script.fn_veste_di_riferimento(
+                       au.id, 'OPERATORE'::config.ruolo_applicativo)
       LEFT JOIN anagrafiche.risorse_umane ru
         ON ru.soggetto_ruolo_id = id.soggetto_ruolo_id
       LEFT JOIN config.qualifiche q
@@ -158,43 +159,6 @@ BEGIN
         );
     END IF;
 
-    -- Guard: identita disabilitata / ruolo DISABILITATO / inattiva.
-    IF v_identita_attiva = false OR v_ruolo_applicativo = 'DISABILITATO' THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', 'script.fn_get_user_profile',
-            'E_UTENTE_DISABILITATO',
-            jsonb_build_object(
-                'auth_user_id', p_auth_user_id,
-                'ruolo_applicativo', v_ruolo_applicativo::text,
-                'identita_attiva', v_identita_attiva
-            ),
-            NULL::uuid,
-            'Utente disabilitato: identita non attiva o ruolo DISABILITATO.'
-        );
-    END IF;
-
-    -- Guard: identita fuori finestra temporale
-    IF v_identita_val_dal IS NOT NULL AND CURRENT_DATE < v_identita_val_dal THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', 'script.fn_get_user_profile',
-            'E_UTENTE_NON_ATTIVO',
-            jsonb_build_object('auth_user_id', p_auth_user_id,
-                               'valido_dal', v_identita_val_dal),
-            NULL::uuid,
-            v_identita_val_dal::text
-        );
-    END IF;
-    IF v_identita_val_al IS NOT NULL AND CURRENT_DATE > v_identita_val_al THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', 'script.fn_get_user_profile',
-            'E_UTENTE_SCADUTO',
-            jsonb_build_object('auth_user_id', p_auth_user_id,
-                               'valido_al', v_identita_val_al),
-            NULL::uuid,
-            v_identita_val_al::text
-        );
-    END IF;
-
     IF v_soggetto_ruolo_id IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
@@ -205,35 +169,31 @@ BEGIN
         );
     END IF;
 
-    -- Guard: risorsa umana disattivata / fuori finestra
-    IF v_ru_attivo = false THEN
+    -- Guard: veste OPERATORE non utilizzabile oggi.
+    -- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile, D-4): un controllo
+    --   solo, sul building block script.fn_veste_utilizzabile (veste accesa
+    --   e nelle sue date, soggetto attivo, rapporto attivo e nelle sue
+    --   date). Prima qui c'erano sei guard ricopiati, con un codice per la
+    --   veste spenta e due per le date (non ancora valida, scaduta): la
+    --   data non cambia cosa fa chi non entra (chiede all'amministratore,
+    --   che le date le vede nel dettaglio), e i due codici delle date sono
+    --   ritirati. Spenta o fuori date e' lo stesso esito.
+    -- ⚠️ Dopo il controllo della risorsa umana mancante: un operatore senza
+    --   rapporto e' un difetto di dati (E_ADMIN_VALIDAZIONE), non un accesso
+    --   chiuso, e il building block lo darebbe solo come «non utilizzabile».
+    -- ⭐ Il segnaposto e' lo username: e' la cosa che chi prova ad accedere
+    --   riconosce.
+    IF NOT script.fn_veste_utilizzabile(v_identita_id) THEN
         PERFORM script.fn_log_and_raise_error(
             'database', 'script.fn_get_user_profile',
             'E_UTENTE_DISABILITATO',
-            jsonb_build_object('auth_user_id', p_auth_user_id,
-                               'risorsa_umana_id', v_risorsa_umana_id),
+            jsonb_build_object(
+                'auth_user_id', p_auth_user_id,
+                'identita_id', v_identita_id,
+                'risorsa_umana_id', v_risorsa_umana_id
+            ),
             NULL::uuid,
-            v_risorsa_umana_id::text
-        );
-    END IF;
-    IF v_valido_dal IS NOT NULL AND CURRENT_DATE < v_valido_dal THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', 'script.fn_get_user_profile',
-            'E_UTENTE_NON_ATTIVO',
-            jsonb_build_object('auth_user_id', p_auth_user_id,
-                               'valido_dal', v_valido_dal),
-            NULL::uuid,
-            v_valido_dal::text
-        );
-    END IF;
-    IF v_valido_al IS NOT NULL AND CURRENT_DATE > v_valido_al THEN
-        PERFORM script.fn_log_and_raise_error(
-            'database', 'script.fn_get_user_profile',
-            'E_UTENTE_SCADUTO',
-            jsonb_build_object('auth_user_id', p_auth_user_id,
-                               'valido_al', v_valido_al),
-            NULL::uuid,
-            v_valido_al::text
+            v_utente ->> 'username'
         );
     END IF;
 
@@ -349,7 +309,7 @@ BEGIN
 
     IF v_ef_id IS NOT NULL THEN
         DECLARE
-            v_ef_soggetto jsonb;
+            v_ef_soggetto jsonb;  -- riga di una funzione resa jsonb: nessuna colonna dietro
         BEGIN
             SELECT row_to_json(t.*)::jsonb
               INTO v_ef_soggetto
@@ -388,7 +348,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION script.fn_get_user_profile(p_auth_user_id integer)
-IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna). La chiave deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password, non piu'' dall''identita OPERATORE.';
+IS 'Profilo utente completo (JSONB). Post Fase 7 step 3 (29-04-2026): rimossa la chiave ruolo_sistema dall''output - BE post-Fase 7 LANDED non la legge piu''. Top-level ruolo_applicativo GUC-aware (20260421-05); is_super_admin context-aware (20260421-03/04). Richiede identita OPERATORE (raise E_ADMIN_VALIDAZIONE altrimenti). La chiave emittente.emittente_descrizione porta la ragione_sociale_completa del soggetto emittente (Fase 1 cantiere emittente 2026-08-02: prima leggeva emittenti_fiscali.descrizione nuda, cioe'' l''etichetta interna). La chiave deve_cambiare_password e'' della CREDENZIALE (D-7, rev 2026-09-25): si legge da script.fn_get_deve_cambiare_password, non piu'' dall''identita OPERATORE. ⭐ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): la veste OPERATORE e'' quella di riferimento della credenziale (script.fn_veste_di_riferimento: l''accesa, o la spenta piu'' recente), non una qualunque; spenta si legge solo da attivo (E_UTENTE_DISABILITATO), DISABILITATO non esiste piu'' nella tabella viva. Il segnaposto di E_UTENTE_DISABILITATO e'' lo username. Rev 2026-10-07 (brief-db-veste-utilizzabile, D-4): un solo guard, «la veste OPERATORE e'' utilizzabile oggi» (script.fn_veste_utilizzabile: veste accesa e nelle sue date, soggetto attivo, rapporto attivo e nelle sue date), con un solo codice, E_UTENTE_DISABILITATO; i due codici delle date sono ritirati. La risorsa umana mancante resta E_ADMIN_VALIDAZIONE e viene prima.';
 ```
 
 ---

@@ -11,14 +11,14 @@
 | id | bigint | NO |  |
 | trasferimento_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| qta | numeric | NO |  |
+| qta | numeric(18,6) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | lotto_id | bigint | YES |  |
 | asset_id | bigint | YES |  |
 | ubicazione_id_da | bigint | YES |  |
@@ -30,6 +30,7 @@
 | CHECK | chk_mag_trasferimenti_qta_pos |  |
 | CHECK | chk_mag_trasferimenti_righe_asset_qta_unitaria |  |
 | CHECK | chk_mag_trasferimenti_righe_ubicazioni_distinte |  |
+| CHECK | chk_trasferimenti_righe_qta_finito |  |
 | FOREIGN KEY | fk_mag_trasferimenti_righe_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_trasferimenti_righe_asset | asset_id |
 | FOREIGN KEY | fk_mag_trasferimenti_righe_lotto | lotto_id |

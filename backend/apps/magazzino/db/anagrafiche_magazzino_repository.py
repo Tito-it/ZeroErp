@@ -38,7 +38,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from django.db import connection
 
@@ -246,7 +246,7 @@ class AnagraficheMagazzinoRepository:
             select_sql=f"{_MAGAZZINI_SELECT} {_where(conditions)}",
             params=params, order_clause=ordinamento, limit=limit, offset=offset,
         )
-        return [self._shape(r) for r in rows], total  # type: ignore[return-value]
+        return [cast(MagazzinoRow, self._shape(r)) for r in rows], total
 
     # Scopo: Il magazzino, se esiste ed e' nel perimetro; `None` altrimenti.
     #        ⚠️ Anche SPENTO: il dettaglio di un'anagrafica disattivata si legge
@@ -310,7 +310,7 @@ class AnagraficheMagazzinoRepository:
             select_sql=f"{_UBICAZIONI_SELECT} {_where(conditions)}",
             params=params, order_clause=ordinamento, limit=limit, offset=offset,
         )
-        return [self._shape(r) for r in rows], total  # type: ignore[return-value]
+        return [cast(UbicazioneRow, self._shape(r)) for r in rows], total
 
     # Scopo: L'ubicazione DEL magazzino, o `None` (inesistente, di un altro
     #        magazzino, o fuori perimetro: la coppia e' la risorsa dell'URL).
@@ -379,7 +379,7 @@ class AnagraficheMagazzinoRepository:
             select_sql=f"{_LOTTI_SELECT} {_where(conditions)}",
             params=params, order_clause=ordinamento, limit=limit, offset=offset,
         )
-        return [self._shape(r) for r in rows], total  # type: ignore[return-value]
+        return [cast(LottoRow, self._shape(r)) for r in rows], total
 
     # Scopo: Il lotto, o `None`.
     def get_lotto(self, lotto_id: int) -> LottoRow | None:

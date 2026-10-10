@@ -26,8 +26,11 @@ dell'utente.
 
 Post 20-04-2026 (modello SSO multi-veste) la funzione ha una logica **OR
 su N identita**: `auth_user.is_active = true` se e solo se esiste almeno
-un'identita utilizzabile per l'utente (cioe' attiva, con ruolo applicativo
-diverso da DISABILITATO, in finestra temporale, con soggetto parent attivo).
+un'identita **utilizzabile oggi** per l'utente, secondo
+[script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+(dal 07-10-2026: accesa, nelle sue date, soggetto attivo e, per l'operatore
+umano, rapporto attivo e nelle sue date). Dal 2026-10-02 (brief `brief-db-be-fe-area-accessi`, R-DB-1) «spenta» si legge solo da
+`attivo`: il controllo sul ruolo `DISABILITATO` è caduto con il tipo.
 
 ---
 
@@ -56,11 +59,10 @@ assente).
 1. **Guard parametro** — `p_auth_user_id IS NULL OR <= 0` → `E_PARAMETRO_INVALIDO`.
 2. **Calcolo OR** — singola query `EXISTS (...)` sulle N identita
    digitali dell'utente. `is_active = true` se esiste almeno un'identita
-   che soddisfa tutti i criteri:
-   * `id.attivo = true`
-   * `id.ruolo_applicativo <> 'DISABILITATO'` (fail-closed per convenzione)
-   * `CURRENT_DATE BETWEEN id.valido_dal AND COALESCE(id.valido_al, CURRENT_DATE)`
-   * Soggetto parent attivo (via `soggetti_ruoli` → `soggetti.attivo = true`)
+   utilizzabile oggi per
+   [script.fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile).
+   Fino al 07-10-2026 i criteri erano ricopiati qui (attiva, in finestra,
+   soggetto attivo), senza il rapporto dell'operatore.
 3. **No-op ambiente CI** — se schema Django assente, `RETURN false`
    silente (CI senza Django non ha auth_user da sincronizzare).
 4. **UPDATE** — `auth_user.is_active = <OR>` solo se diverso dal valore
@@ -77,7 +79,11 @@ non dal flag `is_active`.
 * Fallback legacy su `risorse_umane_auth_user` (ora vista post cutover
   19-04-2026, gia' rimosso in migration 20260419-92).
 * Doppia verifica per OPERATORE su `risorse_umane.attivo` (vincolo legacy
-  transitorio gia' rimosso in 20260419-92).
+  transitorio gia' rimosso in 20260419-92). ⚠️ Il rapporto è **tornato** il
+  07-10-2026, in un'altra forma e in una sede sola: lo guarda il building
+  block (attivo e nelle sue date), per decisione di Tid (D-2 di
+  `brief-db-veste-utilizzabile`). Così la fine del rapporto scritta dal drawer
+  operatore spegne la credenziale, se non le resta un'altra veste utilizzabile.
 * Assunzione 1:1 user→identita (sostituita da query aggregata sul set
   delle identita).
 

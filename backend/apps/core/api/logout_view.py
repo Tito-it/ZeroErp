@@ -24,8 +24,10 @@ from rest_framework_simplejwt.settings import api_settings
 
 from apps.core.services import session_audit_service
 from apps.core.services.auth_constants import JWT_CLAIM_SID
+from apps.core.services.request_context import richiesta_django
 from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.service_errors import ServiceError
+from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 logger = logging.getLogger("security")
 
@@ -89,10 +91,11 @@ class LogoutView(DomainAPIView):
             logger.warning("security.logout_token_senza_sid user_id=%s", request.user.id)
             return Response(status=204)
 
-        blocca_token_sessioni(request.user.id, lambda s: s == sid)
+        user_id = utente_autenticato_id(request)
+        blocca_token_sessioni(user_id, lambda s: s == sid)
         session_audit_service.record_logout(
-            user_id=request.user.id,
-            request=request._request if hasattr(request, "_request") else request,
+            user_id=user_id,
+            request=richiesta_django(request),
             jti=sid,
         )
         return Response(status=204)

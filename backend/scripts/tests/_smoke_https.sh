@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Bash
-# Scopo: Incluso da ogni smoke bash (`source`), subito dopo `BASE_URL=`.
+# Scopo: Incluso da ogni smoke bash (`source`), subito dopo `BASE_URL=`, di
+#        norma attraverso `_smoke_auth.sh` (il login degli smoke).
 #        Gli smoke parlano con Gunicorn DIRETTO, in HTTP su loopback; fuori
 #        da DEBUG Django redirige in HTTPS (`SECURE_SSL_REDIRECT`), e senza
 #        questo file ogni chiamata sarebbe un 301.

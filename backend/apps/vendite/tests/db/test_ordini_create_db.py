@@ -7,7 +7,7 @@
 #        davvero in `vendite.ordini` e i valori riletti sono quelli scritti.
 #        Presidia le convenzioni del BB che un mock non vede:
 #          · `skip_none` — un opzionale None si OMETTE e vale il DEFAULT del
-#            DB (`data` = CURRENT_DATE, `fatturazione_immediata` = false,
+#            DB (`data` = fn_data_operativa(), `fatturazione_immediata` = false,
 #            `canale_origine` = ADMIN) o il trigger BEFORE INSERT
 #            (`fatturazione_trigger` ereditato dal cliente da
 #            `trgfn_ordini_normalize`: NOT NULL senza DEFAULT, quindi un NULL
@@ -65,16 +65,17 @@ class CreateOrdineDbTests(unittest.TestCase):
                     valuta_id = cur.fetchone()[0]
                     cur.execute("SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT'")
                     stato_bozza_id = cur.fetchone()[0]
-                    cur.execute("SELECT current_date")
+                    cur.execute("SELECT script.fn_data_operativa()")
                     oggi = cur.fetchone()[0]
                     repo = OrdiniRepository()
 
                     # (a) Il payload che `ordini_service.crea_ordine` passa al
                     #     repository, coi valori espliciti.
+                    # ⭐ Ruolo e utility NON si passano: li scrive il DB dal BA
+                    #    (brief-db-esecutivi-ba-coppia §10.2), e la rilettura
+                    #    sotto lo prova.
                     creato = repo.create_ordine(
-                        soggetto_ruolo_id=mondo["cliente_soggetto_ruolo_id"],
                         billing_account_id=mondo["billing_account_id"],
-                        utility_id=mondo["utility_id"],
                         emittente_fiscale_id=mondo["emittente_fiscale_id"],
                         valuta_id=valuta_id,
                         modalita_pagamento_id=None,
@@ -109,7 +110,6 @@ class CreateOrdineDbTests(unittest.TestCase):
                     # (b) Gli opzionali None: `data` al DEFAULT, il trigger
                     #     eredita `fatturazione_trigger`, `meta` None -> {}.
                     minimo = repo.create_ordine(
-                        soggetto_ruolo_id=mondo["cliente_soggetto_ruolo_id"],
                         billing_account_id=mondo["billing_account_id"],
                         stato_doc_ordine_id=stato_bozza_id,
                     )

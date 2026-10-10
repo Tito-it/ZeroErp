@@ -7,11 +7,14 @@
 # ------------------------------------------------------------
 
 import json
+from datetime import date, datetime
 from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
@@ -85,6 +88,12 @@ _DOC_SORGENTE_SELECT = """
 # Riferimento semantico del fallback: pratiche.fn_stato_sorgente (sentinella
 # UNKNOWN); il join diretto alla vista e' la via sancita per le liste
 # (doc fn_stato_sorgente: "niente N+1").
+# ⚠️ Il resolver si cerca sulla chiave NATIVA (sorgente_chiave_uuid/_id), mai
+#    sulla forma testuale sorgente_uid: sotto RLS il confronto sul testo non
+#    arriva all'indice e rilegge i documenti per ogni riga. Si converte il
+#    PARAMETRO (script.fn_sorgente_chiave_uuid/_id, NULL se la chiave non e'
+#    di quella specie), un ramo per specie: stessa forma di
+#    script.vw_pratica_doc_sorgente.
 def _doc_sorgente_lateral(anchor_cond: str) -> str:
     return f"""
         LEFT JOIN LATERAL (
@@ -94,9 +103,19 @@ def _doc_sorgente_lateral(anchor_cond: str) -> str:
                    so.descrizione AS sorgente_descrizione
             FROM pratiche.pratiche_sorgenti ps
             JOIN config.sorgenti so ON so.id = ps.sorgente_tipo_id
-            LEFT JOIN script.vw_stato_sorgente ss
-              ON ss.sorgente_tipo_id = ps.sorgente_tipo_id
-             AND ss.sorgente_uid = ps.sorgente_uid
+            LEFT JOIN LATERAL (
+                SELECT v.risolto, v.stato_codice_interno, v.stato_descrizione,
+                       v.fase, v.esito, v.terminale
+                FROM script.vw_stato_sorgente v
+                WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
+                  AND v.sorgente_chiave_uuid = script.fn_sorgente_chiave_uuid(ps.sorgente_uid)
+                UNION ALL
+                SELECT v.risolto, v.stato_codice_interno, v.stato_descrizione,
+                       v.fase, v.esito, v.terminale
+                FROM script.vw_stato_sorgente v
+                WHERE v.sorgente_tipo_id = ps.sorgente_tipo_id
+                  AND v.sorgente_chiave_id = script.fn_sorgente_chiave_id(ps.sorgente_uid)
+            ) ss ON true
             WHERE {anchor_cond}
             ORDER BY (ps.ruolo_link = 'ROOT') DESC, ps.id DESC
             LIMIT 1
@@ -155,11 +174,12 @@ class PraticheRepository:
     _PRATICA_SELECT = """
         p.id, p.emittente_fiscale_id, p.tipo_prestazione_id,
         p.soggetto_id, p.soggetto_ruolo_id, p.istanza_utility_id,
-        -- Cliente (BA) derivato dall'istanza: presente se cliente attivo, NULL se
-        -- prospect. Single source of truth a DB (script.fn_get_billing_account_by_istanza),
-        -- nessuna derivazione lato FE. Alimenta pre-fill+lock e gating documenti
-        -- (offerta/contratto richiedono BA) aprendo un documento dal flusso.
-        script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS billing_account_id,
+        -- Il cliente di cui parla la pratica, a grana fine: colonna della pratica
+        -- dal 2026-10-08 (brief-db-istanza-nasce-col-ba, D-9), non piu' derivato
+        -- dall'istanza (un'istanza ha un BA per utility). NULL = pratica di un
+        -- altro ruolo, interna, o senza istanza. Alimenta pre-fill+lock e gating
+        -- documenti (offerta/contratto richiedono BA) aprendo un documento dal flusso.
+        p.billing_account_id,
         p.stato_id, p.priorita_id,
         p.risorsa_umana_id, p.unita_organizzativa_id,
         p.pratica_padre_id, p.flusso_origine_id, p.canale_origine_id,
@@ -232,8 +252,8 @@ class PraticheRepository:
         priorita_id: int | None = None,
         risorsa_umana_id: int | None = None,
         search: str | None = None,
-        data_da: str | None = None,
-        data_a: str | None = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
         limit: int,
         offset: int,
         order_by: str = "data_insert",
@@ -279,12 +299,10 @@ class PraticheRepository:
         if risorsa_umana_id is not None:
             conditions.append("p.risorsa_umana_id = %s")
             params.append(risorsa_umana_id)
-        if data_da:
-            conditions.append("p.data_insert >= %s::date")
-            params.append(data_da)
-        if data_a:
-            conditions.append("p.data_insert < (%s::date + INTERVAL '1 day')")
-            params.append(data_a)
+        # Giorni dell'AZIENDA, `data_a` incluso (BB, brief un-solo-fuso-aziendale B-4).
+        giorno_sql, giorno_params = predicato_giorno_operativo("p.data_insert", data_da, data_a)
+        conditions.append(giorno_sql)
+        params.extend(giorno_params)
         add_ricerca_full_condition(conditions, params, search, _RICERCA_PRATICHE)
 
         where_clause = "WHERE " + " AND ".join(conditions)
@@ -338,12 +356,12 @@ class PraticheRepository:
         sql = """
             INSERT INTO pratiche.pratiche (
                 emittente_fiscale_id, tipo_prestazione_id, soggetto_id,
-                soggetto_ruolo_id, istanza_utility_id,
+                soggetto_ruolo_id, istanza_utility_id, billing_account_id,
                 stato_id, priorita_id, risorsa_umana_id,
                 unita_organizzativa_id, canale_origine_id,
                 descrizione, data_scadenza, meta
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb
             )
             RETURNING id
         """
@@ -353,6 +371,7 @@ class PraticheRepository:
             data.get("soggetto_id"),
             data.get("soggetto_ruolo_id"),
             data.get("istanza_utility_id"),
+            data.get("billing_account_id"),
             data["stato_id"],
             data["priorita_id"],
             data.get("risorsa_umana_id"),
@@ -455,7 +474,7 @@ class PraticheRepository:
         p.codice AS pratica_codice,
         p.data_apertura AS pratica_data_apertura,
         p.istanza_utility_id AS pratica_istanza_utility_id,
-        script.fn_get_billing_account_by_istanza(p.istanza_utility_id) AS pratica_billing_account_id,
+        p.billing_account_id AS pratica_billing_account_id,
         s.ragione_sociale_completa AS pratica_soggetto_display,
         s.id_fiscale_univoco_cf_piva AS pratica_soggetto_id_fiscale,
         -- Assegnazione del singolo step (20260618): operatore + reparto con
@@ -497,7 +516,7 @@ class PraticheRepository:
         search: str | None = None,
         order_by: str | None = None,
         order_dir: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
@@ -850,7 +869,7 @@ class PraticheRepository:
     # Scopo: Restituisce il giornale di bordo di una pratica (audit trail).
     # Ordinato cronologicamente (piu' recente in cima), include tx_id per tracciabilita'.
     def get_giornale_pratica(
-        self, pratica_id: int, *, limit: int = 100, offset: int = 0,
+        self, pratica_id: int, *, limit: int = DEFAULT_LIMIT_EVENTI, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
 
@@ -1045,7 +1064,7 @@ class PraticheRepository:
         *,
         flusso_id: int | None = None,
         data_riattivazione_prevista: str | None = None,
-        data_inizio: str | None = None,
+        data_inizio: datetime | None = None,
     ) -> int:
         sql = """
             INSERT INTO pratiche.sospensioni (
@@ -1083,7 +1102,7 @@ class PraticheRepository:
         self,
         sospensione_id: int,
         *,
-        data_fine: str | None = None,
+        data_fine: datetime | None = None,
     ) -> None:
         sql = """
             UPDATE pratiche.sospensioni

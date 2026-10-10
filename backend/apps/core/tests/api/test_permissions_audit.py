@@ -23,15 +23,17 @@ Indice test eseguiti:
 14) test_whitelist_include_user_override_oggetti (3.2 v2)
 15) test_filter_data_a_include_il_giorno          (F-4)
 16) test_page_zero_rifiutata                      (F-4)
+17) test_utente_non_trovato_404                   (E-4)
 """
 
 import math
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
 from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
+from apps.core.tests._helpers.richiedente_mockato import RichiedenteMockatoMixin
 
 # ⚠️ Dal 2026-09-28 la pagina passa da `fetch_paged_with_total`: si sostituisce
 #    la `connection` del BB, e il cursore porta i NOMI delle colonne, come il
@@ -155,18 +157,20 @@ class PermissionsAuditRepositoryTests(TestCase):
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
         self.repo.list_audit_events(
-            auth_user_id=5, uo_id=None, data_da="2026-01-01", data_a=None,
+            auth_user_id=5, uo_id=None, data_da=date(2026, 1, 1), data_a=None,
             tabella=None, page=1, page_size=50,
         )
 
         sql = mock_cursor.execute.call_args[0][0]
         params = mock_cursor.execute.call_args[0][1]
-        self.assertIn("valid_from >= %s", sql)
-        self.assertIn("2026-01-01", params)
+        # Il giorno e' quello dell'azienda: il confine lo calcola il DB (BB).
+        self.assertIn("valid_from >= script.fn_inizio_giorno_operativo(%s::date)", sql)
+        self.assertIn(date(2026, 1, 1), params)
 
-    # Scopo: `data_a` e' un giorno e lo include tutto: `[da, a + 1 giorno)`.
-    # Il vecchio `valid_from <= a::timestamptz` si fermava alla mezzanotte
-    # d'inizio e perdeva gli eventi del giorno indicato (F-4).
+    # Scopo: `data_a` e' un giorno e lo include tutto: fino all'inizio del
+    # giorno DOPO, nel fuso dell'azienda. Il vecchio `valid_from <=
+    # a::timestamptz` si fermava alla mezzanotte d'inizio e perdeva gli eventi
+    # del giorno indicato (F-4).
     @patch(_CONN)
     def test_filter_data_a_include_il_giorno(self, mock_conn):
         mock_cursor = MagicMock()
@@ -176,15 +180,15 @@ class PermissionsAuditRepositoryTests(TestCase):
         mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
 
         self.repo.list_audit_events(
-            auth_user_id=5, uo_id=None, data_da=None, data_a="2026-01-31",
+            auth_user_id=5, uo_id=None, data_da=None, data_a=date(2026, 1, 31),
             tabella=None, page=1, page_size=50,
         )
 
         sql = mock_cursor.execute.call_args[0][0]
         params = mock_cursor.execute.call_args[0][1]
-        self.assertIn("valid_from < %s::date + interval '1 day'", sql)
+        self.assertIn("valid_from < script.fn_inizio_giorno_operativo(%s::date + 1)", sql)
         self.assertNotIn("valid_from <=", sql)
-        self.assertIn("2026-01-31", params)
+        self.assertIn(date(2026, 1, 31), params)
 
     # Scopo: Filtro tabella riduce le sub-query UNION.
     @patch(_CONN)
@@ -283,7 +287,7 @@ class PermissionsAuditRepositoryOggettiTests(TestCase):
         )
 
 
-class ApiPermessiAuditViewTests(TestCase):
+class ApiPermessiAuditViewTests(RichiedenteMockatoMixin, TestCase):
     """Test per la view ApiPermessiAudit (authorization check)."""
 
     # Scopo: ADMIN puo' vedere audit di un altro utente.
@@ -293,7 +297,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_admin_can_view_other_user(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
         mock_resolver.get_unita_organizzativa_id.return_value = 10
 
         target = MagicMock()
@@ -312,6 +316,26 @@ class ApiPermessiAuditViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    # Scopo: user_id inesistente → 404 E_AMM_UTENTE_NOT_FOUND (E-4: prima
+    # E_CORE_VALIDATION, 400), senza toccare il DB dell'audit.
+    @patch("apps.core.api.views.PermissionResolver")
+    @patch("apps.core.api.views.get_user_model")
+    @patch(_CONN)
+    def test_utente_non_trovato_404(self, mock_conn, mock_get_user, mock_resolver):
+        from apps.core.api.views import ApiPermessiAudit
+        from apps.core.services.service_errors import ServiceError
+
+        self.richiedente_amministratore()
+        DoesNotExist = type("DoesNotExist", (Exception,), {})
+        mock_get_user.return_value.DoesNotExist = DoesNotExist
+        mock_get_user.return_value.objects.get.side_effect = DoesNotExist
+
+        with self.assertRaises(ServiceError) as ctx:
+            ApiPermessiAudit().get(_mock_request(user_id=1), user_id=9999)
+
+        self.assertEqual(ctx.exception.code, "E_AMM_UTENTE_NOT_FOUND")
+        mock_conn.cursor.assert_not_called()
+
     # Scopo: OPERATIVO puo' vedere il proprio audit.
     @patch("apps.core.api.views.PermissionResolver")
     @patch("apps.core.api.views.get_user_model")
@@ -319,7 +343,6 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_operativo_can_view_self(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.is_super_admin.return_value = False
         mock_resolver.get_unita_organizzativa_id.return_value = None
 
         target = MagicMock()
@@ -337,14 +360,14 @@ class ApiPermessiAuditViewTests(TestCase):
         response = view.get(request, user_id=5)
 
         self.assertEqual(response.status_code, 200)
+        # I propri dati: il BB non chiede nemmeno se e' amministratore.
+        self.resolver_richiedente.is_super_admin.assert_not_called()
 
     # Scopo: OPERATIVO non puo' vedere audit di altri utenti.
     @patch("apps.core.api.views.PermissionResolver")
     def test_operativo_denied_other_user(self, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
-
-        mock_resolver.is_super_admin.return_value = False
 
         request = _mock_request(user_id=5)
         view = ApiPermessiAudit()
@@ -353,6 +376,8 @@ class ApiPermessiAuditViewTests(TestCase):
             view.get(request, user_id=99)
 
         self.assertEqual(ctx.exception.code, "E_PERMESSO_NEGATO")
+        # Il diniego viene dalla domanda sul richiedente, non da un caso.
+        self.resolver_richiedente.is_super_admin.assert_called_once()
 
     # Scopo: Tabella non valida restituisce errore di validazione.
     @patch("apps.core.api.views.PermissionResolver")
@@ -361,7 +386,7 @@ class ApiPermessiAuditViewTests(TestCase):
         from apps.core.api.views import ApiPermessiAudit
         from apps.core.services.service_errors import ServiceError
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
 
         target = MagicMock()
         target.id = 5
@@ -383,7 +408,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_page_zero_rifiutata(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
         target = MagicMock()
         target.id = 5
         mock_get_user.return_value.objects.get.return_value = target
@@ -401,7 +426,7 @@ class ApiPermessiAuditViewTests(TestCase):
     def test_page_size_capped_at_200(self, mock_conn, mock_get_user, mock_resolver):
         from apps.core.api.views import ApiPermessiAudit
 
-        mock_resolver.is_super_admin.return_value = True
+        self.richiedente_amministratore()
         mock_resolver.get_unita_organizzativa_id.return_value = None
 
         target = MagicMock()

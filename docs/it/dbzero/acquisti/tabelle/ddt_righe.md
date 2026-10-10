@@ -12,24 +12,25 @@
 | ddt_id | bigint | NO |  |
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(150) | NO |  |
 | uom_id | bigint | YES |  |
-| qta | numeric | NO |  |
-| lotto | character varying | YES |  |
-| seriale | character varying | YES |  |
+| qta | numeric(18,6) | NO |  |
+| lotto | character varying(50) | YES |  |
+| seriale | character varying(50) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
-| hash_contenuto | character varying | YES |  |
+| user_update | text | NO | CURRENT_USER |
+| hash_contenuto | character varying(64) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ddt_acquisto_r_qta_pos |  |
+| CHECK | chk_ddt_righe_qta_finito |  |
 | FOREIGN KEY | fk_ddt_acquisto_r_articolo | articolo_id |
 | FOREIGN KEY | fk_ddt_acquisto_r_testata | ddt_id |
 | FOREIGN KEY | fk_ddt_acquisto_r_uom | uom_id |

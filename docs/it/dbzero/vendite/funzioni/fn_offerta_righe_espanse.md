@@ -21,27 +21,26 @@ AS $function$
 --   su ordini_righe: la percentuale si deriva da iva_id). sconto NULL: lo
 --   sconto e' espresso come prezzo override (prezzo_unitario = prezzo netto).
 --   quantita default 1 per righe da-listino senza eccezione.
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): la versione
+--   operativa e la variazione dalla sede unica vendite.fn_documento_listino_
+--   operativo('OFFERTA', id), comune con la lista delle righe e coi guard di
+--   contratto e offerta. Stessa regola di prima (versione fissata, o in
+--   vigore oggi). Firma e colonne invariate, ora ancorate con %TYPE (iva_id e
+--   sconto_percentuale alla riga d'ordine, che e' la loro destinazione).
 DECLARE
-    v_listino_id          vendite.offerte_commerciali.listino_id%TYPE;
-    v_listino_versione_id vendite.offerte_commerciali.listino_versione_id%TYPE;
+    v_trovato             boolean := false;
+    v_listino_versione_id vendite.listini_versioni.id%TYPE;
     v_tipo_var            vendite.offerte_commerciali.tipo_variazione_globale%TYPE;
     v_valore_var          vendite.offerte_commerciali.valore_variazione_globale%TYPE;
 BEGIN
-    SELECT o.listino_id, o.listino_versione_id,
-           o.tipo_variazione_globale, o.valore_variazione_globale
-      INTO v_listino_id, v_listino_versione_id, v_tipo_var, v_valore_var
-      FROM vendite.offerte_commerciali o
-     WHERE o.id = p_offerta_id;
+    SELECT true, lo.listino_versione_id,
+           lo.tipo_variazione_globale, lo.valore_variazione_globale
+      INTO v_trovato, v_listino_versione_id, v_tipo_var, v_valore_var
+      FROM vendite.fn_documento_listino_operativo('OFFERTA', p_offerta_id) lo;
 
-    IF NOT FOUND THEN
+    -- Offerta assente (o fuori perimetro): nessuna riga.
+    IF NOT COALESCE(v_trovato, false) THEN
         RETURN;
-    END IF;
-
-    -- Versione operativa se snapshot non fissato (offerta BOZZA).
-    -- listino_id e' NOT NULL: niente ramo "senza listino".
-    IF v_listino_versione_id IS NULL THEN
-        -- rev 2026-09-28: la sede unica (brief-db-liste-righe-documento §8.15).
-v_listino_versione_id := vendite.fn_listino_versione_in_vigore(v_listino_id, CURRENT_DATE);
     END IF;
 
     -- PARTE 1: righe dal listino (core) + overlay OVERRIDE; ESCLUSIONE rimossa.
@@ -145,7 +144,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_offerta_righe_espanse(p_offerta_id bigint)
-IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto_percentuale NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. listino_id NOT NULL: nessun ramo senza listino.';
+IS 'Righe effettive ordine-ready di un''offerta (listino + variazione globale + eccezioni) per la conversione offerta->ordine. Parte 1 dal core fn_espandi_listino_versione + overlay OVERRIDE (ESCLUSIONE rimossa); Parte 2 AGGIUNTA standalone+bundle. iva_id da articolo (iva_perc non esiste su ordini_righe: si deriva da iva_id); sconto_percentuale NULL (prezzo gia'' netto); quantita default 1 per righe da-listino. Versione operativa e variazione da vendite.fn_documento_listino_operativo(''OFFERTA'', id) (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende: sede unica con la lista delle righe e coi guard). Non e'' la lista del drawer: quella e'' vendite.fn_offerta_righe_preview.';
 ```
 
 ---

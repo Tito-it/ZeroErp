@@ -9,22 +9,22 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(32) | NO |  |
+| descrizione | character varying(255) | NO |  |
 | segno | smallint | NO |  |
 | ordine | smallint | NO | 0 |
 | attivo | boolean | NO | true |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | user_insert | text | YES |  |
-| user_update | text | YES |  |
+| user_update | text | NO | CURRENT_USER |
 | data_insert | timestamp with time zone | NO | now() |
 | data_update | timestamp with time zone | YES |  |
 | storicizza | boolean | NO | false |
 | is_installazione_asset | boolean | NO | false |
 | is_rettifica | boolean | NO | false |
 | consente_stock_negativo | boolean | NO | false |
-| codice_interno | character varying | YES |  |
+| codice_interno | character varying(32) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

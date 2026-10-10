@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_listino_versione_operativa: LA VERSIONE CHE GOVERNA IL DOCUMENTO, DAI VALORI
+#   Brief: brief-db-offerta-emissione-ed-erogazione §C.1.3 punto 1
+#
+# ── IL DIFETTO ───────────────────────────────────────────────────
+#   «La versione fissata, altrimenti quella in vigore oggi» stava scritta in
+#   vendite.fn_documento_listino_operativo, che legge la testata per id. I
+#   guard di emissione e di attivazione hanno in mano NEW e non possono
+#   chiederla per id (leggerebbero la riga di prima): la ricopiavano, o non
+#   la usavano affatto. L'offerta non la usava, e «Emetti» restava spento.
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   La stessa composizione, sui valori. La chiamano il risolutore delle
+#   righe (-42), la check del congelamento (-41) e i due guard (-43, -45).
+#   Ritorno indietro: DROP (nessun consumatore prima di questo giro).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261007-40-create-fn-listino-versione-operativa-mctit.yaml
+
+  - changeSet:
+      id: 20261007-40-create-fn-listino-versione-operativa
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce vendite.fn_listino_versione_operativa(listino, versione): la versione
+        fissata, altrimenti quella in vigore oggi, sui valori della testata.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_listino_versione_in_vigore'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_listino_versione_operativa(
+                  p_listino_id          vendite.listini.id%TYPE,
+                  p_listino_versione_id vendite.listini_versioni.id%TYPE)
+              RETURNS vendite.listini_versioni.id%TYPE
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: la versione di listino che governa un documento con eccezioni
+              --   (contratto, offerta), dai VALORI della sua testata: la versione
+              --   fissata se c'e'; altrimenti quella in vigore oggi
+              --   (vendite.fn_listino_versione_in_vigore); NULL senza listino o
+              --   senza una versione in vigore.
+              -- ⭐ Sui valori e non sull'id del documento: la chiamano anche i
+              --   guard BEFORE ROW di emissione e attivazione, che hanno in mano NEW
+              --   e congelano QUESTA versione nella stessa scrittura. Una funzione
+              --   per id leggerebbe la riga di prima.
+              -- ⛔ Non STRICT: un listino senza versione fissata (NULL) e' il caso
+              --   normale di un documento in bozza.
+              BEGIN
+                  IF p_listino_versione_id IS NOT NULL THEN
+                      RETURN p_listino_versione_id;
+                  END IF;
+
+                  IF p_listino_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  RETURN vendite.fn_listino_versione_in_vigore(p_listino_id, CURRENT_DATE);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_listino_versione_operativa(vendite.listini.id%TYPE, vendite.listini_versioni.id%TYPE)
+              IS 'Sede unica della regola «l''offerta e il contratto vivono sulla versione di listino in vigore e la congelano»: dai valori della testata restituisce la versione fissata se c''è, altrimenti quella in vigore oggi (vendite.fn_listino_versione_in_vigore), NULL senza listino o senza versione in vigore. Sui valori e non sull''id: la chiamano anche i guard BEFORE ROW di emissione dell''offerta e di attivazione del contratto, che congelano questa versione nella stessa scrittura del cambio stato. Consumatori: vendite.fn_documento_listino_operativo (le righe), script.fn_check_listino_congelabile (pulsanti e guard), vendite.trgfn_offerte_commerciali_guard_transizione e vendite.trgfn_contratti_freeze_listino_versione (il congelamento). STABLE, SECURITY INVOKER, non STRICT. Nasce il 2026-10-07, brief-db-offerta-emissione-ed-erogazione §C.1.3.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_listino_versione_operativa(bigint, bigint);

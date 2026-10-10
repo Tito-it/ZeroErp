@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Le INSERT di clienti, billing account e fornitori migrate sul BB
 #        `execute_dynamic_insert` (2026-09-26), sul DATABASE VERO: le
-#        `espressioni` letterali (stato iniziale per codice, `CURRENT_DATE`)
+#        `espressioni` letterali (stato iniziale per codice, `fn_data_operativa()`)
 #        finiscono davvero nel testo SQL e i None omessi lasciano lavorare i
 #        DEFAULT del DB — cio' che i test di servizio, che mockano il
 #        repository, non vedono.
@@ -32,11 +32,7 @@ from django.db import connection, transaction
 
 from apps.anagrafiche.db.clienti_repository import ClientiRepository
 from apps.anagrafiche.db.fornitori_repository import FornitoriRepository
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
+from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
 
 
 class RifiutoChiaviClientiFornitoriTests(unittest.TestCase):
@@ -127,13 +123,13 @@ class ScritturaClientiFornitoriDbTests(unittest.TestCase):
                 )
                 stato, attivazione, garanzia_tipo, da_fatturare = cur.fetchone()
                 self.assertEqual(stato, "AT")
-                cur.execute("SELECT CURRENT_DATE")
+                cur.execute("SELECT script.fn_data_operativa()")
                 self.assertEqual(attivazione, cur.fetchone()[0])
                 # None omesso -> DEFAULT 'D' della colonna, come prima.
                 self.assertEqual(garanzia_tipo, "D")
                 self.assertFalse(da_fatturare)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. Fornitore: nasce VE, gli opzionali None non si scrivono.
@@ -163,6 +159,6 @@ class ScritturaClientiFornitoriDbTests(unittest.TestCase):
                 self.assertEqual(note, "Nota scrfor")
                 self.assertIsNone(rating)
                 self.assertTrue(codice)  # dal sistema_codici: la chiave e' stata omessa
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

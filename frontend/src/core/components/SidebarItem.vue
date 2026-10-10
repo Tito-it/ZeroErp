@@ -4,13 +4,19 @@
 // Possiede i propri stili (non dipende da :deep nel parent).
 // Inietta lo stato collapsed dal parent (AppSidebar): nel drawer e' sempre espanso.
 import { inject, ref } from 'vue'
+import { MANAGE_ICONS } from '../constants'
 
 const isCollapsed = inject('sidebarCollapsed', ref(false))
 
 defineProps({
   icon: { type: String, required: true },
   label: { type: String, required: true },
-  active: { type: Boolean, default: false }
+  active: { type: Boolean, default: false },
+  // La voce e' un GRUPPO (ha delle voci dentro). A sidebar chiusa resta
+  // l'icona sola, e senza un segno nessuno penserebbe di cliccarla per
+  // trovarne altre (rilievo in-app di Tid, 2026-10-06): il chevron accanto e'
+  // lo stesso del gruppo chiuso a sidebar aperta.
+  gruppo: { type: Boolean, default: false }
 })
 
 defineEmits(['click'])
@@ -20,10 +26,11 @@ defineEmits(['click'])
   <div
     class="sidebar-item"
     :class="{ active, collapsed: isCollapsed }"
-    @click="$emit('click')"
+    @click="$emit('click', $event)"
     v-tooltip.right="isCollapsed ? label : null"
   >
     <i :class="icon"></i>
+    <i v-if="isCollapsed && gruppo" class="sidebar-item-gruppo" :class="MANAGE_ICONS.ROW_EXPAND"></i>
     <span v-if="!isCollapsed">
       <slot>{{ label }}</slot>
     </span>
@@ -45,8 +52,21 @@ defineEmits(['click'])
 }
 
 .sidebar-item.collapsed {
+  position: relative;
   justify-content: center;
   padding: 0.5rem 0.35rem;
+}
+
+/* Il chevron del gruppo a sidebar chiusa: piccolo, sul bordo destro, fuori
+   dal flusso — l'icona resta centrata come quella delle voci semplici. */
+.sidebar-item .sidebar-item-gruppo {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: auto;
+  font-size: 0.55rem;
+  color: var(--app-text-muted);
 }
 
 .sidebar-item:hover {

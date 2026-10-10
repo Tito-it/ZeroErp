@@ -1,0 +1,69 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Trigger trg_identita_digitali_a10_guard_natura_credenziale_ins_upd
+#   Brief: brief-db-be-fe-area-accessi, R-DB-A1 (sezione 7.3)
+#
+#   Aggancia la funzione di -23. BEFORE INSERT e UPDATE OF auth_user_id,
+#   ruolo_applicativo, tecnica: le sole colonne che cambiano la natura della
+#   riga o la credenziale a cui appartiene. Un UPDATE di attivo o della finestra
+#   non cambia la natura, e non rilegge le vesti sorelle.
+#
+#   ⚠️ Ordine fra i guard a10 della tabella (alfabetico): date_validita,
+#   guard_coerenza, guard_natura_credenziale. Su una riga DISABILITATO parla
+#   prima guard_coerenza (tipo ritirato), che e' il rifiuto giusto: un tipo che
+#   non esiste non ha una natura da confrontare.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261002-24-create-trigger-identita-guard-natura-credenziale-mctit.yaml
+
+  - changeSet:
+      id: 20261002-24-create-trigger-identita-guard-natura-credenziale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Trigger trg_identita_digitali_a10_guard_natura_credenziale_ins_upd (BEFORE INSERT /
+        UPDATE OF auth_user_id, ruolo_applicativo, tecnica) su
+        anagrafiche.trgfn_identita_digitali_guard_natura_credenziale. Brief:
+        brief-db-be-fe-area-accessi R-DB-A1.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname = 'trgfn_identita_digitali_guard_natura_credenziale';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'anagrafiche.identita_digitali'::regclass
+                     AND t.tgname = 'trg_identita_digitali_a10_guard_natura_credenziale_ins_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_identita_digitali_a10_guard_natura_credenziale_ins_upd
+                  BEFORE INSERT OR UPDATE OF auth_user_id, ruolo_applicativo, tecnica
+                  ON anagrafiche.identita_digitali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_identita_digitali_guard_natura_credenziale();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_identita_digitali_a10_guard_natura_credenziale_ins_upd
+                  ON anagrafiche.identita_digitali;

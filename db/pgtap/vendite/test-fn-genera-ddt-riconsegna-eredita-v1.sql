@@ -89,7 +89,13 @@ SELECT
   (SELECT ba.id FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
     ORDER BY ba.id LIMIT 1)                                                AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
   -- ⭐ Mittente e vettore DEVONO essere due soggetti DIVERSI fra loro e dal
   --   destinatario: se coincidessero, il test 1) e il 3) passerebbero anche
   --   con una funzione che copia la colonna sbagliata.
@@ -102,6 +108,7 @@ SELECT
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   script.fn_pgtap_emittente_operatore()                                    AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO'  AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'       AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='DRAFT'        AND s.attivo LIMIT 1) AS stato_ddt_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='EMESSO'       AND s.attivo LIMIT 1) AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt   s WHERE s.codice_interno='SPEDITO'      AND s.attivo LIMIT 1) AS stato_ddt_spedito_id,
@@ -132,8 +139,8 @@ CREATE TEMP TABLE tmp_ord AS
 WITH ins AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
-         r.valuta_id, CURRENT_DATE, 'SPEDITO', r.emittente_fiscale_id, false,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
+         r.valuta_id, script.fn_data_operativa(), 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
   FROM tmp_ref r RETURNING id, uid)
 SELECT * FROM ins;
@@ -147,6 +154,13 @@ WITH ins AS (
          true, false, jsonb_build_object('test_scope','pgtap_riconsegna_eredita')
   FROM tmp_ord o, tmp_ref r RETURNING id)
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord), 'CONFERMATO');
+END $x$;
 
 CREATE TEMP TABLE tmp_ddt_ord AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord)) AS ddt_id;
@@ -258,7 +272,7 @@ WITH ins AS (
     mittente_soggetto_ruolo_id, vettore_soggetto_ruolo_id,
     num_colli, peso_lordo, peso_netto, volume, targa, autista, tracking_code,
     data_ora_partenza, data_ora_consegna_prev, storicizza, meta)
-  SELECT CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id,
+  SELECT script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id,
          r.billing_account_id, ba.utility_id, r.valuta_id, r.emittente_fiscale_id,
          r.causale_vendita_id, r.aspetto_id, r.modalita_addebito_id,
          r.mittente_sr_id, r.vettore_sr_id,
@@ -431,7 +445,7 @@ WITH ins AS (
   INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
     billing_account_id, valuta_id, emittente_fiscale_id, causale_trasporto_id,
     storicizza, meta)
-  SELECT CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id,
+  SELECT script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id,
          r.billing_account_id, r.valuta_id, r.emittente_fiscale_id,
          r.causale_vendita_id, false,
          jsonb_build_object('test_scope','pgtap_riconsegna_eredita')

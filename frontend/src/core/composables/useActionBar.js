@@ -10,8 +10,9 @@
 // Divergenze parametrizzate:
 //   - `defaultMenuItemClass`: colore default voce kebab (`app-menu-item-action`
 //     per Page, `app-menu-item-manage` per Drawer);
-//   - `menuLabel`: etichetta voce kebab (default `a => a.label`; Drawer passa
-//     la variante col counter "(N)").
+//   (L'etichetta di menu col numero, «Gestisci righe (5)», era una
+//   divergenza della sola Drawer: dal 2026-10-04 e' di tutte e due le barre,
+//   `etichettaConBadge`, perche' anche la lista ha azioni col numero.)
 //
 // Ortogonale a `useDrawerActions` (che COSTRUISCE le azioni `kind:'state'` da
 // `availableActions` BE; questo le FILTRA/dispatcha).
@@ -34,12 +35,24 @@ import { menuItemClass } from '../utils/rowActions'
 import { useInjectReadonly } from './useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 
+// Scopo: l'azione porta un numero (`badge`)? Vuoto = null, undefined o ''
+//        (lo zero E' un numero: «0 righe» si dice). Regola unica del pallino
+//        (`ActionBadge`), del punto sul kebab e dell'etichetta di menu.
+export function haBadge(action) {
+  return action?.badge != null && action.badge !== ''
+}
+
+// Scopo: l'etichetta di un'azione in un MENU, col suo numero: «Gestisci
+//        righe (5)». Nel menu il pallino non c'e', il numero va nel testo.
+export function etichettaConBadge(action) {
+  return haBadge(action) ? `${action.label} (${action.badge})` : action.label
+}
+
 export function useActionBar(getActions, options = {}) {
   const {
     disabled = () => false,
     menuTooltip = () => '',
     defaultMenuItemClass = 'app-menu-item-action',
-    menuLabel = (a) => a.label,
   } = options
 
   const { t } = useI18n()
@@ -85,11 +98,11 @@ export function useActionBar(getActions, options = {}) {
   }
 
   // Mappa una lista di azioni nel formato PrimeVue Menu. La classe della voce
-  // segue il colore inline (default parametrico); `menuLabel` permette il
-  // suffisso counter (Drawer).
+  // segue il colore inline (default parametrico); l'etichetta porta il numero
+  // dell'azione (`etichettaConBadge`).
   function menuItems(list) {
     return list.map((a) => ({
-      label: menuLabel(a),
+      label: etichettaConBadge(a),
       icon: a.icon,
       disabled: isActionDisabled(a),
       class: menuItemClass(a.severity, defaultMenuItemClass),
@@ -97,6 +110,13 @@ export function useActionBar(getActions, options = {}) {
         if (!isActionDisabled(a)) a.command?.()
       },
     }))
+  }
+
+  // Scopo: qualche azione dell'elenco porta un numero? Il punto sul kebab
+  //        compatto: dice «qui dentro c'e' un conteggio» senza sommarne di
+  //        eterogenei (il numero esatto e' nella voce del menu).
+  function haBadgeIn(list) {
+    return list.some(haBadge)
   }
 
   const menuTooltipText = computed(() => menuTooltip() || t('common.altre_azioni'))
@@ -124,5 +144,6 @@ export function useActionBar(getActions, options = {}) {
     compactMenuRef,
     toggleDesktopMenu,
     toggleCompactMenu,
+    haBadgeIn,
   }
 }

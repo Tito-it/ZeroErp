@@ -12,9 +12,9 @@
 | fattura_sdi_id | bigint | NO |  |
 | stato_sdi_id | bigint | YES |  |
 | data_evento | timestamp with time zone | NO | now() |
-| codice_evento | character varying | YES |  |
+| codice_evento | character varying(64) | YES |  |
 | messaggio | text | YES |  |
-| origine | character varying | NO | 'SDI'::character varying |
+| origine | character varying(32) | NO | 'SDI'::character varying |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |

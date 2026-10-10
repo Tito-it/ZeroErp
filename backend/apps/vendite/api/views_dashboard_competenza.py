@@ -24,6 +24,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full
@@ -89,7 +90,7 @@ class ApiDashboardCompetenza(DomainAPIView):
     #        fattura sul FATTURATA + conteggio errori vivi per mese).
     def get(self, request: Request) -> JsonResponse:
         anno = qp_int_strict(
-            request.query_params.get("anno"), "anno", date.today().year
+            request.query_params.get("anno"), "anno", oggi_aziendale().year
         )
         data = fn_dash_competenza_mensile(anno=anno)
         return success_response(data)
@@ -533,7 +534,7 @@ class ApiAttivitaRiportaDaEmettere(DomainAPIView):
     )
     # Scopo: Riporta «da emettere» le attivita' indicate (elenco di id).
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return fn_riporta_attivita_da_emettere(
                 attivita_fatturabili_ids=payload.get("attivita_fatturabili_ids"),  # type: ignore[arg-type]
             )
@@ -590,7 +591,7 @@ class ApiAttivitaRiportabili(DomainAPIView):
     )
     # Scopo: Restituisce i motivi che impediscono il riporto, senza tentarlo.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return fn_check_attivita_riportabili(
                 attivita_fatturabili_ids=payload.get("attivita_fatturabili_ids"),  # type: ignore[arg-type]
             )

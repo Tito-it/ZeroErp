@@ -9,7 +9,7 @@ CREATE FUNCTION fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice chara
 
 ```sql
 CREATE OR REPLACE FUNCTION script.fn_get_indirizzo(p_soggetto_ruolo_id bigint, p_tipo_codice character varying, p_istanza_utility_id bigint DEFAULT NULL::bigint)
- RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, istanza_utility_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character, provincia_descrizione character, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character varying, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
+ RETURNS TABLE(tipo_indirizzo character varying, indirizzo_completo text, geoloc geometry, indirizzo_id bigint, soggetto_ruolo_id bigint, istanza_utility_id bigint, tipo_indirizzo_id integer, indirizzo_dettaglio_id bigint, indirizzo_libero text, is_normalizzato boolean, stato_id integer, stato_descrizione character varying, stato_iso2 character, regione_id integer, regione_descrizione character varying, provincia_id integer, provincia_sigla character varying, provincia_descrizione character varying, comune_id integer, comune_descrizione character varying, codice_postale_id integer, cap_codice character varying, locality character varying, administrative_area character varying, sublocality character varying, postal_box character varying)
  LANGUAGE plpgsql
  STABLE ROWS 10
 AS $function$
@@ -78,8 +78,8 @@ BEGIN
             WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
               AND m.tipo_indirizzo_id = v_current_tipo_id
               AND m.attivo = TRUE
-              AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-              AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+              AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+              AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
             LIMIT 1;
             IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
 
@@ -125,8 +125,8 @@ BEGIN
         WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
           AND m.tipo_indirizzo_id = v_current_tipo_id
           AND m.attivo = TRUE
-          AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-          AND (m.valido_al IS NULL OR m.valido_al >= current_date)
+          AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+          AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
         LIMIT 1;
         IF v_fallback_tipo_id IS NULL THEN EXIT; END IF;
 

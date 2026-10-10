@@ -146,7 +146,13 @@ SELECT
     'HALF_DOWN',
     r.emittente_id
 FROM _t_uom_refs r
-WHERE r.emittente_id IS NOT NULL;
+WHERE r.emittente_id IS NOT NULL
+-- Col vincolo v5 NULLS NOT DISTINCT (20261007-70) l'ambito e' uno: se sul DB
+-- esiste gia' un override puro per questo parametro e questo ambito, lo si
+-- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
+-- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 
 SELECT is(
     script.fn_get_parameter_full(
@@ -171,7 +177,13 @@ SELECT
     'HALF_EVEN',
     r.user_id
 FROM _t_uom_refs r
-WHERE r.user_id IS NOT NULL;
+WHERE r.user_id IS NOT NULL
+-- Col vincolo v5 NULLS NOT DISTINCT (20261007-70) l'ambito e' uno: se sul DB
+-- esiste gia' un override puro per questo parametro e questo ambito, lo si
+-- riscrive invece di aggiungerne un secondo (prima nasceva un doppione e la
+-- cascata ne sceglieva uno a caso). ROLLBACK in coda ripristina il valore.
+ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5
+DO UPDATE SET overridden_value = EXCLUDED.overridden_value, attivo = true;
 
 SELECT is(
     script.fn_get_parameter_full(

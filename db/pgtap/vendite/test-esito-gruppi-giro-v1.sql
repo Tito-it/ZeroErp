@@ -257,17 +257,17 @@ CREATE TEMP TABLE tmp_eg_riga (slot text, riga_id bigint);
 
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                     prezzo_unitario, imponibile_riga)
+                                     prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
   SELECT (SELECT fattura_id FROM tmp_eg_fattura WHERE slot = 'F1'), 1,
-         'PGTAP esito gruppi giro G1', 1, 10.000000, 10.000000
+         'PGTAP esito gruppi giro G1', 1, 10.000000, 10.000000, script.fn_data_operativa(), script.fn_data_operativa()
   RETURNING id)
 INSERT INTO tmp_eg_riga SELECT 'F1', id FROM ins;
 
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione, qta,
-                                     prezzo_unitario, imponibile_riga)
+                                     prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
   SELECT (SELECT fattura_id FROM tmp_eg_fattura WHERE slot = 'F2'), 1,
-         'PGTAP esito gruppi giro G3', 1, 30.000000, 30.000000
+         'PGTAP esito gruppi giro G3', 1, 30.000000, 30.000000, script.fn_data_operativa(), script.fn_data_operativa()
   RETURNING id)
 INSERT INTO tmp_eg_riga SELECT 'F2', id FROM ins;
 

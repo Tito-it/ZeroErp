@@ -17,8 +17,8 @@
 | utility_id | integer | NO |  |
 | listino_id | bigint | NO |  |
 | listino_versione_id | bigint | YES |  |
-| valore_variazione_globale | numeric | YES | 0 |
-| tipo_variazione_globale | character varying | YES |  |
+| valore_variazione_globale | numeric(10,4) | YES | 0 |
+| tipo_variazione_globale | character varying(16) | YES |  |
 | validita_dal | date | NO |  |
 | validita_al | date | YES |  |
 | stato_doc_offerta_id | bigint | NO |  |
@@ -32,7 +32,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | motivazione_rifiuto | text | YES |  |
 | data_annullamento | timestamp with time zone | YES |  |
 | valuta_id | integer | YES |  |
@@ -41,10 +41,12 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_offerte_commerciali_valore_variazione_globale_finito |  |
 | CHECK | chk_offerte_revisione_numero |  |
 | CHECK | chk_offerte_tipo_variazione_globale |  |
 | CHECK | chk_offerte_validita_date |  |
 | CHECK | chk_offerte_variazione_globale_coerenza |  |
+| FOREIGN KEY | fk_offerte_commerciali_ba_coppia | billing_account_id, istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_offerte_commerciali_billing_account | billing_account_id |
 | FOREIGN KEY | fk_offerte_commerciali_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_offerte_commerciali_istanza_utility | istanza_utility_id |
@@ -76,17 +78,20 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_offerte_commerciali_a05_lock_fuori_bozza_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('OFFERTA', 'BOZZA', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'listino_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'listino_versione_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'tipo_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'valore_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'validita_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'validita_al', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'EMESSA,ACCETTATA', 'motivazione_rifiuto', 'E_DOC_CHIUSO', 'EMESSA,ACCETTATA')` |
 | trg_offerte_commerciali_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA')` |
 | trg_offerte_commerciali_a10_default_revisione_radice_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_default_revisione_radice()` |
 | trg_offerte_commerciali_a10_default_valuta_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_default_valuta()` |
-| trg_offerte_commerciali_a10_emittenti_fiscali_require_at_7d73a6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_offerte_commerciali_a10_emittenti_fiscali_require_at_7d73a6 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
+| trg_offerte_commerciali_a10_emittenti_fiscali_require_at_7d73a6 | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_offerte_commerciali_a10_gen_codice_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_gen_codice()` |
 | trg_offerte_commerciali_a10_gen_codice_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_gen_codice()` |
-| trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_guard_emittente_ba()` |
-| trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_guard_emittente_ba()` |
+| trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Offerta', 'codice', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE')` |
+| trg_offerte_commerciali_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Offerta', 'codice', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE')` |
 | trg_offerte_commerciali_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_offerte_commerciali_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
+| trg_offerte_commerciali_a10_guard_listino_documento_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_guard_listino_documento('OFFERTA')` |
+| trg_offerte_commerciali_a10_guard_listino_documento_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_guard_listino_documento('OFFERTA')` |
 | trg_offerte_commerciali_a10_guard_transizione_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()` |
 | trg_offerte_commerciali_a10_listini_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
 | trg_offerte_commerciali_a10_listini_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini', 'attivo', 'listino_id', 'id')` |
@@ -97,8 +102,8 @@
 | trg_offerte_commerciali_a10_stati_doc_offerte_require_at_3731e5 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_offerte', 'attivo', 'stato_doc_offerta_id', 'id')` |
 | trg_offerte_commerciali_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_offerte_commerciali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
-| trg_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_commerciali_z90_revisione_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_revisione()` |
 | trg_offerte_commerciali_z90_rientro_padre_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()` |
 

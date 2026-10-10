@@ -1,0 +1,82 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE REGOLE CONDIZIONALI DEGLI ARTICOLI CHIEDONO IL GIORNO DELL'AZIENDA
+#   dbops.lock_columns_conditional (catalogo.articoli: is_composito,
+#   requires_serial, is_solo_componente): condition_expr
+#   `validita @> CURRENT_DATE` -> `validita @> script.fn_data_operativa()`.
+#   Brief: brief-be-db-fe-un-solo-fuso-aziendale (censimento, seconda passata)
+#
+# -- IL FATTO (2026-10-10, 00:16) ----------------------------------------
+#   dbops/test-fn-non-editable-fields-conditional rosso su dbdev (test 2-4)
+#   col runner del T-5, che fa girare ogni file in un fuso OSTILE (giorno
+#   diverso da quello aziendale). Riprodotto con PGTZ=UTC: CURRENT_DATE
+#   2026-10-09, script.fn_data_operativa() 2026-10-10. La fixture apre la
+#   distinta da fn_data_operativa(), la regola la cerca a CURRENT_DATE: non la
+#   trova, e i flag di struttura risultano modificabili.
+#
+# -- PERCHE' E' UN DIFETTO E NON UN TEST FRAGILE ---------------------------
+#   Le tre regole sono il lato CAPABILITY (dbops.fn_non_editable_fields: quali
+#   campi il form spegne) del guard trgfn_articoli_guard_flags_struttura_bom_attiva,
+#   di cui si dichiarano «simmetriche» (seed 20260522-04). Il guard e' gia'
+#   passato al giorno aziendale nel cantiere del fuso; le regole no, perche'
+#   sono SQL salvato come DATO in una tabella, e il censimento di quel brief
+#   guardava funzioni, default di colonna e fixture. Nella finestra notturna il
+#   form lasciava acceso un campo che il guard poi rifiutava (o il contrario):
+#   la capability non specchiava piu' la regola (linee-guida-sql §12.2, punto 1).
+#
+# -- PERCHE' UN UPDATE E NON IL SEED ------------------------------------
+#   Il seed 20260522-04 e' SQL (non un CSV), e il suo ON CONFLICT aggiorna solo
+#   `descrizione`: correggerlo non toccherebbe le righe che esistono. Questo
+#   changeSet gira dopo di lui anche su un database nuovo (80_data, data
+#   successiva), e una sua ri-esecuzione non riporta indietro condition_expr.
+#   Si sostituisce solo il token, per nome di regola: le altre parti
+#   dell'espressione restano quelle in servizio.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261010-01-update-lock-columns-conditional-giorno-aziendale-mctit.yaml
+
+  - changeSet:
+      id: 20261010-01-update-lock-columns-conditional-giorno-aziendale
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        dbops.lock_columns_conditional (catalogo.articoli): la validita' della distinta si
+        confronta col giorno aziendale (script.fn_data_operativa), non con CURRENT_DATE, come
+        il guard gemello. Brief: brief-be-db-fe-un-solo-fuso-aziendale.
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            schemaName: dbops
+            tableName: lock_columns_conditional
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              UPDATE dbops.lock_columns_conditional
+                 SET condition_expr = replace(condition_expr, 'validita @> CURRENT_DATE',
+                                              'validita @> script.fn_data_operativa()'),
+                     data_update    = now(),
+                     user_update    = CURRENT_USER
+               WHERE schema_name = 'catalogo'
+                 AND table_name  = 'articoli'
+                 AND column_name IN ('is_composito', 'requires_serial', 'is_solo_componente')
+                 AND condition_expr LIKE '%validita @> CURRENT_DATE%';
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              UPDATE dbops.lock_columns_conditional
+                 SET condition_expr = replace(condition_expr, 'validita @> script.fn_data_operativa()',
+                                              'validita @> CURRENT_DATE')
+               WHERE schema_name = 'catalogo'
+                 AND table_name  = 'articoli'
+                 AND column_name IN ('is_composito', 'requires_serial', 'is_solo_componente');

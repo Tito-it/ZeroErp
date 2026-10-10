@@ -1,0 +1,76 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SE IL RESO HA UN BILLING ACCOUNT, DESTINATARIO E UTILITY SONO I SUOI
+#   vendite.resi:
+#   + CHECK chk_resi_ba_utility_insieme: (billing_account_id IS NULL) = (utility_id IS NULL)
+#   + FK (billing_account_id, destinatario_soggetto_ruolo_id, utility_id)
+#     verso anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id), MATCH SIMPLE.
+#   Brief: brief-db-esecutivi-ba-coppia (§5.3, D-3, D-4, D-5)
+#
+#   Gemello di 20261009-65 (DDT): stesse ragioni, stessa forma. Il BA del
+#   reso non e' obbligatorio: e' quello del DDT sorgente, NULL compreso (D-3),
+#   e lo presidia vendite.trgfn_resi_guard_cliente_ddt (20261009-81).
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   preCondition: zero resi col BA senza utility o viceversa, o col
+#   destinatario/utility diversi da quelli del BA (expectedResult 0).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261009-66-alter-resi-cliente-dal-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20261009-66-alter-resi-cliente-dal-billing-account
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.resi: CHECK billing account e utility tutti e due o nessuno, FK composta MATCH
+        SIMPLE verso il billing account del destinatario e della utility. Brief:
+        brief-db-esecutivi-ba-coppia (D-3, D-4, D-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM vendite.resi r
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = r.billing_account_id
+               WHERE (r.billing_account_id IS NULL) <> (r.utility_id IS NULL)
+                  OR (r.billing_account_id IS NOT NULL
+                      AND (ba.soggetto_ruolo_id IS DISTINCT FROM r.destinatario_soggetto_ruolo_id
+                           OR ba.utility_id     IS DISTINCT FROM r.utility_id));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.resi
+                ADD CONSTRAINT chk_resi_ba_utility_insieme
+                CHECK ((billing_account_id IS NULL) = (utility_id IS NULL));
+
+              ALTER TABLE vendite.resi
+                ADD CONSTRAINT fk_resi_ba_cliente
+                FOREIGN KEY (billing_account_id, destinatario_soggetto_ruolo_id, utility_id)
+                REFERENCES anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id)
+                MATCH SIMPLE;
+
+              COMMENT ON CONSTRAINT chk_resi_ba_utility_insieme ON vendite.resi
+              IS 'Billing account e utility, tutti e due o nessuno: la FK composta fk_resi_ba_cliente e'' MATCH SIMPLE (senza BA il destinatario resta libero) e salterebbe anche con la sola utility NULL. Gemello: chk_ddt_ba_utility_insieme. Brief: brief-db-esecutivi-ba-coppia (D-5).';
+
+              COMMENT ON CONSTRAINT fk_resi_ba_cliente ON vendite.resi
+              IS 'Col billing account, il destinatario e la utility del reso sono quelli del BA (D-4, D-5). MATCH SIMPLE: un reso da una bolla senza BA (conto lavoro, riparazione) resta senza, col destinatario della bolla. Il BA e'' quello del DDT sorgente, NULL compreso (D-3): lo presidia vendite.trgfn_resi_guard_cliente_ddt. Gemelli: fk_ordini_ba_cliente, fk_ddt_ba_cliente, fk_clienti_ba_cliente. Brief: brief-db-esecutivi-ba-coppia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.resi DROP CONSTRAINT fk_resi_ba_cliente;
+              ALTER TABLE vendite.resi DROP CONSTRAINT chk_resi_ba_utility_insieme;

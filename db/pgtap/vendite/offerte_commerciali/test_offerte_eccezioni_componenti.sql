@@ -30,7 +30,7 @@
 -- 21) fn_preview esiste (has_function)
 -- 22) fn_preview articolo semplice → 0 righe        [skip se no ctx]
 -- 23) fn_preview articolo composito → righe > 0,
---     colonne obbligatorio+esposto_in_fattura accessibili [skip se no composito valido]
+--     colonne obbligatorio+esposizione_in_fattura accessibili [skip se no composito valido]
 -- 24) fn_preview COUNT = COUNT componenti attivi validi
 --     (nessun filtro esposto_in_fattura)              [skip se no composito valido]
 -- 25) fn_preview quantita_componente = coeff_qta * quantita_padre [skip se no composito valido]
@@ -49,13 +49,19 @@ SELECT plan(27);
 -- ============================================================
 -- Contesto dati-dipendenti (skip se assenti)
 -- ============================================================
-CREATE TEMP TABLE tmp_oce_ctx AS
-SELECT
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe
+--   stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra quelle
+--   della utility del cliente. I due articoli si scelgono PRIMA, e il billing account e' il
+--   primo la cui utility ne ammette le tipologie (su dbdev il composito e' SERVIZI, che la
+--   utility del primo cliente non prevede). Le erogazioni sono quelle che il perimetro
+--   ammette: UNA_TANTUM sul semplice, CANONE/DERIVATA_COMPONENTI e CONSUMO/MANUALE sul
+--   composito (CONSUMO/LETTURE non lo ammette una tipologia non a contatore).
+CREATE TEMP TABLE tmp_oce_comp AS
     -- Articolo composito con almeno un componente attivo valido al DATE '2082-01-01'
     -- (fixture) e tutti opzionali (obbligatorio=FALSE): il fallback prezzo=0 del
     -- resolver e' ammesso solo su componenti opzionali. Nessun filtro esposto_in_fattura
     -- (modello unificato rev 2026-05-27).
-    (SELECT a.id
+SELECT (SELECT a.id
        FROM catalogo.articoli a
       WHERE a.is_composito = TRUE
         AND EXISTS (
@@ -70,13 +76,28 @@ SELECT
                AND COALESCE(ac.attivo, TRUE) = TRUE
                AND COALESCE(ac.obbligatorio, TRUE) = TRUE
         )
-      ORDER BY a.id LIMIT 1) AS articolo_composito_id,
+        -- rev 2026-10-07 (giro B3): le combinazioni che il test scrive sono nel perimetro
+        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                     WHERE e.tipo_erogazione = 'CANONE' AND e.fonte_quantita_attesa = 'DERIVATA_COMPONENTI')
+        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                     WHERE e.tipo_erogazione = 'CONSUMO' AND e.fonte_quantita_attesa = 'MANUALE')
+      ORDER BY a.id LIMIT 1) AS articolo_composito_id;
 
+CREATE TEMP TABLE tmp_oce_sempl AS
     -- Articolo non composito (per test 15)
-    (SELECT a.id
+SELECT (SELECT a.id
        FROM catalogo.articoli a
       WHERE COALESCE(a.is_composito, FALSE) = FALSE
-      ORDER BY a.id LIMIT 1) AS articolo_semplice_id,
+        -- rev 2026-10-07 (giro B3): UNA_TANTUM/FISSA nel perimetro
+        AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                     WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
+      ORDER BY a.id LIMIT 1) AS articolo_semplice_id;
+
+CREATE TEMP TABLE tmp_oce_ctx AS
+SELECT
+    (SELECT articolo_composito_id FROM tmp_oce_comp) AS articolo_composito_id,
+
+    (SELECT articolo_semplice_id FROM tmp_oce_sempl) AS articolo_semplice_id,
 
     -- Contesto billing/utility: BA senza tipi_utenze (evita guard tipo/classe)
     (SELECT ba.id
@@ -84,6 +105,16 @@ SELECT
       WHERE NOT EXISTS (
           SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
       )
+        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
+                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS billing_account_id,
 
     (SELECT ba.istanza_utility_id
@@ -91,6 +122,16 @@ SELECT
       WHERE NOT EXISTS (
           SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
       )
+        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
+                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
 
     (SELECT ba.utility_id
@@ -98,6 +139,16 @@ SELECT
       WHERE NOT EXISTS (
           SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id
       )
+        -- rev 2026-10-07 (giro B3): la utility ammette le tipologie dei due articoli
+        AND NOT EXISTS (
+            SELECT 1 FROM catalogo.articoli a
+             WHERE a.id IN ((SELECT articolo_composito_id FROM tmp_oce_comp),
+                            (SELECT articolo_semplice_id FROM tmp_oce_sempl))
+               AND a.listino_tipologia_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM config.listini_tipologie_utilities ltu
+                                WHERE ltu.utility_id = ba.utility_id
+                                  AND ltu.tipologia_id = a.listino_tipologia_id
+                                  AND ltu.attivo))
       ORDER BY ba.id LIMIT 1) AS utility_id,
 
     (SELECT ef.id
@@ -116,12 +167,45 @@ SELECT
         AS listino_versione_id,
 
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA')
-        AS stato_accettata_id;
+        AS stato_accettata_id,
+    -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
+    --   dell'offerta si scrivono solo in BOZZA. Le offerte nascono in BOZZA, e la
+    --   COMPOSITA va in EMESSA e poi ACCETTATA solo prima del push (test 20).
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')
+        AS stato_bozza_id,
+    (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')
+        AS stato_emessa_id;
+
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo). Qui gli
+--   articoli (composito, semplice) e i loro prezzi vengono dai dati, quindi il
+--   fixture non si ricostruisce: si FILTRA. L'emittente si deriva dal BA (il
+--   guard emittente/cliente lo pretendeva gia'), il listino e' il primo attivo
+--   della utility e dell'emittente del BA, la versione la prima ATTIVA di QUEL
+--   listino (prima era la prima ATTIVA di un listino qualsiasi). Senza un
+--   listino cosi' il fixture salta, come senza BA.
+UPDATE tmp_oce_ctx c
+   SET emittente_fiscale_id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
+       emittente_sr_id = (SELECT ef.soggetto_ruolo_id FROM anagrafiche.emittenti_fiscali ef
+                           WHERE ef.id = anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id))
+ -- Senza BA il fixture salta: fn_get_emittente_fiscale_pk rifiuta un id NULL.
+ WHERE c.billing_account_id IS NOT NULL;
+UPDATE tmp_oce_ctx c
+   SET listino_id = (SELECT l.id FROM vendite.listini l
+                      WHERE l.attivo IS TRUE
+                        AND l.utility_id = c.utility_id
+                        AND l.emittente_soggetto_ruolo_id = c.emittente_sr_id
+                      ORDER BY l.id LIMIT 1);
+UPDATE tmp_oce_ctx c
+   SET listino_versione_id = (SELECT lv.id FROM vendite.listini_versioni lv
+                               WHERE lv.listino_id = c.listino_id AND lv.stato = 'ATTIVA'
+                               ORDER BY lv.id LIMIT 1);
 
 -- Flag: dati composito disponibili?
 CREATE TEMP TABLE tmp_oce_has_composito AS
 SELECT (articolo_composito_id IS NOT NULL
         AND billing_account_id IS NOT NULL
+        AND listino_id IS NOT NULL
         AND emittente_sr_id IS NOT NULL) AS disponibile
   FROM tmp_oce_ctx;
 
@@ -146,9 +230,10 @@ BEGIN
 
     IF v_ctx.billing_account_id IS NULL
        OR v_ctx.emittente_fiscale_id IS NULL
+       OR v_ctx.listino_id IS NULL
     THEN RETURN; END IF;
 
-    -- Offerta in ACCETTATA (INSERT bypass trigger per stato terminale)
+    -- Offerta in BOZZA: le righe si scrivono solo li' (rev 2026-10-04, R5a).
     INSERT INTO vendite.offerte_commerciali (
         emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
         listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
@@ -156,30 +241,32 @@ BEGIN
     SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
            v_ctx.istanza_utility_id, v_ctx.utility_id,
            v_ctx.listino_id, v_ctx.listino_versione_id,
-           DATE '2082-01-01', v_ctx.stato_accettata_id
+           DATE '2082-01-01', v_ctx.stato_bozza_id
     RETURNING id INTO v_off_id;
 
     -- Eccezione con articolo semplice (test 15).
     -- fonte=FISSA richiede qta_operativa NOT NULL (trigger a10 qta_from_operativa,
     -- bind 20260531-11): si valorizza qta_operativa e il trigger deriva quantita.
     IF v_ctx.articolo_semplice_id IS NOT NULL THEN
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.offerte_commerciali_eccezioni (
             offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, qta_operativa
+            prezzo_unitario, qta_operativa, tipo_erogazione
         )
-        VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 'FISSA', 10.00, 1)
+        VALUES (v_off_id, v_ctx.articolo_semplice_id, 'OVERRIDE', 'FISSA', 10.00, 1, 'UNA_TANTUM')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('SEMPLICE', v_off_id, v_ecc_id);
     END IF;
 
     -- Eccezione con articolo composito (test 17-19)
     IF v_ctx.articolo_composito_id IS NOT NULL THEN
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.offerte_commerciali_eccezioni (
             offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita
+            prezzo_unitario, quantita, tipo_erogazione
         )
         VALUES (v_off_id, v_ctx.articolo_composito_id, 'OVERRIDE',
-                'DERIVATA_COMPONENTI', 0.00, 2)
+                'DERIVATA_COMPONENTI', 0.00, 2, 'CANONE')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('COMPOSITA', v_off_id, v_ecc_id);
     END IF;
@@ -195,20 +282,26 @@ BEGIN
         SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
                v_ctx.istanza_utility_id, v_ctx.utility_id,
                v_ctx.listino_id, v_ctx.listino_versione_id,
-               DATE '2082-01-01', v_ctx.stato_accettata_id
+               DATE '2082-01-01', v_ctx.stato_bozza_id
         RETURNING id INTO v_off_consumo;
 
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
         INSERT INTO vendite.offerte_commerciali_eccezioni (
             offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita
+            prezzo_unitario, quantita, tipo_erogazione
         )
         VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'OVERRIDE',
-                'LETTURE', 0.00, NULL)
+                'MANUALE', 0.00, NULL, 'CONSUMO')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('CONSUMO', v_off_consumo, v_ecc_id);
     END IF;
 
-    -- Eccezione ESCLUSIONE su articolo composito con quantita NOT NULL (test 27).
+    -- Eccezione ESCLUSIONE su articolo composito (test 27).
+    -- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R1): l'esclusione
+    --   nasce VUOTA — niente fonte, niente quantita'. Prima portava quantita' 2 per
+    --   provare che l'init la salta pur avendo una quantita'; oggi un'esclusione con
+    --   quantita' non si scrive (E_RIGA_ESCLUSIONE_CON_DATI), e il test prova l'esito
+    --   (0 componenti, prezzo padre NULL) sull'esclusione come il modello la ammette.
     -- Offerta separata: l'unique parziale uq_offerte_eccezioni_one_eccezione_per_articolo
     -- ammette al piu' 1 riga OVERRIDE/ESCLUSIONE per (offerta, articolo) e la COMPOSITA
     -- ha gia' un OVERRIDE sullo stesso articolo. prezzo_unitario NULL (CHECK ESCLUSIONE).
@@ -220,15 +313,13 @@ BEGIN
         SELECT v_ctx.emittente_fiscale_id, v_ctx.billing_account_id,
                v_ctx.istanza_utility_id, v_ctx.utility_id,
                v_ctx.listino_id, v_ctx.listino_versione_id,
-               DATE '2082-01-01', v_ctx.stato_accettata_id
+               DATE '2082-01-01', v_ctx.stato_bozza_id
         RETURNING id INTO v_off_consumo;
 
         INSERT INTO vendite.offerte_commerciali_eccezioni (
-            offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-            prezzo_unitario, quantita
+            offerta_id, articolo_id, tipo_eccezione
         )
-        VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'ESCLUSIONE',
-                'DERIVATA_COMPONENTI', NULL, 2)
+        VALUES (v_off_consumo, v_ctx.articolo_composito_id, 'ESCLUSIONE')
         RETURNING id INTO v_ecc_id;
         INSERT INTO tmp_oce_ids VALUES ('ESCLUSIONE', v_off_consumo, v_ecc_id);
     END IF;
@@ -315,7 +406,7 @@ SELECT ok(
 -- TEST 12) fn_init guard p_eccezione_id NULL → E_PARAMETRO_INVALIDO
 -- ============================================================
 SELECT throws_like(
-    $$SELECT vendite.fn_offerta_eccezione_componenti_init(NULL, 1, CURRENT_DATE)$$,
+    $$SELECT vendite.fn_offerta_eccezione_componenti_init(NULL, 1, script.fn_data_operativa())$$,
     '%Parametro non valido%',
     '12) fn_init(NULL, 1, date): guard p_eccezione_id → E_PARAMETRO_INVALIDO'
 );
@@ -324,7 +415,7 @@ SELECT throws_like(
 -- TEST 13) fn_init guard p_emittente_sr_id NULL → E_PARAMETRO_INVALIDO
 -- ============================================================
 SELECT throws_like(
-    $$SELECT vendite.fn_offerta_eccezione_componenti_init(1, NULL, CURRENT_DATE)$$,
+    $$SELECT vendite.fn_offerta_eccezione_componenti_init(1, NULL, script.fn_data_operativa())$$,
     '%Parametro non valido%',
     '13) fn_init(1, NULL, date): guard p_emittente_sr_id → E_PARAMETRO_INVALIDO'
 );
@@ -349,7 +440,7 @@ RETURNS text AS $fn$
 -- ⚠️ `text` esplicito: e' il canale CONSTRAINT dell'eccezione, non una colonna.
 DECLARE v_cod text;
 BEGIN
-    PERFORM vendite.fn_offerta_eccezione_componenti_init(p_ecc, 1, CURRENT_DATE);
+    PERFORM vendite.fn_offerta_eccezione_componenti_init(p_ecc, 1, script.fn_data_operativa());
     RETURN 'NESSUN ERRORE';
 EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_cod = CONSTRAINT_NAME;
@@ -374,7 +465,7 @@ SELECT CASE
         vendite.fn_offerta_eccezione_componenti_init(
             (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'SEMPLICE'),
             (SELECT emittente_sr_id FROM tmp_oce_ctx),
-            CURRENT_DATE
+            script.fn_data_operativa()
         ),
         0,
         '15) fn_init su articolo non composito → 0 (no-op CASO B)'
@@ -391,7 +482,7 @@ SELECT CASE
         vendite.fn_offerta_eccezione_componenti_init(
             (SELECT eccezione_id FROM tmp_oce_ids WHERE slot = 'CONSUMO'),
             (SELECT emittente_sr_id FROM tmp_oce_ctx),
-            CURRENT_DATE
+            script.fn_data_operativa()
         ),
         0,
         '16) fn_init su eccezione con quantita NULL → 0 (consumo no-op)'
@@ -455,14 +546,28 @@ DECLARE
 BEGIN
     IF NOT (SELECT disponibile FROM tmp_oce_has_composito) THEN RETURN; END IF;
 
-    SELECT offerta_id INTO v_off_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA';
+    -- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5b): prima
+    --   era un'AGGIUNTA dello stesso articolo composito, sulla stessa offerta che ne
+    --   forzava gia' il prezzo (OVERRIDE): cioe' un articolo del listino aggiunto
+    --   come fuori listino, che il guard dell'aggiunta ora rifiuta anche
+    --   sull'offerta. Il test prova l'override del prezzo di un componente, non il
+    --   tipo di riga: diventa un OVERRIDE su un'offerta sua, in BOZZA.
+    INSERT INTO vendite.offerte_commerciali (
+        emittente_fiscale_id, billing_account_id, istanza_utility_id, utility_id,
+        listino_id, listino_versione_id, validita_dal, stato_doc_offerta_id
+    )
+    SELECT c.emittente_fiscale_id, c.billing_account_id, c.istanza_utility_id, c.utility_id,
+           c.listino_id, c.listino_versione_id, DATE '2082-01-01', c.stato_bozza_id
+      FROM tmp_oce_ctx c
+    RETURNING id INTO v_off_id;
 
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     INSERT INTO vendite.offerte_commerciali_eccezioni (
         offerta_id, articolo_id, tipo_eccezione, fonte_quantita_attesa,
-        prezzo_unitario, quantita
+        prezzo_unitario, quantita, tipo_erogazione
     )
     VALUES (v_off_id, (SELECT articolo_composito_id FROM tmp_oce_ctx),
-            'AGGIUNTA', 'DERIVATA_COMPONENTI', 0.00, 3)
+            'OVERRIDE', 'DERIVATA_COMPONENTI', 0.00, 3, 'CANONE')
     RETURNING id INTO v_ovr_ecc_id;
 
     INSERT INTO tmp_oce_ids VALUES ('COMPOSITA-OVR', v_off_id, v_ovr_ecc_id);
@@ -513,6 +618,15 @@ BEGIN
             ) > 0
     ) THEN RETURN; END IF;
 
+    -- rev 2026-10-04 (R5a): righe e componenti si scrivono in BOZZA; il push vuole
+    -- un'offerta ACCETTATA, e ci arriva per la sua strada: BOZZA -> EMESSA -> ACCETTATA.
+    UPDATE vendite.offerte_commerciali
+       SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_oce_ctx)
+     WHERE id = (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA');
+    UPDATE vendite.offerte_commerciali
+       SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_oce_ctx)
+     WHERE id = (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA');
+
     PERFORM vendite.fn_push_offerta_a_contratto(
         (SELECT offerta_id FROM tmp_oce_ids WHERE slot = 'COMPOSITA'),
         NULL
@@ -543,7 +657,7 @@ END;
 
 -- ============================================================
 -- Setup test 21-26: fn_offerta_eccezione_componenti_preview
--- Context separato: richiede componenti validi per CURRENT_DATE.
+-- Context separato: richiede componenti validi per script.fn_data_operativa().
 -- ============================================================
 CREATE TEMP TABLE tmp_preview_ctx AS
 SELECT
@@ -555,7 +669,7 @@ SELECT
     a.uom_id   AS composito_uom_id,
     as_.uom_id AS semplice_uom_id,
     -- disponibile = true solo se tutti i dati presenti E almeno
-    -- un componente attivo valido per CURRENT_DATE
+    -- un componente attivo valido per script.fn_data_operativa()
     (ctx.articolo_composito_id IS NOT NULL
      AND ctx.billing_account_id IS NOT NULL
      AND ctx.emittente_sr_id IS NOT NULL
@@ -563,7 +677,7 @@ SELECT
          SELECT 1 FROM catalogo.articoli_componenti ac
           WHERE ac.prodotto_id = ctx.articolo_composito_id
             AND COALESCE(ac.attivo, TRUE) = TRUE
-            AND ac.validita @> CURRENT_DATE
+            AND ac.validita @> script.fn_data_operativa()
      )) AS disponibile
   FROM tmp_oce_ctx ctx
   LEFT JOIN catalogo.articoli a   ON a.id   = ctx.articolo_composito_id
@@ -590,7 +704,7 @@ SELECT CASE
             (SELECT articolo_semplice_id FROM tmp_preview_ctx),
             (SELECT semplice_uom_id      FROM tmp_preview_ctx),
             1,
-            CURRENT_DATE,
+            script.fn_data_operativa(),
             (SELECT billing_account_id   FROM tmp_preview_ctx),
             (SELECT utility_id           FROM tmp_preview_ctx),
             (SELECT emittente_sr_id      FROM tmp_preview_ctx),
@@ -604,7 +718,7 @@ END;
 
 -- ============================================================
 -- TEST 23) fn_preview articolo composito → righe > 0
---          (obbligatorio + esposto_in_fattura accessibili nella proiezione)
+--          (obbligatorio + esposizione_in_fattura accessibili nella proiezione)
 -- ============================================================
 SELECT CASE
     WHEN (SELECT disponibile FROM tmp_preview_ctx)
@@ -613,7 +727,7 @@ SELECT CASE
             (SELECT articolo_composito_id FROM tmp_preview_ctx),
             (SELECT composito_uom_id      FROM tmp_preview_ctx),
             2,
-            CURRENT_DATE,
+            script.fn_data_operativa(),
             (SELECT billing_account_id    FROM tmp_preview_ctx),
             (SELECT utility_id            FROM tmp_preview_ctx),
             (SELECT emittente_sr_id       FROM tmp_preview_ctx),
@@ -622,11 +736,11 @@ SELECT CASE
         -- IS NOT DISTINCT FROM sé stesso è tautologia: se le colonne non
         -- esistessero nella RETURNS TABLE, la query fallirebbe qui
         WHERE p.obbligatorio IS NOT DISTINCT FROM p.obbligatorio
-          AND p.esposto_in_fattura IS NOT DISTINCT FROM p.esposto_in_fattura
+          AND p.esposizione_in_fattura IS NOT DISTINCT FROM p.esposizione_in_fattura
         ) > 0,
-        '23) fn_preview articolo composito: righe > 0, colonne obbligatorio+esposto_in_fattura accessibili'
+        '23) fn_preview articolo composito: righe > 0, colonne obbligatorio+esposizione_in_fattura accessibili'
     )
-    ELSE skip('23) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+    ELSE skip('23) skip: articolo composito con componenti validi per script.fn_data_operativa() non disponibile')
 END;
 
 -- ============================================================
@@ -640,7 +754,7 @@ SELECT CASE
             (SELECT articolo_composito_id FROM tmp_preview_ctx),
             (SELECT composito_uom_id      FROM tmp_preview_ctx),
             2,
-            CURRENT_DATE,
+            script.fn_data_operativa(),
             (SELECT billing_account_id    FROM tmp_preview_ctx),
             (SELECT utility_id            FROM tmp_preview_ctx),
             (SELECT emittente_sr_id       FROM tmp_preview_ctx),
@@ -650,10 +764,10 @@ SELECT CASE
            FROM catalogo.articoli_componenti ac
           WHERE ac.prodotto_id = (SELECT articolo_composito_id FROM tmp_preview_ctx)
             AND COALESCE(ac.attivo, TRUE) = TRUE
-            AND ac.validita @> CURRENT_DATE),
+            AND ac.validita @> script.fn_data_operativa()),
         '24) fn_preview COUNT = COUNT componenti attivi validi (nessun filtro esposto_in_fattura)'
     )
-    ELSE skip('24) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+    ELSE skip('24) skip: articolo composito con componenti validi per script.fn_data_operativa() non disponibile')
 END;
 
 -- ============================================================
@@ -668,7 +782,7 @@ SELECT CASE
                   (SELECT articolo_composito_id FROM tmp_preview_ctx),
                   (SELECT composito_uom_id      FROM tmp_preview_ctx),
                   2,
-                  CURRENT_DATE,
+                  script.fn_data_operativa(),
                   (SELECT billing_account_id    FROM tmp_preview_ctx),
                   (SELECT utility_id            FROM tmp_preview_ctx),
                   (SELECT emittente_sr_id       FROM tmp_preview_ctx),
@@ -678,21 +792,22 @@ SELECT CASE
         ),
         '25) fn_preview quantita_componente = coeff_qta_snapshot * 2 (p_quantita_padre) per ogni riga'
     )
-    ELSE skip('25) skip: articolo composito con componenti validi per CURRENT_DATE non disponibile')
+    ELSE skip('25) skip: articolo composito con componenti validi per script.fn_data_operativa() non disponibile')
 END;
 
 -- ============================================================
--- TEST 26) fn_preview include componenti con esposto_in_fattura=FALSE
---          (verifica rimozione del vecchio filtro AND esposto_in_fattura=TRUE)
+-- TEST 26) fn_preview include componenti NASCOSTI
+--          (verifica rimozione del vecchio filtro AND esposto_in_fattura=TRUE;
+--          dal 2026-10-01 il booleano false e' esposizione_in_fattura = NASCOSTO)
 -- ============================================================
 SELECT CASE
     WHEN (SELECT disponibile FROM tmp_preview_ctx)
        AND EXISTS (
            SELECT 1 FROM catalogo.articoli_componenti ac
             WHERE ac.prodotto_id = (SELECT articolo_composito_id FROM tmp_preview_ctx)
-              AND COALESCE(ac.esposto_in_fattura, TRUE) = FALSE
+              AND ac.esposizione_in_fattura = 'NASCOSTO'
               AND COALESCE(ac.attivo, TRUE) = TRUE
-              AND ac.validita @> CURRENT_DATE
+              AND ac.validita @> script.fn_data_operativa()
        )
     THEN ok(
         EXISTS (
@@ -701,17 +816,17 @@ SELECT CASE
                   (SELECT articolo_composito_id FROM tmp_preview_ctx),
                   (SELECT composito_uom_id      FROM tmp_preview_ctx),
                   2,
-                  CURRENT_DATE,
+                  script.fn_data_operativa(),
                   (SELECT billing_account_id    FROM tmp_preview_ctx),
                   (SELECT utility_id            FROM tmp_preview_ctx),
                   (SELECT emittente_sr_id       FROM tmp_preview_ctx),
                   NULL
               ) p
-             WHERE p.esposto_in_fattura = FALSE
+             WHERE p.esposizione_in_fattura = 'NASCOSTO'
         ),
-        '26) fn_preview include componenti con esposto_in_fattura=FALSE (filtro AND esposto=TRUE rimosso)'
+        '26) fn_preview include componenti NASCOSTI (filtro AND esposto=TRUE rimosso)'
     )
-    ELSE skip('26) skip: nessun componente con esposto_in_fattura=FALSE valido per CURRENT_DATE')
+    ELSE skip('26) skip: nessun componente NASCOSTO valido per script.fn_data_operativa()')
 END;
 
 -- ============================================================

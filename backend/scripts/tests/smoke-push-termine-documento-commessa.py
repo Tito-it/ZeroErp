@@ -71,11 +71,12 @@
 # ------------------------------------------------------------
 
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.vendite.db.commesse_repository import CommesseRepository
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.commesse_service import pr_run_commesse_push_one
@@ -99,9 +100,14 @@ def skip(label, motivo):
     SKIP.append(label)
 
 
-# Scopo: Clona un ordine reale (testata) in stato CONFERMATO con le condizioni
-#        di pagamento volute. E' il punto d'ingresso della catena: da qui in
-#        poi il termine viaggia SOLO per mano del codice di produzione.
+# Scopo: Clona un ordine reale (testata) in BOZZA con le condizioni di
+#        pagamento volute. E' il punto d'ingresso della catena: da qui in poi il
+#        termine viaggia SOLO per mano del codice di produzione.
+# ⛔ In BOZZA, non gia' CONFERMATO: le righe si aggiungono solo finche' il
+#    documento e' in bozza (`trgfn_doc_righe_lock_fuori_bozza`,
+#    `E_RIGA_DOC_NON_BOZZA`). Fino al 2026-10-09 la testata nasceva confermata e
+#    la riga arrivava dopo: il guard lo rifiuta, ed e' giusto. La conferma la
+#    fa `conferma_ordine`, DOPO le righe — l'ordine in cui accade davvero.
 def clona_ordine(cur, template_id, *, data_doc, termine_id, modalita_id, marker):
     cur.execute(
         """
@@ -113,7 +119,7 @@ def clona_ordine(cur, template_id, *, data_doc, termine_id, modalita_id, marker)
         )
         SELECT o.soggetto_ruolo_id, o.billing_account_id, %s,
                (SELECT id FROM config.stati_doc_ordini
-                 WHERE codice_interno = 'CONFERMATO'),
+                 WHERE codice_interno = 'DRAFT'),
                o.valuta_id, o.tasso_cambio, %s, %s,
                'CONFERMATO', o.canale_origine, o.utility_id,
                o.emittente_fiscale_id, false, jsonb_build_object('smoke', %s)
@@ -123,6 +129,20 @@ def clona_ordine(cur, template_id, *, data_doc, termine_id, modalita_id, marker)
         [data_doc, modalita_id, termine_id, marker, template_id],
     )
     return cur.fetchone()[0]
+
+
+# Scopo: Porta a CONFERMATO l'ordine clonato, dopo le sue righe. La coppia di
+#        stati la valida il DB (grafo delle transizioni), come per l'operatore.
+def conferma_ordine(cur, ordine_id):
+    cur.execute(
+        """
+        UPDATE vendite.ordini
+           SET stato_doc_ordine_id = (SELECT id FROM config.stati_doc_ordini
+                                       WHERE codice_interno = 'CONFERMATO')
+         WHERE id = %s
+        """,
+        [ordine_id],
+    )
 
 
 # Scopo: Una riga d'ordine minimale (articolo NON composito: il fan-out BoM e'
@@ -234,16 +254,18 @@ with transaction.atomic():
 
         # Competenza ISOLATA: ~14 mesi nel futuro, meta' mese. La selezione
         # del lotto non incrocia nulla di vivo.
-        data_doc = (date.today() + timedelta(days=425)).replace(day=15)
+        data_doc = (oggi_aziendale() + timedelta(days=425)).replace(day=15)
         competenza = data_doc.replace(day=1)
 
         marker = uuid.uuid4().hex[:8]
         ord_a = clona_ordine(cur, template_id, data_doc=data_doc, termine_id=term_doc,
                              modalita_id=modalita_id, marker=f"{marker}-A")
         clona_riga(cur, ord_a, riga_tpl, prezzo=Decimal("100.00"))
+        conferma_ordine(cur, ord_a)
         ord_b = clona_ordine(cur, template_id, data_doc=data_doc, termine_id=term_alt,
                              modalita_id=modalita_id, marker=f"{marker}-B")
         clona_riga(cur, ord_b, riga_tpl, prezzo=Decimal("200.00"))
+        conferma_ordine(cur, ord_b)
         # uid dei due ordini: e' con questi che si costruisce il perimetro
         # dei gruppi, cosi' la selezione prende SOLO cio' che il fixture ha
         # creato (vedi la nota sulla selezione piu' avanti).

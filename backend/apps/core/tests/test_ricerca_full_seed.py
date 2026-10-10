@@ -160,6 +160,8 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("anagrafiche.soggetti", _da_costante("apps.anagrafiche.db.soggetti_repository", "_RICERCA_SOGGETTI")),
     ("anagrafiche.categorie_clienti_listini", _da_costante("apps.anagrafiche.db.categorie_clienti_listini_repository", "_RICERCA_MATRICE")),
     ("anagrafiche.operatori", _da_costante("apps.amm_software.db.amm_software_repository", "_RICERCA_OPERATORI")),
+    ("anagrafiche.accessi_altri", _da_costante("apps.amm_software.db.accessi_repository", "_RICERCA_ACCESSI_ALTRI")),
+    ("anagrafiche.accessi_sistema", _da_costante("apps.amm_software.db.accessi_repository", "_RICERCA_ACCESSI_SISTEMA")),
     ("vendite.listini", _da_costante(_V + "listini_repository", "_RICERCA_LISTINI")),
     ("vendite.listini_righe", _da_costante(_V + "listini_repository", "_RICERCA_LISTINI_RIGHE")),
     ("vendite.promo_articoli", _da_costante(_V + "promo_articoli_repository", "_RICERCA_PROMO")),
@@ -196,6 +198,8 @@ _RICERCHE: tuple[tuple[str, object], ...] = (
     ("vendite.fattura_righe", _da_costante(_V + "fatture_repository", "_RICERCA_RIGHE_FATTURA")),
     # Le righe di un contratto (2026-09-30, lotto D): lista 103 sulla funzione.
     ("vendite.contratto_righe", _da_costante(_V + "contratti_repository", "_RICERCA_RIGHE_CONTRATTO")),
+    # Le righe di un'offerta (2026-10-05, gemella della 103): lista 106 sulla funzione.
+    ("vendite.offerta_righe", _da_costante(_V + "offerte_repository", "_RICERCA_RIGHE_OFFERTA")),
 )
 
 # Liste con colonne `ricercabile_full = t` la cui ricerca e' ancora scritta a

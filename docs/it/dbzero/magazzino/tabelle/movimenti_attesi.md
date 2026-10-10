@@ -11,13 +11,13 @@
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | magazzino_id | bigint | NO |  |
-| qta | numeric | NO |  |
+| qta | numeric(18,6) | NO |  |
 | data_prevista | timestamp with time zone | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | false |
 | ubicazione_id | bigint | YES |  |
@@ -25,7 +25,7 @@
 | sorgente_riga | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | causale_id | bigint | NO |  |
-| stato | character varying | NO | 'APERTA'::character varying |
+| stato | character varying(12) | NO | 'APERTA'::character varying |
 | data_chiusura | timestamp with time zone | YES |  |
 | soggetto_ruolo_id | bigint | YES |  |
 | nota | text | YES |  |
@@ -42,6 +42,7 @@
 | CHECK | chk_mag_movimenti_attesi_qta_non_zero |  |
 | CHECK | chk_mag_movimenti_attesi_sorgente_chiave |  |
 | CHECK | chk_mag_movimenti_attesi_stato |  |
+| CHECK | chk_movimenti_attesi_qta_finito |  |
 | FOREIGN KEY | fk_mag_movimenti_attesi_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_movimenti_attesi_asset | asset_id |
 | FOREIGN KEY | fk_mag_movimenti_attesi_causale | causale_id |

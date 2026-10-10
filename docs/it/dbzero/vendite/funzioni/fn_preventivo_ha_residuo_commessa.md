@@ -17,10 +17,13 @@ BEGIN
   -- =========================================================
   -- Scopo:
   --   TRUE se il preventivo ha righe natura COMMESSA (o NULL,
-  --   pregresso) non ancora EMESSE in commessa E testata
-  --   completa (billing_account_id, utility_id): il push
+  --   pregresso) non ancora instradate in commessa: il push
   --   commessa avrebbe effetto.
   --   Funzione fn_*: puro boolean, no raise oltre il guard id.
+  --
+  --   rev 2026-10-10: via il requisito di «testata completa»
+  --   (billing_account_id, utility_id): sono NOT NULL dal
+  --   2026-10-08. Brief: brief-db-istanza-nasce-col-ba-residui.
   -- =========================================================
 
   -- Guard standard parametro id.
@@ -39,18 +42,13 @@ BEGIN
   RETURN EXISTS (
     SELECT 1
       FROM vendite.vw_preventivi_righe_smistabili_commessa v
-      JOIN vendite.preventivi p ON p.id = v.preventivo_id
      WHERE v.preventivo_id = p_preventivo_id
-       -- Requisiti di testata del push commessa (fn_list):
-       -- senza, il push non listerebbe nulla.
-       AND p.billing_account_id IS NOT NULL
-       AND p.utility_id IS NOT NULL
   );
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_commessa(p_preventivo_id bigint)
-IS 'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora instradate in commessa (nessuna attivita sul segment_key di riga, inclusi componenti #CMP, qualsiasi stato_emissione) E testata completa (billing_account_id, utility_id NOT NULL). Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa): capability can_push_commessa + gate EVASO lato BE. Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine).';
+IS 'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora instradate in commessa (nessuna attivita sul segment_key di riga, inclusi componenti #CMP, qualsiasi stato_emissione). Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa): capability can_push_commessa + gate EVASO lato BE. Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine). rev 2026-10-10 (20261010-51): via il requisito di testata completa (billing_account_id, utility_id NOT NULL), tautologico dal 2026-10-08 (le due colonne sono NOT NULL); con lui il JOIN alla testata, che la vista security_invoker fa gia''. Brief: brief-db-istanza-nasce-col-ba-residui (R-2).';
 ```
 
 ---

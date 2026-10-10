@@ -21,7 +21,12 @@ BEGIN
     -- su anagrafiche.identita_digitali (fase a10, BEFORE INSERT/UPDATE).
     --
     -- Logica:
-    --   - API_CLIENT / DISABILITATO: early-exit, nessuna query.
+    --   - DISABILITATO: rifiuto (rev 2026-10-02, R-DB-1). Non e' piu' un
+    --     tipo di veste: una veste si spegne con attivo = false e il suo
+    --     tipo resta. Il CHECK chk_identita_digitali_ruolo_non_ritirato
+    --     lo dice alla tabella; questo ramo parla PRIMA del CHECK (guard
+    --     BEFORE ROW) e con un codice che dice il rimedio.
+    --   - API_CLIENT: early-exit, nessuna query.
     --   - OPERATORE: SELECT soggetto_id, poi DUE mondi disgiunti
     --     secondo il flag `tecnica` (rev 2026-09-04):
     --       persona  -> RIS_UMANA + PF pura
@@ -31,8 +36,32 @@ BEGIN
     --     funzione) — evita una query ridondante.
     -- ------------------------------------------------------------
 
+    -- 0) ⛔ DISABILITATO e' ritirato come tipo di veste (rev 2026-10-02,
+    --    brief-db-be-fe-area-accessi R-DB-1). Fino a quel giorno lo scriveva
+    --    lo spegnimento dell'operatore al posto di OPERATORE, e la veste
+    --    spenta perdeva il suo tipo: questo guard usciva in anticipo e non
+    --    controllava piu' niente. Ora l'operatore spento resta OPERATORE
+    --    con attivo = false, e il ramo OPERATORE qui sotto lo controlla
+    --    come quello acceso. Il valore resta nell'enum solo perche' lo
+    --    porta la storia (storico.identita_digitali).
+    IF NEW.ruolo_applicativo = 'DISABILITATO' THEN
+        PERFORM script.fn_log_and_raise_error(
+            'database',
+            TG_NAME,
+            'E_RUOLO_APPLICATIVO_RITIRATO',
+            jsonb_build_object(
+                'table', TG_TABLE_NAME,
+                'identita_id', NEW.id,
+                'auth_user_id', NEW.auth_user_id,
+                'ruolo_applicativo', NEW.ruolo_applicativo
+            ),
+            NULL::uuid,
+            NEW.ruolo_applicativo::text
+        );
+    END IF;
+
     -- 1) Early-exit per ruoli senza vincoli di coerenza.
-    IF NEW.ruolo_applicativo IN ('API_CLIENT', 'DISABILITATO') THEN
+    IF NEW.ruolo_applicativo = 'API_CLIENT' THEN
         RETURN NEW;
     END IF;
 
@@ -136,7 +165,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_identita_digitali_guard_coerenza()
-IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali. Rev 2026-09-04: il ramo OPERATORE si sdoppia sul flag `tecnica` in DUE MONDI DISGIUNTI — una PERSONA vuole RIS_UMANA piu'' persona fisica pura (invariato), un PROCESSO vuole il ruolo dedicato PROC_AUTO e nessun controllo di persona fisica. ⛔ Il flag NON apre il ramo: scambia un requisito chiuso con un altro, quindi con tecnica=true non si puo'' appendere un''identita'' operatore a un soggetto qualsiasi. ⭐ Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: senza questo sdoppiamento un processo automatico non potrebbe avere un perimetro emittente, e prima del 2026-09-04 il database dichiarava di fatto che solo un essere umano poteva averne uno. Brief: brief-db-processi-automatici-identita-e-perimetro §4.';
+IS 'Guard di coerenza ruolo_applicativo <-> soggetto_ruolo su anagrafiche.identita_digitali. Rev 2026-09-04: il ramo OPERATORE si sdoppia sul flag `tecnica` in DUE MONDI DISGIUNTI — una PERSONA vuole RIS_UMANA piu'' persona fisica pura (invariato), un PROCESSO vuole il ruolo dedicato PROC_AUTO e nessun controllo di persona fisica. ⛔ Il flag NON apre il ramo: scambia un requisito chiuso con un altro, quindi con tecnica=true non si puo'' appendere un''identita'' operatore a un soggetto qualsiasi. ⭐ Serve perche'' ogni policy rls_*_ef_whitelist pretende ruolo_applicativo = OPERATORE: senza questo sdoppiamento un processo automatico non potrebbe avere un perimetro emittente, e prima del 2026-09-04 il database dichiarava di fatto che solo un essere umano poteva averne uno. Brief: brief-db-processi-automatici-identita-e-perimetro §4. ⛔ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): DISABILITATO non e'' piu'' un tipo di veste e si rifiuta con E_RUOLO_APPLICATIVO_RITIRATO; una veste si spegne con attivo = false e il tipo resta, quindi l''operatore spento e'' controllato dal ramo OPERATORE come quello acceso (fino a quel giorno il guard usciva in anticipo su DISABILITATO e non controllava niente). Early-exit resta solo per API_CLIENT.';
 ```
 
 ---

@@ -28,8 +28,9 @@ import AppDialog from '../../core/components/AppDialog.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useNotify } from '../../core/composables/useNotify'
 import { DATE_FORMAT } from '../../core/constants'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, oggiAziendale } from '../../core/utils/date'
 import { correggiDistinta } from '../api/pagamenti'
+import { useFotografiaDialog } from '../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -49,7 +50,7 @@ const motivo = ref('')
 
 watch(() => props.visible, (aperto) => {
   if (!aperto) return
-  dataContabile.value = new Date()
+  dataContabile.value = oggiAziendale()
   motivo.value = ''
 })
 
@@ -89,10 +90,14 @@ async function onCorreggi() {
   emit('corretta', dati.distinta.id)
   emit('update:visible', false)
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ dataContabile: dataContabile.value, motivo: motivo.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="visible"
     :header="t('pagamenti.correggi.titolo')"
     width="md"

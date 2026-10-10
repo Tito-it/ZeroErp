@@ -234,11 +234,43 @@ WHERE to_regclass(t.nome) IS NOT NULL
 --   90_end/20260925-62. Dal 2026-09-29 anche il DEVICE DEL SECONDO FATTORE,
 --   `config.auth_totp_device` (brief-db-secondo-fattore-totp §3): lo scrivono
 --   solo i verbi script.fn_totp_*; forward 90_end/20260929-24, pgTAP
---   `db/pgtap/config/test-totp-porta-v1.sql`.
+--   `db/pgtap/config/test-totp-porta-v1.sql`. Dal 2026-10-06 anche la TRACCIA
+--   DELLE CREDENZIALI ELIMINATE, `config.credenziali_eliminate`
+--   (brief-db-elimina-credenziale-senza-veste §4.2): la scrive solo
+--   script.fn_elimina_credenziale; forward 90_end/20261006-15, pgTAP
+--   `db/pgtap/config/test-elimina-credenziale-v1.sql`.
 SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
 FROM (VALUES ('config.credenziali'), ('config.credenziali_provenienze'),
              ('config.nomi_tentati'), ('config.nomi_tentati_provenienze'),
-             ('config.auth_totp_device')) AS t(nome)
+             ('config.auth_totp_device'), ('config.credenziali_eliminate')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ UNA CREDENZIALE SI ELIMINA SOLO DAL VERBO (dal 2026-10-06): brief
+--   brief-db-elimina-credenziale-senza-veste §4.2. Su `django.auth_user`
+--   l'applicazione perde il DELETE che la whitelist di `django` le concede qui
+--   sopra: la sola porta e' script.fn_elimina_credenziale (SECURITY DEFINER),
+--   che chiede SUPER_ADMIN, controlla vesti e storia e lascia la traccia.
+--   Nessuna funzione e nessun punto del backend cancellava auth_user.
+--   ⚠️ QUI e' la sede che conta: `django` non e' fra gli schemi del loop
+--   20260205-41, e in CI il forward 90_end/20261006-15 gira prima di
+--   manage.py migrate, quando la tabella non c'e' ancora (§11.9).
+--   `db/pgtap/config/test-elimina-credenziale-v1.sql` lo dice se non lo fa.
+SELECT format('REVOKE DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('django.auth_user')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
+-- ⭐ LA PORTA DEI DATI SOCIETARI (dal 2026-10-11): brief
+--   brief-db-dati-fiscali-e-societari-del-soggetto, B-5.
+--   `anagrafiche.dati_societari` e' in SOLA LETTURA per l'applicazione: la
+--   scrive solo il verbo anagrafiche.fn_scrivi_dati_societari (SECURITY
+--   DEFINER del proprietario). Il permesso resta al backend, come per
+--   anagrafiche.soggetti. Stesso elenco di `v_tabelle_sola_lettura_app` nel loop
+--   20260205-41 e del forward 90_end/20261011-04;
+--   `db/pgtap/anagrafiche/test-fn-scrivi-dati-societari-v1.sql` lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('anagrafiche.dati_societari')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 

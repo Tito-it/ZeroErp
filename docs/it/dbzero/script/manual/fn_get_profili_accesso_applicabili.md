@@ -79,9 +79,10 @@ Binding diretto sull'identità digitale dell'utente. Rappresenta un **override
 personale** che vince su qualsiasi default di gruppo.
 
 Filtri:
-- `identita_digitali.attivo = true`
-- Identità nella finestra temporale (`valido_dal <= oggi <= valido_al`)
-- `ruolo_applicativo <> 'DISABILITATO'`
+- identità **utilizzabile oggi**:
+  [fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile)
+  (dal 07-10-2026; vale per tutti e tre i rami, prima erano `attivo` e la
+  finestra ricopiati tre volte)
 - `profili_accesso_bindings.attivo = true`
 - `profili_accesso.attivo = true` e `tipo = 'AD_HOC'`
 
@@ -93,7 +94,9 @@ Binding per `unita_organizzativa_id` dell'operatore interno, risolta via
 
 Filtri aggiuntivi:
 - `ruolo_applicativo = 'OPERATORE'` (solo operatori)
-- `risorse_umane.attivo = true`
+- il rapporto non si controlla più qui (era `risorse_umane.attivo = true`):
+  lo guarda il building block, che per l'operatore umano pretende il rapporto
+  attivo **e** nelle sue date (dal 07-10-2026)
 
 #### 3. `PORTALE` (priorità 3)
 
@@ -177,8 +180,9 @@ determinato. Se non c'è nessun profilo, il resolver ritorna `BLOCCATO` / `false
   `profili_accesso_aree` / `profili_accesso_azioni` per singolo lookup.
 * `DISTINCT` su ciascun ramo UNION per robustezza (se il modello
   dovesse, per qualche ragione, produrre duplicati).
-* Il filtro `ruolo_applicativo <> 'DISABILITATO'` è esplicito in
-  AD_HOC e PORTALE; implicito in REPARTO tramite `= 'OPERATORE'`.
+* Una veste spenta si riconosce **solo** da `attivo` (dal 2026-10-02,
+  brief `brief-db-be-fe-area-accessi`, R-DB-1): il filtro `ruolo_applicativo <> 'DISABILITATO'` dei rami AD_HOC e
+  PORTALE è caduto con il tipo, che la tabella viva non ammette più.
 
 ---
 

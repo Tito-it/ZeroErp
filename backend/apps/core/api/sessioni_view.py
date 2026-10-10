@@ -13,6 +13,7 @@ from __future__ import annotations
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
+from django.http import JsonResponse
 from rest_framework.response import Response
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.openapi_params import param_ricerca_full
@@ -21,15 +22,10 @@ from apps.core.api.payload_validators import paginated_envelope, parse_list_para
 from apps.core.api.success_responses import success_response
 from apps.core.db.session_audit_repository import SessionAuditRepository
 from apps.core.services import session_audit_service
-from apps.core.services.auth_constants import JWT_CLAIM_SID
+from apps.core.services.request_context import sid_corrente
 from apps.core.services.revoca_token import blocca_token_sessioni
 from apps.core.services.service_errors import ServiceError
-
-
-# Scopo: Estrae il SID (session ID) dal token JWT di accesso nella request corrente.
-def _get_current_sid(request: Request) -> str | None:
-    auth = request.auth
-    return str(auth.get(JWT_CLAIM_SID, "")) if auth else None
+from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 
 class SessioniAttiveListView(DomainAPIView):
@@ -91,12 +87,13 @@ class SessioniAttiveListView(DomainAPIView):
     #    ricerca che trova una sessione su tre non deve far dire al dialog
     #    «revocherai 1 sessione» mentre ne revoca tre. Senza ricerca coincidono,
     #    e la seconda lettura non si fa.
-    def get(self, request: Request) -> Response:
+    def get(self, request: Request) -> JsonResponse:
         p = parse_list_params(request.query_params, default_order="data_ultimo_evento")
         repo = SessionAuditRepository()
-        current_sid = _get_current_sid(request)
+        current_sid = sid_corrente(request)
+        user_id = utente_autenticato_id(request)
         results, total = repo.list_sessioni_attive_paginata(
-            request.user.id,
+            user_id,
             escludi_jti=current_sid,
             search=p["search"],
             order_by=p["order_by"],
@@ -106,7 +103,7 @@ class SessioniAttiveListView(DomainAPIView):
         )
         envelope = paginated_envelope(results, total, p["page"], p["limit"])
         envelope["totale_attive"] = (
-            repo.conta_sessioni_attive(request.user.id, escludi_jti=current_sid)
+            repo.conta_sessioni_attive(user_id, escludi_jti=current_sid)
             if p["search"] else total
         )
         return success_response(envelope)
@@ -121,7 +118,7 @@ class SessioneRevocaView(DomainAPIView):
     # Scopo: Revoca una sessione per sid — blacklista tutti i token JWT associati.
     def post(self, request: Request, jti: str) -> Response:
         sid = jti  # il parametro URL si chiama jti ma ora contiene un sid
-        current_sid = _get_current_sid(request)
+        current_sid = sid_corrente(request)
         # ⛔ Niente `current_sid and ...`: con un sid vuoto quel cortocircuito
         #    rendeva il rifiuto sempre falso, cioe' si poteva revocare la
         #    PROPRIA sessione dal pannello delle altre. Oggi il vuoto non arriva
@@ -134,13 +131,14 @@ class SessioneRevocaView(DomainAPIView):
         # ⚠️ Zero token con quel sid = la sessione non esiste. Se invece i suoi
         #    token c'erano ed erano gia' bloccati, la risposta resta 204: una
         #    revoca ripetuta e' idempotente, non un errore.
-        if blocca_token_sessioni(request.user.id, lambda s: s == sid) == 0:
+        user_id = utente_autenticato_id(request)
+        if blocca_token_sessioni(user_id, lambda s: s == sid) == 0:
             raise ServiceError(
                 code="E_SESSIONE_NOT_FOUND",
                 message="Sessione non trovata o gia' revocata.",
             )
         session_audit_service.record_revoca(
-            user_id=request.user.id,
+            user_id=user_id,
             request=request._request,
             jti=sid,
         )
@@ -186,8 +184,8 @@ class SessioniRevocaTutteView(DomainAPIView):
     #    elenco i token sono gia' scaduti — ma sono due costanti in due file
     #    diversi: restringere anche la blacklist legherebbe un presidio a una
     #    coincidenza non presidiata.
-    def post(self, request: Request) -> Response:
-        current_sid = _get_current_sid(request)
+    def post(self, request: Request) -> JsonResponse:
+        current_sid = sid_corrente(request)
 
         # ⚠️ `current_sid` non puo' essere vuoto: dal 2026-09-04 il claim `sid` e'
         #    verificato in autenticazione (`JwtAuditAuthentication`, eccezione
@@ -201,20 +199,21 @@ class SessioniRevocaTutteView(DomainAPIView):
 
         # Le sessioni che il pannello mostra: e' questo che si sta revocando.
         repo = SessionAuditRepository()
+        user_id = utente_autenticato_id(request)
         sessioni_attive = {
             str(s["jti"])
-            for s in repo.list_sessioni_attive(request.user.id)
+            for s in repo.list_sessioni_attive(user_id)
             if s["jti"] and str(s["jti"]) != current_sid
         }
 
         # Tutti i token che non sono della sessione corrente.
         blocca_token_sessioni(
-            request.user.id, lambda s: bool(s) and s != current_sid
+            user_id, lambda s: bool(s) and s != current_sid
         )
 
         for sid in sorted(sessioni_attive):
             session_audit_service.record_revoca(
-                user_id=request.user.id,
+                user_id=user_id,
                 request=request._request,
                 jti=sid,
             )

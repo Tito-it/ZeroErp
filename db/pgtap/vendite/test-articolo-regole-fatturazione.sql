@@ -129,8 +129,8 @@ SELECT throws_ok(
 
 -- Qui stava il caso "Check visibilita_componenti". La colonna e il suo CHECK
 -- sono usciti dal modello con il changeset 20260728-18: non era la regola di
--- esposizione dei componenti in fattura (lo è `esposto_in_fattura` per
--- componente) e nessun consumatore vivo la applicava.
+-- esposizione dei componenti in fattura (lo è `esposizione_in_fattura` per
+-- componente, booleano `esposto_in_fattura` fino al 2026-10-01) e nessun consumatore vivo la applicava.
 -- Rimosso il 2026-07-28 — brief-db-ritiro-generatore-righe-fattura-sql §5-bis.
 
 -- ============================================================

@@ -72,8 +72,9 @@ from datetime import date
 from unittest import TestCase
 from unittest.mock import patch
 
-from django.db import IntegrityError
+from django.db import DatabaseError, IntegrityError
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 
 
@@ -1029,7 +1030,7 @@ class ListiniServiceTests(TestCase):
     # Scopo: N6 - rettifica su versione BOZZA rifiutata (guard applicativo).
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_su_bozza_rifiutata(self, mock_repo_cls):
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
@@ -1038,7 +1039,7 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "BOZZA",
-            "valido_dal": date.today() - timedelta(days=1),
+            "valido_dal": oggi_aziendale() - timedelta(days=1),
             "valido_al": None,
         }
 
@@ -1047,11 +1048,14 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         self.assertIn("BOZZA", ctx.exception.message or "")
 
-    # Scopo: N6 - rettifica su riga gia` propagata in commessa rifiutata.
+    # Scopo: N6 - rettifica su riga gia` propagata in commessa rifiutata. La
+    #        regola e' del guard DB (`trgfn_listini_righe_guard_stato`, dal
+    #        2026-10-09 senza copia in Python): qui il rifiuto arriva come
+    #        DatabaseError dall'UPDATE e il service ne porta il codice.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_riga_propagata_rifiutata(self, mock_repo_cls, mock_atomic):
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
@@ -1060,7 +1064,7 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "ATTIVA",
-            "valido_dal": date.today() - timedelta(days=1),
+            "valido_dal": oggi_aziendale() - timedelta(days=1),
             "valido_al": None,
         }
         repo.get_riga.return_value = {
@@ -1069,18 +1073,19 @@ class ListiniServiceTests(TestCase):
             "meta": None,
         }
         repo.lock_riga_for_update.return_value = True
-        repo.check_riga_propagata.return_value = True
+        repo.update_riga_prezzo_rettifica.side_effect = DatabaseError(
+            "E_RIGA_LISTINO_PROPAGATA: la riga listino 501 e' gia' stata propagata a valle."
+        )
 
         with self.assertRaises(ServiceError) as ctx:
             fn_rettifica_controllata_riga(10, 101, 501, {"prezzo": 12.25, "motivo": "errore battitura"})
-        self.assertEqual(ctx.exception.code, "E_VENDITE_RIGA_GIA_PROPAGATA")
-        repo.update_riga_prezzo_rettifica.assert_not_called()
+        self.assertEqual(ctx.exception.code, "E_RIGA_LISTINO_PROPAGATA")
 
     # Scopo: N6 - rettifica ammessa se riga non propagata.
     @patch("apps.vendite.services.listini_service.transaction.atomic")
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_ok_non_propagata(self, mock_repo_cls, mock_atomic):
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
@@ -1089,7 +1094,7 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "ATTIVA",
-            "valido_dal": date.today() - timedelta(days=1),
+            "valido_dal": oggi_aziendale() - timedelta(days=1),
             "valido_al": None,
         }
         repo.get_riga.return_value = {
@@ -1098,7 +1103,6 @@ class ListiniServiceTests(TestCase):
             "meta": None,
         }
         repo.lock_riga_for_update.return_value = True
-        repo.check_riga_propagata.return_value = False
         repo.update_riga_prezzo_rettifica.return_value = True
 
         result = fn_rettifica_controllata_riga(
@@ -1109,13 +1113,12 @@ class ListiniServiceTests(TestCase):
         self.assertEqual(result["prezzo_nuovo"], "12.25")
         self.assertEqual(result["motivo"], "errore di battitura al caricamento")
         repo.lock_riga_for_update.assert_called_once_with(101, 501)
-        repo.check_riga_propagata.assert_called_once_with(501)
         repo.update_riga_prezzo_rettifica.assert_called_once()
 
     # Scopo: N6 - rettifica senza motivo rifiutata.
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_senza_motivo_rifiutata(self, mock_repo_cls):
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
@@ -1124,7 +1127,7 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "ATTIVA",
-            "valido_dal": date.today() - timedelta(days=1),
+            "valido_dal": oggi_aziendale() - timedelta(days=1),
             "valido_al": None,
         }
         repo.get_riga.return_value = {
@@ -1144,7 +1147,7 @@ class ListiniServiceTests(TestCase):
     #        scaduta non puo` essere rettificata (principio fail-safe).
     @patch("apps.vendite.services.listini_service.ListiniRepository")
     def test_rettifica_controllata_su_versione_scaduta_rifiutata(self, mock_repo_cls):
-        from datetime import date, timedelta
+        from datetime import timedelta
 
         from apps.vendite.services.listini_service import fn_rettifica_controllata_riga
 
@@ -1153,8 +1156,8 @@ class ListiniServiceTests(TestCase):
             "id": 101,
             "listino_id": 10,
             "stato": "ATTIVA",  # stato stantio: in realta` scaduta da ieri
-            "valido_dal": date.today() - timedelta(days=30),
-            "valido_al": date.today() - timedelta(days=1),
+            "valido_dal": oggi_aziendale() - timedelta(days=30),
+            "valido_al": oggi_aziendale() - timedelta(days=1),
         }
 
         with self.assertRaises(ServiceError) as ctx:

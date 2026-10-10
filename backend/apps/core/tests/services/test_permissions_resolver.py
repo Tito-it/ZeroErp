@@ -135,7 +135,8 @@ class PermissionResolverRuoloApplicativoTests(TestCase):
         # il valore gia' popolato, fallback non eseguito.
         self.assertEqual(cursor.execute.call_count, 1)
 
-    # Scopo: GUC vuoto -> fallback query identita_digitali.
+    # Scopo: GUC vuoto -> fallback query identita_digitali, sulle sole vesti
+    #        utilizzabili (building block DB).
     @patch(_CONN)
     def test_ruolo_applicativo_fallback_query(self, mock_conn):
         cursor = MagicMock()
@@ -147,6 +148,12 @@ class PermissionResolverRuoloApplicativoTests(TestCase):
         result = PermissionResolver.get_ruolo_applicativo(_mock_user())
         self.assertEqual(result, "CLIENTE_PORTALE")
         self.assertEqual(cursor.execute.call_count, 2)
+        # La regola «utilizzabile» la decide il DB, come per la GUC: il
+        # fallback non la riscrive con `attivo`.
+        sql = cursor.execute.call_args_list[1][0][0]
+        self.assertIn("script.fn_veste_utilizzabile(id)", sql)
+        self.assertNotIn("attivo = true", sql)
+        self.assertIn("ORDER BY id", sql)
 
     # Scopo: Nessuna identita -> None.
     @patch(_CONN)

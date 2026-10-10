@@ -19,7 +19,8 @@
 --
 --   Comportamento CHECK e UNIQUE:
 --   8)  INSERT ESCLUSIONE + prezzo NULL -> ok
---   9)  INSERT ESCLUSIONE + prezzo NOT NULL -> fallisce CHECK (23514)
+--   9)  INSERT ESCLUSIONE + prezzo NOT NULL -> rifiutata (dal 2026-10-04 parla il guard
+--       E_RIGA_ESCLUSIONE_CON_DATI, P0001, prima del CHECK 23514, che resta la rete)
 --   10) INSERT OVERRIDE + prezzo NULL -> fallisce CHECK (23514)
 --   11) INSERT AGGIUNTA + prezzo NOT NULL su contratto senza listino -> ok
 --   12) INSERT 2° OVERRIDE stessa coppia -> fallisce UNIQUE (23505)
@@ -61,7 +62,16 @@ SELECT
     ba.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'  LIMIT 1) AS id_draft,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO' LIMIT 1) AS id_attivo,
-    (SELECT id FROM vendite.listini WHERE attivo = TRUE ORDER BY id LIMIT 1)             AS listino_id
+    -- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+    --   documento e' della sua utility e del suo emittente (guard nuovo). I test 14-17
+    --   leggono le righe di un listino dei dati, quindi qui si FILTRA invece di
+    --   ricostruire: il primo listino attivo della utility e dell'emittente del BA.
+    --   Senza, i contratti B e C non nascono e i test 14-17 vanno in skip, come prima.
+    (SELECT l.id FROM vendite.listini l
+       JOIN anagrafiche.emittenti_fiscali ef ON ef.soggetto_ruolo_id = l.emittente_soggetto_ruolo_id
+      WHERE l.attivo = TRUE AND l.utility_id = ba.utility_id
+        AND ef.id = anagrafiche.fn_get_emittente_fiscale_pk(ba.id)
+      ORDER BY l.id LIMIT 1)                                                         AS listino_id
   FROM anagrafiche.billing_account ba
  ORDER BY ba.id
  LIMIT 1;
@@ -69,8 +79,14 @@ SELECT
 -- 5 articoli non-composite attivi (per tests comportamento 8-13)
 CREATE TEMP TABLE tmp_s22_arts AS
 SELECT id, row_number() OVER (ORDER BY id) AS rn
-  FROM catalogo.articoli
- WHERE attivo = TRUE AND is_composito = FALSE
+  FROM catalogo.articoli a
+ WHERE a.attivo = TRUE AND a.is_composito = FALSE
+   -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): l'articolo
+   --   sta nel PERIMETRO delle righe: senza tipologia (decide la natura, la utility del
+   --   cliente non conta) e con UNA_TANTUM/FISSA ammessa, chiesto alla sede unica.
+   AND a.listino_tipologia_id IS NULL
+   AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
  ORDER BY id
  LIMIT 5;
 
@@ -94,6 +110,10 @@ SELECT
           FROM catalogo.articoli a
          WHERE a.attivo = TRUE
            AND a.is_composito = FALSE
+           -- rev 2026-10-07 (giro B3): nel perimetro, come tmp_s22_arts
+           AND a.listino_tipologia_id IS NULL
+           AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                        WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
            AND NOT EXISTS (
                SELECT 1 FROM vendite.listini_righe lr2
                 WHERE lr2.listino_versione_id = lv.id
@@ -105,7 +125,7 @@ SELECT
     ) AS art_fuori_listino_id
   FROM vendite.listini_versioni lv
  WHERE lv.listino_id = (SELECT listino_id FROM tmp_s22_ctx LIMIT 1)
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
    AND lv.attivo = TRUE
  LIMIT 1;
 
@@ -144,15 +164,19 @@ SELECT 'PGTAP_S22_C',
 
 -- Setup test 12: pre-inserisce primo OVERRIDE su art[3], contratto A.
 -- Il test 12 tenterà di inserire un secondo OVERRIDE sulla stessa coppia.
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'OVERRIDE', 100.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'OVERRIDE', 100.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti ca, tmp_s22_arts a
  WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 3;
 
 -- Setup test 13: pre-inserisce primo OVERRIDE su art[4], contratto A.
 -- Il test 13 tenterà di inserire un'ESCLUSIONE sulla stessa coppia.
-INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-SELECT ca.id, a.id, 'OVERRIDE', 200.00, 1.00
+-- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+       tipo_erogazione)
+SELECT ca.id, a.id, 'OVERRIDE', 200.00, 1.00, 'UNA_TANTUM'
   FROM vendite.contratti ca, tmp_s22_arts a
  WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 4;
 
@@ -247,8 +271,8 @@ SELECT ok(
 -- 8) INSERT ESCLUSIONE + prezzo NULL -> ok
 -- ============================================================
 SELECT lives_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'ESCLUSIONE', NULL, 1.00
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario)
+      SELECT ca.id, a.id, 'ESCLUSIONE', NULL
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 1$$,
     '8) INSERT ESCLUSIONE + prezzo NULL -> ok (CHECK soddisfatto)'
@@ -257,22 +281,27 @@ SELECT lives_ok(
 -- ============================================================
 -- 9) INSERT ESCLUSIONE + prezzo NOT NULL -> fallisce CHECK
 -- ============================================================
-SELECT throws_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'ESCLUSIONE', 50.00, 1.00
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): un'esclusione
+--   non porta dati di vendita, e a dirlo e' il guard col campo (P0001), prima
+--   del CHECK sul prezzo. Il CHECK resta la rete per le strade senza trigger.
+SELECT throws_like(
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario)
+      SELECT ca.id, a.id, 'ESCLUSIONE', 50.00
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 2$$,
-    '23514',
-    NULL,
-    '9) INSERT ESCLUSIONE + prezzo NOT NULL -> fallisce CHECK'
+    '%non porta prezzo, quantità né erogazione%',
+    '9) INSERT ESCLUSIONE + prezzo NOT NULL -> rifiutata dal guard dell''esclusione'
 );
 
 -- ============================================================
 -- 10) INSERT OVERRIDE + prezzo NULL -> fallisce CHECK
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'OVERRIDE', NULL, 1.00
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+    --   senza, il guard nuovo (P0001) parlerebbe prima del CHECK prezzo (23514) che qui si prova.
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+             tipo_erogazione)
+      SELECT ca.id, a.id, 'OVERRIDE', NULL, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 2$$,
     '23514',
@@ -284,8 +313,10 @@ SELECT throws_ok(
 -- 11) INSERT AGGIUNTA + prezzo NOT NULL, contratto senza listino -> ok
 -- ============================================================
 SELECT lives_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+             tipo_erogazione)
+      SELECT ca.id, a.id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 5$$,
     '11) INSERT AGGIUNTA + prezzo NOT NULL su contratto senza listino -> ok (guard non scatta)'
@@ -296,8 +327,11 @@ SELECT lives_ok(
 --     (setup: primo OVERRIDE gia'' inserito in fixture per art[3])
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'OVERRIDE', 150.00, 1.00
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+    --   senza, il guard nuovo (P0001) parlerebbe prima della UNIQUE (23505) che qui si prova.
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+             tipo_erogazione)
+      SELECT ca.id, a.id, 'OVERRIDE', 150.00, 1.00, 'UNA_TANTUM'
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 3$$,
     '23505',
@@ -310,8 +344,8 @@ SELECT throws_ok(
 --     (OVERRIDE e ESCLUSIONE non possono coesistere sulla stessa coppia)
 -- ============================================================
 SELECT throws_ok(
-    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-      SELECT ca.id, a.id, 'ESCLUSIONE', NULL, 1.00
+    $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario)
+      SELECT ca.id, a.id, 'ESCLUSIONE', NULL
         FROM vendite.contratti ca, tmp_s22_arts a
        WHERE ca.numero = 'PGTAP_S22_A' AND a.rn = 4$$,
     '23505',
@@ -328,8 +362,11 @@ SELECT CASE
          OR (SELECT art_in_listino_id FROM tmp_s22_lv LIMIT 1) IS NULL
     THEN skip('Nessun contratto DRAFT con listino + versione attiva + art in listino - skip guard test', 1)
     ELSE throws_ok(
-        $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-          SELECT ca.id, lv.art_in_listino_id, 'AGGIUNTA', 99.00, 1.00
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+        --   senza, il P0001 atteso verrebbe dal guard nuovo e non da E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO.
+        $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+                 tipo_erogazione)
+          SELECT ca.id, lv.art_in_listino_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
             FROM vendite.contratti ca, tmp_s22_lv lv
            WHERE ca.numero = 'PGTAP_S22_B'$$,
         'P0001',
@@ -347,8 +384,10 @@ SELECT CASE
          OR (SELECT art_fuori_listino_id FROM tmp_s22_lv LIMIT 1) IS NULL
     THEN skip('Nessun contratto DRAFT con listino + articolo fuori versione - skip guard test', 1)
     ELSE lives_ok(
-        $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-          SELECT ca.id, lv.art_fuori_listino_id, 'AGGIUNTA', 99.00, 1.00
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+        $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+                 tipo_erogazione)
+          SELECT ca.id, lv.art_fuori_listino_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
             FROM vendite.contratti ca, tmp_s22_lv lv
            WHERE ca.numero = 'PGTAP_S22_B'$$,
         '15) AGGIUNTA art FUORI listino (contratto DRAFT) -> ok (guard non scatta)'
@@ -364,8 +403,11 @@ SELECT CASE
          OR (SELECT art_in_listino_id FROM tmp_s22_lv LIMIT 1) IS NULL
     THEN skip('Nessun contratto ATTIVO con versione fissata + art in listino - skip guard test', 1)
     ELSE throws_ok(
-        $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-          SELECT ca.id, lv.art_in_listino_id, 'AGGIUNTA', 99.00, 1.00
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate);
+        --   senza, il P0001 atteso verrebbe dal guard nuovo e non da E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO.
+        $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+                 tipo_erogazione)
+          SELECT ca.id, lv.art_in_listino_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
             FROM vendite.contratti ca, tmp_s22_lv lv
            WHERE ca.numero = 'PGTAP_S22_C'$$,
         'P0001',
@@ -383,8 +425,10 @@ SELECT CASE
          OR (SELECT art_fuori_listino_id FROM tmp_s22_lv LIMIT 1) IS NULL
     THEN skip('Nessun contratto ATTIVO con versione fissata + articolo fuori versione - skip guard test', 1)
     ELSE lives_ok(
-        $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa)
-          SELECT ca.id, lv.art_fuori_listino_id, 'AGGIUNTA', 99.00, 1.00
+        -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
+        $$INSERT INTO vendite.contratti_righe(contratto_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+                 tipo_erogazione)
+          SELECT ca.id, lv.art_fuori_listino_id, 'AGGIUNTA', 99.00, 1.00, 'UNA_TANTUM'
             FROM vendite.contratti ca, tmp_s22_lv lv
            WHERE ca.numero = 'PGTAP_S22_C'$$,
         '17) AGGIUNTA art FUORI versione fissata (contratto ATTIVO) -> ok (guard Branch 3 non scatta)'

@@ -29,6 +29,7 @@
 // ------------------------------------------------------------
 
 import { mount } from '@vue/test-utils'
+import { afterEach } from 'vitest'
 import { createPinia, getActivePinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import ConfirmationService from 'primevue/confirmationservice'
@@ -57,6 +58,19 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
     removeListener: () => {},
     dispatchEvent: () => false,
   })
+}
+
+// ⚠️ Stessa lacuna, stessa cura: `ResizeObserver` NON ESISTE in jsdom (niente
+//    layout, niente da misurare). Il `Textarea` di PrimeVue con `auto-resize`
+//    lo crea al montaggio — `MotivoDialog` e chi lo usa — e senza muore con
+//    «ResizeObserver is not defined». Un osservatore che non osserva niente e'
+//    la risposta onesta: in jsdom le dimensioni non cambiano mai.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
 }
 
 // Scopo: l'i18n dei test — `t` rende la CHIAVE, non una frase.
@@ -102,6 +116,27 @@ function i18nDiProva(messages = {}) {
 //    `setActivePinia(createPinia())` nel `beforeEach` e lo configura; qui si
 //    riusa quella. Senza, se ne crea una e la si attiva, cosi' anche chi
 //    chiama lo store DOPO il montaggio trova la stessa.
+// ⚠️ Ogni componente montato si SMONTA a fine test, e non per pulizia: un
+//    componente vivo tiene vivi i suoi timer, e un timer che scatta dopo la
+//    fine del file trova jsdom gia' smontato. Il `TabList` di PrimeVue lo fa al
+//    montaggio (`setTimeout` di 150 ms per la barra della scheda attiva, mai
+//    cancellato): sull'ultimo test del file muore con «HTMLElement is not
+//    defined», e Vitest lo conta come errore non gestito — CI rossa con tutti
+//    i test verdi (`OperatoreDrawer.spec.js`, 2026-10-10).
+// ⭐ Smontato, il timer scatta lo stesso ma trova i `$refs` vuoti ed esce
+//    senza toccare il DOM. Il rimedio sta qui e non nel singolo spec: vale per
+//    ogni componente che monta delle schede, e chi scrive il prossimo test non
+//    deve saperlo.
+// ⚠️ Chi smonta da se' (per provare lo smontaggio) resta libero di farlo: un
+//    componente gia' smontato si salta.
+const montati = new Set()
+afterEach(() => {
+  for (const wrapper of montati) {
+    if (!wrapper.vm.$.isUnmounted) wrapper.unmount()
+  }
+  montati.clear()
+})
+
 export function monta(componente, props = {}, opts = {}) {
   const { provide = {}, messages = {}, slots = {}, global = {} } = opts
   let pinia = getActivePinia()
@@ -109,7 +144,7 @@ export function monta(componente, props = {}, opts = {}) {
     pinia = createPinia()
     setActivePinia(pinia)
   }
-  return mount(componente, {
+  const wrapper = mount(componente, {
     props,
     slots,
     global: {
@@ -125,4 +160,6 @@ export function monta(componente, props = {}, opts = {}) {
       ...global,
     },
   })
+  montati.add(wrapper)
+  return wrapper
 }

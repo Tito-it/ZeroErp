@@ -39,22 +39,39 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- ============================================================
 -- BA senza tipi_utenze + emittente risolto dalla stessa funzione usata dai
 -- guard di coerenza emittente↔BA: emittente coerente per costruzione.
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   offerta stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra
+--   quelle della utility del cliente. Gli articoli si COSTRUISCONO (dbops.fn_pgtap_crea_articolo:
+--   MERCE senza tipologia, ammette UNA_TANTUM): prima erano i primi per id del database,
+--   che su dbdev sono PRODOTTI, e la utility del cliente preso dai dati (TEL) non li prevede.
+CREATE TEMP TABLE tmp_ofc_pnd_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-OFCPND-1') AS a1;
+
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza
+--   tipi_utenze, legato dal z90 all'emittente di chi agisce; listino sulla stessa
+--   utility. L'emittente resta derivato dal BA, come prima.
+CREATE TEMP TABLE tmp_ofc_pnd_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'guard pending offerte',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_ofc_pnd_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_ofc_pnd_cli), 'guard pending offerte');
+
 CREATE TEMP TABLE tmp_ofc_pnd_ctx AS
 SELECT
-    anagrafiche.fn_get_emittente_fiscale_pk(ba.id)            AS emittente_fiscale_id,
-    ba.id                AS ba_id,
-    ba.istanza_utility_id,
-    ba.utility_id,
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1)
-                                                               AS listino_id,
+    anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id) AS emittente_fiscale_id,
+    c.billing_account_id AS ba_id,
+    c.istanza_utility_id,
+    c.utility_id,
+    (SELECT listino_id FROM tmp_ofc_pnd_listino)              AS listino_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA') AS id_bozza,
-    (SELECT a.id FROM catalogo.articoli a
-      WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) = FALSE
-      ORDER BY a.id LIMIT 1)                                   AS articolo_id
-  FROM anagrafiche.billing_account ba
- WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
- ORDER BY ba.id
- LIMIT 1;
+    (SELECT a1 FROM tmp_ofc_pnd_art)                          AS articolo_id
+  FROM tmp_ofc_pnd_cli c;
 
 -- Fixture: offerta BOZZA + eccezione AGGIUNTA non composita (prezzo valorizzato).
 CREATE TEMP TABLE tmp_ofc_pnd_ids (
@@ -91,10 +108,12 @@ BEGIN
     -- qta_operativa e' la SORGENTE (quantita la deriva trgfn_qta_from_operativa);
     -- fonte_quantita_attesa la imposta il default trigger. Pattern identico alla
     -- fixture gemella test-contratti-righe-guard-pending.
+    -- tipo_erogazione: obbligatoria su OVERRIDE/AGGIUNTA dal 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate).
     INSERT INTO vendite.offerte_commerciali_eccezioni (
-        offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa
+        offerta_id, articolo_id, tipo_eccezione, prezzo_unitario, qta_operativa,
+        tipo_erogazione
     )
-    VALUES (v_off, v_ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00)
+    VALUES (v_off, v_ctx.articolo_id, 'AGGIUNTA', 100.00, 1.00, 'UNA_TANTUM')
     RETURNING id INTO v_ecc;
 
     INSERT INTO tmp_ofc_pnd_ids VALUES (v_off, v_ecc);

@@ -1,0 +1,402 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL PLAFOND SI CONSUMA PER UN GRUPPO DI RIGHE, CON UNA FRAZIONE SOLA
+#   anagrafiche.fn_consuma_plafond_titolo_iva_righe
+#   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §11 (D-5, D-5.1 di Tid,
+#   2026-10-03).
+#
+# ── IL DIFETTO ─────────────────────────────────────────────────────────
+#
+#   Il plafond di un titolo IVA si consumava riga per riga
+#   (fn_consuma_plafond_titolo_iva, una riga e un movimento per chiamata). I
+#   componenti di un kit sono righe come le altre: su un plafond che non basta
+#   per tutto il kit, i primi componenti venivano coperti per intero, uno
+#   spezzato e gli ultimi lasciati all'aliquota ordinaria. Chiamarla una volta
+#   per componente non puo' dare una frazione unica: il residuo cambia a ogni
+#   chiamata.
+#
+# ── LA REGOLA (D-5) ────────────────────────────────────────────────────
+#
+#   Il kit si spezza come un'unita' sola: la quota coperta si calcola sulla
+#   SOMMA del gruppo, e ogni riga ne prende la stessa frazione
+#   (f = coperta / totale). Kit da 3 a cui il plafond lascia 1,2: ogni
+#   componente al titolo per 1,2/3 del suo imponibile, all'ordinaria per 1,8/3.
+#
+# ── COME ───────────────────────────────────────────────────────────────
+#
+#   Una chiamata, un lock: guard, lock del titolo, validita', titolo senza
+#   tetto, idempotenza e capienza sono quelli della primitiva, che da
+#   20261003-08 diventa un involucro di questa con una riga sola. Le regole
+#   stanno qui, una volta (regola del 2): la capienza non si ricopia.
+#
+#   Quota di ogni riga: round(imponibile * f, scala dell'imponibile), cosi'
+#   la riga spezzata ricalcola esattamente il suo imponibile con l'arrotonda-
+#   mento del suo articolo; l'ULTIMA riga prende il resto, e la somma delle
+#   quote e' la quota coperta. Ogni quota resta fra zero e il suo imponibile.
+#   Un movimento per riga con quota > 0 (la UNIQUE parziale del registro e'
+#   per riga). frazione ritornata = somma delle quote / totale: e' la frazione
+#   con cui il chiamante divide anche la quantita' del kit.
+#
+#   Idempotenza: se una delle righe ha gia' un movimento FATTURA su questo
+#   titolo e questa fattura, si rilegge il registro (le righe senza movimento
+#   valgono zero) e non si scrive niente.
+#
+#   ⚠️ Una fattura_riga_id NULL e' ammessa solo per un consumo di UNA riga: e'
+#   la forma storica della primitiva (movimento che nomina la sola fattura).
+#   ⭐ Guard nuovo: le righe nominate devono essere della fattura passata. La
+#   FK del movimento verso fatture_righe controlla solo che la riga esista.
+#
+#   ⛔ Chi raggruppa e' il chiamante (il BE raggruppa per kit_key, e giudica il
+#   titolo sull'articolo PADRE del kit, D-5.1): questa funzione sa solo che
+#   le righe passate si spezzano insieme.
+#
+# Presidio: anagrafiche/test-consuma-plafond-titolo-iva-righe-v1.sql; la forma
+#   storica resta provata da test-soggetti-titoli-iva (18-22) e
+#   test-soggetti-titoli-iva-due-emittenti, che passano dall'involucro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261003-07-create-fn-consuma-plafond-titolo-iva-righe-mctit.yaml
+
+  - changeSet:
+      id: 20261003-07-create-fn-consuma-plafond-titolo-iva-righe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_consuma_plafond_titolo_iva_righe: consuma il plafond di un
+        titolo IVA per un GRUPPO di righe (un kit) con una frazione sola, un lock e
+        un movimento per riga. Diventa la sede delle regole di consumo; la primitiva
+        a una riga ne diventa l'involucro (20261003-08). Brief:
+        brief-db-bom-flag-quantita-e-kit-in-fattura §11 (D-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'fn_consuma_plafond_titolo_iva'
+                 AND pronamespace = 'anagrafiche'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_consuma_plafond_titolo_iva_righe(
+                  p_titolo_iva_id    anagrafiche.soggetti_titoli_iva.id%TYPE,
+                  p_fattura_id       vendite.fatture.id%TYPE,
+                  -- ⚠️ Array espliciti: colonna%TYPE[] non esiste in PostgreSQL.
+                  p_fattura_riga_ids bigint[],
+                  p_imponibili       numeric[],
+                  p_data_movimento   anagrafiche.soggetti_titoli_iva_movimenti.data_movimento%TYPE,
+                  p_tx_id            anagrafiche.soggetti_titoli_iva_movimenti.tx_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  fattura_riga_id anagrafiche.soggetti_titoli_iva_movimenti.fattura_riga_id%TYPE,
+                  imponibile      anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE,
+                  quota_coperta   anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE,
+                  quota_ordinaria anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE,
+                  -- ⚠️ `numeric` esplicito: e' un rapporto, non il valore di una colonna.
+                  frazione        numeric,
+                  residuo_dopo    anagrafiche.soggetti_titoli_iva.plafond%TYPE,
+                  movimento_id    anagrafiche.soggetti_titoli_iva_movimenti.id%TYPE
+              )
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- Scopo: consumare la capienza di un titolo IVA con tetto per un
+              --   GRUPPO di righe che si spezzano insieme (un kit, D-5), e
+              --   ritornare per ogni riga la RIPARTIZIONE fra parte coperta
+              --   dal titolo e parte che torna all'aliquota ordinaria.
+              --   Perimetro: un lock di riga sul titolo (D15-bis), un
+              --   movimento per riga coperta nel registro di D5; l'accumulatore
+              --   riporta imponibile_utilizzato alla somma.
+              --   Risultato atteso: per ogni riga quota_coperta + quota_ordinaria
+              --   = imponibile, e la stessa frazione per tutte (a meno del
+              --   centesimo, che va all'ultima riga).
+              --   Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §11.
+              -- ⚠️ Non e' il risolutore: quello e' STABLE e non consuma (D14).
+              -- ⚠️ Non fa la restituzione della nota di credito (P4).
+              DECLARE
+                  v_titolo      record;
+                  v_ha_plafond  config.tipi_titolo_iva.ha_plafond%TYPE;
+                  v_tipo_descr  config.tipi_titolo_iva.descrizione%TYPE;
+                  v_capienza    anagrafiche.soggetti_titoli_iva.plafond%TYPE;
+                  v_totale      anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
+                  v_coperta     anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
+                  v_assegnato   anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE := 0;
+                  v_q           anagrafiche.soggetti_titoli_iva_movimenti.imponibile%TYPE;
+                  v_mid         anagrafiche.soggetti_titoli_iva_movimenti.id%TYPE;
+                  v_frazione    numeric;
+                  -- ⚠️ `integer` esplicito: contatori, non valori di colonna. Il
+                  --    contatore dei FOR (i) lo dichiara il ciclo da se'.
+                  v_n           integer;
+                  v_n_esist     integer;
+                  v_quote       numeric[];
+                  v_mov_ids     bigint[];
+              BEGIN
+                  -- ── Guard di invocazione. Questi errori non li puo' produrre
+                  --    una persona: li produce un chiamante rotto, quindi la
+                  --    classe e' TECNICA e il messaggio nomina il PARAMETRO —
+                  --    e' il solo caso in cui nominarlo e' la cosa giusta.
+                  IF p_titolo_iva_id IS NULL OR p_titolo_iva_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'titolo_iva_id',
+                                             'valore', p_titolo_iva_id),
+                          p_tx_id, 'titolo_iva_id');
+                  END IF;
+
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'fattura_id',
+                                             'valore', p_fattura_id),
+                          p_tx_id, 'fattura_id');
+                  END IF;
+
+                  -- Il gruppo: almeno una riga, un imponibile per riga.
+                  v_n := COALESCE(cardinality(p_imponibili), 0);
+                  IF v_n = 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'imponibili'),
+                          p_tx_id, 'imponibili');
+                  END IF;
+
+                  -- ⚠️ Una riga NULL solo da sola (la forma storica senza riga),
+                  --    e righe distinte: due quote sulla stessa riga sarebbero
+                  --    due movimenti che la UNIQUE del registro rifiuta con un
+                  --    23505 muto.
+                  IF COALESCE(cardinality(p_fattura_riga_ids), 0) <> v_n
+                     OR (v_n > 1 AND (array_position(p_fattura_riga_ids, NULL) IS NOT NULL
+                                      OR (SELECT count(DISTINCT x) FROM unnest(p_fattura_riga_ids) x) <> v_n)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'fattura_riga_ids',
+                                             'valore', p_fattura_riga_ids),
+                          p_tx_id, 'fattura_riga_ids');
+                  END IF;
+
+                  IF EXISTS (SELECT 1 FROM unnest(p_imponibili) x WHERE x IS NULL OR x <= 0) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'imponibile',
+                                             'valore', p_imponibili),
+                          p_tx_id, 'imponibile');
+                  END IF;
+
+                  -- ⚠️ La data e' un PARAMETRO e non `now()`: e' lo stesso
+                  --    vincolo di firma di D14, e per la stessa ragione — il
+                  --    lotto puo' girare il giorno dopo la data documento.
+                  IF p_data_movimento IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'data_movimento'),
+                          p_tx_id, 'data_movimento');
+                  END IF;
+
+                  -- ⭐ Le righe nominate sono della fattura passata. La FK del
+                  --    movimento verso fatture_righe dice solo che la riga
+                  --    esiste: senza questo, un movimento poteva legare la
+                  --    fattura A a una riga della fattura B.
+                  IF EXISTS (SELECT 1
+                               FROM unnest(p_fattura_riga_ids) r(id)
+                              WHERE r.id IS NOT NULL
+                                AND NOT EXISTS (SELECT 1 FROM vendite.fatture_righe fr
+                                                 WHERE fr.id = r.id
+                                                   AND fr.fattura_id = p_fattura_id)) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'fattura_riga_ids',
+                                             'valore', p_fattura_riga_ids,
+                                             'fattura_id', p_fattura_id),
+                          p_tx_id, 'fattura_riga_ids');
+                  END IF;
+
+                  -- ══ IL LOCK (D15-bis) ═══════════════════════════════════
+                  -- ⭐ FOR UPDATE sulla riga del titolo: due transizioni a
+                  --    DEFINITIVA in parallelo si serializzano qui, e la seconda
+                  --    legge il residuo GIA' aggiornato dalla prima. Senza,
+                  --    consumerebbero la stessa capienza e il plafond andrebbe
+                  --    sotto zero senza che nessun errore lo dica.
+                  SELECT t.id, t.plafond, t.imponibile_utilizzato, t.validita,
+                         t.tipo_titolo_iva_id
+                    INTO v_titolo
+                    FROM anagrafiche.soggetti_titoli_iva t
+                   WHERE t.id = p_titolo_iva_id
+                     FOR UPDATE;
+
+                  -- ⚠️ SELECT INTO senza righe azzera il record: senza questa
+                  --    uscita si proseguirebbe su NULL e si scriverebbe un
+                  --    movimento orfano (che la FK poi rifiuta, con un 23503
+                  --    muto invece del codice giusto).
+                  IF v_titolo.id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_NON_INVOCABILE',
+                          jsonb_build_object('parametro', 'titolo_iva_id',
+                                             'valore', p_titolo_iva_id),
+                          p_tx_id, 'titolo_iva_id');
+                  END IF;
+
+                  SELECT tt.ha_plafond, tt.descrizione
+                    INTO v_ha_plafond, v_tipo_descr
+                    FROM config.tipi_titolo_iva tt
+                   WHERE tt.id = v_titolo.tipo_titolo_iva_id;
+
+                  -- ── Un consumo fuori dalla validita' del titolo e' un errore
+                  --    di chi ha risolto, non dell'operatore: il risolutore
+                  --    sceglie i titoli validi ALLA DATA DEL DOCUMENTO.
+                  IF NOT (v_titolo.validita @> p_data_movimento) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche', 'fn_consuma_plafond_titolo_iva_righe',
+                          'E_TITOLO_IVA_CONSUMO_FUORI_VALIDITA',
+                          jsonb_build_object('titolo_iva_id', p_titolo_iva_id,
+                                             'data_movimento', p_data_movimento),
+                          p_tx_id,
+                          COALESCE(v_tipo_descr, ''),
+                          to_char(p_data_movimento, 'DD/MM/YYYY'));
+                  END IF;
+
+                  -- ══ TITOLO SENZA TETTO: copre tutto, non scrive niente ═══
+                  -- ⚠️ `imponibile - quota_coperta` e non il letterale 0: il
+                  --    letterale esce con scala ZERO, gli altri rami con la
+                  --    scala dell'importo (correzione di I7, fatta dal test).
+                  IF v_ha_plafond IS NOT TRUE THEN
+                      FOR i IN 1 .. v_n LOOP
+                          fattura_riga_id := p_fattura_riga_ids[i];
+                          imponibile      := p_imponibili[i];
+                          quota_coperta   := p_imponibili[i];
+                          quota_ordinaria := p_imponibili[i] - quota_coperta;
+                          frazione        := 1;
+                          residuo_dopo    := NULL;
+                          movimento_id    := NULL;
+                          RETURN NEXT;
+                      END LOOP;
+                      RETURN;
+                  END IF;
+
+                  SELECT sum(x) INTO v_totale FROM unnest(p_imponibili) x;
+
+                  -- ══ IDEMPOTENZA ═════════════════════════════════════════
+                  -- ⭐ Se una delle righe ha gia' consumato questo titolo per
+                  --    questa fattura, si rilegge il registro invece di
+                  --    scrivere: le righe senza movimento valgono zero (una
+                  --    quota zero non scrive). La UNIQUE parziale resta la
+                  --    rete, ma parla con un 23505 muto.
+                  SELECT count(*) INTO v_n_esist
+                    FROM anagrafiche.soggetti_titoli_iva_movimenti m
+                   WHERE m.titolo_iva_id  = p_titolo_iva_id
+                     AND m.tipo_movimento = 'FATTURA'
+                     AND m.fattura_id     = p_fattura_id
+                     AND EXISTS (SELECT 1 FROM unnest(p_fattura_riga_ids) r(id)
+                                  WHERE m.fattura_riga_id IS NOT DISTINCT FROM r.id);
+
+                  IF v_n_esist > 0 THEN
+                      FOR i IN 1 .. v_n LOOP
+                          -- ⚠️ SELECT INTO a zero righe azzera le variabili:
+                          --    e' proprio il «vale zero» delle righe scoperte.
+                          SELECT m.imponibile, m.id
+                            INTO v_q, v_mid
+                            FROM anagrafiche.soggetti_titoli_iva_movimenti m
+                           WHERE m.titolo_iva_id  = p_titolo_iva_id
+                             AND m.tipo_movimento = 'FATTURA'
+                             AND m.fattura_id     = p_fattura_id
+                             AND m.fattura_riga_id IS NOT DISTINCT FROM p_fattura_riga_ids[i];
+                          v_quote[i]   := COALESCE(v_q, p_imponibili[i] - p_imponibili[i]);
+                          v_mov_ids[i] := v_mid;
+                          v_assegnato  := v_assegnato + v_quote[i];
+                      END LOOP;
+                      v_frazione := v_assegnato / v_totale;
+                      FOR i IN 1 .. v_n LOOP
+                          fattura_riga_id := p_fattura_riga_ids[i];
+                          imponibile      := p_imponibili[i];
+                          quota_coperta   := v_quote[i];
+                          quota_ordinaria := p_imponibili[i] - v_quote[i];
+                          frazione        := v_frazione;
+                          residuo_dopo    := v_titolo.plafond - v_titolo.imponibile_utilizzato;
+                          movimento_id    := v_mov_ids[i];
+                          RETURN NEXT;
+                      END LOOP;
+                      RETURN;
+                  END IF;
+
+                  -- ══ LA SPEZZATURA DI P2, PER IL GRUPPO (D-5) ════════════
+                  -- ⚠️ GREATEST(..., 0): un titolo gia' sfondato da una forzatura
+                  --    ha residuo negativo, e senza questo la quota coperta
+                  --    diventerebbe negativa — cioe' un consumo che RESTITUISCE
+                  --    capienza.
+                  v_capienza := GREATEST(v_titolo.plafond - v_titolo.imponibile_utilizzato, 0);
+                  v_coperta  := LEAST(v_totale, v_capienza);
+                  v_frazione := v_coperta / v_totale;
+
+                  -- ⭐ Ogni riga la STESSA frazione, arrotondata alla scala del
+                  --    suo imponibile (che e' quella dell'arrotondamento del suo
+                  --    articolo): la riga spezzata ricalcola esattamente la sua
+                  --    quota. L'ultima prende il resto, cosi' la somma e' la
+                  --    quota coperta; nessuna esce da [0, imponibile].
+                  FOR i IN 1 .. v_n LOOP
+                      IF i < v_n THEN
+                          v_q := round(p_imponibili[i] * v_frazione, scale(p_imponibili[i]));
+                      ELSE
+                          v_q := v_coperta - v_assegnato;
+                      END IF;
+                      v_q := LEAST(GREATEST(v_q, p_imponibili[i] - p_imponibili[i]), p_imponibili[i]);
+                      v_quote[i]  := v_q;
+                      v_assegnato := v_assegnato + v_q;
+                  END LOOP;
+
+                  -- La quota coperta EFFETTIVA e' la somma delle quote: e' lei
+                  -- che il registro scrive, e la frazione si rilegge da lei.
+                  v_coperta  := v_assegnato;
+                  v_frazione := v_coperta / v_totale;
+
+                  FOR i IN 1 .. v_n LOOP
+                      v_mid := NULL;
+                      IF v_quote[i] > 0 THEN
+                          INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti
+                              (titolo_iva_id, tipo_movimento, imponibile, data_movimento,
+                               fattura_id, fattura_riga_id, tx_id)
+                          VALUES
+                              (p_titolo_iva_id, 'FATTURA', v_quote[i], p_data_movimento,
+                               p_fattura_id, p_fattura_riga_ids[i], p_tx_id)
+                          RETURNING id INTO v_mid;
+                      END IF;
+                      fattura_riga_id := p_fattura_riga_ids[i];
+                      imponibile      := p_imponibili[i];
+                      quota_coperta   := v_quote[i];
+                      quota_ordinaria := p_imponibili[i] - v_quote[i];
+                      frazione        := v_frazione;
+                      residuo_dopo    := v_capienza - v_coperta;
+                      movimento_id    := v_mid;
+                      RETURN NEXT;
+                  END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_consuma_plafond_titolo_iva_righe(bigint, bigint, bigint[], numeric[], date, uuid)
+              IS 'Consumo del plafond di un titolo IVA per un GRUPPO di righe che si spezzano insieme (brief-db-bom-flag-quantita-e-kit-in-fattura §11, D-5 di Tid del 2026-10-03): un kit si spezza come un''unita'' sola, con la stessa frazione per tutti i componenti. Un lock sul titolo (D15-bis), la quota coperta calcolata sulla SOMMA del gruppo, f = coperta / totale; ogni riga prende round(imponibile * f, scala del suo imponibile) e l''ultima il resto, cosi'' la somma delle quote e'' la quota coperta e ogni riga spezzata ricalcola esattamente la sua. Un movimento FATTURA per riga con quota > 0. Ritorna per ogni riga imponibile, quota coperta, quota ordinaria (che sommano all''imponibile), la frazione effettiva (somma delle quote / totale: e'' quella con cui il chiamante divide anche la quantita'' del kit), il residuo del titolo e il movimento. ⭐ E'' la SEDE delle regole di consumo: guard, lock, validita'', titolo senza tetto (copre tutto, non scrive), idempotenza (se una riga ha gia'' un movimento si rilegge il registro, le righe senza valgono zero) e capienza GREATEST(plafond - utilizzato, 0). anagrafiche.fn_consuma_plafond_titolo_iva ne e'' l''involucro a una riga (20261003-08). Una fattura_riga_id NULL e'' ammessa solo per un gruppo di una riga (la forma storica); le righe nominate devono essere della fattura passata. ⛔ Chi raggruppa e'' il chiamante: il BE raggruppa per kit_key e giudica il titolo sull''articolo PADRE del kit (D-5.1). ⛔ Non e'' il risolutore (STABLE, non consuma) e non fa la restituzione della nota di credito (P4).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ Prima va ripristinata la primitiva (rollback di 20261003-08),
+              --    che altrimenti chiamerebbe una funzione che non c'e' piu'.
+              DROP FUNCTION IF EXISTS anagrafiche.fn_consuma_plafond_titolo_iva_righe(bigint, bigint, bigint[], numeric[], date, uuid);

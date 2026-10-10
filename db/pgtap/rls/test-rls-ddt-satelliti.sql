@@ -78,7 +78,9 @@ SELECT 'B' AS lato, * FROM dbops.fn_pgtap_crea_emittente_operatore();
 CREATE TEMP TABLE _clienti AS
 SELECT m.lato, m.emittente_fiscale_id, c.*
   FROM _mondi m
-  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS ddt ' || m.lato) c;
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA legato all'emittente del
+  --   mondo. Il documento porta ora il BA, e il guard emittente <-> BA lo guarda.
+  CROSS JOIN LATERAL dbops.fn_pgtap_crea_cliente_ba('RLS ddt ' || m.lato, NULL, m.soggetto_ruolo_id) c;
 
 -- ⚠️ Stato `DRAFT` nominato per `codice_interno`, non preso col primo id: a
 --   `EMESSO` scatterebbe `trgfn_ddt_gen_numero_emesso`, che pretende un
@@ -86,12 +88,16 @@ SELECT m.lato, m.emittente_fiscale_id, c.*
 --   motivo di costruire.
 CREATE TEMP TABLE _ddt AS
 WITH d AS (
+    -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il BA del cliente, non la sola
+    --   utility — chk_ddt_ba_utility_insieme vuole tutti e due o nessuno.
     INSERT INTO vendite.ddt
-        (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id, utility_id)
+        (destinatario_soggetto_ruolo_id, stato_doc_ddt_id, emittente_fiscale_id, utility_id,
+         billing_account_id)
     SELECT c.soggetto_ruolo_id,
            (SELECT st.id FROM config.stati_doc_ddt st WHERE st.codice_interno = 'DRAFT'),
            c.emittente_fiscale_id,
-           c.utility_id
+           c.utility_id,
+           c.billing_account_id
       FROM _clienti c
     RETURNING id, emittente_fiscale_id
 )

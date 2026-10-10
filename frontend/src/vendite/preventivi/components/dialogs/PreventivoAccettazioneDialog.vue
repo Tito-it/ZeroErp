@@ -16,8 +16,9 @@ import { useI18n } from 'vue-i18n'
 import AppDialog from '../../../../core/components/AppDialog.vue'
 import ToggleSwitch from 'primevue/toggleswitch'
 import DatePicker from 'primevue/datepicker'
-import { toDateString } from '../../../../core/utils/date'
-import { DATE_FORMAT } from '../../../../core/constants'
+import { toDateString, oggiAziendale } from '../../../../core/utils/date'
+import { MONTH_FORMAT } from '../../../../core/constants'
+import { useFotografiaDialog } from '../../../../core/composables/useFotografiaDialog'
 
 const props = defineProps({
   // Campi che il BACKEND indica come da correggere (envelope `error.fields`).
@@ -29,10 +30,11 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'confirm'])
 const { t } = useI18n()
 
-// Helper: primo giorno del mese corrente (snapshot tx-time, allineato BE).
+// Helper: primo giorno del mese corrente dell'AZIENDA (allineato BE).
 function _firstOfCurrentMonth() {
-  const now = new Date()
-  return new Date(now.getFullYear(), now.getMonth(), 1)
+  const oggi = oggiAziendale()
+  oggi.setDate(1)
+  return oggi
 }
 
 const form = ref({
@@ -66,10 +68,14 @@ function onSave() {
   })
   emit('update:visible', false)
 }
+
+// D-14: uscire con dati inseriti chiede (AppDialog `conferma-uscita`).
+const fotografia = useFotografiaDialog(() => ({ ...form.value }), { visibile: () => props.visible })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="props.visible"
     :header="t('vendite.preventivi.accetta_titolo')"
     width="sm"
@@ -90,7 +96,7 @@ function onSave() {
       </div>
       <div class="form-field">
         <label>{{ t('vendite.preventivi.accetta_competenza') }}</label>
-        <DatePicker v-model="form.competenza_mese" :date-format="DATE_FORMAT"
+        <DatePicker v-model="form.competenza_mese" :date-format="MONTH_FORMAT"
           show-icon view="month" :disabled="competenzaDisabled" />
         <small v-if="competenzaDisabled" style="color: var(--app-text-muted);">
           {{ t('vendite.preventivi.accetta_competenza_hint_immediata') }}

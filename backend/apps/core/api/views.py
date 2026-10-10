@@ -5,6 +5,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
+from apps.core.api.permissions import richiedi_se_stesso_o_amministratore
 
 from apps.core.api.error_responses import exception_to_error_response
 from apps.core.api.payload_validators import qp_bool, qp_int_strict
@@ -135,6 +136,22 @@ class ApiLookupCodici(DomainAPIView):
         return success_response(data)
 
 
+# Scopo: L'utente consultato da permessi effettivi e audit, o 404.
+#        `user_id` arriva dall'URL: un id che non esiste e' un «non trovato»
+#        (E-4 di analisi-be-difetti-emersi-verifica-doc-api-core). Fino al
+#        2026-10-08 le due view lo scrivevano ciascuna per conto suo con
+#        `E_CORE_VALIDATION` (DATO_ERRATO), cioe' 400.
+def _utente_target(user_id: int):
+    User = get_user_model()
+    try:
+        return User.objects.get(pk=user_id)
+    except User.DoesNotExist:
+        raise ServiceError(
+            code="E_AMM_UTENTE_NOT_FOUND",
+            message="Utente non trovato.",
+            detail=f"Nessun utente con id={user_id}.",
+            context={"user_id": user_id},
+        ) from None
 
 
 class ApiPermessiEffettivi(DomainAPIView):
@@ -165,32 +182,14 @@ class ApiPermessiEffettivi(DomainAPIView):
         },
     )
     # Scopo: Restituisce via GET i permessi effettivi risolti per un utente.
-    # Solo ADMIN e superuser possono consultare altri utenti.
+    # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
-        user = request.user
-        cache: dict = {}
+        richiedi_se_stesso_o_amministratore(
+            request.user, user_id, cache={},
+            detail="Solo un amministratore (SUPER_ADMIN o superuser) puo' consultare i permessi di un altro utente.",
+        )
 
-        # Solo SUPER_ADMIN/superuser possono vedere permessi di altri utenti
-        if user_id != user.id:
-            if not user.is_superuser and not PermissionResolver.is_super_admin(
-                user, cache=cache
-            ):
-                raise ServiceError(
-                    code="E_PERMESSO_NEGATO",
-                    message="Non hai i permessi per questa operazione.",
-                    detail="Solo SUPER_ADMIN possono consultare permessi di altri utenti.",
-                )
-
-        # Carica l'utente target
-        User = get_user_model()
-        try:
-            target_user = User.objects.get(pk=user_id)
-        except User.DoesNotExist:
-            raise ServiceError(
-                code="E_CORE_VALIDATION",
-                message="Utente non trovato.",
-                detail=f"Nessun utente con id={user_id}.",
-            ) from None
+        target_user = _utente_target(user_id)
 
         # Risolvi i campi nativi multi-face (Fase 7).
         # `is_active` arriva da `auth_user.is_active`; e' la dimensione
@@ -302,35 +301,18 @@ class ApiPermessiAudit(DomainAPIView):
     # Scopo: Restituisce via GET la timeline audit delle modifiche ai permessi di un utente.
     # Interroga le 8 tabelle storico permessi (5 per utente + 3 per reparto) con
     # filtri opzionali e paginazione. L'elenco e' `PermissionsAuditRepository`.
-    # Solo ADMIN e superuser possono consultare altri utenti.
+    # Solo SUPER_ADMIN e superuser possono consultare altri utenti.
     def get(self, request: Request, user_id: int) -> JsonResponse:
         from apps.core.api.payload_validators import optional_int, optional_iso_date
         from apps.core.db.permissions_audit_repository import PermissionsAuditRepository
 
-        user = request.user
-        cache: dict = {}
+        # Stessa policy di permessi-effettivi: lo stesso BB.
+        richiedi_se_stesso_o_amministratore(
+            request.user, user_id, cache={},
+            detail="Solo un amministratore (SUPER_ADMIN o superuser) puo' consultare l'audit permessi di un altro utente.",
+        )
 
-        # Scopo: Verifica autorizzazione — stessa policy di permessi-effettivi.
-        if user_id != user.id:
-            if not user.is_superuser and not PermissionResolver.is_super_admin(
-                user, cache=cache
-            ):
-                raise ServiceError(
-                    code="E_PERMESSO_NEGATO",
-                    message="Non hai i permessi per questa operazione.",
-                    detail="Solo SUPER_ADMIN possono consultare audit permessi di altri utenti.",
-                )
-
-        # Scopo: Verifica che l'utente target esista.
-        User = get_user_model()
-        try:
-            target_user = User.objects.get(pk=user_id)
-        except User.DoesNotExist:
-            raise ServiceError(
-                code="E_CORE_VALIDATION",
-                message="Utente non trovato.",
-                detail=f"Nessun utente con id={user_id}.",
-            ) from None
+        target_user = _utente_target(user_id)
 
         # Scopo: Parse query params.
         data_da = optional_iso_date(
@@ -354,6 +336,9 @@ class ApiPermessiAudit(DomainAPIView):
         page_size = optional_int(
             {"page_size": request.query_params.get("page_size", str(DEFAULT_LIMIT))}, "page_size"
         )
+        # Mai None: i due valori arrivano sempre come stringa (default di
+        # `get`), e optional_int da' None solo per un valore assente.
+        assert page is not None and page_size is not None
         # ⛔ Pagina e dimensione partono da 1: `page=0` dava un OFFSET negativo,
         #    cioe' un errore del DB (F-4). `ValueError` = 400 E_VALIDATION_INPUT.
         if page < 1:

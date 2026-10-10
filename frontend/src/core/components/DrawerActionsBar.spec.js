@@ -119,7 +119,7 @@ describe('DrawerActionsBar', () => {
     const involucro = bottone.element.parentElement
 
     // L'involucro c'e', ed e' lui a portare il tooltip.
-    expect(involucro.className).toContain('app-drawer-action-wrap')
+    expect(involucro.className).toContain('app-action-tooltip-wrap')
     // PrimeVue monta il tooltip sull'elemento: resta un `data-pd-tooltip`
     // oppure un `aria-describedby`/title a seconda della versione — quello che
     // il test fissa e' che il pulsante NON e' il nodo che lo porta.

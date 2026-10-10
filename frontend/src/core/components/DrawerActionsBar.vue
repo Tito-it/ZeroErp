@@ -74,6 +74,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
+import ActionBadge from './ActionBadge.vue'
 import { MANAGE_ICONS, STATUS_ICONS } from '../constants'
 import { useActionBar } from '../composables/useActionBar'
 import { labelOrCode } from '../utils/i18nLabel'
@@ -89,26 +90,16 @@ const props = defineProps({
 
 const { t, te } = useI18n()
 
-// Scopo: per le voci dentro Menu popup, se l'azione ha un badge counter
-//   lo appendiamo alla label (es. "Gestisci righe (5)"). Pattern di lettura
-//   coerente con le liste lookup multi-riga.
-function menuItemLabel(action) {
-  if (action.badge != null && action.badge !== '') {
-    return `${action.label} (${action.badge})`
-  }
-  return action.label
-}
-
-// Motore condiviso (B9): voci Menu default blu (manage) + label col counter.
+// Motore condiviso (B9): voci Menu default blu (manage); la voce di menu
+// porta il numero dell'azione («Gestisci righe (5)», `etichettaConBadge`).
 const {
   visibleActions, primaryActions, isActionDisabled, buttonTooltip,
   runAction, menuItems, menuTooltipText,
-  desktopMenuRef, compactMenuRef, toggleDesktopMenu, toggleCompactMenu,
+  desktopMenuRef, compactMenuRef, toggleDesktopMenu, toggleCompactMenu, haBadgeIn,
 } = useActionBar(() => props.actions, {
   disabled: () => props.disabled,
   menuTooltip: () => props.menuTooltip,
   defaultMenuItemClass: 'app-menu-item-manage',
-  menuLabel: menuItemLabel,
 })
 
 // Partizionamento per kind specifico della barra drawer.
@@ -151,11 +142,9 @@ function buttonOutlined(action) {
 const desktopMenuItems = computed(() => menuItems(desktopMenuActions.value))
 const compactMenuItems = computed(() => menuItems(compactMenuActions.value))
 
-// Scopo: segnala con un dot la presenza di counter manage nel kebab compact,
-//   senza esporre il numero (sommare counter eterogenei sarebbe ambiguo).
-//   Il numero esatto resta visibile come suffisso label nella voce menu.
+// Il punto sul kebab compatto: qualche azione manage nel menu ha un numero.
 const compactHasBadge = computed(() =>
-  compactMenuActions.value.some(a => a.kind === 'manage' && a.badge != null && a.badge !== ''),
+  haBadgeIn(compactMenuActions.value.filter(a => a.kind === 'manage')),
 )
 
 // Nota «nessuna azione»: risolta fail-visible (chiave sconosciuta -> la chiave
@@ -180,7 +169,7 @@ const infoText = computed(() =>
       <span
         v-for="a in inlineDesktopActions"
         :key="a.key"
-        class="app-drawer-action-wrap"
+        class="app-action-tooltip-wrap"
         v-tooltip.bottom="buttonTooltip(a)"
       >
         <Button
@@ -192,10 +181,7 @@ const infoText = computed(() =>
           :disabled="isActionDisabled(a)"
           @click="runAction(a, $event)"
         />
-        <span
-          v-if="a.kind === 'manage' && a.badge != null && a.badge !== ''"
-          class="app-drawer-action-badge"
-        >{{ a.badge }}</span>
+        <ActionBadge v-if="a.kind === 'manage'" :valore="a.badge" />
       </span>
       <Button
         v-if="desktopMenuActions.length"
@@ -232,7 +218,7 @@ const infoText = computed(() =>
     </span>
 
     <span class="app-drawer-actions-compact">
-      <span class="app-drawer-action-wrap">
+      <span class="app-action-tooltip-wrap">
         <Button
           v-if="compactMenuActions.length"
           :icon="MANAGE_ICONS.KEBAB"
@@ -245,7 +231,7 @@ const infoText = computed(() =>
           aria-haspopup="true"
           @click="toggleCompactMenu"
         />
-        <span v-if="compactHasBadge" class="app-drawer-action-badge app-drawer-action-badge-dot" />
+        <ActionBadge v-if="compactHasBadge" punto :valore="1" />
       </span>
       <Menu ref="compactMenuRef" :model="compactMenuItems" popup />
     </span>

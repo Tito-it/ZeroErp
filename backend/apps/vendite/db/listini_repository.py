@@ -15,6 +15,7 @@ from uuid import UUID
 
 from django.db import connection, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -140,7 +141,7 @@ class ListiniRepository:
         attivo: bool | None,
         search: str | None,
         order_by: str,
-        order_dir: str,
+        order_dir: str | None,
         limit: int,
         offset: int,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -256,89 +257,26 @@ class ListiniRepository:
             )
             return row_to_dict(cursor)
 
-    # Scopo: Verifica se un listino ha almeno una versione in stato ATTIVA
-    #        attualmente. Usato dal `contratti_service` come gate pre-save
-    #        per impedire l'associazione di un contratto a un listino che
-    #        non ha versioni operative (decisione 2026-05-18: solo listini
-    #        con versione ATTIVA sono selezionabili come riferimento
-    #        contrattuale). Single round-trip via EXISTS.
-    def has_versione_attiva(self, listino_id: int) -> bool:
+    # Scopo: I listini che un contratto o un'offerta di questa utility e di
+    #        questo emittente (`emittente_fiscale_id`, PK) puo' scegliere, per la
+    #        tendina del form: `vendite.fn_listini_selezionabili`, il predicato
+    #        del guard del documento (`script.fn_check_listino_documento`),
+    #        quindi la tendina non propone cio' che il DB rifiuta (F-2 di
+    #        brief-db-offerta-emissione-ed-erogazione). Sui VALORI del form: in
+    #        creazione il documento non esiste. Non filtra sulla versione (in
+    #        bozza un listino senza versione in vigore si sceglie: lo rifiutano
+    #        attivazione ed emissione). Utility o emittente `None`: nessun
+    #        listino. Forma `{id, codice, descrizione}`, ordinata dal DB.
+    def list_lookup_selezionabili(
+        self, utility_id: int | None, emittente_fiscale_id: int | None,
+    ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT EXISTS (
-                    SELECT 1
-                      FROM vendite.listini_versioni v
-                     WHERE v.listino_id = %s
-                       AND v.stato = 'ATTIVA'
-                       AND v.attivo IS TRUE
-                ) AS has_active
+                SELECT id, codice, descrizione
+                  FROM vendite.fn_listini_selezionabili(%s, %s)
                 """,
-                [listino_id],
-            )
-            row = cursor.fetchone()
-            return bool(row[0]) if row else False
-
-    # Scopo: Versione operativa (ATTIVA o CHIUSA) del listino a una certa
-    #        data. Usata per "freezare" `listino_versione_id` su offerta
-    #        all'emissione (BOZZA -> EMESSA), mirror del pattern contratti
-    #        (vedi `ContrattiRepository.get_listino_versione_attiva_alla_data`).
-    #        Preferenza ATTIVA, fallback CHIUSA (per backdating con validita'
-    #        passata). Ritorna None se nessuna versione operativa valida.
-    def get_versione_attiva_alla_data(
-        self, listino_id: int, data_riferimento: date,
-    ) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT lv.id
-                  FROM vendite.listini_versioni lv
-                 WHERE lv.listino_id = %s
-                   AND lv.attivo     = TRUE
-                   AND lv.stato      IN ('ATTIVA', 'CHIUSA')
-                   AND lv.validita  @> %s::date
-                 -- Determinismo: preferisce ATTIVA su CHIUSA; a parita' di
-                 -- stato preferisce l'id piu' recente. Necessario perche'
-                 -- a DB non esiste un UNIQUE su (listino_id, stato='ATTIVA')
-                 -- (solo su (listino_id, codice_versione)), quindi
-                 -- teoricamente la query potrebbe trovare piu' di una
-                 -- riga: il secondary order garantisce comunque un esito
-                 -- ripetibile.
-                 ORDER BY (lv.stato = 'ATTIVA') DESC, lv.id DESC
-                 LIMIT 1
-                """,
-                [int(listino_id), data_riferimento],
-            )
-            row = cursor.fetchone()
-            return int(row[0]) if row else None
-
-    # Scopo: Lista lookup dei listini "selezionabili come riferimento
-    #        contrattuale": listino attivo + esiste almeno una versione
-    #        ATTIVA (oggi). Stesso filtro semantico del guard pre-save
-    #        `_guard_listino_ha_versione_attiva` (decisione 2026-05-18
-    #        §4.4 refactor-contratti-modalita), in versione bulk per il
-    #        lookup FE del drawer contratto. Forma payload uniforme
-    #        `{id, codice, descrizione}` compatibile col pattern lookup
-    #        generico (zero adattamenti FE rispetto al precedente
-    #        `LookupSelect rel="vendite.listini"`). Single round-trip via
-    #        EXISTS subquery, ordinamento alfabetico su descrizione +
-    #        tiebreaker id.
-    def list_lookup_selezionabili_contratti(self) -> list[dict[str, Any]]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT l.id, l.codice, l.descrizione
-                  FROM vendite.listini l
-                 WHERE l.attivo IS TRUE
-                   AND EXISTS (
-                       SELECT 1
-                         FROM vendite.listini_versioni v
-                        WHERE v.listino_id = l.id
-                          AND v.stato = 'ATTIVA'
-                          AND v.attivo IS TRUE
-                   )
-                 ORDER BY l.descrizione, l.id
-                """
+                [utility_id, emittente_fiscale_id],
             )
             return [
                 {"id": int(row[0]), "codice": row[1], "descrizione": row[2]}
@@ -755,8 +693,8 @@ class ListiniRepository:
         utility_id: int | None = None,
         attivo: bool | None = True,
         order_by: str = "articolo_descrizione",
-        order_dir: str = "asc",
-        limit: int = 25,
+        order_dir: str | None = "asc",
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
@@ -1050,27 +988,6 @@ class ListiniRepository:
             )
             return cursor.fetchone() is not None
 
-    # Scopo: Controlla se una riga listino e` stata propagata in commesse o
-    #        attivita` fatturabili. Tabelle controllate documentate per espansione
-    #        concentrica: commesse_attivita, attivita_fatturabili.
-    def check_riga_propagata(self, riga_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT EXISTS (
-                    SELECT 1 FROM vendite.commesse_attivita
-                     WHERE listino_riga_id = %(riga_id)s
-                ) OR EXISTS (
-                    SELECT 1 FROM vendite.attivita_fatturabili
-                     WHERE listino_riga_id = %(riga_id)s
-                ) AS propagata
-                """,
-                {"riga_id": riga_id},
-            )
-            row = cursor.fetchone()
-            assert row is not None
-            return bool(row[0])
-
     # Scopo: Aggiorna il prezzo di una riga per rettifica controllata N6.
     #        Aggiorna anche meta con audit trail. Caller gestisce transazione.
     def update_riga_prezzo_rettifica(
@@ -1101,12 +1018,12 @@ class ListiniRepository:
     def _filter_versioni_in_scadenza(self) -> str:
         return (
             "upper(v.validita) IS NOT NULL "
-            "AND upper(v.validita) <= CURRENT_DATE + %(giorni)s * INTERVAL '1 day'"
+            "AND upper(v.validita) <= (SELECT script.fn_data_operativa()) + %(giorni)s * INTERVAL '1 day'"
         )
 
     # Scopo: Lista versioni operativamente ATTIVE oggi che scadono entro `giorni`
     #        e non hanno una versione successiva (BOZZA o operativa) che subentra.
-    #        Filtro operativo: stato='ATTIVA' + `validita @> CURRENT_DATE` (regola
+    #        Filtro operativo: stato='ATTIVA' + `validita @> fn_data_operativa()` (regola
     #        §6 brief 2026-05-16: la BOZZA e' preparazione, non versione operativa,
     #        quindi non genera alert di scadenza). Per il "successore che
     #        subentrera`" sono ammesse sia BOZZA sia operative future.
@@ -1125,11 +1042,11 @@ class ListiniRepository:
                     v.codice_versione,
                     v.valido_dal,
                     upper(v.validita) AS valido_al,
-                    upper(v.validita) - CURRENT_DATE AS giorni_rimanenti
+                    upper(v.validita) - (SELECT script.fn_data_operativa()) AS giorni_rimanenti
                   FROM vendite.listini_versioni v
                   JOIN vendite.listini l ON l.id = v.listino_id
                   LEFT JOIN config.utilities u ON u.id = l.utility_id
-                 WHERE v.validita @> CURRENT_DATE
+                 WHERE v.validita @> (SELECT script.fn_data_operativa())
                    AND v.attivo IS TRUE
                    AND v.stato = 'ATTIVA'
                    AND l.attivo IS TRUE
@@ -1305,7 +1222,7 @@ class ListiniRepository:
                 -- gia' scalato per la quantita padre del documento.
                 ac.coeff_qta                       AS quantita_componente,
                 ac.obbligatorio,
-                ac.esposto_in_fattura,
+                ac.esposizione_in_fattura,
                 a.iva_id,
                 iva.codice                         AS iva_codice,
                 iva.aliquota_iva                   AS iva_aliquota,

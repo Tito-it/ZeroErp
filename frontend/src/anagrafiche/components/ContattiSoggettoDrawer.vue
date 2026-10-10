@@ -5,8 +5,6 @@
 
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useContattoForm } from '../composables/useContattoForm'
 import { useSoggettoRuoloCollection } from '../composables/useSoggettoRuoloCollection'
 import {
@@ -17,9 +15,8 @@ import {
 } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS, RECAPITO_ICONS, STATUS_ICONS } from '../../core/constants'
 import ContattoForm from './ContattoForm.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
-import Drawer from 'primevue/drawer'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 
@@ -48,6 +45,7 @@ const {
   listLoading,
   saving,
   formMode,
+  ancoraForm,
   formErrors,
   startNew: onStartNew,
   startEdit: onStartEdit,
@@ -92,104 +90,98 @@ const {
   formDaConfrontare: () => ({ ...contatto.form }),
 })
 
-// Scopo: chiusura drawer dal pulsante Chiudi del footer (modalita' lista).
-const onClose = useDrawerClose(emit)
-// Uscite dal drawer: con il form inline modificato si chiede prima.
-const chiudi = () => chiudiConConferma(onClose)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
+    :title="t('anagrafiche.soggetti.section_contatto')"
+    :icon="MANAGE_ICONS.CONTATTI"
+    :action="t('common.edit')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificatoInline"
+    :conferma-uscita="chiudiConConferma"
+    :footer="formMode ? 'nessuno' : 'chiudi'"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificatoInline" :action="t('common.edit')" :title="t('anagrafiche.soggetti.section_contatto')" :icon="MANAGE_ICONS.CONTATTI" />
-    </template>
+    <!-- Loading -->
+    <div v-if="listLoading" class="app-loading">
+      <i :class="STATUS_ICONS.CARICAMENTO" />
+    </div>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <!-- Loading -->
-      <div v-if="listLoading" class="app-loading">
-        <i :class="STATUS_ICONS.CARICAMENTO" />
+    <!-- Lista contatti esistenti -->
+    <template v-if="!listLoading">
+      <div v-if="contattiList.length === 0 && !formMode" class="app-empty-state">
+        <i :class="MANAGE_ICONS.CONTATTI" />
+        <p>{{ t('anagrafiche.contatto.nessun_contatto') }}</p>
       </div>
 
-      <!-- Lista contatti esistenti -->
-      <template v-if="!listLoading">
-        <div v-if="contattiList.length === 0 && !formMode" class="app-empty-state">
-          <i :class="MANAGE_ICONS.CONTATTI" />
-          <p>{{ t('anagrafiche.contatto.nessun_contatto') }}</p>
-        </div>
-
-        <div v-else-if="contattiList.length > 0" class="contatti-list">
-          <div v-for="c in contattiList" :key="c.id"
-            class="contatto-card" :class="{ 'contatto-card-soggetto': c.fonte === 'soggetto', 'contatto-card-ruolo': c.fonte === 'ruolo' || c.fonte === 'istanza' }">
-            <div class="contatto-card-content">
-              <div class="contatto-card-nome">
-                <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : (c.fonte === 'istanza' && c.utility_codice ? c.utility_codice : t('common.ruolo'))"
-                  :severity="c.fonte === 'soggetto' ? 'secondary' : 'info'" />
-                <Tag v-if="c.tipo_contatto_descrizione"
-                  :value="c.tipo_contatto_descrizione"
-                  severity="info" />
-                <strong>{{ c.nominativo }}</strong>
-              </div>
-              <div class="contatto-card-detail">
-                <span v-if="c.email"><i :class="RECAPITO_ICONS.EMAIL" /> {{ c.email }}</span>
-                <span v-if="c.telefono"><i :class="RECAPITO_ICONS.TELEFONO" /> {{ c.telefono }}</span>
-                <span v-if="c.cellulare"><i :class="RECAPITO_ICONS.CELLULARE" /> {{ c.cellulare }}</span>
-                <span v-if="c.pec"><i :class="RECAPITO_ICONS.PEC" /> {{ c.pec }}</span>
-              </div>
+      <div v-else-if="contattiList.length > 0" class="contatti-list">
+        <div v-for="c in contattiList" :key="c.id"
+          class="contatto-card" :class="{ 'contatto-card-soggetto': c.fonte === 'soggetto', 'contatto-card-ruolo': c.fonte === 'ruolo' || c.fonte === 'istanza' }">
+          <div class="contatto-card-content">
+            <div class="contatto-card-nome">
+              <Tag v-if="c.fonte" :value="c.fonte === 'soggetto' ? t('common.soggetto') : (c.fonte === 'istanza' && c.utility_codice ? c.utility_codice : t('common.ruolo'))"
+                :severity="c.fonte === 'soggetto' ? 'secondary' : 'info'" />
+              <Tag v-if="c.tipo_contatto_descrizione"
+                :value="c.tipo_contatto_descrizione"
+                severity="info" />
+              <strong>{{ c.nominativo }}</strong>
             </div>
-            <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="contatto-card-actions">
-              <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
-                class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
-              <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
-                class="app-delete-btn" :title="t('common.delete')" @click="onDelete(c)" />
+            <div class="contatto-card-detail">
+              <span v-if="c.email"><i :class="RECAPITO_ICONS.EMAIL" /> {{ c.email }}</span>
+              <span v-if="c.telefono"><i :class="RECAPITO_ICONS.TELEFONO" /> {{ c.telefono }}</span>
+              <span v-if="c.cellulare"><i :class="RECAPITO_ICONS.CELLULARE" /> {{ c.cellulare }}</span>
+              <span v-if="c.pec"><i :class="RECAPITO_ICONS.PEC" /> {{ c.pec }}</span>
             </div>
           </div>
+          <div v-if="!formMode && !isReadonly && c.fonte !== 'soggetto'" class="contatto-card-actions">
+            <Button :icon="MANAGE_ICONS.EDIT" text rounded size="small"
+              class="app-action-btn" :title="t('common.edit')" @click="onStartEdit(c)" />
+            <Button :icon="MANAGE_ICONS.DELETE" text rounded size="small"
+              class="app-delete-btn" :title="t('common.delete')" @click="onDelete(c)" />
+          </div>
         </div>
+      </div>
 
-        <!-- Pulsante aggiungi (nascosto in readonly) -->
-        <div v-if="!formMode && !isReadonly" class="mt-05">
-          <Button
-            :label="t('anagrafiche.contatto.aggiungi_contatto')"
-            :icon="MANAGE_ICONS.ADD"
-            text
-            size="small"
-            class="app-action-btn"
-            @click="onStartNew"
-          />
-        </div>
-      </template>
-
-      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
-
-      <!-- Form (aggiungi o modifica) -->
-      <template v-if="formMode">
-        <div class="app-drawer-section">
-          <h4>{{ formMode === 'edit' ? t('anagrafiche.contatto.modifica_contatto') : t('anagrafiche.contatto.nuovo_contatto') }}</h4>
-        </div>
-        <ContattoForm
-          :form="contatto.form"
-          :tipi-contatto="contatto.tipiContatto"
-          :unita-organizzative="contatto.unitaOrganizzative"
-          :errors="formErrors"
-          :show-u-o="true"
-          :tipo-disabled="formMode === 'edit'"
-          :disabled="false"
+      <!-- Pulsante aggiungi (nascosto in readonly) -->
+      <div v-if="!formMode && !isReadonly" class="mt-05">
+        <Button
+          :label="t('anagrafiche.contatto.aggiungi_contatto')"
+          :icon="MANAGE_ICONS.ADD"
+          text
+          size="small"
+          class="app-action-btn"
+          @click="onStartNew"
         />
+      </div>
+    </template>
 
-        <FormFooter
-          :loading="saving"
-          :disabled="!contatto.form.nominativo?.trim()"
-          @save="onSaveForm"
-          @cancel="annullaForm"
-        />
-      </template>
-    </div>
-  </Drawer>
+    <!-- Form (aggiungi o modifica) -->
+    <template v-if="formMode">
+      <div :ref="ancoraForm" class="app-drawer-section">
+        <h4>{{ formMode === 'edit' ? t('anagrafiche.contatto.modifica_contatto') : t('anagrafiche.contatto.nuovo_contatto') }}</h4>
+      </div>
+      <ContattoForm
+        :form="contatto.form"
+        :tipi-contatto="contatto.tipiContatto"
+        :unita-organizzative="contatto.unitaOrganizzative"
+        :errors="formErrors"
+        :show-u-o="true"
+        :tipo-disabled="formMode === 'edit'"
+        :disabled="false"
+      />
+
+      <FormFooter
+        :loading="saving"
+        :disabled="!contatto.form.nominativo?.trim()"
+        @save="onSaveForm"
+        @cancel="annullaForm"
+      />
+    </template>
+  </AppDrawer>
 </template>
 
 <style scoped>

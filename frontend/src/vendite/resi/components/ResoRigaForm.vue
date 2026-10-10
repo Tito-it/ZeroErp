@@ -5,17 +5,17 @@
 // dal BE, qui viaggiano solo ddt_riga_id + tipo_reso_id + qta_operativa +
 // motivo. Il guard over-return resta a DB (E_RESO_QTA_SUPERA_CONSEGNATO);
 // la UI limita l'input al residuo mostrato (best-effort UX).
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 
 import LookupSelect from '../../../core/components/LookupSelect.vue'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
+import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
+import FormFooter from '../../../core/components/FormFooter.vue'
 import { formatNumber } from '../../../core/utils/format'
-import { MANAGE_ICONS } from '../../../core/constants'
 import { getRigheDdtPerReso } from '../api/resiApi'
 import { useResiStore } from '../stores/resi'
 
@@ -79,6 +79,13 @@ watch(() => form.value.ddt_riga_id, () => {
   }
 })
 
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): la fotografia della riga.
+//    Fino a quel giorno non c'era: una riga in compilazione si perdeva senza
+//    domanda cambiando riga o uscendo dal drawer. Il contenitore la legge da
+//    `defineExpose`. ⚠️ `visibile` sempre vero: il form esiste solo mentre e'
+//    aperto, e allo smontaggio la fotografia se ne va con lui.
+const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => true })
+
 watch(() => props.riga, (r) => {
   form.value = {
     ddt_riga_id: r?.ddt_riga_id ?? null,
@@ -87,6 +94,8 @@ watch(() => props.riga, (r) => {
     motivo: r?.motivo ?? '',
   }
   loadRigheDdt()
+  // Dopo il giro di watch: anche la creazione conta.
+  nextTick(() => fissa())
 }, { immediate: true })
 
 const canSave = computed(() =>
@@ -118,6 +127,8 @@ async function handleSave() {
   }
   if (result !== null) emit('saved')
 }
+
+defineExpose({ modificato, chiudiConConferma })
 </script>
 
 <template>
@@ -162,11 +173,11 @@ async function handleSave() {
       </div>
     </div>
 
-    <div class="app-form-footer">
-      <Button :label="t('common.cancel')" text severity="secondary"
-        :icon="MANAGE_ICONS.BACK" @click="emit('cancel')" />
-      <Button :label="t('common.save')" :icon="MANAGE_ICONS.CONFIRM"
-        :loading="loading" :disabled="!canSave" @click="handleSave" />
-    </div>
+    <FormFooter
+      :loading="loading"
+      :disabled="!canSave"
+      @save="handleSave"
+      @cancel="chiudiConConferma(() => emit('cancel'))"
+    />
   </div>
 </template>

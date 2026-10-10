@@ -17,31 +17,50 @@ from typing import Any, ClassVar
 from django.db import connection
 
 
+# Scopo: La riga di `config.tipi_soggetto_dettaglio` come la legge il form del
+#        soggetto: la natura e le regole che ne discendono (CF/P.IVA, dati
+#        societari, sesso, regime fiscale). Il chiamante aggiunge WHERE e ORDER BY.
+# ⭐ BB (regola del 2, ok Tid 2026-10-11): la leggono il lookup generico
+#    (`list_tipi_soggetto_dettaglio`) e il risolutore per ruolo
+#    (`SoggettiRepository.get_config_resolver`), e alimentano lo STESSO form.
+#    Erano due elenchi di colonne, e divergevano: per l'ente il lookup diceva
+#    `natura_soggetto = 'ENC'` (era `ts.id`), il risolutore `'ENTE'` (l'enum).
+# ⛔ `natura_soggetto` e' l'ENUM `config.natura_soggetto_enum`, come la colonna
+#    di cui porta il nome; il codice della macro-tipologia (`PF`, `PG`, `ENC`)
+#    e' `tipo_soggetto_id`. Una colonna nuova che il form deve leggere si
+#    aggiunge QUI, e arriva a tutti e due.
+SQL_TIPI_SOGGETTO_DETTAGLIO = """
+    SELECT tsd.id, tsd.codice_interno, tsd.descrizione,
+           ts.id AS tipo_soggetto_id,
+           ts.natura_soggetto,
+           tsd.cf_obbligatorio, tsd.piva_obbligatoria,
+           tsd.formato_cf, tsd.formato_piva,
+           tsd.dati_societari_policy, tsd.sesso_policy,
+           -- Regime fiscale: il form mostra i due flag solo dove la natura
+           -- li ammette; la regola la presidia `trgfn_soggetti_guard_regime_pa`
+           -- (brief-db-dati-fiscali-e-societari-del-soggetto, parte A).
+           tsd.cliente_pa_ammesso, tsd.split_payment_ammesso
+      FROM config.tipi_soggetto_dettaglio tsd
+      JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
+"""
+
+
 class LookupRepository:
     """Lookup lettura per tabelle config/anagrafiche cross-dominio."""
 
-    # Scopo: Restituisce i tipi soggetto dettaglio con natura, policy CF/PIVA/dati societari.
-    # JOIN config.tipi_soggetto_dettaglio + config.tipi_soggetto per natura_soggetto.
-    # Filtro: solo record con stato attivo (stato_id via JOIN config.stati).
+    # Scopo: Restituisce i tipi soggetto dettaglio, con la natura e le regole
+    #        che il form del soggetto legge (BB `SQL_TIPI_SOGGETTO_DETTAGLIO`).
     def list_tipi_soggetto_dettaglio(self) -> list[dict[str, Any]]:
-        sql = """
-            SELECT tsd.id,
-                   tsd.codice_interno,
-                   tsd.descrizione,
-                   ts.id AS natura_soggetto,
-                   tsd.cf_obbligatorio,
-                   tsd.piva_obbligatoria,
-                   tsd.dati_societari_policy
-              FROM config.tipi_soggetto_dettaglio tsd
-              JOIN config.tipi_soggetto ts ON ts.id = tsd.tipo_soggetto_id
-             ORDER BY tsd.id
-        """
+        sql = f"{SQL_TIPI_SOGGETTO_DETTAGLIO} ORDER BY tsd.id"
         with connection.cursor() as cursor:
             cursor.execute(sql)
             return rows_to_list(cursor)
 
     # Scopo: Restituisce i tipi ruolo ammessi per una data natura soggetto.
     # Se natura_soggetto e' fornita, filtra via matrice tipi_ruoli_nature_ammesse.
+    # ⚠️ `natura_soggetto` e' l'enum (PF/PG/ENTE), come in ogni altra risposta
+    #    (BB `SQL_TIPI_SOGGETTO_DETTAGLIO`): la matrice e' per `tipo_soggetto_id`,
+    #    e si passa dalla macro-tipologia. Fino al 2026-10-11 confrontava il codice.
     # Se non fornita, restituisce tutti i ruoli attivi.
     def list_tipi_ruoli_per_natura(
         self, natura_soggetto: str | None = None
@@ -54,10 +73,11 @@ class LookupRepository:
                         WHERE m.tipo_ruolo_id = tr.id
                    ) OR EXISTS (
                        SELECT 1 FROM config.tipi_ruoli_nature_ammesse m
+                         JOIN config.tipi_soggetto ts ON ts.id = m.tipo_soggetto_id
                         WHERE m.tipo_ruolo_id = tr.id
-                          AND m.tipo_soggetto_id = %s
+                          AND ts.natura_soggetto::text = %s
                           AND m.attivo = true
-                          AND (m.validita IS NULL OR m.validita @> CURRENT_DATE)
+                          AND (m.validita IS NULL OR m.validita @> (SELECT script.fn_data_operativa()))
                    ))
              ORDER BY tr.descrizione
         """
@@ -67,20 +87,31 @@ class LookupRepository:
 
     # Scopo: Restituisce le forme giuridiche con policy REA e capitale sociale.
     # Opzionalmente filtrate per tipo_soggetto_dettaglio_id (via matrice).
+    # ⭐ Il filtro per natura e' il PREDICATO DEL GUARD,
+    #    `anagrafiche.fn_forma_giuridica_ammessa`, con lo stesso «oggi»
+    #    (`script.fn_giorno_operativo(now())`): riga di matrice attiva E valida
+    #    oggi. Fino al 2026-10-10 qui c'era una EXISTS scritta a mano che
+    #    guardava solo `attivo`: il form avrebbe offerto una forma con la riga
+    #    di matrice scaduta, che il DB rifiuta (brief-db-dati-fiscali-e-
+    #    societari-del-soggetto §8.3). Un predicato, due lettori.
+    # ⛔ `fg.codice`, e basta: fino al 2026-10-10 qui c'era
+    #    `COALESCE(fg.codice_interno, fg.codice)`, ma `config.forme_giuridiche`
+    #    una colonna `codice_interno` non l'ha mai avuta. La query falliva SEMPRE
+    #    (dal 2026-03-28), il drawer ingoiava l'errore e la tendina restava vuota:
+    #    era il «la forma giuridica e' vuota» del collaudo R-2. I test, col
+    #    cursore mockato, non lo vedevano; lo ha visto il primo sul DB vero
+    #    (`tests/db/test_dati_fiscali_societari_db`, test 10).
     def list_forme_giuridiche(
         self, tipo_soggetto_dettaglio_id: int | None = None
     ) -> list[dict[str, Any]]:
         sql = """
-            SELECT fg.id, COALESCE(fg.codice_interno, fg.codice) AS codice, fg.descrizione,
+            SELECT fg.id, fg.codice, fg.descrizione,
                    fg.rea_policy, fg.capitale_sociale_policy, fg.attivo
               FROM config.forme_giuridiche fg
              WHERE fg.attivo = true
-               AND (%s::bigint IS NULL OR EXISTS (
-                   SELECT 1 FROM config.forme_giuridiche_tipi_soggetto_dettaglio fgtsd
-                    WHERE fgtsd.forma_giuridica_id = fg.id
-                      AND fgtsd.tipo_soggetto_dettaglio_id = %s
-                      AND fgtsd.attivo = true
-               ))
+               AND (%s::bigint IS NULL
+                    OR anagrafiche.fn_forma_giuridica_ammessa(
+                           fg.id, %s::bigint, script.fn_giorno_operativo(now())))
              ORDER BY fg.descrizione
         """
         with connection.cursor() as cursor:
@@ -181,7 +212,7 @@ class LookupRepository:
                     AND o.{overrides_fk_column} = %s
              WHERE COALESCE(tr.codice_interno, tr.codice) = %s
                AND utr.attivo = true
-               AND (utr.validita IS NULL OR utr.validita @> CURRENT_DATE)
+               AND (utr.validita IS NULL OR utr.validita @> (SELECT script.fn_data_operativa()))
              ORDER BY u.descrizione
         """  # noqa: S608
         with connection.cursor() as cursor:
@@ -238,7 +269,7 @@ class LookupRepository:
               JOIN config.tipi_ruoli tr            ON tr.id = utr.tipo_ruolo_id
              WHERE COALESCE(tr.codice_interno, tr.codice) = %s
                AND utr.attivo = true
-               AND (utr.validita IS NULL OR utr.validita @> CURRENT_DATE)
+               AND (utr.validita IS NULL OR utr.validita @> (SELECT script.fn_data_operativa()))
              ORDER BY u.descrizione
         """
         with connection.cursor() as cursor:
@@ -314,7 +345,7 @@ class LookupRepository:
               JOIN config.utilities_tipi_ruolo utr_ef
                 ON utr_ef.utility_id = u.id
                AND utr_ef.attivo = true
-               AND (utr_ef.validita IS NULL OR utr_ef.validita @> CURRENT_DATE)
+               AND (utr_ef.validita IS NULL OR utr_ef.validita @> (SELECT script.fn_data_operativa()))
               JOIN config.tipi_ruoli tr_ef
                 ON tr_ef.id = utr_ef.tipo_ruolo_id
                AND COALESCE(tr_ef.codice_interno, tr_ef.codice) = 'EF'
@@ -343,7 +374,7 @@ class LookupRepository:
               JOIN config.utilities_tipi_ruolo utr_sogg
                 ON utr_sogg.utility_id = u.id
                AND utr_sogg.attivo = true
-               AND (utr_sogg.validita IS NULL OR utr_sogg.validita @> CURRENT_DATE)
+               AND (utr_sogg.validita IS NULL OR utr_sogg.validita @> (SELECT script.fn_data_operativa()))
               JOIN config.tipi_ruoli tr_sogg
                 ON tr_sogg.id = utr_sogg.tipo_ruolo_id
                AND COALESCE(tr_sogg.codice_interno, tr_sogg.codice) = %s

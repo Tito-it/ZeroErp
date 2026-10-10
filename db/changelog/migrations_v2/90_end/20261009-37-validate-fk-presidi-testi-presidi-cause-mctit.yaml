@@ -1,0 +1,49 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidio-processi-testo-per-causa §5.5 (b) — convalida della FK
+# dei testi di variante verso il catalogo delle cause.
+#
+# La FK e' nata NOT VALID in 00_schema/20261009-36 perche' su dbdev le varianti
+# di dbops.presidi_testi esistevano gia' e dbops.presidi_cause era vuota. Qui,
+# dopo 80_data (il mirror 20261006-06 carica le cause e poi i testi), ogni
+# variante ha la sua causa e la FK si convalida.
+# ⛔ Se fallisce, una variante del CSV dei testi non ha la riga nel CSV delle
+#   cause: si aggiunge la causa, non si toglie il vincolo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261009-37-validate-fk-presidi-testi-presidi-cause-mctit.yaml
+
+  - changeSet:
+      id: 20261009-37-validate-fk-presidi-testi-presidi-cause
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        VALIDATE CONSTRAINT fk_presidi_testi_presidi_cause, dopo che il mirror
+        dei testi ha caricato le cause prima dei testi.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_constraint
+               WHERE conrelid = 'dbops.presidi_testi'::regclass
+                 AND conname = 'fk_presidi_testi_presidi_cause'
+      changes:
+        - sql:
+            dbms: postgresql
+            sql: ALTER TABLE dbops.presidi_testi VALIDATE CONSTRAINT fk_presidi_testi_presidi_cause;
+      rollback:
+        - sql:
+            dbms: postgresql
+            sql: |
+              -- Un vincolo convalidato non torna NOT VALID: il rollback e' un
+              -- no-op dichiarato (lo toglie il rollback di 20261009-36).
+              SELECT 1;

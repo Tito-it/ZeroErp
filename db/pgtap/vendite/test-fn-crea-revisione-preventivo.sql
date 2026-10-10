@@ -135,6 +135,10 @@ SELECT ok(
 
 -- ============================================================
 -- 3) Setup preventivo EMESSO con righe e indirizzi
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): i
+--   preventivi EMESSO di questo file (qui e al test 10) nascono DRAFT,
+--   prendono le righe, poi passano a EMESSO con dbops.fn_pgtap_porta_a_stato —
+--   fuori bozza le righe non si scrivono piu' (20261008-91).
 -- ============================================================
 CREATE TEMP TABLE tmp_rv_prev AS
 WITH ins AS (
@@ -151,7 +155,7 @@ WITH ins AS (
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_emesso_id, DATE '2026-06-01',
+    r.stato_draft_id, DATE '2026-06-01',
     r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_revisione')
   FROM tmp_rv_refs r
@@ -184,6 +188,10 @@ SELECT p.id, r.tipo_indirizzo_id,
        jsonb_build_object('test', true)
 FROM tmp_rv_prev p, tmp_rv_refs r
 WHERE r.tipo_indirizzo_id IS NOT NULL;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rv_prev), 'EMESSO');
+END $x$;
 
 SELECT ok(
   (SELECT id IS NOT NULL FROM tmp_rv_prev),
@@ -335,7 +343,7 @@ WITH ins AS (
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_emesso_id, DATE '2026-06-01',
+    r.stato_draft_id, DATE '2026-06-01',
     r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_revisione')
   FROM tmp_rv_refs r
@@ -351,6 +359,10 @@ INSERT INTO vendite.preventivi_righe (
 SELECT p.id, r.articolo_id, 10, 10, 100.00, r.iva_id, true, 1,
        jsonb_build_object('test_scope', 'pgtap_revisione')
 FROM tmp_rv_prev_antireg p, tmp_rv_refs r;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_rv_prev_antireg), 'EMESSO');
+END $x$;
 
 -- Rinomina il codice (mutabile) di EMESSO/DRAFT; codice_interno invariato.
 UPDATE config.stati_doc_preventivi

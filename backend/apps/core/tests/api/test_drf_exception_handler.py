@@ -14,6 +14,9 @@ Indice test eseguiti:
  3) test_fallback_to_map_per_exception_standard — eccezione DRF standard usa _DRF_ERROR_CODE_MAP
  4) test_envelope_porta_la_ui_action — i due percorsi dell'envelope portano gli stessi campi
  5) test_sottoclasse_prende_il_codice_della_madre — InvalidToken (token scaduto) nell'envelope (E-3)
+ 6) test_codice_dell_istanza_vince — `code` della permission (detail.code E_*) nell'envelope, col suo messaggio (E-5)
+ 7) test_codice_istanza_non_e_vale_la_classe — detail.code non E_* (quello di DRF) → mappa per classe
+ 8) test_permission_reparto_senza_profilo_porta_il_codice — ZeroERPPermission → code della permission (E-5)
 """
 
 from unittest import TestCase
@@ -115,3 +118,47 @@ class DrfExceptionHandlerTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.data["error"]["code"], "E_AUTHENTICATION_FAILED")
         self.assertNotIn("detail", response.data)
+
+    # Scopo: E-5 — DRF trasporta il `code` di una permission in
+    # `detail.code`: e' il codice dell'istanza, e vince sulla mappa per
+    # classe. Messaggio e status vengono dalla SUA policy.
+    @patch("apps.core.api.error_responses.drf_default_handler")
+    def test_codice_dell_istanza_vince(self, mock_default):
+        mock_default.return_value = Response({"detail": "..."}, status=403)
+        exc = PermissionDenied(detail="testo runtime", code="E_REPARTO_SENZA_PROFILO")
+
+        response = drf_exception_handler(exc, context={})
+
+        self.assertEqual(response.data["error"]["code"], "E_REPARTO_SENZA_PROFILO")
+        self.assertEqual(
+            response.data["error"]["message"],
+            ErrorPolicyRegistry.resolve("E_REPARTO_SENZA_PROFILO").user_message,
+        )
+
+    # Scopo: un `code` che non e' nostro (quello di default di DRF) non
+    # sostituisce niente: resta la mappa per classe.
+    @patch("apps.core.api.error_responses.drf_default_handler")
+    def test_codice_istanza_non_e_vale_la_classe(self, mock_default):
+        mock_default.return_value = Response({"detail": "..."}, status=403)
+        exc = PermissionDenied(detail="x", code="permission_denied")
+
+        response = drf_exception_handler(exc, context={})
+
+        self.assertEqual(response.data["error"]["code"], "E_PERMISSION_DENIED")
+
+    # Scopo: E-5, il percorso intero dal lato della permission: operatore
+    # senza profilo applicabile all'area → la permission porta il codice
+    # `E_REPARTO_SENZA_PROFILO`; un diniego qualsiasi lo azzera.
+    @patch("apps.core.api.permissions.PermissionResolver")
+    def test_permission_reparto_senza_profilo_porta_il_codice(self, mock_resolver):
+        from apps.core.api.permissions import ZeroERPPermission
+        from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
+
+        perm = ZeroERPPermission()
+        mock_resolver.has_profilo_applicabile_per_area.return_value = False
+        perm._set_deny_message(object(), RUOLO_APPLICATIVO_OPERATORE, "vendite", {})
+        self.assertEqual(perm.code, "E_REPARTO_SENZA_PROFILO")
+
+        mock_resolver.has_profilo_applicabile_per_area.return_value = True
+        perm._set_deny_message(object(), RUOLO_APPLICATIVO_OPERATORE, "vendite", {})
+        self.assertIsNone(perm.code)

@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_fattura(p_auth_user_id integer, p_fatt
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_fattura(p_auth_user_id integer, p_fattura_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Risolve fattura -> emittente_soggetto_ruolo_id e delega
     -- all'adapter SR. Fattura inesistente -> SR NULL -> false

@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN TIPO SOLO PER «QUANTO E' RICHIESTO UN DATO, PER NATURA»
+#   Brief: brief-db-sesso-senza-default (§3 D2, §4.1 punto 1)
+#
+# -- IL CASO --------------------------------------------------------
+#   config.tipi_soggetto_dettaglio dice gia', per ogni natura di dettaglio,
+#   se i dati societari sono vietati, facoltativi o obbligatori
+#   (dati_societari_policy, tipo config.dati_societari_policy_enum:
+#   NONE / OPTIONAL / REQUIRED). Il sesso ha bisogno della stessa risposta:
+#   obbligatorio per il privato (PR), facoltativo per la ditta individuale
+#   (DI), vietato per societa' ed enti. E' la SECONDA occorrenza del
+#   concetto: si estrae (regola del 2), e la copia si ritira nello stesso
+#   giro (decisione di Tid, 2026-10-09, opzione B).
+#
+# -- COSA FA ----------------------------------------------------------
+#   1. config.presenza_policy_enum (NONE, OPTIONAL, REQUIRED): i valori e
+#      l'ordine di quello vecchio, con un nome che dice cosa misura.
+#   2. dati_societari_policy passa al tipo nuovo (i dati non cambiano).
+#      Il CHECK chk_tipi_soggetto_dettaglio_piva_vs_policy confronta la
+#      colonna con letterali del tipo vecchio: si toglie e si rimette
+#      identico sul tipo nuovo, come il default.
+#   3. sesso_policy, NOT NULL DEFAULT 'NONE'. Il valore vero arriva dal
+#      CSV (80_data, mirror 20250717-12), come ogni colonna di catalogo:
+#      qui nessun UPDATE (linee-guida-sql §11.2). Il CHECK che lega la
+#      policy alla natura base nasce in 90_end (20261009-31), dopo il
+#      mirror: su dbdev, fino al CSV, PR e DI valgono NONE.
+#   Il tipo vecchio NON si cancella qui: lo dichiarano ancora due trigger
+#   function, che si riallineano in 20261009-20/-21; il DROP e' il -22.
+#
+# -- PERCHE' UN DEFAULT LETTERALE E' SICURO -----------------------------
+#   'NONE' e' una costante: ADD COLUMN ... DEFAULT non chiama funzioni
+#   (cfr. il caso di fn_data_operativa), e da zero la tabella e' vuota.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261009-19-create-presenza-policy-enum-e-sesso-policy-mctit.yaml
+
+  - changeSet:
+      id: 20261009-19-create-presenza-policy-enum-e-sesso-policy
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.presenza_policy_enum (NONE/OPTIONAL/REQUIRED); dati_societari_policy convertita al tipo
+        nuovo (CHECK piva_vs_policy e default rimessi identici); colonna sesso_policy NOT NULL DEFAULT
+        'NONE' su config.tipi_soggetto_dettaglio. Brief: brief-db-sesso-senza-default (D2).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: tipi_soggetto_dettaglio }
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_type t
+                    JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                   WHERE n.nspname = 'config' AND t.typname = 'presenza_policy_enum';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TYPE config.presenza_policy_enum AS ENUM ('NONE', 'OPTIONAL', 'REQUIRED');
+
+              COMMENT ON TYPE config.presenza_policy_enum IS
+                  'Quanto e'' richiesto un dato per una natura di soggetto: NONE = vietato (non si indica), OPTIONAL = facoltativo, REQUIRED = obbligatorio. Lo usano config.tipi_soggetto_dettaglio.dati_societari_policy e .sesso_policy. Brief: brief-db-sesso-senza-default.';
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  DROP CONSTRAINT chk_tipi_soggetto_dettaglio_piva_vs_policy;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ALTER COLUMN dati_societari_policy DROP DEFAULT;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ALTER COLUMN dati_societari_policy TYPE config.presenza_policy_enum
+                  USING dati_societari_policy::text::config.presenza_policy_enum;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ALTER COLUMN dati_societari_policy SET DEFAULT 'NONE'::config.presenza_policy_enum;
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ADD CONSTRAINT chk_tipi_soggetto_dettaglio_piva_vs_policy CHECK (
+                      ((formato_piva)::text = 'NON_APPLICABILE'::text
+                       AND dati_societari_policy = 'NONE'::config.presenza_policy_enum)
+                   OR ((formato_piva)::text <> 'NON_APPLICABILE'::text
+                       AND dati_societari_policy = ANY (ARRAY['OPTIONAL'::config.presenza_policy_enum,
+                                                              'REQUIRED'::config.presenza_policy_enum])));
+
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ADD COLUMN sesso_policy config.presenza_policy_enum NOT NULL
+                  DEFAULT 'NONE'::config.presenza_policy_enum;
+
+              COMMENT ON COLUMN config.tipi_soggetto_dettaglio.sesso_policy IS
+                  'Il sesso per questa natura: REQUIRED = obbligatorio (M, F o X), OPTIONAL = facoltativo (si indica o resta NULL), NONE = non si indica (NULL). Lo legge il guard anagrafiche.trgfn_soggetti_guard_sesso_policy. Coerente con la natura base: solo una PF puo'' essere diversa da NONE (CHECK chk_tipi_soggetto_dettaglio_sesso_policy_natura). Brief: brief-db-sesso-senza-default.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il ritorno al tipo vecchio presuppone che esista ancora (prima del -22).
+              ALTER TABLE config.tipi_soggetto_dettaglio DROP COLUMN IF EXISTS sesso_policy;
+              ALTER TABLE config.tipi_soggetto_dettaglio DROP CONSTRAINT chk_tipi_soggetto_dettaglio_piva_vs_policy;
+              ALTER TABLE config.tipi_soggetto_dettaglio ALTER COLUMN dati_societari_policy DROP DEFAULT;
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ALTER COLUMN dati_societari_policy TYPE config.dati_societari_policy_enum
+                  USING dati_societari_policy::text::config.dati_societari_policy_enum;
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ALTER COLUMN dati_societari_policy SET DEFAULT 'NONE'::config.dati_societari_policy_enum;
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ADD CONSTRAINT chk_tipi_soggetto_dettaglio_piva_vs_policy CHECK (
+                      ((formato_piva)::text = 'NON_APPLICABILE'::text
+                       AND dati_societari_policy = 'NONE'::config.dati_societari_policy_enum)
+                   OR ((formato_piva)::text <> 'NON_APPLICABILE'::text
+                       AND dati_societari_policy = ANY (ARRAY['OPTIONAL'::config.dati_societari_policy_enum,
+                                                              'REQUIRED'::config.dati_societari_policy_enum])));
+              DROP TYPE config.presenza_policy_enum;

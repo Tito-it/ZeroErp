@@ -10,7 +10,6 @@ Approfondimento viste e funzioni:
 > [vendite.vw_ordini_righe_iva_base](/dbzero/vendite/views/vw_ordini_righe_iva_base)
 > [vendite.vw_ordini_riepilogo_iva_dettaglio](/dbzero/vendite/views/vw_ordini_riepilogo_iva_dettaglio)
 > [vendite.trgfn_ordini_righe_ricalcola_totali](/dbzero/vendite/funzioni/trgfn_ordini_righe_ricalcola_totali)
-> [vendite.trgfn_ordini_ricalcola_totali](/dbzero/vendite/funzioni/trgfn_ordini_ricalcola_totali)
 
 ---
 
@@ -99,8 +98,10 @@ centesimi tra riepilogo IVA, testata e documenti a valle.
 
 La funzione e' invocata automaticamente:
 
-* dai trigger statement-level su `vendite.ordini_righe` dopo INSERT/UPDATE;
-* dal trigger su `vendite.ordini` dopo cambio reale di `emittente_fiscale_id`.
+* dai trigger statement-level su `vendite.ordini_righe` dopo INSERT/UPDATE.
+
+Non c'è più un ricalcolo «dopo il cambio di emittente» sulla testata: l'emittente
+dell'ordine non cambia (in bozza è quello del billing account, fuori bozza è bloccato).
 
 Il trigger DELETE sulle righe e' registrato strutturalmente, ma l'hard-delete di
 `vendite.ordini_righe` e' bloccato dal guard `_a10_`

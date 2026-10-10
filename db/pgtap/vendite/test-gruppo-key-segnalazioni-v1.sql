@@ -87,7 +87,7 @@ BEGIN
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
          stato_doc_fiscale_id)
-    SELECT 'PGTAP-GRUPPO-KEY', date_trunc('month', CURRENT_DATE)::date,
+    SELECT 'PGTAP-GRUPPO-KEY', date_trunc('month', script.fn_data_operativa())::date,
            t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
            (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT')
       FROM tmp_rif t
@@ -374,7 +374,7 @@ BEGIN
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id,
          stato_doc_fiscale_id)
-    SELECT 'PGTAP-GRUPPO-KEY-MASSA', date_trunc('month', CURRENT_DATE)::date,
+    SELECT 'PGTAP-GRUPPO-KEY-MASSA', date_trunc('month', script.fn_data_operativa())::date,
            t.tipo_doc_fiscale_id, t.emittente_soggetto_ruolo_id,
            (SELECT s.id FROM config.stati_doc_fiscale s WHERE s.codice_interno = 'DRAFT')
       FROM tmp_rif t

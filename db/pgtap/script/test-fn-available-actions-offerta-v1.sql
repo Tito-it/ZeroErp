@@ -8,7 +8,7 @@
 --  2) BOZZA: available_actions ha 2 azioni (emetti + annulla)
 --  3) BOZZA: can_edit_testata=true, can_push_contratto=false, non_editable_fields lista corta
 --  4) EMESSA: available_actions ha 3 azioni (accetta + rifiuta + crea_revisione)
---  5) EMESSA: can_edit_testata=false, can_create_revisione=true
+--  5) EMESSA: can_edit_testata=true (le note), listino e cliente non modificabili, can_create_revisione=true
 --  6) EMESSA: azione rifiuta ha requires_motivazione=true (verifica meta update 20260526-01)
 --  7) ACCETTATA senza contratto ne' ordine: can_push_contratto=true, push_contratto presente
 --  8) ACCETTATA con contratto generato (mutua esclusivita'): can_push_contratto=false
@@ -24,8 +24,13 @@
 -- 13) non ACCETTATA (BOZZA): can_genera_ordine=false, reason='OFFERTA_NON_ACCETTATA'
 -- 14) Indice: secondo ordine ('OFFERTA', X) viola uq_ordini_v_documento_origine_offerta
 -- 15) Indice: due ordini ('PREVENTIVO', Y) consentiti (indice non li vincola)
--- 16a/16b) BOZZA senza listino_versione_id: azione verso EMESSA enabled=false +
---     reason='LISTINO_VERSIONE_MANCANTE' (rev 2026-07-19, uniformita' 6 domini)
+-- 16a/16b) BOZZA senza listino_versione_id su un listino con una versione in
+--     vigore: azione verso EMESSA ACCESA, nessun motivo. ⚠️ Rev 2026-10-07
+--     (brief-db-offerta-emissione-ed-erogazione §C.1.3): fino a quel giorno qui
+--     si pretendeva enabled=false + LISTINO_VERSIONE_MANCANTE, cioe' il test
+--     pinnava il difetto — la versione si congela ALL'emissione, e il pulsante
+--     non ci arrivava mai. Il caso «listino senza versione in vigore» sta in
+--     vendite/offerte_commerciali/test-offerta-emissione-congela-listino-v1.
 -- 17) BOZZA con versione ATTIVA: azione verso EMESSA enabled=true
 -- 19) Tutte le reason_key di push_contratto/genera_ordine iniziano per
 --     'vendite.offerte.' (guard namespace i18n, 20260719-13)
@@ -226,12 +231,14 @@ WITH ins AS (
 INSERT INTO tmp_aa_ids SELECT 'ACCT-ORD', id FROM ins;
 
 -- Ordine collegato all'offerta ACCT-ORD (documento_origine OFFERTA).
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1/D-6): col BA del cliente, quello
+--   dell'offerta da cui nasce. Prima nasceva col BA NULL.
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
     documento_origine_tipo, documento_origine_id
 )
-SELECT od.soggetto_ruolo_id, NULL::bigint, od.emittente_fiscale_id,
+SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-02', false,
        'OFFERTA', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
   FROM tmp_aa_ord od;
@@ -287,15 +294,22 @@ SELECT is(
 );
 
 -- ============================================================
--- TEST 5) EMESSA: can_edit_testata=false, can_create_revisione=true
+-- TEST 5) EMESSA: can_edit_testata=true (le note), listino e cliente fermi
+--   ⚠️ rev 2026-10-10 (brief-db-testata-dopo-emissione, fase 2, D-0/D-10):
+--   can_edit_testata si legge dal montaggio del lock di testata e vuol dire
+--   «in questo stato almeno un campo della testata si cambia» (le note, nei
+--   documenti vivi). Che il documento non si RISCRIVA lo dice
+--   non_editable_fields, che deve contenere identita' e condizioni.
 -- ============================================================
 SELECT ok(
     (SELECT
-         (script.fn_available_actions_offerta(o.offerta_id)->>'can_edit_testata')::boolean IS FALSE
+         (script.fn_available_actions_offerta(o.offerta_id)->>'can_edit_testata')::boolean IS TRUE
+         AND (script.fn_available_actions_offerta(o.offerta_id)->'non_editable_fields') @> '["listino_id","billing_account_id","validita_al"]'
+         AND NOT (script.fn_available_actions_offerta(o.offerta_id)->'non_editable_fields') @> '["meta"]'
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_create_revisione')::boolean IS TRUE
        FROM tmp_aa_ids o WHERE o.slot = 'EMESSA'
     ),
-    '5) EMESSA: can_edit_testata=false, can_create_revisione=true'
+    '5) EMESSA: can_edit_testata=true (le note), listino, cliente e validita'' non modificabili, can_create_revisione=true'
 );
 
 -- ============================================================
@@ -470,7 +484,7 @@ SELECT throws_ok(
             stato_doc_ordine_id, valuta_id, data, storicizza,
             documento_origine_tipo, documento_origine_id
         )
-        SELECT od.soggetto_ruolo_id, NULL::bigint, od.emittente_fiscale_id,
+        SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
                od.stato_draft_ordine_id, od.valuta_id, DATE '2087-01-03', false,
                'OFFERTA', (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'ACCT-ORD')
           FROM tmp_aa_ord od
@@ -490,7 +504,7 @@ INSERT INTO vendite.ordini (
     stato_doc_ordine_id, valuta_id, data, storicizza,
     documento_origine_tipo, documento_origine_id
 )
-SELECT od.soggetto_ruolo_id, NULL::bigint, od.emittente_fiscale_id,
+SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
        od.stato_draft_ordine_id, od.valuta_id, DATE '2087-02-01', false,
        'PREVENTIVO', 999999
   FROM tmp_aa_ord od;
@@ -502,7 +516,7 @@ SELECT lives_ok(
             stato_doc_ordine_id, valuta_id, data, storicizza,
             documento_origine_tipo, documento_origine_id
         )
-        SELECT od.soggetto_ruolo_id, NULL::bigint, od.emittente_fiscale_id,
+        SELECT od.soggetto_ruolo_id, (SELECT c.billing_account_id FROM tmp_aa_cli c), od.emittente_fiscale_id,
                od.stato_draft_ordine_id, od.valuta_id, DATE '2087-02-02', false,
                'PREVENTIVO', 999999
           FROM tmp_aa_ord od
@@ -511,9 +525,10 @@ SELECT lives_ok(
 );
 
 -- ============================================================
--- 16-17) enabled/reason sull'azione verso EMESSA (rev 2026-07-19):
---   la capability specchia il guard BOZZA->EMESSA (versione listino
---   valorizzata + ATTIVA). Brief-db-guard-righe-avanzamento-stato §1a.
+-- 16-17) enabled/reason sull'azione verso EMESSA: la capability specchia il
+--   guard BOZZA->EMESSA. Rev 2026-10-07: entrambi leggono
+--   script.fn_check_listino_congelabile sulla versione che VERREBBE congelata
+--   (la fissata, altrimenti quella in vigore oggi), non la colonna nuda.
 -- ============================================================
 WITH ins AS (
     INSERT INTO vendite.offerte_commerciali (
@@ -535,8 +550,8 @@ SELECT is(
                 (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'BOZZA_NOLISTINO')
               ) -> 'available_actions') AS a
       WHERE a ->> 'target_state' = 'EMESSA') -> 'enabled',
-    'false'::jsonb,
-    '16a) BOZZA senza versione listino: azione verso EMESSA disabled'
+    'true'::jsonb,
+    '16a) BOZZA senza versione fissata, listino con una versione in vigore: azione verso EMESSA accesa'
 );
 
 SELECT is(
@@ -545,9 +560,9 @@ SELECT is(
               script.fn_available_actions_offerta(
                 (SELECT offerta_id FROM tmp_aa_ids WHERE slot = 'BOZZA_NOLISTINO')
               ) -> 'available_actions') AS a
-      WHERE a ->> 'target_state' = 'EMESSA') ->> 'reason',
-    'LISTINO_VERSIONE_MANCANTE',
-    '16b) ...con reason LISTINO_VERSIONE_MANCANTE'
+      WHERE a ->> 'target_state' = 'EMESSA') -> 'reasons',
+    '[]'::jsonb,
+    '16b) ...senza nessun motivo (LISTINO_VERSIONE_MANCANTE non si emette piu'')'
 );
 
 SELECT is(

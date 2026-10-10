@@ -62,7 +62,7 @@ SELECT plan(6);
 -- e' esattamente il caso del difetto.
 CREATE TEMP TABLE tmp_lotto_alv AS
 SELECT vendite.fn_get_or_create_lotto(
-         p_competenza_mese             => (date_trunc('month', CURRENT_DATE) + interval '2 month')::date,
+         p_competenza_mese             => (date_trunc('month', script.fn_data_operativa()) + interval '2 month')::date,
          p_tipo_doc_fiscale_id         => (SELECT id FROM config.tipi_doc_fiscale WHERE attivo IS TRUE ORDER BY id LIMIT 1),
          p_utility_id                  => (SELECT ba.utility_id FROM anagrafiche.billing_account ba ORDER BY ba.id LIMIT 1),
          p_emittente_soggetto_ruolo_id => (SELECT f.emittente_soggetto_ruolo_id FROM vendite.fatture f ORDER BY f.id LIMIT 1),

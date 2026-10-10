@@ -1,0 +1,3138 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# pagamenti: «OGGI» E' IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   CURRENT_DATE e' il giorno nel fuso della SESSIONE che esegue, e le
+#   sessioni non hanno tutte lo stesso fuso: il backend si connette in UTC,
+#   psql/Liquibase/pgAgent nel fuso del server. Fra la mezzanotte dell'azienda
+#   e quella della sessione, la stessa funzione risponde un giorno diverso
+#   secondo chi la chiama: una data documento di ieri, un guard di validita'
+#   che scatta o non scatta. Non dipende dai dati: e' la struttura, e vale per
+#   ogni installazione il cui fuso non coincide con quello della sessione.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Ogni CURRENT_DATE di codice diventa script.fn_data_operativa() (il giorno
+#   nel fuso di SYSTEM_FUSO_ORARIO, letto dalla sede unica
+#   script.fn_fuso_operativo, 20261009-40/41). Tre forme, scelte dal posto:
+#   - in un'istruzione SQL (WHERE, SELECT, VALUES, SQL dinamico):
+#     `(SELECT script.fn_data_operativa())` — la sottoquery scalare e'
+#     valutata UNA volta per istruzione, non per riga (misurato su
+#     zeroerp_ci il 2026-10-09: 20.000 righe, 122 ms per riga contro 2 ms);
+#   - in un'espressione PL/pgSQL (`:=`, IF, RETURN) la chiamata diretta,
+#     valutata una volta;
+#   - nel DEFAULT di un parametro la chiamata diretta: li' una sottoquery non
+#     e' ammessa.
+#   I commenti che citano CURRENT_DATE restano: raccontano la regola di prima.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firme, tipi, volatilita', sicurezza, commenti e GRANT delle funzioni (il
+#   CREATE OR REPLACE li conserva). Il corpo e' quello vivo, preso da
+#   pg_get_functiondef su zeroerp_ci il 2026-10-09 e confrontato con la doc
+#   auto-generata (identici), con la sola sostituzione di CURRENT_DATE.
+#
+# ── %TYPE: FIRMA, RETURNS TABLE, DECLARE ───────────────────────────
+#   Il corpo vivo (pg_get_functiondef) scioglie i %TYPE della firma: quelli
+#   gia' scritti nell'ultimo changeSet di ogni funzione sono stati RIPRESI
+#   (anche nel rollback), e in questo giro si sono ancorati i parametri, le
+#   colonne di RETURNS TABLE e le variabili che riflettono una colonna.
+#   Verificato in transazione annullata su zeroerp_ci: argomenti e risultato
+#   di ogni funzione restano byte-identici (nessun overload, nessun chiamante
+#   rotto). Restano a TIPO ESPLICITO, perche' non sono il riflesso di nessuna
+#   colonna, le voci elencate sotto per funzione: contatori, interruttori del
+#   chiamante, jsonb e testi di lavoro, valori calcolati o costanti tipizzate,
+#   chiavi polimorfe, il giorno operativo.
+#
+# ── FUNZIONI (5) ──────────────────────────────────────────────
+#     - pagamenti.fn_conferma_sistemazione — tipo esplicito: esito, v_mancante
+#     - pagamenti.fn_crea_distinta_correzione — tipo esplicito: p_motivo,
+#         righe_create, righe_saltate, esito, v_da_correggere, v_saltate,
+#         v_create
+#     - pagamenti.fn_get_or_create_vendite_contabile — tipo esplicito:
+#         p_codice_stato_interno
+#     - pagamenti.fn_posta_contabile — tipo esplicito: p_righe_attese,
+#         p_totale_atteso, movimenti_creati, righe_postate, righe_saltate,
+#         totale_postato, esito, v_righe_pronte, v_senza_abbinamento,
+#         v_righe_ids, v_movimenti, v_postate, v_saltate
+#     - pagamenti.fn_posta_riga_tardiva — tipo esplicito: esito
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pagamenti/20261009-47-update-oggi-dal-fuso-aziendale-pagamenti-mctit.yaml
+
+  - changeSet:
+      id: 20261009-47-update-oggi-dal-fuso-aziendale-pagamenti
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pagamenti: CURRENT_DATE -> script.fn_data_operativa() in 5 funzioni, perche'
+        «oggi» e' il giorno dell'azienda (SYSTEM_FUSO_ORARIO) e non quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 6
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname = 'pagamenti' AND p.proname IN ('fn_conferma_sistemazione', 'fn_crea_distinta_correzione', 'fn_get_or_create_vendite_contabile', 'fn_posta_contabile', 'fn_posta_riga_tardiva'))
+                  OR (n.nspname = 'script' AND p.proname = 'fn_fuso_operativo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_conferma_sistemazione(p_sistemazione_id pagamenti.sistemazioni.id%TYPE, p_ente_incasso_id pagamenti.enti_incasso.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(contabile_id pagamenti.vendite_contabili.id%TYPE, fondo_source_id vendite.fatture_fondi_fattura_source.id%TYPE, esito text)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_atto            pagamenti.sistemazioni%ROWTYPE;
+                  v_fattura         vendite.fatture%ROWTYPE;
+                  v_saldo           vendite.fatture.totale_a_pagare%TYPE;
+                  v_eccedenza       vendite.fatture.totale_a_pagare%TYPE;
+                  v_importo_riga    pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_centro_id       pagamenti.centri_riscossione.id%TYPE;
+                  v_stato_bozza_id  pagamenti.vendite_contabili_stati.id%TYPE;
+                  v_stato_riga_id   pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_tipo_fondo_id   vendite.tipi_fondi_fattura.id%TYPE;
+                  v_contabile_id    pagamenti.vendite_contabili.id%TYPE;
+                  v_fondo_id        vendite.fatture_fondi_fattura_source.id%TYPE;
+                  v_mancante        text;
+                  v_operatore       pagamenti.sistemazioni.user_esecuzione%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Eseguire un atto di sistemazione: sceglie la strada e ci
+                  --   mette sopra il denaro. ⭐ Non inventa nessuna macchina —
+                  --   le tre esistevano gia' tutte (D15-a).
+                  --
+                  -- ⭐ E' una MADRE: scrive la distinta, le sue righe e l'atto,
+                  --   e o riescono tutte o non ne resta nessuna. Sta nel
+                  --   database perche' e' tutto SQL: nessuna orchestrazione
+                  --   Python, l'atomicita' e' dentro la funzione.
+                  --
+                  -- Rev 2026-09-15 (brief distinta-numerata-sul-registro, L7):
+                  --   la distinta non porta piu' un codice composto qui
+                  --   (SIS_…): lo assegna il trigger sul registro DISTINTA
+                  --   dell'emittente dell'ATTO, che entra nell'INSERT (D5).
+                  -- =========================================================
+
+                  -- ── 1. L'atto, e il lucchetto ───────────────────────────
+                  -- ⚠️ FOR UPDATE: due conferme in parallelo sullo stesso atto
+                  --   creerebbero due documenti per la stessa decisione.
+                  SELECT * INTO v_atto
+                    FROM pagamenti.sistemazioni
+                   WHERE id = p_sistemazione_id
+                     FOR UPDATE;
+
+                  -- ⚠️ «Non esiste» e «non e' tuo» danno lo stesso messaggio di
+                  --   proposito: distinguerli direbbe a chi e' fuori perimetro
+                  --   che quell'atto c'e'. Stessa scelta di E_FATTURA_NON_TROVATA
+                  --   e di E_RATA_NON_TROVATA.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_conferma_sistemazione',
+                          'E_SISTEMAZIONE_NON_TROVATA',
+                          jsonb_build_object('detail', 'sistemazione inesistente o fuori perimetro',
+                                             'sistemazione_id', p_sistemazione_id),
+                          NULL::uuid,
+                          p_sistemazione_id::text
+                      );
+                  END IF;
+
+                  IF v_atto.stato <> 'BOZZA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_conferma_sistemazione',
+                          'E_SISTEMAZIONE_NON_CONFERMABILE',
+                          jsonb_build_object('detail', 'si conferma solo una sistemazione in bozza',
+                                             'sistemazione_id', v_atto.id,
+                                             'stato', v_atto.stato),
+                          NULL::uuid,
+                          v_atto.id::text, v_atto.stato::text
+                      );
+                  END IF;
+
+                  -- ── 2. L'eccedenza, ADESSO ──────────────────────────────
+                  SELECT * INTO v_fattura
+                    FROM vendite.fatture
+                   WHERE id = v_atto.fattura_origine_id;
+
+                  SELECT s.saldo INTO v_saldo
+                    FROM pagamenti.fn_get_saldo_fattura(v_atto.fattura_origine_id) s;
+
+                  -- ⭐ «Il residuo ha cambiato segno», la stessa condizione della
+                  --   vista e senza estremi fissi: vale identica su una fattura
+                  --   e su una nota di credito.
+                  v_eccedenza := CASE
+                      WHEN sign(v_saldo) = -sign(v_fattura.totale_a_pagare) THEN abs(v_saldo)
+                      ELSE 0
+                  END;
+
+                  IF abs(v_atto.importo) > v_eccedenza THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_conferma_sistemazione',
+                          'E_SISTEMAZIONE_ECCEDENZA_INSUFFICIENTE',
+                          jsonb_build_object(
+                              'detail', 'eccedenza attuale insufficiente',
+                              'sistemazione_id', v_atto.id,
+                              'fattura_origine_id', v_atto.fattura_origine_id,
+                              'eccedenza', v_eccedenza,
+                              'importo', v_atto.importo
+                          ),
+                          NULL::uuid,
+                          v_atto.fattura_origine_id::text,
+                          to_char(v_eccedenza, 'FM999999990.00'),
+                          to_char(abs(v_atto.importo), 'FM999999990.00')
+                      );
+                  END IF;
+
+                  v_operatore := COALESCE(
+                      NULLIF(current_setting('app.jwt_user', true), ''), CURRENT_USER);
+
+                  -- ⭐ Il segno lo da' il SALDO, non il tipo di documento: su una
+                  --   fattura sovra-incassata (saldo negativo) la riga esce
+                  --   negativa, su una nota sovra-rimborsata (saldo positivo)
+                  --   esce positiva. Nessun IF su «fattura o nota».
+                  v_importo_riga := sign(v_saldo) * abs(v_atto.importo);
+
+                  -- ── 3. La strada ───────────────────────────────────────
+                  IF v_atto.destinazione = 'RIPORTO' THEN
+                      -- ⚠️ Le tre colonne che il fondo pretende NOT NULL sono
+                      --   NULLABILI su vendite.fatture: il riporto e' il punto in
+                      --   cui le due regole si incontrano, e un 23502 direbbe il
+                      --   nome della colonna senza dire quale documento la ha
+                      --   vuota.
+                      v_mancante := CASE
+                          WHEN v_fattura.utility_id IS NULL          THEN 'il servizio (utility)'
+                          WHEN v_fattura.tipo_doc_fiscale_id IS NULL THEN 'il tipo di documento fiscale'
+                          WHEN v_fattura.valuta_id IS NULL           THEN 'la valuta'
+                          ELSE NULL
+                      END;
+
+                      IF v_mancante IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_conferma_sistemazione',
+                              'E_SISTEMAZIONE_RIPORTO_NON_POSSIBILE',
+                              jsonb_build_object(
+                                  'detail', 'la fattura di partenza non ha i dati che un fondo pretende',
+                                  'fattura_origine_id', v_atto.fattura_origine_id,
+                                  'mancante', v_mancante
+                              ),
+                              NULL::uuid,
+                              v_atto.fattura_origine_id::text, v_mancante
+                          );
+                      END IF;
+
+                      -- ⚠️ Unico tipo generico a catalogo. L'altro e' CANONE_RAI,
+                      --   che e' un'altra cosa. Se il dominio ne vorra' uno
+                      --   dedicato al riporto, e' un seed e questa riga.
+                      SELECT t.id INTO v_tipo_fondo_id
+                        FROM vendite.tipi_fondi_fattura t
+                       WHERE t.codice_interno = 'F_F_ADD_ACC' AND t.attivo IS TRUE
+                       ORDER BY t.id LIMIT 1;
+
+                      IF v_tipo_fondo_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_conferma_sistemazione', 'E_CONFIG_MANCANTE',
+                              jsonb_build_object('detail', 'tipo fondo fattura F_F_ADD_ACC assente o spento'),
+                              NULL::uuid,
+                              'il tipo di fondo fattura per addebiti e accrediti (F_F_ADD_ACC)'
+                          );
+                      END IF;
+
+                      -- ⭐ Nasce ASSEGNATO, non DISPONIBILE: il riporto nomina gia'
+                      --   la fattura di destinazione, e un fondo disponibile
+                      --   sarebbe un credito che aspetta una decisione gia' presa.
+                      INSERT INTO vendite.fatture_fondi_fattura_source (
+                          fattura_sorgente_id, tipo_fondo_fattura_id, importo, stato,
+                          fattura_figlia_id, data_assegnazione, user_assegnazione,
+                          billing_account_id, utility_id, tipo_doc_fiscale_id,
+                          emittente_soggetto_ruolo_id, valuta_id, origine, motivo, meta
+                      ) VALUES (
+                          v_atto.fattura_origine_id, v_tipo_fondo_id, abs(v_atto.importo), 'ASSEGNATO',
+                          v_atto.fattura_destinazione_id, now(), v_operatore,
+                          v_fattura.billing_account_id, v_fattura.utility_id, v_fattura.tipo_doc_fiscale_id,
+                          v_atto.emittente_soggetto_ruolo_id, v_fattura.valuta_id, 'MANUALE', v_atto.motivo,
+                          jsonb_build_object('origine', 'SISTEMAZIONE', 'sistemazione_id', v_atto.id)
+                      )
+                      RETURNING id INTO v_fondo_id;
+
+                  ELSE
+                      -- RIMBORSO e COMPENSAZIONE: tutte e due producono una distinta.
+                      IF v_atto.destinazione = 'RIMBORSO' THEN
+                          -- ⚠️ Da quale conto esce il bonifico e' una decisione del
+                          --   momento in cui si paga, non di quando si decide: per
+                          --   questo e' un parametro e non una colonna dell'atto.
+                          IF p_ente_incasso_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', 'pagamenti.fn_conferma_sistemazione',
+                                  'E_CONTABILE_DATI_OBBLIGATORI',
+                                  jsonb_build_object('detail', 'rimborso senza canale di uscita',
+                                                     'campo', 'ente_incasso_id',
+                                                     'sistemazione_id', v_atto.id),
+                                  NULL::uuid,
+                                  'il canale da cui esce il rimborso'
+                              );
+                          END IF;
+
+                          SELECT e.centro_riscossione_id INTO v_centro_id
+                            FROM pagamenti.enti_incasso e
+                           WHERE e.id = p_ente_incasso_id;
+                      ELSE
+                          -- ⚠️ Il centro di compensazione e' UNICO per costruzione
+                          --   dal lotto 1 (indice unico parziale su is_compensazione).
+                          SELECT c.id INTO v_centro_id
+                            FROM pagamenti.centri_riscossione c
+                           WHERE c.is_compensazione IS TRUE AND c.attivo IS TRUE;
+                      END IF;
+
+                      IF v_centro_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_conferma_sistemazione', 'E_CONFIG_MANCANTE',
+                              jsonb_build_object('detail', 'centro di riscossione non risolvibile',
+                                                 'destinazione', v_atto.destinazione,
+                                                 'ente_incasso_id', p_ente_incasso_id),
+                              NULL::uuid,
+                              'il centro di riscossione della sistemazione'
+                          );
+                      END IF;
+
+                      SELECT s.id INTO v_stato_bozza_id
+                        FROM pagamenti.vendite_contabili_stati s
+                       WHERE s.codice_interno = 'BOZZA' AND s.attivo IS TRUE
+                       ORDER BY s.id LIMIT 1;
+
+                      SELECT s.id INTO v_stato_riga_id
+                        FROM pagamenti.vendite_contabili_righe_stati s
+                       WHERE s.codice_interno = 'ABBINATA' AND s.attivo IS TRUE
+                       ORDER BY s.id LIMIT 1;
+
+                      IF v_stato_bozza_id IS NULL OR v_stato_riga_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_conferma_sistemazione', 'E_CONFIG_MANCANTE',
+                              jsonb_build_object('detail', 'stati contabili BOZZA/ABBINATA assenti o spenti'),
+                              NULL::uuid,
+                              'gli stati contabili BOZZA e ABBINATA'
+                          );
+                      END IF;
+
+                      -- ⭐ La distinta si crea DIRETTA e non con
+                      --   fn_get_or_create_vendite_contabile, che e' costruita per
+                      --   CONDIVIDERE: due rimborsi sullo stesso canale nello
+                      --   stesso giorno riuserebbero la stessa testata, e il
+                      --   secondo atto sbatterebbe su uq_sistemazioni_contabile con
+                      --   un 23505 muto.
+                      -- ⭐ Rev 2026-09-15 (D5): il codice NON si compone qui. Lo
+                      --   assegna il trigger sul registro DISTINTA dell'emittente
+                      --   dell'ATTO — che entra nell'INSERT: e' NOT NULL su
+                      --   sistemazioni ed e' lo stesso valore scritto sul fondo
+                      --   nel ramo RIPORTO, una sorgente sola dentro la stessa
+                      --   madre. L'atto si ritrova da meta.sistemazione_id e da
+                      --   sistemazioni.contabile_id; l'unicita' «una contabile per
+                      --   atto» la tiene uq_sistemazioni_contabile.
+                      INSERT INTO pagamenti.vendite_contabili (
+                          centro_riscossione_id, ente_incasso_id, emittente_soggetto_ruolo_id,
+                          data_contabile, data_registrazione, stato_id, origine, meta
+                      ) VALUES (
+                          v_centro_id,
+                          CASE WHEN v_atto.destinazione = 'RIMBORSO' THEN p_ente_incasso_id END,
+                          v_atto.emittente_soggetto_ruolo_id,
+                          (SELECT script.fn_data_operativa()), (SELECT script.fn_data_operativa()), v_stato_bozza_id, 'GENERATA',
+                          jsonb_build_object('origine', 'SISTEMAZIONE',
+                                             'sistemazione_id', v_atto.id,
+                                             'destinazione', v_atto.destinazione)
+                      )
+                      RETURNING id INTO v_contabile_id;
+
+                      -- ⚠️ Statement SEPARATO, non una CTE: padre e figlio nella
+                      --   stessa CTE non passano sotto la row security — il padre
+                      --   non e' ancora visibile e il WITH CHECK del figlio nega.
+                      --   Lezione pagata nel lotto 4.
+                      INSERT INTO pagamenti.vendite_contabili_righe (
+                          contabile_id, riferimento_ente, data_pagamento, importo,
+                          fattura_id, billing_account_id, stato_id, meta
+                      ) VALUES (
+                          v_contabile_id,
+                          concat('SIS_', v_atto.id, '_ORIGINE'),
+                          (SELECT script.fn_data_operativa()),
+                          v_importo_riga,
+                          v_atto.fattura_origine_id,
+                          v_fattura.billing_account_id,
+                          v_stato_riga_id,
+                          jsonb_build_object('origine', 'SISTEMAZIONE', 'sistemazione_id', v_atto.id)
+                      );
+
+                      IF v_atto.destinazione = 'COMPENSAZIONE' THEN
+                          -- ⭐ L'opposto esatto della prima: due righe che sommano a
+                          --   zero, che e' letteralmente che cosa vuol dire compensare.
+                          INSERT INTO pagamenti.vendite_contabili_righe (
+                              contabile_id, riferimento_ente, data_pagamento, importo,
+                              fattura_id, billing_account_id, stato_id, meta
+                          )
+                          SELECT v_contabile_id,
+                                 concat('SIS_', v_atto.id, '_DESTINAZIONE'),
+                                 (SELECT script.fn_data_operativa()),
+                                 - v_importo_riga,
+                                 f.id,
+                                 f.billing_account_id,
+                                 v_stato_riga_id,
+                                 jsonb_build_object('origine', 'SISTEMAZIONE', 'sistemazione_id', v_atto.id)
+                            FROM vendite.fatture f
+                           WHERE f.id = v_atto.fattura_destinazione_id;
+                      END IF;
+                  END IF;
+
+                  -- ── 4. L'atto diventa un fatto ─────────────────────────
+                  UPDATE pagamenti.sistemazioni s
+                     SET stato           = 'CONFERMATA',
+                         data_esecuzione = now(),
+                         user_esecuzione = v_operatore,
+                         contabile_id    = v_contabile_id,
+                         fondo_source_id = v_fondo_id
+                   WHERE s.id = v_atto.id;
+
+                  RETURN QUERY
+                  SELECT v_contabile_id,
+                         v_fondo_id,
+                         CASE v_atto.destinazione
+                             WHEN 'RIPORTO'       THEN 'FONDO_CREATO'
+                             WHEN 'RIMBORSO'      THEN 'DISTINTA_RIMBORSO_CREATA'
+                             ELSE                      'DISTINTA_COMPENSAZIONE_CREATA'
+                         END::text;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_crea_distinta_correzione(p_contabile_id pagamenti.vendite_contabili.id%TYPE, p_data_contabile pagamenti.vendite_contabili.data_contabile%TYPE DEFAULT script.fn_data_operativa(), p_motivo text DEFAULT NULL::text)
+               RETURNS TABLE(contabile_id pagamenti.vendite_contabili.id%TYPE, righe_create integer, righe_saltate integer, esito text)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_codice     pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_centro_id        pagamenti.vendite_contabili.centro_riscossione_id%TYPE;
+                  v_ente_id          pagamenti.vendite_contabili.ente_incasso_id%TYPE;
+                  v_emittente_sr     pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE;
+                  v_codice_origine   pagamenti.vendite_contabili.codice%TYPE;
+                  v_gia_corretta     pagamenti.vendite_contabili.codice%TYPE;
+                  v_stato_bozza_id   pagamenti.vendite_contabili_stati.id%TYPE;
+                  v_stato_riga_id    pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_nuova_id         pagamenti.vendite_contabili.id%TYPE;
+                  v_da_correggere    integer;
+                  v_saltate          integer;
+                  v_create           integer;
+              BEGIN
+                  -- =========================================================
+                  -- Guard di parametro: un id nullo o non positivo non esce da
+                  -- nessuna interfaccia — lo produce solo un chiamante rotto.
+                  -- =========================================================
+                  IF p_contabile_id IS NULL OR p_contabile_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_contabile_id',
+                                             'valore', p_contabile_id),
+                          NULL::uuid,
+                          'pagamenti.fn_crea_distinta_correzione',
+                          'p_contabile_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  -- =========================================================
+                  -- La distinta di partenza, bloccata: fra il controllo «e'
+                  -- gia' stata corretta?» e la scrittura del legame non deve
+                  -- passare nessun altro.
+                  -- ⚠️ Sotto RLS «non esiste» e «non la vedi» arrivano qui allo
+                  --    stesso modo, ed e' la scelta di tutto lo schema.
+                  -- ⭐ Rev 2026-09-15: si legge anche l'EMITTENTE — la correzione
+                  --    nasce dello stesso emittente, quindi sullo stesso registro.
+                  -- =========================================================
+                  SELECT st.codice_interno, c.centro_riscossione_id, c.ente_incasso_id,
+                         c.emittente_soggetto_ruolo_id, c.codice
+                    INTO v_stato_codice, v_centro_id, v_ente_id, v_emittente_sr, v_codice_origine
+                    FROM pagamenti.vendite_contabili c
+                    JOIN pagamenti.vendite_contabili_stati st ON st.id = c.stato_id
+                   WHERE c.id = p_contabile_id
+                     FOR UPDATE OF c;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_CONTABILE_NON_TROVATA',
+                          jsonb_build_object('contabile_id', p_contabile_id),
+                          NULL::uuid,
+                          p_contabile_id::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- Si corregge cio' che e' stato REGISTRATO. Una bozza non si
+                  -- corregge: si modifica, ed e' un altro gesto.
+                  -- =========================================================
+                  IF v_stato_codice <> 'CHIUSA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_CONTABILE_CORREZIONE_NON_REGISTRATA',
+                          jsonb_build_object('campo', 'stato_id',
+                                             'contabile_id', p_contabile_id,
+                                             'stato', v_stato_codice),
+                          NULL::uuid,
+                          v_codice_origine, v_stato_codice);
+                  END IF;
+
+                  -- =========================================================
+                  -- C-4: una correzione sola per documento. ⚠️ L'unico parziale
+                  -- e' la rete; qui si rifiuta con un codice che NOMINA la
+                  -- correzione che c'e' gia', perche' un 23505 non la dice.
+                  -- =========================================================
+                  SELECT c.codice INTO v_gia_corretta
+                    FROM pagamenti.vendite_contabili c
+                   WHERE c.contabile_corretta_id = p_contabile_id
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_CONTABILE_GIA_CORRETTA',
+                          jsonb_build_object('contabile_id', p_contabile_id,
+                                             'correzione', v_gia_corretta),
+                          NULL::uuid,
+                          v_codice_origine, v_gia_corretta);
+                  END IF;
+
+                  -- =========================================================
+                  -- Che cosa c'e' da correggere: SOLO le righe POSTATE, cioe'
+                  -- quelle che hanno prodotto un movimento. Le altre si contano
+                  -- e si dicono (C-2).
+                  -- =========================================================
+                  SELECT count(*) FILTER (WHERE rs.codice_interno = 'POSTATA'),
+                         count(*) FILTER (WHERE rs.codice_interno <> 'POSTATA')
+                    INTO v_da_correggere, v_saltate
+                    FROM pagamenti.vendite_contabili_righe r
+                    JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
+                   WHERE r.contabile_id = p_contabile_id
+                     AND r.attivo IS TRUE;
+
+                  IF COALESCE(v_da_correggere, 0) = 0 THEN
+                      -- ⭐ Non e' un errore: e' un esito. Il database dice il
+                      --    fatto, il frontend sceglie la frase.
+                      RETURN QUERY SELECT NULL::bigint, 0, COALESCE(v_saltate, 0),
+                                          'NULLA_DA_CORREGGERE'::text;
+                      RETURN;
+                  END IF;
+
+                  SELECT s.id INTO v_stato_bozza_id
+                    FROM pagamenti.vendite_contabili_stati s
+                   WHERE s.codice_interno = 'BOZZA' AND s.attivo IS TRUE;
+
+                  SELECT s.id INTO v_stato_riga_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.codice_interno = 'DA_ABBINARE' AND s.attivo IS TRUE;
+
+                  IF v_stato_bozza_id IS NULL OR v_stato_riga_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('detail', 'stato BOZZA o DA_ABBINARE assente',
+                                             'contabile_id', p_contabile_id),
+                          NULL::uuid,
+                          'BOZZA / DA_ABBINARE');
+                  END IF;
+
+                  -- =========================================================
+                  -- La distinta NUOVA: stesso centro, stesso canale, STESSO
+                  -- EMITTENTE, in bozza.
+                  -- ⛔ `codice` non si passa: lo assegna il trigger sul registro
+                  --    DISTINTA dell'emittente (rev 2026-09-15, D5) — stesso
+                  --    emittente, stesso registro, il PROSSIMO del sezionale.
+                  -- ⛔ E non si usa il get-or-create: la sua chiave di riuso
+                  --    comprende l'operatore, e queste righe finirebbero nella
+                  --    distinta di lavoro di oggi.
+                  -- =========================================================
+                  INSERT INTO pagamenti.vendite_contabili (
+                      centro_riscossione_id, ente_incasso_id, emittente_soggetto_ruolo_id,
+                      data_contabile, data_registrazione, stato_id, origine,
+                      contabile_corretta_id, meta)
+                  VALUES (
+                      v_centro_id, v_ente_id, v_emittente_sr,
+                      p_data_contabile, (SELECT script.fn_data_operativa()), v_stato_bozza_id, 'MANUALE',
+                      p_contabile_id,
+                      jsonb_strip_nulls(jsonb_build_object(
+                          'correzione_di', v_codice_origine,
+                          'motivo_correzione', NULLIF(btrim(COALESCE(p_motivo, '')), ''))))
+                  RETURNING id INTO v_nuova_id;
+
+                  -- =========================================================
+                  -- Le righe: segno opposto, e i FATTI dell'originale.
+                  -- ⭐ Fattura e rata si portano dietro (C-1): l'abbinamento
+                  --    non si inventa, si rispecchia. Ma lo stato e'
+                  --    DA_ABBINARE, non ABBINATA: cosi' la riga non occupa
+                  --    spazio, il guard della capienza non la esamina, e il
+                  --    doppio tempo resta il gesto di una persona.
+                  -- ⚠️ `riferimento_ente` si conserva: e' lo stesso pagamento
+                  --    del mondo, e cambiarlo perderebbe l'unico appiglio per
+                  --    ritrovarlo nell'estratto conto.
+                  -- =========================================================
+                  INSERT INTO pagamenti.vendite_contabili_righe (
+                      contabile_id, riferimento_ente, data_pagamento, data_valuta,
+                      data_operazione, importo, fattura_id, billing_account_id,
+                      scadenza_id, stato_id, meta)
+                  SELECT v_nuova_id, r.riferimento_ente, r.data_pagamento, r.data_valuta,
+                         r.data_operazione, -r.importo, r.fattura_id, r.billing_account_id,
+                         r.scadenza_id, v_stato_riga_id,
+                         jsonb_build_object('corregge_riga_id', r.id)
+                    FROM pagamenti.vendite_contabili_righe r
+                    JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
+                   WHERE r.contabile_id = p_contabile_id
+                     AND r.attivo IS TRUE
+                     AND rs.codice_interno = 'POSTATA';
+
+                  GET DIAGNOSTICS v_create = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_nuova_id, v_create, COALESCE(v_saltate, 0),
+                                      'CREATA'::text;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id pagamenti.vendite_contabili.centro_riscossione_id%TYPE, p_data_contabile pagamenti.vendite_contabili.data_contabile%TYPE, p_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE DEFAULT script.fn_data_operativa(), p_ente_incasso_id pagamenti.vendite_contabili.ente_incasso_id%TYPE DEFAULT NULL::bigint, p_lotto_id pagamenti.vendite_contabili_lotti.lotto_id%TYPE DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta pagamenti.vendite_contabili.meta%TYPE DEFAULT '{}'::jsonb, p_origine pagamenti.vendite_contabili.origine%TYPE DEFAULT 'GENERATA'::character varying, p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE DEFAULT NULL::bigint)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_contabile_id pagamenti.vendite_contabili.id%TYPE;
+                v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
+                v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                v_operatore pagamenti.vendite_contabili.user_insert%TYPE;
+                v_emittente_sr pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recuperare o creare una testata contabile vendite.
+                --
+                -- Regole principali:
+                --   - ⭐ una distinta MANUALE e' il LOTTO DI LAVORO DI UN OPERATORE:
+                --     il riuso comprende CHI STA LAVORANDO, non solo la giornata.
+                --     Cosi' la contesa fra due operatori non esiste, e il lock che
+                --     sarebbe servito a governarla non si costruisce (D12-a).
+                --
+                -- Rev 2026-09-15 (brief distinta-numerata-sul-registro, L6):
+                --   la distinta SA DI CHI E' (D3). Parametro in coda
+                --   p_emittente_fiscale_id (PK), derivazione dal lotto, poi la
+                --   sede unica pagamenti.fn_get_emittente_distinta; l'emittente
+                --   entra nella CHIAVE DI RIUSO di entrambi i rami e
+                --   nell'INSERT. ⛔ `codice` non si passa: lo assegna il trigger
+                --   sul registro (D5) — sparito il DEFAULT di colonna del 28-08.
+                --
+                -- Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id, e
+                --   con lui il ramo di riuso «una testata per atto», la mutua
+                --   esclusione con p_lotto_id e la colonna nell'INSERT.
+                --   ⭐ Girato il verso del legame e' l'ATTO a generare la contabile e
+                --   a tenerne l'id: chiederla qui voleva dire far nascere la testata
+                --   SAPENDO gia' di chi sarebbe stata, cioe' il verso opposto a come
+                --   funziona il processo. L'unicita' «una contabile per atto» vive
+                --   adesso su uq_sistemazioni_contabile.
+                --   ⚠️ Nessun chiamante passava quel parametro: misurato il
+                --   2026-08-22 su tutte le funzioni DB e su backend/ + frontend/.
+                --
+                -- Rev 2026-08-21 (passo P-7): i nove E_GENERICO passano ai codici
+                -- registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                -- ⭐ I DUE guard che un OPERATORE puo' far scattare davvero: il
+                --    centro e la data li sceglie lui in un form. Codice di dominio,
+                --    non un codice trasversale, perche' il messaggio lo legge una
+                --    persona e non deve nominare un parametro PL/pgSQL.
+                IF p_centro_riscossione_id IS NULL OR p_centro_riscossione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_centro_riscossione_id obbligatorio > 0',
+                      'campo', 'centro_riscossione_id',
+                      'p_centro_riscossione_id', p_centro_riscossione_id
+                    ),
+                    NULL::uuid,
+                    'il centro di riscossione'
+                  );
+                END IF;
+
+                IF p_data_contabile IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_data_contabile obbligatoria',
+                      'campo', 'data_contabile'
+                    ),
+                    NULL::uuid,
+                    'la data contabile'
+                  );
+                END IF;
+
+                -- ⚠️ Da qui in giu' i guard non difendono un DATO dell'operatore:
+                --    difendono un'INVARIANTE DELLA CHIAMATA. Su questi il NULL e'
+                --    AMMESSO, e un id <= 0 o uno stato vuoto non escono da nessuna
+                --    interfaccia — li produce solo un chiamante rotto. Per questo il
+                --    codice e' E_PAGAMENTI_CHIAMATA_NON_VALIDA, classe TECNICO (500):
+                --    l'operatore non ha niente da correggere, e il messaggio nomina il
+                --    parametro perche' il suo lettore e' chi ha scritto la chiamata.
+                --    ⛔ NON E_PARAMETRO_INVALIDO: quello e' uno split rimandato
+                --    (D11 di brief-db-be-classe-codici-errore) che sopravvive per le
+                --    funzioni vecchie, non una sede per il codice nuovo.
+
+                IF p_ente_incasso_id IS NOT NULL AND p_ente_incasso_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_ente_incasso_id deve essere > 0 se valorizzato',
+                      'p_ente_incasso_id', p_ente_incasso_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_ente_incasso_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_lotto_id deve essere > 0 se valorizzato',
+                      'p_lotto_id', p_lotto_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_lotto_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                -- Rev 2026-09-15: stessa specie dei due sopra — NULL ammesso, un
+                -- id <= 0 lo produce solo un chiamante rotto.
+                IF p_emittente_fiscale_id IS NOT NULL AND p_emittente_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_emittente_fiscale_id deve essere > 0 se valorizzato',
+                      'p_emittente_fiscale_id', p_emittente_fiscale_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_emittente_fiscale_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_codice_stato_interno IS NULL OR btrim(p_codice_stato_interno) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_codice_stato_interno obbligatorio'
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_codice_stato_interno (obbligatorio, non vuoto)'
+                  );
+                END IF;
+
+                -- Il vocabolario e' presidiato anche dal CHECK, ma un 23514 non dice
+                -- quale colonna: un valore fuori vocabolario lo produce solo un
+                -- chiamante rotto, quindi TECNICO.
+                IF p_origine IS NULL OR p_origine NOT IN ('MANUALE', 'AUTOMATICA', 'GENERATA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_origine fuori vocabolario',
+                      'p_origine', p_origine
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile',
+                    'p_origine (MANUALE, AUTOMATICA o GENERATA)'
+                  );
+                END IF;
+
+                -- Chi sta lavorando: la STESSA espressione con cui
+                -- script.trgfn_audit_data_user_generic valorizza user_insert, cosi' la
+                -- chiave di riuso e la colonna scritta non possono divergere.
+                v_operatore := COALESCE(
+                    NULLIF(current_setting('app.jwt_user', true), ''),
+                    CURRENT_USER
+                );
+
+                SELECT s.id
+                  INTO v_stato_id
+                  FROM pagamenti.vendite_contabili_stati s
+                 WHERE s.codice_interno = p_codice_stato_interno
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                -- ⚠️ Non e' un parametro sbagliato: e' il catalogo degli stati a
+                -- non avere quella riga, o ad averla spenta. Classe TECNICO.
+                IF v_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_STATO_NON_CONFIGURATO',
+                    jsonb_build_object(
+                      'detail', 'stato contabile non trovato/attivo',
+                      'codice_interno', p_codice_stato_interno
+                    ),
+                    NULL::uuid,
+                    p_codice_stato_interno
+                  );
+                END IF;
+
+                v_data_registrazione := COALESCE(p_data_registrazione, script.fn_data_operativa());
+
+                -- =========================================================
+                -- Rev 2026-09-15 — DI CHI E' LA DISTINTA, PRIMA DI CERCARLA.
+                --   La chiave di riuso comprende l'emittente (D3): si risolve
+                --   qui, prima delle due SELECT, o la manuale non ritroverebbe
+                --   mai «quella di prima».
+                -- =========================================================
+
+                -- 1) Il parametro: PK -> SR, esplicito, come trgfn_ordini_gen_numero.
+                --    Un id che non e' un emittente lo produce solo un chiamante rotto.
+                IF p_emittente_fiscale_id IS NOT NULL THEN
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = p_emittente_fiscale_id;
+
+                  IF v_emittente_sr IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                      jsonb_build_object(
+                        'detail', 'p_emittente_fiscale_id non e'' un emittente fiscale',
+                        'p_emittente_fiscale_id', p_emittente_fiscale_id
+                      ),
+                      NULL::uuid,
+                      'pagamenti.fn_get_or_create_vendite_contabile', 'p_emittente_fiscale_id (non e'' un emittente fiscale)'
+                    );
+                  END IF;
+                END IF;
+
+                -- 2) Dal LOTTO: chi passa un lotto sa gia' di chi e' la distinta
+                --    (fatturazione_lotti.emittente_soggetto_ruolo_id e' NOT NULL), e
+                --    lo dice per primo — il giro di massa di un admin globale in
+                --    modalita' «tutti gli emittenti» ha lotti di N aziende e una
+                --    sessione che non risolve nessuno.
+                -- ⚠️ STRICT: questa funzione e' INVOKER e fatturazione_lotti ha la
+                --    RLS. Un lotto che non c'e' o che non si vede NON cade sulla
+                --    sessione: la distinta del lotto di un altro nascerebbe di chi
+                --    agisce, agganciata a un lotto altrui (la FK del link non guarda
+                --    la RLS). Dalla pipeline non ci si arriva — il sync legge il
+                --    lotto della fattura che sta lavorando, nel proprio perimetro —
+                --    ci arriva solo una chiamata a mano. TECNICO.
+                IF v_emittente_sr IS NULL AND p_lotto_id IS NOT NULL THEN
+                  SELECT l.emittente_soggetto_ruolo_id
+                    INTO v_emittente_sr
+                    FROM vendite.fatturazione_lotti l
+                   WHERE l.id = p_lotto_id;
+
+                  IF v_emittente_sr IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                      jsonb_build_object(
+                        'detail', 'p_lotto_id: lotto inesistente o fuori perimetro',
+                        'p_lotto_id', p_lotto_id
+                      ),
+                      NULL::uuid,
+                      'pagamenti.fn_get_or_create_vendite_contabile', 'p_lotto_id (lotto inesistente o fuori perimetro)'
+                    );
+                  END IF;
+                END IF;
+
+                -- 3) La sede unica: dato e coerente col canale / dal canale /
+                --    dalla sessione / rifiuto parlante (D4). Il trigger a10_emittente
+                --    la ri-applica all'INSERT (livelli 0-1, idempotente).
+                v_emittente_sr := pagamenti.fn_get_emittente_distinta(v_emittente_sr, p_ente_incasso_id);
+
+                IF p_lotto_id IS NULL THEN
+                  -- ⭐ D12-a: su una distinta MANUALE la chiave di riuso comprende
+                  --    l'OPERATORE. Il raggruppamento «giornata + canale» non ha un
+                  --    referente nel mondo — nessun documento reale corrisponde a «tutti
+                  --    gli incassi banca di lunedi' digitati a mano» — mentre il lotto di
+                  --    lavoro di una persona ce l'ha. E con questo la contesa fra due
+                  --    operatori non esiste: niente colonne di blocco, niente scadenze del
+                  --    lock, niente sblocco d'emergenza.
+                  -- ⚠️ Sulle altre due origini la chiave resta quella di prima: una
+                  --    distinta GENERATA non e' il lotto di lavoro di nessuno, e una
+                  --    AUTOMATICA e' il file.
+                  -- ⭐ Rev 2026-09-15: l'EMITTENTE entra nella chiave su tutte le
+                  --    origini (D3). Sulla manuale non cambia niente in pratica
+                  --    (operatore => emittente); la GENERATA senza lotto smette di
+                  --    raccogliere i fondi di tutti — e' la decisione aperta del
+                  --    20260822-20, chiusa nel verso «una per emittente».
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.emittente_soggetto_ruolo_id = v_emittente_sr
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.origine = p_origine
+                     AND (p_origine <> 'MANUALE' OR vc.user_insert = v_operatore)
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                ELSE
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                    JOIN pagamenti.vendite_contabili_lotti vcl
+                      ON vcl.contabile_id = vc.id
+                   WHERE vcl.lotto_id = p_lotto_id
+                     AND vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.emittente_soggetto_ruolo_id = v_emittente_sr
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.origine = p_origine
+                     AND (p_origine <> 'MANUALE' OR vc.user_insert = v_operatore)
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                END IF;
+
+                IF v_contabile_id IS NULL THEN
+                  -- ⭐ Rev 2026-09-15: il codice lo assegna il TRIGGER sul registro
+                  --    DISTINTA dell'emittente (a10_gen_codice, D5): non si passa.
+                  --    Fino a oggi lo metteva il DEFAULT della colonna (rev 28-08),
+                  --    caduto con 20260915-21. L'emittente entra nella riga: il
+                  --    trigger a10_emittente lo ri-valuta (livelli 0-1, idempotente).
+                  INSERT INTO pagamenti.vendite_contabili (
+                    centro_riscossione_id,
+                    ente_incasso_id,
+                    emittente_soggetto_ruolo_id,
+                    data_contabile,
+                    data_registrazione,
+                    stato_id,
+                    origine,
+                    meta
+                  ) VALUES (
+                    p_centro_riscossione_id,
+                    p_ente_incasso_id,
+                    v_emittente_sr,
+                    p_data_contabile,
+                    v_data_registrazione,
+                    v_stato_id,
+                    p_origine,
+                    COALESCE(p_meta, '{}'::jsonb)
+                  )
+                  RETURNING id INTO v_contabile_id;
+                END IF;
+
+                IF p_lotto_id IS NOT NULL THEN
+                  INSERT INTO pagamenti.vendite_contabili_lotti (
+                    lotto_id,
+                    contabile_id,
+                    meta
+                  ) VALUES (
+                    p_lotto_id,
+                    v_contabile_id,
+                    jsonb_build_object('source','fn_get_or_create_vendite_contabile')
+                  )
+                  ON CONFLICT (lotto_id, contabile_id) DO NOTHING;
+                END IF;
+
+                RETURN v_contabile_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_posta_contabile(p_contabile_id pagamenti.vendite_contabili.id%TYPE, p_righe_attese integer DEFAULT NULL::integer, p_totale_atteso numeric DEFAULT NULL::numeric)
+               RETURNS TABLE(movimenti_creati integer, righe_postate integer, righe_saltate integer, totale_postato numeric, esito text)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_id           pagamenti.vendite_contabili_stati.id%TYPE;
+                  v_stato              pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_stato_label        pagamenti.vendite_contabili_stati.descrizione%TYPE;
+                  v_registrabile       pagamenti.vendite_contabili_stati.is_registrabile%TYPE;
+                  v_codice             pagamenti.vendite_contabili.codice%TYPE;
+                  v_centro_id          pagamenti.centri_riscossione.id%TYPE;
+                  v_data_contabile     pagamenti.vendite_contabili.data_contabile%TYPE;
+                  v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                  v_importo_dichiarato pagamenti.vendite_contabili.importo_dichiarato%TYPE;
+                  v_stato_postata_id   pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_stato_chiusa_id    pagamenti.vendite_contabili_stati.id%TYPE;
+                  v_somma_righe        pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_righe_pronte       integer;
+                  v_totale_pronte      pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_senza_abbinamento  integer;
+                  -- ⚠️ `colonna%TYPE[]` non esiste in PostgreSQL: qui il tipo
+                  --    resta esplicito. Porta id di vendite_contabili_righe.
+                  v_righe_ids          bigint[];
+                  v_movimenti          integer := 0;
+                  v_postate            integer := 0;
+                  v_saltate            integer := 0;
+                  v_totale_postato     pagamenti.vendite_contabili_righe.importo%TYPE := 0;
+              BEGIN
+                  -- =========================================================
+                  -- 1) GUARD DI PARAMETRO
+                  --    Un id nullo o non positivo non esce da nessuna
+                  --    interfaccia: lo produce solo un chiamante rotto, e per
+                  --    questo il codice è TECNICO e non DATO_ERRATO.
+                  -- =========================================================
+                  IF p_contabile_id IS NULL OR p_contabile_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_contabile_id', 'valore', p_contabile_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_contabile',
+                          'p_contabile_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  -- La dichiarazione è facoltativa, ma è UNA cosa sola: mezza
+                  -- dichiarazione non si può verificare, e accettarla in
+                  -- silenzio significherebbe registrare senza controllo
+                  -- credendo di averlo fatto.
+                  IF (p_righe_attese IS NULL) <> (p_totale_atteso IS NULL) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'p_righe_attese',  p_righe_attese,
+                              'p_totale_atteso', p_totale_atteso),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_contabile',
+                          'p_righe_attese e p_totale_atteso si passano insieme, o non si passano');
+                  END IF;
+
+                  IF p_righe_attese IS NOT NULL AND p_righe_attese < 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_righe_attese', 'valore', p_righe_attese),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_contabile',
+                          'p_righe_attese non puo'' essere negativo');
+                  END IF;
+
+                  -- =========================================================
+                  -- 2) LOCK DELLA TESTATA
+                  --    Serve a non registrare due volte in parallelo. ⚠️ FOR
+                  --    UPDATE OF c: si blocca la sola testata, non la lookup
+                  --    degli stati che le sta accanto nella JOIN.
+                  -- =========================================================
+                  SELECT c.stato_id, s.codice_interno, s.descrizione, s.is_registrabile, c.codice,
+                         c.centro_riscossione_id, c.data_contabile, c.data_registrazione,
+                         c.importo_dichiarato
+                    INTO v_stato_id, v_stato, v_stato_label, v_registrabile, v_codice,
+                         v_centro_id, v_data_contabile, v_data_registrazione,
+                         v_importo_dichiarato
+                    FROM pagamenti.vendite_contabili c
+                    JOIN pagamenti.vendite_contabili_stati s ON s.id = c.stato_id
+                   WHERE c.id = p_contabile_id
+                     FOR UPDATE OF c;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_NON_TROVATA',
+                          jsonb_build_object('contabile_id', p_contabile_id),
+                          NULL::uuid,
+                          p_contabile_id::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- 3) GUARD DI STATO
+                  --    Si registra SOLO da uno stato REGISTRABILE — oggi la sola
+                  --    VALIDATA: è il gesto «ho finito di inserire» (D14-a-bis).
+                  --    Da BOZZA la distinta potrebbe cambiare mentre la si
+                  --    registra; da CHIUSA o ANNULLATA il lavoro è finito.
+                  -- ⭐ Rev 2026-09-18 (D20-d): la domanda si fa al CATALOGO
+                  --    (vendite_contabili_stati.is_registrabile), non al letterale
+                  --    'VALIDATA'. Stesso codice, stessa frase: cambia CHI lo dice.
+                  --    Il dettaglio della distinta porta la stessa bandiera, così
+                  --    «Registra» si spegne col motivo invece di finire qui in 409.
+                  --    Fail-closed: uno stato nuovo non classificato non si registra.
+                  -- =========================================================
+                  IF v_registrabile IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_NON_REGISTRABILE',
+                          jsonb_build_object(
+                              'contabile_id', p_contabile_id,
+                              'codice',       v_codice,
+                              'stato',        v_stato),
+                          NULL::uuid,
+                          v_codice,
+                          lower(v_stato_label));
+                  END IF;
+
+                  -- =========================================================
+                  -- 4) QUADRATURA DELLA DISTINTA (D12-e)
+                  --    «Ho letto tutto quello che è arrivato?» — tutte le
+                  --    righe attive, SCARTATA compresa: quel denaro è
+                  --    arrivato comunque.
+                  --    ℹ️ Lo stesso controllo lo fa il guard di validazione
+                  --    entrando in VALIDATA; qui si ripete perché fra i due
+                  --    momenti le righe possono essere cambiate.
+                  -- =========================================================
+                  SELECT COALESCE(SUM(cr.importo), 0)
+                    INTO v_somma_righe
+                    FROM pagamenti.vendite_contabili_righe cr
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE;
+
+                  IF v_importo_dichiarato IS NOT NULL
+                     AND v_importo_dichiarato IS DISTINCT FROM v_somma_righe THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA',
+                          jsonb_build_object(
+                              'campo',              'importo_dichiarato',
+                              'contabile_id',       p_contabile_id,
+                              'codice',             v_codice,
+                              'importo_dichiarato', v_importo_dichiarato,
+                              'somma_righe',        v_somma_righe),
+                          NULL::uuid,
+                          v_codice,
+                          v_importo_dichiarato::text,
+                          v_somma_righe::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- 5) LE RIGHE PRONTE, e la DICHIARAZIONE di chi conferma
+                  --    Pronte = stato `is_postabile`. Le SOSPESE restano dove
+                  --    sono: è D3-a, e non richiede nessun meccanismo nuovo.
+                  -- =========================================================
+                  SELECT COUNT(*)::integer, COALESCE(SUM(cr.importo), 0)
+                    INTO v_righe_pronte, v_totale_pronte
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE
+                     AND st.is_postabile IS TRUE;
+
+                  -- ⚠️ Si rifiuta PRIMA di scrivere qualsiasi cosa: la
+                  --    registrazione non si torna indietro, e un avviso dopo
+                  --    non ripara niente.
+                  IF p_righe_attese IS NOT NULL
+                     AND (p_righe_attese <> v_righe_pronte
+                          OR p_totale_atteso IS DISTINCT FROM v_totale_pronte) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE',
+                          jsonb_build_object(
+                              'contabile_id',   p_contabile_id,
+                              'codice',         v_codice,
+                              'righe_attese',   p_righe_attese,
+                              'totale_atteso',  p_totale_atteso,
+                              'righe_pronte',   v_righe_pronte,
+                              'totale_pronte',  v_totale_pronte),
+                          NULL::uuid,
+                          v_codice,
+                          p_righe_attese::text,
+                          p_totale_atteso::text,
+                          v_righe_pronte::text,
+                          v_totale_pronte::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- 5-bis) IL RIFIUTO PARLANTE
+                  --    Da una riga non abbinata non si deriva un movimento. Lo
+                  --    direbbe comunque il trigger di mirror, ma più tardi e
+                  --    con un messaggio che parla del movimento invece che
+                  --    della riga.
+                  --    ℹ️ Il contesto NON porta la chiave `campo`, e non è una
+                  --    dimenticanza: non c'è UN campo da accendere, ci sono N
+                  --    righe — i loro id stanno nel contesto.
+                  -- =========================================================
+                  SELECT COUNT(*)::integer
+                    INTO v_senza_abbinamento
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE
+                     AND st.is_postabile IS TRUE
+                     AND (cr.fattura_id IS NULL OR cr.billing_account_id IS NULL);
+
+                  IF v_senza_abbinamento > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO',
+                          jsonb_build_object(
+                              'contabile_id',  p_contabile_id,
+                              'codice',        v_codice,
+                              'quante',        v_senza_abbinamento,
+                              'contabile_righe_ids', (
+                                  SELECT jsonb_agg(cr.id ORDER BY cr.id)
+                                    FROM pagamenti.vendite_contabili_righe cr
+                                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                                   WHERE cr.contabile_id = p_contabile_id
+                                     AND cr.attivo IS TRUE
+                                     AND st.is_postabile IS TRUE
+                                     AND (cr.fattura_id IS NULL OR cr.billing_account_id IS NULL))),
+                          NULL::uuid,
+                          'POSTATA',
+                          'la fattura e il cliente');
+                  END IF;
+
+                  -- =========================================================
+                  -- 6) NIENTE DA REGISTRARE — e non è un errore (Q-7)
+                  -- =========================================================
+                  IF v_righe_pronte = 0 THEN
+                      SELECT COUNT(*)::integer
+                        INTO v_saltate
+                        FROM pagamenti.vendite_contabili_righe cr
+                        JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                       WHERE cr.contabile_id = p_contabile_id
+                         AND cr.attivo IS TRUE
+                         AND st.is_final IS NOT TRUE;
+
+                      RETURN QUERY SELECT 0, 0, v_saltate, 0::numeric, 'NULLA_DA_POSTARE'::text;
+                      RETURN;
+                  END IF;
+
+                  -- =========================================================
+                  -- 7) GLI STATI DI DESTINAZIONE, letti per codice_interno
+                  --    (la chiave immutabile, mai `codice`).
+                  --    ⚠️ Nessun ripiego: uno stato mancante è una
+                  --    configurazione rotta, e si dice.
+                  -- =========================================================
+                  SELECT s.id INTO v_stato_postata_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.codice_interno = 'POSTATA' AND s.attivo IS TRUE
+                   LIMIT 1;
+
+                  IF v_stato_postata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('codice_interno', 'POSTATA', 'catalogo', 'vendite_contabili_righe_stati'),
+                          NULL::uuid,
+                          'POSTATA');
+                  END IF;
+
+                  SELECT s.id INTO v_stato_chiusa_id
+                    FROM pagamenti.vendite_contabili_stati s
+                   WHERE s.codice_interno = 'CHIUSA' AND s.attivo IS TRUE
+                   LIMIT 1;
+
+                  IF v_stato_chiusa_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('codice_interno', 'CHIUSA', 'catalogo', 'vendite_contabili_stati'),
+                          NULL::uuid,
+                          'CHIUSA');
+                  END IF;
+
+                  -- =========================================================
+                  -- 8) PRIMO STATEMENT — i MOVIMENTI
+                  --    ⚠️ fattura_id, billing_account_id e contabile_id NON si
+                  --    passano: li deriva dalla riga il trigger di mirror, che
+                  --    rifiuta i valori incoerenti. Passarli qui vorrebbe dire
+                  --    scrivere due volte la stessa verità.
+                  --    ⭐ `centro_riscossione_id` invece SÌ, e conta: è ciò che
+                  --    distingue la cassa dai centri interni (fondo fattura,
+                  --    compensazione), e ogni misura di «incassato» deve poterli
+                  --    escludere.
+                  --    ℹ️ Il doppio movimento è impossibile per costruzione
+                  --    (`uq_vendite_movimenti_contabile_riga`): se scattasse,
+                  --    è un'anomalia e deve farsi sentire, non essere inghiottita.
+                  -- =========================================================
+                  WITH ins AS (
+                      INSERT INTO pagamenti.vendite_movimenti (
+                          contabile_riga_id, data_effettiva, data_registrazione,
+                          data_contabile, data_valuta, data_contabilizzazione,
+                          importo, centro_riscossione_id, meta)
+                      SELECT cr.id,
+                             COALESCE(cr.data_pagamento, v_data_contabile),
+                             v_data_registrazione,
+                             v_data_contabile,
+                             cr.data_valuta,
+                             (SELECT script.fn_data_operativa()),
+                             cr.importo,
+                             v_centro_id,
+                             jsonb_build_object('origine', 'POSTING', 'contabile_codice', v_codice)
+                        FROM pagamenti.vendite_contabili_righe cr
+                        JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                       WHERE cr.contabile_id = p_contabile_id
+                         AND cr.attivo IS TRUE
+                         AND st.is_postabile IS TRUE
+                      RETURNING contabile_riga_id, importo
+                  )
+                  SELECT array_agg(ins.contabile_riga_id ORDER BY ins.contabile_riga_id),
+                         COUNT(*)::integer,
+                         COALESCE(SUM(ins.importo), 0)
+                    INTO v_righe_ids, v_movimenti, v_totale_postato
+                    FROM ins;
+
+                  -- =========================================================
+                  -- 9) SECONDO STATEMENT — le RIGHE a POSTATA
+                  --    🔴 Statement separato, non una CTE: con la RLS padre e
+                  --    figlio nella stessa snapshot non si vedono.
+                  --    ⚠️ Si aggiornano ESATTAMENTE le righe di cui si è appena
+                  --    scritto il movimento: ripetere il predicato porterebbe a
+                  --    POSTATA anche una riga aggiunta nel frattempo, che
+                  --    resterebbe senza movimento.
+                  --    ⭐ È questo UPDATE a far scattare, sulle righe che
+                  --    vengono da un fondo fattura, il trigger che porta l'atto
+                  --    a ESEGUITO.
+                  -- =========================================================
+                  WITH upd AS (
+                      UPDATE pagamenti.vendite_contabili_righe cr
+                         SET stato_id = v_stato_postata_id
+                       WHERE cr.id = ANY (COALESCE(v_righe_ids, '{}'::bigint[]))
+                      RETURNING cr.id
+                  )
+                  SELECT COUNT(*)::integer INTO v_postate FROM upd;
+
+                  -- =========================================================
+                  -- 10) CHE COSA RESTA INDIETRO
+                  --     Le righe attive in uno stato NON finale: quelle di cui
+                  --     nessuno ha ancora detto che cosa ne è stato.
+                  -- =========================================================
+                  SELECT COUNT(*)::integer
+                    INTO v_saltate
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE
+                     AND st.is_final IS NOT TRUE;
+
+                  -- =========================================================
+                  -- 11) CONFERMA E CHIUSURA (D13 + decisione del 2026-08-22)
+                  --     La conferma è l'atto di REGISTRARE: il COALESCE tiene
+                  --     la prima volta che è successo.
+                  --     La chiusura è una CONSEGUENZA: dopo il posting righe
+                  --     pronte non ne restano, e il guard di chiusura dichiara
+                  --     che le altre non devono bloccare.
+                  -- =========================================================
+                  UPDATE pagamenti.vendite_contabili c
+                     SET data_conferma = COALESCE(c.data_conferma, now()),
+                         user_conferma = COALESCE(c.user_conferma, current_user),
+                         stato_id      = v_stato_chiusa_id
+                   WHERE c.id = p_contabile_id;
+
+                  RETURN QUERY SELECT v_movimenti, v_postate, v_saltate,
+                                      COALESCE(v_totale_postato, 0), 'POSTATA'::text;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_posta_riga_tardiva(p_riga_id pagamenti.vendite_contabili_righe.id%TYPE, p_fattura_id pagamenti.vendite_contabili_righe.fattura_id%TYPE, p_billing_account_id pagamenti.vendite_contabili_righe.billing_account_id%TYPE, p_scadenza_id pagamenti.vendite_contabili_righe.scadenza_id%TYPE DEFAULT NULL::bigint, p_forzata pagamenti.vendite_contabili_righe.forzata%TYPE DEFAULT false, p_motivo_forzatura pagamenti.vendite_contabili_righe.motivo_forzatura%TYPE DEFAULT NULL::text)
+               RETURNS TABLE(movimento_id pagamenti.vendite_movimenti.id%TYPE, riga_id pagamenti.vendite_contabili_righe.id%TYPE, importo pagamenti.vendite_contabili_righe.importo%TYPE, esito text)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_contabile_id         pagamenti.vendite_contabili_righe.contabile_id%TYPE;
+                  v_attivo               pagamenti.vendite_contabili_righe.attivo%TYPE;
+                  v_importo              pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_data_pagamento       pagamenti.vendite_contabili_righe.data_pagamento%TYPE;
+                  v_data_valuta          pagamenti.vendite_contabili_righe.data_valuta%TYPE;
+                  v_stato_riga           pagamenti.vendite_contabili_righe_stati.codice_interno%TYPE;
+                  v_stato_riga_label     pagamenti.vendite_contabili_righe_stati.descrizione%TYPE;
+                  v_codice               pagamenti.vendite_contabili.codice%TYPE;
+                  v_centro_id            pagamenti.vendite_contabili.centro_riscossione_id%TYPE;
+                  v_data_contabile       pagamenti.vendite_contabili.data_contabile%TYPE;
+                  v_data_conferma        pagamenti.vendite_contabili.data_conferma%TYPE;
+                  v_stato_distinta       pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_stato_distinta_label pagamenti.vendite_contabili_stati.descrizione%TYPE;
+                  v_is_final             pagamenti.vendite_contabili_stati.is_final%TYPE;
+                  v_stato_abbinata_id    pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_stato_postata_id     pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_movimento_id         pagamenti.vendite_movimenti.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Registrare IN RITARDO una riga contabile rimasta SOSPESA
+                  --   sotto una distinta gia' registrata: la si abbina e la si
+                  --   registra nello stesso gesto. Movimento scritto, riga a
+                  --   POSTATA, distinta che resta CHIUSA e non tocca la sua
+                  --   conferma. E' la strada del «resto» di D3-a, che dalla
+                  --   chiusura automatica in poi non ne aveva (brief §1).
+                  --
+                  -- ⭐ Passa da ABBINATA, cosi' girano tutti i guard
+                  --    dell'abbinamento normale; alla quarta mossa del guard
+                  --    sulla distinta finale si presenta con la GUC
+                  --    transazionale app.registrazione_tardiva_riga_id.
+                  -- ⛔ Nessun esito NULLA_DA_POSTARE: un rifiuto e' un rifiuto.
+                  -- Brief: brief-db-validata-e-registrazione-tardiva §2.2, §4.1.
+                  -- =========================================================
+
+                  -- =========================================================
+                  -- 1) GUARD DI PARAMETRO
+                  --    Un id nullo o non positivo non esce da nessuna
+                  --    interfaccia: lo produce solo un chiamante rotto, e per
+                  --    questo il codice e' TECNICO e non DATO_ERRATO. Il
+                  --    cliente a NULL NON e' un guard di qui: risponde il guard
+                  --    sui dati entrando in ABBINATA, col campo da accendere.
+                  -- =========================================================
+                  IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_riga_id', 'valore', p_riga_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_riga_tardiva',
+                          'identificativo della riga contabile non valido');
+                  END IF;
+
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_riga_tardiva',
+                          'la fattura a cui registrare la riga e'' obbligatoria');
+                  END IF;
+
+                  IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_riga_tardiva',
+                          'identificativo del cliente non valido');
+                  END IF;
+
+                  IF p_scadenza_id IS NOT NULL AND p_scadenza_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_scadenza_id', 'valore', p_scadenza_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_riga_tardiva',
+                          'identificativo della rata non valido');
+                  END IF;
+
+                  -- =========================================================
+                  -- 2) LOCK DELLA RIGA, e la sua testata con lo stato
+                  --    ⚠️ FOR UPDATE OF r: si blocca la sola riga, non i
+                  --    cataloghi ne' la testata (che non si scrive). Sotto la
+                  --    row security «non trovata» e «non e' tua» devono
+                  --    restare indistinguibili: stesso codice e stessa frase
+                  --    del mirror del movimento (404, no-leak).
+                  -- =========================================================
+                  SELECT r.contabile_id, r.attivo, r.importo, r.data_pagamento, r.data_valuta,
+                         st.codice_interno, st.descrizione,
+                         c.codice, c.centro_riscossione_id, c.data_contabile, c.data_conferma,
+                         s.codice_interno, s.descrizione, s.is_final
+                    INTO v_contabile_id, v_attivo, v_importo, v_data_pagamento, v_data_valuta,
+                         v_stato_riga, v_stato_riga_label,
+                         v_codice, v_centro_id, v_data_contabile, v_data_conferma,
+                         v_stato_distinta, v_stato_distinta_label, v_is_final
+                    FROM pagamenti.vendite_contabili_righe r
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = r.stato_id
+                    JOIN pagamenti.vendite_contabili c              ON c.id  = r.contabile_id
+                    JOIN pagamenti.vendite_contabili_stati s        ON s.id  = c.stato_id
+                   WHERE r.id = p_riga_id
+                     FOR UPDATE OF r;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_RIGA_CONTABILE_NON_TROVATA',
+                          jsonb_build_object('contabile_riga_id', p_riga_id),
+                          NULL::uuid,
+                          p_riga_id::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- 3) GUARD DI STATO DELLA RIGA: attiva e SOSPESA
+                  --    Da SCARTATA si passa prima da «Riprendi» (-> SOSPESA, in
+                  --    matrice); da DA_ABBINARE non si arriva qui (D20-a: sotto
+                  --    una registrata non ce ne sono); da POSTATA il movimento
+                  --    c'e' gia'. Una riga eliminata non e' in nessun conto.
+                  -- =========================================================
+                  IF v_attivo IS NOT TRUE OR v_stato_riga IS DISTINCT FROM 'SOSPESA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_RIGA_CONTABILE_TARDIVA_STATO',
+                          jsonb_build_object(
+                              'contabile_riga_id', p_riga_id,
+                              'contabile_id',      v_contabile_id,
+                              'contabile_codice',  v_codice,
+                              'attivo',            v_attivo,
+                              'stato_riga',        v_stato_riga),
+                          NULL::uuid,
+                          p_riga_id::text,
+                          v_codice,
+                          -- La descrizione del catalogo com'e' («Riga scartata
+                          -- definitivamente»): entra fra parentesi nella frase.
+                          CASE WHEN v_attivo IS NOT TRUE THEN 'eliminata'
+                               ELSE v_stato_riga_label END);
+                  END IF;
+
+                  -- =========================================================
+                  -- 4) GUARD DI STATO DELLA TESTATA: REGISTRATA
+                  --    = finale E con data_conferma. Sotto ANNULLATA niente si
+                  --    registra («non e' mai successa»); una CHIUSA senza
+                  --    conferma non ha registrato niente; sotto BOZZA /
+                  --    VALIDATA c'e' il giro normale, e la frase lo dice.
+                  -- =========================================================
+                  IF v_is_final IS NOT TRUE OR v_data_conferma IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA',
+                          jsonb_build_object(
+                              'contabile_riga_id', p_riga_id,
+                              'contabile_id',      v_contabile_id,
+                              'contabile_codice',  v_codice,
+                              'stato_distinta',    v_stato_distinta,
+                              'is_final',          v_is_final,
+                              'data_conferma',     v_data_conferma),
+                          NULL::uuid,
+                          v_codice,
+                          CASE
+                              WHEN v_stato_distinta = 'ANNULLATA'
+                                  THEN 'e'' annullata'
+                              WHEN v_is_final IS TRUE
+                                  THEN 'e'' chiusa senza essere mai stata registrata'
+                              ELSE 'e'' ancora ' || lower(v_stato_distinta_label)
+                                   || ': usa il giro normale, abbina la riga e registra la distinta'
+                          END);
+                  END IF;
+
+                  -- =========================================================
+                  -- 5) GLI STATI DI DESTINAZIONE, per codice_interno
+                  --    (la chiave immutabile, mai `codice`). Nessun ripiego:
+                  --    uno stato mancante e' una configurazione rotta.
+                  -- =========================================================
+                  SELECT s.id INTO v_stato_abbinata_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.codice_interno = 'ABBINATA' AND s.attivo IS TRUE
+                   LIMIT 1;
+
+                  IF v_stato_abbinata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('codice_interno', 'ABBINATA', 'catalogo', 'vendite_contabili_righe_stati'),
+                          NULL::uuid,
+                          'ABBINATA');
+                  END IF;
+
+                  SELECT s.id INTO v_stato_postata_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.codice_interno = 'POSTATA' AND s.attivo IS TRUE
+                   LIMIT 1;
+
+                  IF v_stato_postata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('codice_interno', 'POSTATA', 'catalogo', 'vendite_contabili_righe_stati'),
+                          NULL::uuid,
+                          'POSTATA');
+                  END IF;
+
+                  -- =========================================================
+                  -- 6) LA PORTA: ci si presenta alla quarta mossa
+                  --    set_config(..., true) = transazionale. Il guard sulla
+                  --    distinta finale (20260918-39) legge la GUC e lascia
+                  --    passare SOLO questa riga. Precedente:
+                  --    app.cessazione_automatica.
+                  -- =========================================================
+                  PERFORM set_config('app.registrazione_tardiva_riga_id', p_riga_id::text, true);
+
+                  -- =========================================================
+                  -- 7) PRIMO STATEMENT — la riga si ABBINA
+                  --    Girano i guard dell'abbinamento normale: transizione
+                  --    (SOSPESA -> ABBINATA), dati (fattura e cliente), rata
+                  --    (coerenza rifiutata, capienza col doppio tempo: senza
+                  --    forzata -> E_RIGA_CONTABILE_CAPIENZA_SUPERATA), scope.
+                  --    ⚠️ `WHERE id = p_riga_id`, non un predicato: la riga e'
+                  --    quella, e basta.
+                  -- =========================================================
+                  UPDATE pagamenti.vendite_contabili_righe r
+                     SET stato_id           = v_stato_abbinata_id,
+                         fattura_id         = p_fattura_id,
+                         billing_account_id = p_billing_account_id,
+                         scadenza_id        = p_scadenza_id,
+                         forzata            = COALESCE(p_forzata, false),
+                         motivo_forzatura   = p_motivo_forzatura
+                   WHERE r.id = p_riga_id;
+
+                  -- =========================================================
+                  -- 8) SECONDO STATEMENT — il MOVIMENTO
+                  --    Come il passo 8 della madre del posting: fattura,
+                  --    cliente, distinta e rata NON si passano, li deriva dalla
+                  --    riga il trigger di mirror. E' registrata OGGI:
+                  --    data_registrazione e data_contabilizzazione =
+                  --    current_date; la testata tiene la data della PRIMA
+                  --    registrazione, il movimento la sua.
+                  --    ℹ️ Il doppio movimento e' impossibile per costruzione
+                  --    (uq_vendite_movimenti_contabile_riga).
+                  -- =========================================================
+                  INSERT INTO pagamenti.vendite_movimenti (
+                      contabile_riga_id, data_effettiva, data_registrazione,
+                      data_contabile, data_valuta, data_contabilizzazione,
+                      importo, centro_riscossione_id, meta)
+                  VALUES (
+                      p_riga_id,
+                      COALESCE(v_data_pagamento, v_data_contabile),
+                      (SELECT script.fn_data_operativa()),
+                      v_data_contabile,
+                      v_data_valuta,
+                      (SELECT script.fn_data_operativa()),
+                      v_importo,
+                      v_centro_id,
+                      jsonb_build_object('origine', 'POSTING_TARDIVO', 'contabile_codice', v_codice))
+                  RETURNING id INTO v_movimento_id;
+
+                  -- =========================================================
+                  -- 9) TERZO STATEMENT — la riga a POSTATA
+                  --    🔴 Statement separato, non una CTE: con la RLS padre e
+                  --    figlio nella stessa snapshot non si vedono. Scatta
+                  --    marca_fondo_eseguito se e' una riga di fondo, come nel
+                  --    posting. La distinta NON si tocca: resta CHIUSA con la
+                  --    sua data_conferma.
+                  -- =========================================================
+                  UPDATE pagamenti.vendite_contabili_righe r
+                     SET stato_id = v_stato_postata_id
+                   WHERE r.id = p_riga_id;
+
+                  -- ⚠️ La porta si RICHIUDE qui, non al COMMIT: dopo il ritorno
+                  --    nessun'altra scrittura della stessa transazione deve
+                  --    trovarla aperta.
+                  PERFORM set_config('app.registrazione_tardiva_riga_id', '', true);
+
+                  RETURN QUERY SELECT v_movimento_id, p_riga_id, v_importo, 'POSTATA'::text;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_conferma_sistemazione(p_sistemazione_id pagamenti.sistemazioni.id%TYPE, p_ente_incasso_id pagamenti.enti_incasso.id%TYPE DEFAULT NULL::bigint)
+               RETURNS TABLE(contabile_id pagamenti.vendite_contabili.id%TYPE, fondo_source_id vendite.fatture_fondi_fattura_source.id%TYPE, esito text)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_atto            pagamenti.sistemazioni%ROWTYPE;
+                  v_fattura         vendite.fatture%ROWTYPE;
+                  v_saldo           vendite.fatture.totale_a_pagare%TYPE;
+                  v_eccedenza       vendite.fatture.totale_a_pagare%TYPE;
+                  v_importo_riga    pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_centro_id       pagamenti.centri_riscossione.id%TYPE;
+                  v_stato_bozza_id  pagamenti.vendite_contabili_stati.id%TYPE;
+                  v_stato_riga_id   pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_tipo_fondo_id   vendite.tipi_fondi_fattura.id%TYPE;
+                  v_contabile_id    pagamenti.vendite_contabili.id%TYPE;
+                  v_fondo_id        vendite.fatture_fondi_fattura_source.id%TYPE;
+                  v_mancante        text;
+                  v_operatore       pagamenti.sistemazioni.user_esecuzione%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Eseguire un atto di sistemazione: sceglie la strada e ci
+                  --   mette sopra il denaro. ⭐ Non inventa nessuna macchina —
+                  --   le tre esistevano gia' tutte (D15-a).
+                  --
+                  -- ⭐ E' una MADRE: scrive la distinta, le sue righe e l'atto,
+                  --   e o riescono tutte o non ne resta nessuna. Sta nel
+                  --   database perche' e' tutto SQL: nessuna orchestrazione
+                  --   Python, l'atomicita' e' dentro la funzione.
+                  --
+                  -- Rev 2026-09-15 (brief distinta-numerata-sul-registro, L7):
+                  --   la distinta non porta piu' un codice composto qui
+                  --   (SIS_…): lo assegna il trigger sul registro DISTINTA
+                  --   dell'emittente dell'ATTO, che entra nell'INSERT (D5).
+                  -- =========================================================
+
+                  -- ── 1. L'atto, e il lucchetto ───────────────────────────
+                  -- ⚠️ FOR UPDATE: due conferme in parallelo sullo stesso atto
+                  --   creerebbero due documenti per la stessa decisione.
+                  SELECT * INTO v_atto
+                    FROM pagamenti.sistemazioni
+                   WHERE id = p_sistemazione_id
+                     FOR UPDATE;
+
+                  -- ⚠️ «Non esiste» e «non e' tuo» danno lo stesso messaggio di
+                  --   proposito: distinguerli direbbe a chi e' fuori perimetro
+                  --   che quell'atto c'e'. Stessa scelta di E_FATTURA_NON_TROVATA
+                  --   e di E_RATA_NON_TROVATA.
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_conferma_sistemazione',
+                          'E_SISTEMAZIONE_NON_TROVATA',
+                          jsonb_build_object('detail', 'sistemazione inesistente o fuori perimetro',
+                                             'sistemazione_id', p_sistemazione_id),
+                          NULL::uuid,
+                          p_sistemazione_id::text
+                      );
+                  END IF;
+
+                  IF v_atto.stato <> 'BOZZA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_conferma_sistemazione',
+                          'E_SISTEMAZIONE_NON_CONFERMABILE',
+                          jsonb_build_object('detail', 'si conferma solo una sistemazione in bozza',
+                                             'sistemazione_id', v_atto.id,
+                                             'stato', v_atto.stato),
+                          NULL::uuid,
+                          v_atto.id::text, v_atto.stato::text
+                      );
+                  END IF;
+
+                  -- ── 2. L'eccedenza, ADESSO ──────────────────────────────
+                  SELECT * INTO v_fattura
+                    FROM vendite.fatture
+                   WHERE id = v_atto.fattura_origine_id;
+
+                  SELECT s.saldo INTO v_saldo
+                    FROM pagamenti.fn_get_saldo_fattura(v_atto.fattura_origine_id) s;
+
+                  -- ⭐ «Il residuo ha cambiato segno», la stessa condizione della
+                  --   vista e senza estremi fissi: vale identica su una fattura
+                  --   e su una nota di credito.
+                  v_eccedenza := CASE
+                      WHEN sign(v_saldo) = -sign(v_fattura.totale_a_pagare) THEN abs(v_saldo)
+                      ELSE 0
+                  END;
+
+                  IF abs(v_atto.importo) > v_eccedenza THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_conferma_sistemazione',
+                          'E_SISTEMAZIONE_ECCEDENZA_INSUFFICIENTE',
+                          jsonb_build_object(
+                              'detail', 'eccedenza attuale insufficiente',
+                              'sistemazione_id', v_atto.id,
+                              'fattura_origine_id', v_atto.fattura_origine_id,
+                              'eccedenza', v_eccedenza,
+                              'importo', v_atto.importo
+                          ),
+                          NULL::uuid,
+                          v_atto.fattura_origine_id::text,
+                          to_char(v_eccedenza, 'FM999999990.00'),
+                          to_char(abs(v_atto.importo), 'FM999999990.00')
+                      );
+                  END IF;
+
+                  v_operatore := COALESCE(
+                      NULLIF(current_setting('app.jwt_user', true), ''), CURRENT_USER);
+
+                  -- ⭐ Il segno lo da' il SALDO, non il tipo di documento: su una
+                  --   fattura sovra-incassata (saldo negativo) la riga esce
+                  --   negativa, su una nota sovra-rimborsata (saldo positivo)
+                  --   esce positiva. Nessun IF su «fattura o nota».
+                  v_importo_riga := sign(v_saldo) * abs(v_atto.importo);
+
+                  -- ── 3. La strada ───────────────────────────────────────
+                  IF v_atto.destinazione = 'RIPORTO' THEN
+                      -- ⚠️ Le tre colonne che il fondo pretende NOT NULL sono
+                      --   NULLABILI su vendite.fatture: il riporto e' il punto in
+                      --   cui le due regole si incontrano, e un 23502 direbbe il
+                      --   nome della colonna senza dire quale documento la ha
+                      --   vuota.
+                      v_mancante := CASE
+                          WHEN v_fattura.utility_id IS NULL          THEN 'il servizio (utility)'
+                          WHEN v_fattura.tipo_doc_fiscale_id IS NULL THEN 'il tipo di documento fiscale'
+                          WHEN v_fattura.valuta_id IS NULL           THEN 'la valuta'
+                          ELSE NULL
+                      END;
+
+                      IF v_mancante IS NOT NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_conferma_sistemazione',
+                              'E_SISTEMAZIONE_RIPORTO_NON_POSSIBILE',
+                              jsonb_build_object(
+                                  'detail', 'la fattura di partenza non ha i dati che un fondo pretende',
+                                  'fattura_origine_id', v_atto.fattura_origine_id,
+                                  'mancante', v_mancante
+                              ),
+                              NULL::uuid,
+                              v_atto.fattura_origine_id::text, v_mancante
+                          );
+                      END IF;
+
+                      -- ⚠️ Unico tipo generico a catalogo. L'altro e' CANONE_RAI,
+                      --   che e' un'altra cosa. Se il dominio ne vorra' uno
+                      --   dedicato al riporto, e' un seed e questa riga.
+                      SELECT t.id INTO v_tipo_fondo_id
+                        FROM vendite.tipi_fondi_fattura t
+                       WHERE t.codice_interno = 'F_F_ADD_ACC' AND t.attivo IS TRUE
+                       ORDER BY t.id LIMIT 1;
+
+                      IF v_tipo_fondo_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_conferma_sistemazione', 'E_CONFIG_MANCANTE',
+                              jsonb_build_object('detail', 'tipo fondo fattura F_F_ADD_ACC assente o spento'),
+                              NULL::uuid,
+                              'il tipo di fondo fattura per addebiti e accrediti (F_F_ADD_ACC)'
+                          );
+                      END IF;
+
+                      -- ⭐ Nasce ASSEGNATO, non DISPONIBILE: il riporto nomina gia'
+                      --   la fattura di destinazione, e un fondo disponibile
+                      --   sarebbe un credito che aspetta una decisione gia' presa.
+                      INSERT INTO vendite.fatture_fondi_fattura_source (
+                          fattura_sorgente_id, tipo_fondo_fattura_id, importo, stato,
+                          fattura_figlia_id, data_assegnazione, user_assegnazione,
+                          billing_account_id, utility_id, tipo_doc_fiscale_id,
+                          emittente_soggetto_ruolo_id, valuta_id, origine, motivo, meta
+                      ) VALUES (
+                          v_atto.fattura_origine_id, v_tipo_fondo_id, abs(v_atto.importo), 'ASSEGNATO',
+                          v_atto.fattura_destinazione_id, now(), v_operatore,
+                          v_fattura.billing_account_id, v_fattura.utility_id, v_fattura.tipo_doc_fiscale_id,
+                          v_atto.emittente_soggetto_ruolo_id, v_fattura.valuta_id, 'MANUALE', v_atto.motivo,
+                          jsonb_build_object('origine', 'SISTEMAZIONE', 'sistemazione_id', v_atto.id)
+                      )
+                      RETURNING id INTO v_fondo_id;
+
+                  ELSE
+                      -- RIMBORSO e COMPENSAZIONE: tutte e due producono una distinta.
+                      IF v_atto.destinazione = 'RIMBORSO' THEN
+                          -- ⚠️ Da quale conto esce il bonifico e' una decisione del
+                          --   momento in cui si paga, non di quando si decide: per
+                          --   questo e' un parametro e non una colonna dell'atto.
+                          IF p_ente_incasso_id IS NULL THEN
+                              PERFORM script.fn_log_and_raise_error(
+                                  'database', 'pagamenti.fn_conferma_sistemazione',
+                                  'E_CONTABILE_DATI_OBBLIGATORI',
+                                  jsonb_build_object('detail', 'rimborso senza canale di uscita',
+                                                     'campo', 'ente_incasso_id',
+                                                     'sistemazione_id', v_atto.id),
+                                  NULL::uuid,
+                                  'il canale da cui esce il rimborso'
+                              );
+                          END IF;
+
+                          SELECT e.centro_riscossione_id INTO v_centro_id
+                            FROM pagamenti.enti_incasso e
+                           WHERE e.id = p_ente_incasso_id;
+                      ELSE
+                          -- ⚠️ Il centro di compensazione e' UNICO per costruzione
+                          --   dal lotto 1 (indice unico parziale su is_compensazione).
+                          SELECT c.id INTO v_centro_id
+                            FROM pagamenti.centri_riscossione c
+                           WHERE c.is_compensazione IS TRUE AND c.attivo IS TRUE;
+                      END IF;
+
+                      IF v_centro_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_conferma_sistemazione', 'E_CONFIG_MANCANTE',
+                              jsonb_build_object('detail', 'centro di riscossione non risolvibile',
+                                                 'destinazione', v_atto.destinazione,
+                                                 'ente_incasso_id', p_ente_incasso_id),
+                              NULL::uuid,
+                              'il centro di riscossione della sistemazione'
+                          );
+                      END IF;
+
+                      SELECT s.id INTO v_stato_bozza_id
+                        FROM pagamenti.vendite_contabili_stati s
+                       WHERE s.codice_interno = 'BOZZA' AND s.attivo IS TRUE
+                       ORDER BY s.id LIMIT 1;
+
+                      SELECT s.id INTO v_stato_riga_id
+                        FROM pagamenti.vendite_contabili_righe_stati s
+                       WHERE s.codice_interno = 'ABBINATA' AND s.attivo IS TRUE
+                       ORDER BY s.id LIMIT 1;
+
+                      IF v_stato_bozza_id IS NULL OR v_stato_riga_id IS NULL THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'pagamenti.fn_conferma_sistemazione', 'E_CONFIG_MANCANTE',
+                              jsonb_build_object('detail', 'stati contabili BOZZA/ABBINATA assenti o spenti'),
+                              NULL::uuid,
+                              'gli stati contabili BOZZA e ABBINATA'
+                          );
+                      END IF;
+
+                      -- ⭐ La distinta si crea DIRETTA e non con
+                      --   fn_get_or_create_vendite_contabile, che e' costruita per
+                      --   CONDIVIDERE: due rimborsi sullo stesso canale nello
+                      --   stesso giorno riuserebbero la stessa testata, e il
+                      --   secondo atto sbatterebbe su uq_sistemazioni_contabile con
+                      --   un 23505 muto.
+                      -- ⭐ Rev 2026-09-15 (D5): il codice NON si compone qui. Lo
+                      --   assegna il trigger sul registro DISTINTA dell'emittente
+                      --   dell'ATTO — che entra nell'INSERT: e' NOT NULL su
+                      --   sistemazioni ed e' lo stesso valore scritto sul fondo
+                      --   nel ramo RIPORTO, una sorgente sola dentro la stessa
+                      --   madre. L'atto si ritrova da meta.sistemazione_id e da
+                      --   sistemazioni.contabile_id; l'unicita' «una contabile per
+                      --   atto» la tiene uq_sistemazioni_contabile.
+                      INSERT INTO pagamenti.vendite_contabili (
+                          centro_riscossione_id, ente_incasso_id, emittente_soggetto_ruolo_id,
+                          data_contabile, data_registrazione, stato_id, origine, meta
+                      ) VALUES (
+                          v_centro_id,
+                          CASE WHEN v_atto.destinazione = 'RIMBORSO' THEN p_ente_incasso_id END,
+                          v_atto.emittente_soggetto_ruolo_id,
+                          current_date, current_date, v_stato_bozza_id, 'GENERATA',
+                          jsonb_build_object('origine', 'SISTEMAZIONE',
+                                             'sistemazione_id', v_atto.id,
+                                             'destinazione', v_atto.destinazione)
+                      )
+                      RETURNING id INTO v_contabile_id;
+
+                      -- ⚠️ Statement SEPARATO, non una CTE: padre e figlio nella
+                      --   stessa CTE non passano sotto la row security — il padre
+                      --   non e' ancora visibile e il WITH CHECK del figlio nega.
+                      --   Lezione pagata nel lotto 4.
+                      INSERT INTO pagamenti.vendite_contabili_righe (
+                          contabile_id, riferimento_ente, data_pagamento, importo,
+                          fattura_id, billing_account_id, stato_id, meta
+                      ) VALUES (
+                          v_contabile_id,
+                          concat('SIS_', v_atto.id, '_ORIGINE'),
+                          current_date,
+                          v_importo_riga,
+                          v_atto.fattura_origine_id,
+                          v_fattura.billing_account_id,
+                          v_stato_riga_id,
+                          jsonb_build_object('origine', 'SISTEMAZIONE', 'sistemazione_id', v_atto.id)
+                      );
+
+                      IF v_atto.destinazione = 'COMPENSAZIONE' THEN
+                          -- ⭐ L'opposto esatto della prima: due righe che sommano a
+                          --   zero, che e' letteralmente che cosa vuol dire compensare.
+                          INSERT INTO pagamenti.vendite_contabili_righe (
+                              contabile_id, riferimento_ente, data_pagamento, importo,
+                              fattura_id, billing_account_id, stato_id, meta
+                          )
+                          SELECT v_contabile_id,
+                                 concat('SIS_', v_atto.id, '_DESTINAZIONE'),
+                                 current_date,
+                                 - v_importo_riga,
+                                 f.id,
+                                 f.billing_account_id,
+                                 v_stato_riga_id,
+                                 jsonb_build_object('origine', 'SISTEMAZIONE', 'sistemazione_id', v_atto.id)
+                            FROM vendite.fatture f
+                           WHERE f.id = v_atto.fattura_destinazione_id;
+                      END IF;
+                  END IF;
+
+                  -- ── 4. L'atto diventa un fatto ─────────────────────────
+                  UPDATE pagamenti.sistemazioni s
+                     SET stato           = 'CONFERMATA',
+                         data_esecuzione = now(),
+                         user_esecuzione = v_operatore,
+                         contabile_id    = v_contabile_id,
+                         fondo_source_id = v_fondo_id
+                   WHERE s.id = v_atto.id;
+
+                  RETURN QUERY
+                  SELECT v_contabile_id,
+                         v_fondo_id,
+                         CASE v_atto.destinazione
+                             WHEN 'RIPORTO'       THEN 'FONDO_CREATO'
+                             WHEN 'RIMBORSO'      THEN 'DISTINTA_RIMBORSO_CREATA'
+                             ELSE                      'DISTINTA_COMPENSAZIONE_CREATA'
+                         END::text;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_crea_distinta_correzione(p_contabile_id pagamenti.vendite_contabili.id%TYPE, p_data_contabile pagamenti.vendite_contabili.data_contabile%TYPE DEFAULT CURRENT_DATE, p_motivo text DEFAULT NULL::text)
+               RETURNS TABLE(contabile_id pagamenti.vendite_contabili.id%TYPE, righe_create integer, righe_saltate integer, esito text)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_codice     pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_centro_id        pagamenti.vendite_contabili.centro_riscossione_id%TYPE;
+                  v_ente_id          pagamenti.vendite_contabili.ente_incasso_id%TYPE;
+                  v_emittente_sr     pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE;
+                  v_codice_origine   pagamenti.vendite_contabili.codice%TYPE;
+                  v_gia_corretta     pagamenti.vendite_contabili.codice%TYPE;
+                  v_stato_bozza_id   pagamenti.vendite_contabili_stati.id%TYPE;
+                  v_stato_riga_id    pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_nuova_id         pagamenti.vendite_contabili.id%TYPE;
+                  v_da_correggere    integer;
+                  v_saltate          integer;
+                  v_create           integer;
+              BEGIN
+                  -- =========================================================
+                  -- Guard di parametro: un id nullo o non positivo non esce da
+                  -- nessuna interfaccia — lo produce solo un chiamante rotto.
+                  -- =========================================================
+                  IF p_contabile_id IS NULL OR p_contabile_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_contabile_id',
+                                             'valore', p_contabile_id),
+                          NULL::uuid,
+                          'pagamenti.fn_crea_distinta_correzione',
+                          'p_contabile_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  -- =========================================================
+                  -- La distinta di partenza, bloccata: fra il controllo «e'
+                  -- gia' stata corretta?» e la scrittura del legame non deve
+                  -- passare nessun altro.
+                  -- ⚠️ Sotto RLS «non esiste» e «non la vedi» arrivano qui allo
+                  --    stesso modo, ed e' la scelta di tutto lo schema.
+                  -- ⭐ Rev 2026-09-15: si legge anche l'EMITTENTE — la correzione
+                  --    nasce dello stesso emittente, quindi sullo stesso registro.
+                  -- =========================================================
+                  SELECT st.codice_interno, c.centro_riscossione_id, c.ente_incasso_id,
+                         c.emittente_soggetto_ruolo_id, c.codice
+                    INTO v_stato_codice, v_centro_id, v_ente_id, v_emittente_sr, v_codice_origine
+                    FROM pagamenti.vendite_contabili c
+                    JOIN pagamenti.vendite_contabili_stati st ON st.id = c.stato_id
+                   WHERE c.id = p_contabile_id
+                     FOR UPDATE OF c;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_CONTABILE_NON_TROVATA',
+                          jsonb_build_object('contabile_id', p_contabile_id),
+                          NULL::uuid,
+                          p_contabile_id::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- Si corregge cio' che e' stato REGISTRATO. Una bozza non si
+                  -- corregge: si modifica, ed e' un altro gesto.
+                  -- =========================================================
+                  IF v_stato_codice <> 'CHIUSA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_CONTABILE_CORREZIONE_NON_REGISTRATA',
+                          jsonb_build_object('campo', 'stato_id',
+                                             'contabile_id', p_contabile_id,
+                                             'stato', v_stato_codice),
+                          NULL::uuid,
+                          v_codice_origine, v_stato_codice);
+                  END IF;
+
+                  -- =========================================================
+                  -- C-4: una correzione sola per documento. ⚠️ L'unico parziale
+                  -- e' la rete; qui si rifiuta con un codice che NOMINA la
+                  -- correzione che c'e' gia', perche' un 23505 non la dice.
+                  -- =========================================================
+                  SELECT c.codice INTO v_gia_corretta
+                    FROM pagamenti.vendite_contabili c
+                   WHERE c.contabile_corretta_id = p_contabile_id
+                   LIMIT 1;
+
+                  IF FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_CONTABILE_GIA_CORRETTA',
+                          jsonb_build_object('contabile_id', p_contabile_id,
+                                             'correzione', v_gia_corretta),
+                          NULL::uuid,
+                          v_codice_origine, v_gia_corretta);
+                  END IF;
+
+                  -- =========================================================
+                  -- Che cosa c'e' da correggere: SOLO le righe POSTATE, cioe'
+                  -- quelle che hanno prodotto un movimento. Le altre si contano
+                  -- e si dicono (C-2).
+                  -- =========================================================
+                  SELECT count(*) FILTER (WHERE rs.codice_interno = 'POSTATA'),
+                         count(*) FILTER (WHERE rs.codice_interno <> 'POSTATA')
+                    INTO v_da_correggere, v_saltate
+                    FROM pagamenti.vendite_contabili_righe r
+                    JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
+                   WHERE r.contabile_id = p_contabile_id
+                     AND r.attivo IS TRUE;
+
+                  IF COALESCE(v_da_correggere, 0) = 0 THEN
+                      -- ⭐ Non e' un errore: e' un esito. Il database dice il
+                      --    fatto, il frontend sceglie la frase.
+                      RETURN QUERY SELECT NULL::bigint, 0, COALESCE(v_saltate, 0),
+                                          'NULLA_DA_CORREGGERE'::text;
+                      RETURN;
+                  END IF;
+
+                  SELECT s.id INTO v_stato_bozza_id
+                    FROM pagamenti.vendite_contabili_stati s
+                   WHERE s.codice_interno = 'BOZZA' AND s.attivo IS TRUE;
+
+                  SELECT s.id INTO v_stato_riga_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.codice_interno = 'DA_ABBINARE' AND s.attivo IS TRUE;
+
+                  IF v_stato_bozza_id IS NULL OR v_stato_riga_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_crea_distinta_correzione',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('detail', 'stato BOZZA o DA_ABBINARE assente',
+                                             'contabile_id', p_contabile_id),
+                          NULL::uuid,
+                          'BOZZA / DA_ABBINARE');
+                  END IF;
+
+                  -- =========================================================
+                  -- La distinta NUOVA: stesso centro, stesso canale, STESSO
+                  -- EMITTENTE, in bozza.
+                  -- ⛔ `codice` non si passa: lo assegna il trigger sul registro
+                  --    DISTINTA dell'emittente (rev 2026-09-15, D5) — stesso
+                  --    emittente, stesso registro, il PROSSIMO del sezionale.
+                  -- ⛔ E non si usa il get-or-create: la sua chiave di riuso
+                  --    comprende l'operatore, e queste righe finirebbero nella
+                  --    distinta di lavoro di oggi.
+                  -- =========================================================
+                  INSERT INTO pagamenti.vendite_contabili (
+                      centro_riscossione_id, ente_incasso_id, emittente_soggetto_ruolo_id,
+                      data_contabile, data_registrazione, stato_id, origine,
+                      contabile_corretta_id, meta)
+                  VALUES (
+                      v_centro_id, v_ente_id, v_emittente_sr,
+                      p_data_contabile, CURRENT_DATE, v_stato_bozza_id, 'MANUALE',
+                      p_contabile_id,
+                      jsonb_strip_nulls(jsonb_build_object(
+                          'correzione_di', v_codice_origine,
+                          'motivo_correzione', NULLIF(btrim(COALESCE(p_motivo, '')), ''))))
+                  RETURNING id INTO v_nuova_id;
+
+                  -- =========================================================
+                  -- Le righe: segno opposto, e i FATTI dell'originale.
+                  -- ⭐ Fattura e rata si portano dietro (C-1): l'abbinamento
+                  --    non si inventa, si rispecchia. Ma lo stato e'
+                  --    DA_ABBINARE, non ABBINATA: cosi' la riga non occupa
+                  --    spazio, il guard della capienza non la esamina, e il
+                  --    doppio tempo resta il gesto di una persona.
+                  -- ⚠️ `riferimento_ente` si conserva: e' lo stesso pagamento
+                  --    del mondo, e cambiarlo perderebbe l'unico appiglio per
+                  --    ritrovarlo nell'estratto conto.
+                  -- =========================================================
+                  INSERT INTO pagamenti.vendite_contabili_righe (
+                      contabile_id, riferimento_ente, data_pagamento, data_valuta,
+                      data_operazione, importo, fattura_id, billing_account_id,
+                      scadenza_id, stato_id, meta)
+                  SELECT v_nuova_id, r.riferimento_ente, r.data_pagamento, r.data_valuta,
+                         r.data_operazione, -r.importo, r.fattura_id, r.billing_account_id,
+                         r.scadenza_id, v_stato_riga_id,
+                         jsonb_build_object('corregge_riga_id', r.id)
+                    FROM pagamenti.vendite_contabili_righe r
+                    JOIN pagamenti.vendite_contabili_righe_stati rs ON rs.id = r.stato_id
+                   WHERE r.contabile_id = p_contabile_id
+                     AND r.attivo IS TRUE
+                     AND rs.codice_interno = 'POSTATA';
+
+                  GET DIAGNOSTICS v_create = ROW_COUNT;
+
+                  RETURN QUERY SELECT v_nuova_id, v_create, COALESCE(v_saltate, 0),
+                                      'CREATA'::text;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_get_or_create_vendite_contabile(p_centro_riscossione_id pagamenti.vendite_contabili.centro_riscossione_id%TYPE, p_data_contabile pagamenti.vendite_contabili.data_contabile%TYPE, p_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE DEFAULT CURRENT_DATE, p_ente_incasso_id pagamenti.vendite_contabili.ente_incasso_id%TYPE DEFAULT NULL::bigint, p_lotto_id pagamenti.vendite_contabili_lotti.lotto_id%TYPE DEFAULT NULL::bigint, p_codice_stato_interno text DEFAULT 'BOZZA'::text, p_meta pagamenti.vendite_contabili.meta%TYPE DEFAULT '{}'::jsonb, p_origine pagamenti.vendite_contabili.origine%TYPE DEFAULT 'GENERATA'::character varying, p_emittente_fiscale_id anagrafiche.emittenti_fiscali.id%TYPE DEFAULT NULL::bigint)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_contabile_id pagamenti.vendite_contabili.id%TYPE;
+                v_stato_id pagamenti.vendite_contabili_stati.id%TYPE;
+                v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                v_operatore pagamenti.vendite_contabili.user_insert%TYPE;
+                v_emittente_sr pagamenti.vendite_contabili.emittente_soggetto_ruolo_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Recuperare o creare una testata contabile vendite.
+                --
+                -- Regole principali:
+                --   - ⭐ una distinta MANUALE e' il LOTTO DI LAVORO DI UN OPERATORE:
+                --     il riuso comprende CHI STA LAVORANDO, non solo la giornata.
+                --     Cosi' la contesa fra due operatori non esiste, e il lock che
+                --     sarebbe servito a governarla non si costruisce (D12-a).
+                --
+                -- Rev 2026-09-15 (brief distinta-numerata-sul-registro, L6):
+                --   la distinta SA DI CHI E' (D3). Parametro in coda
+                --   p_emittente_fiscale_id (PK), derivazione dal lotto, poi la
+                --   sede unica pagamenti.fn_get_emittente_distinta; l'emittente
+                --   entra nella CHIAVE DI RIUSO di entrambi i rami e
+                --   nell'INSERT. ⛔ `codice` non si passa: lo assegna il trigger
+                --   sul registro (D5) — sparito il DEFAULT di colonna del 28-08.
+                --
+                -- Rev 2026-08-22 (lotto 7, D15-e): sparisce p_compensazione_id, e
+                --   con lui il ramo di riuso «una testata per atto», la mutua
+                --   esclusione con p_lotto_id e la colonna nell'INSERT.
+                --   ⭐ Girato il verso del legame e' l'ATTO a generare la contabile e
+                --   a tenerne l'id: chiederla qui voleva dire far nascere la testata
+                --   SAPENDO gia' di chi sarebbe stata, cioe' il verso opposto a come
+                --   funziona il processo. L'unicita' «una contabile per atto» vive
+                --   adesso su uq_sistemazioni_contabile.
+                --   ⚠️ Nessun chiamante passava quel parametro: misurato il
+                --   2026-08-22 su tutte le funzioni DB e su backend/ + frontend/.
+                --
+                -- Rev 2026-08-21 (passo P-7): i nove E_GENERICO passano ai codici
+                -- registrati. Nessun predicato e' cambiato.
+                -- =========================================================
+
+                -- ⭐ I DUE guard che un OPERATORE puo' far scattare davvero: il
+                --    centro e la data li sceglie lui in un form. Codice di dominio,
+                --    non un codice trasversale, perche' il messaggio lo legge una
+                --    persona e non deve nominare un parametro PL/pgSQL.
+                IF p_centro_riscossione_id IS NULL OR p_centro_riscossione_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_centro_riscossione_id obbligatorio > 0',
+                      'campo', 'centro_riscossione_id',
+                      'p_centro_riscossione_id', p_centro_riscossione_id
+                    ),
+                    NULL::uuid,
+                    'il centro di riscossione'
+                  );
+                END IF;
+
+                IF p_data_contabile IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_DATI_OBBLIGATORI',
+                    jsonb_build_object(
+                      'detail', 'p_data_contabile obbligatoria',
+                      'campo', 'data_contabile'
+                    ),
+                    NULL::uuid,
+                    'la data contabile'
+                  );
+                END IF;
+
+                -- ⚠️ Da qui in giu' i guard non difendono un DATO dell'operatore:
+                --    difendono un'INVARIANTE DELLA CHIAMATA. Su questi il NULL e'
+                --    AMMESSO, e un id <= 0 o uno stato vuoto non escono da nessuna
+                --    interfaccia — li produce solo un chiamante rotto. Per questo il
+                --    codice e' E_PAGAMENTI_CHIAMATA_NON_VALIDA, classe TECNICO (500):
+                --    l'operatore non ha niente da correggere, e il messaggio nomina il
+                --    parametro perche' il suo lettore e' chi ha scritto la chiamata.
+                --    ⛔ NON E_PARAMETRO_INVALIDO: quello e' uno split rimandato
+                --    (D11 di brief-db-be-classe-codici-errore) che sopravvive per le
+                --    funzioni vecchie, non una sede per il codice nuovo.
+
+                IF p_ente_incasso_id IS NOT NULL AND p_ente_incasso_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_ente_incasso_id deve essere > 0 se valorizzato',
+                      'p_ente_incasso_id', p_ente_incasso_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_ente_incasso_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_lotto_id IS NOT NULL AND p_lotto_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_lotto_id deve essere > 0 se valorizzato',
+                      'p_lotto_id', p_lotto_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_lotto_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                -- Rev 2026-09-15: stessa specie dei due sopra — NULL ammesso, un
+                -- id <= 0 lo produce solo un chiamante rotto.
+                IF p_emittente_fiscale_id IS NOT NULL AND p_emittente_fiscale_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_emittente_fiscale_id deve essere > 0 se valorizzato',
+                      'p_emittente_fiscale_id', p_emittente_fiscale_id
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_emittente_fiscale_id (se valorizzato, maggiore di zero)'
+                  );
+                END IF;
+
+                IF p_codice_stato_interno IS NULL OR btrim(p_codice_stato_interno) = '' THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_codice_stato_interno obbligatorio'
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile', 'p_codice_stato_interno (obbligatorio, non vuoto)'
+                  );
+                END IF;
+
+                -- Il vocabolario e' presidiato anche dal CHECK, ma un 23514 non dice
+                -- quale colonna: un valore fuori vocabolario lo produce solo un
+                -- chiamante rotto, quindi TECNICO.
+                IF p_origine IS NULL OR p_origine NOT IN ('MANUALE', 'AUTOMATICA', 'GENERATA') THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                    jsonb_build_object(
+                      'detail', 'p_origine fuori vocabolario',
+                      'p_origine', p_origine
+                    ),
+                    NULL::uuid,
+                    'pagamenti.fn_get_or_create_vendite_contabile',
+                    'p_origine (MANUALE, AUTOMATICA o GENERATA)'
+                  );
+                END IF;
+
+                -- Chi sta lavorando: la STESSA espressione con cui
+                -- script.trgfn_audit_data_user_generic valorizza user_insert, cosi' la
+                -- chiave di riuso e la colonna scritta non possono divergere.
+                v_operatore := COALESCE(
+                    NULLIF(current_setting('app.jwt_user', true), ''),
+                    CURRENT_USER
+                );
+
+                SELECT s.id
+                  INTO v_stato_id
+                  FROM pagamenti.vendite_contabili_stati s
+                 WHERE s.codice_interno = p_codice_stato_interno
+                   AND s.attivo IS TRUE
+                 LIMIT 1;
+
+                -- ⚠️ Non e' un parametro sbagliato: e' il catalogo degli stati a
+                -- non avere quella riga, o ad averla spenta. Classe TECNICO.
+                IF v_stato_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_CONTABILE_STATO_NON_CONFIGURATO',
+                    jsonb_build_object(
+                      'detail', 'stato contabile non trovato/attivo',
+                      'codice_interno', p_codice_stato_interno
+                    ),
+                    NULL::uuid,
+                    p_codice_stato_interno
+                  );
+                END IF;
+
+                v_data_registrazione := COALESCE(p_data_registrazione, current_date);
+
+                -- =========================================================
+                -- Rev 2026-09-15 — DI CHI E' LA DISTINTA, PRIMA DI CERCARLA.
+                --   La chiave di riuso comprende l'emittente (D3): si risolve
+                --   qui, prima delle due SELECT, o la manuale non ritroverebbe
+                --   mai «quella di prima».
+                -- =========================================================
+
+                -- 1) Il parametro: PK -> SR, esplicito, come trgfn_ordini_gen_numero.
+                --    Un id che non e' un emittente lo produce solo un chiamante rotto.
+                IF p_emittente_fiscale_id IS NOT NULL THEN
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = p_emittente_fiscale_id;
+
+                  IF v_emittente_sr IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                      jsonb_build_object(
+                        'detail', 'p_emittente_fiscale_id non e'' un emittente fiscale',
+                        'p_emittente_fiscale_id', p_emittente_fiscale_id
+                      ),
+                      NULL::uuid,
+                      'pagamenti.fn_get_or_create_vendite_contabile', 'p_emittente_fiscale_id (non e'' un emittente fiscale)'
+                    );
+                  END IF;
+                END IF;
+
+                -- 2) Dal LOTTO: chi passa un lotto sa gia' di chi e' la distinta
+                --    (fatturazione_lotti.emittente_soggetto_ruolo_id e' NOT NULL), e
+                --    lo dice per primo — il giro di massa di un admin globale in
+                --    modalita' «tutti gli emittenti» ha lotti di N aziende e una
+                --    sessione che non risolve nessuno.
+                -- ⚠️ STRICT: questa funzione e' INVOKER e fatturazione_lotti ha la
+                --    RLS. Un lotto che non c'e' o che non si vede NON cade sulla
+                --    sessione: la distinta del lotto di un altro nascerebbe di chi
+                --    agisce, agganciata a un lotto altrui (la FK del link non guarda
+                --    la RLS). Dalla pipeline non ci si arriva — il sync legge il
+                --    lotto della fattura che sta lavorando, nel proprio perimetro —
+                --    ci arriva solo una chiamata a mano. TECNICO.
+                IF v_emittente_sr IS NULL AND p_lotto_id IS NOT NULL THEN
+                  SELECT l.emittente_soggetto_ruolo_id
+                    INTO v_emittente_sr
+                    FROM vendite.fatturazione_lotti l
+                   WHERE l.id = p_lotto_id;
+
+                  IF v_emittente_sr IS NULL THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'database', 'pagamenti.fn_get_or_create_vendite_contabile', 'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                      jsonb_build_object(
+                        'detail', 'p_lotto_id: lotto inesistente o fuori perimetro',
+                        'p_lotto_id', p_lotto_id
+                      ),
+                      NULL::uuid,
+                      'pagamenti.fn_get_or_create_vendite_contabile', 'p_lotto_id (lotto inesistente o fuori perimetro)'
+                    );
+                  END IF;
+                END IF;
+
+                -- 3) La sede unica: dato e coerente col canale / dal canale /
+                --    dalla sessione / rifiuto parlante (D4). Il trigger a10_emittente
+                --    la ri-applica all'INSERT (livelli 0-1, idempotente).
+                v_emittente_sr := pagamenti.fn_get_emittente_distinta(v_emittente_sr, p_ente_incasso_id);
+
+                IF p_lotto_id IS NULL THEN
+                  -- ⭐ D12-a: su una distinta MANUALE la chiave di riuso comprende
+                  --    l'OPERATORE. Il raggruppamento «giornata + canale» non ha un
+                  --    referente nel mondo — nessun documento reale corrisponde a «tutti
+                  --    gli incassi banca di lunedi' digitati a mano» — mentre il lotto di
+                  --    lavoro di una persona ce l'ha. E con questo la contesa fra due
+                  --    operatori non esiste: niente colonne di blocco, niente scadenze del
+                  --    lock, niente sblocco d'emergenza.
+                  -- ⚠️ Sulle altre due origini la chiave resta quella di prima: una
+                  --    distinta GENERATA non e' il lotto di lavoro di nessuno, e una
+                  --    AUTOMATICA e' il file.
+                  -- ⭐ Rev 2026-09-15: l'EMITTENTE entra nella chiave su tutte le
+                  --    origini (D3). Sulla manuale non cambia niente in pratica
+                  --    (operatore => emittente); la GENERATA senza lotto smette di
+                  --    raccogliere i fondi di tutti — e' la decisione aperta del
+                  --    20260822-20, chiusa nel verso «una per emittente».
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                   WHERE vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.emittente_soggetto_ruolo_id = v_emittente_sr
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.origine = p_origine
+                     AND (p_origine <> 'MANUALE' OR vc.user_insert = v_operatore)
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                ELSE
+                  SELECT vc.id
+                    INTO v_contabile_id
+                    FROM pagamenti.vendite_contabili vc
+                    JOIN pagamenti.vendite_contabili_lotti vcl
+                      ON vcl.contabile_id = vc.id
+                   WHERE vcl.lotto_id = p_lotto_id
+                     AND vc.centro_riscossione_id = p_centro_riscossione_id
+                     AND vc.ente_incasso_id IS NOT DISTINCT FROM p_ente_incasso_id
+                     AND vc.emittente_soggetto_ruolo_id = v_emittente_sr
+                     AND vc.data_contabile = p_data_contabile
+                     AND vc.data_registrazione = v_data_registrazione
+                     AND vc.stato_id = v_stato_id
+                     AND vc.origine = p_origine
+                     AND (p_origine <> 'MANUALE' OR vc.user_insert = v_operatore)
+                   ORDER BY vc.id DESC
+                   LIMIT 1;
+                END IF;
+
+                IF v_contabile_id IS NULL THEN
+                  -- ⭐ Rev 2026-09-15: il codice lo assegna il TRIGGER sul registro
+                  --    DISTINTA dell'emittente (a10_gen_codice, D5): non si passa.
+                  --    Fino a oggi lo metteva il DEFAULT della colonna (rev 28-08),
+                  --    caduto con 20260915-21. L'emittente entra nella riga: il
+                  --    trigger a10_emittente lo ri-valuta (livelli 0-1, idempotente).
+                  INSERT INTO pagamenti.vendite_contabili (
+                    centro_riscossione_id,
+                    ente_incasso_id,
+                    emittente_soggetto_ruolo_id,
+                    data_contabile,
+                    data_registrazione,
+                    stato_id,
+                    origine,
+                    meta
+                  ) VALUES (
+                    p_centro_riscossione_id,
+                    p_ente_incasso_id,
+                    v_emittente_sr,
+                    p_data_contabile,
+                    v_data_registrazione,
+                    v_stato_id,
+                    p_origine,
+                    COALESCE(p_meta, '{}'::jsonb)
+                  )
+                  RETURNING id INTO v_contabile_id;
+                END IF;
+
+                IF p_lotto_id IS NOT NULL THEN
+                  INSERT INTO pagamenti.vendite_contabili_lotti (
+                    lotto_id,
+                    contabile_id,
+                    meta
+                  ) VALUES (
+                    p_lotto_id,
+                    v_contabile_id,
+                    jsonb_build_object('source','fn_get_or_create_vendite_contabile')
+                  )
+                  ON CONFLICT (lotto_id, contabile_id) DO NOTHING;
+                END IF;
+
+                RETURN v_contabile_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_posta_contabile(p_contabile_id bigint, p_righe_attese integer DEFAULT NULL::integer, p_totale_atteso numeric DEFAULT NULL::numeric)
+               RETURNS TABLE(movimenti_creati integer, righe_postate integer, righe_saltate integer, totale_postato numeric, esito text)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_stato_id           pagamenti.vendite_contabili_stati.id%TYPE;
+                  v_stato              pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_stato_label        pagamenti.vendite_contabili_stati.descrizione%TYPE;
+                  v_registrabile       pagamenti.vendite_contabili_stati.is_registrabile%TYPE;
+                  v_codice             pagamenti.vendite_contabili.codice%TYPE;
+                  v_centro_id          pagamenti.centri_riscossione.id%TYPE;
+                  v_data_contabile     pagamenti.vendite_contabili.data_contabile%TYPE;
+                  v_data_registrazione pagamenti.vendite_contabili.data_registrazione%TYPE;
+                  v_importo_dichiarato pagamenti.vendite_contabili.importo_dichiarato%TYPE;
+                  v_stato_postata_id   pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_stato_chiusa_id    pagamenti.vendite_contabili_stati.id%TYPE;
+                  v_somma_righe        pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_righe_pronte       integer;
+                  v_totale_pronte      pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_senza_abbinamento  integer;
+                  -- ⚠️ `colonna%TYPE[]` non esiste in PostgreSQL: qui il tipo
+                  --    resta esplicito. Porta id di vendite_contabili_righe.
+                  v_righe_ids          bigint[];
+                  v_movimenti          integer := 0;
+                  v_postate            integer := 0;
+                  v_saltate            integer := 0;
+                  v_totale_postato     pagamenti.vendite_contabili_righe.importo%TYPE := 0;
+              BEGIN
+                  -- =========================================================
+                  -- 1) GUARD DI PARAMETRO
+                  --    Un id nullo o non positivo non esce da nessuna
+                  --    interfaccia: lo produce solo un chiamante rotto, e per
+                  --    questo il codice è TECNICO e non DATO_ERRATO.
+                  -- =========================================================
+                  IF p_contabile_id IS NULL OR p_contabile_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_contabile_id', 'valore', p_contabile_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_contabile',
+                          'p_contabile_id obbligatorio e maggiore di zero');
+                  END IF;
+
+                  -- La dichiarazione è facoltativa, ma è UNA cosa sola: mezza
+                  -- dichiarazione non si può verificare, e accettarla in
+                  -- silenzio significherebbe registrare senza controllo
+                  -- credendo di averlo fatto.
+                  IF (p_righe_attese IS NULL) <> (p_totale_atteso IS NULL) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object(
+                              'p_righe_attese',  p_righe_attese,
+                              'p_totale_atteso', p_totale_atteso),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_contabile',
+                          'p_righe_attese e p_totale_atteso si passano insieme, o non si passano');
+                  END IF;
+
+                  IF p_righe_attese IS NOT NULL AND p_righe_attese < 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_righe_attese', 'valore', p_righe_attese),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_contabile',
+                          'p_righe_attese non puo'' essere negativo');
+                  END IF;
+
+                  -- =========================================================
+                  -- 2) LOCK DELLA TESTATA
+                  --    Serve a non registrare due volte in parallelo. ⚠️ FOR
+                  --    UPDATE OF c: si blocca la sola testata, non la lookup
+                  --    degli stati che le sta accanto nella JOIN.
+                  -- =========================================================
+                  SELECT c.stato_id, s.codice_interno, s.descrizione, s.is_registrabile, c.codice,
+                         c.centro_riscossione_id, c.data_contabile, c.data_registrazione,
+                         c.importo_dichiarato
+                    INTO v_stato_id, v_stato, v_stato_label, v_registrabile, v_codice,
+                         v_centro_id, v_data_contabile, v_data_registrazione,
+                         v_importo_dichiarato
+                    FROM pagamenti.vendite_contabili c
+                    JOIN pagamenti.vendite_contabili_stati s ON s.id = c.stato_id
+                   WHERE c.id = p_contabile_id
+                     FOR UPDATE OF c;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_NON_TROVATA',
+                          jsonb_build_object('contabile_id', p_contabile_id),
+                          NULL::uuid,
+                          p_contabile_id::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- 3) GUARD DI STATO
+                  --    Si registra SOLO da uno stato REGISTRABILE — oggi la sola
+                  --    VALIDATA: è il gesto «ho finito di inserire» (D14-a-bis).
+                  --    Da BOZZA la distinta potrebbe cambiare mentre la si
+                  --    registra; da CHIUSA o ANNULLATA il lavoro è finito.
+                  -- ⭐ Rev 2026-09-18 (D20-d): la domanda si fa al CATALOGO
+                  --    (vendite_contabili_stati.is_registrabile), non al letterale
+                  --    'VALIDATA'. Stesso codice, stessa frase: cambia CHI lo dice.
+                  --    Il dettaglio della distinta porta la stessa bandiera, così
+                  --    «Registra» si spegne col motivo invece di finire qui in 409.
+                  --    Fail-closed: uno stato nuovo non classificato non si registra.
+                  -- =========================================================
+                  IF v_registrabile IS NOT TRUE THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_NON_REGISTRABILE',
+                          jsonb_build_object(
+                              'contabile_id', p_contabile_id,
+                              'codice',       v_codice,
+                              'stato',        v_stato),
+                          NULL::uuid,
+                          v_codice,
+                          lower(v_stato_label));
+                  END IF;
+
+                  -- =========================================================
+                  -- 4) QUADRATURA DELLA DISTINTA (D12-e)
+                  --    «Ho letto tutto quello che è arrivato?» — tutte le
+                  --    righe attive, SCARTATA compresa: quel denaro è
+                  --    arrivato comunque.
+                  --    ℹ️ Lo stesso controllo lo fa il guard di validazione
+                  --    entrando in VALIDATA; qui si ripete perché fra i due
+                  --    momenti le righe possono essere cambiate.
+                  -- =========================================================
+                  SELECT COALESCE(SUM(cr.importo), 0)
+                    INTO v_somma_righe
+                    FROM pagamenti.vendite_contabili_righe cr
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE;
+
+                  IF v_importo_dichiarato IS NOT NULL
+                     AND v_importo_dichiarato IS DISTINCT FROM v_somma_righe THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_TOTALE_DICHIARATO_NON_QUADRA',
+                          jsonb_build_object(
+                              'campo',              'importo_dichiarato',
+                              'contabile_id',       p_contabile_id,
+                              'codice',             v_codice,
+                              'importo_dichiarato', v_importo_dichiarato,
+                              'somma_righe',        v_somma_righe),
+                          NULL::uuid,
+                          v_codice,
+                          v_importo_dichiarato::text,
+                          v_somma_righe::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- 5) LE RIGHE PRONTE, e la DICHIARAZIONE di chi conferma
+                  --    Pronte = stato `is_postabile`. Le SOSPESE restano dove
+                  --    sono: è D3-a, e non richiede nessun meccanismo nuovo.
+                  -- =========================================================
+                  SELECT COUNT(*)::integer, COALESCE(SUM(cr.importo), 0)
+                    INTO v_righe_pronte, v_totale_pronte
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE
+                     AND st.is_postabile IS TRUE;
+
+                  -- ⚠️ Si rifiuta PRIMA di scrivere qualsiasi cosa: la
+                  --    registrazione non si torna indietro, e un avviso dopo
+                  --    non ripara niente.
+                  IF p_righe_attese IS NOT NULL
+                     AND (p_righe_attese <> v_righe_pronte
+                          OR p_totale_atteso IS DISTINCT FROM v_totale_pronte) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_DICHIARAZIONE_NON_CORRISPONDE',
+                          jsonb_build_object(
+                              'contabile_id',   p_contabile_id,
+                              'codice',         v_codice,
+                              'righe_attese',   p_righe_attese,
+                              'totale_atteso',  p_totale_atteso,
+                              'righe_pronte',   v_righe_pronte,
+                              'totale_pronte',  v_totale_pronte),
+                          NULL::uuid,
+                          v_codice,
+                          p_righe_attese::text,
+                          p_totale_atteso::text,
+                          v_righe_pronte::text,
+                          v_totale_pronte::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- 5-bis) IL RIFIUTO PARLANTE
+                  --    Da una riga non abbinata non si deriva un movimento. Lo
+                  --    direbbe comunque il trigger di mirror, ma più tardi e
+                  --    con un messaggio che parla del movimento invece che
+                  --    della riga.
+                  --    ℹ️ Il contesto NON porta la chiave `campo`, e non è una
+                  --    dimenticanza: non c'è UN campo da accendere, ci sono N
+                  --    righe — i loro id stanno nel contesto.
+                  -- =========================================================
+                  SELECT COUNT(*)::integer
+                    INTO v_senza_abbinamento
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE
+                     AND st.is_postabile IS TRUE
+                     AND (cr.fattura_id IS NULL OR cr.billing_account_id IS NULL);
+
+                  IF v_senza_abbinamento > 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_RIGA_CONTABILE_ABBINAMENTO_INCOMPLETO',
+                          jsonb_build_object(
+                              'contabile_id',  p_contabile_id,
+                              'codice',        v_codice,
+                              'quante',        v_senza_abbinamento,
+                              'contabile_righe_ids', (
+                                  SELECT jsonb_agg(cr.id ORDER BY cr.id)
+                                    FROM pagamenti.vendite_contabili_righe cr
+                                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                                   WHERE cr.contabile_id = p_contabile_id
+                                     AND cr.attivo IS TRUE
+                                     AND st.is_postabile IS TRUE
+                                     AND (cr.fattura_id IS NULL OR cr.billing_account_id IS NULL))),
+                          NULL::uuid,
+                          'POSTATA',
+                          'la fattura e il cliente');
+                  END IF;
+
+                  -- =========================================================
+                  -- 6) NIENTE DA REGISTRARE — e non è un errore (Q-7)
+                  -- =========================================================
+                  IF v_righe_pronte = 0 THEN
+                      SELECT COUNT(*)::integer
+                        INTO v_saltate
+                        FROM pagamenti.vendite_contabili_righe cr
+                        JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                       WHERE cr.contabile_id = p_contabile_id
+                         AND cr.attivo IS TRUE
+                         AND st.is_final IS NOT TRUE;
+
+                      RETURN QUERY SELECT 0, 0, v_saltate, 0::numeric, 'NULLA_DA_POSTARE'::text;
+                      RETURN;
+                  END IF;
+
+                  -- =========================================================
+                  -- 7) GLI STATI DI DESTINAZIONE, letti per codice_interno
+                  --    (la chiave immutabile, mai `codice`).
+                  --    ⚠️ Nessun ripiego: uno stato mancante è una
+                  --    configurazione rotta, e si dice.
+                  -- =========================================================
+                  SELECT s.id INTO v_stato_postata_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.codice_interno = 'POSTATA' AND s.attivo IS TRUE
+                   LIMIT 1;
+
+                  IF v_stato_postata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('codice_interno', 'POSTATA', 'catalogo', 'vendite_contabili_righe_stati'),
+                          NULL::uuid,
+                          'POSTATA');
+                  END IF;
+
+                  SELECT s.id INTO v_stato_chiusa_id
+                    FROM pagamenti.vendite_contabili_stati s
+                   WHERE s.codice_interno = 'CHIUSA' AND s.attivo IS TRUE
+                   LIMIT 1;
+
+                  IF v_stato_chiusa_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_contabile',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('codice_interno', 'CHIUSA', 'catalogo', 'vendite_contabili_stati'),
+                          NULL::uuid,
+                          'CHIUSA');
+                  END IF;
+
+                  -- =========================================================
+                  -- 8) PRIMO STATEMENT — i MOVIMENTI
+                  --    ⚠️ fattura_id, billing_account_id e contabile_id NON si
+                  --    passano: li deriva dalla riga il trigger di mirror, che
+                  --    rifiuta i valori incoerenti. Passarli qui vorrebbe dire
+                  --    scrivere due volte la stessa verità.
+                  --    ⭐ `centro_riscossione_id` invece SÌ, e conta: è ciò che
+                  --    distingue la cassa dai centri interni (fondo fattura,
+                  --    compensazione), e ogni misura di «incassato» deve poterli
+                  --    escludere.
+                  --    ℹ️ Il doppio movimento è impossibile per costruzione
+                  --    (`uq_vendite_movimenti_contabile_riga`): se scattasse,
+                  --    è un'anomalia e deve farsi sentire, non essere inghiottita.
+                  -- =========================================================
+                  WITH ins AS (
+                      INSERT INTO pagamenti.vendite_movimenti (
+                          contabile_riga_id, data_effettiva, data_registrazione,
+                          data_contabile, data_valuta, data_contabilizzazione,
+                          importo, centro_riscossione_id, meta)
+                      SELECT cr.id,
+                             COALESCE(cr.data_pagamento, v_data_contabile),
+                             v_data_registrazione,
+                             v_data_contabile,
+                             cr.data_valuta,
+                             current_date,
+                             cr.importo,
+                             v_centro_id,
+                             jsonb_build_object('origine', 'POSTING', 'contabile_codice', v_codice)
+                        FROM pagamenti.vendite_contabili_righe cr
+                        JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                       WHERE cr.contabile_id = p_contabile_id
+                         AND cr.attivo IS TRUE
+                         AND st.is_postabile IS TRUE
+                      RETURNING contabile_riga_id, importo
+                  )
+                  SELECT array_agg(ins.contabile_riga_id ORDER BY ins.contabile_riga_id),
+                         COUNT(*)::integer,
+                         COALESCE(SUM(ins.importo), 0)
+                    INTO v_righe_ids, v_movimenti, v_totale_postato
+                    FROM ins;
+
+                  -- =========================================================
+                  -- 9) SECONDO STATEMENT — le RIGHE a POSTATA
+                  --    🔴 Statement separato, non una CTE: con la RLS padre e
+                  --    figlio nella stessa snapshot non si vedono.
+                  --    ⚠️ Si aggiornano ESATTAMENTE le righe di cui si è appena
+                  --    scritto il movimento: ripetere il predicato porterebbe a
+                  --    POSTATA anche una riga aggiunta nel frattempo, che
+                  --    resterebbe senza movimento.
+                  --    ⭐ È questo UPDATE a far scattare, sulle righe che
+                  --    vengono da un fondo fattura, il trigger che porta l'atto
+                  --    a ESEGUITO.
+                  -- =========================================================
+                  WITH upd AS (
+                      UPDATE pagamenti.vendite_contabili_righe cr
+                         SET stato_id = v_stato_postata_id
+                       WHERE cr.id = ANY (COALESCE(v_righe_ids, '{}'::bigint[]))
+                      RETURNING cr.id
+                  )
+                  SELECT COUNT(*)::integer INTO v_postate FROM upd;
+
+                  -- =========================================================
+                  -- 10) CHE COSA RESTA INDIETRO
+                  --     Le righe attive in uno stato NON finale: quelle di cui
+                  --     nessuno ha ancora detto che cosa ne è stato.
+                  -- =========================================================
+                  SELECT COUNT(*)::integer
+                    INTO v_saltate
+                    FROM pagamenti.vendite_contabili_righe cr
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = cr.stato_id
+                   WHERE cr.contabile_id = p_contabile_id
+                     AND cr.attivo IS TRUE
+                     AND st.is_final IS NOT TRUE;
+
+                  -- =========================================================
+                  -- 11) CONFERMA E CHIUSURA (D13 + decisione del 2026-08-22)
+                  --     La conferma è l'atto di REGISTRARE: il COALESCE tiene
+                  --     la prima volta che è successo.
+                  --     La chiusura è una CONSEGUENZA: dopo il posting righe
+                  --     pronte non ne restano, e il guard di chiusura dichiara
+                  --     che le altre non devono bloccare.
+                  -- =========================================================
+                  UPDATE pagamenti.vendite_contabili c
+                     SET data_conferma = COALESCE(c.data_conferma, now()),
+                         user_conferma = COALESCE(c.user_conferma, current_user),
+                         stato_id      = v_stato_chiusa_id
+                   WHERE c.id = p_contabile_id;
+
+                  RETURN QUERY SELECT v_movimenti, v_postate, v_saltate,
+                                      COALESCE(v_totale_postato, 0), 'POSTATA'::text;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pagamenti.fn_posta_riga_tardiva(p_riga_id pagamenti.vendite_contabili_righe.id%TYPE, p_fattura_id pagamenti.vendite_contabili_righe.fattura_id%TYPE, p_billing_account_id pagamenti.vendite_contabili_righe.billing_account_id%TYPE, p_scadenza_id pagamenti.vendite_contabili_righe.scadenza_id%TYPE DEFAULT NULL::bigint, p_forzata pagamenti.vendite_contabili_righe.forzata%TYPE DEFAULT false, p_motivo_forzatura pagamenti.vendite_contabili_righe.motivo_forzatura%TYPE DEFAULT NULL::text)
+               RETURNS TABLE(movimento_id pagamenti.vendite_movimenti.id%TYPE, riga_id pagamenti.vendite_contabili_righe.id%TYPE, importo pagamenti.vendite_contabili_righe.importo%TYPE, esito text)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_contabile_id         pagamenti.vendite_contabili_righe.contabile_id%TYPE;
+                  v_attivo               pagamenti.vendite_contabili_righe.attivo%TYPE;
+                  v_importo              pagamenti.vendite_contabili_righe.importo%TYPE;
+                  v_data_pagamento       pagamenti.vendite_contabili_righe.data_pagamento%TYPE;
+                  v_data_valuta          pagamenti.vendite_contabili_righe.data_valuta%TYPE;
+                  v_stato_riga           pagamenti.vendite_contabili_righe_stati.codice_interno%TYPE;
+                  v_stato_riga_label     pagamenti.vendite_contabili_righe_stati.descrizione%TYPE;
+                  v_codice               pagamenti.vendite_contabili.codice%TYPE;
+                  v_centro_id            pagamenti.vendite_contabili.centro_riscossione_id%TYPE;
+                  v_data_contabile       pagamenti.vendite_contabili.data_contabile%TYPE;
+                  v_data_conferma        pagamenti.vendite_contabili.data_conferma%TYPE;
+                  v_stato_distinta       pagamenti.vendite_contabili_stati.codice_interno%TYPE;
+                  v_stato_distinta_label pagamenti.vendite_contabili_stati.descrizione%TYPE;
+                  v_is_final             pagamenti.vendite_contabili_stati.is_final%TYPE;
+                  v_stato_abbinata_id    pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_stato_postata_id     pagamenti.vendite_contabili_righe_stati.id%TYPE;
+                  v_movimento_id         pagamenti.vendite_movimenti.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Registrare IN RITARDO una riga contabile rimasta SOSPESA
+                  --   sotto una distinta gia' registrata: la si abbina e la si
+                  --   registra nello stesso gesto. Movimento scritto, riga a
+                  --   POSTATA, distinta che resta CHIUSA e non tocca la sua
+                  --   conferma. E' la strada del «resto» di D3-a, che dalla
+                  --   chiusura automatica in poi non ne aveva (brief §1).
+                  --
+                  -- ⭐ Passa da ABBINATA, cosi' girano tutti i guard
+                  --    dell'abbinamento normale; alla quarta mossa del guard
+                  --    sulla distinta finale si presenta con la GUC
+                  --    transazionale app.registrazione_tardiva_riga_id.
+                  -- ⛔ Nessun esito NULLA_DA_POSTARE: un rifiuto e' un rifiuto.
+                  -- Brief: brief-db-validata-e-registrazione-tardiva §2.2, §4.1.
+                  -- =========================================================
+
+                  -- =========================================================
+                  -- 1) GUARD DI PARAMETRO
+                  --    Un id nullo o non positivo non esce da nessuna
+                  --    interfaccia: lo produce solo un chiamante rotto, e per
+                  --    questo il codice e' TECNICO e non DATO_ERRATO. Il
+                  --    cliente a NULL NON e' un guard di qui: risponde il guard
+                  --    sui dati entrando in ABBINATA, col campo da accendere.
+                  -- =========================================================
+                  IF p_riga_id IS NULL OR p_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_riga_id', 'valore', p_riga_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_riga_tardiva',
+                          'identificativo della riga contabile non valido');
+                  END IF;
+
+                  IF p_fattura_id IS NULL OR p_fattura_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_fattura_id', 'valore', p_fattura_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_riga_tardiva',
+                          'la fattura a cui registrare la riga e'' obbligatoria');
+                  END IF;
+
+                  IF p_billing_account_id IS NOT NULL AND p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_billing_account_id', 'valore', p_billing_account_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_riga_tardiva',
+                          'identificativo del cliente non valido');
+                  END IF;
+
+                  IF p_scadenza_id IS NOT NULL AND p_scadenza_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_PAGAMENTI_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_scadenza_id', 'valore', p_scadenza_id),
+                          NULL::uuid,
+                          'pagamenti.fn_posta_riga_tardiva',
+                          'identificativo della rata non valido');
+                  END IF;
+
+                  -- =========================================================
+                  -- 2) LOCK DELLA RIGA, e la sua testata con lo stato
+                  --    ⚠️ FOR UPDATE OF r: si blocca la sola riga, non i
+                  --    cataloghi ne' la testata (che non si scrive). Sotto la
+                  --    row security «non trovata» e «non e' tua» devono
+                  --    restare indistinguibili: stesso codice e stessa frase
+                  --    del mirror del movimento (404, no-leak).
+                  -- =========================================================
+                  SELECT r.contabile_id, r.attivo, r.importo, r.data_pagamento, r.data_valuta,
+                         st.codice_interno, st.descrizione,
+                         c.codice, c.centro_riscossione_id, c.data_contabile, c.data_conferma,
+                         s.codice_interno, s.descrizione, s.is_final
+                    INTO v_contabile_id, v_attivo, v_importo, v_data_pagamento, v_data_valuta,
+                         v_stato_riga, v_stato_riga_label,
+                         v_codice, v_centro_id, v_data_contabile, v_data_conferma,
+                         v_stato_distinta, v_stato_distinta_label, v_is_final
+                    FROM pagamenti.vendite_contabili_righe r
+                    JOIN pagamenti.vendite_contabili_righe_stati st ON st.id = r.stato_id
+                    JOIN pagamenti.vendite_contabili c              ON c.id  = r.contabile_id
+                    JOIN pagamenti.vendite_contabili_stati s        ON s.id  = c.stato_id
+                   WHERE r.id = p_riga_id
+                     FOR UPDATE OF r;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_RIGA_CONTABILE_NON_TROVATA',
+                          jsonb_build_object('contabile_riga_id', p_riga_id),
+                          NULL::uuid,
+                          p_riga_id::text);
+                  END IF;
+
+                  -- =========================================================
+                  -- 3) GUARD DI STATO DELLA RIGA: attiva e SOSPESA
+                  --    Da SCARTATA si passa prima da «Riprendi» (-> SOSPESA, in
+                  --    matrice); da DA_ABBINARE non si arriva qui (D20-a: sotto
+                  --    una registrata non ce ne sono); da POSTATA il movimento
+                  --    c'e' gia'. Una riga eliminata non e' in nessun conto.
+                  -- =========================================================
+                  IF v_attivo IS NOT TRUE OR v_stato_riga IS DISTINCT FROM 'SOSPESA' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_RIGA_CONTABILE_TARDIVA_STATO',
+                          jsonb_build_object(
+                              'contabile_riga_id', p_riga_id,
+                              'contabile_id',      v_contabile_id,
+                              'contabile_codice',  v_codice,
+                              'attivo',            v_attivo,
+                              'stato_riga',        v_stato_riga),
+                          NULL::uuid,
+                          p_riga_id::text,
+                          v_codice,
+                          -- La descrizione del catalogo com'e' («Riga scartata
+                          -- definitivamente»): entra fra parentesi nella frase.
+                          CASE WHEN v_attivo IS NOT TRUE THEN 'eliminata'
+                               ELSE v_stato_riga_label END);
+                  END IF;
+
+                  -- =========================================================
+                  -- 4) GUARD DI STATO DELLA TESTATA: REGISTRATA
+                  --    = finale E con data_conferma. Sotto ANNULLATA niente si
+                  --    registra («non e' mai successa»); una CHIUSA senza
+                  --    conferma non ha registrato niente; sotto BOZZA /
+                  --    VALIDATA c'e' il giro normale, e la frase lo dice.
+                  -- =========================================================
+                  IF v_is_final IS NOT TRUE OR v_data_conferma IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_RIGA_CONTABILE_TARDIVA_DISTINTA_NON_REGISTRATA',
+                          jsonb_build_object(
+                              'contabile_riga_id', p_riga_id,
+                              'contabile_id',      v_contabile_id,
+                              'contabile_codice',  v_codice,
+                              'stato_distinta',    v_stato_distinta,
+                              'is_final',          v_is_final,
+                              'data_conferma',     v_data_conferma),
+                          NULL::uuid,
+                          v_codice,
+                          CASE
+                              WHEN v_stato_distinta = 'ANNULLATA'
+                                  THEN 'e'' annullata'
+                              WHEN v_is_final IS TRUE
+                                  THEN 'e'' chiusa senza essere mai stata registrata'
+                              ELSE 'e'' ancora ' || lower(v_stato_distinta_label)
+                                   || ': usa il giro normale, abbina la riga e registra la distinta'
+                          END);
+                  END IF;
+
+                  -- =========================================================
+                  -- 5) GLI STATI DI DESTINAZIONE, per codice_interno
+                  --    (la chiave immutabile, mai `codice`). Nessun ripiego:
+                  --    uno stato mancante e' una configurazione rotta.
+                  -- =========================================================
+                  SELECT s.id INTO v_stato_abbinata_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.codice_interno = 'ABBINATA' AND s.attivo IS TRUE
+                   LIMIT 1;
+
+                  IF v_stato_abbinata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('codice_interno', 'ABBINATA', 'catalogo', 'vendite_contabili_righe_stati'),
+                          NULL::uuid,
+                          'ABBINATA');
+                  END IF;
+
+                  SELECT s.id INTO v_stato_postata_id
+                    FROM pagamenti.vendite_contabili_righe_stati s
+                   WHERE s.codice_interno = 'POSTATA' AND s.attivo IS TRUE
+                   LIMIT 1;
+
+                  IF v_stato_postata_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'pagamenti.fn_posta_riga_tardiva',
+                          'E_CONTABILE_STATO_NON_CONFIGURATO',
+                          jsonb_build_object('codice_interno', 'POSTATA', 'catalogo', 'vendite_contabili_righe_stati'),
+                          NULL::uuid,
+                          'POSTATA');
+                  END IF;
+
+                  -- =========================================================
+                  -- 6) LA PORTA: ci si presenta alla quarta mossa
+                  --    set_config(..., true) = transazionale. Il guard sulla
+                  --    distinta finale (20260918-39) legge la GUC e lascia
+                  --    passare SOLO questa riga. Precedente:
+                  --    app.cessazione_automatica.
+                  -- =========================================================
+                  PERFORM set_config('app.registrazione_tardiva_riga_id', p_riga_id::text, true);
+
+                  -- =========================================================
+                  -- 7) PRIMO STATEMENT — la riga si ABBINA
+                  --    Girano i guard dell'abbinamento normale: transizione
+                  --    (SOSPESA -> ABBINATA), dati (fattura e cliente), rata
+                  --    (coerenza rifiutata, capienza col doppio tempo: senza
+                  --    forzata -> E_RIGA_CONTABILE_CAPIENZA_SUPERATA), scope.
+                  --    ⚠️ `WHERE id = p_riga_id`, non un predicato: la riga e'
+                  --    quella, e basta.
+                  -- =========================================================
+                  UPDATE pagamenti.vendite_contabili_righe r
+                     SET stato_id           = v_stato_abbinata_id,
+                         fattura_id         = p_fattura_id,
+                         billing_account_id = p_billing_account_id,
+                         scadenza_id        = p_scadenza_id,
+                         forzata            = COALESCE(p_forzata, false),
+                         motivo_forzatura   = p_motivo_forzatura
+                   WHERE r.id = p_riga_id;
+
+                  -- =========================================================
+                  -- 8) SECONDO STATEMENT — il MOVIMENTO
+                  --    Come il passo 8 della madre del posting: fattura,
+                  --    cliente, distinta e rata NON si passano, li deriva dalla
+                  --    riga il trigger di mirror. E' registrata OGGI:
+                  --    data_registrazione e data_contabilizzazione =
+                  --    current_date; la testata tiene la data della PRIMA
+                  --    registrazione, il movimento la sua.
+                  --    ℹ️ Il doppio movimento e' impossibile per costruzione
+                  --    (uq_vendite_movimenti_contabile_riga).
+                  -- =========================================================
+                  INSERT INTO pagamenti.vendite_movimenti (
+                      contabile_riga_id, data_effettiva, data_registrazione,
+                      data_contabile, data_valuta, data_contabilizzazione,
+                      importo, centro_riscossione_id, meta)
+                  VALUES (
+                      p_riga_id,
+                      COALESCE(v_data_pagamento, v_data_contabile),
+                      current_date,
+                      v_data_contabile,
+                      v_data_valuta,
+                      current_date,
+                      v_importo,
+                      v_centro_id,
+                      jsonb_build_object('origine', 'POSTING_TARDIVO', 'contabile_codice', v_codice))
+                  RETURNING id INTO v_movimento_id;
+
+                  -- =========================================================
+                  -- 9) TERZO STATEMENT — la riga a POSTATA
+                  --    🔴 Statement separato, non una CTE: con la RLS padre e
+                  --    figlio nella stessa snapshot non si vedono. Scatta
+                  --    marca_fondo_eseguito se e' una riga di fondo, come nel
+                  --    posting. La distinta NON si tocca: resta CHIUSA con la
+                  --    sua data_conferma.
+                  -- =========================================================
+                  UPDATE pagamenti.vendite_contabili_righe r
+                     SET stato_id = v_stato_postata_id
+                   WHERE r.id = p_riga_id;
+
+                  -- ⚠️ La porta si RICHIUDE qui, non al COMMIT: dopo il ritorno
+                  --    nessun'altra scrittura della stessa transazione deve
+                  --    trovarla aperta.
+                  PERFORM set_config('app.registrazione_tardiva_riga_id', '', true);
+
+                  RETURN QUERY SELECT v_movimento_id, p_riga_id, v_importo, 'POSTATA'::text;
+              END;
+              $function$;

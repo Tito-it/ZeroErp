@@ -13,23 +13,23 @@
 | emittente_fiscale_id | bigint | NO |  |
 | tipo_titolo_iva_id | bigint | NO |  |
 | iva_id | integer | NO |  |
-| ambito | character varying | NO | 'TUTTO'::character varying |
+| ambito | character varying(16) | NO | 'TUTTO'::character varying |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
-| protocollo | character varying | YES |  |
+| protocollo | character varying(64) | YES |  |
 | data_ricezione | date | YES |  |
-| riferimento | character varying | YES |  |
-| plafond | numeric | YES |  |
-| imponibile_utilizzato | numeric | NO | 0 |
+| riferimento | character varying(255) | YES |  |
+| plafond | numeric(15,2) | YES |  |
+| imponibile_utilizzato | numeric(15,2) | NO | 0 |
 | attivo | boolean | NO | true |
-| note | character varying | YES |  |
+| note | character varying(255) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | validita | daterange | NO |  |
 
 ## 🔒 Vincoli
@@ -37,6 +37,8 @@
 |------|------|---------|
 | CHECK | chk_soggetti_titoli_iva_ambito |  |
 | CHECK | chk_soggetti_titoli_iva_finestra |  |
+| CHECK | chk_soggetti_titoli_iva_imponibile_utilizzato_finito |  |
+| CHECK | chk_soggetti_titoli_iva_plafond_finito |  |
 | CHECK | chk_soggetti_titoli_iva_plafond_pos |  |
 | FOREIGN KEY | fk_soggetti_titoli_iva_emittente | emittente_fiscale_id |
 | FOREIGN KEY | fk_soggetti_titoli_iva_iva | iva_id |
@@ -61,6 +63,8 @@
 | trg_soggetti_titoli_iva_a10_emittenti_fiscali_require_at_7e7ab7 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_soggetti_titoli_iva_a10_guard_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza()` |
 | trg_soggetti_titoli_iva_a10_guard_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza()` |
+| trg_soggetti_titoli_iva_a10_guard_tipo_soggetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto()` |
+| trg_soggetti_titoli_iva_a10_guard_tipo_soggetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto()` |
 | trg_soggetti_titoli_iva_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_soggetti_titoli_iva_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_soggetti_titoli_iva_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |

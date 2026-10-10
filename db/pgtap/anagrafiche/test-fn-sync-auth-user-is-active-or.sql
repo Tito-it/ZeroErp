@@ -8,10 +8,13 @@
 -- Semantica attesa post 20-04-2026:
 --   auth_user.is_active = true SE ESISTE almeno una identita con
 --     - attivo = true
---     - ruolo_applicativo != 'DISABILITATO'
---     - CURRENT_DATE in [valido_dal, valido_al]
+--     - script.fn_data_operativa() in [valido_dal, valido_al]
 --     - soggetto parent attivo
 --   Altrimenti auth_user.is_active = false.
+--   ⚠️ Rev 2026-10-02 (brief-db-be-fe-area-accessi R-DB-1): fino a quel
+--   giorno c'era anche «ruolo_applicativo != DISABILITATO». DISABILITATO non
+--   e' piu' un tipo di veste: la tabella viva lo rifiuta, e «spenta» si legge
+--   solo da attivo. I test 4 e 5 sono stati riscritti su questo.
 --
 -- Strategia: creo auth_user vuoti, aggiungo identita con varie
 -- combinazioni, chiamo fn_sync_auth_user_is_active esplicitamente,
@@ -25,9 +28,10 @@
 --    2. User con 1 identita CLIENTE_PORTALE attiva -> is_active=true
 --    3. User con 2 identita attive (CLIENTE_PORTALE + SHOP_CUSTOMER)
 --       -> is_active=true
---    4. User con sola identita DISABILITATO attiva -> is_active=false
---    5. User con 1 identita CLIENTE_PORTALE attiva + 1 DISABILITATO
---       attiva -> is_active=true (OR su non-DISABILITATO)
+--    4. Una veste DISABILITATO non entra piu' nella tabella viva:
+--       E_RUOLO_APPLICATIVO_RITIRATO (rev 2026-10-02)
+--    5. User con 1 identita CLIENTE_PORTALE attiva + 1 SHOP_CUSTOMER
+--       spenta -> is_active=true (OR: basta la veste utilizzabile)
 --    6. User con 1 identita CLIENTE_PORTALE ma attivo=false
 --       -> is_active=false (nessuna identita utilizzabile)
 --
@@ -180,35 +184,41 @@ SELECT CASE
 END;
 
 -- =========================================================
--- 4) User con sola identita DISABILITATO -> is_active=false
+-- 4) Una veste DISABILITATO non entra nella tabella viva
+--    (rev 2026-10-02, R-DB-1): il guard di coerenza parla prima
+--    del CHECK chk_identita_digitali_ruolo_non_ritirato, col
+--    codice che dice il rimedio. Il codice viaggia nel canale
+--    CONSTRAINT_NAME dell'eccezione P0001.
 -- =========================================================
-INSERT INTO anagrafiche.identita_digitali
-    (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-SELECT
-    (SELECT sr_id FROM _t_sr_cl WHERE rn = 3),
-    (SELECT auth_user_id FROM _t_au_pool WHERE idx = 3),
-    'DISABILITATO'::config.ruolo_applicativo, true
- WHERE (SELECT count(*) FROM _t_sr_cl) = 5;
-
-SELECT anagrafiche.fn_sync_auth_user_is_active(
-    (SELECT auth_user_id FROM _t_au_pool WHERE idx = 3)
-)
- WHERE (SELECT count(*) FROM _t_sr_cl) = 5;
+CREATE OR REPLACE FUNCTION pg_temp.codice_errore(p_sql text) RETURNS text
+LANGUAGE plpgsql AS $$
+DECLARE v_c text;
+BEGIN
+    EXECUTE p_sql;
+    RETURN NULL;
+EXCEPTION WHEN SQLSTATE 'P0001' THEN
+    GET STACKED DIAGNOSTICS v_c = CONSTRAINT_NAME;
+    RETURN v_c;
+END $$;
 
 SELECT CASE
     WHEN (SELECT count(*) FROM _t_sr_cl) = 5 THEN
         is(
-            (SELECT is_active FROM django.auth_user
-              WHERE id = (SELECT auth_user_id FROM _t_au_pool WHERE idx = 3)),
-            false,
-            '4. Sola identita DISABILITATO attiva -> is_active=false'
+            pg_temp.codice_errore(format(
+                $$INSERT INTO anagrafiche.identita_digitali
+                      (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
+                  VALUES (%s, %s, 'DISABILITATO'::config.ruolo_applicativo, false)$$,
+                (SELECT sr_id FROM _t_sr_cl WHERE rn = 3),
+                (SELECT auth_user_id FROM _t_au_pool WHERE idx = 3))),
+            'E_RUOLO_APPLICATIVO_RITIRATO',
+            '4. Una veste DISABILITATO e'' rifiutata: E_RUOLO_APPLICATIVO_RITIRATO'
         )
     ELSE skip('fixture insufficiente: test 4 skippato', 1)
 END;
 
 -- =========================================================
--- 5) User con CLIENTE_PORTALE attiva + DISABILITATO attiva
---    -> is_active=true (OR su non-DISABILITATO)
+-- 5) User con CLIENTE_PORTALE attiva + SHOP_CUSTOMER spenta
+--    -> is_active=true (OR: basta la veste utilizzabile)
 -- =========================================================
 INSERT INTO anagrafiche.identita_digitali
     (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
@@ -221,7 +231,7 @@ UNION ALL
 SELECT
     (SELECT sr_id FROM _t_sr_cl WHERE rn = 4),
     (SELECT auth_user_id FROM _t_au_pool WHERE idx = 4),
-    'DISABILITATO'::config.ruolo_applicativo, true
+    'SHOP_CUSTOMER'::config.ruolo_applicativo, false
  WHERE (SELECT count(*) FROM _t_sr_cl) = 5;
 
 SELECT anagrafiche.fn_sync_auth_user_is_active(
@@ -235,7 +245,7 @@ SELECT CASE
             (SELECT is_active FROM django.auth_user
               WHERE id = (SELECT auth_user_id FROM _t_au_pool WHERE idx = 4)),
             true,
-            '5. CLIENTE_PORTALE attiva + DISABILITATO attiva -> is_active=true (OR)'
+            '5. CLIENTE_PORTALE attiva + SHOP_CUSTOMER spenta -> is_active=true (OR)'
         )
     ELSE skip('fixture insufficiente: test 5 skippato', 1)
 END;

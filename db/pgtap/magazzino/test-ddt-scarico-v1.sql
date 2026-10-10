@@ -60,8 +60,8 @@ BEGIN
     v_s   := dbops.fn_pgtap_crea_articolo('PGT-L3S-SEMPLICE', true,  false, false);
     v_l   := dbops.fn_pgtap_crea_articolo('PGT-L3S-A-LOTTI',  true,  true,  false);
     v_n   := dbops.fn_pgtap_crea_articolo('PGT-L3S-NON-GEST', false, false, false);
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3S-A', CURRENT_DATE - 10) RETURNING id INTO v_la;
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3S-B', CURRENT_DATE - 5)  RETURNING id INTO v_lb;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3S-A', script.fn_data_operativa() - 10) RETURNING id INTO v_la;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3S-B', script.fn_data_operativa() - 5)  RETURNING id INTO v_lb;
     INSERT INTO _fix VALUES (v_mag, v_s, v_l, v_n, v_la, v_lb);
 
     -- Il carico: SEMPLICE 10 a 5, A_LOTTI 6+6 a 3.

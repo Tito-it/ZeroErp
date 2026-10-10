@@ -1,0 +1,40 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Due COMMENT che questo giro rende stantii (solo COMMENT, nessun corpo)
+#   vendite.trgfn_doc_righe_lock_fuori_bozza: + l'adottante OFFERTA (20261004-49)
+#   script.trgfn_righe_guard_erogazione_obbligatoria: sull'ESCLUSIONE
+#     l'erogazione non e' piu' «libera» ma vuota (20261004-47, -76)
+#   Testo di partenza: il COMMENT vivo (obj_description sullo scratch,
+#   2026-10-04), con la sola frase cambiata o aggiunta.
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261004-75-comment-lock-fuori-bozza-e-guard-erogazione-mctit.yaml
+
+  - changeSet:
+      id: 20261004-75-comment-lock-fuori-bozza-e-guard-erogazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        COMMENT di vendite.trgfn_doc_righe_lock_fuori_bozza (+ adottante OFFERTA) e di
+        script.trgfn_righe_guard_erogazione_obbligatoria (esclusione: erogazione vuota). Brief:
+        brief-db-righe-esclusione-solo-non-si-vende.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+              IS 'Building block (2026-09-22): le righe di un documento si aggiungono, modificano e tolgono SOLO finche'' il documento e'' in bozza. BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, TG_ARGV = [0] tipo documento per script.fn_get_stato_testata_documento (DDT | ORDINE | CONTRATTO | OFFERTA | RESO), [1] colonna FK della riga verso la testata, [2] (opz.) codice_interno dello stato bozza, default DRAFT. Rifiuta con E_RIGA_DOC_NON_BOZZA (CONFLITTO_STATO; valori: etichetta, stato, verbo). ⛔ Lo stato si legge dal lettore SECURITY DEFINER perche'' testate e righe hanno RLS: un guard invoker non distinguerebbe «non c''e''» da «non la vedo». Testata assente = cascade dalla testata o FK che parlera'': passa. Su UPDATE guarda anche la testata di provenienza se la riga cambia padre. ⭐ Fascia _a05_: il rifiuto di stato parla PRIMA dei guard _a10_ sui legami (fulfillment, figli), o l''operatore legge un rimedio che non e'' il rimedio. Nasce da D7 di brief-db-partita-merce-per-documento (una riga di DDT gia'' instradata a fatturazione poteva essere disattivata) e ritira nello stesso giro le due copie che la regola aveva a DB: vendite.trgfn_contratti_righe_lock_post_attivazione (droppata) e il ramo 1 di vendite.trgfn_dlt_block_ordrig_ddtrig. Adottanti: vendite.ddt_righe (tre porte), vendite.ordini_righe (solo DELETE: INSERT/UPDATE restano aperti di proposito, data_consegna_confermata cambia dopo la conferma), vendite.contratti_righe (tre porte). Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO (TECNICO). rev 2026-09-29 (brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-h): quarto adottante, vendite.resi_righe (tre porte, tipo RESO, colonna reso_id): dal Lotto 3-bis la conferma del reso carica la merce, e una riga cambiata dopo farebbe divergere reso e registro. rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): quinto adottante, vendite.offerte_commerciali_eccezioni (tre porte, tipo OFFERTA, colonna offerta_id, stato bozza BOZZA come terzo argomento): fn_push_offerta_a_contratto copia le righe 1:1 nel contratto, e la regola che il backend diceva da solo ora sta ai due capi.';
+
+              COMMENT ON FUNCTION script.trgfn_righe_guard_erogazione_obbligatoria()
+              IS 'Guard: una riga di vendite.contratti_righe o di vendite.offerte_commerciali_eccezioni che si fattura (ogni tipo che non e'' ESCLUSIONE: oggi OVERRIDE e AGGIUNTA) vuole tipo_erogazione (E_RIGA_EROGAZIONE_OBBLIGATORIA, DATO_ERRATO, campo = tipo_erogazione). Sull''ESCLUSIONE e'' vuota, come gli altri dati di vendita: lo dice script.trgfn_righe_guard_esclusione_senza_dati (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende). Una funzione per le due tabelle gemelle, come trgfn_righe_default_fonte_qta: fn_push_offerta_a_contratto ricopia l''erogazione dall''offerta, e la regola deve essere la stessa ai due capi. TG_ARGV[0] = colonna del documento padre (contratto_id, offerta_id), solo per il contesto. Trigger _a10_ BEFORE INSERT OR UPDATE OF tipo_erogazione, tipo_eccezione: parla prima dei CHECK chk_contrighe_erogazione_per_tipo_eccezione / chk_offerte_eccezioni_erogazione_per_tipo_eccezione, che restano la rete. Contesto: campo, riga_id, la colonna padre, articolo_id, tipo_eccezione. Nasce il 2026-10-04, brief-db-erogazione-obbligatoria-righe-fatturate (decisione di Tid).';

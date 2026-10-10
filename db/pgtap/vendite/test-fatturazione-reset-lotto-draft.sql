@@ -148,10 +148,10 @@ WITH ins AS (
     stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_commessa_rl),
          'PGTAP-RL-SEG-1-' || substr(md5(clock_timestamp()::text), 1, 12),
-         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-         date_trunc('month', current_date)::date,
-         date_trunc('month', current_date)::date,
-         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+         date_trunc('month', script.fn_data_operativa())::date,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
          'BOZZA', 'NON_EMESSA', NULL, NULL
     FROM tmp_refs_rl r
@@ -166,10 +166,10 @@ WITH ins AS (
     stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
   SELECT (SELECT id FROM tmp_commessa_rl),
          'PGTAP-RL-SEG-2-' || substr(md5(clock_timestamp()::text), 1, 12),
-         r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-         date_trunc('month', current_date)::date,
-         date_trunc('month', current_date)::date,
-         (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+         r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+         date_trunc('month', script.fn_data_operativa())::date,
+         date_trunc('month', script.fn_data_operativa())::date,
+         (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
          r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
          'BOZZA', 'NON_EMESSA', NULL, NULL
     FROM tmp_refs_rl r
@@ -200,7 +200,7 @@ CREATE TEMP TABLE tmp_lotto_rl AS WITH ins AS (
       SELECT lock_batch_id
       FROM tmp_costanti_rl
     ),
-    date_trunc('month', current_date)::date,
+    date_trunc('month', script.fn_data_operativa())::date,
     r.tipo_doc_fiscale_id,
     r.utility_id,
     r.billing_account_id,
@@ -243,10 +243,10 @@ CREATE TEMP TABLE tmp_attivita_rl AS WITH ins AS (
   SELECT r.articolo_id,
     r.istanza_utility_id,
     r.billing_account_id,
-    current_date,
-    date_trunc('month', current_date)::date,
-    date_trunc('month', current_date)::date,
-    (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+    script.fn_data_operativa(),
+    date_trunc('month', script.fn_data_operativa())::date,
+    date_trunc('month', script.fn_data_operativa())::date,
+    (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
     1,
     true,
     false,
@@ -304,7 +304,7 @@ CREATE TEMP TABLE tmp_fattura_riga_rl AS WITH ins AS (
       descrizione,
       qta,
       prezzo_unitario,
-      meta
+      meta, competenza_dal, competenza_al
     )
   VALUES (
       (
@@ -321,7 +321,7 @@ CREATE TEMP TABLE tmp_fattura_riga_rl AS WITH ins AS (
           SELECT test_scope
           FROM tmp_costanti_rl
         )
-      )
+      ), script.fn_data_operativa(), script.fn_data_operativa()
     )
   RETURNING id
 )
@@ -456,7 +456,7 @@ CREATE TEMP TABLE tmp_lotto_rl2 AS WITH ins AS (
       emittente_soggetto_ruolo_id
     )
   SELECT uuidv7(),
-    date_trunc('month', current_date)::date,
+    date_trunc('month', script.fn_data_operativa())::date,
     r.tipo_doc_fiscale_id,
     r.utility_id,
     r.billing_account_id,
@@ -489,10 +489,10 @@ CREATE TEMP TABLE tmp_attivita_rl2 AS WITH ins AS (
   SELECT r.articolo_id,
     r.istanza_utility_id,
     r.billing_account_id,
-    current_date,
-    date_trunc('month', current_date)::date,
-    date_trunc('month', current_date)::date,
-    (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+    script.fn_data_operativa(),
+    date_trunc('month', script.fn_data_operativa())::date,
+    date_trunc('month', script.fn_data_operativa())::date,
+    (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
     1,
     true,
     false,
@@ -530,7 +530,7 @@ CREATE TEMP TABLE tmp_fattura_riga_rl2 AS WITH ins AS (
       descrizione,
       qta,
       prezzo_unitario,
-      meta
+      meta, competenza_dal, competenza_al
     )
   VALUES (
       (
@@ -547,7 +547,7 @@ CREATE TEMP TABLE tmp_fattura_riga_rl2 AS WITH ins AS (
           SELECT test_scope
           FROM tmp_costanti_rl
         )
-      )
+      ), script.fn_data_operativa(), script.fn_data_operativa()
     )
   RETURNING id
 )

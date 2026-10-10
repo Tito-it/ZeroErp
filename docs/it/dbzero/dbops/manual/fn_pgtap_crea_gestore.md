@@ -32,10 +32,9 @@ un record di gestore»). Quindi la funzione **prende quello che c'è** e costrui
 non ce n'è: sulla macchina di sviluppo non scrive niente, in CI costruisce. Un builder che
 creasse sempre sarebbe rosso proprio dove oggi il test è verde.
 
-⚠️ Nota al margine, per chi cerca il vincolo: quello che porta il nome del singleton —
-`uq_gestori_singleton` — vieta due righe con lo **stesso id**, cioè ripete la chiave
-primaria e non impedisce un secondo gestore. A impedirlo è il guard. Il nome promette
-qualcosa che la definizione non fa.
+⚠️ Nota al margine, per chi cerca il vincolo: non c'è. Il singleton lo tiene il guard.
+`uq_gestori_singleton`, che ne portava il nome, vietava solo due righe con lo **stesso id**
+(ripeteva la chiave primaria): è stato ritirato il 2026-10-10.
 
 ---
 ### 🚫 Cosa NON scrive

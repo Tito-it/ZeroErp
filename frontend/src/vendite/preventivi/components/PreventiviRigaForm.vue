@@ -53,7 +53,13 @@ const props = defineProps({
 // vale anche da `onMounted` (Vue setup esegue immediate prima del mount),
 // quindi NON serve un onMounted aggiuntivo — eviterebbe solo doppio fetch
 // al primo mount (cache modulo-level dedupa per BA in useLimitiPricing).
-watch(() => props.billingAccountId, (baId) => loadLimiti(baId), { immediate: true })
+// Su errore (BA che non risulta → 404, F-6) i limiti restano a 0 e l'operatore
+// lo sa: senza avviso l'hint mostrerebbe la soglia generica come del cliente.
+watch(() => props.billingAccountId, (baId) => {
+  loadLimiti(baId).catch((err) => {
+    notify.warn(extractApiError(err, t('vendite.preventivi.limiti_non_caricati')))
+  })
+}, { immediate: true })
 const {
   ivaOrigine,
   origineLabel: ivaOrigineLabel,
@@ -188,6 +194,7 @@ const {
   componentiDialogVisible, componentiPayload, showComponentiDialog,
   apriComponentiDialog, onComponentiConfirm,
   submitRiga,
+  modificato, chiudiConConferma, seguiRiga,
 } = useRigaArticoloComposito({
   store,
   parentId: () => props.preventivoId,
@@ -205,7 +212,9 @@ const {
 const prezzoOrigine = ref(null)
 let _resolverToken = 0
 
-watch(() => props.riga, (riga) => {
+// Il legame con la riga (fotografia, riga riletta dal server) e' del cuore
+// condiviso: qui solo come si popola il form.
+seguiRiga((riga) => {
   if (riga) {
     form.value = {
       articolo_id: riga.articolo_id,
@@ -237,7 +246,7 @@ watch(() => props.riga, (riga) => {
     _resolverPriceLive.value = null
     resetUomOptions()
   }
-}, { immediate: true })
+})
 
 function onArticoloSelect(item) {
   form.value.articolo_id = item.id
@@ -452,6 +461,11 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
   loading,
   l2ErrorCodes: L2_ERROR_CODES,
 })
+
+// ⭐ D-13 (2026-10-03): la fotografia della riga la tiene il cuore comune
+//    (`useRigaArticoloComposito`). Il contenitore la legge da qui per chiedere
+//    prima di cambiare riga o di uscire dal drawer.
+defineExpose({ modificato, chiudiConConferma })
 </script>
 
 <template>
@@ -638,7 +652,7 @@ const { save: handleSave, richiediApprovazione: handleRichiediApprovazione } = u
          testata preventivo invece si nascondono via `formRigaAperto` lato
          PreventiviDrawer (pattern distinta base `ArticoloBomDrawer`). -->
     <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1rem;">
-      <Button :label="t('common.cancel')" severity="secondary" @click="emit('cancel')" />
+      <Button :label="t('common.cancel')" severity="secondary" @click="chiudiConConferma(() => emit('cancel'))" />
       <Button :label="t('common.save')" :loading="loading" :disabled="!canSave" @click="handleSave" />
     </div>
   </div>

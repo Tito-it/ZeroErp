@@ -21,7 +21,7 @@
 > * [vendite.trgfn_ddt_gen_numero_emesso](/dbzero/vendite/funzioni/trgfn_ddt_gen_numero_emesso) / [vendite.trgfn_v_ddt_protect_num](/dbzero/vendite/funzioni/trgfn_v_ddt_protect_num) — numero assegnato a EMESSO e poi immutabile
 > * [vendite.trgfn_ddt_guard_indirizzi_obbligatori](/dbzero/vendite/funzioni/trgfn_ddt_guard_indirizzi_obbligatori) — indirizzo di consegna obbligatorio all'emissione
 > * [vendite.trgfn_ddt_normalize](/dbzero/vendite/funzioni/trgfn_ddt_normalize) — eredità dal contesto (BA/utility/valuta/emittente)
-> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [vendite.trgfn_ddt_guard_emittente_ba](/dbzero/vendite/funzioni/trgfn_ddt_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
+> * [script.trgfn_default_emittente_fiscale](/dbzero/script/funzioni/trgfn_default_emittente_fiscale) / [script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba) — emittente fiscale di default (il building block unico, montato sui DDT con «lascia NULL» e «salta con sorgente») e coerenza col cliente
 > * [vendite.fn_ddt_riga_componenti_init](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_init) / [vendite.fn_ddt_riga_componenti_preview](/dbzero/vendite/funzioni/fn_ddt_riga_componenti_preview) — componenti BoM
 >
 > **Vedi anche** — API e service backend:
@@ -292,14 +292,16 @@ Se non resta residuo, l'evasione segnala che non c'è nulla da consegnare.
 
 ### 6.2 Standalone (manuale)
 
-1. **Nuovo DDT** → scegli il **cliente** (billing account); da lì il sistema
-   deriva il **destinatario**.
+1. **Nuovo DDT** → scegli il **cliente** (billing account): da lì il sistema
+   deriva il **destinatario**. Una bolla che non va a un cliente
+   (trasferimento, conto lavoro, riparazione) nasce **senza cliente**, col solo
+   destinatario.
 2. Il DDT nasce in `DRAFT` **senza numero** (arriverà all'emissione).
 3. **Aggiungi le righe** (articolo, quantità; prezzo/IVA se serve fatturare).
 4. Compila i **dati di trasporto** e imposta l'**indirizzo di consegna**.
 
 > **Bozza "usa e getta".** La creazione salva subito una bozza (auto-save al
-> primo cliente) per poter aggiungere righe e indirizzi. Se l'operatore esce
+> primo cliente o destinatario) per poter aggiungere righe e indirizzi. Se l'operatore esce
 > senza inserire nulla, la bozza vuota può essere eliminata. Un DDT **emesso**
 > non si cancella: si **annulla**.
 
@@ -307,13 +309,25 @@ Se non resta residuo, l'evasione segnala che non c'è nulla da consegnare.
 
 ## 7. Cliente, destinatario ed emittente fiscale
 
-### 7.1 Cliente e destinatario immutabili
+### 7.1 Cliente e destinatario: si scelgono in bozza
 
-Una volta creato il DDT, **cliente e destinatario non si cambiano più**
-(`billing_account_id` bloccato). Il DDT denormalizza il cliente sul billing
-account **e** sul destinatario: cambiare il BA lascerebbe il destinatario
-stantìo. La regola è **"cambiare cliente = nuovo DDT"**. Il blocco è applicato
-dal backend e, in modo autoritativo, dal database.
+Il cliente di un DDT è un **billing account**, cioè una fornitura di un
+cliente. Destinatario e utility sono copie di ciò che il billing account già
+dice: se il cliente c'è, li scrive il database dal billing account, e un valore
+diverso viene rifiutato. Senza cliente il destinatario si sceglie liberamente:
+è il deposito o il terzista.
+
+* **In bozza** cliente e destinatario si scelgono, si cambiano e si tolgono.
+* **All'emissione** il cliente è obbligatorio se la causale di trasporto manda
+  merce a un cliente (vendita, omaggio, campionatura, conto visione); per le
+  altre causali può mancare. Il motivo compare sull'azione «Emetti».
+* **Dopo la bozza** cliente, destinatario, utility ed emittente non si cambiano
+  più: la bolla emessa è un foglio consegnato, e se è sbagliata si annulla e se
+  ne fa una nuova.
+* **Lungo la catena** il cliente non cambia: un DDT da ordine ha il cliente
+  dell'ordine, e ogni riga evade righe d'ordine dello stesso cliente.
+
+Le regole le applica il database; il backend non le ricopia.
 
 ### 7.2 Emittente fiscale (legato allo user)
 
@@ -329,7 +343,7 @@ emittente). Reti di sicurezza a DB:
   `trgfn_ddt_normalize`; senza contesto utente non solleva e lascia decidere al
   `normalize` (dal cliente) o al vincolo;
 * se il DDT ha un cliente, l'emittente deve essere **coerente** con esso:
-  `trgfn_ddt_guard_emittente_ba` rifiuta le combinazioni incoerenti.
+  `script.trgfn_doc_guard_emittente_ba` rifiuta le combinazioni incoerenti.
 
 L'**etichetta** dell'emittente mostrata è sempre la **ragione sociale del
 soggetto** emittente, mai il codice tecnico del record.
@@ -524,11 +538,14 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | Codice                               | Quando                                                                                                       |
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `E_DDT_NOT_FOUND`                    | DDT (o riga/componente) inesistente o fuori dal proprio scope emittente                                      |
-| `E_DDT_VALIDAZIONE`                  | Payload non valido (cliente mancante, campi vuoti, valori non numerici…)                                     |
-| `E_DDT_CLIENTE_IMMUTABILE`           | Tentativo di cambiare cliente/destinatario di un DDT già creato                                              |
+| `E_DDT_VALIDAZIONE`                  | Payload non valido (campi vuoti, valori non numerici…)                                                       |
+| `E_DDT_CLIENTE_IMMUTABILE`           | Tentativo di cambiare il cliente di un DDT fuori bozza (guard DB)                                            |
+| `E_DDT_CLIENTE_OBBLIGATORIO`         | Emissione senza cliente con una causale che manda merce a un cliente (guard DB)                              |
+| `E_DOC_CLIENTE_DIVERSO_DA_BA`        | Destinatario o utility diversi da quelli del cliente scelto (guard DB)                                       |
+| `E_DOC_CLIENTE_DIVERSO_DA_SORGENTE`  | Cliente diverso da quello dell'ordine o del reso di origine (guard DB)                                       |
 | `E_DDT_STATO_TRANSIZIONE`            | Operazione non ammessa nello stato (modifica fuori da `DRAFT`, delete di una bozza con righe → va annullata) |
 | `E_DDT_NESSUNA_RIGA`                 | Push senza righe eleggibili                                                                                  |
-| `E_DDT_EMITTENTE_BA_INCOERENTE`      | Emittente non coerente col cliente selezionato                                                               |
+| `E_DOC_EMITTENTE_BA_INCOERENTE`      | L'azienda che emette non è quella del cliente (stesso codice per i sei documenti di vendita)                 |
 | `E_STATO_DDT_TRANSIZIONE_NON_VALIDA` | Cambio di stato non previsto/attivo nella matrice (guard DB)                                                 |
 | `E_INDIRIZZO_DOC_OBBLIGATORIO`       | Emissione senza l'indirizzo di consegna obbligatorio (guard DB)                                              |
 | `E_DOCUMENTI_*`                      | Stampa: template/versione non risolti, input invalido o render fallito                                       |
@@ -565,7 +582,7 @@ soggetto** emittente, mai il codice tecnico.
 
 ### 15.5 Trigger DB come ultima difesa
 
-Cliente/destinatario immutabili, transizioni ammesse, indirizzo di consegna
+Cliente e destinatario fermi dopo la bozza, transizioni ammesse, indirizzo di consegna
 obbligatorio all'emissione, coerenza emittente/cliente, numero immutabile: sono
 tutte regole presidiate da trigger DB. Il backend ha controlli equivalenti solo
 per dare messaggi chiari prima del giro al database.

@@ -73,14 +73,24 @@ SELECT
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)               AS valuta_id,
   (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1) AS iva_id,
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1)  AS emittente_fiscale_id,
-  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='CONFERMATO' AND s.attivo LIMIT 1) AS stato_ord_conf_id,
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata d'ordine nasce DRAFT,
+  --   prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+  --   righe non si scrivono piu' (20261008-90).
+  (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno='DRAFT'      AND s.attivo LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='EMESSO' AND s.attivo LIMIT 1)     AS stato_ddt_emesso_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='SPEDITO' AND s.attivo LIMIT 1)    AS stato_ddt_spedito_id,
   (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno='CONSEGNATO' AND s.attivo LIMIT 1) AS stato_ddt_consegnato_id,
@@ -94,7 +104,7 @@ CREATE TEMP TABLE tmp_doc AS
 WITH o AS (
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
          DATE '2026-08-15', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_guard_origine')
   FROM tmp_refs r RETURNING id
@@ -105,9 +115,12 @@ WITH o AS (
          jsonb_build_object('test_scope','pgtap_guard_origine')
   FROM o, tmp_refs r RETURNING id, ordine_id
 )
-SELECT orr.ordine_id, orr.id AS ordine_riga_id,
-       vendite.fn_genera_ddt_da_ordine(orr.ordine_id) AS ddt_id
+SELECT orr.ordine_id, orr.id AS ordine_riga_id, NULL::bigint AS ddt_id
 FROM orr;
+-- ⚠️ rev 2026-10-08 (D-1): righe scritte in bozza, ora la conferma vera (20261008-90), e solo
+--   dopo il DDT: per questo il DDT non nasce piu' nello stesso statement delle righe.
+DO $x$ BEGIN PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT ordine_id FROM tmp_doc), 'CONFERMATO'); END $x$;
+UPDATE tmp_doc SET ddt_id = vendite.fn_genera_ddt_da_ordine(ordine_id);
 
 -- La riga che evade l'ordine (ha un fulfillment) e quella aggiunta a mano.
 -- ⚠️ La riga a mano entra PRIMA delle transizioni (rev 2026-09-22): il BB

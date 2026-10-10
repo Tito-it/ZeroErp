@@ -130,6 +130,14 @@ SELECT is(
        FROM ui.lista_definizione ld
       WHERE ld.multi_emittente),
     ARRAY[
+          -- ⭐ 2026-10-02 — brief-db-be-fe-area-accessi, R-DB-A3: ogni utente
+          --   tecnico lavora per UNA azienda (config.user_emittenti_fiscali,
+          --   UNIQUE sull'utente), e il tab «Di sistema» le mostra tutte al
+          --   super admin. Stampo di anagrafiche.operatori: il biglietto e' la
+          --   colonna attiva `emittente_codice` (campo_sorgente
+          --   `emittente_codice`), che il test 6 riconosce. Un API_CLIENT senza
+          --   perimetro ha la cella vuota, come il super admin fra gli operatori.
+          'anagrafiche.accessi_sistema',
           -- ⭐ 2026-09-18 — D-3 di Tid, brief-db-perimetro-emittente-cataloghi-
           --   globali: ogni operatore ha UN emittente, ma la lista ne mescola
           --   di aziende diverse quando il super admin la apre su «Tutti», e

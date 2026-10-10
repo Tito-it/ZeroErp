@@ -3,7 +3,7 @@
 # Smoke test locale — Giro pratica PREVENTIVI 9004 BIVIO-PER-ESITO end-to-end
 # (rev.3, brief-db-chiusura-pratica-nessun-lavoro-pendente).
 # Uso: ./scripts/tests/smoke-test-pratica-preventivi-bivio.sh [password]
-#      (oppure SMOKE_PASSWORD=... ; SMOKE_USER default 'tid')
+#      (oppure SMOKE_PASSWORD=... ; utente: SMOKE_USER, vedi _smoke_auth.sh)
 #
 # Copre contro DB+API reali il percorso del tipo unico PREVENTIVI (9004):
 # RICHIESTA_CLIENTE(9009) -> PREVENTIVAZIONE(9010) -> APPROVAZIONE_CLIENTE(9011)
@@ -26,10 +26,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
 TIPO_PRESTAZIONE_ID="${TIPO_PRESTAZIONE_ID:-9004}"   # PREVENTIVI (bivio)
@@ -128,12 +126,7 @@ pratica_stato() {
 
 # --- 0. Auth ---
 echo "== Smoke pratica PREVENTIVI 9004 — BIVIO-PER-ESITO =="
-if [[ -z "$PASSWORD" ]]; then echo -e "${RED}Password mancante${NC} (arg1 o SMOKE_PASSWORD)"; exit 2; fi
-curl -s -w '\n%{http_code}' -X POST -H "Content-Type: application/json" \
-    -d "{\"username\": \"$USERNAME\", \"password\": \"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
-TOKEN=$(json_get "$(sed '$d' "$TMPFILE")" "access")
-if [[ -z "$TOKEN" ]]; then echo -e "${RED}Auth fallita${NC}"; exit 2; fi
+smoke_login --senza-prompt --uscita 2
 log_ok "Autenticazione JWT"
 
 # --- 1. Setup: tripla BA+utility + articoli ---

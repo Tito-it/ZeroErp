@@ -25,12 +25,17 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
+| chi_agisce | text | YES |  |
+| colonna_variante | text | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_presidi_cadenza |  |
 | CHECK | chk_presidi_cancello_ha_presidio |  |
+| CHECK | chk_presidi_chi_agisce |  |
+| CHECK | chk_presidi_chi_agisce_se_allarma |  |
+| CHECK | chk_presidi_colonna_variante_non_vuota |  |
 | CHECK | chk_presidi_coppia_stato |  |
 | CHECK | chk_presidi_fuori_digest_cadenza_mai |  |
 | CHECK | chk_presidi_natura |  |

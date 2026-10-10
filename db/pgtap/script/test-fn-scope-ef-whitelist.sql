@@ -1,9 +1,5 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- pgtap-differiti: escluso — la fixture non soddisfa un vincolo DIFFERITO e la
---   ragione e' scritta per esteso piu' sotto. Debito noto (§22.4): quando la
---   fixture viene completata, si toglie questa riga e si rimette il
---   SET CONSTRAINTS ALL IMMEDIATE nel punto in cui l'unita' di lavoro e' completa.
 -- pgTAP test per Zero ERP
 --
 -- Test: script.fn_scope_ef_whitelist (PK) + fn_scope_ef_whitelist_via_sr (SR)
@@ -21,7 +17,7 @@
 --
 -- Indice test (1..10):
 --    1. Precondizione: emittente_fiscale costruito dalla fixture
---    2. Setup: soggetto PF + SR RIS_UMANA + 2 auth_user + 2 identita (attiva/inattiva)
+--    2. Setup: 2 operatori dalla madre (veste accesa / veste spenta)
 --    3. PK: auth_user inesistente -> false (fail-closed)
 --    4. PK: identita OPERATORE non attiva -> false
 --    5. PK: identita attiva, whitelist vuota -> true (accesso globale)
@@ -31,27 +27,23 @@
 --    9. SR: adapter via_sr risolve SR->PK, target in whitelist -> true
 --   10. SR: adapter via_sr, SR non-emittente (PK NULL) -> false
 --
--- BEGIN; + rollback implicito a fine file (guard DEFERRABLE soggetti
--- non scattano senza COMMIT).
+-- BEGIN; + rollback a fine file.
 -- ------------------------------------------------------------
 
 BEGIN;
 
--- ⚠️ QUESTO FILE NON USA `SET CONSTRAINTS ALL IMMEDIATE`, a differenza degli
---   altri, e non e' una dimenticanza.
---   La fixture costruisce un soggetto con le funzioni del dominio
---   (fn_crea_soggetto_pf e sorelle). Ma `anagrafiche.soggetti` ha TRE guard
---   DEFERRABLE INITIALLY DEFERRED — indirizzi, contatti, dati societari — e la
---   deferralita' li' e' VOLUTA: si crea il soggetto, poi il suo indirizzo, e la
---   completezza si verifica al COMMIT. Forzare IMMEDIATE pretenderebbe
---   l'indirizzo nell'istante stesso dell'INSERT del soggetto, cioe' vieterebbe
---   il pattern che il dominio ha scelto — misurato: da 7 asserzioni verdi a 1,
---   con «Indirizzo obbligatorio mancante per soggetto ...».
---   ⚠️ Resta pero' un buco reale: senza la riga, quei tre guard non vengono
---   esercitati da questo test, e la fixture lascia un soggetto che
---   l'applicazione non potrebbe committare. La correzione vera e' completare la
---   fixture (indirizzo + contatti) e allora la riga si puo' rimettere.
---   Brief: brief-db-pgtap-runner-rls-baseline §20.
+-- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
+--   Un trigger DEFERRABLE INITIALLY DEFERRED scatta al COMMIT, e qui il COMMIT
+--   non arriva mai (si chiude in ROLLBACK): sarebbero saltati in silenzio, e il
+--   file sarebbe verde per sottrazione. IMMEDIATE li riporta a scattare a fine
+--   di ogni istruzione. In testa e non in coda: in coda scatterebbero dopo il
+--   cleanup, su righe ormai cancellate.
+-- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): fino a oggi questo file non
+--   la aveva, perche' costruiva l'operatore a mano con fn_crea_soggetto_pf e
+--   lasciava il soggetto senza indirizzo, contando sul ROLLBACK (§22.4). Ora
+--   l'operatore viene dalla madre (dbops.fn_pgtap_crea_operatore_umano), che
+--   lo consegna COMPLETO: la riga torna, e i guard del soggetto si esercitano.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ⛔ L'EMITTENTE SI COSTRUISCE, non si cerca (2026-09-12): fino a quel giorno il
 --   file pescava il primo emittente attivo, e su un database ricostruito dai
@@ -63,12 +55,6 @@ BEGIN;
 --   owner. Brief: brief-db-pgtap-runner-rls-baseline §8.
 CREATE TEMP TABLE _t_mondo AS
 SELECT * FROM dbops.fn_pgtap_crea_emittente_operatore();
-
--- ⚠️ L'helper esce con i vincoli IMMEDIATE (li richiude sul proprio mondo
---   finito). Questo file li vuole DIFFERITI — vedi la nota qui sopra — quindi
---   li riapre: senza, fn_crea_soggetto_pf muore su «Indirizzo obbligatorio
---   mancante» al primo INSERT.
-SET CONSTRAINTS ALL DEFERRED;
 
 DO $ctx$
 BEGIN
@@ -94,81 +80,50 @@ SELECT ok(
 );
 
 -- =========================================================
--- 2) Setup: soggetto PF pura + SR RIS_UMANA + 2 auth_user + 2 identita
+-- 2) Setup: due operatori dalla madre, uno con la veste accesa e uno spenta
 -- =========================================================
-CREATE TEMP TABLE _t_comune AS
-SELECT id AS comune_id FROM config.comuni ORDER BY id LIMIT 1;
+-- ⭐ Rev 2026-10-07 (brief-db-veste-utilizzabile): l'operatore viene dalla
+--   MADRE (dbops.fn_pgtap_crea_operatore_umano: persona fisica completa,
+--   risorsa umana, veste OPERATORE accesa come all'invito accettato) e
+--   l'emittente gli si da' con la funzione di dominio
+--   script.fn_change_user_emittenti_scope. Prima la fixture costruiva
+--   soggetto, soggetto_ruolo e veste a mano, senza risorsa umana: uno stato
+--   che la madre non produce, e che da D-2 (l'operatore umano vale finche'
+--   vale il suo rapporto, script.fn_veste_utilizzabile) non e' piu' un
+--   operatore valido. Il builder esce con i vincoli IMMEDIATE: niente piu'
+--   finestra differita da riaprire per lui.
+CREATE TEMP TABLE _t_op_acceso AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('scope ef acceso');
 
--- CF fisso valido. pgTAP rollbacca a fine file; il CF puo' essere riusato
--- in altri file test senza conflitti (transazioni indipendenti).
-CREATE TEMP TABLE _t_sogg_pf AS
-SELECT anagrafiche.fn_crea_soggetto_pf(
-    p_cognome           := 'PnzTestScopeEf',
-    p_nome              := 'Fdn',
-    p_codice_fiscale    := 'PNZFDN78A01L219Y',
-    p_email             := 'pgtap_scope_ef_' || substring(md5(clock_timestamp()::text) from 1 for 6) || '@test.local',
-    p_data_nascita      := DATE '1978-01-01',
-    p_sesso             := 'M',
-    p_stato_iso2        := 'IT',
-    p_comune_nascita_id := (SELECT comune_id FROM _t_comune),
-    p_tipo_contatto_id  := NULL
-) AS soggetto_id;
+CREATE TEMP TABLE _t_op_spento AS
+SELECT * FROM dbops.fn_pgtap_crea_operatore_umano('scope ef spento');
 
-CREATE TEMP TABLE _t_sr_ru AS
-SELECT script.fn_get_or_create_soggetto_ruolo(
-    p_soggetto_id  := (SELECT soggetto_id FROM _t_sogg_pf),
-    p_cd_int_ruolo := 'RIS_UMANA'
-) AS sr_id;
+-- Lo spegnimento e' un UPDATE dopo l'accensione: il percorso con cui una veste
+-- viene dismessa davvero.
+UPDATE anagrafiche.identita_digitali
+   SET attivo = false
+ WHERE id = (SELECT identita_id FROM _t_op_spento);
 
--- 2 auth_user distinti (uno per identita attiva, uno per inattiva)
+-- Le tabelle che le asserzioni leggono: idx 1 = acceso, idx 2 = spento.
 CREATE TEMP TABLE _t_au (idx int, auth_user_id int);
-DO $$
-DECLARE v_i int; v_id int;
-BEGIN
-    FOR v_i IN 1..2 LOOP
-        INSERT INTO django.auth_user (
-            username, password, is_active, is_staff, is_superuser,
-            first_name, last_name, email, date_joined
-        )
-        VALUES (
-            '_pgtap_scope_ef_' || v_i || '_' || substring(md5(clock_timestamp()::text) from 1 for 6),
-            '!', true, false, false, '', '', '', now()
-        )
-        RETURNING id INTO v_id;
-        INSERT INTO _t_au (idx, auth_user_id) VALUES (v_i, v_id);
-    END LOOP;
-END
-$$;
+INSERT INTO _t_au
+SELECT 1, auth_user_id FROM _t_op_acceso
+UNION ALL
+SELECT 2, auth_user_id FROM _t_op_spento;
 
--- Identita attiva (idx=1) e inattiva (idx=2) su SR RIS_UMANA.
 CREATE TEMP TABLE _t_id (idx int, identita_id bigint);
-WITH ins_attiva AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT (SELECT sr_id FROM _t_sr_ru),
-           (SELECT auth_user_id FROM _t_au WHERE idx = 1),
-           'OPERATORE',
-           true
-    RETURNING id
-)
-INSERT INTO _t_id (idx, identita_id)
-SELECT 1, id FROM ins_attiva;
+INSERT INTO _t_id
+SELECT 1, identita_id FROM _t_op_acceso
+UNION ALL
+SELECT 2, identita_id FROM _t_op_spento;
 
-WITH ins_inattiva AS (
-    INSERT INTO anagrafiche.identita_digitali
-        (soggetto_ruolo_id, auth_user_id, ruolo_applicativo, attivo)
-    SELECT (SELECT sr_id FROM _t_sr_ru),
-           (SELECT auth_user_id FROM _t_au WHERE idx = 2),
-           'OPERATORE',
-           false
-    RETURNING id
-)
-INSERT INTO _t_id (idx, identita_id)
-SELECT 2, id FROM ins_inattiva;
+-- Il soggetto_ruolo RIS_UMANA dell'operatore acceso: non e' un emittente (caso 10).
+CREATE TEMP TABLE _t_sr_ru AS
+SELECT soggetto_ruolo_id AS sr_id FROM _t_op_acceso;
 
 SELECT ok(
     (SELECT count(*) FROM _t_id) = 2,
-    '2. Setup: 2 identita create (1 attiva, 1 inattiva) su SR RIS_UMANA'
+    '2. Setup: 2 operatori dalla madre (1 veste accesa, 1 spenta)'
 );
 
 -- =========================================================
@@ -218,12 +173,9 @@ SELECT ok(
 -- =========================================================
 -- 6) Setup: popola user_emittenti_fiscali per l'auth_user attivo
 -- =========================================================
-INSERT INTO config.user_emittenti_fiscali (auth_user_id, emittente_fiscale_id)
-VALUES (
+SELECT script.fn_change_user_emittenti_scope(
     (SELECT auth_user_id FROM _t_au WHERE idx = 1),
-    (SELECT ef_id FROM _t_ef)
-)
-ON CONFLICT DO NOTHING;
+    ARRAY[(SELECT ef_id FROM _t_ef)]);
 
 SELECT ok(
     EXISTS (

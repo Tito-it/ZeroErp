@@ -88,7 +88,7 @@ _FIXTURE: tuple[str, ...] = (
         INSERT INTO vendite.fatture
             (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
              tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-        SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id,
+        SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
                r.billing_account_id, r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
                400.00, jsonb_build_object('test_scope', 'be_lista_rate', 'n', v.n)
           FROM _refs r, (VALUES (1), (2)) AS v(n)
@@ -105,7 +105,7 @@ _FIXTURE: tuple[str, ...] = (
     CREATE TEMP TABLE _rate AS
     WITH ins AS (
         INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo)
-        SELECT fattura_id, 1, current_date + 30, 400.00 FROM _fat
+        SELECT fattura_id, 1, script.fn_data_operativa() + 30, 400.00 FROM _fat
         RETURNING id, fattura_id
     )
     SELECT i.id AS scadenza_id, i.fattura_id, x.n FROM ins i JOIN _fat x USING (fattura_id)
@@ -117,8 +117,8 @@ _FIXTURE: tuple[str, ...] = (
     CREATE TEMP TABLE _dist AS
     SELECT pagamenti.fn_get_or_create_vendite_contabile(
         p_centro_riscossione_id => (SELECT centro_banca_id FROM _refs),
-        p_data_contabile        => current_date,
-        p_data_registrazione    => current_date,
+        p_data_contabile        => script.fn_data_operativa(),
+        p_data_registrazione    => script.fn_data_operativa(),
         p_codice_stato_interno  => 'BOZZA',
         p_meta                  => '{"test_scope": "be_lista_rate"}'::jsonb,
         p_origine               => 'MANUALE'
@@ -128,7 +128,7 @@ _FIXTURE: tuple[str, ...] = (
     INSERT INTO pagamenti.vendite_contabili_righe
         (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
          billing_account_id, scadenza_id, stato_id, meta)
-    SELECT d.contabile_id, 'BE_LISTA_RATE_1010', current_date, 400.00,
+    SELECT d.contabile_id, 'BE_LISTA_RATE_1010', script.fn_data_operativa(), 400.00,
            r.fattura_id, x.billing_account_id, r.scadenza_id, x.stato_abbinata_id,
            '{"test_scope": "be_lista_rate"}'::jsonb
       FROM _dist d, _refs x, _rate r
@@ -321,7 +321,7 @@ class RateListaDbTests(_MondoRateDbTests):
                 INSERT INTO vendite.fatture
                     (registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
                      tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-                SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id,
+                SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id,
                        r.billing_account_id, r.tipo_doc_fiscale_id, r.valuta_id,
                        r.utility_id, 250.00,
                        '{"test_scope": "be_lista_rate", "n": 3}'::jsonb
@@ -334,7 +334,7 @@ class RateListaDbTests(_MondoRateDbTests):
             cur.execute(
                 """
                 INSERT INTO vendite.fatture_scadenze (fattura_id, numero_rata, data_scadenza, importo)
-                VALUES (%s, 1, current_date + 30, 250.00)
+                VALUES (%s, 1, script.fn_data_operativa() + 30, 250.00)
                 RETURNING id
                 """,
                 [int(row[0])],
@@ -381,8 +381,8 @@ class RigheDaRateDbTests(_MondoRateDbTests):
             """
             SELECT pagamenti.fn_get_or_create_vendite_contabile(
                 p_centro_riscossione_id => (SELECT centro_banca_id FROM _refs),
-                p_data_contabile        => current_date - 1,
-                p_data_registrazione    => current_date,
+                p_data_contabile        => script.fn_data_operativa() - 1,
+                p_data_registrazione    => script.fn_data_operativa(),
                 p_codice_stato_interno  => 'BOZZA',
                 p_meta                  => '{"test_scope": "be_righe_da_rate"}'::jsonb,
                 p_origine               => 'MANUALE'
@@ -465,8 +465,8 @@ _FIXTURE_RICERCA: tuple[str, ...] = (
     CREATE TEMP TABLE _dist_extra AS
     SELECT pagamenti.fn_get_or_create_vendite_contabile(
         p_centro_riscossione_id => (SELECT centro_banca_id FROM _refs),
-        p_data_contabile        => current_date,
-        p_data_registrazione    => current_date,
+        p_data_contabile        => script.fn_data_operativa(),
+        p_data_registrazione    => script.fn_data_operativa(),
         p_codice_stato_interno  => 'BOZZA',
         p_meta                  => '{"test_scope": "be_ricerca_rate"}'::jsonb,
         p_origine               => 'MANUALE'
@@ -476,7 +476,7 @@ _FIXTURE_RICERCA: tuple[str, ...] = (
     INSERT INTO pagamenti.vendite_contabili_righe
         (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
          billing_account_id, scadenza_id, stato_id, forzata, motivo_forzatura, meta)
-    SELECT d.contabile_id, 'BE_RICERCA_OLTRE', current_date, 900.00,
+    SELECT d.contabile_id, 'BE_RICERCA_OLTRE', script.fn_data_operativa(), 900.00,
            r.fattura_id, x.billing_account_id, r.scadenza_id, x.stato_abbinata_id,
            TRUE, 'pagato doppio', '{"test_scope": "be_ricerca_rate"}'::jsonb
       FROM _dist_extra d, _refs x, _rate r
@@ -494,8 +494,8 @@ _FIXTURE_RICERCA: tuple[str, ...] = (
     CREATE TEMP TABLE _dist_coda AS
     SELECT pagamenti.fn_get_or_create_vendite_contabile(
         p_centro_riscossione_id => (SELECT centro_banca_id FROM _refs),
-        p_data_contabile        => current_date,
-        p_data_registrazione    => current_date,
+        p_data_contabile        => script.fn_data_operativa(),
+        p_data_registrazione    => script.fn_data_operativa(),
         p_codice_stato_interno  => 'BOZZA',
         p_meta                  => '{"test_scope": "be_ricerca_coda"}'::jsonb,
         p_origine               => 'MANUALE'
@@ -507,7 +507,7 @@ _FIXTURE_RICERCA: tuple[str, ...] = (
         INSERT INTO pagamenti.vendite_contabili_righe
             (contabile_id, riferimento_ente, data_pagamento, importo, fattura_id,
              billing_account_id, scadenza_id, stato_id, motivo_sospeso, meta)
-        SELECT d.contabile_id, 'BE_RICERCA_CODA', current_date, 10.00,
+        SELECT d.contabile_id, 'BE_RICERCA_CODA', script.fn_data_operativa(), 10.00,
                r.fattura_id, x.billing_account_id, r.scadenza_id,
                (SELECT s.id FROM pagamenti.vendite_contabili_righe_stati s
                  WHERE s.codice_interno = 'SOSPESA' ORDER BY s.id LIMIT 1),

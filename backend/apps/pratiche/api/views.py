@@ -6,15 +6,18 @@
 #        giornale, prerequisiti, canali e generazione cross-pratica.
 # ------------------------------------------------------------
 
+from typing import Any
 from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
-from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.api.base_views import DomainAPIView
 
 from apps.core.api.endpoint_helpers import get_risorsa_umana_id, handle_post_json
 from apps.core.api.payload_validators import (
+    optional_istante,
+    qp_iso_date_optional,
     corpo_oggetto,
     optional_int,
     paginated_envelope,
@@ -92,8 +95,8 @@ class ApiPraticheList(DomainAPIView):
         # sempre, ma la view non li leggeva (filtri silenziosamente ignorati).
         priorita_id = optional_int({"v": qp.get("priorita_id")}, "v")
         risorsa_umana_id = optional_int({"v": qp.get("risorsa_umana_id")}, "v")
-        data_da = qp_str(qp.get("data_da"))
-        data_a = qp_str(qp.get("data_a"))
+        data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
+        data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")
 
         items, total = pratiche_service.cerca_pratiche(
             emittente_fiscale_id=emittente_fiscale_id,
@@ -123,6 +126,15 @@ class ApiPraticheList(DomainAPIView):
                 "tipo_prestazione_id": serializers.IntegerField(),
                 "priorita_id": serializers.IntegerField(required=False, allow_null=True),
                 "soggetto_id": serializers.UUIDField(required=False, allow_null=True),
+                "soggetto_ruolo_id": serializers.IntegerField(required=False, allow_null=True),
+                "istanza_utility_id": serializers.IntegerField(required=False, allow_null=True),
+                "billing_account_id": serializers.IntegerField(
+                    required=False, allow_null=True,
+                    help_text=(
+                        "Il cliente di cui parla la pratica (ruolo CLIENTE). Deve essere "
+                        "del soggetto_ruolo_id; con il solo BA l'istanza e' la sua."
+                    ),
+                ),
                 "risorsa_umana_id": serializers.IntegerField(required=False, allow_null=True),
                 "unita_organizzativa_id": serializers.IntegerField(required=False, allow_null=True),
                 "canale_origine_id": serializers.IntegerField(required=False, allow_null=True),
@@ -141,7 +153,7 @@ class ApiPraticheList(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per creare una nuova pratica.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratica_id = pratiche_service.crea_pratica(
                 emittente_fiscale_id=int(payload["emittente_fiscale_id"]),
                 tipo_prestazione_id=int(payload["tipo_prestazione_id"]),
@@ -150,6 +162,8 @@ class ApiPraticheList(DomainAPIView):
                 soggetto_id=str(payload["soggetto_id"]) if payload.get("soggetto_id") else None,
                 soggetto_ruolo_id=optional_int(payload, "soggetto_ruolo_id"),
                 istanza_utility_id=optional_int(payload, "istanza_utility_id"),
+                # Il cliente a grana fine (D-9): con il solo BA l'istanza e' la sua.
+                billing_account_id=optional_int(payload, "billing_account_id"),
                 risorsa_umana_id=optional_int(payload, "risorsa_umana_id"),
                 unita_organizzativa_id=optional_int(payload, "unita_organizzativa_id"),
                 canale_origine_id=optional_int(payload, "canale_origine_id"),
@@ -206,7 +220,7 @@ class ApiPraticaDetail(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP PATCH per aggiornare una pratica.
     def patch(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.aggiorna_pratica(pratica_id, dict(payload))
             return {"status": "ok"}
 
@@ -237,7 +251,7 @@ class ApiPraticaStato(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per cambiare stato pratica.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.cambia_stato_pratica(pratica_id, str(payload["nuovo_stato"]))
             return {"status": "ok"}
 
@@ -266,7 +280,7 @@ class ApiPraticaAssegnazione(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per assegnare una pratica.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.assegna_pratica(
                 pratica_id,
                 risorsa_umana_id=optional_int(payload, "risorsa_umana_id"),
@@ -289,7 +303,7 @@ class ApiPraticaGiornale(DomainAPIView):
     model_permission = ("pratiche", "pratica")
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default 100, max {MAX_LIMIT})."),
+            OpenApiParameter(name="limit", type=int, required=False, description=f"Righe per pagina (default {DEFAULT_LIMIT_EVENTI}, max {MAX_LIMIT})."),
             OpenApiParameter(name="offset", type=int, required=False, description="Offset paginazione (default 0)."),
         ],
         responses={200: inline_serializer(
@@ -305,7 +319,7 @@ class ApiPraticaGiornale(DomainAPIView):
     # Scopo: Restituisce via GET il giornale di bordo della pratica (con tx_id).
     def get(self, request: Request, pratica_id: int) -> JsonResponse:
         qp = request.query_params
-        limit = optional_int({"v": qp.get("limit", "100")}, "v") or 100
+        limit = optional_int({"v": qp.get("limit", str(DEFAULT_LIMIT_EVENTI))}, "v") or DEFAULT_LIMIT_EVENTI
         offset = optional_int({"v": qp.get("offset", "0")}, "v") or 0
 
         items, total = pratiche_service.get_giornale(pratica_id, limit=limit, offset=offset)
@@ -420,7 +434,7 @@ class ApiPraticaFlussiList(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per creare un flusso.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             flusso_id = pratiche_service.crea_flusso(
                 pratica_id=pratica_id,
                 # Obbligatorio (workflow v2): il service fa il guard fail-fast
@@ -518,7 +532,7 @@ class ApiPraticaFlussoStato(DomainAPIView):
         flusso = _get_flusso_verificato(repo, pratica_id, flusso_id)
         stato_corrente = (flusso or {}).get("stato_codice_interno")
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             nuovo_stato = str(payload["nuovo_stato"])
             if nuovo_stato == "COMPLETATO":
                 ErrorManager.require(
@@ -691,7 +705,7 @@ class ApiPraticaFlussoGenera(DomainAPIView):
         repo = PraticheRepository()
         _get_flusso_verificato(repo, pratica_id, flusso_id)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             nuova_pratica_id = generazione_service.genera_pratica_manuale(
                 flusso_id, int(payload["regola_id"]),
             )
@@ -755,12 +769,12 @@ class ApiPraticaSospendi(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per sospendere una pratica.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             sospensione_id = pratiche_service.sospendi_pratica(
                 pratica_id,
                 str(payload.get("motivo", "")),
                 data_riattivazione_prevista=payload.get("data_riattivazione_prevista") or None,
-                data_inizio=payload.get("data_inizio") or None,
+                data_inizio=optional_istante(payload, "data_inizio"),
             )
             return {"sospensione_id": sospensione_id, "status": "ok"}
 
@@ -790,10 +804,10 @@ class ApiPraticaRiattiva(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per riattivare una pratica sospesa.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.riattiva_pratica(
                 pratica_id,
-                data_fine=payload.get("data_fine") or None,
+                data_fine=optional_istante(payload, "data_fine"),
             )
             return {"status": "ok"}
 
@@ -828,7 +842,7 @@ class ApiPraticaFlussoSospendi(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per sospendere un singolo flusso.
     def post(self, request: Request, pratica_id: int, flusso_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             sospensione_id = pratiche_service.sospendi_flusso(
                 pratica_id,
                 flusso_id,
@@ -859,7 +873,7 @@ class ApiPraticaFlussoRiattiva(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta HTTP POST per riattivare un flusso sospeso.
     def post(self, request: Request, pratica_id: int, flusso_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.riattiva_flusso(pratica_id, flusso_id)
             return {"status": "ok"}
 
@@ -1137,7 +1151,7 @@ class ApiPrendiInCarico(DomainAPIView):
         )
         assert risorsa_umana_id is not None
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             assegnato = pratiche_service.prendi_in_carico(flusso_id, risorsa_umana_id)
             return {"assegnato": assegnato, "status": "ok"}
 
@@ -1174,7 +1188,7 @@ class ApiPraticaFlussoAssegnazione(DomainAPIView):
         repo = PraticheRepository()
         _get_flusso_verificato(repo, pratica_id, flusso_id)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.assegna_flusso(
                 flusso_id,
                 risorsa_umana_id=optional_int(payload, "risorsa_umana_id"),

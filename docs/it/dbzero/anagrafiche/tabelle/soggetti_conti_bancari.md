@@ -11,11 +11,11 @@
 | id | bigint | NO |  |
 | soggetto_id | uuid | NO |  |
 | conto_bancario_id | bigint | NO |  |
-| uso | character varying | NO | 'GENERICO'::character varying |
+| uso | character varying(16) | NO | 'GENERICO'::character varying |
 | predefinito | boolean | NO | false |
 | valido_dal | date | YES |  |
 | valido_al | date | YES |  |
-| intestazione_dichiarata | character varying | YES |  |
+| intestazione_dichiarata | character varying(140) | YES |  |
 | verificato | boolean | NO | false |
 | bloccato | boolean | NO | false |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -24,7 +24,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

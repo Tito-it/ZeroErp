@@ -31,17 +31,24 @@ from decimal import Decimal
 from typing import Any
 
 from django.db import transaction
-from django.utils import timezone
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.capability_blob import capabilities_o_vuoto
-from apps.core.services.testata_guard import testata_o_not_found
+from apps.core.services.testata_guard import pagina_dopo_testata, testata_o_not_found
 from apps.core.services.payload_helpers import (
     PayloadValidator,
     translate_db_errors,
 )
-from apps.vendite.db.listini_repository import ListiniRepository
-from apps.vendite.db.offerte_repository import _ORDER_COLS_OFFERTE, OfferteRepository
+from apps.vendite.db._documento_eccezioni_repo import (
+    list_erogazioni_riga,
+    listino_versione_operativa,
+)
+from apps.vendite.db.offerte_repository import (
+    _ORDER_COLS_OFFERTE,
+    OffertaRigheListaRepository,
+    OfferteRepository,
+)
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
     auto_assegna_indirizzo_default,
@@ -152,7 +159,7 @@ _STATI_TERMINALI: frozenset[str] = frozenset(
 
 # UNIQUE constraints catalogati per mappare violazioni IntegrityError.
 # Formato richiesto da `map_integrity_error`: tuple[error_code, message].
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_offerte_commerciali_codice": (
         E_VENDITE_DUPLICATO,
         "Codice offerta gia' esistente.",
@@ -180,9 +187,17 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # FK constraints catalogati (best-effort: i nomi corrispondono a quelli
 # emessi da Postgres su violazione FK).
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_offerte_commerciali_billing_account": (
         E_VENDITE_FK, "Billing account non trovato.",
+    ),
+    # FK composta (billing_account_id, istanza_utility_id, utility_id) verso il
+    # BA della coppia, dal 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): la
+    # semplice qui sopra resta accanto, e dice solo «non esiste».
+    "fk_offerte_commerciali_ba_coppia": (
+        E_VENDITE_FK,
+        "Il billing account non e' quello dell'istanza e della utility dell'offerta.",
+        "billing_account_id",
     ),
     "fk_offerte_commerciali_emittente_fiscale": (
         E_VENDITE_FK, "Emittente fiscale non trovato.",
@@ -378,7 +393,7 @@ class OfferteService:
         validita_dal_min: str | None = None,
         validita_dal_max: str | None = None,
         solo_ultima_revisione: bool = True,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "data_insert",
         order_dir: str = "desc",
@@ -583,23 +598,34 @@ class OfferteService:
             )
         self._repo.create_utility(offerta_id, merged)
 
-    # Scopo: Aggiorna la testata di un'offerta. Editabilita' solo in stato
-    #        BOZZA — defense-in-depth applicativa; il trigger DB blocca
-    #        comunque cambi su stati terminali. Payload vuoto -> 400 (no-op
+    # Scopo: Aggiorna la testata di un'offerta. Payload vuoto -> 400 (no-op
     #        silenzioso evitato).
+    #
+    #        Quali colonne della TESTATA si cambiano in quale stato lo dice il
+    #        DB, colonna per colonna: il lock `vendite.trgfn_doc_testata_lock_fuori_bozza`
+    #        (in bozza tutto; emessa e accettata le note; chiusa niente). Fino
+    #        al 2026-10-10 qui c'era un «solo in BOZZA» che ne era la seconda
+    #        copia (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del
+    #        lock passa com'e'.
     #
     #        Sub-oggetto opzionale `utility`: se presente, fa upsert del
     #        record utility 1:1 nella stessa transaction.atomic(). Simmetria
     #        col create (refactor atomico 2026-05-26). Eredita
     #        `istanza_utility_id`/`utility_id` dalla testata se non passati
     #        esplicitamente nel sub-oggetto (coerenza FK garantita dal BA).
+    #        ⚠️ Il satellite `offerte_commerciali_utilities` NON ha un lock a
+    #        DB: quando si cambia lo dice solo la capability (`can_edit_utility`).
+    #        Il cancello qui la LEGGE, non la riscrive.
     def aggiorna_offerta(
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_OFFERTA)
         self._guard_payload_non_vuoto(payload, op="aggiorna_offerta")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        # Prima la testata: fuori perimetro o inesistente e' un 404.
+        self._get_offerta_or_raise(
+            offerta_id, op="aggiorna_offerta", getter=self._repo.get_stato_codice,
+        )
         # Split testata vs utility prima del repo. La testata non ha la
         # colonna `utility` (vive in offerte_commerciali_utilities).
         utility_payload = payload.get("utility")
@@ -609,6 +635,21 @@ class OfferteService:
                 code=E_VENDITE_VALIDATION,
                 message="Campo 'utility' deve essere oggetto.",
                 context={"got": type(utility_payload).__name__},
+            )
+            # ⛔ Il messaggio non dice IN QUALI stati: lo sa solo la capability,
+            #    e una frase che lo ripete ne sarebbe la seconda copia.
+            capabilities = self._repo.get_available_actions(offerta_id)
+            ErrorManager.require(
+                bool(capabilities.get("can_edit_utility")),
+                code=E_VENDITE_VALIDATION,
+                message=(
+                    "I dati della fornitura dell'offerta non si cambiano "
+                    f"nello stato corrente ('{capabilities.get('stato_codice')}')."
+                ),
+                context={
+                    "offerta_id": offerta_id,
+                    "stato_corrente": capabilities.get("stato_codice"),
+                },
             )
         testata_payload = self._con_meta_normalizzato(
             {k: v for k, v in payload.items() if k != "utility"},
@@ -675,69 +716,22 @@ class OfferteService:
     # Transizioni di stato manuali
     # =================================================================
 
-    # Scopo: BOZZA -> EMESSA. Pre-step: "freeze at emission" della versione
-    #        listino (lookup ATTIVA alla data odierna + UPDATE offerta) se
-    #        non e' gia' fissata; il trigger DB
-    #        `trgfn_offerte_commerciali_guard_transizione` richiede infatti
-    #        `listino_versione_id NOT NULL` per autorizzare la transizione
-    #        (E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO) e l'utente nel
-    #        form CREATE seleziona solo il listino, non la versione.
-    #        Tutto nella stessa transazione del caller (la view che chiama
-    #        `emetti` apre un atomic esterno che include anche la
-    #        generazione documento + allegati).
+    # Scopo: BOZZA -> EMESSA. ⭐ La versione di listino la CONGELA il DB, nella
+    #        stessa scrittura del cambio stato: il guard
+    #        `trgfn_offerte_commerciali_guard_transizione` fissa
+    #        `listino_versione_id` sulla versione in vigore oggi se e' vuota,
+    #        dopo averla verificata con `script.fn_check_listino_congelabile`
+    #        (la stessa regola che spegne «Emetti» nella capability). Listino
+    #        senza versione in vigore: E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO
+    #        dal DB (brief-db-offerta-emissione-ed-erogazione A-R1, A-R2).
+    #        ⛔ Fino al 2026-10-07 il congelamento era qui, in Python, PRIMA del
+    #        cambio stato: la capability spegneva «Emetti» proprio perche' quel
+    #        passo non c'era ancora stato, e un'offerta nuova non si emetteva.
     def emetti(self, offerta_id: int) -> dict[str, Any]:
-        # `transaction.atomic()` (nested = savepoint se c'e' gia' un atomic
-        # esterno della view, tx vera altrimenti) garantisce che il pre-fill
-        # di `listino_versione_id` e il cambio stato siano atomici anche se
-        # `emetti` viene invocato standalone (es. command, sync job, test
-        # integration). Senza wrap, lo standalone potrebbe lasciare
-        # l'offerta con la versione fissata e lo stato ancora BOZZA in
-        # caso di errore del trigger del cambio stato.
-        with transaction.atomic():
-            self._fissa_versione_listino_se_necessario(offerta_id)
-            return self._cambia_stato_manuale(
-                offerta_id,
-                target_codice=StatoOfferta.EMESSA,
-                expected_from=_STATI_EDITABILI,
-            )
-
-    # Scopo: Se l'offerta ha un listino selezionato ma nessuna versione
-    #        fissata, cerca la versione ATTIVA (o CHIUSA come fallback)
-    #        del listino oggi e la persiste su `listino_versione_id`.
-    #        Errore parlante se il listino esiste ma non ha versioni
-    #        operative valide oggi. Idempotente: no-op se gia' fissata o
-    #        offerta senza listino (caso quest'ultimo lasciato al trigger
-    #        DB per coerenza con la sua signaling).
-    def _fissa_versione_listino_se_necessario(self, offerta_id: int) -> None:
-        offerta = self._repo.get_offerta(offerta_id)
-        if offerta is None:
-            return  # 404 verra' segnalato da `_cambia_stato_manuale`.
-        if offerta.get("listino_versione_id") is not None:
-            return
-        listino_id = offerta.get("listino_id")
-        if listino_id is None:
-            return  # nessun listino: gestito dai check di stato del DB.
-        today = timezone.localdate()
-        versione_id = ListiniRepository().get_versione_attiva_alla_data(
-            int(listino_id), today,
-        )
-        ErrorManager.require(
-            versione_id is not None,
-            code=E_VENDITE_VALIDATION,
-            message=(
-                "Il listino di riferimento non ha una versione attiva "
-                "alla data odierna. Impossibile emettere l'offerta: "
-                "pubblicare prima una versione del listino."
-            ),
-            context={
-                "offerta_id": offerta_id,
-                "listino_id": listino_id,
-                "data": today.isoformat(),
-            },
-        )
-        assert versione_id is not None
-        self._repo.update_offerta(
-            offerta_id, {"listino_versione_id": versione_id},
+        return self._cambia_stato_manuale(
+            offerta_id,
+            target_codice=StatoOfferta.EMESSA,
+            expected_from=_STATI_EDITABILI,
         )
 
     # Scopo: EMESSA -> ACCETTATA (esito cliente positivo). Il trigger DB
@@ -880,7 +874,7 @@ class OfferteService:
     #        `paginated_envelope`. Lettura libera in ogni stato.
     def list_revisioni(
         self, offerta_id: int, *,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str | None = None, order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
@@ -917,6 +911,24 @@ class OfferteService:
         self._get_offerta_or_raise(offerta_id, op="list_eccezioni", getter=self._repo.get_stato_codice)
         return self._repo.list_eccezioni(offerta_id)
 
+    # Scopo: una PAGINA delle righe operative dell'offerta, per la lista
+    #        configurabile `vendite.offerta_righe` (brief-db-righe-esclusione-
+    #        solo-non-si-vende §8.1): ricerca dal catalogo, ordinamento dalla
+    #        whitelist, codice articolo quando nessuno chiede altro. Ritorna
+    #        `(righe, totale)`. Gemella di `ContrattiService.list_righe_pagina`.
+    # ⭐ «Leggi prima la testata»: un'offerta fuori perimetro e' un 404, non una
+    #    lista vuota (la funzione su un id che non vede risponde zero righe).
+    def list_righe_pagina(
+        self, offerta_id: int, **opzioni: Any,
+    ) -> tuple[list[dict[str, Any]], int]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        return pagina_dopo_testata(
+            lambda: self._get_offerta_or_raise(
+                offerta_id, op="list_righe_pagina", getter=self._repo.get_stato_codice,
+            ),
+            OffertaRigheListaRepository().list_righe_pagina, offerta_id, **opzioni,
+        )
+
     # Scopo: Crea un'eccezione. Solo in stato BOZZA.
     def crea_eccezione(
         self,
@@ -929,7 +941,11 @@ class OfferteService:
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_ECCEZIONE)
         payload = self._con_meta_normalizzato(payload)
         self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
-        for required in ("articolo_id", "tipo_eccezione", "fonte_quantita_attesa"):
+        # ⚠️ La fonte non si pretende qui (2026-10-04, brief-db-righe-esclusione-
+        # solo-non-si-vende): l'ESCLUSIONE nasce vuota, e su OVERRIDE/AGGIUNTA la
+        # riempie il trigger DB dall'erogazione, che il guard DB rende obbligatoria.
+        # Stessa forma del contratto, che la fonte non l'ha mai pretesa.
+        for required in ("articolo_id", "tipo_eccezione"):
             ErrorManager.require(
                 required in payload and payload[required] not in (None, ""),
                 code=E_VENDITE_VALIDATION,
@@ -966,8 +982,11 @@ class OfferteService:
 
         # Coerenza prezzo_unitario / tipo_eccezione (pre-DB, specchio CHECK
         # `chk_offerte_eccezioni_prezzo_per_tipo_eccezione`):
-        # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
         # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+        # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei dieci dati
+        #    di fatturazione che il guard DB rifiuta col campo
+        #    (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-non-si-
+        #    vende R-BE-3), come sul contratto.
         # Eccezione: articolo composito (modello unificato BoM). Il FE puo'
         # omettere `prezzo_unitario` per padri compositi perche' il prezzo
         # padre = SUM(figli × coeff_qta) calcolato dal trigger DB
@@ -978,17 +997,7 @@ class OfferteService:
         # `contratti_service` ~ linea 2114 "Padre composito").
         tipo_eccezione = payload.get("tipo_eccezione")
         prezzo_raw = payload.get("prezzo_unitario")
-        if tipo_eccezione == "ESCLUSIONE":
-            ErrorManager.require(
-                prezzo_raw is None,
-                code=E_VENDITE_VALIDATION,
-                message=(
-                    "ESCLUSIONE: prezzo_unitario deve essere NULL "
-                    "(l'articolo non e' disponibile per questa offerta)."
-                ),
-                context={"tipo_eccezione": tipo_eccezione},
-            )
-        elif prezzo_raw is None and tipo_eccezione in ("OVERRIDE", "AGGIUNTA"):
+        if prezzo_raw is None and tipo_eccezione in ("OVERRIDE", "AGGIUNTA"):
             ErrorManager.require(
                 is_composito,
                 code=E_VENDITE_VALIDATION,
@@ -1181,6 +1190,26 @@ class OfferteService:
             payload["stato_approvazione_prezzo"] = STATO_APPROVAZIONE_PENDING
             payload["pratica_approvazione_prezzo_id"] = pratica_id_l3
         return pratica_id_l3, testata_gate
+
+    # Scopo: Le combinazioni (tipo_erogazione, fonte_quantita_attesa) che una
+    #        riga con questo articolo puo' avere sull'offerta, col default che
+    #        erediterebbe in testa: il form delle righe le propone e
+    #        preseleziona il default (brief-db-offerta-emissione-ed-erogazione
+    #        B-R4). Le dice il DB (`vendite.fn_documento_riga_erogazioni`), la
+    #        stessa sede che leggono l'eredita' e il guard del perimetro.
+    #        Prima la testata: un'offerta che non si vede e' un 404, non una
+    #        lista vuota. Lista vuota = l'articolo ha una tipologia che la
+    #        utility dell'offerta non prevede. Gemello di
+    #        `ContrattiService.list_erogazioni_riga`.
+    def list_erogazioni_riga(
+        self, offerta_id: int, articolo_id: Any,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(offerta_id, field="offerta_id")
+        articolo = self._v.require_uuid({"articolo_id": articolo_id}, "articolo_id")
+        self._get_offerta_or_raise(
+            offerta_id, op="list_erogazioni_riga", getter=self._repo.get_stato_codice,
+        )
+        return list_erogazioni_riga("OFFERTA", offerta_id, articolo)
 
     # =================================================================
     # Componenti BoM su eccezione (mirror contratti, simmetria 2026-05-26)
@@ -1608,16 +1637,12 @@ def _load_offerta_context_for_pricing(
     assert emittente_sr_id is not None
 
     # Fast path CONTRATTO_LISTINO via `listino_versione_id_preferito` (come
-    # contratti). In BOZZA la versione e' fissata solo all'emissione → se NULL,
-    # lookup dinamico della versione operativa alla data (ATTIVA/CHIUSA).
-    listino_versione_id_preferito = testata.get("listino_versione_id")
-    if listino_versione_id_preferito is None:
-        listino_id_raw = testata.get("listino_id")
-        if listino_id_raw is not None:
-            listino_versione_id_preferito = ListiniRepository().get_versione_attiva_alla_data(
-                int(listino_id_raw), data_riferimento,
-            )
+    # contratti). La versione la dice il DB, con la regola che governa le righe
+    # a video e che congela all'emissione: la fissata, altrimenti quella in
+    # vigore oggi (`vendite.fn_documento_listino_operativo`).
+    listino_versione_id_preferito = listino_versione_operativa("OFFERTA", offerta_id)
 
+    assert ba_id_raw is not None and utility_id_raw is not None
     return {
         "testata": testata,
         "ba_id": int(ba_id_raw),

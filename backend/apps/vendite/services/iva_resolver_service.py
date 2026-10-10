@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -89,13 +88,20 @@ class IvaResolverService:
     #        per essere scritto su una riga o serializzato.
     #
     #        Perimetro: SOLA LETTURA. Il risolutore e' `STABLE` e NON consuma
-    #        il plafond — la ripartizione e' una proiezione sul residuo di
-    #        ADESSO (D14). Il consumo e' un'altra funzione, e avviene alla
-    #        transizione a DEFINITIVA.
+    #        il plafond (D14): dice quale titolo vale, non quanto copre. Il
+    #        consumo e' un'altra funzione, e avviene all'emissione.
     #
-    #        Risultato: una lista di 1 o 2 parti. **Due solo se e' stato
-    #        passato un imponibile** e il plafond lo copre in parte; senza
-    #        imponibile la lista ha sempre un elemento solo (P1).
+    #        Risultato: una lista di 1 o 2 parti. **Due solo nella domanda di
+    #        consumo** (`consumo=True`) e solo con un titolo a tetto: prima il
+    #        titolo, poi l'ordinario. Nell'anteprima la lista ha sempre un
+    #        elemento solo (P1).
+    #
+    #        ⛔ Niente piu' importo. La domanda di PROIEZIONE (la spezzatura sul
+    #        residuo del momento) aveva un solo chiamante, il giro del plafond,
+    #        che e' passato al consumo sul netto (decisione C, brief-db-bom-
+    #        flag-quantita-e-kit-in-fattura §13): sul netto la proiezione per
+    #        riga e' sbagliata per costruzione, perche' il netto lo sa solo chi
+    #        consuma.
     #
     #        ⛔ `emittente_fiscale_id` E' OBBLIGATORIO, ed e' la ragione per
     #        cui questo metodo esiste invece di lasciar chiamare il repo.
@@ -111,7 +117,7 @@ class IvaResolverService:
         articolo_id: UUID | str,
         data_riferimento: date,
         emittente_fiscale_id: int,
-        imponibile: Decimal | None = None,
+        consumo: bool = False,
         billing_account_id: int | None = None,
         utility_id: int | None = None,
         soggetto_id: UUID | str | None = None,
@@ -120,7 +126,7 @@ class IvaResolverService:
             articolo_id=articolo_id,
             data_riferimento=data_riferimento,
             emittente_fiscale_id=emittente_fiscale_id,
-            imponibile=imponibile,
+            consumo=consumo,
         )
 
         # ⛔ IL SOGGETTO SI DERIVA DAL BA, E NON E' UNA COMODITA'.
@@ -156,7 +162,7 @@ class IvaResolverService:
             parti = self._repo.resolve(
                 articolo_id=articolo_id,
                 data_riferimento=data_riferimento,
-                imponibile=imponibile,
+                consumo=consumo,
                 billing_account_id=billing_account_id,
                 utility_id=utility_id,
                 soggetto_id=soggetto_id,
@@ -177,18 +183,26 @@ class IvaResolverService:
             function_name=_FN,
         )
 
-        # ⚠️ Senza imponibile la spezzatura non e' calcolabile e il DB non la
-        #    inventa: se qui arrivassero due parti, il ramo di anteprima si
-        #    sarebbe rotto — e il difetto sarebbe MUTO, perche' il chiamante
-        #    prenderebbe la prima parte e non saprebbe di aver perso l'altra.
+        # ⚠️ La FORMA della risposta e' contratto, e chi la legge non deve
+        #    poterla fraintendere:
+        #    * anteprima -> UNA parte. Se ne arrivassero due il ramo si sarebbe
+        #      rotto, e il difetto sarebbe MUTO: il chiamante prende la prima e
+        #      non sa di aver perso l'altra;
+        #    * consumo -> una parte (nessun titolo, o titolo senza tetto) o due,
+        #      la prima COL titolo e la seconda SENZA. Il giro scrive la seconda
+        #      sulla quota che il plafond non copre: un titolo anche li' sarebbe
+        #      un'esenzione non dovuta, senza nessun sintomo.
         ErrorManager.require(
-            imponibile is not None or len(parti) == 1,
-            code=_E_CHIAMATA,
-            message=(
-                "Il risolutore IVA ha restituito una ripartizione senza che "
-                "fosse stato passato un imponibile."
+            len(parti) == 1
+            or (
+                consumo
+                and len(parti) == 2
+                and bool(parti[0].get("titolo_iva_id"))
+                and not parti[1].get("titolo_iva_id")
             ),
-            context={"op": _FN, "parti": len(parti)},
+            code=_E_CHIAMATA,
+            message="Il risolutore IVA ha restituito una ripartizione non attesa.",
+            context={"op": _FN, "parti": len(parti), "consumo": consumo},
             function_name=_FN,
         )
         return parti
@@ -197,11 +211,10 @@ class IvaResolverService:
     #        mai una ripartizione. E' la forma che i DOCUMENTI usano (P1) e
     #        quella che alimenta l'anteprima del frontend.
     #
-    #        ⚠️ Non e' `risolvi()[0]`: la differenza e' che qui l'imponibile
-    #        NON si passa affatto. Chiamare col totale e prendere la prima
-    #        parte darebbe il trattamento della sola quota coperta e
-    #        applicherebbe l'esenzione a tutta la riga — che e' il difetto
-    #        opposto a quello che P1 evita.
+    #        ⚠️ Non e' la domanda di consumo presa alla prima parte: quella
+    #        darebbe il titolo anche a plafond esaurito (il consumo non legge
+    #        il residuo) e applicherebbe l'esenzione a tutta la riga — il
+    #        difetto opposto a quello che P1 evita.
     def risolvi_anteprima(
         self,
         *,
@@ -216,7 +229,7 @@ class IvaResolverService:
             articolo_id=articolo_id,
             data_riferimento=data_riferimento,
             emittente_fiscale_id=emittente_fiscale_id,
-            imponibile=None,
+            consumo=False,
             billing_account_id=billing_account_id,
             utility_id=utility_id,
             soggetto_id=soggetto_id,
@@ -247,7 +260,7 @@ class IvaResolverService:
         articolo_id: UUID | str,
         data_riferimento: date,
         emittente_fiscale_id: int,
-        imponibile: Decimal | None,
+        consumo: bool,
     ) -> None:
         ErrorManager.require(
             bool(articolo_id),
@@ -278,13 +291,13 @@ class IvaResolverService:
             context={"op": _FN, "parametro": "emittente_fiscale_id"},
             function_name=_FN,
         )
-        # ⚠️ Il negativo lo rifiuta anche il DB; qui si intercetta prima per
-        #    non spendere un round-trip su una chiamata rotta.
+        # ⚠️ Il NULL lo rifiuta anche il DB; qui si intercetta prima per non
+        #    spendere un round-trip su una chiamata rotta.
         ErrorManager.require(
-            imponibile is None or imponibile >= 0,
+            isinstance(consumo, bool),
             code=_E_CHIAMATA,
-            message="Parametro non valido: imponibile negativo.",
-            context={"op": _FN, "parametro": "imponibile"},
+            message="Parametro non valido: consumo.",
+            context={"op": _FN, "parametro": "consumo"},
             function_name=_FN,
         )
 

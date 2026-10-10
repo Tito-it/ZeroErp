@@ -1,0 +1,2075 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche: «OGGI» E' IL GIORNO DELL'AZIENDA, NON QUELLO DELLA SESSIONE
+#   brief-be-db-fe-un-solo-fuso-aziendale §5.1 D-3.
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   CURRENT_DATE e' il giorno nel fuso della SESSIONE che esegue, e le
+#   sessioni non hanno tutte lo stesso fuso: il backend si connette in UTC,
+#   psql/Liquibase/pgAgent nel fuso del server. Fra la mezzanotte dell'azienda
+#   e quella della sessione, la stessa funzione risponde un giorno diverso
+#   secondo chi la chiama: una data documento di ieri, un guard di validita'
+#   che scatta o non scatta. Non dipende dai dati: e' la struttura, e vale per
+#   ogni installazione il cui fuso non coincide con quello della sessione.
+#
+# ── LA CORREZIONE ───────────────────────────────────────────────────
+#   Ogni CURRENT_DATE di codice diventa script.fn_data_operativa() (il giorno
+#   nel fuso di SYSTEM_FUSO_ORARIO, letto dalla sede unica
+#   script.fn_fuso_operativo, 20261009-40/41). Tre forme, scelte dal posto:
+#   - in un'istruzione SQL (WHERE, SELECT, VALUES, SQL dinamico):
+#     `(SELECT script.fn_data_operativa())` — la sottoquery scalare e'
+#     valutata UNA volta per istruzione, non per riga (misurato su
+#     zeroerp_ci il 2026-10-09: 20.000 righe, 122 ms per riga contro 2 ms);
+#   - in un'espressione PL/pgSQL (`:=`, IF, RETURN) la chiamata diretta,
+#     valutata una volta;
+#   - nel DEFAULT di un parametro la chiamata diretta: li' una sottoquery non
+#     e' ammessa.
+#   I commenti che citano CURRENT_DATE restano: raccontano la regola di prima.
+#
+# ── COSA NON CAMBIA ─────────────────────────────────────────────────
+#   Firme, tipi, volatilita', sicurezza, commenti e GRANT delle funzioni (il
+#   CREATE OR REPLACE li conserva). Il corpo e' quello vivo, preso da
+#   pg_get_functiondef su zeroerp_ci il 2026-10-09 e confrontato con la doc
+#   auto-generata (identici), con la sola sostituzione di CURRENT_DATE.
+#
+# ── %TYPE: FIRMA, RETURNS TABLE, DECLARE ───────────────────────────
+#   Il corpo vivo (pg_get_functiondef) scioglie i %TYPE della firma: quelli
+#   gia' scritti nell'ultimo changeSet di ogni funzione sono stati RIPRESI
+#   (anche nel rollback), e in questo giro si sono ancorati i parametri, le
+#   colonne di RETURNS TABLE e le variabili che riflettono una colonna.
+#   Verificato in transazione annullata su zeroerp_ci: argomenti e risultato
+#   di ogni funzione restano byte-identici (nessun overload, nessun chiamante
+#   rotto). Restano a TIPO ESPLICITO, perche' non sono il riflesso di nessuna
+#   colonna, le voci elencate sotto per funzione: contatori, interruttori del
+#   chiamante, jsonb e testi di lavoro, valori calcolati o costanti tipizzate,
+#   chiavi polimorfe, il giorno operativo.
+#
+# ── FUNZIONI (10) ──────────────────────────────────────────────
+#     - anagrafiche.fn_annulla_movimento_titolo_iva — tipo esplicito: v_motivi
+#     - anagrafiche.fn_crea_risorsa_umana_v2 — tipo esplicito:
+#         p_is_super_admin, v_n_profili_sa
+#     - anagrafiche.fn_lookup_utilities_per_ba — tipo esplicito:
+#         p_ruolo_codice_soggetto, codice, descrizione,
+#         is_personalizzata_per_ef, metodo_arrotondamento_importi, v_today
+#     - anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin — tipo
+#         esplicito: v_was_super_admin
+#     - anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo — tipo
+#         esplicito: v_has_matrix, v_today
+#     - anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo — tipo
+#         esplicito: v_has_matrix, v_today
+#     - anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin — tutto
+#         ancorato
+#     - anagrafiche.trgfn_soggetti_guard_indirizzi_required — tipo esplicito:
+#         v_has_matrix, v_today
+#     - anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required — tipo
+#         esplicito: v_has_matrix, v_today
+#     - anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa — tipo
+#         esplicito: v_has_matrix, v_today, v_error_ctx
+#   ⚠️ anagrafiche.fn_crea_operatore_v2 ha un `p_valido_dal DEFAULT CURRENT_DATE`
+#   ma resta FUORI: la sta riscrivendo un altro cantiere nello stesso giorno
+#   (20261009-27, brief-db-sesso-senza-default). La sua correzione entra in un
+#   changeSet successivo al loro (brief §8).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261009-44-update-oggi-dal-fuso-aziendale-anagrafiche-mctit.yaml
+
+  - changeSet:
+      id: 20261009-44-update-oggi-dal-fuso-aziendale-anagrafiche
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        anagrafiche: CURRENT_DATE -> script.fn_data_operativa() in 10 funzioni, perche'
+        «oggi» e' il giorno dell'azienda (SYSTEM_FUSO_ORARIO) e non quello della sessione.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 11
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE (n.nspname = 'anagrafiche' AND p.proname IN ('fn_annulla_movimento_titolo_iva', 'fn_crea_risorsa_umana_v2', 'fn_lookup_utilities_per_ba', 'trgfn_identita_digitali_guard_ultimo_super_admin', 'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo', 'trgfn_indirizzi_soggetti_guard_tipo_indirizzo', 'trgfn_risorse_umane_guard_ultimo_super_admin', 'trgfn_soggetti_guard_indirizzi_required', 'trgfn_soggetti_ruoli_guard_indirizzi_required', 'trgfn_soggetti_ruoli_guard_natura_ammessa'))
+                  OR (n.nspname = 'script' AND p.proname = 'fn_fuso_operativo');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_annulla_movimento_titolo_iva(p_movimento_id anagrafiche.soggetti_titoli_iva_movimenti.id%TYPE, p_motivo anagrafiche.soggetti_titoli_iva_movimenti.motivo%TYPE)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: annullare una FORZATURA del registro plafond IVA
+              --   scrivendo il CONTRO-MOVIMENTO di segno opposto. Il registro
+              --   resta append-only, l'accumulatore riporta
+              --   imponibile_utilizzato al valore giusto da se' (somma senza
+              --   filtri), e a video restano entrambe le righe: l'errore, la
+              --   correzione, e la data di ciascuna.
+              --   Ritorna l'id della riga di annullo.
+              --   Piano: brief-db-titoli-iva-movimenti-annullo, Fase C.
+              --
+              -- ⭐ IMPORTO E TITOLO SI DERIVANO, non si ricevono: il chiamante
+              --    passa QUALE riga e PERCHE'. E' cio' che rende i due controlli
+              --    di coerenza del guard una difesa contro la scrittura diretta
+              --    invece che un errore che l'operatore puo' fare.
+              --
+              -- ⭐ L'ammissibilita' la decide la CHECK, che e' la stessa che
+              --    spegne il pulsante nel read-side: qui non si riscrive il
+              --    predicato. Cosi' i due non «coincidono oggi», non possono
+              --    divergere.
+              DECLARE
+                  v_mov     RECORD;
+                  -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+                  --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
+                  v_motivi  jsonb;
+                  v_new_id  anagrafiche.soggetti_titoli_iva_movimenti.id%TYPE;
+              BEGIN
+                  -- 1) Guard di parametro. Un id assente o non positivo e un
+                  --    motivo vuoto non escono da nessuna interfaccia: li
+                  --    produce un chiamante rotto, quindi TECNICO.
+                  IF p_movimento_id IS NULL OR p_movimento_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche','fn_annulla_movimento_titolo_iva',
+                          'E_TITOLO_IVA_ANNULLO_INCOERENTE',
+                          jsonb_build_object('parametro','p_movimento_id',
+                                             'valore', p_movimento_id),
+                          NULL::uuid,
+                          COALESCE(p_movimento_id::text, 'assente'),
+                          'identificativo del movimento non valido');
+                  END IF;
+
+                  IF p_motivo IS NULL OR btrim(p_motivo) = '' THEN
+                      -- ⚠️ Il motivo lo pretende gia'
+                      --   chk_stiva_movimenti_motivo_forzatura, ma la' uscirebbe
+                      --   come violazione di CHECK (23514): un errore muto per
+                      --   chi legge. Qui esce come rifiuto di dominio.
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche','fn_annulla_movimento_titolo_iva',
+                          'E_TITOLO_IVA_ANNULLO_INCOERENTE',
+                          jsonb_build_object('parametro','p_motivo'),
+                          NULL::uuid,
+                          p_movimento_id::text,
+                          'il motivo dell''annullo e'' obbligatorio');
+                  END IF;
+
+                  -- 2) Ammissibilita': si CHIAMA la check, non si riscrive.
+                  v_motivi := script.fn_check_annullo_movimento_titolo_iva(p_movimento_id);
+
+                  -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+                  --   come si spacchettano i valori e come si compone il contesto li decide
+                  --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+                  -- ⭐ `motivi` non si passa piu': lo mette l'helper, sempre. Nel contesto
+                  --   resta la sola chiave di dominio.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'anagrafiche', 'fn_annulla_movimento_titolo_iva',
+                      v_motivi,
+                      NULL,
+                      NULL::uuid,
+                      jsonb_build_object('movimento_id', p_movimento_id));
+
+                  -- 3) La riga da annullare, per derivarne titolo e importo.
+                  -- ⚠️ Questa lettura e' INVOKER: se la riga fosse fuori
+                  --    perimetro non si vedrebbe. Non e' un buco — la check
+                  --    (DEFINER) l'ha gia' dichiarata annullabile, quindi
+                  --    arrivare qui e non trovarla significa che chi opera non
+                  --    ha il perimetro per farlo, ed e' giusto che si fermi.
+                  SELECT m.titolo_iva_id, m.imponibile
+                    INTO v_mov
+                    FROM anagrafiche.soggetti_titoli_iva_movimenti m
+                   WHERE m.id = p_movimento_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche','fn_annulla_movimento_titolo_iva',
+                          'E_TITOLO_IVA_ANNULLO_NON_AMMESSO',
+                          jsonb_build_object('movimento_id', p_movimento_id,
+                                             'motivo_tecnico','fuori perimetro'),
+                          NULL::uuid, '', '');
+                  END IF;
+
+                  -- 4) Il contro-movimento. Segno opposto, stesso titolo,
+                  --    tipo FORZATURA, nessun documento (lo impone gia'
+                  --    chk_stiva_movimenti_documento) e la data di OGGI, che e'
+                  --    la data dell'ANNULLO — l'informazione che un flag avrebbe
+                  --    perso.
+                  INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti (
+                      titolo_iva_id, tipo_movimento, imponibile, data_movimento,
+                      motivo, annulla_movimento_id)
+                  VALUES (
+                      v_mov.titolo_iva_id, 'FORZATURA', - v_mov.imponibile,
+                      (SELECT script.fn_data_operativa()), p_motivo, p_movimento_id)
+                  RETURNING id INTO v_new_id;
+
+                  RETURN v_new_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id anagrafiche.risorse_umane.soggetto_id%TYPE DEFAULT NULL::uuid, p_qualifica_id anagrafiche.risorse_umane.qualifica_id%TYPE DEFAULT NULL::integer, p_unita_organizzativa_id anagrafiche.risorse_umane.unita_organizzativa_id%TYPE DEFAULT NULL::integer, p_valido_dal anagrafiche.risorse_umane.valido_dal%TYPE DEFAULT script.fn_data_operativa(), p_valido_al anagrafiche.risorse_umane.valido_al%TYPE DEFAULT NULL::date, p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo anagrafiche.risorse_umane.attivo%TYPE DEFAULT true)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sr_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_ru_id        anagrafiche.risorse_umane.id%TYPE;
+                  v_identita_id  anagrafiche.identita_digitali.id%TYPE;
+                  v_profilo_sa   config.profili_accesso_bindings.profilo_accesso_id%TYPE;
+                  v_n_profili_sa integer;  -- un conteggio: nessuna colonna di cui sia il riflesso
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (v2 multi-face native, Chunk A Fase 7 2026-04-29):
+                  --   Crea risorsa_umana + identita_digitali OPERATORE
+                  --   (+ binding SUPER_ADMIN se p_is_super_admin=true).
+                  --   Niente piu' enum legacy ruolo_sistema; il chiamante
+                  --   esprime direttamente "is super admin?" + "attiva?".
+                  --
+                  -- Body identico a v1 salvo:
+                  --   Step 3: identita_digitali.attivo = p_attivo
+                  --           (era hardcoded true in v1).
+                  --   Step 4: IF p_is_super_admin invece di
+                  --           IF p_ruolo_sistema='ADMIN'.
+                  -- =========================================================
+
+                  -- Validazione parametri obbligatori
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_soggetto_id'),
+                          NULL::uuid, 'Soggetto obbligatorio.'
+                      );
+                  END IF;
+
+                  IF p_qualifica_id IS NULL OR p_qualifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_qualifica_id'),
+                          NULL::uuid, 'Qualifica obbligatoria.'
+                      );
+                  END IF;
+
+                  -- Guard prerequisiti
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.qualifiche
+                       WHERE id = p_qualifica_id AND attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('qualifica_id', p_qualifica_id),
+                          NULL::uuid, 'Qualifica non trovata o non attiva.'
+                      );
+                  END IF;
+
+                  IF p_unita_organizzativa_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM config.unita_organizzative
+                           WHERE id = p_unita_organizzativa_id AND attivo = true
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_UO_NON_TROVATA',
+                              jsonb_build_object('campo', 'unita_organizzativa_id', 'unita_organizzativa_id', p_unita_organizzativa_id),
+                              NULL::uuid,
+                              'Unita'' organizzativa non trovata o non attiva.'
+                          );
+                      END IF;
+                  END IF;
+
+                  IF p_auth_user_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM django.auth_user WHERE id = p_auth_user_id
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('auth_user_id', p_auth_user_id),
+                              NULL::uuid, 'auth_user non trovato.'
+                          );
+                      END IF;
+                  END IF;
+
+                  -- ⛔ Il profilo SUPER_ADMIN si RISOLVE, non si scrive (rev 20260923-10).
+                  --   Fino a questa revisione il binding usava l'id cablato 9100: vero solo
+                  --   perche' il seed di config.profili_accesso porta l'id esplicito. La
+                  --   chiave stabile e' l'enum `tipo` (linee-guida-sql §6d, punto 1: e' la
+                  --   stessa dei guard anti-lockout e di script.fn_is_super_admin); `codice`
+                  --   e' modificabile e non ha lock.
+                  -- ⚠️ Il modello non vieta DUE profili di tipo SUPER_ADMIN, e sceglierne uno
+                  --   per id sarebbe un'ambiguita', non una scelta: si pretende esattamente
+                  --   un profilo attivo, e si solleva PRIMA di ogni scrittura.
+                  IF p_is_super_admin AND p_auth_user_id IS NOT NULL THEN
+                      SELECT count(*), min(pa.id)
+                        INTO v_n_profili_sa, v_profilo_sa
+                        FROM config.profili_accesso pa
+                       WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo;
+
+                      IF v_n_profili_sa <> 1 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_CONFIG_MANCANTE',
+                              jsonb_build_object('tipo_profilo_accesso', 'SUPER_ADMIN',
+                                                 'profili_attivi', v_n_profili_sa),
+                              NULL::uuid,
+                              'un solo profilo di accesso SUPER_ADMIN attivo (trovati '
+                                  || v_n_profili_sa::text || ')'
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Step 1: soggetto_ruolo RIS_UMANA
+                  SELECT script.fn_get_or_create_soggetto_ruolo(
+                      p_soggetto_id, 'RIS_UMANA'
+                  ) INTO v_sr_id;
+
+                  -- ⛔ Una persona e' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo,
+                  --   non parziale: vale anche per una risorsa spenta). Senza questo guard il
+                  --   secondo operatore sullo stesso soggetto arrivava al client come 23505,
+                  --   E_DATABASE. Il rimedio e' sulla risorsa che c'e' (reinvito, riattivazione),
+                  --   non una seconda. (rev 20261002-01)
+                  -- ⚠️ Il controllo e' sulla CHIAVE del vincolo (soggetto_ruolo_id), non su
+                  --   attivo: una risorsa disattivata occupa lo slot come una attiva.
+                  -- ⚠️ Il segnaposto e' la frase dell'operatore: ragione_sociale_completa e'
+                  --   nullable, quindi si ripiega su nome e cognome, poi su «Il soggetto» —
+                  --   mai una frase con un buco al posto del nome.
+                  IF EXISTS (
+                      SELECT 1 FROM anagrafiche.risorse_umane ru
+                       WHERE ru.soggetto_ruolo_id = v_sr_id
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_RISORSA_UMANA_GIA_PRESENTE',
+                          jsonb_build_object('campo',             'soggetto_id',
+                                             'soggetto_id',       p_soggetto_id,
+                                             'soggetto_ruolo_id', v_sr_id),
+                          NULL::uuid,
+                          COALESCE(
+                              (SELECT COALESCE(NULLIF(btrim(s.ragione_sociale_completa), ''),
+                                               NULLIF(btrim(concat_ws(' ', s.nome, s.cognome)), ''),
+                                               NULLIF(btrim(s.ragione_sociale), ''))
+                                 FROM anagrafiche.soggetti s
+                                WHERE s.id = p_soggetto_id),
+                              'Il soggetto'));
+                  END IF;
+
+                  -- Step 2: risorsa umana
+                  INSERT INTO anagrafiche.risorse_umane (
+                      soggetto_ruolo_id, soggetto_id, qualifica_id,
+                      unita_organizzativa_id, valido_dal, valido_al, attivo
+                  )
+                  VALUES (
+                      v_sr_id, p_soggetto_id, p_qualifica_id,
+                      p_unita_organizzativa_id, p_valido_dal, p_valido_al, true
+                  )
+                  RETURNING id INTO v_ru_id;
+
+                  -- Step 3: identita_digitali OPERATORE.
+                  -- Differenza vs v1: attivo = p_attivo (default true).
+                  IF p_auth_user_id IS NOT NULL THEN
+                      INSERT INTO anagrafiche.identita_digitali (
+                          soggetto_ruolo_id,
+                          auth_user_id,
+                          ruolo_applicativo,
+                          attivo,
+                          valido_dal,
+                          valido_al
+                      )
+                      VALUES (
+                          v_sr_id,
+                          p_auth_user_id,
+                          'OPERATORE'::config.ruolo_applicativo,
+                          p_attivo,
+                          COALESCE(p_valido_dal, (SELECT script.fn_data_operativa())),
+                          p_valido_al
+                      )
+                      RETURNING id INTO v_identita_id;
+
+                      -- Step 4: binding SUPER_ADMIN se richiesto, sul profilo
+                      -- risolto nei guard (rev 20260923-10: era l'id 9100 cablato).
+                      -- Differenza vs v1: predicato boolean diretto invece
+                      -- di confronto con enum legacy.
+                      IF p_is_super_admin THEN
+                          INSERT INTO config.profili_accesso_bindings (
+                              profilo_accesso_id,
+                              identita_digitale_id,
+                              attivo
+                          )
+                          VALUES (
+                              v_profilo_sa,
+                              v_identita_id,
+                              true
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN v_ru_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id anagrafiche.billing_account.id%TYPE, p_ruolo_codice_soggetto text)
+               RETURNS TABLE(utility_id anagrafiche.emittenti_fiscali_utilities.utility_id%TYPE, codice text, descrizione text, is_personalizzata_per_ef boolean, minimo_soglia_min anagrafiche.emittenti_fiscali_utilities.minimo_soglia_min%TYPE, minimo_soglia_max anagrafiche.emittenti_fiscali_utilities.minimo_soglia_max%TYPE, arrotondamento_importi_dec anagrafiche.emittenti_fiscali_utilities.arrotondamento_importi_dec%TYPE, metodo_arrotondamento_importi text)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_emittente_pk        anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_today               date := script.fn_data_operativa();
+              BEGIN
+                  -- rev 2026-06-29 (analisi-hardcoded-codice §3a #15 / §9.5):
+                  --   ruoli soggetto/EF risolti per codice_interno (immutabile).
+                  --   In tipi_ruoli codice_interno != codice -> col vecchio `codice`
+                  --   la funzione ritornava 0 righe.
+
+                  -- Guard input
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_billing_account_id obbligatorio e > 0',
+                              'billing_account_id', p_billing_account_id
+                          ),
+                          NULL::uuid,
+                          'p_billing_account_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_ruolo_codice_soggetto IS NULL
+                     OR length(btrim(p_ruolo_codice_soggetto)) = 0
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_ruolo_codice_soggetto obbligatorio',
+                              'ruolo_codice_soggetto', p_ruolo_codice_soggetto
+                          ),
+                          NULL::uuid,
+                          'p_ruolo_codice_soggetto obbligatorio'
+                      );
+                  END IF;
+
+                  -- Risoluzione emittente del BA: catena specifico -> default globale.
+                  -- Riusa fn_get_emittente_fiscale_pk (solleva E_EMITTENTE_DEFAULT_MISSING
+                  -- se nessun emittente risolvibile, comportamento desiderato).
+                  v_emittente_pk := anagrafiche.fn_get_emittente_fiscale_pk(p_billing_account_id);
+
+                  -- Conversione PK -> soggetto_ruolo_id (la matrice utility usa SR_ID).
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = v_emittente_pk;
+
+                  -- Query principale: intersezione (ruolo_soggetto AND ruolo EF) +
+                  -- LEFT JOIN override per i parametri personalizzati per emittente.
+                  RETURN QUERY
+                  SELECT
+                      u.id::bigint                                AS utility_id,
+                      u.codice::text                              AS codice,
+                      u.descrizione::text                         AS descrizione,
+                      (efu.id IS NOT NULL)                        AS is_personalizzata_per_ef,
+                      efu.minimo_soglia_min                       AS minimo_soglia_min,
+                      efu.minimo_soglia_max                       AS minimo_soglia_max,
+                      efu.arrotondamento_importi_dec              AS arrotondamento_importi_dec,
+                      efu.metodo_arrotondamento_importi::text     AS metodo_arrotondamento_importi
+                  FROM config.utilities u
+                  -- ammessa per il ruolo del soggetto del BA
+                  JOIN config.utilities_tipi_ruolo utr_sogg
+                    ON utr_sogg.utility_id = u.id
+                   AND utr_sogg.attivo = true
+                   AND (utr_sogg.valido_dal IS NULL OR utr_sogg.valido_dal <= v_today)
+                   AND (utr_sogg.valido_al  IS NULL OR utr_sogg.valido_al  >= v_today)
+                  JOIN config.tipi_ruoli tr_sogg
+                    ON tr_sogg.id = utr_sogg.tipo_ruolo_id
+                   AND tr_sogg.codice_interno = p_ruolo_codice_soggetto
+                  -- ammessa per il ruolo EF (emittente fiscale)
+                  JOIN config.utilities_tipi_ruolo utr_ef
+                    ON utr_ef.utility_id = u.id
+                   AND utr_ef.attivo = true
+                   AND (utr_ef.valido_dal IS NULL OR utr_ef.valido_dal <= v_today)
+                   AND (utr_ef.valido_al  IS NULL OR utr_ef.valido_al  >= v_today)
+                  JOIN config.tipi_ruoli tr_ef
+                    ON tr_ef.id = utr_ef.tipo_ruolo_id
+                   AND tr_ef.codice_interno = 'EF'
+                  -- override parametri per emittente (politica ibrida: LEFT JOIN)
+                  LEFT JOIN anagrafiche.emittenti_fiscali_utilities efu
+                    ON efu.utility_id = u.id
+                   AND efu.emittente_soggetto_ruolo_id = v_emittente_sr_id
+                   AND efu.attivo = true
+                  ORDER BY u.codice;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_was_super_admin boolean := false;  -- esito di un EXISTS: nessuna colonna dietro
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire le scritture su identita_digitali che
+                  --   lascerebbero il sistema senza un SUPER_ADMIN SENZA
+                  --   SCADENZA (script.fn_check_almeno_un_super_admin_attivo).
+                  --
+                  -- Regole:
+                  --   1. Short-circuit: solo le scritture che RIDUCONO la
+                  --      garanzia — spegnere la veste, darle una data di fine,
+                  --      spostarne l'inizio nel futuro. Rev 2026-10-07
+                  --      (brief-db-veste-utilizzabile, decisione di Tid): prima
+                  --      solo lo spegnimento, e il calendario passava.
+                  --   2. Short-circuit 2: solo se la veste porta un binding
+                  --      SUPER_ADMIN attivo. Altrimenti la garanzia non cambia.
+                  --   3. Se a rischio, verifica post-stato via fn_check.
+                  --      Se false, raise E_PROFILO_ULTIMO_SUPER_ADMIN.
+                  --
+                  -- rev 2026-06-29: profilo SUPER_ADMIN identificato per l'enum
+                  --   stabile tipo invece che per codice (mutabile) -- §4a.
+                  -- =========================================================
+
+                  IF NOT (   (OLD.attivo AND NOT NEW.attivo)
+                          OR (OLD.valido_al IS NULL AND NEW.valido_al IS NOT NULL)
+                          OR (OLD.valido_dal <= (SELECT script.fn_data_operativa()) AND NEW.valido_dal > (SELECT script.fn_data_operativa())))
+                  THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso_bindings pab
+                        JOIN config.profili_accesso          pa
+                          ON pa.id = pab.profilo_accesso_id
+                       WHERE pab.identita_digitale_id = OLD.id
+                         AND pab.attivo = true
+                         AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo  = true
+                  )
+                  INTO v_was_super_admin;
+
+                  IF NOT v_was_super_admin THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT script.fn_check_almeno_un_super_admin_attivo() THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          TG_NAME,
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'identita_digitale_id', OLD.id,
+                              'auth_user_id', OLD.auth_user_id,
+                              'ruolo_applicativo', OLD.ruolo_applicativo,
+                              'attivo', NEW.attivo,
+                              'valido_dal', NEW.valido_dal,
+                              'valido_al', NEW.valido_al
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+              v_tipo_ruolo_id  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
+              v_has_matrix     boolean;
+              v_today          date := script.fn_data_operativa();
+              BEGIN
+              -- Gestione DELETE: nessun controllo
+              IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+              END IF;
+
+              -- Se mancano i riferimenti chiave, non faccio nulla
+              IF NEW.soggetto_ruolo_id IS NULL
+              OR NEW.tipo_indirizzo_id IS NULL THEN
+                      RETURN NEW;
+              END IF;
+
+              -- Recupero tipo_ruolo dal soggetto_ruolo
+              SELECT sr.tipo_ruolo_id
+              INTO v_tipo_ruolo_id
+              FROM anagrafiche.soggetti_ruoli sr
+              WHERE sr.id = NEW.soggetto_ruolo_id;
+
+
+              -- Verifico se ESISTE almeno una riga di matrice per questo tipo_ruolo
+              SELECT EXISTS (
+                      SELECT 1
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+              ) INTO v_has_matrix;
+
+              -- Caso A: nessuna matrice definita → indirizzi liberi
+              IF NOT v_has_matrix THEN
+                      RETURN NEW;
+              END IF;
+
+              -- Caso B: matrice definita → accetto solo tipi previsti, attivi e validi
+              IF NOT EXISTS (
+                      SELECT 1
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id      = v_tipo_ruolo_id
+                      AND m.tipo_indirizzo_id  = NEW.tipo_indirizzo_id
+                      AND m.attivo             = TRUE
+                      AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                      AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+              ) THEN
+                      -- In alternativa qui puoi integrare dbops.fn_log_and_raise_error(...)
+                      PERFORM script.fn_log_and_raise_error(
+                   'database',
+                   'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
+                   'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                   jsonb_build_object(
+                          'campo',             'tipo_indirizzo_id',
+                          'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                          'tipo_ruolo_id',     v_tipo_ruolo_id,
+                          'soggetto_ruolo_id', NEW.soggetto_ruolo_id), 
+                    new.tx_id,
+                   NEW.tipo_indirizzo_id::text ,         
+                     v_tipo_ruolo_id::text, NEW.soggetto_ruolo_id::text);         
+
+              END IF;
+
+              RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio.id%TYPE;
+                v_has_matrix                 boolean;
+                v_today                      date := script.fn_data_operativa();
+              BEGIN
+                -- Gestione DELETE: nessun controllo
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- Se mancano i riferimenti chiave, non faccio nulla
+                IF NEW.soggetto_id IS NULL OR NEW.tipo_indirizzo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero tipo_soggetto_dettaglio dal soggetto
+                SELECT s.tipo_soggetto_dettaglio_id
+                  INTO v_tipo_soggetto_dettaglio_id
+                  FROM anagrafiche.soggetti s
+                 WHERE s.id = NEW.soggetto_id;
+
+                -- Se non ho tipo_soggetto_dettaglio non applico vincoli (fallback permissivo)
+                IF v_tipo_soggetto_dettaglio_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifico se ESISTE almeno una riga di matrice per questo tipo_soggetto_dettaglio
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                ) INTO v_has_matrix;
+
+                -- Caso A: nessuna matrice definita → indirizzi liberi
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Caso B: matrice definita → accetto solo tipi previsti, attivi e validi
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                     AND m.tipo_indirizzo_id          = NEW.tipo_indirizzo_id
+                     AND m.attivo                     = TRUE
+                     AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                     AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                ) THEN
+                  -- ⭐ rev 2026-08-19: codice PROPRIO di questo layer.
+                  --   Prima era E_TIPO_INDIRIZZO_NON_PERMESSO, condiviso col guard
+                  --   sui RUOLI (trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo).
+                  --   L'arita' tornava — tre segnaposto, tre valori — quindi niente
+                  --   si rompeva; ma il messaggio di quel codice chiama il secondo
+                  --   valore `tipo_ruolo_id` e il terzo `soggetto_ruolo_id`, mentre
+                  --   qui sono un tipo_soggetto_dettaglio_id e un soggetto_id, e la
+                  --   nota manda a config.tipi_ruolo_tipi_indirizzo — che questo
+                  --   guard non legge nemmeno. Un messaggio plausibile e falso manda
+                  --   a cercare dove il problema non c'e'.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_indirizzi_soggetti_guard_tipo_indirizzo',
+                    'E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO',
+                    jsonb_build_object(
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'tipo_soggetto_dettaglio_id', v_tipo_soggetto_dettaglio_id,
+                      'soggetto_id', NEW.soggetto_id
+                    ),
+                    NEW.tx_id,
+                    NEW.tipo_indirizzo_id::text,
+                    v_tipo_soggetto_dettaglio_id::text,
+                    NEW.soggetto_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_identita_id anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire le scritture sul rapporto di un SUPER_ADMIN
+                  --   che lascerebbero il sistema senza un SUPER_ADMIN SENZA
+                  --   SCADENZA (script.fn_check_almeno_un_super_admin_attivo).
+                  --
+                  -- Regole:
+                  --   1. Short-circuit: solo le scritture che RIDUCONO la
+                  --      garanzia (spegnere, data di fine, inizio nel futuro,
+                  --      spostamento su un altro soggetto_ruolo). Togliere una
+                  --      data di fine o riaprire il rapporto passa sempre.
+                  --   2. Short-circuit 2: solo se sul soggetto_ruolo di PRIMA
+                  --      c'e' una veste OPERATORE con un binding SUPER_ADMIN
+                  --      attivo.
+                  --   3. Verifica post-stato via fn_check; se false, raise.
+                  -- =========================================================
+
+                  IF NOT (   (OLD.attivo AND NOT NEW.attivo)
+                          OR (OLD.valido_al IS NULL AND NEW.valido_al IS NOT NULL)
+                          OR (OLD.valido_dal <= (SELECT script.fn_data_operativa()) AND NEW.valido_dal > (SELECT script.fn_data_operativa()))
+                          OR (OLD.soggetto_ruolo_id IS DISTINCT FROM NEW.soggetto_ruolo_id))
+                  THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- La veste SUPER_ADMIN appesa a questo rapporto (al piu' una
+                  -- accesa per soggetto_ruolo e tipo: uq_identita_digitali_sr_ruolo_attivo;
+                  -- ORDER BY per non dipendere dal piano quando ce ne sono di spente).
+                  SELECT idg.id
+                    INTO v_identita_id
+                    FROM anagrafiche.identita_digitali   idg
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.identita_digitale_id = idg.id
+                     AND pab.attivo
+                    JOIN config.profili_accesso          pa
+                      ON pa.id = pab.profilo_accesso_id
+                     AND pa.attivo
+                     AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                   WHERE idg.soggetto_ruolo_id = OLD.soggetto_ruolo_id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   ORDER BY idg.attivo DESC, idg.id
+                   LIMIT 1;
+
+                  IF v_identita_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT script.fn_check_almeno_un_super_admin_attivo() THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          TG_NAME,
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'risorsa_umana_id', OLD.id,
+                              'identita_digitale_id', v_identita_id,
+                              'attivo', NEW.attivo,
+                              'valido_dal', NEW.valido_dal,
+                              'valido_al', NEW.valido_al
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_has_matrix boolean;
+                v_today      date := script.fn_data_operativa();
+                v_missing    record;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- se non ho il tipo, non applico vincoli (fallback permissivo)
+                IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se non esiste alcuna riga matrice per quel tipo -> libero
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = NEW.tipo_soggetto_dettaglio_id
+                ) INTO v_has_matrix;
+
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Cerca un obbligatorio mancante (considerando fallback)
+                SELECT m.tipo_indirizzo_id,
+                       m.fallback_tipo_indirizzo_id
+                  INTO v_missing
+                  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                 WHERE m.tipo_soggetto_dettaglio_id = NEW.tipo_soggetto_dettaglio_id
+                   AND m.obbligatorio = TRUE
+                   AND m.attivo = TRUE
+                   AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                   AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.indirizzi_soggetti i
+                      WHERE i.soggetto_id = NEW.id
+                        AND (
+                          i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                          OR (m.fallback_tipo_indirizzo_id IS NOT NULL AND i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id)
+                        )
+                   )
+                 LIMIT 1;
+
+                IF FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_soggetti_guard_indirizzi_required',
+                    'E_INDIRIZZO_OBBLIGATORIO_MANCANTE',
+                    jsonb_build_object(
+                      'soggetto_id', NEW.id,
+                      'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                      'tipo_indirizzo_id_required', v_missing.tipo_indirizzo_id,
+                      'fallback_tipo_indirizzo_id', v_missing.fallback_tipo_indirizzo_id
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text,
+                     ' tipo soggetto dettaglio ',  NEW.tipo_soggetto_dettaglio_id::text,
+                    v_missing.tipo_indirizzo_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_has_matrix boolean;
+                v_today      date := script.fn_data_operativa();
+                v_missing    record;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                IF NEW.tipo_ruolo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se non esiste alcuna riga matrice per quel ruolo -> libero
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_ruolo_tipi_indirizzo m
+                   WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                ) INTO v_has_matrix;
+
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Cerca un obbligatorio mancante (considerando fallback)
+                SELECT m.tipo_indirizzo_id,
+                       m.fallback_tipo_indirizzo_id
+                  INTO v_missing
+                  FROM config.tipi_ruolo_tipi_indirizzo m
+                 WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                   AND m.obbligatorio = TRUE
+                   AND m.attivo = TRUE
+                   AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                   AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.indirizzi i
+                      WHERE i.soggetto_ruolo_id = NEW.id
+                        AND (
+                          i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                          OR (m.fallback_tipo_indirizzo_id IS NOT NULL AND i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id)
+                        )
+                   )
+                 LIMIT 1;
+
+                IF FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_soggetti_ruoli_guard_indirizzi_required',
+                    'E_INDIRIZZO_OBBLIGATORIO_MANCANTE',
+                    jsonb_build_object(
+                      'soggetto_ruolo_id', NEW.id,
+                      'tipo_ruolo_id', NEW.tipo_ruolo_id,
+                      'tipo_indirizzo_id_required', v_missing.tipo_indirizzo_id,
+                      'fallback_tipo_indirizzo_id', v_missing.fallback_tipo_indirizzo_id
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text,
+                    'tipo ruolo' , NEW.tipo_ruolo_id::text,
+                    v_missing.tipo_indirizzo_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard: verifica che la natura (tipo_soggetto) del soggetto sia ammessa
+              -- per il ruolo che si sta assegnando, secondo la matrice
+              -- config.tipi_ruoli_nature_ammesse.
+              -- Logica "matrice assente = libero": se non esistono righe per il
+              -- tipo_ruolo, nessun vincolo viene applicato.
+              DECLARE
+                  v_tipo_soggetto_dettaglio_id  config.tipi_soggetto_dettaglio.id%TYPE;
+                  v_tipo_soggetto_id            config.tipi_soggetto.id%TYPE;
+                  v_has_matrix                  boolean;
+                  v_today                       date := script.fn_data_operativa();
+                  v_error_ctx                   jsonb;
+              BEGIN
+                  -- DELETE: nessun controllo
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- Recupero tipo_soggetto_dettaglio_id dal soggetto
+                  SELECT s.tipo_soggetto_dettaglio_id
+                    INTO v_tipo_soggetto_dettaglio_id
+                    FROM anagrafiche.soggetti s
+                   WHERE s.id = NEW.soggetto_id;
+
+                  -- Verifico se esiste almeno una riga di matrice per questo tipo_ruolo
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.tipi_ruoli_nature_ammesse m
+                       WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                  ) INTO v_has_matrix;
+
+                  -- Caso A: nessuna matrice definita per il ruolo → nature libere
+                  IF NOT v_has_matrix THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Caso B: matrice definita MA soggetto senza tipo_soggetto_dettaglio configurato
+                  IF v_tipo_soggetto_dettaglio_id IS NULL THEN
+                      v_error_ctx := jsonb_build_object(
+                          'soggetto_id', NEW.soggetto_id,
+                          'tipo_ruolo_id', NEW.tipo_ruolo_id
+                      );
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_soggetti_ruoli_guard_natura_ammessa',
+                          'E_RUOLO_NATURA_TIPO_DET_NULL',
+                          v_error_ctx,
+                          NEW.tx_id,
+                          NEW.tipo_ruolo_id::text,
+                          NEW.soggetto_id::text
+                      );
+                  END IF;
+
+                  -- Risalgo a tipo_soggetto_id via tipi_soggetto_dettaglio
+                  SELECT tsd.tipo_soggetto_id
+                    INTO v_tipo_soggetto_id
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = v_tipo_soggetto_dettaglio_id;
+
+                  -- Caso C: matrice definita → verifico che la natura sia ammessa, attiva e valida
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.tipi_ruoli_nature_ammesse m
+                       WHERE m.tipo_ruolo_id    = NEW.tipo_ruolo_id
+                         AND m.tipo_soggetto_id = v_tipo_soggetto_id
+                         AND m.attivo           = TRUE
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                         AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                  ) THEN
+                      v_error_ctx := jsonb_build_object(
+                          'soggetto_id', NEW.soggetto_id,
+                          'tipo_ruolo_id', NEW.tipo_ruolo_id,
+                          'tipo_soggetto_id', v_tipo_soggetto_id
+                      );
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_soggetti_ruoli_guard_natura_ammessa',
+                          'E_RUOLO_NATURA_NON_AMMESSA',
+                          v_error_ctx,
+                          NEW.tx_id,
+                          v_tipo_soggetto_id::text,
+                          NEW.tipo_ruolo_id::text,
+                          NEW.soggetto_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_annulla_movimento_titolo_iva(p_movimento_id bigint, p_motivo character varying)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: annullare una FORZATURA del registro plafond IVA
+              --   scrivendo il CONTRO-MOVIMENTO di segno opposto. Il registro
+              --   resta append-only, l'accumulatore riporta
+              --   imponibile_utilizzato al valore giusto da se' (somma senza
+              --   filtri), e a video restano entrambe le righe: l'errore, la
+              --   correzione, e la data di ciascuna.
+              --   Ritorna l'id della riga di annullo.
+              --   Piano: brief-db-titoli-iva-movimenti-annullo, Fase C.
+              --
+              -- ⭐ IMPORTO E TITOLO SI DERIVANO, non si ricevono: il chiamante
+              --    passa QUALE riga e PERCHE'. E' cio' che rende i due controlli
+              --    di coerenza del guard una difesa contro la scrittura diretta
+              --    invece che un errore che l'operatore puo' fare.
+              --
+              -- ⭐ L'ammissibilita' la decide la CHECK, che e' la stessa che
+              --    spegne il pulsante nel read-side: qui non si riscrive il
+              --    predicato. Cosi' i due non «coincidono oggi», non possono
+              --    divergere.
+              DECLARE
+                  v_mov     RECORD;
+                  -- ⛔ NUDI, e non per fretta: `v_motivi` e' il valore di ritorno di una
+                  --   fn_check_* (nessuna colonna dietro). Non c'e' niente da ancorare.
+                  v_motivi  jsonb;
+                  v_new_id  anagrafiche.soggetti_titoli_iva_movimenti.id%TYPE;
+              BEGIN
+                  -- 1) Guard di parametro. Un id assente o non positivo e un
+                  --    motivo vuoto non escono da nessuna interfaccia: li
+                  --    produce un chiamante rotto, quindi TECNICO.
+                  IF p_movimento_id IS NULL OR p_movimento_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche','fn_annulla_movimento_titolo_iva',
+                          'E_TITOLO_IVA_ANNULLO_INCOERENTE',
+                          jsonb_build_object('parametro','p_movimento_id',
+                                             'valore', p_movimento_id),
+                          NULL::uuid,
+                          COALESCE(p_movimento_id::text, 'assente'),
+                          'identificativo del movimento non valido');
+                  END IF;
+
+                  IF p_motivo IS NULL OR btrim(p_motivo) = '' THEN
+                      -- ⚠️ Il motivo lo pretende gia'
+                      --   chk_stiva_movimenti_motivo_forzatura, ma la' uscirebbe
+                      --   come violazione di CHECK (23514): un errore muto per
+                      --   chi legge. Qui esce come rifiuto di dominio.
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche','fn_annulla_movimento_titolo_iva',
+                          'E_TITOLO_IVA_ANNULLO_INCOERENTE',
+                          jsonb_build_object('parametro','p_motivo'),
+                          NULL::uuid,
+                          p_movimento_id::text,
+                          'il motivo dell''annullo e'' obbligatorio');
+                  END IF;
+
+                  -- 2) Ammissibilita': si CHIAMA la check, non si riscrive.
+                  v_motivi := script.fn_check_annullo_movimento_titolo_iva(p_movimento_id);
+
+                  -- ⭐ La coda sta in un posto solo (20260908-17): quale motivo si solleva,
+                  --   come si spacchettano i valori e come si compone il contesto li decide
+                  --   l'helper. Qui resta la TESTA — quale check chiamare, su cosa.
+                  -- ⭐ `motivi` non si passa piu': lo mette l'helper, sempre. Nel contesto
+                  --   resta la sola chiave di dominio.
+                  PERFORM script.fn_raise_primo_motivo_se_presente(
+                      'anagrafiche', 'fn_annulla_movimento_titolo_iva',
+                      v_motivi,
+                      NULL,
+                      NULL::uuid,
+                      jsonb_build_object('movimento_id', p_movimento_id));
+
+                  -- 3) La riga da annullare, per derivarne titolo e importo.
+                  -- ⚠️ Questa lettura e' INVOKER: se la riga fosse fuori
+                  --    perimetro non si vedrebbe. Non e' un buco — la check
+                  --    (DEFINER) l'ha gia' dichiarata annullabile, quindi
+                  --    arrivare qui e non trovarla significa che chi opera non
+                  --    ha il perimetro per farlo, ed e' giusto che si fermi.
+                  SELECT m.titolo_iva_id, m.imponibile
+                    INTO v_mov
+                    FROM anagrafiche.soggetti_titoli_iva_movimenti m
+                   WHERE m.id = p_movimento_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche','fn_annulla_movimento_titolo_iva',
+                          'E_TITOLO_IVA_ANNULLO_NON_AMMESSO',
+                          jsonb_build_object('movimento_id', p_movimento_id,
+                                             'motivo_tecnico','fuori perimetro'),
+                          NULL::uuid, '', '');
+                  END IF;
+
+                  -- 4) Il contro-movimento. Segno opposto, stesso titolo,
+                  --    tipo FORZATURA, nessun documento (lo impone gia'
+                  --    chk_stiva_movimenti_documento) e la data di OGGI, che e'
+                  --    la data dell'ANNULLO — l'informazione che un flag avrebbe
+                  --    perso.
+                  INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti (
+                      titolo_iva_id, tipo_movimento, imponibile, data_movimento,
+                      motivo, annulla_movimento_id)
+                  VALUES (
+                      v_mov.titolo_iva_id, 'FORZATURA', - v_mov.imponibile,
+                      CURRENT_DATE, p_motivo, p_movimento_id)
+                  RETURNING id INTO v_new_id;
+
+                  RETURN v_new_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_risorsa_umana_v2(p_soggetto_id anagrafiche.risorse_umane.soggetto_id%TYPE DEFAULT NULL::uuid, p_qualifica_id anagrafiche.risorse_umane.qualifica_id%TYPE DEFAULT NULL::integer, p_unita_organizzativa_id anagrafiche.risorse_umane.unita_organizzativa_id%TYPE DEFAULT NULL::integer, p_valido_dal anagrafiche.risorse_umane.valido_dal%TYPE DEFAULT CURRENT_DATE, p_valido_al anagrafiche.risorse_umane.valido_al%TYPE DEFAULT NULL::date, p_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE DEFAULT NULL::integer, p_is_super_admin boolean DEFAULT false, p_attivo anagrafiche.identita_digitali.attivo%TYPE DEFAULT true)
+               RETURNS bigint
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_sr_id        anagrafiche.soggetti_ruoli.id%TYPE;
+                  v_ru_id        anagrafiche.risorse_umane.id%TYPE;
+                  v_identita_id  anagrafiche.identita_digitali.id%TYPE;
+                  v_profilo_sa   config.profili_accesso_bindings.profilo_accesso_id%TYPE;
+                  v_n_profili_sa integer;  -- un conteggio: nessuna colonna di cui sia il riflesso
+              BEGIN
+                  -- =========================================================
+                  -- Scopo (v2 multi-face native, Chunk A Fase 7 2026-04-29):
+                  --   Crea risorsa_umana + identita_digitali OPERATORE
+                  --   (+ binding SUPER_ADMIN se p_is_super_admin=true).
+                  --   Niente piu' enum legacy ruolo_sistema; il chiamante
+                  --   esprime direttamente "is super admin?" + "attiva?".
+                  --
+                  -- Body identico a v1 salvo:
+                  --   Step 3: identita_digitali.attivo = p_attivo
+                  --           (era hardcoded true in v1).
+                  --   Step 4: IF p_is_super_admin invece di
+                  --           IF p_ruolo_sistema='ADMIN'.
+                  -- =========================================================
+
+                  -- Validazione parametri obbligatori
+                  IF p_soggetto_id IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_soggetto_id'),
+                          NULL::uuid, 'Soggetto obbligatorio.'
+                      );
+                  END IF;
+
+                  IF p_qualifica_id IS NULL OR p_qualifica_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('parametro', 'p_qualifica_id'),
+                          NULL::uuid, 'Qualifica obbligatoria.'
+                      );
+                  END IF;
+
+                  -- Guard prerequisiti
+                  IF NOT EXISTS (
+                      SELECT 1 FROM config.qualifiche
+                       WHERE id = p_qualifica_id AND attivo = true
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_ADMIN_VALIDAZIONE',
+                          jsonb_build_object('qualifica_id', p_qualifica_id),
+                          NULL::uuid, 'Qualifica non trovata o non attiva.'
+                      );
+                  END IF;
+
+                  IF p_unita_organizzativa_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM config.unita_organizzative
+                           WHERE id = p_unita_organizzativa_id AND attivo = true
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_UO_NON_TROVATA',
+                              jsonb_build_object('campo', 'unita_organizzativa_id', 'unita_organizzativa_id', p_unita_organizzativa_id),
+                              NULL::uuid,
+                              'Unita'' organizzativa non trovata o non attiva.'
+                          );
+                      END IF;
+                  END IF;
+
+                  IF p_auth_user_id IS NOT NULL THEN
+                      IF NOT EXISTS (
+                          SELECT 1 FROM django.auth_user WHERE id = p_auth_user_id
+                      ) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_ADMIN_VALIDAZIONE',
+                              jsonb_build_object('auth_user_id', p_auth_user_id),
+                              NULL::uuid, 'auth_user non trovato.'
+                          );
+                      END IF;
+                  END IF;
+
+                  -- ⛔ Il profilo SUPER_ADMIN si RISOLVE, non si scrive (rev 20260923-10).
+                  --   Fino a questa revisione il binding usava l'id cablato 9100: vero solo
+                  --   perche' il seed di config.profili_accesso porta l'id esplicito. La
+                  --   chiave stabile e' l'enum `tipo` (linee-guida-sql §6d, punto 1: e' la
+                  --   stessa dei guard anti-lockout e di script.fn_is_super_admin); `codice`
+                  --   e' modificabile e non ha lock.
+                  -- ⚠️ Il modello non vieta DUE profili di tipo SUPER_ADMIN, e sceglierne uno
+                  --   per id sarebbe un'ambiguita', non una scelta: si pretende esattamente
+                  --   un profilo attivo, e si solleva PRIMA di ogni scrittura.
+                  IF p_is_super_admin AND p_auth_user_id IS NOT NULL THEN
+                      SELECT count(*), min(pa.id)
+                        INTO v_n_profili_sa, v_profilo_sa
+                        FROM config.profili_accesso pa
+                       WHERE pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo;
+
+                      IF v_n_profili_sa <> 1 THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                              'E_CONFIG_MANCANTE',
+                              jsonb_build_object('tipo_profilo_accesso', 'SUPER_ADMIN',
+                                                 'profili_attivi', v_n_profili_sa),
+                              NULL::uuid,
+                              'un solo profilo di accesso SUPER_ADMIN attivo (trovati '
+                                  || v_n_profili_sa::text || ')'
+                          );
+                      END IF;
+                  END IF;
+
+                  -- Step 1: soggetto_ruolo RIS_UMANA
+                  SELECT script.fn_get_or_create_soggetto_ruolo(
+                      p_soggetto_id, 'RIS_UMANA'
+                  ) INTO v_sr_id;
+
+                  -- ⛔ Una persona e' una risorsa umana sola (uq_risorse_umane_soggetto_ruolo,
+                  --   non parziale: vale anche per una risorsa spenta). Senza questo guard il
+                  --   secondo operatore sullo stesso soggetto arrivava al client come 23505,
+                  --   E_DATABASE. Il rimedio e' sulla risorsa che c'e' (reinvito, riattivazione),
+                  --   non una seconda. (rev 20261002-01)
+                  -- ⚠️ Il controllo e' sulla CHIAVE del vincolo (soggetto_ruolo_id), non su
+                  --   attivo: una risorsa disattivata occupa lo slot come una attiva.
+                  -- ⚠️ Il segnaposto e' la frase dell'operatore: ragione_sociale_completa e'
+                  --   nullable, quindi si ripiega su nome e cognome, poi su «Il soggetto» —
+                  --   mai una frase con un buco al posto del nome.
+                  IF EXISTS (
+                      SELECT 1 FROM anagrafiche.risorse_umane ru
+                       WHERE ru.soggetto_ruolo_id = v_sr_id
+                  ) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_crea_risorsa_umana_v2',
+                          'E_RISORSA_UMANA_GIA_PRESENTE',
+                          jsonb_build_object('campo',             'soggetto_id',
+                                             'soggetto_id',       p_soggetto_id,
+                                             'soggetto_ruolo_id', v_sr_id),
+                          NULL::uuid,
+                          COALESCE(
+                              (SELECT COALESCE(NULLIF(btrim(s.ragione_sociale_completa), ''),
+                                               NULLIF(btrim(concat_ws(' ', s.nome, s.cognome)), ''),
+                                               NULLIF(btrim(s.ragione_sociale), ''))
+                                 FROM anagrafiche.soggetti s
+                                WHERE s.id = p_soggetto_id),
+                              'Il soggetto'));
+                  END IF;
+
+                  -- Step 2: risorsa umana
+                  INSERT INTO anagrafiche.risorse_umane (
+                      soggetto_ruolo_id, soggetto_id, qualifica_id,
+                      unita_organizzativa_id, valido_dal, valido_al, attivo
+                  )
+                  VALUES (
+                      v_sr_id, p_soggetto_id, p_qualifica_id,
+                      p_unita_organizzativa_id, p_valido_dal, p_valido_al, true
+                  )
+                  RETURNING id INTO v_ru_id;
+
+                  -- Step 3: identita_digitali OPERATORE.
+                  -- Differenza vs v1: attivo = p_attivo (default true).
+                  IF p_auth_user_id IS NOT NULL THEN
+                      INSERT INTO anagrafiche.identita_digitali (
+                          soggetto_ruolo_id,
+                          auth_user_id,
+                          ruolo_applicativo,
+                          attivo,
+                          valido_dal,
+                          valido_al
+                      )
+                      VALUES (
+                          v_sr_id,
+                          p_auth_user_id,
+                          'OPERATORE'::config.ruolo_applicativo,
+                          p_attivo,
+                          COALESCE(p_valido_dal, CURRENT_DATE),
+                          p_valido_al
+                      )
+                      RETURNING id INTO v_identita_id;
+
+                      -- Step 4: binding SUPER_ADMIN se richiesto, sul profilo
+                      -- risolto nei guard (rev 20260923-10: era l'id 9100 cablato).
+                      -- Differenza vs v1: predicato boolean diretto invece
+                      -- di confronto con enum legacy.
+                      IF p_is_super_admin THEN
+                          INSERT INTO config.profili_accesso_bindings (
+                              profilo_accesso_id,
+                              identita_digitale_id,
+                              attivo
+                          )
+                          VALUES (
+                              v_profilo_sa,
+                              v_identita_id,
+                              true
+                          );
+                      END IF;
+                  END IF;
+
+                  RETURN v_ru_id;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_lookup_utilities_per_ba(p_billing_account_id anagrafiche.billing_account.id%TYPE, p_ruolo_codice_soggetto text)
+               RETURNS TABLE(utility_id bigint, codice text, descrizione text, is_personalizzata_per_ef boolean, minimo_soglia_min numeric, minimo_soglia_max numeric, arrotondamento_importi_dec smallint, metodo_arrotondamento_importi text)
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                  v_emittente_pk        anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_emittente_sr_id     anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_today               date := current_date;
+              BEGIN
+                  -- rev 2026-06-29 (analisi-hardcoded-codice §3a #15 / §9.5):
+                  --   ruoli soggetto/EF risolti per codice_interno (immutabile).
+                  --   In tipi_ruoli codice_interno != codice -> col vecchio `codice`
+                  --   la funzione ritornava 0 righe.
+
+                  -- Guard input
+                  IF p_billing_account_id IS NULL OR p_billing_account_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_billing_account_id obbligatorio e > 0',
+                              'billing_account_id', p_billing_account_id
+                          ),
+                          NULL::uuid,
+                          'p_billing_account_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  IF p_ruolo_codice_soggetto IS NULL
+                     OR length(btrim(p_ruolo_codice_soggetto)) = 0
+                  THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          'fn_lookup_utilities_per_ba',
+                          'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object(
+                              'detail', 'p_ruolo_codice_soggetto obbligatorio',
+                              'ruolo_codice_soggetto', p_ruolo_codice_soggetto
+                          ),
+                          NULL::uuid,
+                          'p_ruolo_codice_soggetto obbligatorio'
+                      );
+                  END IF;
+
+                  -- Risoluzione emittente del BA: catena specifico -> default globale.
+                  -- Riusa fn_get_emittente_fiscale_pk (solleva E_EMITTENTE_DEFAULT_MISSING
+                  -- se nessun emittente risolvibile, comportamento desiderato).
+                  v_emittente_pk := anagrafiche.fn_get_emittente_fiscale_pk(p_billing_account_id);
+
+                  -- Conversione PK -> soggetto_ruolo_id (la matrice utility usa SR_ID).
+                  SELECT ef.soggetto_ruolo_id
+                    INTO v_emittente_sr_id
+                    FROM anagrafiche.emittenti_fiscali ef
+                   WHERE ef.id = v_emittente_pk;
+
+                  -- Query principale: intersezione (ruolo_soggetto AND ruolo EF) +
+                  -- LEFT JOIN override per i parametri personalizzati per emittente.
+                  RETURN QUERY
+                  SELECT
+                      u.id::bigint                                AS utility_id,
+                      u.codice::text                              AS codice,
+                      u.descrizione::text                         AS descrizione,
+                      (efu.id IS NOT NULL)                        AS is_personalizzata_per_ef,
+                      efu.minimo_soglia_min                       AS minimo_soglia_min,
+                      efu.minimo_soglia_max                       AS minimo_soglia_max,
+                      efu.arrotondamento_importi_dec              AS arrotondamento_importi_dec,
+                      efu.metodo_arrotondamento_importi::text     AS metodo_arrotondamento_importi
+                  FROM config.utilities u
+                  -- ammessa per il ruolo del soggetto del BA
+                  JOIN config.utilities_tipi_ruolo utr_sogg
+                    ON utr_sogg.utility_id = u.id
+                   AND utr_sogg.attivo = true
+                   AND (utr_sogg.valido_dal IS NULL OR utr_sogg.valido_dal <= v_today)
+                   AND (utr_sogg.valido_al  IS NULL OR utr_sogg.valido_al  >= v_today)
+                  JOIN config.tipi_ruoli tr_sogg
+                    ON tr_sogg.id = utr_sogg.tipo_ruolo_id
+                   AND tr_sogg.codice_interno = p_ruolo_codice_soggetto
+                  -- ammessa per il ruolo EF (emittente fiscale)
+                  JOIN config.utilities_tipi_ruolo utr_ef
+                    ON utr_ef.utility_id = u.id
+                   AND utr_ef.attivo = true
+                   AND (utr_ef.valido_dal IS NULL OR utr_ef.valido_dal <= v_today)
+                   AND (utr_ef.valido_al  IS NULL OR utr_ef.valido_al  >= v_today)
+                  JOIN config.tipi_ruoli tr_ef
+                    ON tr_ef.id = utr_ef.tipo_ruolo_id
+                   AND tr_ef.codice_interno = 'EF'
+                  -- override parametri per emittente (politica ibrida: LEFT JOIN)
+                  LEFT JOIN anagrafiche.emittenti_fiscali_utilities efu
+                    ON efu.utility_id = u.id
+                   AND efu.emittente_soggetto_ruolo_id = v_emittente_sr_id
+                   AND efu.attivo = true
+                  ORDER BY u.codice;
+              END
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_identita_digitali_guard_ultimo_super_admin()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_was_super_admin boolean := false;  -- esito di un EXISTS: nessuna colonna dietro
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire le scritture su identita_digitali che
+                  --   lascerebbero il sistema senza un SUPER_ADMIN SENZA
+                  --   SCADENZA (script.fn_check_almeno_un_super_admin_attivo).
+                  --
+                  -- Regole:
+                  --   1. Short-circuit: solo le scritture che RIDUCONO la
+                  --      garanzia — spegnere la veste, darle una data di fine,
+                  --      spostarne l'inizio nel futuro. Rev 2026-10-07
+                  --      (brief-db-veste-utilizzabile, decisione di Tid): prima
+                  --      solo lo spegnimento, e il calendario passava.
+                  --   2. Short-circuit 2: solo se la veste porta un binding
+                  --      SUPER_ADMIN attivo. Altrimenti la garanzia non cambia.
+                  --   3. Se a rischio, verifica post-stato via fn_check.
+                  --      Se false, raise E_PROFILO_ULTIMO_SUPER_ADMIN.
+                  --
+                  -- rev 2026-06-29: profilo SUPER_ADMIN identificato per l'enum
+                  --   stabile tipo invece che per codice (mutabile) -- §4a.
+                  -- =========================================================
+
+                  IF NOT (   (OLD.attivo AND NOT NEW.attivo)
+                          OR (OLD.valido_al IS NULL AND NEW.valido_al IS NOT NULL)
+                          OR (OLD.valido_dal <= CURRENT_DATE AND NEW.valido_dal > CURRENT_DATE))
+                  THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.profili_accesso_bindings pab
+                        JOIN config.profili_accesso          pa
+                          ON pa.id = pab.profilo_accesso_id
+                       WHERE pab.identita_digitale_id = OLD.id
+                         AND pab.attivo = true
+                         AND pa.tipo    = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                         AND pa.attivo  = true
+                  )
+                  INTO v_was_super_admin;
+
+                  IF NOT v_was_super_admin THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT script.fn_check_almeno_un_super_admin_attivo() THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          TG_NAME,
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'identita_digitale_id', OLD.id,
+                              'auth_user_id', OLD.auth_user_id,
+                              'ruolo_applicativo', OLD.ruolo_applicativo,
+                              'attivo', NEW.attivo,
+                              'valido_dal', NEW.valido_dal,
+                              'valido_al', NEW.valido_al
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+              v_tipo_ruolo_id  integer;
+              v_has_matrix     boolean;
+              v_today          date := current_date;
+              BEGIN
+              -- Gestione DELETE: nessun controllo
+              IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+              END IF;
+
+              -- Se mancano i riferimenti chiave, non faccio nulla
+              IF NEW.soggetto_ruolo_id IS NULL
+              OR NEW.tipo_indirizzo_id IS NULL THEN
+                      RETURN NEW;
+              END IF;
+
+              -- Recupero tipo_ruolo dal soggetto_ruolo
+              SELECT sr.tipo_ruolo_id
+              INTO v_tipo_ruolo_id
+              FROM anagrafiche.soggetti_ruoli sr
+              WHERE sr.id = NEW.soggetto_ruolo_id;
+
+
+              -- Verifico se ESISTE almeno una riga di matrice per questo tipo_ruolo
+              SELECT EXISTS (
+                      SELECT 1
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id = v_tipo_ruolo_id
+              ) INTO v_has_matrix;
+
+              -- Caso A: nessuna matrice definita → indirizzi liberi
+              IF NOT v_has_matrix THEN
+                      RETURN NEW;
+              END IF;
+
+              -- Caso B: matrice definita → accetto solo tipi previsti, attivi e validi
+              IF NOT EXISTS (
+                      SELECT 1
+                      FROM config.tipi_ruolo_tipi_indirizzo m
+                      WHERE m.tipo_ruolo_id      = v_tipo_ruolo_id
+                      AND m.tipo_indirizzo_id  = NEW.tipo_indirizzo_id
+                      AND m.attivo             = TRUE
+                      AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                      AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+              ) THEN
+                      -- In alternativa qui puoi integrare dbops.fn_log_and_raise_error(...)
+                      PERFORM script.fn_log_and_raise_error(
+                   'database',
+                   'trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo',
+                   'E_TIPO_INDIRIZZO_NON_PERMESSO',
+                   jsonb_build_object(
+                          'campo',             'tipo_indirizzo_id',
+                          'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                          'tipo_ruolo_id',     v_tipo_ruolo_id,
+                          'soggetto_ruolo_id', NEW.soggetto_ruolo_id), 
+                    new.tx_id,
+                   NEW.tipo_indirizzo_id::text ,         
+                     v_tipo_ruolo_id::text, NEW.soggetto_ruolo_id::text);         
+
+              END IF;
+
+              RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_soggetti_guard_tipo_indirizzo()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id config.tipi_soggetto_dettaglio.id%TYPE;
+                v_has_matrix                 boolean;
+                v_today                      date := current_date;
+              BEGIN
+                -- Gestione DELETE: nessun controllo
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- Se mancano i riferimenti chiave, non faccio nulla
+                IF NEW.soggetto_id IS NULL OR NEW.tipo_indirizzo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupero tipo_soggetto_dettaglio dal soggetto
+                SELECT s.tipo_soggetto_dettaglio_id
+                  INTO v_tipo_soggetto_dettaglio_id
+                  FROM anagrafiche.soggetti s
+                 WHERE s.id = NEW.soggetto_id;
+
+                -- Se non ho tipo_soggetto_dettaglio non applico vincoli (fallback permissivo)
+                IF v_tipo_soggetto_dettaglio_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifico se ESISTE almeno una riga di matrice per questo tipo_soggetto_dettaglio
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                ) INTO v_has_matrix;
+
+                -- Caso A: nessuna matrice definita → indirizzi liberi
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Caso B: matrice definita → accetto solo tipi previsti, attivi e validi
+                IF NOT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                     AND m.tipo_indirizzo_id          = NEW.tipo_indirizzo_id
+                     AND m.attivo                     = TRUE
+                     AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                     AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                ) THEN
+                  -- ⭐ rev 2026-08-19: codice PROPRIO di questo layer.
+                  --   Prima era E_TIPO_INDIRIZZO_NON_PERMESSO, condiviso col guard
+                  --   sui RUOLI (trgfn_indirizzi_guard_tipo_ruolo_tipi_indirizzo).
+                  --   L'arita' tornava — tre segnaposto, tre valori — quindi niente
+                  --   si rompeva; ma il messaggio di quel codice chiama il secondo
+                  --   valore `tipo_ruolo_id` e il terzo `soggetto_ruolo_id`, mentre
+                  --   qui sono un tipo_soggetto_dettaglio_id e un soggetto_id, e la
+                  --   nota manda a config.tipi_ruolo_tipi_indirizzo — che questo
+                  --   guard non legge nemmeno. Un messaggio plausibile e falso manda
+                  --   a cercare dove il problema non c'e'.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_indirizzi_soggetti_guard_tipo_indirizzo',
+                    'E_TIPO_INDIRIZZO_TIPO_SOGGETTO_NON_PERMESSO',
+                    jsonb_build_object(
+                      'tipo_indirizzo_id', NEW.tipo_indirizzo_id,
+                      'tipo_soggetto_dettaglio_id', v_tipo_soggetto_dettaglio_id,
+                      'soggetto_id', NEW.soggetto_id
+                    ),
+                    NEW.tx_id,
+                    NEW.tipo_indirizzo_id::text,
+                    v_tipo_soggetto_dettaglio_id::text,
+                    NEW.soggetto_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_risorse_umane_guard_ultimo_super_admin()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_identita_id anagrafiche.identita_digitali.id%TYPE;
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Impedire le scritture sul rapporto di un SUPER_ADMIN
+                  --   che lascerebbero il sistema senza un SUPER_ADMIN SENZA
+                  --   SCADENZA (script.fn_check_almeno_un_super_admin_attivo).
+                  --
+                  -- Regole:
+                  --   1. Short-circuit: solo le scritture che RIDUCONO la
+                  --      garanzia (spegnere, data di fine, inizio nel futuro,
+                  --      spostamento su un altro soggetto_ruolo). Togliere una
+                  --      data di fine o riaprire il rapporto passa sempre.
+                  --   2. Short-circuit 2: solo se sul soggetto_ruolo di PRIMA
+                  --      c'e' una veste OPERATORE con un binding SUPER_ADMIN
+                  --      attivo.
+                  --   3. Verifica post-stato via fn_check; se false, raise.
+                  -- =========================================================
+
+                  IF NOT (   (OLD.attivo AND NOT NEW.attivo)
+                          OR (OLD.valido_al IS NULL AND NEW.valido_al IS NOT NULL)
+                          OR (OLD.valido_dal <= CURRENT_DATE AND NEW.valido_dal > CURRENT_DATE)
+                          OR (OLD.soggetto_ruolo_id IS DISTINCT FROM NEW.soggetto_ruolo_id))
+                  THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- La veste SUPER_ADMIN appesa a questo rapporto (al piu' una
+                  -- accesa per soggetto_ruolo e tipo: uq_identita_digitali_sr_ruolo_attivo;
+                  -- ORDER BY per non dipendere dal piano quando ce ne sono di spente).
+                  SELECT idg.id
+                    INTO v_identita_id
+                    FROM anagrafiche.identita_digitali   idg
+                    JOIN config.profili_accesso_bindings pab
+                      ON pab.identita_digitale_id = idg.id
+                     AND pab.attivo
+                    JOIN config.profili_accesso          pa
+                      ON pa.id = pab.profilo_accesso_id
+                     AND pa.attivo
+                     AND pa.tipo = 'SUPER_ADMIN'::config.tipo_profilo_accesso
+                   WHERE idg.soggetto_ruolo_id = OLD.soggetto_ruolo_id
+                     AND idg.ruolo_applicativo = 'OPERATORE'::config.ruolo_applicativo
+                   ORDER BY idg.attivo DESC, idg.id
+                   LIMIT 1;
+
+                  IF v_identita_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF NOT script.fn_check_almeno_un_super_admin_attivo() THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'anagrafiche',
+                          TG_NAME,
+                          'E_PROFILO_ULTIMO_SUPER_ADMIN',
+                          jsonb_build_object(
+                              'op', TG_OP,
+                              'risorsa_umana_id', OLD.id,
+                              'identita_digitale_id', v_identita_id,
+                              'attivo', NEW.attivo,
+                              'valido_dal', NEW.valido_dal,
+                              'valido_al', NEW.valido_al
+                          ),
+                          NULL::uuid,
+                          VARIADIC ARRAY[]::text[]
+                      );
+                  END IF;
+
+                  RETURN NULL;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_indirizzi_required()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_has_matrix boolean;
+                v_today      date := current_date;
+                v_missing    record;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                -- se non ho il tipo, non applico vincoli (fallback permissivo)
+                IF NEW.tipo_soggetto_dettaglio_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se non esiste alcuna riga matrice per quel tipo -> libero
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                   WHERE m.tipo_soggetto_dettaglio_id = NEW.tipo_soggetto_dettaglio_id
+                ) INTO v_has_matrix;
+
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Cerca un obbligatorio mancante (considerando fallback)
+                SELECT m.tipo_indirizzo_id,
+                       m.fallback_tipo_indirizzo_id
+                  INTO v_missing
+                  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                 WHERE m.tipo_soggetto_dettaglio_id = NEW.tipo_soggetto_dettaglio_id
+                   AND m.obbligatorio = TRUE
+                   AND m.attivo = TRUE
+                   AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                   AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.indirizzi_soggetti i
+                      WHERE i.soggetto_id = NEW.id
+                        AND (
+                          i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                          OR (m.fallback_tipo_indirizzo_id IS NOT NULL AND i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id)
+                        )
+                   )
+                 LIMIT 1;
+
+                IF FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_soggetti_guard_indirizzi_required',
+                    'E_INDIRIZZO_OBBLIGATORIO_MANCANTE',
+                    jsonb_build_object(
+                      'soggetto_id', NEW.id,
+                      'tipo_soggetto_dettaglio_id', NEW.tipo_soggetto_dettaglio_id,
+                      'tipo_indirizzo_id_required', v_missing.tipo_indirizzo_id,
+                      'fallback_tipo_indirizzo_id', v_missing.fallback_tipo_indirizzo_id
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text,
+                     ' tipo soggetto dettaglio ',  NEW.tipo_soggetto_dettaglio_id::text,
+                    v_missing.tipo_indirizzo_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_indirizzi_required()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_has_matrix boolean;
+                v_today      date := current_date;
+                v_missing    record;
+              BEGIN
+                IF TG_OP = 'DELETE' THEN
+                  RETURN OLD;
+                END IF;
+
+                IF NEW.tipo_ruolo_id IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Se non esiste alcuna riga matrice per quel ruolo -> libero
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM config.tipi_ruolo_tipi_indirizzo m
+                   WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                ) INTO v_has_matrix;
+
+                IF NOT v_has_matrix THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Cerca un obbligatorio mancante (considerando fallback)
+                SELECT m.tipo_indirizzo_id,
+                       m.fallback_tipo_indirizzo_id
+                  INTO v_missing
+                  FROM config.tipi_ruolo_tipi_indirizzo m
+                 WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                   AND m.obbligatorio = TRUE
+                   AND m.attivo = TRUE
+                   AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                   AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                   AND NOT EXISTS (
+                     SELECT 1
+                       FROM anagrafiche.indirizzi i
+                      WHERE i.soggetto_ruolo_id = NEW.id
+                        AND (
+                          i.tipo_indirizzo_id = m.tipo_indirizzo_id
+                          OR (m.fallback_tipo_indirizzo_id IS NOT NULL AND i.tipo_indirizzo_id = m.fallback_tipo_indirizzo_id)
+                        )
+                   )
+                 LIMIT 1;
+
+                IF FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'trgfn_soggetti_ruoli_guard_indirizzi_required',
+                    'E_INDIRIZZO_OBBLIGATORIO_MANCANTE',
+                    jsonb_build_object(
+                      'soggetto_ruolo_id', NEW.id,
+                      'tipo_ruolo_id', NEW.tipo_ruolo_id,
+                      'tipo_indirizzo_id_required', v_missing.tipo_indirizzo_id,
+                      'fallback_tipo_indirizzo_id', v_missing.fallback_tipo_indirizzo_id
+                    ),
+                    NEW.tx_id,
+                    NEW.id::text,
+                    'tipo ruolo' , NEW.tipo_ruolo_id::text,
+                    v_missing.tipo_indirizzo_id::text
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_ruoli_guard_natura_ammessa()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Guard: verifica che la natura (tipo_soggetto) del soggetto sia ammessa
+              -- per il ruolo che si sta assegnando, secondo la matrice
+              -- config.tipi_ruoli_nature_ammesse.
+              -- Logica "matrice assente = libero": se non esistono righe per il
+              -- tipo_ruolo, nessun vincolo viene applicato.
+              DECLARE
+                  v_tipo_soggetto_dettaglio_id  config.tipi_soggetto_dettaglio.id%TYPE;
+                  v_tipo_soggetto_id            config.tipi_soggetto.id%TYPE;
+                  v_has_matrix                  boolean;
+                  v_today                       date := current_date;
+                  v_error_ctx                   jsonb;
+              BEGIN
+                  -- DELETE: nessun controllo
+                  IF TG_OP = 'DELETE' THEN
+                      RETURN OLD;
+                  END IF;
+
+                  -- Recupero tipo_soggetto_dettaglio_id dal soggetto
+                  SELECT s.tipo_soggetto_dettaglio_id
+                    INTO v_tipo_soggetto_dettaglio_id
+                    FROM anagrafiche.soggetti s
+                   WHERE s.id = NEW.soggetto_id;
+
+                  -- Verifico se esiste almeno una riga di matrice per questo tipo_ruolo
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.tipi_ruoli_nature_ammesse m
+                       WHERE m.tipo_ruolo_id = NEW.tipo_ruolo_id
+                  ) INTO v_has_matrix;
+
+                  -- Caso A: nessuna matrice definita per il ruolo → nature libere
+                  IF NOT v_has_matrix THEN
+                      RETURN NEW;
+                  END IF;
+
+                  -- Caso B: matrice definita MA soggetto senza tipo_soggetto_dettaglio configurato
+                  IF v_tipo_soggetto_dettaglio_id IS NULL THEN
+                      v_error_ctx := jsonb_build_object(
+                          'soggetto_id', NEW.soggetto_id,
+                          'tipo_ruolo_id', NEW.tipo_ruolo_id
+                      );
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_soggetti_ruoli_guard_natura_ammessa',
+                          'E_RUOLO_NATURA_TIPO_DET_NULL',
+                          v_error_ctx,
+                          NEW.tx_id,
+                          NEW.tipo_ruolo_id::text,
+                          NEW.soggetto_id::text
+                      );
+                  END IF;
+
+                  -- Risalgo a tipo_soggetto_id via tipi_soggetto_dettaglio
+                  SELECT tsd.tipo_soggetto_id
+                    INTO v_tipo_soggetto_id
+                    FROM config.tipi_soggetto_dettaglio tsd
+                   WHERE tsd.id = v_tipo_soggetto_dettaglio_id;
+
+                  -- Caso C: matrice definita → verifico che la natura sia ammessa, attiva e valida
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM config.tipi_ruoli_nature_ammesse m
+                       WHERE m.tipo_ruolo_id    = NEW.tipo_ruolo_id
+                         AND m.tipo_soggetto_id = v_tipo_soggetto_id
+                         AND m.attivo           = TRUE
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= v_today)
+                         AND (m.valido_al  IS NULL OR m.valido_al  >= v_today)
+                  ) THEN
+                      v_error_ctx := jsonb_build_object(
+                          'soggetto_id', NEW.soggetto_id,
+                          'tipo_ruolo_id', NEW.tipo_ruolo_id,
+                          'tipo_soggetto_id', v_tipo_soggetto_id
+                      );
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'trgfn_soggetti_ruoli_guard_natura_ammessa',
+                          'E_RUOLO_NATURA_NON_AMMESSA',
+                          v_error_ctx,
+                          NEW.tx_id,
+                          v_tipo_soggetto_id::text,
+                          NEW.tipo_ruolo_id::text,
+                          NEW.soggetto_id::text
+                      );
+                  END IF;
+
+                  RETURN NEW;
+              END;
+              $function$;

@@ -14,10 +14,12 @@
 //    nel frontend. Un presidio che si interroga a mano lo guarda chi sta
 //    lavorando a quel pezzo; uno che sta in una schermata lo guarda anche chi
 //    passa di lì.
-// ⛔ `amm-software` e non `strumenti`: quelle viste nominano TUTTE le aziende e
-//    non hanno RLS, quindi il gate è `AdminAPIView` (SUPER_ADMIN). Il posto e il
-//    permesso dicono la stessa cosa, e non c'è nessuna eccezione da ricordare.
-// ⚠️ Niente `useReadonlyMode`: in `amm-software` non c'è un livello d'area da
+// ⛔ Quelle viste nominano TUTTE le aziende e non hanno RLS, quindi il gate è
+//    `AdminAPIView` (SUPER_ADMIN). Dal 2026-10-06 (Tid) la voce sta in
+//    Strumenti → Diagnostica, il gruppo `adminOnly`: il posto e il permesso
+//    dicono ancora la stessa cosa, un livello più in basso. Fino ad allora
+//    stava in `amm-software`, proprio per questa ragione.
+// ⚠️ Niente `useReadonlyMode`: dietro `adminOnly` non c'è un livello d'area da
 //    risolvere — o sei super admin e vedi tutto, o non arrivi alla pagina. Un
 //    terzo cancello che non decide niente sarebbe rumore.
 import { computed, onMounted, onActivated } from 'vue'
@@ -197,7 +199,8 @@ function onIdentitaCreata() {
       </template>
 
       <template #cell-ultimo_ok="{ data }">
-        <!-- ⚠️ `null` = mai girato, non «fallito». -->
+        <!-- ⚠️ `null` non è «fallito»: nessuna corsa vera conclusa (mai
+             girato, solo corse saltate, o l'ultima ancora in corso). -->
         <Tag
           v-if="data.ultimo_ok === true"
           :value="t('amministrazione.processi.esito_ok')"

@@ -28,6 +28,15 @@ Indice test eseguiti:
 18) test_list_utilities_403_ba_di_altro_emittente — operatore + BA di altro EF → E_PERMESSO_NEGATO
 19) test_list_utilities_404_ba_inesistente — id BA non esistente → E_ANAG_NOT_FOUND prima dello scope
 20) test_list_utilities_ruolo_invalido — ruolo non in whitelist → E_ANAG_VALIDAZIONE
+21) test_categoria_da_query_assente_none — parametro assente o vuoto → None, nessun lookup
+22) test_categoria_da_query_malformato — non numerico o <= 0 → ValueError, nessun lookup
+23) test_categoria_da_query_ok — BA visibile → la sua categoria
+24) test_categoria_da_query_non_risulta — BA inesistente o fuori scope → E_ANAG_NOT_FOUND (F-6)
+25) test_istanza_del_ba_deriva — istanza assente → quella del BA
+26) test_istanza_del_ba_coincide — istanza indicata uguale a quella del BA → ammessa
+27) test_istanza_del_ba_altra_istanza — istanza diversa → errore del dominio sul campo del BA
+28) test_istanza_del_ba_non_risulta — BA inesistente o fuori RLS → errore del dominio sul campo del BA
+29) test_istanza_del_ba_campo_istanza — col BA gia' scritto (onere della commessa) l'errore cade sull'istanza
 """
 
 from unittest import TestCase
@@ -342,3 +351,90 @@ class TestBillingAccountListUtilitiesForBa(TestCase):
             )
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_lookup.return_value.list_utilities_per_billing_account.assert_not_called()
+
+
+class CategoriaClienteDaQueryTests(TestCase):
+    """BB `categoria_cliente_da_query` (F-6): BA del query param → categoria."""
+
+    @patch(_REPO)
+    def test_categoria_da_query_assente_none(self, mock_repo):
+        from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
+        for raw in (None, "", "   "):
+            with self.subTest(raw=raw):
+                self.assertIsNone(categoria_cliente_da_query(raw))
+        mock_repo.return_value.get_categoria_cliente_id.assert_not_called()
+
+    @patch(_REPO)
+    def test_categoria_da_query_malformato(self, mock_repo):
+        from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
+        for raw in ("abc", "1.0", "0", "-3"):
+            with self.subTest(raw=raw):
+                with self.assertRaises(ValueError):
+                    categoria_cliente_da_query(raw)
+        mock_repo.return_value.get_categoria_cliente_id.assert_not_called()
+
+    @patch(_REPO)
+    def test_categoria_da_query_ok(self, mock_repo):
+        from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
+        mock_repo.return_value.get_categoria_cliente_id.return_value = 4
+        self.assertEqual(categoria_cliente_da_query(" 77 "), 4)
+        mock_repo.return_value.get_categoria_cliente_id.assert_called_once_with(77)
+
+    @patch(_REPO)
+    def test_categoria_da_query_non_risulta(self, mock_repo):
+        """Inesistente e fuori scope (RLS) sono lo stesso None: un 404 solo."""
+        from apps.anagrafiche.services.billing_account_service import categoria_cliente_da_query
+        mock_repo.return_value.get_categoria_cliente_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            categoria_cliente_da_query("77")
+        self.assertEqual(ctx.exception.code, "E_ANAG_NOT_FOUND")
+
+
+class TestIstanzaDelBillingAccount(TestCase):
+    """BB `istanza_del_billing_account`: l'istanza del BA che il payload indica
+    (pratica, preventivo — regola del 2, ok Tid 2026-10-09)."""
+
+    @staticmethod
+    def _chiama(istanza_utility_id):
+        from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
+        return istanza_del_billing_account(
+            33, istanza_utility_id, code="E_DOMINIO_VALIDATION", function_name="test",
+        )
+
+    @patch(_REPO)
+    def test_istanza_del_ba_deriva(self, mock_repo):
+        mock_repo.return_value.get_istanza_utility_id.return_value = 200
+        self.assertEqual(self._chiama(None), 200)
+        mock_repo.return_value.get_istanza_utility_id.assert_called_once_with(33)
+
+    @patch(_REPO)
+    def test_istanza_del_ba_coincide(self, mock_repo):
+        mock_repo.return_value.get_istanza_utility_id.return_value = 200
+        self.assertEqual(self._chiama(200), 200)
+
+    @patch(_REPO)
+    def test_istanza_del_ba_altra_istanza(self, mock_repo):
+        mock_repo.return_value.get_istanza_utility_id.return_value = 200
+        with self.assertRaises(ServiceError) as ctx:
+            self._chiama(999)
+        self.assertEqual(ctx.exception.code, "E_DOMINIO_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+
+    @patch(_REPO)
+    def test_istanza_del_ba_non_risulta(self, mock_repo):
+        mock_repo.return_value.get_istanza_utility_id.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            self._chiama(None)
+        self.assertEqual(ctx.exception.code, "E_DOMINIO_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+
+    @patch(_REPO)
+    def test_istanza_del_ba_campo_istanza(self, mock_repo):
+        from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
+        mock_repo.return_value.get_istanza_utility_id.return_value = 200
+        with self.assertRaises(ServiceError) as ctx:
+            istanza_del_billing_account(
+                33, 999, code="E_DOMINIO_VALIDATION", function_name="test",
+                campo="istanza_utility_id",
+            )
+        self.assertEqual(ctx.exception.context.get("field"), "istanza_utility_id")

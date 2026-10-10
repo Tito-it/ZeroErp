@@ -11,12 +11,14 @@ from datetime import date
 from decimal import Decimal
 import json
 import logging
+from collections.abc import Mapping
 from typing import Any, cast
 
 from django.db import connection, transaction
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     limiti_pagina,
     call_jsonb_fn,
     coerce_jsonb_dict,
@@ -135,12 +137,15 @@ class PipelineStep:
 class GroupAttivitaInput:
     attivita_id: int
     articolo_id: str  # uuid (catalogo.articoli.id)
-    dest_billing_account_id: int | None
+    # ⚠️ NOT NULL a DB (`attivita_fatturabili.billing_account_id`,
+    #    `.data_attivita`): fino al 2026-10-09 erano dichiarati opzionali, e il
+    #    chiamante faceva `int(ba_id)` su un tipo che diceva «puo' mancare».
+    dest_billing_account_id: int
     uom_id: int | None
     prezzo_unitario: Decimal | None
     competenza_dal: date | None
     competenza_al: date | None
-    data_attivita: date | None
+    data_attivita: date
     calcolo_qta_padre: str
     arrotondamento_importi_dec: int
     arrotondamento_quantita_dec: int
@@ -161,6 +166,11 @@ class GroupAttivitaInput:
     rett_prezzo_unitario: Decimal | None = None
     rett_sconto_percentuale: Decimal | None = None
     rett_iva_id: int | None = None
+    # Il periodo della riga rettificata: la nota di credito lo copia come
+    # copia prezzo e IVA (`fatture_righe.competenza_dal/_al` NOT NULL dal
+    # 2026-10-02, brief-db-bom-flag-quantita-e-kit-in-fattura R-BE-B1).
+    rett_competenza_dal: date | None = None
+    rett_competenza_al: date | None = None
     # ── L'atto ───────────────────────────────────────────────────────────────
     # Il contratto a cui l'attivita' appartiene. `None` su tutto cio' che nasce
     # fuori da un contratto, che oggi e' la maggior parte del traffico.
@@ -188,7 +198,7 @@ class AttivitaDaFatturare:
     # legge vede il `codice`.
     articolo_codice: str | None = None
     # `meta` dell'attivita': porta lo snapshot kit gia' risolto dal push
-    # (`segment_key`, `componente_di`, `esposto_in_fattura`). Nessuna
+    # (`segment_key`, `componente_di`, `esposizione`). Nessuna
     # risoluzione di distinta base a valle: lo stesso componente puo'
     # appartenere a piu' kit, solo il documento sorgente sa quale e' stato
     # venduto. Vedi brief-fix-importi-riga-fattura-zero §4.7-bis (D5).
@@ -331,7 +341,9 @@ _GROUP_ATTIVITA_SELECT = """
                     -- riga (FK `fk_attivita_fatturabili_contratto`): risalire
                     -- alla commessa per rileggerlo sarebbe una seconda fonte
                     -- per lo stesso fatto.
-                    a.contratto_id
+                    a.contratto_id,
+                    fr.competenza_dal      AS rett_competenza_dal,
+                    fr.competenza_al       AS rett_competenza_al
                 FROM vendite.attivita_fatturabili a
                 JOIN catalogo.articoli art
                   ON art.id = a.articolo_id
@@ -352,8 +364,8 @@ def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
     return GroupAttivitaInput(
         attivita_id=int(row[0]),
         # ⚠️ `str`, non `int`: e' un UUID (catalogo.articoli.id).
-        articolo_id=None if row[1] is None else str(row[1]),
-        dest_billing_account_id=None if row[2] is None else int(row[2]),
+        articolo_id=str(row[1]),
+        dest_billing_account_id=int(row[2]),
         uom_id=None if row[3] is None else int(row[3]),
         prezzo_unitario=row[4],
         competenza_dal=row[5],
@@ -370,6 +382,8 @@ def _group_attivita_input_da_row(row: tuple[Any, ...]) -> GroupAttivitaInput:
         rett_sconto_percentuale=row[16],
         rett_iva_id=None if row[17] is None else int(row[17]),
         contratto_id=None if row[18] is None else int(row[18]),
+        rett_competenza_dal=row[19],
+        rett_competenza_al=row[20],
     )
 
 
@@ -430,15 +444,15 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         "popola_fatture_rettifiche": "vendite.fn_popola_fatture_rettifiche",
         # `None` = implementazione PYTHON. Il consumo del plafond non e' una
         # sola chiamata SQL: e' un giro che ordina le fatture (`P5`), risolve,
-        # spezza le righe e poi chiama `fn_consuma_plafond_titolo_iva` per
-        # riga. La madre DB fa la parte che DEVE stare sotto lock; l'ordine e
-        # la spezzatura stanno qui.
+        # chiama `fn_consuma_plafond_titolo_iva_righe` per gruppo (un kit, o
+        # una riga sciolta: D-5) e spezza le righe. La madre DB fa la parte che
+        # DEVE stare sotto lock; l'ordine e la spezzatura stanno qui.
         "consuma_plafond_lotto": None,
     }
 
     # Scopo: Gestisce `_to_jsonb_param` nel flusso applicativo del modulo.
     @staticmethod
-    def _to_jsonb_param(value: LottoPipelineMeta | None) -> str | None:
+    def _to_jsonb_param(value: Mapping[str, Any] | None) -> str | None:
         if value is None:
             return None
         # Serializza esplicitamente per evitare errori adapter psycopg su dict/list.
@@ -763,7 +777,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         self,
         lotto_id: int,
         *,
-        limit: int = 100,
+        limit: int = DEFAULT_LIMIT_EVENTI,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str = "desc",
@@ -1354,7 +1368,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         fase: str,
         status: str,
         messaggio: str | None,
-        meta: LottoPipelineMeta | None,
+        # `Mapping`: si serializza e basta, anche un TypedDict (`PipelineStepLogMeta`).
+        meta: Mapping[str, Any] | None,
         gruppo_key: str | None = None,
     ) -> None:
         # ⭐ `gruppo_key` = DI QUALE DOCUMENTO parla questa segnalazione
@@ -1772,7 +1787,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     p_tipo_doc_fiscale_id => %s,
                     p_lock_batch_id => %s::uuid,
                     p_lock => %s,
-                    p_data_fatturazione => COALESCE(%s, CURRENT_DATE),
+                    p_data_fatturazione => COALESCE(%s, (SELECT script.fn_data_operativa())),
                     p_billing_account_id => %s,
                     p_utility_id => %s,
                     p_valuta_id => %s,
@@ -1873,7 +1888,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         return [
             AttivitaDaFatturare(
                 id=int(row[0]),
-                articolo_id=None if row[1] is None else str(row[1]),
+                # NOT NULL a DB (`attivita_fatturabili.articolo_id`).
+                articolo_id=str(row[1]),
                 quantita=row[2],
                 prezzo_unitario=row[3],
                 uom_id=None if row[4] is None else int(row[4]),
@@ -1966,6 +1982,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #    ripetibile senza moltiplicare le righe.
     # ⚠️ Si escludono le RETTIFICHE: la loro IVA viene dal documento che
     #    correggono (`N-1`) e non si ri-risolve.
+    # ⭐ Porta le colonne kit (R-BE-P1, brief-db-bom-flag-quantita-e-kit-in-
+    #    fattura §11): i componenti di un kit si consumano come un gruppo
+    #    (D-5), e la parte di un componente le copia dalla capofila.
     def list_righe_per_plafond(self, fattura_id: int) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -1974,6 +1993,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                        r.qta, r.prezzo_unitario, r.sconto_percentuale, r.iva_id,
                        r.imponibile_riga, r.dest_billing_account_id,
                        r.sorgente_tipo_id, r.sorgente_uid, r.sorgente_riga,
+                       r.kit_key, r.kit_esposizione, r.kit_articolo_padre_id,
+                       r.kit_descrizione_padre, r.kit_qta, r.kit_uom_id,
                        r.meta
                   FROM vendite.fatture_righe r
                  WHERE r.fattura_id = %s
@@ -2001,6 +2022,11 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #    parte. La FK e' COMPOSITA `(riga_capofila_id, fattura_id)`: una parte
     #    che puntasse a una riga di un altro documento non viene scritta — non
     #    per sorveglianza, per vincolo.
+    # ⭐ La parte di un componente di kit COPIA le colonne kit dalla capofila
+    #    (R-BE-P5): senza, usciva dal kit come riga sciolta. Solo `kit_qta` si
+    #    passa, perche' e' la sua quota di kit (D-5). Su una riga sciolta le
+    #    colonne copiate sono NULL e `kit_qta` arriva `None`: il CHECK
+    #    `chk_fatture_righe_kit_coerente` vuole le due cose insieme.
     def insert_parte_plafond(
         self,
         *,
@@ -2008,6 +2034,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         riga_nr: int,
         qta: Decimal,
         iva_id: int | None,
+        kit_qta: Decimal | None,
         meta: dict[str, Any] | None,
     ) -> int:
         with connection.cursor() as cursor:
@@ -2017,17 +2044,29 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     fattura_id, riga_nr, articolo_id, descrizione, uom_id,
                     qta, prezzo_unitario, sconto_percentuale, iva_id,
                     dest_billing_account_id, sorgente_tipo_id, sorgente_uid,
-                    sorgente_riga, riga_capofila_id, meta
+                    sorgente_riga, riga_capofila_id, competenza_dal,
+                    competenza_al, kit_key, kit_esposizione,
+                    kit_articolo_padre_id, kit_descrizione_padre, kit_uom_id,
+                    kit_qta, meta
                 )
                 SELECT c.fattura_id, %s, c.articolo_id, c.descrizione, c.uom_id,
                        %s, c.prezzo_unitario, c.sconto_percentuale, %s,
                        c.dest_billing_account_id, c.sorgente_tipo_id,
-                       c.sorgente_uid, c.sorgente_riga, c.id, %s::jsonb
+                       c.sorgente_uid, c.sorgente_riga, c.id,
+                       -- La parte e' la stessa riga spezzata per IVA: stesso
+                       -- periodo della capofila.
+                       c.competenza_dal, c.competenza_al,
+                       -- E lo stesso kit: la vista la rimette sotto il suo
+                       -- padre, nel ramo della sua aliquota.
+                       c.kit_key, c.kit_esposizione, c.kit_articolo_padre_id,
+                       c.kit_descrizione_padre, c.kit_uom_id,
+                       %s, %s::jsonb
                   FROM vendite.fatture_righe c
                  WHERE c.id = %s
                 RETURNING id
                 """,
-                [riga_nr, qta, iva_id, self._to_jsonb_param(meta), riga_capofila_id],
+                [riga_nr, qta, iva_id, kit_qta, self._to_jsonb_param(meta),
+                 riga_capofila_id],
             )
             row = cursor.fetchone()
             assert row is not None
@@ -2038,12 +2077,16 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     # ⚠️ `storicizza` si accende QUI e solo sulle righe spezzate (`P10`): il
     #    rubinetto dello storico e' PER RIGA, e accenderlo su tutte darebbe
     #    l'archivio sproporzionato che la decisione di Tid esclude.
+    # ⭐ `kit_qta` si scrive sempre (R-BE-P4): su un componente spezzato e' la
+    #    quota di kit della capofila, su una copertura piena il valore di
+    #    prima, su una riga sciolta `None` (era gia' NULL).
     def aggiorna_capofila_plafond(
         self,
         *,
         riga_id: int,
         qta: Decimal,
         iva_id: int | None,
+        kit_qta: Decimal | None,
         meta: dict[str, Any] | None,
     ) -> None:
         with connection.cursor() as cursor:
@@ -2052,36 +2095,44 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                 UPDATE vendite.fatture_righe
                    SET qta = %s,
                        iva_id = %s,
+                       kit_qta = %s,
                        storicizza = TRUE,
                        meta = %s::jsonb
                  WHERE id = %s
                 """,
-                [qta, iva_id, self._to_jsonb_param(meta), riga_id],
+                [qta, iva_id, kit_qta, self._to_jsonb_param(meta), riga_id],
             )
 
-    # Scopo: Wrapper su `anagrafiche.fn_consuma_plafond_titolo_iva`.
+    # Scopo: Wrapper su `anagrafiche.fn_consuma_plafond_titolo_iva_righe`: il
+    #        consumo per un GRUPPO di righe che si spezzano insieme (i
+    #        componenti di un kit, D-5; una riga sciolta e' un gruppo di uno).
     # ⭐ E' la funzione che PRENDE IL LOCK di riga sul titolo (`D15-bis`) e
     #    ritorna la ripartizione EFFETTIVA: il backend non la calcola, la
     #    riceve. Il risolutore e' `STABLE` e proietta; questa consuma.
-    def consuma_plafond_titolo(
+    # ⚠️ Ritorna una riga per riga passata, NELL'ORDINE passato, con la
+    #    `frazione` effettiva del gruppo: e' quella che divide anche la
+    #    quantita' del kit (R-BE-P3, P4).
+    def consuma_plafond_titolo_righe(
         self,
         *,
         titolo_iva_id: int,
         fattura_id: int,
-        imponibile: Decimal,
+        fattura_riga_ids: list[int],
+        imponibili: list[Decimal],
         data_movimento: date,
-        fattura_riga_id: int,
-    ) -> dict[str, Any]:
+    ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT quota_coperta, quota_ordinaria, residuo_dopo, movimento_id
-                  FROM anagrafiche.fn_consuma_plafond_titolo_iva(%s, %s, %s, %s, %s)
+                SELECT fattura_riga_id, imponibile, quota_coperta,
+                       quota_ordinaria, frazione, residuo_dopo, movimento_id
+                  FROM anagrafiche.fn_consuma_plafond_titolo_iva_righe(
+                           %s, %s, %s::bigint[], %s::numeric[], %s)
                 """,
-                [titolo_iva_id, fattura_id, imponibile, data_movimento, fattura_riga_id],
+                [titolo_iva_id, fattura_id, list(fattura_riga_ids),
+                 list(imponibili), data_movimento],
             )
-            righe = rows_to_list(cursor)
-        return righe[0] if righe else {}
+            return rows_to_list(cursor)
 
     # Scopo: Genera i fondi source di tutto il lotto con UNA chiamata alla madre
     #        DB `fn_genera_fondi_fattura_lotto`. Ritorna i conteggi del giro
@@ -2829,8 +2880,8 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
     #        `caller_username` serve SOLO a calcolare `is_mio` (tag «mio» in
     #        colonna), mai a filtrare — stessa separazione owner/caller della
     #        coda lavori.
-    #        Filtri opzionali stati/lotto/intervallo `data_insert` (`data_a`
-    #        bound ESCLUSIVO: il chiamante passa gia` il giorno+1).
+    #        Filtri opzionali stati/lotto/intervallo `data_insert` (giorni
+    #        dell'AZIENDA, `data_a` incluso: BB `predicato_giorno_operativo`).
     #        Ordinamento (2026-07-23, richiesta Tid): `sort_by`/`sort_dir` da
     #        whitelist `CODA_STAMPA_SORT_SQL` — il service valida, qui controllo
     #        esplicito di defense-in-depth (BB `sql_order_clause` rigido).
@@ -2857,10 +2908,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         caller_username: str | None = None,
         stati: list[str] | None = None,
         lotto_id: int | None = None,
-        data_da: Any = None,
-        data_a: Any = None,
+        data_da: date | None = None,
+        data_a: date | None = None,
         includi_archiviate: bool = False,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         sort_by: str = "data_update",
         sort_dir: str = "DESC",
@@ -2876,12 +2927,9 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         if lotto_id is not None:
             base_conditions.append("c.lotto_id = %s")
             base_params.append(int(lotto_id))
-        if data_da is not None:
-            base_conditions.append("c.data_insert >= %s")
-            base_params.append(data_da)
-        if data_a is not None:
-            base_conditions.append("c.data_insert < %s")
-            base_params.append(data_a)
+        giorno_sql, giorno_params = predicato_giorno_operativo("c.data_insert", data_da, data_a)
+        base_conditions.append(giorno_sql)
+        base_params.extend(giorno_params)
         if operatore is not None:
             base_conditions.append("c.user_insert = %s")
             base_params.append(str(operatore))
@@ -3115,7 +3163,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         }
 
     # Scopo: Gestisce `build_fattura_key` nel flusso applicativo del modulo.
-    def build_fattura_key(self, attivita_id: int) -> dict[str, object]:
+    def build_fattura_key(self, attivita_id: int) -> dict[str, Any]:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT vendite.fn_build_fattura_key(%s)",
@@ -3301,65 +3349,6 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
             rows = cursor.fetchall()
         return {int(row[0]): int(row[1]) for row in rows}
 
-    # Scopo: Gestisce `insert_fattura_riga` nel flusso applicativo del modulo.
-    def insert_fattura_riga(
-        self,
-        *,
-        fattura_id: int,
-        riga_nr: int,
-        articolo_id: int,
-        descrizione: str | None,
-        uom_id: int | None,
-        qta: Decimal | None,
-        prezzo_unitario: Decimal | None,
-        iva_id: int | None,
-        dest_billing_account_id: int,
-        sorgente_tipo_id: int | None,
-        sorgente_uid: str | None,
-        sorgente_riga: int | None,
-        meta: LottoPipelineMeta | None,
-    ) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO vendite.fatture_righe (
-                    fattura_id,
-                    riga_nr,
-                    articolo_id,
-                    descrizione,
-                    uom_id,
-                    qta,
-                    prezzo_unitario,
-                    iva_id,
-                    dest_billing_account_id,
-                    sorgente_tipo_id,
-                    sorgente_uid,
-                    sorgente_riga,
-                    meta
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-                RETURNING id
-                """,
-                [
-                    fattura_id,
-                    riga_nr,
-                    articolo_id,
-                    descrizione,
-                    uom_id,
-                    qta,
-                    prezzo_unitario,
-                    iva_id,
-                    dest_billing_account_id,
-                    sorgente_tipo_id,
-                    sorgente_uid,
-                    sorgente_riga,
-                    self._to_jsonb_param(meta),
-                ],
-            )
-            row = cursor.fetchone()
-            assert row is not None
-        return int(row[0])
-
     # Scopo: Marca come RUNNING le attivita' lockate sul lotto, prima della
     #        generazione righe. Chiude il passo centrale del ciclo di vita
     #        `stato_esecuzione` (select -> PENDING, generazione -> RUNNING ->
@@ -3413,8 +3402,12 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         righe_iva_ids: list[int | None],
         righe_dest_billing_account_ids: list[int],
         righe_kit_keys: list[str | None],
-        righe_kit_esposti: list[bool | None],
+        righe_kit_esposizioni: list[str | None],
         righe_kit_articolo_padre_ids: list[str | None],  # uuid
+        righe_kit_qtas: list[Decimal | None],
+        righe_kit_uom_ids: list[int | None],
+        righe_competenze_dal: list[date],
+        righe_competenze_al: list[date],
         righe_sconti: list[Decimal | None],
         righe_rettificate: list[int | None],
         righe_metas: list[str | None],
@@ -3429,20 +3422,23 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
         # di NULL i piu' corti. Un disallineamento fra questi array produrrebbe
         # quindi righe di fattura silenziosamente sbagliate — non un errore.
         # Verificato su PG 18: `unnest(ARRAY[1,2,3], ARRAY[10,20])` -> 3 righe.
-        righe = {
+        righe: dict[str, list[Any]] = {
             "fattura_ids": righe_fattura_ids, "nrs": righe_nrs,
             "articolo_ids": righe_articolo_ids, "descrizioni": righe_descrizioni,
             "uom_ids": righe_uom_ids, "qtas": righe_qtas,
             "prezzi": righe_prezzi_unitari, "iva_ids": righe_iva_ids,
             "dest_ba_ids": righe_dest_billing_account_ids,
-            "kit_keys": righe_kit_keys, "kit_esposti": righe_kit_esposti,
+            "kit_keys": righe_kit_keys, "kit_esposizioni": righe_kit_esposizioni,
             "kit_padri": righe_kit_articolo_padre_ids, "metas": righe_metas,
             # Le due colonne della rettifica entrano nel guard come tutte le
             # altre: sono esattamente il tipo di array che si dimentica di
             # allineare, ed `unnest` non lo direbbe.
             "sconti": righe_sconti, "rettificate": righe_rettificate,
+            "kit_qtas": righe_kit_qtas, "kit_uom_ids": righe_kit_uom_ids,
+            "competenze_dal": righe_competenze_dal,
+            "competenze_al": righe_competenze_al,
         }
-        att = {
+        att: dict[str, list[Any]] = {
             "att_ids": att_ids, "att_fattura_ids": att_fattura_ids,
             "att_riga_nrs": att_riga_nrs,
         }
@@ -3484,17 +3480,22 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         %s::int[],
                         %s::bigint[],
                         %s::text[],
-                        %s::boolean[],
+                        %s::varchar[],
                         %s::uuid[],
                         %s::numeric[],
                         %s::bigint[],
+                        %s::numeric[],
+                        %s::bigint[],
+                        %s::date[],
+                        %s::date[],
                         %s::jsonb[]
                     ) AS t(
                         fattura_id, riga_nr, articolo_id, descrizione,
                         uom_id, qta, prezzo_unitario, iva_id,
                         dest_billing_account_id,
-                        kit_key, kit_esposto_in_fattura, kit_articolo_padre_id,
+                        kit_key, kit_esposizione, kit_articolo_padre_id,
                         sconto_percentuale, riga_rettificata_id,
+                        kit_qta, kit_uom_id, competenza_dal, competenza_al,
                         meta
                     )
                 ),
@@ -3504,9 +3505,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         uom_id, qta, prezzo_unitario, iva_id,
                         dest_billing_account_id,
                         sorgente_tipo_id, sorgente_uid, sorgente_riga,
-                        kit_key, kit_esposto_in_fattura,
+                        kit_key, kit_esposizione,
                         kit_articolo_padre_id, kit_descrizione_padre,
                         sconto_percentuale, riga_rettificata_id,
+                        kit_qta, kit_uom_id, competenza_dal, competenza_al,
                         meta
                     )
                     SELECT
@@ -3517,7 +3519,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         -- singola da dichiarare. La tracciabilita' passa dal
                         -- puntatore attivita_fatturabili.fattura_riga_id (D4).
                         NULL, NULL, NULL,
-                        d.kit_key, d.kit_esposto_in_fattura,
+                        d.kit_key, d.kit_esposizione,
                         d.kit_articolo_padre_id,
                         CASE WHEN d.kit_articolo_padre_id IS NULL THEN NULL
                              ELSE (SELECT art.descrizione
@@ -3535,6 +3537,11 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                         -- La riga di fattura gemella (§12.6-bis). NULL fuori
                         -- dalla rettifica, ed e' la stragrande maggioranza.
                         d.riga_rettificata_id,
+                        -- Quantita' e UoM della riga padre del kit (NULL fuori
+                        -- dal kit: lo pretende chk_fatture_righe_kit_coerente)
+                        -- e il periodo della riga, NOT NULL e senza default.
+                        d.kit_qta, d.kit_uom_id,
+                        d.competenza_dal, d.competenza_al,
                         d.meta
                     FROM righe_input d
                     RETURNING id, fattura_id, riga_nr
@@ -3580,7 +3587,7 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     righe_iva_ids,
                     righe_dest_billing_account_ids,
                     righe_kit_keys,
-                    righe_kit_esposti,
+                    righe_kit_esposizioni,
                     righe_kit_articolo_padre_ids,
                     # ⚠️ L'ordine di questa lista È il contratto con l'`unnest`:
                     # le due nuove vanno PRIMA di `righe_metas`, come nella
@@ -3588,6 +3595,10 @@ class VenditePipelineRepository(EventLogRepositoryMixin):
                     # con lo sconto al posto del puntatore.
                     righe_sconti,
                     righe_rettificate,
+                    righe_kit_qtas,
+                    righe_kit_uom_ids,
+                    righe_competenze_dal,
+                    righe_competenze_al,
                     righe_metas,
                     att_ids,
                     att_fattura_ids,

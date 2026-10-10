@@ -155,7 +155,7 @@ BEGIN
   INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
                            billing_account_id, utility_id, valuta_id,
                            emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
+  VALUES (script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
           r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
@@ -173,7 +173,7 @@ BEGIN
   INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
                            billing_account_id, utility_id, valuta_id,
                            emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
+  VALUES (script.fn_data_operativa(), r.stato_ddt_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
           r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
@@ -189,7 +189,10 @@ BEGIN
   INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
                               billing_account_id, utility_id, valuta_id,
                               emittente_fiscale_id, storicizza, meta)
-  VALUES (DATE '2026-08-05', r.stato_ord_conf_id, r.soggetto_ruolo_id, r.billing_account_id,
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): l'ordine nasce DRAFT,
+  --   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+  --   righe non si scrivono piu' (20261008-90).
+  VALUES (DATE '2026-08-05', r.stato_ord_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
           r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_ord;
@@ -198,6 +201,7 @@ BEGIN
   VALUES (v_ord, 1, r.articolo_id, 'riga ordine evasa', 2, 2, 10, r.iva_id, true, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_orr;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
 
   v_id := vendite.fn_genera_ddt_da_ordine(
       v_ord,
@@ -215,7 +219,7 @@ BEGIN
   INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
                               billing_account_id, utility_id, valuta_id,
                               emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, r.stato_ord_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
+  VALUES (script.fn_data_operativa(), r.stato_ord_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
           r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
@@ -227,22 +231,25 @@ BEGIN
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ord_bozza_riga', v_id);
 
-  -- ⚠️ La riga entra su un ordine gia' confermato: il BB sugli ordini e'
-  --   montato sul solo DELETE (porta aperta di proposito, 20260922-04).
+  -- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la porta aperta sulle
+  --   righe d'ordine (20260922-04) e' chiusa — il BB copre ora INSERT/UPDATE/DELETE
+  --   (20261008-90). L'ordine nasce DRAFT, prende la riga (con l'aliquota che la conferma
+  --   pretende), poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato.
   INSERT INTO vendite.ordini (data, stato_doc_ordine_id, soggetto_ruolo_id,
                               billing_account_id, utility_id, valuta_id,
                               emittente_fiscale_id, storicizza, meta)
-  VALUES (CURRENT_DATE, r.stato_ord_conf_id, r.soggetto_ruolo_id, r.billing_account_id,
+  VALUES (script.fn_data_operativa(), r.stato_ord_draft_id, r.soggetto_ruolo_id, r.billing_account_id,
           r.utility_id, r.valuta_id, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
-  RETURNING id INTO v_id;
-  INSERT INTO tmp_fix VALUES ('ord_conf', v_id);
+  RETURNING id INTO v_ord;
+  INSERT INTO tmp_fix VALUES ('ord_conf', v_ord);
   INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-                                    qta_operativa, quantita, prezzo_unitario, storicizza, meta)
-  VALUES (v_id, 1, r.articolo_id, 'riga ordine intoccabile', 1.000000, 1.000000, 10.000000, false,
+                                    qta_operativa, quantita, prezzo_unitario, iva_id, storicizza, meta)
+  VALUES (v_ord, 1, r.articolo_id, 'riga ordine intoccabile', 1.000000, 1.000000, 10.000000, r.iva_id, false,
           jsonb_build_object('test_scope','pgtap_delete_righe_bozza'))
   RETURNING id INTO v_id;
   INSERT INTO tmp_fix VALUES ('ord_conf_riga', v_id);
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
 END $fix$;
 
 -- ============================================================

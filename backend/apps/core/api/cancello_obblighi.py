@@ -24,6 +24,7 @@ from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.db.auth_repository import AuthRepository
+from apps.core.db.secondo_fattore_repository import STATO_DEVICE_ATTIVO
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +43,14 @@ TUTTI_GLI_OBBLIGHI: frozenset[str] = frozenset({OBBLIGO_CAMBIO_PASSWORD, OBBLIGO
 # e' un'utenza murata: il 2026-09-30 il SUPER_ADMIN, che ha sempre l'obbligo
 # del secondo fattore (`script.fn_totp_obbligatorio`, motivo PROFILO), non
 # apriva piu' nessuna pagina, perche' la configurazione del secondo fattore
-# non esisteva ancora. ``SECONDO_FATTORE`` entra qui nello STESSO lotto dei
-# suoi endpoint self-service (T-3 del brief sicurezza §3.4-bis), che lo
-# dichiarano in `obblighi_ammessi`; il guard del frontend e' T-4.
+# non esisteva ancora. ``SECONDO_FATTORE`` e' in vigore dal 2026-10-02 (T-4
+# del brief sicurezza §3.4-bis): gli endpoint self-service (T-3) lo
+# dichiarano in `obblighi_ammessi`, e la pagina «Sicurezza» col guard del
+# frontend (`obblighi_pendenti` di `/core/me/`) porta la persona a chiuderlo.
+# Presidio: `test_ogni_obbligo_in_vigore_ha_la_sua_strada`.
 # `obblighi_pendenti` resta la regola sui fatti e li dice tutti: e' il
 # cancello a scegliere quali fermano una richiesta.
-OBBLIGHI_IN_VIGORE: frozenset[str] = frozenset({OBBLIGO_CAMBIO_PASSWORD})
-
-# Lo stato del device col quale il secondo fattore e' in uso
-# (`script.fn_get_totp_device`).
-TOTP_STATO_ATTIVO = "ATTIVO"
+OBBLIGHI_IN_VIGORE: frozenset[str] = frozenset({OBBLIGO_CAMBIO_PASSWORD, OBBLIGO_SECONDO_FATTORE})
 
 
 class CambioPasswordRichiestoError(PermissionDenied):
@@ -88,9 +87,20 @@ def obblighi_pendenti(fatti: dict[str, Any]) -> tuple[str, ...]:
     pendenti: list[str] = []
     if fatti["deve_cambiare_password"]:
         pendenti.append(OBBLIGO_CAMBIO_PASSWORD)
-    if fatti["totp_obbligatorio"] and fatti["totp_stato"] != TOTP_STATO_ATTIVO:
+    if fatti["totp_obbligatorio"] and fatti["totp_stato"] != STATO_DEVICE_ATTIVO:
         pendenti.append(OBBLIGO_SECONDO_FATTORE)
     return tuple(pendenti)
+
+
+# Scopo: Gli obblighi pendenti E in vigore della credenziale, nell'ordine:
+#        quelli che il cancello fa rispettare. ⭐ Li pubblica anche `/core/me/`
+#        (`obblighi_pendenti`), e il guard del frontend porta alla pagina che
+#        chiude il primo: una regola, letta da due parti.
+def obblighi_in_vigore(auth_user_id: int) -> tuple[str, ...]:
+    return tuple(
+        o for o in obblighi_pendenti(_auth_repo.get_fatti_obblighi(auth_user_id))
+        if o in OBBLIGHI_IN_VIGORE
+    )
 
 
 # Scopo: Il cancello. Solleva l'errore del PRIMO obbligo pendente e in vigore
@@ -101,10 +111,7 @@ def obblighi_pendenti(fatti: dict[str, Any]) -> tuple[str, ...]:
 # Fail-closed: un DB che non risponde e' un errore della richiesta, non un
 # «nessun obbligo».
 def verifica_obblighi(view: Any, auth_user_id: int) -> None:
-    pendenti = [
-        o for o in obblighi_pendenti(_auth_repo.get_fatti_obblighi(auth_user_id))
-        if o in OBBLIGHI_IN_VIGORE
-    ]
+    pendenti = obblighi_in_vigore(auth_user_id)
     if not pendenti:
         return
     ammessi: frozenset[str] = getattr(view, "obblighi_ammessi", frozenset())

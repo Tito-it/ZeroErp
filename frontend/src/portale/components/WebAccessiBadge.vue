@@ -16,7 +16,7 @@ import { useI18n } from 'vue-i18n'
 import { getStatoAccessiCliente, getStatoAccessiFornitore } from '../api/portaleAdminApi'
 import WebAccessiDrawer from './WebAccessiDrawer.vue'
 import Button from 'primevue/button'
-import { MANAGE_ICONS } from '../../core/constants'
+import { MANAGE_ICONS, STATO_VESTE } from '../../core/constants'
 
 // Il punto passa tutte le prop dell'anteprima: qui se ne leggono tre.
 defineOptions({ inheritAttrs: false })
@@ -45,7 +45,7 @@ async function caricaConteggio() {
   try {
     const fn = props.entitaTipoWeb === 'cliente' ? getStatoAccessiCliente : getStatoAccessiFornitore
     const data = (await fn(props.entitaIdWeb))?.data?.data || {}
-    conteggio.value = (data.portale?.stato === 'ATTIVO' ? 1 : 0) + (data.shop?.stato === 'ATTIVO' ? 1 : 0)
+    conteggio.value = (data.portale?.stato === STATO_VESTE.ATTIVO ? 1 : 0) + (data.shop?.stato === STATO_VESTE.ATTIVO ? 1 : 0)
   } catch {
     conteggio.value = 0
   } finally {

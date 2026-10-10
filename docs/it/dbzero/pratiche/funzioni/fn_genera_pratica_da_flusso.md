@@ -18,6 +18,7 @@ DECLARE
     v_soggetto_id           pratiche.pratiche.soggetto_id%TYPE;
     v_soggetto_ruolo_id     pratiche.pratiche.soggetto_ruolo_id%TYPE;
     v_istanza_utility_id    pratiche.pratiche.istanza_utility_id%TYPE;
+    v_billing_account_id    pratiche.pratiche.billing_account_id%TYPE;
     v_priorita_id           pratiche.pratiche.priorita_id%TYPE;
     v_tipo_prest_dest_id    pratiche.regole_generazione.tipo_prestazione_dest_id%TYPE;
     v_template_dest_id      pratiche.regole_generazione.template_flusso_dest_id%TYPE;
@@ -85,10 +86,13 @@ BEGIN
     END IF;
 
     -- Recupera dati pratica sorgente (incluso contesto, fix-4)
+    -- rev 2026-10-08: anche il BA (il cliente di cui parla la madre).
     SELECT p.emittente_fiscale_id, p.soggetto_id,
-           p.soggetto_ruolo_id, p.istanza_utility_id, p.priorita_id
+           p.soggetto_ruolo_id, p.istanza_utility_id, p.priorita_id,
+           p.billing_account_id
       INTO v_emittente_id, v_soggetto_id,
-           v_soggetto_ruolo_id, v_istanza_utility_id, v_priorita_id
+           v_soggetto_ruolo_id, v_istanza_utility_id, v_priorita_id,
+           v_billing_account_id
       FROM pratiche.pratiche p
      WHERE p.id = v_pratica_sorgente_id;
 
@@ -156,6 +160,7 @@ BEGIN
         soggetto_id,
         soggetto_ruolo_id,
         istanza_utility_id,
+        billing_account_id,
         stato_id,
         priorita_id,
         pratica_padre_id,
@@ -166,6 +171,7 @@ BEGIN
         v_soggetto_id,
         v_soggetto_ruolo_id,
         v_istanza_utility_id,
+        v_billing_account_id,
         v_stato_iniziale_id,
         v_priorita_id,
         v_pratica_sorgente_id,
@@ -250,7 +256,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION pratiche.fn_genera_pratica_da_flusso(p_flusso_id bigint, p_regola_id bigint)
-IS 'Genera pratica figlia da flusso completato secondo regola di generazione. Idempotente per (flusso, tipo dest): ritorna la figlia esistente. Copia emittente/soggetto/contesto/priorita; valorizza pratica_padre_id e flusso_origine_id; crea il flusso iniziale se la regola dichiara template_flusso_dest_id, RIMAPPANDOLO per codice nella definizione pinnata della figlia (D2-8 definizione-aware; fail-fast 512 se assente). Stato iniziale APERTA.';
+IS 'Genera pratica figlia da flusso completato secondo regola di generazione. Idempotente per (flusso, tipo dest): ritorna la figlia esistente. Copia emittente/soggetto/contesto/priorita; valorizza pratica_padre_id e flusso_origine_id; crea il flusso iniziale se la regola dichiara template_flusso_dest_id, RIMAPPANDOLO per codice nella definizione pinnata della figlia (D2-8 definizione-aware; fail-fast 512 se assente). Stato iniziale APERTA. rev 2026-10-08 (20261008-69): copia dalla madre anche billing_account_id (il cliente di cui parla la pratica). Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).';
 ```
 
 ---

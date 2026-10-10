@@ -70,23 +70,14 @@ Schema coerente con `fn_resolve_prezzo_listino_v2`:
 }
 ```
 
-### `resolve_prezzo_composito` → `list[dict]`
+### `resolve_prezzo_composito` — ritirato
 
-Schema coerente con `fn_resolve_prezzo_composito`. Ritorna N righe (CASO A)
-o 1 riga (CASO B1/B2) secondo la presenza di componenti esposti nel BoM:
-
-```json
-[
-  {
-    "componente_id": "019bac81-...",
-    "uom_id": 3,
-    "prezzo_unitario": "5.0000",
-    "iva_id": 1,
-    "descrizione_fattura": "Componente X",
-    "esposto_in_fattura": true
-  }
-]
-```
+Ritirato dal Python col cleanup del 2026-05-14 (modello unificato dei
+componenti): i prezzi dei componenti di un kit arrivano dalle anteprime
+`fn_*_riga_componenti_preview` dei documenti, che portano anche il modo di
+esposizione in fattura (`esposizione_in_fattura`: `NASCOSTO` / `DESCRITTIVO` /
+`VALORIZZATO`, dal 2026-10-01). Questa sezione ne descriveva la forma, ed era
+rimasta indietro.
 
 ## Regole
 

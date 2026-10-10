@@ -1,17 +1,16 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.http import HttpRequest, JsonResponse
+from rest_framework.exceptions import NotAuthenticated
 from rest_framework.request import Request
 
-from apps.core.api.error_responses import (
-    exception_to_error_response,
-    invalid_json_response,
-    invalid_payload_response,
-)
+from apps.core.api.error_responses import exception_to_error_response
+from apps.core.api.payload_validators import errore_corpo
 from apps.core.api.request_parsers import parse_json_body
 from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
@@ -27,9 +26,48 @@ logger = logging.getLogger(__name__)
 
 # Scopo: Restituisce l'auth_user_id per il filtro scope emittente DB-first.
 # Superuser Django bypassa il filtro (None); per gli altri si usa user.id.
+# ⛔ Serve SOLO al PERIMETRO di una lettura: `None` vuol dire «nessun limite».
+#    Non e' l'utente che agisce: per gate, audit e pratiche usa
+#    `get_actor_user_id`. Passato a un gate prezzi, il `None` del superuser
+#    diventa «chiamata senza utente» e il gate blocca proprio il superuser
+#    (E_PRICING_OVERRIDE_NON_AUTORIZZATO su offerte e contratti, 2026-10-07).
 def get_scope_user_id(request: HttpRequest | Request) -> int | None:
     user = request.user
     return None if user.is_superuser else user.id
+
+
+# Scopo: Restituisce l'id dell'utente che AGISCE nella richiesta: quello che i
+#        gate autorizzativi controllano (prezzi L1/L2, approvazioni), che
+#        l'audit registra e che apre le pratiche. `None` solo se la richiesta
+#        non e' autenticata, e per i gate vuol dire «blocca».
+# ⭐ Il gemello di `get_scope_user_id`, con la semantica opposta sul
+#    superuser: qui il superuser e' un utente come gli altri (il bypass lo
+#    decide il gate, non la view).
+def get_actor_user_id(request: HttpRequest | Request) -> int | None:
+    user = request.user
+    return user.id if user and user.is_authenticated else None
+
+
+# Scopo: L'utente AUTENTICATO della richiesta, col tipo che il resto del codice
+#        si aspetta (`User`; l'id e' un `int`). Sulle view col JWT obbligatorio
+#        c'e' sempre — `ZeroERPPermission` rifiuta l'anonimo prima della view —
+#        e qui quella garanzia diventa ESPLICITA: un anonimo e' un 401
+#        `E_NOT_AUTHENTICATED`, mai un `None` (o un `AnonymousUser`) che arriva
+#        a un service.
+# ⭐ Building block del 2026-10-09 (regola del 2, ok Tid, L3 di
+#    piano-be-type-checker): sostituisce `request.user` / `request.user.id`
+#    letti a mano dove serve l'utente vero. Dove `None` e' un valore legittimo
+#    («blocca», «nessuno») resta `get_actor_user_id`.
+def utente_autenticato(request: HttpRequest | Request) -> User:
+    user = request.user
+    if user is None or not user.is_authenticated:
+        raise NotAuthenticated()
+    return cast(User, user)
+
+
+# Scopo: l'id dell'utente autenticato (vedi `utente_autenticato`).
+def utente_autenticato_id(request: HttpRequest | Request) -> int:
+    return utente_autenticato(request).id
 
 
 # Scopo: Restituisce il risorsa_umana_id dell'utente autenticato.
@@ -87,13 +125,15 @@ def get_risorsa_umana_id(request: HttpRequest | Request) -> int | None:
 def handle_post_json(
     request: HttpRequest | Request,
     *,
-    handler: Callable[[dict[str, Any]], dict[str, Any]],
+    handler: Callable[[dict[str, Any]], Mapping[str, Any] | list[Any]],
     require_idempotency_key: bool = False,
 ) -> JsonResponse:
+    # ⭐ Corpo illeggibile o non oggetto: 400 `E_VALIDATION_INPUT` nell'envelope,
+    #    come le view DRF (`corpo_oggetto`) — una regola, una forma (E-6).
     try:
         payload = parse_json_body(request)
-    except ValueError:
-        return invalid_json_response()
+    except ValueError as exc:
+        return exception_to_error_response(errore_corpo(exc))
 
     try:
         idempotency_key = get_idempotency_key()
@@ -160,19 +200,10 @@ def handle_post_json(
                 request_id,
             )
         return response
-    except ValueError:
-        if idempotency_claimed and idempotency_key and getattr(
-            settings,
-            "API_STRONG_IDEMPOTENCY_ENABLED",
-            False,
-        ):
-            IdempotencyStore.mark_failed(idempotency_key=idempotency_key, request_id=request_id)
-            logger.warning(
-                "idempotency_failed_invalid_payload key=%s request_id=%s",
-                idempotency_key,
-                request_id,
-            )
-        return invalid_payload_response()
+    # ⚠️ Un `ValueError` dell'handler passa di qui come ogni altra eccezione: il
+    #    translator lo porta a 400 `E_VALIDATION_INPUT` col suo messaggio. Fino
+    #    al 2026-10-07 aveva un ramo suo che rispondeva `{"error":
+    #    "invalid_payload"}` e buttava codice e messaggio (E-6).
     except Exception as exc:
         if idempotency_claimed and idempotency_key and getattr(
             settings,
@@ -194,7 +225,7 @@ def handle_post_json(
 #        view detail (lambda p: Service().update_X(pk, p)).
 def handle_detail_patch(
     request: HttpRequest | Request,
-    update_fn: Callable[[int, dict[str, Any]], dict[str, Any]],
+    update_fn: Callable[[int, dict[str, Any]], Mapping[str, Any] | list[Any]],
     pk: int,
     *,
     require_idempotency_key: bool = False,

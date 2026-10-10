@@ -9,6 +9,9 @@
 // Niente casella di ricerca: l'endpoint audit non ha ricerca testuale e nel
 // seed tutte le colonne sono `ricercabile_full=f`. Il filtro e' per sorgente
 // (`tabella`) e per intervallo di date.
+// ⚠️ Niente `useReadonlyMode` (tolto il 2026-10-06, Tid): dietro `adminOnly`
+//    di Strumenti → Diagnostica non c'e' un livello d'area da risolvere — o
+//    sei super admin, o non arrivi alla pagina. Come ProcessiAutomaticiListView.
 import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from 'primevue/select'
@@ -16,19 +19,16 @@ import Tag from 'primevue/tag'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
-import { useReadonlyMode } from '../../core/composables/useReadonlyMode'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
 import { useAuditLogStore } from '../stores/auditLog'
 import { lookupAuditSources } from '../api/amministrazione'
 import { getAuditOpSeverity } from '../constants'
-import { READONLY_DOMAINS } from '../../core/constants'
 import FiltroPeriodo from '../../core/components/FiltroPeriodo.vue'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import FiltriLista from '../../core/components/FiltriLista.vue'
 
 const { t } = useI18n()
-useReadonlyMode(READONLY_DOMAINS.AMM_SOFTWARE)
 const store = useAuditLogStore()
 
 const {

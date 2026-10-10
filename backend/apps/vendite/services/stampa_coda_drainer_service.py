@@ -38,7 +38,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from apps.core.db.processi_repository import ProcessiRepository
@@ -159,7 +159,7 @@ def draina_coda_stampa_per_roster(
     soglia_tentativi: int = _SOGLIA_TENTATIVI_DEFAULT,
     stale_minuti: int = _STALE_MINUTI_DEFAULT,
     on_item_esito: Callable[[dict[str, Any], dict[str, Any]], None] | None = None,
-    on_emittente_esito: Callable[[dict[str, Any], dict[str, Any] | None, Exception | None], None] | None = None,
+    on_emittente_esito: Callable[[Mapping[str, Any], dict[str, Any] | None, Exception | None], None] | None = None,
     processi_repo: ProcessiRepository | None = None,
 ) -> dict[str, Any]:
     processi_repo = processi_repo or ProcessiRepository()

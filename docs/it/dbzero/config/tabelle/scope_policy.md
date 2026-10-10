@@ -9,9 +9,9 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
+| codice | character varying(60) | NO |  |
 | descrizione | text | NO |  |
-| funzione_db | character varying | NO |  |
+| funzione_db | character varying(150) | NO |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |

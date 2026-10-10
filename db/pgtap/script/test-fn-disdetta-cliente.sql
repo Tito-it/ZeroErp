@@ -142,7 +142,7 @@ SELECT ok(
 
 -- Data base futura per evitare conflitti con dati esistenti
 CREATE TEMP TABLE tmp_dis_base AS
-SELECT (current_date + 60)::date AS d0;
+SELECT (script.fn_data_operativa() + 60)::date AS d0;
 
 -- Chiusura preventiva eventuale cliente attivo sul PDP alla data test
 CREATE TEMP TABLE tmp_dis_subentro_pre AS
@@ -221,7 +221,7 @@ BEGIN
         istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
         categoria_cliente_id
     ) VALUES (
-        v_istanza_id, v_soggetto_ruolo_id, v_utility_id::integer, CURRENT_DATE,
+        v_istanza_id, v_soggetto_ruolo_id, v_utility_id::integer, script.fn_data_operativa(),
         (SELECT cc.id FROM anagrafiche.categorie_clienti cc
           WHERE cc.attivo IS TRUE ORDER BY cc.id LIMIT 1)
     ) RETURNING id INTO v_ba_id;
@@ -374,6 +374,14 @@ SELECT throws_ok(
 -- =========================================================
 DO $$
 BEGIN
+    -- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): l'ultimo BA di
+    --   un'istanza non si cancella da solo (constraint trigger
+    --   trg_billing_account_z90_require_istanza_ha_ba_dlt). Qui istanza e BA se
+    --   ne vanno INSIEME: la finestra differita si apre prima dei DELETE e si
+    --   richiude dopo quello delle istanze, cosi' il controllo scatta su uno
+    --   stato finito. Con i vincoli IMMEDIATE del preambolo scatterebbe sul
+    --   DELETE dei BA, con l'istanza ancora li'.
+    SET CONSTRAINTS ALL DEFERRED;
     SET LOCAL zeroerp.maintenance_ruoli_delete = 'on';
 
     DELETE FROM anagrafiche.clienti c
@@ -402,6 +410,8 @@ BEGIN
 
     DELETE FROM anagrafiche.istanze_utilities iu
     WHERE iu.codice LIKE 'TST-DIS-%';
+
+    SET CONSTRAINTS ALL IMMEDIATE;
 END;
 $$;
 

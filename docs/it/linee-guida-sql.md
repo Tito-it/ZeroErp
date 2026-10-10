@@ -58,6 +58,32 @@ In caso di più varianti sullo stesso concetto, usare un suffisso chiaro e funzi
 
 > ℹ️ Le convenzioni sono tratte dalla struttura condivisa in Zero ERP
 
+#### L'emittente si nomina col suo ruolo: `emittente_soggetto_ruolo_id`
+
+L'azienda che emette un documento oggi ha **due** nomi nel modello:
+`emittente_fiscale_id` (FK a `anagrafiche.emittenti_fiscali`) su preventivi,
+ordini, DDT, resi, contratti, offerte e altre tabelle, ed
+`emittente_soggetto_ruolo_id` (FK a `anagrafiche.soggetti_ruoli`) su fatture,
+registri, lotti, commesse, listini e pagamenti. Le due chiavi sono 1:1, quindi
+nessuna delle due è sbagliata, ma ogni passaggio da un documento all'altro
+traduce, e la coerenza registro ↔ emittente sta in trigger invece che in una
+FK.
+
+**Regola (decisione di Tid del 2026-10-04): una tabella nuova che nomina
+l'emittente usa `emittente_soggetto_ruolo_id`.** Il motivo sta nel modello:
+
+* nel party model l'emittente è un **ruolo** del soggetto, come il cliente e il
+  fornitore, che il modello ancora già al ruolo. `emittenti_fiscali` è il
+  satellite 1:1 dei dati fiscali di quel ruolo, non la sua identità;
+* il cuore fiscale (fatture, registri di numerazione) è già sul ruolo: un
+  documento nuovo che ci arriva non deve tradurre.
+
+Gli adapter dello scope ci sono per tutte e due le forme
+(`fn_scope_ef_whitelist` per la PK, `fn_scope_ef_whitelist_via_sr` per il
+ruolo). Le tabelle che portano `emittente_fiscale_id` convergono quando un
+cantiere ne tocca il modello. `acquisti`, che l'emittente ancora non ce l'ha,
+lo riceverà in questa forma (D8 del documento di valutazione).
+
 ---
 
 ### 3. Gestione delle Chiavi Primarie
@@ -733,6 +759,62 @@ La generalizzazione del guard transizione e' rinviata: serviranno almeno tre cas
 
 ---
 
+### 7d. ⛔ Una colonna `numeric` nasce col CHECK «finito»
+
+Il tipo `numeric` ammette `'NaN'` (con o senza scala) e `'Infinity'`/`'-Infinity'`
+(solo senza scala). Nessuno dei tre è una quantità, un prezzo o un importo, e il
+`NaN` contagia: una somma che lo incontra vale `NaN`, e `NaN` è maggiore di ogni
+numero, quindi passa i CHECK di segno (`>= 0`) e risponde «sì» a ogni confronto
+con una soglia. Per questo **ogni** colonna `numeric` porta il suo CHECK, sempre
+nella stessa forma:
+
+```sql
+ADD COLUMN importo numeric(18,6)
+    CONSTRAINT chk_<tabella>_importo_finito
+    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric)
+```
+
+* Il predicato è falso su `NaN`, `Infinity` e `-Infinity`; il `NULL` passa, come in
+  ogni CHECK. Il nome `chk_<tabella>_<colonna>_finito`, abbreviato con la sigla di
+  casa della tabella quando supera i 63 caratteri (`chk_oce_comp_…`).
+* È un CHECK e non un guard: chi scrive un `NaN` è un chiamante rotto, non una
+  persona da un form.
+* Lo presidia `db/pgtap/dbops/test-numerici-finiti-v1.sql`, che confronta la
+  **forma esatta** su ogni colonna `numeric` (`storico` escluso): una colonna nuova
+  senza CHECK lo rende rosso.
+
+Brief: `brief-db-valore-numerico-non-finito-nei-documenti` (§5.2).
+
+### 7e. ⛔ `character(n)` non si usa
+
+`character(n)` è un testo a lunghezza **fissa**: un valore più corto viene
+riempito di spazi fino a `n`, e chi lo legge riceve gli spazi. `PZ` in un
+`character(10)` si legge `'PZ        '`, e il drawer dei comuni mostrava
+«Potenza (PZ        )». Ogni lettore nuovo deve ricordarsi di toglierli, e
+chi se ne dimentica li mostra all'utente o li scrive in un documento.
+
+| Il valore | Il tipo |
+| --- | --- |
+| testo di lunghezza variabile (descrizioni, codici liberi) | `varchar(n)` o `text` |
+| codice a lunghezza fissa (una sigla, un codice ISO) | `varchar(n)` **con un `CHECK` sulla forma**: è il vincolo, non il tipo, a dire quanti caratteri |
+| firma o `RETURNS` di una funzione | mai `character`: senza lunghezza vale `character(1)`, e `RETURN QUERY` rifiuta un `varchar` dove la firma dice `bpchar` (a runtime, non al `CREATE`) |
+
+* Un `%TYPE` in firma su una colonna `character(n)` porta `bpchar` nella firma.
+  Quando la colonna si converte, le funzioni che la ancorano **vanno
+  ricreate**: il `%TYPE` è risolto al `CREATE` e non si riaggancia.
+* La conversione si fa sul posto: `ALTER COLUMN x TYPE varchar(n) USING
+  btrim(x)` (stessa `n`, nessun valore si tronca), dopo aver droppato le viste
+  che leggono la colonna; le ricrea un changeSet `20_code` nella stessa corsa.
+* Lo presidia `db/pgtap/dbops/test-character-n-v1.sql`: una colonna o una
+  funzione `bpchar` nuova lo rende rosso. Le colonne a lunghezza **esatta**
+  ereditate (ISO 3166, ISO 4217, flag a un carattere) stanno in un **registro
+  dichiarato** che può solo calare: lì il padding non nasce, ma la regola
+  della firma vale lo stesso.
+
+Brief: `brief-db-character-n-spazi-di-riempimento`.
+
+---
+
 ### 8. Indici
 
 * **Naming**: `ix_<table>_<column>`
@@ -1029,9 +1111,24 @@ conosce `~>=~`). Precedente e prova come app: `vendite.fn_af_merce_per_riga` e
 ⚠️ La prova va fatta **come applicazione** (`zeroerp_app`), non da owner — e si
 può fare senza applicare nulla: una `TEMP TABLE` con `FORCE ROW LEVEL SECURITY`
 e una policy che chiama una funzione plpgsql riproduce esattamente il criterio
-del planner. ⚠️ Con `force_generic_plan` la forma set-based può preferire la
-scansione (stima di 100 chiavi da `unnest($1)` × 0,5 % per range): nella forma
-reale la plancache tiene i piani custom finché il generico costa di più.
+del planner.
+
+⛔ **Rev 2026-10-10 — il range da solo NON regge il piano generico.** Fino a oggi
+questo paragrafo diceva che «nella forma reale la plancache tiene i piani
+custom». Misurato: dentro una funzione plpgsql che chiama la forma con un
+**parametro** (la capability del DDT → la diagnosi → `fn_partite_merce` →
+`fn_af_merce_per_riga`), la plancache sceglie il **generico**, e lì il range con
+bordi non noti è stimato al default (~11 % della tabella per chiave): la
+scansione intera, con la policy su ogni riga, vince. Uguaglianza 3 ms in
+`Index Cond`, range 31 ms in scansione (dbdev come app, 2 chiavi). E la stima
+è proporzionale alla tabella: in bilico a qualunque volume.
+⭐ **La forma che regge**: una colonna con la **base** della chiave (generata
+`STORED`, indicizzata) e un'**uguaglianza** su di essa come condizione
+d'ingresso, con il range tenuto come filtro residuo — `texteq` è leakproof e la
+stima viene dalle statistiche della colonna. Un indice su espressione no:
+`split_part`, `left`, `lower` non sono leakproof. Caso:
+`vendite.commesse_attivita.segment_base` (`20261010-80…-82`,
+`brief-db-segment-base-commesse-attivita`).
 
 ---
 
@@ -1240,8 +1337,32 @@ CREATE FUNCTION script.fn_scope_ba_ownership(
 ) RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
+COST 5000
 AS $$ ... $$;
 ```
+
+⛔ **`COST 5000`, sempre, e ripetuto a ogni `CREATE OR REPLACE`.** Una
+funzione di scope fa almeno una lettura per riga: costa 0,16-0,56 ms a riga
+(misura dbdev come app del 2026-10-10, su 170 tabelle sotto RLS), cioè
+~10-35 unità del pianificatore. Il default `COST 100` ne dichiara 0,25: il
+pianificatore sottostima la policy di 50 volte, e allora valutarla su **tutta**
+la tabella gli sembra più conveniente che cercare per chiave le poche righe che
+servono — caso: `vendite.fn_partite_merce` su un DDT, ~33 ms su 47 in
+`Seq Scan` sotto policy. `COST` non forza un piano: dà al pianificatore il
+prezzo vero. Conta l'ordine di grandezza, non la cifra.
+⚠️ È una proprietà **invisibile nel corpo**, come `ROWS` e `security_invoker`:
+un `CREATE OR REPLACE` che non la ripete la riporta a 100, con risultati
+identici. La presidia `script/test-policy-funzioni-cost-v1`, che deriva le
+funzioni da `pg_policies` (`qual` e `with_check`): una policy nuova che chiama
+una funzione senza `COST` lo rende rosso da sola. Origine: `20261010-77`.
+⛔ **E vale per ciò che la funzione di scope CHIAMA, se è SQL.** Una funzione
+`LANGUAGE sql` viene **incorporata**: nel piano non compare lei col suo
+`COST`, compare il suo corpo. Così `script.fn_check_user_emittente_scope`,
+chiamata dentro `fn_scope_ef_whitelist`, restava nel `Filter` di 69 tabelle
+al costo di default (`20261010-79`). Una funzione chiamata da una funzione di
+scope che **legge tabelle** dichiara anch'essa `COST 5000`. Il presidio lo
+ricava dai **piani** (test 4: `EXPLAIN` come app di ogni tabella sotto RLS),
+con un elenco delle funzioni misurate economiche, ognuna con la sua misura.
 
 Policy che la usa:
 
@@ -1313,18 +1434,40 @@ riparazioni dati. Due strategie complementari:
 
    Il ruolo ignora tutte le policy. Superuser ha `BYPASSRLS` per default.
 
-2. **`FORCE ROW LEVEL SECURITY`** sulla tabella per **estendere** RLS anche al proprietario
-   della tabella (altrimenti esentato):
-
-   ```sql
-   ALTER TABLE vendite.fatture FORCE ROW LEVEL SECURITY;
-   ```
-
-   Usare **sempre** `FORCE` quando la tabella e' di proprieta' di un ruolo applicativo
-   (`zeroerp_app`): altrimenti l'owner non vede le policy e la RLS e' aggirata per sbaglio.
+2. **Il proprietario delle tabelle** non subisce la RLS finché `FORCE ROW LEVEL SECURITY` è
+   spento. È il meccanismo su cui il progetto **conta** (vedi l'invariante qui sotto).
 
 3. **`zeroerp_app` NON deve avere `BYPASSRLS`**: e' il ruolo con cui il backend si
    connette, deve essere soggetto a tutte le policy.
+
+##### ⛔ L'invariante: tabelle del migratore, applicazione senza proprietà, `FORCE` spento
+
+Le funzioni `SECURITY DEFINER` girano come il loro proprietario. Siccome il proprietario delle
+tabelle non subisce la RLS, una DEFINER del migratore **legge oltre la RLS**: è così che i
+risolutori di scope (`fn_resolve_*`, `fn_get_fattura_intestazione`, i verbi DEFINER che ricopiano il
+filtro della policy nella `WHERE`) vedono i dati che servono per decidere. Questo regge su tre cose,
+e tutte e tre devono restare vere:
+
+* **le tabelle applicative sono del migratore**, un ruolo solo. Una tabella creata
+  dall'applicazione avrebbe `zeroerp_app` come proprietario, e l'applicazione **non subirebbe la
+  RLS** su quella tabella;
+* **`zeroerp_app` non possiede niente** (lo schema `django` a parte, §11.9) e non ha `BYPASSRLS`;
+* **`FORCE ROW LEVEL SECURITY` resta spento.** ⛔ Non si accende «per sicurezza»: le DEFINER
+  smetterebbero di vedere oltre la RLS, e lo scope diventerebbe vuoto o sbagliato, senza un errore.
+  Fino al 2026-10-04 questo paragrafo diceva di accendere `FORCE` sulle tabelle di `zeroerp_app`:
+  rimediava a un caso che non deve esistere. Se un giorno servisse davvero, prima si rivede ogni
+  DEFINER che legge quella tabella.
+
+Le poche DEFINER di `postgres` (dblink, log fuori transazione, dichiarate in
+`dbops.sec_functions_owner`) leggono oltre la RLS perché superuser.
+
+⭐ Lo presidia `db/pgtap/dbops/test-postura-proprietario-rls-v1.sql`, **a criterio** (il
+proprietario si legge dal catalogo, le estensioni si escludono per appartenenza): un solo
+proprietario per le tabelle con RLS, nessuna tabella di `zeroerp_app`, nessun `FORCE` sulle tabelle
+persistenti, ogni DEFINER di chi non subisce la RLS. Un pgTAP che deve esercitare le policy da
+proprietario può accendere `FORCE` **dentro la propria transazione** (come
+`rls/test-rls-offerte-satelliti`), che il `ROLLBACK` spegne: lo stato che resta, ed è quello che il
+presidio guarda, è senza `FORCE`. Un changeSet non lo accende mai.
 
 #### 10.6 `USING` vs `WITH CHECK`
 
@@ -1347,8 +1490,9 @@ Due clausole distinte, con semantica diversa:
 
 #### 10.7 Defense-in-depth, non sostituzione
 
-Le policy RLS **si sommano** ai filtri applicativi esistenti (`EmittenteFiscaleScopeMixin`,
-filtri repository, `ZeroERPPermission`), **non li rimpiazzano**.
+Le policy RLS **si sommano** ai filtri applicativi esistenti (la condizione di
+scope emittente dei repository, `add_emittente_scope_condition`, e
+`ZeroERPPermission`), **non li rimpiazzano**.
 
 | Livello | Cosa controlla | Dove |
 | --- | --- | --- |
@@ -1376,7 +1520,7 @@ Naming file test: `db/pgtap/rls/<schema>_<tabella>_rls.sql`.
 
 Prima di attivare RLS su una tabella esistente:
 
-* Funzione `script.fn_scope_*` scritta e coperta da pgTAP
+* Funzione `script.fn_scope_*` scritta e coperta da pgTAP, con `COST 5000` (§10.3)
 * Backend popola tutti i GUC necessari in tutte le auth class
 * La FK della colonna emittente ha una **decisione dichiarata** in
   `dbops.fk_index_policy` — un seed CSV con `true` o `false` **e il perché**
@@ -1397,7 +1541,7 @@ Prima di attivare RLS su una tabella esistente:
   gate opzionale mai eseguito, appoggiato a una premessa falsa. Storia in
   `dev/work-done/analisi-attivazione-rls-db.md` §12.
 * Ruolo `zeroerp_migration` ha `BYPASSRLS`
-* `FORCE ROW LEVEL SECURITY` se la tabella e' owned da `zeroerp_app`
+* La tabella è del migratore e **senza** `FORCE` (invariante di §10.5, presidiato da `dbops/test-postura-proprietario-rls-v1`)
 * Policy testata in staging con dati realistici prima del merge
 
 ---
@@ -1578,11 +1722,14 @@ peggio di uno assente.
 
 ### 11.4 ⛔ Una `preCondition` di `00_schema`/`20_code` non interroga il CONTENUTO di `80_data`
 
-Presidiato da `scripts/guardrail_precondition_seed.py` in CI.
+Presidiato da `scripts/guardrail_precondition_seed.py` in CI. Vale anche per
+`70_dati_sistema` (dal 2026-10-09), che gira anch'essa prima di `80_data`: è la fase
+dei dati di sistema che il codice legge (oggi il fuso dell'azienda), vedi
+[liquibase-setup-workflow](liquibase-setup-workflow.md).
 
 **Il meccanismo.** `changelog-master-v2.yaml` esegue in quest'ordine: vecchia
 storia → `changelog-autogen.yaml` (`00_schema` e `20_code`, mescolati per
-numero) → `80_data` → `85_pgagent` → `90_end`. Quindi un `sqlCheck` che chiede
+numero) → `70_dati_sistema` → `80_data` → `85_pgagent` → `90_end`. Quindi un `sqlCheck` che chiede
 _«esiste già la riga `RESO_VENDITA` in `config.sorgenti`?»_ dentro `20_code`
 viene valutato **quando `80_data` non è ancora passato**.
 
@@ -2124,7 +2271,34 @@ state scritte — `USING col AT TIME ZONE 'UTC'` dove scrive solo il backend,
 al changeSet (`# timestamp-senza-fuso: ammesso — <perché>`) e il cancello le
 stampa come debito; non si spiegano solo in prosa.
 
----
+### 11.11 ⛔ La prima generazione dei changelog (v1) non si tocca
+
+Presidiato da `scripts/guardrail_v1_congelato.py` in CI (decisione di Tid del
+2026-10-04).
+
+**Il meccanismo.** `changelog-master-v2.yaml` include `changelog-master.yaml`,
+che fa `includeAll` di `baseline/` e `migrations/`: la prima generazione
+**rigira a ogni migrate da zero** — in CI e a ogni installazione nuova.
+Centinaia di quei file sono `runOnChange: true`, e il cancello del §11.1
+guarda solo `migrations_v2/`. Un file v1 modificato ripartirebbe al migrate
+successivo **fuori dall'ordine di timeline**, sopra le revisioni v2 più
+recenti: è il difetto del §11.1, entrato dalla porta che quel cancello non
+vede. Su un DB di sviluppo il file è già eseguito e non si nota niente.
+
+**La regola.** In `baseline/`, `migrations/` e `changelog-master.yaml` non si
+aggiunge, non si toglie e non si modifica nessun file. Un cambiamento a un
+oggetto nato nel v1 si scrive come changeSet nuovo in `migrations_v2/`, con il
+corpo preso dalla doc auto-generata.
+
+**Il presidio.** Il manifesto `db/changelog/v1-congelato.json` porta lo sha256
+di ogni file dell'albero v1; il cancello ricalcola e confronta. Un file in più,
+in meno o diverso fa fallire la build.
+
+⚠️ **L'eccezione esiste, e si vede.** È già capitato di dover ritoccare la
+baseline per far girare la CI su un database nuovo (2026-09-02). Un caso così
+si concorda con Tid e si rigenera il manifesto **nello stesso commit**
+(`python scripts/guardrail_v1_congelato.py --rigenera`): il diff del manifesto
+è la firma del cambio.
 
 ---
 

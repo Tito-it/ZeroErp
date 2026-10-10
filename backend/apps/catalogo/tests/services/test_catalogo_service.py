@@ -11,6 +11,7 @@ Indice test eseguiti:
 2) CatalogoServiceTests.test_fn_list_articoli_invalid_order
 4) CatalogoServiceTests.test_fn_get_articolo_ok
 5) CatalogoServiceTests.test_fn_get_articolo_not_found
+5b) CatalogoServiceTests.test_fn_list_componenti_pagina_legge_prima_l_articolo
 6) CatalogoServiceTests.test_fn_lookup_articoli_ok
 7) CatalogoServiceTests.test_fn_lookup_articoli_invalid_limit
 10) CatalogoServiceTests.test_fn_create_articolo_ok
@@ -38,7 +39,9 @@ Indice test eseguiti:
 27) CatalogoServiceTests.test_fn_update_articolo_listino_tipologia_id_invalid
 27b) CatalogoServiceTests.test_fn_create_articolo_natura_vendita_id_ok
 27c) CatalogoServiceTests.test_fn_update_articolo_natura_vendita_id_null_invalid
-28) CatalogoServiceTests.test_fn_create_componente_esposto_in_fattura_ok
+28) CatalogoServiceTests.test_fn_create_componente_esposizione_in_fattura_ok
+28b) CatalogoServiceTests.test_fn_create_componente_booleano_ritirato_rifiutato
+28c) CatalogoServiceTests.test_fn_create_componente_esposizione_null_rifiutata
 29) CatalogoServiceTests.test_fn_list_uom_rounding_modes_ok
 30) CatalogoServiceTests.test_fn_list_uom_rounding_modes_coverage
 31) CatalogoServiceTests.test_fn_create_componente_valido_dal_fallback_today
@@ -70,6 +73,7 @@ from unittest.mock import patch
 
 from django.db import IntegrityError
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 
 
@@ -110,7 +114,7 @@ class CatalogoServiceTests(TestCase):
             "is_composito": True,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = [{"id": 1, "uom_codice": "PZ"}]
-        mock_bom_repo_cls.return_value.list_componenti.return_value = [{"id": "comp-1"}]
+        mock_bom_repo_cls.return_value.list_righe.return_value = [{"id": "comp-1"}]
         # Shape allineata al pattern partizionato vendite (2026-05-22):
         # le note ritornano `id`/`testo_md` senza prefisso `nota_`.
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = [{"id": 9}]
@@ -133,6 +137,27 @@ class CatalogoServiceTests(TestCase):
         with self.assertRaises(ServiceError) as ctx:
             fn_get_articolo(999)
         self.assertEqual(ctx.exception.code, "E_CATALOGO_ARTICOLO_NOT_FOUND")
+
+    # Scopo: «Leggi prima la testata» sulla PAGINA della distinta (§9.6 del
+    #        brief-db-liste-righe-documento, 2026-10-04): un articolo che non
+    #        c'e' e' un 404, e le righe non si leggono.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_list_componenti_pagina_legge_prima_l_articolo(self, mock_repo_cls, mock_bom_cls):
+        from apps.catalogo.services.catalogo_service import fn_list_componenti_pagina
+
+        mock_repo_cls.return_value.get_articolo.return_value = None
+        with self.assertRaises(ServiceError) as ctx:
+            fn_list_componenti_pagina("a-1", limit=10, valido_al=None)
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_ARTICOLO_NOT_FOUND")
+        mock_bom_cls.return_value.list_righe_pagina.assert_not_called()
+
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "a-1"}
+        mock_bom_cls.return_value.list_righe_pagina.return_value = ([], 0)
+        self.assertEqual(fn_list_componenti_pagina("a-1", limit=10, valido_al=None), ([], 0))
+        mock_bom_cls.return_value.list_righe_pagina.assert_called_once_with(
+            "a-1", limit=10, valido_al=None,
+        )
 
     # Scopo: Lookup articoli valido -> count e results coerenti.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
@@ -193,7 +218,7 @@ class CatalogoServiceTests(TestCase):
     def test_una_collezione_intera_non_dichiara_troncamento(self, _mock_repo, mock_bom):
         from apps.catalogo.services.catalogo_service import fn_list_componenti
 
-        mock_bom.return_value.list_componenti.return_value = [{"id": 1}, {"id": 2}]
+        mock_bom.return_value.list_righe.return_value = [{"id": 1}, {"id": 2}]
 
         result = fn_list_componenti("00000000-0000-0000-0000-000000000001")
 
@@ -223,7 +248,7 @@ class CatalogoServiceTests(TestCase):
             "descrizione": "Articolo demo",
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_create_articolo(
@@ -282,7 +307,7 @@ class CatalogoServiceTests(TestCase):
             "descrizione_breve": None,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_update_articolo(
@@ -335,7 +360,7 @@ class CatalogoServiceTests(TestCase):
             },
         ]
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_disattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
@@ -357,7 +382,7 @@ class CatalogoServiceTests(TestCase):
             "attivo": False,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_disattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
@@ -378,7 +403,7 @@ class CatalogoServiceTests(TestCase):
             {"id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001", "attivo": True},
         ]
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
@@ -400,7 +425,7 @@ class CatalogoServiceTests(TestCase):
             "attivo": True,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         result = fn_riattiva_articolo("019bbee2-5f6a-704f-bbd0-34ed84db252d")
@@ -739,7 +764,7 @@ class CatalogoServiceTests(TestCase):
             "listino_tipologia_id": 3,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_create_articolo(
@@ -791,7 +816,7 @@ class CatalogoServiceTests(TestCase):
             "natura_vendita_id": 2,
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_create_articolo(
@@ -843,7 +868,7 @@ class CatalogoServiceTests(TestCase):
             "id": "019bbee2-5f6a-704f-bbd0-34ed84db252d", "codice": "ART-001",
         }
         mock_uom_repo_cls.return_value.list_uom_operative.return_value = []
-        mock_bom_repo_cls.return_value.list_componenti.return_value = []
+        mock_bom_repo_cls.return_value.list_righe.return_value = []
         mock_bom_repo_cls.return_value.list_note_articolo.return_value = []
 
         fn_update_articolo(
@@ -893,17 +918,19 @@ class CatalogoServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
         self.assertEqual(ctx.exception.context.get("field"), "lead_time_giorni")
 
-    # Scopo: create componente con esposto_in_fattura -> flag propagato al repo (BoM v5).
+    # Scopo: create componente con esposizione_in_fattura -> codice propagato
+    # al repo com'e' (dal 2026-10-01 un codice, non un booleano; i valori li
+    # giudica la FK su config.esposizioni_componente).
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
-    def test_fn_create_componente_esposto_in_fattura_ok(self, mock_repo_cls, mock_bom_repo_cls):
+    def test_fn_create_componente_esposizione_in_fattura_ok(self, mock_repo_cls, mock_bom_repo_cls):
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
         comp_id = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
         mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
         bom_repo = mock_bom_repo_cls.return_value
         bom_repo.create_componente.return_value = comp_id
-        bom_repo.get_componente.return_value = {"id": comp_id, "esposto_in_fattura": True}
+        bom_repo.get_componente.return_value = {"id": comp_id, "esposizione_in_fattura": "VALORIZZATO"}
 
         fn_create_componente(
             "art-1",
@@ -911,12 +938,48 @@ class CatalogoServiceTests(TestCase):
                 "componente_id": comp_id,
                 "coeff_qta": "1",
                 "valido_dal": "2026-01-01",
-                "esposto_in_fattura": True,
+                "esposizione_in_fattura": "VALORIZZATO",
             },
         )
 
         args, _ = bom_repo.create_componente.call_args
-        self.assertEqual(args[1]["esposto_in_fattura"], True)
+        self.assertEqual(args[1]["esposizione_in_fattura"], "VALORIZZATO")
+
+    # Scopo: il booleano ritirato non e' piu' una chiave ammessa: chi lo manda
+    # ancora riceve un 400 che lo nomina, non un salvataggio che lo ignora.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_componente_booleano_ritirato_rifiutato(self, mock_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_componente
+
+        comp_id = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_componente(
+                "art-1",
+                {"componente_id": comp_id, "coeff_qta": "1", "esposto_in_fattura": True},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        mock_bom_repo_cls.return_value.create_componente.assert_not_called()
+
+    # Scopo: l'esposizione e' NOT NULL a DB: un `null` esplicito si ferma nel
+    # service con il campo nominato.
+    @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
+    @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
+    def test_fn_create_componente_esposizione_null_rifiutata(self, mock_repo_cls, mock_bom_repo_cls):
+        from apps.catalogo.services.catalogo_service import fn_create_componente
+
+        comp_id = "019bbee2-5f6a-704f-bbd0-34ed84db252e"
+        mock_repo_cls.return_value.get_articolo.return_value = {"id": "art-1", "codice": "ART-001"}
+
+        with self.assertRaises(ServiceError) as ctx:
+            fn_create_componente(
+                "art-1",
+                {"componente_id": comp_id, "coeff_qta": "1", "esposizione_in_fattura": None},
+            )
+        self.assertEqual(ctx.exception.code, "E_CATALOGO_VALIDATION")
+        self.assertEqual(ctx.exception.context.get("field"), "esposizione_in_fattura")
 
     # Scopo: lookup statico rounding modes -> 5 codici nell'ordine canonico
     # con descrizione popolata. Niente DB: la funzione e' pura.
@@ -946,12 +1009,11 @@ class CatalogoServiceTests(TestCase):
     # =================================================================
 
     # Scopo: payload create componente senza valido_dal -> service applica
-    # date.today() prima del repository call. Il DDL DB non ha
+    # oggi_aziendale() prima del repository call. Il DDL DB non ha
     # DEFAULT CURRENT_DATE, il fallback vive nel service (Fase 4 BE-only).
     @patch("apps.catalogo.services.catalogo_service.CatalogoBomRepository")
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
     def test_fn_create_componente_valido_dal_fallback_today(self, mock_repo_cls, mock_bom_repo_cls):
-        from datetime import date
 
         from apps.catalogo.services.catalogo_service import fn_create_componente
 
@@ -967,13 +1029,12 @@ class CatalogoServiceTests(TestCase):
         )
 
         args = bom_repo.create_componente.call_args.args
-        self.assertEqual(args[1]["valido_dal"], date.today())
+        self.assertEqual(args[1]["valido_dal"], oggi_aziendale())
 
     # Scopo: payload create UoM operativa senza valido_dal -> service applica today.
     @patch("apps.catalogo.services.catalogo_service.CatalogoUomRepository")
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
     def test_fn_create_uom_operativa_valido_dal_fallback_today(self, mock_repo_cls, mock_uom_repo_cls):
-        from datetime import date
 
         from apps.catalogo.services.catalogo_service import fn_create_uom_operativa
 
@@ -986,12 +1047,11 @@ class CatalogoServiceTests(TestCase):
         fn_create_uom_operativa("art-1", {"uom_id": 1, "factor_to_base": "1"})
 
         args = uom_repo.create_uom_operativa.call_args.args
-        self.assertEqual(args[1]["valido_dal"], date.today())
+        self.assertEqual(args[1]["valido_dal"], oggi_aziendale())
 
     # Scopo: payload create conversione UoM senza valido_dal -> service applica today.
     @patch("apps.catalogo.services.catalogo_service.CatalogoRepository")
     def test_fn_create_conversione_valido_dal_fallback_today(self, mock_repo_cls):
-        from datetime import date
 
         from apps.catalogo.services.catalogo_service import fn_create_conversione
 
@@ -1003,7 +1063,7 @@ class CatalogoServiceTests(TestCase):
         fn_create_conversione({"uom_from_id": 1, "uom_to_id": 2, "fattore": "10"})
 
         args = repo.create_conversione.call_args.args
-        self.assertEqual(args[0]["valido_dal"], date.today())
+        self.assertEqual(args[0]["valido_dal"], oggi_aziendale())
 
     # =================================================================
     # Fase 5 — non_editable_fields nei detail (cross-vista DB + gap Python)

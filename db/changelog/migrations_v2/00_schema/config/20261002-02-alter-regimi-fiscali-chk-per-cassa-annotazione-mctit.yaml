@@ -1,0 +1,94 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN REGIME PER CASSA PORTA SEMPRE LA SUA ANNOTAZIONE
+#   config.regimi_fiscali: CHECK (NOT iva_per_cassa OR annotazione_documento IS NOT NULL)
+#   Brief: brief-db-esigibilita-iva-per-cassa-emittente, sezione 11 (R-DB-3)
+#
+# -- PERCHE' -------------------------------------------------------
+#   vendite.fn_annotazioni_fattura (-07) rende la voce ESIGIBILITA_DIFFERITA
+#   quando la fattura ha righe D e il suo regime e' per cassa, col testo di
+#   annotazione_documento. Se un regime per cassa avesse il testo NULL, la
+#   fattura avrebbe righe a esigibilita' differita e nessuna annotazione: il
+#   documento fiscale ometterebbe una dicitura obbligatoria senza un errore.
+#   Il catalogo non deve poter arrivare in quello stato: e' una regola fra due
+#   colonne della stessa riga, quindi un CHECK.
+#
+# -- PERCHE' IN 00_schema ------------------------------------------
+#   Il vincolo e' interno alla riga e non lega una colonna a una riga di seed.
+#   Su un DB da zero la tabella e' vuota a questo punto, e il seed (-15 del
+#   2026-10-01) porta RF17 con iva_per_cassa e il testo insieme. Su una
+#   macchina viva l'ADD CONSTRAINT valida le righe che ci sono: se una non
+#   passa, il migrate si ferma qui a voce alta. Nessuna preCondition sul
+#   contenuto di 80_data (linee-guida-sql 11.4).
+#
+# In coda il COMMENT di annotazione_documento nomina la funzione che la stampa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261002-02-alter-regimi-fiscali-chk-per-cassa-annotazione-mctit.yaml
+
+  - changeSet:
+      id: 20261002-02-alter-regimi-fiscali-chk-per-cassa-annotazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.regimi_fiscali: un regime per cassa porta sempre il testo dell'annotazione
+        (CHECK chk_regimi_fiscali_per_cassa_annotazione). Senza, una fattura con righe a
+        esigibilita' differita uscirebbe senza la dicitura obbligatoria. Brief:
+        brief-db-esigibilita-iva-per-cassa-emittente sezione 11 (R-DB-3).
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: regimi_fiscali
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.regimi_fiscali
+                  ADD CONSTRAINT chk_regimi_fiscali_per_cassa_annotazione
+                  CHECK (NOT iva_per_cassa OR annotazione_documento IS NOT NULL);
+
+              COMMENT ON CONSTRAINT chk_regimi_fiscali_per_cassa_annotazione
+                  ON config.regimi_fiscali IS
+                  'Un regime per cassa porta sempre il testo da stampare: '
+                  'vendite.fn_annotazioni_fattura lo rende quando la fattura ha righe a '
+                  'esigibilita'' D, e un testo NULL vorrebbe dire una fattura senza la '
+                  'dicitura obbligatoria e senza un errore. Brief: '
+                  'brief-db-esigibilita-iva-per-cassa-emittente (R-DB-3).';
+
+              -- Il commento della colonna diceva «si stampa solo se ci sono righe D»
+              -- senza dire chi lo decide: ora la sede c'e', e la si nomina.
+              COMMENT ON COLUMN config.regimi_fiscali.annotazione_documento IS
+                  'Il testo che una fattura di questo regime deve riportare (per RF17 '
+                  'l''annotazione art. 32-bis). NULL = nessuna annotazione; un regime per cassa '
+                  'lo porta sempre (chk_regimi_fiscali_per_cassa_annotazione). Lo stampa la voce '
+                  'ESIGIBILITA_DIFFERITA di vendite.fn_annotazioni_fattura, solo se il regime della '
+                  'fattura e'' per cassa e il documento ha almeno una riga a esigibilita'' D: una '
+                  'fattura RF17 verso un privato e'' tutta immediata, e li'' l''annotazione sarebbe '
+                  'falsa (sezione 8.7 del brief). ⚠️ Un regime che non e'' per cassa e porta una '
+                  'dicitura sua (il forfettario) ha bisogno di una voce nuova in quella funzione: '
+                  'qui il testo da solo non si stampa.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              COMMENT ON COLUMN config.regimi_fiscali.annotazione_documento IS
+                  'Il testo che una fattura di questo regime deve riportare (per RF17 '
+                  'l''annotazione art. 32-bis). NULL = nessuna annotazione. ⚠️ Si stampa solo se '
+                  'il documento ha almeno una riga a esigibilita'' D: una fattura RF17 verso un '
+                  'privato e'' tutta immediata, e li'' l''annotazione sarebbe falsa (sezione 8.7 '
+                  'del brief).';
+
+              ALTER TABLE config.regimi_fiscali
+                  DROP CONSTRAINT IF EXISTS chk_regimi_fiscali_per_cassa_annotazione;

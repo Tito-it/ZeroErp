@@ -9,10 +9,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| iban | character varying | NO |  |
-| bic_swift | character varying | YES |  |
-| intestatario_predefinito | character varying | YES |  |
-| paese | character | YES |  |
+| iban | character varying(34) | NO |  |
+| bic_swift | character varying(11) | YES |  |
+| intestatario_predefinito | character varying(140) | YES |  |
+| paese | character(2) | YES |  |
 | attivo | boolean | NO | true |
 | verificato | boolean | NO | false |
 | meta | jsonb | YES | '{}'::jsonb |
@@ -21,7 +21,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | bank_branch_id | bigint | NO |  |
 
 ## 🔒 Vincoli

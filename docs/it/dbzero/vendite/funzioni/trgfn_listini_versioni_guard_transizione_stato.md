@@ -40,7 +40,7 @@ BEGIN
         -- Evita incoerenza CHIUSA + valido_al NULL e uniforma
         -- il path utente (PATCH valido_al) con il job notturno.
         v_ammessa := (NEW.valido_al IS NOT NULL
-                      AND NEW.valido_al < CURRENT_DATE);
+                      AND NEW.valido_al < (SELECT script.fn_data_operativa()));
     END IF;
     -- Tutte le altre transizioni sono vietate:
     --   BOZZA  -> CHIUSA : bozza si cancella

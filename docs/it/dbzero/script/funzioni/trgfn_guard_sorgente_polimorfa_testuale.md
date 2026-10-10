@@ -24,11 +24,19 @@ DECLARE
   --   NEW.sorgente_riga qui NON e' una chiave documento e non
   --   viene validata (grana di riga del link; D4 fase 2).
   -- =========================================================
-  c_uuid_re  CONSTANT text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
-  v_tbl      regclass;
-  v_selector text;
-  v_uid      text;
-  v_exists   boolean;
+  -- ⭐ rev 2026-10-05 (20261005-25): il formato si controlla sulla FORMA
+  --   CANONICA della chiave, con i building block script.fn_sorgente_chiave_*
+  --   — la stessa regola con cui la chiave si cerca (fn_stato_sorgente,
+  --   vw_pratica_doc_sorgente). Prima: regex permissiva (maiuscole, zeri
+  --   davanti) e controllo su btrim(NEW.sorgente_uid) mentre la riga salvava
+  --   il valore NON ripulito. Passavano '007', ' 42 ', un uuid maiuscolo:
+  --   chiavi che esistono ma che nessun lettore risolve mai.
+  v_tbl       regclass;
+  v_selector  text;
+  v_uid       text;
+  v_exists    boolean;
+  v_chiave_id   script.vw_stato_sorgente.sorgente_chiave_id%TYPE;
+  v_chiave_uuid script.vw_stato_sorgente.sorgente_chiave_uuid%TYPE;
 BEGIN
   -- Se non e' valorizzata la sorgente, nessuna verifica
   IF NEW.sorgente_tipo_id IS NULL THEN
@@ -81,48 +89,52 @@ BEGIN
     );
   END IF;
 
-  -- Formato + esistenza secondo key_selector
+  -- Formato + esistenza secondo key_selector.
+  -- ⚠️ Si controlla NEW.sorgente_uid, cioe' il valore che verra' SALVATO, non
+  --   la sua copia ripulita: e' quello che i lettori confronteranno.
   IF v_selector = 'id' THEN
-    IF v_uid !~ '^[0-9]+$' THEN
+    v_chiave_id := script.fn_sorgente_chiave_id(NEW.sorgente_uid);
+    IF v_chiave_id IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
         'database',
         'script.trgfn_guard_sorgente_polimorfa_testuale',
         'E_SORG_FORMATO',
         jsonb_build_object(
-          'detail','Atteso id numerico in testo (convenzione id::text)',
+          'detail','Atteso id numerico in forma canonica (id::text: niente zeri davanti, spazi, segno)',
           'sorgente_tipo_id', NEW.sorgente_tipo_id,
           'key_selector', v_selector,
-          'sorgente_uid', v_uid
+          'sorgente_uid', NEW.sorgente_uid
         ),
         NULL::uuid,
-        concat('atteso id::text, ricevuto ', v_uid)
+        concat('atteso id::text, ricevuto «', NEW.sorgente_uid, '»')
       );
     END IF;
 
     EXECUTE format('SELECT true FROM %s WHERE id = $1', v_tbl::text)
       INTO v_exists
-      USING v_uid::bigint;
+      USING v_chiave_id;
 
   ELSIF v_selector = 'uid' THEN
-    IF v_uid !~ c_uuid_re THEN
+    v_chiave_uuid := script.fn_sorgente_chiave_uuid(NEW.sorgente_uid);
+    IF v_chiave_uuid IS NULL THEN
       PERFORM script.fn_log_and_raise_error(
         'database',
         'script.trgfn_guard_sorgente_polimorfa_testuale',
         'E_SORG_FORMATO',
         jsonb_build_object(
-          'detail','Atteso uuid testuale',
+          'detail','Atteso uuid testuale in forma canonica (uuid::text: minuscolo, con i trattini)',
           'sorgente_tipo_id', NEW.sorgente_tipo_id,
           'key_selector', v_selector,
-          'sorgente_uid', v_uid
+          'sorgente_uid', NEW.sorgente_uid
         ),
         NULL::uuid,
-        concat('atteso uuid, ricevuto ', v_uid)
+        concat('atteso uuid, ricevuto «', NEW.sorgente_uid, '»')
       );
     END IF;
 
     EXECUTE format('SELECT true FROM %s WHERE uid = $1', v_tbl::text)
       INTO v_exists
-      USING v_uid::uuid;
+      USING v_chiave_uuid;
 
   ELSE
     -- Valore non consentito: config.sorgenti dovrebbe impedirlo con CHECK
@@ -165,7 +177,7 @@ END
 $function$
 
 COMMENT ON FUNCTION script.trgfn_guard_sorgente_polimorfa_testuale()
-IS 'Guard polimorfo MODELLO B (tabelle di collegamento a chiave unica testuale: pratiche.pratiche_sorgenti, vendite.commesse_sorgenti): valida che NEW.sorgente_uid TEXT rispetti il formato dettato da config.sorgenti.key_selector (id::text per i tipi id, uuid testuale per i tipi uid — E_SORG_FORMATO) e che la riga esista nella target_table (E_SORG_NOT_FOUND). NON valida sorgente_riga (grana di riga del link, non chiave documento; D4 rinviata). Sorella di trgfn_guard_sorgente_polimorfa_tipizzata (modello A). Brief-db-guard-sorgente-polimorfa, 2026-07-18.';
+IS 'Guard polimorfo MODELLO B (tabelle di collegamento a chiave unica testuale: pratiche.pratiche_sorgenti, vendite.commesse_sorgenti): valida che NEW.sorgente_uid TEXT rispetti il formato dettato da config.sorgenti.key_selector (id::text per i tipi id, uuid testuale per i tipi uid — E_SORG_FORMATO) e che la riga esista nella target_table (E_SORG_NOT_FOUND). NON valida sorgente_riga (grana di riga del link, non chiave documento; D4 rinviata). Sorella di trgfn_guard_sorgente_polimorfa_tipizzata (modello A). Brief-db-guard-sorgente-polimorfa, 2026-07-18. ⭐ rev 2026-10-05 (20261005-25): il formato si controlla sulla FORMA CANONICA con i building block script.fn_sorgente_chiave_id / script.fn_sorgente_chiave_uuid — la stessa regola con cui la chiave si cerca (fn_stato_sorgente, vw_pratica_doc_sorgente) — e sul valore che verra'' SALVATO (NEW.sorgente_uid), non sulla sua copia ripulita. Prima: regex larghe su btrim(sorgente_uid), e la riga salvava il valore non ripulito; passavano ''007'', '' 42 '', un uuid maiuscolo, chiavi che esistono ma che nessun lettore ritrova. Ora E_SORG_FORMATO. La verifica di esistenza usa la chiave gia'' convertita.';
 ```
 
 ---

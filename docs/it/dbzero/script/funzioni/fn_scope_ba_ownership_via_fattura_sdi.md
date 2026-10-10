@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ba_ownership_via_fattura_sdi(p_identita_id bigint, p_sd
 CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura_sdi(p_identita_id bigint, p_sdi_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: veste CLIENTE_PORTALE per gli eventi SDI.
     -- ⚠️ Esiste perche' i satelliti devono rispecchiare TUTTE le

@@ -67,8 +67,8 @@ Tutte le risposte usano l'envelope standard:
 | `voce_utility` | bool | No | Filtro articoli utility |
 | `tipo_voce_id` | int | No | Filtro tipologia |
 | `gruppo_voce_id` | int | No | Filtro gruppo |
-| `data_da` | date | No | Filtro data insert da |
-| `data_a` | date | No | Filtro data insert a |
+| `data_da` | date | No | Filtro data insert da (giorno dell'azienda: vedi sotto) |
+| `data_a` | date | No | Filtro data insert a, giorno incluso. I giorni sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09) (fino ad allora `data_insert::date`, il giorno della sessione e niente indice) |
 | `page` | int | No | Numero pagina, default `1` |
 | `page_size` | int | No | Righe per pagina, default `25`, max `200` |
 | `order_by` | string | No | `codice`, `descrizione`, `uom_codice`, `data_insert`, `data_update` |
@@ -561,15 +561,24 @@ lettura completa (il riepilogo nel drawer dell'articolo).
 Campi principali:
 
 - `componente_id`
-- `coeff_qta`
-- `partecipa_qta`
-- `determina_qta_padre`
+- `coeff_qta` — la quantita' del componente e' sempre `quantita padre ×
+  coeff_qta`
 - `obbligatorio`
-- `esposto_in_fattura`
+- `esposizione_in_fattura` — il modo in cui il componente compare in fattura:
+  codice di `config.esposizioni_componente` (`NASCOSTO`, `DESCRITTIVO`,
+  `VALORIZZATO`). Il valore lo giudica la FK: un codice fuori vocabolario torna
+  `400 E_CATALOGO_VALIDATION`; `null` non è ammesso (omettere il campo per il
+  default). Fino al 2026-10-01 era il booleano `esposto_in_fattura`, oggi
+  rifiutato come chiave sconosciuta
 - `valido_dal` (Fase 4: opzionale, fallback `today` se omesso/null)
 - `valido_al`
 - `attivo`
 - `meta`
+
+⛔ `partecipa_qta` e `determina_qta_padre` **non esistono più** dal 2026-10-02
+(brief-db-bom-flag-quantita-e-kit-in-fattura, D-1): si impostavano ma nessuna
+logica li leggeva. Le colonne sono state ritirate a DB, e il backend non li
+legge né li scrive.
 
 #### Defaults Fase 2
 
@@ -579,13 +588,11 @@ emittente disponibile):
 | Parametro | Default sistema |
 |---|---|
 | `CATALOGO_BOM_DEFAULT_COEFF_QTA` | `1` |
-| `CATALOGO_BOM_DEFAULT_PARTECIPA_QTA` | `true` |
 | `CATALOGO_BOM_DEFAULT_OBBLIGATORIO` | `true` |
-| `CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE` | `false` |
-| `CATALOGO_BOM_DEFAULT_ESPOSTO_IN_FATTURA` | `false` |
+| `CATALOGO_BOM_DEFAULT_ESPOSIZIONE_IN_FATTURA` | `NASCOSTO` (un codice di `config.esposizioni_componente`) |
 
-Allineato lato DDL: `articoli_componenti.partecipa_qta` ha `DEFAULT true`
-(migration `20260428-02`) per coerenza tra service e insert SQL diretti.
+`CATALOGO_BOM_DEFAULT_PARTECIPA_QTA` e `CATALOGO_BOM_DEFAULT_DETERMINA_QTA_PADRE`
+sono stati ritirati con i loro due campi (`20261002-67`).
 
 ### 4.3 Aggiorna componente
 
@@ -596,8 +603,8 @@ Allineato lato DDL: `articoli_componenti.partecipa_qta` ha `DEFAULT true`
 
 #### Regole specifiche
 
-- I campi struttura (`componente_id`, `coeff_qta`, `partecipa_qta`,
-  `determina_qta_padre`, `obbligatorio`, `esposto_in_fattura`) sono
+- I campi struttura (`componente_id`, `coeff_qta`, `obbligatorio`,
+  `esposizione_in_fattura`) sono
   **immutabili** per design: il trigger DB
   `trgfn_articoli_componenti_block_modifica_struttura` blocca le UPDATE.
 - L'unico campo struttura modificabile e' `valido_al` (per chiudere la

@@ -102,19 +102,19 @@ BEGIN
             s.uom_id, s.tipo_id, s.gruppo_id, s.spesa_id, s.iva_id)
     RETURNING id INTO v_f;
 
-    -- BoM attiva aperta (valido_al NULL): copre CURRENT_DATE e qualsiasi data
+    -- BoM attiva aperta (valido_al NULL): copre script.fn_data_operativa() e qualsiasi data
     -- futura, cosi' la temporal FK non interferisce col test Guard 7.
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
         valido_dal, valido_al, attivo)
-    VALUES (v_p, v_f, 1, FALSE, TRUE, (CURRENT_DATE - 1), NULL, TRUE)
+    VALUES (v_p, v_f, 1, TRUE, (script.fn_data_operativa() - 1), NULL, TRUE)
     RETURNING id INTO v_l;
 
     -- Versione BOZZA (obbligatoria per INSERT su listini_righe_componenti),
-    -- finestra CURRENT_DATE..CURRENT_DATE+400.
+    -- finestra script.fn_data_operativa()..script.fn_data_operativa()+400.
     INSERT INTO vendite.listini_versioni(
         listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-    VALUES (s.listino_id, 'PGTAP_LRCGUARD_' || v_ts, CURRENT_DATE, CURRENT_DATE + 400, 'BOZZA', TRUE)
+    VALUES (s.listino_id, 'PGTAP_LRCGUARD_' || v_ts, script.fn_data_operativa(), script.fn_data_operativa() + 400, 'BOZZA', TRUE)
     RETURNING id INTO v_versione;
 
     INSERT INTO tmp_ctx VALUES (v_p, v_f, v_l, s.iva_id, v_versione);
@@ -145,7 +145,7 @@ SELECT CASE
                           articolo_padre_id, articolo_figlio_id,
                           prezzo, iva_id, valido_dal, valido_al, attivo)
                       VALUES (%s, %L::uuid, %L::uuid, %L::uuid,
-                              50.00, %s, CURRENT_DATE, CURRENT_DATE, TRUE) $sql$,
+                              50.00, %s, script.fn_data_operativa(), script.fn_data_operativa(), TRUE) $sql$,
                 ctx.versione_id,
                 ctx.articolo_componente_id, ctx.padre_id, ctx.figlio_id,
                 ctx.iva_id
@@ -171,7 +171,7 @@ SELECT CASE
                           prezzo, iva_id, valido_dal, valido_al, attivo)
                       VALUES (%s, '00000000-0000-0000-0000-0000000000aa'::uuid,
                               %L::uuid, %L::uuid,
-                              50.00, %s, CURRENT_DATE, CURRENT_DATE, TRUE) $sql$,
+                              50.00, %s, script.fn_data_operativa(), script.fn_data_operativa(), TRUE) $sql$,
                 ctx.versione_id, ctx.padre_id, ctx.figlio_id, ctx.iva_id
             ),
             '%non trovato o non attivo%',
@@ -196,7 +196,7 @@ SELECT CASE
                           articolo_padre_id, articolo_figlio_id,
                           prezzo, iva_id, valido_dal, valido_al, attivo)
                       VALUES (%s, %L::uuid, %L::uuid, %L::uuid,
-                              50.00, %s, CURRENT_DATE, CURRENT_DATE, TRUE) $sql$,
+                              50.00, %s, script.fn_data_operativa(), script.fn_data_operativa(), TRUE) $sql$,
                 ctx.versione_id, ctx.articolo_componente_id, ctx.figlio_id, ctx.figlio_id,
                 ctx.iva_id
             ),
@@ -222,7 +222,7 @@ SELECT CASE
                           articolo_padre_id, articolo_figlio_id,
                           prezzo, iva_id, valido_dal, valido_al, attivo)
                       VALUES (%s, %L::uuid, %L::uuid, %L::uuid,
-                              50.00, %s, CURRENT_DATE, CURRENT_DATE, TRUE) $sql$,
+                              50.00, %s, script.fn_data_operativa(), script.fn_data_operativa(), TRUE) $sql$,
                 ctx.versione_id, ctx.articolo_componente_id, ctx.padre_id, ctx.padre_id,
                 ctx.iva_id
             ),
@@ -235,7 +235,7 @@ END;
 
 -- =========================================================
 -- 6) Guard 7: validita riga fuori dalla versione listino -> raise
--- versione = [CURRENT_DATE, CURRENT_DATE+400]; riga [+500, +600].
+-- versione = [script.fn_data_operativa(), script.fn_data_operativa()+400]; riga [+500, +600].
 -- BoM aperta -> temporal FK ok; il trigger BEFORE (Guard 7) scatta prima.
 -- =========================================================
 SELECT CASE
@@ -250,7 +250,7 @@ SELECT CASE
                           prezzo, iva_id, valido_dal, valido_al, attivo)
                       VALUES (%s, %L::uuid, %L::uuid, %L::uuid,
                               50.00, %s,
-                              (CURRENT_DATE + 500)::date, (CURRENT_DATE + 600)::date, TRUE) $sql$,
+                              (script.fn_data_operativa() + 500)::date, (script.fn_data_operativa() + 600)::date, TRUE) $sql$,
                 ctx.versione_id, ctx.articolo_componente_id, ctx.padre_id, ctx.figlio_id,
                 ctx.iva_id
             ),

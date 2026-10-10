@@ -12,15 +12,13 @@
 //        tx_id) restano nel kebab della lista.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import JsonBlocco from '../../core/components/JsonBlocco.vue'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
 import { displayTimestamp } from '../../core/utils/date'
 import { classeErroreSeverity } from '../../core/utils/severity'
 import { DRAWER_WIDTH } from '../../core/constants'
+import { NAV_ICONS } from '../../core/navigation'
 
 const { t } = useI18n()
 
@@ -29,10 +27,7 @@ const props = defineProps({
   riga: { type: Object, default: null },
 })
 
-// Contenuto deferito a fine animazione (`feedback_content_ready_after_show`).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
-const onClose = useDrawerClose(emit)
 
 const titolo = computed(() =>
   t('amministrazione.error_log.dettaglio_titolo', { codice: props.riga?.codice ?? '' }),
@@ -40,15 +35,18 @@ const titolo = computed(() =>
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :header="titolo"
+    :title="titolo"
+    :icon="NAV_ICONS.ERROR_LOG"
+    :width="DRAWER_WIDTH.STANDARD"
+    :proteggi-corpo="false"
+    footer="chiudi"
     @update:visible="(v) => emit('update:visible', v)"
-    @after-show="onAfterShow"
   >
-    <div v-if="contentReady && riga" class="app-drawer-content">
+    <template v-if="riga">
       <div class="app-error-log-testata">
         <span class="app-mono app-error-log-funzione">{{ riga.function_name }}</span>
         <Tag v-if="riga.classe" :value="riga.classe" :severity="classeErroreSeverity(riga.classe)" />
@@ -92,10 +90,8 @@ const titolo = computed(() =>
         <JsonBlocco v-if="riga.context" :value="riga.context" />
         <span v-else>{{ t('amministrazione.error_log.dettaglio_context_vuoto') }}</span>
       </div>
-
-      <FormFooter close-only @cancel="onClose" />
-    </div>
-  </Drawer>
+    </template>
+  </AppDrawer>
 </template>
 
 <style scoped>

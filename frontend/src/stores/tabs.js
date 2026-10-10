@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, toRaw } from 'vue'
 import { TABS } from '../core/constants'
 import { session, STORAGE_KEYS } from '../core/storage'
-import { DOMAIN_MENUS, resolveTabIcon } from '../core/navigation'
+import { DOMAIN_MENUS, flattenMenu, resolveTabIcon } from '../core/navigation'
 
 let idCounter = 0
 
@@ -54,8 +54,7 @@ export const useTabsStore = defineStore('tabs', () => {
 
   function inferMenuKey(domain, path) {
     if (!domain || !DOMAIN_MENUS[domain]) return null
-    return DOMAIN_MENUS[domain]
-      .flatMap(item => item.children ? [item, ...item.children] : [item])
+    return flattenMenu(DOMAIN_MENUS[domain])
       .find(item => item.to === path)?.key || null
   }
 

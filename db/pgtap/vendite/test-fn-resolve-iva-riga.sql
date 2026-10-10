@@ -26,6 +26,10 @@
 --   trigger sul contratto (`uq_contratti_utilities_contratto_id` lo dimostra al
 --   primo tentativo). Si aggiorna.
 --
+-- ⛔ Dal 2026-10-04 bis (R-DB-C10) nessuna domanda prende un importo: i casi
+--   chiamano con p_imponibile NULL (l'anteprima) o con p_consumo. Un importo
+--   compare solo dove si prova che e' RIFIUTATO (12, 18).
+--
 -- ℹ️ Il guscio si chiama sempre lui, mai `_it` direttamente: e' il guscio che
 --   smista sul paese, e provare l'implementazione scavalcando il dispatcher
 --   vorrebbe dire non provare `D21`.
@@ -42,10 +46,13 @@
 -- 9)  Stadio B: un titolo sostituisce l aliquota ordinaria
 -- 10) ⭐ Fra due titoli vince il PIU SPECIFICO (D13)
 -- 11) ⛔ Due titoli in pari specificita: si SOLLEVA, non si sceglie a caso
--- 12) ⭐ Plafond incapiente: la riga si SPEZZA in due parti
--- 13) E le due parti sommano ESATTAMENTE l imponibile
+-- 12) ⛔ La proiezione e RITIRATA: un importo SOLLEVA, anche dove spezzerebbe
+-- 13) E sul titolo a tetto l anteprima resta una riga sola, quota NULL
 -- 14) is_reverse_charge arriva dalla NATURA (D22)
 -- 15) ⭐ Senza il soggetto la coppia esigibilita/split dice «non lo so» INSIEME
+-- 16) ⭐ CONSUMO (p_consumo, in coda): titolo a tetto -> DUE righe, prima il titolo, quota NULL
+-- 17) ⭐ CONSUMO a residuo zero: il titolo resta; l anteprima risponde con l ordinario
+-- 18) il consumo non prende un importo: p_consumo con p_imponibile SOLLEVA
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -62,7 +69,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(15);
+SELECT plan(18);
 
 -- ============================================================
 -- La fixture: si COSTRUISCE, non si cerca
@@ -160,10 +167,14 @@ BEGIN
 
   -- ── un soggetto SENZA titoli: i casi 9-12 ne fabbricano di propri, e uno
   --    gia' esistente li renderebbe illeggibili
+  --    ⭐ rev 2026-10-10: e con una NATURA. Un titolo su un soggetto senza
+  --    natura e' rifiutato (trgfn_soggetti_titoli_iva_guard_tipo_soggetto,
+  --    20261010-92, D-1 di brief-db-dati-fiscali-e-societari-del-soggetto).
   SELECT s.id INTO v_sogg
     FROM anagrafiche.soggetti s
    WHERE NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_titoli_iva t
                       WHERE t.soggetto_id = s.id)
+     AND s.tipo_soggetto_dettaglio_id IS NOT NULL
    ORDER BY s.id LIMIT 1;
 
   v_manca := NULLIF(concat_ws(', ',
@@ -196,7 +207,7 @@ SELECT is(
 -- ============================================================
 SELECT is(
   (SELECT r.origine FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', 100.00) r),
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL) r),
   'ARTICOLO'::varchar(16),
   '2) l articolo che dichiara un codice IVA decide da solo'
 );
@@ -211,7 +222,7 @@ SELECT is(
 --   codice sbagliato sarebbe verde e falsa.
 SELECT is(
   (SELECT r.origine || ':' || r.iva_id::text FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_muto, DATE '2026-06-15', 100.00,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_muto, DATE '2026-06-15', NULL,
                                               f.ba_id, f.utility_id) r),
   (SELECT 'TIPO_UTENZA:' || f.iva_tipo_utenza::text FROM tmp_fix f),
   '3) dove l articolo tace parla l uso della fornitura, e porta il SUO codice'
@@ -225,7 +236,7 @@ SELECT is(
 --   opinione», quindi applicato per primo si prenderebbe cauzioni e servizi.
 SELECT is(
   (SELECT r.origine FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', 100.00,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
                                               f.ba_id, f.utility_id) r),
   'ARTICOLO'::varchar(16),
   '4) con l articolo che parla, la fornitura NON lo scavalca'
@@ -238,7 +249,7 @@ SELECT is(
 --   Se il risolutore sollevasse qui, non si potrebbe piu' salvare una bozza.
 SELECT is(
   (SELECT r.origine || '/' || COALESCE(r.iva_id::text, 'NULL') FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_muto, DATE '2026-06-15', 100.00) r),
+          LATERAL vendite.fn_resolve_iva_riga(f.art_muto, DATE '2026-06-15', NULL) r),
   'ASSENTE/NULL',
   '5) articolo muto senza fornitura: origine ASSENTE e codice NULL, e NON solleva'
 );
@@ -266,7 +277,7 @@ SELECT ok(
       AND r.split_payment IS NOT NULL
       AND r.riferimento_normativo IS NOT NULL
      FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', 100.00,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
                                               NULL, NULL, f.soggetto_id, f.emittente_id) r),
   '6) col soggetto noto il composito esce pieno: aliquota, esigibilita, split e norma'
 );
@@ -291,7 +302,7 @@ SELECT is(
 -- ⚠️ `throws_ok` CON lo SQLSTATE: senza, accetterebbe qualunque errore, compreso
 --   un errore di sintassi in una riscrittura futura.
 SELECT throws_ok(
-  format('SELECT * FROM vendite.fn_resolve_iva_riga(%L::uuid, %L::date, 100.00,
+  format('SELECT * FROM vendite.fn_resolve_iva_riga(%L::uuid, %L::date, NULL,
                  NULL, NULL, NULL, NULL, %L::character(2))',
          (SELECT art_parla FROM tmp_fix), DATE '2026-06-15', 'DE'),
   'P0001',
@@ -302,6 +313,22 @@ SELECT throws_ok(
 -- ============================================================
 -- Stadio B: i titoli. Da qui in poi si fabbricano e si smontano.
 -- ============================================================
+-- ⭐ rev 2026-10-10 (brief-db-dati-fiscali-e-societari-del-soggetto, Parte D):
+--   un titolo vigente deve essere ammesso dalla natura del titolare (matrice
+--   config.tipi_titolo_iva_tipi_soggetto_dettaglio, guard 20261010-92). Questo
+--   file mette QUATTRO tipi sullo stesso soggetto per misurare il risolutore
+--   (specificita', parita', plafond), e nessuna natura reale li ammette tutti:
+--   l'agevolazione L. 104 e' solo del privato, l'intento mai. Dentro la
+--   transazione la natura del soggetto della fixture li ammette tutti e quattro;
+--   la regola della matrice la misura anagrafiche/test-soggetti-titoli-iva-tipo-soggetto-v1.
+INSERT INTO config.tipi_titolo_iva_tipi_soggetto_dettaglio
+    (tipo_titolo_iva_id, tipo_soggetto_dettaglio_id, attivo)
+SELECT tt.id, s.tipo_soggetto_dettaglio_id, true
+  FROM tmp_fix f
+  JOIN anagrafiche.soggetti s ON s.id = f.soggetto_id
+ CROSS JOIN config.tipi_titolo_iva tt
+ WHERE tt.codice_interno IN ('USO_INDUSTRIALE', 'AGEVOLATA_104', 'COOPERATIVA', 'INTENTO')
+ON CONFLICT (tipo_titolo_iva_id, tipo_soggetto_dettaglio_id) DO UPDATE SET attivo = true;
 -- ⚠️ Ogni caso riparte da zero titoli: due casi che si lasciano dietro il
 --   proprio dato si verificano a vicenda, e il primo che sbaglia rende
 --   illeggibile il secondo.
@@ -318,7 +345,7 @@ SELECT f.soggetto_id, f.emittente_id,
 
 SELECT is(
   (SELECT r.origine || ':' || r.iva_id::text FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', 100.00,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
                                               NULL, NULL, f.soggetto_id, f.emittente_id) r),
   (SELECT 'TITOLO:' || id::text FROM config.iva WHERE codice_interno = 'NI35'),
   '9) un titolo valido sostituisce l aliquota che l articolo avrebbe portato'
@@ -344,7 +371,7 @@ SELECT t.id, 'ARTICOLO', f.art_parla, jsonb_build_object('test_scope', 'pgtap_re
 
 SELECT is(
   (SELECT r.iva_id FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', 100.00,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
                                               NULL, NULL, f.soggetto_id, f.emittente_id) r),
   (SELECT id FROM config.iva WHERE attivo IS TRUE AND aliquota_iva = 10 ORDER BY id LIMIT 1),
   '10) fra il titolo su TUTTO e quello sul singolo articolo vince il PIU SPECIFICO'
@@ -370,7 +397,7 @@ SELECT f.soggetto_id, f.emittente_id,
 --   piu' basso per id sarebbe una risposta arbitraria su un dato fiscale, e
 --   nessuno saprebbe mai che c'era una scelta da fare.
 SELECT throws_ok(
-  format('SELECT * FROM vendite.fn_resolve_iva_riga(%L::uuid, %L::date, 100.00,
+  format('SELECT * FROM vendite.fn_resolve_iva_riga(%L::uuid, %L::date, NULL,
                  NULL, NULL, %L::uuid, %s::bigint)',
          (SELECT art_parla FROM tmp_fix), DATE '2026-06-15',
          (SELECT soggetto_id FROM tmp_fix), (SELECT emittente_id FROM tmp_fix)),
@@ -379,7 +406,7 @@ SELECT throws_ok(
   '11) due titoli in pari specificita SOLLEVANO: non si sceglie a caso su un dato fiscale'
 );
 
--- ── 12/13) ⭐ plafond incapiente: la riga si SPEZZA
+-- ── 12/13) un titolo a tetto con plafond incapiente: la proiezione non c'e' piu'
 DELETE FROM anagrafiche.soggetti_titoli_iva
  WHERE meta->>'test_scope' = 'pgtap_resolve_iva';
 
@@ -393,26 +420,31 @@ SELECT f.soggetto_id, f.emittente_id,
        jsonb_build_object('test_scope', 'pgtap_resolve_iva')
   FROM tmp_fix f;
 
--- ⚠️ 250 su un plafond di 100: la parte coperta va in NI35, il resto torna
---   all'aliquota ordinaria. Una riga sola qui sarebbe una fattura sbagliata.
-SELECT is(
-  (SELECT string_agg(r.origine || '=' || r.quota::text, ' + ' ORDER BY r.quota DESC)
-     FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', 250.00,
-                                              NULL, NULL, f.soggetto_id, f.emittente_id) r),
-  'ARTICOLO=150.00 + TITOLO=100.00',
-  '12) plafond incapiente: la riga si spezza, coperto in TITOLO e resto in ARTICOLO'
+-- ⛔ rev 2026-10-04 bis (R-DB-C10, 20261004-15): la PROIEZIONE sul residuo e'
+--   RITIRATA. Questi due casi provavano la spezzatura con un importo (250 su
+--   un plafond di 100 -> 100 al titolo e 150 all'ordinaria); ora l'importo e'
+--   rifiutato, e la spezzatura la decide solo la madre del consumo sul netto.
+-- ⚠️ Il caso e' costruito DOVE la proiezione avrebbe risposto qualcosa di
+--   plausibile (titolo a tetto, plafond incapiente): un rifiuto provato su un
+--   articolo senza titolo non direbbe che il ramo e' davvero sparito.
+SELECT throws_like(
+  format('SELECT * FROM vendite.fn_resolve_iva_riga(%L::uuid, %L::date, 250.00,
+                 NULL, NULL, %L::uuid, %s::bigint)',
+         (SELECT art_parla FROM tmp_fix), DATE '2026-06-15',
+         (SELECT soggetto_id FROM tmp_fix), (SELECT emittente_id FROM tmp_fix)),
+  '%imponibile%',
+  '12) la proiezione e ritirata: un importo, senza consumo, SOLLEVA invece di spezzare'
 );
 
--- ⭐ L'invariante che rende la spezzatura sicura: qualunque cosa decida il
---   risolutore, la somma delle parti e' l'imponibile di partenza. Senza, uno
---   sbaglio di arrotondamento farebbe sparire denaro dalla fattura.
+-- ⭐ E sullo stesso titolo a tetto l'anteprima resta quella di sempre: UNA riga,
+--   il trattamento del primo euro (residuo 100 > 0 -> il titolo), quota NULL.
 SELECT is(
-  (SELECT sum(r.quota) FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', 250.00,
+  (SELECT string_agg(r.origine || ':' || COALESCE(r.quota::text, 'NULL'), ' + ')
+     FROM tmp_fix f,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
                                               NULL, NULL, f.soggetto_id, f.emittente_id) r),
-  250.00::numeric,
-  '13) le parti sommano ESATTAMENTE l imponibile di partenza'
+  'TITOLO:NULL',
+  '13) titolo a tetto, anteprima: una riga sola, il titolo, quota NULL'
 );
 
 -- ============================================================
@@ -435,7 +467,7 @@ SELECT CASE
        FROM catalogo.articoli a
        JOIN config.iva i ON i.id = a.iva_id
        JOIN config.iva_natura n ON n.id = i.natura_iva_id AND n.is_reverse_charge
-      CROSS JOIN LATERAL vendite.fn_resolve_iva_riga(a.id, DATE '2026-06-15', 100.00) r
+      CROSS JOIN LATERAL vendite.fn_resolve_iva_riga(a.id, DATE '2026-06-15', NULL) r
       ORDER BY a.id LIMIT 1),
     true,
     '14) il flag di inversione contabile arriva dalla natura, non dal prefisso del codice'
@@ -462,17 +494,84 @@ END;
 SELECT is(
   (SELECT COALESCE(r.esigibilita::text, 'NULL') || '/' || COALESCE(r.split_payment::text, 'NULL')
      FROM tmp_fix f,
-          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', 100.00) r),
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL) r),
   'NULL/NULL',
   '15) senza soggetto esigibilita e split escono ENTRAMBI NULL: la coppia dice «non lo so» insieme'
 );
 
 -- ============================================================
+-- 16-18) ⭐ La domanda di CONSUMO (decisione C, 2026-10-04)
+-- ============================================================
+-- ⚠️ p_consumo e' un parametro NUOVO in coda alla firma (20261004-03/-04): i
+--   casi qui sopra non cambiano. Per nominarlo si passano tutti quelli prima,
+--   per posizione, come fa il backend. Il titolo a tetto e' quello del 12-13
+--   (INTENTO, NI35, plafond 100). Nel consumo il risolutore dice QUALE titolo
+--   e i DUE trattamenti, sempre e nell'ordine: quanto copre lo decide la madre
+--   del consumo sul NETTO della fattura (brief-db-bom-flag-quantita-e-kit-in-
+--   fattura §13.4). L'ordine si legge da WITH ORDINALITY, non dai valori.
+SELECT is(
+  (SELECT string_agg(r.origine || ':' || r.iva_id::text || ':' || COALESCE(r.quota::text, 'NULL'),
+                     ' + ' ORDER BY r.n)
+     FROM tmp_fix f,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
+                                              NULL, NULL, f.soggetto_id, f.emittente_id,
+                                              NULL, NULL, NULL, true)
+                  WITH ORDINALITY AS r(quota, iva_id, aliquota, natura_codice, is_reverse_charge,
+                                       esigibilita, split_payment, riferimento_normativo,
+                                       origine, titolo_iva_id, n)),
+  (SELECT 'TITOLO:' || (SELECT id FROM config.iva WHERE codice_interno = 'NI35')::text
+          || ':NULL + ARTICOLO:' || a.iva_id::text || ':NULL'
+     FROM tmp_fix f JOIN catalogo.articoli a ON a.id = f.art_parla),
+  '16) consumo con titolo a tetto: due righe, prima il titolo e poi l ordinario, quota NULL'
+);
+
+-- ⭐ Residuo zero (una forzatura che consuma tutto il plafond): il CONSUMO vede
+--   ancora il titolo — e' la madre a dire che non copre piu' niente, e una riga
+--   negativa della stessa fattura potrebbe restituire capienza — mentre
+--   l'ANTEPRIMA risponde con l'ordinario, il trattamento del primo euro.
+INSERT INTO anagrafiche.soggetti_titoli_iva_movimenti
+    (titolo_iva_id, tipo_movimento, imponibile, data_movimento, motivo)
+SELECT t.id, 'FORZATURA', 100.00, DATE '2026-03-01', 'pgTAP: plafond esaurito'
+  FROM anagrafiche.soggetti_titoli_iva t
+ WHERE t.meta->>'test_scope' = 'pgtap_resolve_iva';
+
+SELECT is(
+  (SELECT string_agg(r.origine, '+' ORDER BY r.n)
+     FROM tmp_fix f,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
+                                              NULL, NULL, f.soggetto_id, f.emittente_id,
+                                              NULL, NULL, NULL, true)
+                  WITH ORDINALITY AS r(quota, iva_id, aliquota, natura_codice, is_reverse_charge,
+                                       esigibilita, split_payment, riferimento_normativo,
+                                       origine, titolo_iva_id, n))
+  || ' / ' ||
+  (SELECT string_agg(r.origine, '+')
+     FROM tmp_fix f,
+          LATERAL vendite.fn_resolve_iva_riga(f.art_parla, DATE '2026-06-15', NULL,
+                                              NULL, NULL, f.soggetto_id, f.emittente_id) r),
+  'TITOLO+ARTICOLO / ARTICOLO',
+  '17) a residuo zero il consumo vede ancora il titolo, l anteprima risponde con l ordinario'
+);
+
+-- ⚠️ Il consumo non prende un importo: quanto copre il titolo lo decide la
+--   madre sul netto. Dal 20261004-15 lo rifiuta lo stesso guard del 12 (nessuna
+--   domanda prende un importo): il caso resta, perche' e' la combinazione che
+--   un chiamante del giro scriverebbe per errore.
+SELECT throws_like(
+  format('SELECT * FROM vendite.fn_resolve_iva_riga(%L::uuid, %L::date, 100.00,
+                 NULL, NULL, NULL, NULL, NULL, NULL, NULL, true)',
+         (SELECT art_parla FROM tmp_fix), DATE '2026-06-15'),
+  '%imponibile%',
+  '18) il consumo non prende un importo: p_consumo con p_imponibile solleva'
+);
+
+-- ============================================================
 -- Smontaggio (la transazione si chiude comunque in ROLLBACK)
 -- ============================================================
+-- ⚠️ I titoli non si cancellano piu' (dal 2026-10-04): il caso 17 scrive una
+--   FORZATURA, e il registro e' append-only, quindi un titolo con movimenti
+--   non si cancella. Il ROLLBACK porta via tutto.
 DELETE FROM anagrafiche.soggetti_titoli_iva_ambiti
- WHERE meta->>'test_scope' = 'pgtap_resolve_iva';
-DELETE FROM anagrafiche.soggetti_titoli_iva
  WHERE meta->>'test_scope' = 'pgtap_resolve_iva';
 
 SELECT * FROM finish();

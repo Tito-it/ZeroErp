@@ -118,7 +118,7 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
 | SQL: naming, chiavi, audit, indici, RLS, divieti dei changeSet (§11) | [linee-guida-sql.md](../docs/it/linee-guida-sql.md) |
 | Trigger | [linee-guida-trigger.md](../docs/it/linee-guida-trigger.md) |
 | Liquibase: struttura, master, naming dei file | [liquibase-setup-workflow.md](../docs/it/liquibase-setup-workflow.md) |
-| Sicurezza: strumenti (ruff, gitleaks, audit, `check --deploy`), segreti e `.env`, mappa dei presidi a runtime | [sicurezza-e-qualita-statica.md](../docs/it/dev/sicurezza-e-qualita-statica.md) |
+| Sicurezza e qualità statica: strumenti (ruff, mypy, gitleaks, audit, `check --deploy`), segreti e `.env`, mappa dei presidi a runtime | [sicurezza-e-qualita-statica.md](../docs/it/dev/sicurezza-e-qualita-statica.md) |
 | Codici e messaggi di errore | [Messaggi di Errore e Generazione Log](../docs/it/guide/Messaggi-di-Errore-e-Generazione-Log.md) |
 | pgTAP: template, preambolo, baseline, CI | [pgtap-come-si-scrive-un-test](../docs/it/guide/pgtap-come-si-scrive-un-test.md) |
 | Guide, pagine `manual/`, build della doc | [standard-guide.md](../docs/it/dev/standard-guide.md) |
@@ -138,6 +138,7 @@ sede al primo aggiornamento, e allora questo file diventa fuorviante.
 | --- | --- |
 | Python | `.python-version` (la leggono CI e `Dockerfile`) |
 | Dipendenze backend | `backend/requirements.in`; il lock `backend/requirements.txt` si rigenera con `pip-compile backend/requirements.in --output-file backend/requirements.txt` |
+| Strumenti di sviluppo del backend (mypy e stub) | `backend/requirements-dev.in` → `requirements-dev.txt`, vincolato al lock del backend; stessa venv, **fuori** dall'immagine Docker. I due lock li aggiorna insieme `backend/scripts/update-venv.sh` |
 | Strumenti dev e doc | `requirements.txt` in radice (`scripts/update-venv.sh`) |
 | Frontend e Node | `frontend/package.json` (`engines.node`, via nvm) |
 
@@ -189,12 +190,13 @@ e muore in CI. Il perché e i casi reali sono in
 | --- | --- | --- |
 | `runOnChange: true` in `00_schema`/`20_code` (e `validCheckSums` al plurale) | 11.1 | `guardrail_run_on_change.py` |
 | cambiare un dato di `80_data` con un `UPDATE` invece che dal CSV | 11.2 | — |
-| una `preCondition` di `00_schema`/`20_code` sul contenuto di `80_data` | 11.4 | `guardrail_precondition_seed.py` |
+| una `preCondition` di `00_schema`/`20_code`/`70_dati_sistema` sul contenuto di `80_data` | 11.4 | `guardrail_precondition_seed.py` |
 | DDL o `preCondition` su un trigger generato da `ci_apply` | 11.5 | `guardrail_ddl_su_trigger_automazione.py` |
 | `GRANT` a un ruolo batch in un changeSet | 11.6 | `guardrail_grant_ruolo_batch.py` |
 | un seed di macchina non dichiarato (`context: dati_macchina`) | 11.7 | — |
 | un `REVOKE` a `zeroerp_app` fuori dal loop dei grant | 11.8 | pgTAP di postura |
 | un privilegio dato a mano su una sola macchina | 11.9 | pgTAP di postura |
+| un file della prima generazione (`baseline/`, `migrations/`) aggiunto, tolto o modificato | 11.11 | `guardrail_v1_congelato.py` |
 
 ## Documentazione
 

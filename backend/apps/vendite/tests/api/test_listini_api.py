@@ -31,6 +31,7 @@ Indice test eseguiti:
 22) VenditeListiniApiTests.test_list_listini_filter_tipologia_id
 23) VenditeListiniApiTests.test_tipologie_per_utility_ok
 24) VenditeListiniApiTests.test_tipologie_per_utility_missing_param
+25) VenditeListiniApiTests.test_alert_scadenze_default_e_parametro
 """
 
 import json
@@ -327,3 +328,17 @@ class VenditeListiniApiTests(JwtMockedApiTest):
             "/api/v1/vendite/listini/tipologie-per-utility/?utility_id="
         )
         self.assertEqual(response.status_code, 400)
+
+    # Scopo: l'alert scadenze risponde, col default (15) e col parametro. Fino al
+    #        2026-10-09 rispondeva 400 a ogni chiamata: la view passava la request
+    #        a `qp_int_strict` invece del valore (trovato da mypy).
+    @patch("rest_framework_simplejwt.authentication.JWTAuthentication.authenticate", return_value=(Mock(), None))
+    @patch("apps.vendite.api.views_listini.fn_alert_scadenze")
+    def test_alert_scadenze_default_e_parametro(self, mocked_alert, _mock_auth):
+        mocked_alert.return_value = {"count": 0, "results": []}
+        response = self.client.get("/api/v1/vendite/listini/alert-scadenze/")
+        self.assertEqual(response.status_code, 200)
+        mocked_alert.assert_called_with(15)
+        response = self.client.get("/api/v1/vendite/listini/alert-scadenze/?giorni=30")
+        self.assertEqual(response.status_code, 200)
+        mocked_alert.assert_called_with(30)

@@ -10,7 +10,7 @@ Indice test eseguiti:
 1) test_crea_preventivo_ok — creazione con campi minimi
 2) test_crea_preventivo_utility_mancante — validazione utility obbligatoria
 3) test_aggiorna_preventivo_ok — aggiornamento in BOZZA
-4) test_aggiorna_preventivo_stato_non_modificabile — guard su stato EMESSO
+4) test_aggiorna_preventivo_fuori_bozza_decide_il_db — EMESSO: nessun guard Python, decide il lock DB
 5) test_gestisci_riga_ok — aggiunta riga in BOZZA con ricalcolo totali
 5b) test_gestisci_riga_padre_composito_prezzo_default_zero — composito senza prezzo → 0 placeholder
 5c) test_gestisci_riga_non_composito_senza_prezzo_solleva — non composito + prezzo None → E_PREV_VALIDAZIONE
@@ -106,6 +106,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.service_errors import ServiceError
 from apps.vendite.services._componenti_service_helpers import (
     normalize_componenti_attivazioni,
@@ -171,9 +172,10 @@ class TestPreventiviService(unittest.TestCase):
         self.MockIva.return_value = (None, {})
         self.addCleanup(self.iva_patcher.stop)
 
-        # Mock BB anagrafiche usati da crea_preventivo per validator dominio
-        # (post brief DB rev2: derivazione istanza dal BA + pre-check coerenza
-        # utility/istanza). Default: coerenza ok, BA → istanza id=100.
+        # Mock del repository BA usato da `_risolvi_cliente_preventivo`: il
+        # cliente del preventivo e' la coppia (istanza, utility) col suo BA
+        # (brief-db-istanza-nasce-col-ba, R-2). Default: BA → istanza id=100,
+        # la coppia ha il BA id=42.
         self.ba_repo_patcher = patch(
             "apps.vendite.services.preventivi_service.BillingAccountRepository"
         )
@@ -181,14 +183,14 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_ba_repo = MagicMock()
         self.MockBaRepoClass.return_value = self.mock_ba_repo
         self.mock_ba_repo.get_istanza_utility_id.return_value = 100
-
-        self.iu_repo_patcher = patch(
-            "apps.vendite.services.preventivi_service.IstanzeUtilityRepository"
+        self.mock_ba_repo.get_id_by_coppia.return_value = 42
+        # Lo stesso repository visto dal BB `istanza_del_billing_account`, che
+        # legge l'istanza del BA nel suo modulo.
+        self.ba_bb_patcher = patch(
+            "apps.anagrafiche.services.billing_account_service.BillingAccountRepository",
+            self.MockBaRepoClass,
         )
-        self.MockIuRepoClass = self.iu_repo_patcher.start()
-        self.mock_iu_repo = MagicMock()
-        self.MockIuRepoClass.return_value = self.mock_iu_repo
-        self.mock_iu_repo.check_utility_istanza_coerenza.return_value = True
+        self.ba_bb_patcher.start()
 
         # Default: lookup config
         self.mock_repo.get_stato_bozza_id.return_value = 1
@@ -238,7 +240,7 @@ class TestPreventiviService(unittest.TestCase):
     def tearDown(self):
         self.repo_patcher.stop()
         self.ba_repo_patcher.stop()
-        self.iu_repo_patcher.stop()
+        self.ba_bb_patcher.stop()
         self.atomic_patcher.stop()
         self.emittente_patcher.stop()
         self.emittente_safe_patcher.stop()
@@ -246,7 +248,8 @@ class TestPreventiviService(unittest.TestCase):
 
     # ── Creazione ──
 
-    # Scopo: Verifica creazione preventivo con campi minimi.
+    # Scopo: Verifica creazione preventivo con campi minimi: con la sola istanza
+    # il BA e' quello della coppia (istanza, utility), letto per chiave.
     def test_crea_preventivo_ok(self):
         from apps.vendite.services.preventivi_service import crea_preventivo
 
@@ -257,11 +260,10 @@ class TestPreventiviService(unittest.TestCase):
             "utility_id": 5, "istanza_utility_id": 100,
         })
         self.assertEqual(result["id"], 1)
-        self.mock_repo.create_preventivo.assert_called_once()
-        # Pre-check coerenza eseguito (defense-in-depth lato service).
-        self.mock_iu_repo.check_utility_istanza_coerenza.assert_called_once_with(
-            100, 5,
-        )
+        self.mock_ba_repo.get_id_by_coppia.assert_called_once_with(100, 5)
+        kwargs = self.mock_repo.create_preventivo.call_args.kwargs
+        self.assertEqual(kwargs["billing_account_id"], 42)
+        self.assertEqual(kwargs["istanza_utility_id"], 100)
 
     # Scopo: Verifica errore se utility_id mancante.
     def test_crea_preventivo_utility_mancante(self):
@@ -271,8 +273,8 @@ class TestPreventiviService(unittest.TestCase):
             crea_preventivo({})
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
 
-    # Scopo: Verifica errore se istanza_utility_id mancante e nessun BA da cui
-    # derivarla (regola di dominio post brief DB rev2: istanza obbligatoria).
+    # Scopo: Verifica errore se ne' BA ne' istanza: il cliente del preventivo
+    # non si ricava da niente.
     def test_crea_preventivo_istanza_mancante(self):
         from apps.vendite.services.preventivi_service import crea_preventivo
 
@@ -294,27 +296,76 @@ class TestPreventiviService(unittest.TestCase):
         }
         crea_preventivo({"utility_id": 5, "billing_account_id": 42})
         self.mock_ba_repo.get_istanza_utility_id.assert_called_once_with(42)
-        # L'istanza derivata viene passata sia al check coerenza sia all'INSERT.
-        self.mock_iu_repo.check_utility_istanza_coerenza.assert_called_once_with(
-            200, 5,
-        )
+        # La coerenza della coppia si legge con l'istanza derivata.
+        self.mock_ba_repo.get_id_by_coppia.assert_called_once_with(200, 5)
         kwargs = self.mock_repo.create_preventivo.call_args.kwargs
         self.assertEqual(kwargs["istanza_utility_id"], 200)
         self.assertEqual(kwargs["billing_account_id"], 42)
 
-    # Scopo: Pre-check coerenza utility/istanza (defense-in-depth lato service):
-    # se la coppia (istanza, utility) non e' dichiarata in BA / IDP / clienti
-    # → errore parlante PRIMA del trigger DB.
+    # Scopo: la coppia (istanza, utility) senza BA: la utility non e'
+    # dichiarata sull'istanza → errore parlante PRIMA del trigger DB.
     def test_crea_preventivo_utility_istanza_incoerente(self):
         from apps.vendite.services.preventivi_service import crea_preventivo
 
-        self.mock_iu_repo.check_utility_istanza_coerenza.return_value = False
+        self.mock_ba_repo.get_id_by_coppia.return_value = None
         with self.assertRaises(ServiceError) as ctx:
             crea_preventivo({
                 "utility_id": 5, "istanza_utility_id": 100,
             })
         self.assertEqual(ctx.exception.code, "E_PREV_UTILITY_ISTANZA_INCOERENTE")
         self.mock_repo.create_preventivo.assert_not_called()
+
+    # Scopo: BA che non e' quello della coppia (istanza, utility) → errore sul
+    # campo del BA, prima dell'INSERT. Anche quando la coppia non ha BA: e'
+    # il BA a essere fuori posto, non la utility.
+    def test_crea_preventivo_ba_fuori_coppia_rifiutato(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        for ba_della_coppia in (42, None):
+            with self.subTest(ba_della_coppia=ba_della_coppia):
+                self.mock_ba_repo.get_id_by_coppia.return_value = ba_della_coppia
+                with self.assertRaises(ServiceError) as ctx:
+                    crea_preventivo({
+                        "utility_id": 5, "istanza_utility_id": 100, "billing_account_id": 7,
+                    })
+                self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+                self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+        self.mock_repo.create_preventivo.assert_not_called()
+
+    # Scopo: BA di un'istanza diversa da quella indicata → errore sul BA (BB
+    # `istanza_del_billing_account`, lo stesso della pratica), senza leggere
+    # la coppia. Prima della regola del 2 il preventivo non lo controllava.
+    def test_crea_preventivo_ba_di_altra_istanza_rifiutato(self):
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        with self.assertRaises(ServiceError) as ctx:
+            crea_preventivo({
+                "utility_id": 5, "istanza_utility_id": 999, "billing_account_id": 42,
+            })
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+        self.mock_ba_repo.get_id_by_coppia.assert_not_called()
+        self.mock_repo.create_preventivo.assert_not_called()
+
+    # Scopo: la FK composta fk_preventivi_ba_coppia, se scatta comunque (il BA
+    # cambia coppia fra la lettura e l'INSERT), arriva come errore parlante sul
+    # campo del BA, non come 500.
+    def test_crea_preventivo_ba_di_altra_coppia_tradotto(self):
+        from django.db import IntegrityError
+
+        from apps.vendite.services.preventivi_service import crea_preventivo
+
+        self.mock_ba_repo.get_id_by_coppia.return_value = 7
+        self.mock_repo.create_preventivo.side_effect = IntegrityError(
+            'insert or update on table "preventivi" violates foreign key '
+            'constraint "fk_preventivi_ba_coppia"'
+        )
+        with self.assertRaises(ServiceError) as ctx:
+            crea_preventivo({
+                "utility_id": 5, "istanza_utility_id": 100, "billing_account_id": 7,
+            })
+        self.assertEqual(ctx.exception.code, "E_VENDITE_FK")
+        self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
 
     # Scopo: emittente_fiscale_id esplicito (caso admin globale) viene passato
     # al repository senza alterazioni. Il trigger DB BEFORE INSERT lo lascia
@@ -402,7 +453,7 @@ class TestPreventiviService(unittest.TestCase):
         # competenza=primo del mese corrente (oggi.replace(day=1)).
         kwargs = self.mock_repo.update_preventivo.call_args.kwargs
         self.assertTrue(kwargs["fatturazione_immediata"])
-        expected = date.today().replace(day=1)
+        expected = oggi_aziendale().replace(day=1)
         self.assertEqual(kwargs["competenza_mese"], expected)
         self.mock_repo.cambia_stato.assert_called_once_with(
             1, "ACCETTATO", "django_api",
@@ -693,17 +744,53 @@ class TestPreventiviService(unittest.TestCase):
         self.mock_repo.update_preventivo.return_value = True
         result = aggiorna_preventivo(1, {"validita_dal": "2026-04-01"})
         self.assertEqual(result["status"], "ok")
+        # Il cliente non e' nel payload: la coppia non si rilegge.
+        self.mock_ba_repo.get_id_by_coppia.assert_not_called()
 
-    # Scopo: Verifica guard su stato EMESSO.
-    def test_aggiorna_preventivo_stato_non_modificabile(self):
+    # Scopo: il cliente si cambia per coppia — col solo BA nel payload l'istanza
+    # e' la sua, con la utility (immutabile) della testata. Senza, l'UPDATE
+    # lascerebbe l'istanza vecchia e la FK composta lo rifiuterebbe.
+    def test_aggiorna_preventivo_cambio_ba_porta_l_istanza(self):
         from apps.vendite.services.preventivi_service import aggiorna_preventivo
 
         self.mock_repo.get_preventivo.return_value = {
-            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc",
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc", "utility_id": 5,
         }
+        self.mock_ba_repo.get_istanza_utility_id.return_value = 300
+        aggiorna_preventivo(1, {"billing_account_id": 42})
+        self.mock_ba_repo.get_id_by_coppia.assert_called_once_with(300, 5)
+        kwargs = self.mock_repo.update_preventivo.call_args.kwargs
+        self.assertEqual(kwargs["billing_account_id"], 42)
+        self.assertEqual(kwargs["istanza_utility_id"], 300)
+
+    # Scopo: in modifica la utility e' immutabile: un BA di un'altra utility
+    # (la coppia della testata non ha BA) e' un errore sul BA, mai «utility non
+    # coerente» su un campo che l'operatore non puo' toccare.
+    def test_aggiorna_preventivo_ba_altra_utility_errore_sul_ba(self):
+        from apps.vendite.services.preventivi_service import aggiorna_preventivo
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "DRAFT", "uid": "abc", "utility_id": 5,
+        }
+        self.mock_ba_repo.get_istanza_utility_id.return_value = 300
+        self.mock_ba_repo.get_id_by_coppia.return_value = None
         with self.assertRaises(ServiceError) as ctx:
-            aggiorna_preventivo(1, {"validita_dal": "2026-04-01"})
-        self.assertEqual(ctx.exception.code, "E_PREV_STATO_NON_MODIFICABILE")
+            aggiorna_preventivo(1, {"billing_account_id": 42})
+        self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(ctx.exception.context.get("field"), "billing_account_id")
+        self.mock_repo.update_preventivo.assert_not_called()
+
+    # Scopo: Preventivo EMESSO: quali colonne si cambiano lo dice il lock di
+    #        testata del DB (brief-db-testata-dopo-emissione, D-0): il service
+    #        non ha piu' un «solo in DRAFT» e passa la scrittura.
+    def test_aggiorna_preventivo_fuori_bozza_decide_il_db(self):
+        from apps.vendite.services.preventivi_service import aggiorna_preventivo
+
+        self.mock_repo.get_preventivo.return_value = {
+            "id": 1, "stato_codice_interno": "EMESSO", "uid": "abc", "utility_id": 3,
+        }
+        aggiorna_preventivo(1, {"meta": {"nota": "x"}})
+        self.mock_repo.update_preventivo.assert_called_once_with(1, meta={"nota": "x"})
 
     # ── Righe ──
 
@@ -2827,9 +2914,9 @@ class TestCoerceMetaToDict(unittest.TestCase):
 class TestPreventiviRepository(unittest.TestCase):
     # Scopo: Verifica che la lettura righe escluda le righe soft-delete
     #        (`attivo=false`), evitando che la UI mostri righe gia' eliminate.
-    # ⚠️ La query nasce nel BB `RigheDocumentoRepositoryMixin` (2026-09-28):
+    # ⚠️ La query nasce nel BB core `RigheListaCompletaMixin` (2026-10-04):
     #    la connessione si sostituisce la', non nel modulo del repository.
-    @patch("apps.vendite.db._righe_repo_mixin.connection")
+    @patch("apps.core.db.righe_lista_mixin.connection")
     def test_repository_list_righe_filtra_solo_attive(self, mock_connection):
         from apps.vendite.db.preventivi_repository import PreventiviRepository
 

@@ -1,6 +1,6 @@
-id,tipo_soggetto_id,stato_iso2,codice_interno,descrizione,formato_cf,formato_piva,user_insert,data_insert,user_update,data_update,stato_id,dati_societari_policy,piva_obbligatoria,cf_obbligatorio
-1,PF,IT,PR,Persona Fisica - Privato,ALFANUM_16,NON_APPLICABILE,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,NONE,f,t
-4,PG,IT,SP,Società di Persone,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,OPTIONAL,t,t
-3,PG,IT,SC,Società di Capitali,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,REQUIRED,t,t
-5,ENC,IT,ENC,Ente non Commerciale,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,OPTIONAL,t,t
-2,PF,IT,DI,Persona Fisica - Ditta Individuale,ALFANUM_16,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,OPTIONAL,t,t
+id,tipo_soggetto_id,stato_iso2,codice_interno,descrizione,formato_cf,formato_piva,user_insert,data_insert,user_update,data_update,stato_id,dati_societari_policy,piva_obbligatoria,cf_obbligatorio,sesso_policy,cliente_pa_ammesso,split_payment_ammesso
+1,PF,IT,PR,Persona Fisica - Privato,ALFANUM_16,NON_APPLICABILE,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,NONE,f,t,REQUIRED,f,f
+4,PG,IT,SP,Società di Persone,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,OPTIONAL,t,t,NONE,f,t
+3,PG,IT,SC,Società di Capitali,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,REQUIRED,t,t,NONE,f,t
+5,ENC,IT,ENC,Ente non Commerciale,NUM_11,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,OPTIONAL,t,t,NONE,t,t
+2,PF,IT,DI,Persona Fisica - Ditta Individuale,ALFANUM_16,NUM_11,titodb,2025-07-13 23:53:47.944615+02,titodb,2026-01-16 16:02:09.179221+01,1,OPTIONAL,t,t,OPTIONAL,f,f

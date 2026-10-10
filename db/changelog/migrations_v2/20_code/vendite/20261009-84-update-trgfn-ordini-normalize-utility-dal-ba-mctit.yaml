@@ -1,0 +1,140 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA UTILITY DELL'ORDINE LA DICE IL SUO BILLING ACCOUNT
+#   vendite.trgfn_ordini_normalize: punto 3, utility_id dal BA se il chiamante
+#   non la dice (INSERT).
+#   Brief: brief-db-esecutivi-ba-coppia (§5.1, D-5)
+#
+# -- PERCHE' --------------------------------------------------------
+#   D-5: la copia in testata si LEGA al BA, non si ritira. Il legame lo fa la
+#   FK fk_ordini_ba_cliente (20261009-64), che rifiuta un valore diverso; ma
+#   col NOT NULL nuovo pretenderebbe anche che ogni chiamante RIPETA la
+#   utility che il BA gia' dice. E' la forma che anagrafiche.clienti ha gia'
+#   (trgfn_clienti_sync_utility_from_ba: la copia se manca, il rifiuto se
+#   dissente) e che il DDT da ordine ha gia' (trgfn_ddt_normalize prende la
+#   utility dal BA): una copia la scrive chi la conosce.
+#   Censimento del 2026-10-09: una cinquantina di fixture pgTAP creano ordini
+#   col BA e senza utility. Non e' il motivo — la regola sta in piedi sul
+#   modello senza contarli — e' il controesempio che l'ha fatta vedere.
+#   ⚠️ Solo INSERT: il BA dell'ordine e' bloccato, la utility non ha un
+#   «dopo» da seguire.
+#
+# Corpo: pg_get_functiondef del corpo vivo (= doc auto-gen, 2026-10-09), con
+# il solo punto 3.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-84-update-trgfn-ordini-normalize-utility-dal-ba-mctit.yaml
+
+  - changeSet:
+      id: 20261009-84-update-trgfn-ordini-normalize-utility-dal-ba
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_ordini_normalize: la utility dell'ordine, se il chiamante non la dice, e'
+        quella del billing account. Brief: brief-db-esecutivi-ba-coppia (D-5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_ordini_normalize()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_fatturazione_ordini anagrafiche.billing_account.fatturazione_ordini%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Normalizzazione campi ordine su INSERT.
+                --
+                -- Regole:
+                --   1. Imposta anno/data se numero presente e valori mancanti.
+                --   2. fatturazione_trigger: la TESTATA ha la precedenza; il
+                --      billing_account e' il ripiego. SOLO su INSERT.
+                --   3. utility_id dal billing account se il chiamante non la
+                --      dice (rev 2026-10-09). SOLO su INSERT.
+                --
+                -- Nota (DB-ORD-LOCK 2026-06-04): billing_account_id e'
+                --   immutabile su UPDATE (automation_lock_columns ->
+                --   script.trgfn_lock_columns, codice E_ORD_CLIENTE_IMMUTABILE).
+                --   Non esiste piu' un "cambio BA su UPDATE" da propagare, quindi
+                --   il vecchio ramo UPDATE e' stato rimosso (era irraggiungibile:
+                --   il lock in fase a10 scatta prima di questo trigger).
+                -- =========================================================
+
+                IF TG_OP = 'INSERT' THEN
+                  ----------------------------------------------------------------
+                  -- 1. Imposta anno/data se numero e' presente e anno/data mancanti
+                  IF NEW.numero IS NOT NULL AND btrim(NEW.numero) <> '' THEN
+                    IF NEW.anno IS NULL OR NEW.anno = 0 THEN
+                      NEW.anno := EXTRACT(YEAR FROM script.fn_data_operativa())::smallint;
+                    END IF;
+                    IF NEW.data IS NULL THEN
+                      NEW.data := script.fn_data_operativa();
+                    END IF;
+                  END IF;
+
+                  ----------------------------------------------------------------
+                  -- 2. fatturazione_trigger (rev 2026-08-17): eredita dal billing
+                  --    account SOLO se la testata non ha scelto.
+                  --
+                  --    ⚠️ Il NULL qui e' portante e non e' un caso da difendere: e'
+                  --    il modo in cui il chiamante DICE «non ho scelto». Regge
+                  --    perche' il changeSet -02 toglie il DEFAULT dalla colonna —
+                  --    con il default in piedi qui non arriverebbe mai un NULL e
+                  --    l'eredita' dal BA non scatterebbe mai.
+                  --
+                  --    Il NOT NULL della colonna resta soddisfatto: i vincoli si
+                  --    valutano dopo i BEFORE ROW, e il COALESCE chiude comunque
+                  --    su 'CONFERMATO' (il valore che prima metteva il DEFAULT).
+                  IF NEW.fatturazione_trigger IS NULL
+                     AND NEW.billing_account_id IS NOT NULL THEN
+                    SELECT ba.fatturazione_ordini
+                      INTO v_fatturazione_ordini
+                      FROM anagrafiche.billing_account ba
+                     WHERE ba.id = NEW.billing_account_id;
+                  END IF;
+
+                  NEW.fatturazione_trigger := COALESCE(NEW.fatturazione_trigger,
+                                                       v_fatturazione_ordini,
+                                                       'CONFERMATO');
+
+                  ----------------------------------------------------------------
+                  -- 3. utility_id (rev 2026-10-09, brief-db-esecutivi-ba-coppia,
+                  --    D-5): e' una COPIA di cio' che il billing account gia' dice.
+                  --    Se il chiamante non la dice, la dice il BA; se la dice
+                  --    diversa, la FK fk_ordini_ba_cliente la rifiuta. Solo su
+                  --    INSERT: il BA dell'ordine e' bloccato (E_ORD_CLIENTE_IMMUTABILE).
+                  --    ⚠️ Il NOT NULL si controlla dopo i BEFORE ROW: qui il BA puo'
+                  --    ancora essere NULL (e l'INSERT fallira' sul NOT NULL).
+                  IF NEW.utility_id IS NULL AND NEW.billing_account_id IS NOT NULL THEN
+                    SELECT ba.utility_id
+                      INTO NEW.utility_id
+                      FROM anagrafiche.billing_account ba
+                     WHERE ba.id = NEW.billing_account_id;
+                  END IF;
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_ordini_normalize()
+              IS 'Normalize: imposta anno/data se numero presente; fatturazione_trigger risolto per precedenza TESTATA -> billing_account.fatturazione_ordini -> CONFERMATO, entrambe SOLO su INSERT. rev 2026-08-17: prima l''eredita'' dal BA era una SOVRASCRITTURA incondizionata e la scelta in testata veniva scartata — con tutti i BA a CONFERMATO nessun ordine poteva nascere SPEDITO/CONSEGNATO e il ramo order-backed di fn_list_ddt_da_pushare era irraggiungibile (segnalazione BE 2026-08-16; brief-be-fan-out-isolato-e-esito-parziale.md §13.2, brief-design-fatturazione-due-lenti.md §6-quater DL-19). Il NULL in NEW e'' il modo in cui il chiamante dice «non ho scelto» e funziona solo perche'' il changeSet 20260817-02 toglie il DEFAULT dalla colonna: i due vanno letti insieme. Il cambio BA su UPDATE non e'' supportato (billing_account_id immutabile - DB-ORD-LOCK). rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-5): utility_id, copia di quella del billing account, la mette il BA se il chiamante non la dice (solo INSERT); se la dice diversa la rifiuta la FK fk_ordini_ba_cliente. La colonna e'' NOT NULL dal 20261009-64.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente e' nella doc auto-gen del 2026-10-09.
+              SELECT 1;

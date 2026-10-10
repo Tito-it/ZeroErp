@@ -12,13 +12,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -32,6 +34,7 @@ from apps.core.api.success_responses import success_response
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.ui.services.lista_export_service import EXPORT_MAX_ROWS
+from apps.vendite.api._riga_erogazioni_views import RigaErogazioniView
 from apps.vendite.api.indirizzi_documento_views import (
     build_indirizzi_documento_views,
 )
@@ -267,7 +270,7 @@ class ApiContrattoDetail(DomainAPIView):
     #        in PATCH (cambio stato via endpoint dedicato). auth_user_id
     #        propagato al gate L2 sulla variazione globale (§3-bis-E).
     def patch(self, request: Request, contratto_id: int) -> JsonResponse:
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
         return success_response(
             ContrattiService().update_contratto(
                 contratto_id, corpo_oggetto(request),
@@ -357,7 +360,7 @@ class ApiContrattoRigheList(DomainAPIView):
         return success_response(
             ContrattiService().create_riga(
                 contratto_id, corpo_oggetto(request),
-                auth_user_id=get_scope_user_id(request),
+                auth_user_id=get_actor_user_id(request),
             )
         )
 
@@ -415,47 +418,15 @@ class ApiContrattoContestoPricing(DomainAPIView):
         return success_response(data or {})
 
 
-class ApiContrattoRighePreview(DomainAPIView):
-    """GET preview righe applicate dal contratto.
-
-    Modalita' A: tutte le righe del listino con prezzo finale = prezzo
-    listino + variazione globale (origine='DA_LISTINO').
-
-    Modalita' B: tutte le righe del listino, con override applicato dove
-    presente in contratti_righe (origine='OVERRIDE') o variazione globale
-    sulle altre (origine='DA_LISTINO').
-
-    Modalita' C: lista righe vuota (le righe vivono in contratti_righe e
-    sono lette dall'endpoint standard /righe/).
-
-    Endpoint readonly: il FE lo usa per mostrare l'anteprima dei prezzi
-    applicati al cliente senza duplicare la formula di calcolo.
-    """
-
-    area_funzionale = "vendite"
-    model_permission = ("vendite", "contratto")
-
-    @extend_schema(
-        responses={200: inline_serializer(
-            name="VenditeContrattoRighePreviewResp",
-            fields={"data": serializers.DictField()},
-        )},
-    )
-    # Scopo: Restituisce envelope con testata sintetica + righe preview.
-    def get(self, request: Request, contratto_id: int) -> JsonResponse:
-        del request
-        return success_response(
-            ContrattiService().list_righe_preview(contratto_id)
-        )
-
-
 # ── Righe: la lista configurabile `vendite.contratto_righe` (103) ──
 # Pagina ed export dal factory condiviso `build_lista_figlia_views`
 # (brief-db-liste-righe-documento, lotto D). La closure legge il global di
 # modulo a call-time: i patch dei test sul service restano validi.
 # ⚠️ `GET …/righe/` resta la lettura delle righe PERSISTITE (e il POST di
-#    creazione), `…/righe-preview/` l'anteprima prezzi: la lista e' su
-#    `…/righe/lista/`, e legge le righe OPERATIVE dalla funzione.
+#    creazione): la lista e' su `…/righe/lista/`, e legge le righe OPERATIVE
+#    dalla funzione. L'anteprima intera `…/righe-preview/` e' ritirata il
+#    2026-10-04 (brief-db-liste-righe-documento §9.15): il drawer leggeva da
+#    li', e ora legge questa lista.
 _ContrattoRigheLista, _ContrattoRigheListaExport = build_lista_figlia_views(
     schema_prefix="ContrattoRighe",
     operation_id="vendite_contratti_righe_lista",
@@ -471,11 +442,11 @@ _ContrattoRigheLista, _ContrattoRigheListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiContrattoRigheListaView(_ContrattoRigheLista):
+class ApiContrattoRigheListaView(_ContrattoRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.contratto_righe"
 
 
-class ApiContrattoRigheListaExportView(_ContrattoRigheListaExport):
+class ApiContrattoRigheListaExportView(_ContrattoRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.contratto_righe"
 
 
@@ -494,7 +465,7 @@ class ApiContrattoRigaDetail(DomainAPIView):
     # serve al workflow L3 (gate L1+L2+L3 quando PATCH tocca prezzo_unitario).
     def patch(self, request: Request, contratto_id: int, riga_id: int) -> JsonResponse:
         del contratto_id  # riga_id e' identificatore globale; contratto_id solo per coerenza URL.
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
         return success_response(
             ContrattiService().update_riga(
                 riga_id, corpo_oggetto(request), auth_user_id=auth_user_id,
@@ -561,6 +532,22 @@ class ApiContrattoUtility(DomainAPIView):
 #   PATCH/DELETE /righe/<rid>/componenti/<cid>/  -> CRUD singolo componente
 
 
+class ApiContrattoRigaErogazioni(RigaErogazioniView):
+    """GET /api/v1/vendite/contratti/<id>/righe/erogazioni/?articolo_id=<uuid>
+
+    Come si puo' erogare l'articolo su una riga del contratto: le combinazioni
+    ammesse col default in testa (base `RigaErogazioniView`, gemella
+    dell'offerta).
+    """
+
+    model_permission = ("vendite", "contratto")
+    url_kwarg = "contratto_id"
+
+    # Scopo: le combinazioni dal service del contratto.
+    def elenco(self, documento_id: int, articolo_id: Any) -> list[dict[str, Any]]:
+        return ContrattiService().list_erogazioni_riga(documento_id, articolo_id)
+
+
 class ApiContrattoRigaPreviewComponenti(DomainAPIView):
     """POST /api/v1/vendite/contratti/<id>/righe/preview-componenti/
 
@@ -583,9 +570,9 @@ class ApiContrattoRigaPreviewComponenti(DomainAPIView):
         # Cattura auth_user_id PRIMA dell'handler chiuso: il service risolve
         # internamente l'emittente (precedenza testata > operatore), evitando
         # accesso a membri privati dal caller.
-        auth_user_id = get_scope_user_id(request)
+        auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> list[dict[str, object]]:
+        def _handler(payload: dict[str, Any]) -> list[dict[str, Any]]:
             articolo_id = str(payload.get("articolo_id") or "")
             uom_raw = payload.get("uom_operativa_id")
             uom_operativa_id = int(uom_raw) if uom_raw not in (None, "") else None

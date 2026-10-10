@@ -22,7 +22,7 @@
 #             NULL o entrambi NOT NULL)
 #          3) affidamento ai trigger DB per gli invarianti piu' complessi
 #             (overlap cross-contratto, tipo/classe utenza dinamica, lock
-#             post-attivazione, validita' versione listino fissata).
+#             della testata fuori bozza, validita' versione listino fissata).
 #
 #        Il numero contratto e' generato nel service via
 #        `script.fn_generate_codice('contratto')` — NON va mai
@@ -42,10 +42,15 @@ from typing import Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.services.fuso_aziendale import oggi_aziendale
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
-from apps.core.services.testata_guard import riga_del_padre_o_not_found, testata_o_not_found
+from apps.core.services.testata_guard import (
+    pagina_dopo_testata,
+    riga_del_padre_o_not_found,
+    testata_o_not_found,
+)
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
     auto_assegna_indirizzo_default,
@@ -63,7 +68,10 @@ from apps.vendite.db.contratti_repository import (
     ContrattiRepository,
     ContrattoRigheListaRepository,
 )
-from apps.vendite.db.listini_repository import ListiniRepository
+from apps.vendite.db._documento_eccezioni_repo import (
+    list_erogazioni_riga,
+    listino_versione_operativa,
+)
 from apps.vendite.services._componenti_service_helpers import (
     dati_patch_componente,
     normalize_componenti_overrides,
@@ -216,35 +224,12 @@ UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
     "meta",
 })
 
-# Whitelist PATCH testata per stato del documento contratto. Il workflow
-# operativo e' DRAFT -> ATTIVO -> CESSATO (terminale). SOSPESO e' stato
-# rimosso dal modello (config.stati_doc_contratti, 2026-04-26): la sua
-# semantica operativa (blocco fatturazione/proroghe/ripresa) non era
-# implementata. In ATTIVO restano editabili solo `valido_al` (per
-# programmare la cessazione, coerente con "data = fonte di verita'
-# operativa") e `meta` (note interne, non operative). CESSATO e'
-# completamente immutabile. Per cambi sostanziali in stati post-DRAFT
-# serve creare un nuovo contratto (eventualmente con parent_contratto_id) —
-# pattern audit-friendly.
-# ⭐ In ATTIVO entrano anche i tre riferimenti dell'atto (I8/D9, decisione Q1 di
-#   Tid del 2026-08-29). NON sono un cambio sostanziale: non toccano prezzo,
-#   validita' o perimetro, e non producono NESSUN effetto finche' la fattura non
-#   ne fa lo snapshot (I4). E il caso reale e' proprio questo — negli appalti PA
-#   il CIG arriva quando arriva, e puo' arrivare a contratto gia' attivo:
-#   negarlo costringerebbe a creare un contratto nuovo PER UN PEZZO DI CARTA,
-#   che e' il contrario di cio' che quella regola protegge.
-# ⛔ In CESSATO e ANNULLATO restano fuori: li' la regola e' immutabilita' piena e
-#   non c'e' ragione di scalfirla.
-_CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
-    "DRAFT": UPDATE_KEYS_TESTATA,
-    "ATTIVO": frozenset({"valido_al", "meta"}) | _CODICI_ATTO,
-    "CESSATO": frozenset(),
-    # ANNULLATO (refactor 2026-05-20): stato terminale "soft-delete", coerente
-    # con preventivi (is_abortito=true). Nessun campo modificabile —
-    # transizione consentita SOLO da DRAFT. Per contratti ATTIVO la chiusura
-    # avviene via CESSATO con data di fine validita'.
-    "ANNULLATO": frozenset(),
-}
+# Quali colonne della testata si cambiano in quale stato lo dice il DB,
+# colonna per colonna: il lock `vendite.trgfn_doc_testata_lock_fuori_bozza`
+# (DRAFT tutto; ATTIVO `valido_al`, i riferimenti dell'atto e `meta`; CESSATO e
+# ANNULLATO niente). Fino al 2026-10-10 qui c'era la tabella per stato
+# `_CONTRATTO_PATCH_ALLOWED_BY_STATE`, la seconda copia di quella regola
+# (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del lock passa com'e'.
 
 # Refactor 2026-05-20 — Lock cambio `listino_id` in presenza di righe.
 # Razionale: il `listino_id` definisce il contesto di pricing contro cui le
@@ -254,7 +239,7 @@ _CONTRATTO_PATCH_ALLOWED_BY_STATE: dict[str, frozenset[str]] = {
 #     `count_eccezioni_bloccanti` (blocca OVERRIDE/ESCLUSIONE; AGGIUNTE OK
 #     perche' restano valide senza listino).
 #   - aggiunta (NULL → valore): AGGIUNTE per articoli ora nel nuovo listino
-#     diventano illegali (trigger DB `trgfn_contratti_righe_guard_aggiunta_fuori_listino`).
+#     diventano illegali (trigger DB `script.trgfn_righe_guard_aggiunta_fuori_listino`).
 #   - sostituzione (valore → altro valore): OVERRIDE/ESCLUSIONE puntano a
 #     articoli del listino vecchio, potrebbero non esistere nel nuovo.
 # Il check inline copre aggiunta + sostituzione (qualsiasi righe attiva blocca).
@@ -281,7 +266,7 @@ _FORBIDDEN_TESTATA_UPDATE: frozenset[str] = frozenset({
     "utility_id",
     # Post brief simmetria 2026-05-26: l'emittente fiscale e' immutabile in
     # update. Il BA e' gia' immutabile (riga sopra) e il guard DB
-    # `trgfn_contratti_guard_emittente_ba` rifiuta divergenze BA<->EF: un
+    # `script.trgfn_doc_guard_emittente_ba` rifiuta divergenze BA<->EF: un
     # patch su `emittente_fiscale_id` produrrebbe quindi solo rumore (errore
     # DB criptico al primo invio). Esclusione esplicita = errore parlante
     # lato applicativo.
@@ -359,46 +344,6 @@ _TIPI_ECCEZIONE: frozenset[str] = frozenset({"OVERRIDE", "ESCLUSIONE", "AGGIUNTA
 # Alternativa B (L1 sempre, L2/L3 condizionali al resolver).
 _TIPI_ECCEZIONE_CON_GATE: frozenset[str] = frozenset({"OVERRIDE", "AGGIUNTA"})
 
-# Matrice coerenza (tipo_erogazione, fonte_quantita_attesa) — refactor
-# 2026-05-19. Le 7 combinazioni vietate corrispondono al CHECK DB
-# `chk_contrighe_coerenza_fonte_erogazione` (migration 20260519-05).
-# Defense-in-depth: stesso vincolo applicato lato BE con errore parlante
-# prima del round-trip DB. Vedi docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §3.
-_FONTE_VIETATE_PER_TIPO_EROGAZIONE: frozenset[tuple[str, str]] = frozenset({
-    ("CANONE", "TIMESHEET"),
-    ("CANONE", "LETTURE"),
-    ("UNA_TANTUM", "TIMESHEET"),
-    ("UNA_TANTUM", "LETTURE"),
-    ("ORARIO", "LETTURE"),
-    ("CONSUMO", "FISSA"),
-    ("CONSUMO", "TIMESHEET"),
-})
-
-# Default fonte_quantita_attesa per tipo_erogazione — speculare al trigger
-# DB `trg_contratti_righe_a10_default_fonte_qta_ins_upd` (migration 20260519-06).
-# Applicato lato BE per (a) pre-compilare il FE form CREATE con la scelta
-# predefinita visibile all'utente, (b) errore parlante in validazione 2.1
-# anche su payload minimi (la coppia viene risolta prima del CHECK DB).
-# Nota: per ORARIO il default diventera' TIMESHEET quando il modulo
-# rendicontazione ore sara' implementato.
-_FONTE_DEFAULT_PER_TIPO_EROGAZIONE: dict[str, str] = {
-    "CANONE": "FISSA",
-    "UNA_TANTUM": "FISSA",
-    "ORARIO": "MANUALE",
-    "CONSUMO": "LETTURE",
-}
-
-# Fonti per cui `quantita` non e' inserita dall'utente sulla riga contratto:
-# il valore reale arriva downstream (manuale su documento / timesheet /
-# letture utility). Il BE forza NULL su `quantita` per evitare snapshot
-# fuorvianti. `DERIVATA_COMPONENTI` e' fuori da questo set: la `quantita`
-# del padre composito viene scritta automaticamente dal trigger DB
-# `z90_propaga_qta_componenti` post-INSERT figli (vedi piano §1.d).
-_FONTI_QUANTITA_DOWNSTREAM: frozenset[str] = frozenset({
-    "MANUALE", "TIMESHEET", "LETTURE",
-})
-
-
 # Utility 1:1: chiavi ammesse in create/update. istanza_utility_id e
 # utility_id sono derivati dal contratto in create; immutabili in update.
 # Utility 1:1: istanza_utility_id e utility_id derivano dalla testata,
@@ -463,8 +408,16 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
         "Questo contratto ha gia' una riga utility associata.",
     ),
 }
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple] = {
     "fk_contratti_billing_account": (E_VENDITE_FK, "Billing account inesistente."),
+    # FK composta (billing_account_id, istanza_utility_id, utility_id) verso il
+    # BA della coppia, dal 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): la
+    # semplice qui sopra resta accanto, e dice solo «non esiste».
+    "fk_contratti_ba_coppia": (
+        E_VENDITE_FK,
+        "Il billing account non e' quello dell'istanza e della utility del contratto.",
+        "billing_account_id",
+    ),
     "fk_contratti_istanza": (E_VENDITE_FK, "Istanza utility inesistente."),
     "fk_contratti_utility": (E_VENDITE_FK, "Utility inesistente."),
     "fk_contratti_listino": (E_VENDITE_FK, "Listino inesistente."),
@@ -512,10 +465,6 @@ _KNOWN_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "E_ARTICOLO_ESCLUSO_DA_CONTRATTO",
         ("articolo escluso dal contratto",),
-    ),
-    (
-        "E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE",
-        ("contratto ATTIVO", "campi bloccati"),
     ),
     (
         "E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI",
@@ -615,7 +564,7 @@ class ContrattiService:
         data_a: date | None = None,
         scadenza_mese: str | None = None,
         auth_user_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
@@ -800,33 +749,6 @@ class ContrattiService:
         # il payload patch non lo include (es. patch solo su variazione globale).
         existing = self._get_contratto_or_raise(contratto_id, op="update_contratto")
 
-        # Guard whitelist PATCH per stato. In ATTIVO ammessi solo
-        # `valido_al` (programma cessazione) e `meta` (note interne); in
-        # CESSATO nulla; in DRAFT tutto. categoria_cliente_id_snapshot non
-        # appare nelle whitelist non-DRAFT, quindi viene rifiutato implicitamente
-        # con messaggio coerente. Errore parlante con detail che lista i campi
-        # ammessi per lo stato corrente.
-        stato_corrente = str(existing.get("stato_codice_interno") or "")
-        allowed_for_state = _CONTRATTO_PATCH_ALLOWED_BY_STATE.get(stato_corrente, frozenset())
-        non_ammessi = sorted(set(payload.keys()) - allowed_for_state)
-        if non_ammessi:
-            ErrorManager.raise_error(
-                code="E_CONTRATTO_NON_MODIFICABILE",
-                message="Modifica contratto non consentita nello stato corrente.",
-                detail=(
-                    f"In stato {stato_corrente or 'sconosciuto'} sono modificabili solo: "
-                    f"{sorted(allowed_for_state) if allowed_for_state else 'nessun campo'}. "
-                    f"Campi non ammessi nel payload: {non_ammessi}. "
-                    f"Per modifiche sostanziali su contratti post-DRAFT creare un nuovo contratto."
-                ),
-                context={
-                    "contratto_id": contratto_id,
-                    "stato_codice": stato_corrente,
-                    "campi_non_ammessi": non_ammessi,
-                    "campi_ammessi": sorted(allowed_for_state),
-                },
-            )
-
         # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o sostituzione,
         # NON rimozione) quando ci sono righe persistite. Vedi commento su
         # _CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE per il razionale.
@@ -941,13 +863,13 @@ class ContrattiService:
     #          - valido_al obbligatorio (no cessazione "senza data")
     #          - valido_al >= valido_dal: lo giudica il DB (guard comune
     #            delle date, E_DATA_AL_MINORE_DAL col campo valido_al)
-    #          - valido_al < CURRENT_DATE -> VIETATO: cessazione retroattiva
+    #          - valido_al < oggi -> VIETATO: cessazione retroattiva
     #            rifiutata dal guard DB trgfn_contratti_guard_transizione_stato
     #            (la UI blocca a monte con min-date = oggi).
-    #          - valido_al == CURRENT_DATE -> cessazione IMMEDIATA: applica
+    #          - valido_al == oggi -> cessazione IMMEDIATA: applica
     #            entrambi PATCH+UPDATE in transazione atomica (la data di fine
     #            validita' = oggi conferma il passaggio a CESSATO).
-    #          - valido_al > CURRENT_DATE -> CESSAZIONE PROGRAMMATA: applica
+    #          - valido_al > oggi -> CESSAZIONE PROGRAMMATA: applica
     #            solo PATCH valido_al; lo stato resta ATTIVO. Il job
     #            notturno DB allineera' lo stato a CESSATO quando la data
     #            scade. Coerente con il principio "data = fonte di verita'
@@ -1025,11 +947,11 @@ class ContrattiService:
             # cambiamo lo stato. Applichiamo solo PATCH valido_al e lasciamo
             # che il job notturno DB allinei lo stato quando la data scade.
             # Data == oggi -> cessazione IMMEDIATA: transizione a CESSATO subito
-            # (il guard DB la ammette per valido_al >= CURRENT_DATE; e' la data
+            # (il guard DB la ammette per valido_al >= oggi; e' la data
             # di fine validita' a confermare). Data < oggi e' retroattiva e
             # viene rifiutata dal guard DB `trgfn_contratti_guard_transizione_stato`
             # (la UI la blocca gia' con min-date = oggi).
-            if valido_al > date.today():
+            if valido_al > oggi_aziendale():
                 cessazione_programmata = True
 
         with self._map_db_errors(
@@ -1124,64 +1046,8 @@ class ContrattiService:
         return self._repo.resolve_contesto_pricing_contratto(contratto_id)
 
     # =================================================================
-    # Righe contratto - preview pricing applicato
+    # Righe contratto - la lista operativa
     # =================================================================
-
-    # Scopo: Restituisce le righe operative del contratto in forma "con_listino",
-    #        cioe' la lista articoli con prezzo finale applicato (righe del
-    #        listino + eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA). Per forma
-    #        "senza_listino" ritorna lista vuota: in quel caso le righe
-    #        vivono solo in `contratti_righe` e sono lette da list_righe.
-    #
-    #        Il calcolo e' delegato a `repository.list_righe_preview` (single
-    #        SQL pass) che applica la stessa formula del resolver pricing.
-    #        Origini possibili: 'DA_LISTINO' (riga del listino senza eccezione),
-    #        'OVERRIDE' / 'ESCLUSIONE' / 'AGGIUNTA' (eccezione contrattuale).
-    #
-    #        L'envelope include la testata sintetica (forma, listino, versione
-    #        listino fissata, variazione globale) per permettere al FE di
-    #        renderizzare il banner contesto senza ulteriori chiamate.
-    def list_righe_preview(self, contratto_id: int) -> dict[str, Any]:
-        self._v.guard_positive_int(contratto_id, field="contratto_id")
-        contratto = self._get_contratto_or_raise(contratto_id, op="list_righe_preview")
-
-        # Forma derivata (non persistita) post refactor modalita 2026-05-15:
-        #   "con_listino"  : contratto ha un listino_id (variazione globale +
-        #                    eccezioni OVERRIDE/ESCLUSIONE/AGGIUNTA sono campi
-        #                    opzionali liberi)
-        #   "senza_listino": contratto interamente negoziato (le righe in
-        #                    `contratti_righe` sono tutte AGGIUNTA)
-        # Le vecchie modalita' A/B/C sono state rimosse — non esistono piu'
-        # nel modello dati ne' nell'UX.
-        listino_id = contratto.get("listino_id")
-        preview_rows: list[dict[str, Any]] = (
-            self._repo.list_righe_preview(contratto_id) if listino_id else []
-        )
-        forma = "con_listino" if listino_id is not None else "senza_listino"
-
-        # Flag per il FE: distingue il caso "listino senza versione operativa
-        # oggi" dal caso "senza_listino" (lista vuota by design) e dal caso
-        # con listino ma solo eccezioni extra-listino (righe presenti ma
-        # origine OVERRIDE/AGGIUNTA, nessuna 'DA_LISTINO'). Il flag e' True
-        # se il contratto ha listino ma la query non ha prodotto nemmeno una
-        # riga 'DA_LISTINO' (nessuna versione operativa o nessuna riga attiva).
-        listino_senza_versione_oggi = (
-            listino_id is not None
-            and not any(r.get("origine") == "DA_LISTINO" for r in preview_rows)
-        )
-
-        return {
-            "contratto_id": contratto_id,
-            "forma": forma,
-            "listino_id": listino_id,
-            "listino_versione_id": contratto.get("listino_versione_id"),
-            "listino_codice": contratto.get("listino_codice"),
-            "listino_descrizione": contratto.get("listino_descrizione"),
-            "tipo_variazione_globale": contratto.get("tipo_variazione_globale"),
-            "valore_variazione_globale": contratto.get("valore_variazione_globale"),
-            "listino_senza_versione_oggi": listino_senza_versione_oggi,
-            "righe": preview_rows,
-        }
 
     # Scopo: una PAGINA delle righe operative del contratto, per la lista
     #        configurabile `vendite.contratto_righe` (lotto D del
@@ -1193,23 +1059,14 @@ class ContrattiService:
     # ⭐ Una sorgente per le due forme: senza listino la funzione risponde le
     #    sole aggiunte, quindi qui non si decide niente per forma.
     def list_righe_pagina(
-        self,
-        contratto_id: int,
-        *,
-        search: str | None = None,
-        order_by: str | None = None,
-        order_dir: str | None = None,
-        limit: int,
-        offset: int = 0,
-        max_limit: int = MAX_LIMIT,
+        self, contratto_id: int, **opzioni: Any,
     ) -> tuple[list[dict[str, Any]], int]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        self._get_contratto_or_raise(
-            contratto_id, op="list_righe_pagina", getter=self._repo.get_stato_codice,
-        )
-        return ContrattoRigheListaRepository().list_righe_pagina(
-            contratto_id, search=search, order_by=order_by, order_dir=order_dir,
-            limit=limit, offset=offset, max_limit=max_limit,
+        return pagina_dopo_testata(
+            lambda: self._get_contratto_or_raise(
+                contratto_id, op="list_righe_pagina", getter=self._repo.get_stato_codice,
+            ),
+            ContrattoRigheListaRepository().list_righe_pagina, contratto_id, **opzioni,
         )
 
     # =================================================================
@@ -1441,6 +1298,7 @@ class ContrattiService:
                     valido_dal_raw if isinstance(valido_dal_raw, date)
                     else date.fromisoformat(str(valido_dal_raw))
                 )
+                assert emittente_sr_id is not None  # garantito dal require sopra
                 self._repo.init_componenti_riga(
                     riga_id=new_id,
                     emittente_soggetto_ruolo_id=emittente_sr_id,
@@ -1579,6 +1437,9 @@ class ContrattiService:
         # se il PATCH tocca prezzo_unitario, valida contro il tipo_eccezione
         # della riga esistente (immutabile). Pre-validation parlante invece
         # del fallback E_DATABASE sul CHECK DB chk_contrighe_prezzo_per_tipo_eccezione.
+        # Un'ESCLUSIONE non entra qui: non si modifica affatto, e lo dice il
+        # guard DB `_a05_` (E_CONTRATTO_ESCLUSIONE_NON_MODIFICABILE), che parla
+        # prima del CHECK sul prezzo — brief-db-contratto-esclusione-non-modificabile.
         # Refactor 2026-05-19: il caricamento di `existing_riga` serve anche
         # al gate L1+L2+L3 sotto — fatto qui per evitare double-fetch.
         existing_riga: dict[str, Any] | None = None
@@ -1591,19 +1452,7 @@ class ContrattiService:
             )
             tipo_existing = existing_riga.get("tipo_eccezione")
             nuovo_prezzo = data["prezzo_unitario"]
-            if tipo_existing == "ESCLUSIONE":
-                ErrorManager.require(
-                    nuovo_prezzo is None,
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE_RIGA,
-                    detail=(
-                        "ESCLUSIONE: prezzo_unitario deve essere NULL "
-                        "(l'articolo non e' disponibile per questo contratto). "
-                        "Per cambiare tipo, eliminare la riga e crearne una nuova."
-                    ),
-                    context={"riga_id": riga_id, "tipo_eccezione": tipo_existing},
-                )
-            elif tipo_existing in ("OVERRIDE", "AGGIUNTA"):
+            if tipo_existing in ("OVERRIDE", "AGGIUNTA"):
                 ErrorManager.require(
                     nuovo_prezzo is not None,
                     code=E_VENDITE_VALIDATION,
@@ -1617,9 +1466,9 @@ class ContrattiService:
                 )
 
         # Gate L1+L2+L3 (refactor 2026-05-19): scatta solo se il PATCH tocca
-        # `prezzo_unitario` su una riga OVERRIDE o AGGIUNTA. Per ESCLUSIONE
-        # la coerenza prezzo NULL e' gia' garantita dal check sopra; nessun
-        # gate ulteriore. Riusiamo `existing_riga` per evitare double-fetch.
+        # `prezzo_unitario` su una riga OVERRIDE o AGGIUNTA. Un'ESCLUSIONE
+        # la rifiuta il guard DB nell'UPDATE qui sotto: nessun gate.
+        # Riusiamo `existing_riga` per evitare double-fetch.
         # riga_id noto subito: link inline alla pratica (no post-INSERT).
         # Fix analisi-fix-transazioni #6 (Classe B): gate L3 (crea + linka inline
         # la pratica di approvazione) e UPDATE riga in UN solo transaction.atomic().
@@ -1750,6 +1599,26 @@ class ContrattiService:
             scope, documento="Contratto", documento_id=contratto_id, verbo=verbo,
             function_name=function_name,
         )
+
+    # Scopo: Le combinazioni (tipo_erogazione, fonte_quantita_attesa) che una
+    #        riga con questo articolo puo' avere sul contratto, col default che
+    #        erediterebbe in testa: il form delle righe le propone e
+    #        preseleziona il default (brief-db-offerta-emissione-ed-erogazione
+    #        B-R4). Le dice il DB (`vendite.fn_documento_riga_erogazioni`), la
+    #        stessa sede che leggono l'eredita' e il guard del perimetro.
+    #        Prima la testata: un contratto che non si vede e' un 404, non una
+    #        lista vuota. Lista vuota = l'articolo ha una tipologia che la
+    #        utility del contratto non prevede. Gemello di
+    #        `OfferteService.list_erogazioni_riga`.
+    def list_erogazioni_riga(
+        self, contratto_id: int, articolo_id: Any,
+    ) -> list[dict[str, Any]]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        articolo = self._v.require_uuid({"articolo_id": articolo_id}, "articolo_id")
+        self._get_contratto_or_raise(
+            contratto_id, op="list_erogazioni_riga", getter=self._repo.get_stato_codice,
+        )
+        return list_erogazioni_riga("CONTRATTO", contratto_id, articolo)
 
     # Scopo: Preview componenti BoM per drawer riga contratto (ComponentiDialog
     # FE). Read-only: il FE invoca PRIMA del save di una riga composita per
@@ -1996,7 +1865,6 @@ class ContrattiService:
         self._apply_optional_positive_int(
             payload, data, "listino_id", message=_MESSAGE,
         )
-        self._guard_listino_ha_versione_attiva(data.get("listino_id"))
         self._apply_variazione_globale(payload, data)
         self._validate_variazione_globale_coppia_coerente(data, existing=None)
         # Snapshot categoria cliente: opzionale, nullable. Se fornito
@@ -2107,13 +1975,6 @@ class ContrattiService:
         self._apply_optional_positive_int(
             payload, data, "listino_id", message=_MESSAGE,
         )
-        # Gate listino selezionabile (decisione 2026-05-18 §4.4): se il PATCH
-        # cambia il listino_id (NULL o nuovo id), il listino deve avere almeno
-        # una versione ATTIVA. Skip se `listino_id` non e' nel patch (non
-        # vogliamo invalidare contratti gia' creati su listini che potrebbero
-        # essere stati chiusi in seguito — quello e' lock post-attivazione DB).
-        if "listino_id" in data:
-            self._guard_listino_ha_versione_attiva(data["listino_id"])
         self._apply_variazione_globale(payload, data)
         # Valida coerenza coppia variazione globale sulla foto post-update merge
         # (delta data + existing). Se il patch tocca listino_id o una delle 2
@@ -2197,30 +2058,6 @@ class ContrattiService:
             ba_id=existing.get("billing_account_id"),
         )
 
-    # Scopo: Gate selezionabilita' listino come riferimento contratto
-    #        (decisione 2026-05-18 §4.4 refactor-contratti-modalita).
-    #        Un listino senza versione ATTIVA non e' selezionabile: non
-    #        avrebbe righe da applicare e il contratto sarebbe formalmente
-    #        "con listino" ma operativamente vuoto. Skip se listino_id=None
-    #        (forma `senza_listino` legittima).
-    def _guard_listino_ha_versione_attiva(self, listino_id: int | None) -> None:
-        if listino_id is None:
-            return
-        ha_versione = ListiniRepository().has_versione_attiva(int(listino_id))
-        ErrorManager.require(
-            ha_versione,
-            code="E_CONTRATTO_LISTINO_SENZA_VERSIONE_ATTIVA",
-            message=(
-                "Listino non selezionabile: nessuna versione ATTIVA."
-            ),
-            detail=(
-                f"Il listino_id={listino_id} non ha versioni in stato ATTIVA. "
-                "Solo listini con una versione pubblicata e attiva possono "
-                "essere associati a un contratto."
-            ),
-            context={"listino_id": listino_id},
-        )
-
     # Scopo: Verifica coerenza della coppia variazione globale (tipo + valore).
     #        Post refactor modalita' (2026-05-15): non c'e' piu' il vincolo
     #        "listino_id NULL -> tipo/valore NULL" — il modello unificato
@@ -2257,8 +2094,9 @@ class ContrattiService:
     #        tipo_eccezione sono obbligatori in create; mutazione dei campi
     #        commerciali solo sui campi presenti. Il check di coerenza
     #        (ESCLUSIONE -> prezzo NULL, OVERRIDE/AGGIUNTA -> prezzo NOT NULL)
-    #        e' enforced dal CHECK DB chk_contrighe_prezzo_per_tipo_eccezione,
-    #        pre-validato qui per messaggio parlante.
+    #        e' enforced dal CHECK DB chk_contrighe_prezzo_per_tipo_eccezione;
+    #        qui si pre-valida, per messaggio parlante, il solo ramo
+    #        OVERRIDE/AGGIUNTA (l'ESCLUSIONE la rifiuta il guard DB col campo).
     def _build_data_riga(self, payload: dict[str, Any], *, for_create: bool) -> dict[str, Any]:
         data: dict[str, Any] = {}
         if for_create:
@@ -2273,8 +2111,12 @@ class ContrattiService:
             data["tipo_eccezione"] = tipo_eccezione
 
             # Coerenza prezzo_unitario / tipo_eccezione (pre-DB):
-            # - ESCLUSIONE -> prezzo NULL (l'articolo non e' disponibile)
             # - OVERRIDE / AGGIUNTA -> prezzo NOT NULL (e' il prezzo finale)
+            # ⛔ L'ESCLUSIONE non si pre-valida qui: il prezzo e' uno dei dieci
+            #    dati di fatturazione che il guard DB rifiuta col campo
+            #    (E_RIGA_ESCLUSIONE_CON_DATI, brief-db-righe-esclusione-solo-
+            #    non-si-vende R-BE-3). Un 400 nostro sul solo prezzo direbbe la
+            #    stessa regola con un altro codice.
             # Eccezione: articolo composito (modello unificato BoM 2026-05-13).
             # Il FE puo' omettere `prezzo_unitario` per padri compositi perche'
             # il prezzo padre = SUM(figli × coeff_qta) calcolato dal trigger
@@ -2286,18 +2128,7 @@ class ContrattiService:
             # Pattern simmetrico al preventivo (cfr. preventivi_service.py
             # `gestisci_riga` ~ linea 670, "Padre composito").
             prezzo_raw = payload.get("prezzo_unitario")
-            if tipo_eccezione == "ESCLUSIONE":
-                ErrorManager.require(
-                    prezzo_raw is None,
-                    code=E_VENDITE_VALIDATION,
-                    message=_MESSAGE_RIGA,
-                    detail=(
-                        "ESCLUSIONE: prezzo_unitario deve essere NULL "
-                        "(l'articolo non e' disponibile per questo contratto)."
-                    ),
-                    context={"tipo_eccezione": tipo_eccezione},
-                )
-            elif prezzo_raw is None:
+            if prezzo_raw is None and tipo_eccezione != "ESCLUSIONE":
                 # OVERRIDE / AGGIUNTA: prezzo None ammesso solo se composito.
                 articolo_id_val = data.get("articolo_id")
                 is_composito = bool(
@@ -2357,104 +2188,21 @@ class ContrattiService:
                     assert isinstance(raw, str)
                     data[field] = raw.strip().upper()
 
-        # Refactor 2026-05-19: coerenza (tipo_erogazione, fonte_quantita_attesa)
-        # + normalizzazione `quantita` in base alla fonte.
-        # Il DB applica gli stessi vincoli via CHECK chk_contrighe_coerenza_fonte_erogazione
-        # e trigger trg_contratti_righe_a10_default_fonte_qta_ins_upd (migrations
-        # 20260519-05/06). Lato BE: defense-in-depth + errore parlante prima del
-        # round-trip + UX coerente (FE mostra/nasconde `quantita` in base alla
-        # fonte; il service rispetta la stessa semantica).
-        self._apply_fonte_quantita_logic(data, for_create=for_create)
+        # ⛔ La quantita' per fonte non si normalizza qui: con una fonte a valle
+        # (MANUALE, LETTURE, TIMESHEET) il DB svuota `quantita` da solo
+        # (`script.trgfn_qta_from_operativa`) e rifiuta una `qta_operativa`
+        # valorizzata col campo (`E_RIGA_QUANTITA_CON_FONTE_A_VALLE`); la FISSA
+        # senza quantita' la rifiuta il DB (`E_QTA_MISSING`). Quali coppie
+        # (tipo_erogazione, fonte) sono ammesse, e cosa eredita una riga che non
+        # le indica, lo dice il DB dall'articolo (`vendite.fn_articolo_erogazioni`).
+        # La copia Python (`_apply_fonte_quantita_logic`) azzerava in silenzio, e
+        # solo sul contratto: ritirata (brief-db-offerta-emissione-ed-erogazione F-1).
 
         if "meta" in payload:
             meta = self._v.optional_meta(payload)
             if meta is not None:
                 data["meta"] = meta
         return data
-
-    # Scopo: Applica la matrice di coerenza (tipo_erogazione, fonte_quantita_attesa)
-    #        sul `data` gia' costruito da _build_data_riga. Tre responsabilita':
-    #         1. Default fonte se non specificata (solo create, e solo se
-    #            tipo_erogazione e' presente nel data accumulato).
-    #         2. Guard combinazione vietata → E_VENDITE_VALIDATION parlante.
-    #         3. Normalizzazione `quantita`: forzata a NULL per fonti downstream
-    #            (MANUALE/TIMESHEET/LETTURE); DERIVATA_COMPONENTI lasciata al
-    #            trigger DB z90_propaga_qta_componenti; FISSA mantenuta.
-    #        Riferimenti: docs/it/dev/work-done/refactor-contratti-fonte-quantita.md §2.
-    def _apply_fonte_quantita_logic(
-        self,
-        data: dict[str, Any],
-        *,
-        for_create: bool,
-    ) -> None:
-        tipo = data.get("tipo_erogazione")
-        fonte = data.get("fonte_quantita_attesa")
-
-        # 1) Default fonte: applica solo in create quando tipo e' valorizzato.
-        # In update lasciamo decidere all'utente / trigger DB (il trigger
-        # resetta solo se la combo nuova diventa vietata, vedi decisione 3).
-        if for_create and fonte is None and tipo in _FONTE_DEFAULT_PER_TIPO_EROGAZIONE:
-            fonte = _FONTE_DEFAULT_PER_TIPO_EROGAZIONE[tipo]
-            data["fonte_quantita_attesa"] = fonte
-
-        # 2) Guard combinazione vietata (se entrambi i campi sono presenti
-        # nel data — niente da validare se uno dei due e' implicito DB).
-        if tipo is not None and fonte is not None:
-            ErrorManager.require(
-                (tipo, fonte) not in _FONTE_VIETATE_PER_TIPO_EROGAZIONE,
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail=(
-                    f"Combinazione vietata: tipo_erogazione='{tipo}' "
-                    f"non e' compatibile con fonte_quantita_attesa='{fonte}'. "
-                    f"Vedi matrice in docs/it/dev/work-in-progress/"
-                    f"refactor-contratti-fonte-quantita.md §3."
-                ),
-                context={
-                    "tipo_erogazione": tipo,
-                    "fonte_quantita_attesa": fonte,
-                },
-            )
-
-        # 3) Normalizzazione `quantita`:
-        #    - fonti downstream → forza NULL (il valore arrivera' downstream).
-        #    - FISSA → richiede quantita <> 0 (guard esplicita, oltre al CHECK
-        #      `qta_operativa <> 0`: zero vietato, negativi ammessi es. resi).
-        #    - DERIVATA_COMPONENTI → no-op (trigger DB z90_propaga_qta_componenti
-        #      scrive il valore corretto post-INSERT figli BoM).
-        #    - None → lascia passare (tipo/fonte non risolti, validazione
-        #      delegata al DB; succede solo in update parziali atipici).
-        if fonte in _FONTI_QUANTITA_DOWNSTREAM:
-            # Sovrascrivi anche se il payload portava un valore: la fonte e'
-            # il driver semantico, qualsiasi quantita inviata e' fuorviante.
-            # Simmetria obbligata su entrambi: `qta_operativa` alimenta il
-            # trigger `trgfn_qta_from_operativa` che deriverebbe `quantita`
-            # a partire da essa post-INSERT/UPDATE — se non azzeriamo
-            # qta_operativa, il trigger riscriverebbe quantita = qta_operativa,
-            # vanificando il NULL. Bug riscontrato in update parziale
-            # `{fonte: FISSA -> MANUALE}` senza payload qta.
-            data["quantita"] = None
-            data["qta_operativa"] = None
-        elif fonte == "FISSA":
-            qta = data.get("quantita")
-            qta_op = data.get("qta_operativa")
-            # Almeno uno tra quantita e qta_operativa deve essere diverso da zero
-            # (CHECK DB `qta_operativa <> 0`: negativi ammessi). Il trigger
-            # `trgfn_qta_from_operativa` deriva l'una dall'altra post-INSERT.
-            # Validazione lax: il CHECK DB ha l'ultima parola.
-            ErrorManager.require(
-                (qta is not None and qta != 0) or (qta_op is not None and qta_op != 0),
-                code=E_VENDITE_VALIDATION,
-                message=_MESSAGE_RIGA,
-                detail=(
-                    "fonte_quantita_attesa='FISSA' richiede una quantita diversa "
-                    "da zero (campo `quantita` o `qta_operativa`)."
-                ),
-                context={
-                    "tipo_erogazione": tipo,
-                    "fonte_quantita_attesa": fonte,
-                },
-            )
 
     # =================================================================
     # Helpers privati — utility 1:1
@@ -2564,7 +2312,7 @@ class ContrattiService:
 #        Solleva `E_VENDITE_VALIDATION` su input mancanti o non risolubili,
 #        `E_VENDITE_NOT_FOUND` su contratto inesistente, e propaga errori
 #        ServiceError dal `PricingService.resolve_prezzo` (es.
-#        `E_PREZZO_LISTINO_NON_TROVATO`).
+#        `E_CATEGORIA_LISTINO_NON_MAPPATA`).
 # Scopo: Helper module-level. Risolve il contesto di pricing per un
 #        contratto: lookup testata + emittente + validazione BA/utility/data,
 #        parsing `valido_dal` a `date`. Riusato da
@@ -2642,20 +2390,17 @@ def _load_contratto_context_for_pricing(
     # v2 come `p_listino_versione_id_preferito` per attivare il fast path
     # CONTRATTO_LISTINO. Evita il drift verso stadio CATEGORIA quando il BA
     # ha una mappa categorie_clienti_listini su un listino diverso.
-    # Contratto ATTIVO: usa lo snapshot in testata (zero round-trip).
-    # Contratto DRAFT: lookup dinamico della versione operativa con la stessa
-    # regola di `fn_contratto_righe_preview` (ATTIVA/CHIUSA validità @
-    # valido_dal, BOZZA esclusa) — coerenza preview/pricing garantita.
-    # Senza listino_id: nessun fast path possibile → None (legacy resolver).
+    # ⭐ La versione la dice il DB (`vendite.fn_documento_listino_operativo`):
+    # la fissata all'attivazione, altrimenti quella in vigore oggi — la stessa
+    # che governa le righe a video, quindi preview e pricing coincidono per
+    # costruzione. Senza listino: None (resolver senza fast path).
+    # ⛔ Fino al 2026-10-07 qui c'era una copia Python che la cercava alla data
+    # `valido_dal`, mentre le righe usavano gia' quella di oggi
+    # (brief-db-offerta-emissione-ed-erogazione §C.1.3).
     # Doc DB: cfr. nota team `dev/db-tid` sul 9° arg di fn_resolve_prezzo_listino_v2.
-    listino_versione_id_preferito = testata.get("listino_versione_id")
-    if listino_versione_id_preferito is None:
-        listino_id_raw = testata.get("listino_id")
-        if listino_id_raw is not None:
-            listino_versione_id_preferito = repo.get_listino_versione_attiva_alla_data(
-                int(listino_id_raw), data_riferimento,
-            )
+    listino_versione_id_preferito = listino_versione_operativa("CONTRATTO", contratto_id)
 
+    assert ba_id_raw is not None and utility_id_raw is not None
     return {
         "testata": testata,
         "ba_id": int(ba_id_raw),

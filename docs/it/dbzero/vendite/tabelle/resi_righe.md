@@ -14,13 +14,13 @@
 | ddt_riga_id | bigint | NO |  |
 | ordine_riga_id | bigint | YES |  |
 | articolo_id | uuid | NO |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(255) | NO |  |
 | quantita | numeric | NO |  |
 | qta_operativa | numeric | YES |  |
 | uom_operativa_id | bigint | YES |  |
 | factor_to_base | numeric | NO | 1 |
 | tipo_reso_id | bigint | NO |  |
-| motivo | character varying | YES |  |
+| motivo | character varying(255) | YES |  |
 | attivo | boolean | NO | true |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
@@ -28,11 +28,14 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_resi_righe_factor_to_base_finito |  |
+| CHECK | chk_resi_righe_qta_operativa_finito |  |
+| CHECK | chk_resi_righe_quantita_finito |  |
 | CHECK | k_resi_righe_qta_operativa_pos |  |
 | CHECK | k_resi_righe_qta_pos |  |
 | FOREIGN KEY | fk_resi_righe_articolo | articolo_id |

@@ -230,6 +230,24 @@ def apri_transazione_annullata(test: unittest.TestCase) -> None:
     test.addCleanup(_annulla)
 
 
+# Scopo: l'eccezione con cui un test esce da un blocco `transaction.atomic()`
+#        ANNULLANDOLO, quando la transazione vive dentro il singolo test e non
+#        nel `setUp` (per quello c'e' `apri_transazione_annullata`):
+#            try:
+#                with transaction.atomic(), connection.cursor() as cur:
+#                    ...
+#                    raise Annulla
+#            except Annulla:
+#                pass
+# ⭐ ESTRATTA IL 2026-10-08 (regola del 2, ok di Tid): stava ricopiata, identica,
+#    in 22 file di test di 8 app, e tre file la importavano come nome privato
+#    da `anagrafiche/tests/db/test_ricerca_liste_db`.
+# ⚠️ E' una classe propria e non un `Exception` generico: un errore VERO
+#    sollevato nel blocco non deve essere scambiato per l'annullo voluto.
+class Annulla(Exception):
+    """Esce dal blocco atomico annullandolo."""
+
+
 # ══════════════════════════════════════════════════════════════════════
 #  I VOCABOLARI SPECCHIATI — Python contro il CHECK che li possiede
 # ══════════════════════════════════════════════════════════════════════

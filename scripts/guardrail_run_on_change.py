@@ -68,7 +68,7 @@ ROOT = Path(__file__).resolve().parent.parent
 BASE = ROOT / "db" / "changelog" / "migrations_v2"
 FASI_VIETATE = ("00_schema", "20_code")
 # Fasi dove runOnChange e' lecito: li' vale la seconda regola (niente dbms:).
-FASI_LECITE = ("80_data", "85_pgagent", "90_end")
+FASI_LECITE = ("70_dati_sistema", "80_data", "85_pgagent", "90_end")
 FILENAME_RE = re.compile(r"^\d{8}-\d{2}.*\.(ya?ml)$", re.IGNORECASE)
 
 

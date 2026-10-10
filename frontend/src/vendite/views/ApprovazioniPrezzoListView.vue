@@ -15,8 +15,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
-import Textarea from 'primevue/textarea'
-import AppDialog from '../../core/components/AppDialog.vue'
+import MotivoDialog from '../../core/components/MotivoDialog.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
@@ -69,7 +68,6 @@ onMounted(safeFetch)
 const dialogVisible = ref(false)
 const dialogMode = ref(null)  // 'approva' | 'rifiuta'
 const dialogPratica = ref(null)
-const dialogText = ref('')
 const dialogLoading = ref(false)
 
 const dialogTitle = computed(() =>
@@ -91,14 +89,12 @@ const dialogTextLabel = computed(() =>
 function openApprovaDialog(pratica) {
   dialogMode.value = 'approva'
   dialogPratica.value = pratica
-  dialogText.value = ''
   dialogVisible.value = true
 }
 
 function openRifiutaDialog(pratica) {
   dialogMode.value = 'rifiuta'
   dialogPratica.value = pratica
-  dialogText.value = ''
   dialogVisible.value = true
 }
 
@@ -128,7 +124,9 @@ function rigaIdFromPratica(pratica) {
   return m[key] ?? m.riga_id ?? null
 }
 
-async function confirmDialog() {
+// `testo`: la nota (approva) o la motivazione (rifiuta), gia' ripulita dal
+// BB `MotivoDialog`, `null` se vuota.
+async function confirmDialog(testo) {
   const pratica = dialogPratica.value
   const rigaId = rigaIdFromPratica(pratica)
   if (!rigaId) {
@@ -146,10 +144,10 @@ async function confirmDialog() {
   dialogLoading.value = true
   try {
     if (dialogMode.value === 'approva') {
-      await approvaPrezzoRiga(rigaId, { nota: dialogText.value || null }, sorgente)
+      await approvaPrezzoRiga(rigaId, { nota: testo }, sorgente)
       notify.success(t('vendite.approvazioni_prezzo.approvazione_inviata'))
     } else {
-      await rifiutaPrezzoRiga(rigaId, { motivazione: dialogText.value || null }, sorgente)
+      await rifiutaPrezzoRiga(rigaId, { motivazione: testo }, sorgente)
       notify.success(t('vendite.approvazioni_prezzo.rifiuto_inviato'))
     }
     dialogVisible.value = false
@@ -261,20 +259,17 @@ function buildRowActions(data) {
       </template>
     </ListaConfigurabile>
 
-    <AppDialog
+    <MotivoDialog
       v-model:visible="dialogVisible"
       :header="dialogTitle"
+      :label="dialogTextLabel"
       width="md"
       :loading="dialogLoading"
       :save-label="t('common.confirm')"
       :save-severity="dialogMode === 'rifiuta' ? 'danger' : null"
-      @save="confirmDialog"
+      @conferma="confirmDialog"
     >
       <p>{{ dialogMessage }}</p>
-      <div class="form-field mt-1">
-        <label>{{ dialogTextLabel }}</label>
-        <Textarea v-model="dialogText" rows="3" auto-resize />
-      </div>
-    </AppDialog>
+    </MotivoDialog>
   </div>
 </template>

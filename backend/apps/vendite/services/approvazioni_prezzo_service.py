@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 from django.db import connection, transaction
 from django.utils.timezone import now
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import resolve_config_id_by_codice_interno, row_to_dict
 from apps.core.services.email_service import EmailDispatchService
 from apps.core.services.error_manager import ErrorManager
@@ -272,7 +273,7 @@ def _get_priorita_default_id() -> int:
 #        best-effort all'approver, ritorna pratica_id. Per preventivi/contratti
 #        i caller pubblici `crea_richiesta_approvazione` e
 #        `crea_richiesta_approvazione_contratto` arrivano qui con il proprio
-#        `contesto` (emittente + soggetto + istanza_utility), il numero
+#        `contesto` (emittente + soggetto + ruolo + BA del documento), il numero
 #        documento per la descrizione, e `riga_id` per il meta.
 #        Riga_id puo' essere None per preventivi (in create_riga il riga
 #        non e' ancora noto; link_riga_a_pratica completa poi); per contratti
@@ -320,6 +321,7 @@ def _crea_richiesta_approvazione_impl(
         soggetto_id=contesto["soggetto_id"],
         soggetto_ruolo_id=contesto["soggetto_ruolo_id"],
         istanza_utility_id=istanza_utility_id,
+        billing_account_id=contesto["billing_account_id"],
         priorita_id=_get_priorita_default_id(),
         descrizione=descrizione,
         meta=meta,
@@ -377,7 +379,10 @@ def crea_richiesta_approvazione(
         sorgente=SORGENTE_PREVENTIVO,
         documento_id=preventivo_id,
         riga_id=None,  # popolato dopo da link_riga_a_pratica
-        numero_documento=testata.get("numero_documento"),
+        # ⚠️ La testata del preventivo ha `numero` (`PreventivoDetailRow`), non
+        #    `numero_documento`: fino al 2026-10-09 si leggeva la chiave che non
+        #    esiste, e la pratica si descriveva con l'id interno (trovato da mypy).
+        numero_documento=testata.get("numero"),
         articolo_id=articolo_id,
         contesto=contesto,
         istanza_utility_id=testata.get("istanza_utility_id"),
@@ -602,7 +607,7 @@ def rifiuta(
 def lista_coda(
     *,
     auth_user_id: int | None,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str | None = None,
     order_dir: str | None = None,

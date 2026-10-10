@@ -33,7 +33,7 @@ AS $function$
 DECLARE
     v_dal    vendite.promo_articoli.valido_dal%TYPE;
     v_al     vendite.promo_articoli.valido_al%TYPE;
-    v_today  CONSTANT date := CURRENT_DATE;
+    v_today  CONSTANT date := script.fn_data_operativa();
     v_stato  text;
     v_can    boolean;
     v_reason text;

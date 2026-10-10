@@ -17,14 +17,15 @@ from __future__ import annotations
 # CLIENTE_PORTALE / FORNITORE_PORTALE = cliente/fornitore che accede al portale.
 # SHOP_CUSTOMER = cliente del negozio online (self-service).
 # API_CLIENT = chiamate programmatiche da sistema terzo.
-# DISABILITATO = identita sospesa (bypassa la risoluzione, nega accesso).
+# ⛔ DISABILITATO non e' piu' un tipo di veste (2026-10-02, R-DB-1): resta
+#    nell'enum come voce STORICA (`storico.identita_digitali`), la tabella
+#    viva lo rifiuta. Una veste spenta e' `attivo = false` col suo tipo.
 
 RUOLO_APPLICATIVO_OPERATORE = "OPERATORE"
 RUOLO_APPLICATIVO_CLIENTE_PORTALE = "CLIENTE_PORTALE"
 RUOLO_APPLICATIVO_FORNITORE_PORTALE = "FORNITORE_PORTALE"
 RUOLO_APPLICATIVO_SHOP_CUSTOMER = "SHOP_CUSTOMER"
 RUOLO_APPLICATIVO_API_CLIENT = "API_CLIENT"
-RUOLO_APPLICATIVO_DISABILITATO = "DISABILITATO"
 
 RUOLO_APPLICATIVO: tuple[str, ...] = (
     RUOLO_APPLICATIVO_OPERATORE,
@@ -32,7 +33,25 @@ RUOLO_APPLICATIVO: tuple[str, ...] = (
     RUOLO_APPLICATIVO_FORNITORE_PORTALE,
     RUOLO_APPLICATIVO_SHOP_CUSTOMER,
     RUOLO_APPLICATIVO_API_CLIENT,
-    RUOLO_APPLICATIVO_DISABILITATO,
+)
+
+# ── Categoria di una credenziale (il tab dell'area «Accessi») ──
+
+# Scopo: Il vocabolario di `script.fn_categoria_accesso(auth_user_id)`, la
+# classificazione che rende i tre tab una PARTIZIONE (brief-db-be-fe-area-accessi,
+# R-DB-A1): ogni credenziale ne ha una sola. La regola sta nel DB; qui ci sono
+# solo i tre valori che il backend confronta.
+# OPERATORE = almeno una veste OPERATORE di una persona (anche spenta).
+# SISTEMA = almeno una veste di una macchina (`tecnica` o API_CLIENT).
+# ALTRO = tutte le altre persone, comprese le credenziali senza alcuna veste.
+CATEGORIA_ACCESSO_OPERATORE = "OPERATORE"
+CATEGORIA_ACCESSO_SISTEMA = "SISTEMA"
+CATEGORIA_ACCESSO_ALTRO = "ALTRO"
+
+CATEGORIA_ACCESSO: tuple[str, ...] = (
+    CATEGORIA_ACCESSO_OPERATORE,
+    CATEGORIA_ACCESSO_SISTEMA,
+    CATEGORIA_ACCESSO_ALTRO,
 )
 
 # ⛔ I TRE ATTORI D'AUDIT DEL CANALE DI SISTEMA SONO STATI RITIRATI (2026-09-05,

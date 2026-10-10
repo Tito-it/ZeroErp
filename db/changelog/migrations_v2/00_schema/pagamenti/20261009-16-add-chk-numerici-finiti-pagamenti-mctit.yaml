@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN NUMERO CHE NON E' UN NUMERO NON SI SCRIVE — schema pagamenti
+#   CHECK «finito» su 4 colonne numeric di 4 tabelle:
+#     pagamenti.sistemazioni: importo
+#     pagamenti.vendite_contabili: importo_dichiarato
+#     pagamenti.vendite_contabili_righe: importo
+#     pagamenti.vendite_movimenti: importo
+#   Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1 e D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il tipo numeric ammette 'NaN' (con o senza scala) e 'Infinity' /
+#   '-Infinity' (solo senza scala). Nessuno dei tre e' una quantita', un
+#   prezzo o un importo, e il NaN contagia: una somma con un NaN e' NaN, e
+#   NaN e' maggiore di ogni numero, quindi passa i CHECK di segno (>= 0) e
+#   risponde «si'» a ogni confronto con una soglia. La regola e' del TIPO,
+#   non dei documenti: vale per ogni colonna numeric del modello (D-2).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Un CHECK per colonna, sempre lo stesso predicato:
+#     col > '-Infinity'::numeric AND col < 'Infinity'::numeric
+#   falso su NaN, Infinity e -Infinity, vero su ogni numero; il NULL passa
+#   come in ogni CHECK. Nome chk_<tabella>_<colonna>_finito.
+#   Un CHECK e non un guard (D-1): chi scrive un NaN e' un chiamante rotto,
+#   non una persona da un form, e la violazione esce 23514 col nome del
+#   vincolo: un errore tecnico, giusto per un guasto.
+#   ⭐ Una colonna numeric nuova nasce col suo CHECK: lo pretende il presidio
+#   db/pgtap/dbops/test-numerici-finiti-v1.sql.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero valori non finiti (expectedResult 0: un DB
+#   da zero la soddisfa, linee-guida-sql §11.4), come il 20261008-85. Se ce
+#   ne sono il migrate si ferma e si guardano a mano: nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/pagamenti/20261009-16-add-chk-numerici-finiti-pagamenti-mctit.yaml
+
+  - changeSet:
+      id: 20261009-16-add-chk-numerici-finiti-pagamenti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK «finito» (niente NaN, Infinity, -Infinity) sulle 4 colonne numeric dello
+        schema pagamenti. Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT (SELECT count(*) FROM pagamenti.sistemazioni
+                                WHERE NOT (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM pagamenti.vendite_contabili
+                                WHERE NOT (importo_dichiarato > '-Infinity'::numeric AND importo_dichiarato < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM pagamenti.vendite_contabili_righe
+                                WHERE NOT (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM pagamenti.vendite_movimenti
+                                WHERE NOT (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE pagamenti.sistemazioni
+                ADD CONSTRAINT chk_sistemazioni_importo_finito
+                    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric);
+              ALTER TABLE pagamenti.vendite_contabili
+                ADD CONSTRAINT chk_vendite_contabili_importo_dichiarato_finito
+                    CHECK (importo_dichiarato > '-Infinity'::numeric AND importo_dichiarato < 'Infinity'::numeric);
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                ADD CONSTRAINT chk_vendite_contabili_righe_importo_finito
+                    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric);
+              ALTER TABLE pagamenti.vendite_movimenti
+                ADD CONSTRAINT chk_vendite_movimenti_importo_finito
+                    CHECK (importo > '-Infinity'::numeric AND importo < 'Infinity'::numeric);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE pagamenti.sistemazioni
+                DROP CONSTRAINT IF EXISTS chk_sistemazioni_importo_finito;
+              ALTER TABLE pagamenti.vendite_contabili
+                DROP CONSTRAINT IF EXISTS chk_vendite_contabili_importo_dichiarato_finito;
+              ALTER TABLE pagamenti.vendite_contabili_righe
+                DROP CONSTRAINT IF EXISTS chk_vendite_contabili_righe_importo_finito;
+              ALTER TABLE pagamenti.vendite_movimenti
+                DROP CONSTRAINT IF EXISTS chk_vendite_movimenti_importo_finito;

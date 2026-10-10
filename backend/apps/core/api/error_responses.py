@@ -20,24 +20,6 @@ if TYPE_CHECKING:
 # Helper condivisi API: envelope errori uniforme per tutti i domini.
 
 
-# Scopo: Gestisce `invalid_json_response` nel flusso applicativo del modulo.
-def invalid_json_response() -> JsonResponse:
-    payload = {"error": "invalid_json"}
-    meta = _build_meta()
-    if meta:
-        payload["meta"] = meta
-    return JsonResponse(payload, status=400)
-
-
-# Scopo: Gestisce `invalid_payload_response` nel flusso applicativo del modulo.
-def invalid_payload_response() -> JsonResponse:
-    payload = {"error": "invalid_payload"}
-    meta = _build_meta()
-    if meta:
-        payload["meta"] = meta
-    return JsonResponse(payload, status=400)
-
-
 # Scopo: Gestisce `exception_to_error_response` nel flusso applicativo del modulo.
 # Prima di mascherare i dettagli tecnici per il client, registra l'eccezione
 # sul logger "api.exception" cosi' il dev puo' risalire dal request_id mostrato
@@ -100,6 +82,23 @@ def _codice_drf(exc: Exception) -> str | None:
     return next((code for cls, code in _DRF_ERROR_CODE_MAP if isinstance(exc, cls)), None)
 
 
+# Scopo: Il codice E_* che l'eccezione porta su di se' (`detail.code`), o
+#        None. Solo un dettaglio singolo: il detail di una ValidationError e'
+#        un dict o una lista, e non ha un codice suo.
+def _codice_istanza(exc: Exception) -> str | None:
+    code = getattr(getattr(exc, "detail", None), "code", None)
+    return code if isinstance(code, str) and code.startswith("E_") else None
+
+
+# Scopo: Il codice E_* della classe: il default_code applicativo di una
+#        sottoclasse, altrimenti la mappa classe → codice.
+def _codice_classe(exc: Exception) -> str | None:
+    default_code = getattr(exc, "default_code", None)
+    if isinstance(default_code, str) and default_code.startswith("E_"):
+        return default_code
+    return _codice_drf(exc)
+
+
 def drf_exception_handler(exc: Exception, context: dict) -> Response | None:
     response = drf_default_handler(exc, context)
     if response is None:
@@ -113,11 +112,14 @@ def drf_exception_handler(exc: Exception, context: dict) -> Response | None:
     # NB: questo ordine e' deliberato: aggiungere una subclass a
     # `_DRF_ERROR_CODE_MAP` NON la sovrascrive — default_code vince sempre
     # quando inizia per E_*. Per forzare un code diverso, cambiare default_code.
-    exc_default_code = getattr(exc, "default_code", None)
-    if isinstance(exc_default_code, str) and exc_default_code.startswith("E_"):
-        code = exc_default_code
-    else:
-        code = _codice_drf(exc)
+    # ⭐ Prima ancora viene il codice dell'ISTANZA (`exc.detail.code`): e' la
+    #    strada con cui DRF trasporta il `code` di una permission
+    #    (`check_permissions` → `PermissionDenied(detail=message, code=code)`),
+    #    e senza `code` esplicito vale gia' il default_code della classe. Fino
+    #    al 2026-10-08 qui si leggeva solo default_code, e un permesso che
+    #    diceva PERCHE' negava («reparto senza profilo») usciva come
+    #    `E_PERMISSION_DENIED` col messaggio generico (E-5).
+    code = _codice_istanza(exc) or _codice_classe(exc)
 
     if code:
         # Usa il user_message della policy: garantisce messaggi uniformi per lo

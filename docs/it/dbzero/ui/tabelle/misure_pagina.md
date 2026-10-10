@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | id | integer | NO |  |
 | misura | integer | NO |  |
-| uso_default | character varying | YES |  |
+| uso_default | character varying(20) | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |

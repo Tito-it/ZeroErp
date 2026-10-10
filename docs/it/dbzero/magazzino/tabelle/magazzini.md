@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
+| codice | character varying(32) | NO |  |
+| descrizione | character varying(120) | NO |  |
 | indirizzo_dettaglio_id | bigint | NO |  |
 | attivo | boolean | NO | true |
 | predefinito | boolean | NO | false |
@@ -21,7 +21,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | emittente_fiscale_id | bigint | NO |  |
 | usa_ubicazioni | boolean | NO | false |
 

@@ -5,28 +5,29 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying | NO |  |
+| target_tipo | character varying(32) | NO |  |
 | target_id | bigint | NO |  |
 | target_riga_id | bigint | YES |  |
-| anchor_tipo | character varying | NO |  |
-| posizione | character varying | NO |  |
+| anchor_tipo | character varying(12) | NO |  |
+| posizione | character varying(12) | NO |  |
 | seq | integer | NO | 10 |
 | testo | text | YES |  |
 | testo_md | text | YES |  |
-| stile | character varying | NO | 'NORMALE'::character varying |
-| lingua | character | YES |  |
+| stile | character varying(16) | NO | 'NORMALE'::character varying |
+| lingua | character varying(5) | YES |  |
 | visibile | boolean | NO | true |
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_note_anchor_tipo |  |
+| CHECK | chk_note_lingua_non_vuota |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_rettifica_anchor |  |
 | CHECK | chk_note_seq_pos |  |

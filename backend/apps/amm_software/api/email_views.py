@@ -23,6 +23,7 @@ from apps.core.api.base_views import AdminAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
 from apps.core.api.payload_validators import (
+    qp_iso_date_optional,
     corpo_oggetto,
     optional_int,
     paginated_envelope,
@@ -30,14 +31,49 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
-from apps.core.services.email_service import EmailDispatchService, smtp_non_configurato
+from apps.core.services.email_service import (
+    E_EMAIL_ACCOUNT_NOT_FOUND,
+    EmailDispatchService,
+    smtp_non_configurato,
+)
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
+from apps.core.services.testata_guard import o_not_found
 from apps.core.services.html_sanitizer_service import sanitize_email_html
 from apps.core.services.payload_helpers import PayloadValidator
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 
 E_EMAIL_ADMIN = "E_EMAIL_ADMIN"
+
+# I «non trovato» dell'amministrazione email (brief-db-codici-non-trovato-
+# email-e-permessi §2): `E_EMAIL_ADMIN` resta per i soli dati errati.
+E_EMAIL_TEMPLATE_NOT_FOUND = "E_EMAIL_TEMPLATE_NOT_FOUND"
+E_EMAIL_LOG_NOT_FOUND = "E_EMAIL_LOG_NOT_FOUND"
+
+
+# Scopo: L'account email per id, o 404 `E_EMAIL_ACCOUNT_NOT_FOUND`. Sede unica
+#        per dettaglio, modifica, eliminazione e test (regola del 2, ok Tid
+#        2026-10-09).
+def _account_o_404(repo: EmailRepository, account_id: int) -> dict[str, Any]:
+    return o_not_found(
+        repo.get_account(account_id),
+        code=E_EMAIL_ACCOUNT_NOT_FOUND,
+        message=USER_MESSAGE_FALLBACK[E_EMAIL_ACCOUNT_NOT_FOUND],
+        detail=f"email_account_id={account_id}",
+    )
+
+
+# Scopo: Il template email per id, o 404 `E_EMAIL_TEMPLATE_NOT_FOUND`. Sede
+#        unica per dettaglio, modifica, eliminazione e anteprima (regola del 2,
+#        ok Tid 2026-10-09).
+def _template_o_404(repo: EmailRepository, template_id: int) -> dict[str, Any]:
+    return o_not_found(
+        repo.get_template(template_id),
+        code=E_EMAIL_TEMPLATE_NOT_FOUND,
+        message=USER_MESSAGE_FALLBACK[E_EMAIL_TEMPLATE_NOT_FOUND],
+        detail=f"email_template_id={template_id}",
+    )
 
 # Chiavi ammesse nella PATCH di un account email: il contratto dell'operatore.
 # `smtp_password` e' la password IN CHIARO (la cifra il repository); `meta`
@@ -222,11 +258,7 @@ class EmailAccountDetailView(AdminAPIView):
     #        `last_test_outcome`, `last_test_message`) usate dalla UI per
     #        gating del pulsante "Testa connessione" (Fase 6).
     def get(self, request: Request, account_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        result = repo.get_account(account_id)
-        ErrorManager.require(result is not None, code=E_EMAIL_ADMIN, message="Account non trovato.")
-        assert result is not None
-        return success_response(_enrich_account_with_capability(result))
+        return success_response(_enrich_account_with_capability(_account_o_404(EmailRepository(), account_id)))
 
     @extend_schema(request=_ACCOUNT_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna parzialmente un account email.
@@ -237,10 +269,7 @@ class EmailAccountDetailView(AdminAPIView):
     def patch(self, request: Request, account_id: int) -> JsonResponse:
         data = corpo_oggetto(request)
         repo = EmailRepository()
-        ErrorManager.require(
-            repo.get_account(account_id) is not None,
-            code=E_EMAIL_ADMIN, message="Account non trovato.",
-        )
+        _account_o_404(repo, account_id)
         PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
             data, allowed=_ACCOUNT_PATCH_KEYS, message="Campi dell'account non modificabili.",
         )
@@ -270,8 +299,9 @@ class EmailAccountDetailView(AdminAPIView):
     # Scopo: Elimina un account email.
     def delete(self, request: Request, account_id: int) -> JsonResponse:
         repo = EmailRepository()
-        deleted = repo.delete_account(account_id)
-        ErrorManager.require(deleted, code=E_EMAIL_ADMIN, message="Account non trovato.")
+        # La lettura prima della cancellazione da' il 404 dalla sede unica.
+        _account_o_404(repo, account_id)
+        repo.delete_account(account_id)
         return JsonResponse({}, status=204)
 
 
@@ -291,9 +321,7 @@ class EmailAccountTestView(AdminAPIView):
     def post(self, request: Request, account_id: int) -> JsonResponse:
         repo = EmailRepository()
         # Verifica esistenza prima del test SMTP per dare errore 4xx coerente.
-        account = repo.get_account(account_id)
-        ErrorManager.require(account is not None, code=E_EMAIL_ADMIN, message="Account non trovato.")
-        assert account is not None
+        _account_o_404(repo, account_id)
 
         service = EmailDispatchService()
         test_result = service.test_connection(account_id)
@@ -397,9 +425,7 @@ class EmailTemplateDetailView(AdminAPIView):
     # Scopo: Dettaglio singolo template email per ID (incluso corpo).
     def get(self, request: Request, template_id: int) -> JsonResponse:
         repo = EmailRepository()
-        result = repo.get_template(template_id)
-        ErrorManager.require(result is not None, code=E_EMAIL_ADMIN, message="Template non trovato.")
-        return success_response(result or {})
+        return success_response(_template_o_404(repo, template_id))
 
     @extend_schema(request=_TEMPLATE_PATCH_REQUEST, responses={200: dict})
     # Scopo: Aggiorna parzialmente un template email.
@@ -409,10 +435,7 @@ class EmailTemplateDetailView(AdminAPIView):
     def patch(self, request: Request, template_id: int) -> JsonResponse:
         data = corpo_oggetto(request)
         repo = EmailRepository()
-        ErrorManager.require(
-            repo.get_template(template_id) is not None,
-            code=E_EMAIL_ADMIN, message="Template non trovato.",
-        )
+        _template_o_404(repo, template_id)
         PayloadValidator(validation_code=E_EMAIL_ADMIN).validate_allowed_keys(
             data, allowed=_TEMPLATE_PATCH_KEYS, message="Campi del template non modificabili.",
         )
@@ -440,8 +463,9 @@ class EmailTemplateDetailView(AdminAPIView):
     # Scopo: Elimina un template email.
     def delete(self, request: Request, template_id: int) -> JsonResponse:
         repo = EmailRepository()
-        deleted = repo.delete_template(template_id)
-        ErrorManager.require(deleted, code=E_EMAIL_ADMIN, message="Template non trovato.")
+        # La lettura prima della cancellazione da' il 404 dalla sede unica.
+        _template_o_404(repo, template_id)
+        repo.delete_template(template_id)
         return JsonResponse({}, status=204)
 
 
@@ -461,9 +485,7 @@ class EmailTemplatePreviewView(AdminAPIView):
         def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             variabili = payload.get("variabili") or {}
             repo = EmailRepository()
-            template = repo.get_template(template_id)
-            ErrorManager.require(template is not None, code=E_EMAIL_ADMIN, message="Template non trovato.")
-            assert template is not None
+            template = _template_o_404(repo, template_id)
 
             service = EmailDispatchService()
             rendered_html = service.render_template(template["corpo_html"], variabili)
@@ -517,8 +539,8 @@ class EmailLogListView(AdminAPIView):
             ambito=qp.get("ambito") or None,
             unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
-            data_da=qp.get("data_da") or None,
-            data_a=qp.get("data_a") or None,
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],
@@ -536,6 +558,10 @@ class EmailLogDetailView(AdminAPIView):
     # Scopo: Dettaglio email inviata con corpo esatto e metadati.
     def get(self, request: Request, log_id: int) -> JsonResponse:
         repo = EmailRepository()
-        result = repo.get_log(log_id)
-        ErrorManager.require(result is not None, code=E_EMAIL_ADMIN, message="Log email non trovato.")
-        return success_response(result or {})
+        # Fuori perimetro RLS e inesistente: lo stesso 404.
+        return success_response(o_not_found(
+            repo.get_log(log_id),
+            code=E_EMAIL_LOG_NOT_FOUND,
+            message=USER_MESSAGE_FALLBACK[E_EMAIL_LOG_NOT_FOUND],
+            detail=f"email_log_id={log_id}",
+        ))

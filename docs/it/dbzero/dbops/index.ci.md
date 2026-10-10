@@ -26,6 +26,8 @@
 - [pipeline_task_registry](manual/pipeline_task_registry.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry` e` il catalogo dei **task ammessi** per ciascun dominio pipeline. Impedisce l'esecuzione di task non registrati e centralizza la governance delle azioni eseguibili dal motore applicativo.
 - [pipeline_task_registry_impl](manual/pipeline_task_registry_impl.md) — (latest review 08-02-2026) `dbops.pipeline_task_registry_impl` definisce le **implementazioni consentite** per ciascun task. Serve a gestire in modo controllato le varianti (`default`, `v2`, `gas_v1`, ecc.) senza dispatch dinamico libero.
 - [presidi](manual/presidi.md) — (latest review 10-09-2026)
+- [presidi_cause](manual/presidi_cause.md) — (latest review 09-10-2026)
+- [presidi_testi](manual/presidi_testi.md) — (latest review 09-10-2026)
 - [processi](manual/processi.md) — (latest review 14-09-2026)
 - [processi_bersagli](manual/processi_bersagli.md) — (latest review 04-09-2026)
 - [processi_identita](manual/processi_identita.md) — (latest review 04-09-2026)
@@ -56,7 +58,8 @@
 - [fn_check_pipeline_task_registered](manual/fn_check_pipeline_task_registered.md) — (latest review 08-02-2026) Verifica che un task sia registrato e **attivo** per un dominio. La funzione fallisce con errore applicativo se il task non e` ammesso.
 - [fn_cleanup_at_params](manual/fn_cleanup_at_params.md) — (rev 2026-09-18 — Passo D di `analisi-osservabilita-log.md`)
 - [fn_col_exists](manual/fn_col_exists.md) — (rev 2026-08-21)
-- [fn_conta_presidio](manual/fn_conta_presidio.md) — (latest review 10-09-2026)
+- [fn_conta_presidio](manual/fn_conta_presidio.md) — (latest review 10-10-2026)
+- [fn_conta_presidio_per_variante](manual/fn_conta_presidio_per_variante.md) — (latest review 10-10-2026)
 - [fn_drop_triggers_by_function_args](manual/fn_drop_triggers_by_function_args.md) — (latest review 13-01-26) La funzione **`fn_drop_triggers_by_function_args`** elimina tutti i **trigger associati a una tabella** che invocano una determinata funzione di trigger, filtrando in base a **schema**, **nome funzione** e **lista di argomenti**.
 - [fn_ensure_storico_table](manual/fn_ensure_storico_table.md) — (latest review 16-01-26) La funzione **`fn_ensure_storico_table`** si occupa di **creare** (se non esiste) la **tabella di storico** nello schema `storico` corrispondente ad una tabella base (`p_schema_base.p_table_base`), con **colonna FK** coerente al **tipo** della PK della tabella padre, **indici** necessari e **logging** integrato. Supporta modalità **dry‑run** e la creazione opzionale di un **indice GIN** sullo `snapshot`.
 - [fn_find_file_usage](manual/fn_find_file_usage.md) — * **Analisi d’impatto**     Identificare rapidamente tutte le relazioni di FK verso una tabella, utile per valutare dipendenze e conseguenze di modifiche, cancellazioni o refactoring di schema.
@@ -77,15 +80,20 @@
 - [fn_pgtap_cf_libero](manual/fn_pgtap_cf_libero.md) — (rev 2026-08-21)
 - [fn_pgtap_concedi_azione](manual/fn_pgtap_concedi_azione.md) — (scritta il 2026-09-24)
 - [fn_pgtap_crea_articolo](manual/fn_pgtap_crea_articolo.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
+- [fn_pgtap_crea_commessa](manual/fn_pgtap_crea_commessa.md) — (rev 2026-10-07)
+- [fn_pgtap_crea_commessa_attivita](manual/fn_pgtap_crea_commessa_attivita.md) — (rev 2026-10-07)
 - [fn_pgtap_crea_fattura](manual/fn_pgtap_crea_fattura.md) — (rev 2026-09-23 — D7, lotto 1)
 - [fn_pgtap_crea_filiale_bancaria](manual/fn_pgtap_crea_filiale_bancaria.md) — (rev 2026-09-23 — D7, lotto 1)
 - [fn_pgtap_crea_gestore](manual/fn_pgtap_crea_gestore.md) — (rev 2026-09-23 — D7, lotto 2)
 - [fn_pgtap_crea_listino](manual/fn_pgtap_crea_listino.md) — (rev 2026-09-23 — D7, lotto 2)
 - [fn_pgtap_crea_magazzino](manual/fn_pgtap_crea_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_pgtap_crea_mondo_cliente](manual/fn_pgtap_crea_mondo_cliente.md) — (rev 2026-09-22 — D7, il giro del building block)
+- [fn_pgtap_crea_ordine](manual/fn_pgtap_crea_ordine.md) — (rev 2026-10-07)
+- [fn_pgtap_crea_preventivo](manual/fn_pgtap_crea_preventivo.md) — (rev 2026-10-07)
 - [fn_pgtap_crea_soggetto_pg](manual/fn_pgtap_crea_soggetto_pg.md) — (rev 2026-08-21)
 - [fn_pgtap_crea_soggetto_ruolo](manual/fn_pgtap_crea_soggetto_ruolo.md) — (rev 2026-08-21)
 - [fn_pgtap_piva_libera](manual/fn_pgtap_piva_libera.md) — (rev 2026-08-21)
+- [fn_pgtap_porta_a_stato](manual/fn_pgtap_porta_a_stato.md) — (rev 2026-10-08)
 - [fn_populate_fk_index_policy](manual/fn_populate_fk_index_policy.md) — (latest review 27-07-26)
 - [fn_purge_cleanup_expired](manual/fn_purge_cleanup_expired.md) — (latest review 07-02-26) La funzione **`dbops.fn_purge_cleanup_expired`** elimina i record con **`cleanup_at` scaduto** usando una strategia a **batch**, per ridurre lock e impatti sulle tabelle più grandi.
 - [fn_resolve_scope](manual/fn_resolve_scope.md) — (latest review 10-01-26) La funzione **`dbops.fn_resolve_scope(p_schemas text[])`** restituisce la lista effettiva di schemi da considerare come *ambito* per l’esecuzione delle automazioni. Serve a normalizzare e centralizzare la logica di determinazione dell’ambito operativo, evitando duplicazioni e incoerenze.
@@ -134,6 +142,7 @@
 - [vw_coda_lavori_da_guardare](manual/vw_coda_lavori_da_guardare.md) — (latest review 05-09-2026)
 - [vw_codici_errore_da_dichiarare](manual/vw_codici_errore_da_dichiarare.md) — (rev 2026-08-21)
 - [vw_codici_errore_forme_condizione](manual/vw_codici_errore_forme_condizione.md) — (rev 2026-09-07)
+- [vw_credenziali_da_sanare](manual/vw_credenziali_da_sanare.md)
 - [vw_diag_v_clienti_links](manual/vw_diag_v_clienti_links.md) — (latest review 25-12-25) La vista **`dbops.vw_diag_v_clienti_links`** è una **vista diagnostica** che espone in modo “leggibile” i **legami strutturali** tra:
 - [vw_duplicate_indexes](manual/vw_duplicate_indexes.md) — (latest review 27-07-26)
 - [vw_email_da_guardare](manual/vw_email_da_guardare.md) — (latest review 11-09-2026)

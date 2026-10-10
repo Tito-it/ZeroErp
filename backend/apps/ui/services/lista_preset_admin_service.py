@@ -94,7 +94,7 @@ _MAX_DESCRIZIONE_LEN = 200
 
 # Mapping vincoli DB -> codice + messaggio applicativo. I nomi sono
 # allineati a 20260506-04 (CHECK + UNIQUE + partial UNIQUE).
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_ui_lista_preset_lista_codice": (
         E_PRESET_VALIDATION,
         "Esiste gia' un preset con questo codice per la lista.",
@@ -106,7 +106,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "fk_lista_preset_lista_definizione": (
         E_PRESET_VALIDATION,
         "lista_id non valido (FK su ui.lista_definizione).",
@@ -121,7 +121,7 @@ _FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-_CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_CHECK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "chk_ui_lista_preset_ambito_refs": (
         E_PRESET_VALIDATION,
         "Ambito incoerente con i riferimenti: 'sistema' richiede entrambi NULL, "

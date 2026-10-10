@@ -369,8 +369,9 @@ avvolta nel nuovo framework. Nessuna migrazione dati distruttiva.
 
 ### 6.1 Il salto di qualita'
 
-Oggi il backend filtra i queryset tramite il [EmittenteFiscaleScopeMixin](/guide/architettura-permessi-e-autorizzazioni#63-mixin-per-ambito-emittente-fiscale).
-Funziona, ma se un endpoint dimentica il mixin, i dati escono.
+Il backend filtra le letture con la condizione di scope dei repository
+([§6.3 della guida permessi](/guide/architettura-permessi-e-autorizzazioni#63-ambito-dati-whitelist-ef-per-operatori-rls-per-portaleshop)).
+Funziona, ma se un repository dimentica la condizione, i dati escono.
 
 Con il nuovo modello si introducono **policy RLS native PostgreSQL** sulle tabelle
 dati sensibili. Sono regole scritte nel DB che dicono: *questa riga e' visibile

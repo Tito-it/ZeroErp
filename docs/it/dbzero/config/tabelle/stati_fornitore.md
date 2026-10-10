@@ -9,10 +9,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| codice_interno | character varying | NO |  |
-| descrizione | character varying | NO | ''::character varying |
-| descrizione_breve | character varying | NO |  |
+| codice | character varying(10) | NO |  |
+| codice_interno | character varying(10) | NO |  |
+| descrizione | character varying(100) | NO | ''::character varying |
+| descrizione_breve | character varying(20) | NO |  |
 | attivo | boolean | NO | true |
 | blocca_ordini | boolean | NO | false |
 | data_insert | timestamp with time zone | NO | now() |

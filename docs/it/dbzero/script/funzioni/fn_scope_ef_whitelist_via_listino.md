@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_listino(p_auth_user_id integer, p_list
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_listino(p_auth_user_id integer, p_listino_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Risolve listino -> emittente_soggetto_ruolo_id e delega
     -- all'adapter SR. Listino inesistente -> SR NULL -> false

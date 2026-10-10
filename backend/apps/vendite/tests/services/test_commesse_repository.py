@@ -44,7 +44,7 @@ Indice test eseguiti:
 29) DiagnosticaGruppiTernePronteTests.test_terne_pronte_gia_lista_passa_intatta
 """
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
 from decimal import Decimal
 from inspect import signature
 from unittest import TestCase
@@ -213,8 +213,11 @@ class CommesseRepositoryUnitTests(TestCase):
             sorgente_uid="PREV-001",
         )
         self.assertEqual(result, 99)
-        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        sql, args = mock_cursor_factory.return_value.execute.call_args[0]
         self.assertIn("fn_link_commessa_sorgente", sql)
+        # Segnaposti e valori si corrispondono: un `p_… => %s` senza valore
+        # rende la chiamata irrisolvibile, e il mock da solo non lo vede.
+        self.assertEqual(sql.count("%s"), len(args))
 
     # Scopo: Verifica che upsert_attivita chiami la fn DB e restituisca UpsertAttivitaResult.
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -239,8 +242,9 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertIsInstance(result, UpsertAttivitaResult)
         self.assertEqual(result.attivita_id, 77)
         self.assertTrue(result.is_new)
-        sql = mock_cursor_factory.return_value.execute.call_args[0][0]
+        sql, args = mock_cursor_factory.return_value.execute.call_args[0]
         self.assertIn("fn_upsert_commessa_attivita", sql)
+        self.assertEqual(sql.count("%s"), len(args))
 
     # Scopo: Verifica default di CommessaAttivitaInput (#3, #4, #5, #10).
     @patch("apps.vendite.db.commesse_repository.connection.cursor")
@@ -602,14 +606,14 @@ class CommesseRepositoryUnitTests(TestCase):
             date(2026, 2, 1), date(2026, 2, 1), date(2026, 2, 28),
             Decimal("22.50"), True, False,
             "APPROVATA", "NON_EMESSA", 3,
-            "PREVENTIVO", {"note": "test"}, datetime(2026, 2, 26, 10, 0, 0),
+            "PREVENTIVO", {"note": "test"}, datetime(2026, 2, 26, 10, 0, 0, tzinfo=UTC),
             True,  # fatturata (in coda, changeset 20260724-07)
             # Sette colonne del changeSet 20260816-04, nell'ordine della
             # RETURNS TABLE. ⚠️ `fatturata_il` e' un istante DIVERSO dal
             # `data_update` qui sopra, ed e' il punto della colonna: e'
             # `fatture_righe.data_insert`, che nessuna modifica successiva
             # all'attivita' puo' spostare.
-            datetime(2026, 3, 2, 9, 30, 0),      # fatturata_il
+            datetime(2026, 3, 2, 9, 30, 0, tzinfo=UTC),      # fatturata_il
             77, 210, "DEFINITIVA",               # fattura_id, _numero, _stato
             "019fc716-7386-7b0d-9c26-0a4d30f3a022",  # sorgente_uid
             "ORDINI", 100,                       # sorgente_area, _documento_id
@@ -652,7 +656,7 @@ class CommesseRepositoryUnitTests(TestCase):
         # `fatturata_il` serializzata come le altre date (isoformat) e DISTINTA
         # da `data_update`: se un giorno qualcuno la ricablasse su quest'ultima
         # il test lo direbbe, che e' l'unico modo di accorgersene.
-        self.assertEqual(row["fatturata_il"], "2026-03-02T09:30:00")
+        self.assertEqual(row["fatturata_il"], "2026-03-02T09:30:00+00:00")
         self.assertNotEqual(row["fatturata_il"], row["data_update"])
         self.assertEqual(row["fattura_id"], 77)
         self.assertEqual(row["fattura_numero"], 210)
@@ -771,6 +775,7 @@ class CommesseRepositoryUnitTests(TestCase):
             contratto_id=None,
             categoria_cliente_id_snapshot=None,
             classe_utenza_id_snapshot=4,
+            listino_riga_id=301,
         )
         row = CommesseRepository._inp_to_jsonb_row(inp)
         self.assertEqual(row["prezzo_base_snapshot"], "25.0000")
@@ -781,6 +786,8 @@ class CommesseRepositoryUnitTests(TestCase):
         self.assertIsNone(row["contratto_id"])
         self.assertIsNone(row["categoria_cliente_id_snapshot"])
         self.assertEqual(row["classe_utenza_id_snapshot"], 4)
+        # La chiave che il batch passa a `p_listino_riga_id` (2026-10-09).
+        self.assertEqual(row["listino_riga_id"], 301)
 
 
 class DiagnosticaGruppiTernePronteTests(TestCase):

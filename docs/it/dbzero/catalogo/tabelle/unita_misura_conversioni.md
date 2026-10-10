@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | uom_from_id | bigint | NO |  |
 | uom_to_id | bigint | NO |  |
-| fattore | numeric | NO |  |
+| fattore | numeric(18,6) | NO |  |
 | valido_dal | date | NO |  |
 | valido_al | date | YES |  |
 | attivo | boolean | NO | true |
@@ -19,12 +19,13 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | validita | daterange | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_unita_misura_conversioni_fattore_finito |  |
 | CHECK | chk_uom_conv_fattore_pos |  |
 | CHECK | chk_uom_conv_no_self |  |
 | FOREIGN KEY | fk_uom_conv_from | uom_from_id |

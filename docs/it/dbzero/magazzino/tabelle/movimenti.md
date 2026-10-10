@@ -11,15 +11,15 @@
 | id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | magazzino_id | bigint | NO |  |
-| qta | numeric | NO |  |
-| costo_unitario | numeric | YES |  |
+| qta | numeric(18,6) | NO |  |
+| costo_unitario | numeric(18,6) | YES |  |
 | data_mov | timestamp with time zone | NO | now() |
 | causale_id | bigint | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | false |
 | transfer_uid | uuid | YES |  |
@@ -37,6 +37,8 @@
 | CHECK | chk_mag_movimenti_asset_qta_unitaria |  |
 | CHECK | chk_mag_movimenti_qta_non_zero |  |
 | CHECK | chk_mag_movimenti_sorgente_chiave |  |
+| CHECK | chk_movimenti_costo_unitario_finito |  |
+| CHECK | chk_movimenti_qta_finito |  |
 | FOREIGN KEY | fk_mag_movimenti_articolo | articolo_id |
 | FOREIGN KEY | fk_mag_movimenti_asset | asset_id |
 | FOREIGN KEY | fk_mag_movimenti_causale | causale_id |

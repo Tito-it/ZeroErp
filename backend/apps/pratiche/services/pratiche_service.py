@@ -10,14 +10,17 @@
 #        funzioni per creare/gestire pratiche legate ai propri eventi.
 # ------------------------------------------------------------
 
+from datetime import date, datetime
 from typing import Any, NoReturn
 
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.services.db_error_fields import diagnostica_db
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.payload_helpers import map_integrity_error
 from apps.core.services.service_errors import ServiceError
+from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.pratiche.db.pratiche_repository import PraticheRepository, coerce_jsonb_dict
 
 # Marker → codice per i guard DB workflow v2 (fn_log_and_raise_error solleva
@@ -310,6 +313,7 @@ def crea_pratica(
     soggetto_id: str | None = None,
     soggetto_ruolo_id: int | None = None,
     istanza_utility_id: int | None = None,
+    billing_account_id: int | None = None,
     priorita_id: int | None = None,
     risorsa_umana_id: int | None = None,
     unita_organizzativa_id: int | None = None,
@@ -340,12 +344,27 @@ def crea_pratica(
             context={"field": "priorita_id"},
         )
 
+    # Il cliente di cui parla la pratica, a grana fine (D-9 di
+    # brief-db-istanza-nasce-col-ba, 2026-10-08): il BA porta la sua istanza.
+    # Se il chiamante passa il solo BA l'istanza e' la sua; se le passa
+    # entrambe devono coincidere (la FK composta
+    # fk_pratiche_billing_account_istanza lo direbbe con un 23503 nudo): BB
+    # `istanza_del_billing_account`. Che il BA sia del ruolo della pratica lo
+    # dice il trigger (regola 5, E_PRATICHE_BA_NON_COERENTE).
+    if billing_account_id is not None:
+        istanza_utility_id = istanza_del_billing_account(
+            billing_account_id,
+            istanza_utility_id,
+            code="E_PRATICA_VALIDATION",
+            function_name="pratiche_service.crea_pratica",
+        )
+
     # Validazione coerenza contesto anagrafico (stesse regole del trigger DB,
-    # qui per dare errori user-friendly via ServiceError). Modello a due rami
-    # dal soggetto (brief-db-pratiche-guard-contesto-istanza, consegna
-    # 20260611-01): l'istanza NON richiede il ruolo — il prospect puro ha
-    # solo istanze, il ruolo CL nasce col BA. Entrambi i rami richiedono il
-    # soggetto.
+    # qui per dare errori user-friendly via ServiceError). L'istanza e il ruolo
+    # richiedono entrambi il soggetto. ⚠️ Il «prospect puro» (istanza senza
+    # ruolo) non esiste piu': l'istanza nasce col BA e il ruolo CLIENTE con lei
+    # (brief-db-istanza-nasce-col-ba, D-3). Il trigger non pretende il ruolo
+    # accanto all'istanza, e qui non lo si aggiunge: e' una regola del DB.
     if istanza_utility_id is not None:
         ErrorManager.require(
             soggetto_id is not None,
@@ -395,6 +414,7 @@ def crea_pratica(
             "soggetto_id": soggetto_id,
             "soggetto_ruolo_id": soggetto_ruolo_id,
             "istanza_utility_id": istanza_utility_id,
+            "billing_account_id": billing_account_id,
             "stato_id": stato_id,
             "priorita_id": priorita_id,
             "risorsa_umana_id": risorsa_umana_id,
@@ -497,9 +517,9 @@ def cerca_pratiche(
     priorita_id: int | None = None,
     risorsa_umana_id: int | None = None,
     search: str | None = None,
-    data_da: str | None = None,
-    data_a: str | None = None,
-    limit: int = 50,
+    data_da: date | None = None,
+    data_a: date | None = None,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     order_by: str = "data_insert",
     order_dir: str = "desc",
@@ -992,7 +1012,7 @@ def dispatch_handler_eventi(
 
 # Scopo: Restituisce il giornale di bordo di una pratica.
 def get_giornale(
-    pratica_id: int, *, limit: int = 100, offset: int = 0,
+    pratica_id: int, *, limit: int = DEFAULT_LIMIT_EVENTI, offset: int = 0,
 ) -> tuple[list[dict[str, Any]], int]:
     repo = PraticheRepository()
     return repo.get_giornale_pratica(pratica_id, limit=limit, offset=offset)
@@ -1110,7 +1130,7 @@ def sospendi_pratica(
     motivo: str,
     *,
     data_riattivazione_prevista: str | None = None,
-    data_inizio: str | None = None,
+    data_inizio: datetime | None = None,
 ) -> int:
     ErrorManager.require(
         pratica_id > 0,
@@ -1167,7 +1187,7 @@ def sospendi_pratica(
 #   Il trigger DB ripristina gli stati dei flussi, cambia stato pratica ad APERTA
 #   e registra nel giornale.
 @transaction.atomic()
-def riattiva_pratica(pratica_id: int, *, data_fine: str | None = None) -> None:
+def riattiva_pratica(pratica_id: int, *, data_fine: datetime | None = None) -> None:
     ErrorManager.require(
         pratica_id > 0,
         code="E_INVALID_ID",

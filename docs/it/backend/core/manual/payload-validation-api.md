@@ -36,14 +36,10 @@ Liste paginate:
 
 ## Regole
 - Le view non devono parsare tipi a mano: usare validator core.
-- Traduzione del `ValueError`:
-  - dentro `handle_post_json` (`apps/core/api/endpoint_helpers.py`) → `400 {"error": "invalid_payload"}`;
-    il nome del campo si perde;
-  - altrove, quando arriva all'envelope standard → `E_VALIDATION_INPUT` (400) con il
-    messaggio (`<key>_invalid`).
-
-> ⚠️ Difetto noto (E-6): l'envelope `invalid_payload` ha `error` stringa e non oggetto.
-> Vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+- Traduzione del `ValueError`: ovunque, anche dentro `handle_post_json`, arriva
+  all'envelope standard come `E_VALIDATION_INPUT` (400) col suo messaggio
+  (`<key>_invalid`). Fino al 2026-10-07 dentro `handle_post_json` usciva
+  `{"error": "invalid_payload"}` e il nome del campo si perdeva (E-6, chiuso).
 
 ## Dipendenze DB
 - Nessuna

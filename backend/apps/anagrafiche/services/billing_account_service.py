@@ -13,6 +13,7 @@ from datetime import date
 from typing import Any
 
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
+from apps.core.api.payload_validators import qp_int_optional
 from apps.core.db.lookup_repository import LookupRepository
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.permissions_resolver import PermissionResolver
@@ -193,3 +194,100 @@ class BillingAccountService:
         )
         assert result is not None
         return result
+
+
+# Scopo: BB — categoria cliente del billing account indicato nel query param
+#        `billing_account_id`, per alimentare il livello `categoria_cliente`
+#        della cascata parametri (F-6 di analisi-be-difetti-emersi-verifica-doc-api-core).
+#        Consumatori: `/core/parameters/settings/` e
+#        `/vendite/pricing/limiti-utente/` (regola del 2, ok Tid 2026-10-08).
+# Perimetro: sola lettura. Assente o vuoto → None (livello categoria saltato).
+#        Non numerico o <= 0 → ValueError (400 E_VALIDATION_INPUT).
+#        BA che non risulta → 404 E_ANAG_NOT_FOUND.
+# ⭐ «Non risulta» copre due casi, e di proposito non li distingue: il BA che
+#    non esiste e quello fuori dallo scope dell'operatore, che la RLS di
+#    `anagrafiche.billing_account` (policy `rls_billing_account_ef_whitelist`)
+#    non restituisce. Prima il `None` passava in silenzio: categoria NULL, e
+#    l'utente vedeva soglie senza livello categoria senza nessun segnale.
+# ⚠️ `None` dal repository vuol dire «non risulta» SOLO perche'
+#    `billing_account.categoria_cliente_id` e' NOT NULL: se la colonna
+#    diventasse nullable, un BA visibile senza categoria uscirebbe 404, e
+#    qui andrebbe distinta l'esistenza dalla categoria.
+# Risultato: int (categoria) oppure None se il parametro non c'e'.
+def categoria_cliente_da_query(raw: str | None) -> int | None:
+    billing_account_id = qp_int_optional(raw, "billing_account_id")
+    if billing_account_id is None:
+        return None
+    if billing_account_id <= 0:
+        raise ValueError("billing_account_id_invalid")
+    categoria_cliente_id = BillingAccountRepository().get_categoria_cliente_id(
+        billing_account_id,
+    )
+    ErrorManager.require(
+        categoria_cliente_id is not None,
+        code="E_ANAG_NOT_FOUND",
+        message="Billing account non trovato.",
+        detail=f"Nessun billing_account visibile con id={billing_account_id}.",
+        context={"billing_account_id": billing_account_id},
+        function_name="anagrafiche.billing_account_service.categoria_cliente_da_query",
+        log_to_db=False,
+    )
+    return categoria_cliente_id
+
+
+# Scopo: BB — l'ISTANZA del billing account che un payload indica, per chi
+#        scrive un documento o una pratica col BA (regola del 2, ok Tid
+#        2026-10-09). Il BA porta la sua istanza (FK NOT NULL, immutabile:
+#        E_BA_ISTANZA_IMMUTABILE): se il payload porta anche l'istanza, deve
+#        essere quella.
+#        Consumatori: `pratiche_service.crea_pratica`,
+#        `preventivi_service._risolvi_cliente_preventivo`,
+#        `commesse_service.aggiungi_onere_commessa`.
+# Perimetro: sola lettura. `code` e' il codice di validazione del dominio
+#        chiamante (400); `campo` e' quello che l'operatore deve correggere:
+#        il BA quando lo sceglie lui (pratica, preventivo), l'istanza quando il
+#        BA e' gia' scritto sul documento (l'onere: il BA e' della commessa).
+#        - BA che non risulta (inesistente o fuori RLS) → errore;
+#        - `istanza_utility_id` None → l'istanza del BA;
+#        - `istanza_utility_id` diversa da quella del BA → errore.
+#        Un BA ASSENTE non e' affare di questo BB: cosa significa lo decide il
+#        chiamante (per la commessa, un onere senza istanza a cui agganciarsi).
+# ⛔ Prima erano tre copie, e gia' divergenti: la pratica e la commessa
+#    controllavano la coincidenza, il preventivo no — un'istanza diversa da
+#    quella del BA usciva «Utility non coerente» sul campo `utility_id`, o
+#    arrivava alla FK composta.
+# Risultato: id dell'istanza del BA.
+def istanza_del_billing_account(
+    billing_account_id: int,
+    istanza_utility_id: int | None,
+    *,
+    code: str,
+    function_name: str,
+    campo: str = "billing_account_id",
+) -> int:
+    istanza_del_ba = BillingAccountRepository().get_istanza_utility_id(int(billing_account_id))
+    ErrorManager.require(
+        istanza_del_ba is not None,
+        code=code,
+        message="Billing account non trovato.",
+        detail=f"billing_account_id={billing_account_id}",
+        context={"field": campo, "billing_account_id": billing_account_id},
+        function_name=function_name,
+    )
+    assert istanza_del_ba is not None
+    ErrorManager.require(
+        istanza_utility_id is None or int(istanza_utility_id) == istanza_del_ba,
+        code=code,
+        message="L'istanza indicata non e' quella del billing account.",
+        detail=(
+            f"billing_account_id={billing_account_id} e' dell'istanza "
+            f"{istanza_del_ba}, indicata {istanza_utility_id}."
+        ),
+        context={
+            "field": campo,
+            "billing_account_id": billing_account_id,
+            "istanza_utility_id": istanza_utility_id,
+        },
+        function_name=function_name,
+    )
+    return istanza_del_ba

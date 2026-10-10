@@ -14,8 +14,11 @@ Helper condiviso in `apps/core/api/search_validators.py`.
 
 `validate_order_params(order_by, order_dir)`:
 - `order_by: str | None` — deve stare in `ALLOWED_ORDER_COLUMNS`
-  (`ragione_sociale_completa`, `soggetto_codice`, `id_fiscale_univoco`, `utility_list`,
-  la whitelist della ricerca universale)
+  (`ragione_sociale_completa`, `soggetto_codice`, `id_fiscale_univoco`). È il **mirror
+  dichiarato** della whitelist di `p_order_by` in `script.fn_search_soggetti_universale`: serve
+  a dare il 400 `E_SEARCH_VALIDATION` invece del rifiuto del DB. Lo presidia
+  `core/tests/db/test_search_ordinamento_db` (e2e). `utility_list` non è ordinabile dal
+  2026-10-10: è un aggregato calcolato per le sole righe della pagina
 - `order_dir: str | None` — `ASC` o `DESC` (case-insensitive, default `ASC`)
 
 ## Output

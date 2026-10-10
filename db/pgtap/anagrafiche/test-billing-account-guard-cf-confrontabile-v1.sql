@@ -122,21 +122,21 @@ BEGIN
     INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
     VALUES (r.sog_a, true, 'TST-P3-IU-PADRE-A') RETURNING id INTO v_iu;
     INSERT INTO anagrafiche.billing_account (istanza_utility_id, soggetto_ruolo_id, utility_id, categoria_cliente_id, valido_dal)
-    VALUES (v_iu, r.sr_a, r.uti_a, r.cat_a, CURRENT_DATE) RETURNING id INTO v_ba;
+    VALUES (v_iu, r.sr_a, r.uti_a, r.cat_a, script.fn_data_operativa()) RETURNING id INTO v_ba;
     INSERT INTO _t_ba VALUES ('padre_a', v_ba, v_iu);
 
     -- figlio, STESSO soggetto A (test 1 e 4)
     INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
     VALUES (r.sog_a, true, 'TST-P3-IU-FIGLIO-A') RETURNING id INTO v_iu;
     INSERT INTO anagrafiche.billing_account (istanza_utility_id, soggetto_ruolo_id, utility_id, categoria_cliente_id, valido_dal)
-    VALUES (v_iu, r.sr_a, r.uti_a, r.cat_a, CURRENT_DATE) RETURNING id INTO v_ba;
+    VALUES (v_iu, r.sr_a, r.uti_a, r.cat_a, script.fn_data_operativa()) RETURNING id INTO v_ba;
     INSERT INTO _t_ba VALUES ('figlio_a', v_ba, v_iu);
 
     -- figlio, soggetto B DIVERSO (test 2, 3, 5, 6)
     INSERT INTO anagrafiche.istanze_utilities (soggetto_id, fittizia, codice)
     VALUES (r.sog_b, true, 'TST-P3-IU-FIGLIO-B') RETURNING id INTO v_iu;
     INSERT INTO anagrafiche.billing_account (istanza_utility_id, soggetto_ruolo_id, utility_id, categoria_cliente_id, valido_dal)
-    VALUES (v_iu, r.sr_b, r.uti_b, r.cat_b, CURRENT_DATE) RETURNING id INTO v_ba;
+    VALUES (v_iu, r.sr_b, r.uti_b, r.cat_b, script.fn_data_operativa()) RETURNING id INTO v_ba;
     INSERT INTO _t_ba VALUES ('figlio_b', v_ba, v_iu);
 END
 $fx$;

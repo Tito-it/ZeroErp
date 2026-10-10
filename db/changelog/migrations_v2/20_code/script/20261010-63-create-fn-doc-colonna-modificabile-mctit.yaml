@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_doc_colonna_modificabile(p_tabella, p_colonna, p_stato)
+#   «Con il documento in questo stato, un UPDATE che cambia SOLO questa
+#   colonna passa i lock "si tocca solo in bozza" della tabella?»
+#   Brief: brief-db-testata-dopo-emissione (fase 1, §5-bis, R-1)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   E' la domanda che una capability fa per spegnere un verbo prima che il
+#   lock lo rifiuti: la data di consegna confermata sulle righe d'ordine
+#   (R-2), e domani l'ubicazione d'arrivo dei prelievi e le colonne di
+#   testata della fase 2. Generica: legge il montaggio della tabella
+#   (script.fn_doc_lock_montaggi) e decide con la funzione del trigger
+#   (script.fn_doc_lock_colonna_bloccata). Nessuna regola scritta qui.
+#
+# -- LA RISPOSTA -------------------------------------------------------
+#   true se nessun lock della tabella ferma la colonna in quello stato.
+#   Una tabella senza lock risponde true: e' quello che il database fa (lo
+#   specchio del guard, non una seconda regola). Che un lock ci sia lo
+#   presidiano i pgTAP dei montaggi.
+#   ⚠️ La domanda e' sulla sola colonna: per le righe, un UPDATE che cambia
+#   anche altre colonne non tecniche e' un'altra domanda (e il lock lo
+#   rifiuta fuori bozza).
+#   Lo stato lo da' il chiamante, per codice_interno: per un nipote (livello
+#   RIGA) e' lo stato della testata del documento.
+#
+#   Tipi: p_colonna ancorata a pg_attribute.attname (name); p_stato nudo e
+#   dichiarato (codice_interno di sei vocabolari, polimorfo).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-63-create-fn-doc-colonna-modificabile-mctit.yaml
+
+  - changeSet:
+      id: 20261010-63-create-fn-doc-colonna-modificabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova check generica script.fn_doc_colonna_modificabile: una colonna, in uno stato, passa i lock
+        «solo in bozza» della tabella? Dal montaggio, con la decisione del trigger. Brief: brief-db-testata-dopo-emissione (R-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_doc_colonna_modificabile(
+                  p_tabella regclass,
+                  p_colonna pg_catalog.pg_attribute.attname%TYPE,
+                  p_stato   text
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- Scopo: con il documento in p_stato (codice_interno), un
+                  --   UPDATE che cambia SOLO p_colonna passa i lock «si tocca
+                  --   solo in bozza» di p_tabella? Dal montaggio
+                  --   (script.fn_doc_lock_montaggi), con la decisione del
+                  --   trigger (script.fn_doc_lock_colonna_bloccata).
+                  -- ⚠️ p_stato nudo: e' il codice_interno di sei vocabolari
+                  --   di stato diversi (polimorfo).
+                  -- Nessun lock sulla tabella: true, come il database.
+                  SELECT NOT EXISTS (
+                           SELECT 1
+                             FROM script.fn_doc_lock_montaggi(p_tabella) AS m
+                            WHERE script.fn_doc_lock_colonna_bloccata(
+                                    m.regola, p_stato, ARRAY[p_colonna::text]) IS NOT NULL);
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_doc_colonna_modificabile(regclass, pg_catalog.pg_attribute.attname%TYPE, text)
+              IS 'Check generica (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): con il documento in p_stato (codice_interno; per un nipote a livello RIGA lo stato della testata), un UPDATE che cambia SOLO p_colonna passa i lock «si tocca solo in bozza» di p_tabella? Legge il montaggio (script.fn_doc_lock_montaggi) e decide con la funzione del trigger (script.fn_doc_lock_colonna_bloccata): nessuna regola scritta qui, la capability specchia il lock. true se nessun lock ferma la colonna; una tabella senza lock risponde true, come il database. La usa script.fn_check_ordine_data_consegna_confermata (la promessa di consegna dopo la conferma); servira'' ai prelievi della bolla e alla testata della fase 2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_doc_colonna_modificabile(regclass, name, text);

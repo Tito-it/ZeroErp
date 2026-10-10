@@ -120,6 +120,7 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             backend/requirements.in
+            backend/requirements-dev.txt
       # venv backend locale per gestire manage.py e deps
       - name: venv + pip (backend/.venv)
         working-directory: ./backend
@@ -244,6 +245,17 @@ jobs:
         # per nome).
         run: python scripts/guardrail_run_on_change.py
 
+      - name: Guardrail v1 congelato
+        # La prima generazione (baseline/, migrations/, changelog-master.yaml)
+        # rigira a ogni migrate da zero, e centinaia di quei file sono
+        # runOnChange: il cancello qui sopra guarda solo migrations_v2/. Un
+        # file v1 modificato ripartirebbe FUORI ordine, sopra le revisioni v2.
+        # Il manifesto db/changelog/v1-congelato.json porta lo sha256 di ogni
+        # file: aggiunto, tolto o cambiato = build rossa. Un'eccezione si
+        # concorda con Tid e rigenera il manifesto nello stesso commit
+        # (decisione del 2026-10-04, linee-guida-sql §11.11).
+        run: python scripts/guardrail_v1_congelato.py
+
       - name: Guardrail preambolo pgTAP
         # Presidia le tre righe senza le quali un test pgTAP passa SMETTENDO di
         # verificare — «verde per sottrazione»: la transazione, la riga di
@@ -259,6 +271,10 @@ jobs:
         # qualunque errore: la soglia puo' solo CALARE. Il 2026-08-07 una sonda
         # ha trovato tre test VERDI che collaudavano una cosa diversa da quella
         # dichiarata, proprio per quel difetto.
+        #
+        # ⚠️ E rifiuta `CURRENT_DATE` e affini nei test: «oggi» e' il giorno
+        # dell'azienda (`script.fn_data_operativa()`), e la sessione pgTAP gira
+        # apposta in un fuso che cade in un altro giorno (scripts/testpgtap.sh).
         #
         # Guida: docs/it/guide/pgtap-come-si-scrive-un-test.md
         run: python scripts/guardrail_pgtap_preambolo.py
@@ -630,17 +646,24 @@ jobs:
           source .venv/bin/activate
           python manage.py check
 
-      - name: Django check --deploy (sicurezza)
+      - name: Django check --deploy (completo)
         working-directory: ./backend
         # I controlli di Django sulla configurazione di produzione (cookie,
-        # HSTS, SSL, SECRET_KEY, DEBUG, X-Frame-Options, ...).
-        # ⚠️ `--tag security`: gli avvisi drf-spectacular (a ZERO dal
-        #    2026-09-26) li tiene a zero un altro cancello, il registro a
-        #    cricchetto `apps/core/tests/test_schema_openapi_registro.py`, che
-        #    gira con la suite Django. Senza il tag resterebbe `mail.E001`.
-        # ⚠️ Un rilievo `security.*` e' un AVVISO: `check` esce 0 comunque.
-        #    Il cancello lo fa il grep qui sotto, con l'elenco a cricchetto dei
-        #    rilievi ACCETTATI. Si toglie una voce quando si chiude, mai si
+        # HSTS, SSL, SECRET_KEY, DEBUG, X-Frame-Options, ...) e quelli che
+        # ogni app o libreria aggancia al ramo `--deploy` (drf-spectacular).
+        # ⭐ COMPLETO dal 2026-10-08 (D3-b di migliorie-generali-BE-FE): fino ad
+        #    allora girava `--tag security`, e un controllo di produzione nuovo
+        #    portato da una libreria o da un aggiornamento di Django non
+        #    l'avrebbe visto nessuno. `mail.E001`, che lo impediva, e'
+        #    silenziato in `settings.py` PER PROGETTO (Django non spedisce
+        #    posta in ZeroErp): il perche' sta accanto a `SILENCED_SYSTEM_CHECKS`.
+        # ⚠️ drf-spectacular e' a ZERO dal 2026-09-26 e lo tiene a zero anche
+        #    il registro a cricchetto `apps/core/tests/test_schema_openapi_registro.py`,
+        #    che e' piu' fine di questo passo (confronta i rilievi PER NOME).
+        # ⚠️ Un AVVISO (`W`) non cambia l'uscita di `check`, un errore (`E`)
+        #    si'. Il cancello sugli avvisi lo fa il grep qui sotto, su
+        #    QUALUNQUE famiglia, con l'elenco a cricchetto dei rilievi
+        #    ACCETTATI. Si toglie una voce quando si chiude, mai si
         #    aggiunge per far passare una PR.
         #    - W005 (HSTS senza sottodomini) e W021 (HSTS senza preload):
         #      spenti PER SCELTA (brief-be-fe-sicurezza-header-token-mfa
@@ -657,14 +680,36 @@ jobs:
           export DJANGO_DEBUG=0
           export DJANGO_SECURE_HSTS_SECONDS=31536000
           export DJANGO_SECURE_SSL_REDIRECT=1
-          out="$(python manage.py check --deploy --tag security 2>&1)" || { echo "$out"; exit 1; }
+          out="$(python manage.py check --deploy 2>&1)" || { echo "$out"; exit 1; }
           echo "$out"
-          nuovi="$(grep -oE '\(security\.[EW][0-9]+\)' <<<"$out" \
+          nuovi="$(grep -oE '\([a-z_]+\.[EW][0-9]+\)' <<<"$out" \
                    | grep -vE 'security\.(W005|W021)\)' || true)"
           if [ -n "$nuovi" ]; then
-            echo "::error::check --deploy: rilievi di sicurezza non accettati: $nuovi"
+            echo "::error::check --deploy: rilievi non accettati: $nuovi"
             exit 1
           fi
+
+      - name: Type checker (mypy, a cricchetto)
+        working-directory: ./backend
+        # Il type checker del backend (piano-be-type-checker, L1, 2026-10-08):
+        # vede i difetti di GIUNTURA che una suite mockata non puo' vedere — un
+        # metodo chiamato e non piu' esistente, `None` passato dove si vuole
+        # un `int`. Il caso che lo ha fatto nascere: riallinea e sblocca prezzo
+        # chiamavano un metodo tolto da sei mesi, e il test mockato lo fabbricava.
+        # ⭐ A CRICCHETTO: l'arretrato sta in `backend/mypy.baseline.json`, e
+        #    `scripts/check_mypy_baseline.py` e' rosso su un rilievo NUOVO, su
+        #    una voce SANATA e non tolta, e su un'uscita di mypy illeggibile.
+        #    Perimetro e regole in `backend/mypy.ini`, non qui.
+        # ⚠️ Gli strumenti stanno in `requirements-dev.txt`, NON nel lock del
+        #    backend: il `Dockerfile` installa solo quello, e mypy in
+        #    produzione non serve. Il plugin Django importa le settings: per
+        #    questo il passo gira nella venv del backend, con l'ambiente del job.
+        # ⚠️ Gira sempre su TUTTO il perimetro, non sui file cambiati: una firma
+        #    cambiata in un file rompe il chiamante in un altro, non toccato.
+        run: |
+          source .venv/bin/activate
+          pip install -r requirements-dev.txt
+          python ../scripts/check_mypy_baseline.py
 
       - name: Django migrate (schema django)
         working-directory: ./backend
@@ -735,6 +780,69 @@ jobs:
           psql --no-psqlrc -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
             -f scripts/sql/guardrail_riferimenti_morti.sql
 
+      - name: Librerie native di WeasyPrint (Pango)
+        # I test di `test_render_service` sulla libreria VERA (fetcher a lista
+        # chiusa: `file:`, `http:`, SVG annidato, `@import` ciclico) si
+        # saltano con `skipUnless` se WeasyPrint non trova Pango. Il runner
+        # `ubuntu-latest` non lo porta: fino al 2026-10-04 la CI li dava
+        # «skipped» (`cannot load library 'libpango-1.0-0'`), cioe' il
+        # presidio di sicurezza del render girava solo in locale.
+        # ⚠️ Stesso elenco del Dockerfile: la sede e' quella, qui si ricopia
+        #    perche' il runner non usa l'immagine. Se cambia la', cambia qui.
+        # ⭐ L'import finale fa fallire il passo invece di lasciar saltare i
+        #    test in silenzio: un «verde per sottrazione» e' il difetto da evitare.
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libpango-1.0-0 \
+            libpangoft2-1.0-0 \
+            libharfbuzz0b \
+            libharfbuzz-subset0 \
+            libfontconfig1 \
+            libcairo2 \
+            libgdk-pixbuf-2.0-0 \
+            shared-mime-info
+          source backend/.venv/bin/activate
+          python -c "import weasyprint; print('WeasyPrint', weasyprint.__version__)"
+
+      # ⭐ FUSO OSTILE PER I TEST DJANGO (brief-be-db-fe-un-solo-fuso-aziendale,
+      #   T-5, decisione di Tid del 2026-10-09). La sessione PG dei test Django
+      #   e' SEMPRE UTC (Django la imposta da se' con `USE_TZ`), quindi l'unica
+      #   leva e' il fuso dell'AZIENDA: col seed (Europe/Rome) il giorno UTC e
+      #   quello aziendale differiscono solo fra le 22 e le 24 UTC, e un errore
+      #   di fuso nel backend sarebbe rosso quasi mai — com'e' nato il brief.
+      #   Qui il parametro si sposta su un fuso il cui giorno ADESSO differisce
+      #   da quello UTC: Kiritimati (+14) dalle 10 UTC in poi, Pago Pago (−11)
+      #   prima — uno dei due differisce sempre, e la scelta lascia almeno
+      #   un'ora di margine alla suite. Stessa idea di `scripts/testpgtap.sh`,
+      #   che sceglie la SESSIONE ostile al parametro; qui la sessione e' fissa e
+      #   si sceglie il parametro.
+      #   ⚠️ Solo per questo passo: il passo dopo rimette il valore di prima,
+      #   cosi' la suite pgTAP gira sul seed com'e'. Il backend legge il fuso
+      #   all'avvio del processo dei test (`ZeroErpTestRunner`), quindi deve
+      #   cambiare PRIMA di «Django tests».
+      #   ⚠️ E' un presidio, non la prova: la prova sono i test che COSTRUISCONO
+      #   gli istanti di confine. Un test che suppone Roma senza dichiararlo
+      #   (`fuso_aziendale_forzato`) qui diventa rosso, ed e' giusto.
+      - name: Fuso aziendale ostile per i test Django (T-5)
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          prima=$(psql --no-psqlrc -X -A -t -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "SELECT default_value FROM config.parameters WHERE code = 'SYSTEM_FUSO_ORARIO'")
+          echo "FUSO_AZIENDALE_SEED=$prima" >> "$GITHUB_ENV"
+          ostile=$(psql --no-psqlrc -X -A -t -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 -c \
+            "SELECT CASE WHEN (now() AT TIME ZONE 'Pacific/Kiritimati')::date <> (now() AT TIME ZONE 'UTC')::date
+                         THEN 'Pacific/Kiritimati' ELSE 'Pacific/Pago_Pago' END")
+          # ⚠️ Da stdin e non con `-c`: psql sostituisce `:'fuso'` solo li'.
+          psql --no-psqlrc -X -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v fuso="$ostile" <<'SQL'
+          UPDATE config.parameters SET default_value = :'fuso' WHERE code = 'SYSTEM_FUSO_ORARIO';
+          SQL
+          echo "fuso aziendale per i test Django: $ostile (seed: $prima, adesso UTC: $(date -u +%H:%M))"
+
       - name: Django tests
         working-directory: ./backend
         env:
@@ -795,6 +903,18 @@ jobs:
         run: |
           source .venv/bin/activate
           python manage.py test
+
+      # Rimette il fuso del seed, anche se i test Django sono rossi: la suite
+      # pgTAP (e ogni passo dopo) gira sul database com'e' nato.
+      - name: Fuso aziendale del seed ripristinato
+        if: ${{ !cancelled() && env.FUSO_AZIENDALE_SEED != '' }}
+        env:
+          PGPASSWORD: ${{ secrets.POSTGRES_ADMIN_PASSWORD }}
+        run: |
+          psql --no-psqlrc -X -h localhost -p 5432 -U postgres -d zeroerp -v ON_ERROR_STOP=1 \
+            -v fuso="$FUSO_AZIENDALE_SEED" <<'SQL'
+          UPDATE config.parameters SET default_value = :'fuso' WHERE code = 'SYSTEM_FUSO_ORARIO';
+          SQL
 
       # ------------------------------------------------------------------
       # Suite pgTAP — 426 test DB, che fino al 2026-08-07 non giravano MAI in CI

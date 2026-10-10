@@ -21,6 +21,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
 from apps.anagrafiche.services.valuta_resolver import resolve_valuta_default
 from apps.core.services.error_manager import ErrorManager
@@ -151,7 +152,7 @@ def fn_get_contratto_form_defaults(
         ],
         django_user_id=auth_user_id,
     )
-    today = date.today()
+    today = oggi_aziendale()
     valido_dal_lead = _param_int(param_defaults_raw, _PARAM_CONTRATTO_VALIDO_DAL_LEAD_GG, 0)
     data_lead = _param_int(param_defaults_raw, _PARAM_CONTRATTO_DATA_LEAD_GG, 0)
     payload: dict[str, Any] = {
@@ -437,7 +438,7 @@ def fn_get_preventivo_form_defaults(
         [_PARAM_PREVENTIVO_VALIDITA_GG],
         django_user_id=auth_user_id,
     )
-    today = date.today()
+    today = oggi_aziendale()
     validita_gg = _param_int(param_defaults_raw, _PARAM_PREVENTIVO_VALIDITA_GG, 30)
     payload: dict[str, Any] = {
         "billing_account_id": None,
@@ -563,7 +564,7 @@ def fn_get_versione_new_defaults(*, listino_id: int, auth_user_id: int | None = 
     return {
         "listino_id": listino_id_int,
         "default_codice_versione": "",
-        "default_valido_dal": (date.today() + timedelta(days=lead_gg)).isoformat(),
+        "default_valido_dal": (oggi_aziendale() + timedelta(days=lead_gg)).isoformat(),
         "default_valido_al": None,
         "min_valido_dal": None,
         "has_existing_draft": len(bozze) > 0,
@@ -613,7 +614,7 @@ def fn_get_versione_clone_defaults(
     )
     lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_CLONE_VERSIONE_LEAD_GG, 1)
     suffix = _param_str(param_defaults_raw, _PARAM_LISTINI_CLONE_VERSIONE_CODICE_SUFFIX, "-clone")
-    today = date.today()
+    today = oggi_aziendale()
     default_valido_dal = today + timedelta(days=lead_gg)
     src_valido_dal = src.get("valido_dal")
     src_codice = src.get("codice_versione") or ""
@@ -673,7 +674,7 @@ def fn_get_versione_close_defaults(
         django_user_id=auth_user_id,
     )
     lead_gg = _param_int(param_defaults_raw, _PARAM_LISTINI_CLOSE_VERSIONE_LEAD_GG, 0)
-    today = date.today()
+    today = oggi_aziendale()
     current_valido_al = versione.get("valido_al")
     if isinstance(current_valido_al, date):
         default_valido_al = current_valido_al

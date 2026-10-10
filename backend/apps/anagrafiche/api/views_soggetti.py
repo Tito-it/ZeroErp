@@ -21,6 +21,7 @@ from apps.core.api.payload_validators import (
     optional_int,
     paginated_envelope,
     parse_list_params,
+    qp_bool_optional,
     qp_int_optional,
 )
 from apps.core.api.success_responses import success_response
@@ -263,9 +264,9 @@ class SoggettiRuoliLookupView(DomainAPIView):
 
     Una riga per soggetto_ruolo ("Rossi Srl — Cliente", "Rossi Srl —
     Fornitore") + una riga "senza ruolo" per i soggetti privi di qualunque
-    ruolo (prospect puri: hanno solo istanze, il ruolo CL nasce col BA —
-    guide/generazione-cliente.md). `n_istanze` per riga pilota il campo
-    istanza nel drawer pratiche.
+    ruolo (non hanno istanze: il ruolo CLIENTE nasce con la prima —
+    brief-db-istanza-nasce-col-ba, D-3). `n_billing_account` per riga pilota
+    la scelta della fornitura (il BA) nel drawer pratiche.
     """
 
     # Lookup cross-dominio: consumato dal drawer pratiche. Stesso pattern dei
@@ -289,6 +290,15 @@ class SoggettiRuoliLookupView(DomainAPIView):
                 description="Filtra per codice tipo ruolo (CL, FO, ...). Esclude le righe 'senza ruolo'.",
             ),
             OpenApiParameter(
+                name="con_ruolo",
+                type=bool,
+                required=False,
+                description=(
+                    "true = solo righe con un ruolo, di qualunque tipo (esclude le righe "
+                    "'senza ruolo'). Assente o false: nessun filtro."
+                ),
+            ),
+            OpenApiParameter(
                 name="limit",
                 type=int,
                 required=False,
@@ -307,6 +317,8 @@ class SoggettiRuoliLookupView(DomainAPIView):
     def get(self, request: Request) -> JsonResponse:
         q = request.query_params.get("q", "")
         tipo_ruolo = request.query_params.get("tipo_ruolo") or None
+        # Filtro del chiamante, non perimetro: assente = nessun filtro.
+        con_ruolo = qp_bool_optional(request.query_params.get("con_ruolo"), "con_ruolo")
 
         raw_limit = request.query_params.get("limit")
         limit_kwargs: dict = {}
@@ -322,6 +334,7 @@ class SoggettiRuoliLookupView(DomainAPIView):
             q=q,
             tipo_ruolo=tipo_ruolo,
             emittente_ids=emittente_ids,
+            con_ruolo=bool(con_ruolo),
             **limit_kwargs,
         )
         return success_response(result)
@@ -339,6 +352,10 @@ class SoggettiRuoliLookupByIdView(DomainAPIView):
 
     # Lookup cross-dominio (restore): stesso ragionamento della search.
     # Solo lettura di un record gia' selezionato in precedenza.
+    # ⛔ Con lo skip la catena non guarda piu' niente: il perimetro e' lo
+    #    scope emittente, lo stesso della search. Fino al 2026-10-08 qui non
+    #    c'era, e con un id si leggevano nome e CF di soggetti di qualunque
+    #    emittente (D10-bis).
     skip_area_check = True
 
     @extend_schema(
@@ -372,9 +389,11 @@ class SoggettiRuoliLookupByIdView(DomainAPIView):
             soggetto_ruolo_id = qp_int_optional(raw_sr_id, "soggetto_ruolo_id")
         soggetto_id = request.query_params.get("soggetto_id") or None
 
+        emittente_ids = PermissionResolver.get_emittenti_sr_ids(request.user, cache={})
         result = SoggettiService().get_ruoli_lookup_by_id(
             soggetto_ruolo_id=soggetto_ruolo_id,
             soggetto_id=soggetto_id,
+            emittente_ids=emittente_ids,
         )
         return success_response(result)
 
@@ -396,6 +415,9 @@ class SoggettiRuoliView(DomainAPIView):
     @extend_schema(
         request=inline_serializer(name="RuoloAssignReq", fields={
             "codice_ruolo": serializers.CharField(),
+            # Indirizzi DEL RUOLO (stessa forma della creazione soggetto): per i
+            # ruoli con indirizzi obbligatori (CL, FO, GE) sono necessari.
+            "indirizzi": serializers.ListField(child=serializers.DictField(), required=False),
         }),
         responses={200: inline_serializer(name="RuoloAssignResp", fields={"data": serializers.DictField()})},
     )

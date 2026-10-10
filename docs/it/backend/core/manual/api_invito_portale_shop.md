@@ -41,7 +41,7 @@ sullo stesso `auth_user`, senza email/token.
 | `apply_new_password` | Set password + reset flag `deve_cambiare_password` in transazione |
 | `AuthRepository.auth_user_ha_password` | Discriminante dei due flussi: l'`auth_user` ha una password utilizzabile? |
 | `AuthRepository.attiva_identita` | UPDATE `attivo=true` su `identita_digitali` al consumo del token (entrambi i flussi), col guard su credenziale e porta |
-| `PortaleRepository.find_auth_user_by_email` | `script.fn_get_auth_user_id_for_email`: la credenziale dell'email senza maiuscole (P-2); email doppie → `E_CREDENZIALE_EMAIL_AMBIGUA` |
+| `AuthRepository.find_auth_user_id_per_email` (dal 2026-10-06; prima `PortaleRepository.find_auth_user_by_email`) | `script.fn_get_auth_user_id_for_email`: la credenziale dell'email senza maiuscole (P-2); email doppie → `E_CREDENZIALE_EMAIL_AMBIGUA` |
 | `PermissionResolver.get_ruolo_applicativo` | Filtro veste corrente per `ProfileActivateShopView` |
 | GUC `app.soggetto_ruolo_id` | Letto da `ProfileActivateShopView` per legare la nuova identita allo stesso `soggetto_ruolo` del portale corrente |
 
@@ -246,10 +246,14 @@ errore (`disattivato=false`, stato ritornato coerente).
 
 - Se c'era un invito pendente (`PENDING`), il link email smette di
   funzionare: chiunque clicca il link vede "Token non valido o scaduto".
-- L'utente loggato al momento del revoke non viene disconnesso
-  immediatamente (JWT valido fino a scadenza), ma al refresh o al
-  prossimo `/me/` il guard namespace FE rifiuta il contesto portale/shop
-  (identita non attiva).
+- Le sessioni **della veste** vanno in blacklist (refresh JWT col claim
+  `identita_id` di quella veste) e la cache permessi si invalida a commit
+  avvenuto, nella stessa transazione dello spegnimento; anche su una veste
+  gia' spenta (idempotente). Le sessioni delle altre vesti della stessa
+  credenziale restano aperte (A-5, D-5, 2026-10-02 — prima nessuna chiusura).
+  L'access gia' emesso vive fino a scadenza, ma ogni richiesta risponde 401
+  `E_IDENTITA_NON_ATTIVA` e il refresh 401 (veste spenta,
+  [api_multi_veste_token.md](api_multi_veste_token.md) §2-bis).
 
 **Riattivazione**: non c'e' un endpoint "riattiva" dedicato per evitare
 ambiguita. Per rimettere in linea un accesso disattivato, l'admin
@@ -397,10 +401,9 @@ credenziali del portale (stesso `auth_user`).
 
 | Codice | HTTP | Quando |
 | --- | --- | --- |
-| `E_INVITO_PORTALE` | 400 | Validazione lato admin (email assente, cliente/fornitore inesistente, identita gia' attiva, identita gia' su altro auth_user, veste non supportata) |
-
-⚠️ Difetto noto (E-4): «cliente/fornitore inesistente» esce 400 con
-`E_INVITO_PORTALE`, non 404 — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+| `E_CLIENTE_NON_TROVATO` | 404 | `cliente_id` (PK di `anagrafiche.clienti`) inesistente: invito, reinvio, stato accessi, disattivazione (dal 2026-10-08; prima 400 `E_INVITO_PORTALE`) |
+| `E_FORNITORE_NON_TROVATO` | 404 | `fornitore_id` (PK di `anagrafiche.fornitori`) inesistente, stessi endpoint |
+| `E_INVITO_PORTALE` | 400 | Validazione lato admin (email assente, identita gia' attiva, identita gia' su altro auth_user, veste non supportata) |
 | `E_ATTIVAZIONE_PORTALE` | 400 | Token portale assente/invalido/scaduto, password mismatch, meta senza identita_id, riga identita rimossa tra invio e conferma |
 | `E_ATTIVAZIONE_SHOP` | 400 | Stesso perimetro di `E_ATTIVAZIONE_PORTALE` per i 2 endpoint shop |
 | `E_ATTIVAZIONE_SHOP_CROSS` | 400 | Cross-veste self-service: ruolo non CLIENTE_PORTALE, GUC vuota, identita su altro auth_user |

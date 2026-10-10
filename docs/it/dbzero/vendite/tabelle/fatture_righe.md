@@ -12,13 +12,13 @@
 | fattura_id | bigint | NO |  |
 | riga_nr | integer | NO |  |
 | articolo_id | uuid | YES |  |
-| descrizione | character varying | NO |  |
+| descrizione | character varying(150) | NO |  |
 | uom_id | bigint | YES |  |
-| qta | numeric | NO |  |
-| prezzo_unitario | numeric | NO |  |
-| sconto_percentuale | numeric | YES | 0 |
+| qta | numeric(18,6) | NO |  |
+| prezzo_unitario | numeric(18,6) | NO |  |
+| sconto_percentuale | numeric(5,2) | YES | 0 |
 | iva_id | integer | YES |  |
-| esigibilita | character | YES |  |
+| esigibilita | character(1) | YES |  |
 | split_payment | boolean | YES |  |
 | dest_billing_account_id | bigint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -27,35 +27,49 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_riga | bigint | YES | 0 |
-| iva_natura | character varying | YES |  |
+| iva_natura | character varying(10) | YES |  |
 | sorgente_uid | uuid | YES |  |
-| imponibile_riga | numeric | NO |  |
+| imponibile_riga | numeric(18,6) | NO |  |
 | kit_key | text | YES |  |
-| kit_esposto_in_fattura | boolean | YES |  |
+| kit_esposizione | character varying(40) | YES |  |
 | kit_articolo_padre_id | uuid | YES |  |
-| kit_descrizione_padre | character varying | YES |  |
+| kit_descrizione_padre | character varying(150) | YES |  |
 | riga_rettificata_id | bigint | YES |  |
-| aliquota_iva | numeric | YES |  |
+| aliquota_iva | numeric(5,2) | YES |  |
 | fattura_atto_id | bigint | YES |  |
 | riga_capofila_id | bigint | YES |  |
+| competenza_dal | date | NO |  |
+| competenza_al | date | NO |  |
+| kit_qta | numeric(18,6) | YES |  |
+| kit_uom_id | bigint | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_fatture_righe_aliquota_iva_finito |  |
 | CHECK | chk_fatture_righe_capofila_non_se_stessa |  |
+| CHECK | chk_fatture_righe_competenza_dal_al |  |
 | CHECK | chk_fatture_righe_esigibilita |  |
+| CHECK | chk_fatture_righe_imponibile_riga_finito |  |
+| CHECK | chk_fatture_righe_kit_articolo |  |
 | CHECK | chk_fatture_righe_kit_coerente |  |
+| CHECK | chk_fatture_righe_kit_qta_finito |  |
+| CHECK | chk_fatture_righe_prezzo_unitario_finito |  |
+| CHECK | chk_fatture_righe_qta_finito |  |
 | CHECK | chk_fatture_righe_rettificata_non_se_stessa |  |
 | CHECK | chk_fatture_righe_sconto |  |
+| CHECK | chk_fatture_righe_sconto_percentuale_finito |  |
 | FOREIGN KEY | fk_fatture_righe_art | articolo_id |
 | FOREIGN KEY | fk_fatture_righe_ba_dest | dest_billing_account_id |
+| FOREIGN KEY | fk_fatture_righe_esposizioni_componente | kit_esposizione |
 | FOREIGN KEY | fk_fatture_righe_fat | fattura_id |
 | FOREIGN KEY | fk_fatture_righe_fattura_atto | fattura_atto_id, fattura_id |
 | FOREIGN KEY | fk_fatture_righe_iva | iva_id |
 | FOREIGN KEY | fk_fatture_righe_kit_articolo_padre | kit_articolo_padre_id |
+| FOREIGN KEY | fk_fatture_righe_kit_uom | kit_uom_id |
 | FOREIGN KEY | fk_fatture_righe_riga_capofila | riga_capofila_id, fattura_id |
 | FOREIGN KEY | fk_fatture_righe_riga_rettificata | riga_rettificata_id |
 | FOREIGN KEY | fk_fatture_righe_sorgente_tipo | sorgente_tipo_id |

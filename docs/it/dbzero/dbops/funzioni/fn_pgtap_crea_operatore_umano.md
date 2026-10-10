@@ -26,7 +26,7 @@ AS $function$
 --   (o una funzione STABLE, come script.fn_is_super_admin) nella
 --   stessa istruzione della chiamata vede la snapshot di PRIMA.
 DECLARE
-    v_cf        text;
+    v_cf        anagrafiche.soggetti.codice_fiscale%TYPE;
     v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
     v_identita  anagrafiche.identita_digitali.id%TYPE;
     v_ru_id     anagrafiche.risorse_umane.id%TYPE;
@@ -62,6 +62,10 @@ BEGIN
         p_cognome                     := 'Operatore ' || p_etichetta,
         p_nome                        := 'pgTAP',
         p_codice_fiscale              := v_cf,
+        -- ⭐ Rev 20261009-30: l'operatore e' un privato (PR), e per un PR il
+        --   sesso e' obbligatorio: la madre non ha piu' il default 'M'. Una
+        --   fixture lo sceglie, e lo dice (brief-db-sesso-senza-default).
+        p_sesso                       := 'M',
         -- Username ed email dal codice fiscale: libero lui,
         -- liberi loro (quindi la credenziale e' sempre NUOVA).
         p_username                    := 'pgtap_' || lower(v_cf),
@@ -115,7 +119,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_operatore_umano(p_etichetta text, p_super_admin boolean)
-IS 'Fixture pgTAP: un OPERATORE UMANO — persona fisica, risorsa umana, utente, identita'' OPERATORE ATTIVA — costruito chiamando la madre di produzione anagrafiche.fn_crea_operatore_v2, volendo SUPER ADMIN (secondo parametro). Aggiunge solo cio'' che una fixture non sceglie bene da se'': la finestra differita (il guard degli indirizzi del soggetto e'' DEFERRABLE e gli indirizzi arrivano all''ultimo passo), un codice fiscale libero adesso e lo username derivato, un indirizzo di dettaglio. ⭐ Rev 20260925-45: la madre crea la veste OPERATORE SPENTA (regola unica dell''invito, brief-db-blocco-login-per-credenziale §12), e il builder fa il passo che in esercizio fa l''attivazione dell''invito (il backend): accende la veste, con lo stesso UPDATE di identita_digitali.attivo. ⭐ Diverso da dbops.fn_pgtap_crea_emittente_operatore, che costruisce un utente TECNICO legato alla sua azienda: questo nasce SENZA azienda, come in produzione — un super admin senza azienda e'' il caso normale (multi-emittente), e toglierla dopo non si puo''. Per legarlo a un emittente: script.fn_change_user_emittenti_scope. ⚠️ Non apre il contesto; esce con i vincoli IMMEDIATE. ⛔ Cio'' che scrive si legge in un''istruzione SEPARATA: un JOIN o una funzione STABLE (script.fn_is_super_admin) nella stessa istruzione della chiamata vede la snapshot di prima. Brief: brief-db-fixture-che-costruiscono-giro-2.md';
+IS 'Fixture pgTAP: un OPERATORE UMANO — persona fisica, risorsa umana, utente, identita'' OPERATORE ATTIVA — costruito chiamando la madre di produzione anagrafiche.fn_crea_operatore_v2, volendo SUPER ADMIN (secondo parametro). Aggiunge solo cio'' che una fixture non sceglie bene da se'': la finestra differita (il guard degli indirizzi del soggetto e'' DEFERRABLE e gli indirizzi arrivano all''ultimo passo), un codice fiscale libero adesso e lo username derivato, un indirizzo di dettaglio. ⭐ Rev 20260925-45: la madre crea la veste OPERATORE SPENTA (regola unica dell''invito, brief-db-blocco-login-per-credenziale §12), e il builder fa il passo che in esercizio fa l''attivazione dell''invito (il backend): accende la veste, con lo stesso UPDATE di identita_digitali.attivo. ⭐ Diverso da dbops.fn_pgtap_crea_emittente_operatore, che costruisce un utente TECNICO legato alla sua azienda: questo nasce SENZA azienda, come in produzione — un super admin senza azienda e'' il caso normale (multi-emittente), e toglierla dopo non si puo''. Per legarlo a un emittente: script.fn_change_user_emittenti_scope. ⚠️ Non apre il contesto; esce con i vincoli IMMEDIATE. ⛔ Cio'' che scrive si legge in un''istruzione SEPARATA: un JOIN o una funzione STABLE (script.fn_is_super_admin) nella stessa istruzione della chiamata vede la snapshot di prima. Brief: brief-db-fixture-che-costruiscono-giro-2.md Rev 20261009-30 (brief-db-sesso-senza-default): passa il sesso esplicito alla madre, che non ha piu'' il default ''M''.';
 ```
 
 ---

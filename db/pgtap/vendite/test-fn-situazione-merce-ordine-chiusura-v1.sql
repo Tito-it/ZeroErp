@@ -155,15 +155,18 @@ SELECT vendite.fn_link_commessa_sorgente(
 -- la snapshot e le policy negano fail-closed)
 -- ============================================================
 
--- Un ordine nello stato dato con una riga da p_qta.
-CREATE OR REPLACE FUNCTION pg_temp.sm_mk_ordine(p_qta numeric, p_stato_id bigint)
+-- Un ordine nello stato dato con una riga da p_qta (e, se p_qta_mai_spedita,
+-- una riga 2 «mai spedita»).
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le righe, poi passa allo stato voluto con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
+CREATE OR REPLACE FUNCTION pg_temp.sm_mk_ordine(p_qta numeric, p_stato_id bigint,
+                                                p_qta_mai_spedita numeric DEFAULT NULL)
 RETURNS TABLE(ordine_id bigint, ordine_uid uuid, ordine_riga_id bigint) AS $$
-DECLARE r RECORD; v_ord bigint; v_uid uuid; v_orr bigint;
+DECLARE r RECORD; v_ord bigint; v_uid uuid; v_orr bigint; v_stato text;
 BEGIN
   SELECT * INTO r FROM tmp_refs_sm;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, p_stato_id, r.valuta_id,
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id, r.valuta_id,
           DATE '2026-08-05', 'CONSEGNATO', r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_situazione'))
   RETURNING id, uid INTO v_ord, v_uid;
@@ -172,6 +175,14 @@ BEGIN
   VALUES (v_ord, 1, r.articolo_id, 'Riga situazione pgTAP', p_qta, p_qta, 20, r.iva_id,
           true, false, jsonb_build_object('test_scope','pgtap_situazione'))
   RETURNING id INTO v_orr;
+  IF p_qta_mai_spedita IS NOT NULL THEN
+    INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
+      qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
+    VALUES (v_ord, 2, r.articolo_id, 'Riga mai spedita', p_qta_mai_spedita, p_qta_mai_spedita, 20, r.iva_id,
+            true, false, jsonb_build_object('test_scope','pgtap_situazione'));
+  END IF;
+  SELECT s.codice_interno INTO v_stato FROM config.stati_doc_ordini s WHERE s.id = p_stato_id;
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, v_stato);
   RETURN QUERY SELECT v_ord, v_uid, v_orr;
 END $$ LANGUAGE plpgsql;
 
@@ -298,7 +309,10 @@ $$ LANGUAGE sql;
 -- CASO 1 — un ordine da 30 spedito su TRE DDT (10, 10, 10), fatturato
 --          dall'ORDINE per 15.
 -- ============================================================
-CREATE TEMP TABLE tmp_o1 AS SELECT * FROM pg_temp.sm_mk_ordine(30, (SELECT stato_ord_conf_id FROM tmp_refs_sm));
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la riga 2 «mai
+--   spedita» del caso 2 nasce QUI, in bozza, con la riga 1 (20261008-90: dopo i
+--   DDT l'ordine e' fuori bozza e non prende righe). Il 4 legge percio' la riga 1.
+CREATE TEMP TABLE tmp_o1 AS SELECT * FROM pg_temp.sm_mk_ordine(30, (SELECT stato_ord_conf_id FROM tmp_refs_sm), 4);
 CREATE TEMP TABLE tmp_d1 AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-10');
 CREATE TEMP TABLE tmp_d2 AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-11');
 CREATE TEMP TABLE tmp_d3 AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-12');
@@ -306,7 +320,8 @@ SELECT pg_temp.sm_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o1)::text || ':R:
 
 SELECT results_eq(
   $q$SELECT s.consegnato, s.fatturato_da_ordine, s.differenza, s.stato::text, s.partite_merce, s.da_spedire
-       FROM vendite.fn_situazione_merce_ordine(NULL, ARRAY[(SELECT ordine_id FROM tmp_o1)]) s$q$,
+       FROM vendite.fn_situazione_merce_ordine(NULL, ARRAY[(SELECT ordine_id FROM tmp_o1)]) s
+      WHERE s.riga_nr = 1$q$,
   $q$VALUES (30::numeric, 15::numeric, 15::numeric, 'DA_FATTURARE', 3, 0::numeric)$q$,
   '4) per ORDINE: consegnato 30, fatturato dall''ordine 15, differenza 15, DA_FATTURARE, 3 partite, niente da spedire');
 
@@ -326,11 +341,7 @@ SELECT is(
 -- ============================================================
 -- CASO 2 — la riga MAI SPEDITA dello stesso ordine e l'ordine in BOZZA
 -- ============================================================
-INSERT INTO vendite.ordini_righe (ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
-SELECT (SELECT ordine_id FROM tmp_o1), 2, r.articolo_id, 'Riga mai spedita', 4, 4, 20, r.iva_id,
-       true, false, jsonb_build_object('test_scope','pgtap_situazione')
-  FROM tmp_refs_sm r;
+-- (la riga 2 di tmp_o1 e' nata in bozza con l'ordine: vedi il caso 1)
 
 SELECT results_eq(
   $q$SELECT (SELECT s.stato::text || '|' || (s.da_spedire = 4)::text || '|' || s.partite_merce::text

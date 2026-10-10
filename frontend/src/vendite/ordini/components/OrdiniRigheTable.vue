@@ -9,28 +9,80 @@
 //        ⚠️ Le due date di consegna sono DUE colonne (la confermata e la
 //        richiesta dal cliente, decisione di Tid): prima erano una cella sola
 //        che mostrava la seconda quando mancava la prima.
+//        ⭐ Azione di riga «data di consegna confermata» (2026-10-10,
+//        brief-db-testata-dopo-emissione fase 1): la promessa si cambia anche
+//        dopo la conferma, quando la riga non si modifica piu'. Accesa o spenta
+//        col motivo dalla capability di documento
+//        `can_edit_data_consegna_confermata`: qui non si decide niente.
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { MANAGE_ICONS } from '../../../core/constants'
+import { labelOrCode } from '../../../core/utils/i18nLabel'
 import { useOrdiniStore } from '../stores/ordini'
 import { useOrdineRigheStore } from '../stores/ordineRighe'
 import { exportRigheLista } from '../api/ordiniApi'
+import { unisciFotografie } from '../../../core/composables/useDrawerFormPreserve'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import OrdiniRigaForm from './OrdiniRigaForm.vue'
+import OrdineRigaDataConsegnaDialog from './dialogs/OrdineRigaDataConsegnaDialog.vue'
 
+const { t, te } = useI18n()
 const store = useOrdiniStore()
 // La lista delle righe: uno store per istanza del drawer.
 const righe = useOrdineRigheStore()
 
-defineProps({
+const props = defineProps({
   ordineId: { type: Number, required: true },
   // L'emittente dell'ordine (PK): lasciapassare del cancello di perimetro
   // della lista, per chi vede piu' emittenti. Arriva col dettaglio.
   emittenteFiscaleId: { type: Number, default: null },
   isModificabile: { type: Boolean, default: true },
+  // Il blob `capabilities` del dettaglio ordine: la terna
+  // `can_edit_data_consegna_confermata` e' di DOCUMENTO (dipende solo dallo
+  // stato della testata), quindi vale per ogni riga.
+  capabilities: { type: Object, default: () => ({}) },
+  // Readonly PURO (permessi / split): nasconde l'azione. Lo stato non la
+  // nasconde, la spegne col motivo.
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
+
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): la fotografia della riga
+//    aperta, inoltrata al drawer per le sue uscite. La tiene il form di riga,
+//    che si registra presso la tabella (`registra` dello slot).
+const tabella = ref(null)
+defineExpose({ ...unisciFotografie(() => tabella.value) })
+
+const dataConsegnaVisible = ref(false)
+const dataConsegnaRiga = ref(null)
+
+// Scopo: le azioni di dominio della riga. Permesso ⇒ nascondi, stato ⇒
+//        spegni col motivo (chiave i18n dal DB, ripiego sul codice).
+function azioniRiga(riga) {
+  if (props.readonly) return []
+  const capabilities = props.capabilities || {}
+  const ammessa = capabilities.can_edit_data_consegna_confermata === true
+  return [{
+    key: 'data-consegna-confermata',
+    label: t('vendite.ordini.azione_data_consegna_confermata'),
+    icon: MANAGE_ICONS.PROMESSA_CONSEGNA,
+    disabled: !ammessa,
+    tooltip: ammessa ? undefined : labelOrCode(
+      t, te,
+      capabilities.can_edit_data_consegna_confermata_reason_key,
+      capabilities.can_edit_data_consegna_confermata_reason,
+    ),
+    command: () => {
+      dataConsegnaRiga.value = riga
+      dataConsegnaVisible.value = true
+    },
+  }]
+}
 </script>
 
 <template>
   <RigheMasterDetailTable
+    ref="tabella"
     codice="vendite.ordine_righe"
     :store="righe"
     :parent-id="ordineId"
@@ -38,6 +90,7 @@ const emit = defineEmits(['changed', 'form-aperto'])
     :export-fn="exportRigheLista"
     :delete-action="(id, rigaId) => store.eliminaRiga(id, rigaId)"
     :is-modificabile="isModificabile"
+    :extra-row-actions="azioniRiga"
     title-key="vendite.ordini.section_righe"
     new-tooltip-key="vendite.ordini.aggiungi_riga"
     confirm-delete-key="vendite.ordini.conferma_elimina_riga"
@@ -47,8 +100,9 @@ const emit = defineEmits(['changed', 'form-aperto'])
     @changed="emit('changed')"
     @form-aperto="emit('form-aperto', $event)"
   >
-    <template #form="{ riga, onSaved, onComponentiChanged, onCancel }">
+    <template #form="{ riga, onSaved, onComponentiChanged, onCancel, registra }">
       <OrdiniRigaForm
+        :ref="registra"
         :ordine-id="ordineId"
         :riga="riga"
         @saved="onSaved"
@@ -57,4 +111,12 @@ const emit = defineEmits(['changed', 'form-aperto'])
       />
     </template>
   </RigheMasterDetailTable>
+
+  <OrdineRigaDataConsegnaDialog
+    v-model:visible="dataConsegnaVisible"
+    :ordine-id="ordineId"
+    :riga="dataConsegnaRiga"
+    :readonly="readonly"
+    @salvata="tabella?.loadRighe(); emit('changed')"
+  />
 </template>

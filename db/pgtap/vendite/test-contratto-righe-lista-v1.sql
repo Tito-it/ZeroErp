@@ -4,7 +4,10 @@
 --
 -- Test: le righe del contratto come LISTA — vendite.fn_contratto_righe_preview
 --   con chiave di riga, azioni per origine e «Escludi» spento col motivo; la
---   check script.fn_check_esclusione_articolo_contratto e il guard che la chiama.
+--   check script.fn_check_esclusione_articolo_documento e il guard che la chiama
+--   (rev 2026-10-04, brief-db-righe-esclusione-solo-non-si-vende: check e guard
+--   generici per contratto e offerta; la lista e' l'involucro di
+--   vendite.fn_documento_righe_preview; le esclusioni nascono vuote).
 --   Brief: brief-db-liste-righe-documento §8.4 (D-8.4), §8.13.
 --   changeSet: 20260928-29 (check), -31 (guard), -32 (anteprima).
 --
@@ -31,7 +34,7 @@
 --    2) ogni riga ha una chiave, e sono tutte diverse
 --    3) A: chiave L:<articolo>:<uom>, azioni sovrascrivi/escludi, nessun blocco
 --    4) B (OVERRIDE): modifica / ripristina il listino
---    5) C (ESCLUSIONE): modifica / ripristina l'articolo
+--    5) C (ESCLUSIONE): il solo ripristina l'articolo (rev 2026-10-04)
 --    6) X (AGGIUNTA): chiave A:<id della riga>, modifica / rimuovi
 --    7) ⭐ F: «Escludi» spento con FIGLIO_DI_BUNDLE
 --    8) la check su F: codice a catalogo, reason, reason_key
@@ -119,11 +122,17 @@ WITH ins AS (
            m.billing_account_id, m.istanza_utility_id, m.utility_id,
            (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
            (SELECT listino_id FROM tmp_crl_listino),
-           CURRENT_DATE, CURRENT_DATE + 365
+           script.fn_data_operativa(), script.fn_data_operativa() + 365
       FROM tmp_crl_mondo m
     RETURNING id
 )
 SELECT id FROM ins;
+
+-- Scopo: la fonte che la riga eredita dall'articolo (la combinazione di default).
+CREATE OR REPLACE FUNCTION pg_temp.fonte_default(p_articolo uuid)
+RETURNS text LANGUAGE sql STABLE AS $fx$
+  SELECT e.fonte_quantita_attesa::text FROM vendite.fn_articolo_erogazioni(p_articolo) e WHERE e.e_default;
+$fx$;
 
 -- Scopo: una riga di contratto (eccezione) sull'articolo della sigla.
 CREATE OR REPLACE FUNCTION pg_temp.riga(p_sigla text, p_tipo text, p_prezzo numeric)
@@ -131,7 +140,22 @@ RETURNS bigint LANGUAGE sql AS $fx$
   INSERT INTO vendite.contratti_righe (contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
          tipo_erogazione, fonte_quantita_attesa, quantita, qta_operativa, uom_operativa_id)
   SELECT (SELECT id FROM tmp_crl_contratto), a.id, p_tipo::vendite.tipo_eccezione_contratto,
-         p_prezzo, 'CANONE', 'FISSA', 1, 1, a.uom_id
+         p_prezzo,
+         -- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): un'ESCLUSIONE
+         -- nasce vuota, senza dati di vendita; le altre righe coi dati di una riga
+         -- che si fattura.
+         -- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3):
+         -- erogazione e fonte VUOTE, la riga le eredita dall'articolo (la tipologia
+         -- del listino del test). Erano CANONE/FISSA scritte a mano, fuori dal
+         -- perimetro di un articolo CONSUMO.
+         -- rev 2026-10-07 (§D.4 punto 2, 20261007-28/-30): la quantita' solo se la
+         -- fonte ereditata la porta (FISSA); con una fonte a valle resta vuota.
+         -- Si chiede alla sede unica, perche' la tipologia e' quella del builder.
+         NULL,
+         NULL,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' AND pg_temp.fonte_default(a.id) = 'FISSA' THEN 1 END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' AND pg_temp.fonte_default(a.id) = 'FISSA' THEN 1 END,
+         CASE WHEN p_tipo <> 'ESCLUSIONE' THEN a.uom_id END
     FROM catalogo.articoli a WHERE a.id = pg_temp.art(p_sigla)
   RETURNING id;
 $fx$;
@@ -171,8 +195,11 @@ SELECT is(
 
 SELECT is(
     (SELECT azioni FROM tmp_crl_lista WHERE articolo_id = pg_temp.art('C') AND origine = 'ESCLUSIONE'),
-    ARRAY['MODIFICA', 'RIPRISTINA_ARTICOLO'],
-    '5) C escluso: modifica / ripristina l''articolo');
+    -- rev 2026-10-04 (brief-db-contratto-esclusione-non-modificabile, R1): un'esclusione
+    -- si crea e si cancella, non si modifica. Il rifiuto dell'UPDATE lo prova
+    -- test-contratto-esclusione-non-modificabile-v1.
+    ARRAY['RIPRISTINA_ARTICOLO'],
+    '5) C escluso: il solo ripristina l''articolo, niente modifica');
 
 SELECT ok(
     (SELECT riga_key = 'A:' || (SELECT id FROM tmp_crl_x)::text
@@ -195,12 +222,12 @@ SELECT ok(
         AND m -> 0 ->> 'reason' = 'FIGLIO_DI_BUNDLE'
         AND m -> 0 ->> 'reason_key' = 'vendite.contratti.escludi_blocco.figlio_di_bundle'
         AND jsonb_array_length(m) = 1
-       FROM (SELECT script.fn_check_esclusione_articolo_contratto(
-                 (SELECT id FROM tmp_crl_contratto), pg_temp.art('F')) AS m) x),
+       FROM (SELECT script.fn_check_esclusione_articolo_documento(
+                 'CONTRATTO', (SELECT id FROM tmp_crl_contratto), pg_temp.art('F')) AS m) x),
     '8) la check su F: il codice a catalogo, il reason e la sua chiave');
 
 SELECT is(
-    script.fn_check_esclusione_articolo_contratto((SELECT id FROM tmp_crl_contratto), pg_temp.art('A')),
+    script.fn_check_esclusione_articolo_documento('CONTRATTO', (SELECT id FROM tmp_crl_contratto), pg_temp.art('A')),
     '[]'::jsonb,
     '9) la check su A: nessun motivo');
 
@@ -222,10 +249,10 @@ SELECT lives_ok(
 -- ⭐ Il presidio della §12.5.2: non «gli esiti coincidono», ma «la madre non
 --    contiene piu' il predicato». Commenti tolti prima di cercare.
 SELECT ok(
-    (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_contratto\s*\('
+    (SELECT regexp_replace(prosrc, '--[^\n]*', '', 'g') ~ 'fn_check_esclusione_articolo_documento\s*\('
         AND regexp_replace(prosrc, '--[^\n]*', '', 'g') !~ 'listini_righe_componenti'
        FROM pg_proc
-      WHERE oid = 'vendite.trgfn_contratti_righe_guard_esclusione_figlio_bundle()'::regprocedure),
+      WHERE oid = 'script.trgfn_righe_guard_esclusione_figlio_bundle()'::regprocedure),
     '12) il guard chiama la check e non contiene piu'' il predicato');
 
 SELECT * FROM finish();

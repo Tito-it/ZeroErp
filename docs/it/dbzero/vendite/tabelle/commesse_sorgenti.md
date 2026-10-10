@@ -13,7 +13,7 @@
 | sorgente_tipo_id | bigint | NO |  |
 | sorgente_uid | text | NO |  |
 | sorgente_riga | bigint | YES |  |
-| ruolo_link | character varying | NO | 'ROOT'::character varying |
+| ruolo_link | character varying(16) | NO | 'ROOT'::character varying |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |

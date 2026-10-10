@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CANALE DELLA FATTURA ELETTRONICA: P (PEC) O C (CODICE SDI)
+#   Brief: brief-db-character-n-spazi-di-riempimento.md §3 D-6 e §7.6
+#   (decisioni di Tid, 2026-10-10)
+#
+# -- IL CASO --------------------------------------------------------
+#   anagrafiche.dati_societari.destinatario_fe e' il CANALE della fattura
+#   elettronica, non il codice: il form sceglie fra P (PEC) e C (codice SDI)
+#   e apre il campo pec_fatturazione o codice_sdi. Il commento della colonna
+#   diceva «codice destinatario», e helper e fixture DB ci scrivevano codici
+#   ('0000000', 'XXXXXXX002'). Nessuna regola diceva quali valori fossero
+#   ammessi, ne' che un canale scelto avesse il suo recapito.
+#
+# -- COSA FA --------------------------------------------------------
+#   1. DROP di anagrafiche.vw_dati_societari (legge le due colonne che cambiano
+#      tipo; nessun dipendente). La ricrea 20261010-38, stessa corsa.
+#   2. destinatario_fe: nullable (decisione di Tid: un soggetto senza canale
+#      FE e' ammesso, es. estero o non ancora noto; il form lo lascia vuoto) e
+#      varchar(1). USING: un valore che e' gia' un canale resta; un valore che
+#      non lo e' (un codice scritto qui per errore) si DERIVA dal recapito
+#      presente nella riga: codice SDI -> C, altrimenti PEC -> P, altrimenti
+#      NULL. Si legge solo la riga stessa: e' DDL, nessun trigger scatta.
+#   3. codice_sdi: varchar(7) USING upper(btrim()), e la forma dello SDI
+#      (6 caratteri per la PA, 7 per gli altri, maiuscole e cifre).
+#      ⚠️ Un codice gia' scritto con piu' di 7 caratteri fa fallire l'ALTER:
+#      su dbdev i cinque residui di pgTAP sono stati corretti a mano prima
+#      (brief §7.6).
+#   4. Coerenza: canale P => PEC non vuota; canale C => codice SDI presente.
+#      Il guard di 20261010-39 dice la stessa cosa con una frase per campo; il
+#      CHECK resta la rete.
+#   5. DROP di uq_ds_codice_sdi e uq_ds_pec_fatt (decisione di Tid): lo stesso
+#      codice SDI (quello di un intermediario) e la stessa PEC (quella di un
+#      commercialista) servono piu' clienti. Gli UNIQUE li creava la baseline
+#      v1: nessun changeSet successivo li pretende.
+#   6. Il CHECK «non vuoto» del 20261010-26 su destinatario_fe esce: il
+#      vocabolario lo contiene.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261010-37-alter-dati-societari-canale-fe-mctit.yaml
+
+  - changeSet:
+      id: 20261010-37-alter-dati-societari-canale-fe
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.dati_societari: destinatario_fe e' il canale FE (P/C, nullable,
+        varchar(1)); codice_sdi varchar(7) con la forma SDI; coerenza canale/recapito;
+        via gli UNIQUE su codice_sdi e pec_fatturazione. vw_dati_societari droppata e
+        ricreata da 20261010-38. Brief: brief-db-character-n-spazi-di-riempimento.md D-6.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP VIEW anagrafiche.vw_dati_societari;
+
+              ALTER TABLE anagrafiche.dati_societari
+                DROP CONSTRAINT chk_dati_societari_destinatario_fe_non_vuoto,
+                DROP CONSTRAINT uq_ds_codice_sdi,
+                DROP CONSTRAINT uq_ds_pec_fatt;
+
+              -- Il canale: prima, quando codice_sdi ha ancora il tipo di prima.
+              ALTER TABLE anagrafiche.dati_societari
+                ALTER COLUMN destinatario_fe DROP NOT NULL,
+                ALTER COLUMN destinatario_fe TYPE varchar(1) USING (
+                  CASE
+                    WHEN destinatario_fe IN ('P', 'C')                          THEN destinatario_fe
+                    WHEN NULLIF(btrim(codice_sdi), '') IS NOT NULL             THEN 'C'
+                    WHEN NULLIF(btrim(pec_fatturazione), '') IS NOT NULL       THEN 'P'
+                  END);
+
+              ALTER TABLE anagrafiche.dati_societari
+                ALTER COLUMN codice_sdi TYPE varchar(7) USING upper(NULLIF(btrim(codice_sdi), ''));
+
+              ALTER TABLE anagrafiche.dati_societari
+                ADD CONSTRAINT chk_dati_societari_destinatario_fe_canale
+                    CHECK (destinatario_fe IN ('P', 'C')),
+                ADD CONSTRAINT chk_dati_societari_codice_sdi_forma
+                    CHECK (codice_sdi ~ '^[A-Z0-9]{6,7}$'),
+                ADD CONSTRAINT chk_dati_societari_canale_fe_coerente
+                    CHECK ((destinatario_fe IS DISTINCT FROM 'P'
+                            OR coalesce(btrim(pec_fatturazione), '') <> '')
+                       AND (destinatario_fe IS DISTINCT FROM 'C'
+                            OR codice_sdi IS NOT NULL));
+
+              COMMENT ON COLUMN anagrafiche.dati_societari.destinatario_fe IS
+                'Canale della fattura elettronica: P = PEC (pec_fatturazione), C = codice SDI (codice_sdi), '
+                'NULL = nessun canale indicato. Il canale scelto pretende il suo recapito '
+                '(chk_dati_societari_canale_fe_coerente, guard trg_dati_societari_a10_guard_canale_fe_ins_upd). '
+                'Rev 20261010-37: era descritta come «codice destinatario». '
+                'Brief: brief-db-character-n-spazi-di-riempimento D-6.';
+              COMMENT ON COLUMN anagrafiche.dati_societari.codice_sdi IS
+                'Codice destinatario SDI della fattura elettronica: 7 caratteri maiuscoli o cifre, 6 per la '
+                'PA (chk_dati_societari_codice_sdi_forma). Non e'' unico: lo stesso codice (quello di un '
+                'intermediario) serve piu'' clienti. Brief: brief-db-character-n-spazi-di-riempimento D-6.';
+              COMMENT ON COLUMN anagrafiche.dati_societari.pec_fatturazione IS
+                'PEC per la fattura elettronica, usata quando il canale (destinatario_fe) e'' P. Non e'' '
+                'unica: la stessa PEC (quella di un commercialista) serve piu'' clienti. '
+                'Brief: brief-db-character-n-spazi-di-riempimento D-6.';

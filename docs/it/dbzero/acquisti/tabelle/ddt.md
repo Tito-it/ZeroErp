@@ -11,9 +11,9 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | anno | smallint | YES |  |
-| serie | character varying | YES |  |
-| numero | character varying | YES |  |
-| data | date | NO | CURRENT_DATE |
+| serie | character varying(8) | YES |  |
+| numero | character varying(40) | YES |  |
+| data | date | NO | script.fn_data_operativa() |
 | stato_doc_ddt_id | bigint | NO |  |
 | mittente_soggetto_ruolo_id | bigint | NO |  |
 | destinatario_soggetto_ruolo_id | bigint | YES |  |
@@ -21,9 +21,9 @@
 | aspetto_bene_id | bigint | YES |  |
 | modalita_addebito_trasporto_id | bigint | YES |  |
 | num_colli | integer | YES |  |
-| peso_lordo | numeric | YES |  |
-| peso_netto | numeric | YES |  |
-| volume | numeric | YES |  |
+| peso_lordo | numeric(18,3) | YES |  |
+| peso_netto | numeric(18,3) | YES |  |
+| volume | numeric(18,3) | YES |  |
 | data_ora_consegna_eff | timestamp with time zone | YES |  |
 | ordine_id | bigint | YES |  |
 | sorgente_tipo_id | bigint | YES |  |
@@ -33,13 +33,16 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
-| hash_contenuto | character varying | YES |  |
+| user_update | text | NO | CURRENT_USER |
+| hash_contenuto | character varying(64) | YES |  |
 | sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_ddt_peso_lordo_finito |  |
+| CHECK | chk_ddt_peso_netto_finito |  |
+| CHECK | chk_ddt_volume_finito |  |
 | FOREIGN KEY | fk_a_ddt_aspetto_bene | aspetto_bene_id |
 | FOREIGN KEY | fk_a_ddt_causale_trasporto | causale_trasporto_id |
 | FOREIGN KEY | fk_a_ddt_destinatario_ruolo | destinatario_soggetto_ruolo_id |

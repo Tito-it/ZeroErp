@@ -151,11 +151,23 @@ export const STATO_SMISTAMENTO = Object.freeze({
 
 // Codici stato contratto (`config.stati_doc_contratti.codice_interno`).
 // DRAFT = bozza pre-attivazione; ATTIVO = contratto in vigore; CESSATO =
-// terminato (data fine raggiunta o cessazione manuale anticipata).
+// terminato (data fine raggiunta o cessazione manuale anticipata);
+// ANNULLATO = chiuso dalla bozza senza essere mai entrato in vigore.
 export const STATO_CONTRATTO = Object.freeze({
   DRAFT: 'DRAFT',
   ATTIVO: 'ATTIVO',
   CESSATO: 'CESSATO',
+  ANNULLATO: 'ANNULLATO',
+})
+
+// Forma di un contratto, DERIVATA (non persistita) da `contratti.listino_id`:
+// con un listino di riferimento o interamente negoziato. La emette il backend
+// nel contesto pricing (`ContrattiRepository.resolve_contesto_pricing_contratto`,
+// campo `forma`) e la ricava allo stesso modo il form della testata. Una sede
+// per i due drawer che la leggono (regola del 2, 2026-10-04).
+export const FORMA_CONTRATTO = Object.freeze({
+  CON_LISTINO: 'con_listino',
+  SENZA_LISTINO: 'senza_listino',
 })
 
 // Mappa stato→modalita'-PDF di contratti e preventivi ora DATA-DRIVEN via
@@ -180,9 +192,23 @@ export const TIPO_ECCEZIONE = Object.freeze({
   DA_LISTINO: 'DA_LISTINO',
 })
 
-// Tipi erogazione su `vendite.contratti_righe.tipo_erogazione` (CHECK DB
-// `chk_contrighe_tipo_erog`). `ORARIO` modellato ma non ancora esposto
-// in UI (modulo timesheet futuro).
+// I verbi che una riga del contratto ammette: la colonna `azioni` di
+// `vendite.fn_contratto_righe_preview` (capability di riga, §12.5 delle linee
+// guida SQL; brief-db-liste-righe-documento D-8.4). Il DB dice QUALI valgono
+// per la riga, il drawer li rende: SOVRASCRIVI_PREZZO e MODIFICA sono il click
+// sulla riga, gli altri voci del menu.
+export const AZIONE_RIGA_CONTRATTO = Object.freeze({
+  SOVRASCRIVI_PREZZO: 'SOVRASCRIVI_PREZZO',
+  ESCLUDI: 'ESCLUDI',
+  MODIFICA: 'MODIFICA',
+  RIPRISTINA_LISTINO: 'RIPRISTINA_LISTINO',
+  RIPRISTINA_ARTICOLO: 'RIPRISTINA_ARTICOLO',
+  RIMUOVI: 'RIMUOVI',
+})
+
+// Tipi erogazione su `vendite.contratti_righe.tipo_erogazione` (vocabolario
+// `config.erogazioni_fonti`). Il form delle righe mostra quelli che il DB
+// dichiara per l'articolo (`fn_documento_riga_erogazioni`), ORARIO compreso.
 export const TIPO_EROGAZIONE = Object.freeze({
   CANONE: 'CANONE',
   UNA_TANTUM: 'UNA_TANTUM',
@@ -191,13 +217,10 @@ export const TIPO_EROGAZIONE = Object.freeze({
 })
 
 // Fonti quantita su `vendite.contratti_righe.fonte_quantita_attesa`
-// (CHECK DB `chk_contrighe_fonte_qta`, NOT NULL dal 2026-05-19 via
-// migration 20260519-05). Coerenza con la matrice
-// `tipo_erogazione x fonte_quantita_attesa` vincolata dal CHECK
-// `chk_contrighe_coerenza_fonte_erogazione` (migration 20260519-05):
-// 7 combinazioni vietate, vedi `_FONTE_VIETATE_PER_TIPO_EROGAZIONE`
-// in `apps/vendite/services/contratti_service.py` e il piano
-// `docs/it/dev/work-done/refactor-contratti-fonte-quantita.md` §3.
+// (obbligatoria su ogni riga che non e' un'ESCLUSIONE). ⛔ Quali coppie
+// (erogazione, fonte) una riga puo' avere NON si scrive qui: lo dice il DB
+// dall'articolo (`vendite.fn_documento_riga_erogazioni`, letta dal form delle
+// righe), dal 2026-10-07 (brief-db-offerta-emissione-ed-erogazione B-R4).
 export const FONTE_QUANTITA_ATTESA = Object.freeze({
   FISSA: 'FISSA',
   MANUALE: 'MANUALE',
@@ -221,3 +244,31 @@ export const MODO_DATA_DOCUMENTO = Object.freeze({
   // decide la politica del registro», che non e' «oggi».
   CREAZIONE: 'creazione',
 })
+
+// Le colonne della testata che `PreventiviForm` MOSTRA, per
+// `useTestataDocumento` (brief-db-testata-dopo-emissione, R-FE-3): la testata
+// e' modificabile se almeno una di queste e' aperta nella capability.
+// ⚠️ Deve dire gli stessi campi del form: lo presidia
+// `campiFormTestata.spec.js`. `competenza_mese` e `fatturazione_immediata` non
+// ci sono: si scelgono accettando (dialog di accettazione), non dal form.
+export const CAMPI_FORM_TESTATA_PREVENTIVO = Object.freeze([
+  'emittente_fiscale_id',
+  'billing_account_id',
+  'istanza_utility_id',
+  'utility_id',
+  'valuta_id',
+  'termine_pagamento_id',
+  'validita_dal',
+  'validita_al',
+])
+
+// Le colonne della testata del contratto che il form cambia DOPO la bozza,
+// per `useTestataDocumento`: i tre riferimenti dell'atto (Q1). ⚠️ Scelta di
+// interfaccia, dichiarata: `valido_al`, che il DB apre in ATTIVO, si cambia
+// dal dialog «Cessa contratto» e non dal form; in bozza il form e' tutto
+// aperto e i suoi campi leggono `isLocked` come prima.
+export const CAMPI_FORM_TESTATA_CONTRATTO = Object.freeze([
+  'codice_cig',
+  'codice_cup',
+  'codice_commessa',
+])

@@ -32,20 +32,22 @@ Indice test eseguiti:
 4) DateValiditaGuardComuneDbTests.test_conti_bancari_soggetto_e_ruolo
 5) DateValiditaGuardComuneDbTests.test_template_versioni_create_clone_update_pubblica
 6) DateValiditaGuardComuneDbTests.test_template_asset_upload_e_update
+7) DateValiditaGuardComuneDbTests.test_catalogo_uom_operativa_componenti_conversioni
 """
 from __future__ import annotations
 
 import unittest
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.services.error_translator import ErrorTranslator
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
-_OGGI = date.today()
+_OGGI = oggi_aziendale()
 _DAL = _OGGI + timedelta(days=30)
 _AL_PRIMA = _OGGI + timedelta(days=10)  # futura, ma prima di _DAL
 _AL_DOPO = _OGGI + timedelta(days=60)
@@ -345,6 +347,94 @@ class DateValiditaGuardComuneDbTests(unittest.TestCase):
                 "template_asset.update",
                 lambda: svc.update_asset_metadati(
                     m.user, asset, {"valido_al": _AL_PRIMA.isoformat()},
+                ),
+            )
+        self._nel_mondo(_prova)
+
+    # 7. Catalogo: UoM operativa, componente di distinta, conversione UoM. La
+    #    copia stava in `catalogo_service._validate_date_interval`, ritirata il
+    #    2026-10-09 — ed era DIVERGENTE: pretendeva `valido_al > valido_dal`,
+    #    quindi rifiutava il periodo di UN GIORNO SOLO che il DB ammette. Per
+    #    questo, oltre al rifiuto, qui si prova anche che quel periodo passa.
+    #    ⚠️ Le due UoM della conversione si costruiscono: il vincolo di non
+    #    sovrapposizione per coppia non deve dipendere dalle conversioni che il
+    #    database ha gia'.
+    def test_catalogo_uom_operativa_componenti_conversioni(self):
+        from apps.catalogo.services import catalogo_service as svc
+
+        def _prova(cur, m):
+            def _articolo(sigla: str) -> str:
+                cur.execute(
+                    "SELECT dbops.fn_pgtap_crea_articolo(%s, false)",
+                    [f"BE-DATE-{sigla}-{uuid.uuid4().hex[:8]}"],
+                )
+                return str(cur.fetchone()[0])
+
+            def _uom() -> int:
+                cur.execute(
+                    """
+                    INSERT INTO catalogo.unita_misura (codice, descrizione, tipo_uom_id)
+                    SELECT 'BD' || substr(md5(random()::text), 1, 8), 'UoM date validita',
+                           u.tipo_uom_id
+                      FROM catalogo.unita_misura u ORDER BY u.id LIMIT 1
+                    RETURNING id
+                    """
+                )
+                return int(cur.fetchone()[0])
+
+            giorno = {"valido_dal": _DAL.isoformat(), "valido_al": _DAL.isoformat()}
+
+            # UoM operativa: la riga base che il DB semina alla nascita dell'articolo.
+            padre = _articolo("P")
+            cur.execute(
+                "SELECT id FROM catalogo.articoli_uom_operativa WHERE articolo_id = %s",
+                [padre],
+            )
+            uom_op = int(cur.fetchone()[0])
+            svc.fn_update_uom_operativa(padre, uom_op, {"valido_dal": _DAL.isoformat()})
+            self._rifiuto_del_periodo(
+                "catalogo.uom_operativa.update",
+                lambda: svc.fn_update_uom_operativa(
+                    padre, uom_op, {"valido_al": _AL_PRIMA.isoformat()},
+                ),
+            )
+            svc.fn_update_uom_operativa(padre, uom_op, {"valido_al": _DAL.isoformat()})
+
+            # Componente di distinta: il padre dev'essere composito.
+            cur.execute(
+                "UPDATE catalogo.articoli SET is_composito = TRUE WHERE id = %s", [padre],
+            )
+            figlio = _articolo("F")
+            base_comp = {"componente_id": figlio, "coeff_qta": "1"}
+            self._rifiuto_del_periodo(
+                "catalogo.componente.create",
+                lambda: svc.fn_create_componente(padre, {
+                    **base_comp, "valido_dal": _DAL.isoformat(),
+                    "valido_al": _AL_PRIMA.isoformat(),
+                }),
+            )
+            comp = svc.fn_create_componente(padre, {**base_comp, **giorno})
+            self._rifiuto_del_periodo(
+                "catalogo.componente.update",
+                lambda: svc.fn_update_componente(
+                    padre, comp["id"], {"valido_al": _AL_PRIMA.isoformat()},
+                ),
+            )
+
+            # Conversione UoM.
+            base_conv = {"uom_from_id": _uom(), "uom_to_id": _uom(), "fattore": "2"}
+            self._rifiuto_del_periodo(
+                "catalogo.conversione.create",
+                lambda: svc.fn_create_conversione({
+                    **base_conv, "valido_dal": _DAL.isoformat(),
+                    "valido_al": _AL_PRIMA.isoformat(),
+                }),
+            )
+            conv = svc.fn_create_conversione({**base_conv, **giorno})
+            self._rifiuto_del_periodo(
+                "catalogo.conversione.update",
+                lambda: svc.fn_update_conversione(
+                    int(conv["id"]), {"valido_al": _AL_PRIMA.isoformat()},
                 ),
             )
         self._nel_mondo(_prova)

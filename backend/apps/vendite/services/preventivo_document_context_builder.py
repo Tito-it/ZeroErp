@@ -26,6 +26,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from typing import Any
 
 from apps.core.services.testata_guard import testata_o_not_found
@@ -168,7 +170,7 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
     #        in una shape dedicata per usi piu' espliciti dal template
     #        (`preventivo.totali.imponibile` invece di `totale_imponibile`
     #        a top-level).
-    def _shape_preventivo(self, testata: dict[str, Any]) -> dict[str, Any]:
+    def _shape_preventivo(self, testata: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "id": testata.get("id"),
             "uid": testata.get("uid"),
@@ -209,9 +211,9 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
                 "descrizione": testata.get("termine_pagamento_descrizione"),
             },
             "totali": {
-                "imponibile": format_importo(testata.get("totale_imponibile")),
-                "iva": format_importo(testata.get("totale_iva")),
-                "documento": format_importo(testata.get("totale_documento")),
+                "imponibile": format_importo(testata.get("totale_imponibile"), campo="totale_imponibile"),
+                "iva": format_importo(testata.get("totale_iva"), campo="totale_iva"),
+                "documento": format_importo(testata.get("totale_documento"), campo="totale_documento"),
                 "valuta_id": testata.get("valuta_id"),
                 "valuta_codice": testata.get("valuta_codice"),
             },
@@ -222,7 +224,7 @@ class PreventivoDocumentContextBuilder(DocumentContextBuilder):
     #        v1: niente espansione completa di soggetti/indirizzi cliente —
     #        bastano denominazione + id per il template iniziale; futuro
     #        in Fase B se serve P.IVA/CF/sede legale strutturati.
-    def _shape_cliente(self, testata: dict[str, Any]) -> dict[str, Any]:
+    def _shape_cliente(self, testata: Mapping[str, Any]) -> dict[str, Any]:
         return {
             "billing_account_id": testata.get("billing_account_id"),
             "denominazione": testata.get("cliente_denominazione"),

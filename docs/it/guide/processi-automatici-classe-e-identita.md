@@ -157,8 +157,8 @@ cosa.
 ### Due forme, e una non e' un orologio
 
 `sveglie.json` distingue `forma: timer` da `forma: servizio`. La seconda non ha
-cadenza: e' un processo **sempre acceso** — oggi `listen_cambio_reparto`, che sta
-in ascolto su un canale `LISTEN/NOTIFY`. ⚠️ Scrive **un solo run**, quello di
+cadenza: e' un processo **sempre acceso** — oggi `listen_permessi`, che sta
+in ascolto su due canali `LISTEN/NOTIFY` (`cambio_reparto` e `permessi_catalogo`). ⚠️ Scrive **un solo run**, quello di
 avvio (decisione di Tid, 2026-09-05): *«e' vivo adesso?»* e' una domanda diversa
 da *«ha girato stanotte?»*, e ha una sede sua.
 

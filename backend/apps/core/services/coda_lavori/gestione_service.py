@@ -23,9 +23,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db.emittente_scope_helpers import fetch_emittenti_scope_ids
 from apps.core.db.maintenance_repository import MaintenanceRepository
 from apps.core.db.processi_repository import ProcessiRepository
@@ -240,8 +241,10 @@ def conteggi_code(user: Any, *, auth_user_id: int | None) -> dict[str, Any]:
 #        (`_owner_filter_per_azione`) e il DETTAGLIO (payload/errori possono
 #        contenere dati dell'attività altrui — vedi `dettaglio_job`).
 #        `is_mio` continua a marcare i propri. `data_a` è inclusiva a livello
-#        di GIORNO: convertita in esclusivo `+1 giorno` (la colonna è
-#        timestamptz). Ritorna `{count, results}`.
+#        di GIORNO, e i giorni sono quelli dell'azienda: li traduce in confini
+#        il repository (BB `predicato_giorno_operativo`; fino al 2026-10-09 il
+#        `+1 giorno` si calcolava qui e il confine era la mezzanotte della
+#        sessione). Ritorna `{count, results}`.
 def elenca_coda_lavori(
     user: Any,
     *,
@@ -251,7 +254,7 @@ def elenca_coda_lavori(
     data_a: date | None = None,
     solo_vivi: bool = False,
     includi_archiviate: bool = False,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     tutti: bool = False,
     sort_by: str | None = None,
@@ -291,7 +294,7 @@ def elenca_coda_lavori(
         stati=list(STATI_VIVI) if solo_vivi else ([stato] if stato else None),
         job_type=job_type,
         data_da=data_da,
-        data_a=(data_a + timedelta(days=1)) if data_a else None,
+        data_a=data_a,
         includi_archiviate=includi_archiviate,
         limit=limit,
         offset=offset,
@@ -324,7 +327,7 @@ def elenca_coda_stampa(
     data_a: date | None = None,
     solo_vivi: bool = False,
     includi_archiviate: bool = False,
-    limit: int = 50,
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
     tutti: bool = False,
     sort_by: str | None = None,
@@ -356,7 +359,7 @@ def elenca_coda_stampa(
         stati=list(STATI_VIVI) if solo_vivi else ([stato] if stato else None),
         lotto_id=lotto_id,
         data_da=data_da,
-        data_a=(data_a + timedelta(days=1)) if data_a else None,
+        data_a=data_a,
         includi_archiviate=includi_archiviate,
         limit=limit,
         offset=offset,
@@ -568,8 +571,8 @@ def _valida_ids_archiviazione(ids: object, *, function_name: str) -> list[int]:
         context={"field": "ids"},
         function_name=function_name,
     )
-    visti: set[int] = set()
-    return [i for i in ids if not (i in visti or visti.add(i))]
+    # Dedup con ordine preservato: le chiavi di un dict tengono l'ordine.
+    return list(dict.fromkeys(ids))
 
 
 # Scopo: il giro di archiviazione su N righe, comune alle due code — l'unica

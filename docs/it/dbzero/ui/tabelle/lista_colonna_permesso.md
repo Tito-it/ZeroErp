@@ -11,11 +11,11 @@
 | id | integer | NO |  |
 | colonna_id | integer | NO |  |
 | profilo_accesso_id | integer | NO |  |
-| livello_accesso | USER-DEFINED | NO |  |
+| livello_accesso | config.livello_accesso | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO |  |
+| user_insert | character varying(80) | NO |  |
 | data_update | timestamp with time zone | YES |  |
-| user_update | character varying | YES |  |
+| user_update | character varying(80) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

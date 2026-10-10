@@ -5,11 +5,11 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| target_tipo | character varying | NO |  |
+| target_tipo | character varying(16) | NO |  |
 | target_id | bigint | NO |  |
 | target_riga_id | bigint | YES |  |
-| anchor_tipo | character varying | NO |  |
-| posizione | character varying | NO |  |
+| anchor_tipo | character varying(12) | NO |  |
+| posizione | character varying(12) | NO |  |
 | seq | integer | NO | 10 |
 | testo | text | YES |  |
 | testo_md | text | YES |  |
@@ -19,7 +19,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | id_stile | bigint | NO |  |
 | id_lingua | bigint | YES |  |
 

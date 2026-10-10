@@ -6,6 +6,7 @@
 > [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza) — il building block delle righe, dal 2026-09-22 il consumatore principale (tre documenti)
 > [vendite.contratti](/dbzero/vendite/tabelle/contratti) — terzo tipo, `CONTRATTO` (rev 2026-09-22)
 > [vendite.trgfn_doc_guard_delete_solo_bozza](/dbzero/vendite/funzioni/trgfn_doc_guard_delete_solo_bozza) — il guard gemello, sulla testata
+> [script.fn_get_testata_id_di_riga](/dbzero/script/funzioni/fn_get_testata_id_di_riga) — il lettore gemello: dalla riga alla testata, per le tabelle nipoti (dal 2026-10-05)
 > [vendite.ddt](/dbzero/vendite/tabelle/ddt)
 > [vendite.ordini](/dbzero/vendite/tabelle/ordini)
 
@@ -50,7 +51,14 @@ distinguere un `NULL` da un vuoto.
 
 Tipi di documento ammessi: `DDT`, `ORDINE` e — dal 2026-09-22, per le righe di
 contratto — `CONTRATTO` (`vendite.contratti` → `config.stati_doc_contratti`,
-etichetta «Contratto <numero>»). Qualunque altro valore non è un dato sbagliato,
+etichetta «Contratto <numero>»); poi `EMAIL_BOZZA`, `RESO` e — dal 2026-10-04,
+per le righe dell'offerta — `OFFERTA` (`vendite.offerte_commerciali` →
+`config.stati_doc_offerte`, etichetta «Offerta <codice>»). L'etichetta
+dell'offerta la usa anche il messaggio dell'aggiunta fuori listino, che nomina
+il documento. Dal 2026-10-08, per i componenti del preventivo, `PREVENTIVO`
+(`vendite.preventivi` → `config.stati_doc_preventivi`, etichetta «Preventivo
+<numero> rev. <rev>»: le revisioni hanno lo stesso numero, e senza la revisione
+la frase non dice quale documento è fermo). Qualunque altro valore non è un dato sbagliato,
 è un **chiamante rotto**: `E_DOC_TIPO_NON_GESTITO`, classe `TECNICO`.
 
 ---
@@ -93,6 +101,12 @@ che si affidasse al solo numero sarebbe vuota proprio nel caso più frequente.
   riga cancellata.
 * **`search_path` fissato** nella firma e tutti gli oggetti qualificati per
   schema: su una `SECURITY DEFINER` è la differenza fra una lettura e una porta.
+  Il percorso è `pg_catalog, public, pg_temp`, con `pg_temp` **ultimo ed
+  esplicito**: se non è elencato PostgreSQL lo cerca per primo, e una tabella
+  temporanea del chiamante potrebbe prendere il posto di una relazione. `public`
+  resta perché il ramo d'errore chiama `script.fn_log_and_raise_error`, che gira
+  con il percorso di chi la chiama. Stessa forma del gemello
+  `script.fn_get_testata_id_di_riga`.
 * **Un guard sui parametri non serve, e non c'è**: un id nullo o `<= 0` non trova
   e basta — la risposta «zero righe» è già quella corretta. Solleva **solo** sul
   tipo documento non previsto, che è l'unico caso in cui il chiamante ha sbagliato

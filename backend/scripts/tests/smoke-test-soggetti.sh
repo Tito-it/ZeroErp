@@ -3,7 +3,7 @@
 # Smoke test locale per API Soggetti
 # Uso: ./scripts/tests/smoke-test-soggetti.sh [password]
 # ------------------------------------------------------------
-# Indice test (0..14):
+# Indice test (0..16):
 #  0) Autenticazione JWT
 #  1) Lista soggetti (paginata)
 #  2) Lista soggetti con search
@@ -16,17 +16,18 @@
 #  9) Modifica contatto
 # 10) Lista indirizzi del soggetto
 # 11) Lista ruoli del soggetto
-# 12) Assegna ruolo CLIENTE
-# 13) Lista ruoli dopo assegnazione
+# 12) Ruoli: CLIENTE rifiutato (flusso Clienti), VETTORE assegnato
+# 13) Lista ruoli dopo assegnazione (VETTORE presente)
 # 14) Crea soggetto PF — CF duplicato (atteso 409)
+# 15) Crea privato SENZA sesso → 400 E_SESSO_OBBLIGATORIO, campo `sesso`
+#     (il guard del DB: nessun default, brief-db-sesso-senza-default)
+# 16) Crea ditta individuale con P.IVA e senza sesso → nasce DI, sesso NULL
 # ------------------------------------------------------------
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -107,31 +108,7 @@ echo "========================================="
 echo ""
 echo "-- 0. Autenticazione --"
 
-if [[ -z "$PASSWORD" ]]; then
-    echo -n "Password per utente '$USERNAME': "
-    read -rs PASSWORD
-    echo ""
-fi
-
-curl -s -w '\n%{http_code}' \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-    "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
-
-AUTH_STATUS=$(tail -1 "$TMPFILE")
-AUTH_BODY=$(sed '$d' "$TMPFILE")
-
-if [[ "$AUTH_STATUS" != "200" ]]; then
-    echo -e "${RED}ERRORE: autenticazione fallita (HTTP $AUTH_STATUS)${NC}"
-    echo "$AUTH_BODY" | head -c 300
-    exit 1
-fi
-
-TOKEN=$(json_get "$AUTH_BODY" ".access")
-if [[ -z "$TOKEN" ]]; then
-    echo -e "${RED}ERRORE: token JWT non trovato nella risposta${NC}"
-    exit 1
-fi
+smoke_login
 log_ok "Token JWT ottenuto"
 
 # --- 1. Lista soggetti ---
@@ -221,6 +198,17 @@ if [[ -z "$SMOKE_CF" || "$SMOKE_CF" == "" ]]; then
 fi
 log_info "CF generato: $SMOKE_CF (data nascita: $SMOKE_BDATE)"
 
+# Tipo contatto: il contatto del soggetto lo pretende (`E_CONTATTO_INCOMPLETO`);
+# il primo della lista, come fa il drawer in creazione.
+do_curl GET "/api/v1/core/lookup/codici/?rel=config.tipi_contatti&limit=2"
+TIPO_CONTATTO_ID=$(json_get "$LAST_BODY" ".data.results.0.id")
+# Il contatto aggiuntivo (passo 8) vuole un tipo DIVERSO: (soggetto, tipo) e' unico.
+TIPO_CONTATTO_2_ID=$(json_get "$LAST_BODY" ".data.results.1.id")
+if [[ -z "$TIPO_CONTATTO_ID" ]]; then
+    echo -e "${RED}ERRORE: nessun tipo contatto${NC}"
+    exit 1
+fi
+
 # Payload con indirizzi obbligatori per PF/PR: RES + DOMFISC (FATT coperto da fallback DOMFISC)
 IND_ARRAY=""
 if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
@@ -237,7 +225,8 @@ if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
             \"cognome\": \"SmokeTest\",
             \"nome\": \"Soggetto${SMOKE_TS}\",
             \"codice_fiscale\": \"${SMOKE_CF}\",
-            \"contatto\": {
+            \"sesso\": \"M\",
+            \"contatto\": {\"tipo_contatto_id\": ${TIPO_CONTATTO_ID}, 
                 \"nominativo\": \"SmokeTest Soggetto\",
                 \"email\": \"smoke${SMOKE_TS}@test.it\",
                 \"telefono\": \"0123456789\"
@@ -297,7 +286,7 @@ echo ""
 echo "-- 8. Crea contatto aggiuntivo --"
 if [[ -n "$SOGG_ID" && "$SOGG_ID" != "" ]]; then
     do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/contatti/" \
-        "{\"nominativo\": \"Contatto Secondario\", \"email\": \"secondo@test.it\"}"
+        "{\"nominativo\": \"Contatto Secondario\", \"email\": \"secondo@test.it\", \"tipo_contatto_id\": ${TIPO_CONTATTO_2_ID}}"
     check "Crea contatto" "200" ".data.id"
     NEW_CONTATTO_ID="$EXTRACTED"
     log_info "Contatto creato id=$NEW_CONTATTO_ID"
@@ -336,12 +325,10 @@ else
     log_info "Skipped"
 fi
 
-# --- 11b. Aggiungi indirizzi obbligatori mancanti per ruolo CLIENTE ---
-# Recupera la lista indirizzi esistenti e aggiunge quelli mancanti
+# --- 11b. Aggiungi indirizzi al soggetto ---
 echo ""
-echo "-- 11b. Completa indirizzi per ruolo CLIENTE --"
+echo "-- 11b. Completa indirizzi del soggetto --"
 if [[ -n "$SOGG_ID" && "$SOGG_ID" != "" && -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
-    # Recupera tipi indirizzo gia' assegnati al soggetto
     do_curl GET "/api/v1/anagrafiche/soggetti/${SOGG_ID}/indirizzi/"
     TIPI_ESISTENTI=$(echo "$LAST_BODY" | python3 -c "
 import sys, json
@@ -355,45 +342,40 @@ try:
 except: print('')
 " 2>/dev/null)
     log_info "Tipi esistenti: $TIPI_ESISTENTI"
-    # Aggiunge i tipi comuni se mancanti
-    for TIPO in FATT SEDE SPED; do
+    # Solo tipi che la matrice del privato ammette
+    # (config.tipi_soggetto_dettaglio_tipi_indirizzo): una sede non ce l'ha.
+    for TIPO in FATT SPED; do
         if [[ ! " $TIPI_ESISTENTI " =~ " $TIPO " ]]; then
             do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/indirizzi/" \
                 "{\"tipo_indirizzo_codice\": \"${TIPO}\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}"
-            if [[ "$LAST_STATUS" == "200" ]]; then
-                log_ok "Indirizzo $TIPO aggiunto"
-            else
-                log_info "Indirizzo $TIPO non aggiunto (HTTP $LAST_STATUS)"
-            fi
+            check "Indirizzo $TIPO aggiunto" "200" || true
         fi
     done
 else
     log_info "Skipped"
 fi
 
-# --- 12. Assegna ruolo CLIENTE ---
-# Nota: l'assegnazione richiede che TUTTI i tipi indirizzo obbligatori
-# definiti in config.tipi_ruolo_tipi_indirizzo siano presenti.
-# Se la matrice DB cambia, questo test potrebbe fallire con E_INDIRIZZO_OBBLIGATORIO_MANCANTE.
+# --- 12. Ruoli: CLIENTE dal suo flusso, VETTORE da qui ---
+# CL, FO, EF e RIS_UMANA hanno un flusso dedicato (il CL nasce con la prima
+# istanza e il suo billing account): l'endpoint generico li rifiuta sul campo
+# (decisione di Tid, 2026-10-09). Un ruolo senza flusso dedicato si assegna.
 echo ""
-echo "-- 12. Assegna ruolo CLIENTE --"
+echo "-- 12. Assegna ruoli --"
 RUOLO_ASSEGNATO=""
 if [[ -n "$SOGG_ID" && "$SOGG_ID" != "" ]]; then
-    do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/ruoli/" \
-        "{\"codice_ruolo\": \"CLIENTE\"}"
-    if [[ "$LAST_STATUS" == "200" ]]; then
-        log_ok "Assegna ruolo CLIENTE (HTTP 200)"
-        RUOLO_ASSEGNATO=$(json_get "$LAST_BODY" ".data.id")
-        log_info "Ruolo assegnato id=$RUOLO_ASSEGNATO"
-    elif [[ "$LAST_STATUS" == "400" ]]; then
-        ERRCODE=$(json_get "$LAST_BODY" ".error.code")
-        if [[ "$ERRCODE" == "E_INDIRIZZO_OBBLIGATORIO_MANCANTE" ]]; then
-            log_info "Assegnazione ruolo CLIENTE richiede indirizzi aggiuntivi — skip (configurazione matrice DB)"
+    do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/ruoli/" "{\"codice_ruolo\": \"CLIENTE\"}"
+    if check "CLIENTE dall'endpoint generico → 400" "400"; then
+        CAMPI=$(json_get "$LAST_BODY" ".error.fields")
+        MSG=$(json_get "$LAST_BODY" ".error.message")
+        if [[ "$CAMPI" == *codice_ruolo* && "$MSG" == *Cliente* ]]; then
+            log_ok "Rifiuta il ruolo Cliente (flusso dedicato), campo codice_ruolo"
         else
-            log_fail "Assegna ruolo CLIENTE — errore inatteso: $ERRCODE"
+            log_fail "Atteso rifiuto del ruolo Cliente col campo — ricevuto: $MSG / $CAMPI"
         fi
-    else
-        log_fail "Assegna ruolo CLIENTE — atteso HTTP 200, ricevuto $LAST_STATUS"
+    fi
+    do_curl POST "/api/v1/anagrafiche/soggetti/${SOGG_ID}/ruoli/" "{\"codice_ruolo\": \"VETTORE\"}"
+    if check "Assegna ruolo VETTORE" "200" ".data.id"; then
+        RUOLO_ASSEGNATO="$EXTRACTED"
     fi
 else
     log_info "Skipped"
@@ -402,14 +384,17 @@ fi
 # --- 13. Lista ruoli dopo assegnazione ---
 echo ""
 echo "-- 13. Lista ruoli dopo assegnazione --"
-if [[ -n "$SOGG_ID" && "$SOGG_ID" != "" ]]; then
+if [[ -n "$RUOLO_ASSEGNATO" ]]; then
     do_curl GET "/api/v1/anagrafiche/soggetti/${SOGG_ID}/ruoli/"
-    check "Lista ruoli" "200"
-    RUOLO_CODICE=$(json_get "$LAST_BODY" ".data.results.0.ruolo_codice")
-    if [[ -n "$RUOLO_ASSEGNATO" ]]; then
-        log_info "Primo ruolo: $RUOLO_CODICE"
-    else
-        log_info "Nessun ruolo assegnato (matrice indirizzi non soddisfatta)"
+    if check "Lista ruoli" "200"; then
+        RUOLI=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+print(' '.join(r['ruolo_codice'] for r in json.load(sys.stdin)['data']['results']))" 2>/dev/null || true)
+        if [[ " $RUOLI " == *" VT "* ]]; then
+            log_ok "VETTORE in lista ($RUOLI)"
+        else
+            log_fail "VETTORE assente dalla lista ruoli — ricevuto: '$RUOLI'"
+        fi
     fi
 else
     log_info "Skipped"
@@ -425,7 +410,8 @@ if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
             \"cognome\": \"Duplicato\",
             \"nome\": \"Test\",
             \"codice_fiscale\": \"${SMOKE_CF}\",
-            \"contatto\": {
+            \"sesso\": \"M\",
+            \"contatto\": {\"tipo_contatto_id\": ${TIPO_CONTATTO_ID}, 
                 \"nominativo\": \"Dup Test\",
                 \"email\": \"dup@test.it\"
             },
@@ -440,6 +426,89 @@ else
 fi
 ERRCODE=$(json_get "$LAST_BODY" ".error.code")
 log_info "Codice errore: $ERRCODE"
+
+# Scopo: un CF valido e nuovo, dal servizio genera-cf (nome diverso a ogni uso).
+genera_cf_smoke() {
+    local nome="$1"
+    do_curl POST "/api/v1/anagrafiche/soggetti/genera-cf/" \
+        "{\"cognome\":\"SmokeTest\",\"nome\":\"${nome}\",\"data_nascita\":\"${SMOKE_BDATE}\",\"sesso\":\"M\",\"comune_nascita_id\":${CORRIDONIA_ID}}"
+    json_get "$LAST_BODY" ".data.codice_fiscale"
+}
+
+# --- 15. Privato senza sesso: lo rifiuta il guard del DB ---
+echo ""
+echo "-- 15. Crea privato senza sesso --"
+if [[ -n "$IND_DET_ID" && "$IND_DET_ID" != "" ]]; then
+    CF_SENZA=$(genera_cf_smoke "Senzasesso")
+    do_curl POST "/api/v1/anagrafiche/soggetti/" \
+        "{
+            \"tipo_soggetto_dettaglio_id\": 1,
+            \"cognome\": \"SmokeTest\",
+            \"nome\": \"Senzasesso\",
+            \"codice_fiscale\": \"${CF_SENZA}\",
+            \"contatto\": {\"tipo_contatto_id\": ${TIPO_CONTATTO_ID}, \"nominativo\": \"SmokeTest Senzasesso\", \"email\": \"smoke${SMOKE_TS}ss@test.it\"},
+            \"indirizzi\": [
+                {\"tipo_indirizzo_codice\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
+                {\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
+            ]
+        }"
+    if check "Privato senza sesso → 400" "400"; then
+        ERRCODE=$(json_get "$LAST_BODY" ".error.code")
+        CAMPI=$(json_get "$LAST_BODY" ".error.fields")
+        if [[ "$ERRCODE" == "E_SESSO_OBBLIGATORIO" && "$CAMPI" == *sesso* ]]; then
+            log_ok "Codice E_SESSO_OBBLIGATORIO col campo sesso"
+        else
+            log_fail "Atteso E_SESSO_OBBLIGATORIO col campo sesso — ricevuto $ERRCODE, campi $CAMPI"
+        fi
+    fi
+else
+    log_info "Skipped — nessun indirizzo"
+fi
+
+# --- 16. Ditta individuale: nasce DI, con la P.IVA e senza sesso ---
+echo ""
+echo "-- 16. Crea ditta individuale --"
+do_curl GET "/api/v1/core/lookup/tipi-soggetto-dettaglio/"
+DI_ID=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+r = json.load(sys.stdin)['data']['results']
+print(next((t['id'] for t in r if t['codice_interno'] == 'DI'), ''))" 2>/dev/null)
+# P.IVA valida e nuova: 7 cifre dal timestamp + ufficio 001 + cifra di controllo.
+SMOKE_PIVA=$(python3 -c "
+b = '%07d001' % ($SMOKE_TS % 10000000)
+s = sum(int(c) if i % 2 == 0 else (2 * int(c)) // 10 + (2 * int(c)) % 10 for i, c in enumerate(b))
+print(b + str((10 - s % 10) % 10))")
+if [[ -n "$IND_DET_ID" && -n "$DI_ID" ]]; then
+    CF_DI=$(genera_cf_smoke "Ditta")
+    do_curl POST "/api/v1/anagrafiche/soggetti/" \
+        "{
+            \"tipo_soggetto_dettaglio_id\": ${DI_ID},
+            \"cognome\": \"SmokeTest\",
+            \"nome\": \"Ditta\",
+            \"codice_fiscale\": \"${CF_DI}\",
+            \"partita_iva\": \"${SMOKE_PIVA}\",
+            \"contatto\": {\"tipo_contatto_id\": ${TIPO_CONTATTO_ID}, \"nominativo\": \"SmokeTest Ditta\", \"email\": \"smoke${SMOKE_TS}di@test.it\"},
+            \"indirizzi\": [
+                {\"tipo_indirizzo_codice\": \"RES\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}},
+                {\"tipo_indirizzo_codice\": \"DOMFISC\", \"indirizzo_dettaglio_id\": ${IND_DET_ID}}
+            ],
+            \"auto_clone\": true
+        }"
+    if check "Crea ditta individuale" "200" ".data.id"; then
+        do_curl GET "/api/v1/anagrafiche/soggetti/${EXTRACTED}/"
+        TERNA=$(echo "$LAST_BODY" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)['data']
+print(d['tipo_soggetto_dettaglio_id'], d['partita_iva'], d['sesso'])" 2>/dev/null)
+        if [[ "$TERNA" == "${DI_ID} ${SMOKE_PIVA} None" ]]; then
+            log_ok "Nata DI, con la P.IVA, sesso NULL"
+        else
+            log_fail "Attesi tipo ${DI_ID}, P.IVA ${SMOKE_PIVA}, sesso NULL — ricevuto: $TERNA"
+        fi
+    fi
+else
+    log_info "Skipped — nessun indirizzo o tipo DI assente"
+fi
 
 # ================================================================
 echo ""

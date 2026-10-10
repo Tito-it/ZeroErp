@@ -137,7 +137,7 @@ WITH l AS (
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id, emittente_soggetto_ruolo_id)
     SELECT 'PGTAP-CTBL-LOTTO-' || m.lato || '-' || m.emittente_fiscale_id,
-           date_trunc('month', CURRENT_DATE)::date,
+           date_trunc('month', script.fn_data_operativa())::date,
            (SELECT tipo_doc FROM _catalogo),
            m.soggetto_ruolo_id
       FROM _mondi m
@@ -181,7 +181,7 @@ BEGIN
             (codice, centro_riscossione_id, data_contabile, data_registrazione,
              stato_id, ente_incasso_id, origine)
         VALUES ('PGTAP-CTBL-' || m.lato || '-' || m.legame_id,
-                v_cat.centro_banca, CURRENT_DATE, CURRENT_DATE,
+                v_cat.centro_banca, script.fn_data_operativa(), script.fn_data_operativa(),
                 v_cat.stato_bozza, v_ente, 'GENERATA')
         RETURNING id INTO v_dist;
 
@@ -204,7 +204,7 @@ WITH d AS (
     INSERT INTO pagamenti.vendite_contabili
         (codice, centro_riscossione_id, data_contabile, data_registrazione,
          stato_id, ente_incasso_id, emittente_soggetto_ruolo_id, origine)
-    SELECT 'PGTAP-CTBL-INTERNA', c.centro_fondo, CURRENT_DATE, CURRENT_DATE,
+    SELECT 'PGTAP-CTBL-INTERNA', c.centro_fondo, script.fn_data_operativa(), script.fn_data_operativa(),
            c.stato_bozza, NULL, (SELECT m.soggetto_ruolo_id FROM _mondi m WHERE m.lato = 'A'),
            'GENERATA'
       FROM _catalogo c

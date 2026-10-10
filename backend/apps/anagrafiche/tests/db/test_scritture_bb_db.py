@@ -27,8 +27,7 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.anagrafiche.tests.db.test_ricerca_liste_db import _Annulla
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
 
 
 class ScrittureBbAnagraficheDbTests(unittest.TestCase):
@@ -55,8 +54,8 @@ class ScrittureBbAnagraficheDbTests(unittest.TestCase):
                     [soggetto_id],
                 )
                 self.assertEqual("Soggetto scrbbsog due", cur.fetchone()[0])
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. SET dal BB + WHERE di ownership scritto dal metodo: il contatto del
@@ -88,8 +87,8 @@ class ScrittureBbAnagraficheDbTests(unittest.TestCase):
                     [contatto_id],
                 )
                 self.assertEqual(("scrbb nominativo", None), cur.fetchone())
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 3. `meta` dict -> jsonb OGGETTO (non uno scalare stringa), e
@@ -113,8 +112,8 @@ class ScrittureBbAnagraficheDbTests(unittest.TestCase):
                     [nuovo_id],
                 )
                 self.assertEqual(("SCRBBCAT", "object", "scrbb"), cur.fetchone())
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 4. La normalizzazione '' -> NULL resta del repository e precede il BB.
@@ -138,6 +137,6 @@ class ScrittureBbAnagraficheDbTests(unittest.TestCase):
                     [emittente_id],
                 )
                 self.assertEqual((None, True), cur.fetchone())
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

@@ -1,0 +1,158 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# brief-db-presidi-cosa-significa-cosa-fare §4.1 — il testo per CHI AGISCE.
+#
+# ── ⭐ IL LETTORE MANCANTE ──────────────────────────────────────────
+#   Di ogni presidio il catalogo aveva due testi, tutti e due per chi lo
+#   MANTIENE: il COMMENT della vista e la `nota` di dbops.presidi (perche'
+#   esiste, quale brief, quale perimetro). Il pannello e il digest li leggono
+#   pero' a chi deve AGIRE, che ha due domande sole: cosa vuol dire, cosa devo
+#   fare. Collaudo del 2026-09-19: due presidi accesi, testo «complicato da
+#   capire»; detto in due righe, si sono spenti in pochi minuti.
+#   ⇒ Due fatti per presidio e per lingua: `significato` (cosa vuol dire una
+#     riga, nelle parole di chi usa l'applicazione) e `azione` (cosa fare per
+#     spegnerlo, all'imperativo). Il terzo fatto, CHI lo spegne, e' un dato
+#     del presidio e non del testo: dbops.presidi.chi_agisce (20261006-04).
+#   ⛔ Il COMMENT della vista e la `nota` NON si riscrivono: il loro lettore
+#     esiste ancora, ed e' un altro.
+#
+# ── PERCHE' A DB E PER LINGUA (D-1, D-2) ────────────────────────────
+#   Il testo serve anche al DIGEST, che il backend scrive per email e senza
+#   i locali del frontend: le chiavi i18n non arrivano li'. Il precedente e'
+#   config.messaggi_errore, che tiene a DB per lingua il testo per l'operatore
+#   e lo leggono backend e frontend. La regola «il testo non si scrive in SQL»
+#   (linee-guida-sql §12.2) riguarda le reason_key di available_actions, che
+#   legge solo il frontend.
+#   La chiave `lingua` adesso non costa niente; spostare il testo in una
+#   tabella figlia piu' avanti sarebbe una migrazione. Stesso dominio di
+#   config.messaggi_errore.lingua: FK su config.lingue(codice_iso), che e'
+#   seminata in 80_data/20260114-02, prima del mirror di questi testi.
+#
+# ── ⭐ LA FK SULLA CHIAVE NATURALE `vista`, NON SULL'`id` ────────────
+#   dbops.presidi.id e' IDENTITY e il suo mirror e' chiavato su `vista`
+#   (uq_presidi_vista): l'id vale su UNA macchina. Il seed dei testi deve
+#   nominare il presidio come lo nomina il suo CSV (linee-guida-sql §6b, nessun
+#   id numerico cablato), e un loadUpdateData non sa risolvere una chiave
+#   naturale in un id. Una FK su `vista` lo fa senza traduzioni: e' la forma
+#   gia' in casa di dbops.coda_lavori_tipi.processo_codice -> dbops.processi.
+#   ON UPDATE CASCADE: se un giorno la riga di catalogo cambiasse nome, i testi
+#   la seguono. ON DELETE senza azione: un presidio si ritira con
+#   `obsoleto_dal`, e i suoi testi si tolgono apposta (il pgTAP lo pretende,
+#   test 2), non spariscono in silenzio.
+#
+# ── ⛔ LA COMPLETEZZA NON STA IN UN CHECK ───────────────────────────
+#   «Ogni presidio attivo, non obsoleto e non INVENTARIO ha la riga `it`» e' un
+#   vincolo fra due tabelle: lo garantisce il pgTAP
+#   dbops/test-presidi-testi-v1 (test 1), che gira in CI. L'errore sta nella
+#   build, non a video.
+#
+# ⚠️ Tabella NUOVA: fino a `--contexts=ci_apply` non ha i trigger di audit e
+#   tx_id — quindi niente DDL ne' preCondition sui loro nomi, e le colonne di
+#   audit nascono con i propri DEFAULT perche' i primi INSERT del seed
+#   funzionino comunque. Nessuna colonna `storicizza`: come dbops.presidi, il
+#   catalogo non si storicizza (la storia sta nel CSV, sotto git).
+# ⚠️ Nessuna RLS: tabella di catalogo letta da tutti (linee-guida-sql §10.1).
+# ⚠️ Catalogo puro: nessuna FK verso anagrafiche.*, nessun dato di macchina
+#   ⇒ nessun `context: dati_macchina`.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/dbops/20261006-05-create-presidi-testi-mctit.yaml
+
+  - changeSet:
+      id: 20261006-05-create-presidi-testi
+      author: mctit
+      failOnError: true
+      comment: >
+        Crea dbops.presidi_testi: per ogni presidio e per lingua, il testo per
+        chi deve agire - significato (cosa vuol dire una riga) e azione (cosa
+        fare per spegnerlo). FK sulla chiave naturale dbops.presidi(vista) e su
+        config.lingue(codice_iso). brief-db-presidi-cosa-significa-cosa-fare §4.1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: dbops
+            tableName: presidi
+        - tableExists:
+            schemaName: config
+            tableName: lingue
+        - not:
+            - tableExists:
+                schemaName: dbops
+                tableName: presidi_testi
+      changes:
+        - sql:
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- =========================================================
+              -- Scopo:
+              --   Il testo di un presidio per CHI DEVE AGIRE, per lingua:
+              --   cosa vuol dire una riga e cosa fare per spegnerlo. Il
+              --   COMMENT della vista e la `nota` di dbops.presidi restano
+              --   per chi mantiene il presidio.
+              -- =========================================================
+              CREATE TABLE dbops.presidi_testi (
+                  id              integer GENERATED BY DEFAULT AS IDENTITY
+                                    CONSTRAINT pk_presidi_testi PRIMARY KEY,
+                  vista           text    NOT NULL,
+                  lingua          text    NOT NULL,
+                  significato     text    NOT NULL,
+                  azione          text    NOT NULL,
+                  data_insert     timestamp with time zone NOT NULL DEFAULT now(),
+                  user_insert     text    NOT NULL DEFAULT CURRENT_USER,
+                  data_update     timestamp with time zone NOT NULL DEFAULT now(),
+                  user_update     text    NOT NULL DEFAULT CURRENT_USER,
+                  tx_id           uuid    NULL,
+
+                  -- ⭐ La UNIQUE copre anche la FK su `vista` per prefisso
+                  --   (linee-guida-sql §8.7): nessun indice dedicato.
+                  CONSTRAINT uq_presidi_testi_vista_lingua UNIQUE (vista, lingua),
+
+                  CONSTRAINT fk_presidi_testi_presidi
+                      FOREIGN KEY (vista) REFERENCES dbops.presidi (vista)
+                      ON UPDATE CASCADE,
+
+                  CONSTRAINT fk_presidi_testi_lingue
+                      FOREIGN KEY (lingua) REFERENCES config.lingue (codice_iso)
+                      ON UPDATE CASCADE,
+
+                  -- Una frase vuota a video e' peggio della prosa tecnica che
+                  -- sostituisce: il pannello ripiegherebbe sul vuoto.
+                  CONSTRAINT chk_presidi_testi_significato_non_vuoto
+                      CHECK (btrim(significato) <> ''),
+
+                  CONSTRAINT chk_presidi_testi_azione_non_vuota
+                      CHECK (btrim(azione) <> '')
+              );
+
+              COMMENT ON TABLE dbops.presidi_testi IS
+                  'Il testo di un presidio per CHI DEVE AGIRE, per lingua: `significato` (cosa vuol dire una riga) e `azione` (cosa fare per spegnerlo). ⛔ Non sostituisce il COMMENT della vista ne'' la `nota` di dbops.presidi: quelli sono scritti per chi MANTIENE il presidio e restano com''erano. Chi lo spegne e'' un dato del presidio, non del testo: dbops.presidi.chi_agisce. Lo leggono il pannello dei processi automatici e il digest (che va per email, senza i locali del frontend: per questo il testo sta a DB, come config.messaggi_errore). La completezza — ogni presidio attivo, non obsoleto e non INVENTARIO ha la riga `it` — la garantisce il pgTAP dbops/test-presidi-testi-v1, perche'' un CHECK non guarda un''altra tabella. Seed: 80_data/sql/dbops/presidi_testi.csv. Brief: brief-db-presidi-cosa-significa-cosa-fare §4.1.';
+
+              COMMENT ON COLUMN dbops.presidi_testi.vista IS
+                  'Il presidio, per la sua chiave naturale (dbops.presidi.vista): il seed lo nomina come lo nomina il CSV del catalogo, mai per id (l''id di dbops.presidi e'' IDENTITY e vale su una macchina sola). ON UPDATE CASCADE; nessuna azione in cancellazione: un presidio si ritira con `obsoleto_dal`, e i suoi testi si tolgono apposta.';
+
+              COMMENT ON COLUMN dbops.presidi_testi.lingua IS
+                  'Codice ISO della lingua (config.lingue.codice_iso), lo stesso dominio di config.messaggi_errore.lingua. L''italiano e'' obbligatorio (pgTAP); un lettore che non trova la sua lingua ripiega su `it`.';
+
+              COMMENT ON COLUMN dbops.presidi_testi.significato IS
+                  'Cosa vuol dire una riga del presidio, in una o due frasi, con le parole di chi usa l''applicazione: niente nomi di tabelle o di funzioni, le schermate come si chiamano nel menu. Non vuoto per vincolo.';
+
+              COMMENT ON COLUMN dbops.presidi_testi.azione IS
+                  'Cosa fare per spegnere il presidio, all''imperativo, e DOVE si fa. Quando il rimedio e'' capire chi ha scritto un dato, dice anche cosa NON fare (correggerlo a mano). Quando lo spegne qualcun altro (chi_agisce diverso da AMMINISTRATORE), dice a chi inoltrare e che cosa riferire. Non vuoto per vincolo.';
+
+              -- Il pannello e il digest la leggono come applicazione. Solo
+              -- zeroerp_app: i privilegi dei ruoli batch stanno nel
+              -- provisioning (linee-guida-sql §11.6).
+              GRANT SELECT ON dbops.presidi_testi TO zeroerp_app;
+      rollback:
+        - sql:
+            splitStatements: false
+            sql: |
+              DROP TABLE IF EXISTS dbops.presidi_testi;

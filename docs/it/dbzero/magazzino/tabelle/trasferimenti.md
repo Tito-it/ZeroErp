@@ -10,8 +10,8 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
-| data | date | NO | CURRENT_DATE |
-| stato_trasferimento | character varying | NO | 'DRAFT'::character varying |
+| data | date | NO | script.fn_data_operativa() |
+| stato_trasferimento | character varying(16) | NO | 'DRAFT'::character varying |
 | magazzino_id_from | bigint | NO |  |
 | magazzino_id_to | bigint | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -20,7 +20,7 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | sorgente_riga | bigint | YES |  |

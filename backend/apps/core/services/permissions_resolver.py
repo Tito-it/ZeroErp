@@ -61,7 +61,7 @@ class PermissionResolver:
         OPERATORE, non all'auth_user. Enforcement centralizzato lato
         DB — il wrapper Python non duplica la logica. Il contratto
         cross-veste e' verificato da pgTAP su
-        `db/pgtap/script/fn_is_super_admin*.sql` (single source of
+        `db/pgtap/script/test-fn-is-super-admin*.sql` (single source of
         truth): un mock Python non puo' darne prova, ritorna solo
         quello che gli si passa.
         """
@@ -93,10 +93,15 @@ class PermissionResolver:
         request corrente), ritorna quel valore senza query DB. In
         assenza di GUC (scenari di test che non passano dalla auth
         class, management command, chiamate non-HTTP), fallback a
-        query su `anagrafiche.identita_digitali` filtrata sull'identita
-        attiva.
+        query su `anagrafiche.identita_digitali` filtrata sulle vesti
+        UTILIZZABILI oggi: la stessa regola con cui `set_jwt_gucs` popola
+        la GUC, letta dal building block DB `script.fn_veste_utilizzabile`
+        (brief-db-veste-utilizzabile). ⛔ Non `attivo = true`: con la GUC
+        una veste scaduta non ha ruolo, e il fallback non deve dargliene
+        uno. `ORDER BY id`: fra piu' vesti utilizzabili la piu' vecchia,
+        come al login (`find_veste_utilizzabile_per_ruoli`).
 
-        Ritorna None se l'utente non ha alcuna identita attiva.
+        Ritorna None se l'utente non ha alcuna veste utilizzabile.
         """
         def _query() -> str | None:
             with connection.cursor() as cursor:
@@ -113,7 +118,8 @@ class PermissionResolver:
                     SELECT ruolo_applicativo
                       FROM anagrafiche.identita_digitali
                      WHERE auth_user_id = %s
-                       AND attivo = true
+                       AND script.fn_veste_utilizzabile(id)
+                     ORDER BY id
                      LIMIT 1
                     """,
                     [user.id],

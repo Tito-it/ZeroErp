@@ -10,10 +10,10 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_ruolo_id | bigint | NO |  |
-| bank_code | character varying | NO |  |
-| branch_code | character varying | NO |  |
-| bic_swift | character varying | YES |  |
-| name | character varying | NO |  |
+| bank_code | character varying(16) | NO |  |
+| branch_code | character varying(16) | NO |  |
+| bic_swift | character varying(11) | YES |  |
+| name | character varying(255) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
 | storicizza | boolean | NO | true |

@@ -11,7 +11,7 @@
 //         1. Drawer riga apre la Dialog quando l'operatore seleziona un
 //            articolo composito (auto-open).
 //         2. Mount della Dialog -> chiama apiPreview, popola tabella con
-//            prezzi suggeriti + flag obbligatorio + esposto_in_fattura
+//            prezzi suggeriti + flag obbligatorio + esposizione_in_fattura
 //            + attivo (obbligatori TRUE, opzionali FALSE per default DB).
 //         3. Operatore valorizza prezzi mancanti, attiva opzionali,
 //            modifica suggeriti dove ammesso.
@@ -33,6 +33,8 @@
 //        assoluta lato caller via API listino bundle.
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useEsposizioniComponente, severitaEsposizione } from '../../../catalogo/composables/useEsposizioniComponente'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -47,7 +49,10 @@ import { useAuthStore } from '../../../stores/auth'
 import { PRICING_ACTIONS } from '../../constants'
 
 import { STATUS_ICONS } from '../../../core/constants'
+import { useFotografiaDialog } from '../../../core/composables/useFotografiaDialog'
 const { t, te } = useI18n()
+// Il modo di esposizione in fattura per esteso, con l'etichetta dal DB.
+const { etichetta: etichettaEsposizione } = useEsposizioniComponente()
 const notify = useNotify()
 const auth = useAuthStore()
 
@@ -103,7 +108,7 @@ const props = defineProps({
 // Helper risoluzione i18n con fallback al namespace base. Permette di
 // definire `vendite.componenti.bundle.*` solo per le chiavi che
 // differiscono (titolo, hint, conferma, prezzo_finale, summary).
-// Le chiavi comuni (col_codice, col_qta, esposto_tooltip, ecc.) restano
+// Le chiavi comuni (col_codice, col_qta, col_esposto, ecc.) restano
 // solo in `vendite.componenti.*` e cadono qui per fallback automatico.
 function localizedKey(key) {
   const prefixed = `${props.i18nPrefix}.${key}`
@@ -175,6 +180,7 @@ function initPayloadDaPreview(rows) {
     }
   }
   prezzoOverrides.value = initOverrides
+  fotografia.fissa()
 }
 
 // Watch sui parametri chiave: se cambia articolo/uom/qta mentre la
@@ -200,10 +206,6 @@ function isObbligatorio(comp) {
   // sono trattati come opzionali — opzione conservativa: default
   // attivo=FALSE invece di TRUE).
   return comp.obbligatorio === true
-}
-
-function isEsposto(comp) {
-  return comp.esposto_in_fattura === true
 }
 
 function setPrezzo(componenteId, val) {
@@ -319,10 +321,14 @@ function handleCancel() {
   emit('cancel')
   emit('update:visible', false)
 }
+
+// D-14 (rilievo di Tid): i prezzi dei componenti sono lavoro dell'operatore; la fotografia si fissa a preview caricata, sui prezzi suggeriti o ripristinati.
+const fotografia = useFotografiaDialog(() => ({ prezzi: prezzoOverrides.value }), { visibile: () => props.visible, fissaAllApertura: false })
 </script>
 
 <template>
   <AppDialog
+    :conferma-uscita="fotografia.chiudiConConferma"
     :visible="props.visible"
     @update:visible="(v) => emit('update:visible', v)"
     :header="articolo
@@ -438,21 +444,14 @@ function handleCancel() {
           </template>
         </Column>
 
-        <Column :header="t(localizedKey('col_esposto'))" style="width: 70px;">
+        <Column :header="t(localizedKey('col_esposto'))" style="width: 150px;">
+          <!-- Il modo per esteso (NASCOSTO / DESCRITTIVO / VALORIZZATO), con
+               l'etichetta che il DB dichiara: dal 2026-10-01 non e' piu' un si'/no. -->
           <template #body="{ data }">
             <Tag
-              v-if="isEsposto(data)"
-              severity="info"
-              :value="t('common.yes')"
+              :severity="severitaEsposizione(data.esposizione_in_fattura)"
+              :value="etichettaEsposizione(data.esposizione_in_fattura)"
               class="app-tag-xs"
-              v-tooltip.top="t(localizedKey('esposto_in_fattura_tooltip'))"
-            />
-            <Tag
-              v-else
-              severity="secondary"
-              :value="t('common.no')"
-              class="app-tag-xs"
-              v-tooltip.top="t(localizedKey('esposto_no_tooltip'))"
             />
           </template>
         </Column>

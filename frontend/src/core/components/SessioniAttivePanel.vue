@@ -37,6 +37,7 @@ import { useListaConfigurabilePage } from '../composables/useListaConfigurabileP
 import { MANAGE_ICONS } from '../constants'
 import { useSessioniAttiveStore } from '../stores/sessioniAttive'
 import { revocaSessione as apiRevocaSessione, revocaTutteSessioni as apiRevocaTutte } from '../api/sessioni'
+import { parseIstante, adesso } from '../utils/date'
 
 const { t } = useI18n()
 const { confirmAction } = useConfirmAction()
@@ -51,7 +52,7 @@ const {
   listaRef, dirty, onConfigLoaded, pageActions,
 } = useListaConfigurabilePage(store, {
   // Allineato al preset `sessioni_attive_default` (`data_ultimo_evento desc`).
-  // Pannello della home, non lista di rotta: niente ricerca universale ne' F5.
+  // Pannello della home, non lista di rotta: niente ricerca universale.
   searchTableOptions: {
     defaultSortField: 'data_ultimo_evento', defaultSortOrder: 'desc', incorporata: true,
   },
@@ -86,9 +87,9 @@ function parseUserAgent(ua) {
 
 function timeAgo(dateStr) {
   if (!dateStr) return '—'
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now - date
+  const date = parseIstante(dateStr)
+  if (!date) return '—'
+  const diffMs = adesso() - date
   const diffMin = Math.floor(diffMs / 60000)
   if (diffMin < 1) return t('sessions.now')
   if (diffMin < 60) return t('sessions.minutes_ago', { n: diffMin })

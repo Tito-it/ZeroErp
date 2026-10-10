@@ -8,7 +8,6 @@
 // niente PDF/note/indirizzi/riepilogo IVA/push/autosave-bozza.
 import { ref, watch, computed, provide } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
@@ -18,21 +17,21 @@ import { useNotify } from '../../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
-import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
+import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import { statoResoSeverity } from '../../../core/utils/severity'
-import { displayDate, toDateString } from '../../../core/utils/date'
+import { displayDate, toDateString, parseIsoDate } from '../../../core/utils/date'
 import { DRAWER_WIDTH } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
-import DrawerTitle from '../../../core/components/DrawerTitle.vue'
-import FormFooter from '../../../core/components/FormFooter.vue'
+import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import DocumentoCollegamentiBar from '../../_shared/lineage/DocumentoCollegamentiBar.vue'
-import { STATO_RESO } from '../constants'
+import { CAMPI_FORM_TESTATA_RESO, STATO_RESO } from '../constants'
 import ResoForm from './ResoForm.vue'
 import ResoRigheTable from './ResoRigheTable.vue'
 import ResoRiconsegnaDialog from './dialogs/ResoRiconsegnaDialog.vue'
@@ -56,11 +55,7 @@ const form = ref({})
 // Modifiche non salvate: fotografia a ogni caricamento del dettaglio,
 // chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
 const { preserva, fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(onClose)
 const detail = ref(null)
-// Stato form riga inline: quando si edita/aggiunge una riga, il FormFooter
-// testata si nasconde per non duplicare i bottoni di ResoRigaForm.
-const formRigaAperto = ref(false)
 const hasDetail = computed(() => detail.value !== null)
 const isConfermato = computed(
   () => detail.value?.stato_codice_interno === STATO_RESO.CONFERMATO,
@@ -87,14 +82,31 @@ provide(READONLY_KEY, isReadonly)
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
-const canEditTestata = caps.canEdit
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// La testata dopo la bozza: quali campi del form si cambiano, dalla capability
+// (brief-db-testata-dopo-emissione, R-FE-3). Il form del reso mostra la sola
+// data, che fuori bozza e' ferma: oggi il form si apre solo in bozza, e lo
+// dice la capability, non lo stato.
+const testata = useTestataDocumento({
+  caps,
+  campi: CAMPI_FORM_TESTATA_RESO,
+  readonlyPuro: () => isReadonlyPuro.value,
+  // Il reso non si crea da qui: con un id il documento esiste anche prima che
+  // arrivi il dettaglio, e la capability ancora vuota tiene il form fermo.
+  presente: () => props.resoId !== null || hasDetail.value,
+  corpoProtetto: () => isReadonly.value,
+})
 
-// Deferimento contenuto: monta dopo l'animazione drawer (pattern
-// feedback_content_ready_after_show).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
-const righeTableRef = ref(null)
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): testata E riga aperta, una
+//    domanda sola all'uscita. La fotografia della riga la tiene il suo form.
+// Tabella-righe, fotografia unita (testata + riga aperta) e footer secondo lo
+// stato: il legame e' del BB `useRigheDocumento` (regola del 2).
+const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
+  testata: { modificato, chiudiConConferma },
+  modificabile: () => testata.modificabile.value,
+  presente: () => hasDetail.value,
+})
+const modificatoDocumento = documento.modificato
 // Ref alla barra collegamenti (chip pratica/origine/destinazioni).
 const collegamentiRef = ref(null)
 // Dialog "DDT ri-spedizione": aperta dal pulsante in barra azioni (2026-07-25).
@@ -118,7 +130,7 @@ async function loadDetail() {
   detail.value = data
   form.value = {
     emittente_fiscale_id: data.emittente_fiscale_id ?? null,
-    data: data.data ? new Date(data.data + 'T00:00:00') : null,
+    data: parseIsoDate(data.data),
   }
   applica()
 }
@@ -130,7 +142,7 @@ watch(() => props.visible, (v) => {
 })
 
 const canSave = computed(
-  () => !isReadonly.value && canEditTestata.value && form.value.data != null,
+  () => testata.modificabile.value && form.value.data != null,
 )
 
 // Scopo: salva la testata (solo `data`: il resto e' ereditato/immutabile).
@@ -244,85 +256,86 @@ async function onCoperturaRiconsegnaCambiata() {
   // aperto. Difetto gemello di quello degli ordini, con il segno opposto.
   emit('changed')
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
+
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    @after-show="onAfterShow"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE_PLUS }" :dismissable="true">
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="t('common.edit')"
-        :title="t('vendite.resi.reso')"
-        :icon="NAV_ICONS.RESI"
-      />
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('vendite.resi.reso')"
+    :icon="NAV_ICONS.RESI"
+    :action="t('common.edit')"
+    :width="DRAWER_WIDTH.WIDE_PLUS"
+    :modificato="modificatoDocumento"
+    :conferma-uscita="documento.chiudiConConferma"
+    :footer="footerDrawer"
+    :footer-readonly="testata.footerReadonly.value"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
+  >
+
+    <template v-if="hasDetail">
+      <DrawerEntityHeader>
+        <!-- Numero: "—" finche' il reso e' in DRAFT (assegnato a CONFERMATO). -->
+        <Tag :value="detail.numero || '—'" severity="secondary" />
+        <span v-if="detail.data" class="app-drawer-header-muted font-bold">
+          {{ displayDate(detail.data) }}
+        </span>
+        <!-- La provenienza (DDT sorgente) NON e' piu' un chip d'header
+             dedicato: e' assorbita dai chip di DocumentoCollegamentiBar sotto
+             la barra azioni, dove sta l'origine di TUTTI i domini (2026-07-25). -->
+
+        <template #status>
+          <Tag
+            :value="detail.stato_descrizione"
+            :severity="statoResoSeverity(detail.stato_codice_interno)"
+          />
+        </template>
+      </DrawerEntityHeader>
+
+      <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''" />
+
+      <!-- Collegamenti diretti: per il reso la catena significativa e'
+           l'ORIGINE (reso <- DDT <- ordine), qui riassunta nei chip; il
+           grafo completo si apre dai chip in dialog. -->
+      <DocumentoCollegamentiBar
+        ref="collegamentiRef"
+        v-if="props.resoId"
+        base-path="/vendite/resi"
+        :doc-id="props.resoId"
+        :readonly="readonly || parentReadonly" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <Divider v-if="hasDetail" />
 
-      <template v-if="hasDetail">
-        <DrawerEntityHeader>
-          <!-- Numero: "—" finche' il reso e' in DRAFT (assegnato a CONFERMATO). -->
-          <Tag :value="detail.numero || '—'" severity="secondary" />
-          <span v-if="detail.data" class="app-drawer-header-muted font-bold">
-            {{ displayDate(detail.data) }}
-          </span>
-          <!-- La provenienza (DDT sorgente) NON e' piu' un chip d'header
-               dedicato: e' assorbita dai chip di DocumentoCollegamentiBar sotto
-               la barra azioni, dove sta l'origine di TUTTI i domini (2026-07-25). -->
-
-          <template #status>
-            <Tag
-              :value="detail.stato_descrizione"
-              :severity="statoResoSeverity(detail.stato_codice_interno)"
-            />
-          </template>
-        </DrawerEntityHeader>
-
-        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''" />
-
-        <!-- Collegamenti diretti: per il reso la catena significativa e'
-             l'ORIGINE (reso <- DDT <- ordine), qui riassunta nei chip; il
-             grafo completo si apre dai chip in dialog. -->
-        <DocumentoCollegamentiBar
-          ref="collegamentiRef"
-          v-if="props.resoId"
-          base-path="/vendite/resi"
-          :doc-id="props.resoId"
-          :readonly="readonly || parentReadonly" />
-      </template>
-
-      <Divider v-if="hasDetail" />
-
-      <!-- Form testata (data editabile in DRAFT, resto display). -->
+    <!-- Form testata (data editabile in DRAFT, resto display). -->
+    <div v-if="hasDetail" :class="{ 'app-escape': testata.sopraCorpoProtetto.value }">
       <ResoForm
-        :campi-errati="campiErrati" v-if="contentReady && hasDetail"
+        :campi-errati="campiErrati"
         :form="form"
-        :is-modificabile="canEditTestata && !isReadonly"
+        :is-modificabile="testata.modificabile.value"
         :record="detail" />
-
-      <template v-if="contentReady && hasDetail">
-        <Divider />
-        <ResoRigheTable
-          ref="righeTableRef"
-          :reso-id="props.resoId"
-          :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-          :ddt-origine-id="detail?.ddt_origine_id ?? null"
-          :is-modificabile="canEditRighe && !isReadonly"
-          :readonly="isReadonlyPuro"
-          @changed="loadDetail()"
-          @form-aperto="(v) => { formRigaAperto = v }" />
-
-      </template>
-
-      <FormFooter v-if="canEditTestata && !isReadonly && !formRigaAperto"
-        :loading="loading" :disabled="!canSave"
-        @save="handleSave" @cancel="chiudi" />
-      <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="chiudi" />
     </div>
-  </Drawer>
+
+    <template v-if="hasDetail">
+      <Divider />
+      <ResoRigheTable
+        ref="righeTableRef"
+        :reso-id="props.resoId"
+        :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+        :ddt-origine-id="detail?.ddt_origine_id ?? null"
+        :is-modificabile="canEditRighe && !isReadonly"
+        :readonly="isReadonlyPuro"
+        @changed="loadDetail()"
+        @form-aperto="onFormAperto" />
+
+    </template>
+  </AppDrawer>
 
   <!-- Dialog "DDT ri-spedizione": righe reso con copertura ancora pendente.
        Il DDT nasce DRAFT e si rifinisce dal tab DDT; una ri-spedizione parziale

@@ -20,11 +20,20 @@ Indice test eseguiti:
 10) GetClientIpDueProxyTests.test_meno_valori_dei_proxy
 11) ThrottleIdentTests.test_ident_dal_bb
 12) ThrottleIdentTests.test_ident_ip_sconosciuto_condiviso
+13) ThrottleIdentTests.test_limite_scattato_scrive_il_log_di_sicurezza
+14) ThrottleIdentTests.test_richiesta_ammessa_non_scrive
+15) ThrottleIdentTests.test_la_conferma_con_link_ha_il_suo_contatore
+16) ThrottleIdentTests.test_un_blocco_una_riga_sola
 """
 
+from unittest.mock import patch
+
+from django.core.cache.backends.locmem import LocMemCache
 from django.test import RequestFactory, SimpleTestCase, override_settings
+from rest_framework.throttling import SimpleRateThrottle
 
 from apps.core.api.throttling import (
+    ConfermaTokenRateThrottle,
     LoginRateThrottle,
     PasswordResetRateThrottle,
     SearchBurstRateThrottle,
@@ -114,7 +123,7 @@ class GetClientIpDueProxyTests(SimpleTestCase):
 class ThrottleIdentTests(SimpleTestCase):
     """I throttle prendono l'IP dal BB, non dalla lettura propria di DRF."""
 
-    _THROTTLES = (LoginRateThrottle, PasswordResetRateThrottle, SearchBurstRateThrottle)
+    _THROTTLES = (LoginRateThrottle, PasswordResetRateThrottle, ConfermaTokenRateThrottle, SearchBurstRateThrottle)
 
     # Scopo: L'ident e' l'IP fidato: cambiare i valori scritti dal client non cambia contatore.
     def test_ident_dal_bb(self):
@@ -135,3 +144,60 @@ class ThrottleIdentTests(SimpleTestCase):
                 b = throttle.get_ident(_request("127.0.0.1", xff="1.1.1.1, pippo"))
                 self.assertEqual(a, "ip-sconosciuto")
                 self.assertEqual(b, a)
+
+    # Scopo: Un 429 su un endpoint anonimo non lo registra nessun altro
+    #        (`request_log` vede solo le richieste autenticate): il limite
+    #        scrive nel log di sicurezza, con scope, provenienza e attesa.
+    def test_limite_scattato_scrive_il_log_di_sicurezza(self):
+        throttle = self._con_cache_propria(PasswordResetRateThrottle())
+        richiesta = _request("127.0.0.1", xff="203.0.113.7")
+        with patch.object(SimpleRateThrottle, "allow_request", return_value=False), \
+                patch.object(SimpleRateThrottle, "wait", return_value=421.6), \
+                self.assertLogs("security", level="WARNING") as log:
+            self.assertFalse(throttle.allow_request(richiesta, view=None))
+        self.assertIn("security.limite_frequenza scope=password_reset", log.output[0])
+        self.assertIn("provenienza=203.0.113.7", log.output[0])
+        self.assertIn("attesa_s=422", log.output[0])
+
+    # Scopo: Il throttle con una cache in memoria SUA: il segnaposto «blocco
+    #        gia' nel log» non deve passare da un test all'altro, ne' finire
+    #        nella cache vera (Redis) della macchina.
+    @staticmethod
+    def _con_cache_propria(throttle):
+        throttle.cache = LocMemCache(f"throttle-test-{id(throttle)}", {})
+        return throttle
+
+    def test_richiesta_ammessa_non_scrive(self):
+        throttle = LoginRateThrottle()
+        with patch.object(SimpleRateThrottle, "allow_request", return_value=True), \
+                self.assertNoLogs("security", level="WARNING"):
+            self.assertTrue(throttle.allow_request(_request("127.0.0.1"), view=None))
+
+    # Scopo: La richiesta del link e la conferma col link (reset e attivazione
+    #        dell'invito) contano su contatori DIVERSI: una password rifiutata
+    #        alla conferma non consuma le richieste del link (2026-10-02).
+    def test_la_conferma_con_link_ha_il_suo_contatore(self):
+        from apps.core.api.attivazione_veste_views import AttivazioneVesteView
+        from apps.core.api.password_reset_views import PasswordResetConfirmView, PasswordResetRequestView
+
+        self.assertEqual(PasswordResetRequestView.throttle_classes, [PasswordResetRateThrottle])
+        self.assertEqual(PasswordResetConfirmView.throttle_classes, [ConfermaTokenRateThrottle])
+        self.assertEqual(AttivazioneVesteView.throttle_classes, [ConfermaTokenRateThrottle])
+        self.assertNotEqual(PasswordResetRateThrottle.scope, ConfermaTokenRateThrottle.scope)
+
+    # Scopo: Un blocco, UNA riga: le richieste respinte dopo la prima, nella
+    #        stessa attesa, non riscrivono la stessa notizia; un'altra
+    #        provenienza bloccata ha la sua (2026-10-02).
+    def test_un_blocco_una_riga_sola(self):
+        throttle = self._con_cache_propria(LoginRateThrottle())
+        da_a = _request("127.0.0.1", xff="203.0.113.7")
+        da_b = _request("127.0.0.1", xff="198.51.100.9")
+        with patch.object(SimpleRateThrottle, "allow_request", return_value=False), \
+                patch.object(SimpleRateThrottle, "wait", return_value=120), \
+                self.assertLogs("security", level="WARNING") as log:
+            for _ in range(5):
+                self.assertFalse(throttle.allow_request(da_a, view=None))
+            self.assertFalse(throttle.allow_request(da_b, view=None))
+        self.assertEqual(len(log.output), 2)
+        self.assertIn("provenienza=203.0.113.7", log.output[0])
+        self.assertIn("provenienza=198.51.100.9", log.output[1])

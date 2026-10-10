@@ -7,8 +7,7 @@
 import { ref, watch, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useSoggettiStore } from '../stores/soggetti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useSoggettoForm } from '../composables/useSoggettoForm'
@@ -22,23 +21,19 @@ import { lookupFormeGiuridiche } from '../../core/apiCore'
 import { lookupProvince } from '../api/anagrafiche'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, parseIsoDate } from '../../core/utils/date'
 import SoggettoForm from './SoggettoForm.vue'
 import ContattoForm from './ContattoForm.vue'
 import IndirizzoSoggettoForm from './IndirizzoSoggettoForm.vue'
 import DatiSocietariForm from './DatiSocietariForm.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import IndirizziSoggettoDrawer from './IndirizziSoggettoDrawer.vue'
 import ContattiSoggettoDrawer from './ContattiSoggettoDrawer.vue'
 import ContiBancariDrawer from './ContiBancariDrawer.vue'
 import TitoliIvaSoggettoDrawer from './TitoliIvaSoggettoDrawer.vue'
-import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-
-
 
 const { t } = useI18n()
 const isReadonly = useInjectReadonly()
@@ -46,7 +41,9 @@ const store = useSoggettiStore()
 const { execute, loading, campiErrati } = useApiHandler()
 
 // Building block composables
-const soggetto = useSoggettoForm()
+// In modifica il sesso non si propone: un privato senza sesso resta vuoto,
+// e lo sceglie chi lo vede (lo pretende il guard del DB).
+const soggetto = useSoggettoForm({ proponiSesso: () => props.mode !== 'edit' })
 const contatto = useContattoForm()
 const contattoErrors = ref([])
 const indirizzo = useIndirizzoSoggettoForm()
@@ -62,7 +59,29 @@ const paOptions = computed(() => [
 
 // Lookup forme giuridiche (ricaricato al cambio tipo) — passato a useDatiSocietariForm
 const formeGiuridicheLookup = ref([])
-const datiSocietari = useDatiSocietariForm({ formeGiuridiche: formeGiuridicheLookup })
+const formeGiuridicheCaricate = ref(false)
+// La forma che il soggetto HA (dal dettaglio), con le sue policy REA/capitale.
+const formaDelDettaglio = ref(null)
+// ⭐ La forma salvata resta VISIBILE anche se la natura non la ammette (riga
+//   fuori regola di prima del guard, o natura appena cambiata): marcata, in
+//   coda. Fino al 2026-10-10 il Select non la trovava fra le opzioni e la
+//   mostrava vuota — un dato illegale per la natura che nessuno diceva
+//   (brief-db-dati-fiscali-e-societari-del-soggetto §3.1). Stessa idea di
+//   `voceCorrente` di `LookupSelect`.
+// ⚠️ Solo a elenco CARICATO: prima, l'elenco vuoto la farebbe dire «non
+//    ammessa» a torto.
+const formeGiuridicheOpzioni = computed(() => {
+  const voce = formaDelDettaglio.value
+  if (!voce || !formeGiuridicheCaricate.value
+    || formeGiuridicheLookup.value.some(f => f.id === voce.id)) {
+    return formeGiuridicheLookup.value
+  }
+  return [
+    ...formeGiuridicheLookup.value,
+    { ...voce, descrizione: `${voce.descrizione} — ${t('dati_societari.forma_non_ammessa')}` },
+  ]
+})
+const datiSocietari = useDatiSocietariForm({ formeGiuridiche: formeGiuridicheOpzioni })
 const provinceLookup = useLookup(() => lookupProvince())
 
 // Restore ComuneAutocomplete in edit mode
@@ -78,6 +97,10 @@ const ruoliAssegnati = ref([])
 // fallback compat in SoggettoForm.
 const tipiModificabiliIds = ref(null)
 const nonEditableFields = ref(null)
+// In modifica: la natura com'era all'apertura (la PATCH la manda solo se
+// cambia) e se il soggetto ha gia' la riga dei dati societari.
+const tipoCaricatoId = ref(null)
+const haDatiSocietari = ref(false)
 
 // Drawer indirizzi, contatti e conti bancari (edit mode)
 const indirizziDrawerVisible = ref(false)
@@ -98,11 +121,6 @@ const props = defineProps({
   tipiAmmessiIds: { type: Array, default: null }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
 const emit = defineEmits(['update:visible', 'saved', 'saved-with-data'])
 
 // Modifiche non salvate (BB useDrawerFormPreserve) sul form del soggetto, che
@@ -121,7 +139,6 @@ const formSoggetto = computed(() => (props.mode === 'edit'
       }),
     }))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSoggetto, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 const isEdit = computed(() => props.mode === 'edit')
 
@@ -130,6 +147,7 @@ const isEdit = computed(() => props.mode === 'edit')
 // la risposta della richiesta precedente viene scartata.
 const fgFv = useFetchVersion()
 watch(() => soggetto.form.tipo_soggetto_dettaglio_id, async (tipoId) => {
+  formeGiuridicheCaricate.value = false
   if (!tipoId || !soggetto.showDatiSocietari.value) {
     formeGiuridicheLookup.value = []
     return
@@ -137,7 +155,10 @@ watch(() => soggetto.form.tipo_soggetto_dettaglio_id, async (tipoId) => {
   const v = fgFv.tag()
   try {
     const res = await lookupFormeGiuridiche(tipoId)
-    if (fgFv.isCurrent(v)) formeGiuridicheLookup.value = res.data.data.results
+    if (fgFv.isCurrent(v)) {
+      formeGiuridicheLookup.value = res.data.data.results
+      formeGiuridicheCaricate.value = true
+    }
   } catch {
     if (fgFv.isCurrent(v)) formeGiuridicheLookup.value = []
   }
@@ -186,14 +207,6 @@ watch(() => soggetto.showDatiSocietari.value, (show) => {
   }
 })
 
-// Scopo: Converte stringa ISO date (YYYY-MM-DD) in Date object per DatePicker.
-function parseDate(val) {
-  if (!val) return null
-  if (val instanceof Date) return val
-  const d = new Date(val)
-  return isNaN(d.getTime()) ? null : d
-}
-
 // Popola il drawer con i dati del soggetto in edit mode.
 function populateFromDetail(data) {
   soggetto.form.tipo_soggetto_dettaglio_id = data.tipo_soggetto_dettaglio_id
@@ -202,8 +215,12 @@ function populateFromDetail(data) {
   soggetto.form.ragione_sociale = data.ragione_sociale || ''
   soggetto.form.codice_fiscale = data.codice_fiscale || ''
   soggetto.form.partita_iva = data.partita_iva || ''
-  soggetto.form.sesso = data.sesso || 'M'
-  soggetto.form.data_nascita = parseDate(data.data_nascita)
+  // ⛔ Mai `|| 'M'`: un sesso che il DB non ha non si inventa a video.
+  soggetto.form.sesso = data.sesso?.trim() || ''
+  // ⚠️ `parseIsoDate` e non `new Date('YYYY-MM-DD')` (mezzanotte UTC): nei
+  //    fusi negativi la data di nascita si mostrava — e si risalvava — un
+  //    giorno prima (fino al 2026-10-09).
+  soggetto.form.data_nascita = parseIsoDate(data.data_nascita)
   soggetto.form.comune_nascita_id = data.comune_nascita_id || null
   // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
   //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.
@@ -212,10 +229,12 @@ function populateFromDetail(data) {
   //    SPEGNEREBBE uno split payment attivo — un errore fiscale silenzioso,
   //    nella direzione peggiore (la stessa che il travaso a DB ha risolto con
   //    `bool_or`, facendo vincere 'S').
-  // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
-  //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.
-  soggetto.form.split_payment = data.split_payment?.trim() ?? null
-  soggetto.form.cliente_pa = data.cliente_pa?.trim() ?? null
+  // Niente `.trim()` (dal 2026-10-10): sono `character(1)` NOT NULL con CHECK
+  //    ('S','N'), cioe' a lunghezza esatta — il padding non c'e'
+  //    (brief-db-character-n-spazi-di-riempimento §2.2).
+  soggetto.form.split_payment = data.split_payment ?? null
+  soggetto.form.cliente_pa = data.cliente_pa ?? null
+  tipoCaricatoId.value = data.tipo_soggetto_dettaglio_id ?? null
   // Oggetto completo per restore ComuneAutocomplete
   comuneNascitaItem.value = data.comune_nascita_id
     ? { id: data.comune_nascita_id, descrizione: data.comune_nascita_descrizione || '', provincia_sigla: data.comune_nascita_provincia_sigla || '' }
@@ -223,6 +242,15 @@ function populateFromDetail(data) {
   if (data.contatti?.length > 0) {
     contatto.populate(data.contatti[0])
   }
+  haDatiSocietari.value = !!data.dati_societari
+  formaDelDettaglio.value = data.dati_societari?.forma_giuridica_id
+    ? {
+        id: data.dati_societari.forma_giuridica_id,
+        descrizione: data.dati_societari.forma_giuridica_descrizione,
+        rea_policy: data.dati_societari.rea_policy,
+        capitale_sociale_policy: data.dati_societari.capitale_sociale_policy,
+      }
+    : null
   if (data.dati_societari) {
     datiSocietari.populate(data.dati_societari)
   }
@@ -238,7 +266,6 @@ function populateFromDetail(data) {
   contattiRiepilogo.value = data.contatti || []
   contiBancariRiepilogo.value = data.conti_bancari || []
 }
-
 
 // Callback quando i drawer indirizzi/contatti salvano — ricarica il riepilogo.
 async function onContattiSaved() {
@@ -299,6 +326,9 @@ watch(() => props.visible, async (val) => {
     // Reset sentinel a null in create — fallback compat in SoggettoForm
     tipiModificabiliIds.value = null
     nonEditableFields.value = null
+    tipoCaricatoId.value = null
+    haDatiSocietari.value = false
+    formaDelDettaglio.value = null
     nominativoManuale = false
     // Pre-imposta tipo soggetto se indicato dal chiamante (es. SoggettoResolver)
     if (props.tipoDefaultId) {
@@ -346,7 +376,8 @@ async function handleSave() {
     if (soggetto.isPF.value) {
       payload.cognome = f.cognome
       payload.nome = f.nome
-      payload.sesso = f.sesso
+      // Vuoto -> NULL: per la ditta individuale e' un valore ammesso.
+      if (soggetto.showSesso.value) payload.sesso = f.sesso || null
       payload.data_nascita = toDateString(f.data_nascita)
       payload.comune_nascita_id = f.comune_nascita_id
     } else {
@@ -360,8 +391,27 @@ async function handleSave() {
     // ⛔ Si spediscono SOLO se valorizzati: un flag che il dettaglio non ha
     //    portato resta `null`, e mandarlo scriverebbe un valore che nessuno ha
     //    letto ne' scelto. Chiave assente = colonna non toccata.
-    if (f.split_payment) payload.split_payment = f.split_payment
-    if (f.cliente_pa) payload.cliente_pa = f.cliente_pa
+    // ⭐ Un flag che la natura NON ammette (campo nascosto) parte 'N': e' la
+    //    regola del DB (A-3, «chi cambia natura porta il flag a N nella stessa
+    //    scrittura»), non un valore inventato. Un 'S' rimasto da prima del
+    //    guard verrebbe altrimenti rifiutato su un campo che non si vede.
+    if (f.split_payment) payload.split_payment = soggetto.showSplitPayment.value ? f.split_payment : 'N'
+    if (f.cliente_pa) payload.cliente_pa = soggetto.showClientePa.value ? f.cliente_pa : 'N'
+    // La natura, solo se cambiata: i guard la confrontano con flag, forma e
+    // titoli IVA (brief-db-dati-fiscali-e-societari-del-soggetto §8.3).
+    if (f.tipo_soggetto_dettaglio_id !== tipoCaricatoId.value) {
+      payload.tipo_soggetto_dettaglio_id = f.tipo_soggetto_dettaglio_id
+    }
+    // Dati societari col verbo DB, STATO INTERO, come in creazione (parte B).
+    // ⚠️ Solo se la riga c'e' gia' o l'operatore ha scelto una forma: con la
+    //    natura OPTIONAL e la sezione lasciata vuota non c'e' niente da creare,
+    //    e una riga senza forma il DB la rifiuta (forma NOT NULL, C-2).
+    // ⭐ Il backend scrive PRIMA la natura e POI i dati societari, nella stessa
+    //    transazione: natura e forma si cambiano nello stesso salvataggio.
+    if (soggetto.showDatiSocietari.value
+      && (haDatiSocietari.value || datiSocietari.form.forma_giuridica_id)) {
+      payload.dati_societari = datiSocietari.toPayload()
+    }
 
     const result = await execute(
       () => store.update(props.itemId, payload),
@@ -379,7 +429,7 @@ async function handleSave() {
       ragione_sociale: soggetto.form.ragione_sociale,
       codice_fiscale: soggetto.form.codice_fiscale,
       partita_iva: soggetto.form.partita_iva,
-      sesso: soggetto.form.sesso,
+      sesso: soggetto.showSesso.value ? (soggetto.form.sesso || null) : null,
       data_nascita: toDateString(soggetto.form.data_nascita),
       comune_nascita_id: soggetto.form.comune_nascita_id,
       contatto: { ...contatto.form },
@@ -393,7 +443,7 @@ async function handleSave() {
 
     // Dati societari (solo se visibili)
     if (soggetto.showDatiSocietari.value) {
-      payload.dati_societari = { ...datiSocietari.form }
+      payload.dati_societari = datiSocietari.toPayload()
     }
 
     const result = await execute(
@@ -419,251 +469,255 @@ async function handleSave() {
     }
   }
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    @after-show="onAfterShow"
+    :title="t('anagrafiche.soggetti.soggetto')"
+    :icon="NAV_ICONS.ANAGRAFICHE"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('anagrafiche.soggetti.soggetto')" :icon="NAV_ICONS.ANAGRAFICHE" />
-    </template>
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <!-- Sezione: Dati soggetto -->
-      <SoggettoForm
-        :form="soggetto.form"
+    <!-- Sezione: Dati soggetto -->
+    <SoggettoForm
+      :form="soggetto.form"
+      :campi-errati="campiErrati"
+      :tipi-soggetto="soggetto.tipiSoggetto"
+      :is-p-f="soggetto.isPF.value"
+      :show-sesso="soggetto.showSesso.value"
+      :require-sesso="soggetto.requireSesso.value"
+      :show-partita-iva="soggetto.showPartitaIva.value"
+      :is-edit="isEdit"
+      :disabled="false"
+      :tipi-ammessi-ids="tipiAmmessiIds"
+      :tipi-modificabili-ids="tipiModificabiliIds"
+      :non-editable-fields="nonEditableFields"
+      :comune-nascita-item="comuneNascitaItem"
+    />
+
+    <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
+    <template v-if="!isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
+      </div>
+      <ContattoForm
         :campi-errati="campiErrati"
-        :tipi-soggetto="soggetto.tipiSoggetto"
-        :is-p-f="soggetto.isPF.value"
-        :show-partita-iva="soggetto.showPartitaIva.value"
-        :is-edit="isEdit"
+        :form="contatto.form"
+        :tipi-contatto="contatto.tipiContatto"
+        :unita-organizzative="contatto.unitaOrganizzative"
+        :errors="contattoErrors"
+        :show-u-o="false"
         :disabled="false"
-        :tipi-ammessi-ids="tipiAmmessiIds"
-        :tipi-modificabili-ids="tipiModificabiliIds"
-        :non-editable-fields="nonEditableFields"
-        :comune-nascita-item="comuneNascitaItem"
       />
-
-      <!-- Sezione: Contatto inline (create) o riepilogo (edit) -->
-      <template v-if="!isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
-        </div>
-        <ContattoForm
-          :campi-errati="campiErrati"
-          :form="contatto.form"
-          :tipi-contatto="contatto.tipiContatto"
-          :unita-organizzative="contatto.unitaOrganizzative"
-          :errors="contattoErrors"
-          :show-u-o="false"
-          :disabled="false"
-        />
-      </template>
-      <template v-else>
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
-        </div>
-        <div class="app-riepilogo-section">
-          <div v-if="contattiRiepilogo.length > 0" class="app-riepilogo-list">
-            <div v-for="c in contattiRiepilogo" :key="c.id" class="app-riepilogo-item">
-              <strong>{{ c.nominativo }}</strong>
-              <span v-if="c.email" class="app-riepilogo-detail">{{ c.email }}</span>
-              <span v-if="c.telefono" class="app-riepilogo-detail">{{ c.telefono }}</span>
-            </div>
+    </template>
+    <template v-else>
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_contatto') }}</h4>
+      </div>
+      <div class="app-riepilogo-section">
+        <div v-if="contattiRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="c in contattiRiepilogo" :key="c.id" class="app-riepilogo-item">
+            <strong>{{ c.nominativo }}</strong>
+            <span v-if="c.email" class="app-riepilogo-detail">{{ c.email }}</span>
+            <span v-if="c.telefono" class="app-riepilogo-detail">{{ c.telefono }}</span>
           </div>
-          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-            {{ t('anagrafiche.contatto.nessun_contatto') }}
-          </div>
-          <Button
-            :label="t('anagrafiche.contatto.gestisci_contatti')"
-            :icon="MANAGE_ICONS.CONTATTI"
-            text
-            size="small"
-            class="app-action-btn app-escape mt-025"
-            @click="contattiDrawerVisible = true"
-          />
-        </div>
-      </template>
-
-      <!-- Separatore: Indirizzo (solo in create mode) -->
-      <template v-if="!isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
-        </div>
-        <IndirizzoSoggettoForm
-          :form="indirizzo.form"
-          :is-libera="indirizzo.isLibera.value"
-          @update:is-libera="v => indirizzo.isLibera.value = v"
-          :tipi-stato="indirizzo.tipiStato.value"
-          :stati-lookup="indirizzo.statiLookup"
-          :cap-options="indirizzo.capOptions.value"
-          :loading-cap="indirizzo.loadingCap.value"
-          :auto-clone="indirizzo.autoClone.value"
-          @update:auto-clone="v => indirizzo.autoClone.value = v"
-          @switch-tipo="indirizzo.switchTipo"
-          :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
-          :address-not-found="indirizzo.addressNotFound.value"
-          :disabled="false"
-        />
-      </template>
-
-      <!-- Sezione: Dati societari (condizionale) — subito dopo anagrafica/P.IVA -->
-      <template v-if="soggetto.showDatiSocietari.value">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_dati_societari') }}</h4>
-        </div>
-        <DatiSocietariForm
-          :form="datiSocietari.form"
-          :forme-giuridiche="formeGiuridicheLookup"
-          :province-lookup="provinceLookup"
-          :show-rea="datiSocietari.showRea.value"
-          :require-rea="datiSocietari.requireRea.value"
-          :show-capitale-sociale="datiSocietari.showCapitaleSociale.value"
-          :require-capitale-sociale="datiSocietari.requireCapitaleSociale.value"
-          :required="soggetto.requireDatiSocietari.value"
-          :disabled="false"
-        />
-      </template>
-
-      <!-- Sezione: Dati fiscali (edit mode) — regime della controparte.
-           I0/D8: i due flag sono saliti da `anagrafiche.clienti`, dove stavano
-           su una riga PER FORNITURA e ammettevano valori opposti per la stessa
-           partita IVA. Stanno accanto a CF/P.IVA perche' e' da li' che
-           discendono. ⚠️ NON sono un codice IVA e non entrano nel risolutore
-           (D4): non cambiano l'aliquota, cambiano CHI VERSA l'imposta. -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_dati_fiscali') }}</h4>
-        </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
-            <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
-              option-label="label" option-value="value"
-              :disabled="isReadonly" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
-            <Select v-model="soggetto.form.split_payment" :options="paOptions"
-              option-label="label" option-value="value"
-              :disabled="isReadonly" />
-          </div>
-        </div>
-      </template>
-
-      <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
-        </div>
-        <div>
-          <div v-if="indirizziRiepilogo.length > 0" class="app-riepilogo-list">
-            <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="app-riepilogo-item">
-              <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
-              <span>{{ ind.indirizzo_display }}</span>
-            </div>
-          </div>
-          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-            {{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}
-          </div>
-          <Button
-            :label="t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi')"
-            :icon="MANAGE_ICONS.INDIRIZZI"
-            text
-            size="small"
-            class="app-action-btn app-escape mt-025"
-            @click="indirizziDrawerVisible = true"
-          />
-        </div>
-      </template>
-
-      <!-- Sezione: Conti bancari riepilogo (edit mode) -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.conti_bancari.titolo') }}</h4>
-        </div>
-        <div class="app-riepilogo-section">
-          <div v-if="contiBancariRiepilogo.length > 0" class="app-riepilogo-list">
-            <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="app-riepilogo-item">
-              <Tag :value="cb.uso" severity="info" />
-              <span class="app-riepilogo-detail app-mono">{{ cb.iban }}</span>
-              <span v-if="cb.filiale_nome" class="app-riepilogo-detail">{{ cb.filiale_nome }}</span>
-            </div>
-          </div>
-          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-            {{ t('anagrafiche.conti_bancari.nessun_conto') }}
-          </div>
-          <Button
-            :label="t('anagrafiche.conti_bancari.gestisci_conti')"
-            :icon="MANAGE_ICONS.CONTI_BANCARI"
-            text
-            size="small"
-            class="app-action-btn app-escape mt-025"
-            @click="contiBancariDrawerVisible = true"
-          />
-        </div>
-      </template>
-
-      <!-- Sezione: Titoli IVA (edit mode) — I7/D10.
-           ⭐ E' la sede che realizza D7: l'influenza del soggetto sull'IVA passa
-           SEMPRE da un titolo registrato, datato e con una prova documentale —
-           mai da una colonna di default appesa all'anagrafica. E' la ragione per
-           cui `clienti.iva_id` e' stata tolta e non sostituita. -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.titoli_iva.titolo_lista') }}</h4>
-        </div>
-        <div class="app-riepilogo-section">
-          <div v-if="titoliIvaRiepilogo.length > 0" class="app-riepilogo-list">
-            <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="app-riepilogo-item">
-              <Tag :value="ti.tipo_descrizione" :severity="ti.attivo ? 'info' : 'secondary'" />
-              <span class="app-riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
-              <span v-if="ti.residuo != null" class="app-riepilogo-detail">
-                {{ t('anagrafiche.titoli_iva.col_residuo') }}: {{ ti.residuo }}
-              </span>
-            </div>
-          </div>
-          <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-            {{ t('anagrafiche.titoli_iva.lista_vuota') }}
-          </div>
-          <Button
-            :label="t('anagrafiche.titoli_iva.gestisci_titoli')"
-            :icon="MANAGE_ICONS.TITOLI_IVA"
-            text
-            size="small"
-            class="app-action-btn app-escape mt-025"
-            @click="titoliIvaDrawerVisible = true"
-          />
-        </div>
-      </template>
-
-      <!-- Sezione: Ruoli (solo edit mode, readonly) -->
-      <template v-if="isEdit">
-        <div class="app-drawer-section">
-          <h4>{{ t('anagrafiche.soggetti.section_ruoli') }}</h4>
-        </div>
-        <div v-if="ruoliAssegnati.length > 0" class="ruoli-tags">
-          <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
-               :value="r.ruolo_descrizione" severity="info" />
         </div>
         <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
-          {{ t('anagrafiche.soggetti.nessun_ruolo') }}
+          {{ t('anagrafiche.contatto.nessun_contatto') }}
         </div>
-      </template>
+        <Button
+          :label="t('anagrafiche.contatto.gestisci_contatti')"
+          :icon="MANAGE_ICONS.CONTATTI"
+          text
+          size="small"
+          class="app-action-btn app-escape mt-025"
+          @click="contattiDrawerVisible = true"
+        />
+      </div>
+    </template>
 
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
+    <!-- Separatore: Indirizzo (solo in create mode) -->
+    <template v-if="!isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
+      </div>
+      <IndirizzoSoggettoForm
+        :form="indirizzo.form"
+        :is-libera="indirizzo.isLibera.value"
+        @update:is-libera="v => indirizzo.isLibera.value = v"
+        :tipi-stato="indirizzo.tipiStato.value"
+        :stati-lookup="indirizzo.statiLookup"
+        :cap-options="indirizzo.capOptions.value"
+        :loading-cap="indirizzo.loadingCap.value"
+        :auto-clone="indirizzo.autoClone.value"
+        @update:auto-clone="v => indirizzo.autoClone.value = v"
+        @switch-tipo="indirizzo.switchTipo"
+        :indirizzo-warnings="indirizzo.indirizzoWarnings.value"
+        :address-not-found="indirizzo.addressNotFound.value"
+        :disabled="false"
       />
-    </div>
-  </Drawer>
+    </template>
+
+    <!-- Sezione: Dati societari (condizionale) — subito dopo anagrafica/P.IVA -->
+    <template v-if="soggetto.showDatiSocietari.value">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_dati_societari') }}</h4>
+      </div>
+      <DatiSocietariForm
+        :form="datiSocietari.form"
+        :campi-errati="campiErrati"
+        :forme-giuridiche="formeGiuridicheOpzioni"
+        :province-lookup="provinceLookup"
+        :show-rea="datiSocietari.showRea.value"
+        :require-rea="datiSocietari.requireRea.value"
+        :show-capitale-sociale="datiSocietari.showCapitaleSociale.value"
+        :require-capitale-sociale="datiSocietari.requireCapitaleSociale.value"
+        :required="soggetto.requireDatiSocietari.value"
+        :show-data-costituzione="isEdit"
+        :disabled="false"
+      />
+    </template>
+
+    <!-- Sezione: Dati fiscali (edit mode) — regime della controparte.
+         I0/D8: i due flag sono saliti da `anagrafiche.clienti`, dove stavano
+         su una riga PER FORNITURA e ammettevano valori opposti per la stessa
+         partita IVA. Stanno accanto a CF/P.IVA perche' e' da li' che
+         discendono. ⚠️ NON sono un codice IVA e non entrano nel risolutore
+         (D4): non cambiano l'aliquota, cambiano CHI VERSA l'imposta. -->
+    <!-- ⭐ Dal 2026-10-10 i due campi seguono la natura (`cliente_pa_ammesso`,
+         `split_payment_ammesso`): la sezione c'e' solo se ne resta almeno uno
+         (un privato o una ditta individuale non ne hanno nessuno). -->
+    <template v-if="isEdit && (soggetto.showClientePa.value || soggetto.showSplitPayment.value)">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_dati_fiscali') }}</h4>
+      </div>
+      <div class="form-grid-2col">
+        <div v-if="soggetto.showClientePa.value" class="form-field">
+          <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
+          <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
+            option-label="label" option-value="value"
+            :invalid="campiErrati.includes('cliente_pa')"
+            :disabled="isReadonly" />
+        </div>
+        <div v-if="soggetto.showSplitPayment.value" class="form-field">
+          <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
+          <Select v-model="soggetto.form.split_payment" :options="paOptions"
+            option-label="label" option-value="value"
+            :invalid="campiErrati.includes('split_payment')"
+            :disabled="isReadonly" />
+        </div>
+      </div>
+    </template>
+
+    <!-- Sezione: Indirizzi riepilogo (edit mode) + pulsante Gestisci -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_indirizzo') }}</h4>
+      </div>
+      <div>
+        <div v-if="indirizziRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="ind in indirizziRiepilogo" :key="ind.id" class="app-riepilogo-item">
+            <Tag :value="ind.tipo_indirizzo_descrizione" severity="info" />
+            <span>{{ ind.indirizzo_display }}</span>
+          </div>
+        </div>
+        <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
+          {{ t('anagrafiche.indirizzo_soggetto.nessun_indirizzo') }}
+        </div>
+        <Button
+          :label="t('anagrafiche.indirizzo_soggetto.gestisci_indirizzi')"
+          :icon="MANAGE_ICONS.INDIRIZZI"
+          text
+          size="small"
+          class="app-action-btn app-escape mt-025"
+          @click="indirizziDrawerVisible = true"
+        />
+      </div>
+    </template>
+
+    <!-- Sezione: Conti bancari riepilogo (edit mode) -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.conti_bancari.titolo') }}</h4>
+      </div>
+      <div class="app-riepilogo-section">
+        <div v-if="contiBancariRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="cb in contiBancariRiepilogo" :key="cb.id" class="app-riepilogo-item">
+            <Tag :value="cb.uso" severity="info" />
+            <span class="app-riepilogo-detail app-mono">{{ cb.iban }}</span>
+            <span v-if="cb.filiale_nome" class="app-riepilogo-detail">{{ cb.filiale_nome }}</span>
+          </div>
+        </div>
+        <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
+          {{ t('anagrafiche.conti_bancari.nessun_conto') }}
+        </div>
+        <Button
+          :label="t('anagrafiche.conti_bancari.gestisci_conti')"
+          :icon="MANAGE_ICONS.CONTI_BANCARI"
+          text
+          size="small"
+          class="app-action-btn app-escape mt-025"
+          @click="contiBancariDrawerVisible = true"
+        />
+      </div>
+    </template>
+
+    <!-- Sezione: Titoli IVA (edit mode) — I7/D10.
+         ⭐ E' la sede che realizza D7: l'influenza del soggetto sull'IVA passa
+         SEMPRE da un titolo registrato, datato e con una prova documentale —
+         mai da una colonna di default appesa all'anagrafica. E' la ragione per
+         cui `clienti.iva_id` e' stata tolta e non sostituita. -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.titoli_iva.titolo_lista') }}</h4>
+      </div>
+      <div class="app-riepilogo-section">
+        <div v-if="titoliIvaRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="ti in titoliIvaRiepilogo" :key="ti.id" class="app-riepilogo-item">
+            <Tag :value="ti.tipo_descrizione" :severity="ti.attivo ? 'info' : 'secondary'" />
+            <span class="app-riepilogo-detail">{{ ti.emittente_ragione_sociale }}</span>
+            <span v-if="ti.residuo != null" class="app-riepilogo-detail">
+              {{ t('anagrafiche.titoli_iva.col_residuo') }}: {{ ti.residuo }}
+            </span>
+          </div>
+        </div>
+        <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
+          {{ t('anagrafiche.titoli_iva.lista_vuota') }}
+        </div>
+        <Button
+          :label="t('anagrafiche.titoli_iva.gestisci_titoli')"
+          :icon="MANAGE_ICONS.TITOLI_IVA"
+          text
+          size="small"
+          class="app-action-btn app-escape mt-025"
+          @click="titoliIvaDrawerVisible = true"
+        />
+      </div>
+    </template>
+
+    <!-- Sezione: Ruoli (solo edit mode, readonly) -->
+    <template v-if="isEdit">
+      <div class="app-drawer-section">
+        <h4>{{ t('anagrafiche.soggetti.section_ruoli') }}</h4>
+      </div>
+      <div v-if="ruoliAssegnati.length > 0" class="ruoli-tags">
+        <Tag v-for="r in ruoliAssegnati" :key="r.tipo_ruolo_id"
+             :value="r.ruolo_descrizione" severity="info" />
+      </div>
+      <div v-else style="color: var(--app-text-muted); font-size: 0.85rem;">
+        {{ t('anagrafiche.soggetti.nessun_ruolo') }}
+      </div>
+    </template>
+  </AppDrawer>
 
   <!-- Drawer indirizzi soggetto (edit mode) -->
   <IndirizziSoggettoDrawer

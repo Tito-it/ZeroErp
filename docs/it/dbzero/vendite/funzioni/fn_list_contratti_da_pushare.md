@@ -22,6 +22,16 @@ BEGIN
   -- rev 2026-07-27 (brief emissione mirata PARTE B): fatturazione_immediata
   -- proiettata dalla COLONNA (era la costante FALSE). Il valore instrada
   -- la corsia via chiave di dedup di fn_get_or_create_commessa.
+  -- rev 2026-10-04 (brief-db-erogazione-obbligatoria-righe-fatturate R4):
+  -- le righe ESCLUSIONE non si listano (l'esclusione non si fattura: prima
+  -- arrivavano in commessa senza prezzo, e il resolver risponde
+  -- E_ARTICOLO_ESCLUSO_DA_CONTRATTO); tipo_consumo e' l'erogazione della riga,
+  -- senza ripiego su CANONE (obbligatoria per CHECK su ogni riga listata).
+  -- rev 2026-10-10 (brief-db-istanza-nasce-col-ba-residui D-1, D-2): via il
+  -- filtro billing_account_id IS NOT NULL (la colonna e' NOT NULL); lo stato
+  -- ATTIVO che non si trova nel catalogo solleva E_CODICE come la sorgente,
+  -- invece di far cadere il filtro di stato (prima: `IS NULL OR`, cioe'
+  -- contratti in qualunque stato).
   IF p_contratto_id IS NOT NULL AND p_contratto_id <= 0 THEN
     PERFORM script.fn_log_and_raise_error(
       'vendite', 'fn_list_contratti_da_pushare', 'E_PUSH_SORGENTE_ID_INVALIDO',
@@ -47,6 +57,16 @@ BEGIN
   SELECT s.id INTO v_stato_attivo_id
   FROM config.stati_doc_contratti s
   WHERE s.codice_interno = 'ATTIVO' AND s.attivo IS TRUE LIMIT 1;
+
+  -- Senza lo stato il filtro non ha un valore: si ferma, come per la
+  -- sorgente. Il push non lista mai contratti in uno stato qualunque.
+  IF v_stato_attivo_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_list_contratti_da_pushare', 'E_CODICE',
+      jsonb_build_object('codice', 'ATTIVO'),
+      NULL::uuid, 'ATTIVO', 'config.stati_doc_contratti'
+    );
+  END IF;
 
   RETURN QUERY
   SELECT
@@ -77,7 +97,10 @@ BEGIN
     (cr.prezzo_unitario IS NOT NULL),
     'FIXED'::varchar,
     'NORMALE'::varchar,
-    COALESCE(cr.tipo_erogazione, 'CANONE')::varchar,
+    -- Erogazione della riga, senza ripiego: obbligatoria su ogni riga che
+    -- non e' ESCLUSIONE (chk_contrighe_erogazione_per_tipo_eccezione), e le
+    -- ESCLUSIONE qui non arrivano.
+    cr.tipo_erogazione::varchar,
     NULL::integer,
     jsonb_build_object(
       'contratto_numero',    c.numero,
@@ -95,10 +118,12 @@ BEGIN
   JOIN vendite.contratti_righe cr
     ON cr.contratto_id = c.id
    AND COALESCE(cr.attivo, TRUE) IS TRUE
+   -- L'esclusione non si fattura: dice solo che il contratto non vende
+   -- quell'articolo del listino.
+   AND cr.tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
   JOIN catalogo.articoli a ON a.id = cr.articolo_id
-  WHERE c.billing_account_id IS NOT NULL
-    AND (v_stato_attivo_id IS NULL OR c.stato_doc_contratto_id = v_stato_attivo_id)
-    AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, CURRENT_DATE))
+  WHERE c.stato_doc_contratto_id = v_stato_attivo_id
+    AND (c.valido_al IS NULL OR c.valido_al >= COALESCE(p_competenza_mese, (SELECT script.fn_data_operativa())))
     AND (p_competenza_mese IS NULL
          OR date_trunc('month', COALESCE(c.valido_dal, c.data))::date = p_competenza_mese)
     AND (p_billing_account_id IS NULL OR c.billing_account_id = p_billing_account_id)
@@ -115,7 +140,7 @@ END
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_contratti_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_contratto_id bigint)
-IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.contratti.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato alla riga (prezzo valorizzato): l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i contratti non hanno colonne di pagamento, la cascata scende al livello successivo (rev 2026-08-03, T.1).';
+IS 'Lista righe contratto eligible al push su commessa (stato ATTIVO). uom_id da catalogo.articoli (canonica). p_contratto_id opzionale: NULL=batch globale, NOT NULL=singolo contratto. Filtri in AND. Esclude EMESSA via NOT EXISTS. (20260511-33: cr.quantita_fissa -> cr.quantita dopo rename colonna) rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE del mese via script.fn_get_stato_push_segment (vede anche componenti #CMP), non piu'' solo EMESSA — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: fatturazione_immediata proiettata dalla colonna vendite.contratti.fatturazione_immediata (era costante FALSE) — simmetria del flag di corsia, brief-db-emissione-fattura-per-documento-sorgente PARTE B. prezzo_bloccato resta legato alla riga (prezzo valorizzato): l''accoppiamento flag/prezzo esiste solo sui preventivi. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i contratti non hanno colonne di pagamento, la cascata scende al livello successivo (rev 2026-08-03, T.1). rev 2026-10-04: le righe ESCLUSIONE non si listano (non si fatturano; prima arrivavano in commessa senza prezzo, e per quell''articolo il resolver risponde E_ARTICOLO_ESCLUSO_DA_CONTRATTO) e tipo_consumo e'' l''erogazione della riga senza ripiego su CANONE, obbligatoria per CHECK su ogni riga che non e'' ESCLUSIONE — brief-db-erogazione-obbligatoria-righe-fatturate R4. rev 2026-10-10 (20261010-55): via il filtro billing_account_id IS NOT NULL (colonna NOT NULL); lo stato ATTIVO assente dal catalogo solleva E_CODICE (config.stati_doc_contratti) invece di far cadere il filtro di stato. Brief: brief-db-istanza-nasce-col-ba-residui (D-1, D-2).';
 ```
 
 ---

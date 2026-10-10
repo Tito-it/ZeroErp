@@ -13,7 +13,7 @@
 | prerequisito_id | integer | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
-| esito_richiesto | character varying | YES |  |
+| esito_richiesto | character varying(20) | YES |  |
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 

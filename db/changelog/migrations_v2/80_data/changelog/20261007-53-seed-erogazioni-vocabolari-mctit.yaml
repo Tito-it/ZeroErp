@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Seed dei tre vocabolari dell'erogazione
+#   config.erogazioni_fonti               (20261007-50, giro B1)
+#   config.listini_tipologie_erogazioni   (20261007-51, giro B2)
+#   config.nature_vendita_erogazioni      (20261007-51, giro B2)
+#   Brief: brief-db-offerta-emissione-ed-erogazione §C.5.2, §C.7
+#
+# ── I VALORI ─────────────────────────────────────────────────────
+#   · erogazioni_fonti: le combinazioni che i CHECK chk_*_coerenza_fonte_erogazione
+#     ammettevano, una per una, e come default le fonti del CASE di
+#     trgfn_righe_default_fonte_qta (CANONE e UNA_TANTUM -> FISSA, ORARIO ->
+#     MANUALE, CONSUMO -> LETTURE). Il giro B1 non cambia il comportamento.
+#   · tipologie e nature: la tabella del §C.5.2, confermata da Tid il
+#     2026-10-07, con generazione_canone = INIZIO_PERIODO sulle righe CANONE.
+#
+# ── LA FORMA ─────────────────────────────────────────────────────
+#   Mirror loadUpdateData chiavato sull'id (scritto nel CSV), nullValue "NULL"
+#   (linee-guida-sql §11.7: il token, non la cella vuota). Un changeSet solo,
+#   nell'ordine delle FK: erogazioni_fonti per prima.
+#   Le tre tabelle si popolano SOLO da CSV (nessun CRUD): nessun resync della
+#   sequence.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261007-53-seed-erogazioni-vocabolari-mctit.yaml
+
+  - changeSet:
+      id: 20261007-53-seed-erogazioni-vocabolari
+      author: mctit
+      runOnChange: true
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Seed di config.erogazioni_fonti, config.listini_tipologie_erogazioni e
+        config.nature_vendita_erogazioni. Brief: brief-db-offerta-emissione-ed-erogazione §C.7.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: erogazioni_fonti
+        - tableExists:
+            schemaName: config
+            tableName: listini_tipologie_erogazioni
+        - tableExists:
+            schemaName: config
+            tableName: nature_vendita_erogazioni
+      changes:
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/erogazioni_fonti.csv
+            tableName: erogazioni_fonti
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: tipo_erogazione, type: STRING }
+              - column: { name: fonte_quantita_attesa, type: STRING }
+              - column: { name: e_default, type: BOOLEAN }
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/listini_tipologie_erogazioni.csv
+            tableName: listini_tipologie_erogazioni
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: tipologia_id, type: NUMERIC }
+              - column: { name: tipo_erogazione, type: STRING }
+              - column: { name: fonte_quantita_attesa, type: STRING }
+              - column: { name: e_default, type: BOOLEAN }
+              - column: { name: generazione_canone, type: STRING }
+        - loadUpdateData:
+            relativeToChangelogFile: true
+            file: ../sql/config/nature_vendita_erogazioni.csv
+            tableName: nature_vendita_erogazioni
+            schemaName: config
+            separator: ","
+            encoding: UTF-8
+            nullValue: "NULL"
+            primaryKey: "id"
+            columns:
+              - column: { name: id, type: NUMERIC }
+              - column: { name: natura_vendita_id, type: NUMERIC }
+              - column: { name: tipo_erogazione, type: STRING }
+              - column: { name: fonte_quantita_attesa, type: STRING }
+              - column: { name: e_default, type: BOOLEAN }
+              - column: { name: generazione_canone, type: STRING }

@@ -7,8 +7,12 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import InputText from 'primevue/inputtext'
+import InputMaiuscolo from '../../core/components/InputMaiuscolo.vue'
 import InputNumber from 'primevue/inputnumber'
 import Select from 'primevue/select'
+import DatePicker from 'primevue/datepicker'
+import { DATE_FORMAT } from '../../core/constants'
+import { toDateString, parseIsoDate } from '../../core/utils/date'
 
 const { t } = useI18n()
 
@@ -17,12 +21,26 @@ const { t } = useI18n()
 const form = defineModel('form', { type: Object, required: true })
 
 defineProps({
+  // Campi che il BACKEND indica come da correggere (envelope `error.fields`),
+  // dal padre via `useApiHandler().campiErrati`. Qui li manda il guard del
+  // canale FE (`anagrafiche.trgfn_dati_societari_guard_canale_fe`): canale `C`
+  // senza codice o codice fuori forma -> `codice_sdi`, canale `P` senza PEC ->
+  // `pec_fatturazione`. Dal 2026-10-10 anche il guard della forma giuridica
+  // (`trgfn_dati_societari_guard_forma_giuridica`): forma non ammessa dalla
+  // natura -> `forma_giuridica_id`, REA o capitale contro la regola della
+  // forma -> `iscrizione_rea` / `capitale_sociale`.
+  campiErrati: { type: Array, default: () => [] },
   formeGiuridiche: { type: Array, default: () => [] },
   provinceLookup: { type: Object, default: null },
   showRea: { type: Boolean, default: false },
   requireRea: { type: Boolean, default: false },
   showCapitaleSociale: { type: Boolean, default: false },
   requireCapitaleSociale: { type: Boolean, default: false },
+  // ⚠️ Solo in MODIFICA (2026-10-10): la scrive il verbo `fn_scrivi_dati_societari`,
+  //    ma `fn_crea_soggetto_pg` la passa a NULL e non la riceve. Offerta in
+  //    creazione, la data si perderebbe in silenzio (brief-db-dati-fiscali-e-
+  //    societari-del-soggetto §9.5). Si toglie quando la creazione la riceve.
+  showDataCostituzione: { type: Boolean, default: false },
   required: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false }
 })
@@ -53,6 +71,7 @@ const destinatarioFeOptions = computed(() => [
         option-label="descrizione"
         option-value="id"
         :placeholder="t('dati_societari.select_forma_giuridica')"
+        :invalid="campiErrati.includes('forma_giuridica_id')"
         :disabled="disabled"
         filter
       />
@@ -70,13 +89,15 @@ const destinatarioFeOptions = computed(() => [
             option-label="descrizione"
             option-value="id"
             :placeholder="t('geo.select_regione')"
+            :invalid="campiErrati.includes('id_prov_iscri_rea')"
             :disabled="disabled"
             filter
           />
         </div>
         <div class="form-field">
           <label>{{ t('dati_societari.iscrizione_rea') }}{{ requireRea ? ' *' : '' }}</label>
-          <InputText v-model="form.iscrizione_rea" :disabled="disabled" />
+          <InputText v-model="form.iscrizione_rea"
+            :invalid="campiErrati.includes('iscrizione_rea')" :disabled="disabled" />
         </div>
       </div>
     </template>
@@ -86,12 +107,20 @@ const destinatarioFeOptions = computed(() => [
       <label>{{ t('dati_societari.capitale_sociale') }}{{ requireCapitaleSociale ? ' *' : '' }}</label>
       <InputNumber
         v-model="form.capitale_sociale"
+        :invalid="campiErrati.includes('capitale_sociale')"
         :disabled="disabled"
         mode="currency"
         currency="EUR"
         locale="it-IT"
         :min-fraction-digits="2"
       />
+    </div>
+
+    <div v-if="showDataCostituzione" class="form-field">
+      <label>{{ t('dati_societari.data_costituzione') }}</label>
+      <DatePicker :model-value="parseIsoDate(form.data_costituzione)"
+        @update:model-value="form.data_costituzione = toDateString($event)"
+        :date-format="DATE_FORMAT" show-icon show-button-bar :disabled="disabled" />
     </div>
 
     <!-- Socio unico + Liquidazione -->
@@ -135,11 +164,22 @@ const destinatarioFeOptions = computed(() => [
     <div class="form-grid-2col">
       <div v-if="form.destinatario_fe === 'P'" class="form-field">
         <label>{{ t('dati_societari.pec_fatturazione') }}</label>
-        <InputText v-model="form.pec_fatturazione" :disabled="disabled" />
+        <InputText
+          v-model="form.pec_fatturazione"
+          :invalid="campiErrati.includes('pec_fatturazione')"
+          :disabled="disabled"
+        />
       </div>
       <div v-if="form.destinatario_fe === 'C'" class="form-field">
         <label>{{ t('dati_societari.codice_sdi') }}</label>
-        <InputText v-model="form.codice_sdi" :disabled="disabled" />
+        <!-- Il codice SDI e' in maiuscolo (lettere e cifre, 7 o 6 per la PA):
+             lo si trasforma mentre si digita. La forma la decide il DB. -->
+        <InputMaiuscolo
+          v-model="form.codice_sdi"
+          :invalid="campiErrati.includes('codice_sdi')"
+          maxlength="7"
+          :disabled="disabled"
+        />
       </div>
     </div>
   </div>

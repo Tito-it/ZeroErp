@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# REA E CAPITALE LI DICE LA FORMA GIURIDICA, NON LA COLONNA
+#   anagrafiche.dati_societari: id_prov_iscri_rea, iscrizione_rea,
+#   capitale_sociale -> nullable; CHECK chk_dati_societari_rea_coppia
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte B, B-6)
+#
+# -- IL CASO --------------------------------------------------------
+#   Le tre colonne erano NOT NULL, e fn_crea_soggetto_pg le pretendeva
+#   tutte. Ma la forma giuridica dichiara capitale_sociale_policy = NONE e
+#   rea_policy = OPTIONAL per ditta individuale, associazione, fondazione,
+#   ente pubblico e ONLUS: un ente o una ditta con dati societari non si
+#   poteva creare (il form nasconde il capitale e non lo manda). Due sedi
+#   dicevano due cose, e vinceva la colonna.
+#
+# -- COSA FA (decisione di Tid del 2026-10-10, B-6) ---------------------
+#   * DROP NOT NULL sulle tre colonne: la regola passa al guard della forma
+#     (trgfn_dati_societari_guard_forma_giuridica, 20261010-97), che legge
+#     le due policy (REQUIRED -> presente, NONE -> assente).
+#   * CHECK chk_dati_societari_rea_coppia: provincia e numero REA sono UN
+#     dato in due colonne, o tutti e due o nessuno. E' una regola di riga,
+#     quindi CHECK e non guard.
+#   * uq_ds_prov_cea (provincia, numero) resta: con due NULL non collide, ed
+#     e' il comportamento voluto (due enti senza REA non sono un doppione).
+#   * chk_dati_societari_capitale_sociale_finito regge il NULL da se'.
+#
+# -- ⚠️ ORDINE ------------------------------------------------------------
+#   Da qui fino al -97 una riga con capitale o REA NULL entra senza che la
+#   forma la giudichi; nessun changeSet scrive dati societari in mezzo.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261010-95-alter-dati-societari-rea-capitale-dalla-forma-mctit.yaml
+
+  - changeSet:
+      id: 20261010-95-alter-dati-societari-rea-capitale-dalla-forma
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.dati_societari: id_prov_iscri_rea, iscrizione_rea e capitale_sociale nullable (la
+        regola la dice la forma giuridica, guard 20261010-97); CHECK chk_dati_societari_rea_coppia
+        (provincia e numero REA insieme). Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: anagrafiche, tableName: dati_societari }
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                    JOIN pg_catalog.pg_class r ON r.oid = c.conrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+                   WHERE n.nspname = 'anagrafiche' AND r.relname = 'dati_societari'
+                     AND c.conname = 'chk_dati_societari_rea_coppia';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.dati_societari
+                  ALTER COLUMN id_prov_iscri_rea DROP NOT NULL,
+                  ALTER COLUMN iscrizione_rea    DROP NOT NULL,
+                  ALTER COLUMN capitale_sociale  DROP NOT NULL;
+
+              ALTER TABLE anagrafiche.dati_societari
+                  ADD CONSTRAINT chk_dati_societari_rea_coppia
+                  CHECK ((id_prov_iscri_rea IS NULL) = (iscrizione_rea IS NULL));
+
+              COMMENT ON CONSTRAINT chk_dati_societari_rea_coppia ON anagrafiche.dati_societari IS
+                  'Provincia e numero REA sono un dato solo in due colonne: o tutti e due o nessuno. Se servono lo dice la forma giuridica (rea_policy), nel guard trgfn_dati_societari_guard_forma_giuridica. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-6).';
+
+              COMMENT ON COLUMN anagrafiche.dati_societari.id_prov_iscri_rea IS
+                  'Provincia di iscrizione al REA. Nullable dal 2026-10-10 (B-6): se e'' obbligatoria o vietata lo dice config.forme_giuridiche.rea_policy, letta dal guard della forma. Va in coppia con iscrizione_rea (chk_dati_societari_rea_coppia).';
+              COMMENT ON COLUMN anagrafiche.dati_societari.iscrizione_rea IS
+                  'Numero di iscrizione al REA. Nullable dal 2026-10-10 (B-6): lo governa config.forme_giuridiche.rea_policy. Va in coppia con id_prov_iscri_rea.';
+              COMMENT ON COLUMN anagrafiche.dati_societari.capitale_sociale IS
+                  'Capitale sociale. Nullable dal 2026-10-10 (B-6): se e'' obbligatorio o vietato lo dice config.forme_giuridiche.capitale_sociale_policy (NONE per ditta individuale ed enti), letta dal guard della forma.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.dati_societari DROP CONSTRAINT IF EXISTS chk_dati_societari_rea_coppia;
+              ALTER TABLE anagrafiche.dati_societari
+                  ALTER COLUMN id_prov_iscri_rea SET NOT NULL,
+                  ALTER COLUMN iscrizione_rea    SET NOT NULL,
+                  ALTER COLUMN capitale_sociale  SET NOT NULL;

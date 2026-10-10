@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_note_shop(p_identita_id bigint, p_target_tipo character
 CREATE OR REPLACE FUNCTION script.fn_scope_note_shop(p_identita_id bigint, p_target_tipo character varying, p_target_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- ⛔ `fn_scope_shop_via_ordine` porta DUE condizioni —
     --   proprieta' e `canale_origine = 'SHOP'` — perche' due ne

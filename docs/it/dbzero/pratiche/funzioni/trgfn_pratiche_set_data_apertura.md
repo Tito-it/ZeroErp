@@ -35,7 +35,7 @@ BEGIN
     -- (immutabilita' anche all'INSERT).
     IF TG_OP = 'INSERT' THEN
         IF NEW.data_apertura IS NULL AND NEW.stato_id = v_aperta_id THEN
-            NEW.data_apertura := CURRENT_DATE;
+            NEW.data_apertura := script.fn_data_operativa();
         END IF;
         RETURN NEW;
     END IF;
@@ -58,7 +58,7 @@ BEGIN
 
     -- Transizione BOZZA -> APERTA: valorizza data_apertura
     IF OLD.stato_id = v_bozza_id AND NEW.stato_id = v_aperta_id THEN
-        NEW.data_apertura := CURRENT_DATE;
+        NEW.data_apertura := script.fn_data_operativa();
     END IF;
 
     RETURN NEW;

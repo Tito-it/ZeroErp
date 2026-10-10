@@ -3,7 +3,7 @@
 // IBAN e filiale salvati come _obj per restore autocomplete server-side.
 
 import { reactive, ref } from 'vue'
-import { toDateString } from '../../core/utils/date'
+import { toDateString, oggiAziendale, parseIsoDate } from '../../core/utils/date'
 
 const _USI = ['INCASSO', 'PAGAMENTO', 'RIMBORSO', 'GENERICO']
 
@@ -57,7 +57,7 @@ export function useContoBancarioForm() {
     form.intestatario_predefinito = ownerName
     form.uso = 'GENERICO'
     form.predefinito = false
-    form.valido_dal = new Date()
+    form.valido_dal = oggiAziendale()
     form.valido_al = null
     form.intestazione_dichiarata = ''
     form.verificato = false
@@ -77,8 +77,10 @@ export function useContoBancarioForm() {
     form.intestatario_predefinito = data.intestatario_predefinito || ''
     form.uso = data.uso || 'GENERICO'
     form.predefinito = data.predefinito ?? false
-    form.valido_dal = data.valido_dal ? new Date(data.valido_dal) : null
-    form.valido_al = data.valido_al ? new Date(data.valido_al) : null
+    // ⚠️ `parseIsoDate`, non `new Date('YYYY-MM-DD')`: quella e' la mezzanotte
+    //    UTC, cioe' il giorno prima nei fusi negativi (fino al 2026-10-09).
+    form.valido_dal = parseIsoDate(data.valido_dal)
+    form.valido_al = parseIsoDate(data.valido_al)
     form.intestazione_dichiarata = data.intestazione_dichiarata || ''
     form.verificato = data.verificato ?? false
     form.bloccato = data.bloccato ?? false

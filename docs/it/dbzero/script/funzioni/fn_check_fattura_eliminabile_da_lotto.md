@@ -155,12 +155,39 @@ BEGIN
   v_motivi := v_motivi
             || script.fn_check_fatture_con_rettifiche(ARRAY[p_fattura_id]);
 
+  -- ⭐ MOTIVO 6 (2026-10-04) — la fattura ha gia' CONSUMATO plafond.
+  -- ⚠️ Come per il 5, questa porta e' la piu' esposta: ammette la fattura
+  -- anche a lotto EMESSA, e il consumo avviene PRIMA della numerazione,
+  -- quindi il motivo 4 non lo copre. Delegato alla sede unica.
+  -- Brief: brief-db-bom-flag-quantita-e-kit-in-fattura §14 (strada A).
+  -- ⭐ rev 2026-10-04 bis (R-DB-A2, §15.4, scelta A di Tid): la DOMANDA resta
+  --   della sede unica, la FRASE no. La sede unica parla al plurale per le
+  --   due porte del lotto («il lotto contiene fatture…»); qui si elimina UNA
+  --   fattura, e il tooltip parla di quella. Si sostituisce solo la
+  --   reason_key: codice, reason e dettaglio restano quelli della sede.
+  --   Stessa coppia che i motivi 3 e 4 hanno gia' con le porte del lotto
+  --   (fattura_non_pre_fiscale / fatture_non_pre_fiscali, fattura_numerata /
+  --   fatture_numerate).
+  v_motivi := v_motivi
+            || COALESCE(
+                 (SELECT jsonb_agg(
+                           -- ⚠️ `||` e non jsonb_set: a parita' di chiave vince la
+                           --   destra, e in questa forma scripts/check_i18n_keys.py
+                           --   (controllo 4) vede la chiave e la cerca nei locales.
+                           m.motivo || jsonb_build_object(
+                             'reason_key', 'vendite.lotti.azione_reason.fattura_plafond_consumato')
+                           ORDER BY m.ord)
+                    FROM jsonb_array_elements(
+                           script.fn_check_fatture_con_plafond_consumato(ARRAY[p_fattura_id]))
+                         WITH ORDINALITY AS m(motivo, ord)),
+                 '[]'::jsonb);
+
   RETURN v_motivi;
 END;
 $function$
 
 COMMENT ON FUNCTION script.fn_check_fattura_eliminabile_da_lotto(p_lotto_id bigint, p_fattura_id bigint)
-IS 'Funzione PURA (fn_check_*): motivi ostativi all''eliminazione di UNA fattura da un lotto. Togliere = CANCELLARE (RD-7, 2026-08-04). Ritorna [] oppure array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (831) — allargamento RD-7. Motivo 2: fattura non collegata a questo lotto (832). Motivo 3: fattura oltre il pre-fiscale (833). Motivo 4: fattura gia'' NUMERATA (834), deliberatamente ridondante rispetto al 3. ⭐ Motivo 5 (2026-08-22): righe gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ e'' la porta piu'' esposta delle tre, perche'' lavora su UNA fattura e la ammette anche a lotto EMESSA, cioe'' proprio lo stato in cui vive un accredito registrato prima della numerazione; il motivo 4 non lo copre, l''accredito e'' ancorato alla coda dei resi e non al numero. Sorgente UNICA letta da vendite.fn_elimina_fattura_da_lotto. rev 2026-08-22.';
+IS 'Funzione PURA (fn_check_*): motivi ostativi all''eliminazione di UNA fattura da un lotto. Togliere = CANCELLARE (RD-7, 2026-08-04). Ritorna [] oppure array ordinato di {codice, reason, reason_key, dettaglio}. Motivo 1: lotto oltre il pre-fiscale (831) — allargamento RD-7. Motivo 2: fattura non collegata a questo lotto (832). Motivo 3: fattura oltre il pre-fiscale (833). Motivo 4: fattura gia'' NUMERATA (834), deliberatamente ridondante rispetto al 3. ⭐ Motivo 5 (2026-08-22): righe gia'' RETTIFICATE, delegato a script.fn_check_fatture_con_rettifiche — ⚠️ e'' la porta piu'' esposta delle tre, perche'' lavora su UNA fattura e la ammette anche a lotto EMESSA, cioe'' proprio lo stato in cui vive un accredito registrato prima della numerazione; il motivo 4 non lo copre, l''accredito e'' ancorato alla coda dei resi e non al numero. Sorgente UNICA letta da vendite.fn_elimina_fattura_da_lotto. rev 2026-08-22. ⭐ Motivo 6 (2026-10-04): fatture che hanno gia'' CONSUMATO il plafond di un titolo IVA, delegato a script.fn_check_fatture_con_plafond_consumato — il consumo avviene PRIMA della numerazione, quindi il motivo sul numero non lo copre; un movimento e'' un fatto contabile e la fattura non si disfa piu'' (brief-db-bom-flag-quantita-e-kit-in-fattura §14, strada A). ⭐ rev 2026-10-04 bis (R-DB-A2, scelta A di Tid): sul motivo 6 la reason_key e'' vendite.lotti.azione_reason.fattura_plafond_consumato — il tooltip parla di QUESTA fattura, non del lotto; codice, reason e dettaglio restano quelli della sede unica. Stessa coppia singolare/plurale dei motivi 3 e 4 con le porte del lotto.';
 ```
 
 ---

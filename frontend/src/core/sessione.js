@@ -62,13 +62,18 @@ export const MOTIVO_USCITA = Object.freeze({
   SESSIONE_SCADUTA: 'session_expired',
   // Il logout l'ha fatto un'altra scheda dello stesso browser (dal
   // 2026-09-29: prima diceva «sessione scaduta», e non era vero).
-  USCITA_ALTRA_SCHEDA: 'logout_other_tab'
+  USCITA_ALTRA_SCHEDA: 'logout_other_tab',
+  // Troppe password sbagliate chieste DENTRO la sessione (cambio password,
+  // configurazione del secondo fattore): il backend ha chiuso questa sessione
+  // (decisione A di Tid, 2026-10-03).
+  FRENO_PASSWORD: 'password_attempts'
 })
 
 // Chiave i18n della frase di ogni motivo (`LoginView`).
 export const FRASE_MOTIVO_USCITA = Object.freeze({
   [MOTIVO_USCITA.SESSIONE_SCADUTA]: 'auth.session_expired',
-  [MOTIVO_USCITA.USCITA_ALTRA_SCHEDA]: 'auth.logout_other_tab'
+  [MOTIVO_USCITA.USCITA_ALTRA_SCHEDA]: 'auth.logout_other_tab',
+  [MOTIVO_USCITA.FRENO_PASSWORD]: 'auth.sessione_chiusa_freno'
 })
 
 // Scopo: true se il motivo della rotta dice che è l'applicazione stessa ad

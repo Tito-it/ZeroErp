@@ -8,24 +8,17 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { cloneVersione } from '../api/listini'
 import { getVersioneCloneDefaults } from '../api/formDefaults'
-import { toDateString, displayDate, addDaysToToday } from '../../core/utils/date'
+import { toDateString, displayDate, addDaysToToday, giornoDi, oggiAziendale, parseIsoDate } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
-import Drawer from 'primevue/drawer'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Message from 'primevue/message'
 
-
-
 const { t } = useI18n()
-const isReadonly = useInjectReadonly()
 const { execute, loading, campiErrati } = useApiHandler()
 
 const props = defineProps({
@@ -34,17 +27,12 @@ const props = defineProps({
   sourceVersione: { type: Object, default: null },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'cloned'])
 
 const form = ref({})
 // Modifiche non salvate: fotografia dopo i default BE, chiudere con
 // modifiche chiede conferma (BB useDrawerFormPreserve).
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 function emptyForm() {
   // Form iniziale prima della risposta BE. Sovrascritto da loadDefaults sotto.
@@ -67,8 +55,8 @@ async function loadDefaults() {
   if (res === null) return
   form.value = {
     codice_versione: res.default_codice_versione || '',
-    valido_dal: res.default_valido_dal ? new Date(res.default_valido_dal + 'T00:00:00') : null,
-    valido_al: res.default_valido_al ? new Date(res.default_valido_al + 'T00:00:00') : null,
+    valido_dal: parseIsoDate(res.default_valido_dal),
+    valido_al: parseIsoDate(res.default_valido_al),
   }
 }
 
@@ -89,10 +77,8 @@ const canSave = computed(() =>
 // deve essere consapevole che le fatturazioni successive non saranno corrette.
 const isRetroattivo = computed(() => {
   if (!form.value.valido_dal) return false
-  const target = new Date(form.value.valido_dal)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return target < today
+  const target = giornoDi(form.value.valido_dal)
+  return target !== null && target < oggiAziendale()
 })
 
 async function handleSave() {
@@ -116,54 +102,56 @@ async function handleSave() {
 function close() {
   emit('update:visible', false)
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @after-show="onAfterShow"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('vendite.listini.clona_versione')"
+    :icon="MANAGE_ICONS.CLONE"
+    :action="t('vendite.listini.clona')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificato" :action="t('vendite.listini.clona')" :title="t('vendite.listini.clona_versione')" :icon="MANAGE_ICONS.CLONE" />
-    </template>
+    <div v-if="sourceVersione" class="app-drawer-section">
+      <h4>
+        {{ t('vendite.listini.versione_sorgente') }}:
+        {{ sourceVersione.codice_versione }}
+        ({{ displayDate(sourceVersione.valido_dal) }} → {{ displayDate(sourceVersione.valido_al) || '∞' }})
+      </h4>
+      <p class="app-text-muted mt-025">{{ t('vendite.listini.clona_help') }}</p>
+    </div>
 
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div v-if="sourceVersione" class="app-drawer-section">
-        <h4>
-          {{ t('vendite.listini.versione_sorgente') }}:
-          {{ sourceVersione.codice_versione }}
-          ({{ displayDate(sourceVersione.valido_dal) }} → {{ displayDate(sourceVersione.valido_al) || '∞' }})
-        </h4>
-        <p class="app-text-muted mt-025">{{ t('vendite.listini.clona_help') }}</p>
-      </div>
-
+    <div class="form-field">
+      <label>{{ t('vendite.listini.field_codice_versione') }} *</label>
+      <InputText v-model="form.codice_versione"
+        :invalid="campiErrati.includes('codice_versione')"
+      />
+    </div>
+    <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('vendite.listini.field_codice_versione') }} *</label>
-        <InputText v-model="form.codice_versione"
-          :invalid="campiErrati.includes('codice_versione')"
+        <label>{{ t('vendite.listini.field_valido_dal') }} *</label>
+        <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon
+          :invalid="campiErrati.includes('valido_dal')"
         />
       </div>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.listini.field_valido_dal') }} *</label>
-          <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon
-            :invalid="campiErrati.includes('valido_dal')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.listini.field_valido_al') }}</label>
-          <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-            :invalid="campiErrati.includes('valido_al')"
-          />
-        </div>
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_valido_al') }}</label>
+        <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+          :invalid="campiErrati.includes('valido_al')"
+        />
       </div>
-
-      <Message v-if="isRetroattivo" severity="warn" :closable="false" class="mt-1">
-        {{ t('vendite.listini.warning_retroattivo') }}
-      </Message>
-
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
-  </Drawer>
+
+    <Message v-if="isRetroattivo" severity="warn" :closable="false" class="mt-1">
+      {{ t('vendite.listini.warning_retroattivo') }}
+    </Message>
+  </AppDrawer>
 </template>

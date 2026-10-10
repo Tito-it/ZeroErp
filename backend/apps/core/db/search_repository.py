@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import jsonb_out, rows_to_list
 from typing import Any
 
@@ -31,21 +32,14 @@ class SearchRepository:
         *,
         search_term: str,
         tipo_ruolo_id: int,
-        emittente_ids: list[int] | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
-        # ⚠️ Lo scope ha TRE stati e vanno passati tutti e tre: `None` =
-        # nessuna restrizione, `[]` = nessun accesso, lista = whitelist.
-        # Qui c'era `if emittente_ids else None`: in Python la lista vuota e'
-        # falsa, quindi `[]` diventava `None` — cioe' i due estremi OPPOSTI
-        # della convenzione collassavano sullo stesso valore, e dalla parte
-        # che APRE. La convenzione non si legge mai con un test di verita'.
-        # (brief-db-perimetro-emittente-liste-e-gerarchia-ba §11.6, BE-1)
-        pg_emittente_ids = emittente_ids
-
+        # ⭐ Il perimetro lo fa la RLS di `anagrafiche.clienti` (dal 2026-10-08,
+        #    brief-db-codici-non-trovato-email-e-permessi R-4): il backend non
+        #    passa piu' `p_emittente_ids`, superato e non letto dalla funzione.
         def _pagina(lim: int, off: int) -> list[tuple[Any, ...]]:
             with connection.cursor() as cursor:
                 cursor.execute(
@@ -54,15 +48,13 @@ class SearchRepository:
                       FROM script.fn_search_soggetti_universale(
                                p_search_term   := %s,
                                p_tipo_ruolo_id := %s,
-                               p_emittente_ids := %s,
                                p_limit         := %s,
                                p_offset        := %s,
                                p_order_by      := %s,
                                p_order_dir     := %s
                            ) r
                     """,
-                    [search_term, tipo_ruolo_id, pg_emittente_ids,
-                     lim, off, order_by, order_dir],
+                    [search_term, tipo_ruolo_id, lim, off, order_by, order_dir],
                 )
                 return cursor.fetchall()
 
@@ -102,22 +94,18 @@ class SearchRepository:
         soggetto_id: str,
         tipo_ruolo_id: int,
         utility_id: int | None = None,
-        emittente_ids: list[int] | None = None,
     ) -> dict[str, Any] | None:
-        # Tre stati, come in `search_soggetti` sopra: `[]` non e' `None`.
-        pg_emittente_ids = emittente_ids
-
+        # Perimetro dalla RLS, come in `search_soggetti` sopra.
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT script.fn_get_search_detail(
                            p_soggetto_id   := %s::uuid,
                            p_tipo_ruolo_id := %s,
-                           p_utility_id    := %s,
-                           p_emittente_ids := %s
+                           p_utility_id    := %s
                        )
                 """,
-                [soggetto_id, tipo_ruolo_id, utility_id, pg_emittente_ids],
+                [soggetto_id, tipo_ruolo_id, utility_id],
             )
             row = cursor.fetchone()
 
@@ -140,20 +128,8 @@ class SearchRepository:
             )
             return rows_to_list(cursor)
 
-    # Scopo: Verifica che un tipo_ruolo_id abbia ricerca_visibile = true.
-    # Usato dalle view per validare il parametro tipo_ruolo_id.
-    def is_tipo_ruolo_visibile(self, tipo_ruolo_id: int) -> bool:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT EXISTS(
-                    SELECT 1
-                      FROM config.tipi_ruoli
-                     WHERE id = %s
-                       AND ricerca_visibile = true
-                )
-                """,
-                [tipo_ruolo_id],
-            )
-            row = cursor.fetchone()
-        return bool(row and row[0])
+    # ⛔ `is_tipo_ruolo_visibile` RITIRATA (2026-10-10, Q-2 di
+    #    brief-db-codici-non-trovato-email-e-permessi): «il ruolo e'
+    #    ricercabile» lo dicono le due funzioni DB, col BB
+    #    `script.fn_predicato_soggetto_ruolo_visibile`. Il menu a tendina
+    #    continua a leggere la colonna (`list_tipi_ruoli_visibili`, sopra).

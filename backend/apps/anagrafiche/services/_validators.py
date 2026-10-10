@@ -1,19 +1,31 @@
 # Scopo: Helper di validazione/estrazione condivisi per i service anagrafiche.
 #        require_str, optional_str, extract_optional_fields, require_found,
-#        create_with_dedup, create_with_constraint_mapping, update_with_dedup.
+#        create_with_dedup, create_with_constraint_mapping, update_with_dedup,
+#        rifiuto_integrita (la traduzione di un IntegrityError per SQLSTATE).
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, NoReturn, TypeVar
 
 from django.db import IntegrityError
 
 from apps.core.api.payload_validators import optional_bool, optional_int, optional_iso_date
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import vincolo_violato
+from apps.core.services.db_error_fields import diagnostica_db
+from apps.core.services.payload_helpers import map_integrity_error, vincolo_violato
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.testata_guard import o_not_found
-from apps.anagrafiche.error_codes import E_ANAG_DUPLICATO, E_ANAG_NOT_FOUND, E_ANAG_VALIDAZIONE
+from apps.anagrafiche.error_codes import (
+    E_ANAG_DUPLICATO,
+    E_ANAG_FK,
+    E_ANAG_NOT_FOUND,
+    E_ANAG_VALIDAZIONE,
+)
+
+# SQLSTATE di PostgreSQL che decidono la traduzione di un `IntegrityError`.
+_SQLSTATE_UNICITA = "23505"  # unique_violation: «esiste gia'»
+_SQLSTATE_FK = "23503"  # foreign_key_violation: il riferimento non esiste
 
 
 def require_str(payload: dict, key: str, message: str) -> str:
@@ -58,23 +70,23 @@ def extract_optional_fields(
     """
     data: dict[str, Any] = {}
     for key in ints:
-        val = optional_int(payload, key)
-        if val is not None:
-            data[key] = val
+        val_int = optional_int(payload, key)
+        if val_int is not None:
+            data[key] = val_int
     for key in bools:
         if key in payload and payload[key] is not None:
             data[key] = optional_bool(payload, key)
     for key in strings:
-        val = optional_str(payload, key)
-        if val is not None:
-            data[key] = val
+        val_str = optional_str(payload, key)
+        if val_str is not None:
+            data[key] = val_str
     for key in numeric:
         if key in payload and payload[key] is not None:
             data[key] = payload[key]
     for key in dates:
-        val = optional_iso_date(payload, key)
-        if val is not None:
-            data[key] = val
+        val_data = optional_iso_date(payload, key)
+        if val_data is not None:
+            data[key] = val_data
     return data
 
 
@@ -89,12 +101,47 @@ def require_found(entity: dict | None, message: str) -> dict:
     return o_not_found(entity, code=E_ANAG_NOT_FOUND, message=message)
 
 
-def create_with_dedup(fn: Any, duplicate_message: str) -> dict:
-    """Esegue fn (create) gestendo IntegrityError come duplicato."""
+# Scopo: ⭐ La traduzione di un `IntegrityError` per i service anagrafiche, in
+#        un posto solo: decide lo SQLSTATE, non il chiamante.
+#        - 23505 (unicita') → `E_ANAG_DUPLICATO` col messaggio del chiamante;
+#        - 23503 (FK) → `E_ANAG_FK`;
+#        - ogni altra violazione (CHECK, NOT NULL, esclusione…) →
+#          `E_ANAG_VALIDAZIONE`, col campo quando PostgreSQL lo nomina (NOT NULL).
+# ⚠️ Fino al 2026-10-07 `create_with_dedup` / `update_with_dedup` traducevano
+#    QUALUNQUE `IntegrityError` nel messaggio di duplicato: un `CHECK` violato
+#    usciva «Codice fiscale o partita IVA duplicata», cioe' un messaggio che
+#    afferma il falso su un campo che l'operatore non ha toccato (E-7 di
+#    analisi-be-difetti-emersi-verifica-doc-api-core, parte «fuori perimetro»).
+#    Lo SQLSTATE e' il contratto di PostgreSQL, non il testo (che si traduce
+#    con `lc_messages`).
+def rifiuto_integrita(exc: IntegrityError, duplicate_message: str) -> NoReturn:
+    sqlstate = diagnostica_db(exc).sqlstate
+    if sqlstate == _SQLSTATE_UNICITA:
+        raise ServiceError(code=E_ANAG_DUPLICATO, message=duplicate_message, detail=str(exc)) from exc
+    if sqlstate == _SQLSTATE_FK:
+        raise ServiceError(
+            code=E_ANAG_FK,
+            message="Riferimento non valido: l'entita' indicata non esiste.",
+            detail=str(exc),
+        ) from exc
+    map_integrity_error(
+        exc,
+        fallback_code=E_ANAG_VALIDAZIONE,
+        fallback_message="Dati non validi: il database ha rifiutato il valore.",
+    )
+
+
+_T = TypeVar("_T")
+
+
+# ⚠️ Restituisce cio' che restituisce `fn` (l'id creato: uno `str` o un `int`),
+#    non un dict: fino al 2026-10-09 l'annotazione diceva `-> dict`.
+def create_with_dedup(fn: Callable[[], _T], duplicate_message: str) -> _T:
+    """Esegue fn (create); un IntegrityError lo traduce `rifiuto_integrita`."""
     try:
         return fn()
     except IntegrityError as exc:
-        raise ServiceError(code=E_ANAG_DUPLICATO, message=duplicate_message, detail=str(exc)) from exc
+        rifiuto_integrita(exc, duplicate_message)
 
 
 def create_with_constraint_mapping(
@@ -105,8 +152,7 @@ def create_with_constraint_mapping(
     """Esegue fn (create) mappando le violazioni UNIQUE su messaggi per-constraint.
 
     Per tabelle con piu' vincoli UNIQUE: evita il mascheramento di
-    `create_with_dedup` (che riconduce qualsiasi IntegrityError a un unico
-    messaggio). Sul vincolo che fa match solleva
+    `create_with_dedup` (che riconduce ogni unicita' a un unico messaggio). Sul vincolo che fa match solleva
     ServiceError(E_ANAG_DUPLICATO, messaggio). Se nessun constraint matcha:
     se `default_message` e' dato lo solleva, altrimenti RILANCIA l'IntegrityError
     (no mascheramento; il middleware lo gestisce) — pattern coerente con clienti.
@@ -144,15 +190,18 @@ def create_with_constraint_mapping(
                 context={"field": campo} if campo else None,
             ) from exc
         if default_message is not None:
-            raise ServiceError(code=E_ANAG_DUPLICATO, message=default_message, detail=detail) from exc
+            # Il messaggio di ripiego dice «esiste gia'»: vale solo per
+            # un'unicita' (o una violazione che non si sa classificare, che
+            # `rifiuto_integrita` porta a validazione), mai per FK o CHECK.
+            rifiuto_integrita(exc, default_message)
         raise
 
 
 def update_with_dedup(fn: Any, duplicate_message: str, not_found_message: str) -> dict:
-    """Esegue fn (update) gestendo IntegrityError e not found."""
+    """Esegue fn (update); IntegrityError via `rifiuto_integrita`, poi not found."""
     try:
         updated = fn()
     except IntegrityError as exc:
-        raise ServiceError(code=E_ANAG_DUPLICATO, message=duplicate_message, detail=str(exc)) from exc
+        rifiuto_integrita(exc, duplicate_message)
     ErrorManager.require(updated, code=E_ANAG_NOT_FOUND, message=not_found_message)
     return {"updated": True}

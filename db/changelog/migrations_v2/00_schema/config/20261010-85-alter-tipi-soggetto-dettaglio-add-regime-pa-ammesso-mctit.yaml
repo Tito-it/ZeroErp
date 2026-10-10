@@ -1,0 +1,80 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUALI NATURE AMMETTONO «CLIENTE PA» E «SPLIT PAYMENT»
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte A, A-1)
+#
+# -- IL CASO --------------------------------------------------------
+#   anagrafiche.soggetti.cliente_pa e split_payment (S/N, NOT NULL) valgono
+#   per ogni soggetto, anche per un privato. La natura di dettaglio
+#   risponde gia' alle altre domande sul soggetto (dati_societari_policy,
+#   sesso_policy, piva/cf obbligatori): qui riceve le due che mancano.
+#
+# -- COSA FA ----------------------------------------------------------
+#   cliente_pa_ammesso e split_payment_ammesso, boolean NOT NULL DEFAULT
+#   false. Booleani e non presenza_policy_enum: i flag sono S/N NOT NULL,
+#   quindi «obbligatorio» non ha significato; «non ammesso» vuol dire che il
+#   flag resta N.
+#   * DEFAULT false: una natura che nasce domani (un dettaglio estero) non
+#     ammette nessuno dei due finche' qualcuno non lo dichiara.
+#   * I valori veri arrivano dal CSV (80_data, mirror 20250717-12), come ogni
+#     colonna di catalogo: qui nessun UPDATE (linee-guida-sql §11.2).
+#   * Il CHECK che vieta i due flag alla persona fisica nasce in 90_end
+#     (20261010-87), dopo il mirror.
+#   * Il guard che li fa rispettare e' il 20261010-86.
+#
+# -- PERCHE' UN DEFAULT LETTERALE E' SICURO -----------------------------
+#   false e' una costante: ADD COLUMN ... DEFAULT non chiama funzioni.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261010-85-alter-tipi-soggetto-dettaglio-add-regime-pa-ammesso-mctit.yaml
+
+  - changeSet:
+      id: 20261010-85-alter-tipi-soggetto-dettaglio-add-regime-pa-ammesso
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Colonne cliente_pa_ammesso e split_payment_ammesso (boolean NOT NULL DEFAULT false) su
+        config.tipi_soggetto_dettaglio: quali nature ammettono i due flag fiscali del soggetto.
+        Brief: brief-db-dati-fiscali-e-societari-del-soggetto (A-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: tipi_soggetto_dettaglio }
+            - not:
+                - columnExists:
+                    { schemaName: config, tableName: tipi_soggetto_dettaglio, columnName: cliente_pa_ammesso }
+            - not:
+                - columnExists:
+                    { schemaName: config, tableName: tipi_soggetto_dettaglio, columnName: split_payment_ammesso }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  ADD COLUMN cliente_pa_ammesso    boolean NOT NULL DEFAULT false,
+                  ADD COLUMN split_payment_ammesso boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN config.tipi_soggetto_dettaglio.cliente_pa_ammesso IS
+                  'La natura ammette anagrafiche.soggetti.cliente_pa = ''S'' (la controparte e'' una Pubblica Amministrazione). false = il flag resta N. Condizione NECESSARIA, non sufficiente: «la natura lo ammette» non vuol dire «il soggetto lo e''». Lo legge il guard anagrafiche.trgfn_soggetti_guard_regime_pa. Mai true per una persona fisica (CHECK chk_tipi_soggetto_dettaglio_regime_pa_natura). Valore dal CSV del catalogo. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
+
+              COMMENT ON COLUMN config.tipi_soggetto_dettaglio.split_payment_ammesso IS
+                  'La natura ammette anagrafiche.soggetti.split_payment = ''S'' (scissione dei pagamenti, art. 17-ter DPR 633/1972: EsigibilitaIVA S). false = il flag resta N. Condizione NECESSARIA, non sufficiente: societa'' controllate dalla PA o quotate non si distinguono da nessuna colonna, il flag lo mette l''operatore. Lo legge il guard anagrafiche.trgfn_soggetti_guard_regime_pa. Mai true per una persona fisica (CHECK chk_tipi_soggetto_dettaglio_regime_pa_natura). Valore dal CSV del catalogo. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE config.tipi_soggetto_dettaglio
+                  DROP COLUMN IF EXISTS cliente_pa_ammesso,
+                  DROP COLUMN IF EXISTS split_payment_ammesso;

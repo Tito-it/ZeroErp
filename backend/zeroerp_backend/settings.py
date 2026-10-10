@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import os
+from typing import Any
 from django.core.exceptions import ImproperlyConfigured
 
 # Scopo: Gestisce `env` nel flusso applicativo del modulo.
@@ -280,6 +281,15 @@ SPECTACULAR_SETTINGS = {
     """,
 }
 
+# Due chiavi d'ingresso (L-4 del piano accessi, D-9): il nome utente per la
+# porta admin (`ModelBackend`), l'email per portale e shop. Django prova ogni
+# backend la cui firma accetta le credenziali passate: `authenticate(email=…)`
+# arriva al secondo, `authenticate(username=…)` non lo attraversa mai.
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "apps.core.services.credenziale_ingresso.CredenzialePerEmailBackend",
+]
+
 SIMPLE_JWT = {
     # Access BREVE (decisione Tid 2026-09-28, brief sicurezza §2): il frontend
     # lo tiene solo in memoria e lo rinnova in silenzio dal cookie del
@@ -301,6 +311,8 @@ MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'apps.core.middleware.request_context_middleware.RequestContextMiddleware',
+    # Fuso dell'azienda attivo per la richiesta (BB core/services/fuso_aziendale).
+    'apps.core.middleware.fuso_aziendale_middleware.FusoAziendaleMiddleware',
     'apps.core.middleware.api_exception_middleware.ApiExceptionMiddleware',
     'apps.core.middleware.user_language_middleware.UserLanguageMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -401,7 +413,16 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'it-it'
 
-TIME_ZONE = 'Europe/Rome'
+# ⛔ 'UTC' e' un valore NEUTRO, non il fuso dell'azienda (decisione T-2 di
+#    brief-be-db-fe-un-solo-fuso-aziendale). Il fuso dell'azienda e' un dato,
+#    `config.parameters.SYSTEM_FUSO_ORARIO`: lo legge il BB
+#    `apps.core.services.fuso_aziendale` e lo attivano `FusoAziendaleMiddleware`
+#    (richieste) e `ComandoAziendale` (management command). Fino al 2026-10-09
+#    qui c'era 'Europe/Rome', una seconda copia del parametro che sarebbe
+#    divergita in silenzio al primo cambio. Cio' che resta legato al fuso del
+#    processo (un `date.today()` sfuggito) cosi' si vede, invece di funzionare
+#    per coincidenza.
+TIME_ZONE = 'UTC'
 
 USE_I18N = True
 
@@ -427,7 +448,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # --- Cache ---
 # In CI/test senza Redis usa LocMemCache (CACHE_BACKEND=locmem)
 if env("CACHE_BACKEND", "") == "locmem":
-    CACHES = {
+    CACHES: dict[str, dict[str, Any]] = {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "KEY_PREFIX": "zeroerp",
@@ -499,6 +520,16 @@ PRESIDI_DIGEST_DESTINATARIO = env("ZEROERP_PRESIDI_DIGEST_DESTINATARIO", "")
 MAILERS = {
     "default": {"BACKEND": "django.core.mail.backends.console.EmailBackend"},
 }
+
+# ⛔ `mail.E001` (`check --deploy`: «backend di posta da sviluppo») e' SILENZIATO
+#    PER PROGETTO, non per comodita': la console qui sopra vale in TUTTI gli
+#    ambienti, produzione compresa, perche' Django non spedisce posta in
+#    ZeroErp. Configurargli uno SMTP vero aprirebbe un secondo canale accanto a
+#    `config.email_account`, fuori dal modello. Deciso da Tid il 2026-10-08
+#    (D3-b di migliorie-generali-BE-FE): e' cio' che permette alla CI di girare
+#    `check --deploy` COMPLETO, e non il solo `--tag security`.
+#    Si toglie il giorno in cui Django dovesse spedire posta per davvero.
+SILENCED_SYSTEM_CHECKS = ["mail.E001"]
 
 # --- Proxy HTTPS/Nginx + cookie sicuri ---
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")  # fidati dell'header di Nginx
@@ -608,7 +639,11 @@ LOGGING = {
         },
     },
     "formatters": {
+        # ⭐ `asctime` in UTC, ISO 8601 con `Z` (T-3, brief un-solo-fuso-aziendale):
+        #    un log si confronta con altri log, e un'ora senza offset non dice
+        #    in che fuso e' scritta.
         "verbose": {
+            "class": "apps.core.logging_formatters.FormatterUtcIso",
             "format": (
                 "%(asctime)s %(levelname)s %(name)s [%(process)d] "
                 "req=%(request_id)s %(message)s"

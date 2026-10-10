@@ -321,7 +321,7 @@ class ApiRunLottoPipeline(DomainAPIView):
 
 Non creare classi V1 per nuovi endpoint.
 
-La risoluzione permessi segue la catena: superuser bypass → `ruolo_applicativo = DISABILITATO` → bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD. Vedi `apps/core/api/permissions.py`.
+La risoluzione permessi segue la catena: superuser bypass → bypass `SUPER_ADMIN` → azione processo → livello area/oggetto CRUD (dal 2026-10-02 senza il passo «`ruolo_applicativo = DISABILITATO` → nega»: una veste spenta tiene il suo tipo e ha `attivo = false`, quindi non e' l'identita' attiva di nessuna sessione — brief-db-be-fe-area-accessi R-DB-1). Vedi `apps/core/api/permissions.py`.
 
 ---
 
@@ -344,7 +344,7 @@ from apps.core.api.endpoint_helpers import handle_post_json
 class ApiPraticaStato(APIView):
     # Scopo: Gestisce la richiesta HTTP POST per cambiare stato pratica.
     def post(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.cambia_stato_pratica(pratica_id, str(payload["nuovo_stato"]))
             return {"status": "ok"}
 
@@ -414,12 +414,19 @@ I filtri opzionali da query string si normalizzano con gli helper di
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `qp_str(raw)`                                                       | stringa o `None` se assente/vuota (strip)                                                               |
 | `qp_int(raw, default)`                                              | int con default; fallback silenzioso al default se non numerico                                         |
-| `qp_int_strict(raw, name, default)`                                 | int con default; **400** se presente ma non numerico                                                    |
-| `qp_int_optional(raw, name)`                                        | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico                              |
+| `qp_int_strict(raw, name, default)`                                 | int con default; **400** se presente ma non numerico o fuori da `bigint`                                |
+| `qp_int_optional(raw, name, *, min_val, max_val)`                   | int **opzionale strict**: `None` se assente/vuoto, **400** se non numerico o fuori range (default `bigint`) |
 | `qp_bool(raw, default=True)`                                        | bool con default (False solo su `0/false/no/n/off`)                                                     |
 | `qp_bool_optional(raw, name)`                                       | bool **opzionale strict**: `None` se assente/vuoto, `True/False` sui token, **400** se non riconosciuto |
 | `qp_iso_date_optional(raw, name)`                                   | `date` **opzionale strict**: `None` se assente/vuoto, **400** se malformata                             |
 | `parse_list_params(qp, *, default_limit, max_limit, default_order)` | bundle `search/limit/offset/order_by/order_dir/page` per liste **offset-based**                         |
+
+⚠️ **Il tetto di un intero è il tipo DOVE ARRIVA** (dal 2026-10-08): un confronto
+`col = %s` regge qualunque intero, un **parametro di funzione** `integer` o un cast
+`::integer` no — `3000000000` parte come `bigint`, la funzione non si risolve, e
+la risposta è un **500** al posto di un 400. Il default di `qp_int_optional` è
+`bigint` (oltre, nessun intero PG); chi passa il valore a un parametro `integer`
+dichiara `min_val=INTEGER_MIN, max_val=INTEGER_MAX` (`apps.core.services.payload_helpers`).
 
 **Contratto degli helper `*_optional` (dal 2026-06-04):**
 
@@ -486,7 +493,12 @@ diverso dalle misure del paginatore (brief-db-misure-pagina-catalogo §6.5). Nei
 tetto=MAX_LIMIT)`. ⛔ Mai il numero scritto a mano, nemmeno nella descrizione
 OpenAPI (`f"... (default {DEFAULT_LIMIT}, max {MAX_LIMIT})"`): lo presidia
 `apps/core/tests/test_paginazione_fonte_unica.py`, con le eccezioni dichiarate
-(liste di eventi a 100, autocomplete, batch).
+(autocomplete, batch). ⭐ Le **liste di eventi** (giornale di una pratica,
+registro di una commessa, task run di un lotto) partono da
+`DEFAULT_LIMIT_EVENTI` (100), stessa sede. ⛔ **Anche le firme** di service e
+repository (dal 2026-10-04): `limit: int = DEFAULT_LIMIT`, mai un numero —
+una lista aveva il suo default nella view e un altro, diverso, nella firma; il
+presidio le guarda, con le eccezioni (lookup, batch) in `_FIRME_AMMESSE`.
 
 Risposta paginata:
 
@@ -528,8 +540,9 @@ dalle righe che ritorna:
   stantia. ⭐ Dal 2026-09-28 il ripiego c'e' **sempre**: se il chiamante non
   passa un `fallback_count_sql` suo, il BB rilegge la stessa query con
   `LIMIT 1 OFFSET 0` (serve che finisca con `LIMIT %s OFFSET %s` e abbia
-  parametri posizionali, e lo verifica a ogni chiamata). `offset` e'
-  obbligatorio. ⛔ Una `COUNT(*) OVER ()` letta a mano (`extract_paginated`,
+  parametri posizionali, e lo verifica a ogni chiamata). L'offset il BB lo
+  legge dall'ultimo parametro della query; `offset=` si passa solo con i
+  parametri con nome (dal 2026-10-04: passato e ricavabile, deve coincidere). ⛔ Una `COUNT(*) OVER ()` letta a mano (`extract_paginated`,
   `rows[0][n]`) oltre l'ultima pagina dice totale 0, e la lista a video non sa
   tornare indietro (`useListaEmptyStateFetch` arretra da solo, ma solo su un
   totale vero): si passa dal BB;
@@ -652,7 +665,7 @@ una.** Le famiglie in servizio sono tre, e nessuna è il calco delle altre:
 | riga mapping BA                                      | `can_remove`        | `rimozione_blocco_reason`                 | `rimozione_blocco_reason_key`                                                                |
 | righe reso · coda accrediti                          | —                   | `annullo_blocco_codice` · `blocco_codice` | —                                                                                            |
 | riga del piano d'inventario (magazzino, 2026-09-23)  | — (`esito = NON_POSTABILE`) | `posting_blocco_reason`         | `posting_blocco_reason_key`                                                                  |
-| dettaglio operatore (amm. software, 2026-09-27)      | `can_invite` · `can_disable` · `can_demote_super_admin` | `invite_reason` · `disable_reason` · `demote_reason` | `invite_reason_key` · `disable_reason_key` · `demote_reason_key` |
+| dettaglio operatore (amm. software, 2026-09-27)      | `can_invite` · `can_disable` · `can_demote_super_admin` · `can_set_valido_al` (2026-10-07) | `invite_reason` · `disable_reason` · `demote_reason` · `valido_al_reason` | `invite_reason_key` · `disable_reason_key` · `demote_reason_key` · `valido_al_reason_key` |
 
 ⭐ **Solo le prime due sono terne coerenti** (la famiglia 1): motivo e chiave
 si ricavano dal nome del flag, quindi chi ne legge uno sa già come si chiamano
@@ -786,7 +799,7 @@ Usato quando un'entita` ammette modifica di campi specifici senza che questo cos
 class ApiPraticaDetail(APIView):
     # Scopo: Gestisce la richiesta HTTP PATCH per aggiornare una pratica.
     def patch(self, request: Request, pratica_id: int) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             pratiche_service.aggiorna_pratica(pratica_id, dict(payload))
             return {"status": "ok"}
 
@@ -1154,12 +1167,13 @@ I nomi usano kebab-case: `reset-draft`, `calcoli-tempo`, `regole-generazione`.
 Per l'inventario completo degli endpoint attivi per dominio, consultare la documentazione OpenAPI generata automaticamente all'endpoint `/api/docs/` oppure i documenti manuali per dominio:
 
 * **Pratiche**: [api_pratiche_list.md](/backend/pratiche/manual/api_pratiche_list) | [api_pratiche_generate.md](/backend/pratiche/manual/api_pratiche_generate) | [api_pratiche_note.md](/backend/pratiche/manual/api_pratiche_note) | [api_pratiche_allegati.md](/backend/pratiche/manual/api_pratiche_allegati) | [api_flusso_assegnazione.md](/backend/pratiche/manual/api_flusso_assegnazione) | [api_operatori_reparto.md](/backend/pratiche/manual/api_operatori_reparto) | [api_prendi_in_carico.md](/backend/pratiche/manual/api_prendi_in_carico) | [api_coda_lavoro.md](/backend/pratiche/manual/api_coda_lavoro)
-* **Amm. Software**: [api_amm_software.md](../backend/amm-software/manual/api_amm_software.md) — dal 2026-09-18 anche `GET /amm-software/processi/presidi/conteggi/` (§6.1-bis): la **testata sola** dei presidi (`totale · con_righe · non_letti`) per il **pallino della topbar**, stesso giro di `presidi/` senza le prime righe, stessa porta `AdminAPIView`; un presidio non leggibile è `non_letti`, non un errore | [api_error_log.md](../backend/amm-software/manual/api_error_log.md) — dal 2026-09-19 `GET /amm-software/error-log/` (+ `export/`): la **consultazione di `dbops.error_log`** per i tecnici (pezzo E dell'osservabilità) — quale funzione ha sollevato quale codice, quando, in quale transazione — con frase, causa, soluzione e **classe** dal catalogo per JOIN e il `context` **com'è**. Ogni filtro della whitelist ha il suo indice (P-3) ed è provato con `EXPLAIN`; `function_name` è un prefisso `LIKE` con `_` escapato, `tx_id` è il ponte dal giornale di dominio. Stessa porta `AdminAPIView` dei due diari accanto; lista `dbops.error_log` esente dal perimetro emittente
-* **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_clienti.md](../backend/anagrafiche/manual/api_clienti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_indirizzi_ruolo.md](../backend/anagrafiche/manual/api_indirizzi_ruolo.md) | [api_contatti_ruolo.md](../backend/anagrafiche/manual/api_contatti_ruolo.md) | [api_conti_bancari_ruolo.md](../backend/anagrafiche/manual/api_conti_bancari_ruolo.md) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md) | [api_categorie_clienti.md](../backend/anagrafiche/manual/api_categorie_clienti.md) | [api_categorie_clienti_listini.md](../backend/anagrafiche/manual/api_categorie_clienti_listini.md) | [api_emittenti_fiscali.md](../backend/anagrafiche/manual/api_emittenti_fiscali.md) | [api_risorse_umane_lookup.md](../backend/anagrafiche/manual/api_risorse_umane_lookup.md) — `GET /anagrafiche/risorse-umane/lookup/`, il picker delle persone interne (responsabile commessa): cross-dominio, legge la vista modello `vw_risorse_umane_dettaglio`
+* **Amm. Software**: [api_amm_software.md](../backend/amm-software/manual/api_amm_software.md) — dal 2026-10-02 l'area **Accessi** (§«Area Accessi» della pagina): `accessi/altri/` e `accessi/sistema/`, le due liste che con gli operatori censiscono TUTTE le credenziali (la partizione la decide il DB, `script.fn_categoria_accesso`), e le azioni della **credenziale** — `credenziali/<id>/`, `blocca/`, `sblocca/` (`Idempotency-Key`), `secondo-fattore/…` — che valgono per tutte le sue vesti e quindi non stanno sotto `/operatori/` (il secondo fattore ci stava fino a quel giorno: ritirato). Dal 2026-09-18 anche `GET /amm-software/processi/presidi/conteggi/` (§6.1-bis): la **testata sola** dei presidi (`totale · con_righe · non_letti`) per il **pallino della topbar**, stesso giro di `presidi/` senza le prime righe, stessa porta `AdminAPIView`; un presidio non leggibile è `non_letti`, non un errore | [api_error_log.md](../backend/amm-software/manual/api_error_log.md) — dal 2026-09-19 `GET /amm-software/error-log/` (+ `export/`): la **consultazione di `dbops.error_log`** per i tecnici (pezzo E dell'osservabilità) — quale funzione ha sollevato quale codice, quando, in quale transazione — con frase, causa, soluzione e **classe** dal catalogo per JOIN e il `context` **com'è**. Ogni filtro della whitelist ha il suo indice (P-3) ed è provato con `EXPLAIN`; `function_name` è un prefisso `LIKE` con `_` escapato, `tx_id` è il ponte dal giornale di dominio. Stessa porta `AdminAPIView` dei due diari accanto; lista `dbops.error_log` esente dal perimetro emittente
+* **Anagrafiche**: [api_soggetti.md](../backend/anagrafiche/manual/api_soggetti.md) | [api_clienti.md](../backend/anagrafiche/manual/api_clienti.md) | [api_indirizzi.md](../backend/anagrafiche/manual/api_indirizzi.md) | [api_indirizzi_ruolo.md](../backend/anagrafiche/manual/api_indirizzi_ruolo.md) | [api_contatti_ruolo.md](../backend/anagrafiche/manual/api_contatti_ruolo.md) | [api_conti_bancari_ruolo.md](../backend/anagrafiche/manual/api_conti_bancari_ruolo.md) | [api_conti_bancari_soggetto.md](../backend/anagrafiche/manual/api_conti_bancari_soggetto.md) (conti del soggetto, lookup IBAN e filiali) | [api_geo_config.md](../backend/anagrafiche/manual/api_geo_config.md) | [api_fornitori.md](../backend/anagrafiche/manual/api_fornitori.md) | [api_categorie_clienti.md](../backend/anagrafiche/manual/api_categorie_clienti.md) | [api_categorie_clienti_listini.md](../backend/anagrafiche/manual/api_categorie_clienti_listini.md) | [api_emittenti_fiscali.md](../backend/anagrafiche/manual/api_emittenti_fiscali.md) | [api_risorse_umane_lookup.md](../backend/anagrafiche/manual/api_risorse_umane_lookup.md) — `GET /anagrafiche/risorse-umane/lookup/`, il picker delle persone interne (responsabile commessa): cross-dominio, legge la vista modello `vw_risorse_umane_dettaglio`
 * **Catalogo**: [api_catalogo.md](/backend/catalogo/manual/api_catalogo) — articoli (CRUD, lista `catalogo.articoli` id 26, UoM operative, BoM, note): oltre alla natura di vendita (*dove va* la riga) l'articolo dichiara **da dove arriva** — `modo_approvvigionamento_id` (lookup generico `rel=config.modi_approvvigionamento`, default `ACQUISTO`), `gestito_a_magazzino` (default `false`, fail-safe) e `lead_time_giorni` (nullable per modello). ⚠️ `ARTICOLI_DETAIL_COLUMNS` è una proiezione **per nome** da `vw_articoli_dettaglio`: una colonna nuova della vista non esce finché nessuno la nomina
 * **Auth**: [api_multi_veste_token.md](/backend/core/manual/api_multi_veste_token) | [auth_views_audit.md](/backend/core/manual/auth_views_audit) | [api_user_profile.md](/backend/core/manual/api_user_profile) | [api_token_cambio_password.md](/backend/core/manual/api_token_cambio_password) | [api_password_reset.md](/backend/core/manual/api_password_reset) | [api_invito_operatore.md](/backend/core/manual/api_invito_operatore) | [api_invito_portale_shop.md](/backend/core/manual/api_invito_portale_shop) | [api_logout.md](/backend/core/manual/api_logout)
 * **Email**: [api_email.md](/backend/core/manual/api_email) — dal 2026-09-26 la famiglia `/core/email/` ha una porta: `GET /core/email/log/` (+ `log/stati/`) e' aperta a **ogni operatore** (`skip_area_check`, sola lettura) e la consuma la voce frontend Strumenti › Email (voce senza `requireArea`; il dominio «Personale» del 2026-09-26 e' stato assorbito in Strumenti lo stesso giorno). Chi vede quale mail lo decide la RLS per ambito (`script.fn_scope_email_ambito`: SISTEMA al super admin, REPARTO al reparto, OPERATORE all'autore, sempre in AND con l'emittente), non la view. ⛔ Bozze e invio restano sotto l'area `config` finche' non esiste l'azione di processo `invia_email`
 * **Parametri**: [api_parameter_settings.md](../backend/core/manual/api_parameter_settings.md)
+* **Core — Lookup dedicati**: [api_lookup_dedicati.md](../backend/core/manual/api_lookup_dedicati.md) — tipi soggetto dettaglio, tipi ruolo per natura, forme giuridiche, utility per emittente, conti contabili, sistema codici, comuni
 * **Core — Lookup tipi di entità**: [api_tipi_entita_lookup.md](../backend/core/manual/api_tipi_entita_lookup.md) — dal 2026-09-19 `GET /core/lookup/tipi-entita/`: il vocabolario **vivo** di `config.tipi_entita` con l'`etichetta_key` che il DB dichiara. ⛔ Lookup dedicato perché la tabella non ha `id`/`descrizione`. Nasce perché la tendina «Entità» del giornale trasversale si era ricopiata sette codici su nove: un vocabolario del DB si legge, non si specchia
 * **Vendite — Pricing v5**: [api_preventivi.md](/backend/vendite/manual/api_preventivi) | [api_listini.md](/backend/vendite/manual/api_listini) | [api_contratti.md](/backend/vendite/manual/api_contratti) | [api_promo_articoli.md](/backend/vendite/manual/api_promo_articoli) | [api_pricing.md](/backend/vendite/manual/api_pricing) | [api_approvazioni_prezzo.md](/backend/vendite/manual/api_approvazioni_prezzo) | [api_vendite_lookups.md](/backend/vendite/manual/api_vendite_lookups) | [api_vendite_form_defaults.md](/backend/vendite/manual/api_vendite_form_defaults) | [api_registri_numerazione.md](/backend/vendite/manual/api_registri_numerazione) | [api_famiglie_documento.md](/backend/vendite/manual/api_famiglie_documento) — il CRUD delle famiglie di documento (`/vendite/famiglie/`, `AdminAPIView`): la creazione passa dalla madre `fn_crea_famiglia_documento`, che provvede anche i registri; `colonna_billing_account` è **facoltativa** come `colonna_serie` (`NULL` = «questa famiglia non ha un billing account», la forma dell'ordine di acquisto)
 * **Vendite — Ciclo attivo**: [api_offerte.md](/backend/vendite/manual/api_offerte) | [api_ordini.md](/backend/vendite/manual/api_ordini)
@@ -1205,7 +1219,7 @@ Per i building block backend riutilizzabili (helpers, services, repository), con
 | Permission class    | `ZeroERPPermission` — risoluzione centralizzata                         |
 | Superuser           | Bypass totale                                                           |
 | SUPER_ADMIN         | Bypass via `script.fn_is_super_admin` (filtro veste OPERATORE, §8.3.7)  |
-| DISABILITATO        | Rifiuto immediato su `ruolo_applicativo = DISABILITATO`                 |
+| Veste spenta        | Nessuna identita' attiva: niente GUC di veste, niente SUPER_ADMIN, il livello d'area nega (dal 2026-10-02 `DISABILITATO` non e' piu' un tipo di veste) |
 | Azione processo     | Verificata se la view dichiara `post_permission` / `get_permission`     |
 | CRUD standard       | Livello area/oggetto (`TUTTO`, `LETTURA`, `BLOCCATO`)                   |
 | Scope emittente     | Filtra i dati per emittente fiscale autorizzato (vedi sotto)            |
@@ -1224,6 +1238,12 @@ e refresh che ammettono solo il subset di vesti che gli compete:
 Il vecchio path unificato `/api/v1/auth/token/` e' stato **rimosso senza
 alias** (breaking, grace 0). Client pre-refactor devono aggiornarsi.
 
+⭐ **La chiave d'ingresso e' della porta** (dal 2026-10-06, L-4 del piano
+accessi): `admin` vuole `{"username", "password"}`, `portale` e `shop`
+`{"email", "password"}` (email senza maiuscole). Il reset password accetta
+`{"identificativo"}`, nome utente o email. Dettaglio e sedi:
+[api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md) §Login.
+
 #### Il login a due passi (secondo fattore, dal 2026-10-01)
 
 Con il secondo fattore **attivo** sulla credenziale, il login risponde 200
@@ -1240,14 +1260,30 @@ nell'envelope `{"data": {"access", "password_change_required"?,
 un'altra porta o provenienza → 401 `E_TOTP_SFIDA_NON_VALIDA` (si riparte dalla
 password); codice sbagliato → 400 `E_TOTP_CODICE_NON_VALIDO`, e conta come una
 password sbagliata. Il successo sul freno si registra solo al secondo passo.
-Brief: [sicurezza](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis, T-2.
+Brief: [sicurezza](work-done/brief-be-fe-sicurezza-header-token-mfa.md) §3.4-bis, T-2.
+
+La configurazione è della persona, su `/api/v1/auth/secondo-fattore/`: `GET` lo
+stato, `POST registra/` (QR come data URI di un SVG, segreto e codici di recupero **una volta**),
+`conferma/` (`{codice}`), `codici-recupero/` (`{codice}`), `disattiva/`
+(`{codice}` o `{codice_recupero}`). Il SUPER_ADMIN, su
+`/api/v1/amm-software/credenziali/<id>/secondo-fattore/`: `GET`, `POST obbligo/`
+(`{valore}`), `POST disattiva/` (`{motivo}`). Il segno del profilo di reparto è
+`richiede_secondo_fattore` nel corpo di `reparti/<uo_id>/profilo/` (assente =
+invariato).
+
+⭐ **Gli obblighi della credenziale** (cambio password, configurazione del secondo
+fattore) li fa rispettare il cancello dentro `JwtAuditAuthentication`: 403
+`E_CAMBIO_PASSWORD_RICHIESTO` / `E_TOTP_CONFIGURAZIONE_RICHIESTA` su ogni view
+che non li dichiara in `obblighi_ammessi`. `GET /api/v1/core/me/` li pubblica in
+`obblighi_pendenti`, nell'ordine in cui si chiudono: il frontend porta alla
+pagina del primo.
 
 Contratto HTTP completo, claim JWT, codici errore e guard cross-namespace:
 [api_multi_veste_token.md](../backend/core/manual/api_multi_veste_token.md).
 
 ### ⛔ Il refresh token viaggia nel cookie, mai nel corpo
 
-Dal 2026-09-28 ([brief sicurezza](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md)
+Dal 2026-09-28 ([brief sicurezza](work-done/brief-be-fe-sicurezza-header-token-mfa.md)
 §2). Il refresh vale un giorno e rinnova la sessione: in `localStorage` o in un
 corpo JSON lo legge qualunque script giri nella pagina. Ora sta in un cookie
 che il JavaScript non vede, e l'access (10 minuti) vive solo nella memoria del
@@ -1274,7 +1310,10 @@ stato sostituito dal refactor multi-face auth con:
 
 * `ruolo_applicativo` — categoria dell'identita' digitale
   (`OPERATORE`, `CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`,
-  `API_CLIENT`, `DISABILITATO`). Letto via
+  `API_CLIENT`). ⛔ `DISABILITATO` non e' piu' un tipo di veste dal
+  2026-10-02 (R-DB-1): una veste spenta tiene il tipo e ha `attivo = false`, e
+  la tabella rifiuta il valore (`E_RUOLO_APPLICATIVO_RITIRATO`), che resta
+  nell'enum come voce storica. Letto via
   `PermissionResolver.get_ruolo_applicativo(user)` (GUC-first), che risponde
   per la **sessione**: ⛔ mai per un altro utente (S-6). Di un altro si chiede
   il fatto preciso, per esempio `has_veste_operatore_attiva(user)`.
@@ -1324,6 +1363,12 @@ Due pattern disponibili in base al dominio:
 2. **Search / Anagrafiche** — `PermissionResolver.get_emittenti_sr_ids(request.user)`
    risolve in Python i `soggetto_ruolo_id` degli emittenti autorizzati e li passa
    come array `bigint[]` alle query SQL.
+
+⛔ **Perimetro ≠ attore.** `get_scope_user_id` vale `None` per il superuser perché
+il suo perimetro non ha limiti: serve **solo alle letture**. Una scrittura che
+passa l'utente a un gate (prezzi L1/L2/L3), all'audit o a una pratica usa
+`get_actor_user_id(request)`: con lo scope, il gate legge il `None` del superuser
+come «chiamata senza utente» e lo blocca.
 
 Usare `get_emittenti_sr_ids` (filtra su `*_soggetto_ruolo_id`, convenzione SR)
 o `get_emittenti_pk_ids` (filtra su `emittente_fiscale_id` PK) secondo la colonna.
@@ -2130,13 +2175,18 @@ resta.
 direttamente da `JwtAuditMiddleware` (helper `_json_error`, stesso envelope)
 e **non** passano dall'exception handler / `error_policies.py`. (Fino al
 2026-09-28 c'era anche `E_USER_DISABILITATO`, dal rifiuto in `process_view`:
-ritirato perché per i client Bearer non scattava mai — il rifiuto dei
-`DISABILITATO` è della catena di `ZeroERPPermission`.)
+ritirato perché per i client Bearer non scattava mai. Dal 2026-10-02 non
+c'e' piu' nemmeno un `DISABILITATO` da rifiutare: una veste spenta e'
+`attivo = false` col suo tipo, R-DB-1.)
 
 | Codice                | HTTP | Quando                                                                                                                                                                                                           |
 | --------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `E_GUC_RESET_FAILED`  | 500  | il reset GUC d'inizio richiesta è fallito (fail-closed, vedi §GUC)                                                                                                                                               |
 | `E_DB_ROLE_UNSAFE`    | 500  | la connessione del percorso richiesta è su un ruolo `BYPASSRLS` (guard fail-open RLS: `DB_USER` misconfigurato sul ruolo batch, o canale di sistema usato per errore nel web → richiesta rifiutata, fail-closed) |
+
+Non passare dal traduttore non li esenta dal catalogo: sono a catalogo come
+`TECNICO` (dal 2026-10-07), con frase di ripiego, e lo status scritto a mano dal
+middleware coincide con quello della classe.
 
 #### Codici auth multi-veste (§8.3 PR-B1)
 
@@ -2175,6 +2225,13 @@ documento lo nominava:
 
 Quando si crea o tocca un service, si scrivono/aggiornano i test corrispondenti.
 
+⚠️ **Un test mockato non vede la giuntura, e il type checker sì.** Un `MagicMock` accetta
+qualunque attributo: un test che dichiara `repo.metodo.return_value = …` resta verde anche il
+giorno in cui `metodo` non esiste più. È successo (riallinea e sblocca prezzo di commessa, sei
+mesi di 500 con il test verde). Dal 2026-10-08 lo vede **mypy** in CI, a cricchetto
+([sicurezza-e-qualita-statica.md](sicurezza-e-qualita-statica.md) §mypy); la chiamata vera la
+prova solo il secondo livello qui sotto.
+
 ⭐ **Il secondo livello si accende con `richiedi_db_provvisto`**
 (`apps/core/tests/db_e2e.py`) ed è oggi in **22 file** (rimisurato il
 2026-09-11; erano 19 il 09-09 — il livello cresce). È
@@ -2200,10 +2257,19 @@ accendere un cancello, non nella peggiore.
   `E_AUTH_CHIAMATA_NON_VALIDA` (freno sulla credenziale, fail-closed). Presidio:
   `apps/core/tests/api/test_https_header.py`.
   I test Django non ne hanno bisogno: il redirect lo spegne il runner.
-* Uno smoke bash che usa il refresh token (refresh, logout) include anche
-  `_smoke_refresh.sh`: il refresh non è più nel corpo del login ma nel cookie
-  `zeroerp_refresh`, e lo si legge dal `Set-Cookie` (`curl -D`) e ripresenta
-  con cookie e header anti-CSRF (`curl_refresh`).
+* ⛔ Uno smoke bash che fa il **login** include, subito dopo `BASE_URL=`, solo
+  `source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"` (porta con sé
+  `_smoke_https.sh`, `_smoke_secondo_fattore.sh` e `_smoke_refresh.sh`) e chiama
+  **`smoke_login`** (opzioni `-D`, `--login-vero`, `--senza-prompt`, `--uscita N`).
+  Se l'utente degli smoke ha il secondo fattore attivo, il secondo passo lo fa il
+  BB col codice calcolato da **`SMOKE_TOTP_SECRET`**; il DB accetta un codice per
+  intervallo di 30 secondi, e fra due login il BB **aspetta** il codice nuovo. Un
+  login che il BB non copre resta `curl_login` con `# login esplicito: <perché>`.
+  Utente da `SMOKE_USER`, mai scritto a mano. Login unico per un giro di smoke:
+  `eval "$(scripts/tests/smoke-login.sh)"` (run-book §11). Il refresh non è più
+  nel corpo del login ma nel cookie `zeroerp_refresh`: lo si legge dal
+  `Set-Cookie` (`smoke_login -D`) e ripresenta con `curl_refresh`. Presidio:
+  `test_https_header` 13, 15–18.
 * Esecuzione: `./manage-test.sh apps.core.tests.api -v 2`. Smoke di docs/schema:
   `apps/core/tests/api/test_diagnostics_api.py`.
 

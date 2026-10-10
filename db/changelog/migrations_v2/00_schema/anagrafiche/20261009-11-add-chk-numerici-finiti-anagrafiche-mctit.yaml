@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN NUMERO CHE NON E' UN NUMERO NON SI SCRIVE — schema anagrafiche
+#   CHECK «finito» su 12 colonne numeric di 10 tabelle:
+#     anagrafiche.catasto_unita_immobiliari: rendita_catastale
+#     anagrafiche.categorie_clienti_listini: valore_variazione
+#     anagrafiche.clienti: garanzia_importo
+#     anagrafiche.dati_societari: capitale_sociale
+#     anagrafiche.emittenti_fiscali: bollo_soglia
+#     anagrafiche.emittenti_fiscali_utilities: minimo_soglia_max, minimo_soglia_min
+#     anagrafiche.fornitori: ritenuta_aliquota
+#     anagrafiche.istanze_dati_precontrattuali: param_1_num
+#     anagrafiche.soggetti_titoli_iva: imponibile_utilizzato, plafond
+#     anagrafiche.soggetti_titoli_iva_movimenti: imponibile
+#   Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1 e D-2 di Tid)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il tipo numeric ammette 'NaN' (con o senza scala) e 'Infinity' /
+#   '-Infinity' (solo senza scala). Nessuno dei tre e' una quantita', un
+#   prezzo o un importo, e il NaN contagia: una somma con un NaN e' NaN, e
+#   NaN e' maggiore di ogni numero, quindi passa i CHECK di segno (>= 0) e
+#   risponde «si'» a ogni confronto con una soglia. La regola e' del TIPO,
+#   non dei documenti: vale per ogni colonna numeric del modello (D-2).
+#
+# -- LA FORMA -------------------------------------------------------
+#   Un CHECK per colonna, sempre lo stesso predicato:
+#     col > '-Infinity'::numeric AND col < 'Infinity'::numeric
+#   falso su NaN, Infinity e -Infinity, vero su ogni numero; il NULL passa
+#   come in ogni CHECK. Nome chk_<tabella>_<colonna>_finito.
+#   Un CHECK e non un guard (D-1): chi scrive un NaN e' un chiamante rotto,
+#   non una persona da un form, e la violazione esce 23514 col nome del
+#   vincolo: un errore tecnico, giusto per un guasto.
+#   ⭐ Una colonna numeric nuova nasce col suo CHECK: lo pretende il presidio
+#   db/pgtap/dbops/test-numerici-finiti-v1.sql.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   La preCondition pretende zero valori non finiti (expectedResult 0: un DB
+#   da zero la soddisfa, linee-guida-sql §11.4), come il 20261008-85. Se ce
+#   ne sono il migrate si ferma e si guardano a mano: nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261009-11-add-chk-numerici-finiti-anagrafiche-mctit.yaml
+
+  - changeSet:
+      id: 20261009-11-add-chk-numerici-finiti-anagrafiche
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        CHECK «finito» (niente NaN, Infinity, -Infinity) sulle 12 colonne numeric dello
+        schema anagrafiche. Brief: brief-db-valore-numerico-non-finito-nei-documenti (§5.2, D-1, D-2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: |
+              SELECT (SELECT count(*) FROM anagrafiche.catasto_unita_immobiliari
+                                WHERE NOT (rendita_catastale > '-Infinity'::numeric AND rendita_catastale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.categorie_clienti_listini
+                                WHERE NOT (valore_variazione > '-Infinity'::numeric AND valore_variazione < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.clienti
+                                WHERE NOT (garanzia_importo > '-Infinity'::numeric AND garanzia_importo < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.dati_societari
+                                WHERE NOT (capitale_sociale > '-Infinity'::numeric AND capitale_sociale < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.emittenti_fiscali
+                                WHERE NOT (bollo_soglia > '-Infinity'::numeric AND bollo_soglia < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.emittenti_fiscali_utilities
+                                WHERE NOT (minimo_soglia_max > '-Infinity'::numeric AND minimo_soglia_max < 'Infinity'::numeric)
+                                  OR NOT (minimo_soglia_min > '-Infinity'::numeric AND minimo_soglia_min < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.fornitori
+                                WHERE NOT (ritenuta_aliquota > '-Infinity'::numeric AND ritenuta_aliquota < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.istanze_dati_precontrattuali
+                                WHERE NOT (param_1_num > '-Infinity'::numeric AND param_1_num < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva
+                                WHERE NOT (imponibile_utilizzato > '-Infinity'::numeric AND imponibile_utilizzato < 'Infinity'::numeric)
+                                  OR NOT (plafond > '-Infinity'::numeric AND plafond < 'Infinity'::numeric))
+                   + (SELECT count(*) FROM anagrafiche.soggetti_titoli_iva_movimenti
+                                WHERE NOT (imponibile > '-Infinity'::numeric AND imponibile < 'Infinity'::numeric));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.catasto_unita_immobiliari
+                ADD CONSTRAINT chk_catasto_unita_immobiliari_rendita_catastale_finito
+                    CHECK (rendita_catastale > '-Infinity'::numeric AND rendita_catastale < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                ADD CONSTRAINT chk_categorie_clienti_listini_valore_variazione_finito
+                    CHECK (valore_variazione > '-Infinity'::numeric AND valore_variazione < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.clienti
+                ADD CONSTRAINT chk_clienti_garanzia_importo_finito
+                    CHECK (garanzia_importo > '-Infinity'::numeric AND garanzia_importo < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.dati_societari
+                ADD CONSTRAINT chk_dati_societari_capitale_sociale_finito
+                    CHECK (capitale_sociale > '-Infinity'::numeric AND capitale_sociale < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                ADD CONSTRAINT chk_emittenti_fiscali_bollo_soglia_finito
+                    CHECK (bollo_soglia > '-Infinity'::numeric AND bollo_soglia < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                ADD CONSTRAINT chk_emittenti_fiscali_utilities_minimo_soglia_max_finito
+                    CHECK (minimo_soglia_max > '-Infinity'::numeric AND minimo_soglia_max < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_emittenti_fiscali_utilities_minimo_soglia_min_finito
+                    CHECK (minimo_soglia_min > '-Infinity'::numeric AND minimo_soglia_min < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.fornitori
+                ADD CONSTRAINT chk_fornitori_ritenuta_aliquota_finito
+                    CHECK (ritenuta_aliquota > '-Infinity'::numeric AND ritenuta_aliquota < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.istanze_dati_precontrattuali
+                ADD CONSTRAINT chk_istanze_dati_precontrattuali_param_1_num_finito
+                    CHECK (param_1_num > '-Infinity'::numeric AND param_1_num < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.soggetti_titoli_iva
+                ADD CONSTRAINT chk_soggetti_titoli_iva_imponibile_utilizzato_finito
+                    CHECK (imponibile_utilizzato > '-Infinity'::numeric AND imponibile_utilizzato < 'Infinity'::numeric),
+                ADD CONSTRAINT chk_soggetti_titoli_iva_plafond_finito
+                    CHECK (plafond > '-Infinity'::numeric AND plafond < 'Infinity'::numeric);
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                ADD CONSTRAINT chk_soggetti_titoli_iva_movimenti_imponibile_finito
+                    CHECK (imponibile > '-Infinity'::numeric AND imponibile < 'Infinity'::numeric);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.catasto_unita_immobiliari
+                DROP CONSTRAINT IF EXISTS chk_catasto_unita_immobiliari_rendita_catastale_finito;
+              ALTER TABLE anagrafiche.categorie_clienti_listini
+                DROP CONSTRAINT IF EXISTS chk_categorie_clienti_listini_valore_variazione_finito;
+              ALTER TABLE anagrafiche.clienti
+                DROP CONSTRAINT IF EXISTS chk_clienti_garanzia_importo_finito;
+              ALTER TABLE anagrafiche.dati_societari
+                DROP CONSTRAINT IF EXISTS chk_dati_societari_capitale_sociale_finito;
+              ALTER TABLE anagrafiche.emittenti_fiscali
+                DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_bollo_soglia_finito;
+              ALTER TABLE anagrafiche.emittenti_fiscali_utilities
+                DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_utilities_minimo_soglia_max_finito,
+                DROP CONSTRAINT IF EXISTS chk_emittenti_fiscali_utilities_minimo_soglia_min_finito;
+              ALTER TABLE anagrafiche.fornitori
+                DROP CONSTRAINT IF EXISTS chk_fornitori_ritenuta_aliquota_finito;
+              ALTER TABLE anagrafiche.istanze_dati_precontrattuali
+                DROP CONSTRAINT IF EXISTS chk_istanze_dati_precontrattuali_param_1_num_finito;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva
+                DROP CONSTRAINT IF EXISTS chk_soggetti_titoli_iva_imponibile_utilizzato_finito,
+                DROP CONSTRAINT IF EXISTS chk_soggetti_titoli_iva_plafond_finito;
+              ALTER TABLE anagrafiche.soggetti_titoli_iva_movimenti
+                DROP CONSTRAINT IF EXISTS chk_soggetti_titoli_iva_movimenti_imponibile_finito;

@@ -86,7 +86,8 @@ function preventivoDrawerProps(ctx, existingId = null) {
     preventivoId: existingId ?? null,
     praticaId: ctx.praticaId,
     // Contesto cliente ereditato dalla pratica: il drawer pre-compila e blocca
-    // istanza (+ BA se cliente attivo). billingAccountId NULL = prospect.
+    // BA e istanza. billingAccountId NULL = pratica con la sola istanza (il BA
+    // lo risolve il backend dalla coppia istanza+utility).
     praticaContext: {
       billingAccountId: ctx.billingAccountId ?? null,
       istanzaUtilityId: ctx.istanzaUtilityId ?? null,
@@ -147,7 +148,8 @@ iscriviAttivitaUi('APRI_PREVENTIVO', {
       .then(({ collegaPratica }) => collegaPratica(
         preventivoId, { pratica_id: ctx.praticaId, flusso_id: ctx.flussoId },
       )),
-  // Il preventivo ammette il prospect (BA opzionale) → nessun gating cliente.
+  // Il preventivo nasce anche dalla sola istanza della pratica (il BA della
+  // coppia lo risolve il backend) → nessun gating cliente.
   requiresActiveClient: false,
   label: 'pratiche.flusso_apri_preventivo',
   icon: NAV_ICONS.PREVENTIVI,

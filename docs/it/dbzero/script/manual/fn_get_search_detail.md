@@ -26,6 +26,10 @@ Funzione dati entita':
 >
 [script.fn_get_entita_ruolo_detail](/dbzero/script/funzioni/fn_get_entita_ruolo_detail)
 >
+Regola unica di chi si vede (con la lista):
+>
+[script.fn_predicato_soggetto_ruolo_visibile](/dbzero/script/funzioni/fn_predicato_soggetto_ruolo_visibile)
+>
 Documento di design:
 >
 [Contesto Globale Ricerca Universale](/dev/work-done/frontend/contesto-globale-ricerca-universale)
@@ -53,15 +57,34 @@ La funzione **`script.fn_get_search_detail`** implementa il **livello 2** della 
 | `p_soggetto_id`   | `UUID`     | Si           | —       | UUID del soggetto da `anagrafiche.soggetti`                                  |
 | `p_tipo_ruolo_id` | `INTEGER`  | Si           | —       | ID tipo ruolo da `config.tipi_ruoli` (> 0)                                   |
 | `p_utility_id`    | `INTEGER`  | No           | `NULL`  | Filtra righe CL per utility; passato a `fn_get_entita_ruolo_detail` per ELSE |
-| `p_emittente_ids` | `BIGINT[]` | No           | `NULL`  | Scope emittente: soggetto_ruolo_id emittenti (solo CL)                       |
 
-**Guard**: `p_soggetto_id` e `p_tipo_ruolo_id` validati tramite `script.fn_log_and_raise_error` con codice `E_PARAMETRO_INVALIDO`. Se il `tipo_ruolo_id` non esiste in `config.tipi_ruoli`, viene lanciato `E_TIPO_RUOLO_NON_TROVATO` (fix 2026-04-10, era `E_GENERICO`).
+**Guard**: `p_soggetto_id` NULL → `E_PARAMETRO_INVALIDO`. Il tipo ruolo lo valida la
+regola unica (vedi sotto), la stessa della lista: NULL o `<= 0` → `E_PARAMETRO_INVALIDO`,
+inesistente → `E_TIPO_RUOLO_NON_TROVATO`, **non ricercabile**
+(`config.tipi_ruoli.ricerca_visibile = false`) → `E_TIPO_RUOLO_NON_RICERCABILE`.
+
+Fino al 2026-10-10 c'era un quarto parametro, `p_emittente_ids`: dal 2026-10-08 non
+si leggeva più (il perimetro lo fa la RLS), e il 2026-10-10 è uscito dalla firma.
 
 ---
 
 ### Valore di Ritorno
 
-La funzione restituisce un singolo valore **JSONB** con struttura fissa:
+⭐ **`NULL` vuol dire «non c'è»** (dal 2026-10-08). La funzione restituisce `NULL`
+quando il soggetto, con quel ruolo, non risulta a chi guarda:
+
+1. il soggetto non esiste;
+2. il soggetto esiste ma non ha quel ruolo;
+3. il ruolo c'è, ma non ha nessuna riga della sua entità che chi guarda veda: un
+   cliente senza clienti visibili, un fornitore senza la sua riga in `fornitori`,
+   un vettore senza la riga in `vettori` (vedi «Verifica d'esistenza»).
+
+Il backend traduce `NULL` in 404 `E_SEARCH_NOT_FOUND`. Inesistente e fuori
+perimetro escono **uguali, di proposito**: il 404 non rivela che esiste un
+cliente di un altro emittente. `NULL` e non un errore sollevato: una lettura non
+scrive nel diario errori a ogni id sbagliato.
+
+Quando il soggetto c'è, la funzione restituisce un singolo valore **JSONB** con struttura fissa:
 
 ```json
 {
@@ -123,15 +146,50 @@ Ordinamento: `utility_codice`, `stato_descrizione`. Filtrato da `p_utility_id` s
 
 Il campo `entita_detail` contiene i dati specifici dell'entita' (EF, VT, GE, BANK_B, RIS_UMANA, ecc.) restituiti da `fn_get_entita_ruolo_detail`.
 
-Se nessuna riga corrisponde, `righe` e' un array vuoto `[]`.
+Se il soggetto c'è ma il filtro `p_utility_id` non trova righe, `righe` è un array vuoto `[]`: è un risultato vero (la cosa c'è, il filtro restringe a zero), non un «non trovato».
 
 ---
 
-### Strategia di Join (CL)
+### Verifica d'esistenza e perimetro
+
+Prima del `CASE` la funzione chiede se il soggetto-ruolo risulta a chi guarda. La
+regola non è scritta qui: la dà
+[`script.fn_predicato_soggetto_ruolo_visibile`](/dbzero/script/funzioni/fn_predicato_soggetto_ruolo_visibile),
+la **stessa** che la lista ([`fn_search_soggetti_universale`](/dbzero/script/funzioni/fn_search_soggetti_universale))
+usa come filtro di riga. Lista e dettaglio non possono dissentire su chi si vede.
+
+La regola, dal 2026-10-10, legge il catalogo dei ruoli e non nomina nessun ruolo:
+
+* il ruolo ha `config.tipi_ruoli.entita_esistenza` (cliente → `clienti`, fornitore →
+  `fornitori`, vettore → `vettori`, banca → `bank_branches`): il soggetto-ruolo c'è se
+  ha **almeno una riga di quella tabella** che chi guarda vede;
+* il ruolo non ce l'ha (reseller, distributore, venditore): c'è se il soggetto-ruolo
+  esiste.
+
+**Lo stato dell'entità non conta**: un cliente chiuso o un fornitore disattivato si
+aprono, e il dettaglio ne mostra lo stato. È un rapporto finito, ma da consultare.
+
+La verifica **non** applica il filtro `p_utility_id`: quello restringe le righe, non
+decide se il soggetto c'è.
+
+**Il perimetro dei clienti lo fa la RLS** (dal 2026-10-08). La funzione è
+`SECURITY INVOKER`, quindi le policy di `anagrafiche.clienti` valgono dentro di lei:
+`rls_clienti_ef_whitelist` per l'operatore, che risale dal billing account con la
+stessa regola della testata (mapping specifico, poi riserva: vedi
+[`script.fn_check_ba_visible_for_emittenti`](/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti)).
+Fornitori, vettori e banche non hanno RLS: per loro «visibile» vuol dire «esiste».
+
+⚠️ Un cliente senza **nessun** cliente, o un fornitore senza la sua riga, risponde
+`NULL` per tutti, anche per il super admin.
+
+I rami `CL` e `FO` del `CASE` leggono `clienti` e `fornitori`, le stesse tabelle che
+il catalogo dà come entità di quei ruoli: la coincidenza la presidia il pgTAP
+`script/test-search-regola-unica-visibile-v1`. I rami danno la **forma** delle
+righe di ciascun ruolo; chi si vede lo decide la regola.
 
 ```text
 soggetti_ruoli sr
-  INNER JOIN clienti cl                 ON cl.soggetto_ruolo_id = sr.id
+  INNER JOIN clienti cl                 ON cl.soggetto_ruolo_id = sr.id   -- sotto RLS
   INNER JOIN stati_cliente sc           ON sc.id = cl.stato_cliente_id
   LEFT  JOIN billing_account ba         ON ba.id = cl.billing_account_id
   LEFT  JOIN istanze_utilities iu       ON iu.id = cl.istanza_utility_id
@@ -142,22 +200,7 @@ soggetti_ruoli sr
 WHERE sr.soggetto_id = p_soggetto_id
   AND sr.tipo_ruolo_id = p_tipo_ruolo_id
   AND (p_utility_id IS NULL OR cl.utility_id = p_utility_id)
-  AND (p_emittente_ids IS NULL
-       OR script.fn_check_ba_visible_for_emittenti(
-            cl.billing_account_id, p_emittente_ids
-          )
-  )
 ```
-
-Il filtro scope emittente si applica solo nel ramo CL. Per FO e ELSE il parametro `p_emittente_ids` viene ignorato. Semantica: `NULL` = nessuna restrizione, array = filtra, `'{}'` = zero risultati.
-
-> **Logica a 3 livelli (fix 2026-04-10)**: il filtro scope emittente e' delegato a [`script.fn_check_ba_visible_for_emittenti`](/dbzero/script/funzioni/fn_check_ba_visible_for_emittenti) che opera con precedenza:
->
-> 1. **Mapping specifico**: il BA del cliente ha una riga in `emittenti_fiscali_billing_account` collegata a uno degli emittenti autorizzati → il cliente e' visibile.
-> 2. **Riserva** per un BA senza mapping (dal 2026-09-13, D13): in sessione e' l'emittente dell'operatore che sta agendo, senza sessione e' l'emittente `is_default = true` (gestore globale) — e il cliente e' visibile se quell'emittente e' fra gli autorizzati. La regola vive nel lettore `script.fn_get_ba_emittente_sr_id`, che il check interroga.
-> 3. Se ne' il mapping specifico ne' la riserva cadono fra gli autorizzati, il cliente e' escluso.
->
-> Allineamento a `clienti_repository.list_clienti` lato Python. Stessa funzione usata anche da `fn_search_soggetti_universale`.
 
 ---
 
@@ -191,12 +234,13 @@ SELECT script.fn_get_search_detail(
 
 ### Caratteristiche Tecniche
 
-* **Volatilita'**: `STABLE` + `PARALLEL SAFE` — non modifica dati.
+* **Volatilita'**: `STABLE` — non modifica dati. Non `PARALLEL SAFE`: la RLS di `clienti` passa da funzioni che non lo sono.
+* **Sicurezza**: `SECURITY INVOKER`, così la RLS vale con l'identità di chi chiama.
 * **Linguaggio**: PL/pgSQL
 * **Tipi parametri**: `%TYPE` per allineamento automatico ai tipi delle tabelle sorgente.
 * **Error handling**: guard tramite `script.fn_log_and_raise_error` (log persistente + raise).
-* **Dispatch**: `CASE` su `codice_interno` (immutabile, protetto da `trgfn_lock_columns`). Valori: `'CL'`, `'FO'`, ELSE.
+* **Dispatch**: `CASE` su `codice_interno` (immutabile, protetto da `trgfn_lock_columns`). Valori: `'CL'`, `'FO'`, ELSE. Decide la forma delle righe, non chi si vede.
 * **Delegazione**: il ramo ELSE delega i dati entita' a `fn_get_entita_ruolo_detail`.
-* **Ampliabilita'**: aggiungere un ramo `WHEN` al `CASE` per supportare nuovi tipi ruolo con logica specifica.
+* **Ampliabilita'**: aggiungere un ramo `WHEN` al `CASE` per supportare nuovi tipi ruolo con logica specifica. Se il ruolo ha una sua entità, va dichiarata in `config.tipi_ruoli.entita_esistenza`: la regola di chi si vede la legge da lì.
 
 ---

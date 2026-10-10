@@ -9,24 +9,25 @@
 from __future__ import annotations
 
 import uuid as uuid_mod
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from django.contrib.auth.hashers import make_password
 from django.db import DatabaseError, transaction
 
+from apps.core.api.constants import MAX_LIMIT
 from apps.core.api.payload_validators import optional_int
+from apps.core.services.auth_constants import CATEGORIA_ACCESSO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
+from apps.core.services.invito_veste import PORTA_OPERATORE, InvitoVeste
 from apps.core.services.parameter_service import ParameterService
-from apps.core.services.payload_helpers import translate_db_errors
+from apps.core.services.payload_helpers import MISSING, PayloadValidator, translate_db_errors
 from apps.core.services.service_errors import ServiceError
 from apps.core.services.permissions_cache import invalidate_department, invalidate_user
-from apps.core.services.revoca_token import blocca_token_sessioni
-from apps.amm_software.constants import DEFAULT_SESSO
 from apps.amm_software.db.amm_software_repository import AmmSoftwareRepository
-from apps.amm_software.types import CredenzialePerEmailRow
+from apps.amm_software.types import CredenzialePerEmailRow, OperatoreDetailRow
 
 E_AMM_VALIDAZIONE = "E_AMM_VALIDAZIONE"
 E_AMM_NOT_FOUND = "E_AMM_OPERATORE_NOT_FOUND"
@@ -188,16 +189,19 @@ class AmmSoftwareService:
             message="Campo 'password' non ammesso: la sceglie l'operatore attivando l'invito.",
             context={"field": "password"},
         )
-        soggetto_id = (payload.get("soggetto_id") or "").strip() or None
-        username = (payload.get("username") or "").strip()
-        email = (payload.get("email") or "").strip()
+        # ⚠️ Letti dal BB: un non-stringa e' un 400 sul campo; con
+        #    `(payload.get(k) or "").strip()` era un AttributeError, cioe' un 500.
+        _v = PayloadValidator(validation_code=E_AMM_VALIDAZIONE)
+        soggetto_id = _v.optional_string(payload, "soggetto_id")
+        username = _v.optional_string(payload, "username") or ""
+        email = _v.optional_string(payload, "email") or ""
         raw_qualifica = payload.get("qualifica_id")
 
         # Guard UUID soggetto_id (flusso B)
         if soggetto_id:
             try:
                 uuid_mod.UUID(soggetto_id)
-            except (ValueError, AttributeError) as exc:
+            except ValueError as exc:
                 ErrorManager.raise_error(code=E_AMM_VALIDAZIONE, message="UUID soggetto non valido.", context={"field": "soggetto_id"}, cause=exc)
 
         # Guard qualifica_id numerico
@@ -212,14 +216,22 @@ class AmmSoftwareService:
         ErrorManager.require(qualifica_id is not None and qualifica_id > 0, code=E_AMM_VALIDAZIONE, message="Qualifica obbligatoria.", context={"field": "qualifica_id"})
 
         # Validazione flusso A: dati persona obbligatori solo se soggetto nuovo
-        cognome = (payload.get("cognome") or "").strip()
-        nome = (payload.get("nome") or "").strip()
-        codice_fiscale = (payload.get("codice_fiscale") or "").strip()
+        cognome = _v.optional_string(payload, "cognome") or ""
+        nome = _v.optional_string(payload, "nome") or ""
+        codice_fiscale = _v.optional_string(payload, "codice_fiscale") or ""
+        sesso = _v.optional_upper(payload, "sesso")
 
         if not soggetto_id:
             ErrorManager.require(bool(cognome), code=E_AMM_VALIDAZIONE, message="Cognome obbligatorio per soggetto nuovo.", context={"field": "cognome"})
             ErrorManager.require(bool(nome), code=E_AMM_VALIDAZIONE, message="Nome obbligatorio per soggetto nuovo.", context={"field": "nome"})
             ErrorManager.require(bool(codice_fiscale), code=E_AMM_VALIDAZIONE, message="Codice fiscale obbligatorio per soggetto nuovo.", context={"field": "codice_fiscale"})
+            # ⛔ Il sesso NON si controlla qui, e non ha default (decisione di
+            #    Tid, 2026-10-09; fino a quel giorno `DEFAULT_SESSO = "M"`).
+            #    Il flusso A crea un privato (PR, `sesso_policy = REQUIRED`): il
+            #    rifiuto del sesso mancante arriva dal guard
+            #    `trgfn_soggetti_guard_sesso_policy`, prima del consenso al riuso,
+            #    con il campo acceso dal canale `COLUMN`. Una copia qui ammetteva
+            #    solo M/F, mentre `X` («non si puo' stabilire») e' un valore.
 
         # Contract Fase 7: il caller passa `is_super_admin` (default False).
         # Il caller non puo' creare DISABILITATI via questo endpoint: la
@@ -239,7 +251,8 @@ class AmmSoftwareService:
             qualifica_id=qualifica_id,  # type: ignore[arg-type]
             unita_organizzativa_id=int(payload["unita_organizzativa_id"]) if payload.get("unita_organizzativa_id") else None,
             data_nascita=payload.get("data_nascita"),
-            sesso=payload.get("sesso", DEFAULT_SESSO),
+            # Col soggetto esistente (flusso B) il DB non lo legge.
+            sesso=sesso if not soggetto_id else None,
             is_super_admin=is_super_admin,
             valido_dal=payload.get("valido_dal"),
             valido_al=payload.get("valido_al"),
@@ -248,12 +261,21 @@ class AmmSoftwareService:
             indirizzo_domfisc_dettaglio_id=optional_int(payload, "indirizzo_domfisc_dettaglio_id"),
             riusa_auth_user_id=optional_int(payload, "riusa_auth_user_id"),
         )
-        dettaglio = self._repo.get_operatore_detail(creato["auth_user_id"]) or {}
+        dettaglio: Mapping[str, Any] = self._repo.get_operatore_detail(creato["auth_user_id"]) or {}
         return {**dettaglio, "credenziale_riusata": creato["credenziale_riusata"]}
 
     # Scopo: Dettaglio operatore con validazione esistenza.
-    def get_operatore(self, auth_user_id: int) -> dict[str, Any]:
-        operatore = self._repo.get_operatore_detail(auth_user_id)
+    # ⛔ Un operatore e' una credenziale di categoria OPERATORE
+    #    (`script.fn_categoria_accesso`, R-DB-A1). Le altre — una macchina, un
+    #    cliente del portale — rispondono 404 come un id inesistente: i comandi
+    #    di questa porta spengono e riaccendono la veste operatore, e su un
+    #    utente tecnico la troverebbero (dal 2026-10-02 la sua veste e'
+    #    `OPERATORE` con `tecnica`, e non la distingue piu' la risorsa umana).
+    #    Fermerebbero un processo automatico all'insaputa del suo pannello (A-6).
+    def get_operatore(self, auth_user_id: int) -> OperatoreDetailRow:
+        operatore = None
+        if self._repo.get_categoria_accesso(auth_user_id) == CATEGORIA_ACCESSO_OPERATORE:
+            operatore = self._repo.get_operatore_detail(auth_user_id)
         ErrorManager.require(operatore is not None, code=E_AMM_NOT_FOUND, message=f"Operatore {auth_user_id} non trovato.")
         assert operatore is not None
         return operatore
@@ -261,41 +283,122 @@ class AmmSoftwareService:
     # Scopo: Aggiorna operatore e invalida cache permessi.
     # Contract pubblico Fase 7 multi-face:
     #   {is_super_admin?: bool, attivo?: bool, email?, first_name?, last_name?,
-    #    unita_organizzativa_id?, valido_al?}
+    #    unita_organizzativa_id?, valido_al?: date | null}
+    # `valido_al` e' la fine del RAPPORTO: `null` la toglie, assente non la tocca.
     # `is_super_admin` e `attivo` sono ortogonali: ognuno puo' essere
     # presente da solo (NO-OP per il flag mancante). Il guard "ultimo super
     # admin" e' centralizzato sul trigger DB; il service traduce l'errore in
     # `E_PROFILO_ULTIMO_SUPER_ADMIN`.
-    def update_operatore(self, auth_user_id: int, payload: dict) -> dict[str, Any]:
+    def update_operatore(self, auth_user_id: int, payload: dict) -> OperatoreDetailRow | dict[str, Any]:
         ErrorManager.require(
             "ruolo_sistema" not in payload,
             code=E_AMM_VALIDAZIONE,
             message="Campo 'ruolo_sistema' non ammesso: usa is_super_admin + attivo.",
         )
-        self.get_operatore(auth_user_id)  # verifica esistenza
-        _run_or_raise_super_admin_guard(
-            lambda: self._repo.update_operatore(
+        operatore = self.get_operatore(auth_user_id)  # verifica esistenza
+        veste_attiva = operatore.get("veste_attiva") is True
+        # ⛔ D-3 (Tid, 2026-09-24/2026-10-04): l'accesso NON si riaccende da
+        #    qui. Un operatore spento si riattiva col reinvio dell'invito, che
+        #    riapre il rapporto, e la veste la accende la persona attivando:
+        #    nessuna veste torna attiva senza che la persona lo sappia.
+        #    Fino al 2026-10-04 `attivo: true` la riaccendeva subito, e cosi'
+        #    l'endpoint `…/riattiva/`, ritirato lo stesso giorno.
+        ErrorManager.require(
+            not (payload.get("attivo") is True and not veste_attiva),
+            code=E_AMM_VALIDAZIONE,
+            message="L'accesso si riattiva col reinvio dell'invito, non dall'interruttore.",
+            context={"field": "attivo", "auth_user_id": auth_user_id},
+        )
+        # `attivo` conta solo come TRANSIZIONE da accesa a spenta: il drawer lo
+        # manda a ogni salvataggio, e ripeterlo non e' un gesto. `true` su una
+        # veste accesa non cambia niente; `false` su una veste gia' spenta
+        # (spenta da poco, o mai attivata e in attesa dell'invito) non deve
+        # chiudere il rapporto che l'invito ha appena riaperto.
+        spegni = payload.get("attivo") is False and veste_attiva
+        # La data di fine del RAPPORTO: assente non si tocca, `null` la toglie
+        # (§10 del brief-db-veste-utilizzabile). Il formato lo controlla il
+        # validator; l'ordine con `valido_dal` e l'ultimo SUPER_ADMIN senza
+        # scadenza li giudica il DB (`trgfn_guard_date_validita`,
+        # `trgfn_risorse_umane_guard_ultimo_super_admin`).
+        valido_al = (
+            PayloadValidator(validation_code=E_AMM_VALIDAZIONE).optional_date(payload, "valido_al")
+            if "valido_al" in payload else MISSING
+        )
+
+        def _aggiorna() -> None:
+            self._repo.update_operatore(
                 auth_user_id,
                 email=payload.get("email"),
                 first_name=payload.get("first_name"),
                 last_name=payload.get("last_name"),
                 is_super_admin=payload.get("is_super_admin"),
                 unita_organizzativa_id=payload.get("unita_organizzativa_id"),
-                attivo=payload.get("attivo"),
-                valido_al=payload.get("valido_al"),
+                valido_al=valido_al,
             )
-        )
-        invalidate_user(auth_user_id)
+
+        # ⛔ Spegnere dall'interruttore E' «Disabilita» (Tid, 2026-10-04):
+        #    la stessa scrittura del repository — veste spenta, rapporto
+        #    chiuso con `valido_al = oggi`, sync di `is_active`. Fino a quel
+        #    giorno l'interruttore ne aveva una sua, che lasciava `valido_al`
+        #    com'era. Dopo i campi: se il payload porta anche `valido_al`, la
+        #    chiusura del rapporto vince, come su «Disabilita».
+        def _aggiorna_e_spegni() -> None:
+            _aggiorna()
+            self._repo.disabilita_operatore(auth_user_id)
+
+        # ⛔ L'interruttore «Accesso attivo» spento e' uno spegnimento come
+        #    «Disabilita» (A-5): inviti, sessioni e cache della veste operatore,
+        #    e solo di quella. Fino al 2026-10-02 invalidava la sola cache.
+        # ⛔ Solo quando la veste PASSA da accesa a spenta (`veste_attiva`).
+        #    Il drawer manda `attivo` a OGNI salvataggio: su un operatore gia'
+        #    spento, correggere l'email arriva con `attivo: false` invariato, e
+        #    trattarlo da spegnimento invaliderebbe l'invito appena spedito per
+        #    riaccenderlo (D-3). Un salvataggio non e' un gesto di revoca.
+        if spegni:
+            self._spegni_veste_operatore(auth_user_id, _aggiorna_e_spegni)
+        else:
+            _run_or_raise_super_admin_guard(_aggiorna)
+            invalidate_user(auth_user_id)
         return self._repo.get_operatore_detail(auth_user_id) or {}
 
-    # Scopo: Disabilita operatore, invalida cache e blacklist token.
+    # Scopo: Spegne la veste operatore con `spegni` e ne chiude cio' che resta
+    #        aperto (inviti, sessioni, cache: `InvitoVeste.chiudi_veste_spenta`),
+    #        in UNA transazione: la strada unica di «Disabilita» e
+    #        dell'interruttore (regola del 2, 2026-10-02).
+    # ⛔ Gli inviti pendenti si invalidano come per portale e shop (A-5,
+    #    2026-10-02): fino a quel giorno un operatore disabilitato con un
+    #    invito in volo poteva ancora attivarlo, e l'attivazione riaccendeva la
+    #    veste che l'amministratore aveva appena spento.
+    # ⛔ Si chiudono le sessioni della SOLA veste operatore (D-5,
+    #    `blocca_token_sessioni` per `identita_id`): la stessa credenziale puo'
+    #    avere una veste shop o portale, che resta accesa e connessa. Fino al
+    #    2026-10-02 «Disabilita» chiudeva tutte le sessioni della credenziale.
+    #    L'id si legge PRIMA di spegnere: e' quello della veste che si spegne.
+    # ⛔ Una revoca fallita PROPAGA e annulla anche lo spegnimento
+    #    (2026-09-26): l'amministratore riprova su uno stato intero.
+    # ⚠️ La cache dei permessi si invalida a COMMIT avvenuto: invalidata
+    #    prima, una richiesta concorrente la ricaricherebbe dallo stato
+    #    ancora attivo.
+    def _spegni_veste_operatore(self, auth_user_id: int, spegni: Callable[[], None]) -> None:
+        with transaction.atomic():
+            veste_id = self._repo.get_veste_operatore_id(auth_user_id)
+            _run_or_raise_super_admin_guard(spegni)
+            if veste_id is not None:
+                InvitoVeste().chiudi_veste_spenta(
+                    PORTA_OPERATORE, auth_user_id=auth_user_id, identita_id=veste_id,
+                )
+            else:
+                transaction.on_commit(lambda: invalidate_user(auth_user_id))
+
+    # Scopo: Disabilita operatore, invalida cache e chiude le sessioni della
+    # sua veste operatore (non quelle delle altre vesti della credenziale).
     # Preview UX `can_disable=false` evita il round-trip DB nel 99% dei casi
     # (single source of truth: `script.fn_check_ultimo_super_admin_attivo`
     # consumata da `fn_get_operatore_detail`). L'autorita' finale resta il
     # trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
     # che intercetta anche le race tra sessioni: traduciamo l'errore in
     # `E_PROFILO_ULTIMO_SUPER_ADMIN`.
-    def disabilita_operatore(self, auth_user_id: int) -> dict[str, Any]:
+    def disabilita_operatore(self, auth_user_id: int) -> OperatoreDetailRow | dict[str, Any]:
         operatore = self.get_operatore(auth_user_id)
         # ⛔ `disable_reason` e' un CODICE (`ULTIMO_SUPER_ADMIN`, §16 del
         #    brief blocco-login), non una spiegazione: non si ricopia nel
@@ -312,29 +415,16 @@ class AmmSoftwareService:
                     "reason": operatore.get("disable_reason"),
                 },
             )
-        # ⛔ Disattivazione e revoca delle sessioni in UNA transazione
-        #    (2026-09-26): la disattivazione prima committava da sola, e una
-        #    revoca fallita dopo lasciava l'operatore disattivato con le
-        #    sessioni vive — il contrario di cio' che questo commento
-        #    prometteva. Ora una revoca fallita PROPAGA e annulla anche la
-        #    disattivazione: l'amministratore riprova su uno stato intero.
-        # ⚠️ La cache dei permessi si invalida a COMMIT avvenuto: invalidata
-        #    prima, una richiesta concorrente la ricaricherebbe dallo stato
-        #    ancora attivo.
-        with transaction.atomic():
-            _run_or_raise_super_admin_guard(
-                lambda: self._repo.disabilita_operatore(auth_user_id)
-            )
-            blocca_token_sessioni(auth_user_id)
-            transaction.on_commit(lambda: invalidate_user(auth_user_id))
+        # Disattivazione e chiusura delle sessioni della veste operatore in
+        # UNA transazione: `_spegni_veste_operatore`.
+        self._spegni_veste_operatore(
+            auth_user_id, lambda: self._repo.disabilita_operatore(auth_user_id)
+        )
         return self._repo.get_operatore_detail(auth_user_id) or {}
 
-    # Scopo: Riattiva operatore disabilitato, invalida cache.
-    def riattiva_operatore(self, auth_user_id: int) -> dict[str, Any]:
-        self.get_operatore(auth_user_id)  # verifica esistenza
-        self._repo.riattiva_operatore(auth_user_id)
-        invalidate_user(auth_user_id)
-        return self._repo.get_operatore_detail(auth_user_id) or {}
+    # ⛔ Niente `riattiva_operatore` (ritirato il 2026-10-04, D-3): un
+    #    operatore spento si riattiva col reinvio dell'invito
+    #    (`InvitoOperatoreService.invia_invito`).
 
     # =================================================================
     # Override permessi
@@ -520,6 +610,16 @@ class AmmSoftwareService:
         self.get_operatore(auth_user_id)
         return self._repo.get_permessi_ereditati(auth_user_id)
 
+    # Scopo: I permessi EFFETTIVI dell'operatore su azioni e oggetti, col
+    #        tetto d'area gia' applicato a DB (brief-db-permessi-tetto-area).
+    # ⚠️ `get_operatore` prima, per la stessa ragione di
+    #    `get_permessi_ereditati`: su un id inesistente il DB risponderebbe
+    #    «tutto negato / BLOCCATO» (niente identita' OPERATORE), plausibile e
+    #    sbagliato al posto di un errore.
+    def get_permessi_effettivi(self, auth_user_id: int) -> dict:
+        self.get_operatore(auth_user_id)
+        return self._repo.get_permessi_effettivi(auth_user_id)
+
     # Scopo: Lista UO.
     def list_unita_organizzative(self) -> list:
         return self._repo.list_unita_organizzative()
@@ -566,7 +666,7 @@ class AmmSoftwareService:
         django_user_id: int | None = None,
         group_ids: list[int] | None = None,
         emittente_fiscale_id: int | None = None,
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         raw = ParameterService().get_defaults(
             list(_EMITTENTE_FORM_DEFAULTS_CODES),
             django_user_id=django_user_id,
@@ -599,7 +699,7 @@ class AmmSoftwareService:
     #        al CHECK constraint sulla colonna `rounding_policy`.
     #        L'invariante "descrizioni copre l'enum" e' garantita dal test
     #        `test_list_emittente_rounding_modes_coverage` (CI), non a runtime.
-    def list_emittente_rounding_modes(self) -> list[dict[str, object]]:
+    def list_emittente_rounding_modes(self) -> list[dict[str, Any]]:
         return [
             {"codice": codice, "descrizione": descrizione, "ordering": ordering}
             for codice, descrizione, ordering in _ROUNDING_MODE_DESCRIZIONI_EMITTENTE
@@ -610,8 +710,17 @@ class AmmSoftwareService:
     # =================================================================
 
     # Scopo: Salva profilo reparto e invalida cache di tutti gli operatori del reparto.
-    def put_profilo_reparto(self, uo_id: int, aree: list, azioni: list) -> dict:
-        self._repo.put_profilo_reparto(uo_id, aree, azioni)
+    #        `richiede_secondo_fattore` letto dal corpo: assente = invariato; se
+    #        c'e' dev'essere un booleano (brief sicurezza §3.4-bis, T-3).
+    def put_profilo_reparto(
+        self, uo_id: int, aree: list, azioni: list, *, payload: dict[str, Any] | None = None,
+    ) -> dict:
+        richiede_secondo_fattore = PayloadValidator(validation_code=E_AMM_VALIDAZIONE).optional_bool(
+            payload or {}, "richiede_secondo_fattore",
+        )
+        self._repo.put_profilo_reparto(
+            uo_id, aree, azioni, richiede_secondo_fattore=richiede_secondo_fattore,
+        )
         invalidate_department(uo_id)
         return self._repo.get_profilo_reparto(uo_id)
 
@@ -619,9 +728,18 @@ class AmmSoftwareService:
     # Riepilogo permessi
     # =================================================================
 
-    # Scopo: Matrice permessi effettivi per tutti gli operatori attivi.
-    def get_permessi_riepilogo(self, **params) -> dict:
-        return self._repo.get_permessi_riepilogo(**params)
+    # Scopo: Riepilogo permessi per area degli operatori indicati (le righe
+    #        di una pagina della lista operatori). Gli id arrivano gia' interi
+    #        dalla view; qui si tiene il tetto, perche' la funzione DB fa tre
+    #        letture per operatore.
+    def get_permessi_riepilogo(self, auth_user_ids: list[int]) -> list[dict[str, Any]]:
+        ErrorManager.require(
+            len(auth_user_ids) <= MAX_LIMIT,
+            code=E_AMM_VALIDAZIONE,
+            message=f"Al massimo {MAX_LIMIT} operatori per richiesta.",
+            context={"field": "auth_user_ids"},
+        )
+        return self._repo.get_permessi_riepilogo(auth_user_ids)
 
     # Scopo: Audit log globale modifiche permessi (Fase 5 — A13/A16).
     #        Ogni evento ora include `code`/`storico_id`/`area_funzionale` +

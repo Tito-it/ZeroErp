@@ -38,7 +38,7 @@ class UpdateMatriceTests(TestCase):
 
     def test_attivo_false_chiude_valido_al_a_oggi(self):
         chiamata = self._aggiorna({"attivo": False, "obbligatorio": True})
-        self.assertEqual("valido_al = CURRENT_DATE", chiamata.kwargs["extra_set"])
+        self.assertEqual("valido_al = (SELECT script.fn_data_operativa())", chiamata.kwargs["extra_set"])
         self.assertEqual(
             ("config.tipi_ruolo_tipi_indirizzo", 7, {"attivo": False, "obbligatorio": True}),
             chiamata.args,

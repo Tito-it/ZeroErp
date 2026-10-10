@@ -1,0 +1,96 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SE IL DDT HA UN BILLING ACCOUNT, DESTINATARIO E UTILITY SONO I SUOI
+#   vendite.ddt:
+#   + CHECK chk_ddt_ba_utility_insieme: (billing_account_id IS NULL) = (utility_id IS NULL)
+#   + FK (billing_account_id, destinatario_soggetto_ruolo_id, utility_id)
+#     verso anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id), MATCH SIMPLE.
+#   Brief: brief-db-esecutivi-ba-coppia (§5.2, D-4, D-5)
+#
+# -- PERCHE' NON NOT NULL ------------------------------------------
+#   D-2: il BA serve sulle causali che mandano merce a un cliente
+#   (config.causali_trasporto.richiede_cliente), e la causale in bozza puo'
+#   non esserci ancora. Il vincolo sta dove sta la causale: e' un motivo
+#   d'emissione (script.fn_check_ddt_emittibile, 20261009-76). Un DDT di
+#   trasferimento, conto lavoro o riparazione resta senza BA.
+#
+# -- LA FK, E PERCHE' MATCH SIMPLE ---------------------------------------
+#   D-4: col BA, il destinatario e' il ruolo del BA — la consegna a terzi si
+#   scrive negli indirizzi (ddt_indirizzi), non cambiando la controparte. D-5:
+#   la utility si lega al BA. Senza BA il destinatario resta libero (deposito,
+#   terzista): MATCH SIMPLE non scatta se una colonna e' NULL, ed e' il
+#   comportamento voluto. MATCH FULL non va: il destinatario e' NOT NULL anche
+#   senza BA.
+#   ⚠️ MATCH SIMPLE salta anche quando e' NULL la sola utility: il CHECK
+#   «tutti e due o nessuno» chiude quel buco.
+#   Stessa destinazione di ordine, reso e cliente (uq_billing_account_id_cliente,
+#   20261009-63): un indice per quattro tabelle.
+#   ⚠️ La FK semplice fk_ddt_v_billing_account RESTA: la composta la implica e
+#   il backend ne mappa il nome.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   preCondition: zero DDT col BA senza utility o viceversa, o col
+#   destinatario/utility diversi da quelli del BA (expectedResult 0).
+#   Fatto datato (dbdev, 2026-10-09): tre DDT VENDITA col BA e senza utility,
+#   corretti a mano da Tid prima dell'apply (brief §6). Nessun valore scelto
+#   dal migrate.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261009-65-alter-ddt-cliente-dal-billing-account-mctit.yaml
+
+  - changeSet:
+      id: 20261009-65-alter-ddt-cliente-dal-billing-account
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ddt: CHECK billing account e utility tutti e due o nessuno, FK composta MATCH
+        SIMPLE verso il billing account del destinatario e della utility. Brief:
+        brief-db-esecutivi-ba-coppia (D-4, D-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM vendite.ddt d
+                LEFT JOIN anagrafiche.billing_account ba ON ba.id = d.billing_account_id
+               WHERE (d.billing_account_id IS NULL) <> (d.utility_id IS NULL)
+                  OR (d.billing_account_id IS NOT NULL
+                      AND (ba.soggetto_ruolo_id IS DISTINCT FROM d.destinatario_soggetto_ruolo_id
+                           OR ba.utility_id     IS DISTINCT FROM d.utility_id));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ddt
+                ADD CONSTRAINT chk_ddt_ba_utility_insieme
+                CHECK ((billing_account_id IS NULL) = (utility_id IS NULL));
+
+              ALTER TABLE vendite.ddt
+                ADD CONSTRAINT fk_ddt_ba_cliente
+                FOREIGN KEY (billing_account_id, destinatario_soggetto_ruolo_id, utility_id)
+                REFERENCES anagrafiche.billing_account (id, soggetto_ruolo_id, utility_id)
+                MATCH SIMPLE;
+
+              COMMENT ON CONSTRAINT chk_ddt_ba_utility_insieme ON vendite.ddt
+              IS 'Billing account e utility, tutti e due o nessuno: la FK composta fk_ddt_ba_cliente e'' MATCH SIMPLE (senza BA il destinatario resta libero) e salterebbe anche con la sola utility NULL. Gemello: chk_resi_ba_utility_insieme. Brief: brief-db-esecutivi-ba-coppia (D-5).';
+
+              COMMENT ON CONSTRAINT fk_ddt_ba_cliente ON vendite.ddt
+              IS 'Col billing account, il destinatario e la utility del DDT sono quelli del BA (D-4, D-5): la consegna a terzi si scrive negli indirizzi, non cambiando la controparte. MATCH SIMPLE: senza BA (trasferimento, conto lavoro, riparazione) il destinatario resta libero. Gemelli: fk_ordini_ba_cliente, fk_resi_ba_cliente, fk_clienti_ba_cliente. Brief: brief-db-esecutivi-ba-coppia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ddt DROP CONSTRAINT fk_ddt_ba_cliente;
+              ALTER TABLE vendite.ddt DROP CONSTRAINT chk_ddt_ba_utility_insieme;

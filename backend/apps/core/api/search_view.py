@@ -16,12 +16,12 @@ from rest_framework import serializers
 from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 
-from apps.core.api.payload_validators import paginated_envelope, qp_int_strict, qp_str
+from apps.core.api.payload_validators import paginated_envelope, qp_int_optional, qp_int_strict, qp_str
 from apps.core.api.search_validators import require_min_search_length, validate_order_params
 from apps.core.api.success_responses import success_response
 from apps.core.api.throttling import SearchBurstRateThrottle
 from apps.core.db.search_repository import SearchRepository
-from apps.core.services.permissions_resolver import PermissionResolver
+from apps.core.services.payload_helpers import INTEGER_MAX, INTEGER_MIN
 from apps.core.services.service_errors import ServiceError
 
 # Ricerca universale soggetti — endpoint a due livelli.
@@ -33,23 +33,26 @@ _PAGE_SIZE_MAX = 100
 _PAGE_SIZE_DEFAULT = 25
 
 
-# Scopo: Estrae e valida tipo_ruolo_id da query params. Verifica obbligatorieta',
-# conversione a intero e flag ricerca_visibile tramite repository.
-def _require_tipo_ruolo_id(query_params, repo: SearchRepository) -> int:
-    raw = query_params.get("tipo_ruolo_id")
-    if not raw:
+# Scopo: Estrae tipo_ruolo_id da query params: obbligatorieta' e conversione
+#        a intero, nient'altro.
+# ⛔ Se il ruolo esiste ed e' ricercabile lo dice il DB, non questa funzione:
+#    `script.fn_predicato_soggetto_ruolo_visibile`, chiamata da lista e
+#    dettaglio, risponde 404 `E_TIPO_RUOLO_NON_TROVATO` /
+#    `E_TIPO_RUOLO_NON_RICERCABILE` (Q-2 di
+#    brief-db-codici-non-trovato-email-e-permessi, 2026-10-10). Il controllo
+#    su `ricerca_visibile` che stava qui era una seconda copia della regola.
+# ⚠️ Tetto `integer`: il valore va a `p_tipo_ruolo_id integer` delle due
+#    funzioni, e un bigint li' e' un 500, non un 400 (BB `qp_int_optional`).
+def _require_tipo_ruolo_id(query_params) -> int:
+    tipo_ruolo_id = qp_int_optional(
+        query_params.get("tipo_ruolo_id"), "tipo_ruolo_id",
+        min_val=INTEGER_MIN, max_val=INTEGER_MAX,
+    )
+    if tipo_ruolo_id is None:
         raise ServiceError(
             code="E_SEARCH_VALIDATION",
             message="Parametri ricerca non validi.",
             detail="Il parametro 'tipo_ruolo_id' e' obbligatorio.",
-        )
-    tipo_ruolo_id = qp_int_strict(raw, "tipo_ruolo_id", 0)
-
-    if not repo.is_tipo_ruolo_visibile(tipo_ruolo_id):
-        raise ServiceError(
-            code="E_SEARCH_VALIDATION",
-            message="Tipo ruolo non valido per la ricerca.",
-            detail=f"tipo_ruolo_id={tipo_ruolo_id} non e' abilitato per la ricerca universale.",
         )
     return tipo_ruolo_id
 
@@ -114,7 +117,7 @@ class SearchUniversaleView(DomainAPIView):
                 type=int,
                 location=OpenApiParameter.QUERY,
                 required=True,
-                description="ID tipo ruolo (obbligatorio). Solo tipi con ricerca_visibile=true.",
+                description="ID tipo ruolo (obbligatorio). Solo tipi con ricerca_visibile=true: gli altri 404 E_TIPO_RUOLO_NON_RICERCABILE.",
             ),
             OpenApiParameter(
                 name="page",
@@ -135,7 +138,7 @@ class SearchUniversaleView(DomainAPIView):
                 type=str,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="Colonna di ordinamento. Valori: ragione_sociale_completa, soggetto_codice, id_fiscale_univoco, utility_list.",
+                description="Colonna di ordinamento. Valori: ragione_sociale_completa, soggetto_codice, id_fiscale_univoco. utility_list non e' ordinabile (aggregato della sola pagina).",
             ),
             OpenApiParameter(
                 name="order_dir",
@@ -167,7 +170,7 @@ class SearchUniversaleView(DomainAPIView):
         },
     )
     # Scopo: Gestisce la richiesta GET di ricerca universale soggetti (livello 1).
-    # Valida parametri, applica scope emittente, delega al repository DB e
+    # Valida parametri, delega al repository DB e
     # restituisce risultati paginati nell'envelope standard.
     def get(self, request: Request) -> JsonResponse:
         # Validazione q: prima obbligatorieta', poi lunghezza minima
@@ -180,8 +183,7 @@ class SearchUniversaleView(DomainAPIView):
             )
         require_min_search_length(q, field_name="q")
 
-        repo = SearchRepository()
-        tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)
+        tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params)
 
         page = qp_int_strict(request.query_params.get("page"), "page", 1)
         page_size = qp_int_strict(
@@ -208,18 +210,10 @@ class SearchUniversaleView(DomainAPIView):
             qp_str(request.query_params.get("order_dir")),
         )
 
-        # Scope emittente — sr_ids perche' la funzione SQL filtra su
-        # emittenti_fiscali_billing_account.emittente_soggetto_ruolo_id
-        cache: dict = {}
-        emittente_ids = PermissionResolver.get_emittenti_sr_ids(
-            request.user, cache=cache
-        )
-
         offset = (page - 1) * page_size
-        results, total_count = repo.search_soggetti(
+        results, total_count = SearchRepository().search_soggetti(
             search_term=q,
             tipo_ruolo_id=tipo_ruolo_id,
-            emittente_ids=emittente_ids,
             limit=page_size,
             offset=offset,
             order_by=order_by,
@@ -264,26 +258,22 @@ class SearchDetailView(DomainAPIView):
     )
     # Scopo: Gestisce la richiesta GET di dettaglio soggetto per tipo ruolo (livello 2).
     # Carica lazy il dettaglio specifico per tipo ruolo tramite fn_get_search_detail.
-    # Valida tipo_ruolo_id, verifica ricerca_visibile e applica scope emittente.
+    # Valida tipo_ruolo_id; ruolo ricercabile e perimetro dei clienti li decide il DB.
     def get(self, request: Request, soggetto_id: str) -> JsonResponse:
-        repo = SearchRepository()
-        tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params, repo)
+        tipo_ruolo_id = _require_tipo_ruolo_id(request.query_params)
 
         # utility_id opzionale — filtra dettaglio CLIENTE per utility specifica
-        raw_utility = request.query_params.get("utility_id")
-        utility_id = qp_int_strict(raw_utility, "utility_id", None) if raw_utility else None
-
-        # Scope emittente — sr_ids, stesso filtro della search list
-        cache: dict = {}
-        emittente_ids = PermissionResolver.get_emittenti_sr_ids(
-            request.user, cache=cache
+        # ⚠️ Tetto `integer`: il valore va a `p_utility_id integer` di
+        #    `fn_get_search_detail`, e un bigint li' e' un 500, non un 400.
+        utility_id = qp_int_optional(
+            request.query_params.get("utility_id"), "utility_id",
+            min_val=INTEGER_MIN, max_val=INTEGER_MAX,
         )
 
-        result = repo.get_search_detail(
+        result = SearchRepository().get_search_detail(
             soggetto_id=str(soggetto_id),
             tipo_ruolo_id=tipo_ruolo_id,
             utility_id=utility_id,
-            emittente_ids=emittente_ids,
         )
 
         if result is None:

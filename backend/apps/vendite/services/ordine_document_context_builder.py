@@ -202,21 +202,22 @@ class OrdineDocumentContextBuilder(DocumentContextBuilder):
             },
             "agente_denominazione": testata.get("agente_denominazione"),
             "totali": {
-                "imponibile": format_importo(testata.get("imponibile_tot")),
-                "sconto": format_importo(testata.get("sconto_tot")),
-                "iva": format_importo(testata.get("iva_tot")),
-                "documento": format_importo(testata.get("totale_doc")),
+                "imponibile": format_importo(testata.get("imponibile_tot"), campo="imponibile_tot"),
+                "sconto": format_importo(testata.get("sconto_tot"), campo="sconto_tot"),
+                "iva": format_importo(testata.get("iva_tot"), campo="iva_tot"),
+                "documento": format_importo(testata.get("totale_doc"), campo="totale_doc"),
                 "valuta_codice": testata.get("valuta_codice"),
                 # Misura, non denaro (vedi gemello in fattura).
-                "tasso_cambio": format_misura(testata.get("tasso_cambio")),
+                "tasso_cambio": format_misura(testata.get("tasso_cambio"), campo="tasso_cambio"),
             },
             "meta": testata.get("meta") or {},
         }
 
     # Scopo: Sotto-dict "cliente" (soggetto via soggetto_ruolo diretto +
     #        billing account). Denominazione/id fiscale gia' denormalizzati
-    #        in vista (`ragione_sociale_completa`/`id_fiscale_univoco_cf_piva`),
-    #        valorizzati anche per i prospect senza BA.
+    #        in vista (`ragione_sociale_completa`/`id_fiscale_univoco_cf_piva`).
+    #        Il BA sull'ordine e' NOT NULL e il ruolo e' il suo
+    #        (`fk_ordini_ba_cliente`): le due vie portano allo stesso cliente.
     def _shape_cliente(self, testata: dict[str, Any]) -> dict[str, Any]:
         return {
             "soggetto_ruolo_id": testata.get("soggetto_ruolo_id"),

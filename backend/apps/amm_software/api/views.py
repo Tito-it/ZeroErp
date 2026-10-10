@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers
@@ -33,9 +35,11 @@ from apps.core.api.payload_validators import (
 )
 from apps.core.api.success_responses import success_response
 from apps.amm_software.db.amm_software_repository import REPARTI_ORDER_COLUMNS
-from apps.amm_software.services.amm_software_service import AmmSoftwareService
+from apps.amm_software.services.amm_software_service import E_AMM_VALIDAZIONE, AmmSoftwareService
 from apps.core.db.dbops_repository import ERROR_LOG_SORT_COLUMNS
 from apps.core.services.coda_lavori.scope import scope_operatore_da_request
+from apps.core.services.error_manager import ErrorManager
+from apps.core.services.payload_helpers import INTEGER_MAX
 from apps.core.services.processi_service import ProcessiService
 from apps.core.services.tracciamento_service import fn_list_error_logs
 from apps.ui.api.export_helpers import build_export_response, parse_export_format
@@ -174,7 +178,8 @@ class OperatoriDetailView(AdminAPIView):
             "is_super_admin": serializers.BooleanField(required=False),
             "attivo": serializers.BooleanField(required=False),
             "unita_organizzativa_id": serializers.IntegerField(required=False),
-            "valido_al": serializers.DateField(required=False),
+            # Fine del rapporto: `null` la toglie, assente non la tocca.
+            "valido_al": serializers.DateField(required=False, allow_null=True),
         }),
         responses={200: inline_serializer(name="OperatorePatchResp", fields={"data": serializers.DictField()})},
     )
@@ -189,14 +194,6 @@ class OperatoriDisabilitaView(AdminAPIView):
     @extend_schema(request=None, responses={200: inline_serializer(name="OperatoreDisabilitaResp", fields={"data": serializers.DictField()})})
     def post(self, request: Request, auth_user_id: int) -> JsonResponse:
         return success_response(AmmSoftwareService().disabilita_operatore(auth_user_id))
-
-
-class OperatoriRiattivaView(AdminAPIView):
-    """POST riattiva operatore disabilitato."""
-
-    @extend_schema(request=None, responses={200: inline_serializer(name="OperatoreRiattivaResp", fields={"data": serializers.DictField()})})
-    def post(self, request: Request, auth_user_id: int) -> JsonResponse:
-        return success_response(AmmSoftwareService().riattiva_operatore(auth_user_id))
 
 
 # ================================================================== #
@@ -373,6 +370,34 @@ class PermessiEreditatiView(AdminAPIView):
         )
 
 
+class PermessiEffettiviOperatoreView(AdminAPIView):
+    """GET permessi EFFETTIVI di un operatore su azioni e oggetti (sola lettura).
+
+    Per ogni voce: il valore senza tetto, quello applicato e se il tetto
+    d'area lo ferma (`limitata_da_area` / `limitato_da_area`). Serve al
+    pannello permessi per dire «abilitata, ma limitata dall'area»: un override
+    sotto un'area che non lo consente resta scritto e dormiente
+    (brief-db-permessi-tetto-area, D-3), e senza questa lettura il pannello lo
+    mostrerebbe come valido.
+
+    ⛔ Non e' `core` `users/<id>/permessi-effettivi/` (riepilogo per area,
+    senza azioni ne' tetto). Il calcolo sta a DB
+    (`script.fn_get_permessi_effettivi_azioni` / `..._oggetti`), la stessa
+    funzione che leggono i resolver.
+    """
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="PermessiEffettiviOperatoreGetResp", fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Azioni e oggetti effettivi dell'operatore, col tetto d'area.
+    def get(self, request: Request, auth_user_id: int) -> JsonResponse:
+        return success_response(
+            AmmSoftwareService().get_permessi_effettivi(auth_user_id)
+        )
+
+
 class RepartoProfiloView(AdminAPIView):
     """GET/PUT profilo reparto."""
 
@@ -383,6 +408,7 @@ class RepartoProfiloView(AdminAPIView):
     @extend_schema(
         request=inline_serializer(name="RepartoProfiloPutReq", fields={
             "aree": serializers.ListField(), "azioni": serializers.ListField(),
+            "richiede_secondo_fattore": serializers.BooleanField(required=False),
         }),
         responses={200: inline_serializer(name="RepartoProfiloPutResp", fields={"data": serializers.DictField()})},
     )
@@ -390,6 +416,7 @@ class RepartoProfiloView(AdminAPIView):
         corpo = corpo_oggetto(request)
         result = AmmSoftwareService().put_profilo_reparto(
             uo_id, corpo.get("aree", []), corpo.get("azioni", []),
+            payload=corpo,
         )
         return success_response(result)
 
@@ -554,11 +581,11 @@ _IDEMPOTENCY_HEADER_PARAM = OpenApiParameter(
     location=OpenApiParameter.HEADER, required=True,
     description="Chiave idempotenza obbligatoria per endpoint write.",
 )
-_IDENTITA_REQ_FIELDS = {"emittente_codice": serializers.CharField()}
+_IDENTITA_REQ_FIELDS: dict[str, serializers.Field] = {"emittente_codice": serializers.CharField()}
 
 
 def _post_verbo_identita(request: Request, codice: str, verbo) -> JsonResponse:
-    def _handler(payload: dict[str, object]) -> dict[str, object]:
+    def _handler(payload: dict[str, Any]) -> dict[str, Any]:
         return verbo(codice, emittente_codice=str(payload.get("emittente_codice") or ""))
 
     return handle_post_json(request, handler=_handler, require_idempotency_key=True)
@@ -640,7 +667,7 @@ class ProcessiEseguiOraView(AdminAPIView):
     # Scopo: Accoda «Esegui ora» sulla sveglia indicata, con lo scope di chi
     #        preme catturato dalla richiesta (terna rifiutata PRIMA di accodare).
     def post(self, request: Request, codice: str) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             # Lo scope si cattura QUI, dalla richiesta, con il BB della coda:
             # e' cio' con cui il drenatore ripropone l'identita' di chi ha
             # premuto, minuti dopo e senza token. Senza `identita_id` il BB
@@ -673,8 +700,8 @@ class AuditLogView(AdminAPIView):
     def get(self, request: Request) -> JsonResponse:
         qp = request.query_params
         events, total_count = AmmSoftwareService().list_audit_log(
-            data_da=qp.get("data_da") or None,
-            data_a=qp.get("data_a") or None,
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             tabella=qp.get("tabella") or None,
             order_by=qp.get("order_by") or None,
             order_dir=qp.get("order_dir") or None,
@@ -714,7 +741,7 @@ _PARAMS_FILTRI_ERROR_LOG = [
 #        e NORMALIZZATI: date ISO strict (400 se malformate), `tx_id` uuid
 #        (400 se non lo e' — un `%s::uuid` su una stringa qualunque sarebbe
 #        un 500), testi strip. Una sede per la lista e per l'export.
-def _filtri_error_log(qp) -> dict[str, object]:
+def _filtri_error_log(qp) -> dict[str, Any]:
     tx_id = optional_uuid({"tx_id": qp_str(qp.get("tx_id"))}, "tx_id")
     data_da = qp_iso_date_optional(qp.get("data_da"), "data_da")
     data_a = qp_iso_date_optional(qp.get("data_a"), "data_a")
@@ -825,26 +852,64 @@ class ErrorLogExportView(AdminAPIView):
 
 
 class PermessiRiepilogoView(AdminAPIView):
-    """GET matrice permessi effettivi per tutti gli operatori attivi."""
+    """GET riepilogo permessi per area degli operatori indicati."""
 
     @extend_schema(
         parameters=[
-            OpenApiParameter(name="unita_organizzativa_id", type=int, required=False),
-            OpenApiParameter(name="is_super_admin", type=bool, required=False),
-            OpenApiParameter(name="emittente_fiscale_id", type=int, required=False),
+            OpenApiParameter(
+                name="auth_user_ids", type=str, required=True,
+                description="Id degli operatori, separati da virgola (le righe di una pagina della lista).",
+            ),
         ],
         responses={200: inline_serializer(name="PermessiRiepilogoResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Matrice operatori × aree con livello effettivo (Fase 7
-    #        multi-face: filtro `is_super_admin` sostituisce `ruolo_sistema`).
+    # Scopo: Le chip della lista operatori con i permessi aperti: una riga per
+    #        (operatore, area attiva) con livello effettivo, override scritti e
+    #        voci fermate dal tetto (brief riepilogo-permessi, 2026-10-06).
+    # ⚠️ Gli id sono quelli della PAGINA: la lista e' la sorgente degli
+    #    operatori, filtri compresi. Fino al 2026-10-06 questo endpoint aveva
+    #    filtri suoi e restituiva tutti gli operatori.
     def get(self, request: Request) -> JsonResponse:
-        qp = request.query_params
-        result = AmmSoftwareService().get_permessi_riepilogo(
-            unita_organizzativa_id=optional_int({"v": qp.get("unita_organizzativa_id")}, "v"),
-            is_super_admin=_parse_optional_bool(qp.get("is_super_admin")),
-            emittente_fiscale_id=optional_int({"v": qp.get("emittente_fiscale_id")}, "v"),
+        ids = _parse_auth_user_ids(request.query_params.get("auth_user_ids"))
+        return success_response({"results": AmmSoftwareService().get_permessi_riepilogo(ids)})
+
+
+# Scopo: `?auth_user_ids=1,2,3` → `[1, 2, 3]`, senza duplicati e nell'ordine dato.
+#        Un pezzo che non e' un intero positivo e' un 400, non un id ignorato:
+#        la pagina chiede righe precise, e una che manca in silenzio sarebbe
+#        un operatore senza chip. Nessun id e' un 400 (il parametro e'
+#        obbligatorio): una chiamata senza operatori e' un chiamante rotto.
+# ⚠️ Il pezzo lo legge `optional_int` (cifre ASCII); qui si aggiunge il tetto
+#    di un `integer` PG (`auth_user.id`, argomento `integer[]` della funzione,
+#    `INTEGER_MAX` di payload_helpers): oltre, il cast fallirebbe a DB — un 500
+#    al posto di un 400.
+
+
+def _parse_auth_user_ids(raw: str | None) -> list[int]:
+    ids: list[int] = []
+    for pezzo in (raw or "").split(","):
+        if not pezzo.strip():
+            continue
+        try:
+            valore = optional_int({"v": pezzo}, "v")
+        except ValueError:
+            valore = None
+        ErrorManager.require(
+            valore is not None and 0 < valore <= INTEGER_MAX,
+            code=E_AMM_VALIDAZIONE,
+            message="auth_user_ids: attesi id interi positivi separati da virgola.",
+            context={"field": "auth_user_ids"},
         )
-        return success_response(result)
+        assert valore is not None
+        if valore not in ids:
+            ids.append(valore)
+    ErrorManager.require(
+        bool(ids),
+        code=E_AMM_VALIDAZIONE,
+        message="auth_user_ids: obbligatorio, almeno un id.",
+        context={"field": "auth_user_ids"},
+    )
+    return ids
 
 
 # ================================================================== #

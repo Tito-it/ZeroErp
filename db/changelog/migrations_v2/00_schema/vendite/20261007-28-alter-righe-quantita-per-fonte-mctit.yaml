@@ -1,0 +1,124 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA QUANTITA' DI UNA RIGA LA PORTA LA SUA FONTE
+#   vendite.contratti_righe:               chk_contrighe_quantita_per_fonte
+#   vendite.offerte_commerciali_eccezioni: chk_offerte_eccezioni_quantita_per_fonte
+#   Brief: brief-db-offerta-emissione-ed-erogazione §D.4 punto 2, §E (decisione
+#   di Tid del 2026-10-07: «DB, rifiuto»)
+#
+# -- LA REGOLA ----------------------------------------------------
+#   La fonte dice da dove arriva la quantita' che si fattura:
+#     · FISSA               — e' la quantita' della riga (obbligatoria e <> 0:
+#                             E_QTA_MISSING di trgfn_qta_from_operativa e
+#                             chk_*_qta_operativa_nonzero, gia' oggi);
+#     · DERIVATA_COMPONENTI — la scrive il DB dai componenti del bundle
+#                             (z90_propaga_qta_componenti);
+#     · le altre (MANUALE, LETTURE, TIMESHEET) — arriva A VALLE, periodo per
+#                             periodo: sulla riga quantita e qta_operativa
+#                             restano vuote.
+#   ⭐ Elenco delle fonti che PORTANO la quantita', non di quelle a valle: una
+#   fonte nuova del vocabolario (config.erogazioni_fonti) nasce «a valle»
+#   finche' qualcuno non decide che la sua quantita' sta sulla riga.
+#   Prima la regola la applicava solo il backend, e solo sul contratto
+#   (`_apply_fonte_quantita_logic`, che azzerava in silenzio): un'offerta
+#   MANUALE con quantita' 5 passava, e il push la ricopiava nel contratto.
+#   A parlare all'operatore e' il guard script.trgfn_righe_guard_quantita_per_fonte
+#   (-29, montato in -30), col campo; il CHECK e' la rete.
+#   ⚠️ Lo stesso elenco sta nel guard (c_fonti_con_quantita): un pgTAP
+#   rilegge pg_get_constraintdef e lo confronta
+#   (test-righe-quantita-per-fonte-v1).
+#
+# -- LE RIGHE GIA' SCRITTE ----------------------------------------
+#   Un CHECK si convalida su tutte le righe. Nessuna correzione automatica:
+#   la preCondition HALT conta le righe che il CHECK rifiuterebbe e ferma il
+#   migrate se ce ne sono. La correzione e' un dato (brief §E.3): azzerare
+#   quantita e qta_operativa di quelle righe, a mano, prima dell'apply.
+#   Su un DB da zero le tabelle sono vuote.
+#   Ritorno indietro: DROP dei due CHECK.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261007-28-alter-righe-quantita-per-fonte-mctit.yaml
+
+  - changeSet:
+      id: 20261007-28-alter-righe-quantita-per-fonte
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe e vendite.offerte_commerciali_eccezioni: con una fonte a valle
+        (ne' FISSA ne' DERIVATA_COMPONENTI) quantita e qta_operativa restano vuote.
+        Brief: brief-db-offerta-emissione-ed-erogazione §D.4 punto 2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE (c.conrelid = 'vendite.contratti_righe'::regclass
+                          AND c.conname = 'chk_contrighe_quantita_per_fonte')
+                      OR (c.conrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+                          AND c.conname = 'chk_offerte_eccezioni_quantita_per_fonte');
+            # Le righe che il CHECK rifiuterebbe: vanno corrette a mano prima
+            # (brief §E.3). Lo stesso predicato del CHECK, rovesciato.
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT (SELECT count(*) FROM vendite.contratti_righe
+                           WHERE fonte_quantita_attesa NOT IN ('FISSA', 'DERIVATA_COMPONENTI')
+                             AND (quantita IS NOT NULL OR qta_operativa IS NOT NULL))
+                       + (SELECT count(*) FROM vendite.offerte_commerciali_eccezioni
+                           WHERE fonte_quantita_attesa NOT IN ('FISSA', 'DERIVATA_COMPONENTI')
+                             AND (quantita IS NOT NULL OR qta_operativa IS NOT NULL));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contrighe_quantita_per_fonte
+                  CHECK (fonte_quantita_attesa IS NULL
+                         OR fonte_quantita_attesa IN ('FISSA', 'DERIVATA_COMPONENTI')
+                         OR (quantita IS NULL AND qta_operativa IS NULL));
+
+              COMMENT ON CONSTRAINT chk_contrighe_quantita_per_fonte ON vendite.contratti_righe IS
+                  'La quantita'' di una riga la porta la sua fonte: solo FISSA (la quantita'' della '
+                  'riga) e DERIVATA_COMPONENTI (la scrive il DB dai componenti) hanno quantita e '
+                  'qta_operativa; con ogni altra fonte (MANUALE, LETTURE, TIMESHEET) la quantita'' '
+                  'arriva a valle e sulla riga restano vuote. Senza fonte (ESCLUSIONE) decide '
+                  'chk_contrighe_esclusione_senza_dati. A parlare all''operatore e'' il guard '
+                  'script.trgfn_righe_guard_quantita_per_fonte (E_RIGA_QUANTITA_CON_FONTE_A_VALLE, '
+                  'col campo): il CHECK e'' la rete. Gemello di '
+                  'chk_offerte_eccezioni_quantita_per_fonte, perche'' fn_push_offerta_a_contratto '
+                  'copia le righe 1:1. Brief: brief-db-offerta-emissione-ed-erogazione §D.4 punto 2.';
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_quantita_per_fonte
+                  CHECK (fonte_quantita_attesa IS NULL
+                         OR fonte_quantita_attesa IN ('FISSA', 'DERIVATA_COMPONENTI')
+                         OR (quantita IS NULL AND qta_operativa IS NULL));
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_quantita_per_fonte ON vendite.offerte_commerciali_eccezioni IS
+                  'Mirror di chk_contrighe_quantita_per_fonte: solo le fonti FISSA e '
+                  'DERIVATA_COMPONENTI portano quantita e qta_operativa; con le altre restano vuote. '
+                  'Senza, fn_push_offerta_a_contratto farebbe nascere un contratto rifiutato dal suo '
+                  'CHECK. A parlare all''operatore e'' il guard '
+                  'script.trgfn_righe_guard_quantita_per_fonte. Brief: '
+                  'brief-db-offerta-emissione-ed-erogazione §D.4 punto 2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_quantita_per_fonte;
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_quantita_per_fonte;

@@ -1,0 +1,141 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# anagrafiche.trgfn_dati_societari_guard_tipo_soggetto: LA POLICY SEGUE LA COLONNA, NON IL TIPO
+#   Brief: brief-db-sesso-senza-default (§4.1 punto 1)
+#   (guard su anagrafiche.dati_societari (BEFORE ROW))
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il 20261009-19 porta config.tipi_soggetto_dettaglio.dati_societari_policy
+#   dal tipo config.dati_societari_policy_enum al generico
+#   config.presenza_policy_enum (regola del 2: la stessa domanda serve al
+#   sesso). Questa funzione dichiarava la variabile col tipo VECCHIO, che il
+#   20261009-22 cancella: PL/pgSQL non ha una dipendenza registrata sul tipo,
+#   quindi il DROP passerebbe e la funzione morirebbe alla prima chiamata.
+#
+# -- COME ----------------------------------------------------------------
+#   Corpo vivo dalla doc auto-generata; cambiano solo le dichiarazioni: la
+#   dichiarazione di v_policy passa a
+#   config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE, cosi' segue la
+#   colonna anche al prossimo cambio di tipo. COMMENT aggiornato (nominava il
+#   tipo vecchio). Logica invariata. Gia' che si riscrive: anche
+#   v_cod_int_tipo ancorata (codice_interno%TYPE) e SECURITY INVOKER esplicito
+#   (la doc auto-generata lo scioglie, perche' e' il default).
+#   Firma: nessun parametro (RETURNS trigger).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261009-20-update-trgfn-dati-societari-guard-tipo-soggetto-presenza-policy-mctit.yaml
+
+  - changeSet:
+      id: 20261009-20-update-trgfn-dati-societari-guard-tipo-soggetto-presenza-policy
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.trgfn_dati_societari_guard_tipo_soggetto: v_policy dichiarata con %TYPE della colonna dati_societari_policy (passata a
+        config.presenza_policy_enum nel 20261009-19), non col tipo vecchio che il -22 cancella. Logica
+        invariata. Brief: brief-db-sesso-senza-default.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+              v_cod_int_tipo   config.tipi_soggetto_dettaglio.codice_interno%TYPE;
+              v_policy         config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
+              BEGIN
+              /*
+                Recupero:
+                - tipo_soggetto_dettaglio (codice_interno + policy dati societari)
+                per il soggetto associato a NEW.soggetto_id
+              */
+              SELECT tsd.codice_interno,
+                      tsd.dati_societari_policy
+              INTO v_cod_int_tipo,
+                      v_policy
+              FROM anagrafiche.soggetti s
+              LEFT JOIN config.tipi_soggetto_dettaglio tsd
+                      ON s.tipo_soggetto_dettaglio_id = tsd.id
+              WHERE s.id = NEW.soggetto_id;
+
+              -- Nessun soggetto trovato per soggetto_id
+              IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'anagrafiche.trgfn_dati_societari_guard_tipo_soggetto',
+                      'E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO',
+                      jsonb_build_object(
+                              'soggetto_id', NEW.soggetto_id
+                      ),
+                      new.tx_id,
+                      NEW.soggetto_id::text,
+                      NULL
+                      );
+              END IF;
+
+              -- Tipo soggetto dettaglio non configurato o join non riuscita
+              IF v_policy IS NULL THEN
+                      PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'anagrafiche.trgfn_dati_societari_guard_tipo_soggetto',
+                      'E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO',
+                      jsonb_build_object(
+                              'soggetto_id', NEW.soggetto_id,
+                              'codice_interno', v_cod_int_tipo
+                      ),
+                      new.tx_id,
+                      NEW.soggetto_id::text,
+                      COALESCE(v_cod_int_tipo, '<NULL>')
+                      );
+              END IF;
+
+              /*
+              Policy dati societari:
+              - NONE      -> dati societari non ammessi per questo tipo -> errore
+              - OPTIONAL  -> dati societari abilitati (facoltativi)
+              - REQUIRED  -> dati societari abilitati e previsti come obbligatori a livello dominio
+                              (l'obbligatorietà verrà verificata da un constraint trigger su soggetti)
+              */
+              IF v_policy = 'NONE' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                      'database',
+                      'anagrafiche.trgfn_dati_societari_guard_tipo_soggetto',
+                      'E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO',
+                      jsonb_build_object(
+                              'soggetto_id', NEW.soggetto_id,
+                              'codice_interno', v_cod_int_tipo,
+                              'dati_societari_policy', v_policy
+                      ),
+                      new.tx_id,
+                      NEW.soggetto_id::text,
+                      v_cod_int_tipo
+                      );
+              END IF;
+
+              RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()
+              IS '
+              Function che controlla, in fase di INSERT/UPDATE su anagrafiche.dati_societari, che:
+              - il soggetto collegato esista in anagrafiche.soggetti;
+              - per il tipo_soggetto_dettaglio associato sia configurata una policy dati_societari_policy
+              diversa da ''NONE'' (tipo config.presenza_policy_enum).
+              In caso di violazione utilizza script.fn_log_and_raise_error con codici errore specifici.
+              Rev 20261009-20 (brief-db-sesso-senza-default): la variabile della policy segue la colonna
+              (%TYPE), come codice_interno, non il tipo, che e'' passato da config.dati_societari_policy_enum al generico
+              config.presenza_policy_enum.
+              ';

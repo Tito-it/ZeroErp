@@ -1,0 +1,135 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN'ISTANZA, UN EMITTENTE
+#   NASCE anagrafiche.fn_guard_istanza_ba_emittente(p_billing_account_id).
+#   Brief: brief-db-istanza-nasce-col-ba (R-7, §6.4; D-4 di Tid del 2026-10-08)
+#
+# -- LA REGOLA ------------------------------------------------------
+#   D-4: un'istanza ha solo billing account dello stesso emittente. E' cio'
+#   che rende univoca la regola di scope «un'istanza e' dell'emittente del
+#   suo BA» (script.fn_check_ba_visible_for_emittenti): con due BA di
+#   emittenti diversi l'istanza sarebbe di entrambi.
+#   Il DB non lo imponeva: ogni BA prende l'emittente dell'operatore che lo
+#   crea (trgfn_billing_account_link_ef) e il legame si corregge finche' non
+#   c'e' storia (trgfn_efba_guard_storia_emittente); fn_guard_albero_ba_emittente
+#   guarda l'albero padre/figlio, non i BA della stessa istanza.
+#
+# -- LA FORMA -------------------------------------------------------
+#   Gemello di anagrafiche.fn_guard_albero_ba_emittente, su un altro insieme di
+#   BA: l'albero guarda padre e figli, questo i FRATELLI di istanza. Il
+#   confronto e' lo stesso building block, anagrafiche.fn_check_ba_coppia_emittente_omogenea
+#   (emittente RISOLTO, fail-closed sul NULL): «albero omogeneo» e «istanza
+#   omogenea» non possono risolvere l'emittente in due modi (regola del 2).
+#   ⚠️ I nomi dei parametri della check sono figlio/padre: qui la coppia e'
+#   di fratelli, e la check non dipende dal verso.
+#   ⚠️ SECURITY DEFINER, come il gemello: billing_account ha la RLS e un
+#   fratello di un altro emittente sarebbe invisibile proprio nel caso da
+#   bloccare.
+#   Il VARIADIC porta i codici dei due BA e quello dell'istanza.
+#
+# -- CHI LO CHIAMA ----------------------------------------------------
+#   -61 (nascita del BA) e -62 (collegamento BA -> emittente creato, cambiato
+#   o tolto); lo spostamento dell'emittente predefinito passa da -60.
+#
+# Ritorno indietro: DROP.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261008-59-create-fn-guard-istanza-ba-emittente-mctit.yaml
+
+  - changeSet:
+      id: 20261008-59-create-fn-guard-istanza-ba-emittente
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce anagrafiche.fn_guard_istanza_ba_emittente: i billing account della stessa istanza
+        risolvono allo stesso emittente (E_ISTANZA_EMITTENTI_DIVERSI). Gemello del guard
+        dell'albero, stessa check. Brief: brief-db-istanza-nasce-col-ba (R-7, D-4).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_guard_istanza_ba_emittente(
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE
+              )
+              RETURNS void
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public'
+              AS $function$
+              DECLARE
+                  v_istanza_id  anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_ba_codice   anagrafiche.billing_account.codice%TYPE;
+                  v_ist_codice  anagrafiche.istanze_utilities.codice%TYPE;
+                  r             record;
+              BEGIN
+                  -- ⚠️ SECURITY DEFINER: legge anagrafiche.billing_account,
+                  --   che ha la RLS. Da SECURITY INVOKER un fratello di un
+                  --   altro emittente sarebbe INVISIBILE, e il guard direbbe
+                  --   «a posto» proprio nel caso che deve bloccare.
+                  IF p_billing_account_id IS NULL THEN
+                      RETURN;
+                  END IF;
+
+                  SELECT ba.istanza_utility_id, ba.codice, iu.codice
+                    INTO v_istanza_id, v_ba_codice, v_ist_codice
+                    FROM anagrafiche.billing_account ba
+                    JOIN anagrafiche.istanze_utilities iu ON iu.id = ba.istanza_utility_id
+                   WHERE ba.id = p_billing_account_id;
+
+                  -- BA inesistente (cancellato nella stessa transazione):
+                  -- non e' compito di questo guard.
+                  IF NOT FOUND THEN
+                      RETURN;
+                  END IF;
+
+                  -- I FRATELLI di istanza: tutti gli altri BA della stessa
+                  -- istanza, uno per utility (uq_billing_instance_utility).
+                  FOR r IN
+                      SELECT ba.id, ba.codice
+                        FROM anagrafiche.billing_account ba
+                       WHERE ba.istanza_utility_id = v_istanza_id
+                         AND ba.id <> p_billing_account_id
+                       ORDER BY ba.id
+                  LOOP
+                      IF NOT anagrafiche.fn_check_ba_coppia_emittente_omogenea(
+                               p_billing_account_id, r.id) THEN
+                          PERFORM script.fn_log_and_raise_error(
+                              'anagrafiche', 'fn_guard_istanza_ba_emittente',
+                              'E_ISTANZA_EMITTENTI_DIVERSI',
+                              jsonb_build_object(
+                                  'billing_account_id',       p_billing_account_id,
+                                  'altro_billing_account_id', r.id,
+                                  'istanza_utility_id',       v_istanza_id,
+                                  'emittente_sr',             anagrafiche.fn_get_emittente_fiscale_id(p_billing_account_id),
+                                  'emittente_sr_altro',       anagrafiche.fn_get_emittente_fiscale_id(r.id)
+                              ),
+                              NULL::uuid,
+                              v_ba_codice::text,
+                              r.codice::text,
+                              v_ist_codice::text
+                          );
+                      END IF;
+                  END LOOP;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_guard_istanza_ba_emittente(bigint)
+              IS 'Guard fail-fast: il billing account indicato risolve allo stesso emittente fiscale di TUTTI gli altri BA della sua istanza (D-4 di Tid del 2026-10-08: un''istanza ha billing account di un solo emittente, cosi'' la regola di scope «un''istanza e'' dell''emittente del suo BA» ha una risposta sola). Solleva E_ISTANZA_EMITTENTI_DIVERSI coi codici dei due BA e dell''istanza. Gemello di anagrafiche.fn_guard_albero_ba_emittente (padre/figli), stessa check: anagrafiche.fn_check_ba_coppia_emittente_omogenea, emittente RISOLTO e fail-closed. BA inesistente: niente da presidiare. SECURITY DEFINER perche'' legge billing_account, che ha la RLS. Chiamanti: trgfn_billing_account_guard_istanza_emittente, trgfn_efba_guard_istanza_emittente, fn_guard_istanza_ba_gestore_globale. Brief: brief-db-istanza-nasce-col-ba (R-7).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_guard_istanza_ba_emittente(bigint);

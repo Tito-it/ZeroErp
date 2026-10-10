@@ -68,3 +68,8 @@ LANGUAGE plpgsql STABLE
 ### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento
 
 La versione del listino in vigore per l'offerta senza versione fissata non è più scelta qui: la dice [vendite.fn_listino_versione_in_vigore](/dbzero/vendite/funzioni/fn_listino_versione_in_vigore) (`20260928-40`). Per ogni data la versione in vigore è **al più una**, per costruzione (nessuna sovrapposizione fra versioni ATTIVE e CHIUSE, date di una CHIUSA bloccate), quindi «la prima» e «tutte le valide» sono la stessa cosa. Stesso esito, provato sui dati di dev.
+
+<!-- rev-2026-10-04-listino-operativo -->
+### 🔄 rev 2026-10-04 — brief-db-righe-esclusione-solo-non-si-vende
+
+La versione e la variazione globale vengono da [vendite.fn_documento_listino_operativo](/dbzero/vendite/funzioni/fn_documento_listino_operativo) (`20261004-74`), la sede unica che serve anche la lista delle righe e i guard di contratto e offerta. Stessa regola di prima. Questa funzione resta la lista **pronta per l'ordine** (esclusioni tolte, quantità di default 1); la lista del drawer è [vendite.fn_offerta_righe_preview](/dbzero/vendite/funzioni/fn_offerta_righe_preview).

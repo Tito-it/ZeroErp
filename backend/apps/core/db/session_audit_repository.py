@@ -14,6 +14,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     add_ricerca_full_condition,
@@ -127,7 +128,7 @@ class SessionAuditRepository:
             VALUES
                 (%s, %s, %s, %s::inet, %s, %s::uuid, %s::jsonb)
         """
-        params = [
+        params: list[Any] = [
             auth_user_id,
             evento,
             jti,
@@ -167,7 +168,7 @@ class SessionAuditRepository:
         self, auth_user_id: int, *, escludi_jti: str | None,
         search: str | None = None,
         order_by: str | None = None, order_dir: str | None = None,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
         ordinamento = sql_order_clause(

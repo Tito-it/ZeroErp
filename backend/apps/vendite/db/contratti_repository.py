@@ -22,7 +22,7 @@ from typing import Any
 
 from django.db import connection
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -34,10 +34,10 @@ from apps.core.db._helpers import (
     rows_to_list,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
-from apps.vendite.db._righe_repo_mixin import RigheListaMixin
 
 
 # Colonne jsonb delle tabelle scritte qui (testata, righe, utility): dichiarate
@@ -348,7 +348,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         data_a: date | None = None,
         scadenza_mese: str | None = None,
         auth_user_id: int | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "data",
         order_dir: str = "desc",
@@ -476,39 +476,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             )
             return row_to_dict(cursor)
 
-    # Scopo: Risolve la versione listino operativa per un listino, alla data.
-    #        Replica la stessa regola applicata in `fn_contratto_righe_preview`
-    #        (migration 20260516-04): ATTIVA/CHIUSA validità @ data_riferimento,
-    #        BOZZA esclusa, ordinato per (ATTIVA prima). Lookup puro su
-    #        `listini_versioni` — il caller decide se chiamarlo o se ha gia'
-    #        lo snapshot dalla testata contratto (evita round-trip extra).
-    #        Usato dal pricing gate L2 contratti per popolare
-    #        `listino_versione_id_preferito` del resolver pricing v2 quando
-    #        il contratto e' DRAFT (snapshot non fissato) → evita il drift
-    #        cascata CATEGORIA quando il BA ha mappa categorie_clienti_listini
-    #        su un listino diverso. Ritorna None se nessuna versione operativa.
-    def get_listino_versione_attiva_alla_data(
-        self, listino_id: int, data_riferimento: date,
-    ) -> int | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT lv.id
-                  FROM vendite.listini_versioni lv
-                 WHERE lv.listino_id = %s
-                   AND lv.attivo     = TRUE
-                   AND lv.stato      IN ('ATTIVA', 'CHIUSA')
-                   AND lv.validita  @> %s::date
-                 ORDER BY (lv.stato = 'ATTIVA') DESC
-                 LIMIT 1
-                """,
-                [listino_id, data_riferimento],
-            )
-            row = cursor.fetchone()
-            if not row:
-                return None
-            return row[0]
-
     # Scopo: Restituisce il contesto minimo richiesto dal motore documentale
     #        per generare un documento da contratto: `id`, `uid` e
     #        `emittente_fiscale_id`. Post brief simmetria 2026-05-26 la
@@ -587,7 +554,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                        OR
                        (cnt.listino_versione_id IS NULL
                             AND lv.stato IN ('ATTIVA','CHIUSA')
-                            AND lv.validita @> CURRENT_DATE)
+                            AND lv.validita @> (SELECT script.fn_data_operativa()))
                    )
                  ORDER BY (lv.stato = 'ATTIVA') DESC
                  LIMIT 1
@@ -606,7 +573,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                   JOIN cnt ON cnt.listino_id = lv.listino_id
                  WHERE lv.attivo = TRUE
                    AND lv.stato = 'ATTIVA'
-                   AND lv.validita @> CURRENT_DATE
+                   AND lv.validita @> (SELECT script.fn_data_operativa())
                  LIMIT 1
             )
             SELECT
@@ -764,8 +731,9 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "valore_variazione_globale",
         "categoria_cliente_id_snapshot",
         # Corsia di instradamento (Fase B brief emissione mirata): il guard
-        # DB respinge l'UPDATE dopo il push in commessa, e la whitelist di
-        # patch per stato lo ammette solo in DRAFT.
+        # DB respinge l'UPDATE dopo il push in commessa. Il lock di testata
+        # non la nomina: la governa quel guard (brief-db-testata-dopo-emissione
+        # §9.1).
         "fatturazione_immediata",
         # Riferimenti dell'atto (I8/D9, 2026-08-29). ⭐ Ammessi in PATCH anche in
         # ATTIVO (decisione Q1): non toccano prezzo ne' validita' e non
@@ -786,8 +754,9 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #        su due trigger di `vendite.contratti`:
     #          - trgfn_contratti_guard_transizione_stato: transizione ammessa
     #            dalla matrice `config.transizioni_stati_contratti`;
-    #          - trgfn_contratti_lock_post_attivazione: immutabilita' della
-    #            testata dopo l'attivazione.
+    #          - trgfn_doc_testata_lock_fuori_bozza: le colonne della testata
+    #            ferme fuori bozza, colonna per colonna e per stato (dal
+    #            2026-10-10 assorbe trgfn_contratti_lock_post_attivazione).
     #        (Fino al 2026-08-04 qui era nominato
     #        trgfn_contratti_guard_modalita_c_activation, droppato con il
     #        modello di pricing a modalita' A/B/C il 2026-05-15.)
@@ -923,7 +892,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     #        (refactor modalita 2026-05-15). `tipo_eccezione` NOT NULL nello
     #        schema; trigger DB chk_contrighe_prezzo_per_tipo_eccezione
     #        valida la coerenza prezzo_unitario per tipo. Trigger
-    #        trgfn_contratti_righe_guard_aggiunta_fuori_listino blocca
+    #        script.trgfn_righe_guard_aggiunta_fuori_listino blocca
     #        AGGIUNTA su articoli presenti nel listino di riferimento.
     def create_riga(self, contratto_id: int, data: dict[str, Any]) -> int:
         riga = execute_dynamic_insert(
@@ -952,7 +921,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
         "meta",
         # Workflow L3: la transizione PENDING -> APPROVED/REJECTED e
         # l'aggancio della pratica passano da qui (allowlist trigger
-        # `trgfn_contratti_righe_guard_pending` ammette workflow + meta
+        # `script.trgfn_righe_guard_pending` ammette workflow + meta
         # + audit, blocca ogni altra modifica struttura su righe PENDING).
         "stato_approvazione_prezzo",
         "pratica_approvazione_prezzo_id",
@@ -1000,7 +969,10 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             SELECT
                 c.emittente_fiscale_id,
                 sr.soggetto_id::text AS soggetto_id,
-                ba.soggetto_ruolo_id
+                ba.soggetto_ruolo_id,
+                -- Il cliente a grana fine della pratica (D-9 di
+                -- brief-db-istanza-nasce-col-ba): il BA del documento.
+                ba.id AS billing_account_id
             FROM vendite.contratti c
             JOIN anagrafiche.billing_account ba ON ba.id = c.billing_account_id
             JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
@@ -1146,7 +1118,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
                    origine_prezzo,
                    resolver_error_reason,
                    obbligatorio,
-                   esposto_in_fattura
+                   esposizione_in_fattura
               FROM vendite.fn_contratto_riga_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )
@@ -1299,9 +1271,11 @@ class ContrattoRigheListaRepository(RigheListaMixin):
     un numero di riga (§8.13.5 del brief). La chiave `riga_key` fa da spareggio,
     e distingue le righe dello stesso articolo in due unita' di misura.
     ⚠️ Nessun filtro `attivo`: la funzione legge gia' le sole eccezioni attive.
-    ⚠️ La lettura completa del BB (`list_righe`) non ha consumatori: anteprima
-    prezzi, conteggio del dettaglio e contesto di stampa leggono
-    `ContrattiRepository.list_righe_preview`, nell'ordine della funzione.
+    ⭐ Solo la PAGINA (`RigheListaMixin`, non la lettura completa): conteggio
+    del dettaglio e contesto di stampa leggono
+    `ContrattiRepository.list_righe_preview`, nell'ordine della funzione. Una
+    seconda lettura completa ereditata dal BB non aveva consumatori, ed e'
+    uscita col BB a due livelli (2026-10-04, §9.16).
     """
 
     _righe_funzione = "vendite.fn_contratto_righe_preview"

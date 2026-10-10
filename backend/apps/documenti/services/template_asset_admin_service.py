@@ -115,7 +115,7 @@ _MAX_DESCRIZIONE_LEN = 500
 _MAX_FILE_NAME_LEN = 255
 
 # Mapping vincoli DB -> codici applicativi parlanti.
-_UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_UNIQUE_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "uq_template_asset_emittente_codice": (
         E_VALIDATION,
         "Esiste gia' un asset con questo codice per l'emittente.",
@@ -132,7 +132,7 @@ _UNIQUE_CONSTRAINTS: dict[str, tuple[str, str]] = {
     ),
 }
 
-_FK_CONSTRAINTS: dict[str, tuple[str, str]] = {
+_FK_CONSTRAINTS: dict[str, tuple[str, ...]] = {
     "asset_tipo_id_fkey": (
         E_VALIDATION,
         "asset_tipo_id non valido (FK su documenti.tipi_asset_documento).",
@@ -428,7 +428,7 @@ class TemplateAssetAdminService:
     # Scopo: Compone il dict da passare al repository per create.
     #        Campi obbligatori: codice, codice_interno, descrizione,
     #        asset_tipo_id, emittente_fiscale_id. valido_dal default DB
-    #        (CURRENT_DATE).
+    #        (`fn_data_operativa()`, l'oggi dell'azienda).
     def _build_upload_metadati(self, payload: dict[str, Any]) -> dict[str, Any]:
         data: dict[str, Any] = {}
         data["codice"] = self._v.require_string(

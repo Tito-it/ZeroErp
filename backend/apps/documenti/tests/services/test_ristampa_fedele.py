@@ -27,12 +27,15 @@
 #        12. ristampa_anon_user_raises_validation
 #        13. ristampa_input_guard_id_non_positivo
 #        14. ristampa_versione_obsoleta_e_ammessa
+#        15. [presidio dichiarato, expectedFailure] ristampa_pagina_cambiata_
+#            dichiarata: il template_hash non vede le colonne della pagina
 # ------------------------------------------------------------
 
 from __future__ import annotations
 
 import hashlib
 from typing import Any
+from unittest import expectedFailure
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -363,3 +366,40 @@ class RistampaFedeleTests(SimpleTestCase):
             result = svc.ristampa_fedele(_make_user(), 99)
         self.assertEqual(result["versione_stato"], "OBSOLETA")
         self.assertTrue(result["template_hash_match"])
+
+    # 15. ⚠️ PRESIDIO DICHIARATO, NON UNA PROVA (2026-10-04, decisione Tid:
+    #     «per ora solo il test»). Dal render con la pagina dalle colonne
+    #     (R-BE-V2a) formato, orientamento e margini decidono il PDF quanto
+    #     html e css; ma `_compute_template_hash` legge solo html|css|markdown.
+    #     Una versione la cui pagina cambia dopo la generazione (possibile
+    #     solo in BOZZA, come il test 5) si dichiara fedele: `template_hash_
+    #     match` vale True su un PDF che esce in un altro formato.
+    #     `expectedFailure` finche' la formula non include la pagina: quando la
+    #     includera', il test passera' e unittest lo segnalera' come «unexpected
+    #     success» — si toglie allora il decoratore.
+    @expectedFailure
+    def test_ristampa_pagina_cambiata_dichiarata(self) -> None:
+        allora = {
+            **_versione_pinnata(),
+            "page_format": "A4", "page_orientation": "PORTRAIT",
+            "margin_top_mm": 10, "margin_right_mm": 10,
+            "margin_bottom_mm": 10, "margin_left_mm": 10,
+        }
+        oggi = {**allora, "page_format": "A3", "page_orientation": "LANDSCAPE"}
+        svc, _ = _service_with_mocks(repo_methods={
+            "get_documento_generato_snapshot": _snapshot(
+                template_hash=_hash_del_service(allora),
+            ),
+            "get_versione_by_id": oggi,
+        })
+        with _patch_scope(), _patch_atomic(), _patch_render():
+            result = svc.ristampa_fedele(_make_user(), 99)
+        self.assertFalse(result["template_hash_match"])
+
+
+# Scopo: l'hash che il SERVICE calcola su una versione (non la copia della
+#        formula di `_template_hash_di`): il test 15 deve seguire la formula
+#        vera, o il giorno che la si corregge resterebbe rosso per la copia.
+def _hash_del_service(versione: dict[str, Any]) -> str:
+    svc, _ = _service_with_mocks()
+    return svc._compute_template_hash(versione)

@@ -56,7 +56,9 @@
 --   POSTURA — l'intero schema (il search_path dell'app COMINCIA da django)
 --    5   : USAGE sullo schema
 --    6   : nessuna tabella di `django` senza SELECT, INSERT, UPDATE, DELETE —
---          in caso di rosso stampa quali (stessa postura degli altri 14 schemi)
+--          in caso di rosso stampa quali (stessa postura degli altri 14 schemi),
+--          salvo il DELETE su auth_user, tolto il 2026-10-06 e pinnato
+--          (brief-db-elimina-credenziale-senza-veste §4.2)
 --    7   : nessuna sequenza di `django` senza USAGE
 --   POSTURA FUTURA — chi migra Django lascia all'app anche le tabelle nuove
 --    8   : ALTER DEFAULT PRIVILEGES del proprietario di auth_user, in schema
@@ -129,8 +131,13 @@ SELECT is(
                AND has_table_privilege('zeroerp_app', t.oid, 'INSERT')
                AND has_table_privilege('zeroerp_app', t.oid, 'UPDATE')
                AND has_table_privilege('zeroerp_app', t.oid, 'DELETE'))),
-  NULL::text,
-  '6. nessuna tabella dello schema django senza SELECT, INSERT, UPDATE, DELETE per zeroerp_app'
+  -- ⭐ Dal 2026-10-06 l'UNICA eccezione dichiarata: il DELETE su auth_user.
+  --   Una credenziale si elimina solo da script.fn_elimina_credenziale
+  --   (brief-db-elimina-credenziale-senza-veste §4.2; provisioning, blocco
+  --   «UNA CREDENZIALE SI ELIMINA SOLO DAL VERBO»). Ogni altra mancanza esce
+  --   accanto a questa e fa rosso; e se il DELETE tornasse, rosso lo stesso.
+  'auth_user [DELETE]'::text,
+  '6. nello schema django all''app manca solo il DELETE su auth_user (la porta e'' il verbo)'
 );
 
 WITH sequenze AS MATERIALIZED (

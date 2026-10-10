@@ -47,7 +47,7 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.openapi_params import param_ricerca_full
-from apps.core.api.payload_validators import corpo_oggetto, optional_int, parse_list_params
+from apps.core.api.payload_validators import corpo_oggetto, optional_int, parse_list_params, qp_iso_date_optional
 from apps.core.api.success_responses import success_response
 from apps.core.db.email_repository import EmailRepository
 from apps.core.services.email_allegati_storage import E_EMAIL_OP, percorso_allegato
@@ -59,8 +59,17 @@ from apps.core.services.auth_helpers import (
     extract_emittente_attivo_from_request,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.error_messages_fallback import USER_MESSAGE_FALLBACK
+from apps.core.services.testata_guard import o_not_found
 
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
+
+# Codici dei «non trovato» degli allegati e del file perso sullo storage
+# (brief-db-codici-non-trovato-email-e-permessi §2): `E_EMAIL_OP` resta per i
+# soli dati errati della richiesta.
+E_EMAIL_ALLEGATO_NOT_FOUND = "E_EMAIL_ALLEGATO_NOT_FOUND"
+E_EMAIL_ALLEGATO_FILE_MANCANTE = "E_EMAIL_ALLEGATO_FILE_MANCANTE"
+E_EMITTENTE_NON_RISOLTO = "E_EMITTENTE_NON_RISOLTO"
 
 
 # ⭐ Il vocabolario vive in `services/email_constants.py`, non qui: lo usa anche
@@ -151,13 +160,17 @@ class EmailPrepareView(DomainAPIView):
                 None if ambito == "SISTEMA"
                 else extract_emittente_attivo_from_request(request)
             )
+            # ⭐ E' la condizione di `E_EMITTENTE_NON_RISOLTO` (la modalita'
+            #    «Tutti gli emittenti», di sola lettura): un codice solo per
+            #    tutte le tabelle che vogliono l'azienda di chi agisce, col suo
+            #    400 voluto — il rimedio e' scegliere l'azienda in alto
+            #    (brief-db-codici-non-trovato-email-e-permessi §9.2). Fino al
+            #    2026-10-09 usciva come `E_EMAIL_OP`.
             ErrorManager.require(
                 ambito == "SISTEMA" or emittente_fiscale_id is not None,
-                code=E_EMAIL_OP,
-                message=(
-                    "Nessuna azienda attiva: una bozza che non e' di sistema "
-                    "appartiene all'azienda per cui si sta lavorando."
-                ),
+                code=E_EMITTENTE_NON_RISOLTO,
+                message=USER_MESSAGE_FALLBACK[E_EMITTENTE_NON_RISOLTO],
+                detail=f"ambito={ambito}",
             )
 
             # ⛔ `REPARTO` senza unita' organizzativa lo rifiuta il database
@@ -232,20 +245,13 @@ class EmailOutboxDetailView(DomainAPIView):
     @extend_schema(responses={200: dict})
     # Scopo: Dettaglio bozza email con allegati.
     def get(self, request: Request, outbox_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        result = repo.get_outbox(outbox_id)
-        ErrorManager.require(result is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
-        assert result is not None
-        return success_response(result)
+        return success_response(EmailOutboxService().get_bozza(outbox_id))
 
     @extend_schema(request=_BOZZA_PATCH_REQUEST, responses={200: dict})
     # Scopo: Modifica oggetto, corpo, CC di una bozza DRAFT.
     def patch(self, request: Request, outbox_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        outbox = repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
-        assert outbox is not None
-
+        # ⛔ La bozza la legge (e la rifiuta, 404) il verbo del service: la
+        #    view non la rilegge prima — sarebbe un secondo controllo uguale.
         # ⛔ Il payload passa INTERO: le chiavi estranee le rifiuta il service
         #    con un 400 (2026-09-26). Fino a quel giorno la view le filtrava qui
         #    e un campo sbagliato «riusciva» senza essere scritto.
@@ -262,11 +268,6 @@ class EmailOutboxSendView(DomainAPIView):
     @extend_schema(request=None, responses={200: dict})
     # Scopo: Conferma e invia una bozza email (DRAFT -> SENT).
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        outbox = repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
-        assert outbox is not None
-
         service = EmailOutboxService()
         result = service.confirm_and_send(outbox_id)
         return success_response(result)
@@ -280,11 +281,6 @@ class EmailOutboxCancelView(DomainAPIView):
     @extend_schema(request=None, responses={200: dict})
     # Scopo: Annulla una bozza email (DRAFT -> CANCELLED).
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        outbox = repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
-        assert outbox is not None
-
         service = EmailOutboxService()
         result = service.cancel_draft(outbox_id)
         return success_response(result)
@@ -304,11 +300,8 @@ class EmailAllegatoUploadView(DomainAPIView):
     @extend_schema(request={"multipart/form-data": _ALLEGATO_UPLOAD_REQUEST}, responses={200: dict})
     # Scopo: Upload file allegato a una bozza DRAFT.
     def post(self, request: Request, outbox_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        outbox = repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
-        assert outbox is not None
-
+        # ⛔ La bozza la legge (e la rifiuta, 404) `add_attachment`: la view
+        #    non la rilegge prima.
         uploaded = request.FILES.get("file")
         ErrorManager.require(uploaded is not None, code=E_EMAIL_OP, message="File non fornito.")
         assert uploaded is not None
@@ -331,11 +324,20 @@ class EmailAllegatoListView(DomainAPIView):
     @extend_schema(responses={200: dict})
     # Scopo: Lista allegati di una bozza outbox.
     def get(self, request: Request, outbox_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        outbox = repo.get_outbox(outbox_id)
-        ErrorManager.require(outbox is not None, code=E_EMAIL_OP, message="Bozza non trovata.")
-        assert outbox is not None
+        outbox = EmailOutboxService().get_bozza(outbox_id)
         return success_response({"results": outbox.get("allegati", [])})
+
+
+# Scopo: L'allegato per id, o 404 `E_EMAIL_ALLEGATO_NOT_FOUND` (inesistente o
+#        fuori perimetro RLS: la stessa risposta). Sede unica per rimozione e
+#        download (regola del 2, 2026-10-09).
+def _allegato_o_404(allegato_id: int) -> dict[str, Any]:
+    return o_not_found(
+        EmailRepository().get_allegato(allegato_id),
+        code=E_EMAIL_ALLEGATO_NOT_FOUND,
+        message=USER_MESSAGE_FALLBACK[E_EMAIL_ALLEGATO_NOT_FOUND],
+        detail=f"email_allegato_id={allegato_id}",
+    )
 
 
 class EmailAllegatoDeleteView(DomainAPIView):
@@ -346,10 +348,7 @@ class EmailAllegatoDeleteView(DomainAPIView):
     @extend_schema(responses={204: None})
     # Scopo: Elimina un allegato da una bozza.
     def delete(self, request: Request, allegato_id: int) -> JsonResponse:
-        repo = EmailRepository()
-        allegato = repo.get_allegato(allegato_id)
-        ErrorManager.require(allegato is not None, code=E_EMAIL_OP, message="Allegato non trovato.")
-        assert allegato is not None
+        _allegato_o_404(allegato_id)
 
         service = EmailOutboxService()
         service.remove_attachment(allegato_id)
@@ -364,14 +363,18 @@ class EmailAllegatoDownloadView(DomainAPIView):
     @extend_schema(responses={200: bytes})
     # Scopo: Download file allegato per ID.
     def get(self, request: Request, allegato_id: int) -> FileResponse:
-        repo = EmailRepository()
-        allegato = repo.get_allegato(allegato_id)
-        ErrorManager.require(allegato is not None, code=E_EMAIL_OP, message="Allegato non trovato.")
-        assert allegato is not None
+        allegato = _allegato_o_404(allegato_id)
 
         # Guard contro il path traversal nel BB condiviso con l'invio SMTP.
         abs_path = percorso_allegato(allegato["file_path"])
-        ErrorManager.require(os.path.exists(abs_path), code=E_EMAIL_OP, message="File non trovato su storage.")
+        # ⚠️ 500, non 404: la riga c'e' e il file no — un guasto dello
+        #    storage, su cui l'operatore non puo' fare niente (brief §2).
+        ErrorManager.require(
+            os.path.exists(abs_path),
+            code=E_EMAIL_ALLEGATO_FILE_MANCANTE,
+            message=USER_MESSAGE_FALLBACK[E_EMAIL_ALLEGATO_FILE_MANCANTE],
+            detail=f"email_allegato_id={allegato_id}",
+        )
 
         return FileResponse(
             open(abs_path, "rb"),
@@ -447,8 +450,8 @@ class EmailLogOperatoreListView(DomainAPIView):
             search=p["search"],
             stato=qp.get("stato") or None,
             pratica_id=optional_int({"v": qp.get("pratica_id")}, "v"),
-            data_da=qp.get("data_da") or None,
-            data_a=qp.get("data_a") or None,
+            data_da=qp_iso_date_optional(qp.get("data_da"), "data_da"),
+            data_a=qp_iso_date_optional(qp.get("data_a"), "data_a"),
             limit=p["limit"],
             offset=p["offset"],
             order_by=p["order_by"],

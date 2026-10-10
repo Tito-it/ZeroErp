@@ -145,7 +145,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, 300.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
@@ -156,8 +156,8 @@ SELECT * FROM ins;
 CREATE TEMP TABLE tmp_contabile AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
     p_centro_riscossione_id => (SELECT centro_banca_id FROM tmp_refs),
-    p_data_contabile        => current_date,
-    p_data_registrazione    => current_date,
+    p_data_contabile        => script.fn_data_operativa(),
+    p_data_registrazione    => script.fn_data_operativa(),
     p_codice_stato_interno  => 'BOZZA',
     p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
     p_origine               => 'MANUALE'
@@ -168,7 +168,7 @@ WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili_righe
       (contabile_id, riferimento_ente, data_pagamento, importo,
        fattura_id, billing_account_id, stato_id, motivo_sospeso, meta)
-  SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_CV_' || v.et, current_date, v.importo,
+  SELECT (SELECT contabile_id FROM tmp_contabile), 'PGTAP_CV_' || v.et, script.fn_data_operativa(), v.importo,
          CASE WHEN v.et IN ('A', 'B') THEN (SELECT id FROM tmp_fattura) END,
          CASE WHEN v.et IN ('A', 'B') THEN r.billing_account_id END,
          CASE v.et WHEN 'A' THEN r.st_abbinata

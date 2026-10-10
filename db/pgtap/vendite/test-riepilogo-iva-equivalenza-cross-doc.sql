@@ -184,17 +184,29 @@ SELECT ok(
 
 -- ===== ORDINE =====
 CREATE TEMP TABLE tmp_eqiva_ordine(id bigint);
+
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine ha sempre il
+--   BA, e il suo cliente e' il ruolo del BA (fk_ordini_ba_cliente). Prima
+--   nasceva senza BA e col ruolo dell'EMITTENTE come cliente. Il cliente si
+--   FABBRICA: pescato dai dati, su un database senza billing account l'ordine
+--   non nasceva. Il trigger z90 lega il BA all'emittente dell'operatore.
+CREATE TEMP TABLE tmp_eqiva_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('riepilogo iva equivalenza');
+SET CONSTRAINTS ALL IMMEDIATE;
+
 WITH ins AS (
   INSERT INTO vendite.ordini (
     serie, numero, anno, data,
-    soggetto_ruolo_id, stato_doc_ordine_id, valuta_id, emittente_fiscale_id,
+    soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id, valuta_id, emittente_fiscale_id,
     storicizza, meta
   )
   SELECT
     'PGTAP', 'EQIVA-O-' || substr(md5(clock_timestamp()::text), 1, 8), 2080, DATE '2080-06-01',
-    r.soggetto_ruolo_id, r.stato_doc_ordine_id, r.valuta_id, r.emittente_fiscale_id,
+    c.soggetto_ruolo_id,
+    c.billing_account_id, r.stato_doc_ordine_id, r.valuta_id,
+    anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
     false, jsonb_build_object('test_scope', 'pgtap_eqiva')
-  FROM tmp_eqiva_refs r
+  FROM tmp_eqiva_refs r, tmp_eqiva_cli c
   WHERE r.soggetto_ruolo_id IS NOT NULL
     AND r.emittente_fiscale_id IS NOT NULL
     AND r.stato_doc_ordine_id IS NOT NULL

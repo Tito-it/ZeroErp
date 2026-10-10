@@ -69,8 +69,8 @@ BEGIN
            au.email,
            count(idg.id),
            bool_or(idg.attivo),
-           bool_or(    (idg.valido_dal IS NULL OR idg.valido_dal <= CURRENT_DATE)
-                   AND (idg.valido_al  IS NULL OR idg.valido_al  >= CURRENT_DATE))
+           bool_or(    (idg.valido_dal IS NULL OR idg.valido_dal <= (SELECT script.fn_data_operativa()))
+                   AND (idg.valido_al  IS NULL OR idg.valido_al  >= (SELECT script.fn_data_operativa())))
       INTO v_trovato, v_email, v_n_vesti, v_veste_attiva, v_in_finestra
       FROM django.auth_user au
       LEFT JOIN anagrafiche.identita_digitali idg

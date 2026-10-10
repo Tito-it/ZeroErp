@@ -38,6 +38,10 @@
 --  27) tolleranza a spazi e minuscole, come per p_order_by/p_order_dir
 --  28) ⭐ la chiamata POSIZIONALE a 8 argomenti (la firma di prima del
 --      filtro) funziona ancora: il parametro nuovo e' in coda apposta
+--  --- Chiave in forma canonica (rev 2026-10-05, 20261005-26) ---
+--  29) il resolver risolve la chiave canonica di una commessa COSTRUITA
+--  30) la stessa chiave con zeri davanti NON si risolve (riga a NULL)
+--  31) ⭐ un id fuori range NON solleva: una riga a NULL (prima 22003)
 --
 -- Scopo:
 --  - Le colonne nuove escono davvero, e la lista non si rompe ordinando per
@@ -58,7 +62,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ⚠️ 3. VINCOLI DIFFERITI.
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(27);
+SELECT plan(30);
 
 -- ============================================================
 -- 1..3  Gli oggetti: c'e' la nuova, non c'e' piu' la vecchia
@@ -459,6 +463,38 @@ SELECT lives_ok($$
   SELECT count(*) FROM vendite.fn_list_commessa_attivita(
       (SELECT commessa_id FROM tmp_commessa_lcp), NULL, NULL, NULL, 1000, 0, NULL, 'asc')
 $$, '28. la chiamata posizionale a 8 argomenti (firma pre-filtro) regge ancora');
+
+
+-- ============================================================
+-- 29-31) La chiave si riconosce in FORMA CANONICA (20261005-26)
+--   Il resolver usa ora i building block script.fn_sorgente_chiave_uuid /
+--   _id, la stessa regola di chi salva la chiave (guard, rubinetto) e di chi
+--   cerca lo stato. Il 29 tiene il 30 onesto: la stessa commessa, scritta
+--   bene, si risolve. Il 31 era un 22003 dentro una lista.
+-- ============================================================
+SELECT is(
+  (SELECT documento_id FROM vendite.fn_get_sorgente_documento_ref(
+      (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA'),
+      (SELECT commessa_id FROM tmp_commessa_lcp)::text)),
+  (SELECT commessa_id FROM tmp_commessa_lcp)::bigint,
+  '29. la chiave canonica di una commessa costruita si risolve'
+);
+
+SELECT is(
+  (SELECT documento_id FROM vendite.fn_get_sorgente_documento_ref(
+      (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA'),
+      '0' || (SELECT commessa_id FROM tmp_commessa_lcp)::text)),
+  NULL::bigint,
+  '30. la stessa chiave con zeri davanti non si risolve (forma non canonica)'
+);
+
+SELECT results_eq(
+  $$SELECT documento_id, documento_numero FROM vendite.fn_get_sorgente_documento_ref(
+      (SELECT id FROM config.sorgenti WHERE codice_interno = 'COMMESSA'),
+      '99999999999999999999')$$,
+  $$VALUES (NULL::bigint, NULL::text)$$,
+  '31. un id fuori range non solleva: una riga a NULL'
+);
 
 SELECT * FROM finish();
 

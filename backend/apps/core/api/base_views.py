@@ -38,6 +38,20 @@ class DomainAPIView(APIView):
     authentication_classes = [JwtAuditAuthentication]
     permission_classes = [ZeroERPPermission]
 
+    # Gli attributi DICHIARATIVI che le sottoclassi — e le fabbriche di view —
+    # impostano, e che `ZeroERPPermission` legge. ⚠️ Sono SOLO annotazioni, senza
+    # valore: la classe base NON li ha, quindi `getattr(view, ..., None)` e il
+    # fail-closed sull'area (`AREA_NON_DEFINITA`) restano esattamente quelli di
+    # prima. Servono al type checker: senza, una fabbrica che scrive
+    # `classe.model_permission = ...` assegna un attributo «sconosciuto».
+    area_funzionale: str
+    model_permission: tuple[str, str] | None
+    get_permission: str
+    post_permission: str
+    put_permission: str
+    patch_permission: str
+    delete_permission: str
+
     # Codice stabile della lista servita da questo endpoint, quando ne serve
     # UNA (`"vendite.dash_competenza_gruppi"`). `None` = l'endpoint non
     # alimenta una lista di catalogo, e il cancello resta inerte.

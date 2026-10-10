@@ -158,6 +158,23 @@ aliquota).
 
 Riferimento: `brief-db-immutabilita-quantita-e-porta-oneri` §4c.2 e §4c.3.
 
+### La base del segmento: `segment_base` (10-10-2026)
+
+`segment_key` è una chiave composta in una stringa: la riga di documento
+(`DDT:<uid>:R:<riga>`, `ORD:…`) più eventuali suffissi — `#CMP:<id>` per un
+componente di kit, `#RET:<n>` per una rettifica. `segment_base` è la parte prima
+del primo `#`: **la riga di documento a cui l'attività appartiene**, qualunque
+suffisso porti.
+
+È una colonna **generata**: si calcola da sola da `segment_key`, nessuno la
+scrive. Esiste per una ragione di prestazioni che è una ragione di modello:
+«tutte le attività di questa riga» diventa un'uguaglianza su una colonna
+indicizzata, che sotto la RLS resta una ricerca per chiave anche quando la riga
+arriva come parametro. La usano `fn_af_merce_per_riga` e
+`fn_get_stato_push_segment`. ⚠️ Nei trigger `BEFORE` vale ancora `NULL`, come
+ogni colonna generata: lo snapshot storico la porta a `null`.
+Brief: `brief-db-segment-base-commesse-attivita`.
+
 ---
 
 {% include-markdown "signature-core.md" %}

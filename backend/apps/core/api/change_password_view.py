@@ -3,7 +3,8 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Endpoint POST /api/v1/auth/change-password/ — cambio password
-#        con validazione (vecchia password + 4 validators Django).
+#        con validazione (vecchia password, col freno della credenziale, +
+#        4 validators Django).
 #        Resetta flag deve_cambiare_password, blacklista token precedenti,
 #        riapre la sessione nella stessa veste (catena del login).
 # ------------------------------------------------------------
@@ -33,6 +34,9 @@ from apps.core.services.auth_helpers import (
     valida_nuova_password,
 )
 from apps.core.services.error_manager import ErrorManager
+from apps.core.services.password_con_freno import verifica_password_con_freno
+from apps.core.services.request_context import richiesta_django
+from apps.core.api.endpoint_helpers import utente_autenticato
 
 logger = logging.getLogger("security")
 
@@ -66,25 +70,27 @@ class ChangePasswordView(DomainAPIView):
     #    sicurezza §2, 2026-09-28): il corpo porta il solo `access`.
     def post(self, request: Request) -> JsonResponse:
         def _handler(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
-            user = request.user
+            user = utente_autenticato(request)
 
             old_password = password_digitata(payload, "old_password")
             new_password = password_digitata(payload, "new_password")
             new_password_confirm = password_digitata(payload, "new_password_confirm")
 
-            # Validazioni input: la nuova password col BB, poi le regole del
-            # cambio (diversa dalla precedente, precedente corretta).
-            ErrorManager.require(bool(old_password), code=E_CHANGE_PW, message="Password attuale obbligatoria.")
+            # ⛔ PRIMA di ogni altra validazione, col freno della credenziale:
+            # chi tiene una sessione rubata non prova password senza attesa, e
+            # un errore sulla nuova che arrivasse prima lascerebbe provare
+            # l'attuale senza che il tentativo conti.
+            verifica_password_con_freno(
+                user, old_password,
+                request=request, auth_repo=_auth_repo,
+                codice=E_CHANGE_PW, messaggio="Password attuale non corretta.",
+                messaggio_assente="Password attuale obbligatoria.", campo="old_password",
+            )
+            # Poi la nuova password col BB e la regola del cambio.
             valida_nuova_password(new_password, new_password_confirm, user=user, code=E_CHANGE_PW)
             ErrorManager.require(
                 new_password != old_password,
                 code=E_CHANGE_PW, message="La nuova password deve essere diversa dalla precedente.",
-            )
-
-            # Verifica password attuale
-            ErrorManager.require(
-                user.check_password(old_password),
-                code=E_CHANGE_PW, message="Password attuale non corretta.",
             )
 
             # La veste della sessione corrente: e' su QUELLA che si resetta il
@@ -94,14 +100,15 @@ class ChangePasswordView(DomainAPIView):
             # toccare la password: se nel frattempo e' stata revocata, il
             # cambio non avviene e la risposta e' quella di una sessione
             # scaduta, non un token che la richiesta dopo rifiuterebbe.
+            # «Valida» = utilizzabile oggi (`script.fn_veste_utilizzabile`).
             identita_id = extract_identita_id_from_request(request)
             identita = (
-                _auth_repo.get_identita_dettaglio(identita_id, user.id)
+                _auth_repo.get_veste_utilizzabile(identita_id, user.id)
                 if identita_id is not None
                 else None
             )
             ErrorManager.require(
-                identita is not None and bool(identita.get("attivo")),
+                identita is not None,
                 code=E_IDENTITA_NON_ATTIVA,
                 message="Sessione non piu' valida: effettua nuovamente l'accesso.",
             )
@@ -128,7 +135,7 @@ class ChangePasswordView(DomainAPIView):
             # login (prima si registrava il `jti`, che cambia a ogni refresh).
             session_audit_service.record_login(
                 user_id=user.id,
-                request=request._request if hasattr(request, "_request") else request,
+                request=richiesta_django(request),
                 jti=str(refresh[JWT_CLAIM_SID]),
             )
             logger.info("security.password_changed user_id=%s", user.id)

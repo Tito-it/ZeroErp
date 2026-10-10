@@ -6,25 +6,18 @@
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useListiniStore } from '../stores/listini'
 import { createVersione } from '../api/listini'
 import { getVersioneNewDefaults } from '../api/formDefaults'
-import { toDateString, addDaysToToday } from '../../core/utils/date'
+import { toDateString, addDaysToToday, parseIsoDate } from '../../core/utils/date'
 import { DRAWER_WIDTH, DATE_FORMAT, MANAGE_ICONS } from '../../core/constants'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
-import Drawer from 'primevue/drawer'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import InputText from 'primevue/inputtext'
 import DatePicker from 'primevue/datepicker'
 import Message from 'primevue/message'
 
-
-
 const { t } = useI18n()
-const isReadonly = useInjectReadonly()
 const { execute, loading, campiErrati } = useApiHandler()
 const listiniStore = useListiniStore()
 
@@ -33,17 +26,12 @@ const props = defineProps({
   listino: { type: Object, default: null }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved'])
 
 const form = ref({})
 // Modifiche non salvate: fotografia dopo i default BE, chiudere con
 // modifiche chiede conferma (BB useDrawerFormPreserve).
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 // existing_drafts arriva dal BE (Fase 2.B5a): single source of truth.
 // Mantiene anche compat con lo store locale come fallback se l'endpoint
 // fallisce (resilienza al primo open offline).
@@ -69,8 +57,8 @@ async function loadDefaults() {
   // execute() ritorna body.data unwrappato.
   form.value = {
     codice_versione: res.default_codice_versione || '',
-    valido_dal: res.default_valido_dal ? new Date(res.default_valido_dal + 'T00:00:00') : null,
-    valido_al: res.default_valido_al ? new Date(res.default_valido_al + 'T00:00:00') : null,
+    valido_dal: parseIsoDate(res.default_valido_dal),
+    valido_al: parseIsoDate(res.default_valido_al),
   }
   beExistingDrafts.value = Array.isArray(res.existing_drafts) ? res.existing_drafts : []
 }
@@ -121,49 +109,51 @@ async function handleSave() {
 function close() {
   emit('update:visible', false)
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.STANDARD }"
-    @after-show="onAfterShow"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('vendite.listini.nuova_versione')"
+    :icon="MANAGE_ICONS.VERSIONI"
+    :action="t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificato" :action="t('common.new')" :title="t('vendite.listini.nuova_versione')" :icon="MANAGE_ICONS.VERSIONI" />
-    </template>
+    <div v-if="listino" class="app-drawer-section">
+      <h4>{{ t('vendite.listini.listino') }}: {{ listino.codice }} — {{ listino.descrizione }}</h4>
+    </div>
 
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div v-if="listino" class="app-drawer-section">
-        <h4>{{ t('vendite.listini.listino') }}: {{ listino.codice }} — {{ listino.descrizione }}</h4>
-      </div>
+    <Message v-if="bozzeEsistenti.length > 0" severity="warn" :closable="false">
+      {{ t('vendite.listini.warning_bozza_esistente', { codice: bozzeEsistenti.map(b => b.codice_versione).join(', ') }) }}
+    </Message>
 
-      <Message v-if="bozzeEsistenti.length > 0" severity="warn" :closable="false">
-        {{ t('vendite.listini.warning_bozza_esistente', { codice: bozzeEsistenti.map(b => b.codice_versione).join(', ') }) }}
-      </Message>
-
+    <div class="form-field">
+      <label>{{ t('vendite.listini.field_codice_versione') }} *</label>
+      <InputText v-model="form.codice_versione"
+        :invalid="campiErrati.includes('codice_versione')"
+      />
+    </div>
+    <div class="form-grid-2col">
       <div class="form-field">
-        <label>{{ t('vendite.listini.field_codice_versione') }} *</label>
-        <InputText v-model="form.codice_versione"
-          :invalid="campiErrati.includes('codice_versione')"
+        <label>{{ t('vendite.listini.field_valido_dal') }} *</label>
+        <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon
+          :invalid="campiErrati.includes('valido_dal')"
         />
       </div>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.listini.field_valido_dal') }} *</label>
-          <DatePicker v-model="form.valido_dal" :dateFormat="DATE_FORMAT" showIcon
-            :invalid="campiErrati.includes('valido_dal')"
-          />
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.listini.field_valido_al') }}</label>
-          <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
-            :invalid="campiErrati.includes('valido_al')"
-          />
-        </div>
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_valido_al') }}</label>
+        <DatePicker v-model="form.valido_al" :dateFormat="DATE_FORMAT" showIcon showButtonBar
+          :invalid="campiErrati.includes('valido_al')"
+        />
       </div>
-
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>

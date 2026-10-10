@@ -4,7 +4,7 @@
 >
 Approfondimenti funzioni:
 >
-[vendite.trgfn_commesse_guard_emittente_ba](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba)
+[script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba)
 >
 [anagrafiche.fn_get_emittente_fiscale_id](/dbzero/anagrafiche/manual/fn_get_emittente_fiscale_id)
 >
@@ -51,7 +51,7 @@ e' questa commessa» e «chi fattura questo cliente» sono la stessa domanda.
 
 **Non sovrascrive mai** un valore gia' scritto. Se chi crea la commessa dichiara
 un emittente, questa funzione lo lascia stare: a giudicarlo ci pensa
-[il controllo](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba), che lo
+[il controllo](/dbzero/script/manual/trgfn_doc_guard_emittente_ba), che lo
 respinge se non coincide con quello del cliente.
 
 E' una distinzione che sembra sottile e non lo e': una correzione silenziosa

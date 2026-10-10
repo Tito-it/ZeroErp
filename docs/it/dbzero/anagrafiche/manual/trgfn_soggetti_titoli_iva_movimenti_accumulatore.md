@@ -7,7 +7,7 @@ Approfondimento tabelle:
 > • [anagrafiche.soggetti_titoli_iva](/dbzero/anagrafiche/tabelle/soggetti_titoli_iva)
 >
 Approfondimento funzioni:
-> • [anagrafiche.fn_consuma_plafond_titolo_iva](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva) — chi scrive le righe di consumo
+> • [anagrafiche.fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe) — chi scrive le righe di consumo (prima i positivi, poi i negativi: il conto sotto zero si rifiuta a ogni riga)
 
 ---
 

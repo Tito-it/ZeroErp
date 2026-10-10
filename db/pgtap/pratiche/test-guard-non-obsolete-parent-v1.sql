@@ -64,8 +64,8 @@ WITH ins AS (
   INSERT INTO pratiche.tipi_prestazione (codice, codice_interno, descrizione, attivo, obsoleto_dal)
   VALUES
     ('ZZGUARD_OK',  'ZZGUARD_OK',  'tipo selezionabile',       true, NULL),
-    ('ZZGUARD_FUT', 'ZZGUARD_FUT', 'tipo ritiro programmato',  true, CURRENT_DATE + 30),
-    ('ZZGUARD_OBS', 'ZZGUARD_OBS', 'tipo obsoleto',            true, CURRENT_DATE - 1),
+    ('ZZGUARD_FUT', 'ZZGUARD_FUT', 'tipo ritiro programmato',  true, script.fn_data_operativa() + 30),
+    ('ZZGUARD_OBS', 'ZZGUARD_OBS', 'tipo obsoleto',            true, script.fn_data_operativa() - 1),
     ('ZZGUARD_FL',  'ZZGUARD_FL',  'tipo per flussi',          true, NULL)
   RETURNING id, codice_interno
 )
@@ -82,7 +82,7 @@ WITH ins AS (
   INSERT INTO pratiche.template_flussi (tipo_prestazione_id, codice, descrizione, attivo, obsoleto_dal)
   VALUES
     ((SELECT tipo_fl_id FROM tmp_tipi), 'TF_OK',  'template selezionabile', true, NULL),
-    ((SELECT tipo_fl_id FROM tmp_tipi), 'TF_OBS', 'template obsoleto',      true, CURRENT_DATE - 1)
+    ((SELECT tipo_fl_id FROM tmp_tipi), 'TF_OBS', 'template obsoleto',      true, script.fn_data_operativa() - 1)
   RETURNING id, codice
 )
 SELECT
@@ -165,7 +165,7 @@ SELECT lives_ok(
 
 -- Il tipo della pratica storica diventa obsoleto (asse obsoleto_dal, attivo invariato).
 UPDATE pratiche.tipi_prestazione
-   SET obsoleto_dal = CURRENT_DATE - 1
+   SET obsoleto_dal = script.fn_data_operativa() - 1
  WHERE id = (SELECT tipo_ok_id FROM tmp_tipi);
 
 -- 5) La pratica storica ora punta a un tipo obsoleto: UPDATE non-FK ancora consentito.

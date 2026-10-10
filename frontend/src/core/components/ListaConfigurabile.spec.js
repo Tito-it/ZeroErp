@@ -35,10 +35,16 @@
 //   6) `paginata:true` (il default): il gate non si applica mai
 //   7) le colonne rese vengono dalla CONFIG, non dal caller
 //   8) una colonna `visibile:false` non si rende
+//   9) la riga aperta nel form (`riga-attiva`) e' evidenziata, le altre no
+//  10) `righe-cliccabili:false`: ogni riga lo dichiara (niente hover)
+//  11) ⭐ la riga che apre un drawer resta evidenziata finche' il drawer e' aperto
+//  12) un click che non apre un drawer si dimentica: un drawer aperto dopo non
+//      evidenzia quella riga
+//  13) `riga-attiva` passata dal caller vince sulla riga del click
 // ------------------------------------------------------------
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 // ⚠️ Il mock va dichiarato PRIMA dell'import del componente: `vi.mock` e'
@@ -72,6 +78,7 @@ vi.mock('../composables/useListaConfig', () => ({
 
 import ListaConfigurabile from './ListaConfigurabile.vue'
 import { monta } from '../../../test/montaggio'
+import { useDrawerInCima } from '../composables/useDrawerInCima'
 
 const RIGHE = [
   { id: 1, codice: 'A-1', descrizione: 'Prima', nascosta: 'x' },
@@ -81,6 +88,24 @@ const RIGHE = [
 function montaLista(props = {}) {
   return monta(ListaConfigurabile, { codice: 'prova.lista', ...props })
 }
+
+// Un drawer finto per la pila di `useDrawerInCima`: la lista legge solo la
+// pila, non il drawer. `scope.stop()` lo toglie, come uno smontaggio.
+function drawerFinto() {
+  const aperto = ref(false)
+  const scope = effectScope()
+  scope.run(() => useDrawerInCima(() => aperto.value))
+  return { aperto, scope }
+}
+
+// Click su una riga con l'evento che il DataTable emette, e i giri di
+// ridisegno: quello dell'apertura e quello della classe.
+async function clicRiga(w, indice) {
+  await w.findAll('tbody tr')[indice].trigger('click')
+  await nextTick()
+  await nextTick()
+}
+const attive = (w) => w.findAll('tbody tr').map((r) => r.classes().includes('app-riga-attiva'))
 
 describe('ListaConfigurabile', () => {
   beforeEach(() => {
@@ -163,5 +188,70 @@ describe('ListaConfigurabile', () => {
     await w.vm.$nextTick()
     const intestazioni = w.findAll('th').map((th) => th.text())
     expect(intestazioni.some((h) => h.includes('Nascosta'))).toBe(false)
+  })
+
+  // §9.6 punto 2 del brief-db-liste-righe-documento (Tid, 2026-10-04): col form
+  // sotto la lista si deve vedere QUALE riga si sta modificando.
+  it('9) la riga aperta nel form (`riga-attiva`) e\' evidenziata, le altre no', async () => {
+    const w = montaLista({ rows: RIGHE, total: 2, paginata: false, rigaAttiva: 2 })
+    await w.vm.$nextTick()
+    const righe = w.findAll('tbody tr')
+    expect(righe[0].classes()).not.toContain('app-riga-attiva')
+    expect(righe[1].classes()).toContain('app-riga-attiva')
+  })
+
+  it('10) `righe-cliccabili:false`: ogni riga lo dichiara (niente hover)', async () => {
+    const w = montaLista({ rows: RIGHE, total: 2, paginata: false, righeCliccabili: false })
+    await w.vm.$nextTick()
+    const righe = w.findAll('tbody tr')
+    expect(righe.length).toBe(2)
+    righe.forEach((r) => expect(r.classes()).toContain('app-riga-non-cliccabile'))
+    const cliccabili = montaLista({ rows: RIGHE, total: 2, paginata: false })
+    await cliccabili.vm.$nextTick()
+    cliccabili.findAll('tbody tr').forEach((r) => expect(r.classes()).not.toContain('app-riga-non-cliccabile'))
+  })
+
+  // Tid, 2026-10-04: aprendo un drawer da una lista, la riga scelta resta
+  // evidenziata sotto il velo. Nessuna pagina lo dichiara: lo fa la lista.
+  it('11) la riga che apre un drawer resta evidenziata finche\' il drawer e\' aperto', async () => {
+    const drawer = drawerFinto()
+    const w = monta(ListaConfigurabile, {
+      codice: 'prova.lista', rows: RIGHE, total: 2, paginata: false,
+      onRowClick: () => { drawer.aperto.value = true },
+    })
+    await nextTick()
+    await clicRiga(w, 1)
+    expect(attive(w)).toEqual([false, true])
+    drawer.aperto.value = false
+    await nextTick()
+    await nextTick()
+    expect(attive(w)).toEqual([false, false])
+    drawer.scope.stop()
+  })
+
+  it('12) un click che non apre un drawer si dimentica', async () => {
+    const drawer = drawerFinto()
+    const w = montaLista({ rows: RIGHE, total: 2, paginata: false })
+    await nextTick()
+    await clicRiga(w, 0)
+    expect(attive(w)).toEqual([false, false])
+    // Poi si apre un drawer da altrove (un «Nuovo»): la riga non c'entra.
+    drawer.aperto.value = true
+    await nextTick()
+    await nextTick()
+    expect(attive(w)).toEqual([false, false])
+    drawer.scope.stop()
+  })
+
+  it('13) `riga-attiva` del caller vince sulla riga del click', async () => {
+    const drawer = drawerFinto()
+    const w = monta(ListaConfigurabile, {
+      codice: 'prova.lista', rows: RIGHE, total: 2, paginata: false, rigaAttiva: 1,
+      onRowClick: () => { drawer.aperto.value = true },
+    })
+    await nextTick()
+    await clicRiga(w, 1)
+    expect(attive(w)).toEqual([true, false])
+    drawer.scope.stop()
   })
 })

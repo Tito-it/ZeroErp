@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: script.fn_get_emittenti_scope_sr_effettivo
+#   DROP FUNCTION script.fn_get_emittenti_scope_sr_effettivo(integer, bigint[])
+#   Brief: brief-db-codici-non-trovato-email-e-permessi (R-5, ritiro approvato da Tid
+#   il 2026-10-09 «se non sono piu' utilizzate da nessuno»)
+#
+#   Era nata (rev 2026-08-18) per le due funzioni della ricerca universale:
+#   lo scope emittente «di diritto ∩ richiesto» dal parametro p_emittente_ids.
+#   Dal 2026-10-08 il perimetro dei clienti lo fa la RLS e quel parametro non
+#   si leggeva piu'; dal 2026-10-10 non esiste piu' (20261010-11, -12).
+#   ⚠️ Censimento del 2026-10-10: nessuna funzione la chiama (pg_proc), il
+#   backend nemmeno. I due pgTAP che la provavano
+#   (script/test-search-scope-interno-v1 test 1-7,
+#   script/test-scope-emittenti-fail-closed-v1 test 10-11) sono riallineati
+#   nello stesso giro; la proprieta' che quei test custodivano, «utente NULL
+#   = nessun accesso», resta provata su fn_get_emittenti_scope_sr_ids, di cui
+#   questa era un involucro. La pagina manual/ omonima si cancella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-14-drop-fn-get-emittenti-scope-sr-effettivo-mctit.yaml
+
+  - changeSet:
+      id: 20261010-14-drop-fn-get-emittenti-scope-sr-effettivo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira script.fn_get_emittenti_scope_sr_effettivo: serviva solo al parametro
+        p_emittente_ids della ricerca universale, ritirato in 20261010-11 e -12. Brief:
+        brief-db-codici-non-trovato-email-e-permessi (R-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM pg_proc p
+               WHERE p.prosrc ~ 'fn_get_emittenti_scope_sr_effettivo'
+                 AND p.oid <> COALESCE(to_regprocedure('script.fn_get_emittenti_scope_sr_effettivo(integer,bigint[])')::oid, 0);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Firma: utente di Django (integer: le colonne django.* non si
+              -- ancorano, in CI lo schema non c'e' ancora) e un array di
+              -- soggetto_ruolo (bigint[]: un array non si ancora).
+              DROP FUNCTION IF EXISTS script.fn_get_emittenti_scope_sr_effettivo(integer, bigint[]);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si rimette dal changeSet 20261004-84 (ultima revisione).
+              SELECT 1;

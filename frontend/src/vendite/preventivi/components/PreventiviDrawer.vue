@@ -11,10 +11,11 @@ import { useConfirmAction } from '../../../core/composables/useConfirmAction'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { statoPreventiveSeverity } from '../../../core/utils/severity'
-import { STATO_PREVENTIVO } from '../../constants'
-import { addDaysToToday, displayDate, toDateString } from '../../../core/utils/date'
+import { CAMPI_FORM_TESTATA_PREVENTIVO, STATO_PREVENTIVO } from '../../constants'
+import { addDaysToToday, displayDate, toDateString, giornoDi, parseIsoDate } from '../../../core/utils/date'
 import { paramBool, paramInt } from '../../../core/utils/parameterCast'
 import { useParameterDefaults } from '../../../core/composables/useParameterDefaults'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
@@ -26,13 +27,13 @@ import { useDrawerAutosaveBozza } from '../../../core/composables/useDrawerAutos
 import { getBillingAccountLookupById, getIstanzaUtilityLookupById } from '../../../core/apiCore'
 import { DRAWER_WIDTH, MANAGE_ICONS, TAB_ENTITIES, STATUS_ICONS } from '../../../core/constants'
 import { NAV_ICONS } from '../../../core/navigation'
-import DrawerTitle from '../../../core/components/DrawerTitle.vue'
-import FormFooter from '../../../core/components/FormFooter.vue'
+import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../../core/components/DrawerActionsBar.vue'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
 import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPreserve'
+import { useRigheDocumento } from '../../../core/composables/useRigheDocumento'
 import PreventiviForm from './PreventiviForm.vue'
 import RevisioniTab from '../../_shared/revisioni/RevisioniTab.vue'
 import { usePreventivoRevisioniStore } from '../stores/preventivoRevisioni'
@@ -46,7 +47,6 @@ import { SORGENTE_CODES } from '../../../documenti/constants'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
 import PreventivoAccettazioneDialog from './dialogs/PreventivoAccettazioneDialog.vue'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
@@ -159,6 +159,19 @@ const {
   modificato,
   chiudiConConferma,
 } = useDrawerFormPreserve(form, { visibile: () => props.visible })
+
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): testata E riga aperta,
+//    una domanda sola. Fino a quel giorno la fotografia copriva la sola
+//    testata, e una riga in compilazione si perdeva uscendo dal drawer. La
+//    fotografia della riga la tiene il suo form e arriva dalla tabella-righe.
+// Tabella-righe, fotografia unita (testata + riga aperta) e footer secondo lo
+// stato: il legame e' del BB `useRigheDocumento` (regola del 2).
+const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
+  testata: { modificato, chiudiConConferma },
+  modificabile: () => testata.modificabile.value,
+  presente: () => hasDetail.value,
+})
+const modificatoDocumento = documento.modificato
 const detail = ref(null)
 // Riepilogo IVA aggregato per aliquota (lettura da `vw_preventivi_riepilogo_iva_dettaglio`).
 // Auto-popolato a ogni loadDetail e ogni `@changed` delle righe (regola fiscale
@@ -184,11 +197,6 @@ const noteDrawerVisible = ref(false)
 // tiene l'id del preventivo creato in modalita' CREATE, null se ancora non
 // salvato. Pattern: master-detail inline (memoria feedback_master_detail_inline).
 const createdId = ref(null)
-// Stato form riga inline: quando l'operatore sta editando/aggiungendo
-// una riga, il FormFooter (Salva/Annulla testata) si nasconde per
-// evitare duplicazione con i bottoni del PreventiviRigaForm.
-// Aggiornato via `@form-aperto` (kebab) da PreventiviRigheTable.
-const formRigaAperto = ref(false)
 // Id effettivo per le sub-API (righe, integrazione, cambio stato): props.preventivoId
 // in EDIT classico, createdId dopo auto-save in CREATE.
 const effectivePreventivoId = computed(() => createdId.value ?? props.preventivoId)
@@ -209,12 +217,20 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
-const canEditTestata = caps.canEdit
-// In CREATE non c'e' detail BE: il drawer e' editabile per default (gated solo
-// da isReadonly). In EDIT vale la capability BE. Pattern allineato a
-// ContrattoDrawer (`isEdit && isLocked('field')`).
-const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
+// La testata dopo la bozza: quali campi del form si cambiano, dalla capability
+// (brief-db-testata-dopo-emissione, R-FE-3). Fuori bozza il form esce dal
+// corpo protetto se ha un campo aperto (oggi nessuno: la competenza, aperta in
+// EMESSO e ACCETTATO, si sceglie accettando, non dal form).
+const testata = useTestataDocumento({
+  caps,
+  campi: CAMPI_FORM_TESTATA_PREVENTIVO,
+  readonlyPuro: () => isReadonlyPuro.value,
+  // Il documento esiste: in EDIT anche prima che arrivi il dettaglio, cosi'
+  // la capability ancora vuota tiene il form fermo (fail-closed).
+  presente: () => isEdit.value || hasDetail.value,
+  corpoProtetto: () => isReadonly.value,
+})
 // `can_create_revisione`: il flag BE resta esposto per backward-compat, ma il
 // FE non lo legge piu' — l'azione `crea_revisione` arriva ora data-driven in
 // `available_actions` (post brief DB 2026-05-28, mirror offerte).
@@ -238,14 +254,14 @@ const showSmistamento = computed(() => {
 // il dettaglio righe; un cambio sarebbe un nuovo preventivo, non una modifica
 // della testata. utility_id era gia' immutabile via metadata BE.
 const nonEditableFields = computed(() => {
-  const base = capabilities.value.non_editable_fields || []
+  const base = testata.campiBloccati.value
   // Post auto-save bozza / EDIT: cambiare BA o istanza sarebbe un altro
   // preventivo, non una modifica → entrambi bloccati. utility_id è già
   // immutabile via metadata BE.
   if (hasDetail.value) return [...base, 'billing_account_id', 'istanza_utility_id']
   // Aperto da pratica: blocca SOLO i campi effettivamente ereditati (passati,
   // non-null) dal contesto — "se passati da esterno → valorizzati e non
-  // modificabili". Un campo assente (es. prospect senza BA) resta editabile:
+  // modificabili". Un campo assente (es. pratica senza BA) resta editabile:
   // niente lock a vuoto che impedirebbe il salvataggio.
   const ctx = props.praticaContext
   if (ctx) {
@@ -295,9 +311,10 @@ function defaultForm() {
     billing_account_obj: null,
     istanza_utility_id: null,
     // _obj per IstanzaUtilityLookup AutoComplete (pattern restore lookup ricco).
-    // Popolato da onIstanzaSelected (FE) o da loadDetail() via
-    // getIstanzaUtilityLookupById in edit (solo se BA assente: con BA presente
-    // l'istanza e' derivata e il picker e' nascosto).
+    // Popolato da onIstanzaSelected (FE) o da prefillFromPratica() via
+    // getIstanzaUtilityLookupById (pratica senza BA). Un preventivo salvato ha
+    // sempre il BA (brief-db-istanza-nasce-col-ba, R-2): l'istanza e' derivata
+    // e il picker e' nascosto.
     istanza_utility_obj: null,
     valuta_id: null,
     termine_pagamento_id: null,
@@ -323,10 +340,8 @@ watch(() => form.value.validita_dal, (nuovaDal) => {
   if (_suspendDateRecalc.value) return
   if (!nuovaDal) return
   const validitaGg = paramInt(paramDefaults.value.VENDITE_PREVENTIVO_DEFAULT_VALIDITA_GG, 30)
-  const dal = nuovaDal instanceof Date ? nuovaDal : new Date(nuovaDal)
-  if (isNaN(dal.getTime())) return
-  const al = new Date(dal)
-  al.setHours(0, 0, 0, 0)
+  const al = giornoDi(nuovaDal)
+  if (!al) return
   al.setDate(al.getDate() + validitaGg)
   form.value.validita_al = al
 })
@@ -400,12 +415,12 @@ async function loadDetail(id = null) {
     billing_account_id: data.billing_account_id,
     billing_account_obj: null,  // popolato sotto via getBillingAccountLookupById
     istanza_utility_id: data.istanza_utility_id,
-    istanza_utility_obj: null,  // popolato sotto via getIstanzaUtilityLookupById (no BA)
+    istanza_utility_obj: null,  // il BA c'e' sempre: l'istanza e' derivata, picker nascosto
     valuta_id: data.valuta_id,
     termine_pagamento_id: data.termine_pagamento_id,
-    validita_dal: data.validita_dal ? new Date(data.validita_dal + 'T00:00:00') : null,
-    validita_al: data.validita_al ? new Date(data.validita_al + 'T00:00:00') : null,
-    competenza_mese: data.competenza_mese ? new Date(data.competenza_mese + 'T00:00:00') : null,
+    validita_dal: parseIsoDate(data.validita_dal),
+    validita_al: parseIsoDate(data.validita_al),
+    competenza_mese: parseIsoDate(data.competenza_mese),
     fatturazione_immediata: data.fatturazione_immediata || false,
   }
   // Fissa la baseline e ripristina il non-salvato che la sostituzione
@@ -415,7 +430,10 @@ async function loadDetail(id = null) {
   _suspendDateRecalc.value = false
   // Restore BillingAccountLookup _obj per visualizzazione ricca (codice, ragione
   // sociale, id fiscale, PDP). Best-effort: in caso di failure il drawer mostra
-  // l'autocomplete vuoto e l'operatore puo' ri-selezionare. Skip se BA assente.
+  // l'autocomplete vuoto e l'operatore puo' ri-selezionare.
+  // ⚠️ Il ramo «preventivo prospect senza BA», che ripristinava il picker
+  //    istanza, e' stato tolto il 2026-10-08: il BA e' NOT NULL
+  //    (brief-db-istanza-nasce-col-ba, R-2).
   if (data.billing_account_id) {
     try {
       const res = await getBillingAccountLookupById(data.billing_account_id)
@@ -423,16 +441,6 @@ async function loadDetail(id = null) {
       if (ba) form.value.billing_account_obj = ba
     } catch {
       // Resto: form parte senza _obj, l'utente puo' rieseguire la ricerca.
-    }
-  } else if (data.istanza_utility_id) {
-    // Restore IstanzaUtilityLookup _obj solo per preventivi prospect senza BA:
-    // il picker istanza e' visibile solo in quel caso. Best-effort.
-    try {
-      const res = await getIstanzaUtilityLookupById(data.istanza_utility_id)
-      const iu = res?.data?.data
-      if (iu) form.value.istanza_utility_obj = iu
-    } catch {
-      // Resto: il picker mostra solo l'id risolto al prossimo focus.
     }
   }
   // Riepilogo IVA aggregato: il trigger DB lo mantiene in sync con le righe
@@ -444,15 +452,16 @@ async function loadDetail(id = null) {
 
 // Scopo: in CREATE da pratica, pre-compila cliente/istanza dal contesto pratica
 // e ne ripristina gli _obj per i lookup (stesso restore di loadDetail). I campi
-// sono già bloccati da nonEditableFields (props.praticaContext). istanza sempre
-// presente dalla pratica; BA presente solo se cliente attivo (prospect → solo
-// istanza, picker istanza visibile ma disabilitato).
+// sono già bloccati da nonEditableFields (props.praticaContext). La pratica
+// porta il BA quando parla di un cliente (D-9 di brief-db-istanza-nasce-col-ba);
+// una pratica con la sola istanza (nata prima, o su un'istanza con piu' BA)
+// passa l'istanza, e il BA lo risolve il backend dalla coppia istanza+utility.
 async function prefillFromPratica() {
   const ctx = props.praticaContext
   if (!ctx) return
   if (ctx.istanzaUtilityId) form.value.istanza_utility_id = ctx.istanzaUtilityId
   if (ctx.billingAccountId) {
-    // Cliente attivo: BA-first, istanza derivata dal BA (picker istanza nascosto).
+    // BA-first, istanza derivata dal BA (picker istanza nascosto).
     form.value.billing_account_id = ctx.billingAccountId
     try {
       const res = await getBillingAccountLookupById(ctx.billingAccountId)
@@ -460,7 +469,7 @@ async function prefillFromPratica() {
       if (ba) form.value.billing_account_obj = ba
     } catch { /* best-effort: il campo resta col solo id, comunque bloccato */ }
   } else if (ctx.istanzaUtilityId) {
-    // Prospect: nessun BA, istanza diretta (picker istanza visibile, disabilitato).
+    // Pratica con la sola istanza: picker istanza visibile, disabilitato.
     try {
       const res = await getIstanzaUtilityLookupById(ctx.istanzaUtilityId)
       const iu = res?.data?.data
@@ -537,10 +546,10 @@ watch(() => props.visible, async (v) => {
 
 // Auto-save bozza + abbandono bozza orfana via BB condiviso (B13, regola del 2).
 // Trigger: utility + istanza entrambi valorizzati in CREATE → crea la BOZZA così
-// l'operatore inserisce subito le righe. `close`/`onVisibleChange` usati dal
-// template; createdId resta ref del drawer. (I default BA-derived sono gestiti
+// l'operatore inserisce subito le righe. `close` e' l'uscita
+// del drawer (`conferma-uscita` di AppDrawer); createdId resta ref del drawer. (I default BA-derived sono gestiti
 // separatamente da useBaFormDefaults qui sotto.)
-const { close, onVisibleChange } = useDrawerAutosaveBozza({
+const { close } = useDrawerAutosaveBozza({
   emit,
   execute,
   loading,
@@ -576,7 +585,7 @@ const { close, onVisibleChange } = useDrawerAutosaveBozza({
   deleteDraft: (id) => store.elimina(id),
   righeCountGetter: () => detail.value?.righe_count ?? 0,
   // Uscita con modifiche non salvate: prima si chiede (BB useDrawerFormPreserve).
-  confermaUscita: chiudiConConferma,
+  confermaUscita: documento.chiudiConConferma,
   messages: {
     bozzaCreata: t('vendite.preventivi.bozza_creata'),
     abbandonoTitolo: t('vendite.preventivi.abbandono_bozza_titolo'),
@@ -612,16 +621,16 @@ const { applicaDefaults: applicaDefaultsBa } = useBaFormDefaults({
   },
 })
 
-// In CREATE servono utility e istanza (regola di dominio post brief DB rev2:
-// preventivo deve essere collegato a un'istanza utility, derivabile dal BA o
-// selezionata standalone per prospect). In EDIT l'istanza e' gia' persistita
-// e il backend non richiede di rispedirla.
-// Defense-in-depth: anche se il FormFooter e' nascosto da
-// `v-if="canEditTestataEffective && !isReadonly"`, includiamo isReadonly qui
-// cosi' qualsiasi consumer futuro del computed (shortcut tastiera, save
-// programmato) e' coperto dalla stessa guard.
+// In CREATE servono utility e istanza: il cliente del preventivo e' la coppia
+// istanza+utility col suo BA (brief-db-istanza-nasce-col-ba, R-2). L'istanza
+// arriva dal BA scelto o dal picker delle forniture; il BA della coppia lo
+// risolve il backend. In EDIT l'istanza e' gia' persistita e il backend non
+// richiede di rispedirla.
+// Defense-in-depth: il footer segue la stessa regola (`useTestataDocumento`),
+// ma la guard sta anche qui cosi' qualsiasi consumer futuro del computed
+// (shortcut tastiera, save programmato) e' coperto.
 const canSave = computed(() => {
-  if (isReadonly.value) return false
+  if (!testata.modificabile.value) return false
   const f = form.value
   if (f.utility_id == null) return false
   if (!isEdit.value && f.istanza_utility_id == null) return false
@@ -884,225 +893,228 @@ const drawerActions = computed(() => {
   return list
 })
 
+
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="onVisibleChange"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- L'uscita la possiede l'auto-salvataggio della bozza
+       (`useDrawerAutosaveBozza`): con una bozza rimasta vuota chiede se
+       eliminarla, altrimenti le modifiche non salvate; poi emette lui
+       `update:visible` e `cancelled` verso il padre. Per questo
+       `conferma-uscita` ignora il `chiudi` del guscio. -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('vendite.preventivi.preventivo')"
+    :icon="NAV_ICONS.PREVENTIVI"
+    :action="(isEdit || hasDetail) ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.WIDE_PLUS"
+    :modificato="modificatoDocumento"
+    :conferma-uscita="() => close()"
+    :footer="footerDrawer"
+    :footer-readonly="testata.footerReadonly.value"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
     @after-show="onAfterShow"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE_PLUS }" :dismissable="true">
-    <template #header>
-      <DrawerTitle
-        :action="(isEdit || hasDetail) ? t('common.edit') : t('common.new')"
-        :modificato="modificato"
-        :title="t('vendite.preventivi.preventivo')"
-        :icon="NAV_ICONS.PREVENTIVI"
-      />
+    @save="handleSave"
+  >
+
+    <!-- Header info: visibile in EDIT classico e in CREATE post auto-save (hasDetail).
+         Cliente denominazione rimossa: gia' visibile nel form testata sotto.
+         Contesto pricing (contratto/listino) mostrato come badge per audit visivo
+         del path resolver applicato al preventivo.
+         Refactor UI drawer 2026-05-21: header e azioni passano dai BB
+         condivisi DrawerEntityHeader + DrawerActionsBar (vedi
+         docs/it/dev/frontend/frontend-standards.md §"Azioni Drawer"). -->
+    <template v-if="hasDetail">
+      <DrawerEntityHeader>
+        <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
+        <Tag v-if="isSuperseded" :value="t('vendite.preventivi.tag_superseded')" severity="warn" :icon="STATUS_ICONS.SUPERATO" />
+        <span v-if="detail.data" class="app-drawer-header-muted font-bold">
+          {{ displayDate(detail.data) }}
+        </span>
+        <template v-if="contestoPricing && contestoPricing.fonte === 'CONTRATTO'">
+          <Tag
+            :value="t('vendite.preventivi.contesto_pricing_contratto', {
+              contratto: contestoPricing.contratto_numero,
+              listino: contestoPricing.listino_codice,
+            })"
+            severity="info"
+            :icon="MANAGE_ICONS.CONTRATTI"
+            v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_contratto_tooltip')"
+          />
+        </template>
+        <template v-else-if="contestoPricing && contestoPricing.fonte === 'CATEGORIA'">
+          <Tag
+            :value="t('vendite.preventivi.contesto_pricing_categoria', {
+              listino: contestoPricing.listino_codice,
+              categoria: contestoPricing.categoria_cliente_codice,
+            })"
+            severity="info"
+            :icon="NAV_ICONS.CATEGORIE_CLIENTI"
+            v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_categoria_tooltip')"
+          />
+        </template>
+        <template v-else-if="contestoPricing && contestoPricing.fonte === 'NONE'">
+          <Tag
+            :value="t('vendite.preventivi.contesto_pricing_none')"
+            severity="warn"
+            :icon="STATUS_ICONS.ERRORE"
+            v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_none_tooltip')"
+          />
+        </template>
+
+        <template #status>
+          <Tag
+            :value="detail.stato_descrizione"
+            :severity="statoPreventiveSeverity(detail.stato_codice_interno)"
+          />
+        </template>
+      </DrawerEntityHeader>
+
+      <!-- Azioni testata: stato, PDF e note in posizione unica sopra il form.
+           PDF stato-aware (Tranche M+):
+             - DRAFT     -> Anteprima inline (no save)
+             - EMESSO    -> Genera PDF (con dialog conferma rigenerazione)
+             - ACCETTATO/EVASO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
+           Resta componente dedicato dentro #suffix (stateful), non rappresentabile
+           come azione `command: () => void`. -->
+      <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
+        <template #suffix>
+          <EntityPdfButton
+            :sorgente-code="SORGENTE_CODES.PREVENTIVO"
+            :entity-id="effectivePreventivoId"
+            :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+            :pdf="capabilities.pdf"
+            i18n-prefix="vendite.preventivi.pdf"
+            :dialog-title="detail.numero
+              ? t('vendite.preventivi.pdf.dialog_title', { numero: detail.numero })
+              : ''"
+          />
+        </template>
+      </DrawerActionsBar>
+
+      <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
+           segnalazione a colpo d'occhio sotto i pulsanti — «Ordine»,
+           «Contratto». Il grafo completo si apre dai chip stessi in dialog. -->
+      <DocumentoCollegamentiBar
+        ref="collegamentiRef"
+        base-path="/vendite/preventivi"
+        :doc-id="effectivePreventivoId"
+        :readonly="isReadonlyPuro" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
+    <!-- Banner revisione superseded: visibile sotto le azioni quando il
+         preventivo aperto e' una versione storica (esiste una revisione
+         successiva). Il drawer e' interamente readonly: niente azioni stato,
+         niente nuova revisione, niente edit testata/righe. -->
+    <Message v-if="isSuperseded" severity="warn" :closable="false" class="mt-1">
+      {{ t('vendite.preventivi.banner_revisione_superseded') }}
+    </Message>
 
-      <!-- Header info: visibile in EDIT classico e in CREATE post auto-save (hasDetail).
-           Cliente denominazione rimossa: gia' visibile nel form testata sotto.
-           Contesto pricing (contratto/listino) mostrato come badge per audit visivo
-           del path resolver applicato al preventivo.
-           Refactor UI drawer 2026-05-21: header e azioni passano dai BB
-           condivisi DrawerEntityHeader + DrawerActionsBar (vedi
-           docs/it/dev/frontend/frontend-standards.md §"Azioni Drawer"). -->
-      <template v-if="hasDetail">
-        <DrawerEntityHeader>
-          <Tag :value="`${detail.numero} rev.${detail.rev}`" severity="secondary" />
-          <Tag v-if="isSuperseded" :value="t('vendite.preventivi.tag_superseded')" severity="warn" :icon="STATUS_ICONS.SUPERATO" />
-          <span v-if="detail.data" class="app-drawer-header-muted font-bold">
-            {{ displayDate(detail.data) }}
-          </span>
-          <template v-if="contestoPricing && contestoPricing.fonte === 'CONTRATTO'">
-            <Tag
-              :value="t('vendite.preventivi.contesto_pricing_contratto', {
-                contratto: contestoPricing.contratto_numero,
-                listino: contestoPricing.listino_codice,
-              })"
-              severity="info"
-              :icon="MANAGE_ICONS.CONTRATTI"
-              v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_contratto_tooltip')"
-            />
-          </template>
-          <template v-else-if="contestoPricing && contestoPricing.fonte === 'CATEGORIA'">
-            <Tag
-              :value="t('vendite.preventivi.contesto_pricing_categoria', {
-                listino: contestoPricing.listino_codice,
-                categoria: contestoPricing.categoria_cliente_codice,
-              })"
-              severity="info"
-              :icon="NAV_ICONS.CATEGORIE_CLIENTI"
-              v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_categoria_tooltip')"
-            />
-          </template>
-          <template v-else-if="contestoPricing && contestoPricing.fonte === 'NONE'">
-            <Tag
-              :value="t('vendite.preventivi.contesto_pricing_none')"
-              severity="warn"
-              :icon="STATUS_ICONS.ERRORE"
-              v-tooltip.bottom="t('vendite.preventivi.contesto_pricing_none_tooltip')"
-            />
-          </template>
+    <!-- Area banner informativi non bloccanti: tenere qui i messaggi di
+         contesto del preventivo, evitando banner sparsi in fondo al drawer. -->
+    <Message v-if="hasDetail && detail.ba_ha_contratto_attivo === false"
+      severity="info" :closable="false" class="mt-1">
+      {{ t('vendite.preventivi.banner_no_contratto_attivo') }}
+    </Message>
+    <Message v-if="hasDetail && !canPushCommessa && pushCommessaReasonKey && te(pushCommessaReasonKey)"
+      severity="info" :closable="false" class="mt-1">
+      {{ t(pushCommessaReasonKey) }}
+    </Message>
+    <!-- Ramo ordine dello smistamento: stessa forma del ramo commessa sopra. -->
+    <Message v-if="hasDetail && !canGeneraOrdine && generaOrdineReasonKey && te(generaOrdineReasonKey)"
+      severity="info" :closable="false" class="mt-1">
+      {{ t(generaOrdineReasonKey) }}
+    </Message>
 
-          <template #status>
-            <Tag
-              :value="detail.stato_descrizione"
-              :severity="statoPreventiveSeverity(detail.stato_codice_interno)"
-            />
-          </template>
-        </DrawerEntityHeader>
+    <Divider v-if="hasDetail" />
 
-        <!-- Azioni testata: stato, PDF e note in posizione unica sopra il form.
-             PDF stato-aware (Tranche M+):
-               - DRAFT     -> Anteprima inline (no save)
-               - EMESSO    -> Genera PDF (con dialog conferma rigenerazione)
-               - ACCETTATO/EVASO/RIFIUTATO/SCADUTO/ANNULLATO -> Scarica (apre lista)
-             Resta componente dedicato dentro #suffix (stateful), non rappresentabile
-             come azione `command: () => void`. -->
-        <DrawerActionsBar :actions="drawerActions" :info-key="capabilities.stato_info_key || ''">
-          <template #suffix>
-            <EntityPdfButton
-              :sorgente-code="SORGENTE_CODES.PREVENTIVO"
-              :entity-id="effectivePreventivoId"
-              :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-              :pdf="capabilities.pdf"
-              i18n-prefix="vendite.preventivi.pdf"
-              :dialog-title="detail.numero
-                ? t('vendite.preventivi.pdf.dialog_title', { numero: detail.numero })
-                : ''"
-            />
-          </template>
-        </DrawerActionsBar>
+    <!-- Tabs Testata | Revisioni (mirror OffertaDrawer). Tab "Revisioni"
+         disabilitato in CREATE (non c'e' un preventivo da revisionare).
+         Default tab "Testata" resettato all'apertura del drawer. -->
+    <Tabs v-model:value="activeTab">
+      <TabList>
+        <Tab value="testata">{{ t('vendite.preventivi.tab_testata') }}</Tab>
+        <Tab value="revisioni" :disabled="!isEdit">
+          {{ t('vendite.preventivi.tab_revisioni') }}
+          <span v-if="isEdit && revisioniStore.totalRecords">({{ revisioniStore.totalRecords }})</span>
+        </Tab>
+      </TabList>
 
-        <!-- Collegamenti diretti (pratica + origine + destinazioni di livello 1):
-             segnalazione a colpo d'occhio sotto i pulsanti — «Ordine»,
-             «Contratto». Il grafo completo si apre dai chip stessi in dialog. -->
-        <DocumentoCollegamentiBar
-          ref="collegamentiRef"
-          base-path="/vendite/preventivi"
-          :doc-id="effectivePreventivoId"
-          :readonly="isReadonlyPuro" />
-      </template>
-
-      <!-- Banner revisione superseded: visibile sotto le azioni quando il
-           preventivo aperto e' una versione storica (esiste una revisione
-           successiva). Il drawer e' interamente readonly: niente azioni stato,
-           niente nuova revisione, niente edit testata/righe. -->
-      <Message v-if="isSuperseded" severity="warn" :closable="false" class="mt-1">
-        {{ t('vendite.preventivi.banner_revisione_superseded') }}
-      </Message>
-
-      <!-- Area banner informativi non bloccanti: tenere qui i messaggi di
-           contesto del preventivo, evitando banner sparsi in fondo al drawer. -->
-      <Message v-if="hasDetail && detail.ba_ha_contratto_attivo === false"
-        severity="info" :closable="false" class="mt-1">
-        {{ t('vendite.preventivi.banner_no_contratto_attivo') }}
-      </Message>
-      <Message v-if="hasDetail && !canPushCommessa && pushCommessaReasonKey && te(pushCommessaReasonKey)"
-        severity="info" :closable="false" class="mt-1">
-        {{ t(pushCommessaReasonKey) }}
-      </Message>
-      <!-- Ramo ordine dello smistamento: stessa forma del ramo commessa sopra. -->
-      <Message v-if="hasDetail && !canGeneraOrdine && generaOrdineReasonKey && te(generaOrdineReasonKey)"
-        severity="info" :closable="false" class="mt-1">
-        {{ t(generaOrdineReasonKey) }}
-      </Message>
-
-      <Divider v-if="hasDetail" />
-
-      <!-- Tabs Testata | Revisioni (mirror OffertaDrawer). Tab "Revisioni"
-           disabilitato in CREATE (non c'e' un preventivo da revisionare).
-           Default tab "Testata" resettato all'apertura del drawer. -->
-      <Tabs v-model:value="activeTab">
-        <TabList>
-          <Tab value="testata">{{ t('vendite.preventivi.tab_testata') }}</Tab>
-          <Tab value="revisioni" :disabled="!isEdit">
-            {{ t('vendite.preventivi.tab_revisioni') }}
-            <span v-if="isEdit && revisioniStore.totalRecords">({{ revisioniStore.totalRecords }})</span>
-          </Tab>
-        </TabList>
-
-        <TabPanels>
-          <!-- ====================== TAB TESTATA ====================== -->
-          <TabPanel value="testata">
-            <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
-            <PreventiviForm v-if="contentReady"
-              :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
+      <TabPanels>
+        <!-- ====================== TAB TESTATA ====================== -->
+        <TabPanel value="testata">
+          <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup -->
+          <div :class="{ 'app-escape': testata.sopraCorpoProtetto.value }">
+            <PreventiviForm
+              :form="form" :is-modificabile="testata.modificabile.value"
               :non-editable-fields="nonEditableFields"
               :is-edit="isEdit || createdId !== null"
               :record="detail" />
+          </div>
 
-            <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
-            <template v-if="contentReady && hasDetail">
-              <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
-                   contatore "+N altri", pulsante "Indirizzi" che apre il
-                   drawer di gestione. -->
-              <DocumentoIndirizziSection
-                dominio="preventivi"
-                :doc-id="effectivePreventivoId"
-                :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
-                :istanza-utility-id="detail?.istanza_utility_id ?? null"
-                :readonly="!(canEditTestataEffective && !isReadonly)"
-                :bordo="false" />
+          <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
+          <template v-if="hasDetail">
+            <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
+                 contatore "+N altri", pulsante "Indirizzi" che apre il
+                 drawer di gestione. -->
+            <DocumentoIndirizziSection
+              dominio="preventivi"
+              :doc-id="effectivePreventivoId"
+              :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+              :istanza-utility-id="detail?.istanza_utility_id ?? null"
+              :readonly="isReadonly"
+              :bordo="false" />
 
-              <Divider />
-              <PreventiviRigheTable
-                :preventivo-id="effectivePreventivoId"
-                :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-                :billing-account-id="form.billing_account_id"
-                :is-modificabile="canEditRighe && !isReadonly"
-                @changed="loadDetail()"
-                @form-aperto="(v) => { formRigaAperto = v }" />
-
-              <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
-                   Sempre visibile quando c'e' almeno una riga (mono o multi
-                   aliquota). Il footer della tabella mostra gia' totale
-                   imponibile + imposta + totale documento. Componente riusabile
-                   cross-dominio (stesso pattern arrivera' su fatture). -->
-              <template v-if="showRiepilogoIva">
-                <Divider />
-                <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
-              </template>
-            </template>
-
-            <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
-                 (doppione): l'archivio PDF si consulta dal pulsante PDF in
-                 testata (EntityPdfButton -> PdfDocumentiSorgenteDialog, stesso
-                 BB con in piu' expand automatico e append allegati). -->
-
-          </TabPanel>
-
-          <!-- ====================== TAB REVISIONI ====================== -->
-          <TabPanel value="revisioni">
-            <!-- Lista a catalogo `vendite.preventivo_revisioni` (colonne
-                 gemelle di quelle dell'offerta). Montata solo in EDIT: in
-                 CREATE il tab e' spento e non c'e' una catena da leggere. -->
-            <RevisioniTab
-              v-if="isEdit"
-              codice="vendite.preventivo_revisioni"
-              :store="revisioniStore"
-              :documento-id="visible ? effectivePreventivoId : null"
+            <Divider />
+            <PreventiviRigheTable
+              ref="righeTableRef"
+              :preventivo-id="effectivePreventivoId"
               :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
-              :severity="statoPreventiveSeverity"
-              :intro="t('vendite.preventivi.revisioni_intro')"
-              :vuoto="t('vendite.preventivi.revisioni_empty')" />
-          </TabPanel>
-        </TabPanels>
-      </Tabs>
+              :billing-account-id="form.billing_account_id"
+              :is-modificabile="canEditRighe && !isReadonly"
+              @changed="loadDetail()"
+              @form-aperto="onFormAperto" />
 
-      <FormFooter v-if="canEditTestataEffective && !isReadonly && !formRigaAperto" :loading="loading" :disabled="!canSave"
-        @save="handleSave" @cancel="close" />
-      <!-- Fallback close-only: in stati post-DRAFT (readonly, no Salva/Annulla)
-           l'utente deve poter uscire deliberatamente dal footer in basso, non
-           solo dalla X in alto (semantica diversa: X=dismiss/escape,
-           Chiudi=completion). Pattern coerente con `feedback_drawer_footer_close_only`
-           e ContrattoRigheDrawer. Nascosto quando il form riga e' aperto per
-           non duplicare l'azione Annulla del form. -->
-      <FormFooter v-else-if="hasDetail && !formRigaAperto" close-only @cancel="close" />
-    </div>
-  </Drawer>
+            <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
+                 Sempre visibile quando c'e' almeno una riga (mono o multi
+                 aliquota). Il footer della tabella mostra gia' totale
+                 imponibile + imposta + totale documento. Componente riusabile
+                 cross-dominio (stesso pattern arrivera' su fatture). -->
+            <template v-if="showRiepilogoIva">
+              <Divider />
+              <RiepilogoIvaTable :items="riepilogoIva" :show-subtitle="true" />
+            </template>
+          </template>
+
+          <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
+               (doppione): l'archivio PDF si consulta dal pulsante PDF in
+               testata (EntityPdfButton -> PdfDocumentiSorgenteDialog, stesso
+               BB con in piu' expand automatico e append allegati). -->
+
+        </TabPanel>
+
+        <!-- ====================== TAB REVISIONI ====================== -->
+        <TabPanel value="revisioni">
+          <!-- Lista a catalogo `vendite.preventivo_revisioni` (colonne
+               gemelle di quelle dell'offerta). Montata solo in EDIT: in
+               CREATE il tab e' spento e non c'e' una catena da leggere. -->
+          <RevisioniTab
+            v-if="isEdit"
+            codice="vendite.preventivo_revisioni"
+            :store="revisioniStore"
+            :documento-id="visible ? effectivePreventivoId : null"
+            :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
+            :severity="statoPreventiveSeverity"
+            :intro="t('vendite.preventivi.revisioni_intro')"
+            :vuoto="t('vendite.preventivi.revisioni_empty')" />
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
+  </AppDrawer>
 
   <!-- Sub-drawer note: cablato sull'id effettivo del preventivo, montato
        solo quando il drawer principale e' aperto E c'e' un preventivo reale. -->

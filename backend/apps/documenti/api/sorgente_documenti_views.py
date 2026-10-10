@@ -96,6 +96,16 @@ def build_documenti_sorgente_views(
     area_funzionale: str = "vendite",
     model_permission: tuple[str, str] | None = None,
 ) -> SimpleNamespace:
+    # ⛔ L'emissione e la sua chiave nella risposta vanno INSIEME: con la sola
+    #    `emetti_call` la risposta avrebbe la chiave `null` (2026-10-09, trovato
+    #    da mypy; tutti i domini di oggi passano entrambe). Errore di cablaggio,
+    #    quindi all'import e non a una richiesta.
+    if emetti_call is not None and not emetti_response_key:
+        raise ValueError(
+            "build_documenti_sorgente_views: `emetti_response_key` obbligatoria "
+            "quando c'e' `emetti_call`"
+        )
+    chiave_emissione: str = emetti_response_key or ""
 
     # Scopo: Risolve il contesto comune (entity + sorgente_tipo_id) con i
     #        guard NOT_FOUND/emittente/sorgente-attiva del BB condiviso.
@@ -145,6 +155,8 @@ def build_documenti_sorgente_views(
             tipo_output_id = optional_int(payload, "tipo_documento_output_id")
             allegati = extract_allegati(request)
 
+            # La view e' esposta solo con `emetti_call` (vedi `emetti_view`).
+            assert emetti_call is not None
             with transaction.atomic():
                 emit_result = emetti_call(request, int(sorgente_id))
                 entity, sorgente_tipo_id = _resolve_contesto(int(sorgente_id))
@@ -160,7 +172,7 @@ def build_documenti_sorgente_views(
                 )
 
             return success_response({
-                emetti_response_key: emit_result,
+                chiave_emissione: emit_result,
                 "documento": documento,
             })
 

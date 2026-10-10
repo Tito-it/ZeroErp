@@ -33,9 +33,9 @@
 
 ### 🎯 Scopo Principale
 
-`vendite.preventivi_righe_componenti` modella il **prezzo negoziabile per singolo componente** di un articolo composito CASO A: almeno un componente della BoM ha `esposto_in_fattura = TRUE`.
+`vendite.preventivi_righe_componenti` modella il **prezzo negoziabile per singolo componente** di un articolo composito CASO A: una riga per ogni componente attivo e valido della distinta (modello unificato del 2026-05-13). L'esposizione del componente in fattura (`catalogo.articoli_componenti.esposizione_in_fattura`) è una regola di presentazione della fattura, non un filtro su queste righe.
 
-Per ogni riga padre composita CASO A in `preventivi_righe`, questa tabella contiene **N righe figlie** (una per componente esposto), ciascuna con prezzo proprio soggetto ai meccanismi di approvazione L1/L2/L3. Il prezzo della riga padre viene aggiornato automaticamente come `SUM(prezzo_unitario_comp × coeff_qta_snapshot)` tramite trigger.
+Per ogni riga padre composita CASO A in `preventivi_righe`, questa tabella contiene **N righe figlie** (una per componente attivo della distinta), ciascuna con prezzo proprio soggetto ai meccanismi di approvazione L1/L2/L3. Il prezzo della riga padre viene aggiornato automaticamente come `SUM(prezzo_unitario_comp × coeff_qta_snapshot)` tramite trigger.
 
 Il modello risolve il problema dello *snapshot pricing*: al push su commessa i prezzi vengono propagati direttamente da questa tabella, **senza ri-invocare il resolver di listino**, garantendo che l'operatore e il cliente vedano prezzi coerenti tra preventivo e fattura.
 
@@ -43,12 +43,14 @@ Il modello risolve il problema dello *snapshot pricing*: al push su commessa i p
 
 ### Modello BoM CASO A
 
-La distinzione CASO A / CASO B è determinata da `vendite.fn_resolve_prezzo_composito`:
+Dal modello unificato del 2026-05-13 la distinzione dipende solo dall'articolo (`catalogo.articoli.is_composito`), e la applica `vendite.fn_preventivo_riga_componenti_init`:
 
 | Caso | Condizione | Modello |
 |---|---|---|
-| **CASO A** | ≥ 1 componente con `esposto_in_fattura = TRUE` | N righe in `preventivi_righe_componenti`, prezzo padre calcolato |
-| **CASO B** | Nessun componente esposto | Riga padre con prezzo unico, nessuna riga componente |
+| **CASO A** | articolo composito (`is_composito = TRUE`) | N righe in `preventivi_righe_componenti`, una per componente attivo e valido, prezzo padre calcolato |
+| **CASO B** | articolo non composito | Riga padre con prezzo unico, nessuna riga componente |
+
+Fino al 2026-05-13 il CASO A era «≥ 1 componente con `esposto_in_fattura = TRUE`»; quel flag è diventato una regola di presentazione, e dal 2026-10-01 è `esposizione_in_fattura` a tre modi (`NASCOSTO` | `DESCRITTIVO` | `VALORIZZATO`), letto dalla vista di rappresentazione della fattura.
 
 Questa tabella è **solo CASO A**. Per CASO B la riga padre ha il prezzo direttamente e non genera figli.
 
@@ -63,6 +65,7 @@ Questa tabella è **solo CASO A**. Per CASO B la riga padre ha il prezzo diretta
 | `componente_id` | FK all'articolo componente (`articoli.id`) — denormalizzato per query dirette, coerenza garantita da guard |
 | `coeff_qta_snapshot` | Snapshot di `articoli_componenti.coeff_qta` al momento della creazione — isolato da evoluzioni BoM future |
 | `quantita` | Calcolata dal trigger `_m50_calcola_quantita` come `coeff_qta_snapshot × quantita_padre` |
+| `uom_operativa_id` | UoM **del componente** (non del kit), `NOT NULL` dal 2026-10-02 (`20261002-66`): la valorizza la funzione `_init` dalla UoM dell'articolo componente. Un kit può essere fatto di unità diverse (pezzi, metri, ore); il ripiego sulla UoM del padre è ritirato |
 | `prezzo_unitario` | Prezzo del componente (suggerito dal resolver, modificabile dall'operatore L1/L2/L3) |
 | `origine_prezzo` | Traccia l'origine: `PROMO`, `CONTRATTO_OVERRIDE`, `CONTRATTO_LISTINO`, `CATEGORIA`, `MANUALE` |
 | `prezzo_resolver_context` | JSONB con contesto chiamata resolver (emittente, BA, data, utility); in fallback contiene `error`/`sqlstate` |

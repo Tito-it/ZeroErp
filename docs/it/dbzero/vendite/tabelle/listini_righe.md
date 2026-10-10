@@ -12,7 +12,7 @@
 | listino_versione_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
 | uom_id | bigint | NO |  |
-| prezzo | numeric | NO |  |
+| prezzo | numeric(22,10) | NO |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | attivo | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
@@ -25,6 +25,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_listini_righe_prezzo |  |
+| CHECK | chk_listini_righe_prezzo_finito |  |
 | FOREIGN KEY | fk_listini_righe_articolo | articolo_id |
 | FOREIGN KEY | fk_listini_righe_uom | uom_id |
 | FOREIGN KEY | fk_listini_righe_versione | listino_versione_id |

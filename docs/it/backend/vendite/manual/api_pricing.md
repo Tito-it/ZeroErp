@@ -44,7 +44,7 @@ Riferimento concettuale:
 
 - Metodo: `GET`
 - Path: `/api/v1/vendite/pricing/limiti-utente/`
-- Query param opzionale: `billing_account_id` (int) — se fornito, la cascata include il livello `categoria_cliente` del BA destinatario (vedi cascata estesa sotto). Senza, il livello viene saltato.
+- Query param opzionale: `billing_account_id` (int) — se fornito, la cascata include il livello `categoria_cliente` del BA destinatario (vedi cascata estesa sotto). Senza, il livello viene saltato. Non numerico o ≤ 0 → 400 `E_VALIDATION_INPUT`; BA inesistente o fuori dallo scope dell'operatore → 404 `E_ANAG_NOT_FOUND` (BB `categoria_cliente_da_query`, dal 2026-10-08: prima un BA malformato o che non risultava faceva saltare il livello in silenzio).
 - Auth: `vendite` livello LETTURA
 - Output `200`:
 
@@ -59,7 +59,7 @@ Riferimento concettuale:
 ```
 
 - Risoluzione **cascata estesa (refactor 2026-05-15)**: `user → categoria_cliente → group → emittente → session → function → default` via `ParameterService.get_defaults` con codici `VENDITE_MAX_SCONTO_PCT` + `VENDITE_MAX_MAGGIORAZIONE_PCT`. Default 0 = nessuna variazione ammessa (admin abilita override per ruolo/utente/categoria).
-- Singolo round-trip DB per il batch di parametri. La risoluzione di `categoria_cliente_id` dal BA aggiunge una query extra solo se `billing_account_id` e' fornito (best-effort: se BA non esiste, livello categoria saltato).
+- Singolo round-trip DB per il batch di parametri. La risoluzione di `categoria_cliente_id` dal BA aggiunge una query extra solo se `billing_account_id` e' fornito (se il BA non risulta, 404: vedi sopra).
 - Valori serializzati come stringa (envelope stabile); il FE converte in Number per interpolazione hint
 - **Esempio uso FE**: il drawer riga preventivo, quando il preventivo ha un BA selezionato, chiama `GET /pricing/limiti-utente/?billing_account_id=<id>` per ottenere la soglia coerente con la categoria cliente target (es. operatore senior che fa preventivo a cliente PREMIUM vede 5% invece dei suoi 20% generici)
 

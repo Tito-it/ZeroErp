@@ -121,7 +121,7 @@ WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          true, 100.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
@@ -137,7 +137,7 @@ WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_draft_id,
          false, 200.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
@@ -154,7 +154,7 @@ WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, r.stato_definitiva_id,
          false, 300.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))

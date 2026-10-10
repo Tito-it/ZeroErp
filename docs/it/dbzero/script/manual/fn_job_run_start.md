@@ -67,8 +67,13 @@ changeSet**.
 
 * Se `p_lock_key` è valorizzato, prova `pg_try_advisory_lock(classid, hashtext(p_lock_key))`
   con `classid` fisso per i job headless (namespace separato dai lock di `fn_run_and_log`).
-* Lock occupato → **non aspetta**: inserisce una riga esito *skip* (`ok=true`,
-  `message='skip: another run in progress'`, `ended_at` valorizzato) e ritorna `acquired=false`.
+* Lock occupato → **non aspetta**: inserisce una riga **saltata** (`saltata=true`,
+  `ok` NULL, `ended_at` valorizzato, `message='skip: another run in progress'`) e ritorna
+  `acquired=false`. Il chiamante salta il lavoro e **non** chiude la corsa:
+  `fn_job_run_end` la rifiuta.
+  ⚠️ Fino al 2026-10-10 la riga nasceva con `ok=true`, e ogni lettore la contava come
+  una corsa riuscita (vedi [job_run_log](/dbzero/maintenance/manual/job_run_log),
+  «una corsa saltata non è una corsa riuscita»).
 * Il lock è di **sessione**: tenuto per tutta la durata del run (start→corpo→end sulla
   **stessa** connessione) e rilasciato da `fn_job_run_end` o alla chiusura connessione
   (nessun lock orfano su crash). L'anti-overlap protegge fra **connessioni diverse** (due

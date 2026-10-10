@@ -56,6 +56,23 @@
 > codice nostro: è che il pacchetto è nuovo e non l'ha ancora collaudato
 > nessuno. Dettaglio in §4 e §9.
 >
+> ⭐ **2026-10-03 — il disaccoppiamento passa anche dai drawer.** Gli 80 drawer
+> laterali che montavano `<Drawer>` di PrimeVue a mano passano tutti dalla sede `AppDrawer`
+> (`work-done/analisi-fe-chrome-drawer.md`), e il lint ferma gli import
+> diretti di `dialog`, `confirmdialog`, `useconfirm`, `datatable` e `drawer`
+> fuori dalle loro sedi (frontend-standards §«Import PrimeVue riservati»).
+> Per questo piano vuol dire due cose: `drawer` passa da 73 import a **3**
+> (le sedi), e una regressione non può più ricrescere in silenzio. Numeri in §2
+> e §8-bis, colonna del 2026-10-03.
+> Lo stesso giorno i due gusci hanno preso anche il **comportamento** comune:
+> `AppDrawer` e `AppDialog` fanno passare ogni uscita (X, ESC, maschera,
+> Annulla) da una conferma sulle modifiche non salvate, che i 44 dialog con
+> campi e i form dei drawer alimentano con la loro fotografia
+> (`useFotografiaDialog`, `useDrawerFormPreserve`). Per una migrazione vuol
+> dire che il comportamento d'uscita di `Drawer` e `Dialog` in v5 si verifica
+> **in due file** e vale per tutti (§6.4, prove 3 e 4). Analisi chiusa il
+> 2026-10-03, collaudo verde.
+>
 > **Contesto**: non siamo in produzione
 > ([[project_no_produzione_solo_sviluppo]]) → breaking secchi ammessi.
 
@@ -221,12 +238,22 @@ grep -rho "from 'primevue/[a-z]*'" src --include=*.vue --include=*.js \
   | sed "s/.*primevue\///;s/'//" | sort | uniq -c | sort -rn
 ```
 
-| Pacchetto | Superficie 2026-07-29 | **Superficie 2026-09-02** |
-| --- | --- | --- |
-| `primevue` | 937 import in 260 file (su 335 `.vue`) — 47 moduli distinti | **1039 import in 300 file** (su **383** `.vue`) — **47** moduli distinti |
-| `pinia` | 43 store, 39 `userScoped` — plugin ora su sola API pubblica (§6.1 fatto) | non ri-misurato |
-| `@primeuix/themes` | 1 file — `src/main.js`, preset `Aura` | **1 file** (invariato) |
-| `primeicons` | 122 classi `pi-*` distinte + 28 codepoint cablati in `main.css` | non ri-misurato |
+| Pacchetto | Superficie 2026-07-29 | **Superficie 2026-09-02** | **Superficie 2026-10-03** |
+| --- | --- | --- | --- |
+| `primevue` | 937 import in 260 file (su 335 `.vue`) — 47 moduli distinti | **1039 import in 300 file** (su **383** `.vue`) — **47** moduli distinti | **1027 import in 336 file** (su **441** `.vue`) — **47** moduli distinti |
+| `pinia` | 43 store, 39 `userScoped` — plugin ora su sola API pubblica (§6.1 fatto) | non ri-misurato | non ri-misurato |
+| `@primeuix/themes` | 1 file — `src/main.js`, preset `Aura` | **1 file** (invariato) | non ri-misurato |
+| `primeicons` | 122 classi `pi-*` distinte + 28 codepoint cablati in `main.css` | non ri-misurato | non ri-misurato |
+
+I dieci componenti più usati, **al 2026-10-03**: `tag` 141, `inputtext` 128,
+`button` 113, `select` 104, `message` 94, `inputnumber` 50, `toggleswitch` 46,
+`datepicker` 40, `column` 39, `datatable` 33. `drawer` esce dalla classifica:
+**3** import, cioè le tre sedi (`AppDrawer`, `AppLayout`, `FiltriLista`).
+
+⚠️ **2026-10-03: per la prima volta il totale cala** (1039 → 1027) mentre il
+repo cresce (383 → 441 `.vue`). Le voci in calo sono di nuovo e solo quelle con
+una sede: `drawer` (73 → 3), `datatable` (57 → 33), `column` (67 → 39). I
+primitivi senza casa continuano a salire.
 
 I dieci componenti più usati, **al 2026-09-02** (fra parentesi il 2026-07-29):
 `tag` 117 (96), `button` 111 (93), `inputtext` 97 (90), `select` 93 (75),
@@ -676,8 +703,8 @@ perché è l'unica che chiude R5.
 | --- | --- | --- |
 | 1 | **Kebab di riga**, inline (desktop) e compact (<1024px) | ⬅ **la verifica che chiude R5**. `Menu` in v5 ha il multi-livello nuovo, e il nostro CSS aggancia `.p-menu-item-link` / `.p-tieredmenu-item-link` (26 usi). I nomi esistono ancora in v5, ma nessuna analisi statica dice se stanno sullo stesso elemento. Usato da `RowActionsMenu`, `PageActionsBar`, `DrawerActionsBar`: è in **ogni riga di ogni lista** |
 | 2 | Una lista configurabile (clienti, contratti) | `DataTable` + paginator + ritiro colonne responsive; il nostro CSS aggancia `.p-datatable-tbody/thead/table` e `.p-paginator` |
-| 3 | Un drawer con tab (`LottoDrawer`) | `Tabs`/`TabPanel` + `DataTable` annidata (agganciamo `.p-tabs`, `.p-tabpanels`, `.p-tablist`) |
-| 4 | Un `AppDialog` con footer | `Dialog` + `FormFooter` |
+| 3 | Un drawer con tab (`LottoDrawer`) | `Tabs`/`TabPanel` + `DataTable` annidata (agganciamo `.p-tabs`, `.p-tabpanels`, `.p-tablist`). ⭐ Dal 2026-10-03 tutti i drawer laterali passano da `AppDrawer`: il chrome (testata, footer fisso nello slot `#footer`, larghezza) si verifica **una volta**, e vale per tutti. Il nostro CSS aggancia `.p-drawer`, `.p-drawer-content`, `.p-drawer-footer`, `.p-drawer-title` (§R5) |
+| 4 | Un `AppDialog` con footer | `Dialog` + `FormFooter`. ⭐ Dal 2026-10-03 anche la **conferma d'uscita**: con un campo cambiato, X / ESC / maschera / Annulla devono chiedere «Modifiche non salvate» (prop `confermaUscita`; agganciata a `update:visible` e al keydown di ESC in `pt.root`, che in v5 va riverificato). Un dialog che la provi: i componenti BoM |
 | 5 | Un toast di successo e uno di errore | Toast ha animazioni nuove |
 | 6 | Il login | l'unica schermata senza sidebar/topbar; aggancia `.p-password-input` (10 usi) |
 
@@ -819,19 +846,22 @@ frattempo i primitivi sono passati da ~449 a 586 import.
 
 Cosa c'è già davanti ai primitivi, **misurato il 2026-09-02** (file che li usano):
 
-| Strato di casa | Primitivo che copre | File |
-| --- | --- | --- |
-| `FormFooter` | `button` (coppia Annulla/Salva) | 81 |
-| `LookupSelect` | `select` | 72 |
-| `PageActionsBar` | `button` (azioni di pagina) | 70 |
-| `RowActionsMenu` | `button` + `menu` (azioni di riga) | 49 |
-| `AppDialog` | `dialog` | 43 |
-| `AttivoTag` | `tag` (il caso attivo/non attivo) | 28 |
-| `DrawerActionsBar` | `button` (azioni di drawer) | 18 |
-| `NewButton` | `button` | 3 |
-| `AppDrawer` | `drawer` | 2 |
-| `EntityFormField` | `inputtext` & c. | 1 |
-| — | `inputtext` (97), `datepicker` (45), `toggleswitch` (43), `inputnumber` (48), `message` (77), `textarea` (21), `checkbox` (19) | **nessuno** |
+⚠️ I conteggi del 2026-10-03 escludono il file del wrapper stesso (un `<AppDrawer>`
+nel suo commento d'esempio non è un uso); quelli del 2026-09-02 no.
+
+| Strato di casa | Primitivo che copre | File 2026-09-02 | **File 2026-10-03** |
+| --- | --- | --- | --- |
+| `FormFooter` | `button` (coppia Annulla/Salva) | 81 | **17** diretti + gli 81 `AppDrawer`, che lo rendono loro |
+| `LookupSelect` | `select` | 72 | **71** |
+| `PageActionsBar` | `button` (azioni di pagina) | 70 | **67** |
+| `RowActionsMenu` | `button` + `menu` (azioni di riga) | 49 | **60** |
+| `AppDialog` | `dialog` | 43 | **48** — e dal 2026-10-03 anche la conferma d'uscita (comportamento, non solo presentazione) |
+| `AttivoTag` | `tag` (il caso attivo/non attivo) | 28 | **34** |
+| `DrawerActionsBar` | `button` (azioni di drawer) | 18 | **14** |
+| `NewButton` | `button` | 3 | **0** |
+| `AppDrawer` | `drawer` | 2 | **81** — tutti i drawer laterali |
+| `EntityFormField` | `inputtext` & c. | 1 | **1** |
+| — | `inputtext` (97), `datepicker` (45), `toggleswitch` (43), `inputnumber` (48), `message` (77), `textarea` (21), `checkbox` (19) | **nessuno** | `inputtext` 128, `datepicker` 40, `toggleswitch` 46, `inputnumber` 50, `message` 94, `textarea` 24, `checkbox` 20 — **nessuno** |
 
 ⭐ **Lo strato non è assente: è a due velocità.** Dove c'è un building block di
 *comportamento* — una barra di azioni, un footer, un lookup — la copertura è
@@ -847,6 +877,17 @@ quello che «La mossa» dice di **non** aprire. La cosa che questa sezione
 stabilisce è più piccola e più utile: **prima di scrivere un wrapper nuovo, si
 guarda perché i quattro esistenti non sono stati adottati** — un quinto wrapper
 inadottato non abbassa nessun costo, lo raddoppia.
+
+⭐ **`AppDrawer` ha risposto alla domanda (2026-10-03).** «Perché il wrapper
+esistente non è stato adottato?» — per `AppDrawer` la risposta era misurabile:
+**non copriva quello che i drawer fanno davvero** (icona in testata, scala
+`DRAWER_WIDTH`, montaggio a fine animazione, footer «Chiudi», readonly sul
+corpo, conferma su ogni uscita), quindi ogni drawer ricostruiva a mano il
+chrome intero. Censito il chrome comune, riscritto il guscio per coprirlo, gli 80
+drawer laterali ci sono passati sopra in un giorno, e solo DOPO il lint ha vietato
+l'import. La lezione per gli altri tre inadottati (`NewButton`, ormai a zero,
+`EntityFormField`, `AttivoTag`) è la stessa: un wrapper si adotta se copre il
+caso reale, non se esiste.
 
 ### Il numero scomodo, ed è anche la leva
 
@@ -2543,7 +2584,7 @@ un wrapper sottile da estrarre alla seconda occorrenza
 | ☐ | `amministrazione/components/UtilityTipoRuoloDrawer.vue` | 3 |
 | ☐ | `amministrazione/views/RepartiProfiloView.vue` | 3 |
 | ☐ | `core/components/ScadenzeSintesi.vue` | 3 |
-| ☐ | `amministrazione/views/PermessiRiepilogoView.vue` | 4 |
+| ➡️ | ~~`amministrazione/views/PermessiRiepilogoView.vue`~~ — **pagina ritirata** il 2026-10-06: il riepilogo è un interruttore *Mostra permessi* della lista `anagrafiche.operatori` (`OperatoriListView.vue`), file cancellato e uscito da `datatable.baseline.json` ([brief-db-riepilogo-permessi-lista-operatori](../work-done/brief-db-riepilogo-permessi-lista-operatori.md) §7) | 4 |
 | ✅ 26-09 → **Gruppo A** | `catalogo/components/UomConversioniDrawer.vue` | 4 | criterio in tre domande: le conversioni hanno endpoint e lista loro (`catalogo.conversioni_uom`). Convertito con `useDrawerTabLista` + store `uomConversioni`, fattore modificabile nello slot `cell-fattore`; chiuso il troncamento a 200 righe |
 | ☐ | `core/components/SessioniAttivePanel.vue` | 4 |
 | ☐ | `vendite/components/AlertScadenzeWidget.vue` | 4 |

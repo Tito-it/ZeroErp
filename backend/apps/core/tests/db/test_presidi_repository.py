@@ -45,6 +45,30 @@
      ⭐ Il pallino della topbar (2026-09-18): `con_righe=False` fa lo STESSO
      giro — stesse viste, stessi conteggi, stesso isolamento — e non chiama mai
      `prime_righe`. E' un parametro e non una copia del giro.
+9. test_il_testo_per_chi_agisce_si_legge_per_vista_con_ripiego_su_it
+     ⭐ 2026-10-06: il join e' su `vista` (non sull'id) e la lingua si sceglie
+     come per `config.messaggi_errore` — la GUC della richiesta, poi `it`.
+10. test_il_pannello_consegna_il_testo_per_chi_agisce
+11. test_un_presidio_non_letto_non_consegna_un_azione
+     ⛔ L'azione rimedia a righe accese: su un presidio che non si e' letto
+     direbbe di sistemare una cosa che nessuno ha visto.
+12. test_il_testo_delle_cause_si_cerca_per_causa_con_ripiego_nella_causa
+     ⛔ 2026-10-10 (brief-db-presidio-processi-testo-per-causa §5.4.2): il testo
+     di una causa e' quello con `variante = causa`, e la lingua ripiega DENTRO
+     la causa — mai sul testo generico del presidio.
+13. test_il_pannello_consegna_le_righe_per_causa
+     ⭐ Il nome della colonna si legge da `colonna_variante`; un presidio senza
+     variante consegna `cause` vuoto e non interroga il catalogo delle cause.
+14. test_il_conteggio_per_causa_passa_dalla_sede_del_database   R-2, 10-10
+     `SELECT … FROM dbops.fn_conta_presidio_per_variante(%s)`, non
+     `SELECT fn(…)` (che consegna la tupla in un campo solo).
+15. test_le_cause_partono_dai_conteggi_e_non_dal_campione   ⭐ R-2, 10-10
+     §6.4.2: ogni causa accesa arriva col suo conteggio, anche senza righe nel
+     campione; una riga accesa fra le due letture non si perde, e nessun
+     gruppo conta meno delle righe che mostra.
+16. test_su_perimetro_definer_le_cause_arrivano_coi_numeri   R-2, 10-10
+     Le righe non si elencano, i conteggi per causa si'.
+17. test_la_lettura_leggera_non_chiede_le_cause
 """
 
 from __future__ import annotations
@@ -56,6 +80,10 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase
 
 from apps.core.db import presidi_repository as modulo
+from apps.core.middleware.user_language_middleware import (
+    DEFAULT_LANGUAGE,
+    GUC_NAME,
+)
 from apps.core.db.presidi_repository import (
     _IN_ATTESA_DI_CATALOGO,
     CADENZE,
@@ -82,6 +110,12 @@ def _riga(**override: Any) -> RigaPresidio:
         "cadenza": "GIORNALIERA",
         "perimetro": PERIMETRO_LIBERO,
         "nota": "riga di prova",
+        "colonna_variante": None,
+        # ⚠️ Senza testo per chi agisce, di default: e' il ripiego, e i casi
+        #    col testo se lo costruiscono.
+        "chi_agisce": None,
+        "significato": None,
+        "azione": None,
         "descrizione": None,
         "esiste": True,
         "a_catalogo": True,
@@ -179,15 +213,38 @@ class PresidiRepositoryGuardieTests(SimpleTestCase):
                 self.assertTrue(riga["nota"].strip())
 
 
+    # 9. ⭐ Il TRASPORTO del testo per chi agisce. Il join e' su `vista` — la
+    #    chiave della FK, non l'id, che vale su una macchina sola — e la lingua
+    #    ha la stessa cascata di `script.fn_get_messaggio`: la GUC impostata dal
+    #    middleware, poi `it`. ⚠️ SQL letta, non eseguita: che la query GIRI sul
+    #    database vero lo prova `test_presidi_catalogo` (e2e).
+    def test_il_testo_per_chi_agisce_si_legge_per_vista_con_ripiego_su_it(self) -> None:
+        with _cursore_finto() as cursore:
+            cursore.description = []
+            cursore.fetchall.return_value = []
+            self.repo.list_catalogo()
+        sql, params = cursore.execute.call_args[0]
+        self.assertIn("dbops.presidi_testi", sql)
+        self.assertIn("pt.vista = p.vista", sql)
+        # ⛔ Il testo del presidio e' quello SENZA variante: le varianti sono i
+        #    testi per causa, e il `LIMIT 1` ne pescherebbe una a caso.
+        self.assertIn("pt.variante IS NULL", sql)
+        self.assertIn("current_setting(%s, true)", sql)
+        self.assertEqual(params[:3], [GUC_NAME, DEFAULT_LANGUAGE, DEFAULT_LANGUAGE])
+        for colonna in ("p.chi_agisce", "t.significato", "t.azione"):
+            self.assertIn(colonna, sql)
+
+
 class PresidiPannelloTests(SimpleTestCase):
     """Il giro del pannello, senza database: chi entra, chi resta fuori."""
 
     # Scopo: un repository vero con i tre lettori sostituiti — cosi' si prova il
     #        GIRO (chi si guarda, cosa si chiede, come si racconta un errore) e
     #        non il contenuto del dbdev di oggi.
-    def _repo(self, catalogo, conteggi, righe=None):
+    def _repo(self, catalogo, conteggi, righe=None, per_causa=None):
         repo = PresidiRepository()
         righe = righe or {}
+        per_causa = per_causa or {}
 
         def _conta(riga):
             valore = conteggi[riga["vista"]]
@@ -199,6 +256,12 @@ class PresidiPannelloTests(SimpleTestCase):
         repo.conta = _conta  # type: ignore[method-assign]
         repo.prime_righe = (  # type: ignore[method-assign]
             lambda riga, **_kw: righe.get(riga["vista"], [])
+        )
+        repo.conta_per_variante = (  # type: ignore[method-assign]
+            lambda riga: [
+                {"variante": v, "conteggio": n}
+                for v, n in per_causa.get(riga["vista"], [])
+            ]
         )
         return repo
 
@@ -286,3 +349,164 @@ class PresidiPannelloTests(SimpleTestCase):
         self.assertEqual(acceso["righe"], [])
         self.assertFalse(acceso["troncato"])
         self.assertTrue(acceso["da_guardare"])
+
+    # 10. ⭐ Il pannello consegna i tre campi del testo per chi agisce, cosi'
+    #     come il catalogo li ha letti: e' il FE a decidere l'ordine a video, ma
+    #     non a ricostruirli.
+    def test_il_pannello_consegna_il_testo_per_chi_agisce(self) -> None:
+        repo = self._repo(
+            [_riga(vista="dbops.vw_zero", natura="ZERO", chi_agisce="AMMINISTRATORE",
+                   significato="cosa vuol dire", azione="cosa fare")],
+            {"dbops.vw_zero": 1},
+        )
+        acceso = repo.stato_presidi()[0]
+        self.assertEqual(
+            (acceso["significato"], acceso["azione"], acceso["chi_agisce"]),
+            ("cosa vuol dire", "cosa fare", "AMMINISTRATORE"),
+        )
+        # ⚠️ La descrizione resta: e' il «dettaglio tecnico» e il ripiego.
+        self.assertIn("descrizione", acceso)
+
+    # 11. ⛔ Non letto: il significato resta (dice COSA non si e' guardato),
+    #     l'azione e chi agisce no.
+    def test_un_presidio_non_letto_non_consegna_un_azione(self) -> None:
+        repo = self._repo(
+            [_riga(vista="dbops.vw_cade", natura="ZERO", chi_agisce="AMMINISTRATORE",
+                   significato="cosa vuol dire", azione="cosa fare")],
+            {"dbops.vw_cade": RuntimeError("giu'")},
+        )
+        with patch.object(modulo, "connection", MagicMock()):
+            caduto = repo.stato_presidi()[0]
+        self.assertEqual(caduto["significato"], "cosa vuol dire")
+        self.assertIsNone(caduto["azione"])
+        self.assertIsNone(caduto["chi_agisce"])
+
+    # 13. ⭐ Le righe per causa, col testo e il «chi agisce» della causa. La
+    #     colonna si chiama apposta `motivo`: il nome viene dal catalogo.
+    def test_il_pannello_consegna_le_righe_per_causa(self) -> None:
+        repo = self._repo(
+            [
+                _riga(vista="dbops.vw_a", natura="ZERO", colonna_variante="motivo"),
+                _riga(vista="dbops.vw_b", natura="ZERO"),
+            ],
+            {"dbops.vw_a": 2, "dbops.vw_b": 1},
+            {"dbops.vw_a": [{"id": 1, "motivo": "X"}, {"id": 2, "motivo": "Y"}],
+             "dbops.vw_b": [{"id": 3}]},
+            {"dbops.vw_a": [("X", 1), ("Y", 1)]},
+        )
+        chieste: list[str] = []
+
+        def _testi(vista):
+            chieste.append(vista)
+            return {"X": {"causa": "X", "chi_agisce": "SVILUPPO",
+                          "significato": "s-x", "azione": "a-x"}}
+
+        repo.testi_delle_cause = _testi  # type: ignore[method-assign]
+        a, b = repo.stato_presidi()
+        self.assertEqual(
+            [(c["causa"], c["chi_agisce"], c["azione"], [r["id"] for r in c["righe"]])
+             for c in a["cause"]],
+            [("X", "SVILUPPO", "a-x", [1]), ("Y", None, None, [2])],
+        )
+        self.assertEqual(b["cause"], [])
+        self.assertEqual(chieste, ["dbops.vw_a"])
+
+    # 15. ⭐ Dai CONTEGGI (§6.4.2). `Z` non ha righe nel campione e arriva lo
+    #     stesso; `W` ha una riga ma i conteggi non la conoscono (accesa fra le
+    #     due letture): arriva in coda, contata almeno quanto mostra. `X` conta
+    #     meno delle righe mostrate: sale al loro numero.
+    def test_le_cause_partono_dai_conteggi_e_non_dal_campione(self) -> None:
+        repo = self._repo(
+            [_riga(vista="dbops.vw_a", natura="ZERO", colonna_variante="motivo")],
+            {"dbops.vw_a": 9},
+            {"dbops.vw_a": [{"id": 1, "motivo": "X"}, {"id": 2, "motivo": "X"},
+                            {"id": 3, "motivo": "W"}]},
+            {"dbops.vw_a": [("X", 1), ("Z", 7), (None, 1)]},
+        )
+        repo.testi_delle_cause = lambda vista: {}  # type: ignore[method-assign]
+        (a,) = repo.stato_presidi()
+        self.assertEqual(
+            [(c["causa"], c["conteggio"], len(c["righe"])) for c in a["cause"]],
+            [("X", 2, 2), ("Z", 7, 0), (None, 1, 0), ("W", 1, 1)],
+        )
+
+    # 16. Perimetro DEFINER: nessuna riga, ma le cause e i loro numeri si'.
+    def test_su_perimetro_definer_le_cause_arrivano_coi_numeri(self) -> None:
+        repo = self._repo(
+            [_riga(vista="dbops.vw_a", natura="ZERO", colonna_variante="motivo",
+                   perimetro=PERIMETRO_DEFINER)],
+            {"dbops.vw_a": 3},
+            per_causa={"dbops.vw_a": [("X", 3)]},
+        )
+        repo.testi_delle_cause = lambda vista: {}  # type: ignore[method-assign]
+        (a,) = repo.stato_presidi()
+        self.assertEqual(a["righe"], [])
+        self.assertEqual([(c["causa"], c["conteggio"]) for c in a["cause"]], [("X", 3)])
+
+    # 17. Il pallino della topbar non consegna le cause: e' un numero solo. Su
+    #     un presidio a cause quel numero e' la somma per causa, e si legge una
+    #     volta sola (nessun `conta` accanto).
+    def test_la_lettura_leggera_non_consegna_le_cause(self) -> None:
+        repo = self._repo(
+            [_riga(vista="dbops.vw_a", natura="ZERO", colonna_variante="motivo")],
+            {"dbops.vw_a": RuntimeError("seconda lettura")},
+            per_causa={"dbops.vw_a": [("X", 2), ("Y", 1)]},
+        )
+        (a,) = repo.stato_presidi(con_righe=False)
+        self.assertIsNone(a["errore"])
+        self.assertEqual(a["conteggio"], 3)
+        self.assertEqual(a["cause"], [])
+
+    # 18. ⭐ Il totale di un presidio a cause E' la somma per causa: una
+    #     lettura, e le due cifre non possono dire cose diverse. Senza cause,
+    #     o fuori catalogo, resta `conta`.
+    def test_il_totale_di_un_presidio_a_cause_e_la_somma_per_causa(self) -> None:
+        repo = self._repo(
+            [
+                _riga(vista="dbops.vw_a", natura="ZERO", colonna_variante="motivo"),
+                _riga(vista="dbops.vw_b", natura="ZERO"),
+                _riga(vista="dbops.vw_c", natura="ZERO", colonna_variante="motivo",
+                      a_catalogo=False),
+            ],
+            {"dbops.vw_a": 99, "dbops.vw_b": 4, "dbops.vw_c": 5},
+            per_causa={"dbops.vw_a": [("X", 2), (None, 1)]},
+        )
+        self.assertEqual(repo.conta_presidio(_riga(vista="dbops.vw_a", colonna_variante="motivo")),
+                         (3, [{"variante": "X", "conteggio": 2},
+                              {"variante": None, "conteggio": 1}]))
+        self.assertEqual(repo.conta_presidio(_riga(vista="dbops.vw_b")), (4, None))
+        self.assertEqual(
+            repo.conta_presidio(_riga(vista="dbops.vw_c", colonna_variante="motivo",
+                                      a_catalogo=False)),
+            (5, None),
+        )
+
+
+class PresidiTestiCauseTests(SimpleTestCase):
+    """Il testo delle cause: quale riga di `presidi_testi`, in che lingua."""
+
+    # 14. Il conteggio per causa: la sede a database, letta come tabella.
+    def test_il_conteggio_per_causa_passa_dalla_sede_del_database(self) -> None:
+        with _cursore_finto() as cursore:
+            cursore.fetchall.return_value = [("A", 2), (None, 1)]
+            esito = PresidiRepository().conta_per_variante(_riga())
+        sql, params = cursore.execute.call_args[0]
+        self.assertIn("FROM dbops.fn_conta_presidio_per_variante(%s)", sql)
+        self.assertEqual(params, ["dbops.vw_finta"])
+        self.assertEqual(
+            esito, [{"variante": "A", "conteggio": 2}, {"variante": None, "conteggio": 1}],
+        )
+
+    # 12. ⛔ `variante = causa`, lingua richiesta poi `it` della STESSA causa.
+    #     ⚠️ SQL letta, non eseguita: che giri sul database vero lo prova
+    #     `test_presidi_catalogo`.
+    def test_il_testo_delle_cause_si_cerca_per_causa_con_ripiego_nella_causa(self) -> None:
+        with _cursore_finto() as cursore:
+            cursore.description = []
+            cursore.fetchall.return_value = []
+            PresidiRepository().testi_delle_cause("dbops.vw_a")
+        sql, params = cursore.execute.call_args[0]
+        self.assertIn("dbops.presidi_cause c", sql)
+        self.assertIn("pt.variante = c.causa", sql)
+        self.assertNotIn("variante IS NULL", sql)
+        self.assertEqual(params, [GUC_NAME, DEFAULT_LANGUAGE, DEFAULT_LANGUAGE, "dbops.vw_a"])

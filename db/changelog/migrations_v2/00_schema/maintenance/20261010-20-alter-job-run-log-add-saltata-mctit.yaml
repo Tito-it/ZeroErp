@@ -1,0 +1,91 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ⭐ UNA CORSA SALTATA NON E' UNA CORSA RIUSCITA.
+#   Brief: brief-db-corsa-saltata-non-e-una-corsa §8 (D1, D2 di Tid, 2026-10-09)
+#
+# ── Il difetto, sul modello ─────────────────────────────────────────
+#   Quando il lock della corsia e' occupato, script.fn_job_run_start e
+#   maintenance.fn_run_and_log scrivono una riga di «skip» con `ok = TRUE`.
+#   Quella riga non ha fatto il lavoro, ma per il modello era indistinguibile
+#   da una corsa riuscita: la differenza stava solo nel TESTO di `message`.
+#   Ogni lettore che chiede «e' stata fatta?» o «qual e' l'ultima corsa?» la
+#   contava come riuscita: le sveglie calendariali saltavano un periodo intero
+#   (brief §2.1) e una corsa appesa spariva dal presidio (§2.2).
+#
+# ── Che cosa cambia ────────────────────────────────────────────────
+#   * `saltata` (D1): il marcatore STRUTTURALE della corsa che non e' partita.
+#   * Sulla riga saltata `ok` e' NULL, non TRUE (D2): una skip non ha un esito
+#     del lavoro. Cosi' la domanda «e' riuscita?» (`ok IS TRUE`) la scarta da
+#     sola, senza un `AND NOT saltata` da ricordare in ogni lettore presente e
+#     futuro. `saltata` toglie al NULL il doppio significato: «aperta» (NULL,
+#     ended_at NULL) e «chiusa senza esito perche' saltata» (NULL, saltata).
+#   * CHECK di riga: una riga saltata e' CHIUSA e SENZA esito. E' cio' che
+#     impedisce a un chiamante di scrivere una skip «riuscita» o lasciarla
+#     aperta — cioe' le due forme del difetto di prima.
+#
+# ⚠️ Le skip gia' scritte NON si bonificano (D4, Tid): restano `saltata = false`
+#   col loro testo. Il CHECK le ammette (vale solo per `saltata = true`).
+# ⚠️ ADD COLUMN con DEFAULT costante: nessuna riscrittura della tabella.
+# ⚠️ Grant a livello di TABELLA (zeroerp_app SELECT, zeroerp_log INSERT): la
+#   colonna nuova li eredita, nessun GRANT da aggiungere.
+#
+# Verifica: db/pgtap/maintenance/test-job-run-saltata-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/maintenance/20261010-20-alter-job-run-log-add-saltata-mctit.yaml
+
+  - changeSet:
+      id: 20261010-20-alter-job-run-log-add-saltata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        maintenance.job_run_log.saltata: marcatore strutturale della corsa
+        saltata per lock occupato; CHECK chk_job_run_log_saltata (una riga
+        saltata e' chiusa e senza esito). brief-db-corsa-saltata-non-e-una-corsa
+        §8, D1-D2.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: maintenance, tableName: job_run_log }
+            - not:
+                - columnExists:
+                    { schemaName: maintenance, tableName: job_run_log, columnName: saltata }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  ADD COLUMN saltata boolean NOT NULL DEFAULT false;
+
+              -- ⭐ Chiusa e senza esito: le due proprieta' che fanno di una
+              --   riga una skip e non una corsa. `ok` valorizzato la farebbe
+              --   passare per riuscita (o fallita); `ended_at` NULL la farebbe
+              --   passare per «presa e mai chiusa».
+              ALTER TABLE maintenance.job_run_log
+                  ADD CONSTRAINT chk_job_run_log_saltata
+                      CHECK (NOT saltata OR (ended_at IS NOT NULL AND ok IS NULL));
+
+              COMMENT ON COLUMN maintenance.job_run_log.saltata IS
+                  'TRUE sulla riga che registra una corsa SALTATA perche'' il lock della corsia era occupato: il timer si e'' svegliato, il lavoro non e'' partito. La scrivono solo script.fn_job_run_start e maintenance.fn_run_and_log, sul ramo del lock occupato. ⭐ Una riga saltata e'' chiusa e SENZA esito (ok NULL, CHECK chk_job_run_log_saltata): la domanda «e'' riuscita?» (ok IS TRUE) la scarta da sola. ⚠️ Chi chiede «qual e'' l''ultima corsa VERA?» la esclude (maintenance.vw_job_run_da_guardare, ultimo_esito di dbops.vw_processi_programmazione); chi chiede «la sveglia e'' viva?» la conta, perche'' e'' un segno di vita della sveglia. ⛔ Il testo di message non e'' il marcatore. Le skip scritte prima del 2026-10-10 hanno saltata = false (nessuna bonifica, decisione di Tid). Brief: brief-db-corsa-saltata-non-e-una-corsa §8.';
+              COMMENT ON CONSTRAINT chk_job_run_log_saltata ON maintenance.job_run_log IS
+                  'Una corsa saltata e'' chiusa (ended_at valorizzato) e senza esito (ok NULL): non ha fatto lavoro, quindi non e'' ne'' riuscita ne'' fallita, e non e'' nemmeno aperta. Brief: brief-db-corsa-saltata-non-e-una-corsa §8, D2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE maintenance.job_run_log
+                  DROP CONSTRAINT IF EXISTS chk_job_run_log_saltata;
+              ALTER TABLE maintenance.job_run_log
+                  DROP COLUMN IF EXISTS saltata;

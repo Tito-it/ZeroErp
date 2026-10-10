@@ -30,6 +30,7 @@ import unittest
 from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import (
+    Annulla,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
@@ -41,10 +42,6 @@ _FIXTURE: tuple[str, ...] = (
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 # Scopo: costruisce il mondo (azienda, operatore, contesto) sul cursore.
@@ -87,8 +84,8 @@ class RicercaListeCatalogoDbTests(unittest.TestCase):
                     {"codice": "riccodart", "descrizione": "ricdescart"},
                     lambda t: CatalogoRepository().list_articoli(search=t, **_filtri)[0],
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. Lookup articoli: escape dei metacaratteri e strip del termine.
@@ -113,6 +110,6 @@ class RicercaListeCatalogoDbTests(unittest.TestCase):
                     search="riclk%1", attivo=None, is_composito=None, limit=50,
                 )
                 self.assertEqual(righe, [], "`%` nel termine e' un carattere, non un jolly")
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

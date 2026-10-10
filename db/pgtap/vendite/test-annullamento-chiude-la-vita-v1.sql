@@ -89,7 +89,7 @@ WITH ins AS (
         (codice, tipo_doc_fiscale_id, competenza_mese,
          emittente_soggetto_ruolo_id, stato_doc_fiscale_id, stato_lotto, meta)
     SELECT 'PGTAP-VITA-' || v.sigla || '-' || r.emittente_sr_id, r.tipo_doc_fiscale_id,
-           date_trunc('month', CURRENT_DATE)::date, r.emittente_sr_id,
+           date_trunc('month', script.fn_data_operativa())::date, r.emittente_sr_id,
            r.stato_draft_id, v.stato_lotto,
            jsonb_build_object('test_scope', 'pgtap_annullamento_vita', 'sigla', v.sigla)
       FROM _rif r,

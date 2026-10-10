@@ -74,11 +74,14 @@ DECLARE
 
 BEGIN
   v_ef := script.fn_pgtap_emittente_operatore();
-  SELECT ba.id, ba.utility_id INTO v_ba, v_utility
-    FROM anagrafiche.billing_account ba
-   WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
-   ORDER BY ba.id LIMIT 1;
-  SELECT id INTO v_sr  FROM anagrafiche.soggetti_ruoli ORDER BY id LIMIT 1;
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il cliente si
+  --   FABBRICA. Prima era il primo BA del database accanto al primo ruolo del
+  --   database, scollegati: la FK composta fk_ddt_ba_cliente lo rifiuta. Il
+  --   trigger z90 lega il BA all'emittente dell'operatore in sessione.
+  SELECT c.billing_account_id, c.utility_id, c.soggetto_ruolo_id
+    INTO v_ba, v_utility, v_sr
+    FROM dbops.fn_pgtap_crea_cliente_ba('causale immutabile') c;
+  SET CONSTRAINTS ALL IMMEDIATE;
   SELECT id INTO v_val FROM config.valute ORDER BY id LIMIT 1;
   SELECT id INTO v_iva FROM config.iva WHERE attivo IS TRUE ORDER BY id LIMIT 1;
   SELECT id INTO v_draft  FROM config.stati_doc_ddt WHERE codice_interno='DRAFT'  AND attivo LIMIT 1;
@@ -98,7 +101,7 @@ BEGIN
     INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
         billing_account_id, utility_id, valuta_id, emittente_fiscale_id,
         causale_trasporto_id, storicizza, meta)
-    VALUES (CURRENT_DATE, v_draft, v_sr, v_ba, v_utility, v_val, v_ef, v_cv, false,
+    VALUES (script.fn_data_operativa(), v_draft, v_sr, v_ba, v_utility, v_val, v_ef, v_cv, false,
             jsonb_build_object('test_scope','pgtap_causale_immutabile'))
     RETURNING id INTO v_uno;
 
@@ -119,7 +122,7 @@ BEGIN
     INSERT INTO vendite.ddt (data, stato_doc_ddt_id, destinatario_soggetto_ruolo_id,
         billing_account_id, utility_id, valuta_id, emittente_fiscale_id,
         causale_trasporto_id, storicizza, meta)
-    VALUES (CURRENT_DATE, v_draft, v_sr, v_ba, v_utility, v_val, v_ef, v_cc, false,
+    VALUES (script.fn_data_operativa(), v_draft, v_sr, v_ba, v_utility, v_val, v_ef, v_cc, false,
             jsonb_build_object('test_scope','pgtap_causale_immutabile'))
     RETURNING id INTO v_due;
 

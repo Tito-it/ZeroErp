@@ -31,9 +31,16 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db.categorie_clienti_listini_repository import (
     _ORDER_COLS,
     CategorieClientiListiniRepository,
+)
+from apps.anagrafiche.error_codes import (
+    E_ANAG_FK,
+    E_ANAG_MATRICE_OVERLAP,
+    E_ANAG_NOT_FOUND,
+    E_ANAG_VALIDAZIONE,
 )
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.testata_guard import testata_o_not_found
@@ -44,14 +51,6 @@ from apps.core.services.payload_helpers import (
     PayloadValidator,
     map_integrity_error,
 )
-
-
-# Codici errore (registrati in apps/core/services/error_policies.py)
-E_ANAG_VALIDAZIONE = "E_ANAG_VALIDAZIONE"
-E_ANAG_NOT_FOUND = "E_ANAG_NOT_FOUND"
-E_ANAG_DUPLICATO = "E_ANAG_DUPLICATO"
-E_ANAG_FK = "E_ANAG_FK"
-E_ANAG_MATRICE_OVERLAP = "E_ANAG_MATRICE_OVERLAP"
 
 
 # Whitelist order_by ammessi dal service (gate prima del repository), DERIVATA
@@ -196,7 +195,7 @@ class CategorieClientiListiniService:
         emittente_soggetto_ruolo_id: int | None = None,
         listino_id: int | None = None,
         valid_at: date | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "valido_dal",
         order_dir: str = "desc",
@@ -234,7 +233,7 @@ class CategorieClientiListiniService:
     #        Niente DB: enum tecnico fisso (CHECK constraint), 2 codici.
     #        L'invariante "descrizioni copre l'enum" e' garantita dal test
     #        `test_list_tipi_variazione_coverage` (CI), non a runtime.
-    def list_tipi_variazione(self) -> list[dict[str, object]]:
+    def list_tipi_variazione(self) -> list[dict[str, Any]]:
         return [
             {"codice": codice, "descrizione": descrizione, "ordering": ordering}
             for codice, descrizione, ordering in _TIPI_VARIAZIONE_DESCRIZIONI

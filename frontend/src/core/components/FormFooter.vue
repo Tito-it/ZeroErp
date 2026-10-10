@@ -16,12 +16,19 @@
 //  - default:   Annulla (icona pi-arrow-left "torna indietro") + Salva (pi-check)
 //  - closeOnly: solo pulsante Chiudi (icona pi-times) — per drawer di liste sub-entita'.
 // Auto-hide pulsante Salva: in modalita' sola lettura (inject) o se action non abilitata.
+// ⭐ `readonly` (2026-10-03, decisione di Tid): override ESPLICITO della catena,
+//    default `undefined` = la eredita (come `AppDialog`). Serve all'eccezione di
+//    dominio che resta salvabile dentro un contesto in sola lettura — i
+//    riferimenti dell'atto di un contratto ATTIVO. ⛔ Chi la passa a `false`
+//    risponde dei permessi: la condizione deve gia' escludere l'area in lettura.
+//    Il controllo `action` resta comunque.
 // Il pulsante Annulla/Chiudi resta sempre visibile (chiusura form).
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useAuthStore } from '../../stores/auth'
 import { MANAGE_ICONS } from '../constants'
+import { conTastoDiAzione, useScorciatoie } from '../composables/useScorciatoie'
 import Button from 'primevue/button'
 
 const props = defineProps({
@@ -37,11 +44,13 @@ const props = defineProps({
   // primary (verde) — l'azione positiva standard. L'icona resta sempre il
   // check: a cambiare e' solo il colore, per segnalare la gravita' dell'azione.
   saveSeverity: { type: String, default: null },
+  readonly: { type: Boolean, default: undefined },
 })
 
 const emit = defineEmits(['save', 'cancel'])
-const { t } = useI18n()
-const isReadonly = useInjectReadonly()
+const { t, te } = useI18n()
+const readonlyCatena = useInjectReadonly()
+const isReadonly = computed(() => (props.readonly === undefined ? readonlyCatena.value : props.readonly))
 const auth = useAuthStore()
 
 const showSave = computed(() => {
@@ -56,21 +65,29 @@ const cancelText = computed(() => {
   return props.closeOnly ? t('common.close') : t('common.cancel')
 })
 
-// Ctrl+S → salva (funziona anche dentro input/textarea)
-function onKeydown(e) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault()
-    if (showSave.value && !props.disabled && !props.loading) {
-      emit('save')
-    }
-  }
-}
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+// L'azione del Salva per la sede delle scorciatoie (Ctrl+S, vedi sotto).
+const AZIONE_SALVA = Object.freeze({ key: 'salva' })
+const saveText = computed(() => props.saveLabel || t('common.save'))
+// Il tooltip DICE la scorciatoia (2026-10-04, ok Tid): «Salva (Ctrl+S)», ⌘S
+// su Mac, nomi tradotti. L'etichetta resta l'azione sola.
+const saveTooltip = computed(() => conTastoDiAzione(t, te, saveText.value, AZIONE_SALVA.key))
+
+// ⭐ Ctrl+S (anche dentro un campo) passa dalla sede delle scorciatoie
+//    (`useScorciatoie`, 2026-10-04): salva l'UNICO footer a video al livello
+//    davanti. 🔴 Fino a quel giorno ogni FormFooter montato ascoltava `window`
+//    per conto suo: con la versione aperta sopra il template, Ctrl+S salvava
+//    tutti e due; con un dialog sopra un drawer, anche il drawer sotto.
+const radice = ref(null)
+useScorciatoie({
+  elemento: () => radice.value,
+  azioni: () => (showSave.value ? [AZIONE_SALVA] : []),
+  spenta: () => props.disabled || props.loading,
+  esegui: () => emit('save'),
+})
 </script>
 
 <template>
-  <div class="app-form-footer">
+  <div ref="radice" class="app-form-footer">
     <!-- Annulla: arrow-left (MANAGE_ICONS.BACK) — semantica "torna alla
          lista"; closeOnly mantiene pi-times (chiusura di lista sub-entita',
          non c'e' un form da abbandonare).
@@ -88,13 +105,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
          (default primary verde; 'danger'/'warn' per azioni gravi). -->
     <Button
       v-if="showSave"
-      :label="saveLabel || t('common.save')"
+      :label="saveText"
       :icon="MANAGE_ICONS.CONFIRM"
       :severity="saveSeverity || undefined"
       :loading="loading"
       :disabled="disabled"
       class="app-form-footer-btn"
-      v-tooltip.top="saveLabel || t('common.save')"
+      v-tooltip.top="saveTooltip"
       @click="emit('save')"
     />
   </div>

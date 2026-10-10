@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.trgfn_componenti_propaga_qta: solo commenti. Il corpo diceva
+# «UPDATE OF quantita garantisce gia' il cambio», la stessa frase sbagliata di
+# linee-guida-trigger.md: ed e' proprio il motivo per cui i cinque trigger che
+# la montano non scattano quando quantita la riscrive un trigger BEFORE.
+# I trigger si correggono in -86; qui si corregge la spiegazione, nel corpo e
+# nel COMMENT ON. Logica invariata.
+#
+# Brief: brief-db-esclusioni-implicite (UPDATE OF).
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261004-85-update-trgfn-componenti-propaga-qta-commento-mctit.yaml
+
+  - changeSet:
+      id: 20261004-85-update-trgfn-componenti-propaga-qta-commento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.trgfn_componenti_propaga_qta: commento interno e COMMENT ON corretti (UPDATE OF non
+        garantisce il cambio). Logica invariata. Brief: brief-db-esclusioni-implicite.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >
+              SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_componenti_propaga_qta';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_propaga_qta()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- TG_ARGV[0]: schema (es. 'vendite')
+                  -- TG_ARGV[1]: tab_figli (es. 'preventivi_righe_componenti')
+                  -- TG_ARGV[2]: col FK figli->padre (es. 'riga_preventivo_id')
+                  v_sql text;
+              BEGIN
+                  -- Quantita' non cambiata: niente da propagare.
+                  -- ⚠️ Rev 2026-10-04 (brief-db-esclusioni-implicite): qui c'era
+                  --    scritto «UPDATE OF quantita garantisce gia' il cambio». E'
+                  --    falso due volte: UPDATE OF scatta se la colonna e' nel SET,
+                  --    anche a valore uguale, e NON scatta se la cambia un altro
+                  --    trigger BEFORE. Su queste righe quantita la calcola
+                  --    trgfn_qta_from_operativa da qta_operativa: cambiare solo
+                  --    qta_operativa (come fa il backend sui preventivi) lasciava i
+                  --    componenti con la quantita' vecchia. I trigger ora sono AFTER
+                  --    UPDATE con WHEN (OLD.quantita IS DISTINCT FROM NEW.quantita),
+                  --    che guarda la riga finale; questo controllo resta per le
+                  --    chiamate dirette.
+                  IF NEW.quantita IS NOT DISTINCT FROM OLD.quantita THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Aggiorna quantita su tutti i figli attivi:
+                  -- quantita = coeff_qta_snapshot * NEW.quantita (padre)
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET quantita = coeff_qta_snapshot * $1
+                          WHERE %3$I = $2
+                            AND attivo = TRUE$q$,
+                      TG_ARGV[0],
+                      TG_ARGV[1],
+                      TG_ARGV[2]
+                  );
+                  EXECUTE v_sql USING NEW.quantita, NEW.id;
+
+                  RETURN NULL;  -- AFTER trigger
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_componenti_propaga_qta()
+              IS 'Trigger function AFTER UPDATE su riga padre, WHEN (OLD.quantita IS DISTINCT FROM NEW.quantita): propaga quantita ai figli attivi come coeff_qta_snapshot * NEW.quantita. TG_ARGV[0]=schema [1]=tab_figli [2]=col_fk_figli->padre. Usata su 5 tabelle sorgente CASO A (preventivi, ordini, DDT, contratti, eccezioni d''offerta). Rev 2026-10-04 (brief-db-esclusioni-implicite): i trigger erano AFTER UPDATE OF quantita, che non scatta quando quantita la riscrive un trigger BEFORE (trgfn_qta_from_operativa da qta_operativa): cambiare solo qta_operativa lasciava i componenti con la quantita'' vecchia.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.trgfn_componenti_propaga_qta()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  -- TG_ARGV[0]: schema (es. 'vendite')
+                  -- TG_ARGV[1]: tab_figli (es. 'preventivi_righe_componenti')
+                  -- TG_ARGV[2]: col FK figli->padre (es. 'riga_preventivo_id')
+                  v_sql text;
+              BEGIN
+                  -- Guard difensivo: quantita non cambiata
+                  -- (UPDATE OF quantita garantisce gia' il cambio, ma
+                  -- il guard protegge da chiamate dirette accidentali)
+                  IF NEW.quantita IS NOT DISTINCT FROM OLD.quantita THEN
+                      RETURN NULL;
+                  END IF;
+
+                  -- Aggiorna quantita su tutti i figli attivi:
+                  -- quantita = coeff_qta_snapshot * NEW.quantita (padre)
+                  v_sql := format(
+                      $q$UPDATE %1$I.%2$I
+                            SET quantita = coeff_qta_snapshot * $1
+                          WHERE %3$I = $2
+                            AND attivo = TRUE$q$,
+                      TG_ARGV[0],
+                      TG_ARGV[1],
+                      TG_ARGV[2]
+                  );
+                  EXECUTE v_sql USING NEW.quantita, NEW.id;
+
+                  RETURN NULL;  -- AFTER trigger
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.trgfn_componenti_propaga_qta()
+              IS 'Trigger function AFTER UPDATE OF quantita su riga padre: propaga quantita ai figli attivi come coeff_qta_snapshot * NEW.quantita. TG_ARGV[0]=schema [1]=tab_figli [2]=col_fk_figli->padre. Usata su 5 tabelle sorgente CASO A.';

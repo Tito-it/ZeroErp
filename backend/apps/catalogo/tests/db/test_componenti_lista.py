@@ -8,7 +8,9 @@
 #        della lista configurabile `catalogo.articolo_componenti`, la lettura
 #        completa e la riga singola.
 # Note: nessun DB — si sostituiscono `fetch_paged_with_total` e `connection`
-#       nel modulo del repository e si legge cio' che ricevono. Che la vista
+#       e si legge cio' che ricevono: nel BB core `righe_lista_mixin` per la
+#       pagina e la lettura completa (dal 2026-10-04, §9.16 del brief), nel
+#       modulo del repository per la riga singola. Che la vista
 #       abbia le colonne nominate lo presidiano il trigger
 #       `a10_valida_campo_sorgente` al migrate e i pgTAP della parte DB.
 # ------------------------------------------------------------
@@ -44,28 +46,30 @@ from unittest.mock import MagicMock, patch
 from apps.catalogo.db import catalogo_bom_repository as modulo
 from apps.catalogo.db.catalogo_bom_repository import CatalogoBomRepository
 from apps.core.api.constants import MAX_LIMIT
+from apps.core.db import righe_lista_mixin as bb
 
 _VISTA = "catalogo.vw_articoli_componenti_dettaglio"
 _ARTICOLO = "11111111-1111-1111-1111-111111111111"
 
 
-# Scopo: chiama `list_componenti_pagina` e ritorna (sql, params, kw) passati a
+# Scopo: chiama `list_righe_pagina` e ritorna (sql, params, kw) passati a
 #        `fetch_paged_with_total`.
 def _pagina(**kwargs):
     kwargs.setdefault("limit", 10)
-    with patch.object(modulo, "fetch_paged_with_total", return_value=([], 0)) as fn:
-        CatalogoBomRepository().list_componenti_pagina(_ARTICOLO, **kwargs)
+    with patch.object(bb, "fetch_paged_with_total", return_value=([], 0)) as fn:
+        CatalogoBomRepository().list_righe_pagina(_ARTICOLO, **kwargs)
     args, kw = fn.call_args
     return " ".join(args[0].split()), args[1], kw
 
 
-# Scopo: esegue una lettura diretta e ritorna (sql, params).
-def _lettura(chiamata):
+# Scopo: esegue una lettura diretta e ritorna (sql, params). `dove` e' il
+#        modulo che apre la connessione.
+def _lettura(chiamata, dove=modulo):
     cursor = MagicMock()
     cursor.description = []
     cursor.fetchall.return_value = []
     cursor.fetchone.return_value = None
-    with patch.object(modulo, "connection") as conn:
+    with patch.object(dove, "connection") as conn:
         conn.cursor.return_value.__enter__.return_value = cursor
         chiamata()
     sql, params = cursor.execute.call_args.args
@@ -105,15 +109,17 @@ class ComponentiListaTests(unittest.TestCase):
         sql, _, _ = _pagina(order_by="valido_dal", order_dir=None)
         self.assertIn("ORDER BY v.valido_dal DESC", sql)
 
+    # ⚠️ Il verso chiesto vale anche sull'ordine di partenza (regola del BB,
+    #    come per le righe di vendita): fuori whitelist cade la COLONNA, non il
+    #    verso.
     def test_chiave_fuori_whitelist_ripiega_sulla_distinta(self):
         sql, _, _ = _pagina(order_by="prezzo; DROP", order_dir="asc")
-        self.assertIn("ORDER BY v.valido_dal DESC", sql)
+        self.assertIn("ORDER BY v.valido_dal ASC", sql)
         self.assertNotIn("DROP", sql)
 
     def test_pagina_rispetta_il_tetto_e_l_export_lo_alza(self):
-        _, params, kw = _pagina(limit=5000, offset=-3)
+        _, params, _ = _pagina(limit=5000, offset=-3)
         self.assertEqual(params[-2:], [MAX_LIMIT, 0])
-        self.assertEqual(kw["offset"], 0)
         _, params, _ = _pagina(limit=10001, max_limit=10001)
         self.assertEqual(params[-2], 10001)
 
@@ -125,7 +131,7 @@ class ComponentiListaTests(unittest.TestCase):
         )
 
     def test_lettura_completa_e_riga_singola_dalla_vista(self):
-        sql, params = _lettura(lambda: CatalogoBomRepository().list_componenti(_ARTICOLO))
+        sql, params = _lettura(lambda: CatalogoBomRepository().list_righe(_ARTICOLO), dove=bb)
         self.assertIn(f"FROM {_VISTA} v WHERE v.prodotto_id = %s", sql)
         self.assertIn("ORDER BY v.valido_dal DESC, v.id", sql)
         self.assertEqual(params, [_ARTICOLO])

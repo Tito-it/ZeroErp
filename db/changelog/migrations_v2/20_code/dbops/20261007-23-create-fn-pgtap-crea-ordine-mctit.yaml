@@ -1,0 +1,155 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# Helper di fixture pgTAP: un ORDINE di vendita del mondo, in una chiamata
+#   sola — l'azienda, l'operatore, il cliente fatturabile e la testata
+#   nello stato scelto.
+#   Brief: brief-db-fixture-rls-documenti-costruiti (giro 2).
+#
+# -- IL DIFETTO ------------------------------------------------------
+#   Un ordine si scrive a mano in decine di pgTAP, ognuno con la sua
+#   ricetta: chi pesca il billing account e l'emittente dal DB (e su un
+#   database ricostruito non trova niente), chi li prende da un mondo
+#   costruito ma sceglie la valuta, la utility e l'emittente in modo suo.
+#   Sono la stessa regola scritta piu' volte, e prima o poi rispondono in
+#   modi diversi (regola del 2). I test RLS dei documenti ne hanno bisogno
+#   oggi; le altre copie restano debito di D7, censito nel brief.
+#
+# -- LA CATENA, e cosa decide il dominio -----------------------------
+#   * il mondo (azienda, operatore, cliente legato all'azienda di chi
+#     agisce) lo da' dbops.fn_pgtap_crea_mondo_cliente: senza contesto lo
+#     costruisce e apre il contesto, con un contesto aperto riusa
+#     l'azienda di chi agisce;
+#   * l'emittente si scrive ESPLICITO, quello del mondo: e' lo stesso che
+#     il trigger di default ricaverebbe dal contesto, e lo stesso che
+#     trgfn_ordini_guard_emittente_ba pretende dal billing account;
+#   * numero, anno e registro li assegna trgfn_ordini_gen_numero sui
+#     registri che l'emittente si crea nascendo; fatturazione_trigger lo
+#     risolve trgfn_ordini_normalize (testata -> BA -> CONFERMATO). Qui non
+#     si scrivono: e' il percorso di produzione;
+#   * la valuta si scrive ESPLICITA, la prima del catalogo: la catena
+#     «BA -> emittente -> gestore» su un database ricostruito non regge da
+#     sola (stessa scelta di dbops.fn_pgtap_crea_fattura).
+#
+# -- COSA NON ENTRA --------------------------------------------------
+#   * le righe: sono il CASO del test;
+#   * il cambio di stato: vendite.ordini ha un guard di transizione, e una
+#     fixture che lo attraversasse proverebbe quello. Lo stato si sceglie
+#     alla nascita, col secondo parametro.
+#
+# Permessi: funzione di chi migra, non SECURITY DEFINER, non in
+# dbops.sec_functions_owner. Stessa forma di 20260923-04.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/dbops/20261007-23-create-fn-pgtap-crea-ordine-mctit.yaml
+
+  - changeSet:
+      id: 20261007-23-create-fn-pgtap-crea-ordine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Helper di fixture pgTAP: dbops.fn_pgtap_crea_ordine() costruisce un
+        ordine di vendita del mondo (azienda, operatore, cliente fatturabile)
+        nello stato scelto e ne ritorna tutte le chiavi. Le righe restano al
+        test. Brief: brief-db-fixture-rls-documenti-costruiti.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION dbops.fn_pgtap_crea_ordine(
+                  p_etichetta            text DEFAULT 'pgTAP',
+                  p_stato_codice_interno config.stati_doc_ordini.codice_interno%TYPE DEFAULT 'DRAFT'
+              )
+               RETURNS TABLE (
+                  ordine_id                   vendite.ordini.id%TYPE,
+                  ordine_uid                  vendite.ordini.uid%TYPE,
+                  emittente_fiscale_id        anagrafiche.emittenti_fiscali.id%TYPE,
+                  emittente_soggetto_ruolo_id anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE,
+                  auth_user_id                anagrafiche.identita_digitali.auth_user_id%TYPE,
+                  billing_account_id          anagrafiche.billing_account.id%TYPE,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  cliente_soggetto_ruolo_id   anagrafiche.billing_account.soggetto_ruolo_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  stato_doc_ordine_id         config.stati_doc_ordini.id%TYPE,
+                  valuta_id                   config.valute.id%TYPE
+               )
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: dare a una fixture pgTAP un ORDINE di vendita del mondo
+              --   in una chiamata: azienda, operatore, cliente e testata.
+              -- Uso:
+              --   CREATE TEMP TABLE tmp_o AS
+              --   SELECT * FROM dbops.fn_pgtap_crea_ordine('rls ordini');
+              -- ⛔ Le righe NON le scrive: sono il caso del test.
+              -- ⚠️ Senza contesto aperto, il mondo lo apre sull'operatore che
+              --   costruisce. Esce con i vincoli IMMEDIATE, come ogni helper.
+              DECLARE
+                  v_ef_id     anagrafiche.emittenti_fiscali.id%TYPE;
+                  v_ef_sr_id  anagrafiche.emittenti_fiscali.soggetto_ruolo_id%TYPE;
+                  v_user_id   anagrafiche.identita_digitali.auth_user_id%TYPE;
+                  v_ba_id     anagrafiche.billing_account.id%TYPE;
+                  v_ist_id    anagrafiche.billing_account.istanza_utility_id%TYPE;
+                  v_cli_sr_id anagrafiche.billing_account.soggetto_ruolo_id%TYPE;
+                  v_utility   anagrafiche.billing_account.utility_id%TYPE;
+                  v_stato_id  config.stati_doc_ordini.id%TYPE;
+                  v_valuta_id config.valute.id%TYPE;
+                  v_ordine    vendite.ordini.id%TYPE;
+                  v_uid       vendite.ordini.uid%TYPE;
+              BEGIN
+                  -- Il guard sul parametro PRIMA di costruire: uno stato
+                  -- sbagliato non deve lasciare un mondo a meta'.
+                  SELECT s.id INTO v_stato_id
+                    FROM config.stati_doc_ordini s
+                   WHERE s.codice_interno = p_stato_codice_interno;
+
+                  IF v_stato_id IS NULL THEN
+                      RAISE EXCEPTION
+                          'fn_pgtap_crea_ordine: nessuno stato documento ordine con codice_interno = %',
+                          p_stato_codice_interno;
+                  END IF;
+
+                  SELECT m.emittente_fiscale_id, m.emittente_soggetto_ruolo_id,
+                         m.auth_user_id, m.billing_account_id, m.istanza_utility_id,
+                         m.cliente_soggetto_ruolo_id, m.utility_id
+                    INTO v_ef_id, v_ef_sr_id, v_user_id, v_ba_id, v_ist_id,
+                         v_cli_sr_id, v_utility
+                    FROM dbops.fn_pgtap_crea_mondo_cliente(p_etichetta) m;
+
+                  SELECT v.id INTO v_valuta_id
+                    FROM config.valute v ORDER BY v.id LIMIT 1;
+
+                  INSERT INTO vendite.ordini (
+                      soggetto_ruolo_id, billing_account_id, utility_id,
+                      stato_doc_ordine_id, valuta_id, emittente_fiscale_id, meta)
+                  VALUES (v_cli_sr_id, v_ba_id, v_utility,
+                          v_stato_id, v_valuta_id, v_ef_id,
+                          jsonb_build_object('test_scope', 'pgtap_' || p_etichetta))
+                  RETURNING id, uid INTO v_ordine, v_uid;
+
+                  -- Contratto dichiarato, non fiducia nel chiamato.
+                  SET CONSTRAINTS ALL IMMEDIATE;
+
+                  RETURN QUERY
+                  SELECT v_ordine, v_uid, v_ef_id, v_ef_sr_id, v_user_id,
+                         v_ba_id, v_ist_id, v_cli_sr_id, v_utility,
+                         v_stato_id, v_valuta_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION dbops.fn_pgtap_crea_ordine(text, config.stati_doc_ordini.codice_interno%TYPE)
+              IS 'Fixture pgTAP: un ORDINE di vendita del mondo in una chiamata: azienda, operatore e cliente (dbops.fn_pgtap_crea_mondo_cliente) e la testata nello stato scelto alla nascita, con l''emittente del mondo, il suo billing account, la sua utility e la prima valuta del catalogo. Numero, anno, registro e fatturazione_trigger li assegnano i trigger del dominio, come in produzione. ⛔ NON scrive righe: sono il caso del test. ⛔ Non cambia stato: vendite.ordini ha un guard di transizione, lo stato si sceglie col secondo parametro. ⚠️ Senza contesto aperto lo apre sull''operatore che costruisce; esce con i vincoli IMMEDIATE. Brief: brief-db-fixture-rls-documenti-costruiti.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS dbops.fn_pgtap_crea_ordine(text, character varying);

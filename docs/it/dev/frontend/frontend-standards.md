@@ -70,7 +70,11 @@ src/
                         ognuna porta la sua con `requireArea` — code di lavoro
                         (`strumenti`), giornale eventi (`vendite`: vista e
                         client restano in `vendite/`), email dell'operatore
-                        (nessuna: `skip_area_check` BE, la vede ogni operatore)
+                        (nessuna: `skip_area_check` BE, la vede ogni operatore).
+                        Dal 2026-10-06 il gruppo «Diagnostica» (`adminOnly`
+                        sul gruppo, ereditato dai figli): processi automatici,
+                        audit log, errori tecnici, log email — viste ed
+                        endpoint restano di `amministrazione/` / `/amm-software/`
   documenti/          ← MOTORE: generazione ed emissione dei documenti (PDF,
                         scelta template), condivisa dai domini che stampano
   config/             ← configurazione (tabelle, impostazioni, modelli documenti)
@@ -119,6 +123,50 @@ Le regole di consistenza sono:
 4. **Stesse classi CSS ovunque** — `app-page`, `app-datatable`, `form-grid`, mai CSS scoped per layout
 5. **Nessun testo hardcoded** — tutto via `$t()`, sempre
 6. **Modifiche al pattern devono essere globali** — se cambi il paginator, cambi `useSearchTable` una volta e tutte le liste si aggiornano
+
+### Import PrimeVue riservati — li ferma il lint
+
+⛔ Un componente PrimeVue che ha un wrapper nostro **non si importa
+direttamente**. Lo ferma `no-restricted-imports` in
+[eslint.config.js](../../../../frontend/eslint.config.js)
+(`IMPORT_PRIMEVUE_RISERVATI`, dal 2026-10-03): l'errore compare nell'editor
+mentre si scrive, e `npm run lint` è rosso. La regola la verifica lo strumento,
+non la memoria di chi scrive.
+
+| Import | Al suo posto | Chi lo può importare |
+| --- | --- | --- |
+| `primevue/dialog` | `<AppDialog>` | solo `core/components/AppDialog.vue` |
+| `primevue/confirmdialog` | `useConfirmAction` | solo `App.vue` (la ConfirmDialog globale) |
+| `primevue/useconfirm` | `useConfirmAction` | solo `core/composables/useConfirmAction.js` |
+| `primevue/datatable` | `<ListaConfigurabile>` | i componenti **standard** (sezione `standard` del registro, che il lint legge da lì), più le eccezioni del registro marcate sul punto (§«Regola zero della lista») |
+| `primevue/drawer` | `<AppDrawer>` | solo `core/components/AppDrawer.vue`, più `AppLayout` (menu mobile) e `FiltriLista` (filtri dal basso), che non sono drawer laterali (dal 2026-10-03, a migrazione finita: nessun registro) |
+
+- **La sede** è esentata dalla configurazione, non da un commento.
+  ⚠️ Il lint da solo **non** la protegge: un `eslint-disable-next-line
+  no-restricted-imports` lo zittisce in qualunque file (provato il 2026-10-03:
+  `primevue/dialog` importato così, lint verde). A fermarlo sono i guard, che le
+  direttive non le leggono: `check-dialog-chrome.mjs` per dialog, confirmdialog e
+  useconfirm, il registro per la DataTable, `check-drawer-width.mjs` per il
+  drawer (con la larghezza scritta a mano sul tag di `<AppDrawer>`).
+- **Un'eccezione della DataTable** si scrive in tre posti, ed è voluto: il
+  motivo in un commento sopra l'import,
+  `// eslint-disable-next-line no-restricted-imports -- <motivo>` subito sopra
+  l'import, e la riga nel registro (`scripts/check-datatable-baseline.mjs
+  --baseline`). Il lint da solo non basterebbe: un commento costa dieci secondi,
+  mentre il registro è un cricchetto e la sua modifica si vede nel diff. ⚠️ La
+  direttiva **non** conta come motivazione per il registro.
+- **Un'eccezione scaduta è un errore** (`reportUnusedDisableDirectives:
+  'error'`): se l'import se ne va e il commento resta, il lint è rosso.
+- I guard `check-dialog-chrome.mjs` e `check-datatable-baseline.mjs` restano.
+  Il primo controlla anche il chrome (`header`, `closable`, `confirmAction`), il
+  secondo il verso del debito.
+- **Un componente entra nella tabella quando nasce il suo wrapper**, non prima:
+  un divieto senza un'alternativa da indicare non si può rispettare. Il caso
+  di `primevue/drawer`: il 2026-10-03 `AppDrawer` era un guscio minimo con un
+  consumatore e 82 file montavano `<Drawer>` direttamente; prima è nata la sede
+  vera (§«Drawer (nuovo e modifica)»), poi gli 80 drawer laterali ci sono passati sopra, e solo
+  allora il drawer è entrato in tabella — a zero, senza registro. Storia e
+  decisioni in `work-done/analisi-fe-chrome-drawer.md`.
 
 ---
 
@@ -327,7 +375,9 @@ Il presidio (`scripts/check-datatable-baseline.mjs`) confronta gli import di
 **elenca i file**: se ne compare uno nuovo è rosso e lo nomina — hai aggiunto
 una lista fuori standard, o un'eccezione senza il commento che la motiva. È un
 cricchetto: rosso anche quando il numero **cala**, perché la baseline va
-abbassata nello stesso giro.
+abbassata nello stesso giro. Prima ancora del guard, l'import lo ferma il lint
+(§«Import PrimeVue riservati»): un'eccezione vuole anche la direttiva
+`eslint-disable-next-line no-restricted-imports` sopra l'import.
 
 ### Regole fisse
 
@@ -1254,8 +1304,11 @@ Ogni SearchTable che mostra dati con data di apertura/creazione deve avere il fi
   `defaultFiltroDataDaString()` da `core/utils/date`
 - **`data_a`**: null (nessun limite superiore di default)
 - Il filtro si applica su `data_insert` (o colonna data apertura dedicata se esiste)
-- Backend: applica `WHERE data_insert >= data_da::date AND data_insert < (data_a::date + INTERVAL '1 day')`
-  **solo se i parametri arrivano dalla request**; non deve applicare default temporali impliciti
+- Backend: su una colonna istante applica il BB `predicato_giorno_operativo` (giorni dell'**azienda**,
+  `data_a` incluso; dal 2026-10-09, catalogo BB backend) **solo se i parametri arrivano dalla
+  request**; non deve applicare default temporali impliciti
+- «Oggi» è quello dell'**azienda** (`oggiAziendale`, `core/utils/date`), non del PC: anche il
+  default di `data_da` parte da lì
 - Il tiebreaker `id` nell'ORDER BY garantisce paginazione deterministica
 
 Il default temporale e' una scelta UX, non una regola backend. Va impostato nello
@@ -1391,39 +1444,50 @@ Le combinazioni si dichiarano in `SHORTCUTS` (`core/constants.js`), non nel
 chiamante. Usato da: `AppLayout` (ricerca universale, schede, sidebar, home,
 split, assistente AI).
 
-**2. Listener diretto `window.addEventListener('keydown')` — per shortcut che devono funzionare SEMPRE**
+**2. `useScorciatoie` — le scorciatoie di un'AZIONE (dal 2026-10-04)**
 
-Per shortcut come Ctrl+S che devono attivarsi anche dentro un campo input.
+Per le scorciatoie legate a un pulsante (Salva, i tasti F delle liste), attive
+anche dentro un campo. ⛔ **Mai un listener su `window` nel componente**: uno
+per componente si somma agli altri — il vecchio F5 ricaricava tutte le liste
+visitate (sotto KeepAlive non si smontano), il vecchio Ctrl+S salvava tutti i
+form montati. La sede è una, con un listener solo: il tasto va all'**unico**
+iscritto a video al livello davanti (dialog in cima, drawer in cima, pagina).
+Il componente si iscrive con le sue azioni; il tasto si lega alla **chiave**
+dell'azione (`SCORCIATOIE`):
 
 ```js
-function onKeydown(e) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault()
-    emit('save')
-  }
-}
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+const radice = ref(null)
+useScorciatoie({
+  elemento: () => radice.value,
+  azioni: () => (showSave.value ? [{ key: 'salva' }] : []),
+  spenta: () => props.disabled || props.loading,
+  esegui: () => emit('save'),
+})
 ```
 
-Usato da: `FormFooter` (Ctrl+S salva) e `useSearchTable` (F5 ricarica lista).
+Iscritti oggi: `PageActionsBar`, `FiltriLista`, `FormFooter`. Il tooltip dice
+il tasto con `conTastoDiAzione`.
 
 **Shortcut attive:**
 
 | Shortcut | Contesto | Azione | Componente |
 |----------|----------|--------|------------|
-| `F5` | Lista (DataTable) | Ricarica lista senza reload browser | `useSearchTable` |
-| `Ctrl+S` | Drawer (qualsiasi) | Salva — rispetta disabled/loading/readonly | `FormFooter` |
-| `Esc` | Drawer PrimeVue | Chiude drawer (nativo PrimeVue `dismissable`) | Drawer |
+| `F2` · `F4` · `F5` · `F6` · `F8` · `F9` | La lista a video, al livello davanti (pagina, o drawer in cima) | Pulisci filtri · Scarica lista · Ricarica · Nuovo · Espandi/Comprimi tutte · Personalizza colonne — l'azione con quella chiave nella `PageActionsBar` (F2: in `FiltriLista`) | `useScorciatoie` |
+| `Ctrl+S` (⌘S) | Il form a video al livello davanti (dialog in cima, o drawer in cima) | Salva — rispetta disabled/loading/readonly | `FormFooter` → `useScorciatoie` |
+| `Esc` | Il drawer in cima | Chiude quel drawer, con la sua conferma (`useDrawerInCima`) | `AppDrawer` |
 | `Ctrl+K` | Globale (fuori dai campi di input) | Apre ricerca universale | `AppLayout` (`SHORTCUTS.SEARCH`) |
 | `Ctrl+W` / `Ctrl+Tab` / `Ctrl+Shift+Tab` | Globale (fuori dai campi di input) | Chiude / scheda successiva / precedente | `AppLayout` |
 | `Ctrl+B`, `Ctrl+Home`, `Ctrl+.` … | Globale (fuori dai campi di input) | Sidebar, home, assistente AI — elenco completo in `SHORTCUTS` | `AppLayout` |
 
 **Regole:**
 - `useKeyboardShortcuts` per shortcut che NON devono interferire con la digitazione
-- Listener diretto per shortcut che devono funzionare SEMPRE, anche dentro un
-  campo (Ctrl+S, F5). ⚠️ Ctrl+K **non** è fra queste: passa da
+- `useScorciatoie` per le scorciatoie di un'azione, attive anche dentro un
+  campo (Ctrl+S, i tasti F). ⚠️ Ctrl+K **non** è fra queste: passa da
   `useKeyboardShortcuts`, quindi dentro un input non si attiva
+- ⛔ **La scorciatoia di un'azione non si scrive nel componente**: si dà
+  all'azione la chiave standard e lo fa `useScorciatoie`
+- ⭐ **Una scorciatoia si dice** nel tooltip, «azione (tasto)»
+  (`core/utils/scorciatoie.js`, nomi dei tasti nei locales)
 - Sempre `e.preventDefault()` per evitare l'azione default del browser
 - Sempre cleanup in `onUnmounted`
 
@@ -1641,13 +1705,14 @@ form dettaglio sotto — tutto nello stesso drawer, zero drawer annidati.
 3. **Paginazione**: `paginator` con `rows="10"` e `rows-per-page-options="[10, 25]"`, `paginator-position="top"`, `data-key="id"`
 4. **Azioni toolbar**: usare `PageActionsBar`; l'azione "Nuovo/Aggiungi" e' `kind: 'primary'`
 5. **Selezione riga**: `selection-mode="single"` + `v-model:selection`. Click riga popola il form in edit mode con `@row-select`
-6. **Form dettaglio**: visibile SOLO quando attivo (Nuovo o click riga). Nascosto di default. Titolo "Nuova riga" o "Modifica riga"
+6. **Form dettaglio**: visibile SOLO quando attivo (Nuovo o click riga). Nascosto di default. Titolo "Nuova riga" o "Modifica riga". ⭐ **All'apertura scorre in vista** (2026-10-07): il form si lega con `:ref="ancoraForm"` di `useFormInline`, che lo porta in vista dopo il gesto (Nuovo o click riga) e mai da solo. Un form non legato si apre sotto un elenco lungo, fuori vista, e il click sembra non fare nulla
 7. **Articolo**: in create editabile (autocomplete), in edit disabled (immutabile)
 8. **UoM**: filtrate per articolo via `listArticoloUom(articoloId)`, pre-seleziona la UoM base. Placeholder "Seleziona prima l'articolo" se nessun articolo scelto
 9. **Salva/Annulla**: sempre in basso dopo il form. Salva crea o aggiorna, chiude form, emette `changed`. Annulla chiude form e deseleziona riga
 10. **Elimina**: icona cestino sulla riga (`@click.stop` per non triggerare selezione). Se stavo editando quella riga, chiude il form
 11. **`formMode`**: 3 stati, `null` (nessun form), `'create'`, `'edit'`. Governa visibilita' e comportamento. ⛔ **Non si scrive a mano**: la macchina del form e' il BB `useFormInline` (2026-09-28, regola del 2 — era in dieci sedi, unificate con l'ok di Tid), che da' anche «Nuova riga» spenta a form aperto (`azioneNuovaRiga`), il click che apre solo se le righe si scrivono (`apriRiga`) e la **chiusura del form al cambio di documento**
 12. **Pulsante Chiudi del drawer (obbligatorio)**: in fondo al drawer, in modalita' lista, deve essere presente un `<FormFooter close-only>` con la sola voce "Chiudi". Quando si entra in form mode (Nuovo/Modifica riga), **il footer scompare** (`v-if="!formMode"`): il form ha gia' Annulla/Salva, e il footer del drawer duplicherebbe l'azione e spingerebbe il form sotto il fold. Vale per qualunque drawer di sub-entita' con lista (BoM, righe contratto, indirizzi, contatti, conti, ecc.). La X in alto resta come escape rapido (semantica diversa: dismiss vs completion). Vedi sezione "Componente `FormFooter`"
+13. **La riga aperta si evidenzia** (2026-10-04, Tid). In un **drawer** aperto dal click lo fa la lista da sola (`ListaConfigurabile`, pila `useDrawerInCima`): niente da dichiarare. Nel **form inline**, il contenitore passa alla lista `riga-attiva` (la chiave della riga in modifica, o quella da cui nasce la creazione) e `righe-cliccabili` (`false` quando il click non apre niente). Col form sotto la lista, senza l'evidenza non si vede quale riga si sta modificando
 
 ### Riferimento implementativo
 
@@ -1802,6 +1867,71 @@ lo schermo. Regola globale in [main.css](../../../../frontend/src/assets/main.cs
 Nessun drawer puo' deviare da questa logica con CSS scoped locale: se
 serve un overflow diverso, modificare la regola globale, non sovrascriverla.
 
+### Sede: `AppDrawer` (dal 2026-10-03)
+
+⭐ Il chrome di un drawer laterale ha **una sede**: `core/components/AppDrawer.vue`,
+mirror di `AppDialog`. Il guscio porta testata, larghezza, uscita con
+conferma, montaggio a fine animazione, corpo con readonly e footer; il
+chiamante porta solo il **contenuto** (dettaglio nel catalogo BB frontend).
+
+```vue
+<AppDrawer
+  :visible="visible" @update:visible="(v) => emit('update:visible', v)"
+  :title="t('…')" :icon="MANAGE_ICONS.X" :action="t('common.edit')"
+  :width="DRAWER_WIDTH.STANDARD"
+  :modificato="modificato" :conferma-uscita="chiudiConConferma"
+  :loading="loading" :save-disabled="!canSave" @save="onSave"
+>
+  <div class="form-grid">…</div>
+</AppDrawer>
+```
+
+- **Il footer è FISSO in basso** (decisione di Tid, 2026-10-03): su un form
+  lungo il Salva resta a vista. Varianti: `footer="form"` (Annulla/Salva),
+  `"chiudi"`, `"nessuno"` (master-detail con il form inline aperto, che ha il
+  suo Annulla/Salva nel corpo).
+- **Ogni uscita passa da `confermaUscita`**: X, ESC, clic fuori, Annulla,
+  Chiudi. Un drawer con un form gli passa il `chiudiConConferma` di
+  `useDrawerFormPreserve` (o di `unisciFotografie`, se le fotografie sono più
+  d'una).
+- ⭐ **Esce solo il drawer in cima** (`useDrawerInCima`, 2026-10-04, ok Tid):
+  con un drawer aperto sopra — figlio nello slot o montato accanto, o il
+  drawer dei filtri compatti — l'uscita di quello sotto non fa niente. ESC
+  arriva a tutti i drawer aperti (un listener su `document` per ciascuno), e il
+  padre si chiudeva smontando il figlio con le sue modifiche, senza chiedere.
+  Il chiamante non dichiara niente: niente `:dismissable="!figlioAperto"` per
+  un figlio **drawer** (resta per un figlio dialog, o `!loading`).
+- ⭐ **Una scorciatoia che funziona si dice** (2026-10-04, ok Tid), nella forma
+  unica «azione (tasto)» di `core/utils/scorciatoie.js`: la X del drawer ha
+  accanto l'etichetta «Esc» (`app-kbd`, nascosta su `ui.isCompatto`) e il
+  tooltip «Chiudi (Esc)»; il Salva di `FormFooter` il tooltip «Salva
+  (Ctrl+S)». ⭐ **Multilingua anche il tasto**: i nomi in `common.tasti.*`
+  (variante `_MAC`), la forma in `common.con_scorciatoia`. Lo fa il guscio:
+  il chiamante non scrive niente.
+- **La larghezza è un valore di `DRAWER_WIDTH`**, mai una stringa CSS:
+  `check-drawer-width.mjs` ferma quella scritta a mano sul tag.
+- **La sola lettura protegge il corpo** (`app-readonly`) per default. Un drawer
+  che la protegge **nascondendo le azioni** — consultazione, liste con menu di
+  riga, personalizzazioni dell'utente — passa `:proteggi-corpo="false"`: la
+  catena readonly arriva lo stesso a `FormFooter` e ai figli, ma il corpo resta
+  cliccabile (`RowActionsMenu` non è `.app-escape`).
+- **Un documento** sceglie il footer con il BB `useFooterDocumento`
+  (Annulla/Salva finché la testata si modifica, «Chiudi» quando il documento c'è
+  ma non si tocca, niente col form di una riga aperto).
+- **Un pulsante in più accanto ad Annulla/Salva** (il «Ripristina» delle
+  personalizzazioni) va nello slot `#footer-azioni`: il footer resta del
+  guscio, con la sua uscita. Lo slot `#footer` (che sostituisce tutto) è per
+  i casi veri, come un wizard.
+- **Un'eccezione salvabile in un contesto in sola lettura** (i riferimenti
+  dell'atto di un contratto ATTIVO) passa `:footer-readonly="false"` e libera
+  i suoi campi con `app-escape`. La condizione deve già escludere l'area in
+  sola lettura: l'override non guarda i permessi.
+- **Chi deve aspettare la fine dell'animazione** (l'auto-salvataggio della
+  bozza) ascolta `@after-show` di `AppDrawer`.
+- ✅ **Tutti i drawer laterali sono su `AppDrawer`** dal 2026-10-03, e il lint
+  ferma `primevue/drawer` fuori dalle sedi (§«Import PrimeVue riservati»). Lo
+  schema qui sotto descrive ciò che il guscio rende.
+
 ### Struttura interna
 
 ```
@@ -1818,7 +1948,8 @@ serve un overflow diverso, modificare la regola globale, non sovrascriverla.
 │     div.form-grid-2col           │  ← griglia 2 colonne (opzionale)
 │       ...                        │
 │                                  │
-│   FormFooter                   │  ← componente riutilizzabile
+├──────────────────────────────────┤
+│   FormFooter                     │  ← footer FISSO (slot #footer)
 │     [Annulla]        [Salva]     │
 └──────────────────────────────────┘
 ```
@@ -1882,7 +2013,21 @@ le Dialog: incapsula chrome uniforme + `FormFooter` integrato.
 
 ⛔ `import Dialog from 'primevue/dialog'` è lecito in **un solo file**,
 `core/components/AppDialog.vue` — presidiato da
-`frontend/scripts/check-dialog-chrome.mjs` (`npm run guards`, in CI).
+`frontend/scripts/check-dialog-chrome.mjs` (`npm run guards`, in CI) e, nell'editor,
+dal lint (§«Import PrimeVue riservati»).
+
+⭐ **Uscire con dati inseriti chiede** (dal 2026-10-03, D-14 di
+`work-done/analisi-fe-chrome-drawer.md`, decisione di Tid: nessuna
+eccezione). Ogni uscita — X, ESC, clic sulla maschera, Annulla, e il `chiudi`
+che lo slot `#footer` riceve — passa da `confermaUscita(chiudi)`. Un dialog
+con dei campi gli passa il `chiudiConConferma` della sua fotografia
+(`useFotografiaDialog`), che chiede solo se qualcosa è cambiato rispetto
+all'apertura (o al caricamento, per chi carica dati aprendosi). Un footer
+personalizzato esce con il `chiudi` dello slot, **mai** con un `emit` diretto.
+Un dialog i cui campi non sono dati (una ricerca, i parametri di uno strumento
+di prova) lo dichiara sopra il tag:
+`<!-- conferma-uscita: nessuna — <motivo> -->`. Presidio:
+`check-dialog-chrome.mjs`, regola 6.
 
 Cosa centralizza:
 
@@ -1905,7 +2050,7 @@ Cosa centralizza:
 | ⛔ **Niente X in alto** (`closable: false`) | Il footer di un dialog è **sempre visibile** (`max-height: 90%`, footer in coda): ogni dialog ha già Annulla o Chiudi, e la X era un doppione con una semantica sua (chiude senza `cancel`). Nel **drawer** la X resta, per la ragione opposta — il footer di un form lungo sta sotto il fold (§`FormFooter`) |
 | ⭐ **`header` obbligatorio** (prop `required`) | Un `Dialog` PrimeVue senza titolo rende comunque la riga di testa, e con `justify-content: space-between` l'unico figlio — le azioni — finiva **a sinistra**: era la «X a sinistra» vista in-app, non un secondo chrome. Il titolo è un fatto dell'azione, non un ornamento |
 | **ESC = Annulla**, e **si spegne mentre lavora** (`closeOnEscape && !loading`) | La direzione sicura resta aperta da tastiera; a salvataggio in volo il dialog non si chiude sotto la risposta. Era riscritto a mano in due dialog (`ExportDialog`, `AttivaVersioneDialog`): ora lo fa il BB |
-| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. ⏳ Due **drawer** impilati si chiudono ancora insieme: chrome del drawer, fuori da questa regola |
+| ⭐ **ESC chiude SOLO il dialog in cima**, mai il drawer sotto | In PrimeVue `Dialog` e `Drawer` hanno ciascuno un listener `keydown` su `document` e si chiudono per conto proprio: un ESC in un dialog aperto da un drawer chiudeva **entrambi** (rilievo di Tid, 2026-09-18). Il BB gestisce ESC **sulla propria radice** (`pt.root.onKeydown`, prima di `document` nella risalita) e tiene spento il listener di PrimeVue; `core/utils/escapeSoloInCima` — installato in `main.js` **prima** di ogni Drawer — ingoia l'ESC che sfugge alla radice quando c'è un dialog aperto. Il dialog vede l'ESC **per primo** (fase capture) e lo cede solo a un campo con la **tendina aperta** — segnale ARIA `aria-expanded="true"` sul controllo a fuoco (AutoComplete della lookup, Select, DatePicker): lì l'ESC chiude la tendina, il dialog resta. ⛔ Non `defaultPrevented`: l'AutoComplete di PrimeVue lo fa **sempre**, anche a tendina chiusa — con quel criterio ESC in «Abbina fattura» non chiudeva niente (rilievo di Tid, stesso giorno). Stessa forma sulla `ConfirmDialog` in `App.vue`. Due **drawer** impilati: la stessa regola nel chrome del drawer, `useDrawerInCima` (§«Sede: `AppDrawer`») |
 | **Click fuori non chiude** (`dismissableMask: false`) | Terza via d'uscita accidentale, stessa ragione della X |
 | **Un footer c'è sempre** | Nessuna prop `hide-footer`: senza X, un dialog senza footer non avrebbe **nessuna** uscita visibile. Il caso speciale (wizard, terzo bottone) è lo slot `#footer`, che il chrome lo mantiene |
 
@@ -2388,7 +2533,7 @@ documento.
 | Voce menu distruttiva | `.app-menu-item-danger` in `main.css` |
 | Tooltip fallback kebab | `common.altre_azioni` ("Altre azioni") in `it.json` |
 | Wrapper barra azioni | `.app-drawer-actions` / `-desktop` / `-compact` in `main.css` |
-| Wrapper badge counter | `.app-drawer-action-wrap` + `.app-drawer-action-badge` |
+| Numero sull'azione | campo `badge` dell'azione → `ActionBadge` (in `.app-action-tooltip-wrap`), anche in `PageActionsBar` |
 | Nota «nessuna azione» | `.app-drawer-actions-info` in `main.css` |
 
 ---
@@ -2763,6 +2908,12 @@ La schermata di login e' l'unica pagina senza sidebar e topbar.
 - Pulsante **Accedi** (larghezza piena del form)
 - Messaggio di errore inline (non toast)
 - Nessun link "Registrati" — accesso solo su invito
+- **Secondo passo** (dal 2026-10-02): col secondo fattore attivo la password porta
+  una sfida e la stessa scheda chiede il codice dell'app, con «usa un codice di
+  recupero» e il ritorno alla password. Una sfida scaduta riporta alla password
+  col suo messaggio. La pagina **«Sicurezza dell'accesso»** (`/sicurezza`, fuori
+  dal layout come il cambio password) configura il secondo fattore: il QR è un
+  `<img>` col data URI che dà il backend, **mai** markup del server con `v-html`
 
 ---
 
@@ -3121,7 +3272,8 @@ stato espanso — invita a chiudere). Standard PrimeVue/Material allineato.
 PrimeVue usa `chevron-right` (chiusa) / `chevron-down` (aperta). Il toggle
 «espandi tutte» della lista usa la **stessa** coppia, `MANAGE_ICONS.ROW_EXPAND` /
 `MANAGE_ICONS.ROW_COLLAPSE`, così riga e lista portano lo stesso segno. Stessa
-coppia per i gruppi annidati della sidebar e per i toggler di riga scritti a mano
+coppia per i gruppi annidati della sidebar (a sidebar chiusa, `ROW_EXPAND`
+accanto all'icona del gruppo segnala che dentro ci sono altre voci) e per i toggler di riga scritti a mano
 nei drawer (`isExpanded(data) ? ROW_COLLAPSE : ROW_EXPAND`). ⛔ Mai il glifo
 `pi pi-chevron-*` cablato per un toggle di espansione.
 `EXPAND`/`COLLAPSE` restano per accordion, pannelli e tree.
@@ -3347,7 +3499,7 @@ ed etichetta** (l'icona ha sempre label o tooltip accanto). Quindi:
 
 ### Autenticazione JWT
 
-⛔ **Nessun token in `localStorage`** (dal 2026-09-28, [brief sicurezza](../work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md) §2).
+⛔ **Nessun token in `localStorage`** (dal 2026-09-28, [brief sicurezza](../work-done/brief-be-fe-sicurezza-header-token-mfa.md) §2).
 Il **refresh** sta in un cookie `HttpOnly` che il JavaScript non vede: lo
 scrivono e lo leggono il backend e il browser. L'**access** (10 minuti) vive solo
 in memoria, in `core/sessione.js`. Al ricaricamento della pagina l'access non
@@ -3362,6 +3514,7 @@ c'è mai: la sessione si ritrova rinnovando dal cookie.
 | Accodamento           | `core/sessione.js`                     | Chiamate concorrenti della stessa scheda aspettano la stessa promise                  |
 | Protezione loop       | `core/api.js`                          | Chiamate a `/token/` escluse dal rinnovo                                              |
 | Redirect              | `LoginView`                            | Rotta originale salvata in `?redirect=`                                               |
+| Obblighi              | `router/index.js`                      | Cambio password, poi secondo fattore: dal profilo (`obblighi_pendenti`), nell'ordine del cancello del backend |
 | Motivo del ritorno    | `core/sessione.js` `MOTIVO_USCITA`     | `?reason=`: sessione scaduta o logout da un'altra scheda, ognuno con la sua frase     |
 | Logout                | `stores/auth.js`                       | Backend cancella il cookie; `clearTokens()` pulisce; le altre schede escono           |
 
@@ -4435,7 +4588,7 @@ caso peggiore. Il test è nato da lì.
 | `FiltriLista` | I FILTRI di una lista: in linea su desktop, in un drawer dal basso sotto i 1024px (o su un touch senza hover), con il segno di quanti ne sono attivi e «Pulisci filtri». Due slot: `#sempre` (la ricerca) e il default (gli altri filtri). ⚠️ I filtri dentro si legano con un **binder**, non con un `ref` a senso unico (§«Un filtro si lega con un binder») | `store` \| `segno`, `inert`, `titolo` | FornitoriSearchTable |
 | `FiltroPeriodo` | Il PERIODO come UN filtro: i due estremi `data_da`/`data_a` resi insieme, una cella sola nella griglia del drawer | `periodo` (da `bindPeriodo`), `placeholderDa/A` | AuditLogView |
 | `TagList` | Lista tag con overflow +N e tooltip | `items`, `labelField`, `maxVisible`, `severity` | SoggettiSearchTable |
-| `AppDrawer` | Drawer generico con header + footer + slot body | `title`, `width` | CanaleIncassoDrawer |
+| `AppDrawer` | **La sede del chrome dei drawer laterali**: testata, larghezza dalla scala, uscita con conferma, montaggio a fine animazione, corpo e readonly, footer fisso (§«Drawer (nuovo e modifica)») | `title`, `icon`, `action`, `width`, `modificato`, `confermaUscita`, `footer` | CanaleIncassoDrawer |
 
 #### Building block form
 
@@ -4553,7 +4706,7 @@ Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 sta
 
 | Utility | Scopo | Esempio d'uso |
 | --- | --- | --- |
-| `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC) | TemplateVersioniSection |
+| `date.js` → `toDateString(d)` | Converte Date/string in 'YYYY-MM-DD' (ora locale, no bug UTC). ⛔ Mai `toISOString()` su una data del DatePicker: è la mezzanotte locale, in UTC diventa il giorno prima (la scadenza qualifica del fornitore si salvava così, corretto il 2026-10-04). Presidio: `core/utils/datePresidio.spec.js` (nessun `toISOString()` fuori da `date.js`) | TemplateVersioniSection |
 | `segnoFiltri.js` → `segnoFiltri(filtri, chiavi, defaults, neutri)` | Il segno dei filtri attivi in una funzione pura → `{stato, conteggio, modificato}`: niente / numero grigio (solo default) / numero blu. ⭐ `modificato` esce perché «niente restringe» e «c'è qualcosa da riportare al default» sono due domande diverse, e i valori neutri le hanno separate: la seconda è ciò che tiene vivo «Pulisci filtri» | `FiltriLista` |
 | `clonaFiltri.js` → `clonaValore` / `clonaFiltri` / `congelaProfondo` | Stacca un valore di filtro dal letterale che lo dichiara. ⛔ Lo spread e `Object.freeze` sono di **primo livello**: un default ad array resterebbe condiviso per riferimento, e il primo `push` del widget sposterebbe il metro insieme alla cosa misurata | `useContrattoFiltriLista` |
 
@@ -4562,7 +4715,7 @@ Soggetto, indirizzi, contatti, conti bancari e geografia: fino al 2026-09-26 sta
 | Costante | Scopo |
 | --- | --- |
 | `DRAWER_WIDTH` | Larghezze drawer: SIMPLE, STANDARD, COMPLEX, WIDE, WIDE_PLUS, XLARGE (§«Larghezze standard») |
-| `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`) |
+| `DATE_FORMAT` | Formato data PrimeVue DatePicker (`dd/mm/yy`). ⛔ Sede unica: ogni `DatePicker` lo riceve come `:date-format="DATE_FORMAT"`, e il locale di PrimeVue (`core/primevue-locale.js`) lo usa come default — fino al 2026-10-03 il letterale era scritto a mano in 27 punti. ⭐ Il selettore del **mese** (`view="month"`) riceve `MONTH_FORMAT` (`mm/yy`), mai `DATE_FORMAT` (mostrerebbe un giorno su un campo che non ne ha; regola del 2, 2026-10-04). Presidio: `core/utils/datePresidio.spec.js` (nessun formato letterale fuori da `constants.js`/`primevue-locale.js`) |
 | `TOAST_DURATION` | Durata toast: SUCCESS, INFO, WARN, ERROR, ERROR_CON_SOLUZIONE, SYSTEM_ERROR, AZIONI (§«Notifiche») |
 | `TABS` | Max tab aperti |
 | `BREAKPOINTS` | Breakpoint responsive (MOBILE, TABLET) |

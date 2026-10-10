@@ -18,23 +18,17 @@
 //    `useAzioniAttivo`, la frase arriva dal backend.
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
 
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import DrawerTabLista from '../../core/components/DrawerTabLista.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import ExportDialog from '../../core/components/ExportDialog.vue'
 import FiltroToggle from '../../core/components/FiltroToggle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
 import { useAzioniAttivo } from '../../core/composables/useAzioniAttivo'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
 import { useDrawerTabLista } from '../../core/composables/useDrawerTabLista'
-import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useStoreFilterBindings } from '../../core/composables/useStoreFilterBindings'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { exportUbicazioni } from '../api/magazzino'
@@ -51,11 +45,6 @@ const emit = defineEmits(['update:visible', 'saved'])
 
 const { t } = useI18n()
 const store = useUbicazioniStore()
-const isReadonly = useInjectReadonly()
-
-// Contenuto deferito a fine animazione: senza, la lista si monta durante lo
-// slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const ubicazioneDrawerVisible = ref(false)
 const ubicazioneSelezionataId = ref(null)
@@ -94,74 +83,68 @@ function onUbicazioneSaved() {
 // il padre viene avvisato come per un salvataggio dal drawer.
 const { azioniAttivo } = useAzioniAttivo(store, { prefisso: 'magazzino.ubicazioni', onDone: onUbicazioneSaved })
 
-const onClose = useDrawerClose(emit)
-// X, ESC e clic fuori escono come il «Chiudi»: lo STESSO `onClose`.
-const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
-  <Drawer
-    :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.WIDE }"
-    @after-show="onAfterShow">
-    <template #header>
-      <DrawerTitle
-        :action="magazzinoCodice"
-        :title="t('magazzino.ubicazioni.titolo_lista')"
-        :icon="MANAGE_ICONS.UBICAZIONI" />
-    </template>
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :proteggi-corpo="false"
+    :title="t('magazzino.ubicazioni.titolo_lista')"
+    :icon="MANAGE_ICONS.UBICAZIONI"
+    :action="magazzinoCodice"
+    :width="DRAWER_WIDTH.WIDE"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
+  >
+    <Message v-if="!usaUbicazioni" severity="warn" :closable="false" class="mt-05">
+      {{ t('magazzino.ubicazioni.magazzino_non_le_usa') }}
+    </Message>
 
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <Message v-if="!usaUbicazioni" severity="warn" :closable="false" class="mt-05">
-        {{ t('magazzino.ubicazioni.magazzino_non_le_usa') }}
-      </Message>
-
-      <DrawerTabLista
-        ref="listaRef"
-        codice="magazzino.ubicazioni"
-        :store="store"
-        :rows="store.items"
-        :total="store.totalRecords"
-        :loading="store.loading"
-        :paginator-options="paginatorProps"
-        :page="tablePage"
-        :sort-field="paginatorProps.sortField"
-        :sort-order="paginatorProps.sortOrder"
-        :page-actions="pageActions"
-        :dirty="dirty"
-        :perimetro-bloccato="perimetroBloccato"
-        @page="onPage"
-        @sort="onSort"
-        @row-click="apriUbicazione($event.id)"
-        @config-loaded="onConfigLoaded"
-      >
-        <!-- La ricerca: le colonne le decide il catalogo (`ricerca_full`),
-             il placeholder non le elenca; l'export porta la stessa `search`
-             (`paramsFiltro`). -->
-        <template #filtri-sempre>
-          <InputText
-            v-model="searchText"
-            class="app-filter-w-lg"
-            :placeholder="t('common.search')"
-          />
-        </template>
-        <template #filtri>
-          <FiltroToggle
-            v-model="mostraNonAttive"
-            :label="t('magazzino.anagrafiche.mostra_non_attivi')"
-            @change="onMostraNonAttiveChange"
-          />
-        </template>
-        <template #cell-attivo="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
-        <template #actions="{ data }">
-          <RowActionsMenu :row="data" :actions="azioniAttivo(data)" />
-        </template>
-      </DrawerTabLista>
-
-      <FormFooter close-only @cancel="onClose" />
-    </div>
+    <DrawerTabLista
+      ref="listaRef"
+      codice="magazzino.ubicazioni"
+      :store="store"
+      :rows="store.items"
+      :total="store.totalRecords"
+      :loading="store.loading"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      :page-actions="pageActions"
+      :dirty="dirty"
+      :perimetro-bloccato="perimetroBloccato"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="apriUbicazione($event.id)"
+      @config-loaded="onConfigLoaded"
+    >
+      <!-- La ricerca: le colonne le decide il catalogo (`ricerca_full`),
+           il placeholder non le elenca; l'export porta la stessa `search`
+           (`paramsFiltro`). -->
+      <template #filtri-sempre>
+        <InputText
+          v-model="searchText"
+          class="app-filter-w-lg"
+          :placeholder="t('common.search')"
+        />
+      </template>
+      <template #filtri>
+        <FiltroToggle
+          v-model="mostraNonAttive"
+          :label="t('magazzino.anagrafiche.mostra_non_attivi')"
+          @change="onMostraNonAttiveChange"
+        />
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
+      </template>
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="azioniAttivo(data)" />
+      </template>
+    </DrawerTabLista>
 
     <ExportDialog
       v-model:visible="exportDialogVisible"
@@ -173,5 +156,5 @@ const suVisibile = gestoreVisibile(emit, onClose)
       :magazzino-id="magazzinoId"
       :ubicazione-id="ubicazioneSelezionataId"
       @saved="onUbicazioneSaved" />
-  </Drawer>
+  </AppDrawer>
 </template>

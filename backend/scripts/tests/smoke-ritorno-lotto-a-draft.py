@@ -41,11 +41,12 @@
 # ------------------------------------------------------------
 
 import uuid
-from datetime import date, timedelta
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import connection, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.vendite.db.pipeline_repository import VenditePipelineRepository
 from apps.vendite.services.pipeline_step_executor import PipelineStepExecutor
 from apps.vendite.services.pipeline_runner import (
@@ -127,7 +128,7 @@ with transaction.atomic():
 
         # Competenza ISOLATA nel futuro: la selezione del lotto non può
         # rastrellare attività vive dell'ambiente.
-        competenza = (date.today() + timedelta(days=760)).replace(day=1)
+        competenza = (oggi_aziendale() + timedelta(days=760)).replace(day=1)
         marker = uuid.uuid4().hex[:8]
         lock_batch_id = str(uuid.uuid4())
 

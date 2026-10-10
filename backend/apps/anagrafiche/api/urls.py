@@ -78,6 +78,7 @@ from apps.anagrafiche.api.views_titoli_iva import (
     SoggettoTitoloIvaMovimentiView,
     SoggettoTitoloIvaMovimentoAnnullaView,
     SoggettoTitoliIvaExportView,
+    SoggettoTitoliIvaTipiLookupView,
     TitoliIvaSfondatiView,
 )
 from apps.anagrafiche.api.views_conti_bancari import (
@@ -161,7 +162,7 @@ urlpatterns = [
     path("billing-account/<int:billing_account_id>/lookup/", BillingAccountLookupByIdView.as_view(), name="anagrafiche-billing-account-lookup-by-id"),
     # Billing account — utility "guidate da emittente" (refactor operatore-emittenti)
     path("billing-account/<int:billing_account_id>/utilities/", BillingAccountUtilitiesView.as_view(), name="anagrafiche-billing-account-utilities"),
-    # Istanze utility — lookup ricco per autocomplete (preventivi prospect senza BA, ecc.)
+    # Istanze utility — lookup delle forniture (una riga per BA) per autocomplete: preventivo, pratica
     path("istanze-utility/lookup/", IstanzaUtilityLookupView.as_view(), name="anagrafiche-istanze-utility-lookup"),
     path("istanze-utility/<int:istanza_utility_id>/lookup/", IstanzaUtilityLookupByIdView.as_view(), name="anagrafiche-istanze-utility-lookup-by-id"),
     # Contatti ruolo
@@ -181,7 +182,7 @@ urlpatterns = [
     path("soggetti/export/", SoggettiExportView.as_view(), name="anagrafiche-soggetti-export"),
     # Soggetti — CRUD
     # Soggetti-ruoli — lookup ricco per selezione contesto pratica (una riga
-    # per ruolo + riga "senza ruolo" per i prospect puri). PRIMA delle rotte
+    # per ruolo + riga "senza ruolo" per i soggetti privi di ruoli). PRIMA delle rotte
     # <str:soggetto_id> per evitare il match del path parametrico.
     path("soggetti-ruoli/lookup/", SoggettiRuoliLookupView.as_view(), name="anagrafiche-soggetti-ruoli-lookup"),
     path("soggetti-ruoli/lookup-by-id/", SoggettiRuoliLookupByIdView.as_view(), name="anagrafiche-soggetti-ruoli-lookup-by-id"),
@@ -202,6 +203,9 @@ urlpatterns = [
     #    cattura una parola, ma tenere l'ordine giusto e' la regola della
     #    famiglia (vedi `titoli-iva/sfondati/` qui sopra).
     path("soggetti/<str:soggetto_id>/titoli-iva/export/", SoggettoTitoliIvaExportView.as_view(), name="anagrafiche-soggetti-titoli-iva-export"),
+    # Lookup dei tipi di titolo ammessi dalla natura del soggetto (2026-10-10,
+    # brief-db-dati-fiscali-e-societari-del-soggetto, parte D).
+    path("soggetti/<str:soggetto_id>/titoli-iva/tipi/lookup/", SoggettoTitoliIvaTipiLookupView.as_view(), name="anagrafiche-soggetti-titoli-iva-tipi-lookup"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/", SoggettoTitoliIvaDetailView.as_view(), name="anagrafiche-soggetti-titoli-iva-detail"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/", SoggettoTitoloIvaAmbitiView.as_view(), name="anagrafiche-titoli-iva-ambiti"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/<int:ambito_id>/", SoggettoTitoloIvaAmbitoDetailView.as_view(), name="anagrafiche-titoli-iva-ambiti-detail"),

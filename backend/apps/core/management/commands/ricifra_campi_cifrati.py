@@ -23,7 +23,8 @@ import base64
 import hashlib
 
 from django.conf import settings
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import CommandError
+from apps.core.management.comando_aziendale import ComandoAziendale
 from django.db import connection, transaction
 
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -38,21 +39,49 @@ def _chiave_derivata_da_secret_key() -> bytes:
     return base64.urlsafe_b64encode(digest)
 
 
-# Scopo: Le righe con un token da ri-cifrare. Tabella e colonna vengono da
-#        `CAMPI_CIFRATI`, letterali del codice. `FOR UPDATE`: nessuno riscrive
-#        il segreto fra la lettura e la scrittura.
+# Scopo: Le righe con un token da ri-cifrare. Tabella, colonna e chiave
+#        vengono da `CAMPI_CIFRATI`, letterali del codice. `FOR UPDATE` dove la
+#        tabella e' scrivibile: nessuno riscrive il segreto fra la lettura e la
+#        scrittura. Dove e' chiusa all'app no — FOR UPDATE vuole il privilegio
+#        UPDATE — e il confronto lo fa il verbo, scrivendo.
 def _righe_cifrate(campo: CampoCifrato) -> list[tuple[int, str]]:
     sql = (
-        f"SELECT id, {campo.colonna} FROM {campo.tabella} "  # noqa: S608 — tabella/colonna letterali di CAMPI_CIFRATI
+        f"SELECT {campo.chiave}, {campo.colonna} FROM {campo.tabella} "  # noqa: S608 — letterali di CAMPI_CIFRATI
         f"WHERE {campo.colonna} IS NOT NULL AND {campo.colonna} <> '' "
-        "ORDER BY id FOR UPDATE"
+        f"ORDER BY {campo.chiave}"
+        + ("" if campo.verbo else " FOR UPDATE")
     )
     with connection.cursor() as cursor:
         cursor.execute(sql)
         return list(cursor.fetchall())
 
 
-class Command(BaseCommand):
+# Scopo: Riscrive UN token. True = scritto. False = solo col verbo: il segreto
+#        e' cambiato fra la lettura e la scrittura (device riconfigurato o
+#        disabilitato), quindi e' gia' di una chiave buona e si lascia.
+#        ⛔ Una riga letta e non riscritta col percorso diretto (RLS, trigger)
+#        e' un token rimasto sulla chiave vecchia: errore, non un conteggio.
+def _riscrivi(campo: CampoCifrato, chiave: int, atteso: str, nuovo: str) -> bool:
+    if campo.verbo:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                # Il nome del verbo e' un letterale di CAMPI_CIFRATI.
+                f"SELECT {campo.verbo}(%s, %s, %s)",
+                [chiave, atteso, nuovo],
+            )
+            return bool(cursor.fetchone()[0])
+    if not execute_dynamic_update(
+        campo.tabella, chiave, {campo.colonna: nuovo},
+        allowed={campo.colonna}, letterali={campo.colonna},
+    ):
+        raise CommandError(
+            f"{campo.tabella}.{campo.colonna} {campo.chiave}={chiave}: "
+            "UPDATE senza righe, niente e' stato scritto"
+        )
+    return True
+
+
+class Command(ComandoAziendale):
     help = (
         "Ri-cifra con la prima chiave di DJANGO_FIELD_ENCRYPTION_KEYS tutti i "
         "segreti salvati nel DB. Tutto o niente."
@@ -81,26 +110,27 @@ class Command(BaseCommand):
         with transaction.atomic():
             for campo in crypto_service.CAMPI_CIFRATI:
                 righe = _righe_cifrate(campo)
-                nuovi: list[tuple[int, str]] = []
-                for row_id, token in righe:
+                nuovi: list[tuple[int, str, str]] = []
+                for chiave, token in righe:
                     try:
-                        nuovi.append((row_id, crypto_service.ricifra(token, chiavi_extra=chiavi_extra)))
+                        nuovi.append((chiave, token, crypto_service.ricifra(token, chiavi_extra=chiavi_extra)))
                     except ValueError:
-                        illeggibili.append(f"{campo.tabella}.{campo.colonna} id={row_id}")
+                        illeggibili.append(f"{campo.tabella}.{campo.colonna} {campo.chiave}={chiave}")
+                cambiati = 0
                 if not options["dry_run"]:
-                    for row_id, nuovo in nuovi:
-                        # ⛔ Una riga letta e non riscritta (RLS, trigger) e'
-                        #    un token rimasto sulla chiave vecchia: si fallisce,
-                        #    non si conta come ri-cifrata.
-                        if not execute_dynamic_update(
-                            campo.tabella, row_id, {campo.colonna: nuovo},
-                            allowed={campo.colonna}, letterali={campo.colonna},
-                        ):
-                            raise CommandError(
-                                f"{campo.tabella}.{campo.colonna} id={row_id}: "
-                                "UPDATE senza righe, niente e' stato scritto"
-                            )
-                self.stdout.write(f"{campo.tabella}.{campo.colonna}: {len(nuovi)} su {len(righe)}")
+                    for chiave, atteso, nuovo in nuovi:
+                        if not _riscrivi(campo, chiave, atteso, nuovo):
+                            cambiati += 1
+                riga = f"{campo.tabella}.{campo.colonna}: {len(nuovi) - cambiati} su {len(righe)}"
+                if cambiati:
+                    # Riconfigurati fra lettura e scrittura: cifrati da chi
+                    # li ha scritti, con la prima chiave che aveva in quel
+                    # momento. Il comando non lo verifica: lo fa il passo dopo.
+                    riga += (
+                        f" ({cambiati} cambiati nel frattempo, non riscritti: "
+                        "li verifica chiave-cifratura-aggiungi.sh --togli-vecchie)"
+                    )
+                self.stdout.write(riga)
             if illeggibili:
                 raise CommandError(
                     "Nessuna chiave apre questi token, niente e' stato scritto: "

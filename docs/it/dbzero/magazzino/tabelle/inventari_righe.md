@@ -11,23 +11,26 @@
 | id | bigint | NO |  |
 | inventario_id | bigint | NO |  |
 | articolo_id | uuid | NO |  |
-| qta_contata | numeric | NO |  |
-| qta_sistema | numeric | YES |  |
+| qta_contata | numeric(18,6) | NO |  |
+| qta_sistema | numeric(18,6) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | storicizza | boolean | NO | true |
 | tx_id | uuid | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | ubicazione_id | bigint | YES |  |
 | lotto_id | bigint | YES |  |
 | asset_id | bigint | YES |  |
-| costo_unitario | numeric | YES |  |
+| costo_unitario | numeric(18,6) | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_inventari_righe_costo_unitario_finito |  |
+| CHECK | chk_inventari_righe_qta_contata_finito |  |
+| CHECK | chk_inventari_righe_qta_sistema_finito |  |
 | CHECK | chk_mag_inventari_righe_asset_qta_unitaria |  |
 | CHECK | chk_mag_inventari_righe_costo_non_neg |  |
 | CHECK | chk_mag_inventario_righe_qta_contata_non_neg |  |

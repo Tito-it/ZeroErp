@@ -29,15 +29,11 @@ import unittest
 from django.db import connection, transaction
 
 from apps.core.services.error_translator import ErrorTranslator
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 from apps.ui.db.ui_repository import UiRepository
 from apps.ui.services.lista_preset_admin_service import ListaPresetAdminService
 
 _CODICE = "E_UI_MISURA_PAGINA_NON_AMMESSA"
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullando tutto."""
 
 
 class MisurePaginaDbTests(unittest.TestCase):
@@ -54,7 +50,7 @@ class MisurePaginaDbTests(unittest.TestCase):
         return int(riga[0])
 
     def _rifiuto(self, esegui) -> None:
-        with self.assertRaises(_Annulla):
+        with self.assertRaises(Annulla):
             with transaction.atomic():
                 with self.assertRaises(Exception) as ctx:
                     with transaction.atomic():
@@ -62,7 +58,7 @@ class MisurePaginaDbTests(unittest.TestCase):
                 api_error = ErrorTranslator.to_api_error(ctx.exception)
                 self.assertEqual(api_error.code, _CODICE)
                 self.assertEqual(ErrorTranslator.get_http_status(api_error), 400)
-                raise _Annulla
+                raise Annulla
 
     def test_la_lettura_lega_e_i_default_sono_misure_ammesse(self) -> None:
         esito = UiRepository().get_misure_pagina()

@@ -20,6 +20,10 @@ AS $function$
     v_qta_ordine  vendite.ordini_righe.quantita%TYPE;
     v_qta_evasa   vendite.ordini_righe_fulfillment.qta_evasa%TYPE;
     v_residuo     numeric;
+    v_ba_ordine   vendite.ordini.billing_account_id%TYPE;
+    v_ordine_lbl  text;
+    v_ba_ddt      vendite.ddt.billing_account_id%TYPE;
+    v_ddt_lbl     text;
   BEGIN
     -- =========================================================
     -- Scopo:
@@ -108,6 +112,38 @@ AS $function$
       );
     END IF;
 
+    -- 5-bis) Il cliente — rev 2026-10-09 (brief-db-esecutivi-ba-coppia,
+    --    D-6): la riga di DDT evade una riga d'ordine DELLO STESSO
+    --    billing account. «Un esecutivo derivato ha il BA della sua
+    --    sorgente»: prima una riga di DDT del cliente A poteva evadere
+    --    l'ordine del cliente B, e la diagnosi del push spingeva le righe
+    --    su BA diversi. Le altre due porte della regola sono la testata
+    --    del DDT (vendite.trgfn_ddt_guard_cliente_sorgente) e il reso.
+    SELECT o.billing_account_id, 'ordine ' || COALESCE(o.numero, '#' || o.id::text)
+      INTO v_ba_ordine, v_ordine_lbl
+      FROM vendite.ordini_righe orr
+      JOIN vendite.ordini o ON o.id = orr.ordine_id
+     WHERE orr.id = NEW.ordine_riga_id;
+
+    SELECT d.billing_account_id, 'DDT ' || COALESCE(d.numero, '#' || d.id::text)
+      INTO v_ba_ddt, v_ddt_lbl
+      FROM vendite.ddt_righe dr
+      JOIN vendite.ddt d ON d.id = dr.ddt_id
+     WHERE dr.id = NEW.ddt_riga_id;
+
+    IF v_ba_ordine IS DISTINCT FROM v_ba_ddt THEN
+      PERFORM script.fn_log_and_raise_error(
+        'database','trgfn_ordini_ful_guard_consistenza','E_DOC_CLIENTE_DIVERSO_DA_SORGENTE',
+        jsonb_build_object('ordine_riga_id', NEW.ordine_riga_id,
+                          'ddt_riga_id', NEW.ddt_riga_id,
+                          'billing_account_ordine', v_ba_ordine,
+                          'billing_account_ddt', v_ba_ddt),
+        NULL::uuid,
+        v_ddt_lbl,
+        v_ordine_lbl
+      );
+    END IF;
+
     -- 6) Residuo = quantita ordine - sum(evasa esistente, esclusa
     --    riga corrente in UPDATE) + addendo reso (ri-consegna).
     SELECT COALESCE(SUM(q.qta_evasa), 0)
@@ -141,7 +177,7 @@ AS $function$
   $function$
 
 COMMENT ON FUNCTION vendite.trgfn_ordini_ful_guard_consistenza()
-IS 'Guard consistenza fulfillment: articolo/uom/residuo + over-fulfillment (E_QTA_SUPERA_RESIDUO). RESO-AWARE: residuo include addendo ri-consegna (fn_ordine_riga_qta_riconsegna), coerente con fn_ordine_ha_residuo_evasione. rev 2026-07-13.';
+IS 'Guard consistenza fulfillment: articolo/uom/residuo + over-fulfillment (E_QTA_SUPERA_RESIDUO). RESO-AWARE: residuo include addendo ri-consegna (fn_ordine_riga_qta_riconsegna), coerente con fn_ordine_ha_residuo_evasione. rev 2026-07-13. rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-6): + il cliente, E_DOC_CLIENTE_DIVERSO_DA_SORGENTE — la riga di DDT evade solo righe d''ordine dello stesso billing account.';
 ```
 
 ---

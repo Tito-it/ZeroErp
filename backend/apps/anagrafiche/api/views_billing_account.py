@@ -16,6 +16,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.anagrafiche.services.billing_account_service import BillingAccountService
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.payload_validators import qp_bool, qp_int_strict
@@ -103,7 +104,7 @@ class BillingAccountLookupView(DomainAPIView):
         if raw_valid_at:
             valid_at = parse_iso_date(raw_valid_at)
         elif solo_validi:
-            valid_at = date.today()
+            valid_at = oggi_aziendale()
         else:
             valid_at = None
 

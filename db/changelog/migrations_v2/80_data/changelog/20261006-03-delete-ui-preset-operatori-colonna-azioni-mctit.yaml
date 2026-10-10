@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA COLONNA «AZIONI» DELLA LISTA OPERATORI ESCE DAL PRESET DI DEFAULT
+#   Brief: brief-db-riepilogo-permessi-lista-operatori §8 (decisione di Tid, 2026-10-06)
+#
+# ── PERCHE' ──────────────────────────────────────────────────────────────
+#   La lista anagrafiche.operatori (28) non ha piu' azioni di riga: il kebab e' stato
+#   tolto dal frontend. La colonna di catalogo `azioni` (345) e' spenta nel CSV
+#   (attivo = f) e la sua riga nel preset `operatori_default` esce dal CSV
+#   lista_preset_colonna.csv nello stesso giro.
+#
+# ── PERCHE' SERVE UN CHANGESET E NON BASTA IL CSV ────────────────────────
+#   Il mirror di lista_preset_colonna (20260507-09) e' un loadUpdateData: inserisce e
+#   aggiorna, non cancella. Tolta dal CSV, la riga resterebbe nel database. Questo e'
+#   il caso «cancellare una riga» di linee-guida-sql §11.2: un DELETE forward-only.
+#   Precedente: 20260802-23.
+#
+# ── IDEMPOTENTE, SENZA PRECONDIZIONI SUL CONTENUTO ───────────────────────
+#   Su un database nuovo la riga non nasce (il CSV non ce l'ha piu'): il DELETE tocca
+#   zero righe. Le chiavi sono naturali (codice di lista, di preset e di colonna), non
+#   gli id. La colonna di catalogo NON si cancella: resta spenta, e si riaccende se la
+#   lista avra' di nuovo azioni di riga (allora va rimessa anche nel preset).
+#   Gira dopo il mirror: includeAll su 80_data ordina per nome, 20261006-03 > 20260507-09.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/80_data/changelog/20261006-03-delete-ui-preset-operatori-colonna-azioni-mctit.yaml
+
+  - changeSet:
+      id: 20261006-03-delete-ui-preset-operatori-colonna-azioni
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lista 28 (anagrafiche.operatori): toglie la colonna `azioni` dal preset di default
+        operatori_default. La colonna resta a catalogo, spenta (CSV). DELETE perche'
+        loadUpdateData non cancella. Brief: brief-db-riepilogo-permessi-lista-operatori §8.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: ui
+            tableName: lista_preset_colonna
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DELETE FROM ui.lista_preset_colonna pc
+               USING ui.lista_preset p,
+                     ui.lista_colonna lc,
+                     ui.lista_definizione ld
+               WHERE pc.preset_id  = p.id
+                 AND pc.colonna_id = lc.id
+                 AND p.lista_id    = ld.id
+                 AND lc.lista_id   = ld.id
+                 AND ld.codice     = 'anagrafiche.operatori'
+                 AND p.codice      = 'operatori_default'
+                 AND lc.codice     = 'azioni';
+      rollback:
+        - empty

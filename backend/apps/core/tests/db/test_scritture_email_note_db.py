@@ -32,7 +32,7 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import richiedi_db_provvisto
+from apps.core.tests.db_e2e import Annulla, richiedi_db_provvisto
 
 _FIXTURE_OPERATORE: tuple[str, ...] = (
     """
@@ -49,10 +49,6 @@ _FIXTURE_FATTURA: tuple[str, ...] = (
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _fattura))",
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 class ScrittureEmailAccountDbTests(unittest.TestCase):
@@ -103,8 +99,8 @@ class ScrittureEmailAccountDbTests(unittest.TestCase):
                     repo.update_account(account_id, smtp_password_encrypted="x")
                 with self.assertRaises(RuntimeError):
                     repo.update_account(account_id, colonna_estranea=1)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
 
@@ -149,6 +145,6 @@ class ScrittureNotePartizionateDbTests(unittest.TestCase):
                 self.assertEqual(
                     cur.fetchone(), ("FATTURA", fattura_id, "Aggiornata", 20, "w"),
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

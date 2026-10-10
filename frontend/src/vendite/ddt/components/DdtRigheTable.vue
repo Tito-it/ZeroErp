@@ -5,12 +5,14 @@
 //        cella «senza prezzo» e il form di riga.
 //        ⭐ Le colonne vengono dal catalogo (`vendite.ddt_righe`, lista 99) dal
 //        2026-09-28 (brief-db-liste-righe-documento).
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Tag from 'primevue/tag'
 import { useDdtStore } from '../stores/ddt'
 import { useDdtRigheStore } from '../stores/ddtRighe'
 import { exportRigheLista } from '../api/ddtApi'
 import CellaConfigurabile from '../../../core/components/CellaConfigurabile.vue'
+import { unisciFotografie } from '../../../core/composables/useDrawerFormPreserve'
 import RigheMasterDetailTable from '../../../core/components/RigheMasterDetailTable.vue'
 import DdtRigaForm from './DdtRigaForm.vue'
 
@@ -37,10 +39,17 @@ defineProps({
   causaleFatturabile: { type: Boolean, default: true },
 })
 const emit = defineEmits(['changed', 'form-aperto'])
+
+// ⭐ D-13 (2026-10-03, analisi-fe-chrome-drawer): la fotografia della riga
+//    aperta, inoltrata al drawer per le sue uscite. La tiene il form di riga,
+//    che si registra presso la tabella (`registra` dello slot).
+const tabella = ref(null)
+defineExpose({ ...unisciFotografie(() => tabella.value) })
 </script>
 
 <template>
   <RigheMasterDetailTable
+    ref="tabella"
     codice="vendite.ddt_righe"
     :store="righe"
     :parent-id="ddtId"
@@ -62,8 +71,9 @@ const emit = defineEmits(['changed', 'form-aperto'])
       <CellaConfigurabile v-else :col="col" :data="data" />
     </template>
 
-    <template #form="{ riga, onSaved, onComponentiChanged, onCancel }">
+    <template #form="{ riga, onSaved, onComponentiChanged, onCancel, registra }">
       <DdtRigaForm
+        :ref="registra"
         :ddt-id="ddtId"
         :riga="riga"
         :causale-fatturabile="causaleFatturabile"

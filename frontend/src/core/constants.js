@@ -117,6 +117,12 @@ export const RICERCA = {
 // Centralizzato: cambiare qui per aggiornare tutte le date del sistema.
 export const DATE_FORMAT = 'dd/mm/yy'
 
+// Formato MESE (DatePicker con `view="month"`): MM/YYYY. ⭐ Regola del 2
+// (2026-10-04): due selettori del mese, uno con 'mm/yy' scritto sul posto
+// (lista contratti) e uno con DATE_FORMAT (accettazione preventivo), che
+// mostrava un giorno su un campo che non ne ha.
+export const MONTH_FORMAT = 'mm/yy'
+
 // Content tabs
 export const TABS = {
   MAX_OPEN: 10
@@ -176,8 +182,11 @@ export const RUOLO_APPLICATIVO = {
   FORNITORE_PORTALE: 'FORNITORE_PORTALE',
   SHOP_CUSTOMER: 'SHOP_CUSTOMER',
   API_CLIENT: 'API_CLIENT',
-  DISABILITATO: 'DISABILITATO'
 }
+// ⛔ Niente piu' `DISABILITATO` (2026-10-02, brief-db-be-fe-area-accessi
+//    R-DB-1): una veste spenta TIENE il suo tipo e ha `attivo = false`, e la
+//    tabella rifiuta il valore, che resta nell'enum del DB solo come voce
+//    storica. «Disabilitato» si legge dallo stato della veste, non dal ruolo.
 
 // Canali di login (§8.5.1 multi-face auth). Il login dell'utente e' per
 // "canale": a seconda del canale scelto il BE emette il JWT con la veste
@@ -196,20 +205,67 @@ export const CANALE_LOGIN = {
     key: 'ADMIN',
     tokenPath: '/admin/token/',
     refreshPath: '/admin/token/refresh/',
+    // Il secondo passo del login (secondo fattore): sotto /token/, quindi
+    // l'interceptor non prova a rinnovare la sessione su un suo 401.
+    secondoFattorePath: '/admin/token/secondo-fattore/',
+    // La chiave d'ingresso della porta, cioè il campo del corpo del login
+    // (L-4, D-9): il nome utente per l'operatore, l'email per portale e shop.
+    campoIngresso: 'username',
     i18n: 'auth.canale.admin'
   },
   PORTALE: {
     key: 'PORTALE',
     tokenPath: '/portale/token/',
     refreshPath: '/portale/token/refresh/',
+    secondoFattorePath: '/portale/token/secondo-fattore/',
+    campoIngresso: 'email',
     i18n: 'auth.canale.portale'
   },
   SHOP: {
     key: 'SHOP',
     tokenPath: '/shop/token/',
     refreshPath: '/shop/token/refresh/',
+    secondoFattorePath: '/shop/token/secondo-fattore/',
+    campoIngresso: 'email',
     i18n: 'auth.canale.shop'
   }
+}
+
+// Gli obblighi della credenziale che il backend fa rispettare (cancello degli
+// obblighi): arrivano da `/core/me/` in `obblighi_pendenti`, nell'ordine in cui
+// si chiudono. Il guard del router porta alla pagina che chiude il primo.
+export const OBBLIGO_CREDENZIALE = {
+  CAMBIO_PASSWORD: 'CAMBIO_PASSWORD',
+  SECONDO_FATTORE: 'SECONDO_FATTORE'
+}
+
+// Lo stato del device del secondo fattore, come lo dice il backend
+// (`STATI_DEVICE` di `apps/core/db/secondo_fattore_repository.py`).
+export const STATO_SECONDO_FATTORE = {
+  ASSENTE: 'ASSENTE',
+  DA_CONFERMARE: 'DA_CONFERMARE',
+  ATTIVO: 'ATTIVO'
+}
+
+// Lo stato di una VESTE d'accesso: i quattro di `script.fn_stato_veste` (A-7,
+// calcolati SOLO a DB) piu' NESSUNO, la veste che non esiste — lo dichiarano
+// la scheda accessi del soggetto e `vw_accessi_altri.stato_accesso`. ⭐ Il
+// vocabolario sta qui, non nelle chiavi della mappa dei colori (`STATO_VESTE_MAP`):
+// un filtro costruito dai colori perderebbe in silenzio uno stato senza colore.
+// Regola del 2 (ok Tid 2026-10-02): `PortaleAccessoPanel`, `WebAccessiBadge`,
+// `AccessiAltriTab`.
+export const STATO_VESTE = Object.freeze({
+  ATTIVO: 'ATTIVO',
+  PENDING: 'PENDING',
+  NON_SPEDITO: 'NON_SPEDITO',
+  DISATTIVO: 'DISATTIVO',
+  NESSUNO: 'NESSUNO',
+})
+
+// Da dove viene l'obbligo del secondo fattore (`motivo` dello stato).
+export const MOTIVO_OBBLIGO_SECONDO_FATTORE = {
+  CREDENZIALE: 'CREDENZIALE',
+  PROFILO: 'PROFILO'
 }
 
 // Lista ordinata dei canali (ordine di visualizzazione nel radio).
@@ -266,7 +322,7 @@ export const RUOLO_FE_NAMESPACE = {
 }
 
 // Scopo: Config FE namespace della veste corrente. Ritorna null per le
-// vesti senza namespace FE (API_CLIENT, DISABILITATO, assente): il caller
+// vesti senza namespace FE (API_CLIENT, assente): il caller
 // tipicamente traduce in `forbidden`.
 export function resolveRuoloFeConfig(ruoloApplicativo) {
   return RUOLO_FE_NAMESPACE[ruoloApplicativo] || null
@@ -453,7 +509,15 @@ export const MANAGE_ICONS = {
   CLONE: 'pi pi-copy',
   CLOSE: 'pi pi-lock',
   CLOSE_DATE: 'pi pi-calendar-times',
+  // La promessa di consegna di una riga (data di consegna confermata), che si
+  // cambia anche dopo la conferma dell'ordine.
+  PROMESSA_CONSEGNA: 'pi pi-calendar-clock',
   PERMISSIONS: 'pi pi-shield',
+  // La sicurezza dell'accesso: il secondo fattore (pagina «Sicurezza», sezione
+  // del drawer operatore).
+  SICUREZZA_ACCESSO: 'pi pi-key',
+  // Il cambio della PROPRIA password (scheda utente della topbar).
+  CAMBIO_PASSWORD: 'pi pi-user-edit',
   BILLING_ACCOUNT: 'pi pi-credit-card',
   UTILITY: 'pi pi-bolt',
   LIST: 'pi pi-list',
@@ -546,7 +610,9 @@ export const MANAGE_ICONS = {
   // Toggle delle EXPANSION ROW di una DataTable: la stessa coppia del toggler
   // di riga PrimeVue (chevron-right = chiusa, chevron-down = aperta), cosi'
   // «espandi tutte» nella barra della lista porta lo stesso segno della riga.
-  // Stessa coppia per i gruppi annidati della sidebar (SidebarDomain).
+  // Stessa coppia per i gruppi annidati della sidebar (SidebarDomain); a
+  // sidebar CHIUSA `ROW_EXPAND` sta accanto all'icona del gruppo e dice «qui
+  // dentro ci sono altre voci» (SidebarItem, prop `gruppo`, 2026-10-06).
   // Usare dinamicamente: `icon: isExpanded ? ROW_COLLAPSE : ROW_EXPAND`.
   ROW_EXPAND: 'pi pi-chevron-right',
   ROW_COLLAPSE: 'pi pi-chevron-down',
@@ -595,7 +661,7 @@ export const MANAGE_ICONS = {
   SUPER_ADMIN: 'pi pi-crown',
   //
   // ═══ Censimento icone per significato (2026-09-27, approvato da Tid) ══════
-  // docs/it/dev/work-in-progress/censimento-icone-per-significato.md. Il nome
+  // docs/it/dev/work-done/censimento-icone-per-significato.md. Il nome
   // dice il SIGNIFICATO, non il disegno: due gesti diversi non portano lo
   // stesso segno, e lo stesso significato ne porta uno solo.
   //
@@ -613,6 +679,12 @@ export const MANAGE_ICONS = {
   // Togliere un blocco. ⛔ Non il lucchetto aperto: su un bottone si legge
   // come STATO «aperto» (e il lucchetto aperto e' `APRI`).
   SBLOCCA: 'pi pi-key',
+  // Bloccare l'ACCESSO di una persona: la credenziale non entra piu' da
+  // nessuna porta, per decisione dell'amministratore (brief-db-be-fe-area-
+  // accessi). Coppia di `SBLOCCA`. ⛔ Non il lucchetto (`CLOSE`, `REGISTRA`,
+  // `VIETATO`) ne' `DISATTIVA` (`pi-ban`, spegne una veste): qui si toglie
+  // l'ingresso alla persona, su tutte le sue vesti.
+  BLOCCA_ACCESSO: 'pi pi-user-minus',
   //
   // ─── Pipeline e lavori ─────────────────────────────────────────────────────
   // Avanzare di uno step la pipeline del lotto. Coppia di `RIPORTA_A_BOZZA`.

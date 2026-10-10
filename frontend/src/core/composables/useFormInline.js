@@ -34,6 +34,16 @@
 //    resterebbe aperto sulla riga del documento PRECEDENTE, e «Salva»
 //    scriverebbe col padre nuovo — un difetto che non fallisce.
 //
+// ⭐ APRIRE IL FORM LO PORTA DAVANTI (2026-10-07, decisione di Tid). Il form
+//    inline sta SOTTO l'elenco: su un elenco lungo il clic su una riga apriva
+//    il form fuori vista, e sembrava non succedere nulla. Il contenitore lega
+//    `ancoraForm` al primo elemento del form (`:ref="ancoraForm"`), e il BB lo
+//    fa scorrere in vista a ogni apertura. ⛔ Solo dentro `nuovaRiga` e
+//    `apriRiga`, cioe' dopo un GESTO: mai all'apertura del drawer, alla
+//    chiusura o alla `risincronizza` (la pagina scenderebbe da sola mentre
+//    l'operatore guarda altro — la stessa regola di `selezionaStadio` nella
+//    dashboard di competenza). Senza ancora legata: non scorre, e basta.
+//
 // ⛔ I verbi che AGGIUNGONO qualcosa alla macchina (azzerare errori, popolare
 //    il form, salvare) stanno nel BB o nel contenitore che li possiede, e
 //    chiamano questi. Non si ricopia `formMode = 'edit'` altrove.
@@ -46,12 +56,15 @@
 //   // barra della lista:
 //   extraActions: () => [righe.azioneNuovaRiga({ label: t('...nuova') })]
 //   // lista:   @row-click="righe.apriRiga"
-//   // form:    <RigaForm v-if="righe.formAperto.value" :riga="righe.rigaInModifica.value"
-//   //                    @annulla="righe.chiudiForm" />
+//   // form:    <RigaForm v-if="righe.formAperto.value" :ref="righe.ancoraForm"
+//   //                    :riga="righe.rigaInModifica.value" @annulla="righe.chiudiForm" />
 //   // footer:  <FormFooter v-if="!righe.formAperto.value" close-only ... />
 
-import { computed, ref, toValue, watch } from 'vue'
+import { computed, nextTick, ref, toValue, watch } from 'vue'
 import { MANAGE_ICONS } from '../constants'
+
+// `Node.TEXT_NODE`, scritto a mano: il BB non legge globali del DOM al caricamento.
+const TEXT_NODE = 3
 
 export function useFormInline({
   // Getter dell'identita' del documento. Al suo cambio il form si chiude.
@@ -62,16 +75,53 @@ export function useFormInline({
   // modifica). ⚠️ Non tocca «Nuova riga»: quella ha la sua condizione
   // (`azioneNuovaRiga({ visible })`), che spesso e' piu' stretta.
   puoModificare = () => true,
+  // ⭐ CAMBIARE RIGA COL FORM MODIFICATO CHIEDE (2026-10-03, D-8 di
+  //    work-done/analisi-fe-chrome-drawer.md, decisione di Tid). Fino a
+  //    quel giorno il clic su un'altra riga sostituiva il form aperto, e le
+  //    modifiche alla riga precedente si perdevano senza domanda.
+  //    `confermaCambio(procedi)` e' di solito il `chiudiConConferma` della
+  //    fotografia del form inline (useDrawerFormPreserve): chiede solo se c'e'
+  //    davvero qualcosa da perdere. Senza, si cambia e basta (com'era).
+  // ⚠️ Passarla come freccia, `(p) => fotografia.chiudiConConferma(p)`: la
+  //    fotografia nasce di solito DOPO questo BB (la sua visibilita' legge
+  //    `formAperto`), e la freccia la legge solo al clic.
+  confermaCambio = null,
 } = {}) {
   // `null` = nessun form · `'create'` · `'edit'`.
   const formMode = ref(null)
   const rigaInModifica = ref(null)
   const formAperto = computed(() => formMode.value !== null)
 
+  // L'elemento del form, legato dal contenitore con `:ref="ancoraForm"`.
+  // ⭐ Una ref-FUNZIONE, non una `ref()`: si lega uguale da `righe.ancoraForm`
+  //    o destrutturata, e accetta sia un elemento sia un componente (`$el`).
+  //    Non e' reattiva perche' nessuno la legge in un render.
+  let nodoForm = null
+  function ancoraForm(el) {
+    nodoForm = el?.$el ?? el ?? null
+  }
+
+  // Scopo: l'elemento da portare in vista. ⚠️ Un componente MULTI-RADICE
+  //    (Fragment: `DistintaRigaForm`, `DocumentoInternoRigaForm`) ha come `$el`
+  //    l'ancora di TESTO vuota che apre il frammento, senza `scrollIntoView`:
+  //    lo scorrimento taceva. Il primo elemento vero e' quello che la segue.
+  //    Risolto al momento dello scorrimento, a DOM montato.
+  function elementoForm() {
+    return nodoForm?.nodeType === TEXT_NODE ? nodoForm.nextElementSibling : nodoForm
+  }
+
+  // Scopo: porta il form in vista dopo che il DOM l'ha montato (`v-if`).
+  function scorriAlForm() {
+    nextTick(() => {
+      elementoForm()?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    })
+  }
+
   // Scopo: apre il form vuoto per una riga nuova.
   function nuovaRiga() {
     rigaInModifica.value = null
     formMode.value = 'create'
+    scorriAlForm()
   }
 
   // Scopo: apre la riga in modifica — solo se le righe si scrivono. Su un
@@ -79,10 +129,20 @@ export function useFormInline({
   //        rifiuterebbe.
   // ⭐ Riceve la RIGA, non l'evento PrimeVue: e' la firma di `row-click` di
   //    `ListaConfigurabile` / `DrawerTabLista`.
-  function apriRiga(riga) {
+  // ⭐ `poi(riga)`: cio' che il contenitore fa ad apertura avvenuta (popolare il
+  //    form, fissare la fotografia). ⛔ Va passato qui e non scritto DOPO la
+  //    chiamata: con la conferma l'apertura puo' arrivare piu' tardi, o mai, e
+  //    un form riempito subito butterebbe le modifiche prima della risposta.
+  function apriRiga(riga, poi = null) {
     if (!riga || !toValue(puoModificare)) return
-    rigaInModifica.value = riga
-    formMode.value = 'edit'
+    const apri = () => {
+      rigaInModifica.value = riga
+      formMode.value = 'edit'
+      poi?.(riga)
+      scorriAlForm()
+    }
+    if (formAperto.value && confermaCambio) confermaCambio(apri)
+    else apri()
   }
 
   // Scopo: chiude il form e dimentica la riga.
@@ -111,8 +171,12 @@ export function useFormInline({
   // ⚠️ `command` e' per il contenitore che all'apertura fa ANCHE altro
   //    (azzera il suo form, fissa la fotografia, precompila): il suo verbo
   //    deve chiamare `nuovaRiga()`, non riscrivere `formMode`.
+  // ⭐ Chiave `new`, quella del «Nuovo» di ogni barra: e' la chiave che la
+  //    scorciatoia F6 cerca (`useScorciatoie`, 2026-10-04). Fino a quel
+  //    giorno era `nuova-riga`, e altre sedi avevano `nuova`/`new-uom`/…:
+  //    stesso significato, cinque nomi.
   function azioneNuovaRiga({
-    key = 'nuova-riga',
+    key = 'new',
     label,
     tooltip,
     icon = MANAGE_ICONS.ADD,
@@ -137,6 +201,7 @@ export function useFormInline({
     formMode,
     rigaInModifica,
     formAperto,
+    ancoraForm,
     nuovaRiga,
     apriRiga,
     chiudiForm,

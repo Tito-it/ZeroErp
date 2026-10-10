@@ -19,9 +19,10 @@ export function cambiaPassword({ oldPassword, newPassword, newPasswordConfirm })
   })
 }
 
-// Scopo: chiede l'email di recupero per uno username (endpoint pubblico).
-export function richiediResetPassword(username) {
-  return api.post('/auth/password-reset-request/', { username })
+// Scopo: chiede l'email di recupero per un nome utente o un'email (endpoint
+//        pubblico, L-4): il backend cerca prima l'email, poi il nome utente.
+export function richiediResetPassword(identificativo) {
+  return api.post('/auth/password-reset-request/', { identificativo })
 }
 
 // Scopo: verifica, senza consumarlo, il token di recupero ricevuto via email.

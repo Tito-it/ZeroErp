@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I TRIGGER DEL LISTINO DEL DOCUMENTO, SULLE DUE TESTATE
+#   vendite.contratti, vendite.offerte_commerciali
+#   Brief: brief-db-offerta-emissione-ed-erogazione §F.2 (F-2.2, F-2.4)
+#
+# ── QUANDO ─────────────────────────────────────────────────────────
+#   · _ins: ogni INSERT (anche il push offerta -> contratto e la revisione,
+#     che copiano listino, utility ed emittente: coerenti per costruzione se
+#     lo era l'offerta);
+#   · _upd: solo quando cambiano listino_id, utility_id o
+#     emittente_fiscale_id. Le righe gia' scritte restano come sono (F-2.4,
+#     come B-D6): un cambio di stato o di date non le giudica.
+#   ⚠️ Due trigger e non uno: un WHEN con OLD non si scrive su un trigger
+#   che e' anche di INSERT. Il WHEN vede la riga dopo i BEFORE che vengono
+#   prima per nome: nessuno di quelli scrive le tre colonne sull'UPDATE.
+#
+# ── L'ORDINE (i BEFORE ROW girano per nome) ─────────────────────────
+#   contratti:  …_a10_default_emittente_ins    riempie l'emittente dal cliente
+#               …_a10_guard_emittente_ba_ins_upd   l'emittente e' quello del cliente
+#               …_a10_guard_emittente_scope_ins_upd
+#               …_a10_guard_listino_documento_ins|_upd   QUESTO
+#               …_a10_guard_transizione_stato_upd
+#   offerte:    stesso ordine («default_e» < «guard_e» < «guard_l» < «guard_t»).
+#
+# Ritorno indietro: DROP dei quattro trigger.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261008-15-create-trigger-doc-guard-listino-documento-mctit.yaml
+
+  - changeSet:
+      id: 20261008-15-create-trigger-doc-guard-listino-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Il guard del listino del documento su contratti e offerte: all'INSERT e quando cambiano
+        listino, utility o emittente. Brief: brief-db-offerta-emissione-ed-erogazione §F.2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "1"
+            sql: >-
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'trgfn_doc_guard_listino_documento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_contratti_a10_guard_listino_documento_ins
+                  BEFORE INSERT ON vendite.contratti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_guard_listino_documento('CONTRATTO');
+
+              CREATE TRIGGER trg_contratti_a10_guard_listino_documento_upd
+                  BEFORE UPDATE ON vendite.contratti
+                  FOR EACH ROW
+                  WHEN (OLD.listino_id           IS DISTINCT FROM NEW.listino_id
+                     OR OLD.utility_id           IS DISTINCT FROM NEW.utility_id
+                     OR OLD.emittente_fiscale_id IS DISTINCT FROM NEW.emittente_fiscale_id)
+                  EXECUTE FUNCTION script.trgfn_doc_guard_listino_documento('CONTRATTO');
+
+              CREATE TRIGGER trg_offerte_commerciali_a10_guard_listino_documento_ins
+                  BEFORE INSERT ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  EXECUTE FUNCTION script.trgfn_doc_guard_listino_documento('OFFERTA');
+
+              CREATE TRIGGER trg_offerte_commerciali_a10_guard_listino_documento_upd
+                  BEFORE UPDATE ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  WHEN (OLD.listino_id           IS DISTINCT FROM NEW.listino_id
+                     OR OLD.utility_id           IS DISTINCT FROM NEW.utility_id
+                     OR OLD.emittente_fiscale_id IS DISTINCT FROM NEW.emittente_fiscale_id)
+                  EXECUTE FUNCTION script.trgfn_doc_guard_listino_documento('OFFERTA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_listino_documento_ins ON vendite.contratti;
+              DROP TRIGGER IF EXISTS trg_contratti_a10_guard_listino_documento_upd ON vendite.contratti;
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_guard_listino_documento_ins ON vendite.offerte_commerciali;
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_a10_guard_listino_documento_upd ON vendite.offerte_commerciali;

@@ -17,13 +17,12 @@ from rest_framework.request import Request
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.endpoint_helpers import handle_post_json
 from apps.core.api.success_responses import success_response
-from apps.core.api.payload_validators import corpo_oggetto
+from apps.core.api.payload_validators import corpo_oggetto, qp_int_optional
 from apps.core.services.error_manager import ErrorManager
 from apps.anagrafiche.db._helpers import resolve_soggetto_id
 from apps.anagrafiche.db.soggetti_repository import SoggettiRepository
 from apps.anagrafiche.services.soggetti_service import SoggettiService
 from apps.anagrafiche.error_codes import E_ANAG_NOT_FOUND
-from apps.anagrafiche.services._validators import create_with_dedup
 
 
 _repo = SoggettiRepository()
@@ -54,7 +53,9 @@ class RuoloContattiView(DomainAPIView):
         from django.db import connection
         from apps.core.db._helpers import rows_to_list
         istanza_str = request.query_params.get("istanza_utility_id")
-        istanza_utility_id = int(istanza_str) if istanza_str and istanza_str.strip() else None
+        # BB `qp_int_optional`: vuoto = assente, un non intero e' un 400 (fino al
+        # 2026-10-09 `int()` grezzo, cioe' un 500).
+        istanza_utility_id = qp_int_optional(istanza_str, "istanza_utility_id")
         with connection.cursor() as cursor:
             soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
         _COLS = """c.id, c.nominativo, c.email, c.telefono, c.cellulare,
@@ -71,7 +72,7 @@ class RuoloContattiView(DomainAPIView):
         _JOIN = """LEFT JOIN config.tipi_contatti tc ON tc.id = c.tipo_contatto_id"""
         with connection.cursor() as cursor:
             results = []
-            tipi_coperti = set()
+            tipi_coperti: set[int] = set()
             # Livello 1: contatti ruolo + istanza specifica
             if istanza_utility_id is not None:
                 sql_ist = f"""
@@ -122,39 +123,17 @@ class RuoloContattiView(DomainAPIView):
             "nominativo": serializers.CharField(),
             "email": serializers.CharField(required=False),
             "telefono": serializers.CharField(required=False),
+            "tipo_contatto_id": serializers.IntegerField(),
             "istanza_utility_id": serializers.IntegerField(required=False),
         }),
         responses={200: inline_serializer(name="RuoloContattoCreateResp", fields={"data": serializers.DictField()})},
     )
-    # Scopo: Crea contatto associato al ruolo.
-    #        Recupera soggetto_id dal ruolo per popolare la FK obbligatoria.
+    # Scopo: Crea contatto associato al ruolo (`SoggettiService.create_contatto_ruolo`).
     def post(self, request: Request, soggetto_ruolo_id: int) -> JsonResponse:
-        def _handler(payload):
-            from django.db import connection
-            with connection.cursor() as cursor:
-                soggetto_id = resolve_soggetto_id(cursor, soggetto_ruolo_id)
-            # Crea contatto con soggetto_ruolo_id e istanza_utility_id opzionale
-            istanza_utility_id = payload.get("istanza_utility_id")
-            if istanza_utility_id is not None:
-                istanza_utility_id = int(istanza_utility_id)
-            result = create_with_dedup(
-                lambda: _repo.crea_contatto(
-                    soggetto_id,
-                    nominativo=payload.get("nominativo", ""),
-                    email=payload.get("email"),
-                    telefono=payload.get("telefono"),
-                    cellulare=payload.get("cellulare"),
-                    pec=payload.get("pec"),
-                    tipo_contatto_id=payload.get("tipo_contatto_id"),
-                    unita_organizzativa_id=payload.get("unita_organizzativa_id"),
-                    note=payload.get("note"),
-                    soggetto_ruolo_id=soggetto_ruolo_id,
-                    istanza_utility_id=istanza_utility_id,
-                ),
-                "Contatto con questo tipo gia' presente per il ruolo/istanza.",
-            )
-            return result
-        return handle_post_json(request, handler=_handler)
+        return handle_post_json(
+            request,
+            handler=lambda p: SoggettiService().create_contatto_ruolo(soggetto_ruolo_id, p),
+        )
 
 
 # =================================================================

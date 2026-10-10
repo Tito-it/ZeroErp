@@ -16,11 +16,14 @@
 //  2. ogni voce porta l'area del suo endpoint (email: nessuna)
 //  3. le voci puntano a rotte sotto /strumenti/
 //  4. il dominio Personale non esiste piu'
+//  5. Diagnostica: gruppo adminOnly con i quattro diari, figli senza cancello
+//     proprio
+//  6. Amm. software non porta piu' i quattro diari
 // ------------------------------------------------------------
 
 import { describe, expect, it } from 'vitest'
 
-import { DOMAINS, DOMAIN_MENUS } from '../core/navigation'
+import { DOMAINS, DOMAIN_MENUS, flattenMenu } from '../core/navigation'
 
 describe('dominio Strumenti', () => {
   const strumenti = DOMAINS.find((d) => d.key === 'strumenti')
@@ -40,7 +43,7 @@ describe('dominio Strumenti', () => {
   })
 
   it('le voci puntano a rotte sotto /strumenti/', () => {
-    for (const v of DOMAIN_MENUS.strumenti) {
+    for (const v of flattenMenu(DOMAIN_MENUS.strumenti).filter((v) => v.to)) {
       expect(v.to.startsWith('/strumenti/')).toBe(true)
     }
   })
@@ -48,5 +51,24 @@ describe('dominio Strumenti', () => {
   it('il dominio Personale non esiste piu\'', () => {
     expect(DOMAINS.find((d) => d.key === 'personale')).toBeUndefined()
     expect(DOMAIN_MENUS.personale).toBeUndefined()
+  })
+
+  const DIARI = ['processi-automatici', 'audit-log', 'error-log', 'email-log']
+
+  it('Diagnostica: gruppo adminOnly con i quattro diari', () => {
+    // ⛔ Il cancello sta sul GRUPPO: un figlio che ne dichiarasse uno suo
+    //    sarebbe la copia che diverge.
+    const diagnostica = voce('diagnostica')
+    expect(diagnostica.adminOnly).toBe(true)
+    expect(diagnostica.children.map((c) => c.key)).toEqual(DIARI)
+    for (const c of diagnostica.children) {
+      expect(c.to).toBe(`/strumenti/diagnostica/${c.key}`)
+      expect(c.adminOnly).toBeUndefined()
+    }
+  })
+
+  it('Amm. software non porta piu\' i quattro diari', () => {
+    const chiavi = flattenMenu(DOMAIN_MENUS['amm-software']).map((v) => v.key)
+    for (const k of DIARI) expect(chiavi).not.toContain(k)
   })
 })

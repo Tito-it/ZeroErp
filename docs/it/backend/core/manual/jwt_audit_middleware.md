@@ -13,10 +13,10 @@ Middleware Django per le request `/api/*`. Responsabilita':
 > [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
 > Stava in `process_view`, dove `request.user` e' l'utente di **sessione** di Django: per un
 > client Bearer JWT e' ancora `AnonymousUser` (l'autenticazione DRF gira dopo, nel dispatch
-> della view), quindi il ramo non scattava mai. Il rifiuto e' della catena di
-> [ZeroERPPermission](zeroerp_permission.md), al passo del ruolo applicativo. ⚠️ Il modello
-> **ammette** una veste `attivo` col ruolo `DISABILITATO` (il guard di coerenza lo esenta):
-> il caso esiste, ed e' la catena a coprirlo.
+> della view), quindi il ramo non scattava mai. Dal 2026-10-02 `DISABILITATO` non è più un
+> ruolo (brief area Accessi, R-DB-1): una veste spenta tiene il suo tipo con `attivo = false`,
+> la tabella rifiuta `DISABILITATO`, e chi ha solo vesti spente non ha un'identità attiva —
+> lo nega la catena di [ZeroERPPermission](zeroerp_permission.md) al livello d'area.
 
 > ⛔ **La cache permessi L2 non si precarica qui** (fino al 2026-09-24 si'). La sua chiave
 > e' il contesto di sessione (identita' + emittente effettivo), che nasce in
@@ -72,9 +72,11 @@ connessione web non bypassi la RLS:
 - verifica fallita per `DatabaseError` → log, **500 `E_DB_ROLE_UNSAFE`**;
 - verifica superata → il flag passa a `True` e il controllo non si ripete nel processo.
 
-> ⚠️ Difetto noto (E-1): `E_GUC_RESET_FAILED` ed `E_DB_ROLE_UNSAFE` non sono a catalogo
-> (assenti da `CLASSE_PER_CODICE` in `error_policies_generated.py` e dai ripieghi). Vedi
-> [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
+> `E_GUC_RESET_FAILED` ed `E_DB_ROLE_UNSAFE` sono a catalogo come `TECNICO` dal
+> 2026-10-07 (classe, frase di ripiego, causa e soluzione per chi gestisce la
+> macchina): prima mancavano, e chi leggeva `dbops.error_log` trovava un codice
+> che il catalogo non conosceva (E-1 dell'[analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md)).
+> La risposta resta costruita qui (`_json_error`, 500), non dal traduttore.
 
 ### 3. Path non API
 

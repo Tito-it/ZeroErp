@@ -236,7 +236,7 @@ BEGIN
         istanza_utility_id, soggetto_ruolo_id, utility_id, valido_dal,
         categoria_cliente_id
     ) VALUES (
-        v_parent_istanza_id, v_soggetto_ruolo_id, v_utility_id, CURRENT_DATE,
+        v_parent_istanza_id, v_soggetto_ruolo_id, v_utility_id, script.fn_data_operativa(),
         v_categoria_cliente_id
     ) RETURNING id INTO v_parent_ba_id;
 
@@ -245,7 +245,7 @@ BEGIN
         istanza_utility_id, soggetto_ruolo_id, utility_id, parent_account_id, valido_dal,
         categoria_cliente_id
     ) VALUES (
-        v_child1_istanza_id, v_soggetto_ruolo_id, v_utility_id, v_parent_ba_id, CURRENT_DATE,
+        v_child1_istanza_id, v_soggetto_ruolo_id, v_utility_id, v_parent_ba_id, script.fn_data_operativa(),
         v_categoria_cliente_id
     ) RETURNING id INTO v_child1_ba_id;
 
@@ -254,7 +254,7 @@ BEGIN
         istanza_utility_id, soggetto_ruolo_id, utility_id, parent_account_id, valido_dal,
         categoria_cliente_id
     ) VALUES (
-        v_child2_istanza_id, v_soggetto_ruolo_id, v_utility_id, v_parent_ba_id, CURRENT_DATE,
+        v_child2_istanza_id, v_soggetto_ruolo_id, v_utility_id, v_parent_ba_id, script.fn_data_operativa(),
         v_categoria_cliente_id
     ) RETURNING id INTO v_child2_ba_id;
 
@@ -285,10 +285,10 @@ BEGIN
         prezzo_snapshot, tipo_doc_fiscale_id, valuta_id
     ) VALUES (
         v_commessa_id, 'TST-SEG-01', v_articolo_id, v_child1_istanza_id,
-        CURRENT_DATE, v_uom_id, 1,
-        date_trunc('month', CURRENT_DATE)::date,
-        date_trunc('month', CURRENT_DATE)::date,
-        (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date,
+        script.fn_data_operativa(), v_uom_id, 1,
+        date_trunc('month', script.fn_data_operativa())::date,
+        date_trunc('month', script.fn_data_operativa())::date,
+        (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
         10.00, v_tipo_doc_id, v_valuta_id
     ) RETURNING id INTO v_commessa_attivita_id;
 
@@ -302,10 +302,10 @@ BEGIN
         approvato
     ) VALUES (
         v_articolo_id, v_child1_ba_id, v_child1_istanza_id,
-        CURRENT_DATE, 1,
-        date_trunc('month', CURRENT_DATE)::date,
-        date_trunc('month', CURRENT_DATE)::date,
-        (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date,
+        script.fn_data_operativa(), 1,
+        date_trunc('month', script.fn_data_operativa())::date,
+        date_trunc('month', script.fn_data_operativa())::date,
+        (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
         v_commessa_id, v_commessa_attivita_id,
         v_tipo_doc_id, v_valuta_id,
         false
@@ -397,7 +397,7 @@ BEGIN
            af.billing_account_id, af.tipo_doc_fiscale_id, af.valuta_id,
            (SELECT s.id FROM config.stati_doc_fiscale s
              WHERE s.codice_interno = 'DRAFT' ORDER BY s.id LIMIT 1),
-           CURRENT_DATE
+           script.fn_data_operativa()
       FROM vendite.attivita_fatturabili af
      WHERE af.billing_account_id = (SELECT child1_ba_id FROM tmp_ids_guard)
      ORDER BY af.id
@@ -405,8 +405,8 @@ BEGIN
     RETURNING id INTO v_fattura_id;
 
     INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                       qta, prezzo_unitario, imponibile_riga)
-    VALUES (v_fattura_id, 1, 'Riga PGTAP guard parent', 1, 10, 10)
+                                       qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
+    VALUES (v_fattura_id, 1, 'Riga PGTAP guard parent', 1, 10, 10, script.fn_data_operativa(), script.fn_data_operativa())
     RETURNING id INTO v_riga_id;
 
     UPDATE vendite.attivita_fatturabili
@@ -460,6 +460,14 @@ $smonta$;
 -- =========================================================
 DO $$
 BEGIN
+    -- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-1): l'ultimo BA di
+    --   un'istanza non si cancella da solo (constraint trigger
+    --   trg_billing_account_z90_require_istanza_ha_ba_dlt). Qui istanza e BA se
+    --   ne vanno INSIEME: la finestra differita si apre prima dei DELETE e si
+    --   richiude dopo quello delle istanze, cosi' il controllo scatta su uno
+    --   stato finito. Con i vincoli IMMEDIATE del preambolo scatterebbe sul
+    --   DELETE dei BA, con l'istanza ancora li'.
+    SET CONSTRAINTS ALL DEFERRED;
     DELETE FROM vendite.attivita_fatturabili af
     WHERE af.commessa_id IN (
         SELECT c.id FROM vendite.commesse c WHERE c.codice = 'TST-GUARD-PARENT-COMM-01'
@@ -496,6 +504,8 @@ BEGIN
 
     DELETE FROM anagrafiche.istanze_utilities iu
     WHERE iu.codice LIKE 'TST-GUARD-PARENT-%';
+
+    SET CONSTRAINTS ALL IMMEDIATE;
 END;
 $$;
 

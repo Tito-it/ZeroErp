@@ -9,12 +9,12 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| sigla_stato | character varying | YES |  |
-| descrizione | character varying | NO |  |
-| codice_iso2 | character | YES |  |
-| codice_iso3 | character | YES |  |
-| codice_telefonico | character varying | YES |  |
-| continente | character varying | YES |  |
+| sigla_stato | character varying(10) | YES |  |
+| descrizione | character varying(100) | NO |  |
+| codice_iso2 | character(2) | YES |  |
+| codice_iso3 | character(3) | YES |  |
+| codice_telefonico | character varying(10) | YES |  |
+| continente | character varying(50) | YES |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |

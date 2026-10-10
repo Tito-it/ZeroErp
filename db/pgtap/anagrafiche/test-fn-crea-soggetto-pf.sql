@@ -82,7 +82,8 @@ SELECT lives_ok(
         p_codice_fiscale := %L,
         p_email := %L,
         p_data_nascita := '1978-01-01',
-        p_sesso := 'M'
+        p_sesso := 'M',
+        p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
       ) $$,
       (SELECT test_cf FROM tmp_sogg_pf_ctx),
       (SELECT test_email FROM tmp_sogg_pf_ctx)
@@ -142,7 +143,9 @@ SELECT throws_matching(
         p_cognome := 'Bianchi',
         p_nome := 'Anna',
         p_codice_fiscale := %L,
-        p_email := 'altro_' || %L
+        p_email := 'altro_' || %L,
+        p_sesso := 'M',
+        p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
       ) $$,
       (SELECT test_cf FROM tmp_sogg_pf_ctx),
       (SELECT test_email FROM tmp_sogg_pf_ctx)
@@ -161,7 +164,9 @@ SELECT throws_matching(
       p_cognome := '',
       p_nome := 'Test',
       p_codice_fiscale := 'LCCRLD80A01L736X',
-      p_email := 'cognome_vuoto@test.local'
+      p_email := 'cognome_vuoto@test.local',
+      p_sesso := 'M',
+      p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
     ) $$,
     'Cognome obbligatorio',
     '6. Errore cognome vuoto'
@@ -176,7 +181,9 @@ SELECT throws_matching(
       p_cognome := 'Test',
       p_nome := 'EmailNull',
       p_codice_fiscale := 'LCCRLD80A01L736X',
-      p_email := NULL
+      p_email := NULL,
+      p_sesso := 'M',
+      p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
     ) $$,
     'Email obbligatoria',
     '7. Errore email NULL'
@@ -194,7 +201,8 @@ SELECT lives_ok(
         p_email := %L,
         p_data_nascita := '1980-01-01',
         p_sesso := 'M',
-        p_comune_nascita_id := (SELECT id FROM config.comuni ORDER BY id LIMIT 1)
+        p_comune_nascita_id := (SELECT id FROM config.comuni ORDER BY id LIMIT 1),
+        p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio WHERE codice_interno = 'PR')
       ) $$,
       'test_comune_nasc_' || floor(random() * 1000000)::text || '@test.local'
     ),

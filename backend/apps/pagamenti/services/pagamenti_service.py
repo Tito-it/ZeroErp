@@ -1393,7 +1393,7 @@ def correggi_distinta(contabile_id: int, payload: dict[str, Any]) -> dict[str, A
     _PAYLOAD.validate_allowed_keys(
         payload, allowed=frozenset({"data_contabile", "motivo"})
     )
-    # ⚠️ Facoltativa: se non arriva, la madre usa `CURRENT_DATE`. Il default sta
+    # ⚠️ Facoltativa: se non arriva, la madre usa l'oggi dell'azienda (`fn_data_operativa()`). Il default sta
     #    LA' e non qui — due default sulla stessa cosa divergono al primo cambio.
     data_contabile = _PAYLOAD.optional_date(payload, "data_contabile")
     motivo = _PAYLOAD.optional_string(payload, "motivo")

@@ -20,11 +20,7 @@ import unittest
 
 from django.db import connection, transaction
 
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
+from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
 
 
 class CreateMatriceDbTests(unittest.TestCase):
@@ -55,7 +51,7 @@ class CreateMatriceDbTests(unittest.TestCase):
                 )
                 cur.execute(
                     """
-                    SELECT valido_dal = CURRENT_DATE, valido_al, obbligatorio, attivo,
+                    SELECT valido_dal = script.fn_data_operativa(), valido_al, obbligatorio, attivo,
                            fallback_tipo_indirizzo_id
                       FROM config.tipi_ruolo_tipi_indirizzo WHERE id = %s
                     """,
@@ -63,6 +59,6 @@ class CreateMatriceDbTests(unittest.TestCase):
                 )
                 # obbligatorio/attivo None -> omessi -> DEFAULT false/true.
                 self.assertEqual(cur.fetchone(), (True, None, False, True, None))
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

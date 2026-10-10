@@ -14,14 +14,12 @@ import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { listArticoloUom, listArticoloComponenti, makeArticoloNotesApi, getArticoloFormDefaults } from '../api/catalogo'
-import { DRAWER_WIDTH, MANAGE_ICONS, STATUS_ICONS } from '../../core/constants'
-import { toDateString } from '../../core/utils/date'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { oggiAziendaleString } from '../../core/utils/date'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../core/components/DrawerEntityHeader.vue'
 import DrawerActionsBar from '../../core/components/DrawerActionsBar.vue'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import IvaSelect from '../../core/components/IvaSelect.vue'
 import ContoContabileSelect from '../../core/components/ContoContabileSelect.vue'
@@ -30,7 +28,6 @@ import ArticoloBomDrawer from './ArticoloBomDrawer.vue'
 import ArticoloNoteDrawer from './ArticoloNoteDrawer.vue'
 import PuntoEstensione from '../../core/components/PuntoEstensione.vue'
 import { PUNTI_ESTENSIONE, precaricaPunto } from '../../core/estensioni'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import ToggleSwitch from 'primevue/toggleswitch'
@@ -75,10 +72,6 @@ function isFieldLocked(name) {
 // attiva (lock condizionali registrati in `dbops.lock_columns_conditional`
 // + fn `dbops.fn_non_editable_fields`, migrations 20260522-02..04). Single
 // source of truth BE — nessuna logica locale FE.
-
-// Deferimento contenuto: i LookupSelect montano solo dopo l'animazione del drawer
-// (pattern feedback_content_ready_after_show centralizzato in useDrawerContentReady).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 // Sub-drawer e riepilogo (edit mode)
 const uomDrawerVisible = ref(false)
@@ -136,7 +129,7 @@ async function loadBomRiepilogo() {
     const res = await listArticoloComponenti(props.articoloId)
     const payload = res.data?.data
     const righe = payload?.results || payload || []
-    const oggi = toDateString(new Date())
+    const oggi = oggiAziendaleString()
     // Scopo: il riepilogo nel drawer articolo mostra le stesse righe
     // inizialmente visibili nel sub-drawer BoM: righe senza valido_al
     // oppure con valido_al maggiore/uguale a oggi.
@@ -290,10 +283,6 @@ function close() {
   emit('cancelled')
 }
 
-// Chiusura per volonta' dell'utente: con modifiche non salvate chiede conferma.
-// Dopo il salvataggio riuscito resta `close()`, diretta.
-const chiudi = () => chiudiConConferma(close)
-
 // Fase 7: disattivazione/riattivazione come azione di dominio.
 // L'`attivo` non passa piu' da PATCH: pulsanti dedicati con conferma
 // e refresh detail al ritorno dall'API.
@@ -368,234 +357,231 @@ const drawerActions = computed(() => {
     },
   ]
 })
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.COMPLEX }" :dismissable="true"
-    @after-show="onAfterShow">
-    <template #header>
-      <DrawerTitle :modificato="modificato" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('catalogo.articolo')" />
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('catalogo.articolo')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
+  >
+
+    <!-- Refactor UI drawer 2026-05-21 (Fase 2.A): header info + barra
+         azioni state in alto, simmetrici a contratti/preventivi.
+         Tag stato a destra, Disattiva/Riattiva nel BB azioni; UoM/BoM/Note
+         restano panel inline piu' sotto (pattern misto). -->
+    <template v-if="isEdit && detail">
+      <DrawerEntityHeader>
+        <Tag :value="detail.codice" severity="secondary" />
+        <template #status>
+          <AttivoTag :active="detail.attivo" />
+        </template>
+      </DrawerEntityHeader>
+
+      <DrawerActionsBar :actions="drawerActions" />
     </template>
 
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <template v-if="contentReady">
-
-        <!-- Refactor UI drawer 2026-05-21 (Fase 2.A): header info + barra
-             azioni state in alto, simmetrici a contratti/preventivi.
-             Tag stato a destra, Disattiva/Riattiva nel BB azioni; UoM/BoM/Note
-             restano panel inline piu' sotto (pattern misto). -->
-        <template v-if="isEdit && detail">
-          <DrawerEntityHeader>
-            <Tag :value="detail.codice" severity="secondary" />
-            <template #status>
-              <AttivoTag :active="detail.attivo" />
-            </template>
-          </DrawerEntityHeader>
-
-          <DrawerActionsBar :actions="drawerActions" />
-        </template>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_codice') }} *</label>
-            <InputText v-model="form.codice" :disabled="isFieldLocked('codice')"
-              :invalid="campiErrati.includes('codice')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_uom') }} *</label>
-            <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura"
-              :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_id')" />
-          </div>
-        </div>
-
-        <div class="form-grid">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_descrizione') }} *</label>
-            <InputText v-model="form.descrizione"
-              :invalid="campiErrati.includes('descrizione')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_descrizione_breve') }}</label>
-            <InputText v-model="form.descrizione_breve" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_iva') }}</label>
-            <IvaSelect v-model="form.iva_id" />
-          </div>
-        </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_tipologia') }}</label>
-            <LookupSelect v-model="form.tipo_voce_id" rel="vendite.articoli_tipologie" :placeholder="t('catalogo.select_tipologia')" show-clear />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_gruppo') }}</label>
-            <LookupSelect v-model="form.gruppo_voce_id" rel="vendite.articoli_gruppi" :placeholder="t('catalogo.select_gruppo')" show-clear />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_listino_tipologia') }}</label>
-            <LookupSelect v-model="form.listino_tipologia_id" rel="config.listini_tipologie" :placeholder="t('catalogo.select_listino_tipologia')" show-clear />
-            <small class="app-text-muted mt-025">{{ t('catalogo.hint_listino_tipologia') }}</small>
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_spesa') }}</label>
-            <LookupSelect v-model="form.spesa_id" rel="vendite.articoli_spesa" :placeholder="t('catalogo.select_spesa')" show-clear />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_natura_vendita') }}</label>
-            <!-- NOT NULL a DB (default MERCE): niente show-clear -->
-            <LookupSelect v-model="form.natura_vendita_id" rel="config.nature_vendita" :placeholder="t('catalogo.select_natura_vendita')" />
-            <small class="app-text-muted mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
-          </div>
-        </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_conto_vendita') }}</label>
-            <ContoContabileSelect v-model="form.conto_contabile_vendita_id" tipo="V" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_conto_acquisto') }}</label>
-            <ContoContabileSelect v-model="form.conto_contabile_acquisto_id" tipo="A" />
-          </div>
-        </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_composito') }}</label>
-            <ToggleSwitch v-model="form.is_composito"
-              :disabled="isFieldLocked('is_composito')" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_solo_componente') }}</label>
-            <ToggleSwitch v-model="form.is_solo_componente"
-              :disabled="isFieldLocked('is_solo_componente')" />
-          </div>
-        </div>
-
-        <!-- La GRANA del registro di magazzino, decisa dall'articolo (M-5): per
-             seriale e/o per lotti, «o sempre o mai». `requires_serial` entra
-             nel lock BoM; ⛔ `requires_lotto` NO (Lotto 1 §4.3: il lotto non
-             entra nella distinta) — niente `isFieldLocked`, chi copia il
-             gemello a occhi chiusi eredita un lucchetto che non esiste. -->
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_requires_serial') }}</label>
-            <ToggleSwitch v-model="form.requires_serial"
-              :disabled="isFieldLocked('requires_serial')" />
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_requires_lotto') }}</label>
-            <ToggleSwitch v-model="form.requires_lotto" />
-            <small class="app-text-muted mt-025">{{ t('catalogo.hint_requires_lotto') }}</small>
-          </div>
-        </div>
-
-        <!-- Blocco B: da dove arriva l'articolo. Il modo e' un vocabolario
-             (`config.modi_approvvigionamento`, come la natura di vendita):
-             NOT NULL a DB, niente show-clear. `gestito_a_magazzino` e' una
-             domanda DIVERSA dalla natura MERCE (una merce puo' essere venduta
-             senza passare da giacenza). Il lead time e' in giorni, >= 0, e
-             vuoto significa «non si applica». -->
-        <div class="form-grid-3col">
-          <div class="form-field">
-            <label>{{ t('catalogo.field_modo_approvvigionamento') }}</label>
-            <LookupSelect v-model="form.modo_approvvigionamento_id" rel="config.modi_approvvigionamento"
-              :placeholder="t('catalogo.select_modo_approvvigionamento')" />
-            <small class="app-text-muted mt-025">{{ t('catalogo.hint_modo_approvvigionamento') }}</small>
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_gestito_a_magazzino') }}</label>
-            <ToggleSwitch v-model="form.gestito_a_magazzino" />
-            <small class="app-text-muted mt-025">{{ t('catalogo.hint_gestito_a_magazzino') }}</small>
-          </div>
-          <div class="form-field">
-            <label>{{ t('catalogo.field_lead_time_giorni') }}</label>
-            <InputNumber v-model="form.lead_time_giorni" :min="0" :use-grouping="false"
-              :invalid="campiErrati.includes('lead_time_giorni')" />
-          </div>
-        </div>
-        <!-- Sezione: UoM riepilogo (edit mode) -->
-        <template v-if="isEdit && detail">
-          <div class="app-drawer-section"><h4>{{ t('catalogo.tab_uom') }}</h4></div>
-          <div class="app-riepilogo-section">
-            <div v-if="uomRiepilogo.length > 0" class="app-riepilogo-list">
-              <div v-for="u in uomRiepilogo" :key="u.id" class="app-riepilogo-item">
-                <Tag v-if="u.is_base" :value="t('catalogo.tag_base')" severity="info" />
-                <strong>{{ u.uom_codice }}</strong>
-                <span class="app-riepilogo-detail">{{ u.uom_descrizione }}</span>
-                <span v-if="u.factor_to_base != null && u.factor_to_base !== 1" class="app-riepilogo-detail">
-                  ({{ t('catalogo.col_fattore') }}: {{ u.factor_to_base }})
-                </span>
-              </div>
-            </div>
-            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_uom') }}</div>
-            <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_uom')" :icon="MANAGE_ICONS.UOM"
-              text size="small" class="app-action-btn app-escape mt-025"
-              @click="uomDrawerVisible = true" />
-          </div>
-        </template>
-
-        <!-- Sezione: BoM riepilogo (edit mode, solo se composito) -->
-        <template v-if="isEdit && detail && form.is_composito">
-          <div class="app-drawer-section"><h4>{{ t('catalogo.tab_bom') }}</h4></div>
-          <div class="app-riepilogo-section">
-            <div v-if="bomRiepilogo.length > 0" class="app-riepilogo-list">
-              <div v-for="c in bomRiepilogo" :key="c.id" class="app-riepilogo-item">
-                <strong>{{ c.componente_codice }}</strong>
-                <span class="app-riepilogo-detail">{{ c.componente_descrizione }}</span>
-                <span class="app-riepilogo-detail">(x{{ c.coeff_qta }})</span>
-              </div>
-            </div>
-            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessun_componente') }}</div>
-            <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_bom')" :icon="MANAGE_ICONS.BOM"
-              text size="small" class="app-action-btn app-escape mt-025"
-              @click="bomDrawerVisible = true" />
-          </div>
-        </template>
-
-        <!-- Sezioni contribuite da altri domini (oggi: i lotti di magazzino).
-             La scheda offre il punto, non sa chi ci contribuisce: ogni
-             contributo decide da se' se mostrarsi (core/estensioni.js). -->
-        <PuntoEstensione
-          v-if="isEdit && detail"
-          :punto="PUNTI_ESTENSIONE.ARTICOLO_DRAWER_SEZIONI"
-          :articolo-id="props.articoloId"
-          :articolo="form"
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('catalogo.field_codice') }} *</label>
+        <InputText v-model="form.codice" :disabled="isFieldLocked('codice')"
+          :invalid="campiErrati.includes('codice')"
         />
-
-        <!-- Sezione: Note riepilogo (edit mode) -->
-        <template v-if="isEdit && detail">
-          <div class="app-drawer-section"><h4>{{ t('catalogo.tab_note') }}</h4></div>
-          <div class="app-riepilogo-section">
-            <div v-if="noteRiepilogo.length > 0" class="app-riepilogo-list">
-              <div v-for="n in noteRiepilogo" :key="n.id" class="app-riepilogo-item">
-                <span class="app-riepilogo-detail">{{ ((n.testo_md || n.testo) || '').substring(0, 80) }}{{ ((n.testo_md || n.testo) || '').length > 80 ? '...' : '' }}</span>
-              </div>
-            </div>
-            <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>
-            <Button v-if="!isReadonly"
-              :label="t('catalogo.gestisci_note')" :icon="MANAGE_ICONS.NOTE"
-              text size="small" class="app-action-btn app-escape mt-025"
-              @click="noteDrawerVisible = true" />
-          </div>
-        </template>
-      </template>
-
-      <div v-else class="app-loading">
-        <i :class="STATUS_ICONS.CARICAMENTO" style="font-size: 1.5rem;"></i>
       </div>
-
-      <FormFooter v-if="contentReady" :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
+      <div class="form-field">
+        <label>{{ t('catalogo.field_uom') }} *</label>
+        <LookupSelect v-model="form.uom_id" rel="catalogo.unita_misura"
+          :placeholder="t('catalogo.select_uom')" :disabled="isFieldLocked('uom_id')" />
+      </div>
     </div>
-  </Drawer>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('catalogo.field_descrizione') }} *</label>
+        <InputText v-model="form.descrizione"
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_descrizione_breve') }}</label>
+        <InputText v-model="form.descrizione_breve" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_iva') }}</label>
+        <IvaSelect v-model="form.iva_id" />
+      </div>
+    </div>
+
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('catalogo.field_tipologia') }}</label>
+        <LookupSelect v-model="form.tipo_voce_id" rel="vendite.articoli_tipologie" :placeholder="t('catalogo.select_tipologia')" show-clear />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_gruppo') }}</label>
+        <LookupSelect v-model="form.gruppo_voce_id" rel="vendite.articoli_gruppi" :placeholder="t('catalogo.select_gruppo')" show-clear />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_listino_tipologia') }}</label>
+        <LookupSelect v-model="form.listino_tipologia_id" rel="config.listini_tipologie" :placeholder="t('catalogo.select_listino_tipologia')" show-clear />
+        <small class="app-text-muted mt-025">{{ t('catalogo.hint_listino_tipologia') }}</small>
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_spesa') }}</label>
+        <LookupSelect v-model="form.spesa_id" rel="vendite.articoli_spesa" :placeholder="t('catalogo.select_spesa')" show-clear />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_natura_vendita') }}</label>
+        <!-- NOT NULL a DB (default MERCE): niente show-clear -->
+        <LookupSelect v-model="form.natura_vendita_id" rel="config.nature_vendita" :placeholder="t('catalogo.select_natura_vendita')" />
+        <small class="app-text-muted mt-025">{{ t('catalogo.hint_natura_vendita') }}</small>
+      </div>
+    </div>
+
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('catalogo.field_conto_vendita') }}</label>
+        <ContoContabileSelect v-model="form.conto_contabile_vendita_id" tipo="V" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_conto_acquisto') }}</label>
+        <ContoContabileSelect v-model="form.conto_contabile_acquisto_id" tipo="A" />
+      </div>
+    </div>
+
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('catalogo.field_composito') }}</label>
+        <ToggleSwitch v-model="form.is_composito"
+          :disabled="isFieldLocked('is_composito')" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_solo_componente') }}</label>
+        <ToggleSwitch v-model="form.is_solo_componente"
+          :disabled="isFieldLocked('is_solo_componente')" />
+      </div>
+    </div>
+
+    <!-- La GRANA del registro di magazzino, decisa dall'articolo (M-5): per
+         seriale e/o per lotti, «o sempre o mai». `requires_serial` entra
+         nel lock BoM; ⛔ `requires_lotto` NO (Lotto 1 §4.3: il lotto non
+         entra nella distinta) — niente `isFieldLocked`, chi copia il
+         gemello a occhi chiusi eredita un lucchetto che non esiste. -->
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('catalogo.field_requires_serial') }}</label>
+        <ToggleSwitch v-model="form.requires_serial"
+          :disabled="isFieldLocked('requires_serial')" />
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_requires_lotto') }}</label>
+        <ToggleSwitch v-model="form.requires_lotto" />
+        <small class="app-text-muted mt-025">{{ t('catalogo.hint_requires_lotto') }}</small>
+      </div>
+    </div>
+
+    <!-- Blocco B: da dove arriva l'articolo. Il modo e' un vocabolario
+         (`config.modi_approvvigionamento`, come la natura di vendita):
+         NOT NULL a DB, niente show-clear. `gestito_a_magazzino` e' una
+         domanda DIVERSA dalla natura MERCE (una merce puo' essere venduta
+         senza passare da giacenza). Il lead time e' in giorni, >= 0, e
+         vuoto significa «non si applica». -->
+    <div class="form-grid-3col">
+      <div class="form-field">
+        <label>{{ t('catalogo.field_modo_approvvigionamento') }}</label>
+        <LookupSelect v-model="form.modo_approvvigionamento_id" rel="config.modi_approvvigionamento"
+          :placeholder="t('catalogo.select_modo_approvvigionamento')" />
+        <small class="app-text-muted mt-025">{{ t('catalogo.hint_modo_approvvigionamento') }}</small>
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_gestito_a_magazzino') }}</label>
+        <ToggleSwitch v-model="form.gestito_a_magazzino" />
+        <small class="app-text-muted mt-025">{{ t('catalogo.hint_gestito_a_magazzino') }}</small>
+      </div>
+      <div class="form-field">
+        <label>{{ t('catalogo.field_lead_time_giorni') }}</label>
+        <InputNumber v-model="form.lead_time_giorni" :min="0" :use-grouping="false"
+          :invalid="campiErrati.includes('lead_time_giorni')" />
+      </div>
+    </div>
+    <!-- Sezione: UoM riepilogo (edit mode) -->
+    <template v-if="isEdit && detail">
+      <div class="app-drawer-section"><h4>{{ t('catalogo.tab_uom') }}</h4></div>
+      <div class="app-riepilogo-section">
+        <div v-if="uomRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="u in uomRiepilogo" :key="u.id" class="app-riepilogo-item">
+            <Tag v-if="u.is_base" :value="t('catalogo.tag_base')" severity="info" />
+            <strong>{{ u.uom_codice }}</strong>
+            <span class="app-riepilogo-detail">{{ u.uom_descrizione }}</span>
+            <span v-if="u.factor_to_base != null && u.factor_to_base !== 1" class="app-riepilogo-detail">
+              ({{ t('catalogo.col_fattore') }}: {{ u.factor_to_base }})
+            </span>
+          </div>
+        </div>
+        <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_uom') }}</div>
+        <Button v-if="!isReadonly"
+          :label="t('catalogo.gestisci_uom')" :icon="MANAGE_ICONS.UOM"
+          text size="small" class="app-action-btn app-escape mt-025"
+          @click="uomDrawerVisible = true" />
+      </div>
+    </template>
+
+    <!-- Sezione: BoM riepilogo (edit mode, solo se composito) -->
+    <template v-if="isEdit && detail && form.is_composito">
+      <div class="app-drawer-section"><h4>{{ t('catalogo.tab_bom') }}</h4></div>
+      <div class="app-riepilogo-section">
+        <div v-if="bomRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="c in bomRiepilogo" :key="c.id" class="app-riepilogo-item">
+            <strong>{{ c.componente_codice }}</strong>
+            <span class="app-riepilogo-detail">{{ c.componente_descrizione }}</span>
+            <span class="app-riepilogo-detail">(x{{ c.coeff_qta }})</span>
+          </div>
+        </div>
+        <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessun_componente') }}</div>
+        <Button v-if="!isReadonly"
+          :label="t('catalogo.gestisci_bom')" :icon="MANAGE_ICONS.BOM"
+          text size="small" class="app-action-btn app-escape mt-025"
+          @click="bomDrawerVisible = true" />
+      </div>
+    </template>
+
+    <!-- Sezioni contribuite da altri domini (oggi: i lotti di magazzino).
+         La scheda offre il punto, non sa chi ci contribuisce: ogni
+         contributo decide da se' se mostrarsi (core/estensioni.js). -->
+    <PuntoEstensione
+      v-if="isEdit && detail"
+      :punto="PUNTI_ESTENSIONE.ARTICOLO_DRAWER_SEZIONI"
+      :articolo-id="props.articoloId"
+      :articolo="form"
+    />
+
+    <!-- Sezione: Note riepilogo (edit mode) -->
+    <template v-if="isEdit && detail">
+      <div class="app-drawer-section"><h4>{{ t('catalogo.tab_note') }}</h4></div>
+      <div class="app-riepilogo-section">
+        <div v-if="noteRiepilogo.length > 0" class="app-riepilogo-list">
+          <div v-for="n in noteRiepilogo" :key="n.id" class="app-riepilogo-item">
+            <span class="app-riepilogo-detail">{{ ((n.testo_md || n.testo) || '').substring(0, 80) }}{{ ((n.testo_md || n.testo) || '').length > 80 ? '...' : '' }}</span>
+          </div>
+        </div>
+        <div v-else class="app-riepilogo-empty">{{ t('catalogo.nessuna_nota') }}</div>
+        <Button v-if="!isReadonly"
+          :label="t('catalogo.gestisci_note')" :icon="MANAGE_ICONS.NOTE"
+          text size="small" class="app-action-btn app-escape mt-025"
+          @click="noteDrawerVisible = true" />
+      </div>
+    </template>
+  </AppDrawer>
 
   <!-- Sub-drawer UoM operative -->
   <ArticoloUomDrawer

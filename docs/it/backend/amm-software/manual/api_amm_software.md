@@ -35,7 +35,7 @@ Base URL: `/api/v1/amm-software/`
 >     `invito_inviato_at`, `deve_cambiare_password`, `emittenti_descrizione`.
 >   - Endpoint `disabilita`: nuovo errore `E_PROFILO_ULTIMO_SUPER_ADMIN`
 >     (HTTP 409) tradotto dal trigger DB.
->   - Nuovo endpoint `riattiva` (vedi §1.6).
+>   - ~~Nuovo endpoint `riattiva`~~ — ritirato il 2026-10-04 (D-3, vedi §1.6).
 > - **Fase 2** (LANDED): scope emittenti dichiarativo via
 >   `script.fn_get_user_emittenti_scope` / `fn_change_user_emittenti_scope`
 >   (vedi §2.5/§2.6). Shape `{scope_mode, emittenti_ids, ...capability}`,
@@ -65,14 +65,20 @@ Base URL: `/api/v1/amm-software/`
 
 ### 1.1 GET /api/v1/amm-software/operatori/ -- Lista utenti
 
-Restituisce la lista paginata degli operatori con filtri opzionali.
+Restituisce la lista paginata degli operatori con filtri opzionali: la prima
+scheda dell'area «Accessi» (§1-bis). ⭐ Dal 2026-10-02 una riga e' una credenziale
+di categoria `OPERATORE` (`script.fn_categoria_accesso`, la regola che decide il
+tab), e la veste mostrata e' quella di riferimento (`script.fn_veste_di_riferimento`:
+l'accesa, altrimenti la spenta piu' recente). Ogni riga porta `veste_attiva`: un
+operatore disattivato resta in elenco col tipo `OPERATORE` e `veste_attiva = false`
+(R-DB-1: «disabilitato» si legge dallo stato, non dal ruolo).
 
 **Parametri query string:**
 
 | Parametro | Tipo | Obbligatorio | Descrizione |
 |---|---|---|---|
 | `search` | string | no | Ricerca libera sulle colonne che il catalogo della lista `anagrafiche.operatori` accende per l'operatore (le decide il catalogo, non il codice: `ricerca_full` nella configurazione della lista). Sotto 3 caratteri non filtra (nessun 400). Ogni riga porta anche `soggetto_ragione_sociale` (ragione sociale completa del soggetto, `null` senza soggetto) |
-| `ruolo_sistema` | string | no | Filtra per ruolo: `ADMIN`, `OPERATIVO`, `DISABILITATO` |
+| `is_super_admin` | bool | no | Filtra sul binding SUPER_ADMIN |
 | `unita_organizzativa_id` | int | no | Filtra per unita' organizzativa |
 | `is_active` | bool | no | Filtra per stato attivo (`true`/`false`/`1`/`0`) |
 | `limit` | int | no | Numero massimo risultati (default 50, max 200) |
@@ -140,7 +146,7 @@ Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`.
 | `soggetto_id` | UUID | no | Se valorizzato: associa soggetto esistente (flusso B). Se assente: crea soggetto PF nuovo (flusso A) |
 | `unita_organizzativa_id` | int | no | ID unita' organizzativa di appartenenza |
 | `data_nascita` | string | no | Data nascita (formato `YYYY-MM-DD`) |
-| `sesso` | string | no | `M` o `F` (default `M`) |
+| `sesso` | string | no* | `M`, `F` o `X`. **Nessun default** (2026-10-09): nel flusso A il soggetto nuovo e' un privato, e senza sesso il guard del DB rifiuta con `E_SESSO_OBBLIGATORIO` (campo `sesso`), prima del consenso al riuso. Nel flusso B non si legge |
 | `valido_dal` | string | no | Data inizio validita' (default data corrente) |
 | `valido_al` | string | no | Data fine validita' |
 | `comune_nascita_id` | int | no | ID comune di nascita |
@@ -280,7 +286,8 @@ Il dettaglio e' generato da `script.fn_get_operatore_detail(p_auth_user_id)`
 | Campo | Tipo | Descrizione |
 |---|---|---|
 | `is_super_admin` | bool | `true` se l'identita ha binding `SUPER_ADMIN` attivo (`config.profili_accesso_bindings`, profilo seed id 9100) |
-| `ruolo_applicativo` | string | `OPERATORE` / `CLIENTE_PORTALE` / `FORNITORE_PORTALE` / `SHOP_CUSTOMER` / `API_CLIENT` / `DISABILITATO` |
+| `ruolo_applicativo` | string | Il tipo della veste OPERATORE di riferimento. ⛔ Dal 2026-10-02 mai `DISABILITATO`: spenta, la veste tiene il tipo (`veste_attiva = false`) |
+| `veste_attiva` | bool \| null | Lo stato della veste OPERATORE di riferimento (R-9) |
 | `last_login` | timestamptz \| null | Ultimo login (`auth_user.last_login`); NULL se mai loggato |
 | `invito_inviato_at` | timestamptz \| null | Quando e' stato spedito l'ultimo invito (`identita_digitali.invito_inviato_at`) |
 | `deve_cambiare_password` | bool | Force-reset password al prossimo login |
@@ -318,14 +325,20 @@ Aggiorna i campi modificabili di un utente. Solo i campi presenti nel payload ve
 Dopo la modifica, la cache permessi dell'utente viene invalidata.
 
 **Contract Fase 1 multi-face**: il payload accetta `is_super_admin` + `attivo`.
-Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`. Il
-service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
-(compat layer interno) secondo la regola:
+Il campo legacy `ruolo_sistema` e' **rifiutato** con `E_AMM_VALIDAZIONE`. I due
+flag sono ortogonali, e nessuno dei due si traduce in `ruolo_sistema`:
 
-- `attivo=False` → `DISABILITATO` (a prescindere da `is_super_admin`)
-- `attivo=True, is_super_admin=True` → `ADMIN`
-- `attivo=True, is_super_admin=False` → `OPERATIVO`
-- payload senza `is_super_admin` ne' `attivo` → NO-OP sul ruolo (solo altri campi)
+- `attivo: false` è **«Disabilita»** (§1.5, dal 2026-10-04): la stessa scrittura —
+  veste OPERATORE di riferimento spenta, risorsa umana chiusa con
+  `valido_al = oggi`, sync di `is_active` — eseguita dopo gli altri campi del
+  payload (un `valido_al` nello stesso payload lo sovrascrive la chiusura).
+  Fino a quel giorno l'interruttore lasciava `valido_al` com'era. Sulla veste:
+  **solo** `attivo`, il tipo resta (R-DB-1, 2026-10-02 — prima lo spegnimento scriveva
+  `DISABILITATO`, e la tabella oggi lo rifiuta con `E_RUOLO_APPLICATIVO_RITIRATO`).
+  ⛔ **Non la riaccende** (D-3, 2026-10-04): una veste spenta si riattiva col
+  reinvio dell'invito (§«Invito operatore»), e la accende la persona attivando
+- `is_super_admin` lega o slega il profilo SUPER_ADMIN sulla stessa veste
+- payload senza `is_super_admin` ne' `attivo` → nessuno dei due tocchi
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
 
@@ -337,19 +350,34 @@ service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
 | `first_name` | string | Nuovo nome (auth_user) |
 | `last_name` | string | Nuovo cognome (auth_user) |
 | `is_super_admin` | bool | `true` per binding profilo SUPER_ADMIN, `false` per rimuoverlo |
-| `attivo` | bool | Stato attivo identita digitale + risorsa umana |
+| `attivo` | bool | Stato della veste OPERATORE (`veste_attiva` del dettaglio). Conta solo come transizione: `false` su una veste accesa la spegne come «Disabilita» (risorsa umana chiusa a oggi); `false` su una veste già spenta e `true` su una accesa non cambiano niente; `true` su una veste spenta → 400 `E_AMM_VALIDAZIONE` (`field: attivo`) |
 | `unita_organizzativa_id` | int | Nuova unita' organizzativa |
 | `valido_al` | string | Data fine validita' (formato `YYYY-MM-DD`) |
 
 **Regole:**
 
 - Il payload con `ruolo_sistema` viene rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400).
+- ⛔ `attivo: true` su una veste spenta (disabilitata, o mai attivata) viene
+  rifiutato con `E_AMM_VALIDAZIONE` (HTTP 400, `field: attivo`), senza
+  scrivere niente (D-3, 2026-10-04): l'accesso si riattiva col reinvio
+  dell'invito. Fino a quel giorno lo riaccendeva subito, all'insaputa della
+  persona.
 - Se la modifica equivale alla rimozione dell'**ultimo super admin attivo**,
   il trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin`
   blocca con `E_PROFILO_ULTIMO_SUPER_ADMIN` (HTTP 409) — vedi sezione "Errori".
-- Se `is_super_admin` o `attivo` vengono modificati, viene chiamata
-  `anagrafiche.fn_sync_auth_user_is_active` per sincronizzare `auth_user.is_active`
+- Se `is_super_admin` viene modificato, o la veste si spegne (dentro
+  «Disabilita»), viene chiamata `anagrafiche.fn_sync_auth_user_is_active` per
+  sincronizzare `auth_user.is_active`
 - La cache permessi dell'utente viene invalidata dopo ogni modifica
+- `attivo: false` (l'interruttore «Accesso attivo») spegne come §1.5: invalida
+  gli inviti pendenti e chiude le sessioni della **sola veste operatore** nella
+  stessa transazione, e la cache si invalida a commit avvenuto (A-5, D-5,
+  2026-10-02 — prima solo la cache). ⛔ **Solo se la veste passa da accesa a
+  spenta** (`veste_attiva` del dettaglio): il drawer manda `attivo` a ogni
+  salvataggio, e salvare un operatore già spento non invalida l'invito spedito
+  per riaccenderlo (D-3), e non richiude la risorsa umana che l'invito ha
+  riaperto. `attivo: true` su una veste accesa o un payload senza `attivo` non
+  chiudono sessioni
 
 **Risposta:** dettaglio utente aggiornato (stesso formato di GET §1.3).
 
@@ -358,7 +386,7 @@ service traduce internamente la coppia in `ruolo_sistema` legacy per il repo
 ```bash
 curl -X PATCH -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
-  -d '{"is_super_admin": true, "attivo": true, "unita_organizzativa_id": 3}' \
+  -d '{"is_super_admin": true, "unita_organizzativa_id": 3}' \
   "https://host/api/v1/amm-software/operatori/1/"
 ```
 
@@ -366,10 +394,14 @@ curl -X PATCH -H "Authorization: Bearer <token>" \
 
 ### 1.5 POST /api/v1/amm-software/operatori/{id}/disabilita/ -- Disabilita utente
 
-Disabilita un utente: identita digitale `attivo=false`, `ruolo_applicativo='DISABILITATO'`,
-risorsa umana `attivo=false`+`valido_al=oggi`. Sincronizza `auth_user.is_active`,
-invalida la cache permessi e inserisce tutti i token JWT dell'utente nella
-blacklist (SimpleJWT), impedendo ulteriori accessi.
+Disabilita un utente: la veste OPERATORE di riferimento `attivo=false` (il tipo
+resta, R-DB-1), la sua risorsa umana `attivo=false`+`valido_al=oggi`. Sincronizza `auth_user.is_active`,
+invalida la cache permessi a commit avvenuto, invalida gli **inviti operatore
+pendenti** di quella veste (A-5, 2026-10-02: prima un invito in volo poteva
+ancora riaccenderla) e mette in blacklist le sessioni della **sola veste
+operatore** (refresh JWT col claim `identita_id` di quella veste), nella stessa
+transazione: una chiusura fallita annulla anche la disabilitazione. Le sessioni delle altre vesti della credenziale (shop,
+portale) restano aperte (D-5, 2026-10-02 — prima si chiudevano **tutte**).
 
 **Parametri path:** `id` (int) -- auth_user_id dell'utente.
 
@@ -392,13 +424,13 @@ l'envelope errore (HTTP 409).
 - Invalida la cache permessi dell'utente.
 - Blacklist di tutti i token JWT outstanding (best-effort).
 
-> ⚠️ Difetto noto (M-5): l'UPDATE su `identita_digitali` e' per `auth_user_id`,
-> senza filtro sul ruolo: disattiva e rinomina `DISABILITATO` **tutte** le vesti
-> della credenziale, comprese quelle portale e shop. Vedi
-> [analisi accessi](../../../dev/work-done/analisi-accessi-credenziale-e-vesti.md).
+> ✅ Chiuso M-5 (2026-10-02): si spegne la sola veste operatore, le vesti
+> portale e shop della stessa credenziale restano come sono. ⚠️ Le sessioni
+> chiuse sono ancora TUTTE quelle della credenziale (D-5, piano accessi L-5).
 
-**Risposta:** dettaglio utente aggiornato (con `is_active=false`,
-`attivo=false`, `ruolo_applicativo="DISABILITATO"`).
+**Risposta:** dettaglio utente aggiornato (con `attivo=false`,
+`veste_attiva=false`, `ruolo_applicativo="OPERATORE"`; `is_active` resta `true`
+se la credenziale ha un'altra veste accesa).
 
 **Esempio curl:**
 
@@ -409,40 +441,189 @@ curl -X POST -H "Authorization: Bearer <token>" \
 
 ---
 
-### 1.6 POST /api/v1/amm-software/operatori/{id}/riattiva/ -- Riattiva utente
+### 1.6 ~~POST /api/v1/amm-software/operatori/{id}/riattiva/~~ -- Ritirato (D-3)
 
-Riattiva un utente precedentemente disabilitato. Ordine inverso rispetto
-a `/disabilita/`: padre (`risorse_umane`) prima del figlio
-(`identita_digitali`) per rispettare il framework ATTIVO (un figlio attivo
-richiede padre attivo).
+⛔ **Ritirato il 2026-10-04** (decisione D-3 di Tid, piano accessi L-5): la rotta
+non esiste più, e nemmeno la riattivazione via PATCH `attivo: true` (§1.4).
+Un operatore spento si riattiva col **reinvio dell'invito**
+(`POST operatori/{id}/reinvia-invito/`, [api_invito_operatore.md](../../core/manual/api_invito_operatore.md)):
 
-**Parametri path:** `id` (int) -- auth_user_id dell'utente.
+- il gesto dell'amministratore riapre la **risorsa umana** (il rapporto:
+  `attivo=true`, `valido_al=NULL`, `valido_dal` intatto) nella transazione
+  dell'emissione del token;
+- la **veste** (la porta) resta spenta finché la persona non attiva il link;
+  chi ha già una password lo fa con un clic (token CROSS).
 
-**Payload:** nessuno.
+Il perché: nessuna veste torna attiva senza che la persona lo sappia.
+L'endpoint ritirato riscriveva anche `valido_dal = oggi`, perdendo l'inizio
+del rapporto. Il binding SUPER_ADMIN, come prima, non si ripristina da sé.
 
-**Regole:**
+---
 
-- `risorse_umane`: `attivo=true`, `valido_dal=oggi`, `valido_al=NULL`.
-- `identita_digitali`: `attivo=true`, `ruolo_applicativo='OPERATORE'`.
-- Sync `auth_user.is_active`.
-- Invalida la cache permessi dell'utente.
-- ⚠️ Difetto noto (M-6): l'UPDATE e' per `auth_user_id` e porta a `OPERATORE`
-  **tutte** le identita' della credenziale; con una veste cliente, fornitore o
-  shop i vincoli del DB la fanno fallire. Vedi
-  [analisi accessi](../../../dev/work-done/analisi-accessi-credenziale-e-vesti.md).
-- **Non riattiva il binding SUPER_ADMIN**: se l'utente era stato
-  precedentemente promosso e poi disabilitato, l'eventuale binding va
-  ri-impostato via PATCH `is_super_admin: true` (azione esplicita).
+> ⛔ **Tutte le rotte `operatori/{id}/…` valgono per le sole credenziali di
+> categoria `OPERATORE`** (dal 2026-10-02): un cliente del portale o l'utente
+> tecnico di un processo rispondono `E_AMM_OPERATORE_NOT_FOUND` (404) come un id
+> inesistente. Senza, i comandi spegnerebbero la veste OPERATORE di una
+> macchina — la sua veste e' `OPERATORE` con `tecnica`, e fermarla e' affare
+> del pannello dei processi (A-6).
 
-**Risposta:** dettaglio utente aggiornato (con `is_active=true`,
-`attivo=true`, `ruolo_applicativo="OPERATORE"`).
+---
 
-**Esempio curl:**
+## 1-bis. Area «Accessi» e azioni della credenziale
 
-```bash
-curl -X POST -H "Authorization: Bearer <token>" \
-  "https://host/api/v1/amm-software/operatori/1/riattiva/"
+> Dal 2026-10-02 ([brief-db-be-fe-area-accessi](../../../dev/work-done/brief-db-be-fe-area-accessi.md)).
+> La voce «Operatori» e' diventata l'area **«Accessi»**, tre schede che insieme
+> censiscono TUTTE le credenziali, ognuna in una scheda sola: la partizione la
+> decide il DB (`script.fn_categoria_accesso` → `OPERATORE` / `SISTEMA` /
+> `ALTRO`) e nessuna lista la ricalcola. La prima scheda e' §1.1.
+
+### 1-bis.1 GET /api/v1/amm-software/accessi/altri/ -- Altri accessi
+
+Le credenziali di categoria `ALTRO`: clienti e fornitori del portale, clienti
+dello shop, e le credenziali **senza alcuna veste** (`nessun_accesso = true`).
+Legge `anagrafiche.vw_accessi_altri` (`v.*`: la vista e' il contratto), lista a
+catalogo `anagrafiche.accessi_altri` (104). Envelope paginato standard
+(`count`, `page`, `page_size`, `total_pages`, `results`).
+
+| Parametro | Tipo | Descrizione |
+|---|---|---|
+| `search` | string | Ricerca libera sulle colonne accese dal catalogo (nome, username, email, vesti, soggetti) |
+| `ruolo_applicativo` | string | Una veste di quel tipo fra le vesti della credenziale (`CLIENTE_PORTALE`, `FORNITORE_PORTALE`, `SHOP_CUSTOMER`, …). `DISABILITATO` → 400 |
+| `stato_accesso` | string | Il migliore fra le vesti: `ATTIVO`, `PENDING`, `NON_SPEDITO`, `DISATTIVO`, `NESSUNO`. Estraneo → 400 |
+| `nessun_accesso` | bool | Nessuna veste |
+| `secondo_fattore_stato` | string | `ASSENTE`, `DA_CONFERMARE`, `ATTIVO` |
+| `secondo_fattore_obbligatorio` | bool | |
+| `bloccata` | bool | Blocco dell'amministratore |
+| `limit` / `offset` / `order_by` / `order_dir` | | Ordinabili: `nome_visualizzato` (default), `username`, `stato_accesso`, `nessun_accesso`, `secondo_fattore_stato`, `bloccata`, `ultimo_accesso` (senza verso: dal piu' recente) |
+
+Riga: `auth_user_id`, `username`, `email`, `nome`, `cognome`,
+`nome_visualizzato`, **`vesti`** (lista, una voce per veste anche spenta:
+`identita_id`, `ruolo_applicativo`, `stato` di `script.fn_stato_veste`,
+`attivo`, validita', `invito_inviato_at`, `token_scade_at`, `soggetto_id`,
+`soggetto_ruolo_id`, `soggetto`, **`cliente_ids` (array)**, `fornitore_id`),
+`vesti_elenco`, `soggetti_elenco`, `nessun_accesso`, `stato_accesso`,
+`is_active`, `secondo_fattore_stato`, `secondo_fattore_obbligatorio`,
+`bloccata`, `bloccata_dal`, `motivo_blocco`, `ultimo_accesso`, e la capability
+dell'eliminazione **`can_delete`**, `delete_reason`, `delete_reason_key`,
+`delete_dettaglio` (§1-bis.3: il kebab della riga la legge). ⚠️ La check gira
+per riga filtrata; con una veste esce subito, quindi la ricerca della storia
+tocca le sole credenziali senza vesti.
+
+⚠️ `cliente_ids` e' un array perche' un soggetto_ruolo puo' avere piu' schede
+cliente (una per istanza utility): il FE con una apre quella scheda, con piu'
+d'una la scheda del soggetto. ⚠️ La vista attraversa `anagrafiche.clienti`
+(RLS): la legge la richiesta, con le sue GUC.
+
+### 1-bis.2 GET /api/v1/amm-software/accessi/sistema/ -- Accessi di sistema
+
+Le credenziali di categoria `SISTEMA`: gli utenti tecnici dei processi
+automatici (`tipo = PROCESSO`, con `processo_id`/`processo_codice` da aprire) e
+i sistemi esterni (`tipo = API_CLIENT`, senza processo). **Sola lettura** (A-6):
+il proprietario e' il pannello dei processi. Legge
+`anagrafiche.vw_accessi_sistema`, lista `anagrafiche.accessi_sistema` (105,
+`multi_emittente`: l'emittente per riga). Filtri `search`, `tipo`
+(`PROCESSO`/`API_CLIENT`, estraneo → 400), `emittente_fiscale_id`,
+`identita_attiva`, `bloccata`. Ordinabili: `username` (default), `tipo`,
+`processo_codice`, `emittente_codice`, `emittente_ragione_sociale`,
+`identita_attiva`, `bloccata`, `ultimo_accesso`.
+
+⛔ I verbi dell'amministratore rifiutano una credenziale di questa categoria
+con `E_CREDENZIALE_DI_SISTEMA` (409): il blocco (§1-bis.4) e l'**accensione**
+dell'obbligo del secondo fattore (§1-bis.6). Restano aperte le uscite: lo
+sblocco, lo spegnimento dell'obbligo, la rimozione di un device registrato per
+errore. Il blocco d'emergenza di una credenziale di sistema compromessa si fa
+dal server (sessione del migratore), non dall'app.
+
+### 1-bis.3 GET /api/v1/amm-software/credenziali/{id}/ -- Stato della credenziale
+
+```json
+{ "data": {
+  "auth_user_id": 7, "username": "cliente7", "email": null,
+  "categoria": "ALTRO",
+  "bloccata": true, "bloccata_dal": "2026-10-02T10:00:00+00:00",
+  "bloccata_da": "tid", "motivo_blocco": "abuso",
+  "can_block": true, "block_reason": null, "block_reason_key": null,
+  "can_delete": false, "delete_reason": "CON_VESTI",
+  "delete_reason_key": "amministrazione.accessi.elimina_reason.con_vesti",
+  "delete_dettaglio": {"auth_user_id": 7}
+} }
 ```
+
+`can_block`, `block_reason`, `block_reason_key` sono il **primo motivo** di
+`script.fn_check_credenziale_bloccabile`, la stessa check che il verbo del blocco
+chiama prima di scrivere: pulsante spento e rifiuto dicono la stessa cosa.
+Motivi e chiavi sono del DB; in ordine:
+
+| `block_reason` | `block_reason_key` | Quando |
+| --- | --- | --- |
+| `CREDENZIALE_DI_SISTEMA` | `amministrazione.accessi.blocca_reason.credenziale_di_sistema` | credenziale di categoria `SISTEMA` |
+| `ULTIMO_SUPER_ADMIN` | `amministrazione.accessi.blocca_reason.ultimo_super_admin` | ultimo SUPER_ADMIN raggiungibile |
+
+`can_delete`, `delete_reason`, `delete_reason_key`, `delete_dettaglio` sono allo
+stesso modo il primo motivo di `script.fn_check_credenziale_eliminabile`, la check
+del verbo di §1-bis.5-bis (dal 2026-10-07). In ordine, e il primo vince:
+
+| `delete_reason` | `delete_reason_key` | Quando |
+| --- | --- | --- |
+| `CON_VESTI` | `amministrazione.accessi.elimina_reason.con_vesti` | almeno una veste, anche spenta: con questo motivo la storia non si cerca |
+| `STORIA_NON_VERIFICABILE` | `amministrazione.accessi.elimina_reason.storia_non_verificabile` | manca la FK di `identita_digitali` verso `django.auth_user` (installazione nuova, CI): fail-closed |
+| `CON_STORIA` | `amministrazione.accessi.elimina_reason.con_storia` | una riga la tiene con una FK `RESTRICT`/`NO ACTION`; `delete_dettaglio.dove` e' l'**array** delle tabelle `schema.tabella` (il FE lo unisce in testo per la frase) |
+
+Credenziale inesistente → 404
+`E_CREDENZIALE_NON_TROVATA`. Il blocco si legge da `config.credenziali`
+(leggibile dall'app; le scritture passano dai verbi).
+
+### 1-bis.4 POST /api/v1/amm-software/credenziali/{id}/blocca/ -- Blocca
+
+Corpo `{"motivo": "…"}`, **`Idempotency-Key` obbligatoria**. Chiama
+`script.fn_blocca_credenziale` (SUPER_ADMIN alla prima riga, motivo obbligatorio
+→ `E_CREDENZIALE_MOTIVO_OBBLIGATORIO`, poi il primo motivo della check di §1-bis.3:
+credenziale di sistema → `E_CREDENZIALE_DI_SISTEMA`, anti-lockout →
+`E_PROFILO_ULTIMO_SUPER_ADMIN`, entrambi 409)
+e mette in blacklist **tutte** le sessioni della credenziale, nella stessa
+transazione: un blocco con le sessioni vive non e' un blocco. Il blocco vale su
+tutte le porte, non scade, il reset password non lo toglie. Risposta: lo stato
+di §1-bis.3.
+
+### 1-bis.5 POST /api/v1/amm-software/credenziali/{id}/sblocca/ -- Sblocca
+
+Nessun corpo, `Idempotency-Key` obbligatoria. `script.fn_sblocca_credenziale`:
+idempotente, non tocca i tentativi; le sessioni chiuse dal blocco non si
+riaprono. Risposta: lo stato di §1-bis.3.
+
+### 1-bis.5-bis DELETE /api/v1/amm-software/credenziali/{id}/ -- Elimina
+
+Dal 2026-10-07 (brief-db-elimina-credenziale-senza-veste): il gesto che il
+presidio `dbops.vw_credenziali_da_sanare` chiede per `NESSUNA_VESTE`. Nessun
+corpo, **`Idempotency-Key` obbligatoria** (irreversibile: senza, il doppio invio
+riceverebbe un 404 per un'operazione riuscita). Credenziale inesistente → 404
+`E_CREDENZIALE_NON_TROVATA` prima del verbo. Chiama `script.fn_elimina_credenziale`:
+SUPER_ADMIN alla prima riga, lock sulla riga di `auth_user`, primo motivo della
+check di §1-bis.3, traccia in `config.credenziali_eliminate` (chi, quando, id,
+username, email), poi il `DELETE` (le righe che le appartengono seguono in
+`CASCADE`). Rifiuti, col codice del DB:
+
+| Codice | Status | Quando |
+| --- | --- | --- |
+| `E_CREDENZIALE_CON_VESTI` | 409 | `CON_VESTI` (anche una veste nata durante il gesto: il lock la vede) |
+| `E_CREDENZIALE_CON_STORIA` | 409 | `CON_STORIA`: il messaggio nomina le tabelle |
+| `E_CREDENZIALE_STORIA_NON_VERIFICABILE` | 500 | `STORIA_NON_VERIFICABILE` (TECNICO: rimedia chi amministra il database) |
+
+Risposta `{"status": "ok", "auth_user_id": 7}`. Nessuna sessione da chiudere: una
+credenziale senza vesti non entra da nessuna porta. ⛔ L'app **non ha** il
+`DELETE` su `django.auth_user`: questa e' l'unica strada.
+
+### 1-bis.6 Secondo fattore della credenziale
+
+`GET credenziali/{id}/secondo-fattore/`, `POST …/obbligo/` (`{valore}`),
+`POST …/disattiva/` (`{motivo}`): stesso contratto di prima
+([api_secondo_fattore](../../core/manual/api_secondo_fattore.md)), nuova sede.
+⛔ Fino al 2026-10-02 stavano sotto `operatori/{id}/secondo-fattore/`: ritirate
+nello stesso giro (il secondo fattore e' della credenziale, e un cliente del
+portale non si raggiungeva da li').
+Su una credenziale di sistema `POST …/obbligo/` con `valore = true` → 409
+`E_CREDENZIALE_DI_SISTEMA` (una macchina non ha un telefono); `valore = false` e
+`…/disattiva/` passano.
 
 ---
 
@@ -793,6 +974,82 @@ posti in cui sbagliarla.
 ```bash
 curl -H "Authorization: Bearer <token>" \
   "https://host/api/v1/amm-software/operatori/1/permessi-ereditati/"
+```
+
+---
+
+### 2.8 GET /api/v1/amm-software/operatori/{id}/permessi-effettivi/ -- Permessi effettivi col tetto d'area
+
+Restituisce, per ogni **azione di processo attiva** e per ogni **oggetto del
+catalogo** `config.area_model_overrides`, il valore che l'operatore ha
+**davvero**: la catena individuale (override, profilo) sotto il **tetto
+dell'area** (guida di architettura dei permessi §3). Sola lettura.
+
+⭐ **A cosa serve.** Un override piu' permissivo della sua area resta scritto
+ma **dormiente**: non vale finche' l'area non si riapre. Il pannello permessi
+lo mostra con l'etichetta «limitata dall'area»; senza questa lettura
+mostrerebbe «abilitata» su un'azione che il sistema nega.
+
+⛔ **Non e' `GET /api/v1/core/users/{id}/permessi-effettivi/`**, il riepilogo
+per area senza azioni. Il calcolo sta a DB
+(`script.fn_get_permessi_effettivi_azioni` / `..._oggetti`): sono la stessa
+catena che usano i resolver del backend e le mappe di `/me/`, non una copia.
+
+**Parametri path:** `id` (int) -- auth_user_id dell'utente.
+
+**Risposta:**
+
+```json
+{
+  "data": {
+    "azioni": [
+      {
+        "azione_id": 3,
+        "permission_codename": "genera_fatture_lotti",
+        "area_id": 2,
+        "abilitata_specifica": true,
+        "livello_area": "BLOCCATO",
+        "livello_minimo_area": "TUTTO",
+        "abilitata": false,
+        "limitata_da_area": true
+      }
+    ],
+    "oggetti": [
+      {
+        "app_label": "anagrafiche",
+        "model_name": "conto_bancario",
+        "area_schema_db": "anagrafiche",
+        "livello_override": "TUTTO",
+        "livello_area": "LETTURA",
+        "livello_specifico": "TUTTO",
+        "livello": "LETTURA",
+        "limitato_da_area": true
+      }
+    ]
+  }
+}
+```
+
+| Campo | Significato |
+| --- | --- |
+| `abilitata_specifica` / `livello_specifico` | il valore **senza** tetto: override, poi profilo (azioni) o area (oggetti) |
+| `livello_area` | il livello risolto dell'area della voce (per un oggetto: l'area **dell'oggetto**, `fn_area_di_oggetto`) |
+| `livello_minimo_area` | il minimo che l'azione chiede alla sua area (`config.azioni_processo`) |
+| `abilitata` / `livello` | il valore **applicato** |
+| `limitata_da_area` / `limitato_da_area` | `true` quando il tetto ferma il valore specifico: la voce e' dormiente |
+| `livello_override` | l'override individuale valido sull'oggetto, `null` se non c'e' |
+
+ℹ️ **Nessuna chiave `aree`**: il livello effettivo di un'area e' il suo
+override o l'ereditato (§2.7), che il pannello ha gia'. I valori riflettono lo
+stato **salvato**: il pannello li ricarica dopo ogni salvataggio di un
+override. Un id inesistente risponde con l'errore di operatore non trovato,
+non con «tutto negato».
+
+**Esempio curl:**
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  "https://host/api/v1/amm-software/operatori/1/permessi-effettivi/"
 ```
 
 ---
@@ -1288,8 +1545,21 @@ per primo.
       {
         "vista": "dbops.vw_processi_programmazione_da_guardare",
         "descrizione": "PRESIDIO: i processi automatici la cui sveglia e la cui ultima corsa non tornano. DEVE restare VUOTA. …",
+        "significato": "Uno o più processi automatici non girano come dovrebbero.",
+        "azione": "Per ogni processo segui il rimedio indicato accanto alla sua causa.",
+        "chi_agisce": "SISTEMISTA",
         "conteggio": 1,
-        "righe": [ { "processo_codice": "apply_storicizza_weekly", "stato": "GIRA_E_NON_REGISTRA", "…": "…" } ],
+        "righe": [ { "processo_codice": "apply_storicizza_weekly", "stato": "GIRA_E_NON_REGISTRA", "causa": "GIRA_E_NON_REGISTRA", "…": "…" } ],
+        "cause": [
+          {
+            "causa": "GIRA_E_NON_REGISTRA",
+            "chi_agisce": "SVILUPPO",
+            "significato": "Un lavoro programmato è partito, ma non ha lasciato traccia della sua corsa.",
+            "azione": "Avvisa lo sviluppo: il lavoro si interrompe prima di riuscire a registrare l'esito.",
+            "conteggio": 1,
+            "righe": [ { "processo_codice": "apply_storicizza_weekly", "…": "…" } ]
+          }
+        ],
         "troncato": false,
         "elencabili": true,
         "errore": null,
@@ -1306,8 +1576,11 @@ per primo.
 |---|---|
 | `vista` | nome **qualificato collo schema**: due schemi possono avere viste omonime, e mezzo nome manderebbe a guardare quella sbagliata |
 | `descrizione` | il `COMMENT` della vista — è lì che sta la differenza fra «deve essere zero» e «deve calare» |
-| `conteggio` | `count(*)` **senza filtro e prima delle righe**: dice quanto sta fuori dalle prime consegnate |
+| `significato`, `azione` | il testo **per chi agisce** (`dbops.presidi_testi`, la riga senza variante), nella lingua di chi legge con ripiego su `it`. `null` se il presidio non ha testo: il pannello ripiega sulla `descrizione` |
+| `chi_agisce` | a chi tocca spegnere il presidio **nel suo insieme** (`AMMINISTRATORE`, `SISTEMISTA`, `SVILUPPO`) |
+| `conteggio` | le righe che chiedono un intervento, da `dbops.fn_conta_presidio` (filtro `colonna_stato` compreso): dice quanto sta fuori dalle prime consegnate |
 | `righe` | le prime N righe, con le colonne che la vista ha (forme diverse per vista) |
+| `cause` | solo per i presidi che dichiarano `colonna_variante` (oggi il presidio dei processi): **tutte le cause accese**, da `dbops.fn_conta_presidio_per_variante` (ordine per valore, la causa `null` in coda), ognuna con il suo `conteggio`, il suo `chi_agisce`, `significato` e `azione` (`dbops.presidi_cause` + `presidi_testi`, ripiego per lingua dentro la causa) e le `righe` **del campione** che le appartengono — anche nessuna, se la causa sta oltre le prime righe o la vista non si elenca. Altrove `[]`. ⛔ Una causa senza testo ha i tre campi a `null`: non eredita mai il testo del presidio, che darebbe il rimedio di un altro guasto. ⚠️ Il `conteggio` di una causa non è mai minore delle sue `righe` (conteggio e campione sono due letture), e la somma dei conteggi può scostarsi dal `conteggio` del presidio per la stessa ragione |
 | `troncato` | le righe mostrate non sono tutte — senza, venti su duecento si leggerebbero come «sono venti» |
 | `elencabili` | `false` sulle viste con perimetro (`security_invoker`): il conteggio arriva da `fn_conta_presidio`, le righe **no**, per contratto — «non elencabile» e «niente da elencare» vanno distinti |
 | `errore` | il presidio **non si è potuto leggere**: `conteggio` è `null` e qui c'è il perché. ⛔ Non è uno zero: il verde vuol dire «visto e vuoto» |
@@ -1456,7 +1729,8 @@ Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
 {
   "unit": "zeroerp-digest-presidi-settimanale", "forma": "timer",
   "comando": ["digest_presidi", "--cadenza", "settimanale"],
-  "oncalendar": "Mon *-*-* 07:30", "abilita": true, "avvio_manuale": true,
+  "oncalendar": "*:00", "dovuto": {"ogni": "settimana", "giorno": 0, "dalle": "07:30"},
+  "abilita": true, "avvio_manuale": true,
   "nota": "…",
   "can_esegui_ora": false,
   "can_esegui_ora_reason": "E_PROCESSO_AVVIO_GIA_IN_CODA",
@@ -1467,6 +1741,8 @@ Il dettaglio porta `sveglie`, una riga per unit dichiarata per quel processo
 
 | Campo | Significato |
 | --- | --- |
+| `oncalendar` | la **sveglia** del timer (`null` per un servizio). ⚠️ Su una sveglia calendariale e' `*:00`, ogni ora: la cadenza del lavoro e' `dovuto` |
+| `dovuto` | dal 2026-10-09, solo sulle sveglie calendariali: `{ogni: giorno\|settimana\|mese, giorno, dalle}` — una volta per giorno/settimana/mese **aziendale**, dal `giorno` (0 = lunedi'; o del mese) alle `dalle` (`HH:MM`, fuso dell'azienda). La decide l'`ExecCondition` `e_dovuto` (brief un-solo-fuso-aziendale T-9). `null` = il timer lavora a ogni sveglia |
 | `can_esegui_ora` | **derivato** dal motivo (`reason is None`), mai calcolato a parte |
 | `can_esegui_ora_reason` | il codice macchina del **primo** motivo, o `null` |
 | `can_esegui_ora_reason_key` | la chiave i18n del tooltip — una per motivo, fissata nei locales del client |
@@ -1493,8 +1769,12 @@ lavori vivi si leggono con **una** query per tutte le unit del processo.
 | Codice | HTTP | Quando |
 |---|---|---|
 | `E_AMM_VALIDAZIONE` | 400 | Campi obbligatori mancanti, `ruolo_sistema` legacy nel payload (Fase 1), validazioni domain |
-| `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato (dettaglio, aggiorna, disabilita, riattiva, scope) |
+| `E_AMM_OPERATORE_NOT_FOUND` | 404 | Operatore non trovato (dettaglio, aggiorna, disabilita, scope) |
 | `E_AMM_SCOPE_NON_AMMESSO` | 400 | (Fase 2) `scope_mode` non in `['GLOBAL','SINGLE']`, oppure `SINGLE` con array vuoto/multi-elemento |
+| `E_CREDENZIALE_DI_SISTEMA` | 409 | Blocco o accensione dell'obbligo del secondo fattore su una credenziale di categoria `SISTEMA` (§1-bis). Verbi `script.fn_blocca_credenziale` e `script.fn_imposta_totp_obbligatorio` |
+| `E_CREDENZIALE_CON_VESTI` | 409 | Eliminazione di una credenziale che ha almeno una veste, anche spenta (§1-bis.5-bis). Verbo `script.fn_elimina_credenziale` |
+| `E_CREDENZIALE_CON_STORIA` | 409 | Eliminazione di una credenziale senza vesti che compare gia' fra i dati: il messaggio nomina le tabelle (§1-bis.5-bis) |
+| `E_CREDENZIALE_STORIA_NON_VERIFICABILE` | 500 | Eliminazione dove mancano le FK verso `django.auth_user` (installazione nuova, CI): fail-closed (§1-bis.5-bis) |
 | `E_PROFILO_ULTIMO_SUPER_ADMIN` | 409 | (Fase 1) L'operazione (disabilita, demote, cambio scope) lascerebbe il sistema senza super admin attivi. Trigger DB `trgfn_profili_accesso_bindings_guard_ultimo_super_admin` |
 | `E_OPERATORE_SCOPE_PARAM_NON_VALIDO` | 400 | (Fase 5) `fn_change_user_emittenti_scope` rifiuta il payload (scope_mode invalido, array vuoto/multi-elemento). Codice stabile dal DB, sostituisce il `RAISE 22023` generico pre-Fase 5 |
 | `E_AUDIT_SUMMARY_PARAM_NON_VALIDO` | 400 | (Fase 5) `code` o `storico_id` assenti/malformati nella richiesta audit-summary |

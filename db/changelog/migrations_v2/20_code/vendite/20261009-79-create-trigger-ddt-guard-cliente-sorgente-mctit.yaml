@@ -1,0 +1,61 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGIO: trg_ddt_z10_guard_cliente_sorgente_ins_upd su vendite.ddt
+#   Brief: brief-db-esecutivi-ba-coppia (D-6). Funzione in -78.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   Il guard non rilegge le righe che ci sono. preCondition: zero DDT col BA
+#   diverso da quello dell'ordine o del reso sorgente (expectedResult 0; un
+#   database vuoto la soddisfa).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261009-79-create-trigger-ddt-guard-cliente-sorgente-mctit.yaml
+
+  - changeSet:
+      id: 20261009-79-create-trigger-ddt-guard-cliente-sorgente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ddt: trg_ddt_z10_guard_cliente_sorgente_ins_upd, il DDT ha il billing account del
+        documento da cui nasce. Brief: brief-db-esecutivi-ba-coppia (D-6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM vendite.ddt d
+                JOIN config.sorgenti s ON s.id = d.sorgente_tipo_id
+                LEFT JOIN vendite.ordini o
+                       ON s.codice_interno = 'ORDINE_VENDITA' AND o.uid = d.sorgente_uid
+                LEFT JOIN vendite.resi r
+                       ON s.codice_interno = 'RESO_VENDITA' AND r.uid = d.sorgente_uid
+               WHERE (o.id IS NOT NULL AND o.billing_account_id IS DISTINCT FROM d.billing_account_id)
+                  OR (r.id IS NOT NULL AND r.billing_account_id IS DISTINCT FROM d.billing_account_id);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ddt_z10_guard_cliente_sorgente_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.ddt
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_ddt_guard_cliente_sorgente();
+
+              COMMENT ON TRIGGER trg_ddt_z10_guard_cliente_sorgente_ins_upd ON vendite.ddt
+              IS 'Il DDT ha il billing account dell''ordine o del reso da cui nasce, e non lo cambia se evade gia'' righe d''ordine (E_DOC_CLIENTE_DIVERSO_DA_SORGENTE). Fascia _z10_: dopo trg_ddt_normalize_ins_upd, che riempie il BA dall''ordine, e prima di trg_ddt_z10_guard_emittente_ba_ins_upd. Brief: brief-db-esecutivi-ba-coppia (D-6).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_z10_guard_cliente_sorgente_ins_upd ON vendite.ddt;

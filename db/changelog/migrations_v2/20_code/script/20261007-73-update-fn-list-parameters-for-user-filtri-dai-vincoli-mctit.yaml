@@ -1,0 +1,184 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_list_parameters_for_user: I FILTRI «PURI» ESCONO, LI DICONO I VINCOLI
+#   Brief: brief-db-codici-sfilati-e-lista-parametri §3 (R-2) e §7.6
+#   Corpo di partenza: 20261007-71 (applicato il 2026-10-07), che riscrive.
+#
+# ── PERCHE' UN SECONDO GIRO LO STESSO GIORNO ─────────────────────
+#   Il -71 ha portato la lista sugli override PURI scrivendo in ogni JOIN «le
+#   altre cinque dimensioni IS NULL», e dichiarava ammesse le righe miste. Dopo
+#   il suo apply Tid ha deciso (§7.6) che un override ha UN ambito solo: lo dice
+#   chk_parameter_overrides_un_ambito (20261007-72). Da li' ogni riga e' pura per
+#   costruzione, e quei filtri sono una copia del CHECK nel corpo della lista.
+#   Questo changeSet li toglie e riscrive i commenti che parlavano di righe
+#   miste ammesse. resolved_value delegato a fn_get_parameter_full: invariato.
+#
+# ── IL DIFETTO DI PARTENZA (prima del -71) ───────────────────────
+#   La lista leggeva gli override con filtri diversi per livello: po_us solo
+#   django_user_id, po_em escludeva utente e gruppo, po_gr il solo utente,
+#   po_cat tutte le altre dimensioni. Una riga MISTA (es. utente + categoria)
+#   compariva come «override personale» con un id che la DELETE del backend
+#   (pura) rifiuta con 404, e piu' righe dello stesso ambito moltiplicavano la
+#   riga del parametro. In piu' resolved_value RICOPIAVA la cascata di
+#   script.fn_get_parameter_full: due copie della stessa regola.
+#
+# ── LE DUE CAUSE SI CHIUDONO SUL MODELLO, NON QUI ────────────────
+#   · 20261007-70: uq_overrides_full_scope_v5 NULLS NOT DISTINCT — un ambito,
+#     un override (il v4 non scattava mai);
+#   · 20261007-72: chk_parameter_overrides_un_ambito — ogni override ha
+#     ESATTAMENTE un ambito (decisione di Tid del 2026-10-07): le righe miste
+#     non esistono piu'.
+#   Quindi ogni riga che combacia sulla sua dimensione E' un override puro, e
+#   ce n'e' al piu' una per parametro e ambito. I filtri «le altre dimensioni
+#   IS NULL» nei JOIN sarebbero una copia del CHECK: escono, anche da po_cat
+#   che li aveva gia'. Il LATERAL del gruppo resta, per l'utente in piu'
+#   gruppi (tie-break per id, lo stesso della cascata).
+#   ⚠️ La funzione non dipende dal vincolo per essere creata: lo presuppone per
+#   essere giusta. -72 e -73 si applicano insieme.
+#
+# ── COSA FA ──────────────────────────────────────────────────────
+#   resolved_value CHIAMA script.fn_get_parameter_full con gli stessi ambiti
+#   (sessione e funzione NULL: la lista non li gestisce, e a NULL la cascata
+#   salta quei livelli da sola). La copia della cascata esce dal corpo: il
+#   valore risolto e' quello del runtime per costruzione (regola del 2).
+#
+# ── FIRMA ────────────────────────────────────────────────────────
+#   Invariata: stessi nomi, stessi tipi risolti, stesso RETURNS TABLE, quindi
+#   CREATE OR REPLACE senza DROP. %TYPE su parametri e colonne di uscita;
+#   espliciti p_group_ids (%TYPE[] non esiste) e resolved_value (e' il ritorno
+#   text di fn_get_parameter_full, un override o il default).
+#   Consumatori censiti per nome il 2026-10-07: backend
+#   core/db/parameter_repository.py (list_for_user, SELECT *), pgTAP
+#   script/test-fn-list-parameters-for-user.sql. Nessuna funzione DB la chiama.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-73-update-fn-list-parameters-for-user-filtri-dai-vincoli-mctit.yaml
+
+  - changeSet:
+      id: 20261007-73-update-fn-list-parameters-for-user-filtri-dai-vincoli
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_list_parameters_for_user: escono i filtri «altre dimensioni IS NULL» del -71,
+        copia del CHECK chk_parameter_overrides_un_ambito (20261007-72): ogni override e' puro
+        per costruzione. resolved_value delegato a script.fn_get_parameter_full come nel -71.
+        Firma invariata. Brief: brief-db-codici-sfilati-e-lista-parametri §7.6.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_list_parameters_for_user(
+                  p_django_user_id       config.parameter_overrides.django_user_id%TYPE,
+                  -- %TYPE[] non esiste: tipo esplicito, come in fn_get_parameter_full
+                  p_group_ids            integer[] DEFAULT NULL,
+                  p_emittente_fiscale_id config.parameter_overrides.emittente_fiscale_id%TYPE DEFAULT NULL,
+                  p_categoria_cliente_id config.parameter_overrides.categoria_cliente_id%TYPE DEFAULT NULL
+              )
+              RETURNS TABLE (
+                  code                          config.parameters.code%TYPE,
+                  description                   config.parameters.description%TYPE,
+                  default_value                 config.parameters.default_value%TYPE,
+                  emittente_value               config.parameter_overrides.overridden_value%TYPE,
+                  emittente_override_id         config.parameter_overrides.id%TYPE,
+                  group_value                   config.parameter_overrides.overridden_value%TYPE,
+                  user_value                    config.parameter_overrides.overridden_value%TYPE,
+                  user_override_id              config.parameter_overrides.id%TYPE,
+                  categoria_cliente_value       config.parameter_overrides.overridden_value%TYPE,
+                  categoria_cliente_override_id config.parameter_overrides.id%TYPE,
+                  -- il ritorno di fn_get_parameter_full: un override o il default
+                  resolved_value                text
+              )
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              BEGIN
+                  -- Scopo: tutti i parametri di config.parameters con, per ciascun
+                  -- livello mostrato (emittente, gruppo, utente, categoria_cliente),
+                  -- l'override di quel livello e il valore risolto dal runtime.
+                  -- Destinata alla UI admin: gli id servono alla DELETE del backend.
+                  --
+                  -- Ogni override ha esattamente un ambito
+                  -- (chk_parameter_overrides_un_ambito) e ce n'e' al piu' uno per
+                  -- parametro e ambito (uq_overrides_full_scope_v5, NULLS NOT
+                  -- DISTINCT): ogni LEFT JOIN trova al piu' una riga, e la lista ha
+                  -- una riga per parametro. Le regole stanno nei vincoli, qui non si
+                  -- ripetono.
+                  --
+                  -- resolved_value NON ricopia la cascata: la chiede alla sua sede,
+                  -- script.fn_get_parameter_full (sessione e funzione NULL: la lista
+                  -- non li gestisce, e a NULL quei livelli si saltano da soli).
+                  --
+                  -- p_categoria_cliente_id NULL: NULL = NULL e' falso, il livello
+                  -- categoria non trova righe e le sue colonne restano NULL.
+                  RETURN QUERY
+                  SELECT
+                      p.code,
+                      p.description,
+                      p.default_value,
+                      po_em.overridden_value,
+                      po_em.id,
+                      po_gr.overridden_value,
+                      po_us.overridden_value,
+                      po_us.id,
+                      po_cat.overridden_value,
+                      po_cat.id,
+                      script.fn_get_parameter_full(
+                          p.code,
+                          p_emittente_fiscale_id,
+                          p_django_user_id,
+                          p_group_ids,
+                          NULL,
+                          NULL,
+                          p_categoria_cliente_id
+                      )
+                    FROM config.parameters p
+
+                    LEFT JOIN config.parameter_overrides po_em
+                      ON  po_em.parameter_id         = p.id
+                      AND po_em.emittente_fiscale_id = p_emittente_fiscale_id
+                      AND po_em.attivo               = true
+
+                    -- LATERAL: l'utente puo' stare in piu' gruppi
+                    -- (tie-break per id, lo stesso della cascata)
+                    LEFT JOIN LATERAL (
+                        SELECT o.overridden_value
+                          FROM config.parameter_overrides o
+                         WHERE o.parameter_id    = p.id
+                           AND o.django_group_id = ANY(p_group_ids)
+                           AND o.attivo          = true
+                         ORDER BY o.id
+                         LIMIT 1
+                    ) po_gr ON p_group_ids IS NOT NULL
+
+                    LEFT JOIN config.parameter_overrides po_us
+                      ON  po_us.parameter_id   = p.id
+                      AND po_us.django_user_id = p_django_user_id
+                      AND po_us.attivo         = true
+
+                    LEFT JOIN config.parameter_overrides po_cat
+                      ON  po_cat.parameter_id         = p.id
+                      AND po_cat.categoria_cliente_id = p_categoria_cliente_id
+                      AND po_cat.attivo               = true
+
+                   ORDER BY p.code;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_list_parameters_for_user(
+                  config.parameter_overrides.django_user_id%TYPE,
+                  integer[],
+                  config.parameter_overrides.emittente_fiscale_id%TYPE,
+                  config.parameter_overrides.categoria_cliente_id%TYPE
+              ) IS
+                  'Lista tutti i parametri con l''override di ciascun livello mostrato (emittente, gruppo, utente, categoria_cliente) e gli id (emittente_override_id, user_override_id, categoria_cliente_override_id) per la DELETE del backend. Una riga per parametro per costruzione del modello: ogni override ha esattamente un ambito (chk_parameter_overrides_un_ambito) e ce n''e'' al piu'' uno per parametro e ambito (uq_overrides_full_scope_v5, NULLS NOT DISTINCT). resolved_value e'' script.fn_get_parameter_full con gli stessi ambiti (sessione e funzione NULL): il valore del runtime, non una sua copia. p_categoria_cliente_id NULL: livello categoria saltato. Rev 20261007-71 (brief-db-codici-sfilati-e-lista-parametri §3): livelli puri e cascata delegata (prima ricopiata). Rev 20261007-73 (§7.6): i filtri «puri» escono, li dicono i vincoli.';

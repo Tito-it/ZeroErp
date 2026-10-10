@@ -9,20 +9,17 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useCategorieClientiListiniStore } from '../stores/categorieClientiListini'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useNotify } from '../../core/composables/useNotify'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useLookup } from '../../core/composables/useLookup'
 import { useGlobalLookup } from '../../core/composables/useGlobalLookup'
 import { listEmittentiFiscali } from '../../core/apiCore'
 import { lookupCategorieListiniTipiVariazione } from '../api/categorieClientiListini'
-import { DRAWER_WIDTH } from '../../core/constants'
+import { DRAWER_WIDTH, DATE_FORMAT } from '../../core/constants'
 import { parseIsoDate, toDateString } from '../../core/utils/date'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import Drawer from 'primevue/drawer'
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 import DatePicker from 'primevue/datepicker'
@@ -57,10 +54,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 const isEdit = computed(() => props.mode === 'edit')
@@ -217,165 +210,148 @@ async function handleSave() {
   )
   if (result !== null) { fissa(); emit('saved', result) }
 }
-
-function close() {
-  chiudiConConferma(() => {
-    emit('update:visible', false)
-    emit('cancelled')
-  })
-}
-const suVisibile = gestoreVisibile(emit, close)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :dismissable="true"
-    @after-show="onAfterShow"
+    :title="t('amministrazione.matrice_categorie_listini.drawer_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.STANDARD"
+    :readonly="isReadOnlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('amministrazione.matrice_categorie_listini.drawer_title')"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
-      <div class="form-grid">
-        <!-- === Dimensioni (Fase 4: immutabilita' data-driven da BE non_editable_fields) === -->
+    <div class="form-grid">
+      <!-- === Dimensioni (Fase 4: immutabilita' data-driven da BE non_editable_fields) === -->
+      <div class="form-field">
+        <label>{{ t('amministrazione.matrice_categorie_listini.field_categoria') }} *</label>
+        <LookupSelect
+          v-model="form.categoria_cliente_id"
+          rel="anagrafiche.categorie_clienti"
+          :placeholder="t('amministrazione.matrice_categorie_listini.field_categoria_placeholder')"
+          :disabled="isFieldImmutable('categoria_cliente_id') || isReadOnlyEffective"
+        />
+      </div>
+      <div class="form-field">
+        <label>{{ t('amministrazione.matrice_categorie_listini.field_emittente') }} *</label>
+        <Select
+          v-model="form.emittente_soggetto_ruolo_id"
+          :options="emittentiLookup.items.value"
+          option-label="ragione_sociale"
+          option-value="soggetto_ruolo_id"
+          :placeholder="t('amministrazione.matrice_categorie_listini.field_emittente_placeholder')"
+          filter
+          :disabled="isFieldImmutable('emittente_soggetto_ruolo_id') || isReadOnlyEffective"
+          :invalid="campiErrati.includes('emittente_soggetto_ruolo_id')"
+        />
+      </div>
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_categoria') }} *</label>
+          <label>{{ t('amministrazione.matrice_categorie_listini.field_utility') }} *</label>
           <LookupSelect
-            v-model="form.categoria_cliente_id"
-            rel="anagrafiche.categorie_clienti"
-            :placeholder="t('amministrazione.matrice_categorie_listini.field_categoria_placeholder')"
-            :disabled="isFieldImmutable('categoria_cliente_id') || isReadOnlyEffective"
+            v-model="form.utility_id"
+            rel="config.utilities"
+            :placeholder="t('amministrazione.matrice_categorie_listini.field_utility_placeholder')"
+            :disabled="isFieldImmutable('utility_id') || isReadOnlyEffective"
           />
         </div>
         <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_emittente') }} *</label>
-          <Select
-            v-model="form.emittente_soggetto_ruolo_id"
-            :options="emittentiLookup.items.value"
-            option-label="ragione_sociale"
-            option-value="soggetto_ruolo_id"
-            :placeholder="t('amministrazione.matrice_categorie_listini.field_emittente_placeholder')"
-            filter
-            :disabled="isFieldImmutable('emittente_soggetto_ruolo_id') || isReadOnlyEffective"
-            :invalid="campiErrati.includes('emittente_soggetto_ruolo_id')"
-          />
-        </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.matrice_categorie_listini.field_utility') }} *</label>
-            <LookupSelect
-              v-model="form.utility_id"
-              rel="config.utilities"
-              :placeholder="t('amministrazione.matrice_categorie_listini.field_utility_placeholder')"
-              :disabled="isFieldImmutable('utility_id') || isReadOnlyEffective"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.matrice_categorie_listini.field_classe_utenza') }}</label>
-            <LookupSelect
-              v-model="form.classe_utenza_id"
-              rel="config.classi_utenze"
-              :placeholder="t('amministrazione.matrice_categorie_listini.field_classe_utenza_placeholder')"
-              showClear
-              :disabled="isFieldImmutable('classe_utenza_id') || isReadOnlyEffective"
-            />
-          </div>
-        </div>
-
-        <Message v-if="isEdit" severity="info" :closable="false">
-          {{ t('amministrazione.matrice_categorie_listini.fk_immutable_hint') }}
-        </Message>
-
-        <!-- === Listino + variazione === -->
-        <div class="form-field">
-          <label>{{ t('amministrazione.matrice_categorie_listini.field_listino') }} *</label>
+          <label>{{ t('amministrazione.matrice_categorie_listini.field_classe_utenza') }}</label>
           <LookupSelect
-            v-model="form.listino_id"
-            rel="vendite.listini"
-            :placeholder="t('amministrazione.matrice_categorie_listini.field_listino_placeholder')"
-            :disabled="isReadOnlyEffective"
-          />
-        </div>
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.matrice_categorie_listini.field_tipo_variazione') }}</label>
-            <Select
-              v-model="form.tipo_variazione"
-              :options="tipoVariazioneLookup.items.value"
-              :loading="tipoVariazioneLookup.loading.value"
-              option-label="descrizione"
-              option-value="codice"
-              :placeholder="t('amministrazione.matrice_categorie_listini.variazione_nessuna')"
-              show-clear
-              @change="onTipoVariazioneChange"
-              :disabled="isReadOnlyEffective"
-              :invalid="campiErrati.includes('tipo_variazione')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.matrice_categorie_listini.field_valore_variazione') }}</label>
-            <InputNumber
-              v-model="form.valore_variazione"
-              :max-fraction-digits="4"
-              :disabled="form.tipo_variazione == null || isReadOnlyEffective"
-              showButtons
-              :invalid="campiErrati.includes('valore_variazione')"
-            />
-            <small class="app-text-muted">
-              {{ t('amministrazione.matrice_categorie_listini.field_valore_variazione_hint') }}
-            </small>
-          </div>
-        </div>
-
-        <!-- === Validita' === -->
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('amministrazione.matrice_categorie_listini.field_valido_dal') }} *</label>
-            <DatePicker
-              v-model="form.valido_dal"
-              date-format="dd/mm/yy"
-              show-icon
-              :disabled="isReadOnlyEffective"
-              :invalid="campiErrati.includes('valido_dal')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('amministrazione.matrice_categorie_listini.field_valido_al') }}</label>
-            <DatePicker
-              v-model="form.valido_al"
-              date-format="dd/mm/yy"
-              show-icon
-              show-button-bar
-              :disabled="isReadOnlyEffective"
-              :invalid="campiErrati.includes('valido_al')"
-            />
-          </div>
-        </div>
-
-        <!-- === Attivo === -->
-        <div class="form-field">
-          <label>{{ t('common.attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
-            :invalid="campiErrati.includes('attivo')"
+            v-model="form.classe_utenza_id"
+            rel="config.classi_utenze"
+            :placeholder="t('amministrazione.matrice_categorie_listini.field_classe_utenza_placeholder')"
+            showClear
+            :disabled="isFieldImmutable('classe_utenza_id') || isReadOnlyEffective"
           />
         </div>
       </div>
 
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="close"
-      />
+      <Message v-if="isEdit" severity="info" :closable="false">
+        {{ t('amministrazione.matrice_categorie_listini.fk_immutable_hint') }}
+      </Message>
+
+      <!-- === Listino + variazione === -->
+      <div class="form-field">
+        <label>{{ t('amministrazione.matrice_categorie_listini.field_listino') }} *</label>
+        <LookupSelect
+          v-model="form.listino_id"
+          rel="vendite.listini"
+          :placeholder="t('amministrazione.matrice_categorie_listini.field_listino_placeholder')"
+          :disabled="isReadOnlyEffective"
+        />
+      </div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('amministrazione.matrice_categorie_listini.field_tipo_variazione') }}</label>
+          <Select
+            v-model="form.tipo_variazione"
+            :options="tipoVariazioneLookup.items.value"
+            :loading="tipoVariazioneLookup.loading.value"
+            option-label="descrizione"
+            option-value="codice"
+            :placeholder="t('amministrazione.matrice_categorie_listini.variazione_nessuna')"
+            show-clear
+            @change="onTipoVariazioneChange"
+            :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('tipo_variazione')"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.matrice_categorie_listini.field_valore_variazione') }}</label>
+          <InputNumber
+            v-model="form.valore_variazione"
+            :max-fraction-digits="4"
+            :disabled="form.tipo_variazione == null || isReadOnlyEffective"
+            showButtons
+            :invalid="campiErrati.includes('valore_variazione')"
+          />
+          <small class="app-text-muted">
+            {{ t('amministrazione.matrice_categorie_listini.field_valore_variazione_hint') }}
+          </small>
+        </div>
+      </div>
+
+      <!-- === Validita' === -->
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('amministrazione.matrice_categorie_listini.field_valido_dal') }} *</label>
+          <DatePicker
+            v-model="form.valido_dal"
+            :date-format="DATE_FORMAT"
+            show-icon
+            :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('valido_dal')"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('amministrazione.matrice_categorie_listini.field_valido_al') }}</label>
+          <DatePicker
+            v-model="form.valido_al"
+            :date-format="DATE_FORMAT"
+            show-icon
+            show-button-bar
+            :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('valido_al')"
+          />
+        </div>
+      </div>
+
+      <!-- === Attivo === -->
+      <div class="form-field">
+        <label>{{ t('common.attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+          :invalid="campiErrati.includes('attivo')"
+        />
+      </div>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>

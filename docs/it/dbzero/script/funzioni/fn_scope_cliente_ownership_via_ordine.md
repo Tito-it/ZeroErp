@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_cliente_ownership_via_ordine(p_identita_id bigint, p_or
 CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership_via_ordine(p_identita_id bigint, p_ordine_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     SELECT script.fn_scope_cliente_ownership(
         p_identita_id,

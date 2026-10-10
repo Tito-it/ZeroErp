@@ -12,19 +12,21 @@
 | istanza_utility_id | bigint | NO |  |
 | utility_id | integer | NO |  |
 | classe_utenza_id | integer | YES |  |
-| param_1_num | numeric | YES |  |
-| param_2_txt | character varying | YES |  |
+| param_1_num | numeric(18,6) | YES |  |
+| param_2_txt | character varying(80) | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_istanze_dati_precontrattuali_param_1_num_finito |  |
+| FOREIGN KEY | fk_idp_billing_account_coppia | istanza_utility_id, utility_id |
 | FOREIGN KEY | fk_idp_classi_utenze | classe_utenza_id |
 | FOREIGN KEY | fk_idp_istanze_utilities | istanza_utility_id |
 | FOREIGN KEY | fk_idp_utilities | utility_id |

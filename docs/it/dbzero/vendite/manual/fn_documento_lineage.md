@@ -106,4 +106,21 @@ prenderebbero «permesso negato» fino alla passata serale di `ci_apply`.
 
 ---
 
+### 🔄 rev 2026-10-10 — il grafo si legge una volta
+
+Il pannello «Passaggi» impiegava più di mezzo secondo a ogni apertura (~0,6-0,8 s,
+misurato come applicazione il 2026-10-10), anche per un documento senza
+collegamenti. La vista degli archi costruisce **l'intero grafo** dei documenti,
+già decorato con stato e natura di ogni nodo, e la funzione la ricostruiva più
+volte: al primo passo e a ogni livello della risalita.
+
+Da `20261010-44` la funzione legge la vista **una volta** e risale su quella
+copia: ~0,18 s a chiamata, con le stesse righe di prima su tutti i casi del
+grafo. Il costo che resta è quello di costruire il grafo intero; scendere ai
+millisecondi vorrebbe dire costruire solo i collegamenti del documento chiesto,
+ed è un lavoro a parte. Dettaglio:
+`brief-db-plancache-funzioni-con-query-incorporate` §5.
+
+---
+
 {% include-markdown "signature-core.md" %}

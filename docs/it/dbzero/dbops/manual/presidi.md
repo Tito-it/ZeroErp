@@ -12,7 +12,8 @@
 >
 **Approfondimento tabelle:**
 >
-• [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/manual/riferimenti_morti_esenzioni)
+• [dbops.presidi_testi](/dbzero/dbops/manual/presidi_testi) — *il testo per chi deve agire*
+> • [dbops.riferimenti_morti_esenzioni](/dbzero/dbops/manual/riferimenti_morti_esenzioni)
 > • [dbops.codici_errore_senza_policy](/dbzero/dbops/manual/codici_errore_senza_policy)
 > • [dbops.processi](/dbzero/dbops/manual/processi)
 >
@@ -142,6 +143,41 @@ di quelle il digest riporta il **numero** e non le righe.
 
 ---
 
+### Chi lo spegne, e con quali parole
+
+Dal 2026-10-06 ogni presidio che può accendersi dice anche **a chi tocca
+spegnerlo**, nella colonna `chi_agisce`:
+
+| Valore | Chi è | Che cosa significa per chi legge il pannello |
+| --- | --- | --- |
+| `AMMINISTRATORE` | chi usa l'applicazione | «puoi sistemarlo tu» |
+| `SISTEMISTA` | chi gestisce server, servizi, timer e ruoli del database | «da segnalare a chi gestisce il server» |
+| `SVILUPPO` | serve una modifica al codice o al database | «da segnalare allo sviluppo» |
+
+È un **dato** e non una frase perché il pannello deve poter distinguere *«tocca a
+te»* da *«inoltra»*, e il digest deve poterli raggruppare. È obbligatoria su ogni
+natura tranne `INVENTARIO`, che non si accende: lo impone un vincolo del database.
+
+Le **parole** per chi agisce — cosa vuol dire una riga, cosa fare — stanno in
+[`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi). La `nota` di questa
+tabella e il `COMMENT` della vista restano scritti per chi **mantiene** il
+presidio, e non si riscrivono.
+
+Dal 2026-10-09 la colonna `colonna_variante` dice, per i presidi le cui righe
+sono guasti **diversi**, da quale colonna della vista si legge la causa di ogni
+riga: il testo si sceglie da lì, riga per riga. Vuota = un testo solo per tutto
+il presidio. Per questi presidi anche «a chi tocca» si legge per causa, da
+[`dbops.presidi_cause`](/dbzero/dbops/manual/presidi_cause): `chi_agisce` qui resta
+il valore del presidio nel suo insieme. Dettaglio in
+[`dbops.presidi_testi`](/dbzero/dbops/manual/presidi_testi).
+
+Anche il **conteggio** si legge per causa, dal 2026-10-10:
+[`dbops.fn_conta_presidio_per_variante`](/dbzero/dbops/manual/fn_conta_presidio_per_variante)
+dice quante righe ci sono per ciascuna causa, perché il pannello e il digest
+mostrano solo un campione delle righe e da un campione non si contano i gruppi.
+
+---
+
 ### ⛔ Che cosa NON sta qui
 
 **Il destinatario.** A chi arriva la posta è un fatto di **questa installazione**,
@@ -161,11 +197,16 @@ catalogo rende leggibile a un programma ciò che loro spiegano già in prosa.
 ### Come si aggiunge una riga
 
 1. Si scrive la vista, con il suo `COMMENT` come sempre.
-2. Si aggiunge una riga al CSV di seed, `80_data/sql/dbops/presidi.csv`.
-3. ⛔ **Non c'è un passo 3.** Se il passo 2 si dimentica, il test
+2. Si aggiunge una riga al CSV di seed, `80_data/sql/dbops/presidi.csv`, con
+   `chi_agisce` (vuota, cioè `NULL`, solo su un `INVENTARIO`).
+3. Se il presidio può accendersi, si aggiunge la riga `it` a
+   `80_data/sql/dbops/presidi_testi.csv`: significato e azione.
+4. ⛔ **Non c'è un passo 4.** Se il passo 2 si dimentica, il test
    `db/pgtap/dbops/test-catalogo-presidi-v1.sql` diventa rosso: è il verso che
    impedisce a una vista nuova di nascere fuori dal digest. E il verso opposto —
-   una riga di catalogo che non trova più la sua vista — è il test accanto.
+   una riga di catalogo che non trova più la sua vista — è il test accanto. Se
+   si dimentica il passo 3, è rosso `db/pgtap/dbops/test-presidi-testi-v1.sql`;
+   senza `chi_agisce` la riga la rifiuta il database.
 
 ⚠️ Il seed è un mirror `runOnChange`: rilegge **tutto** il file a ogni migrate,
 quindi appendere una riga ri-propone ai vincoli anche tutte quelle già scritte.
@@ -174,4 +215,5 @@ transazione che si annulla.
 
 ---
 
-*Brief: `docs/it/dev/work-done/brief-db-un-destinatario-per-i-presidi.md`.*
+*Brief: `docs/it/dev/work-done/brief-db-un-destinatario-per-i-presidi.md`;
+`chi_agisce` e i testi: `docs/it/dev/work-done/brief-db-presidi-cosa-significa-cosa-fare.md`.*

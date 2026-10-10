@@ -86,6 +86,15 @@ _ESENZIONI: dict[str, str] = {
     #    con l'azienda accanto. ⚠️ L'OPERATORE resta mono-emittente: il flag
     #    e' della lista, non di chi la guarda.
     "anagrafiche.operatori": "AdminAPIView — gestione utenti; `multi_emittente` certificata: colonna «Emittente fiscale» per riga",
+    # ⭐ L'area «Accessi» (brief-db-be-fe-area-accessi, R-DB-A3, 2026-10-02):
+    #    gli altri due tab accanto agli operatori, stessa porta `AdminAPIView`.
+    #    «Altri accessi» elenca CREDENZIALI di persone (portale, shop, nessuna
+    #    veste): una credenziale non appartiene a un'azienda, e il seed lo dice
+    #    (`perimetro_emittente = false`). «Di sistema» elenca gli utenti dei
+    #    processi automatici, uno per azienda servita: perimetro c'e', e la
+    #    colonna attiva `emittente_codice` lo dice per riga, come gli operatori.
+    "anagrafiche.accessi_altri": "AdminAPIView — credenziali di persone, senza perimetro emittente (perimetro_emittente = false)",
+    "anagrafiche.accessi_sistema": "AdminAPIView — utenti di sistema; `multi_emittente` certificata: colonna «Emittente fiscale» per riga",
     # ⭐ Il registro dei processi automatici e' CATALOGO: descrive il software,
     #    non i dati di un'azienda. Le sue righe valgono identiche su ogni
     #    installazione e non hanno un emittente da cui arrivare — chiedere «da

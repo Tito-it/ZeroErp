@@ -9,17 +9,17 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | bigint | NO |  |
-| codice_interno | character varying | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | YES |  |
-| destinazione_tipo | character varying | NO |  |
+| codice_interno | character varying(40) | NO |  |
+| codice | character varying(40) | NO |  |
+| descrizione | character varying(255) | YES |  |
+| destinazione_tipo | character varying(20) | NO |  |
 | attivo | boolean | NO | true |
 | ordine | smallint | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | e_cessione_beni | boolean | NO |  |
 
 ## 🔒 Vincoli
@@ -42,6 +42,7 @@
 |------|--------|--------|--------|
 | trg_nature_vendita_a10_articoli_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('catalogo', 'articoli', 'natura_vendita_id', 'id', 'attivo')` |
 | trg_nature_vendita_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('codice_interno', 'E_CODICE_NON_MODIFICABILE')` |
+| trg_nature_vendita_a10_nature_vendita_erogazioni_block_d_52fac6 | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('config', 'nature_vendita_erogazioni', 'natura_vendita_id', 'id', 'attivo')` |
 | trg_nature_vendita_a10_preventivi_righe_block_deact_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_prevent_deactivate_if_children('vendite', 'preventivi_righe', 'natura_vendita_id', 'id', 'attivo')` |
 | trg_nature_vendita_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_nature_vendita_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |

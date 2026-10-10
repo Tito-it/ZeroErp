@@ -9,7 +9,7 @@
 -- Rilevante: dopo l'introduzione del trigger
 -- trgfn_articoli_componenti_block_modifica_struttura (BoM immutabile,
 -- migration 20260422-01) non e' piu' possibile cambiare i flag di
--- struttura (incluso esposto_in_fattura) dopo l'INSERT. Il test
+-- struttura (incluso esposizione_in_fattura) dopo l'INSERT. Il test
 -- precedente usava 1 solo prodotto e faceva UPDATE per passare fra i
 -- 3 scenari — pattern non piu' ammesso. Questo test riscritto usa
 -- 3 prodotti composito distinti, uno per scenario.
@@ -103,33 +103,33 @@ INSERT INTO catalogo.articoli(codice, descrizione, uom_id, listino_tipologia_id,
 SELECT 'PGTAP_BOM_B', 'Componente B pgtap', t.uom_id, t.tipologia_prodotti, TRUE
   FROM tmp_ctx t;
 
--- BoM CASO A: A esposto=TRUE coeff=2, B esposto=FALSE coeff=3.
+-- BoM CASO A: A DESCRITTIVO coeff=2, B NASCOSTO coeff=3.
 INSERT INTO catalogo.articoli_componenti(prodotto_id, componente_id, coeff_qta,
                                          obbligatorio, valido_dal, attivo,
-                                         esposto_in_fattura)
-SELECT p.id, a.id, 2, TRUE, CURRENT_DATE, TRUE, TRUE
+                                         esposizione_in_fattura)
+SELECT p.id, a.id, 2, TRUE, script.fn_data_operativa(), TRUE, 'DESCRITTIVO'
   FROM catalogo.articoli p, catalogo.articoli a
  WHERE p.codice = 'PGTAP_BOM_PADRE_A' AND a.codice = 'PGTAP_BOM_A';
 
 INSERT INTO catalogo.articoli_componenti(prodotto_id, componente_id, coeff_qta,
                                          obbligatorio, valido_dal, attivo,
-                                         esposto_in_fattura)
-SELECT p.id, b.id, 3, TRUE, CURRENT_DATE, TRUE, FALSE
+                                         esposizione_in_fattura)
+SELECT p.id, b.id, 3, TRUE, script.fn_data_operativa(), TRUE, 'NASCOSTO'
   FROM catalogo.articoli p, catalogo.articoli b
  WHERE p.codice = 'PGTAP_BOM_PADRE_A' AND b.codice = 'PGTAP_BOM_B';
 
 -- BoM CASO B1 / CASO B2: entrambi componenti non esposti (stessi coeff).
 INSERT INTO catalogo.articoli_componenti(prodotto_id, componente_id, coeff_qta,
                                          obbligatorio, valido_dal, attivo,
-                                         esposto_in_fattura)
-SELECT p.id, a.id, 2, TRUE, CURRENT_DATE, TRUE, FALSE
+                                         esposizione_in_fattura)
+SELECT p.id, a.id, 2, TRUE, script.fn_data_operativa(), TRUE, 'NASCOSTO'
   FROM catalogo.articoli p, catalogo.articoli a
  WHERE p.codice IN ('PGTAP_BOM_PADRE_B1', 'PGTAP_BOM_PADRE_B2') AND a.codice = 'PGTAP_BOM_A';
 
 INSERT INTO catalogo.articoli_componenti(prodotto_id, componente_id, coeff_qta,
                                          obbligatorio, valido_dal, attivo,
-                                         esposto_in_fattura)
-SELECT p.id, b.id, 3, TRUE, CURRENT_DATE, TRUE, FALSE
+                                         esposizione_in_fattura)
+SELECT p.id, b.id, 3, TRUE, script.fn_data_operativa(), TRUE, 'NASCOSTO'
   FROM catalogo.articoli p, catalogo.articoli b
  WHERE p.codice IN ('PGTAP_BOM_PADRE_B1', 'PGTAP_BOM_PADRE_B2') AND b.codice = 'PGTAP_BOM_B';
 
@@ -144,12 +144,12 @@ SELECT l.id AS listino_id
  LIMIT 1;
 
 INSERT INTO vendite.listini_versioni(listino_id, codice_versione, valido_dal, valido_al, stato, attivo)
-SELECT l.listino_id, 'PGTAP_BOM_VER', CURRENT_DATE, CURRENT_DATE + 365, 'ATTIVA', TRUE
+SELECT l.listino_id, 'PGTAP_BOM_VER', script.fn_data_operativa(), script.fn_data_operativa() + 365, 'ATTIVA', TRUE
   FROM tmp_ctx_listino l
  WHERE NOT EXISTS (
      SELECT 1 FROM vendite.listini_versioni lv
       WHERE lv.listino_id = l.listino_id AND lv.attivo = TRUE
-        AND lv.validita @> CURRENT_DATE
+        AND lv.validita @> script.fn_data_operativa()
  );
 
 CREATE TEMP TABLE tmp_ctx_versione AS
@@ -157,7 +157,7 @@ SELECT lv.id AS versione_id, lv.listino_id
   FROM vendite.listini_versioni lv, tmp_ctx_listino l
  WHERE lv.listino_id = l.listino_id
    AND lv.attivo IS TRUE
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
  ORDER BY lv.id DESC
  LIMIT 1;
 
@@ -180,7 +180,7 @@ INSERT INTO anagrafiche.categorie_clienti_listini(
     categoria_cliente_id, utility_id, emittente_soggetto_ruolo_id,
     classe_utenza_id, listino_id, valido_dal, valido_al)
 SELECT t.categoria_id, t.utility_id, t.emittente_srid,
-       NULL, v.listino_id, CURRENT_DATE, CURRENT_DATE + 365
+       NULL, v.listino_id, script.fn_data_operativa(), script.fn_data_operativa() + 365
   FROM tmp_ctx t, tmp_ctx_versione v;
 
 -- 1) Precondizione: 3 righe listino inserite (padre B1 + 2 componenti).
@@ -201,7 +201,7 @@ SELECT is(
     (SELECT COUNT(*)::int FROM vendite.fn_resolve_prezzo_composito(
         (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE_A'),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -221,7 +221,7 @@ SELECT is(
           FROM vendite.fn_resolve_prezzo_composito(
               (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE_A'),
               (SELECT uom_id FROM tmp_ctx),
-              CURRENT_DATE,
+              script.fn_data_operativa(),
               (SELECT ba_id FROM tmp_ctx),
               (SELECT utility_id FROM tmp_ctx),
               (SELECT emittente_srid FROM tmp_ctx),
@@ -243,7 +243,7 @@ SELECT is(
     (SELECT prezzo_unitario FROM vendite.fn_resolve_prezzo_composito(
         (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE_B1'),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -260,7 +260,7 @@ SELECT is(
     (SELECT coeff_qta FROM vendite.fn_resolve_prezzo_composito(
         (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE_B1'),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -278,7 +278,7 @@ SELECT is(
     (SELECT prezzo_unitario FROM vendite.fn_resolve_prezzo_composito(
         (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE_B2'),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),
@@ -295,7 +295,7 @@ SELECT is(
     (SELECT coeff_qta FROM vendite.fn_resolve_prezzo_composito(
         (SELECT id FROM catalogo.articoli WHERE codice = 'PGTAP_BOM_PADRE_B2'),
         (SELECT uom_id FROM tmp_ctx),
-        CURRENT_DATE,
+        script.fn_data_operativa(),
         (SELECT ba_id FROM tmp_ctx),
         (SELECT utility_id FROM tmp_ctx),
         (SELECT emittente_srid FROM tmp_ctx),

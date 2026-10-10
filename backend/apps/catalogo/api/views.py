@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from uuid import UUID
 
 from django.http import JsonResponse
@@ -130,8 +132,6 @@ def _uom_write_fields(*, include_uom_id: bool) -> dict[str, serializers.Field]:
 def _componente_write_fields(*, include_componente_id: bool) -> dict[str, serializers.Field]:
     fields: dict[str, serializers.Field] = {
         "coeff_qta": serializers.DecimalField(required=False, max_digits=18, decimal_places=6),
-        "partecipa_qta": serializers.BooleanField(required=False),
-        "determina_qta_padre": serializers.BooleanField(required=False),
         "obbligatorio": serializers.BooleanField(required=False),
         "valido_dal": serializers.DateField(required=False),
         "valido_al": serializers.DateField(required=False, allow_null=True),
@@ -490,7 +490,7 @@ class ApiArticoloComponentiList(DomainAPIView):
 
 # Scopo: il filtro proprio della distinta, «in vigore al» (None: tutte le
 #        versioni). Lo leggono pagina ed export dalla stessa funzione.
-def _filtri_componenti(qp) -> dict[str, object]:
+def _filtri_componenti(qp) -> dict[str, Any]:
     return {"valido_al": qp_iso_date_optional(qp.get("valido_al"), "valido_al")}
 
 
@@ -518,11 +518,11 @@ _ComponentiLista, _ComponentiListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiArticoloComponentiLista(_ComponentiLista):
+class ApiArticoloComponentiLista(_ComponentiLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "catalogo.articolo_componenti"
 
 
-class ApiArticoloComponentiListaExport(_ComponentiListaExport):
+class ApiArticoloComponentiListaExport(_ComponentiListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "catalogo.articolo_componenti"
 
 

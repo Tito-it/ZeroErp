@@ -6,7 +6,8 @@
 #
 # Uso:
 #   ./scripts/tests/smoke-test-resi-vendita.sh [password]
-#   TOKEN=<jwt> ./scripts/tests/smoke-test-resi-vendita.sh   # salta il login
+#   col login unico: eval "$(./scripts/tests/smoke-login.sh)" e poi lo smoke
+#   (riusa SMOKE_TOKEN finche' vale, `_smoke_auth.sh`; il vecchio TOKEN=<jwt> e' ritirato)
 #
 # Flusso (tutto data-driven, niente cambia-stato nudo sui resi):
 #   A) giro ordine -> genera-DDT (evasione) -> EMESSO -> SPEDITO -> CONSEGNATO
@@ -25,10 +26,8 @@
 set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 EMITTENTE_FISCALE_ID="${EMITTENTE_ID:-32}"
 IVA_ID="${IVA_ID:-16}"
 
@@ -103,19 +102,11 @@ check_4xx() {
 
 # --- 0. Auth ---
 echo "== Smoke RESI vendita (giro ordine->DDT->CONSEGNATO->reso) =="
-if [[ -z "${TOKEN:-}" ]]; then
-    if [[ -z "$PASSWORD" ]]; then
-        echo -e "${RED}Password mancante${NC} (arg1 o SMOKE_PASSWORD) e nessun TOKEN in env"; exit 2
-    fi
-    curl -s -w '\n%{http_code}' -X POST -H "Content-Type: application/json" \
-        -d "{\"username\": \"$USERNAME\", \"password\": \"$PASSWORD\"}" \
-        "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
-    AUTH_BODY=$(sed '$d' "$TMPFILE")
-    TOKEN=$(json_get "$AUTH_BODY" "access")
-    if [[ -z "$TOKEN" ]]; then echo -e "${RED}Auth fallita${NC}"; exit 2; fi
-    log_ok "Autenticazione JWT (password)"
+smoke_login --senza-prompt --uscita 2
+if [[ "$SMOKE_LOGIN_FONTE" == "SMOKE_TOKEN" ]]; then
+    log_ok "Autenticazione JWT (SMOKE_TOKEN da env)"
 else
-    log_ok "Autenticazione JWT (TOKEN da env)"
+    log_ok "Autenticazione JWT (password)"
 fi
 
 # --- 1. Setup: BA+utility coerente + articolo ---

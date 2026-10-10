@@ -103,7 +103,7 @@ WITH ins AS (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, stato_doc_fiscale_id,
       minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id,
          (SELECT id FROM config.stati_doc_fiscale
            WHERE codice_interno = 'DEFINITIVA' AND attivo IS TRUE ORDER BY id LIMIT 1),
@@ -120,7 +120,7 @@ WITH ins AS (
   INSERT INTO vendite.fatture (
       registro_id, data, emittente_soggetto_ruolo_id, billing_account_id,
       tipo_doc_fiscale_id, valuta_id, utility_id, minimo, totale_a_pagare, meta)
-  SELECT r.registro_id, current_date, r.emittente_soggetto_ruolo_id, r.billing_account_id,
+  SELECT r.registro_id, script.fn_data_operativa(), r.emittente_soggetto_ruolo_id, r.billing_account_id,
          r.tipo_doc_fiscale_id, r.valuta_id, r.utility_id, false, 200.00,
          jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
     FROM tmp_refs r
@@ -205,7 +205,7 @@ SELECT ok(
 --   trigger di mirror, e passarli diversi sarebbe un errore di dominio.
 INSERT INTO pagamenti.vendite_movimenti (
     contabile_riga_id, data_effettiva, data_registrazione, importo, meta)
-SELECT tr.riga_id, current_date, current_date, cr.importo,
+SELECT tr.riga_id, script.fn_data_operativa(), script.fn_data_operativa(), cr.importo,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti))
   FROM tmp_riga tr
   JOIN pagamenti.vendite_contabili_righe cr ON cr.id = tr.riga_id;

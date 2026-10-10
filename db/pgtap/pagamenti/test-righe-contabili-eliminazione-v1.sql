@@ -132,7 +132,7 @@ WITH ins AS (
     INSERT INTO pagamenti.vendite_contabili
         (centro_riscossione_id, data_contabile, data_registrazione,
          stato_id, origine, importo_dichiarato, meta)
-    SELECT r.centro_banca_id, current_date, current_date,
+    SELECT r.centro_banca_id, script.fn_data_operativa(), script.fn_data_operativa(),
            CASE v.et WHEN 'D2' THEN r.d_validata ELSE r.d_bozza END,
            v.origine, v.dichiarato,
            jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'et', v.et)
@@ -151,7 +151,7 @@ WITH ins AS (
     INSERT INTO pagamenti.vendite_contabili_righe
         (contabile_id, riferimento_ente, data_pagamento, importo,
          fattura_id, billing_account_id, stato_id, meta)
-    SELECT d.id, 'PGTAP_ELIM_' || v.et, current_date, v.importo,
+    SELECT d.id, 'PGTAP_ELIM_' || v.et, script.fn_data_operativa(), v.importo,
            (SELECT fattura_id FROM tmp_fattura), r.billing_account_id, r.st_abbinata,
            jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'et', v.et)
       FROM tmp_refs r
@@ -249,7 +249,7 @@ SELECT throws_like(
     format($q$INSERT INTO pagamenti.vendite_contabili_righe
                  (contabile_id, riferimento_ente, data_pagamento, importo,
                   fattura_id, billing_account_id, stato_id)
-              VALUES (%s, 'PGTAP_ELIM_NUOVA', current_date, 1.00, %s, %s, %s)$q$,
+              VALUES (%s, 'PGTAP_ELIM_NUOVA', script.fn_data_operativa(), 1.00, %s, %s, %s)$q$,
            (SELECT id FROM tmp_distinte WHERE et = 'D1'),
            (SELECT fattura_id FROM tmp_fattura),
            (SELECT billing_account_id FROM tmp_refs),
@@ -318,7 +318,7 @@ SELECT lives_ok(
     format($q$INSERT INTO pagamenti.vendite_contabili_righe
                  (contabile_id, riferimento_ente, data_pagamento, importo,
                   fattura_id, billing_account_id, stato_id, meta)
-              VALUES (%s, 'PGTAP_ELIM_B', current_date, 400.00, %s, %s, %s,
+              VALUES (%s, 'PGTAP_ELIM_B', script.fn_data_operativa(), 400.00, %s, %s, %s,
                       jsonb_build_object('test_scope', %L, 'et', 'B'))$q$,
            (SELECT id FROM tmp_distinte WHERE et = 'D1'),
            (SELECT fattura_id FROM tmp_fattura),
@@ -439,7 +439,7 @@ SELECT set_config('zeroerp.allow_contabile_riga_delete_override', '', true);
 INSERT INTO pagamenti.vendite_contabili_righe
     (contabile_id, riferimento_ente, data_pagamento, importo,
      fattura_id, billing_account_id, stato_id, meta)
-SELECT d.id, 'PGTAP_ELIM_C2', current_date, 10.00,
+SELECT d.id, 'PGTAP_ELIM_C2', script.fn_data_operativa(), 10.00,
        (SELECT fattura_id FROM tmp_fattura), r.billing_account_id, r.st_abbinata,
        jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti), 'et', 'C2')
   FROM tmp_refs r, tmp_distinte d

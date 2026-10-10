@@ -9,10 +9,10 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
+| codice | character varying(100) | NO |  |
 | unita_organizzativa_id | integer | YES |  |
 | tipo_prestazione_id | integer | YES |  |
-| lingua | character varying | NO | 'it'::character varying |
+| lingua | character varying(5) | NO | 'it'::character varying |
 | oggetto | text | NO |  |
 | corpo_html | text | NO |  |
 | corpo_testo | text | YES |  |

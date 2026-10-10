@@ -55,7 +55,7 @@ SELECT l.id AS listino_id, lv.id AS listino_versione_id
   JOIN vendite.listini_versioni lv ON lv.listino_id = l.id
  WHERE l.tipologia_id = (SELECT tipologia_id FROM tmp_tipologia_prodotti)
    AND lv.attivo IS TRUE
-   AND lv.validita @> CURRENT_DATE
+   AND lv.validita @> script.fn_data_operativa()
  ORDER BY l.id, lv.id
  LIMIT 1;
 

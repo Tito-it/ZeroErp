@@ -1,0 +1,185 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I COMPONENTI DI PREVENTIVO, ORDINE E DDT SI TOCCANO SOLO IN BOZZA
+#   vendite.preventivi_righe_componenti:
+#     trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt
+#     -> vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'riga_preventivo_id', 'DRAFT', 'RIGA')
+#   vendite.ordini_righe_componenti:
+#     trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt
+#     -> vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'riga_ordine_id', 'DRAFT', 'RIGA')
+#   vendite.ddt_righe_componenti:
+#     trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt
+#     -> vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'riga_ddt_id', 'DRAFT', 'RIGA')
+#   Brief: brief-db-righe-e-componenti-le-altre-famiglie (§2.2)
+#
+# -- PERCHE' --------------------------------------------------------
+#   La forma del 20261005-17, che ha chiuso i componenti di contratto e
+#   offerta. Un componente e' contenuto del documento quanto la riga: fuori
+#   dalla bozza il documento e' un fatto (emesso, confermato, spedito), e le
+#   correzioni passano da una revisione o da un documento di rettifica.
+#   Finora la regola la diceva solo il backend (richiedi_righe_in_bozza);
+#   a DB un componente fuori bozza lo fermava, quando lo fermava, il
+#   ricalcolo della riga madre: un effetto, non una regola.
+#   I due lettori DEFINER conoscono le tre famiglie da 20261008-32 e -33.
+#
+# -- CHI SCRIVE I COMPONENTI (censito il 2026-10-08, brief §3.1) ----------
+#   * vendite.fn_preventivo/ordine/ddt_riga_componenti_init: alla nascita
+#     della riga, in bozza;
+#   * vendite.fn_push_preventivo_a_ordine, vendite.fn_genera_ddt_da_ordine,
+#     vendite.fn_crea_revisione_preventivo: sul documento che nasce DRAFT;
+#   * script.trgfn_componenti_propaga_qta: dall'UPDATE della quantita'
+#     della riga (vedi sotto);
+#   * il backend: modifica ed eliminazione passano da
+#     richiedi_righe_in_bozza; il flusso di approvazione dei prezzi scrive
+#     solo sulle righe, mai sui componenti (risposta del team BE,
+#     2026-10-08).
+#   Nessuno scrive un componente fuori bozza per una strada legittima.
+#
+# -- ⚠️ QUELLO CHE QUESTO LOCK NON CHIUDE --------------------------------
+#   Le righe d'ordine hanno il building block solo sul DELETE (INSERT e
+#   UPDATE aperti per data_consegna_confermata), quelle del preventivo
+#   nessuno. Una quantita' cambiata su una riga KIT fuori bozza ora la
+#   respinge questo lock, attraverso la propagazione; su una riga semplice
+#   passa. Il lock dei componenti e' giusto; il debito e' sulle righe, e
+#   sta nel §5.1 del brief.
+#
+# -- NOMI E ORDINE ------------------------------------------------------
+#   Fra i BEFORE ROW parla prima il nome minore, e il rifiuto di stato
+#   deve precedere i guard _a10_ del componente (pending, obbligatorio,
+#   coerenza BOM, blocco della disattivazione coi prelievi). Prefisso della
+#   tabella, come il contratto: «a05» < «a10» e «audit», e il prefisso lungo
+#   precede quello corto dei fratelli scritti a mano —
+#   «trg_preventivi» < «trg_prevrighe» (e < r), «trg_ordini» < «trg_ordrighe»
+#   (i < r), «trg_ddt_» < «trg_ddtrighe» (_ < r). I tre nomi stanno sotto i
+#   63 caratteri. Ordine verificato sul catalogo nel pgTAP.
+#
+# -- IL COMMENTO DEL BUILDING BLOCK ---------------------------------------
+#   Il COMMENT di vendite.trgfn_doc_righe_lock_fuori_bozza elenca gli
+#   adottanti: si aggiorna qui, nello stesso changeSet che li monta. Il
+#   corpo non cambia. ⚠️ L'intestazione del corpo elenca ancora i tipi
+#   «DDT | ORDINE | CONTRATTO | OFFERTA | RESO»: la fonte dei tipi e' il
+#   lettore, e il corpo si tocca al prossimo giro che lo cambia davvero.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261008-34-create-trigger-componenti-lock-fuori-bozza-tre-famiglie-mctit.yaml
+
+  - changeSet:
+      id: 20261008-34-create-trigger-componenti-lock-fuori-bozza-tre-famiglie
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lock «solo in bozza» sui componenti di preventivo, ordine e DDT: il building block
+        vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA, come su contratto e offerta. Brief:
+        brief-db-righe-e-componenti-le-altre-famiglie (§2.2).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgname IN ('trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt',
+                                  'trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt',
+                                  'trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.preventivi_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('PREVENTIVO', 'riga_preventivo_id', 'DRAFT', 'RIGA');
+
+              COMMENT ON TRIGGER trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.preventivi_righe_componenti IS
+                  'I componenti di una riga di preventivo si aggiungono, modificano e tolgono solo con '
+                  'il preventivo in DRAFT (building block vendite.trgfn_doc_righe_lock_fuori_bozza a '
+                  'livello RIGA, E_RIGA_DOC_NON_BOZZA). Le righe del preventivo il lock non lo hanno: '
+                  'il debito e'' nel brief. Fascia _a05_: parla prima dei guard del componente. Brief: '
+                  'brief-db-righe-e-componenti-le-altre-famiglie (§2.2).';
+
+              CREATE TRIGGER trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.ordini_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('ORDINE', 'riga_ordine_id', 'DRAFT', 'RIGA');
+
+              COMMENT ON TRIGGER trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.ordini_righe_componenti IS
+                  'I componenti di una riga d''ordine si aggiungono, modificano e tolgono solo con '
+                  'l''ordine in DRAFT (building block vendite.trgfn_doc_righe_lock_fuori_bozza a '
+                  'livello RIGA, E_RIGA_DOC_NON_BOZZA). Le righe d''ordine hanno il lock solo sul '
+                  'DELETE: il debito e'' nel brief. Fascia _a05_: parla prima dei guard del componente. '
+                  'Brief: brief-db-righe-e-componenti-le-altre-famiglie (§2.2).';
+
+              CREATE TRIGGER trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.ddt_righe_componenti
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'riga_ddt_id', 'DRAFT', 'RIGA');
+
+              COMMENT ON TRIGGER trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.ddt_righe_componenti IS
+                  'I componenti di una riga di DDT si aggiungono, modificano e tolgono solo con il DDT '
+                  'in DRAFT (building block vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA, '
+                  'E_RIGA_DOC_NON_BOZZA), come le sue righe. Fascia _a05_: parla prima dei guard del '
+                  'componente. Brief: brief-db-righe-e-componenti-le-altre-famiglie (§2.2).';
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza()
+              IS 'Building block (2026-09-22): le righe di un documento si aggiungono, modificano e tolgono SOLO '
+                  'finche'' il documento e'' in bozza. BEFORE INSERT OR UPDATE OR DELETE FOR EACH ROW, TG_ARGV = [0]'
+                  ' tipo documento per script.fn_get_stato_testata_documento (DDT | ORDINE | CONTRATTO | OFFERTA |'
+                  ' RESO | PREVENTIVO, quest''ultimo dal 2026-10-08), [1] colonna FK della riga verso il padre, [2]'
+                  ' (opz.) codice_interno dello stato bozza, default DRAFT, [3] (opz., dal 2026-10-05) livello del'
+                  ' padre: TESTATA (default) o RIGA. Rifiuta con E_RIGA_DOC_NON_BOZZA (CONFLITTO_STATO; valori: '
+                  'etichetta, stato, verbo). ⛔ Stato e testata si leggono da lettori SECURITY DEFINER perche'' '
+                  'testate e righe hanno RLS: un guard invoker non distinguerebbe «non c''e''» da «non la vedo». '
+                  'Padre assente = cascade dal padre o FK che parlera'': passa. Su UPDATE guarda anche il padre di '
+                  'provenienza se la riga cambia padre. ⭐ Fascia _a05_: il rifiuto di stato parla PRIMA dei guard '
+                  '_a10_ sui legami (fulfillment, figli), o l''operatore legge un rimedio che non e'' il rimedio. '
+                  'Nasce da D7 di brief-db-partita-merce-per-documento (una riga di DDT gia'' instradata a '
+                  'fatturazione poteva essere disattivata) e ritira nello stesso giro le due copie che la regola '
+                  'aveva a DB: vendite.trgfn_contratti_righe_lock_post_attivazione (droppata) e il ramo 1 di '
+                  'vendite.trgfn_dlt_block_ordrig_ddtrig. Adottanti: vendite.ddt_righe (tre porte), '
+                  'vendite.ordini_righe (solo DELETE: INSERT/UPDATE restano aperti di proposito, '
+                  'data_consegna_confermata cambia dopo la conferma), vendite.contratti_righe (tre porte). '
+                  'Montaggio errato: E_DOC_RIGHE_LOCK_MONTAGGIO (TECNICO). rev 2026-09-29 '
+                  '(brief-db-magazzino-lotto-3-bis-carico-da-reso, D-3b-h): quarto adottante, vendite.resi_righe '
+                  '(tre porte, tipo RESO, colonna reso_id): dal Lotto 3-bis la conferma del reso carica la merce, '
+                  'e una riga cambiata dopo farebbe divergere reso e registro. rev 2026-10-04 '
+                  '(brief-db-righe-esclusione-solo-non-si-vende, R5a): quinto adottante, '
+                  'vendite.offerte_commerciali_eccezioni (tre porte, tipo OFFERTA, colonna offerta_id, stato bozza'
+                  ' BOZZA come terzo argomento): fn_push_offerta_a_contratto copia le righe 1:1 nel contratto, e '
+                  'la regola che il backend diceva da solo ora sta ai due capi. rev 2026-10-05 '
+                  '(brief-db-righe-esclusione-solo-non-si-vende §8.2 B3): livello RIGA per le tabelle NIPOTI, la '
+                  'cui FK punta a una riga del documento: la testata la da'' script.fn_get_testata_id_di_riga '
+                  '(SECURITY DEFINER), e nel contesto entra riga_documento_id. Adottanti a livello RIGA: '
+                  'vendite.contratti_righe_componenti e vendite.offerte_commerciali_eccezioni_componenti (prima li'
+                  ' proteggeva solo il ricalcolo della riga madre, un effetto), vendite.resi_righe_rientri (ritira'
+                  ' la copia scritta a mano in vendite.trgfn_resi_righe_rientri_guard). Non adottante: '
+                  'vendite.ddt_righe_prelievi, la cui regola ammette in EMESSO/SPEDITO il cambio della sola '
+                  'ubicazione d''arrivo — un''altra regola, non una copia. rev 2026-10-08 '
+                  '(brief-db-righe-e-componenti-le-altre-famiglie §2.2): altri tre adottanti a livello RIGA, '
+                  'vendite.preventivi_righe_componenti (tipo PREVENTIVO), vendite.ordini_righe_componenti (ORDINE)'
+                  ' e vendite.ddt_righe_componenti (DDT); i due lettori DEFINER conoscono le tre famiglie. Le '
+                  'righe d''ordine restano chiuse solo sul DELETE e quelle del preventivo non sono chiuse: su una '
+                  'riga kit la quantita'' cambiata fuori bozza ora la respinge il lock del componente, su una '
+                  'semplice no (debito nel brief, §5.1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.ddt_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_ordini_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.ordini_righe_componenti;
+              DROP TRIGGER IF EXISTS trg_preventivi_righe_componenti_a05_doc_bozza_ins_upd_dlt
+                  ON vendite.preventivi_righe_componenti;

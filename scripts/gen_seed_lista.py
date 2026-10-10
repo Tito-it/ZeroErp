@@ -186,6 +186,8 @@ WHITELIST_BE: dict[str, tuple] = {
     "vendite.fattura_righe": ("apps/vendite/db/fatture_repository.py", "_ORDER_COLS_RIGHE_FATTURA"),
     # Le righe di un contratto (2026-09-30, lotto D).
     "vendite.contratto_righe": ("apps/vendite/db/contratti_repository.py", "_ORDER_COLS_RIGHE_CONTRATTO"),
+    # Le righe di un'offerta (2026-10-05, gemella della 103).
+    "vendite.offerta_righe": ("apps/vendite/db/offerte_repository.py", "_ORDER_COLS_RIGHE_OFFERTA"),
     "magazzino.inventario_righe": ("apps/magazzino/db/magazzino_repository.py",
                                    "INVENTARIO_RIGHE_SORT_COLUMNS"),
     "magazzino.rettifica_righe": ("apps/magazzino/db/magazzino_repository.py",
@@ -255,6 +257,12 @@ WHITELIST_BE: dict[str, tuple] = {
     "vendite.listini": ("apps/vendite/db/listini_repository.py", "LISTINI_ORDER_COLUMNS"),
     "anagrafiche.operatori": ("apps/amm_software/db/amm_software_repository.py",
                               "ALLOWED_ORDER_COLUMNS"),
+    # L'area «Accessi» (2026-10-02, brief-db-be-fe-area-accessi R-BE-d): gli
+    # altri due tab accanto agli operatori, whitelist di modulo.
+    "anagrafiche.accessi_altri": ("apps/amm_software/db/accessi_repository.py",
+                                  "ACCESSI_ALTRI_ORDER_COLUMNS"),
+    "anagrafiche.accessi_sistema": ("apps/amm_software/db/accessi_repository.py",
+                                    "ACCESSI_SISTEMA_ORDER_COLUMNS"),
     # Sesto lotto (2026-08-01). Le tre email nascono dalla passata unica del BE
     # su `email_repository` (whitelist + query param + envelope paginato: la
     # forma di ApiConversioniUomList), chiesta PRIMA di scegliere il lotto
@@ -1391,7 +1399,7 @@ def main() -> int:
                         "(gli id restano nuovi: serve solo per ripartire da capo)")
     args = p.parse_args()
     if not args.data:
-        args.data = f"{date.today().isoformat()} 00:00:00"
+        args.data = f"{date.today().isoformat()} 00:00:00"  # noqa: DTZ011 — strumento fuori da Django e senza DB: la data del seed e' quella di chi lo genera
 
     # Prima di aprire la connessione: questo controllo legge solo CSV e sorgenti
     # e deve poter girare anche dove il DB non e' raggiungibile (CI, server BE).

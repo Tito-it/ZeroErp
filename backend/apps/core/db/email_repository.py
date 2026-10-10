@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from typing import Any
 
 from django.db import connection
@@ -24,8 +25,10 @@ def _parse_jsonb_field(row: dict[str, Any], field: str) -> None:
         except (json.JSONDecodeError, TypeError):
             pass
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.email_constants import AMBITO_SISTEMA
 from apps.core.db._helpers import (
+    predicato_giorno_operativo,
     fetch_paged_with_total,
     RicercaFull,
     add_ricerca_full_condition,
@@ -115,7 +118,7 @@ class EmailRepository:
         *,
         search: str | None = None,
         attivo_only: bool = True,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -317,7 +320,7 @@ class EmailRepository:
         search: str | None = None,
         codice: str | None = None,
         attivo_only: bool = True,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -612,9 +615,9 @@ class EmailRepository:
         ambito: str | None = None,
         unita_organizzativa_id: int | None = None,
         pratica_id: int | None = None,
-        data_da: str | None = None,
-        data_a: str | None = None,
-        limit: int = 50,
+        data_da: date | None = None,
+        data_a: date | None = None,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str | None = None,
         order_dir: str | None = None,
@@ -634,12 +637,10 @@ class EmailRepository:
         if pratica_id is not None:
             conditions.append("el.pratica_id = %s")
             params.append(pratica_id)
-        if data_da:
-            conditions.append("el.data_insert >= %s::date")
-            params.append(data_da)
-        if data_a:
-            conditions.append("el.data_insert < (%s::date + INTERVAL '1 day')")
-            params.append(data_a)
+        # Giorni dell'AZIENDA, `data_a` incluso (BB, brief un-solo-fuso-aziendale B-4).
+        giorno_sql, giorno_params = predicato_giorno_operativo("el.data_insert", data_da, data_a)
+        conditions.append(giorno_sql)
+        params.extend(giorno_params)
         add_ricerca_full_condition(conditions, params, search, _RICERCA_EMAIL_LOG, alias="el")
 
         where = " AND ".join(conditions) if conditions else "TRUE"
@@ -792,7 +793,7 @@ class EmailRepository:
         unita_organizzativa_id: int | None = None,
         stato: str | None = None,
         pratica_id: int | None = None,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         conditions: list[str] = []

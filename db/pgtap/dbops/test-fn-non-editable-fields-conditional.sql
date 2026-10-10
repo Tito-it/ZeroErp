@@ -92,13 +92,13 @@ BEGIN
     INSERT INTO catalogo.articoli_componenti
         (prodotto_id, componente_id, coeff_qta, valido_dal, attivo)
     VALUES
-        (v_w_id, v_z_id, 1, CURRENT_DATE, TRUE);
+        (v_w_id, v_z_id, 1, script.fn_data_operativa(), TRUE);
 
     -- BoM W → Y  (W e' ancora padre, Y diventa figlio)
     INSERT INTO catalogo.articoli_componenti
         (prodotto_id, componente_id, coeff_qta, valido_dal, attivo)
     VALUES
-        (v_w_id, v_y_id, 1, CURRENT_DATE, TRUE);
+        (v_w_id, v_y_id, 1, script.fn_data_operativa(), TRUE);
 
     -- BoM Y → Z  (Y diventa anche padre, Z ha un secondo padre)
     -- Nota: (Y,Z) non colpisce uq_articoli_componenti_no_overlap perche'
@@ -106,7 +106,7 @@ BEGIN
     INSERT INTO catalogo.articoli_componenti
         (prodotto_id, componente_id, coeff_qta, valido_dal, attivo)
     VALUES
-        (v_y_id, v_z_id, 1, CURRENT_DATE, TRUE);
+        (v_y_id, v_z_id, 1, script.fn_data_operativa(), TRUE);
 END;
 $$;
 

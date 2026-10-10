@@ -14,6 +14,8 @@ from uuid import UUID
 
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.core.services.fuso_aziendale import oggi_aziendale
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.list_helpers import collezione_completa, validate_order_params
 from apps.core.services.payload_helpers import (
@@ -260,6 +262,7 @@ def _extract_present_bool(
         function_name=function_name,
         log_to_db=True,
     )
+    assert isinstance(value, bool)
     return value
 
 
@@ -349,6 +352,7 @@ def _extract_payload_uuid(
         function_name=function_name,
         log_to_db=True,
     )
+    assert isinstance(value, str)
     try:
         return str(UUID(value.strip()))
     except ValueError as exc:
@@ -808,7 +812,7 @@ def _extract_riga_payload(
         nullable=False,
         message=message,
     )
-    if prezzo is not _MISSING:
+    if not isinstance(prezzo, _MissingType):
         assert prezzo is not None
         ErrorManager.require(
             prezzo >= Decimal("0"),
@@ -996,10 +1000,10 @@ def fn_list_listini(
     attivo: bool | None = None,
     search: str | None = None,
     order_by: str = "codice",
-    order_dir: str = "asc",
-    limit: int = 25,
+    order_dir: str | None = "asc",
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
-) -> tuple[list[dict[str, object]], int]:
+) -> tuple[list[dict[str, Any]], int]:
     function_name = "vendite.listini_service.fn_list_listini"
     if utility_id is not None:
         ErrorManager.require(
@@ -1038,7 +1042,7 @@ def fn_list_listini(
 # Scopo: Restituisce le tipologie listino ammesse per una utility dalla matrice
 #        config.listini_tipologie_utilities. Usato dal drawer per popolare il
 #        Select tipologia al cambio utility.
-def fn_list_tipologie_per_utility(utility_id: int) -> list[dict[str, object]]:
+def fn_list_tipologie_per_utility(utility_id: int) -> list[dict[str, Any]]:
     function_name = "vendite.listini_service.fn_list_tipologie_per_utility"
     ErrorManager.require(
         isinstance(utility_id, int) and utility_id > 0,
@@ -1058,7 +1062,7 @@ def fn_list_tipologie_per_utility(utility_id: int) -> list[dict[str, object]]:
 #        stato rimosso in F2-BE-13: nel modello v5 il listino e' selezionato
 #        dalla matrice `categorie_clienti_listini` o dal contratto, non piu'
 #        da una tabella di associazione dedicata.
-def fn_get_listino_dettaglio(listino_id: int) -> dict[str, object]:
+def fn_get_listino_dettaglio(listino_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_get_listino_dettaglio"
     repository = ListiniRepository()
     listino = _get_listino_or_raise(listino_id, function_name=function_name)
@@ -1067,7 +1071,7 @@ def fn_get_listino_dettaglio(listino_id: int) -> dict[str, object]:
 
 
 # Scopo: Crea il listino e restituisce il dettaglio aggiornato.
-def fn_create_listino(payload: dict[str, Any]) -> dict[str, object]:
+def fn_create_listino(payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_create_listino"
     data = _extract_listino_payload(payload, for_update=False, function_name=function_name)
     repository = ListiniRepository()
@@ -1079,7 +1083,7 @@ def fn_create_listino(payload: dict[str, Any]) -> dict[str, object]:
 
 
 # Scopo: Aggiorna il listino sui soli campi presenti nel payload e restituisce il dettaglio.
-def fn_update_listino(listino_id: int, payload: dict[str, Any]) -> dict[str, object]:
+def fn_update_listino(listino_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_update_listino"
     data = _extract_listino_payload(payload, for_update=True, function_name=function_name)
     ErrorManager.require(
@@ -1112,7 +1116,7 @@ def fn_update_listino(listino_id: int, payload: dict[str, Any]) -> dict[str, obj
 #        Decisione O3 (sviluppo-listini-v2): caso d'uso = listini di test creati
 #        per errore. Per disattivare un listino con figli, usare PATCH attivo=false.
 #        F2-BE-13: rimosso il check su `associazioni_count` (tabella eliminata).
-def fn_delete_listino(listino_id: int) -> dict[str, object]:
+def fn_delete_listino(listino_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_delete_listino"
     listino = _get_listino_or_raise(listino_id, function_name=function_name)
     versioni_count = int(listino.get("versioni_count") or 0)
@@ -1150,7 +1154,7 @@ def fn_delete_listino(listino_id: int) -> dict[str, object]:
 
 
 # Scopo: Restituisce la lista versioni del listino con envelope uniforme.
-def fn_list_versioni(listino_id: int) -> dict[str, object]:
+def fn_list_versioni(listino_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_list_versioni"
     _get_listino_or_raise(listino_id, function_name=function_name)
     repository = ListiniRepository()
@@ -1158,13 +1162,13 @@ def fn_list_versioni(listino_id: int) -> dict[str, object]:
 
 
 # Scopo: Restituisce il dettaglio singolo di una versione del listino.
-def fn_get_versione(listino_id: int, versione_id: int) -> dict[str, object]:
+def fn_get_versione(listino_id: int, versione_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_get_versione"
     return _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
 
 
 # Scopo: Crea una nuova versione in stato iniziale BOZZA e restituisce il dettaglio.
-def fn_create_versione(listino_id: int, payload: dict[str, Any]) -> dict[str, object]:
+def fn_create_versione(listino_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_create_versione"
     _get_listino_or_raise(listino_id, function_name=function_name)
     data = _extract_versione_payload(payload, for_update=False, function_name=function_name)
@@ -1177,7 +1181,7 @@ def fn_create_versione(listino_id: int, payload: dict[str, Any]) -> dict[str, ob
 
 
 # Scopo: Aggiorna la versione sui soli campi modificabili e restituisce il dettaglio.
-def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, object]:
+def fn_update_versione(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_update_versione"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     data = _extract_versione_payload(payload, for_update=True, function_name=function_name)
@@ -1218,7 +1222,7 @@ def fn_clone_versione(
     listino_id: int,
     src_versione_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_clone_versione"
     src_versione = _get_versione_or_raise(listino_id, src_versione_id, function_name=function_name)
 
@@ -1272,7 +1276,7 @@ def fn_clone_versione(
 #        Decisione O2 (sviluppo-listini-v2): solo BOZZA e' eliminabile, perche'
 #        non e' mai stata visibile al pricing e nessuno snapshot e' propagato.
 #        Versioni ATTIVA/CHIUSA sono storiche e immutabili.
-def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, object]:
+def fn_delete_versione(listino_id: int, versione_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_delete_versione"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     stato = str(versione["stato"])
@@ -1373,7 +1377,7 @@ def _plan_versione_state_change(
 #        Modalita` dry_run: se payload contiene `dry_run=true`, la funzione esegue
 #        tutte le validazioni e calcola le versioni che verrebbero auto-chiuse, ma
 #        NON tocca il DB. Restituisce un envelope di preview per il dialog UI.
-def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, object]:
+def fn_change_versione_state(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_change_versione_state"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     nuovo_stato = _extract_enum_string(
@@ -1472,10 +1476,10 @@ def fn_list_righe(
     utility_id: int | None = None,
     attivo: bool | None = True,
     order_by: str = "articolo_descrizione",
-    order_dir: str = "asc",
-    limit: int = 25,
+    order_dir: str | None = "asc",
+    limit: int = DEFAULT_LIMIT,
     offset: int = 0,
-) -> tuple[list[dict[str, object]], int]:
+) -> tuple[list[dict[str, Any]], int]:
     function_name = "vendite.listini_service.fn_list_righe"
     _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     order_by, order_dir = _validate_righe_order(order_by, order_dir, function_name)
@@ -1495,7 +1499,7 @@ def fn_list_righe(
 
 
 # Scopo: Crea una nuova riga prezzo dopo validazione articolo/UoM e restituisce il dettaglio.
-def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, object]:
+def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_create_riga"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
@@ -1515,7 +1519,7 @@ def fn_create_riga(listino_id: int, versione_id: int, payload: dict[str, Any]) -
 
 
 # Scopo: Aggiorna una riga prezzo mantenendo coerenza articolo/UoM quando necessario.
-def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, object]:
+def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_update_riga"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
@@ -1551,7 +1555,7 @@ def fn_update_riga(listino_id: int, versione_id: int, riga_id: int, payload: dic
 
 
 # Scopo: Elimina una riga prezzo esistente restituendo esito uniforme.
-def fn_delete_riga(listino_id: int, versione_id: int, riga_id: int) -> dict[str, object]:
+def fn_delete_riga(listino_id: int, versione_id: int, riga_id: int) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_delete_riga"
     versione = _get_versione_or_raise(listino_id, versione_id, function_name=function_name)
     _assert_versione_bozza_for_riga_op(versione, function_name=function_name)
@@ -1578,7 +1582,7 @@ _ALERT_GIORNI_MAX = 365
 
 
 # Scopo: Restituisce lista versioni ATTIVE in scadenza entro N giorni senza successore.
-def fn_alert_scadenze(giorni: int | None = None) -> dict[str, object]:
+def fn_alert_scadenze(giorni: int | None = None) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_alert_scadenze"
     if giorni is None:
         giorni = _ALERT_GIORNI_DEFAULT
@@ -1598,17 +1602,25 @@ def fn_alert_scadenze(giorni: int | None = None) -> dict[str, object]:
 
 # --- N6: Rettifica controllata su riga ATTIVA non propagata ---
 
+# I codici di `vendite.trgfn_listini_righe_guard_stato` che la rettifica N6
+# puo' incontrare. Dal campo strutturato il codice arriva comunque: i marker
+# servono solo al ripiego sul testo (stesso schema dei prezzi bundle, sotto).
+_KNOWN_RETTIFICA_DB_ERROR_MARKERS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("E_RIGA_LISTINO_PROPAGATA", ("E_RIGA_LISTINO_PROPAGATA",)),
+    ("E_RIGA_LISTINO_VERSIONE_CHIUSA", ("E_RIGA_LISTINO_VERSIONE_CHIUSA",)),
+)
+
 
 # Scopo: Consente la modifica del prezzo di una riga in versione ATTIVA solo se
-#        la riga non e` mai stata propagata in commesse o attivita` fatturabili.
-#        Lock pessimistico FOR UPDATE + check non-propagazione nella stessa transazione.
+#        nessuna riga di commessa o attivita` fatturabile la cita (riga non
+#        «propagata»): lo decide il guard DB sull'UPDATE, sotto lock FOR UPDATE.
 #        Motivo obbligatorio. Audit in meta.rettifiche_controllate[].
 def fn_rettifica_controllata_riga(
     listino_id: int,
     versione_id: int,
     riga_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_rettifica_controllata_riga"
 
     # --- Guard 1 (applicativa): versione esiste e non e` in BOZZA ---
@@ -1631,7 +1643,7 @@ def fn_rettifica_controllata_riga(
     # Il check si basa su validita` (valido_dal <= today <= valido_al), non
     # sullo `stato` persistito: lo stato e` solo flag informativo eventualmente
     # stantio (principio fail-safe: data = fonte di verita` operativa).
-    today = date.today()
+    today = oggi_aziendale()
     valido_dal = versione.get("valido_dal")
     valido_al = versione.get("valido_al")
     is_operativa_oggi = (
@@ -1700,50 +1712,55 @@ def fn_rettifica_controllata_riga(
 
     repository = ListiniRepository()
 
-    # --- Livello 1+2: lock pessimistico + check non-propagazione in transazione ---
-    with transaction.atomic():
-        locked = repository.lock_riga_for_update(versione_id, riga_id)
-        ErrorManager.require(
-            locked,
-            code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
-            message="Riga non trovata.",
-            detail=f"Riga id={riga_id} non trovata nella versione id={versione_id}.",
+    # --- Lock pessimistico + scrittura; «propagata» la decide il guard DB ---
+    # ⛔ Niente controllo di propagazione qui (2026-10-09, ok Tid): la regola e'
+    #    di `vendite.trgfn_listini_righe_guard_stato`, che rifiuta l'UPDATE con
+    #    `E_RIGA_LISTINO_PROPAGATA` (o `E_RIGA_LISTINO_VERSIONE_CHIUSA`). Fino ad
+    #    allora il service ne teneva una copia in Python con un codice suo
+    #    (`E_VENDITE_RIGA_GIA_PROPAGATA`): due sedi, due codici per una regola.
+    try:
+        with transaction.atomic():
+            locked = repository.lock_riga_for_update(versione_id, riga_id)
+            ErrorManager.require(
+                locked,
+                code="E_VENDITE_LISTINO_RIGA_NOT_FOUND",
+                message="Riga non trovata.",
+                detail=f"Riga id={riga_id} non trovata nella versione id={versione_id}.",
+                context={"riga_id": riga_id, "versione_id": versione_id},
+                function_name=function_name,
+                log_to_db=False,
+            )
+            # ⚠️ Prezzo e meta si rileggono SOTTO il lock: letti prima, due
+            #    rettifiche concorrenti scrivevano ognuna il proprio `meta`, e
+            #    la seconda cancellava la voce di audit della prima (e diceva
+            #    un `prezzo_precedente` gia' superato).
+            riga = _get_riga_or_raise(
+                listino_id, versione_id, riga_id, function_name=function_name
+            )
+            meta_corrente = _V.optional_meta(
+                riga, "meta", function_name=function_name
+            ) or {}
+            rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
+            rettifiche.append({
+                "data": datetime.now(timezone.utc).isoformat(),
+                "prezzo_precedente": str(riga["prezzo"]),
+                "prezzo_nuovo": str(nuovo_prezzo),
+                "motivo": motivo,
+            })
+            meta_corrente["rettifiche_controllate"] = rettifiche
+            repository.update_riga_prezzo_rettifica(
+                riga_id=riga_id,
+                nuovo_prezzo=str(nuovo_prezzo),
+                meta_aggiornata=meta_corrente,
+            )
+    except DatabaseError as exc:
+        ErrorManager.raise_from_database_error(
+            exc,
+            known_markers=_KNOWN_RETTIFICA_DB_ERROR_MARKERS,
+            fallback_code="E_VENDITE_VALIDATION",
+            message="Rettifica della riga di listino non ammessa.",
             context={"riga_id": riga_id, "versione_id": versione_id},
             function_name=function_name,
-            log_to_db=False,
-        )
-
-        propagata = repository.check_riga_propagata(riga_id)
-        ErrorManager.require(
-            not propagata,
-            code="E_VENDITE_RIGA_GIA_PROPAGATA",
-            message="Rettifica bloccata: riga gia` propagata.",
-            detail=(
-                "La riga e` stata usata in almeno una commessa o attivita` fatturabile. "
-                "Per correggere il prezzo, clonare la versione."
-            ),
-            context={"riga_id": riga_id},
-            function_name=function_name,
-            log_to_db=True,
-        )
-
-        # --- Audit in meta ---
-        meta_corrente = _V.optional_meta(
-            riga, "meta", function_name="listini_service.fn_rettifica_controllata_riga"
-        ) or {}
-        rettifiche = list(meta_corrente.get("rettifiche_controllate", []))
-        rettifiche.append({
-            "data": datetime.now(timezone.utc).isoformat(),
-            "prezzo_precedente": str(riga["prezzo"]),
-            "prezzo_nuovo": str(nuovo_prezzo),
-            "motivo": motivo,
-        })
-        meta_corrente["rettifiche_controllate"] = rettifiche
-
-        repository.update_riga_prezzo_rettifica(
-            riga_id=riga_id,
-            nuovo_prezzo=str(nuovo_prezzo),
-            meta_aggiornata=meta_corrente,
         )
 
     return {
@@ -1770,7 +1787,7 @@ def fn_applica_variazione_percentuale(
     listino_id: int,
     versione_id: int,
     payload: dict[str, Any],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     function_name = "vendite.listini_service.fn_applica_variazione_percentuale"
 
     # --- Guard: versione esiste e stato BOZZA ---
@@ -1982,7 +1999,7 @@ def fn_preview_bundle(
     return repository.list_bundle_preview(
         versione_id=versione_id,
         articolo_padre_id=str(articolo_padre_id),
-        data_riferimento=data_riferimento or date.today(),
+        data_riferimento=data_riferimento or oggi_aziendale(),
     )
 
 

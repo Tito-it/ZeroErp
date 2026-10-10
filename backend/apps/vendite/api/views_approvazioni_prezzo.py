@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
@@ -25,7 +27,7 @@ from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.constants import DEFAULT_LIMIT
-from apps.core.api.endpoint_helpers import handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, handle_post_json
 from apps.core.api.payload_validators import qp_int, qp_str
 from apps.core.api.success_responses import success_response
 from apps.core.db._helpers import limiti_pagina
@@ -87,9 +89,9 @@ class ApprovaPrezzoView(DomainAPIView):
         summary="Approva richiesta override prezzo (L3)",
     )
     def post(self, request: Request, riga_id: int):
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return approvazioni_prezzo_service.approva(
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
@@ -116,9 +118,9 @@ class RifiutaPrezzoView(DomainAPIView):
         summary="Rifiuta richiesta override prezzo (L3)",
     )
     def post(self, request: Request, riga_id: int):
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             motivazione = payload.get("motivazione")
             return approvazioni_prezzo_service.rifiuta(
                 riga_id=riga_id,
@@ -149,9 +151,9 @@ class ApprovaPrezzoContrattoView(DomainAPIView):
         summary="Approva richiesta override prezzo su riga contratto (L3)",
     )
     def post(self, request: Request, riga_id: int):
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return approvazioni_prezzo_service.approva(
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
@@ -179,9 +181,9 @@ class RifiutaPrezzoContrattoView(DomainAPIView):
         summary="Rifiuta richiesta override prezzo su riga contratto (L3)",
     )
     def post(self, request: Request, riga_id: int):
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             motivazione = payload.get("motivazione")
             return approvazioni_prezzo_service.rifiuta(
                 riga_id=riga_id,
@@ -212,9 +214,9 @@ class ApprovaPrezzoOffertaView(DomainAPIView):
         summary="Approva richiesta override prezzo su eccezione offerta (L3)",
     )
     def post(self, request: Request, riga_id: int):
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             return approvazioni_prezzo_service.approva(
                 riga_id=riga_id,
                 auth_user_id=auth_user_id,
@@ -242,9 +244,9 @@ class RifiutaPrezzoOffertaView(DomainAPIView):
         summary="Rifiuta richiesta override prezzo su eccezione offerta (L3)",
     )
     def post(self, request: Request, riga_id: int):
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
 
-        def _handler(payload: dict[str, object]) -> dict[str, object]:
+        def _handler(payload: dict[str, Any]) -> dict[str, Any]:
             motivazione = payload.get("motivazione")
             return approvazioni_prezzo_service.rifiuta(
                 riga_id=riga_id,
@@ -286,7 +288,7 @@ class ApprovazioniPrezzoCodaView(DomainAPIView):
         summary="Coda approvazioni prezzo (workflow L3)",
     )
     def get(self, request: Request):
-        auth_user_id = request.user.id if request.user.is_authenticated else None
+        auth_user_id = get_actor_user_id(request)
         # Clamp dal BB `limiti_pagina` (tetto `MAX_LIMIT` di core).
         limit, offset = limiti_pagina(
             qp_int(request.query_params.get("limit"), default=DEFAULT_LIMIT),

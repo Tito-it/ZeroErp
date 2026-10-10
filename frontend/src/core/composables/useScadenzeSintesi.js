@@ -18,7 +18,7 @@
 
 import { computed, unref } from 'vue'
 
-import { toDateString } from '../utils/date'
+import { toDateString, oggiAziendaleString } from '../utils/date'
 
 // Normalizza a 'YYYY-MM-DD': il BE manda stringhe ISO (DjangoJSONEncoder), ma
 // il BB accetta anche Date per non obbligare il chiamante a convertire.
@@ -57,7 +57,7 @@ export function sintesiScadenze(scadenze, oggi = undefined) {
   const rate = [...list].sort(
     (a, b) => _iso(a.data_scadenza).localeCompare(_iso(b.data_scadenza)),
   )
-  const oggiIso = _iso(oggi) ?? toDateString(new Date())
+  const oggiIso = _iso(oggi) ?? oggiAziendaleString()
   const idx = rate.findIndex((s) => _iso(s.data_scadenza) >= oggiIso)
   const tuttePassate = idx === -1
   const posizione = tuttePassate ? rate.length - 1 : idx

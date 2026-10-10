@@ -1,0 +1,198 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN'ESCLUSIONE DICE SOLO «NON SI VENDE»
+#   vendite.contratti_righe:               chk_contrighe_esclusione_senza_dati
+#   vendite.offerte_commerciali_eccezioni: chk_offerte_eccezioni_esclusione_senza_dati
+#   + la bonifica delle esclusioni gia' scritte (R6)
+#   Brief: brief-db-righe-esclusione-solo-non-si-vende (R1, R6; decisione di
+#   Tid, 2026-10-04)
+#
+# -- LA REGOLA ----------------------------------------------------
+#   Una riga ESCLUSIONE dice soltanto che il documento non vende
+#   quell'articolo del listino. Non porta dati di fatturazione: i dieci campi
+#   prezzo_unitario, quantita, qta_operativa, uom_operativa_id,
+#   factor_to_base, tipo_erogazione, fonte_quantita_attesa, periodicita,
+#   generazione_canone, competenza_canone restano vuoti.
+#   ⭐ Elenco dei campi VIETATI, non degli ammessi: la domanda e' «quali dati
+#   della vendita», e un campo aggiunto domani alla riga (una nota, un ordine)
+#   non e' detto che lo sia. E' il rovescio dell'elenco del guard _a05_ (le
+#   AMMESSE in UPDATE), che risponde a un'altra domanda: «che cosa si tocca».
+#   A parlare all'operatore e' il guard script.trgfn_righe_guard_esclusione_
+#   senza_dati (-47, montato in -48/-49), col campo; il CHECK e' la rete e la
+#   regola leggibile nella struttura. Gli altri CHECK della riga sono
+#   soddisfatti dai campi vuoti (un CHECK su NULL passa, e il prezzo NULL e'
+#   gia' la forma dell'esclusione).
+#
+# -- LE RIGHE GIA' SCRITTE (R6) -----------------------------------
+#   Fino a oggi il drawer creava l'esclusione con quantita' 1, fonte FISSA e
+#   un'erogazione, e i trigger riempivano UdM e fattore. Si svuotano QUI, prima
+#   dei CHECK: la correzione non sceglie niente al posto di nessuno, perche'
+#   «vuoto» e' esattamente cio' che la regola dice. (Diverso dal 20261004-30,
+#   dove correggere voleva dire inventare un'erogazione: li' preCondition HALT
+#   e correzione a mano.)
+#   ⭐ Perche' qui, al -76, e non al -40: svuotare chiede che la fonte non sia
+#   piu' NOT NULL (-40) e che i due trigger di valorizzazione saltino
+#   l'esclusione (-48/-49), altrimenti rimetterebbero FISSA e solleverebbero
+#   E_QTA_MISSING. L'autogen ordina per numero, quindi il -76 viene dopo.
+#   ⚠️ L'UPDATE incontra due rifiuti voluti, che non riguardano una
+#   correzione di struttura: «un'esclusione non si modifica» (_a05_) e «fuori
+#   bozza» (_a05_, contratti attivi, offerte emesse). Si spengono PER NOME, i
+#   soli due per tabella, il tempo dell'UPDATE, nella stessa transazione del
+#   changeSet: sono trigger scritti a mano (-48/-49 e 20260922), non generati
+#   da ci_apply (linee-guida-sql 11.5). Gli altri trigger della riga girano:
+#   audit e tx_id scrivono chi ha corretto.
+#   Su un DB da zero le tabelle sono vuote: l'UPDATE non tocca niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261004-76-alter-righe-eccezione-esclusione-senza-dati-mctit.yaml
+
+  - changeSet:
+      id: 20261004-76-alter-righe-eccezione-esclusione-senza-dati
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.contratti_righe e vendite.offerte_commerciali_eccezioni: le esclusioni gia'
+        scritte si svuotano dei dati di vendita, poi un CHECK vieta i dieci campi
+        sull'ESCLUSIONE. Brief: brief-db-righe-esclusione-solo-non-si-vende (R1, R6).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint c
+                   WHERE (c.conrelid = 'vendite.contratti_righe'::regclass
+                          AND c.conname = 'chk_contrighe_esclusione_senza_dati')
+                      OR (c.conrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+                          AND c.conname = 'chk_offerte_eccezioni_esclusione_senza_dati');
+            # I quattro trigger che l'UPDATE spegne per nome, e i due WHEN che
+            # lo rendono possibile: senza, la bonifica fallirebbe a meta'.
+            - sqlCheck:
+                expectedResult: "6"
+                sql: >
+                  SELECT count(*) FROM pg_trigger t
+                   WHERE NOT t.tgisinternal
+                     AND ((t.tgrelid = 'vendite.contratti_righe'::regclass
+                           AND t.tgname IN ('trg_contratti_righe_a05_guard_esclusione_immutabile_upd',
+                                            'trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt'))
+                       OR (t.tgrelid = 'vendite.offerte_commerciali_eccezioni'::regclass
+                           AND t.tgname IN ('trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd',
+                                            'trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt'))
+                       OR (t.tgname IN ('trg_contratti_righe_a10_qta_from_operativa_ins_upd',
+                                        'trg_offerte_eccezioni_a10_qta_from_operativa_ins_upd')
+                           AND pg_get_triggerdef(t.oid) LIKE '%WHEN%ESCLUSIONE%'));
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⚠️ L'UPDATE di uom_operativa_id accoda i trigger DEFERRABLE INITIALLY
+              --    DEFERRED «unita' di misura attiva»: con gli eventi in sospeso fino al
+              --    commit, gli ALTER TABLE che seguono (ENABLE TRIGGER, ADD CONSTRAINT)
+              --    falliscono («eventi trigger in sospeso»). IMMEDIATE li fa scattare a
+              --    fine istruzione. Vale fino alla fine della transazione del changeSet.
+              SET CONSTRAINTS ALL IMMEDIATE;
+
+              -- ── R6: le esclusioni gia' scritte si svuotano ──────────────
+              ALTER TABLE vendite.contratti_righe
+                  DISABLE TRIGGER trg_contratti_righe_a05_guard_esclusione_immutabile_upd;
+              ALTER TABLE vendite.contratti_righe
+                  DISABLE TRIGGER trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt;
+
+              UPDATE vendite.contratti_righe
+                 SET prezzo_unitario = NULL, quantita = NULL, qta_operativa = NULL,
+                     uom_operativa_id = NULL, factor_to_base = NULL, tipo_erogazione = NULL,
+                     fonte_quantita_attesa = NULL, periodicita = NULL,
+                     generazione_canone = NULL, competenza_canone = NULL
+               WHERE tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                 AND num_nonnulls(prezzo_unitario, quantita, qta_operativa, uom_operativa_id,
+                                  factor_to_base, tipo_erogazione, fonte_quantita_attesa,
+                                  periodicita, generazione_canone, competenza_canone) > 0;
+
+              ALTER TABLE vendite.contratti_righe
+                  ENABLE TRIGGER trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt;
+              ALTER TABLE vendite.contratti_righe
+                  ENABLE TRIGGER trg_contratti_righe_a05_guard_esclusione_immutabile_upd;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DISABLE TRIGGER trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DISABLE TRIGGER trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt;
+
+              UPDATE vendite.offerte_commerciali_eccezioni
+                 SET prezzo_unitario = NULL, quantita = NULL, qta_operativa = NULL,
+                     uom_operativa_id = NULL, factor_to_base = NULL, tipo_erogazione = NULL,
+                     fonte_quantita_attesa = NULL, periodicita = NULL,
+                     generazione_canone = NULL, competenza_canone = NULL
+               WHERE tipo_eccezione = 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                 AND num_nonnulls(prezzo_unitario, quantita, qta_operativa, uom_operativa_id,
+                                  factor_to_base, tipo_erogazione, fonte_quantita_attesa,
+                                  periodicita, generazione_canone, competenza_canone) > 0;
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ENABLE TRIGGER trg_offerte_commerciali_eccezioni_a05_doc_bozza_ins_upd_dlt;
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ENABLE TRIGGER trg_offerte_commerciali_eccezioni_a05_guard_escl_immut_upd;
+
+              -- ── R1: la regola nella struttura ──────────────────────────
+              ALTER TABLE vendite.contratti_righe
+                  ADD CONSTRAINT chk_contrighe_esclusione_senza_dati
+                  CHECK (tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                         OR (prezzo_unitario       IS NULL
+                             AND quantita              IS NULL
+                             AND qta_operativa         IS NULL
+                             AND uom_operativa_id      IS NULL
+                             AND factor_to_base        IS NULL
+                             AND tipo_erogazione       IS NULL
+                             AND fonte_quantita_attesa IS NULL
+                             AND periodicita           IS NULL
+                             AND generazione_canone    IS NULL
+                             AND competenza_canone     IS NULL));
+
+              COMMENT ON CONSTRAINT chk_contrighe_esclusione_senza_dati ON vendite.contratti_righe IS
+                  'Un''ESCLUSIONE dice solo che il contratto non vende l''articolo: prezzo, quantita'', '
+                  'qta_operativa, UdM, fattore, erogazione, fonte, periodicita'', generazione e '
+                  'competenza del canone restano vuoti. A parlare all''operatore e'' il guard '
+                  'script.trgfn_righe_guard_esclusione_senza_dati (E_RIGA_ESCLUSIONE_CON_DATI, col '
+                  'campo): il CHECK e'' la rete. Gemello di chk_offerte_eccezioni_esclusione_senza_dati, '
+                  'perche'' fn_push_offerta_a_contratto copia le righe 1:1. Brief: '
+                  'brief-db-righe-esclusione-solo-non-si-vende (R1).';
+
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  ADD CONSTRAINT chk_offerte_eccezioni_esclusione_senza_dati
+                  CHECK (tipo_eccezione <> 'ESCLUSIONE'::vendite.tipo_eccezione_contratto
+                         OR (prezzo_unitario       IS NULL
+                             AND quantita              IS NULL
+                             AND qta_operativa         IS NULL
+                             AND uom_operativa_id      IS NULL
+                             AND factor_to_base        IS NULL
+                             AND tipo_erogazione       IS NULL
+                             AND fonte_quantita_attesa IS NULL
+                             AND periodicita           IS NULL
+                             AND generazione_canone    IS NULL
+                             AND competenza_canone     IS NULL));
+
+              COMMENT ON CONSTRAINT chk_offerte_eccezioni_esclusione_senza_dati ON vendite.offerte_commerciali_eccezioni IS
+                  'Mirror di chk_contrighe_esclusione_senza_dati: un''ESCLUSIONE dell''offerta dice solo '
+                  'che l''offerta non vende l''articolo, e i dieci dati di vendita restano vuoti. Senza, '
+                  'fn_push_offerta_a_contratto farebbe nascere un contratto rifiutato dal suo CHECK. A '
+                  'parlare all''operatore e'' il guard script.trgfn_righe_guard_esclusione_senza_dati. '
+                  'Brief: brief-db-righe-esclusione-solo-non-si-vende (R1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.offerte_commerciali_eccezioni
+                  DROP CONSTRAINT IF EXISTS chk_offerte_eccezioni_esclusione_senza_dati;
+              ALTER TABLE vendite.contratti_righe
+                  DROP CONSTRAINT IF EXISTS chk_contrighe_esclusione_senza_dati;

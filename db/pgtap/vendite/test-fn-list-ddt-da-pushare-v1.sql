@@ -13,7 +13,7 @@
 -- 6) Caso A: DDT da ordine con trigger CONFERMATO escluso
 -- 7) Caso B: DDT autonomo SPEDITO con billing_account restituito
 -- 8) Caso B: prezzo da ddt_righe.prezzo_unitario
--- 9) Caso B: DDT autonomo senza billing_account escluso
+-- 9) Caso B: DDT autonomo VENDITA senza billing_account non si emette (rev 2026-10-09)
 -- 10) Segment key formato corretto (DDT:<uid>:R:<riga_id>)
 -- 11) prezzo_bloccato = TRUE se prezzo presente
 -- 12) Filtro p_billing_account_id rispettato
@@ -75,15 +75,25 @@ SELECT
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1
   ) AS emittente_fiscale_id,
-  (SELECT sr.id
-     FROM anagrafiche.soggetti_ruoli sr
-    ORDER BY sr.id LIMIT 1
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del
+  --   cliente e' quello del BA scelto sopra. Prima era «il primo ruolo del
+  --   database», scollegato dal BA: le FK composte fk_ordini_ba_cliente e
+  --   fk_ddt_ba_cliente lo rifiutano.
+  (SELECT ba.soggetto_ruolo_id
+     FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL
+      AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1
   ) AS soggetto_ruolo_id,
-  (SELECT a.id
-     FROM catalogo.articoli a
-    WHERE a.attivo IS TRUE
-    ORDER BY a.data_insert DESC NULLS LAST LIMIT 1
-  ) AS articolo_id,
+  -- ⭐ Articolo COSTRUITO e NON gestito a magazzino (rev 2026-10-02). Prima era
+  --   «l'ultimo articolo attivo del catalogo»: se quello era gestito, la bolla
+  --   muoveva merce, e la porta del registro (trgfn_ddt_guard_transizione,
+  --   Regola 3, 20260928-71) rifiutava il passaggio a EMESSO fatto con l'UPDATE
+  --   di pg_temp.spedisci (E_DDT_STATO_SOLO_DA_VERBO). Il test misura il lister
+  --   del push, non il registro di magazzino: la bolla non deve muovere merce,
+  --   e non deve dipenderlo dal catalogo della macchina.
+  dbops.fn_pgtap_crea_articolo('PGTAP-LDDT-ART', false) AS articolo_id,
   (SELECT v.id
      FROM config.valute v
     ORDER BY v.id LIMIT 1
@@ -94,6 +104,11 @@ SELECT
     WHERE s.codice = 'CONFERMATO' AND s.attivo IS TRUE
     LIMIT 1
   ) AS stato_ordine_confermato_id,
+  (SELECT s.id
+     FROM config.stati_doc_ordini s
+    WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
+    LIMIT 1
+  ) AS stato_ordine_draft_id,
   -- Stati DDT
   (SELECT s.id
      FROM config.stati_doc_ddt s
@@ -180,7 +195,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_ordine_confermato_id, r.valuta_id, DATE '2026-07-01',
+    r.stato_ordine_draft_id, r.valuta_id, DATE '2026-07-01',
     r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
   FROM tmp_refs_ddt r
@@ -199,17 +214,25 @@ CREATE TEMP TABLE tmp_ordine_a_riga AS
 WITH ins AS (
   INSERT INTO vendite.ordini_righe (
     ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
     storicizza, meta
   )
   SELECT
     o.id, 1, r.articolo_id, 'Riga test DDT caso A',
-    10.000000, 10.000000, 30.000000, true,
+    -- iva_id (rev 2026-10-08, D-1): la conferma rifiuta «un prezzo senza aliquota»
+    10.000000, 10.000000, 30.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt')
   FROM tmp_ordine_a o, tmp_refs_ddt r
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_a), 'CONFERMATO');
+END $x$;
 
 -- 3. Crea DDT con stato SPEDITO (senza billing_account proprio)
 CREATE TEMP TABLE tmp_ddt_a AS
@@ -319,7 +342,7 @@ WITH ins AS (
   )
   SELECT
     r.soggetto_ruolo_id, r.billing_account_id,
-    r.stato_ordine_confermato_id, r.valuta_id, DATE '2026-07-01',
+    r.stato_ordine_draft_id, r.valuta_id, DATE '2026-07-01',
     r.emittente_fiscale_id,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
   FROM tmp_refs_ddt r
@@ -332,17 +355,25 @@ CREATE TEMP TABLE tmp_ordine_conf_riga AS
 WITH ins AS (
   INSERT INTO vendite.ordini_righe (
     ordine_id, riga_nr, articolo_id, descrizione,
-    qta_operativa, quantita, prezzo_unitario, attivo,
+    qta_operativa, quantita, prezzo_unitario, iva_id, attivo,
     storicizza, meta
   )
   SELECT
     o.id, 1, r.articolo_id, 'Riga ordine test conf',
-    5.000000, 5.000000, 20.000000, true,
+    -- iva_id (rev 2026-10-08, D-1): la conferma rifiuta «un prezzo senza aliquota»
+    5.000000, 5.000000, 20.000000, (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE ORDER BY i.id LIMIT 1), true,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'conf')
   FROM tmp_ordine_conf o, tmp_refs_ddt r
   RETURNING id
 )
 SELECT * FROM ins;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ordine_conf), 'CONFERMATO');
+END $x$;
 
 CREATE TEMP TABLE tmp_ddt_conf AS
 WITH ins AS (
@@ -509,15 +540,16 @@ SELECT
   false, jsonb_build_object('test_scope', 'pgtap_fn_list_ddt', 'case', 'no_ba')
 FROM tmp_ddt_no_ba d, tmp_refs_ddt r;
 
-SELECT pg_temp.spedisci((SELECT id FROM tmp_ddt_no_ba));
-
-SELECT ok(
-  NOT EXISTS (
-    SELECT 1
-    FROM vendite.fn_list_ddt_da_pushare(NULL, NULL, NULL) rd
-    WHERE rd.ddt_id = (SELECT id FROM tmp_ddt_no_ba)
-  ),
-  'Caso B: DDT autonomo senza billing_account escluso'
+-- ⭐ rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-2): una bolla VENDITA
+--   manda merce a un cliente e senza billing account NON SI EMETTE (motivo
+--   E_DDT_CLIENTE_OBBLIGATORIO). Lo stato che questo caso costruiva — spedita
+--   senza BA, quindi esclusa dal push — il modello non lo ammette piu': il caso
+--   misura ora la regola che lo impedisce. L'esclusione SENZA_BA della diagnosi
+--   resta per un BA che chi legge non vede.
+SELECT throws_like(
+  format('SELECT pg_temp.spedisci(%s)', (SELECT id FROM tmp_ddt_no_ba)),
+  '%manda la merce a un cliente%',
+  'Caso B: DDT autonomo VENDITA senza billing_account non si emette (D-2)'
 );
 
 -- ============================================================

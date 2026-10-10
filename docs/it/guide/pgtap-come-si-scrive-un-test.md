@@ -103,6 +103,11 @@ Costruire i casi significa costruire anche **l'azienda e chi ci lavora**:
 | --- | --- |
 | **il mondo di un test di dominio**: azienda + operatore + contesto aperto + un cliente fatturabile legato a quell'azienda | `dbops.fn_pgtap_crea_mondo_cliente('<etichetta>')` |
 | **una fattura** del mondo (registro coerente, coppia emittente/utility configurata, stato scelto alla nascita) | `dbops.fn_pgtap_crea_fattura('<etichetta>'[, '<stato>'[, <ba_id>]])` |
+| **un ordine** di vendita del mondo (emittente del cliente, numero dal dominio, stato scelto alla nascita) | `dbops.fn_pgtap_crea_ordine('<etichetta>'[, '<stato>'])` |
+| **un preventivo** del mondo (emittente del cliente, numero dal dominio, validità da oggi, stato scelto alla nascita) | `dbops.fn_pgtap_crea_preventivo('<etichetta>'[, '<stato>'])` |
+| **una testata che cambia stato dopo aver preso le righe** (ordine o preventivo: nasce `DRAFT`, il test scrive le righe, poi lo stato per le transizioni vere — fuori bozza le righe non si scrivono) | `dbops.fn_pgtap_porta_a_stato('vendite.ordini' \| 'vendite.preventivi', <id>, '<stato>')` |
+| **una commessa** del mondo, aperta dalla madre del dominio (codice ed emittente dal dominio, competenza nel mese corrente) | `dbops.fn_pgtap_crea_commessa('<etichetta>')` |
+| **un'attività** approvata su una commessa costruita, scritta dalla madre (articolo costruito, pronta per l'emissione) | `dbops.fn_pgtap_crea_commessa_attivita(<commessa_id>[, <prezzo>])` |
 | una **filiale bancaria** su cui agganciare un conto | `dbops.fn_pgtap_crea_filiale_bancaria('<etichetta>')` |
 | il **gestore** dell'installazione (lo prende se c'è, lo costruisce se non c'è) | `dbops.fn_pgtap_crea_gestore('<etichetta>')` |
 | un'azienda con il suo operatore (e identità) | `dbops.fn_pgtap_crea_emittente_operatore()` |
@@ -224,6 +229,28 @@ Lente per censire: `python3 scripts/censimento_limit1.py`. ⚠️ È una lente e
 un cancello: metà delle occorrenze sono su temp table del test stesso, dove il
 `LIMIT` non sceglie niente. Un cancello con quel tasso di falsi positivi si
 impara a disattivare.
+
+### «Oggi» è il giorno dell'azienda, non quello della sessione
+
+Il codice legge il giorno dal fuso dell'azienda (`script.fn_data_operativa()`), e
+il test deve costruire lo **stesso** giorno:
+
+| serve | si scrive |
+| --- | --- |
+| oggi | `script.fn_data_operativa()` |
+| il giorno di un istante (`data_mov`, `data_insert`, …) | `script.fn_giorno_operativo(<istante>)` |
+| l'istante in cui comincia un giorno | `script.fn_inizio_giorno_operativo(<data>)` |
+
+⛔ `CURRENT_DATE`, `LOCALTIMESTAMP`, `now()::date` e un `::date` su un istante
+danno il giorno della **sessione**, e la sessione dei test gira apposta in un
+fuso il cui giorno è **diverso** da quello dell'azienda: `scripts/testpgtap.sh`
+sceglie, file per file, fra +14 e −11 quello che adesso cade in un altro giorno.
+Così un test che confonde i due giorni è rosso a ogni ora, non solo di notte.
+La prima metà della regola la presidia `scripts/guardrail_pgtap_preambolo.py`;
+un'eccezione si dichiara con `-- pgtap-oggi: escluso — <perché>`.
+
+⭐ Un rosso da riprodurre nel fuso dell'azienda: `PGTZ=Europe/Rome
+scripts/testpgtap.sh …` (il runner rispetta un `PGTZ` già impostato).
 
 ### Le chiavi generate devono essere larghe
 

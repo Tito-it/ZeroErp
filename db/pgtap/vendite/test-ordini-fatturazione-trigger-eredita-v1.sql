@@ -90,7 +90,14 @@ SELECT
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1)                                                AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
   (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1)                 AS valuta_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE
@@ -117,7 +124,7 @@ BEGIN
     INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id,
       stato_doc_ordine_id, valuta_id, data, emittente_fiscale_id, storicizza, meta)
     VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-      r.valuta_id, CURRENT_DATE,
+      r.valuta_id, script.fn_data_operativa(),
       anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id), false,
       jsonb_build_object('test_scope', 'pgtap_fatt_trigger'))
     RETURNING id INTO v_ord;
@@ -126,7 +133,7 @@ BEGIN
       stato_doc_ordine_id, valuta_id, data, fatturazione_trigger,
       emittente_fiscale_id, storicizza, meta)
     VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
-      r.valuta_id, CURRENT_DATE, p_trigger::varchar,
+      r.valuta_id, script.fn_data_operativa(), p_trigger::varchar,
       anagrafiche.fn_get_emittente_fiscale_pk(r.billing_account_id), false,
       jsonb_build_object('test_scope', 'pgtap_fatt_trigger'))
     RETURNING id INTO v_ord;

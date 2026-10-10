@@ -1,0 +1,68 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN GESTORE PER RUOLO, COME OGNI SPECIALIZZAZIONE
+#   anagrafiche.gestori: UNIQUE (soggetto_ruolo_id).
+#   Brief: brief-db-istanza-nasce-col-ba (R-9, decisione di Tid del 2026-10-08)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Le specializzazioni dei ruoli hanno UNIQUE (soggetto_ruolo_id) — fornitori,
+#   vettori, psp, risorse_umane, emittenti_fiscali — e la guida «Soggetti &
+#   Ruoli» lo dice di tutte. gestori non l'aveva. Il CLIENTE e' l'eccezione
+#   voluta (un cliente per BA, R-8), il gestore no.
+#   ⚠️ uq_gestori_singleton, nonostante il nome, e' un indice GiST NON unico su
+#   id: non vincola niente. Non si tocca qui.
+#
+# -- L'INDICE DEDICATO CHE DIVENTA INUTILE ----------------------------
+#   ix_anagrafiche_gestori_soggetto_ruolo_id serviva la FK verso soggetti_ruoli;
+#   il vincolo nuovo la copre. Il flag della policy va a false nel CSV
+#   dedicato (80_data, 20261008-73) e lo toglie apply_fk_index_policy(), non
+#   questo file.
+#
+# -- LE RIGHE GIA' SCRITTE -----------------------------------------
+#   preCondition: nessun ruolo con due gestori (expectedResult 0).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261008-65-add-uq-gestori-soggetto-ruolo-mctit.yaml
+
+  - changeSet:
+      id: 20261008-65-add-uq-gestori-soggetto-ruolo
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.gestori: UNIQUE (soggetto_ruolo_id), come le altre specializzazioni dei ruoli.
+        Brief: brief-db-istanza-nasce-col-ba (R-9).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM (SELECT g.soggetto_ruolo_id
+                        FROM anagrafiche.gestori g
+                       GROUP BY g.soggetto_ruolo_id
+                      HAVING count(*) > 1) d;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.gestori
+                ADD CONSTRAINT uq_gestori_soggetto_ruolo UNIQUE (soggetto_ruolo_id);
+
+              COMMENT ON CONSTRAINT uq_gestori_soggetto_ruolo ON anagrafiche.gestori
+              IS 'Un gestore per ruolo, come le altre specializzazioni dei ruoli (decisione di Tid del 2026-10-08). Brief: brief-db-istanza-nasce-col-ba (R-9).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.gestori DROP CONSTRAINT uq_gestori_soggetto_ruolo;

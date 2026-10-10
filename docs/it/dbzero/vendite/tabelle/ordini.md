@@ -11,35 +11,35 @@
 | id | bigint | NO |  |
 | uid | uuid | NO | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
-| billing_account_id | bigint | YES |  |
-| serie | character varying | YES |  |
-| numero | character varying | YES |  |
+| billing_account_id | bigint | NO |  |
+| serie | character varying(8) | YES |  |
+| numero | character varying(20) | YES |  |
 | anno | smallint | YES |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | stato_doc_ordine_id | bigint | NO |  |
 | valuta_id | integer | YES |  |
-| tasso_cambio | numeric | NO | 1 |
+| tasso_cambio | numeric(18,8) | NO | 1 |
 | modalita_pagamento_id | integer | YES |  |
-| imponibile_tot | numeric | YES |  |
-| sconto_tot | numeric | YES |  |
-| iva_tot | numeric | YES |  |
-| totale_doc | numeric | YES |  |
+| imponibile_tot | numeric(18,6) | YES |  |
+| sconto_tot | numeric(18,6) | YES |  |
+| iva_tot | numeric(18,6) | YES |  |
+| totale_doc | numeric(18,6) | YES |  |
 | meta | jsonb | YES | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | uuid | YES |  |
 | termine_pagamento_id | bigint | YES |  |
 | fatturazione_trigger | character varying | NO |  |
-| canale_origine | USER-DEFINED | NO | 'ADMIN'::config.canale_origine |
-| utility_id | integer | YES |  |
+| canale_origine | config.canale_origine | NO | 'ADMIN'::config.canale_origine |
+| utility_id | integer | NO |  |
 | emittente_fiscale_id | bigint | NO |  |
 | agente_soggetto_ruolo_id | bigint | YES |  |
-| documento_origine_tipo | character varying | YES |  |
+| documento_origine_tipo | character varying(20) | YES |  |
 | documento_origine_id | bigint | YES |  |
 | fatturazione_immediata | boolean | NO | false |
 | registro_id | bigint | YES |  |
@@ -50,6 +50,12 @@
 | CHECK | chk_ordini_documento_origine_copres |  |
 | CHECK | chk_ordini_documento_origine_tipo |  |
 | CHECK | chk_ordini_fatturazione_trigger |  |
+| CHECK | chk_ordini_imponibile_tot_finito |  |
+| CHECK | chk_ordini_iva_tot_finito |  |
+| CHECK | chk_ordini_sconto_tot_finito |  |
+| CHECK | chk_ordini_tasso_cambio_finito |  |
+| CHECK | chk_ordini_totale_doc_finito |  |
+| FOREIGN KEY | fk_ordini_ba_cliente | billing_account_id, soggetto_ruolo_id, utility_id |
 | FOREIGN KEY | fk_ordini_emittente_fiscale | emittente_fiscale_id |
 | FOREIGN KEY | fk_ordini_registro | registro_id |
 | FOREIGN KEY | fk_ordini_termini_pagamento | termine_pagamento_id |
@@ -79,14 +85,15 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
+| trg_ordini_a05_lock_fuori_bozza_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza('ORDINE', 'DRAFT', 'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'tasso_cambio', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '', 'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '', 'modalita_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'termine_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'agente_soggetto_ruolo_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'fatturazione_trigger', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '', 'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'documento_origine_tipo', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'documento_origine_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '', 'meta', 'E_DOC_CHIUSO', 'CONFERMATO,PARZIALMENTE_EVASO,ALLOCATO,SPEDITO,CONSEGNATO,EVASO')` |
 | trg_ordini_a10_default_emittente_ins | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_default_emittente_fiscale('SOLLEVA')` |
-| trg_ordini_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_ordini_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
+| trg_ordini_a10_emittenti_fiscali_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_ordini_a10_gen_numero_ins | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_gen_numero()` |
 | trg_ordini_a10_guard_chiusura_sorgente_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_guard_chiusura_sorgente('ORDINE_VENDITA', 'stato_doc_ordine_id', 'config.stati_doc_ordini')` |
 | trg_ordini_a10_guard_delete_solo_bozza_dlt | BEFORE | DELETE | `EXECUTE FUNCTION vendite.trgfn_doc_guard_delete_solo_bozza()` |
-| trg_ordini_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_guard_emittente_ba()` |
-| trg_ordini_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_guard_emittente_ba()` |
+| trg_ordini_a10_guard_emittente_ba_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Ordine', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE')` |
+| trg_ordini_a10_guard_emittente_ba_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_doc_guard_emittente_ba('Ordine', 'numero', 'emittente_fiscale_id', 'E_DOC_EMITTENTE_BA_INCOERENTE')` |
 | trg_ordini_a10_guard_emittente_scope_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_ordini_a10_guard_emittente_scope_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_guard_emittente_scope('fiscale', 'emittente_fiscale_id')` |
 | trg_ordini_a10_guard_fatt_immediata_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_guard_fatturazione_immediata_immutabile('ORDINE_VENDITA')` |
@@ -104,9 +111,8 @@
 | trg_ordini_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_ordini_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_ordini_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
-| trg_ordini_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_normalize()` |
 | trg_ordini_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_normalize()` |
-| trg_ordini_z90_ricalcola_totali_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_ordini_ricalcola_totali()` |
+| trg_ordini_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_ordini_normalize()` |
 | trg_ordini_z90_ritira_commessa_attivita_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita('ORDINE_VENDITA', 'stato_doc_ordine_id', 'config.stati_doc_ordini')` |
 | trg_ordini_z90_storico_upd_dlt | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_id')` |
 | trg_ordini_z90_storico_upd_dlt | BEFORE | DELETE | `EXECUTE FUNCTION script.trgfn_storico_generic('ordini_id')` |

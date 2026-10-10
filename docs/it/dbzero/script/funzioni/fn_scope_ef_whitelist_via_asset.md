@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_asset(p_auth_user_id integer, p_asset_
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_asset(p_auth_user_id integer, p_asset_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: perimetro emittente di un asset, che porta l'emittente in
     --   proprio (un asset presso un cliente non e' in nessun magazzino).

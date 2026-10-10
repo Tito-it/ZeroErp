@@ -9,12 +9,12 @@
 | Colonna | Tipo | Nullable | Default |
 |---------|------|----------|---------|
 | id | integer | NO |  |
-| codice | character varying | NO |  |
-| descrizione | character varying | NO |  |
-| descrizione_breve | character varying | NO |  |
+| codice | character varying(20) | NO |  |
+| descrizione | character varying(100) | NO |  |
+| descrizione_breve | character varying(40) | NO |  |
 | iva_id | integer | YES |  |
 | utility_id | integer | YES |  |
-| tipo_pdr_std | character | NO | '0'::bpchar |
+| tipo_pdr_std | character(1) | NO | '0'::bpchar |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |

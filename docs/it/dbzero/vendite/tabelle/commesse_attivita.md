@@ -10,15 +10,15 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | commessa_id | bigint | NO |  |
-| segment_key | character varying | NO |  |
+| segment_key | character varying(128) | NO |  |
 | articolo_id | uuid | NO |  |
 | istanza_utility_id | bigint | NO |  |
 | data_attivita | date | NO |  |
 | uom_id | bigint | NO |  |
-| quantita | numeric | NO |  |
-| qta_operativa | numeric | YES |  |
+| quantita | numeric(18,6) | NO |  |
+| qta_operativa | numeric(18,6) | YES |  |
 | uom_operativa_id | bigint | YES |  |
-| factor_to_base | numeric | NO | 1 |
+| factor_to_base | numeric(18,10) | NO | 1 |
 | competenza_mese | date | NO |  |
 | competenza_dal | date | NO |  |
 | competenza_al | date | NO |  |
@@ -27,12 +27,12 @@
 | valuta_id | integer | YES |  |
 | area_geografica_id | bigint | YES |  |
 | listino_versione_id | bigint | YES |  |
-| prezzo_snapshot | numeric | NO |  |
+| prezzo_snapshot | numeric(22,10) | NO |  |
 | prezzo_bloccato | boolean | NO | false |
-| pricing_mode | character varying | NO | 'FIXED'::character varying |
+| pricing_mode | character varying(16) | NO | 'FIXED'::character varying |
 | prezzo_da_riallineare | boolean | NO | false |
-| stato_approvazione | character varying | NO | 'BOZZA'::character varying |
-| stato_emissione | character varying | NO | 'NON_EMESSA'::character varying |
+| stato_approvazione | character varying(16) | NO | 'BOZZA'::character varying |
+| stato_emissione | character varying(16) | NO | 'NON_EMESSA'::character varying |
 | sorgente_tipo_id | bigint | YES |  |
 | sorgente_uid | text | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -43,18 +43,19 @@
 | data_update | timestamp with time zone | NO | now() |
 | user_update | text | NO | CURRENT_USER |
 | listino_riga_id | bigint | YES |  |
-| prezzo_base_snapshot | numeric | YES |  |
-| origine_prezzo | character varying | YES |  |
-| tipo_variazione_applicata | character varying | YES |  |
-| valore_variazione_applicata | numeric | YES |  |
+| prezzo_base_snapshot | numeric(22,10) | YES |  |
+| origine_prezzo | character varying(32) | YES |  |
+| tipo_variazione_applicata | character varying(16) | YES |  |
+| valore_variazione_applicata | numeric(10,4) | YES |  |
 | promo_id | bigint | YES |  |
 | contratto_id | bigint | YES |  |
 | categoria_cliente_id_snapshot | smallint | YES |  |
 | classe_utenza_id_snapshot | integer | YES |  |
-| tipo_movimento | character varying | NO | 'NORMALE'::character varying |
+| tipo_movimento | character varying(32) | NO | 'NORMALE'::character varying |
 | causale_onere_id | bigint | YES |  |
 | natura_doc_id | bigint | NO | config.fn_get_natura_doc_fiscale_id('FATTURA'::character varying) |
 | fattura_riga_rettificata_id | bigint | YES |  |
+| segment_base | character varying(128) | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -63,10 +64,15 @@
 | CHECK | chk_commesse_attivita_comp_mese_primo |  |
 | CHECK | chk_commesse_attivita_comp_range |  |
 | CHECK | chk_commesse_attivita_factor_to_base |  |
+| CHECK | chk_commesse_attivita_factor_to_base_finito |  |
 | CHECK | chk_commesse_attivita_origine_prezzo |  |
 | CHECK | chk_commesse_attivita_posticipa |  |
 | CHECK | chk_commesse_attivita_prezzo |  |
+| CHECK | chk_commesse_attivita_prezzo_base_snapshot_finito |  |
+| CHECK | chk_commesse_attivita_prezzo_snapshot_finito |  |
 | CHECK | chk_commesse_attivita_pricing_mode |  |
+| CHECK | chk_commesse_attivita_qta_operativa_finito |  |
+| CHECK | chk_commesse_attivita_quantita_finito |  |
 | CHECK | chk_commesse_attivita_rettificata_e_rettifica |  |
 | CHECK | chk_commesse_attivita_sorgente_pair |  |
 | CHECK | chk_commesse_attivita_stato_approvazione |  |
@@ -74,6 +80,7 @@
 | CHECK | chk_commesse_attivita_tipo_doc_emittibile |  |
 | CHECK | chk_commesse_attivita_tipo_movimento |  |
 | CHECK | chk_commesse_attivita_tipo_variazione_applicata |  |
+| CHECK | chk_commesse_attivita_valore_variazione_applicata_finito |  |
 | FOREIGN KEY | commesse_attivita_listino_riga_id_fkey | listino_riga_id |
 | FOREIGN KEY | fk_commesse_attivita_area_geo | area_geografica_id |
 | FOREIGN KEY | fk_commesse_attivita_articolo | articolo_id |
@@ -101,7 +108,9 @@
 | ix_commesse_attivita_commessa_stati | `CREATE INDEX ix_commesse_attivita_commessa_stati ON vendite.commesse_attivita USING btree (commessa_id, stato_approvazione, stato_emissione)` |
 | ix_commesse_attivita_fattura_riga_rettificata_id | `CREATE INDEX ix_commesse_attivita_fattura_riga_rettificata_id ON vendite.commesse_attivita USING btree (fattura_riga_rettificata_id) WHERE (fattura_riga_rettificata_id IS NOT NULL)` |
 | ix_commesse_attivita_lane_candidate | `CREATE INDEX ix_commesse_attivita_lane_candidate ON vendite.commesse_attivita USING btree (commessa_id, competenza_mese, tipo_doc_fiscale_id) WHERE (((stato_emissione)::text = 'NON_EMESSA'::text) AND ((stato_approvazione)::text = 'APPROVATA'::text) AND (tipo_doc_fiscale_id IS NOT NULL))` |
+| ix_commesse_attivita_listino_riga_id | `CREATE INDEX ix_commesse_attivita_listino_riga_id ON vendite.commesse_attivita USING btree (listino_riga_id) WHERE (listino_riga_id IS NOT NULL)` |
 | ix_commesse_attivita_origine_prezzo | `CREATE INDEX ix_commesse_attivita_origine_prezzo ON vendite.commesse_attivita USING btree (origine_prezzo)` |
+| ix_commesse_attivita_segment_base | `CREATE INDEX ix_commesse_attivita_segment_base ON vendite.commesse_attivita USING btree (segment_base)` |
 | ix_commesse_attivita_segment_key | `CREATE INDEX ix_commesse_attivita_segment_key ON vendite.commesse_attivita USING btree (segment_key varchar_pattern_ops)` |
 | ix_commesse_attivita_sorgente_competenza | `CREATE INDEX ix_commesse_attivita_sorgente_competenza ON vendite.commesse_attivita USING btree (sorgente_uid, competenza_mese) WHERE (sorgente_uid IS NOT NULL)` |
 | pk_commesse_attivita | `CREATE UNIQUE INDEX pk_commesse_attivita ON vendite.commesse_attivita USING btree (id)` |

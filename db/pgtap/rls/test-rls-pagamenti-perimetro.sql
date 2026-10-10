@@ -246,16 +246,16 @@ CREATE TEMP TABLE tmp_dist AS
 --    chiamata posizionale sarebbe da riscrivere a ogni cambio di firma.
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
-           p_data_contabile        => current_date,
-           p_data_registrazione    => current_date,
+           p_data_contabile        => script.fn_data_operativa(),
+           p_data_registrazione    => script.fn_data_operativa(),
            p_ente_incasso_id       => (SELECT ente_a FROM tmp_enti),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
            p_origine               => 'GENERATA') AS dist_a,
        pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_fondo FROM tmp_ab),
-           p_data_contabile        => current_date,
-           p_data_registrazione    => current_date,
+           p_data_contabile        => script.fn_data_operativa(),
+           p_data_registrazione    => script.fn_data_operativa(),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
            p_origine               => 'GENERATA') AS dist_interna;
@@ -284,8 +284,8 @@ SELECT (SELECT dist_interna FROM tmp_dist), 'PGTAP_PERIM_INTERNA', 15.00,
 CREATE TEMP TABLE tmp_dist_manuale AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
-           p_data_contabile        => current_date,
-           p_data_registrazione    => current_date,
+           p_data_contabile        => script.fn_data_operativa(),
+           p_data_registrazione    => script.fn_data_operativa(),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
            p_origine               => 'MANUALE') AS dist_man;
@@ -297,8 +297,8 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(
 CREATE TEMP TABLE tmp_dist_b AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_banca FROM tmp_ab),
-           p_data_contabile        => current_date,
-           p_data_registrazione    => current_date,
+           p_data_contabile        => script.fn_data_operativa(),
+           p_data_registrazione    => script.fn_data_operativa(),
            p_ente_incasso_id       => (SELECT ente_b FROM tmp_enti),
            p_codice_stato_interno  => 'BOZZA',
            p_meta                  => jsonb_build_object('test_scope', (SELECT test_scope FROM tmp_costanti)),
@@ -453,7 +453,7 @@ SELECT throws_like(
     $sql$INSERT INTO pagamenti.vendite_contabili
             (codice, centro_riscossione_id, data_contabile, data_registrazione,
              stato_id, ente_incasso_id, origine)
-         VALUES ('PGTAP-PERIM-KO', %s, current_date, current_date, %s, %s, 'GENERATA')$sql$,
+         VALUES ('PGTAP-PERIM-KO', %s, script.fn_data_operativa(), script.fn_data_operativa(), %s, %s, 'GENERATA')$sql$,
     (SELECT centro_banca FROM tmp_ab),
     (SELECT s.id FROM pagamenti.vendite_contabili_stati s
       WHERE s.codice_interno = 'BOZZA' ORDER BY s.id LIMIT 1),
@@ -466,9 +466,10 @@ SELECT throws_like(
 -- ============================================================
 -- 14. Il cancello e' `app.ruolo_applicativo`
 -- ============================================================
--- ⚠️ NON si svuota `app.current_user_id`: quello non e' fail-closed — con
---    l'utente nullo le funzioni di scope rispondono come per un job batch. Il
---    cancello vero e' il ruolo applicativo, ed e' li' che si verifica.
+-- Qui si verifica il cancello del RUOLO. (Dal changeSet 20261004-82 chiude
+--    anche l'utente vuoto: le funzioni di scope rispondono false con l'utente
+--    NULL — brief-db-esclusioni-implicite, Q-1. Prima quel caso era «job
+--    batch, nessun filtro», ed e' per questo che il test non lo usava.)
 SELECT set_config('app.ruolo_applicativo', '', false);
 
 SELECT is(

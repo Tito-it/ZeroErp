@@ -20,13 +20,14 @@
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
+| user_update | text | NO | CURRENT_USER |
 | tipo_utenza_id | integer | YES |  |
 | tx_id | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_contratti_utilities_param_1_num_finito |  |
 | FOREIGN KEY | fk_contratti_utilities_classi_utenze | classe_utenza_id |
 | FOREIGN KEY | fk_contratti_utilities_contratti | contratto_id |
 | FOREIGN KEY | fk_contratti_utilities_istanze_dati_precontrattuali | istanza_dati_precontrattuali_id |

@@ -11,7 +11,7 @@
 | id | bigint | NO |  |
 | billing_account_id | bigint | NO |  |
 | reseller_soggetto_ruolo_id | bigint | NO |  |
-| valido_dal | date | NO | CURRENT_DATE |
+| valido_dal | date | NO | script.fn_data_operativa() |
 | valido_al | date | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |

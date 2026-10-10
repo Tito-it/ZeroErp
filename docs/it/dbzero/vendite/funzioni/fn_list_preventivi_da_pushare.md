@@ -33,6 +33,13 @@ BEGIN
   --   - prezzo_bloccato = fatturazione_immediata
   --   - tipo_commessa target: REALE, policy: DA_DOCUMENTO
   --
+  -- rev 2026-10-10: via il filtro di «testata completa»
+  --   (billing_account_id, utility_id NOT NULL): le due colonne
+  --   sono NOT NULL dal 2026-10-08, il filtro non toglieva
+  --   niente. Brief: brief-db-istanza-nasce-col-ba-residui (R-3).
+  --   Lo stato ACCETTATO assente dal catalogo solleva E_CODICE,
+  --   come la sorgente, invece di far cadere il filtro (D-2).
+  --
   -- NOTE codice_interno (rev 2026-06-28, analisi-hardcoded-codice §3a):
   --   sorgente/stato risolti per codice_interno (immutabile), non per
   --   codice (mutabile). Difesa dai rename utente.
@@ -95,6 +102,17 @@ BEGIN
   FROM config.stati_doc_preventivi s
   WHERE s.codice_interno = 'ACCETTATO' AND s.attivo IS TRUE LIMIT 1;
 
+  -- Senza lo stato il filtro non ha un valore: si ferma, come
+  -- per la sorgente (rev 2026-10-10, D-2). Prima il filtro era
+  -- `IS NULL OR` e cadeva: preventivi in qualunque stato.
+  IF v_stato_accettato_id IS NULL THEN
+    PERFORM script.fn_log_and_raise_error(
+      'vendite', 'fn_list_preventivi_da_pushare', 'E_CODICE',
+      jsonb_build_object('codice', 'ACCETTATO'),
+      NULL::uuid, 'ACCETTATO', 'config.stati_doc_preventivi'
+    );
+  END IF;
+
   RETURN QUERY
   SELECT
     p.id                                                          AS preventivo_id,
@@ -149,9 +167,7 @@ BEGIN
     ON v.preventivo_id = p.id
   JOIN vendite.preventivi_righe pr ON pr.id = v.id
   JOIN catalogo.articoli a ON a.id = pr.articolo_id
-  WHERE p.billing_account_id IS NOT NULL
-    AND p.utility_id IS NOT NULL
-    AND (v_stato_accettato_id IS NULL OR p.stato_doc_preventivo_id = v_stato_accettato_id)
+  WHERE p.stato_doc_preventivo_id = v_stato_accettato_id
     -- Filtro allineato alla stessa espressione del SELECT competenza_mese.
     AND (p_competenza_mese IS NULL
          OR COALESCE(
@@ -169,7 +185,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_list_preventivi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_preventivo_id bigint, p_righe_ids bigint[])
-IS 'Righe preventivo pronte per il push su commessa (stato ACCETTATO, testata completa; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). Espone termine_pagamento_id del preventivo; modalita_pagamento_id e'' NULL perche'' i preventivi non la portano (rev 2026-08-03, T.1).';
+IS 'Righe preventivo pronte per il push su commessa (stato ACCETTATO; predicato di riga dalla vista unica vw_preventivi_righe_smistabili_commessa). p_preventivo_id: push singolo UI-driven. p_righe_ids (rev 12-06-2026, brief smistamento): sottoinsieme righe del pannello, richiede p_preventivo_id (E_PUSH_RIGHE_IDS_SENZA_PREVENTIVO), righe non eleggibili skippate in silenzio (D5). NULL = batch invariato. rev 2026-06-28: sorgente/stato per codice_interno (analisi-hardcoded-codice §3a). Espone termine_pagamento_id del preventivo; modalita_pagamento_id e'' NULL perche'' i preventivi non la portano (rev 2026-08-03, T.1). rev 2026-10-10 (20261010-52): via il filtro di testata completa (billing_account_id, utility_id NOT NULL), che non toglieva niente: le due colonne sono NOT NULL dal 2026-10-08. Lo stato ACCETTATO assente dal catalogo solleva E_CODICE (config.stati_doc_preventivi) invece di far cadere il filtro di stato (prima `IS NULL OR`: preventivi in qualunque stato). Brief: brief-db-istanza-nasce-col-ba-residui (R-3, D-2).';
 ```
 
 ---

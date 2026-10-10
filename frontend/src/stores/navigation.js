@@ -1,7 +1,7 @@
 // Scopo: gestione stato sidebar morfica — dominio attivo e menu corrente
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { DOMAINS, DOMAIN_MENUS } from '../core/navigation'
+import { DOMAINS, DOMAIN_MENUS, flattenMenu } from '../core/navigation'
 import { local, domainFavoriteKey, userScopedKey } from '../core/storage'
 
 const FAVORITES_PER_DOMAIN_MAX = 4
@@ -54,8 +54,10 @@ export const useNavigationStore = defineStore('navigation', () => {
     if (Array.isArray(domainFavorites) && domainFavorites.length > 0) {
       return domainFavorites[0]
     }
-    const menu = DOMAIN_MENUS[domainKey] || []
-    if (menu.length > 0) return menu[0].to
+    // ⚠️ La prima voce con una rotta: un GRUPPO (voce con `children`) non ne
+    //    ha una sua, e il suo `to` assente mandava il dominio a `undefined`.
+    const primaVoce = flattenMenu(DOMAIN_MENUS[domainKey]).find(item => item.to)
+    if (primaVoce) return primaVoce.to
     const domain = DOMAINS.find(d => d.key === domainKey)
     return domain?.to || null
   }
@@ -173,7 +175,18 @@ export const useNavigationStore = defineStore('navigation', () => {
     reorderFavorites(domainKey, [])
   }
 
+  // Scopo: i path delle voci di menu di un dominio, cioe' gli unici che un
+  //        preferito puo' essere (lo crea la stella di una voce, `SidebarDomain`).
+  function vociDelDominio(domainKey) {
+    return new Set(flattenMenu(DOMAIN_MENUS[domainKey]).map(item => item.to).filter(Boolean))
+  }
+
   // Carica preferiti da localStorage. Senza userId niente da caricare.
+  // ⛔ Un preferito salvato su una voce poi RITIRATA dal menu si scarta qui:
+  //    `getDefaultRoute` mette il primo preferito davanti alla prima voce, e
+  //    un path che non e' piu' una pagina apriva il dominio su «non trovato»
+  //    (Amm. Software, voce «Permessi» ritirata il 2026-10-06). Il localStorage
+  //    sopravvive ai rilasci: il menu di oggi e' la sola fonte di cosa vale.
   // NB: storica versione di questa funzione faceva fallback sulla chiave base
   // globale come "legacy migration". E' stata RIMOSSA perche' la chiave base
   // e' condivisa tra utenti sullo stesso browser, quindi un secondo utente
@@ -193,9 +206,10 @@ export const useNavigationStore = defineStore('navigation', () => {
       } catch {
         parsed = raw
       }
-      const list = Array.isArray(parsed)
+      const list = (Array.isArray(parsed)
         ? normalizeFavoritesList(parsed)
         : normalizeFavoritesList([parsed])
+      ).filter(path => vociDelDominio(domain.key).has(path))
       if (list.length > 0) result[domain.key] = list
     }
     return result

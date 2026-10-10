@@ -114,6 +114,7 @@ async function conferma() {
        AppDialog (BB obbligatorio per le dialog modali) con footer custom:
        tre bottoni — riprova / rimanda / conferma — fuori dal contratto
        Annulla/Salva del FormFooter integrato. -->
+  <!-- conferma-uscita: nessuna — non c'e' un'uscita che perda la scelta: niente X, ESC spento, clic fuori inerte, e «Rimanda» e' una decisione esplicita, non un Annulla -->
   <AppDialog
     :visible="visibile"
     width="sm"

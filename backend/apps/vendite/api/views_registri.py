@@ -179,6 +179,7 @@ class ApiRegistriList(DomainAPIView):
         emittente_sr_id = optional_int(payload, "emittente_soggetto_ruolo_id")
         payload.pop("emittente_soggetto_ruolo_id", None)
         self._verifica_scope(request, emittente_sr_id)
+        assert emittente_sr_id is not None  # `_verifica_scope` rifiuta l'assente
         result = RegistriService().create_registro(emittente_sr_id, payload)
         return success_response(result)
 

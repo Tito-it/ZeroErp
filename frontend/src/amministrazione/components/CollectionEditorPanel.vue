@@ -13,6 +13,7 @@
 //     <template #form> <div class="form-field"> ... </div> </template>
 //   </CollectionEditorPanel>
 import { useI18n } from 'vue-i18n'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
@@ -49,7 +50,7 @@ const { t } = useI18n()
       </Column>
     </DataTable>
 
-    <div v-if="coll.formMode.value" class="app-drawer-section coll-form">
+    <div v-if="coll.formMode.value" :ref="coll.ancoraForm" class="app-drawer-section coll-form">
       <slot name="form" />
       <div class="coll-form__actions">
         <Button :label="t('common.cancel')" severity="secondary" text @click="coll.chiudiForm()" />

@@ -17,7 +17,7 @@ from typing import Any
 
 from django.db import DatabaseError, connection, transaction
 
-from apps.core.api.constants import MAX_LIMIT
+from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
@@ -27,6 +27,7 @@ from apps.core.db._helpers import (
     fetch_paged_with_total,
     iso_or_none,
     jsonb_out,
+    predicato_giorno_operativo,
     query_paged_view,
     row_to_dict,
     rows_to_list,
@@ -1376,7 +1377,7 @@ class VenditeRepository:
         # DB zero — nessuna funzione temporale sul totale delle card.
         if ritardo_giorni is not None:
             conditions.append(
-                "d.data_riferimento <= current_date - make_interval(days => %s)"
+                "d.data_riferimento <= (SELECT script.fn_data_operativa()) - make_interval(days => %s)"
             )
             params.append(ritardo_giorni)
 
@@ -1394,7 +1395,7 @@ class VenditeRepository:
                 d.stato_codice,
                 d.valore_totale,
                 d.unita_totali,
-                GREATEST((current_date - d.data_riferimento), 0) AS anzianita_giorni,
+                GREATEST(((SELECT script.fn_data_operativa()) - d.data_riferimento), 0) AS anzianita_giorni,
                 d.motivo_fermo,
                 d.data_riferimento,
                 -- Emittente (P-4, Fase E). ⛔ L'alias deve restare
@@ -2632,6 +2633,8 @@ class VenditeRepository:
         if not respinte:
             return
         for r in righe:
+            if r["commessa_id"] is None:
+                continue
             trovata = respinte.get(r["commessa_id"])
             if trovata is None:
                 continue
@@ -3130,7 +3133,7 @@ class VenditeRepository:
         # confronto — coerente: "fermo da N giorni" richiede un'età nota.
         if ritardo_giorni is not None:
             conditions.append(
-                "d.data_riferimento <= current_date - make_interval(days => %s)"
+                "d.data_riferimento <= (SELECT script.fn_data_operativa()) - make_interval(days => %s)"
             )
             params.append(ritardo_giorni)
 
@@ -4455,6 +4458,22 @@ class VenditeRepository:
             row["meta"] = jsonb_out(row.get("meta"))
         return rows
 
+    # Scopo: Annotazioni di legge della fattura per il context builder (forma 4,
+    #        R-3 di brief-db-esigibilita-iva-per-cassa-emittente §11). QUALI
+    #        annotazioni e con quale testo lo decide il database
+    #        (`vendite.fn_annotazioni_fattura`, con la stessa regola del regime
+    #        che calcola l'esigibilita' delle righe): qui solo l'ordine dato.
+    #        Nessuna voce = lista vuota; mai un `testo` NULL (contratto DB).
+    def list_fattura_annotazioni(self, fattura_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT a.codice, a.testo
+              FROM vendite.fn_annotazioni_fattura(%s) a
+             ORDER BY a.ordine
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(fattura_id)])
+            return rows_to_list(cursor)
+
     # ------------------------------------------------------------------
     # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)
     # Letture generiche sulla famiglia vw_documento_lineage* +
@@ -5016,7 +5035,7 @@ class VenditeRepository:
         *,
         entity_type: str,
         entity_id: int,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         escludi_ritirate: bool = True,
         sort_by: str | None = None,
@@ -5053,7 +5072,7 @@ class VenditeRepository:
         self,
         *,
         lotto_id: int,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         escludi_ritirate: bool = True,
         escludi_info: bool = True,
@@ -5183,28 +5202,30 @@ class VenditeRepository:
         data_a: date | None = None,
         filo: str | None = None,
         solo_vive: bool = True,
-        limit: int = 50,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         sort_by: str | None = None,
         sort_dir: str | None = None,
     ) -> tuple[list[dict[str, Any]], int, int, int]:
         gravita_valide = [g for g in gravita if g in GIORNALE_GRAVITA]
         registri_validi = list(registri) if registri is not None else None
+        # Il giorno e' quello dell'AZIENDA (BB): fino al 2026-10-09 era
+        # `quando >= %s::date`, la mezzanotte della sessione (UTC), e un evento
+        # fra mezzanotte e le 2 di Roma finiva sotto il giorno prima.
+        giorno_sql, giorno_params = predicato_giorno_operativo("quando", data_da, data_a)
         return self._list_giornale(
-            perimetro_sql="""
+            perimetro_sql=f"""
                 (gravita = ANY(%s::text[]) OR (gravita IS NULL AND 'ERROR' = ANY(%s::text[])))
                 AND (%s::text[] IS NULL OR registro = ANY(%s::text[]))
                 AND (%s::text IS NULL OR entity_type = %s)
-                AND (%s::date IS NULL OR quando >= %s::date)
-                AND (%s::date IS NULL OR quando < %s::date + interval '1 day')
+                AND {giorno_sql}
                 AND (%s::uuid IS NULL OR tx_id = %s::uuid OR correlation_id = %s::uuid)
             """,
             perimetro_params=[
                 gravita_valide, gravita_valide,
                 registri_validi, registri_validi,
                 entity_type, entity_type,
-                data_da, data_da,
-                data_a, data_a,
+                *giorno_params,
                 filo, filo, filo,
             ],
             limit=limit,

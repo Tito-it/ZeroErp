@@ -26,18 +26,21 @@ from typing import Any
 
 from django.db import connection
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.catalogo.db.catalogo_repository import CatalogoRepository
 from apps.core.db._helpers import (
     limiti_pagina,
     RicercaFull,
     add_ricerca_full_condition,
     call_jsonb_fn,
+    colonne_identita,
     fetch_paged_with_total,
     row_to_dict,
     rows_to_list,
     sql_order_clause,
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
+from apps.core.db.righe_lista_mixin import RigheListaMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
@@ -433,7 +436,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
         solo_ultima_revisione: bool = True,
         order_by: str = "data_insert",
         order_dir: str | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         auth_user_id: int | None = None,
     ) -> list[dict[str, Any]]:
@@ -844,8 +847,9 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     ) -> list[dict[str, Any]]:
         # Proiezione allineata al RETURNS TABLE della fn DB
         # `fn_offerta_eccezione_componenti_preview` (rev 2026-05-27, modello
-        # unificato: filtro `esposto_in_fattura=TRUE` rimosso dal WHERE +
-        # `obbligatorio`/`esposto_in_fattura` esposti nella proiezione). Shape
+        # unificato: filtro sul flag di esposizione rimosso dal WHERE +
+        # `obbligatorio`/esposizione esposti nella proiezione; dal 2026-10-01
+        # `esposizione_in_fattura` e' il codice del modo, non un booleano). Shape
         # ora identica a `fn_contratto_riga_componenti_preview`: il
         # ComponentiDialog rende i badge "Obbligatorio" / "In fattura".
         sql = """
@@ -862,7 +866,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                    origine_prezzo,
                    resolver_error_reason,
                    obbligatorio,
-                   esposto_in_fattura
+                   esposizione_in_fattura
               FROM vendite.fn_offerta_eccezione_componenti_preview(
                   %s, %s, %s, %s, %s, %s, %s, %s
               )
@@ -903,7 +907,10 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             SELECT
                 o.emittente_fiscale_id,
                 sr.soggetto_id::text AS soggetto_id,
-                ba.soggetto_ruolo_id
+                ba.soggetto_ruolo_id,
+                -- Il cliente a grana fine della pratica (D-9 di
+                -- brief-db-istanza-nasce-col-ba): il BA del documento.
+                ba.id AS billing_account_id
             FROM vendite.offerte_commerciali o
             JOIN anagrafiche.billing_account ba ON ba.id = o.billing_account_id
             JOIN anagrafiche.soggetti_ruoli sr ON sr.id = ba.soggetto_ruolo_id
@@ -1136,7 +1143,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     #    filtro in piu' renderebbe un id sbagliato una lista vuota senza errore.
     def list_revisioni(
         self, offerta_id: int, *,
-        limit: int = 25, offset: int = 0,
+        limit: int = DEFAULT_LIMIT, offset: int = 0,
         order_by: str | None = "revisione_numero", order_dir: str | None = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         safe_limit, safe_offset = limiti_pagina(limit, offset)
@@ -1163,3 +1170,44 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
             fallback_params=params,
             offset=safe_offset,
         )
+
+
+# =================================================================
+# Righe dell'offerta come LISTA CONFIGURABILE (`vendite.offerta_righe`, 106)
+# =================================================================
+
+# Whitelist ORDER BY: i `campo_sorgente` `ordinabile = t` della lista 106,
+# gemella campo per campo della 103 del contratto (brief-db-righe-esclusione-
+# solo-non-si-vende §10.2), che la funzione espone con lo stesso nome.
+_ORDER_COLS_RIGHE_OFFERTA: dict[str, str] = colonne_identita(
+    "articolo_codice", "articolo_descrizione", "qta_operativa", "prezzo_finale",
+    "override_prezzo", "uom_codice", "tipo_erogazione", "prezzo_listino", "origine",
+)
+# Le `ricercabile_full = t` del seed. `test_ricerca_full_seed` legge questa costante.
+_RICERCA_RIGHE_OFFERTA = RicercaFull(
+    "vendite.offerta_righe", ("articolo_codice", "articolo_descrizione"),
+)
+
+
+class OffertaRigheListaRepository(RigheListaMixin):
+    """Le righe OPERATIVE di un'offerta come lista paginata (BB
+    `RigheListaMixin`): le righe della versione operativa del listino con
+    l'overlay delle eccezioni, piu' le aggiunte.
+
+    ⭐ La sorgente e' la FUNZIONE `vendite.fn_offerta_righe_preview`, involucro
+    del corpo comune col contratto (`vendite.fn_documento_righe_preview`):
+    stesse colonne, stessi verbi (`azioni`), stesso motivo che spegne
+    «Escludi» (`escludi_blocco_codice`). Il backend li trasporta, non li deduce.
+
+    ⚠️ Stesse scelte della gemella `ContrattoRigheListaRepository`: ordine di
+    partenza il codice articolo (le righe del listino non hanno un numero di
+    riga), `riga_key` come spareggio, nessun filtro `attivo` (la funzione
+    legge gia' le sole eccezioni attive), solo la PAGINA.
+    """
+
+    _righe_funzione = "vendite.fn_offerta_righe_preview"
+    _righe_ordine_documento = "articolo_codice"
+    _righe_chiave = "riga_key"
+    _righe_solo_attive = False
+    _righe_ordinamento = _ORDER_COLS_RIGHE_OFFERTA
+    _righe_ricerca = _RICERCA_RIGHE_OFFERTA

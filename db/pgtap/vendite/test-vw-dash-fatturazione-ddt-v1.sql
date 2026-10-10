@@ -51,7 +51,14 @@ SELECT
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
       AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
     ORDER BY ba.id LIMIT 1)                                              AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+      AND anagrafiche.fn_get_emittente_fiscale_id(ba.id) IS NOT NULL
+    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND COALESCE(a.is_composito, FALSE) IS FALSE
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1)                      AS articolo_id,
@@ -69,6 +76,7 @@ SELECT
 -- Ordine (qta 10, prezzo 25) -> DDT portato allo stato richiesto.
 -- La riga DDT resta SENZA prezzo proprio: il resolver deve ereditarlo
 -- dall'ordine via fulfillment, come fanno lister e gate.
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-90).
 CREATE OR REPLACE FUNCTION pg_temp.mk_caso(p_trigger varchar, p_causale bigint, p_stato bigint)
 RETURNS bigint AS $$
 DECLARE r RECORD; v_ord bigint; v_ddt bigint;
@@ -76,7 +84,9 @@ BEGIN
   SELECT * INTO r FROM tmp_refs;
   INSERT INTO vendite.ordini (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  VALUES (r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id, r.valuta_id,
+  VALUES (r.soggetto_ruolo_id, r.billing_account_id,
+          (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT' AND s.attivo IS TRUE),
+          r.valuta_id,
           DATE '2026-07-15', p_trigger, r.emittente_fiscale_id, false,
           jsonb_build_object('test_scope','pgtap_dash_ddt'))
   RETURNING id INTO v_ord;
@@ -86,6 +96,7 @@ BEGIN
     qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
   VALUES (v_ord, 1, r.articolo_id, 'Riga dash', 10, 10, 25, r.iva_id, true, false,
           jsonb_build_object('test_scope','pgtap_dash_ddt'));
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_ord, 'CONFERMATO');
   v_ddt := vendite.fn_genera_ddt_da_ordine(v_ord);
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;

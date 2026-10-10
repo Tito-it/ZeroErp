@@ -25,11 +25,7 @@ import unittest
 from django.db import connection, transaction
 
 from apps.core.services.service_errors import ServiceError
-from apps.core.tests.db_e2e import apri_contesto_operatore, richiedi_db_provvisto
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
+from apps.core.tests.db_e2e import Annulla, apri_contesto_operatore, richiedi_db_provvisto
 
 
 class FamiglieCodiceDbTests(unittest.TestCase):
@@ -57,6 +53,6 @@ class FamiglieCodiceDbTests(unittest.TestCase):
                 self.assertEqual(ctx.exception.code, "E_VENDITE_DUPLICATO")
                 self.assertEqual(ctx.exception.context.get("field"), "codice")
                 self.assertNotEqual(prima, seconda)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

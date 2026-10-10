@@ -52,6 +52,7 @@ import { exportLotti, listLotti, listLottiMensile } from '../api/lotti'
 import { paramsPerimetro, useLottiStore } from '../stores/lotti'
 import { paramsOrdinamento } from '../../core/utils/listParams'
 import FiltriLista from '../../core/components/FiltriLista.vue'
+import { oggiAziendale, parseIsoDate } from '../../core/utils/date'
 
 const { t, te } = useI18n()
 const notify = useNotify()
@@ -82,7 +83,8 @@ watch(() => store.filters.stato_lotto, (v) => { statoFilter.value = v ?? null })
 // useDashMesiNav + DashMesiSidebar): anno in alto, 12 mesi sotto. C'è SEMPRE un
 // mese selezionato (niente "tutti i mesi": lo storico si naviga con le frecce
 // anno). Default = mese corrente, la competenza che si sta fatturando.
-const oggi = new Date()
+// Il mese corrente e' quello dell'AZIENDA, non del PC.
+const oggi = oggiAziendale()
 const anno = ref(oggi.getFullYear())
 const meseIdx = ref(oggi.getMonth())
 
@@ -445,8 +447,8 @@ function applicaDeepLink() {
   if (competenza) {
     delete query.competenza
     cambiato = true
-    const d = new Date(competenza)
-    if (!Number.isNaN(d.getTime())) {
+    const d = parseIsoDate(competenza)
+    if (d) {
       // ⛔ `cambiaAnno` prende un DELTA, non l'anno: passargli `2026` avrebbe
       //    calcolato `anno + 2026`, sforato il range e fatto un `return`
       //    silenzioso — si sarebbe atterrati sul mese giusto dell'anno

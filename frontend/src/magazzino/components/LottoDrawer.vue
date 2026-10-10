@@ -15,17 +15,14 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DatePicker from 'primevue/datepicker'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { parseIsoDate, toDateStringOrNull } from '../../core/utils/date'
@@ -47,9 +44,6 @@ const close = useDrawerClose(emit)
 // lasciarlo aperto e vuoto.
 const { loadDetailOrClose } = useDrawerDetailLoad(close)
 
-// Contenuto deferito a fine animazione (`feedback_content_ready_after_show`).
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
-
 const isEdit = computed(() => props.lottoId != null)
 
 function formVuoto() {
@@ -62,7 +56,6 @@ const form = ref(formVuoto())
 const {
   fissa, modificato, chiudiConConferma, fotografia,
 } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(close)
 
 async function loadDetail() {
   const data = await loadDetailOrClose(() => store.fetchDetail(props.lottoId))
@@ -138,63 +131,60 @@ async function handleSave() {
     close()
   }
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
-    :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH.SIMPLE }"
-    @after-show="onAfterShow"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('magazzino.lotti.titolo_singolare')"
+    :icon="MANAGE_ICONS.LOTTO_MAGAZZINO"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.SIMPLE"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('magazzino.lotti.titolo_singolare')"
-        :icon="MANAGE_ICONS.LOTTO_MAGAZZINO" />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <div class="form-field">
-          <label>{{ t('magazzino.lotti.field_codice') }} *</label>
-          <InputText v-model="form.codice" :disabled="isReadonly" :invalid="campiErrati.includes('codice')" />
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('magazzino.lotti.field_data_arrivo') }} *</label>
-          <DatePicker
-            v-model="form.data_arrivo"
-            :date-format="DATE_FORMAT"
-            show-icon
-            :disabled="isReadonly"
-            :invalid="campiErrati.includes('data_arrivo')"
-          />
-          <small class="app-text-muted">{{ t('magazzino.lotti.hint_data_arrivo') }}</small>
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('magazzino.lotti.field_data_scadenza') }}</label>
-          <DatePicker
-            v-model="form.data_scadenza"
-            :date-format="DATE_FORMAT"
-            show-icon
-            show-button-bar
-            :disabled="isReadonly"
-            :invalid="campiErrati.includes('data_scadenza')"
-          />
-          <small class="app-text-muted">{{ t('magazzino.lotti.hint_data_scadenza') }}</small>
-        </div>
-
-        <div v-if="isEdit" class="form-field">
-          <label>{{ t('magazzino.lotti.field_attivo') }}</label>
-          <ToggleSwitch v-model="form.attivo" :disabled="isReadonly" :invalid="campiErrati.includes('attivo')" />
-          <small class="app-text-muted">{{ t('magazzino.lotti.hint_attivo') }}</small>
-        </div>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>{{ t('magazzino.lotti.field_codice') }} *</label>
+        <InputText v-model="form.codice" :disabled="isReadonly" :invalid="campiErrati.includes('codice')" />
       </div>
 
-      <FormFooter :loading="loading" :disabled="!canSave" @save="handleSave" @cancel="chiudi" />
+      <div class="form-field">
+        <label>{{ t('magazzino.lotti.field_data_arrivo') }} *</label>
+        <DatePicker
+          v-model="form.data_arrivo"
+          :date-format="DATE_FORMAT"
+          show-icon
+          :disabled="isReadonly"
+          :invalid="campiErrati.includes('data_arrivo')"
+        />
+        <small class="app-text-muted">{{ t('magazzino.lotti.hint_data_arrivo') }}</small>
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('magazzino.lotti.field_data_scadenza') }}</label>
+        <DatePicker
+          v-model="form.data_scadenza"
+          :date-format="DATE_FORMAT"
+          show-icon
+          show-button-bar
+          :disabled="isReadonly"
+          :invalid="campiErrati.includes('data_scadenza')"
+        />
+        <small class="app-text-muted">{{ t('magazzino.lotti.hint_data_scadenza') }}</small>
+      </div>
+
+      <div v-if="isEdit" class="form-field">
+        <label>{{ t('magazzino.lotti.field_attivo') }}</label>
+        <ToggleSwitch v-model="form.attivo" :disabled="isReadonly" :invalid="campiErrati.includes('attivo')" />
+        <small class="app-text-muted">{{ t('magazzino.lotti.hint_attivo') }}</small>
+      </div>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>

@@ -18,6 +18,14 @@
 # del frontend), cosi' una chiamata API senza `limit` risponde come la lista.
 DEFAULT_LIMIT = 25
 
+# Righe per pagina di una lista di EVENTI (il giornale di una pratica, il
+# registro di una commessa, i task run di un lotto): un registro si legge a
+# blocchi piu' lunghi di una lista anagrafica. Una costante e non un `100`
+# scritto nella view e ripetuto nelle firme di service e repository (§9.6
+# punto 3 del brief-db-liste-righe-documento, Tid 2026-10-04: «riportare le
+# liste non standard allo standard»). Il tetto resta `MAX_LIMIT`.
+DEFAULT_LIMIT_EVENTI = 100
+
 # Tetto di righe per PAGINA di lista. L'export non e' una pagina: ha il suo
 # (`EXPORT_MAX_ROWS`) e lo passa esplicitamente.
 MAX_LIMIT = 200

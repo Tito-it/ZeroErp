@@ -1,6 +1,6 @@
 # Guida — Il risolutore IVA di riga
 
-> **Ultimo aggiornamento**: 19 settembre 2026
+> **Ultimo aggiornamento**: 4 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori backend/frontend, DBA.
 >
@@ -9,7 +9,7 @@
 > * [vendite.fn_resolve_iva_riga](/dbzero/vendite/funzioni/fn_resolve_iva_riga) — **il guscio: si chiama questo**
 > * [vendite.fn_resolve_iva_riga_it](/dbzero/vendite/funzioni/fn_resolve_iva_riga_it) — la regola italiana
 > * [vendite.fn_get_tipo_utenza_fornitura](/dbzero/vendite/funzioni/fn_get_tipo_utenza_fornitura) — l'uso della fornitura, secondo gradino dello stadio A
-> * [anagrafiche.fn_consuma_plafond_titolo_iva](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva) — chi consuma il tetto (il risolutore **non** lo fa)
+> * [anagrafiche.fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe) — chi consuma il tetto, sul netto della fattura (il risolutore **non** lo fa)
 >
 > **Vedi anche** — tabelle:
 >
@@ -162,24 +162,62 @@ dovuto, cioè su precisamente il numero che l'Agenzia delle Entrate verifica.
 
 ## 4. Il plafond, e perché una riga si può spezzare
 
-Solo alcuni titoli — la dichiarazione d'intento — hanno un **tetto di importo**.
-Se la riga vale più del residuo, il risolutore ritorna **due righe**:
+Solo alcuni titoli — la dichiarazione d'intento — hanno un **tetto di importo**. Il
+tetto si consuma all'emissione della fattura, ed è lì che una riga si può spezzare
+in due: la parte coperta dal titolo, col suo codice, e il resto con l'aliquota
+ordinaria dello stadio A.
 
-1. la parte coperta dal titolo, con il suo codice;
-2. il resto, con l'aliquota ordinaria dello stadio A.
+Il lavoro è diviso in due, e conviene tenerlo a mente:
 
-L'ordine è parte del contratto: **prima la quota coperta**.
+| Chi | Che domanda | Che risposta |
+| --- | --- | --- |
+| il **risolutore**, nella domanda di **consumo** | quale titolo vale su questa riga, e quali sono i due trattamenti? | due righe, **prima il titolo e poi l'ordinario**, senza guardare quanto plafond resta. L'ordine è parte del contratto |
+| la **madre del consumo** ([fn_consuma_plafond_titolo_iva_righe](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva_righe)) | quanto copre il titolo, riga per riga? | la quota coperta di ogni riga, sul **netto** della fattura, e il movimento nel registro |
 
-> ⚠️ La seconda parte può uscire con `origine = 'ASSENTE'`, ed è corretto: il
-> titolo copriva un pezzo, e sul resto nessuno sa dire l'aliquota. Sarà il cancello
+> ⚠️ La parte ordinaria può uscire con `origine = 'ASSENTE'`, ed è corretto: il
+> titolo copre un pezzo, e sul resto nessuno sa dire l'aliquota. Sarà il cancello
 > all'emissione a fermarla.
 >
-> ⛔ **Il risolutore NON consuma il plafond.** È in sola lettura: la ripartizione
-> che ritorna è una **proiezione** sul residuo di adesso. Il consumo è un atto
-> contabile e ha una primitiva sua
-> ([fn_consuma_plafond_titolo_iva](/dbzero/anagrafiche/funzioni/fn_consuma_plafond_titolo_iva));
-> il registro dei movimenti è **solo aggiunte**, e una forzatura sbagliata si
-> annulla con un contro-movimento, non cancellando la riga.
+> ⛔ **Il risolutore NON consuma il plafond**, e non dice quanto il titolo copre: è
+> in sola lettura. Il consumo è un atto contabile, e il registro dei movimenti è
+> **solo aggiunte**: una forzatura sbagliata si annulla con un contro-movimento,
+> non cancellando la riga.
+
+### ⭐ Il plafond si consuma sul NETTO della fattura
+
+Le righe positive consumano, le righe negative — uno sconto, un componente di kit
+negativo — **restituiscono**. Una fattura non consuma più della capienza e non
+restituisce più di quanto essa stessa consuma.
+
+Esempio: plafond residuo 500, merce 1000 e uno sconto −100, tutto sotto il titolo.
+Netto 900, coperti 500: la merce va al titolo per 600 e all'ordinaria per 400, lo
+sconto va al titolo per intero. Nel registro: +600 e −100, cioè 500 consumati.
+
+* Le righe si coprono **nell'ordine di stampa**: a plafond quasi esaurito la prima
+  per intero, poi una spezzata, poi le altre all'ordinaria.
+* Una riga negativa si copre fino a quanto valgono le positive della stessa
+  fattura. Restituire plafond consumato da un **altro** documento è il mestiere
+  della nota di credito.
+* Per questo il risolutore, nel consumo, non guarda il residuo: una riga negativa
+  più in basso può restituire capienza a quelle prima, e solo chi vede tutta la
+  fattura lo sa.
+
+### ⭐ Un kit si spezza come un'unità sola
+
+In fattura i componenti di un kit non si spezzano uno per uno: il kit è la cosa
+venduta, e si divide **tutto insieme**, con la stessa frazione per ogni componente.
+
+* Il titolo si giudica sull'**articolo padre** del kit: se il padre rientra
+  nell'ambito del titolo lo seguono tutti i componenti, altrimenti nessuno.
+* La quota coperta si calcola sul netto del kit, la somma dei componenti (anche
+  quelli negativi).
+* Ogni componente va al titolo per quella frazione e all'aliquota ordinaria per il
+  resto, e così il numero di kit: un kit da 3 coperto per il 40% esce in fattura
+  come **due righe di kit**, «1,2» al titolo e «1,8» all'ordinaria, ciascuna con i
+  suoi componenti.
+* Un componente a importo zero (un omaggio nel kit) non consuma plafond, ma si
+  divide lo stesso: altrimenti le due righe del kit non direbbero più quanti kit
+  sono. Un kit che in tutto vale zero è coperto per intero: non consuma niente.
 
 ### ⭐ Sui documenti la spezzatura non si fa
 
@@ -189,9 +227,14 @@ effettivo si stabilisce all'emissione della fattura, ed è **lì** che il plafon
 consuma davvero.
 
 > ⭐ **Il modo solido di tenere quella regola non è ricordarsela: è non dare al
-> client il parametro con cui romperla.** L'endpoint di anteprima **non accetta un
-> imponibile** — quindi non può restituire una ripartizione, e nessun form può
-> inventarne una.
+> client il parametro con cui romperla.** L'endpoint di anteprima chiede sempre
+> l'**anteprima** e non accetta la domanda di consumo — quindi risponde con una
+> riga sola, e nessun form può inventare una spezzatura.
+>
+> ⛔ **E il risolutore non prende importi.** Una spezzatura «proiettata» sul plafond
+> residuo, riga per riga, era una terza domanda: non serviva più a nessuno e dava
+> un numero che il consumo sul netto avrebbe smentito. È stata ritirata, e chi
+> passa un importo riceve un errore invece di una risposta che sembra giusta.
 
 ---
 
@@ -228,8 +271,8 @@ dell'operazione: su un documento vecchio deve restare quella di allora.
 
 | Campo                   | Cosa dice                                                           |
 | ----------------------- | ------------------------------------------------------------------- |
-| `quota`                 | la parte di imponibile coperta da questa riga (`NULL` in anteprima) |
 | `iva_id`                | il codice IVA da applicare                                          |
+| `quota`                 | sempre `NULL`: quanto copre il titolo lo dice la madre del consumo (la colonna resta per non cambiare la firma) |
 | `aliquota`              | la percentuale, già risolta per lo stato dell'emittente             |
 | `natura_codice`         | la natura dell'operazione (`N1`…`N7`), quando c'è                   |
 | `is_reverse_charge`     | se quella natura è un'inversione contabile                          |
@@ -301,8 +344,9 @@ sulle righe di fattura.
   (preventivi · ordini · DDT)             ▼
                             vendite.fn_resolve_iva_riga  ──▶  _it  ──▶  titoli
                                           ▲
-  pipeline di fatturazione ───────────────┘   (ripartizione completa,
-                                               e qui il plafond si consuma)
+  pipeline di fatturazione ───────────────┘   (domanda di consumo: titolo e
+                                               ordinario; il plafond lo consuma
+                                               la madre, sul netto)
 ```
 
 | Livello  | Chi                                                                            | Nota                                                                                |
@@ -316,10 +360,9 @@ sulle righe di fattura.
 > com'è e si salva lo stesso. L'autorità è il backend **al salvataggio** — la
 > chiamata del form serve a far *vedere*, non a decidere.
 >
-> ⛔ **`risolvi_anteprima` non è `risolvi()[0]`.** Nell'anteprima l'imponibile non
-> si passa affatto. Chiamare col totale e prendere la prima parte darebbe il
-> trattamento della sola quota coperta applicandolo a tutta la riga — il difetto
-> opposto, e più difficile da vedere.
+> ⛔ **L'anteprima non è la prima riga del consumo.** Nel consumo la prima riga è
+> il titolo **anche a plafond esaurito**: prenderla per un form applicherebbe il
+> titolo a una riga che non ne ha più diritto — un difetto difficile da vedere.
 
 ---
 
@@ -399,10 +442,11 @@ niente):
 SELECT * FROM vendite.fn_resolve_iva_riga(
   p_articolo_id          => :articolo_id,
   p_data_riferimento     => :data_documento,
-  p_imponibile           => :imponibile,
   p_soggetto_id          => :soggetto_cliente_id,
   p_emittente_fiscale_id => :emittente_fiscale_id
 );
+-- con p_consumo => true (in fondo): quale titolo e i due trattamenti,
+-- come nel giro del plafond. Un importo (p_imponibile) non si passa: solleva.
 ```
 
 > ⚠️ `p_emittente_fiscale_id` è la **chiave primaria** di

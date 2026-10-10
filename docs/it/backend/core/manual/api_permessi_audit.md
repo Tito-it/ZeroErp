@@ -23,8 +23,8 @@ URL: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 
 | Param       | Tipo   | Default | Descrizione                                                    |
 | ----------- | ------ | ------- | -------------------------------------------------------------- |
-| `data_da`   | date   | --      | Filtro data inizio (`valid_from >=` mezzanotte del giorno), formato `YYYY-MM-DD` |
-| `data_a`    | date   | --      | Filtro data fine (`valid_from <=` mezzanotte del giorno: il giorno indicato resta **escluso**), formato `YYYY-MM-DD` |
+| `data_da`   | date   | --      | Filtro data inizio (dal giorno indicato), formato `YYYY-MM-DD` |
+| `data_a`    | date   | --      | Filtro data fine (fino al giorno indicato **incluso**), formato `YYYY-MM-DD` |
 | `tabella`   | string | --      | Filtro singola tabella sorgente (es. `user_override_aree`)     |
 | `page`      | int    | 1       | Numero pagina                                                  |
 | `page_size` | int    | 50      | Dimensione pagina; oltre 200 viene ridotta a 200 in silenzio   |
@@ -34,7 +34,7 @@ URL: `GET /api/v1/core/users/{user_id}/permessi-audit/`
 
 `page` e `page_size` partono da 1 (sotto: 400 `E_VALIDATION_INPUT`, `page_size`
 tagliato a 200). `data_a` **include** il giorno indicato: intervallo
-`[data_da, data_a + 1 giorno)` (F-4, 2026-09-27).
+`[data_da, data_a + 1 giorno)` (F-4, 2026-09-27), e i giorni sono giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09).
 
 ## Output
 
@@ -86,11 +86,10 @@ tagliato a 200). `data_a` **include** il giorno indicato: intervallo
 | Codice               | HTTP | Causa                                                        |
 | -------------------- | ---- | ------------------------------------------------------------ |
 | `E_PERMESSO_NEGATO`  | 403  | Consultazione di un altro utente senza superuser/SUPER_ADMIN |
-| `E_CORE_VALIDATION`  | 400  | `user_id` inesistente; `tabella` non ammessa                 |
+| `E_AMM_UTENTE_NOT_FOUND` | 404 | `user_id` inesistente (dal 2026-10-08; prima 400 `E_CORE_VALIDATION`) |
+| `E_CORE_VALIDATION`  | 400  | `tabella` non ammessa                                        |
 | `E_VALIDATION_INPUT` | 400  | Data non ISO, `page`/`page_size` non numerici                |
 
-> ⚠️ Difetto noto (E-4): `user_id` inesistente esce 400 `E_CORE_VALIDATION`
-> invece di un «non trovato» 404 — vedi [analisi difetti](../../../dev/work-in-progress/analisi-be-difetti-emersi-verifica-doc-api-core.md).
 
 ## Tabelle storico interrogate (8)
 

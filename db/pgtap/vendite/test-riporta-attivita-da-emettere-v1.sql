@@ -169,10 +169,10 @@ BEGIN
         stato_approvazione, stato_emissione, sorgente_tipo_id, sorgente_uid)
       SELECT (SELECT id FROM tmp_commessa_rde),
              'PGTAP-RDE-' || s || '-' || substr(md5(clock_timestamp()::text), 1, 12),
-             r.articolo_id, r.istanza_utility_id, current_date, r.uom_id, 1,
-             date_trunc('month', current_date)::date,
-             date_trunc('month', current_date)::date,
-             (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+             r.articolo_id, r.istanza_utility_id, script.fn_data_operativa(), r.uom_id, 1,
+             date_trunc('month', script.fn_data_operativa())::date,
+             date_trunc('month', script.fn_data_operativa())::date,
+             (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
              r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
              -- ⭐ rev 2026-09-12: la LIBERA ha la riga NON_EMESSA. E' l'unica
              --   forma in cui «gia' disponibile» esiste ancora (motivo 3): con
@@ -194,7 +194,7 @@ WITH ins AS (
                                valuta_id, stato_doc_fiscale_id, data)
   SELECT r.registro_id, (SELECT emittente_sr_id FROM tmp_cost_rde),
          r.billing_account_id, r.utility_id, r.tipo_doc_fiscale_id,
-         r.valuta_id, r.stato_draft_id, current_date
+         r.valuta_id, r.stato_draft_id, script.fn_data_operativa()
     FROM tmp_refs_rde r
   RETURNING id)
 SELECT id AS fattura_id FROM ins;
@@ -202,8 +202,8 @@ SELECT id AS fattura_id FROM ins;
 CREATE TEMP TABLE tmp_riga_rde AS
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                     qta, prezzo_unitario, imponibile_riga)
-  SELECT f.fattura_id, 1, 'Riga PGTAP RDE', 1, 10, 10
+                                     qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
+  SELECT f.fattura_id, 1, 'Riga PGTAP RDE', 1, 10, 10, script.fn_data_operativa(), script.fn_data_operativa()
     FROM tmp_fattura_rde f
   RETURNING id)
 SELECT id AS riga_id FROM ins;
@@ -240,10 +240,10 @@ BEGIN
             sospesa, tipo_doc_fiscale_id, valuta_id, commessa_id,
             commessa_attivita_id, uom_id, prezzo_unitario, lock_in_fatturazione,
             lock_batch_id, fattura_riga_id, stato_esecuzione, meta)
-        SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id, current_date,
-               date_trunc('month', current_date)::date,
-               date_trunc('month', current_date)::date,
-               (date_trunc('month', current_date) + INTERVAL '1 month - 1 day')::date,
+        SELECT r.articolo_id, r.istanza_utility_id, r.billing_account_id, script.fn_data_operativa(),
+               date_trunc('month', script.fn_data_operativa())::date,
+               date_trunc('month', script.fn_data_operativa())::date,
+               (date_trunc('month', script.fn_data_operativa()) + INTERVAL '1 month - 1 day')::date,
                1, true,
                -- ⚠️ `fatturato` NON si scrive: dal 20260826-33 e' una colonna
                --    GENERATA su `fattura_riga_id`. Lo stato che la pipeline

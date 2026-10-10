@@ -185,20 +185,51 @@ SELECT CASE
     '8) Motivo: la fattura non collegata a quel lotto e rifiutata')
 END;
 
--- ⚠️ Il numero si mette e si toglie dentro il test: la fixture torna
--- com'era e i test successivi lavorano sulla coppia intatta.
-UPDATE vendite.fatture SET numero = 999999
- WHERE id = (SELECT fattura_id FROM tmp_efl)
-   AND EXISTS (SELECT 1 FROM tmp_efl);
+-- ⚠️ Il numero si mette DENTRO UNA SOTTOTRANSAZIONE che si annulla da sola:
+--   check e mutazione si interrogano sulla fattura numerata, gli esiti si
+--   salvano in variabili, poi il blocco esce con un errore proprio (PGT01) e
+--   tutto cio' che ha scritto — il numero, e una cancellazione se la mutazione
+--   per errore riuscisse — torna indietro. La fixture torna com'era e i test
+--   successivi lavorano sulla coppia intatta.
+-- ⚠️ Rev 2026-10-05: prima il numero si TOGLIEVA con un UPDATE (numero =
+--   NULL). Dal 20261004-80 (vendite.trgfn_fatture_guard_numero_fiscale, Q-4 di
+--   brief-db-esclusioni-implicite) una fattura numerata non cambia identita'
+--   fiscale, e il file moriva li'. Il rollback di una sottotransazione non e'
+--   una modifica della fattura: e' una numerazione che non e' mai avvenuta.
+CREATE TEMP TABLE tmp_efl_numerata (motivi jsonb, esito_mutazione text);
+DO $num$
+DECLARE
+  v_motivi jsonb;
+  v_esito  text;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM tmp_efl) THEN
+    RETURN;
+  END IF;
+  BEGIN
+    UPDATE vendite.fatture SET numero = 999999
+     WHERE id = (SELECT fattura_id FROM tmp_efl);
+    v_motivi := script.fn_check_fattura_eliminabile_da_lotto(
+                  (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl));
+    BEGIN
+      PERFORM * FROM vendite.fn_elimina_fattura_da_lotto(
+                (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl));
+      v_esito := 'NESSUN ERRORE';
+    EXCEPTION WHEN OTHERS THEN
+      v_esito := SQLSTATE;
+    END;
+    RAISE EXCEPTION USING ERRCODE = 'PGT01';   -- annulla il numero
+  EXCEPTION WHEN SQLSTATE 'PGT01' THEN
+    NULL;
+  END;
+  INSERT INTO tmp_efl_numerata VALUES (v_motivi, v_esito);
+END $num$;
 
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_efl)
     THEN skip('nessuna coppia lotto/fattura pre-fiscale su questo DB', 1)
   ELSE ok(
     EXISTS (
-      SELECT 1 FROM jsonb_array_elements(
-        script.fn_check_fattura_eliminabile_da_lotto(
-          (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl))) m
+      SELECT 1 FROM tmp_efl_numerata n, jsonb_array_elements(n.motivi) m
        WHERE m->>'reason' = 'FATTURA_NUMERATA'),
     '9) Motivo: la fattura gia numerata e rifiutata (si guarda il numero)')
 END;
@@ -206,33 +237,24 @@ END;
 -- ============================================================
 -- 10) 🔴 Equivalenza check <-> mutazione
 -- ============================================================
--- Il cuore del file. La fattura e' ancora numerata (il numero si toglie
--- DOPO): il check elenca almeno un motivo, e la mutazione deve
--- sollevare. Se domani qualcuno rimettesse una precondizione a mano
--- dentro la mutazione — o ne togliesse una — le due meta' si
--- separerebbero e qui si vedrebbe.
--- ⚠️ La chiamata sta dentro throws_ok proprio perche' deve sollevare:
--- una chiamata nuda abortirebbe la transazione e i test successivi non
--- verrebbero eseguiti affatto.
+-- Il cuore del file. Sulla fattura numerata (nella sottotransazione qui
+-- sopra) il check elenca almeno un motivo, e la mutazione deve sollevare.
+-- Se domani qualcuno rimettesse una precondizione a mano dentro la
+-- mutazione — o ne togliesse una — le due meta' si separerebbero e qui si
+-- vedrebbe.
 SELECT CASE
   WHEN NOT EXISTS (SELECT 1 FROM tmp_efl)
     THEN skip('nessuna coppia lotto/fattura pre-fiscale su questo DB', 1)
-  WHEN jsonb_array_length(
-         script.fn_check_fattura_eliminabile_da_lotto(
-           (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl))) = 0
+  WHEN (SELECT coalesce(jsonb_array_length(n.motivi), 0) FROM tmp_efl_numerata n) = 0
     THEN ok(false,
             '10) INCOERENZA: la fn_check non vede il numero che il test ha appena scritto')
-  ELSE throws_ok(
-    format($$ SELECT * FROM vendite.fn_elimina_fattura_da_lotto(%s, %s) $$,
-           (SELECT lotto_id FROM tmp_efl), (SELECT fattura_id FROM tmp_efl)),
+  ELSE is(
+    (SELECT n.esito_mutazione FROM tmp_efl_numerata n),
     'P0001',
-    NULL,
     '10) Equivalenza: il check elenca motivi e la mutazione solleva')
 END;
 
-UPDATE vendite.fatture SET numero = NULL
- WHERE id = (SELECT fattura_id FROM tmp_efl)
-   AND EXISTS (SELECT 1 FROM tmp_efl);
+-- La fattura non e' numerata: la sottotransazione e' stata annullata.
 
 -- ============================================================
 -- 11) 🔴 Il perimetro allargato

@@ -31,7 +31,6 @@ from apps.core.services.auth_constants import (
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.invito_veste import (
     PORTA_PORTALE,
-    PORTA_SHOP,
     InvitoVeste,
     maschera_email,
     porta_della_veste,
@@ -64,13 +63,7 @@ class InvitoPortaleService:
         invitato_da_user_id: int,
     ) -> dict[str, Any]:
         email_clean = self._clean_email(email)
-        info = self._repo.get_cliente_info(cliente_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Cliente {cliente_id} non trovato.",
-        )
-        assert info is not None
+        info = self._cliente_info(cliente_id)
         return self._invia_invito_common(
             soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
             ruolo_applicativo=RUOLO_APPLICATIVO_CLIENTE_PORTALE,
@@ -91,13 +84,7 @@ class InvitoPortaleService:
         invitato_da_user_id: int,
     ) -> dict[str, Any]:
         email_clean = self._clean_email(email)
-        info = self._repo.get_fornitore_info(fornitore_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Fornitore {fornitore_id} non trovato.",
-        )
-        assert info is not None
+        info = self._fornitore_info(fornitore_id)
         return self._invia_invito_common(
             soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
             ruolo_applicativo=RUOLO_APPLICATIVO_FORNITORE_PORTALE,
@@ -149,42 +136,27 @@ class InvitoPortaleService:
     # decidere se "invita" (stato NESSUNO), "reinvia" (PENDING), "disattiva"
     # (ATTIVO) o "reinvia per riattivare" (DISATTIVO).
     def get_stato_accessi_cliente(self, cliente_id: int) -> dict[str, Any]:
-        info = self._repo.get_cliente_info(cliente_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Cliente {cliente_id} non trovato.",
-        )
-        assert info is not None
+        info = self._cliente_info(cliente_id)
         soggetto_ruolo_id = int(info["soggetto_ruolo_id"])
         return {
             "portale": self._repo.get_stato_identita(
                 soggetto_ruolo_id,
                 RUOLO_APPLICATIVO_CLIENTE_PORTALE,
-                PORTA_PORTALE.token_tipi,
             ),
             "shop": self._repo.get_stato_identita(
                 soggetto_ruolo_id,
                 RUOLO_APPLICATIVO_SHOP_CUSTOMER,
-                PORTA_SHOP.token_tipi,
             ),
         }
 
     # Scopo: Stato aggregato delle vesti non-operatore di un fornitore
     # (solo FORNITORE_PORTALE; i fornitori non accedono allo shop B2C).
     def get_stato_accessi_fornitore(self, fornitore_id: int) -> dict[str, Any]:
-        info = self._repo.get_fornitore_info(fornitore_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Fornitore {fornitore_id} non trovato.",
-        )
-        assert info is not None
+        info = self._fornitore_info(fornitore_id)
         return {
             "portale": self._repo.get_stato_identita(
                 int(info["soggetto_ruolo_id"]),
                 RUOLO_APPLICATIVO_FORNITORE_PORTALE,
-                PORTA_PORTALE.token_tipi,
             ),
         }
 
@@ -200,13 +172,7 @@ class InvitoPortaleService:
         ruolo_applicativo: str,
         disattivato_da_user_id: int,
     ) -> dict[str, Any]:
-        info = self._repo.get_cliente_info(cliente_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Cliente {cliente_id} non trovato.",
-        )
-        assert info is not None
+        info = self._cliente_info(cliente_id)
         return self._disattiva_veste_common(
             soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
             ruolo_applicativo=ruolo_applicativo,
@@ -219,13 +185,7 @@ class InvitoPortaleService:
         fornitore_id: int,
         disattivato_da_user_id: int,
     ) -> dict[str, Any]:
-        info = self._repo.get_fornitore_info(fornitore_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Fornitore {fornitore_id} non trovato.",
-        )
-        assert info is not None
+        info = self._fornitore_info(fornitore_id)
         return self._disattiva_veste_common(
             soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
             ruolo_applicativo=RUOLO_APPLICATIVO_FORNITORE_PORTALE,
@@ -233,9 +193,9 @@ class InvitoPortaleService:
         )
 
     # Scopo: core comune della disattivazione — risolve l'identita, la
-    # disattiva se attiva, invalida i token pendenti. Transazionale quando
-    # c'e' un UPDATE fisico; altrimenti salta il wrapper `atomic` per non
-    # aprire transazioni vuote.
+    # disattiva se attiva, invalida i token pendenti, chiude le sessioni della
+    # veste e la cache dei permessi. Tutto in una transazione: una chiusura
+    # fallita annulla anche lo spegnimento.
     def _disattiva_veste_common(
         self,
         *,
@@ -259,17 +219,22 @@ class InvitoPortaleService:
 
         # Invalida i token pendenti della veste in ogni caso (anche su una
         # veste gia' spenta: un invito in volo smette di funzionare).
+        # ⛔ E chiude le sessioni di QUESTA veste, con la cache dei permessi a
+        #    commit avvenuto (A-5, D-5, 2026-10-02; BB
+        #    `InvitoVeste.chiudi_veste_spenta`): gli stessi effetti dello
+        #    spegnimento di una veste operatore. Fino a quel giorno portale e
+        #    shop non chiudevano ne' sessioni ne' cache. Le sessioni delle altre
+        #    vesti della credenziale restano: si filtra per `identita_id`.
+        #    Anche su una veste gia' spenta: idempotente, e chiude le sessioni
+        #    rimaste vive da prima di questa regola.
         porta = porta_della_veste(ruolo_applicativo)
-        if was_active:
-            with transaction.atomic():
+        with transaction.atomic():
+            if was_active:
                 self._repo.disattiva_identita(identita_id)
-                if auth_user_id is not None:
-                    self._invito.invalida(
-                        porta, auth_user_id=auth_user_id, identita_id=identita_id,
-                    )
-        elif auth_user_id is not None:
-            # Gia' spenta: si puliscono solo i token (nessun UPDATE, niente atomic).
-            self._invito.invalida(porta, auth_user_id=auth_user_id, identita_id=identita_id)
+            if auth_user_id is not None:
+                self._invito.chiudi_veste_spenta(
+                    porta, auth_user_id=auth_user_id, identita_id=identita_id,
+                )
 
         logger.info(
             "security.veste_disattivata identita_id=%s ruolo=%s auth_user=%s da=%s was_active=%s",
@@ -296,13 +261,7 @@ class InvitoPortaleService:
         invitato_da_user_id: int,
     ) -> dict[str, Any]:
         email_clean = self._clean_email(email)
-        info = self._repo.get_cliente_info(cliente_id)
-        ErrorManager.require(
-            info is not None,
-            code=E_INVITO_PORTALE,
-            message=f"Cliente {cliente_id} non trovato.",
-        )
-        assert info is not None
+        info = self._cliente_info(cliente_id)
         return self._invia_invito_common(
             soggetto_ruolo_id=int(info["soggetto_ruolo_id"]),
             ruolo_applicativo=RUOLO_APPLICATIVO_SHOP_CUSTOMER,
@@ -415,7 +374,7 @@ class InvitoPortaleService:
     def _ensure_auth_user(
         self, *, email: str, nome_destinatario: str
     ) -> tuple[int, bool]:
-        existing = self._repo.find_auth_user_by_email(email)
+        existing = self._auth_repo.find_auth_user_id_per_email(email)
         if existing is not None:
             return existing, False
         # Split nome in first/last best-effort: usa l'unico campo
@@ -515,6 +474,36 @@ class InvitoPortaleService:
         nome = (info.get("nome") or "").strip()
         combined = f"{nome} {cognome}".strip()
         return combined or "cliente/fornitore"
+
+    # Scopo: L'entita' di partenza dell'invito, o 404. Cliente e fornitore
+    # indicati dall'URL che non esistono sono un «non trovato» (E-4 di
+    # analisi-be-difetti-emersi-verifica-doc-api-core): fino al 2026-10-08
+    # uscivano `E_INVITO_PORTALE` (DATO_ERRATO), cioe' 400, da sette punti
+    # scritti uguali. `cliente_id` e `fornitore_id` sono le PK di
+    # anagrafiche.clienti / anagrafiche.fornitori: le stesse che nominano
+    # `E_CLIENTE_NON_TROVATO` (fn_update_cliente) ed `E_FORNITORE_NON_TROVATO`
+    # (fn_guard_fornitore_attivo).
+    def _cliente_info(self, cliente_id: int) -> dict[str, Any]:
+        info = self._repo.get_cliente_info(cliente_id)
+        ErrorManager.require(
+            info is not None,
+            code="E_CLIENTE_NON_TROVATO",
+            message=f"Cliente {cliente_id} non trovato.",
+            context={"cliente_id": cliente_id},
+        )
+        assert info is not None
+        return info
+
+    def _fornitore_info(self, fornitore_id: int) -> dict[str, Any]:
+        info = self._repo.get_fornitore_info(fornitore_id)
+        ErrorManager.require(
+            info is not None,
+            code="E_FORNITORE_NON_TROVATO",
+            message=f"Fornitore {fornitore_id} non trovato.",
+            context={"fornitore_id": fornitore_id},
+        )
+        assert info is not None
+        return info
 
     @staticmethod
     def _clean_email(email: str | None) -> str:

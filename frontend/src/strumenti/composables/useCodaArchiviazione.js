@@ -66,7 +66,7 @@ export function useCodaArchiviazione({
   async function _esegui(chiamata, ids, { chiaveOk, chiaveParziale }) {
     const res = await execute(() => chiamata(ids))
     if (res === null) return null
-    const d = res.data?.data ?? {}
+    const d = res ?? {}
     const falliti = d.falliti ?? []
     if (falliti.length === 0) {
       notify.success(t(chiaveOk, d.riuscite, { n: d.riuscite }))

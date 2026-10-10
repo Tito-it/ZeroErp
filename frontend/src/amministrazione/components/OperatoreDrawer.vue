@@ -2,20 +2,21 @@
 // Scopo: Drawer unificato creazione/modifica operatore.
 // Sezioni: Soggetto (resolver in crea, banner in modifica),
 // Auth (solo crea), Dati anagrafici, Collocazione.
-// Tabs: Dati + Permessi (permessi solo in modifica).
+// Tabs: Dati + Permessi (permessi solo in modifica). Lo scope emittenti
+// fiscali sta nei Dati (solo modifica) dal 2026-10-06.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useOperatoriStore } from '../stores/operatori'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
 import { useAuthUser } from '../../core/composables/useAuthUser'
 import { useLookup } from '../../core/composables/useLookup'
 import { listUnitaOrganizzative, invitaOperatore, reinviaInvito, getCredenzialePerEmail } from '../api/amministrazione'
+import { listEmittentiFiscali } from '../../core/apiCore'
 import { TIPO_RUOLO_CODICE } from '../constants'
-import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
+import { DATE_FORMAT, DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import { NAV_ICONS } from '../../core/navigation'
-import { displayDate, displayTimestamp } from '../../core/utils/date'
+import { displayDate, displayTimestamp, parseIsoDate, toDateStringOrNull } from '../../core/utils/date'
 import { capitalizeWords } from '../../core/utils/string'
 import { isEmailValid } from '../../core/utils/validators'
 import { useNotify } from '../../core/composables/useNotify'
@@ -28,13 +29,14 @@ import SoggettoResolver from '../../anagrafiche/components/SoggettoResolver.vue'
 import SoggettoMessageBanner from '../../core/components/SoggettoMessageBanner.vue'
 import AuthUserForm from '../../core/components/AuthUserForm.vue'
 import OperatorePermessiTab from './OperatorePermessiTab.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import CredenzialeAzioni from './CredenzialeAzioni.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import AppDialog from '../../core/components/AppDialog.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
+import DatePicker from 'primevue/datepicker'
 import Select from 'primevue/select'
+import RadioButton from 'primevue/radiobutton'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Tab from 'primevue/tab'
 import Tabs from 'primevue/tabs'
@@ -44,7 +46,6 @@ import TabPanels from 'primevue/tabpanels'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
 
 const { t, te } = useI18n()
 const store = useOperatoriStore()
@@ -80,6 +81,7 @@ const soggettoSelezionato = ref(null)
 
 // Lookup
 const unitaOrg = useLookup(listUnitaOrganizzative, { immediate: true })
+const emittentiFiscali = useLookup(listEmittentiFiscali, { immediate: true })
 
 const props = defineProps({
   visible: Boolean,
@@ -91,10 +93,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
@@ -130,13 +128,31 @@ const disableBloccato = computed(() =>
 const demoteBloccato = computed(() =>
   isEdit.value && bloccoAttivo(store.currentOperatore, 'demote', 'can_demote_super_admin'))
 const disableReason = computed(() => motivoSeBloccato(disableBloccato.value, 'disable'))
+// Scopo: ⛔ D-3 (2026-10-04) — l'interruttore SPEGNE soltanto. Una veste
+// spenta (disabilitata, o mai attivata) si riaccende col reinvio
+// dell'invito, e la accende la persona attivando: da spento resta fermo col
+// perche', e il pulsante d'invito sotto (da `can_invite`) e' la strada. Il
+// backend rifiuta comunque `attivo: true` su una veste spenta.
+const vesteSpenta = computed(() =>
+  isEdit.value && !!store.currentOperatore && store.currentOperatore.veste_attiva !== true)
 const demoteReason = computed(() => motivoSeBloccato(demoteBloccato.value, 'demote'))
+// Scopo: La data di fine del RAPPORTO, spenta per l'ultimo SUPER_ADMIN senza
+// data di fine (`can_set_valido_al` di fn_get_operatore_detail, brief-db-veste-
+// utilizzabile §10): il DB la rifiuterebbe (409), il dettaglio lo dice prima.
+// Chi ha gia' una data di fine risponde `true`: la puo' cambiare o togliere.
+const validoAlBloccato = computed(() =>
+  isEdit.value && bloccoAttivo(store.currentOperatore, 'valido_al', 'can_set_valido_al'))
+const validoAlReason = computed(() => motivoSeBloccato(validoAlBloccato.value, 'valido_al'))
+// La fine non precede l'inizio (lo giudica il DB, E_DATA_AL_MINORE_DAL): il
+// calendario non la offre nemmeno.
+const validoAlMin = computed(() => parseIsoDate(form.value.valido_dal) ?? undefined)
 const hasBeenInvited = computed(() => !!store.currentOperatore?.invito_inviato_at)
 
 // Multi-face auth Stage B: il vecchio radio ruolo_sistema (ADMIN/OPERATIVO/
 // DISABILITATO) e' sostituito da due toggle indipendenti:
 //   - is_super_admin: binding al profilo SUPER_ADMIN (id 9100)
-//   - attivo:         stato operativo dell'identita' digitale
+//   - attivo:         stato della veste OPERATORE (`veste_attiva`): si
+//                     spegne da qui, si riaccende solo con l'invito (D-3)
 // Il ruolo applicativo resta implicito = OPERATORE per questo drawer
 // (operatori interni). Portali e shop useranno drawer dedicati.
 const INITIAL_FORM = Object.freeze({
@@ -167,11 +183,60 @@ const formSalvato = computed(() => ({
 }))
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(formSalvato, { visibile: () => props.visible })
 
-// Tab Permessi: ha i suoi Salva e la sua fotografia (espone `modificato` e
-// `chiudiConConferma`). Chiudere il drawer chiede conferma se UNO dei due ha
-// modifiche, con un solo dialog.
+// ═══ SCOPE EMITTENTI FISCALI (solo modifica) ═══════════════════════════════
+// ⭐ Sta nei Dati, non nel pannello Permessi (Tid, 2026-10-06): e' il
+//    perimetro dell'operatore — quale emittente vede — come il reparto e' la
+//    sua collocazione, non una regola su area, oggetto o azione.
+// ⚠️ Ha il SUO endpoint (`PUT .../emittenti-scope/`), quindi la SUA
+//    fotografia: il Salva manda lo scope solo se e' cambiato, e se i dati
+//    passano e lo scope no, i dati restano salvati e lo scope resta da
+//    salvare (stessa regola del Salva unico dei permessi).
+// ⚠️ Si confronta COME LO MANDA il Salva: con GLOBAL l'emittente non viaggia,
+//    quindi un emittente scelto e poi abbandonato non e' una modifica.
+const scopeMode = ref('GLOBAL')
+const scopeEmittenteId = ref(null)
+
+// Scopo: Payload dello scope: GLOBAL -> emittenti_ids: []; SINGLE -> [id].
+// La validazione e' sul BE (E_AMM_SCOPE_NON_AMMESSO se SINGLE senza
+// emittente): qui si blocca solo il Salva, per evitare il round-trip.
+function buildScopePayload() {
+  if (scopeMode.value === 'GLOBAL') return { scope_mode: 'GLOBAL', emittenti_ids: [] }
+  return {
+    scope_mode: 'SINGLE',
+    emittenti_ids: scopeEmittenteId.value != null ? [scopeEmittenteId.value] : [],
+  }
+}
+const scopeLocale = computed(() => buildScopePayload())
+const scopeFoto = useDrawerFormPreserve(scopeLocale, { visibile: () => props.visible })
+
+// Capability esposte dal BE: modalita' ammesse e blocco col suo motivo.
+const allowedScopeModes = computed(() => store.emittentiScope.allowed_scope_modes || ['GLOBAL', 'SINGLE'])
+const canChangeScope = computed(() => store.emittentiScope.can_change_scope !== false)
+const changeScopeReason = computed(() => store.emittentiScope.change_scope_reason || null)
+const scopeModeOptions = computed(() => [
+  { value: 'GLOBAL', label: t('amministrazione.scope_mode_global'), disabled: !allowedScopeModes.value.includes('GLOBAL') },
+  { value: 'SINGLE', label: t('amministrazione.scope_mode_single'), disabled: !allowedScopeModes.value.includes('SINGLE') },
+])
+const canSaveScope = computed(() =>
+  canChangeScope.value
+  && allowedScopeModes.value.includes(scopeMode.value)
+  && (scopeMode.value !== 'SINGLE' || scopeEmittenteId.value != null)
+)
+
+// Scopo: Allinea lo scope a video a quello dello store e lo fotografa.
+function syncScope() {
+  scopeMode.value = store.emittentiScope.scope_mode || 'GLOBAL'
+  scopeEmittenteId.value = (store.emittentiScope.emittenti_ids || [])[0] ?? null
+  scopeFoto.fissa()
+}
+
+// Tab Permessi: ha la sua fotografia e il suo Salva (espone `modificato`,
+// `chiudiConConferma`, `salva`, `puoSalvare`, `salvando`). Il footer e' uno:
+// sulla scheda Permessi Salva chiama `salva` della scheda, sui Dati `onSave`.
+// Chiudere il drawer chiede conferma se UNO dei due ha modifiche, con un
+// solo dialog.
 const permessiTab = ref(null)
-const tutto = unisciFotografie({ modificato, chiudiConConferma }, () => permessiTab.value)
+const tutto = unisciFotografie({ modificato, chiudiConConferma }, scopeFoto, () => permessiTab.value)
 const modificatoTutto = tutto.modificato
 
 // Scopo: Reset form a valori iniziali.
@@ -193,7 +258,11 @@ watch(() => props.visible, async (val) => {
   emailEditInvalid.value = false
   activeTab.value = 'dati'
   if (isEdit.value && props.authUserId) {
-    await store.fetchDetail(props.authUserId)
+    await Promise.all([
+      store.fetchDetail(props.authUserId),
+      store.fetchEmittentiScope(props.authUserId),
+    ])
+    syncScope()
     const u = store.currentOperatore
     if (u) {
       form.value = {
@@ -201,19 +270,20 @@ watch(() => props.visible, async (val) => {
         cognome: u.soggetto_cognome || u.last_name || '',
         nome: u.soggetto_nome || u.first_name || '',
         email: u.email || '',
-        // Multi-face auth: i flag nativi vengono dal BE (is_super_admin +
-        // attivo del detail). Fallback difensivo su is_active per setup
-        // vecchi che non hanno ancora aggiornato la proiezione.
+        // Multi-face auth: i flag nativi vengono dal BE. ⛔ L'interruttore
+        // «Accesso attivo» e' lo stato della VESTE (`veste_attiva`), non
+        // `attivo` del dettaglio, che e' la risorsa umana: un operatore
+        // invitato e non ancora attivato ha il rapporto aperto e la veste
+        // spenta, e fino al 2026-10-04 l'interruttore lo mostrava acceso.
         is_super_admin: u.is_super_admin === true,
-        attivo: u.attivo !== undefined ? !!u.attivo : !!u.is_active,
+        attivo: u.veste_attiva === true,
         qualifica_id: null,
         unita_organizzativa_id: u.unita_organizzativa_id,
         valido_dal: u.valido_dal || null,
-        valido_al: u.valido_al || null,
+        valido_al: parseIsoDate(u.valido_al),
         soggetto_id: u.soggetto_id || null,
         ragione_sociale: u.ragione_sociale_completa || null,
         codice_fiscale: u.codice_fiscale || null,
-        emittenti_descrizione: u.emittenti_descrizione || '',
         last_login: u.last_login || null
       }
       fissa()
@@ -221,6 +291,9 @@ watch(() => props.visible, async (val) => {
   } else {
     resetForm()
     fissa()
+    scopeMode.value = 'GLOBAL'
+    scopeEmittenteId.value = null
+    scopeFoto.fissa()
   }
 })
 
@@ -259,6 +332,11 @@ function clearEditEmailInvalid() {
 // Contract multi-face (Fase 7): {is_super_admin, attivo, ...}. Il backend
 // gestisce binding SUPER_ADMIN + stato identita_digitali in modo
 // ortogonale tra i due flag.
+// ⛔ Spegnere l'interruttore E' «Disabilita» (2026-10-04): il backend chiude
+//    anche il rapporto a oggi, le sessioni e gli inviti della veste. Si
+//    conferma al Salva, dove avviene, e solo se la veste PASSA da accesa a
+//    spenta — la stessa transizione che il backend tratta da spegnimento: un
+//    operatore gia' spento si salva senza domande.
 async function onSave() {
   if (isEdit.value) {
     const payload = {
@@ -269,14 +347,41 @@ async function onSave() {
       attivo: form.value.attivo,
       unita_organizzativa_id: form.value.unita_organizzativa_id
     }
-    const result = await execute(
-      () => store.update(props.authUserId, payload),
-      { successMessage: t('notifications.save_success') }
-    )
-    if (result !== null) {
-      fissa()
+    // La data di fine viaggia solo se e' cambiata: `null` la TOGLIE, e un
+    // salvataggio che non la tocca non e' un gesto sulla scadenza.
+    const validoAl = toDateStringOrNull(form.value.valido_al)
+    if (validoAl !== (store.currentOperatore?.valido_al || null)) payload.valido_al = validoAl
+    // I dati si mandano sempre, salvo quando l'unica modifica e' lo scope:
+    // li' un PUT dei dati identici sarebbe una scrittura senza motivo.
+    const inviaDati = modificato.value || !scopeFoto.modificato.value
+    const inviaScope = scopeFoto.modificato.value
+    const aggiorna = async () => {
+      if (inviaDati) {
+        const result = await execute(() => store.update(props.authUserId, payload))
+        if (result === null) return
+        fissa()
+      }
+      if (inviaScope) {
+        const result = await execute(() => store.saveEmittentiScope(props.authUserId, buildScopePayload()))
+        if (result === null) {
+          // I dati, se c'erano, sono salvati: la lista lo deve sapere.
+          if (inviaDati) emit('saved')
+          return
+        }
+        scopeFoto.fissa()
+      }
+      notify.success(t('notifications.save_success'))
       emit('saved')
     }
+    if (!vesteSpenta.value && form.value.attivo === false) {
+      confirmAction({
+        header: t('amministrazione.disabilita_title'),
+        message: t('amministrazione.disabilita_confirm'),
+        onAccept: aggiorna,
+      })
+      return
+    }
+    await aggiorna()
   } else {
     // Validazione client-side per creazione
     const authErrors = auth.validate()
@@ -378,8 +483,10 @@ const activeTab = ref('dati')
 // per 13 aree, 34 azioni e 12 oggetti: a 800px le colonne si strizzano
 // proprio dove la schermata esiste per farsi leggere.
 // ℹ️ `XLARGE` è la taglia che la costante dedica alle «matrici
-// parametri-per-entità (utility, slot/override)»; il drawer dedicato
-// `OperatorePermessiDrawer` usa la stessa.
+// parametri-per-entità (utility, slot/override)».
+// La scheda Permessi ha il suo Salva: il footer lo chiama quando e' attiva.
+const suPermessi = computed(() => activeTab.value === 'permessi')
+
 const larghezzaDrawer = computed(() =>
   activeTab.value === 'permessi' ? DRAWER_WIDTH.XLARGE : DRAWER_WIDTH.COMPLEX
 )
@@ -395,6 +502,7 @@ const canSaveCreate = computed(() =>
 // Computed: form modifica completo
 const canSaveEdit = computed(() =>
   isEmailValid(form.value.email)
+  && (!scopeFoto.modificato.value || canSaveScope.value)
 )
 
 const canSave = computed(() => isEdit.value ? canSaveEdit.value : canSaveCreate.value)
@@ -427,25 +535,32 @@ function onInvita() {
     }
   })
 }
-
-const chiudiDiretto = useDrawerClose(emit, 'cancelled')
-const onClose = () => tutto.chiudiConConferma(chiudiDiretto)
-const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- Il footer segue la scheda: era Annulla/Salva sui Dati e «Chiudi» sui
+       Permessi — sostituito il 2026-10-04: ora Annulla/Salva su tutte e due
+       le schede, e sui Permessi il Salva e' quello della scheda (§7.4 del
+       brief-db-permessi-tetto-area). La larghezza pure
+       (`larghezzaDrawer`: XLARGE sui permessi, COMPLEX altrove). -->
+  <AppDrawer
     :visible="props.visible"
-    position="right"
-    :style="{ width: larghezzaDrawer }"
-    @update:visible="suVisibile"
-    @after-show="onAfterShow"
+    :title="t('amministrazione.operatore')"
+    :icon="NAV_ICONS.OPERATORE"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="larghezzaDrawer"
+    :readonly="isReadonly"
+    :modificato="modificatoTutto"
+    :conferma-uscita="tutto.chiudiConConferma"
+    footer="form"
+    :loading="suPermessi ? !!permessiTab?.salvando : (loading || creazione.loading.value)"
+    :save-disabled="suPermessi ? !permessiTab?.puoSalvare : !canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="suPermessi ? permessiTab?.salva() : onSave()"
   >
-    <template #header>
-      <DrawerTitle :modificato="modificatoTutto" :action="isEdit ? t('common.edit') : t('common.new')" :title="t('amministrazione.operatore')" :icon="NAV_ICONS.OPERATORE" />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
     <Tabs v-model:value="activeTab">
       <TabList>
         <Tab value="dati">{{ t('amministrazione.tab_dati') }}</Tab>
@@ -493,16 +608,10 @@ const suVisibile = gestoreVisibile(emit, onClose)
         <!-- === Sezione Dati anagrafici + Collocazione === -->
         <h4 v-if="!isEdit">{{ t('amministrazione.section_collocazione') }}</h4>
         <div class="form-grid">
-          <!-- Username + Emittente su stessa riga (solo modifica, sola lettura) -->
-          <div v-if="isEdit" class="form-grid-2col">
-            <div class="form-field">
-              <label>{{ t('common.username') }}</label>
-              <InputText :model-value="form.username" disabled />
-            </div>
-            <div class="form-field">
-              <label>{{ t('amministrazione.field_emittente') }}</label>
-              <InputText :model-value="form.emittenti_descrizione || '—'" disabled />
-            </div>
+          <!-- Username (solo modifica, sola lettura) -->
+          <div v-if="isEdit" class="form-field">
+            <label>{{ t('common.username') }}</label>
+            <InputText :model-value="form.username" disabled />
           </div>
 
           <!-- Cognome + Nome su stessa riga (solo modifica) -->
@@ -547,7 +656,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
             <div class="form-field">
               <div class="operatore-toggle-row">
                 <ToggleSwitch v-model="form.attivo" input-id="tg-attivo"
-                  :disabled="disableBloccato"
+                  :disabled="disableBloccato || vesteSpenta"
                   :invalid="campiErrati.includes('attivo')"
                 />
                 <label for="tg-attivo" class="operatore-toggle-label">
@@ -556,6 +665,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
                 </label>
               </div>
               <small v-if="disableReason" class="app-field-hint">{{ disableReason }}</small>
+              <small v-else-if="vesteSpenta" class="app-field-hint">{{ t('amministrazione.accesso_attivo.da_invito') }}</small>
             </div>
           </template>
 
@@ -587,7 +697,40 @@ const suVisibile = gestoreVisibile(emit, onClose)
               :placeholder="t('amministrazione.select_reparto')" />
           </div>
 
-          <!-- Validita' e ultimo accesso (solo modifica, sola lettura informativa) -->
+          <!-- Scope emittenti fiscali (solo modifica): GLOBAL/SINGLE. `MULTI`
+               non e' in allowed_scope_modes (architetturalmente chiuso). -->
+          <div v-if="isEdit" class="form-field">
+            <label>{{ t('amministrazione.emittenti_scope_title') }}</label>
+            <div
+              class="scope-radio-group"
+              v-tooltip.bottom="!canChangeScope ? changeScopeReason : null"
+            >
+              <div v-for="opt in scopeModeOptions" :key="opt.value" class="scope-radio-row">
+                <RadioButton
+                  v-model="scopeMode"
+                  :value="opt.value"
+                  :input-id="'scope-mode-' + opt.value"
+                  :disabled="isReadonly || !canChangeScope || opt.disabled"
+                />
+                <label :for="'scope-mode-' + opt.value" class="scope-radio-label">{{ opt.label }}</label>
+              </div>
+            </div>
+            <Select
+              v-if="scopeMode === 'SINGLE'"
+              v-model="scopeEmittenteId"
+              :options="emittentiFiscali.items.value"
+              :loading="emittentiFiscali.loading.value"
+              option-label="ragione_sociale"
+              option-value="id"
+              :placeholder="t('amministrazione.select_emittenti')"
+              show-clear
+              :disabled="isReadonly || !canChangeScope"
+            />
+            <small class="app-field-hint">{{ t('amministrazione.emittenti_scope_hint') }}</small>
+          </div>
+
+          <!-- Validita' e ultimo accesso (solo modifica). Si modifica solo la
+               fine del rapporto: l'inizio e l'ultimo accesso sono informativi. -->
           <template v-if="isEdit">
             <div class="form-field">
               <label>{{ t('amministrazione.field_ultimo_accesso') }}</label>
@@ -599,10 +742,23 @@ const suVisibile = gestoreVisibile(emit, onClose)
                 <InputText :model-value="form.valido_dal ? displayDate(form.valido_dal) : '—'" disabled />
               </div>
               <div class="form-field">
-                <label>{{ t('amministrazione.field_valido_al') }}</label>
-                <InputText :model-value="form.valido_al ? displayDate(form.valido_al) : t('amministrazione.valido_al_illimitato')" disabled />
+                <label for="dp-valido-al">{{ t('amministrazione.field_valido_al') }}</label>
+                <DatePicker v-model="form.valido_al" input-id="dp-valido-al"
+                  :date-format="DATE_FORMAT"
+                  :min-date="validoAlMin"
+                  :placeholder="t('amministrazione.valido_al_illimitato')"
+                  show-icon
+                  show-button-bar
+                  :disabled="validoAlBloccato"
+                  :invalid="campiErrati.includes('valido_al')" />
               </div>
             </div>
+            <small v-if="validoAlReason" class="app-field-hint">{{ validoAlReason }}</small>
+            <small v-else class="app-field-hint">{{ t('amministrazione.valido_al_hint') }}</small>
+            <!-- Le azioni della CREDENZIALE — blocco e secondo fattore — valgono
+                 per tutte le vesti della persona (A-5: le stesse del tab «Altri
+                 accessi»). Immediate, non passano dal Salva. -->
+            <CredenzialeAzioni :auth-user-id="props.authUserId" :readonly="isReadonly" />
           </template>
         </div>
 
@@ -616,11 +772,6 @@ const suVisibile = gestoreVisibile(emit, onClose)
             outlined size="small"
             @click="onInvita" />
         </div>
-
-        <!-- Footer Salva/Annulla -->
-        <div>
-          <FormFooter :loading="loading || creazione.loading.value" :disabled="!canSave" @save="onSave" @cancel="onClose" />
-        </div>
       </TabPanel>
 
       <!-- Tab Permessi: solo modifica -->
@@ -629,7 +780,6 @@ const suVisibile = gestoreVisibile(emit, onClose)
       </TabPanel>
       </TabPanels>
     </Tabs>
-    </div>
 
     <!-- Il consenso al riuso della credenziale (F-4): la domanda del DB, e cio'
          che l'admin sta per collegare. Conferma = si dichiara l'id letto. -->
@@ -676,7 +826,7 @@ const suVisibile = gestoreVisibile(emit, onClose)
       @soggetto-creato="onSoggettoCreato"
       @annullato="resolverVisible = false"
     />
-  </Drawer>
+  </AppDrawer>
 </template>
 
 <style scoped>
@@ -690,6 +840,19 @@ const suVisibile = gestoreVisibile(emit, onClose)
   display: flex;
   flex-direction: column;
   line-height: 1.2;
+  cursor: pointer;
+}
+.scope-radio-group {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+.scope-radio-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.scope-radio-label {
   cursor: pointer;
 }
 .riuso-vesti {

@@ -12,7 +12,7 @@
 | template_flusso_origine_id | integer | NO |  |
 | tipo_prestazione_dest_id | integer | NO |  |
 | template_flusso_dest_id | integer | YES |  |
-| esito_richiesto | character varying | YES |  |
+| esito_richiesto | character varying(20) | YES |  |
 | auto | boolean | NO | false |
 | attivo | boolean | NO | true |
 | descrizione | text | YES |  |

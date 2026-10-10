@@ -151,3 +151,12 @@ coprire.
 
 ---
 {% include-markdown "signature-core.md" %}
+
+---
+
+### Note di migrazione
+
+* **2026-10-08** (`20261008-70`): il livello 3 (cliente del BA padre) aggancia il cliente **per BA**
+  (`cl.billing_account_id = ba.id`). Prima lo agganciava per istanza, contando su «un cliente per
+  istanza»: con piu' BA per istanza avrebbe preso il termine di pagamento di un cliente qualunque.
+  Deterministico grazie a `uq_clienti_billing_account`. Brief: brief-db-istanza-nasce-col-ba (R-8).

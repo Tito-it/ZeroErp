@@ -36,11 +36,13 @@ import csv
 import io
 import json
 from django.utils import timezone
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from apps.core.services.locale_formatters import in_ora_locale
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.locale_formatters import format_for_export
 
@@ -79,7 +81,7 @@ class ListaExportService:
         *,
         lista_codice: str,
         colonne: list[dict[str, Any]],
-        righe: list[dict[str, Any]],
+        righe: Sequence[Mapping[str, Any]],
         filtri_applicati: dict[str, Any] | None,
         formato: str,
     ) -> tuple[bytes, str, str]:
@@ -108,10 +110,10 @@ class ListaExportService:
 
         colonne_export = self._filter_colonne_esportabili(colonne)
         filtri = filtri_applicati or {}
-        # ⚠️ Ora LOCALE di `TIME_ZONE`, non dell'host: il nome del file deve
-        #    dire la stessa ora delle celle che contiene (2026-09-14), e su
-        #    un'unit systemd `TZ` puo' non esserci.
-        timestamp = timezone.localtime().strftime("%Y%m%d-%H%M%S")
+        # ⚠️ Ora DELL'AZIENDA, non dell'host ne' del processo: il nome del file
+        #    deve dire la stessa ora delle celle che contiene (2026-09-14), e
+        #    la stessa sede la converte (`in_ora_locale`).
+        timestamp = in_ora_locale(timezone.now()).strftime("%Y%m%d-%H%M%S")
         # Filename safe: caratteri speciali del codice rimpiazzati con `_`.
         # Pattern es. `anagrafiche.clienti` -> `anagrafiche_clienti`.
         safe_codice = lista_codice.replace(".", "_").replace(":", "_")
@@ -230,7 +232,7 @@ class ListaExportService:
     def _render_csv(
         self,
         colonne: list[dict[str, Any]],
-        righe: list[dict[str, Any]],
+        righe: Sequence[Mapping[str, Any]],
         filtri: dict[str, Any],
     ) -> bytes:
         buffer = io.StringIO()
@@ -261,7 +263,7 @@ class ListaExportService:
     def _render_xlsx(
         self,
         colonne: list[dict[str, Any]],
-        righe: list[dict[str, Any]],
+        righe: Sequence[Mapping[str, Any]],
         filtri: dict[str, Any],
     ) -> bytes:
         wb = Workbook()
@@ -316,8 +318,11 @@ class ListaExportService:
     #        v2 (rinviato): override per emittente/utente via
     #        `config.parameters` LOCALE_*.
     @staticmethod
-    def _format_cell(riga: dict[str, Any], colonna: dict[str, Any]) -> Any:
-        value = riga.get(colonna.get("campo_sorgente"), "")
+    def _format_cell(riga: Mapping[str, Any], colonna: dict[str, Any]) -> Any:
+        # `campo_sorgente` e' nullable (ui.lista_colonna): senza campo la
+        # cella e' vuota, come la lettura di una chiave assente.
+        campo = colonna.get("campo_sorgente")
+        value = riga.get(campo, "") if campo is not None else ""
         return format_for_export(
             value,
             tipo_dato=colonna.get("tipo_dato"),

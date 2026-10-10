@@ -227,9 +227,9 @@ class DdtDocumentContextBuilder(DocumentContextBuilder):
             # ⚠️ `num_colli` NON si formatta: e' un conteggio, e «12,00 colli»
             # sarebbe una lettura sbagliata. Pesi e volume invece sono misure.
             "num_colli": testata.get("num_colli"),
-            "peso_lordo": format_misura(testata.get("peso_lordo")),
-            "peso_netto": format_misura(testata.get("peso_netto")),
-            "volume": format_misura(testata.get("volume")),
+            "peso_lordo": format_misura(testata.get("peso_lordo"), campo="peso_lordo"),
+            "peso_netto": format_misura(testata.get("peso_netto"), campo="peso_netto"),
+            "volume": format_misura(testata.get("volume"), campo="volume"),
             "targa": testata.get("targa"),
             "autista": testata.get("autista"),
             "tracking_code": testata.get("tracking_code"),

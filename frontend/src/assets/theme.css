@@ -65,6 +65,11 @@
   --app-login-error-color: var(--p-red-50);
   --app-login-error-border: color-mix(in srgb, var(--p-red-300) 45%, transparent);
   --app-login-error-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  /* L'esito positivo, gemello dell'errore: testo chiaro su fondo pieno. */
+  --app-login-success-bg: color-mix(in srgb, var(--p-green-700) 60%, transparent);
+  --app-login-success-color: var(--p-green-50);
+  --app-login-success-border: color-mix(in srgb, var(--p-green-300) 45%, transparent);
+  --app-login-success-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
 
   /* ===== Toolbar (barra secondaria sotto topbar) ===== */
   --app-toolbar-height: 40px;
@@ -285,6 +290,14 @@
      la tinta di fondo della classe `app-voce-registro`. */
   --app-voce-registro-bg: color-mix(in srgb, var(--p-surface-700) 20%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 8%, transparent);
+  /* La riga ATTIVA di una lista (`app-riga-attiva`): aperta in un drawer o nel
+     form inline. Vive spesso SOTTO IL VELO del drawer, che scurisce tutto:
+     una tinta leggera li' sparisce, quindi tinta piu' piena della selezione e
+     una barra di colore pieno a sinistra, che resta leggibile anche velata. */
+  /* In scuro le sfumature CHIARE del primario: il primario pieno, velato su
+     fondo scuro, non si vedeva (rilievo di Tid, 2026-10-04). */
+  --app-riga-attiva-bg: color-mix(in srgb, var(--p-primary-200) 30%, transparent);
+  --app-riga-attiva-barra: var(--p-primary-200);
 
   /* ===== Pulsanti azione riga (DataTable / card) ===== */
   --app-btn-manage-color: var(--p-blue-500);
@@ -414,6 +427,10 @@
   --app-table-stripe-bg: color-mix(in srgb, var(--p-surface-100) 60%, transparent);
   --app-voce-registro-bg: color-mix(in srgb, var(--p-surface-100) 70%, transparent);
   --app-table-hover-bg: color-mix(in srgb, var(--p-primary-color) 6%, transparent);
+  /* Riga attiva in chiaro: sotto il velo il chiaro perde meno del scuro,
+     basta una tinta piu' leggera (la barra resta la stessa). */
+  --app-riga-attiva-bg: color-mix(in srgb, var(--p-primary-color) 18%, transparent);
+  --app-riga-attiva-barra: var(--p-primary-color);
 
   /* Row expansion: tinta primary piu' marcata in light mode (10% vs 6% dark)
    * per superare il contrasto basso con striped rows chiare. */
@@ -430,6 +447,10 @@
   --app-login-error-color: #fff;
   --app-login-error-border: color-mix(in srgb, var(--p-red-500) 55%, transparent);
   --app-login-error-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+  --app-login-success-bg: color-mix(in srgb, var(--p-green-700) 78%, transparent);
+  --app-login-success-color: #fff;
+  --app-login-success-border: color-mix(in srgb, var(--p-green-500) 55%, transparent);
+  --app-login-success-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
 
   /* AI Assistant Widget */
   --app-ai-bg: var(--p-surface-0);

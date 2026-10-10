@@ -116,11 +116,14 @@ BEGIN
     v_sr_id       := dbops.fn_pgtap_crea_soggetto_ruolo(v_soggetto_id, 'CL'::character varying);
 
     -- ⛔ LA FINESTRA DIFFERITA: `trg_istanze_utilities_z90_require_utility_dichiarata_ins`
-    --   vuole un satellite (BA / dati precontrattuali / cliente) e con i
-    --   vincoli IMMEDIATE scatterebbe sull'INSERT dell'istanza. Il satellite
-    --   qui e' la riga precontrattuale, cosi' la fixture e' COMPLETA qualunque
-    --   sia l'esito del test 1: se l'INSERT del BA muore (com'era prima del
-    --   20260913-01) il rosso resta sull'asserzione, non sul vincolo.
+    --   vuole il billing account e con i vincoli IMMEDIATE scatterebbe
+    --   sull'INSERT dell'istanza. ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba,
+    --   R-1): fino a quel giorno la fixture si completava con una riga
+    --   precontrattuale, e l'istanza viveva senza BA. Ora quella riga pretende
+    --   il BA della sua coppia, e il BA e' il SOGGETTO del test 1: la finestra
+    --   resta APERTA fino al test 1 e si richiude subito dopo (vedi sotto),
+    --   quando l'istanza ha il suo BA. E' la forma vera dell'operazione: istanza
+    --   e BA nella stessa transazione.
     SET CONSTRAINTS ALL DEFERRED;
 
     -- `fittizia = true`: chk_istanza_fittizia_indirizzo vuole O il flag O un
@@ -128,11 +131,6 @@ BEGIN
     INSERT INTO anagrafiche.istanze_utilities (codice, soggetto_id, fittizia)
     VALUES (v_codice, v_soggetto_id, true)
     RETURNING id INTO v_ist_id;
-
-    INSERT INTO anagrafiche.istanze_dati_precontrattuali (istanza_utility_id, utility_id)
-    VALUES (v_ist_id, v_utility_id);
-
-    SET CONSTRAINTS ALL IMMEDIATE;
 
     INSERT INTO _t_fix
     VALUES (v_ist_id, v_sr_id, v_utility_id, v_codice,
@@ -190,6 +188,12 @@ SELECT lives_ok(
     $sql$,
     '1. * INSERT ... RETURNING id come operatore di B: vive (rosso prima del 20260913-01)'
 );
+
+-- La finestra differita si richiude QUI: l'istanza della fixture ha ora il suo
+-- billing account (test 1), e il constraint trigger lo verifica. Se il test 1
+-- e' morto, l'istanza e' senza BA e il file si ferma su E_ISTANZA_SENZA_BA:
+-- il rosso del test 1 e' gia' stampato sopra.
+SET CONSTRAINTS ALL IMMEDIATE;
 
 -- 2) L'id restituito e' la riga appena scritta, e la riga si VEDE: sotto la
 --    RLS «scritta» e «visibile» non sono la stessa cosa, ed e' tutto il punto.

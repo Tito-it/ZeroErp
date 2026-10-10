@@ -13,8 +13,9 @@
 //        Dropdown lookup standard:
 //          - tipi_documento_output, sorgenti, render_engine via LookupSelect
 //            (lista del lookup `config.tabelle_gestibili`);
-//          - context_builder_code via dropdown hardcoded (whitelist
-//            applicativa Decisione 18+74).
+//          - context_builder_code dal REGISTRO del backend
+//            (`GET /documenti/context-builders/`, dal 2026-10-03: prima era
+//            una copia scritta a mano nel frontend, col flag «registrato»).
 //        Emittente fiscale: gestito da `useEmittenteFiscaleField`. Per
 //        l'operatore standard (1-a-1 col proprio emittente) il valore e'
 //        derivato dal profilo e mostrato read-only; per l'admin globale
@@ -22,28 +23,25 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTemplateDocumentiStore } from '../stores/templateDocumenti'
+import { listContextBuilders } from '../api/templateDocumenti'
 import { useApiHandler } from '../../core/composables/useApiHandler'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerFormPreserve, gestoreVisibile, unisciFotografie } from '../../core/composables/useDrawerFormPreserve'
+import { useLookup } from '../../core/composables/useLookup'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useEmittenteFiscaleField } from '../../core/composables/useEmittenteFiscaleField'
 import { DRAWER_WIDTH } from '../../core/constants'
-import { contextBuilderOptions } from '../constants/documentiContextBuilders'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
-import FormFooter from '../../core/components/FormFooter.vue'
+import { labelOrCode } from '../../core/utils/i18nLabel'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import LookupSelect from '../../core/components/LookupSelect.vue'
 import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.vue'
 import TemplateVersioniSection from './TemplateVersioniSection.vue'
-import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Message from 'primevue/message'
 import Divider from 'primevue/divider'
 
-
-
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useTemplateDocumentiStore()
 const { execute, loading, campiErrati } = useApiHandler()
 const isReadonly = useInjectReadonly()
@@ -56,10 +54,6 @@ const props = defineProps({
   readonly: { type: Boolean, default: false },
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible', 'saved', 'cancelled'])
 
 // `mode` evolve da create a edit dopo il primo save (memoria
@@ -70,27 +64,41 @@ const isEdit = computed(() => localMode.value === 'edit' || createdId.value !== 
 const isReadOnlyEffective = computed(() => props.readonly || isReadonly.value)
 const effectiveId = computed(() => props.recordId || createdId.value)
 
-const contextBuilderOpts = computed(() => contextBuilderOptions(t))
-
-// Scopo: Avviso quando l'operatore seleziona un builder non ancora
-//        registrato lato BE (whitelist applicativa Decisione 18+74).
-//        Il template e' creabile, ma la generazione documento sollevera'
-//        E_DOCUMENTI_VALIDATION finche' un dominio sorgente non registra
-//        il builder corrispondente.
-const selectedContextBuilderInfo = computed(() => {
-  const code = form.value.context_builder_code
-  if (!code) return null
-  return contextBuilderOpts.value.find(o => o.code === code) || null
+// I builder registrati nel backend: la tendina li legge dal registro
+// (sede unica), con l'etichetta dai locales e ripiego sul codice.
+const { items: builderRegistrati, loaded: registroLetto, load: caricaBuilder } =
+  useLookup(listContextBuilders)
+// Scopo: le opzioni della tendina. Un template il cui codice NON e' nel
+//        registro (un builder ritirato, o un codice scritto altrove) lo
+//        mostra lo stesso, come opzione non registrata: sparire dalla
+//        tendina farebbe leggere un campo vuoto su un template che un codice
+//        ce l'ha.
+function opzioneBuilder(codice, registered) {
+  return {
+    code: codice,
+    label: labelOrCode(t, te, `documenti.context_builders.${codice}`, codice),
+    registered,
+  }
+}
+const contextBuilderOpts = computed(() => {
+  const opzioni = builderRegistrati.value.map(({ codice }) => opzioneBuilder(codice, true))
+  const corrente = form.value.context_builder_code
+  if (corrente && !opzioni.some(o => o.code === corrente)) {
+    opzioni.push(opzioneBuilder(corrente, false))
+  }
+  return opzioni
 })
+
+// Scopo: Avviso quando il codice del template non e' fra i registrati: il
+//        template si salva, ma la generazione sollevera' E_DOCUMENTI_VALIDATION
+//        finche' un dominio non registra quel builder. Si decide solo a
+//        registro letto: prima ogni codice sembrerebbe non registrato.
 const isSelectedBuilderUnregistered = computed(() =>
-  selectedContextBuilderInfo.value?.registered === false,
+  registroLetto.value
+    && contextBuilderOpts.value.find(o => o.code === form.value.context_builder_code)
+      ?.registered === false,
 )
 
-// Aggiornato via `@form-aperto` da TemplateVersioniSection: quando l'utente
-// e' nel form inline di nuova/modifica versione, nascondiamo la FormFooter
-// del drawer template (i suoi pulsanti non salvano la versione e creano
-// confusione). Stesso pattern di PreventiviDrawer/PreventiviRigheTable.
-const formVersioneAperto = ref(false)
 // L'emittente del template LETTO (non quello del form): e' il padre della
 // lista delle versioni. Il form, riaprendo un altro template, tiene i valori
 // del precedente finche' il dettaglio non arriva — la lista partirebbe col
@@ -152,6 +160,7 @@ watch(
   [() => props.visible, () => props.recordId, () => props.mode],
   ([visible, , mode]) => {
     if (!visible) return
+    caricaBuilder()
     localMode.value = mode
     createdId.value = null
     emittenteLetto.value = null
@@ -239,179 +248,152 @@ async function handleSave() {
     }
   }
 }
-
-function close() {
-  emit('update:visible', false)
-  emit('cancelled')
-}
-// Il form inline delle versioni (sezione figlia) ha la sua fotografia: la
-// chiusura chiede conferma se UNO dei due e' modificato, con un dialog solo.
-const versioniRef = ref(null)
-const { modificato: modificatoTutto, chiudiConConferma: chiudiTutto } =
-  unisciFotografie({ modificato, chiudiConConferma }, () => versioniRef.value)
-const chiudi = () => chiudiTutto(close)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.COMPLEX }"
-    :dismissable="true"
-    @after-show="onAfterShow"
+    :title="t('config.modelli_documenti.drawer_title')"
+    :action="isEdit ? t('common.edit') : t('common.new')"
+    :width="DRAWER_WIDTH.COMPLEX"
+    :readonly="isReadOnlyEffective"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @cancel="emit('cancelled')"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificatoTutto"
-        :action="isEdit ? t('common.edit') : t('common.new')"
-        :title="t('config.modelli_documenti.drawer_title')"
-      />
-    </template>
-
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadOnlyEffective }">
-      <div class="form-grid">
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_codice') }} *</label>
-            <InputText v-model="form.codice" :disabled="isReadOnlyEffective" maxlength="120" fluid
-              :invalid="campiErrati.includes('codice')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_codice_interno') }} *</label>
-            <InputText v-model="form.codice_interno" :disabled="isReadOnlyEffective" maxlength="120" fluid
-              :invalid="campiErrati.includes('codice_interno')"
-            />
-          </div>
-        </div>
+    <div class="form-grid">
+      <div class="form-grid-2col">
         <div class="form-field">
-          <label>{{ t('config.modelli_documenti.field_descrizione') }} *</label>
-          <InputText v-model="form.descrizione" :disabled="isReadOnlyEffective" maxlength="500" fluid
-            :invalid="campiErrati.includes('descrizione')"
+          <label>{{ t('config.modelli_documenti.field_codice') }} *</label>
+          <InputText v-model="form.codice" :disabled="isReadOnlyEffective" maxlength="120" fluid
+            :invalid="campiErrati.includes('codice')"
           />
         </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_tipo_output') }} *</label>
-            <LookupSelect
-              v-model="form.tipo_documento_output_id"
-              rel="documenti.tipi_documento_output"
-              :placeholder="t('config.modelli_documenti.filter_tipo_output')"
-              :disabled="isEdit || isReadOnlyEffective"
-            />
-            <small class="app-text-muted">
-              {{ t('config.modelli_documenti.field_immutable_after_create') }}
-            </small>
-          </div>
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_sorgente') }} *</label>
-            <LookupSelect
-              v-model="form.sorgente_tipo_id"
-              rel="config.sorgenti"
-              :placeholder="t('config.modelli_documenti.filter_sorgente')"
-              :disabled="isEdit || isReadOnlyEffective"
-            />
-          </div>
-        </div>
         <div class="form-field">
-          <label>{{ t('config.modelli_documenti.field_emittente') }} *</label>
-          <EmittenteFiscaleField
-            v-model="form.emittente_fiscale_id"
-            :record="form"
-            :is-edit="isEdit"
-            :disabled="isReadOnlyEffective"
+          <label>{{ t('config.modelli_documenti.field_codice_interno') }} *</label>
+          <InputText v-model="form.codice_interno" :disabled="isReadOnlyEffective" maxlength="120" fluid
+            :invalid="campiErrati.includes('codice_interno')"
+          />
+        </div>
+      </div>
+      <div class="form-field">
+        <label>{{ t('config.modelli_documenti.field_descrizione') }} *</label>
+        <InputText v-model="form.descrizione" :disabled="isReadOnlyEffective" maxlength="500" fluid
+          :invalid="campiErrati.includes('descrizione')"
+        />
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_tipo_output') }} *</label>
+          <LookupSelect
+            v-model="form.tipo_documento_output_id"
+            rel="documenti.tipi_documento_output"
+            :placeholder="t('config.modelli_documenti.filter_tipo_output')"
+            :disabled="isEdit || isReadOnlyEffective"
           />
           <small class="app-text-muted">
-            {{ t('config.modelli_documenti.field_emittente_hint') }}
+            {{ t('config.modelli_documenti.field_immutable_after_create') }}
           </small>
         </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_context_builder') }} *</label>
-            <Select
-              v-model="form.context_builder_code"
-              :options="contextBuilderOpts"
-              option-label="label"
-              option-value="code"
-              :placeholder="t('config.modelli_documenti.field_context_builder_placeholder')"
-              :disabled="isReadOnlyEffective"
-              fluid
-              :invalid="campiErrati.includes('context_builder_code')"
-            />
-            <Message
-              v-if="isSelectedBuilderUnregistered"
-              severity="warn"
-              :closable="false"
-              class="mt-025"
-            >
-              {{ t('config.modelli_documenti.field_context_builder_unregistered_warn') }}
-            </Message>
-          </div>
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_file_name_pattern') }}</label>
-            <InputText
-              v-model="form.file_name_pattern"
-              :disabled="isReadOnlyEffective"
-              :placeholder="t('config.modelli_documenti.field_file_name_pattern_placeholder')"
-              maxlength="255"
-              fluid
-              :invalid="campiErrati.includes('file_name_pattern')"
-            />
-            <small class="app-text-muted">
-              {{ t('config.modelli_documenti.field_file_name_pattern_hint') }}
-            </small>
-          </div>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_sorgente') }} *</label>
+          <LookupSelect
+            v-model="form.sorgente_tipo_id"
+            rel="config.sorgenti"
+            :placeholder="t('config.modelli_documenti.filter_sorgente')"
+            :disabled="isEdit || isReadOnlyEffective"
+          />
         </div>
+      </div>
+      <div class="form-field">
+        <label>{{ t('config.modelli_documenti.field_emittente') }} *</label>
+        <EmittenteFiscaleField
+          v-model="form.emittente_fiscale_id"
+          :record="form"
+          :is-edit="isEdit"
+          :disabled="isReadOnlyEffective"
+        />
+        <small class="app-text-muted">
+          {{ t('config.modelli_documenti.field_emittente_hint') }}
+        </small>
+      </div>
 
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('config.modelli_documenti.field_is_default') }}</label>
-            <ToggleSwitch v-model="form.is_default" :disabled="isReadOnlyEffective"
-              :invalid="campiErrati.includes('is_default')"
-            />
-            <small class="app-text-muted">
-              {{ t('config.modelli_documenti.field_is_default_hint') }}
-            </small>
-          </div>
-          <div class="form-field">
-            <label>{{ t('common.attivo') }}</label>
-            <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
-              :invalid="campiErrati.includes('attivo')"
-            />
-          </div>
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_context_builder') }} *</label>
+          <Select
+            v-model="form.context_builder_code"
+            :options="contextBuilderOpts"
+            option-label="label"
+            option-value="code"
+            :placeholder="t('config.modelli_documenti.field_context_builder_placeholder')"
+            :disabled="isReadOnlyEffective"
+            fluid
+            :invalid="campiErrati.includes('context_builder_code')"
+          />
+          <Message
+            v-if="isSelectedBuilderUnregistered"
+            severity="warn"
+            :closable="false"
+            class="mt-025"
+          >
+            {{ t('config.modelli_documenti.field_context_builder_unregistered_warn') }}
+          </Message>
+        </div>
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_file_name_pattern') }}</label>
+          <InputText
+            v-model="form.file_name_pattern"
+            :disabled="isReadOnlyEffective"
+            :placeholder="t('config.modelli_documenti.field_file_name_pattern_placeholder')"
+            maxlength="255"
+            fluid
+            :invalid="campiErrati.includes('file_name_pattern')"
+          />
+          <small class="app-text-muted">
+            {{ t('config.modelli_documenti.field_file_name_pattern_hint') }}
+          </small>
         </div>
       </div>
 
-      <Message v-if="!isEdit" severity="info" :closable="false" class="mt-1">
-        {{ t('config.modelli_documenti.create_first_save_hint') }}
-      </Message>
-
-      <template v-if="isEdit && effectiveId">
-        <Divider />
-        <TemplateVersioniSection
-          ref="versioniRef"
-          :template-id="effectiveId"
-          :emittente-fiscale-id="emittenteLetto"
-          :versione-contesto-builder="versioneContestoBuilder"
-          :readonly="isReadOnlyEffective"
-          @form-aperto="(v) => { formVersioneAperto = v }"
-        />
-      </template>
-
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('config.modelli_documenti.field_is_default') }}</label>
+          <ToggleSwitch v-model="form.is_default" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('is_default')"
+          />
+          <small class="app-text-muted">
+            {{ t('config.modelli_documenti.field_is_default_hint') }}
+          </small>
+        </div>
+        <div class="form-field">
+          <label>{{ t('common.attivo') }}</label>
+          <ToggleSwitch v-model="form.attivo" :disabled="isReadOnlyEffective"
+            :invalid="campiErrati.includes('attivo')"
+          />
+        </div>
+      </div>
     </div>
 
-    <template #footer>
-      <FormFooter
-        v-if="!formVersioneAperto"
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
+    <Message v-if="!isEdit" severity="info" :closable="false" class="mt-1">
+      {{ t('config.modelli_documenti.create_first_save_hint') }}
+    </Message>
+
+    <template v-if="isEdit && effectiveId">
+      <Divider />
+      <TemplateVersioniSection
+        :template-id="effectiveId"
+        :emittente-fiscale-id="emittenteLetto"
+        :versione-contesto-builder="versioneContestoBuilder"
+        :readonly="isReadOnlyEffective"
       />
     </template>
-  </Drawer>
+  </AppDrawer>
 </template>

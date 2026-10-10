@@ -290,7 +290,7 @@ decodificato e nota. Non paginato: `{"results": [...]}`.
 ### 19. `GET /api/v1/magazzino/movimenti/`
 
 Il registro (lista `magazzino.movimenti` 77). Filtri: `magazzino_id`,
-`articolo_id`, `causale_id`, `data_da`/`data_a` (su `data_mov`; il floor
+`articolo_id`, `causale_id`, `data_da`/`data_a` (su `data_mov`, giorni **dell'azienda** (fuso `SYSTEM_FUSO_ORARIO`, confini calcolati dal DB col BB `predicato_giorno_operativo`, dal 2026-10-09), `data_a` incluso; il floor
 standard lo applica il frontend), `sorgente_tipo` (`config.sorgenti.codice_interno`:
 `INVENTARIO_RIGA`, `RETTIFICA_RIGA`, …), **`inventario_id` / `rettifica_id`**
 (i movimenti nati dalle righe di quel documento: è il deep-link dal documento

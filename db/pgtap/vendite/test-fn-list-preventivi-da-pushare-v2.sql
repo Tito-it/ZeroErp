@@ -109,6 +109,7 @@ SELECT
   ) AS iva_id;
 
 -- Preventivo ACCETTATO con una riga valida (fixture principale).
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT, prende le righe, poi passa ad ACCETTATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le righe non si scrivono piu' (20261008-91).
 CREATE TEMP TABLE tmp_prev_p2 AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
@@ -122,7 +123,7 @@ WITH ins AS (
     0,
     r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-06-01', DATE '2026-06-30', r.valuta_id,
-    r.stato_accettato_id, DATE '2026-06-01', false,
+    r.stato_bozza_id, DATE '2026-06-01', false,
     false, jsonb_build_object('test_scope', 'pgtap_fn_list_prev_v2'),
     r.emittente_fiscale_id
   FROM tmp_refs_p2 r
@@ -143,6 +144,10 @@ WITH ins AS (
   RETURNING id
 )
 SELECT * FROM ins;
+
+DO $porta$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', (SELECT id FROM tmp_prev_p2), 'ACCETTATO');
+END $porta$;
 
 -- Preventivo BOZZA con riga valida (per test 4).
 CREATE TEMP TABLE tmp_prev_p2_bozza AS

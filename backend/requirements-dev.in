@@ -1,0 +1,28 @@
+# Strumenti di SVILUPPO del backend: girano nella venv del backend, NON entrano
+# nell'immagine Docker (il `Dockerfile` installa il solo `requirements.txt`).
+# Lock: `pip-compile requirements-dev.in --output-file requirements-dev.txt`
+# (da `backend/`). Nato il 2026-10-08 col type checker (piano-be-type-checker,
+# S2, ok di Tid alle tre dipendenze).
+#
+# ⭐ `-c requirements.txt`: le versioni che i due file hanno in comune (Django,
+#    DRF, typing-extensions, ...) le decide il lock del backend, cosi' gli stub
+#    non tirano mai un Django diverso da quello che gira.
+-c requirements.txt
+
+# Type checker. ⚠️ Perche' sta qui e non in `requirements.txt` in radice (la
+# venv degli strumenti): il plugin Django IMPORTA le settings e il codice del
+# progetto, quindi mypy deve vedere le dipendenze del backend.
+mypy>=2.4
+
+# ⛔ Gli stub seguono la versione di Django e DRF: si aggiornano INSIEME a loro.
+#    Il tetto e' lo stesso minore del pacchetto che descrivono; quando
+#    `requirements.in` alza Django o DRF, si alzano anche questi.
+django-stubs>=6.1,<6.2
+djangorestframework-stubs>=3.18,<3.19
+
+# Stub delle librerie senza tipi propri (ok di Tid, 2026-10-09): stessa regola
+# degli stub qui sopra, il tetto segue la versione della libreria che
+# descrivono (bleach 6.4, openpyxl 3.1.5 nel lock del backend). Con lo stub la
+# voce `ignore_missing_imports` di `mypy.ini` si toglie. `weasyprint` non ne ha.
+types-bleach>=6.4,<6.5
+types-openpyxl>=3.1.5,<3.1.6

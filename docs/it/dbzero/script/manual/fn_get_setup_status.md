@@ -25,7 +25,7 @@ Nessun parametro.
 | Chiave                    | Tipo     | Significato                                                                                  |
 | ------------------------- | -------- | -------------------------------------------------------------------------------------------- |
 | `emittenti_attivi`        | `bigint` | Numero di emittenti fiscali con `attivo = true`.                                             |
-| `operatori_totali`        | `bigint` | Operatori attivi (utente Django attivo + risorsa umana attiva + ruolo non DISABILITATO).     |
+| `operatori_totali`        | `bigint` | Operatori con la veste OPERATORE utilizzabile oggi ([fn_veste_utilizzabile](/dbzero/script/funzioni/fn_veste_utilizzabile), dal 07-10-2026) e utente Django attivo. |
 | `operatori_assegnati`     | `bigint` | Operatori con almeno una riga in `config.user_emittenti_fiscali`.                            |
 | `operatori_admin_globali` | `bigint` | Operatori `ruolo_sistema = ADMIN` **senza** riga in `user_emittenti_fiscali`.                |
 | `operatori_non_assegnati` | `bigint` | `max(operatori_totali - operatori_assegnati, 0)`.                                            |

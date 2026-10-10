@@ -96,14 +96,19 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE A: orfano — ordine trigger CONFERMATO evaso FULL, mai pushato
 -- ============================================================
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+--   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+--   righe non si scrivono piu' (20261008-90).
 CREATE TEMP TABLE tmp_ord_aa2_a AS
 WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_conf_id, r.valuta_id, DATE '2026-07-05', false,
+         r.stato_draft_id, r.valuta_id, DATE '2026-07-05', false,
          jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','orfano_a')
   FROM tmp_refs_aa2 r
   WHERE r.push_ba_id IS NOT NULL
@@ -122,6 +127,10 @@ WITH ins AS (
   FROM tmp_ord_aa2_a o, tmp_refs_aa2 r
   RETURNING id)
 SELECT * FROM ins;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_aa2_a o;
+END $x$;
 
 -- Evasione FULL -> ordine EVASO (skip-tolerant)
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord_aa2_a))
@@ -150,14 +159,19 @@ SELECT ok(
 -- ============================================================
 -- FIXTURE B: PARZIALMENTE_EVASO (evasione 4/10)
 -- ============================================================
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+--   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+--   righe non si scrivono piu' (20261008-90).
 CREATE TEMP TABLE tmp_ord_aa2_b AS
 WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_conf_id, r.valuta_id, DATE '2026-07-06', false,
+         r.stato_draft_id, r.valuta_id, DATE '2026-07-06', false,
          jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','parz_b')
   FROM tmp_refs_aa2 r
   WHERE r.push_ba_id IS NOT NULL
@@ -176,6 +190,10 @@ WITH ins AS (
   FROM tmp_ord_aa2_b o, tmp_refs_aa2 r
   RETURNING id)
 SELECT * FROM ins;
+
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_aa2_b o;
+END $x$;
 
 SELECT vendite.fn_genera_ddt_da_ordine(
          (SELECT id FROM tmp_ord_aa2_b),
@@ -268,14 +286,19 @@ SELECT ok(
 -- ============================================================
 -- 7) trigger SPEDITO (stato CONFERMATO) -> ORDINE_FATTURA_DA_DDT
 -- ============================================================
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+--   prende la riga, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+--   righe non si scrivono piu' (20261008-90).
 CREATE TEMP TABLE tmp_ord_aa2_c AS
 WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.push_ba_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia): il cliente e' il ruolo del BA.
+  SELECT (SELECT b.soggetto_ruolo_id FROM anagrafiche.billing_account b WHERE b.id = r.push_ba_id),
+         r.push_ba_id,
          anagrafiche.fn_get_emittente_fiscale_pk(r.push_ba_id),
-         r.stato_conf_id, r.valuta_id, DATE '2026-07-07', false,
+         r.stato_draft_id, r.valuta_id, DATE '2026-07-07', false,
          jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','spedito_c')
   FROM tmp_refs_aa2 r
   WHERE r.push_ba_id IS NOT NULL
@@ -296,6 +319,10 @@ SELECT o.id, 1, r.articolo_id, 'Riga spedito CC2',
        true, false, jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2')
 FROM tmp_ord_aa2_c o, tmp_refs_aa2 r;
 
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', o.id, 'CONFERMATO') FROM tmp_ord_aa2_c o;
+END $x$;
+
 SELECT ok(
   (((script.fn_available_actions_ordine(
        (SELECT id FROM tmp_ord_aa2_c)))->>'can_push_commessa')::boolean IS FALSE
@@ -309,15 +336,22 @@ SELECT ok(
 -- ============================================================
 -- 8) DRAFT -> ORDINE_NON_CONFERMATO (non-regressione v1)
 -- ============================================================
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1): l'ordine senza BA non esiste piu'.
+--   Il cliente si FABBRICA (BA legato all'emittente dell'operatore dal trigger z90).
+CREATE TEMP TABLE tmp_aa2_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('capability ordine v2');
+SET CONSTRAINTS ALL IMMEDIATE;
+
 CREATE TEMP TABLE tmp_ord_aa2_d AS
 WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, NULL::bigint, r.emittente_fiscale_id,
+  SELECT c.soggetto_ruolo_id, c.billing_account_id,
+         anagrafiche.fn_get_emittente_fiscale_pk(c.billing_account_id),
          r.stato_draft_id, r.valuta_id, DATE '2026-07-08', false,
          jsonb_build_object('test_scope','pgtap_fn_aa_ordine_v2','fix','draft_d')
-  FROM tmp_refs_aa2 r
+  FROM tmp_refs_aa2 r, tmp_aa2_cli c
   RETURNING id)
 SELECT * FROM ins;
 

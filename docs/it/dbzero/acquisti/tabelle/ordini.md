@@ -11,14 +11,14 @@
 | id | bigint | NO |  |
 | uid | uuid | YES | uuidv7() |
 | soggetto_ruolo_id | bigint | NO |  |
-| serie | character varying | YES |  |
-| numero | character varying | YES |  |
+| serie | character varying(8) | YES |  |
+| numero | character varying(20) | YES |  |
 | anno | smallint | YES |  |
-| data | date | NO | CURRENT_DATE |
+| data | date | NO | script.fn_data_operativa() |
 | stato_doc_ordine_id | bigint | NO |  |
 | sorgente_tipo_id | bigint | YES |  |
 | valuta_id | integer | YES |  |
-| tasso_cambio | numeric | NO | 1 |
+| tasso_cambio | numeric(18,8) | NO | 1 |
 | modalita_pagamento_id | integer | YES |  |
 | giorni_pagamento | smallint | YES |  |
 | fine_mese | boolean | YES |  |
@@ -27,29 +27,37 @@
 | causale_trasporto_id | bigint | YES |  |
 | aspetto_bene_id | bigint | YES |  |
 | num_colli | integer | YES |  |
-| peso_lordo | numeric | YES |  |
-| peso_netto | numeric | YES |  |
-| volume | numeric | YES |  |
+| peso_lordo | numeric(18,3) | YES |  |
+| peso_netto | numeric(18,3) | YES |  |
+| volume | numeric(18,3) | YES |  |
 | modalita_addebito_trasporto_id | bigint | YES |  |
 | data_ora_consegna_prev | timestamp with time zone | YES |  |
-| imponibile_tot_atteso | numeric | YES |  |
-| sconto_tot_atteso | numeric | YES |  |
-| iva_tot_atteso | numeric | YES |  |
-| totale_doc_atteso | numeric | YES |  |
+| imponibile_tot_atteso | numeric(18,6) | YES |  |
+| sconto_tot_atteso | numeric(18,6) | YES |  |
+| iva_tot_atteso | numeric(18,6) | YES |  |
+| totale_doc_atteso | numeric(18,6) | YES |  |
 | meta | jsonb | NO | '{}'::jsonb |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | NO | true |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | text | YES | CURRENT_USER |
-| hash_contenuto | character varying | YES |  |
+| user_update | text | NO | CURRENT_USER |
+| hash_contenuto | character varying(64) | YES |  |
 | sorgente_uid | uuid | YES |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_ordini_ao_totali_nonneg |  |
+| CHECK | chk_ordini_imponibile_tot_atteso_finito |  |
+| CHECK | chk_ordini_iva_tot_atteso_finito |  |
+| CHECK | chk_ordini_peso_lordo_finito |  |
+| CHECK | chk_ordini_peso_netto_finito |  |
+| CHECK | chk_ordini_sconto_tot_atteso_finito |  |
+| CHECK | chk_ordini_tasso_cambio_finito |  |
+| CHECK | chk_ordini_totale_doc_atteso_finito |  |
+| CHECK | chk_ordini_volume_finito |  |
 | FOREIGN KEY | fk_ao_aspetto_bene | aspetto_bene_id |
 | FOREIGN KEY | fk_ao_causale_trasporto | causale_trasporto_id |
 | FOREIGN KEY | fk_ao_matr | modalita_addebito_trasporto_id |

@@ -1,0 +1,127 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# §3.1 — QUALI OVERRIDE HA UN OPERATORE, AREA PER AREA, IN UN POSTO SOLO:
+#   script.vw_override_operatore_area
+#   Brief: brief-db-riepilogo-permessi-lista-operatori, §2 (D-2, D-4) e §3.1
+#
+# -- PERCHE' ------------------------------------------------------------------------------------
+#   Il numero degli override serve in tre superfici: la colonna «Override» della lista
+#   operatori (il totale), le chip del riepilogo (per area) e il badge del pannello permessi
+#   (per area, oggi contato a video). Tre letture della stessa regola: qui sta una volta
+#   (regola del 2, D-4). La leggono script.fn_get_permessi_riepilogo_aree (-02) e il backend.
+#
+# -- LA FORMA -----------------------------------------------------------------------------------
+#   Una riga per override SCRITTO, con la sua area:
+#     AREA    -> user_override_aree.area_id
+#     AZIONE  -> azioni_processo.area_id dell'azione
+#     OGGETTO -> area_model_overrides.area_id dell'oggetto (la FK composita
+#                fk_user_override_oggetti_catalogo garantisce che l'oggetto sia a catalogo)
+#   (tipo, override_id) e' la chiave della riga: gli id delle tre tabelle sono indipendenti.
+#   D-2: si contano gli override scritti, a prescindere da valido_dal/valido_al.
+#
+# -- IL PERIMETRO: NESSUN FILTRO, ED E' IL MODELLO A DIRLO -------------------------------------
+#   Il brief chiede che il conteggio coincida con cio' che il pannello mostra: aree attive,
+#   azioni attive, oggetti a catalogo riservati compresi. Sul modello quei tre filtri non
+#   tolgono niente, perche' le righe che toglierebbero non possono esistere:
+#   * un override d'area tiene la sua area attiva: block_deact di aree_funzionali sui figli
+#     user_override_aree (che non hanno «attivo»: basta che esistano), require_attivo
+#     sull'override;
+#   * un override d'azione tiene l'azione attiva (block_deact di azioni_processo sui figli
+#     user_override_azioni, require_attivo sull'override), e l'azione attiva tiene attiva
+#     la sua area (block_deact di aree_funzionali sulle azioni attive);
+#   * un override d'oggetto punta un oggetto a catalogo NON riservato (FK composita con
+#     riservato generata a false): l'oggetto non diventa riservato ne' esce dal catalogo
+#     finche' l'override c'e' (23503), e la sua area resta attiva (block_deact sui figli
+#     area_model_overrides).
+#   Un filtro su attivo/riservato qui sarebbe un ramo morto che riscrive, in un secondo
+#   posto, regole che il catalogo gia' tiene. Il pgTAP prova che il modello rifiuta i due
+#   casi del §4 (azione spenta e oggetto riservato sotto un override), invece di contarli.
+#
+# -- FORMA --------------------------------------------------------------------------------------
+#   security_invoker: la vista gira come chi la legge (le tre tabelle sono config senza RLS,
+#   ma la reloption si dichiara sempre, e un CREATE OR REPLACE futuro deve ripeterla).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261006-01-create-vw-override-operatore-area-mctit.yaml
+
+  - changeSet:
+      id: 20261006-01-create-vw-override-operatore-area
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.vw_override_operatore_area: una riga per override scritto (aree, azioni,
+        oggetti) con auth_user_id, area_id, tipo (AREA/AZIONE/OGGETTO) e override_id. Sede
+        unica del conteggio degli override di un operatore, totale e per area (D-4). Brief:
+        brief-db-riepilogo-permessi-lista-operatori §3.1.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: config
+            tableName: user_override_aree
+        - tableExists:
+            schemaName: config
+            tableName: user_override_azioni
+        - tableExists:
+            schemaName: config
+            tableName: user_override_oggetti
+        - tableExists:
+            schemaName: config
+            tableName: area_model_overrides
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW script.vw_override_operatore_area
+              WITH (security_invoker = true) AS
+              SELECT uoa.auth_user_id,
+                     uoa.area_id,
+                     'AREA'::text AS tipo,
+                     uoa.id       AS override_id
+                FROM config.user_override_aree uoa
+              UNION ALL
+              SELECT uoz.auth_user_id,
+                     ap.area_id,
+                     'AZIONE'::text,
+                     uoz.id
+                FROM config.user_override_azioni uoz
+                JOIN config.azioni_processo ap ON ap.id = uoz.azione_id
+              UNION ALL
+              SELECT uoo.auth_user_id,
+                     amo.area_id,
+                     'OGGETTO'::text,
+                     uoo.id
+                FROM config.user_override_oggetti uoo
+                JOIN config.area_model_overrides amo
+                  ON amo.app_label  = uoo.app_label
+                 AND amo.model_name = uoo.model_name;
+
+              COMMENT ON VIEW script.vw_override_operatore_area IS
+                'Una riga per override di permesso SCRITTO di un operatore, con la sua area: '
+                'AREA (config.user_override_aree), AZIONE (config.user_override_azioni, area '
+                'dell''azione), OGGETTO (config.user_override_oggetti, area dell''oggetto a catalogo '
+                'in config.area_model_overrides). (tipo, override_id) e'' la chiave. Si contano gli '
+                'override scritti, a prescindere dalla validita'' temporale (D-2). Nessun filtro su '
+                'attivo o riservato: il catalogo tiene attive le aree e le azioni che hanno override '
+                '(block_deact, require_attivo) e la FK composita tiene a catalogo e non riservati gli '
+                'oggetti, quindi ogni override scritto e'' uno che il pannello mostra. Sede unica del '
+                'conteggio degli override (totale della lista operatori, chip del riepilogo, badge del '
+                'pannello): la legge script.fn_get_permessi_riepilogo_aree. security_invoker. Brief: '
+                'brief-db-riepilogo-permessi-lista-operatori §3.1 (D-4, 2026-10-06).';
+
+              GRANT SELECT ON script.vw_override_operatore_area TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP VIEW IF EXISTS script.vw_override_operatore_area;

@@ -89,14 +89,24 @@ davvero, tutte provate come applicazione sotto una policy:
 * l'indice sulla colonna ha l'opclass dei pattern (`varchar_pattern_ops`): con la
   collation `it_IT` del database un btree ordinario non conosce `~>=~`.
 
-> ⚠️ **La prova con il piano generico forzato è pessimista qui.** Con un array
-> parametro il planner stima 100 chiavi e, per un range a bordi variabili, lo
-> 0,5 % della tabella per chiave: preferisce una scansione. Nella forma in cui la
-> funzione viene chiamata davvero — con il seme calcolato, cioè dalla plancache —
-> PostgreSQL confronta il piano generico con la media dei piani custom e **tiene
-> i custom** finché il generico costa di più (10 chiamate: ~0,4 ms l'una;
-> forzando il generico 17 ms). Non è un'ipotesi: è il meccanismo documentato
-> della plancache, e cresce a favore dell'indice con la tabella.
+### 🔄 rev 2026-10-10 — si entra dalla base del segmento
+
+Fino a questa data qui si leggeva che con il seme come parametro la plancache
+avrebbe tenuto i piani personalizzati. **La misura lo ha smentito**: dentro la
+capability del DDT (capability → diagnosi → `fn_partite_merce` → questa
+funzione) la plancache sceglie il piano **generico**. Lì il range, con bordi che
+il pianificatore non conosce, è stimato a circa l'11 % della tabella per chiave,
+e la tabella si leggeva per intero con la policy su ogni riga: ~20 ms invece di
+~1,6 (dbdev come app, 2026-10-10). E la stima cresce con la tabella: non sarebbe
+migliorata col volume.
+
+Da `20261010-81` la funzione entra in `commesse_attivita` dall'**uguaglianza**
+sulla colonna generata `segment_base` — la base della chiave, ciò che precede il
+primo `#` (`20261010-80`) — con il range di prima tenuto come filtro residuo.
+Il range implica l'uguaglianza, quindi le righe sono le stesse; l'uguaglianza è
+leakproof, indicizzata e stimata dalle statistiche vere della colonna.
+Presidio della forma: `vendite/test-commesse-attivita-segment-base-v1`.
+Brief: `brief-db-segment-base-commesse-attivita`.
 
 ---
 

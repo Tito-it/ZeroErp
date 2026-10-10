@@ -128,7 +128,7 @@ sorgente. Tre pezzi, tutti in `20_code`:
 | Oggetto                                                                                                     | Cosa fa                                          |
 | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | [`trgfn_commesse_default_emittente`](/dbzero/vendite/manual/trgfn_commesse_default_emittente)               | riempie la colonna quando arriva `NULL`          |
-| [`trgfn_commesse_guard_emittente_ba`](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba)             | rifiuta un valore diverso da quello derivato     |
+| [`script.trgfn_doc_guard_emittente_ba`](/dbzero/script/manual/trgfn_doc_guard_emittente_ba)             | rifiuta un valore diverso da quello derivato     |
 | [`trgfn_commesse_sorgenti_guard_emittente`](/dbzero/vendite/manual/trgfn_commesse_sorgenti_guard_emittente) | vieta di collegare sorgenti di emittenti diversi |
 
 ⇒ **Chi crea una commessa non deve sapere niente di emittenti.** Se lo passa e
@@ -602,7 +602,8 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
 4. Riallineamento su conferma esplicita (N5)
    POST .../riallinea-prezzo/ ricalcola dal resolver alla data originale
    - Se la versione listino e cambiata: richiede conferma esplicita
-   - Aggiorna prezzo_snapshot + prezzo_unitario su attivita_fatturabili
+   - Aggiorna prezzo_snapshot + prezzo_unitario su attivita_fatturabili,
+     e con il prezzo la sua provenienza (versione listino, origine, base)
    - Azzera prezzo_da_riallineare
    - prezzo_bloccato resta FALSE
 
@@ -610,10 +611,11 @@ Questa sezione documenta il flusso completo del prezzo dall'origine (preventivo 
    POST .../variazione-prezzo-eccezionale/ con prezzo manuale + motivo
    - Imposta prezzo_bloccato = TRUE (il resolver non ricalcolera piu)
    - Il prezzo manuale prevale su qualsiasi listino
+   - origine_prezzo = MANUALE, provenienza da listino azzerata
 
 6. Sblocco (N7-sblocco) — reversibilita di N7
    POST .../sblocca-prezzo/ ricalcola dal resolver e sblocca
-   - Imposta prezzo_bloccato = FALSE
+   - Imposta prezzo_bloccato = FALSE e riscrive la provenienza dal resolver
 
 7. Conversione in ordine
    Se il preventivo non e stato riallineato (prezzo_da_riallineare = TRUE),
@@ -660,8 +662,9 @@ componenti BoM l'`origine_prezzo` negoziato (in `meta`) prevale. La pull
 Quando una sorgente contiene un articolo composito
 (`catalogo.articoli.is_composito = true`), la pipeline push **espande sempre** la riga
 padre in N righe `commesse_attivita`, una per ogni componente **attivo** della BoM —
-`esposto_in_fattura` **non è gate di espansione**: è solo
-un flag di **presentazione** in fattura (vedi sotto). Vale per **tutte le sorgenti
+l'**esposizione in fattura** del componente (`esposizione_in_fattura`: `NASCOSTO` |
+`DESCRITTIVO` | `VALORIZZATO`) **non è gate di espansione**: è solo una regola di
+**presentazione** in fattura (vedi sotto). Vale per **tutte le sorgenti
 documento** (preventivi, ordini, contratti, DDT) tramite lo stesso modello.
 
 Logica orchestrata da `BoMComponentExpander` + `_componenti_repo_factory` in
@@ -675,12 +678,20 @@ Logica orchestrata da `BoMComponentExpander` + `_componenti_repo_factory` in
 * `quantita` = `quantita_padre × coeff_qta` (no rounding sotto-componenti)
 * `prezzo_snapshot` = `prezzo_unitario` negoziato del componente (dallo snapshot)
 * `segment_key` = `{padre_segment_key}#CMP:{componente_id}` (idempotente per re-run)
-* `meta` arricchito con `componente_di`, `esposto_in_fattura`, `coeff_qta`, `origine_prezzo`
+* `meta` arricchito con `componente_di`, l'esposizione del componente, `coeff_qta`, `origine_prezzo`.
+  ⚠️ La chiave dell'esposizione diventa `esposizione` (il codice del modo); fino al
+  2026-10-01 era `esposto_in_fattura` (booleano). Il passaggio lo fa il backend
+  (`BoMComponentExpander` che la scrive, `FattureRigheService` che la legge): richiesta
+  aperta nel brief `brief-db-esposizione-componenti-kit-in-fattura` §5
 * Tutti gli altri campi (BA, utility, competenza, sorgente_uid, tipo_doc_fiscale) ereditati dal padre
 
-Componenti **non esposti** (`esposto_in_fattura=false`): comunque tracciati in
-`commesse_attivita`; il flag determina solo la **presentazione** a valle (padre con
-totale vs figli come righe descrittive), gestita nella generazione `fatture_righe`.
+**Qualunque sia il modo, ogni componente è tracciato in `commesse_attivita` col suo
+prezzo**: l'esposizione decide solo la **presentazione** a valle, e la applica la vista
+di rappresentazione della fattura
+([vendite.vw_fattura_righe_esposte](/dbzero/vendite/views/vw_fattura_righe_esposte)):
+nascosto = dentro il prezzo del kit, descrittivo = riga senza importo sotto il kit,
+valorizzato = riga con prezzo e importo suoi sotto il kit, fuori dal suo prezzo. Le
+regole sono nella [guida fatturazione § Come si espone un kit](/guide/fatturazione).
 
 **Caso semplice (non composito, o senza loader/snapshot)**: pass-through,
 1 riga sorgente → 1 riga `commesse_attivita`.

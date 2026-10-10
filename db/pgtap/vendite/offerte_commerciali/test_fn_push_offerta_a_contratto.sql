@@ -30,21 +30,39 @@ SELECT plan(10);
 -- ============================================================
 -- Setup fixture
 -- ============================================================
+-- ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): le righe di
+--   offerta stanno nel PERIMETRO dell'articolo, e la tipologia dell'articolo dev'essere fra
+--   quelle della utility del cliente. Gli articoli si COSTRUISCONO (dbops.fn_pgtap_crea_articolo:
+--   MERCE senza tipologia, ammette UNA_TANTUM): prima erano i primi per id del database,
+--   che su dbdev sono PRODOTTI, e la utility del cliente preso dai dati (TEL) non li prevede.
+CREATE TEMP TABLE tmp_push_art AS
+SELECT dbops.fn_pgtap_crea_articolo('PGT-PUSHO-1') AS a1;
+
+-- 2026-10-08, brief-db-offerta-emissione-ed-erogazione §F.2: il listino del
+--   documento e' della sua utility e del suo emittente (guard nuovo); fixture
+--   costruito invece che preso dai dati. Cliente su una utility senza
+--   tipi_utenze (evita il guard tipo/classe sui satelliti utilities), legato
+--   dal z90 all'emittente di chi agisce (contesto gia' aperto); listino, con la
+--   sua versione ATTIVA da oggi, sulla stessa utility.
+CREATE TEMP TABLE tmp_push_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'push offerta a contratto',
+    (SELECT u.id FROM config.utilities u
+      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = u.id)
+      ORDER BY u.id LIMIT 1));
+
+CREATE TEMP TABLE tmp_push_listino AS
+SELECT * FROM dbops.fn_pgtap_crea_listino((SELECT utility_id FROM tmp_push_cli), 'push offerta a contratto');
+
 CREATE TEMP TABLE tmp_push_ctx AS
 SELECT
-    (SELECT ba.id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS billing_account_id,
-    (SELECT ba.istanza_utility_id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS istanza_utility_id,
-    (SELECT ba.utility_id FROM anagrafiche.billing_account ba
-      WHERE NOT EXISTS (SELECT 1 FROM config.tipi_utenze tu WHERE tu.utility_id = ba.utility_id)
-      ORDER BY ba.id LIMIT 1) AS utility_id,
-    (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef WHERE ef.attivo IS TRUE ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
-    (SELECT l.id FROM vendite.listini l WHERE l.attivo IS TRUE ORDER BY l.id LIMIT 1) AS listino_id,
-    (SELECT lv.id FROM vendite.listini_versioni lv WHERE lv.stato = 'ATTIVA' ORDER BY lv.id LIMIT 1) AS listino_versione_id_attiva,
-    (SELECT a.id FROM catalogo.articoli a WHERE a.attivo IS TRUE ORDER BY a.id LIMIT 1) AS articolo_id,
+    (SELECT billing_account_id FROM tmp_push_cli) AS billing_account_id,
+    (SELECT istanza_utility_id FROM tmp_push_cli) AS istanza_utility_id,
+    (SELECT utility_id FROM tmp_push_cli) AS utility_id,
+    script.fn_pgtap_emittente_operatore() AS emittente_fiscale_id,
+    (SELECT listino_id FROM tmp_push_listino) AS listino_id,
+    (SELECT listino_versione_id FROM tmp_push_listino) AS listino_versione_id_attiva,
+    (SELECT a1 FROM tmp_push_art) AS articolo_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'BOZZA')     AS stato_bozza_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'EMESSA')    AS stato_emessa_id,
     (SELECT id FROM config.stati_doc_offerte WHERE codice_interno = 'ACCETTATA') AS stato_accettata_id,
@@ -69,15 +87,10 @@ WITH ins AS (
 )
 SELECT id, uid FROM ins;
 
--- BOZZA -> EMESSA -> ACCETTATA
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
- WHERE id = (SELECT id FROM tmp_push_offerta_acc);
-
-UPDATE vendite.offerte_commerciali
-   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_push_ctx)
- WHERE id = (SELECT id FROM tmp_push_offerta_acc);
-
+-- ⚠️ rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende, R5a): le righe
+--   dell'offerta si scrivono solo in BOZZA (trg_offerte_commerciali_eccezioni_a05_
+--   doc_bozza_ins_upd_dlt). L'eccezione nasce quindi PRIMA delle transizioni,
+--   come in un'offerta vera; prima la si aggiungeva a offerta gia' ACCETTATA.
 -- Eccezione OVERRIDE sull'offerta (per verificare che il push copi le righe)
 INSERT INTO vendite.offerte_commerciali_eccezioni (
     offerta_id, articolo_id, tipo_eccezione,
@@ -88,6 +101,15 @@ SELECT acc.id, ctx.articolo_id, 'OVERRIDE'::"vendite"."tipo_eccezione_contratto"
        'UNA_TANTUM', 'MANUALE', 200.00, TRUE
   FROM tmp_push_offerta_acc acc, tmp_push_ctx ctx
  WHERE ctx.articolo_id IS NOT NULL;
+
+-- BOZZA -> EMESSA -> ACCETTATA
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_emessa_id FROM tmp_push_ctx)
+ WHERE id = (SELECT id FROM tmp_push_offerta_acc);
+
+UPDATE vendite.offerte_commerciali
+   SET stato_doc_offerta_id = (SELECT stato_accettata_id FROM tmp_push_ctx)
+ WHERE id = (SELECT id FROM tmp_push_offerta_acc);
 
 -- Utility dell'offerta (per verifica copia 1:1)
 INSERT INTO vendite.offerte_commerciali_utilities (
@@ -175,16 +197,18 @@ SELECT id FROM ins;
 --     comportamento di una porta aperta, adesso attraversa il guard come lo
 --     attraversa l'applicazione.
 
--- Ordine collegato all'offerta (documento_origine OFFERTA). BA=NULL + emittente
--- esplicito = niente guard emittente<->BA da soddisfare.
+-- Ordine collegato all'offerta (documento_origine OFFERTA).
+-- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-1/D-6): l'ordine ha sempre il
+--   BA, ed e' quello dell'offerta da cui nasce, col suo ruolo. Prima nasceva col
+--   BA NULL (per saltare il guard emittente<->BA) e col primo ruolo del database.
 INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, emittente_fiscale_id,
     stato_doc_ordine_id, valuta_id, data, storicizza,
     documento_origine_tipo, documento_origine_id
 )
 SELECT
-    (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1),
-    NULL::bigint,
+    (SELECT c.soggetto_ruolo_id FROM tmp_push_cli c),
+    ctx.billing_account_id,
     ctx.emittente_fiscale_id,
     (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'DRAFT' AND attivo IS TRUE LIMIT 1),
     (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1),

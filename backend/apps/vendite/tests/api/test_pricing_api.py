@@ -17,6 +17,8 @@ Indice test eseguiti:
  6) test_resolve_propaga_service_error
  7) test_limiti_utente_ritorna_defaults — endpoint L2 con default parametri
  8) test_limiti_utente_con_override_user — endpoint L2 con override utente
+ 9) test_limiti_utente_ba_malformato_400 — billing_account_id non numerico → 400 (F-6)
+10) test_limiti_utente_ba_non_risulta_404 — BA inesistente o fuori scope → 404 (F-6)
 """
 
 import json
@@ -137,6 +139,23 @@ class TestResolve(_BaseApiTest):
         )
         self.assertEqual(resp.status_code, 400)
 
+    # Scopo: `data_riferimento` vuota e' come assente: 400 col campo, senza
+    #        arrivare al resolver. Fino al 2026-10-09 il controllo era sul valore
+    #        grezzo, e `""` passava (trovato da mypy).
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(_PERM)
+    @patch("apps.vendite.api.views_pricing.PricingService")
+    def test_resolve_data_riferimento_vuota_400(self, svc_cls, perm, _auth):
+        perm.get_emittenti_sr_ids.return_value = [42]
+        resp = self.client.post(
+            _BASE,
+            data=json.dumps(self._payload(data_riferimento="")),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("data_riferimento", resp.json()["error"].get("fields") or [])
+        svc_cls.return_value.resolve_prezzo.assert_not_called()
+
     # Scopo: user senza emittenti autorizzati e senza override -> 400 parlante.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_PERM)
@@ -233,7 +252,7 @@ class TestLimitiUtente(_BaseApiTest):
 
     # Scopo: con billing_account_id la view recupera la categoria del BA
     # via BillingAccountRepository e la propaga a ParameterService.
-    @patch("apps.vendite.api.views_pricing.BillingAccountRepository")
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch(_AUTH, return_value=(Mock(id=1), None))
     @patch(_LIMITI_PS)
     def test_limiti_utente_con_ba_propaga_categoria(self, ps_cls, _auth, ba_cls):
@@ -250,20 +269,30 @@ class TestLimitiUtente(_BaseApiTest):
         _, kwargs = ps_cls.return_value.get_defaults.call_args
         self.assertEqual(kwargs.get("categoria_cliente_id"), 7)
 
-    # Scopo: billing_account_id malformato (non numerico) viene ignorato
-    # silenziosamente, niente lookup BA, categoria_cliente_id=None.
-    @patch("apps.vendite.api.views_pricing.BillingAccountRepository")
+    # Scopo: billing_account_id malformato (non numerico) → 400
+    # E_VALIDATION_INPUT, niente lookup BA (F-6, 2026-10-08: prima veniva
+    # ignorato in silenzio e il drawer mostrava la soglia generica).
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
     @patch(_AUTH, return_value=(Mock(id=1), None))
     @patch(_LIMITI_PS)
-    def test_limiti_utente_ba_malformato_ignorato(self, ps_cls, _auth, ba_cls):
-        ps_cls.return_value.get_defaults.return_value = {
-            "VENDITE_MAX_SCONTO_PCT": "10",
-            "VENDITE_MAX_MAGGIORAZIONE_PCT": "10",
-        }
-
+    def test_limiti_utente_ba_malformato_400(self, ps_cls, _auth, ba_cls):
         resp = self.client.get(_LIMITI_BASE + "?billing_account_id=abc")
 
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["error"]["code"], "E_VALIDATION_INPUT")
         ba_cls.return_value.get_categoria_cliente_id.assert_not_called()
-        _, kwargs = ps_cls.return_value.get_defaults.call_args
-        self.assertIsNone(kwargs.get("categoria_cliente_id"))
+        ps_cls.return_value.get_defaults.assert_not_called()
+
+    # Scopo: BA che non risulta (inesistente o fuori scope RLS) → 404
+    # E_ANAG_NOT_FOUND, non la soglia senza livello categoria (F-6).
+    @patch("apps.anagrafiche.services.billing_account_service.BillingAccountRepository")
+    @patch(_AUTH, return_value=(Mock(id=1), None))
+    @patch(_LIMITI_PS)
+    def test_limiti_utente_ba_non_risulta_404(self, ps_cls, _auth, ba_cls):
+        ba_cls.return_value.get_categoria_cliente_id.return_value = None
+
+        resp = self.client.get(_LIMITI_BASE + "?billing_account_id=99")
+
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json()["error"]["code"], "E_ANAG_NOT_FOUND")
+        ps_cls.return_value.get_defaults.assert_not_called()

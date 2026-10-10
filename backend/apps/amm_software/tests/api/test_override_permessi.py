@@ -211,6 +211,7 @@ class TestEmittentiScopeView(TestCase):
     def test_get_emittenti_scope(self, mock_repo_cls):
         """GET ritorna shape Fase 2 (scope_mode + emittenti_ids + capability)."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_user_emittenti_scope.return_value = SAMPLE_SCOPE_SINGLE
         mock_repo_cls.return_value = mock_repo
@@ -231,6 +232,7 @@ class TestEmittentiScopeView(TestCase):
     def test_put_emittenti_scope_global(self, mock_invalidate, mock_repo_cls):
         """PUT GLOBAL azzera lo scope (chiama fn change con array vuoto)."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_user_emittenti_scope.return_value = SAMPLE_SCOPE_GLOBAL
         mock_repo_cls.return_value = mock_repo
@@ -245,6 +247,7 @@ class TestEmittentiScopeView(TestCase):
     def test_put_emittenti_scope_single(self, mock_invalidate, mock_repo_cls):
         """PUT SINGLE imposta esattamente 1 emittente."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.get_user_emittenti_scope.return_value = SAMPLE_SCOPE_SINGLE
         mock_repo_cls.return_value = mock_repo
@@ -261,6 +264,7 @@ class TestEmittentiScopeView(TestCase):
     def test_put_emittenti_scope_rifiuta_multi(self, mock_repo_cls):
         """MULTI rifiutato con E_AMM_SCOPE_NON_AMMESSO (Q2 chiuso applicativamente)."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo_cls.return_value = mock_repo
 
@@ -277,6 +281,7 @@ class TestEmittentiScopeView(TestCase):
     def test_put_emittenti_scope_single_richiede_array_lunghezza_1(self, mock_repo_cls):
         """SINGLE con array vuoto/multi rifiutato."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo_cls.return_value = mock_repo
 
@@ -302,6 +307,7 @@ class TestEmittentiScopeView(TestCase):
     ):
         """Race condition Fase 1: trigger DB rifiuta -> E_PROFILO_ULTIMO_SUPER_ADMIN."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 1}
         mock_repo.change_user_emittenti_scope.side_effect = DatabaseError(
             "ERROR: E_PROFILO_ULTIMO_SUPER_ADMIN: ultimo super admin attivo"
@@ -321,6 +327,7 @@ class TestEmittentiScopeView(TestCase):
     def test_put_emittenti_scope_invalidates_cache(self, mock_invalidate, mock_repo_cls):
         """PUT invalida cache utente dopo modifica."""
         mock_repo = MagicMock()
+        mock_repo.get_categoria_accesso.return_value = "OPERATORE"
         mock_repo.get_operatore_detail.return_value = {"auth_user_id": 5}
         mock_repo.get_user_emittenti_scope.return_value = SAMPLE_SCOPE_GLOBAL
         mock_repo_cls.return_value = mock_repo

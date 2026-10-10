@@ -18,10 +18,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.core.db._helpers import jsonb_out
 from apps.core.db.auth_repository import AuthRepository
+from apps.core.db.risorse_umane_core_repository import RisorseUmaneCoreRepository
 from apps.core.services.auth_constants import RUOLO_APPLICATIVO_OPERATORE
 from apps.core.services.error_manager import ErrorManager
 from apps.core.services.error_policies import ErrorPolicyRegistry
@@ -31,12 +32,23 @@ logger = logging.getLogger("security")
 
 E_INVITO = PORTA_OPERATORE.codice_invito
 
+# I motivi di `fn_check_operatore_invitabile` per cui l'id indicato non nomina
+# un operatore: credenziale inesistente, o credenziale senza veste OPERATORE.
+# Sono un «non trovato» (404), non un dato errato (E-4 di
+# analisi-be-difetti-emersi-verifica-doc-api-core, 2026-10-08) — lo stesso
+# codice e la stessa lettura del dettaglio operatore
+# (`AmmSoftwareService`: categoria diversa da OPERATORE → non trovato).
+# Gli altri motivi (veste gia' attiva, fuori finestra, senza email, piu'
+# vesti spente) restano `E_INVITO_OPERATORE`: l'operatore c'e'.
+_MOTIVI_OPERATORE_NON_TROVATO = frozenset({"UTENTE_NON_TROVATO", "SENZA_VESTE_OPERATORE"})
+
 
 class InvitoOperatoreService:
     """Invito della veste operatore: verifica, emette, spedisce, reinvia."""
 
     def __init__(self) -> None:
         self._auth_repo = AuthRepository()
+        self._ru_repo = RisorseUmaneCoreRepository()
         self._invito = InvitoVeste(auth_repo=self._auth_repo)
 
     # Scopo: Invia (o reinvia) l'invito della veste OPERATORE spenta.
@@ -45,6 +57,11 @@ class InvitoOperatoreService:
     # l'unica OPERATORE spenta della credenziale. I token pendenti della veste
     # si invalidano sempre nella transazione del nuovo (BB, A-4): `reinvio`
     # serve solo al log.
+    # ⭐ D-3 (2026-10-04): l'invito e' l'UNICA strada per riaccendere un
+    # operatore spento. Il gesto dell'amministratore riapre la risorsa umana
+    # (il rapporto) nella transazione dell'emissione; la veste (la porta)
+    # resta spenta e la accende la persona attivando. Su un operatore mai
+    # attivato la risorsa umana e' gia' aperta: nessuna scrittura.
     # ⛔ Il rifiuto NON compone il testo col motivo (§16 del brief
     # blocco-login, 2026-09-27): il DB manda `reason` (codice macchina) e
     # `reason_key` (chiave i18n), non una frase. Il messaggio e' quello del
@@ -54,6 +71,12 @@ class InvitoOperatoreService:
         self, auth_user_id: int, invitato_da_user_id: int, *, reinvio: bool = False
     ) -> dict[str, Any]:
         check = self._check_invitabile(auth_user_id)
+        ErrorManager.require(
+            check.get("reason") not in _MOTIVI_OPERATORE_NON_TROVATO,
+            code="E_AMM_OPERATORE_NOT_FOUND",
+            message=f"Operatore {auth_user_id} non trovato.",
+            context={"auth_user_id": auth_user_id, "reason": check.get("reason")},
+        )
         ErrorManager.require(
             check.get("invitabile", False),
             code=E_INVITO,
@@ -67,13 +90,15 @@ class InvitoOperatoreService:
         email = check["email"]
         identita_id = self._veste_da_invitare(auth_user_id)
 
-        emissione = self._invito.emetti(
-            PORTA_OPERATORE,
-            auth_user_id=auth_user_id,
-            identita_id=identita_id,
-            ruolo_applicativo=RUOLO_APPLICATIVO_OPERATORE,
-            invitato_da_user_id=invitato_da_user_id,
-        )
+        with transaction.atomic():
+            riaperta = self._ru_repo.riapri_risorsa_umana_della_veste(identita_id) > 0
+            emissione = self._invito.emetti(
+                PORTA_OPERATORE,
+                auth_user_id=auth_user_id,
+                identita_id=identita_id,
+                ruolo_applicativo=RUOLO_APPLICATIVO_OPERATORE,
+                invitato_da_user_id=invitato_da_user_id,
+            )
 
         nomi = self._auth_repo.get_nomi_credenziale(auth_user_id) or {}
         # ⭐ `inviato` e' l'esito della MAIL, non della chiamata (F-3): il
@@ -97,8 +122,10 @@ class InvitoOperatoreService:
         )
 
         logger.info(
-            "security.invito_inviato user_id=%s identita_id=%s da=%s reinvio=%s is_cross=%s inviato=%s",
-            auth_user_id, identita_id, invitato_da_user_id, reinvio, emissione.is_cross, inviato,
+            "security.invito_inviato user_id=%s identita_id=%s da=%s reinvio=%s is_cross=%s "
+            "inviato=%s risorsa_umana_riaperta=%s",
+            auth_user_id, identita_id, invitato_da_user_id, reinvio, emissione.is_cross,
+            inviato, riaperta,
         )
         return {"inviato": inviato, "email": maschera_email(email), "is_cross": emissione.is_cross}
 

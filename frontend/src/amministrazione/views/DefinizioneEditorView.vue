@@ -12,6 +12,7 @@
 import { computed, onActivated, provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+// eslint-disable-next-line no-restricted-imports -- eccezione nel registro DataTable (scripts/datatable.baseline.json)
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -107,7 +108,7 @@ function onAllinea() {
           () => forkDefinizione(d.preset_corrente_id, emittenteId),
           { successMessage: t('amministrazione.definizioni_workflow.ed_msg_allinea_ok') },
         )
-        const nuovoId = res?.data?.data?.definizione_id
+        const nuovoId = res?.definizione_id
         if (res !== null && nuovoId) {
           router.push({ name: 'amm-software-definizione-editor', params: { id: nuovoId } })
         }
@@ -136,7 +137,7 @@ async function loadDettaglio() {
 // BB core `useFormInline` (sede unica, ok Tid 2026-09-28). Il padre e' la
 // definizione: aprirne un'altra chiude il form.
 const {
-  formMode, rigaInModifica: stepInForm, nuovaRiga: onNuovoStep, apriRiga, chiudiForm,
+  formMode, rigaInModifica: stepInForm, nuovaRiga: onNuovoStep, apriRiga, chiudiForm, ancoraForm,
 } = useFormInline({ padre: () => defId.value })
 
 // Ordine stabile per il riordino ▲▼ (la DataTable ordina per sequenza in view).
@@ -359,7 +360,7 @@ watch(defId, loadDettaglio)
       </DataTable>
 
       <!-- Form step inline (create/edit) -->
-      <div v-if="formMode" class="app-drawer-section editor-step-form">
+      <div v-if="formMode" :ref="ancoraForm" class="app-drawer-section editor-step-form">
         <h3 class="editor-section-title">
           {{ formMode === 'edit'
             ? t('amministrazione.definizioni_workflow.ed_step_form_edit', { codice: stepInForm?.codice })

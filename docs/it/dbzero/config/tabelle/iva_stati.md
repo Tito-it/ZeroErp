@@ -10,7 +10,7 @@
 |---------|------|----------|---------|
 | iva_id | integer | NO |  |
 | stato_id | integer | NO |  |
-| aliquota_override | numeric | NO |  |
+| aliquota_override | numeric(5,2) | NO |  |
 | data_insert | timestamp with time zone | NO | now() |
 | user_insert | text | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
@@ -23,6 +23,7 @@
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_iva_aliquota_pos_no_assogg |  |
+| CHECK | chk_iva_stati_aliquota_override_finito |  |
 | CHECK | chk_iva_stati_zero_requires_assogg |  |
 | FOREIGN KEY | fk_iva_stati_assoggettamento_override | assoggettamento_id_override |
 | FOREIGN KEY | fk_iva_stati_iva | iva_id |

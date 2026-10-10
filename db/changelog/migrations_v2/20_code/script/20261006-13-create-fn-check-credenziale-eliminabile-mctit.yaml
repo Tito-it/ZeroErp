@@ -1,0 +1,266 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_check_credenziale_eliminabile: i motivi per cui una credenziale
+#   NON si elimina (linee-guida-sql §12.5.1). La gemella di
+#   script.fn_check_credenziale_bloccabile.
+#   Brief: brief-db-elimina-credenziale-senza-veste §4.1 (D-1, D-2; fail-closed
+#   deciso da Tid il 2026-10-06)
+#
+# ── I MOTIVI, IN ORDINE (il primo e' quello che il verbo solleva) ───
+#   1. CON_VESTI — la credenziale ha almeno una veste, anche spenta
+#      (script.fn_credenziale_ha_vesti: la regola di NESSUNA_VESTE del
+#      presidio, una sola). E' l'unico motivo che dice cosa fare (l'invito
+#      riusa la credenziale; per una persona si spengono le vesti).
+#   2. STORIA_NON_VERIFICABILE — manca la FK di identita_digitali verso
+#      django.auth_user: e' il segno che le FK del ponte django non sono nate
+#      (installazione nuova, CI: Liquibase gira prima di manage.py migrate).
+#      Senza FK non si sa dove sta la storia, e il DELETE lascerebbe orfani
+#      anche le righe che appartengono alla credenziale. Fail-closed.
+#   3. CON_STORIA — la credenziale compare in una tabella che la tiene con
+#      una FK RESTRICT o NO ACTION (D-2): la si rifiuta, e il motivo dice DOVE.
+#   ⚠️ Con CON_VESTI la funzione ESCE: la storia non si cerca. Una
+#   credenziale con vesti non si elimina comunque, e la ricerca costa una
+#   lettura per ogni FK (alcune colonne non hanno indice): il backend legge la
+#   check per ogni riga di «Altri accessi», dove quasi tutte hanno vesti.
+#   2 e 3 si escludono per costruzione.
+#
+# ── ⭐ L'ELENCO DELLE TABELLE DI STORIA NON E' SCRITTO ───────────────
+#   Si deriva da pg_constraint: confrelid = django.auth_user, confdeltype
+#   'r' (RESTRICT) o 'a' (NO ACTION), escluse identita_digitali (e' il motivo
+#   1). La prossima FK verso auth_user entra da sola.
+#   ⚠️ Le righe della STESSA tabella che se ne vanno per CASCADE non contano:
+#   config.credenziali.bloccata_da (NO ACTION) sulla riga che la credenziale
+#   possiede via auth_user_id (CASCADE) sparisce con lei. Anche questo si
+#   deriva: le colonne CASCADE della stessa tabella escludono la riga.
+#   ⛔ Una FK RESTRICT verso una tabella che a sua volta segue auth_user in
+#   CASCADE (un nipote) qui NON si vede: oggi non ce n'e', e lo pretende il
+#   pgTAP (test 9). Se un giorno nasce, quel test diventa rosso.
+#
+# ── ⭐ SECURITY DEFINER, e perche' ───────────────────────────────────
+#   La storia sta anche in tabelle con la RLS (email_log, email_outbox,
+#   event_log, documenti_generati, documenti_generati_eventi). Da INVOKER
+#   la risposta dipenderebbe da chi guarda: una riga fuori perimetro
+#   sparirebbe e il pulsante si accenderebbe su una credenziale che il
+#   DELETE (del proprietario) rifiuta. Il motivo e' uno stato, non una
+#   visibilita' (linee-guida-sql §12.3). La funzione restituisce solo nomi di
+#   tabelle e l'id che le si passa: nessun dato di riga.
+#   search_path bloccato con `public` (le estensioni, come le DEFINER sorelle);
+#   ogni nome e' qualificato. Il SQL dinamico usa format(%I) e un parametro.
+#   ⚠️ Nessun guard di permesso dentro la check: e' pura (linee-guida-sql §5),
+#   il permesso lo chiede il verbo nella prima riga.
+#
+# ── CONSUMATORI ───────────────────────────────────────────────────────
+#   script.fn_elimina_credenziale (20261006-14) la CHIAMA e ne solleva il
+#   primo motivo (§12.5.2). Il backend la legge per can_delete/delete_reason
+#   sulle righe di «Altri accessi» (brief §6). Le reason_key
+#   amministrazione.accessi.elimina_reason.* sono chieste al FE (brief §6).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261006-13-create-fn-check-credenziale-eliminabile-mctit.yaml
+
+  - changeSet:
+      id: 20261006-13-create-fn-check-credenziale-eliminabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        script.fn_check_credenziale_eliminabile(p_auth_user_id): i motivi per cui una credenziale
+        non si elimina, nella forma §12.5.1 ('[]' = si puo'). In ordine CON_VESTI
+        (E_CREDENZIALE_CON_VESTI), STORIA_NON_VERIFICABILE (E_CREDENZIALE_STORIA_NON_VERIFICABILE,
+        fail-closed senza le FK del ponte django) e CON_STORIA (E_CREDENZIALE_CON_STORIA, tabelle
+        derivate da pg_constraint). SECURITY DEFINER. Brief: brief-db-elimina-credenziale-senza-veste §4.1.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_check_credenziale_eliminabile';
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_credenziale_ha_vesti';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_credenziale_eliminabile(
+                  -- Esplicito: django.auth_user.id, niente %TYPE su colonne django.*.
+                  p_auth_user_id integer
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              DECLARE
+                  -- Nudo: e' l'array dei motivi che la funzione restituisce.
+                  v_motivi   jsonb := '[]'::jsonb;
+                  -- Nudo: la tabella di django puo' non esserci ancora (prima di
+                  -- manage.py migrate), quindi si risolve con to_regclass.
+                  v_auth_user regclass;
+                  -- Nudi: una riga del catalogo (pg_constraint), non una tabella
+                  -- di dominio.
+                  v_fk       record;
+                  v_cascata  text;
+                  v_esiste   boolean;
+                  -- Le tabelle che tengono la credenziale, `schema.tabella`.
+                  v_dove     text[] := ARRAY[]::text[];
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   Dire perche' una credenziale NON si puo' eliminare.
+                  --   '[]' = si puo'. Non solleva: sollevare e' mestiere
+                  --   della madre script.fn_elimina_credenziale.
+                  --
+                  -- Motivi (in ordine: il primo e' quello che la madre
+                  -- solleva e il tooltip mostra):
+                  --   1. CON_VESTI: almeno una veste, anche spenta (D-1)
+                  --   2. STORIA_NON_VERIFICABILE: le FK verso django.auth_user
+                  --      non ci sono (fail-closed)
+                  --   3. CON_STORIA: una riga la tiene con una FK RESTRICT o
+                  --      NO ACTION (D-2), le tabelle derivate da pg_constraint
+                  --   Con il motivo 1 si esce: la storia non si cerca.
+                  -- =========================================================
+
+                  -- Guard parametro: un id assente o non positivo non esce da
+                  -- nessuna interfaccia, lo produce un chiamante rotto.
+                  IF p_auth_user_id IS NULL OR p_auth_user_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_check_credenziale_eliminabile', 'E_AUTH_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('parametro', 'p_auth_user_id', 'valore', p_auth_user_id),
+                          NULL::uuid,
+                          VARIADIC ARRAY['script.fn_check_credenziale_eliminabile',
+                                         'credenziale assente o non valida']);
+                  END IF;
+
+                  -- 1. Almeno una veste, anche spenta: la regola di NESSUNA_VESTE.
+                  IF script.fn_credenziale_ha_vesti(p_auth_user_id) THEN
+                      v_motivi := v_motivi || jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_CREDENZIALE_CON_VESTI',
+                          'reason',     'CON_VESTI',
+                          'reason_key', 'amministrazione.accessi.elimina_reason.con_vesti',
+                          'dettaglio',  jsonb_build_object('auth_user_id', p_auth_user_id),
+                          -- Frase chiusa: niente da infilare nei segnaposto.
+                          'valori',     jsonb_build_array()));
+                      -- Con le vesti la storia non si cerca (vedi testata).
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- 2. Le FK del ponte django: senza quella di identita_digitali
+                  --    i legami non ci sono, e non si sa dove sta la storia.
+                  v_auth_user := to_regclass('django.auth_user');
+                  IF NOT EXISTS (
+                      SELECT 1
+                        FROM pg_catalog.pg_constraint c
+                       WHERE c.contype   = 'f'
+                         AND c.conrelid  = to_regclass('anagrafiche.identita_digitali')
+                         AND c.confrelid = v_auth_user) THEN
+                      v_motivi := v_motivi || jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_CREDENZIALE_STORIA_NON_VERIFICABILE',
+                          'reason',     'STORIA_NON_VERIFICABILE',
+                          'reason_key', 'amministrazione.accessi.elimina_reason.storia_non_verificabile',
+                          'dettaglio',  jsonb_build_object('auth_user_id', p_auth_user_id),
+                          'valori',     jsonb_build_array()));
+                      RETURN v_motivi;
+                  END IF;
+
+                  -- 3. La storia: ogni FK RESTRICT/NO ACTION verso auth_user,
+                  --    tranne identita_digitali (e' il motivo 1). Una FK verso
+                  --    auth_user(id) ha una colonna sola: conkey[1].
+                  FOR v_fk IN
+                      SELECT c.conrelid,
+                             n.nspname AS schema_nome,
+                             t.relname AS tabella_nome,
+                             a.attname AS colonna_nome
+                        FROM pg_catalog.pg_constraint c
+                        JOIN pg_catalog.pg_class t     ON t.oid = c.conrelid
+                        JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+                        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid
+                                                      AND a.attnum   = c.conkey[1]
+                       WHERE c.contype     = 'f'
+                         AND c.confrelid   = v_auth_user
+                         AND c.confdeltype IN ('r', 'a')
+                         AND c.conrelid   <> to_regclass('anagrafiche.identita_digitali')
+                       ORDER BY n.nspname, t.relname, a.attname
+                  LOOP
+                      -- Le righe della stessa tabella che seguono la credenziale
+                      -- in CASCADE se ne vanno con lei: non sono storia.
+                      SELECT string_agg(format('%I = $1', a2.attname), ' OR ' ORDER BY a2.attname)
+                        INTO v_cascata
+                        FROM pg_catalog.pg_constraint c2
+                        JOIN pg_catalog.pg_attribute a2 ON a2.attrelid = c2.conrelid
+                                                       AND a2.attnum   = c2.conkey[1]
+                       WHERE c2.contype     = 'f'
+                         AND c2.conrelid    = v_fk.conrelid
+                         AND c2.confrelid   = v_auth_user
+                         AND c2.confdeltype = 'c';
+
+                      EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I.%I WHERE %I = $1%s)',
+                                     v_fk.schema_nome, v_fk.tabella_nome, v_fk.colonna_nome,
+                                     CASE WHEN v_cascata IS NULL THEN ''
+                                          ELSE format(' AND NOT (%s)', v_cascata) END)
+                         INTO v_esiste
+                        USING p_auth_user_id;
+
+                      -- Una tabella con due colonne (email_log, email_outbox) si
+                      -- nomina una volta.
+                      IF v_esiste
+                         AND NOT (format('%s.%s', v_fk.schema_nome, v_fk.tabella_nome) = ANY (v_dove)) THEN
+                          v_dove := v_dove || format('%s.%s', v_fk.schema_nome, v_fk.tabella_nome);
+                      END IF;
+                  END LOOP;
+
+                  IF cardinality(v_dove) > 0 THEN
+                      v_motivi := v_motivi || jsonb_build_array(jsonb_build_object(
+                          'codice',     'E_CREDENZIALE_CON_STORIA',
+                          'reason',     'CON_STORIA',
+                          'reason_key', 'amministrazione.accessi.elimina_reason.con_storia',
+                          'dettaglio',  jsonb_build_object('auth_user_id', p_auth_user_id,
+                                                           'dove',         to_jsonb(v_dove)),
+                          -- Il dove, per chi lo deve riferire allo sviluppo.
+                          'valori',     jsonb_build_array(array_to_string(v_dove, ', '))));
+                  END IF;
+
+                  RETURN v_motivi;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_credenziale_eliminabile(p_auth_user_id integer) IS
+                  'I motivi per cui una CREDENZIALE non si puo'' eliminare (linee-guida-sql §12.5.1): '
+                  '''[]'' se si puo'', altrimenti l''array ORDINATO {codice, reason, reason_key, dettaglio, '
+                  'valori}. In ordine: CON_VESTI (E_CREDENZIALE_CON_VESTI, '
+                  'amministrazione.accessi.elimina_reason.con_vesti: almeno una veste anche spenta, '
+                  'script.fn_credenziale_ha_vesti, la regola di NESSUNA_VESTE del presidio; D-1), '
+                  'STORIA_NON_VERIFICABILE (E_CREDENZIALE_STORIA_NON_VERIFICABILE, '
+                  'amministrazione.accessi.elimina_reason.storia_non_verificabile: manca la FK di '
+                  'anagrafiche.identita_digitali verso django.auth_user, cioe'' il ponte django non e'' nato; '
+                  'fail-closed, decisione di Tid del 2026-10-06) e CON_STORIA (E_CREDENZIALE_CON_STORIA, '
+                  'amministrazione.accessi.elimina_reason.con_storia: la credenziale compare in una tabella '
+                  'che la tiene con una FK RESTRICT o NO ACTION, derivata da pg_constraint; dettaglio.dove e '
+                  'il valore le nominano; le righe della stessa tabella che la seguono in CASCADE non '
+                  'contano; D-2). Con CON_VESTI esce senza cercare la storia. La chiama '
+                  'script.fn_elimina_credenziale e ne solleva il primo motivo (§12.5.2); la legge il backend '
+                  'per can_delete/delete_reason sulle righe di «Altri accessi». SECURITY DEFINER del '
+                  'proprietario, search_path bloccato: la storia sta anche sotto RLS, e il motivo e'' uno '
+                  'stato, non una visibilita''. Restituisce solo nomi di tabelle. Id NULL o <= 0 -> '
+                  'E_AUTH_CHIAMATA_NON_VALIDA. STABLE. Brief: brief-db-elimina-credenziale-senza-veste §4.1.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_credenziale_eliminabile(integer);

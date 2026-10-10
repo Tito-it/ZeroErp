@@ -5,7 +5,7 @@
 --       resolver vendite + union script.vw_stato_sorgente +
 --       pratiche.fn_stato_sorgente (brief-db-proiezione-stato-dominio)
 -- ------------------------------------------------------------
--- Indice test (1..17):
+-- Indice test (1..31):
 -- 1)  Seed D1: DRAFT     -> fase APERTO,    esito NULL,     terminale false
 -- 2)  Seed D1: EMESSO    -> fase IN_ATTESA, esito NULL,     terminale false
 -- 3)  Seed D1: ACCETTATO -> fase IN_CORSO,  esito POSITIVO, terminale false
@@ -40,6 +40,12 @@
 -- 27) Ancora C [REGRESSIONE prev->commessa]: ROOT risolto (EMESSO) + COLLEGATO
 --     non-risolto (fake) -> proietta EMESSO (risolto batte non-risolto)
 -- 28) Ancora D: pratica con solo link non-risolto -> risolto=false, stato NULL
+-- --- Chiave nel suo tipo (rev 2026-10-05, 20261005-23) ---
+-- 29) fn_stato_sorgente: uid MAIUSCOLO del preventivo EMESSO -> UNKNOWN
+--     (si accetta solo la forma canonica, come il confronto testuale di prima)
+-- 30) fn_stato_sorgente: chiave malformata -> UNKNOWN senza errore (niente 22P02)
+-- 31) fn_stato_sorgente: uid di un preventivo col tipo ORDINE_VENDITA (chiave id)
+--     -> UNKNOWN
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -59,26 +65,27 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(28);
+SELECT plan(31);
 
 -- ============================================================
 -- Riferimenti minimi per creare preventivi in pgTAP
 -- (pattern test-fn-available-actions-preventivo-v1)
 -- ============================================================
+-- ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): il preventivo ha
+--   sempre il suo billing account, quello della sua coppia (istanza, utility).
+--   Fino a quel giorno la coppia si PESCAVA dal primo BA del database e il
+--   preventivo nasceva senza BA; ora il BA va scritto, e il guard
+--   dell'emittente pretende che sia dell'emittente del documento — cioe' di
+--   chi agisce. Il cliente si COSTRUISCE: il builder lega il BA all'emittente
+--   dell'operatore in sessione. ⛔ Si legge in un'istruzione SEPARATA.
+CREATE TEMP TABLE tmp_cli_pss AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba('proiezione stato sorgente');
+
 CREATE TEMP TABLE tmp_refs_pss AS
 SELECT
-  (SELECT ba.istanza_utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS istanza_utility_id,
-  (SELECT ba.utility_id
-     FROM anagrafiche.billing_account ba
-    WHERE ba.utility_id IS NOT NULL
-      AND ba.istanza_utility_id IS NOT NULL
-    ORDER BY ba.id LIMIT 1
-  ) AS utility_id,
+  (SELECT billing_account_id FROM tmp_cli_pss) AS billing_account_id,
+  (SELECT istanza_utility_id FROM tmp_cli_pss) AS istanza_utility_id,
+  (SELECT utility_id FROM tmp_cli_pss) AS utility_id,
   (SELECT v.id
      FROM config.valute v
     ORDER BY v.id LIMIT 1
@@ -106,7 +113,7 @@ SELECT
 CREATE TEMP TABLE tmp_prev_pss AS
 WITH ins AS (
   INSERT INTO vendite.preventivi (
-    numero, rev, istanza_utility_id, utility_id,
+    numero, rev, billing_account_id, istanza_utility_id, utility_id,
     validita_dal, validita_al, valuta_id,
     stato_doc_preventivo_id, data, fatturazione_immediata,
     storicizza, meta, emittente_fiscale_id
@@ -114,7 +121,7 @@ WITH ins AS (
   SELECT
     'PGTAP-PSS-' || x.suffisso || '-' || substr(md5(clock_timestamp()::text || x.suffisso), 1, 8),
     0,
-    r.istanza_utility_id, r.utility_id,
+    r.billing_account_id, r.istanza_utility_id, r.utility_id,
     DATE '2026-07-01', DATE '2026-07-31', r.valuta_id,
     x.stato_id, DATE '2026-07-01', false,
     false, '{"test_scope":"pgtap_proiezione_stato_sorgente"}'::jsonb,
@@ -522,6 +529,41 @@ SELECT results_eq(
      WHERE pratica_id = (SELECT pratica_id FROM tmp_anc_pd)$$,
   $$VALUES (NULL::text, false)$$,
   '28) Ancora D: solo link non-risolto -> risolto=false, stato NULL (fallback come oggi)'
+);
+
+-- ============================================================
+-- 29-31) La chiave si cerca nel suo TIPO (rev 2026-10-05, 20261005-23)
+--   fn_stato_sorgente non confronta piu' la colonna testuale sorgente_uid ma
+--   la chiave nativa (sorgente_chiave_uuid / sorgente_chiave_id), l'unica che
+--   sotto RLS arriva all'indice. Questi tre casi fissano l'EQUIVALENZA col
+--   confronto testuale di prima, nei punti in cui un cast la romperebbe:
+--   una forma non canonica che il cast accetterebbe, una stringa che il cast
+--   rifiuterebbe con un errore, una chiave del tipo sbagliato.
+-- ============================================================
+SELECT results_eq(
+  $$SELECT risolto, stato_codice_interno
+      FROM pratiche.fn_stato_sorgente(
+             (SELECT sorgente_tipo_id FROM tmp_refs_pss),
+             upper((SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO')))$$,
+  $$VALUES (false, 'UNKNOWN'::text)$$,
+  '29) uid in forma non canonica (maiuscolo) -> UNKNOWN, come il confronto testuale'
+);
+
+SELECT results_eq(
+  $$SELECT risolto, stato_codice_interno
+      FROM pratiche.fn_stato_sorgente(
+             (SELECT sorgente_tipo_id FROM tmp_refs_pss), 'non-un-uid')$$,
+  $$VALUES (false, 'UNKNOWN'::text)$$,
+  '30) chiave malformata -> UNKNOWN senza errore (nessun cast che esploda)'
+);
+
+SELECT results_eq(
+  $$SELECT risolto, stato_codice_interno
+      FROM pratiche.fn_stato_sorgente(
+             (SELECT id FROM config.sorgenti WHERE codice_interno = 'ORDINE_VENDITA'),
+             (SELECT uid FROM tmp_prev_pss WHERE stato_codice_interno = 'EMESSO'))$$,
+  $$VALUES (false, 'UNKNOWN'::text)$$,
+  '31) uid di un preventivo cercato come ORDINE_VENDITA (chiave id) -> UNKNOWN'
 );
 
 SELECT * FROM finish();

@@ -77,6 +77,20 @@ jobs:
       - name: Install (npm ci)
         run: npm ci
 
+      - name: Audit dipendenze (npm audit)
+        # Controlla il lock contro il registro delle vulnerabilita' note di npm.
+        # ⭐ Acceso il 2026-10-08 a ZERO (D1-f di migliorie-generali-BE-FE): e'
+        #    il gemello di `pip-audit` in `ci-validate.yaml`, acceso il 26-09.
+        #    Fino a oggi lo stesso rischio era sorvegliato da un lato solo.
+        # ⚠️ `--audit-level=high`: fermano solo `high` e `critical`; `low` e
+        #    `moderate` restano nel log. Le dipendenze di sviluppo NON si
+        #    escludono (niente `--omit=dev`): le due vulnerabilita' sanate il
+        #    13-09 erano proprio di build.
+        # ⚠️ Un avviso pubblicato su un lock che NON cambia non arriva qui: il
+        #    workflow gira solo sulle push che toccano `frontend/**`, quindi lo
+        #    si vede alla prima modifica del frontend, non il giorno dell'avviso.
+        run: npm audit --audit-level=high
+
       # ⛔ `npm run lint` = oxlint + eslint SENZA `--fix`. Fino al 2026-09-09
       #    entrambi gli script portavano `--fix`, cioe' RISCRIVEVANO i sorgenti:
       #    un comando che modifica i file non e' un cancello, e' un

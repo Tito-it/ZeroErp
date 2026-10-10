@@ -2,7 +2,8 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
 --
--- Test policy dati societari (config.dati_societari_policy_enum)
+-- Test policy dati societari (config.presenza_policy_enum; fino al 2026-10-09
+--   config.dati_societari_policy_enum, brief-db-sesso-senza-default)
 -- e trigger:
 --   - anagrafiche.trgfn_dati_societari_guard_tipo_soggetto()
 --   - anagrafiche.trgfn_soggetti_check_dati_societari_required()
@@ -173,6 +174,8 @@ SELECT lives_ok(
                 ragione_sociale,
                 cognome,
                 nome,
+                -- un privato: il sesso e' obbligatorio (sesso_policy REQUIRED)
+                sesso,
                 stato_id,
                 codice_fiscale,
                 partita_iva,
@@ -184,6 +187,7 @@ SELECT lives_ok(
                 NULL,
                 'Test PR',
                 'Policy NONE',
+                'M',
                 (
                     SELECT stato_id
                     FROM tmp_stato_test
@@ -277,37 +281,29 @@ $$,
 'Creazione soggetto PR + contatto: OK (policy NONE, senza dati_societari)'
 );
 -- Tentativo di inserire dati_societari per soggetto PR: deve fallire
-SELECT throws_ok(
+SELECT throws_like(
         $$
-        INSERT INTO anagrafiche.dati_societari (
-                soggetto_id,
-                capitale_sociale,
-                id_prov_iscri_rea,
-                iscrizione_rea,
-                socio_unico,
-                liquidazione,
-                destinatario_fe,
-                pec_fatturazione,
-                codice_sdi,
-                data_costituzione
-            )
-        SELECT s.id,
-            1000.00,
-            (
-                SELECT provincia_id
-                FROM tmp_provincia_test
-            ),
-            'PRX-REA-001-' || (SELECT sfx FROM tmp_run_sfx),
-            'SU',
-            'LN',
-            'XXXXXXX001',
-            NULL,
-            NULL,
-            CURRENT_DATE
+        -- forma NULL: il rifiuto deve venire dalla policy della natura (NONE),
+        --   non dalla matrice delle forme, che col guard della forma parlerebbe prima.
+        -- ⭐ Rev 20261011 (brief-db-dati-fiscali-e-societari-del-soggetto, B-5): dal
+        --   20261011-04 l'app non scrive la tabella, si passa dal verbo; la forma e'
+        --   NOT NULL e ammessa dalla natura (C-1, C-2).
+        SELECT anagrafiche.fn_scrivi_dati_societari(
+                   p_soggetto_id        := s.id,
+                   p_forma_giuridica_id := NULL,
+                   p_id_prov_iscri_rea  := (SELECT provincia_id FROM tmp_provincia_test),
+                   p_iscrizione_rea     := 'PRX-REA-001-' || (SELECT sfx FROM tmp_run_sfx),
+                   p_capitale_sociale   := 1000.00,
+                   p_socio_unico        := 'SU',
+                   p_liquidazione       := 'LN',
+                   p_destinatario_fe    := NULL,
+                   p_pec_fatturazione   := NULL,
+                   p_codice_sdi         := NULL,
+                   p_data_costituzione  := script.fn_data_operativa())
         FROM anagrafiche.soggetti s
         WHERE s.codice = 'TST-DSP-PR-001-' || (SELECT sfx FROM tmp_run_sfx);
 $$,
-NULL,
+'%Non sono richiesti dati societari%',
 'Soggetto PR (policy NONE): inserimento dati_societari non ammesso'
 );
 -- =========================================================
@@ -413,33 +409,21 @@ SELECT lives_ok(
         --   DEFERRABLE apposta (un soggetto e' una saga). Con IMMEDIATE
         --   scatterebbero sul primo insert, prima che sia completo.
         SET CONSTRAINTS ALL DEFERRED;
-        INSERT INTO anagrafiche.dati_societari (
-                soggetto_id,
-                capitale_sociale,
-                id_prov_iscri_rea,
-                iscrizione_rea,
-                socio_unico,
-                liquidazione,
-                destinatario_fe,
-                pec_fatturazione,
-                codice_sdi,
-                data_costituzione
-            )
-        SELECT s.id,
-            50000.00,
-            (
-                SELECT provincia_id
-                FROM tmp_provincia_test
-            ),
-            'SPR-REA-001-' || (SELECT sfx FROM tmp_run_sfx),
-            'SM',
-            'LN',
-            'XXXXXXX002',
-            -- ⚠️ PEC e codice SDI hanno un UNIQUE loro (uq_ds_pec_fatt,
-            --   uq_ds_codice_sdi): i valori fissi sono bruciati da un residuo.
-            'fatt.sp1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
-            'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
-            CURRENT_DATE
+        -- ⭐ Rev 20261011 (brief-db-dati-fiscali-e-societari-del-soggetto, B-5): dal
+        --   20261011-04 l'app non scrive la tabella, si passa dal verbo; la forma e'
+        --   NOT NULL e ammessa dalla natura (C-1, C-2).
+        SELECT anagrafiche.fn_scrivi_dati_societari(
+                   p_soggetto_id        := s.id,
+                   p_forma_giuridica_id := (SELECT fg.id FROM config.forme_giuridiche fg WHERE fg.codice = 'SNC'),
+                   p_id_prov_iscri_rea  := (SELECT provincia_id FROM tmp_provincia_test),
+                   p_iscrizione_rea     := 'SPR-REA-001-' || (SELECT sfx FROM tmp_run_sfx),
+                   p_capitale_sociale   := 50000.00,
+                   p_socio_unico        := 'SM',
+                   p_liquidazione       := 'LN',
+                   p_destinatario_fe    := 'C',
+                   p_pec_fatturazione   := 'fatt.sp1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
+                   p_codice_sdi         := 'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
+                   p_data_costituzione  := script.fn_data_operativa())
         FROM anagrafiche.soggetti s
         WHERE s.codice = 'TST-DSP-SP-001-' || (SELECT sfx FROM tmp_run_sfx);
         -- Saga completa: qui i guard verificano davvero.
@@ -602,33 +586,23 @@ SELECT (
     TRUE
 FROM anagrafiche.soggetti s
 WHERE s.codice = 'TST-DSP-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
-INSERT INTO anagrafiche.dati_societari (
-        soggetto_id,
-        capitale_sociale,
-        id_prov_iscri_rea,
-        iscrizione_rea,
-        socio_unico,
-        liquidazione,
-        destinatario_fe,
-        pec_fatturazione,
-        codice_sdi,
-        data_costituzione
-    )
-SELECT s.id,
-    100000.00,
-    (
-        SELECT provincia_id
-        FROM tmp_provincia_test
-    ),
-    'SCX-REA-OK-' || (SELECT sfx FROM tmp_run_sfx),
-    'SM',
-    'LN',
-    'XXXXXXX003',
-    'fatt.sc1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
-    'SCCO' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 3)),
-    CURRENT_DATE
-FROM anagrafiche.soggetti s
-WHERE s.codice = 'TST-DSP-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
+-- ⭐ Rev 20261011 (brief-db-dati-fiscali-e-societari-del-soggetto, B-5): dal
+        --   20261011-04 l'app non scrive la tabella, si passa dal verbo; la forma e'
+        --   NOT NULL e ammessa dalla natura (C-1, C-2).
+        SELECT anagrafiche.fn_scrivi_dati_societari(
+                   p_soggetto_id        := s.id,
+                   p_forma_giuridica_id := (SELECT fg.id FROM config.forme_giuridiche fg WHERE fg.codice = 'SRL'),
+                   p_id_prov_iscri_rea  := (SELECT provincia_id FROM tmp_provincia_test),
+                   p_iscrizione_rea     := 'SCX-REA-OK-' || (SELECT sfx FROM tmp_run_sfx),
+                   p_capitale_sociale   := 100000.00,
+                   p_socio_unico        := 'SM',
+                   p_liquidazione       := 'LN',
+                   p_destinatario_fe    := 'C',
+                   p_pec_fatturazione   := 'fatt.sc1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
+                   p_codice_sdi         := 'SCCO' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 3)),
+                   p_data_costituzione  := script.fn_data_operativa())
+        FROM anagrafiche.soggetti s
+        WHERE s.codice = 'TST-DSP-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
 INSERT INTO anagrafiche.indirizzi_soggetti (
         soggetto_id,
         tipo_indirizzo_id,

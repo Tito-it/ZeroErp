@@ -8,7 +8,7 @@ Approfondimenti funzioni:
 >
 [script.fn_check_ba_cambio_emittente](/dbzero/script/manual/fn_check_ba_cambio_emittente)
 >
-[vendite.trgfn_commesse_guard_emittente_ba](/dbzero/vendite/manual/trgfn_commesse_guard_emittente_ba)
+[script.trgfn_doc_guard_emittente_ba](/dbzero/script/manual/trgfn_doc_guard_emittente_ba)
 >
 Approfondimenti tabelle:
 >

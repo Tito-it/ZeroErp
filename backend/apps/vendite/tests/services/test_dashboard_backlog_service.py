@@ -22,8 +22,11 @@ Indice test eseguiti:
 13) DashBacklogDocumentiServiceTests.test_documenti_order_dir_non_valido
 14) DashBacklogDocumentiServiceTests.test_documenti_ritardo_giorni_inoltrato
 15) DashBacklogDocumentiServiceTests.test_documenti_ritardo_giorni_non_positivo
+16) DashBacklogDocumentiServiceTests.test_documenti_ritardo_giorni_sul_pavimento_passa
+17) DashBacklogDocumentiServiceTests.test_documenti_ritardo_giorni_oltre_pavimento
 """
 
+from datetime import date
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -208,7 +211,11 @@ class DashBacklogDocumentiServiceTests(TestCase):
         "list_dash_backlog_documenti",
         return_value=([], 0),
     )
-    def test_documenti_ritardo_giorni_inoltrato(self, mock_repo):
+    @patch.object(
+        vendite_service.ParameterService, "get_default_date",
+        return_value=date(2020, 1, 1),
+    )
+    def test_documenti_ritardo_giorni_inoltrato(self, _mock_param, mock_repo):
         fn_dash_backlog_documenti(ritardo_giorni=60)
         self.assertEqual(mock_repo.call_args.kwargs["ritardo_giorni"], 60)
 
@@ -219,6 +226,39 @@ class DashBacklogDocumentiServiceTests(TestCase):
             with self.assertRaises(ServiceError) as ctx:
                 fn_dash_backlog_documenti(ritardo_giorni=valore)
             self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+
+    # Scopo: Il pavimento VENDITE_DASHBOARD_RITARDO_DATA_MINIMA vale anche qui
+    #        (stesso helper della Situazione aperta): sul pavimento passa.
+    @patch.object(
+        vendite_service.VenditeRepository,
+        "list_dash_backlog_documenti",
+        return_value=([], 0),
+    )
+    @patch.object(vendite_service, "oggi_aziendale", return_value=date(2020, 1, 31))
+    @patch.object(
+        vendite_service.ParameterService, "get_default_date",
+        return_value=date(2020, 1, 1),
+    )
+    def test_documenti_ritardo_giorni_sul_pavimento_passa(
+        self, _mock_param, _mock_oggi, mock_repo,
+    ):
+        fn_dash_backlog_documenti(ritardo_giorni=30)
+        self.assertEqual(mock_repo.call_args.kwargs["ritardo_giorni"], 30)
+
+    # Scopo: Un giorno oltre il pavimento -> E_VENDITE_VALIDATION.
+    @patch.object(vendite_service.VenditeRepository, "list_dash_backlog_documenti")
+    @patch.object(vendite_service, "oggi_aziendale", return_value=date(2020, 1, 31))
+    @patch.object(
+        vendite_service.ParameterService, "get_default_date",
+        return_value=date(2020, 1, 1),
+    )
+    def test_documenti_ritardo_giorni_oltre_pavimento(
+        self, _mock_param, _mock_oggi, mock_repo,
+    ):
+        with self.assertRaises(ServiceError) as ctx:
+            fn_dash_backlog_documenti(ritardo_giorni=31)
+        self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
+        mock_repo.assert_not_called()
 
     # Scopo: Paginazione invalida -> E_VENDITE_VALIDATION (validate_pagination).
     def test_documenti_page_invalida(self):

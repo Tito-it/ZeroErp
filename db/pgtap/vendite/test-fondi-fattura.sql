@@ -194,7 +194,7 @@ CREATE TEMP TABLE tmp_fattura_src AS WITH ins AS (
       SELECT registro_id
       FROM tmp_refs_ff
     ),
-    current_date,
+    script.fn_data_operativa(),
     (
       SELECT emittente_soggetto_ruolo_id
       FROM tmp_refs_ff
@@ -299,7 +299,7 @@ CREATE TEMP TABLE tmp_fattura_dst AS WITH ins AS (
       SELECT registro_id
       FROM tmp_refs_ff
     ),
-    current_date,
+    script.fn_data_operativa(),
     (
       SELECT emittente_soggetto_ruolo_id
       FROM tmp_refs_ff

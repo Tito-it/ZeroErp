@@ -32,6 +32,20 @@
 
 ---
 
+## 4 ottobre 2026
+
+**Righe di documento come liste: cantiere chiuso.** Le righe di preventivo,
+ordine, DDT, reso, fattura e contratto e la distinta base sono liste
+configurabili (97-103): finisce lo scroll orizzontale su tablet e smartphone.
+L'ultimo lotto è il contratto: una sorgente sola per le due forme (la funzione
+delle righe operative, con chiave di riga e verbi ammessi dal DB), l'unità di
+misura della riga corretta a DB, l'anteprima intera ritirata. Nella stessa
+chiusura la lettura delle righe sale in un building block di core (lo usa
+anche la distinta del catalogo), «leggi prima la testata» diventa un BB con un
+test per consumatore, e i default di pagina delle firme backend tornano alla
+fonte unica (liste di eventi comprese, con la loro costante) —
+[brief-db-liste-righe-documento](work-done/brief-db-liste-righe-documento.md).
+
 ## 1 ottobre 2026
 
 **Il registro di magazzino è un servizio dell'anello 2** (decisione di Tid). Con i Lotti 3 e 3-bis
@@ -43,7 +57,7 @@ del reso). Deciso: lo schema `magazzino` contiene il **registro** (anello 2, com
 `pratiche`: predisposto finché `acquisti` non diventa il secondo dominio consumatore) e i
 **documenti di magazzino** (anello 3); la regola «mai dipendenze laterali» resta intera. Il verso
 inverso è un debito: i posting tornano in `vendite`, e un presidio lo tiene a zero —
-[brief-db-magazzino-registro-anello-interno](work-in-progress/brief-db-magazzino-registro-anello-interno.md).
+[brief-db-magazzino-registro-anello-interno](work-done/brief-db-magazzino-registro-anello-interno.md).
 
 Lo stesso giorno il lavoro è **scritto** (`20261001-18 → -26`, da applicare): i posting in
 `vendite`, il cancello `dbops.vw_magazzino_dipendenze_inverse` in CI — e il cancello, al primo
@@ -82,7 +96,7 @@ nessun controllo aveva già due eccezioni silenziose.*
 
 **Anello 0 — Il DB applica i permessi, non solo li calcola.** Il modello sta
 in un brief che resta aperto per costruzione
-([brief-db-permesso-nel-verbo-di-scrittura.md](work-in-progress/brief-db-permesso-nel-verbo-di-scrittura.md),
+([brief-db-permesso-nel-verbo-di-scrittura.md](work-done/brief-db-permesso-nel-verbo-di-scrittura.md),
 D-1…D-5 del 24-09): il verbo dichiara il permesso **nella prima riga** con un
 BB unico (`fn_guard_azione` per i processi, `fn_guard_livello` per il CRUD; la
 terza forma, `fn_guard_super_admin`, nasce il 25-09 col blocco login), e
@@ -178,8 +192,8 @@ passo, non sul codice*, sblocco d'emergenza solo dalla sessione del migratore
 con traccia. I tre codici del **cancello degli obblighi** sono consegnati a
 file il 30-09, **da applicare**. ⚠️ Aperto: il TOTP lato BE/FE (lotti
 T-0…T-5, dal 30-09). Vedi
-[brief-be-fe-sicurezza-header-token-mfa.md](work-in-progress/brief-be-fe-sicurezza-header-token-mfa.md),
-[brief-db-secondo-fattore-totp.md](work-in-progress/brief-db-secondo-fattore-totp.md),
+[brief-be-fe-sicurezza-header-token-mfa.md](work-done/brief-be-fe-sicurezza-header-token-mfa.md),
+[brief-db-secondo-fattore-totp.md](work-done/brief-db-secondo-fattore-totp.md),
 [configurazione-django.md](backend/configurazione-django.md).
 
 **Anello 0 — Ciò che la CI non vedeva: trigger generati e giro notturno.**
@@ -270,7 +284,7 @@ rilievi drf-spectacular (W001 54 → 0, W002 73 → 0). ⚠️ Aperto: il lotto 
 delle righe documento (FE fermo sulla richiesta §9.11 al DB: le righe
 AGGIUNTA escono con l'UdM dell'articolo, non della riga). Vedi
 [brief-db-liste-datatable-grezze.md](work-done/brief-db-liste-datatable-grezze.md),
-[brief-db-liste-righe-documento.md](work-in-progress/brief-db-liste-righe-documento.md),
+[brief-db-liste-righe-documento.md](work-done/brief-db-liste-righe-documento.md),
 [brief-fe-filtri-lista-su-schermo-compatto.md](work-done/brief-fe-filtri-lista-su-schermo-compatto.md),
 [analisi-fe-regole-standard-violate-dal-codice.md](work-done/analisi-fe-regole-standard-violate-dal-codice.md).
 
@@ -329,10 +343,11 @@ e nessuno se ne accorgeva. Ogni versione di template dichiara ora la forma che
 legge (`versione_contesto`, NOT NULL, senza default) e si stampa o si pubblica
 solo se coincide con quella del builder — *non è un caso isolato, è il
 modello*: con i template per azienda diventa la norma. DB applicato il 30-09
-(D-C1…D-C4, backfill su 20 versioni). ⚠️ Aperto e **bloccante**: il BE
-(R-1…R-5) — senza, pubblicazione e creazione di versioni dal backend
-falliscono — e la versione 4 del template Fattura. Vedi
-[brief-db-documenti-versione-contesto-template.md](work-in-progress/brief-db-documenti-versione-contesto-template.md).
+(D-C1…D-C4, backfill su 20 versioni); lo stesso giorno il BE (R-1…R-5: una
+costante `CONTEXT_VERSION` per builder, controllo prima del render e alla
+pubblicazione) e la fattura alla **forma 2**, con la versione 4 del template che
+scorre `riga.componenti`, pubblicata dall'app. ✅ Chiuso il 2026-10-01. Vedi
+[brief-db-documenti-versione-contesto-template.md](work-done/brief-db-documenti-versione-contesto-template.md).
 
 **In breve, senza un tema proprio** — la verifica «doc API contro codice» su
 47 documenti di `core` apre un'analisi BE che chiude in quattro giorni una
@@ -558,7 +573,7 @@ questa tornata — `brief-db-magazzino-lotto-2-bis-be-fe.md` (BE/FE del Lotto 2)
 [brief-db-registri-giornale-catalogo.md](work-done/brief-db-registri-giornale-catalogo.md),
 il cui **lato DB è chiuso il 19-09** (`config.registri_giornale`, pgTAP
 13/13) — più il copione
-[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-in-progress/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
+[collaudo-in-app-osservabilita-giornale-errori-pallino.md](work-done/collaudo-in-app-osservabilita-giornale-errori-pallino.md),
 scritto e **da eseguire**; `vendite.fatturazione_lotti_log` con **17.223 pagine
 per 1.225 righe** dopo la retention del 18-09 (fatto datato: un `VACUUM` lo
 dirà); lo `.pyc` di `gen_seed_lista` **tracciato in git** e una lista mai

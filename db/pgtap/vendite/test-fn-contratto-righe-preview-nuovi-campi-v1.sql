@@ -17,19 +17,20 @@
 --
 --   Comportamento per OVERRIDE (articolo seq=2, eccezione con valori noti):
 --   5) fonte_quantita_attesa = 'FISSA'
---   6) tipo_erogazione = 'CANONE'
+--   6) tipo_erogazione = 'UNA_TANTUM' (rev 2026-10-07: era CANONE, fuori perimetro)
 --
 --   Comportamento per AGGIUNTA standalone:
---   7) CONSUMO + LETTURE → fonte_quantita_attesa = 'LETTURE' (articolo seq=3)
---   8) CANONE + DERIVATA_COMPONENTI → fonte_quantita_attesa = 'DERIVATA_COMPONENTI' (articolo seq=4)
+--   7) CONSUMO + MANUALE → fonte_quantita_attesa = 'MANUALE' (articolo seq=3; rev 2026-10-07)
+--   8) UNA_TANTUM + MANUALE → fonte_quantita_attesa = 'MANUALE' (articolo seq=4; rev 2026-10-07, B-D5)
 --
 -- Note:
---   Trigger trgfn_qta_from_operativa exige qta_operativa NOT NULL su INSERT.
---   Le fixture usano qta_operativa e uom_operativa_id non-NULL per passare il trigger
---   con early return (entrambi valorizzati → RETURN NEW senza ricalcolo).
---   Il brief suggerisce "qta_operativa IS NULL" per LETTURE: si tratta di un vincolo
---   BE (_apply_fonte_quantita_logic), non DB; in DB qta_operativa è sempre non-NULL
---   perché il trigger alzerebbe E_QTA_MISSING.
+--   Trigger trgfn_qta_from_operativa esige qta_operativa NOT NULL su INSERT solo con
+--   la fonte FISSA (E_QTA_MISSING).
+--   ⚠️ Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §D.4 punto 2,
+--   20261007-28/-30): con una fonte a valle (MANUALE, LETTURE, TIMESHEET) la riga NON
+--   porta quantita': lo dice il DB (E_RIGA_QUANTITA_CON_FONTE_A_VALLE e i CHECK
+--   chk_*_quantita_per_fonte), non piu' il solo backend. Le AGGIUNTE MANUALE dei
+--   test 7 e 8 nascono quindi senza quantita'.
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -54,31 +55,65 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 -- ============================================================
 
 -- Contesto base: un billing_account, UoM, e stati doc
+-- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.9, giro B3): la tipologia
+--   degli articoli del listino dev'essere fra quelle della utility del cliente.
+-- 2026-10-08 (stesso brief, §F.2): il listino del documento e' della sua utility e del
+--   suo emittente (guard nuovo). Il cliente si COSTRUISCE sulla prima utility che ammette
+--   la tipologia del listino copiato (il primo attivo), legato dal z90 all'emittente di
+--   chi agisce; prima era il primo billing account di quella utility fra i dati, con
+--   l'emittente che i dati gli davano.
+CREATE TEMP TABLE tmp_prv_cli AS
+SELECT * FROM dbops.fn_pgtap_crea_cliente_ba(
+    'preview nuovi campi',
+    (SELECT ltu.utility_id FROM config.listini_tipologie_utilities ltu
+      WHERE ltu.attivo
+        AND ltu.tipologia_id = (SELECT l.tipologia_id FROM vendite.listini l
+                                 WHERE l.attivo = TRUE ORDER BY l.id LIMIT 1)
+      ORDER BY ltu.utility_id LIMIT 1));
+
 CREATE TEMP TABLE tmp_prv_ctx AS
 SELECT
-    ba.id                   AS ba_id,
-    ba.istanza_utility_id,
-    ba.utility_id,
+    c.billing_account_id    AS ba_id,
+    c.istanza_utility_id,
+    c.utility_id,
     (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT' LIMIT 1) AS id_draft,
     (SELECT id FROM catalogo.unita_misura WHERE attivo = TRUE ORDER BY id LIMIT 1) AS uom_id
-FROM anagrafiche.billing_account ba
-ORDER BY ba.id
-LIMIT 1;
+FROM tmp_prv_cli c;
 
 -- 4 articoli standalone distinti (non compositi)
+-- ⚠️ Rev 2026-10-07 (giro B3): seq 1-2 stanno nel listino, quindi hanno la sua tipologia
+--   (le righe di listino lo pretendono); seq 3-4 sono AGGIUNTE, senza tipologia (decide la
+--   natura) e con le combinazioni del test nel PERIMETRO, chiesto alla sede unica.
 CREATE TEMP TABLE tmp_prv_arts AS
-SELECT a.id AS articolo_id, ROW_NUMBER() OVER (ORDER BY a.id) AS seq
-  FROM catalogo.articoli a
- WHERE a.attivo = TRUE AND a.is_composito = FALSE
- ORDER BY a.id
- LIMIT 4;
+WITH t AS (
+    SELECT l.tipologia_id FROM vendite.listini l WHERE l.attivo = TRUE ORDER BY l.id LIMIT 1
+), lis AS (
+    SELECT a.id FROM catalogo.articoli a, t
+     WHERE a.attivo = TRUE AND a.is_composito = FALSE
+       AND a.listino_tipologia_id = t.tipologia_id
+       AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                    WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'FISSA')
+     ORDER BY a.id LIMIT 2
+), agg AS (
+    SELECT a.id FROM catalogo.articoli a
+     WHERE a.attivo = TRUE AND a.is_composito = FALSE
+       AND a.listino_tipologia_id IS NULL
+       AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                    WHERE e.tipo_erogazione = 'CONSUMO' AND e.fonte_quantita_attesa = 'MANUALE')
+       AND EXISTS (SELECT 1 FROM vendite.fn_articolo_erogazioni(a.id) e
+                    WHERE e.tipo_erogazione = 'UNA_TANTUM' AND e.fonte_quantita_attesa = 'MANUALE')
+     ORDER BY a.id LIMIT 2
+)
+SELECT x.id AS articolo_id, ROW_NUMBER() OVER (ORDER BY x.ord, x.id) AS seq
+  FROM (SELECT id, 1 AS ord FROM lis UNION ALL SELECT id, 2 FROM agg) x;
 
 -- Listino con codice univoco (suffisso random)
 CREATE TEMP TABLE tmp_prv_listino AS
 WITH ins AS (
     INSERT INTO vendite.listini (codice, descrizione, utility_id, tipologia_id, emittente_soggetto_ruolo_id)
     SELECT 'PGTAP_PRV_' || substr(gen_random_uuid()::text, 1, 8),
-           'Test preview nuovi campi', l.utility_id, l.tipologia_id, l.emittente_soggetto_ruolo_id
+           'Test preview nuovi campi', (SELECT utility_id FROM tmp_prv_ctx), l.tipologia_id,
+           script.fn_pgtap_emittente_sr_operatore()
       FROM vendite.listini l
      WHERE l.attivo = TRUE
      ORDER BY l.id
@@ -87,8 +122,8 @@ WITH ins AS (
 )
 SELECT id FROM ins;
 
--- Versione ATTIVA con valido_dal nel passato → validita @> CURRENT_DATE = TRUE
--- Necessario perché fn_contratto_righe_preview fa lookup con validita @> CURRENT_DATE.
+-- Versione ATTIVA con valido_dal nel passato → validita @> script.fn_data_operativa() = TRUE
+-- Necessario perché fn_contratto_righe_preview fa lookup con validita @> script.fn_data_operativa().
 CREATE TEMP TABLE tmp_prv_ver AS
 WITH ins AS (
     INSERT INTO vendite.listini_versioni (listino_id, codice_versione, valido_dal, stato)
@@ -134,12 +169,13 @@ INSERT INTO vendite.contratti_righe (
     quantita, qta_operativa, uom_operativa_id
 )
 SELECT c.id, a.articolo_id, 'OVERRIDE', 80.00,
-       'CANONE', 'FISSA',
+       'UNA_TANTUM', 'FISSA',
        3, 3, ctx.uom_id
   FROM tmp_prv_contratto c, tmp_prv_arts a, tmp_prv_ctx ctx
  WHERE a.seq = 2 AND c.id IS NOT NULL;
 
--- AGGIUNTA standalone: articolo seq=3, CONSUMO + LETTURE (test 7)
+-- AGGIUNTA standalone: articolo seq=3, CONSUMO + MANUALE (test 7; rev 2026-10-07: le LETTURE
+--   le ammette solo una tipologia a contatore)
 -- qta_operativa e uom_operativa_id NON NULL → trigger early return.
 INSERT INTO vendite.contratti_righe (
     contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
@@ -147,23 +183,26 @@ INSERT INTO vendite.contratti_righe (
     qta_operativa, uom_operativa_id
 )
 SELECT c.id, a.articolo_id, 'AGGIUNTA', 50.00,
-       'CONSUMO', 'LETTURE',
-       1, ctx.uom_id
+       'CONSUMO', 'MANUALE',
+       NULL, ctx.uom_id
   FROM tmp_prv_contratto c, tmp_prv_arts a, tmp_prv_ctx ctx
  WHERE a.seq = 3 AND c.id IS NOT NULL;
 
--- AGGIUNTA standalone: articolo seq=4, CANONE + DERIVATA_COMPONENTI (test 8)
--- CANONE + DERIVATA_COMPONENTI = 🟢 (matrice 20260519).
--- quantita=5 esplicitamente; trigger early return perché entrambi qta_operativa
--- e uom_operativa_id sono valorizzati → quantita rimane 5.
+-- AGGIUNTA standalone: articolo seq=4 (test 8)
+-- ⚠️ Rev 2026-10-07 (giro B3, decisione B-D5): DERIVATA_COMPONENTI e' del solo composito,
+--   e seq=4 non lo e'. Il test prova che fonte e quantita' della riga arrivano alla preview:
+--   UNA_TANTUM/MANUALE con quantita' 5 lo prova ugualmente. La fonte derivata sul composito
+--   la prova vendite/offerte_commerciali/test_offerte_eccezioni_componenti.
+-- ⚠️ Rev 2026-10-07 (§D.4 punto 2): MANUALE e' a valle, la riga nasce senza
+--   quantita' (prima: quantita 5, qta_operativa 1). Il test 8 legge la fonte.
 INSERT INTO vendite.contratti_righe (
     contratto_id, articolo_id, tipo_eccezione, prezzo_unitario,
     tipo_erogazione, fonte_quantita_attesa,
     quantita, qta_operativa, uom_operativa_id
 )
 SELECT c.id, a.articolo_id, 'AGGIUNTA', 100.00,
-       'CANONE', 'DERIVATA_COMPONENTI',
-       5, 1, ctx.uom_id
+       'UNA_TANTUM', 'MANUALE',
+       NULL, NULL, ctx.uom_id
   FROM tmp_prv_contratto c, tmp_prv_arts a, tmp_prv_ctx ctx
  WHERE a.seq = 4 AND c.id IS NOT NULL;
 
@@ -252,7 +291,7 @@ SELECT CASE
 END;
 
 -- ============================================================
--- 6) OVERRIDE (articolo seq=2): tipo_erogazione = 'CANONE'
+-- 6) OVERRIDE (articolo seq=2): tipo_erogazione = 'UNA_TANTUM'
 -- ============================================================
 SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM tmp_prv_rows WHERE origine = 'OVERRIDE')
@@ -262,40 +301,40 @@ SELECT CASE
            FROM tmp_prv_rows pr
            JOIN tmp_prv_arts a ON a.articolo_id = pr.articolo_id AND a.seq = 2
           LIMIT 1),
-        'CANONE',
-        '6) OVERRIDE (seq=2): tipo_erogazione = CANONE (da cr.tipo_erogazione)'
+        'UNA_TANTUM',
+        '6) OVERRIDE (seq=2): tipo_erogazione = UNA_TANTUM (da cr.tipo_erogazione)'
     )
 END;
 
 -- ============================================================
--- 7) AGGIUNTA CONSUMO+LETTURE (articolo seq=3): fonte = 'LETTURE'
+-- 7) AGGIUNTA CONSUMO+MANUALE (articolo seq=3): fonte = 'MANUALE'
 -- ============================================================
 SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM tmp_prv_arts WHERE seq = 3)
-    THEN skip('7) meno di 3 articoli disponibili — skip AGGIUNTA LETTURE')
+    THEN skip('7) meno di 3 articoli disponibili — skip AGGIUNTA MANUALE')
     ELSE is(
         (SELECT pr.fonte_quantita_attesa
            FROM tmp_prv_rows pr
            JOIN tmp_prv_arts a ON a.articolo_id = pr.articolo_id AND a.seq = 3
           LIMIT 1),
-        'LETTURE',
-        '7) AGGIUNTA standalone CONSUMO+LETTURE (seq=3): fonte_quantita_attesa = LETTURE'
+        'MANUALE',
+        '7) AGGIUNTA standalone CONSUMO+MANUALE (seq=3): fonte_quantita_attesa = MANUALE'
     )
 END;
 
 -- ============================================================
--- 8) AGGIUNTA CANONE+DERIVATA_COMPONENTI (articolo seq=4): fonte e quantita corrette
+-- 8) AGGIUNTA UNA_TANTUM+MANUALE (articolo seq=4): la fonte arriva alla preview
 -- ============================================================
 SELECT CASE
     WHEN NOT EXISTS (SELECT 1 FROM tmp_prv_arts WHERE seq = 4)
-    THEN skip('8) meno di 4 articoli disponibili — skip AGGIUNTA DERIVATA_COMPONENTI')
+    THEN skip('8) meno di 4 articoli disponibili — skip AGGIUNTA UNA_TANTUM+MANUALE')
     ELSE is(
         (SELECT pr.fonte_quantita_attesa
            FROM tmp_prv_rows pr
            JOIN tmp_prv_arts a ON a.articolo_id = pr.articolo_id AND a.seq = 4
           LIMIT 1),
-        'DERIVATA_COMPONENTI',
-        '8) AGGIUNTA standalone CANONE+DERIVATA_COMPONENTI (seq=4): fonte_quantita_attesa = DERIVATA_COMPONENTI'
+        'MANUALE',
+        '8) AGGIUNTA standalone UNA_TANTUM+MANUALE (seq=4): fonte_quantita_attesa = MANUALE'
     )
 END;
 

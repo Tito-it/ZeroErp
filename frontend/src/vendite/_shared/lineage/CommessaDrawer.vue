@@ -8,9 +8,8 @@
 // una fetch sola per header e genealogia.
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
-import DrawerTitle from '../../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../../core/components/AppDrawer.vue'
 import DrawerEntityHeader from '../../../core/components/DrawerEntityHeader.vue'
 import PraticaDrawer from '../../../pratiche/components/PraticaDrawer.vue'
 import { DRAWER_WIDTH, MANAGE_ICONS } from '../../../core/constants'
@@ -19,7 +18,6 @@ import DocumentoDrawerHost from '../../../core/components/DocumentoDrawerHost.vu
 import { useDocumentoDrawer } from '../../../core/composables/useDocumentoDrawer'
 import LineagePassaggiContenuto from './LineagePassaggiContenuto.vue'
 import { useDocumentoPassaggi } from './useDocumentoPassaggi'
-import { gestoreVisibile } from '../../../core/composables/useDrawerFormPreserve'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -53,54 +51,49 @@ function apriDocumento(row) {
   apriDocumentoDrawer(row?.tipoCodice, row?.docId)
 }
 
-function onClose() {
-  emit('update:visible', false)
-}
-const suVisibile = gestoreVisibile(emit, onClose)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <AppDrawer
     :visible="visible"
-    @update:visible="suVisibile"
-    position="right"
-    :style="{ width: DRAWER_WIDTH.STANDARD }"
-    :dismissable="true">
-    <template #header>
-      <DrawerTitle :title="t('vendite.lineage.commessa_titolo')" :icon="MANAGE_ICONS.COMMESSA" />
-    </template>
+    :title="t('vendite.lineage.commessa_titolo')"
+    :icon="MANAGE_ICONS.COMMESSA"
+    :width="DRAWER_WIDTH.STANDARD"
+    :proteggi-corpo="false"
+    footer="chiudi"
+    @update:visible="(v) => emit('update:visible', v)"
+  >
+    <DrawerEntityHeader v-if="nodo">
+      <Tag :value="nodo.codice || '—'" severity="secondary" />
+      <template #status>
+        <Tag
+          v-if="nodo.stato_descrizione"
+          :value="nodo.stato_descrizione"
+          :severity="statoCommessaSeverity(nodo.stato_codice_interno)" />
+      </template>
+    </DrawerEntityHeader>
 
-    <div class="app-drawer-content">
-      <DrawerEntityHeader v-if="nodo">
-        <Tag :value="nodo.codice || '—'" severity="secondary" />
-        <template #status>
-          <Tag
-            v-if="nodo.stato_descrizione"
-            :value="nodo.stato_descrizione"
-            :severity="statoCommessaSeverity(nodo.stato_codice_interno)" />
-        </template>
-      </DrawerEntityHeader>
+    <!-- La genealogia È il contenuto principale del drawer: contenuto INLINE,
+         non chip + dialog come nei drawer documento — qui una modale sarebbe
+         un click di troppo su un drawer che esiste solo per mostrarla. -->
+    <LineagePassaggiContenuto
+      :data="passaggi"
+      :loading="loading"
+      :loaded="loaded"
+      @apri-pratica="praticaDrawerVisible = true"
+      @apri-documento="apriDocumento" />
 
-      <!-- La genealogia È il contenuto principale del drawer: contenuto INLINE,
-           non chip + dialog come nei drawer documento — qui una modale sarebbe
-           un click di troppo su un drawer che esiste solo per mostrarla. -->
-      <LineagePassaggiContenuto
-        :data="passaggi"
-        :loading="loading"
-        :loaded="loaded"
-        @apri-pratica="praticaDrawerVisible = true"
-        @apri-documento="apriDocumento" />
+    <PraticaDrawer
+      v-if="pratica"
+      v-model:visible="praticaDrawerVisible"
+      mode="edit"
+      :pratica-id="pratica.pratica_id" />
 
-      <PraticaDrawer
-        v-if="pratica"
-        v-model:visible="praticaDrawerVisible"
-        mode="edit"
-        :pratica-id="pratica.pratica_id" />
-
-      <DocumentoDrawerHost
-        v-model:visible="docDrawerVisible"
-        :tipo-codice="docDrawerTipo"
-        :doc-id="docDrawerId" />
-    </div>
-  </Drawer>
+    <DocumentoDrawerHost
+      v-model:visible="docDrawerVisible"
+      :tipo-codice="docDrawerTipo"
+      :doc-id="docDrawerId" />
+  </AppDrawer>
 </template>

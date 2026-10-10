@@ -1,0 +1,93 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_scope_fornitore_ownership: LA VESTE CONTA SE E' UTILIZZABILE OGGI
+#   Brief: brief-db-veste-utilizzabile (building block: 20261007-01)
+#
+#   Come il -11, per la veste FORNITORE_PORTALE.
+#
+#   Corpo vivo = pg_get_functiondef su dbdev il 2026-10-07 (uguale alla doc
+#   auto-gen); sostituzioni contate. Firma, RETURNS, DECLARE e firma del
+#   COMMENT ancorati a %TYPE dove c'e' una colonna dietro; dove non c'e', il
+#   tipo esplicito porta il perche' accanto. I %TYPE si risolvono negli STESSI
+#   tipi di oggi (provato: nessun overload), quindi i chiamanti (comprese le
+#   BEGIN ATOMIC) restano validi. Il rollback e' il corpo vivo di prima, con la
+#   stessa firma ancorata.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261007-12-update-fn-scope-fornitore-ownership-veste-utilizzabile-mctit.yaml
+
+  - changeSet:
+      id: 20261007-12-update-fn-scope-fornitore-ownership-veste-utilizzabile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_scope_fornitore_ownership: l'identita' deve essere utilizzabile oggi (script.fn_veste_utilizzabile). Brief: brief-db-veste-utilizzabile.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'script' AND p.proname = 'fn_scope_fornitore_ownership';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_fornitore_ownership(p_identita_id anagrafiche.identita_digitali.id%TYPE, p_fornitore_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Match diretto: il target soggetto_ruolo e' quello dell'identita,
+                  -- e l'identita stessa e' in veste FORNITORE_PORTALE. Evita
+                  -- false positive su altre identita (es. cliente con stesso sr).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id                = p_identita_id
+                         AND id.soggetto_ruolo_id = p_fornitore_sr_id
+                         AND id.ruolo_applicativo = 'FORNITORE_PORTALE'
+                         -- Rev 2026-10-07: utilizzabile oggi, non solo accesa.
+                         AND script.fn_veste_utilizzabile(id.id)
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_scope_fornitore_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE) IS 'Scope policy FORNITORE_OWNERSHIP: ritorna true se il soggetto_ruolo del fornitore target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste FORNITORE_PORTALE attiva. STABLE, inlineable. Rev 2026-10-07 (brief-db-veste-utilizzabile): l''''identita'''' deve essere utilizzabile oggi (script.fn_veste_utilizzabile), non solo accesa: una veste scaduta non vede piu'''' i suoi dati.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_scope_fornitore_ownership(p_identita_id anagrafiche.identita_digitali.id%TYPE, p_fornitore_sr_id anagrafiche.soggetti_ruoli.id%TYPE)
+               RETURNS boolean  -- una risposta si/no: nessuna colonna dietro
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                  -- Match diretto: il target soggetto_ruolo e' quello dell'identita,
+                  -- e l'identita stessa e' in veste FORNITORE_PORTALE. Evita
+                  -- false positive su altre identita (es. cliente con stesso sr).
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM anagrafiche.identita_digitali id
+                       WHERE id.id                = p_identita_id
+                         AND id.soggetto_ruolo_id = p_fornitore_sr_id
+                         AND id.ruolo_applicativo = 'FORNITORE_PORTALE'
+                         AND id.attivo            = true
+                  );
+              $function$
+              ;
+
+              COMMENT ON FUNCTION script.fn_scope_fornitore_ownership(anagrafiche.identita_digitali.id%TYPE, anagrafiche.soggetti_ruoli.id%TYPE) IS 'Scope policy FORNITORE_OWNERSHIP: ritorna true se il soggetto_ruolo del fornitore target coincide con il soggetto_ruolo dell''identita e l''identita e'' in veste FORNITORE_PORTALE attiva. STABLE, inlineable.';

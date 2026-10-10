@@ -1,0 +1,102 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA BASE DEL SEGMENTO, IN UNA COLONNA: vendite.commesse_attivita.segment_base
+#   Brief: brief-db-segment-base-commesse-attivita (P-1, decisione A).
+#
+# ── IL DIFETTO ──────────────────────────────────────────────────────
+#   fn_af_merce_per_riga e fn_get_stato_push_segment cercano le attivita' di
+#   un segmento: la chiave esatta e le sue varianti con suffisso
+#   ('k#CMP:…', 'k#RET:…'), con un intervallo per prefisso
+#   (`segment_key ~>=~ 'k#' AND ~<~ 'k$'`). Quando le chiavi arrivano come
+#   PARAMETRO (piano generico, il caso della capability del DDT) il
+#   pianificatore stima l'intervallo con la selettivita' di default, ~11 %
+#   della tabella per chiave: la scansione intera, con la policy RLS su ogni
+#   riga, gli sembra piu' economica. E la stima e' proporzionale alla
+#   tabella: il pianificatore resta in bilico a qualunque volume.
+#   Fatto datato (2026-10-10, dbdev come app, piano generico, 2 chiavi):
+#   uguaglianza 3 ms in Index Cond; intervallo 31 ms in scansione intera.
+#
+# ── LA CURA, SUL MODELLO ────────────────────────────────────────────
+#   La base del segmento — cio' che precede il primo '#' — e' gia' la
+#   grammatica della chiave (fn_af_merce_per_riga la usa per normalizzare il
+#   seme). La si materializza in una colonna, cosi' «tutte le attivita' di
+#   questa riga» diventa un'UGUAGLIANZA: texteq su una colonna e' leakproof
+#   e sale in Index Cond sotto la policy, con una stima che viene dalle
+#   statistiche della colonna e non da un default.
+#   ⛔ Non un indice su espressione: split_part non e' leakproof
+#   (proleakproof = f), e sotto RLS l'indice non verrebbe usato.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   GENERATED ALWAYS … STORED: si calcola da sola a ogni INSERT/UPDATE di
+#   segment_key, nessuno la scrive (linee-guida-sql §7b). Tipo esplicito,
+#   lo stesso di segment_key (in un DDL %TYPE non esiste). NOT NULL perche'
+#   segment_key e' NOT NULL e split_part di un testo non e' mai NULL.
+#   Indice btree ordinario: serve solo `=`.
+#   ⚠️ Nei trigger BEFORE la colonna vale ancora NULL (§7b): lo snapshot
+#   storico (trgfn_storico_generic, to_jsonb(NEW)) la porta a null. Dato
+#   derivato, ricostruibile da segment_key che lo snapshot contiene.
+#
+# ── CENSIMENTO (2026-10-10) ─────────────────────────────────────────
+#   Chi scrive la tabella: solo vendite.fn_upsert_commessa_attivita, con
+#   elenco esplicito di colonne. Nessun INSERT … SELECT * / VALUES (r.*) /
+#   %ROWTYPE, in funzioni e pgTAP. Le viste che la leggono hanno le colonne
+#   fissate alla creazione.
+#   Non e' un indice FK: fuori da dbops.fk_index_policy.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261010-80-alter-commesse-attivita-add-segment-base-mctit.yaml
+
+  - changeSet:
+      id: 20261010-80-alter-commesse-attivita-add-segment-base
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.commesse_attivita.segment_base: la base della chiave di segmento (cio' che precede
+        il primo '#'), colonna generata STORED con indice btree. Rende «le attivita' di questa
+        riga» un'uguaglianza indicizzabile sotto RLS anche nel piano generico, al posto
+        dell'intervallo per prefisso stimato all'11 % della tabella.
+      preConditions:
+        - onFail: HALT
+        - tableExists:
+            schemaName: vendite
+            tableName: commesse_attivita
+        - not:
+            - columnExists:
+                schemaName: vendite
+                tableName: commesse_attivita
+                columnName: segment_base
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.commesse_attivita
+                ADD COLUMN segment_base character varying(128)
+                    GENERATED ALWAYS AS (split_part(segment_key::text, '#', 1)) STORED NOT NULL;
+
+              COMMENT ON COLUMN vendite.commesse_attivita.segment_base IS
+                'La BASE della chiave di segmento: cio'' che precede il primo ''#'' di segment_key (''DDT:<uid>:R:<riga>'' per ''DDT:<uid>:R:<riga>#CMP:<id>'' o ''#RET:<n>''). Generata STORED, nessuno la scrive. Serve a cercare «tutte le attivita'' di una riga» con un''UGUAGLIANZA: texteq e'' leakproof e sale in Index Cond sotto la policy RLS anche nel piano generico, dove l''intervallo per prefisso su segment_key veniva stimato all''11 % della tabella e perdeva contro la scansione intera. La usano vendite.fn_af_merce_per_riga e script.fn_get_stato_push_segment, aggiunta al loro predicato (che la implica). ⚠️ Nei trigger BEFORE vale NULL (colonna generata). brief-db-segment-base-commesse-attivita.';
+
+              CREATE INDEX ix_commesse_attivita_segment_base
+                  ON vendite.commesse_attivita (segment_base);
+
+              COMMENT ON INDEX vendite.ix_commesse_attivita_segment_base IS
+                'Uguaglianza sulla base del segmento (texteq, leakproof: Index Cond sotto RLS). Non FK. brief-db-segment-base-commesse-attivita.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Prima vanno riportate le due funzioni alla forma senza
+              --    segment_base (rollback di 20261010-81 e -82).
+              DROP INDEX IF EXISTS vendite.ix_commesse_attivita_segment_base;
+              ALTER TABLE vendite.commesse_attivita DROP COLUMN IF EXISTS segment_base;

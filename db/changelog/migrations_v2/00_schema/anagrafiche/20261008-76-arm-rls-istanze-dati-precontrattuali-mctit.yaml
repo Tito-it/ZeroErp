@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# ARMAMENTO: LA RLS DEI DATI PRECONTRATTUALI SI ACCENDE
+#   ALTER TABLE anagrafiche.istanze_dati_precontrattuali ENABLE ROW LEVEL SECURITY
+#   + la vista anagrafiche.vw_istanze_dati_precontrattuali_dettaglio diventa
+#     security_invoker.
+#   Brief: brief-db-istanza-nasce-col-ba (§6.13, opzione A di Tid del 2026-10-08)
+#
+# -- PERCHE' DUE CHANGESET ------------------------------------------
+#   Una policy senza ENABLE sta in pg_policy e non filtra niente: separare
+#   dichiarazione (-75) e armamento rende il secondo un atto visibile, come per
+#   i satelliti dell'offerta (20260909-48 / -49).
+#   ⛔ Niente FORCE: il proprietario delle tabelle non subisce la RLS, ed e'
+#   l'invariante su cui contano le DEFINER (linee-guida-sql §10.5).
+#
+# -- LA VISTA -------------------------------------------------------
+#   vw_istanze_dati_precontrattuali_dettaglio non era security_invoker: gira con
+#   i diritti del proprietario, che la RLS non la subisce, e con la RLS accesa
+#   sarebbe diventata una porta laterale sulla tabella. Nessun consumatore oggi
+#   (backend, frontend, pgTAP: censimento del 2026-10-08), ma la porta si chiude
+#   lo stesso. ⚠️ Un CREATE OR REPLACE VIEW futuro azzera l'opzione: va
+#   ripetuta.
+#
+# -- I LETTORI ------------------------------------------------------
+#   vendite.trgfn_contratti_snapshot_precontrattuali (INVOKER) legge la riga
+#   della coppia del contratto: chi crea il contratto vede il BA del contratto
+#   (guard dell'emittente), quindi vede la riga. Il backend (lookup della
+#   utility in contatti/indirizzi/conti per ruolo) gira come operatore: vede le
+#   righe dei suoi clienti.
+#
+# -- IL PRESIDIO ----------------------------------------------------
+#   Con la RLS accesa la tabella esce dal perimetro scoperto
+#   (dbops.vw_rls_perimetro_scoperto): test-rls-perimetro-scoperto torna verde.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/anagrafiche/20261008-76-arm-rls-istanze-dati-precontrattuali-mctit.yaml
+
+  - changeSet:
+      id: 20261008-76-arm-rls-istanze-dati-precontrattuali
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Accende la RLS su anagrafiche.istanze_dati_precontrattuali (policy del 20261008-75) e
+        rende security_invoker la vista di dettaglio, che altrimenti la scavalcherebbe. Brief:
+        brief-db-istanza-nasce-col-ba (§6.13).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_policy
+               WHERE polrelid = 'anagrafiche.istanze_dati_precontrattuali'::regclass
+                 AND polname = 'rls_istanze_dati_precontrattuali_ef_whitelist'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.istanze_dati_precontrattuali ENABLE ROW LEVEL SECURITY;
+
+              ALTER VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio
+                SET (security_invoker = on);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio RESET (security_invoker);
+              ALTER TABLE anagrafiche.istanze_dati_precontrattuali DISABLE ROW LEVEL SECURITY;

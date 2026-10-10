@@ -19,6 +19,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
@@ -33,6 +35,7 @@ from apps.core.api.success_responses import success_response
 from apps.core.services.auth_constants import JWT_CLAIM_EMITTENTE_ATTIVO_ID
 from apps.core.services.emittente_attivo_service import EmittenteAttivoService
 from apps.core.services.service_errors import ServiceError
+from apps.core.api.endpoint_helpers import utente_autenticato_id
 
 E_EMITTENTE_ATTIVO_TOKEN = "E_EMITTENTE_ATTIVO_TOKEN"  # noqa: S105 — codice errore, non un segreto
 
@@ -72,7 +75,7 @@ class EmittenteAttivoView(DomainAPIView):
     # Scopo: Opzioni della combo, già filtrate dal DB sullo scope di diritto.
     def get(self, request: Request) -> JsonResponse:
         return success_response(
-            {"opzioni": EmittenteAttivoService().opzioni(request.user.id)}
+            {"opzioni": EmittenteAttivoService().opzioni(utente_autenticato_id(request))}
         )
 
     @extend_schema(
@@ -110,9 +113,9 @@ class EmittenteAttivoView(DomainAPIView):
     # ⭐ Il refresh viaggia nel cookie HttpOnly, in entrata e in uscita (brief
     #    sicurezza §2, 2026-09-28): il corpo porta il solo `access`.
     def post(self, request: Request) -> JsonResponse:
-        def _handler(payload: dict[str, object]) -> tuple[dict[str, object], str]:
+        def _handler(payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
             # Stringa vuota = assente (stesso contratto dei filtri opzionali);
-            # garbage → ValueError → 400 `invalid_payload` di handle_post_json,
+            # garbage → ValueError → 400 `E_VALIDATION_INPUT` di handle_post_json,
             # non un `int()` che esplode in 500.
             emittente_id = (
                 None
@@ -120,7 +123,7 @@ class EmittenteAttivoView(DomainAPIView):
                 else optional_int(payload, "emittente_fiscale_id")
             )
 
-            attivo = EmittenteAttivoService().imposta(request.user.id, emittente_id)
+            attivo = EmittenteAttivoService().imposta(utente_autenticato_id(request), emittente_id)
 
             refresh_str = leggi_refresh_cookie(request)
             if refresh_str is None:
@@ -130,7 +133,9 @@ class EmittenteAttivoView(DomainAPIView):
                     detail="Nessun cookie di refresh nella richiesta.",
                 )
             try:
-                refresh = RefreshToken(refresh_str)
+                # SimpleJWT annota `Token | None`, ma il costruttore accetta (e
+                # decodifica) la stringa del token.
+                refresh = RefreshToken(refresh_str)  # type: ignore[arg-type]
             except TokenError as exc:
                 raise ServiceError(
                     code=E_EMITTENTE_ATTIVO_TOKEN,
@@ -142,7 +147,7 @@ class EmittenteAttivoView(DomainAPIView):
             # autenticato. L'access token dice chi sei, il refresh nel cookie è un
             # dato in ingresso — senza questo confronto si potrebbe far riemettere
             # a un token altrui il claim scelto qui.
-            if int(refresh.get("user_id", 0)) != int(request.user.id):
+            if int(refresh.get("user_id", 0)) != utente_autenticato_id(request):
                 raise ServiceError(
                     code=E_EMITTENTE_ATTIVO_TOKEN,
                     message="Sessione non coerente con l'utente autenticato.",
@@ -171,7 +176,7 @@ class EmittenteAttivoView(DomainAPIView):
                 # chi chiama e non della sessione — senza, questa risposta
                 # direbbe una cosa diversa da `/me/` sullo stesso utente.
                 "emittente_attivo": EmittenteAttivoService().descrivi(
-                    request.user.id, attivo,
+                    utente_autenticato_id(request), attivo,
                     user=request.user, con_perimetro=False,
                 ),
                 "access": str(refresh.access_token),

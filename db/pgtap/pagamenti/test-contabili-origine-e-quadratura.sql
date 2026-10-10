@@ -70,7 +70,7 @@ SELECT throws_ok(
   INSERT INTO pagamenti.vendite_contabili
     (codice, centro_riscossione_id, data_contabile, data_registrazione, origine, meta)
   SELECT 'COQ_AUTO_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         c.centro_id, current_date, current_date, 'AUTOMATICA',
+         c.centro_id, script.fn_data_operativa(), script.fn_data_operativa(), 'AUTOMATICA',
          '{"test_scope":"pgtap_contabili_origine"}'::jsonb
     FROM tmp_coq c;
   $$,
@@ -87,7 +87,7 @@ SELECT throws_ok(
   INSERT INTO pagamenti.vendite_contabili
     (codice, centro_riscossione_id, data_contabile, data_registrazione, origine, importo_dichiarato, meta)
   SELECT 'COQ_GEN_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         c.centro_id, current_date, current_date, 'GENERATA', 100.00,
+         c.centro_id, script.fn_data_operativa(), script.fn_data_operativa(), 'GENERATA', 100.00,
          '{"test_scope":"pgtap_contabili_origine"}'::jsonb
     FROM tmp_coq c;
   $$,
@@ -105,7 +105,7 @@ WITH ins AS (
     (codice, centro_riscossione_id, data_contabile, data_registrazione,
      origine, importo_dichiarato, meta)
   SELECT 'COQ_MAN_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         c.centro_id, current_date, current_date, 'MANUALE', 100.00,
+         c.centro_id, script.fn_data_operativa(), script.fn_data_operativa(), 'MANUALE', 100.00,
          '{"test_scope":"pgtap_contabili_origine"}'::jsonb
     FROM tmp_coq c
   RETURNING id
@@ -152,7 +152,7 @@ WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
     (codice, centro_riscossione_id, data_contabile, data_registrazione, origine, meta)
   SELECT 'COQ_LIB_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         c.centro_id, current_date + 2, current_date, 'MANUALE',
+         c.centro_id, script.fn_data_operativa() + 2, script.fn_data_operativa(), 'MANUALE',
          '{"test_scope":"pgtap_contabili_origine"}'::jsonb
     FROM tmp_coq c
   RETURNING id
@@ -181,7 +181,7 @@ SELECT set_config('app.jwt_user', 'pgtap_operatore_anna', true) AS ignora;
 CREATE TEMP TABLE tmp_coq_anna AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_id FROM tmp_coq),
-           p_data_contabile        => current_date + 3,
+           p_data_contabile        => script.fn_data_operativa() + 3,
            p_origine               => 'MANUALE') AS id;
 
 SELECT set_config('app.jwt_user', 'pgtap_operatore_marco', true);
@@ -189,7 +189,7 @@ SELECT set_config('app.jwt_user', 'pgtap_operatore_marco', true);
 CREATE TEMP TABLE tmp_coq_marco AS
 SELECT pagamenti.fn_get_or_create_vendite_contabile(
            p_centro_riscossione_id => (SELECT centro_id FROM tmp_coq),
-           p_data_contabile        => current_date + 3,
+           p_data_contabile        => script.fn_data_operativa() + 3,
            p_origine               => 'MANUALE') AS id;
 
 SELECT isnt(
@@ -207,7 +207,7 @@ WITH ins AS (
   INSERT INTO pagamenti.vendite_contabili
     (codice, centro_riscossione_id, data_contabile, data_registrazione, stato_id, origine, meta)
   SELECT 'COQ_GEN2_' || to_char(clock_timestamp(), 'YYMMDDHH24MISSMS'),
-         c.centro_id, current_date + 4, current_date, c.st_validata, 'GENERATA',
+         c.centro_id, script.fn_data_operativa() + 4, script.fn_data_operativa(), c.st_validata, 'GENERATA',
          '{"test_scope":"pgtap_contabili_origine"}'::jsonb
     FROM tmp_coq c
   RETURNING id

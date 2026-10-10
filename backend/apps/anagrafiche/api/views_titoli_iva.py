@@ -110,6 +110,30 @@ class SoggettoTitoliIvaView(DomainAPIView):
 
 
 # =================================================================
+# Tipi di titolo ammessi per il soggetto — lookup del drawer
+# =================================================================
+
+class SoggettoTitoliIvaTipiLookupView(DomainAPIView):
+    """GET i tipi di titolo IVA che la natura del soggetto ammette."""
+    area_funzionale = _AREA
+    model_permission = _MODEL
+
+    @extend_schema(
+        responses={200: inline_serializer(
+            name="SoggettoTitoliIvaTipiLookupResp",
+            fields={"data": serializers.DictField()},
+        )},
+    )
+    # Scopo: Lookup dedicato (api.md §Lookup, pattern 2): il generico
+    #        `config.tipi_titolo_iva` non sa filtrare per la natura del soggetto.
+    #        Envelope `{"results": [...]}`, senza paginazione.
+    # ⚠️ Solo comodita' del form: un tipo non ammesso lo rifiuta comunque il DB
+    #    (brief-db-dati-fiscali-e-societari-del-soggetto, parte D).
+    def get(self, request: Request, soggetto_id: str) -> JsonResponse:
+        return success_response(TitoliIvaService().list_tipi_ammessi(soggetto_id))
+
+
+# =================================================================
 # Titolo IVA — dettaglio, aggiorna, elimina
 # =================================================================
 

@@ -2,8 +2,10 @@ import axios from 'axios'
 import { routerApp } from './routerApp'
 import { local, STORAGE_KEYS } from './storage'
 import { resolveCanaleLogin } from './constants'
-import { MOTIVO_USCITA, azzeraAccess, getAccessToken, rinnovaCoordinato } from './sessione'
+import { getAccessToken, rinnovaCoordinato } from './sessione'
+import { redirectToLogin } from './uscitaSessione'
 import i18n from './i18n'
+import { extractApiErrorCode } from './utils/apiError'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
@@ -81,6 +83,11 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    if (CODICI_OBBLIGO_PENDENTE.has(extractApiErrorCode(error))) {
+      await portaAllObbligo()
+      return Promise.reject(error)
+    }
+
     // Evita loop infinito sulle chiamate di refresh/login
     if (!nonAutorizzato || originalRequest?._retry || rottaDiToken) {
       return Promise.reject(error)
@@ -101,64 +108,49 @@ api.interceptors.response.use(
   }
 )
 
-// Scopo: chiude la sessione morta e porta al login.
-//
-// 🔴 IL PUNTO CHE MANCAVA, ed è la causa del difetto «resto sulla home vuota e
-//    al login ci arrivo solo ricaricando» (rilievo di Tid, 2026-09-04).
-//    Lo stato di autenticazione viveva in DUE posti: `localStorage` e i ref
-//    dello store Pinia, che dal localStorage erano stati letti UNA volta sola
-//    alla creazione. Qui si ripuliva **solo il localStorage**, quindi lo store
-//    continuava a tenere in memoria i due token. (Dal 2026-09-28 i token non
-//    stanno più in localStorage: l'access vive solo in `core/sessione`.)
-//    ⇒ `isAuthenticated` (che li legge dalla memoria e guarda solo la loro
-//    SCADENZA) restava **vero**: una sessione uccisa dal server — refresh
-//    blacklistato, identità revocata — ha token non ancora scaduti per data.
-//    ⇒ Il `router.push` qui sotto finiva sul guard `if (to.name === 'login' &&
-//    auth.isAuthenticated) return { name: 'home' }` e veniva **rimandato alla
-//    home**. Da lì ogni chiamata rispondeva 401 e il login era irraggiungibile;
-//    solo un ricarico — che rilegge il localStorage ormai vuoto — lo sbloccava.
-// ⇒ Si azzera lo stato DOVE VIVE: `clearTokens()` dello store, che pulisce i
-//    ref, il localStorage e gli store user-scoped (niente dati del vecchio
-//    utente in memoria). Il localStorage lo tocca lui, non più questa funzione.
-//
-// ⚠️ Import DINAMICO, e non è un vezzo: `stores/auth` importa `api`, quindi un
-//    import statico chiuderebbe il ciclo api → auth → api. Qui il modulo serve
-//    solo a runtime, quando entrambi sono già valutati.
-// ⚠️ Se l'import fallisse, si ripiega sul solo azzeramento dell'access in
-//    memoria: meglio una sessione mezza chiusa che un'eccezione dentro un
-//    interceptor, che si mangerebbe anche il redirect.
-// Esportata: la usa anche lo store `auth` quando un'altra scheda chiude la
-// sessione (logout), per arrivare al login per la stessa strada, col suo
-// motivo (`MOTIVO_USCITA` in `core/sessione`).
-export async function redirectToLogin(motivo = MOTIVO_USCITA.SESSIONE_SCADUTA) {
-  try {
-    const { useAuthStore } = await import('../stores/auth')
-    useAuthStore().clearTokens()
-  } catch {
-    azzeraAccess()
-  }
-  // NB: LOGIN_CHANNEL non viene rimosso — conserva la preferenza utente
-  // per il prossimo login manuale (stesso pattern di `clearTokens`).
-  // Usa il router per evitare page reload; preserva la rotta per redirect post-login.
-  // `reason=<motivo>` viene letto da LoginView per mostrare un messaggio
-  // esplicito invece di una pagina muta (UX: l'utente capisce perché è
-  // uscito e non pensa a un bug).
-  const rottaCorrente = routerApp().currentRoute?.value
-  // ⚠️ Se si e' gia' sul login non si spinge una seconda navigazione: con piu'
-  //    chiamate in volo che prendono 401 insieme, ognuna passerebbe di qui e
-  //    vue-router respingerebbe le repliche come «navigazione ridondante» —
-  //    promise rifiutate che nessuno raccoglie, cioe' rumore in console su un
-  //    percorso che sta gia' funzionando.
-  if (rottaCorrente?.name === 'login') return
+// L'uscita dalla sessione (`redirectToLogin`, `seSessioneChiusaDalFreno`) vive
+// in `core/uscitaSessione.js`: non e' trasporto, e chi la chiama — una vista —
+// non deve avere in mano il client (guard `check-api-componenti`).
 
-  const currentPath = rottaCorrente?.fullPath
-  const query = { reason: motivo }
-  if (currentPath && currentPath !== '/login') {
-    query.redirect = currentPath
+// I 403 del cancello degli obblighi del backend (`apps/core/api/cancello_obblighi.py`):
+// la credenziale ha un obbligo da chiudere prima di ogni altra richiesta.
+const CODICI_OBBLIGO_PENDENTE = new Set(['E_CAMBIO_PASSWORD_RICHIESTO', 'E_TOTP_CONFIGURAZIONE_RICHIESTA'])
+
+// Le pagine che chiudono un obbligo: da lì un 403 del cancello non riporta
+// altrove (ci si è già).
+const ROTTE_DEGLI_OBBLIGHI = new Set(['change-password', 'sicurezza'])
+
+let portaAllObbligoInCorso = null
+
+// Scopo: un obbligo nato A SESSIONE APERTA — l'amministratore accende
+//        l'obbligo o spegne il device, un reparto passa a «richiede il secondo
+//        fattore», il secondo fattore spento da un'altra scheda. Il profilo
+//        letto al login non lo sa, e senza questo ogni chiamata rispondeva 403
+//        finché non si ricaricava la pagina. Si rilegge il profilo e si rifà la
+//        navigazione corrente: è il guard del router a scegliere la pagina
+//        (una regola sola, quella di `obblighi_pendenti`).
+// ⚠️ Una sola volta per volta: con più chiamate in volo che prendono il 403
+//    insieme, aspettano tutte la stessa promise.
+// ⚠️ Import dinamico: `stores/auth` importa `api`, e un import statico
+//    chiuderebbe il ciclo api → auth → api.
+function portaAllObbligo() {
+  if (!portaAllObbligoInCorso) {
+    portaAllObbligoInCorso = (async () => {
+      const rottaCorrente = routerApp().currentRoute?.value
+      if (ROTTE_DEGLI_OBBLIGHI.has(rottaCorrente?.name)) return
+      try {
+        const { useAuthStore } = await import('../stores/auth')
+        await useAuthStore().fetchProfile()
+      } catch {
+        return
+      }
+      // `force`: la stessa rotta, rinavigata perché il guard la rivaluti.
+      await routerApp().push({ path: rottaCorrente?.fullPath ?? '/', force: true }).catch(() => {})
+    })().finally(() => {
+      portaAllObbligoInCorso = null
+    })
   }
-  // ⚠️ `catch` sul push: una navigazione respinta da un guard (o superata da
-  //    un'altra) rifiuta la promise, e qui dentro nessuno la aspetta.
-  return routerApp().push({ name: 'login', query }).catch(() => {})
+  return portaAllObbligoInCorso
 }
 
 export default api

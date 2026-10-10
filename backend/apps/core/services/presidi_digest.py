@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import html
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -49,11 +49,16 @@ from apps.core.db.presidi_repository import (
     CADENZA_MAI,
     CADENZA_SETTIMANALE,
     CADENZE,
+    CHI_AGISCE,
+    CHI_AGISCE_AMMINISTRATORE,
+    CHI_AGISCE_SISTEMISTA,
+    CHI_AGISCE_SVILUPPO,
     NATURA_LAVORAZIONE,
     NATURA_REGISTRO,
     NATURA_ZERO,
     PERIMETRO_DEFINER,
     PERIMETRO_LIBERO,
+    CausaPresidio,
     PresidiRepository,
 )
 from apps.core.db.processi_repository import ProcessiRepository
@@ -198,6 +203,28 @@ class VocePresidio:
     perimetro: str
     righe: list[dict[str, Any]] = field(default_factory=list)
     troncato: bool = False
+    # ⭐ IL TESTO PER CHI AGISCE (`dbops.presidi_testi`, 2026-10-06): cosa vuol
+    #    dire una riga e cosa fare. Nel messaggio viene PRIMA della `nota`, che
+    #    resta come dettaglio tecnico: la nota e' scritta per chi mantiene il
+    #    presidio, e chi apre la mail ha due domande sole — cosa vuol dire, cosa
+    #    faccio.
+    # ⚠️ `None` = presidio senza testo: il messaggio ripiega sulla sola nota,
+    #    com'era prima, e non scrive una riga vuota.
+    significato: str | None = None
+    azione: str | None = None
+    # ⭐ Decide il GRUPPO in cui la voce finisce (`_per_chi_agisce`).
+    chi_agisce: str | None = None
+    # ⭐ LE CAUSE ACCESE, ognuna col suo conteggio, il suo rimedio, il suo «chi
+    #    agisce» e le sue righe di esempio (`PresidiRepository.cause_del_presidio`,
+    #    dal 2026-10-10): vuoto dove il presidio ha un testo solo. Quando c'e', il
+    #    testo del presidio e' quello neutro («segui il rimedio accanto alla
+    #    causa») e il messaggio rende una voce PER CAUSA (`_voci_per_causa`).
+    cause: list[CausaPresidio] = field(default_factory=list)
+    # ⭐ Valorizzata solo sulla voce di UNA causa, derivata da `_voci_per_causa`:
+    #    conteggio, testo, «chi agisce» e righe sono allora quelli della causa.
+    #    ⚠️ Non e' `str | None`: la causa NULL («non indicata») e' una causa
+    #    anche lei, e va distinta da «voce del presidio intero».
+    causa_resa: CausaPresidio | None = None
     # ⭐ IL CONTEGGIO DICE N E L'ELENCO E' VUOTO, su una vista che il catalogo
     #    dichiara elencabile. Non e' un dettaglio: vuol dire che da qui quella
     #    vista non si legge — il numero arriva solo perche' passa dalla funzione
@@ -370,8 +397,11 @@ def calcola_digest(
         #    `vw_riferimenti_morti_da_sanare` si e' portata via il giro intero:
         #    l'isolamento c'era, e passava accanto al punto che falliva.
         righe: list[dict[str, Any]] = []
+        cause: list[CausaPresidio] = []
         try:
-            conteggio = repo.conta(riga)
+            # ⭐ Una lettura sola: il totale e, se il presidio ha cause, i loro
+            #    conteggi (`PresidiRepository.conta_presidio`).
+            conteggio, conteggi = repo.conta_presidio(riga)
             # ⭐ LE RIGHE DI ESEMPIO SI CHIEDONO SOLO ALLE VISTE `ZERO`, e non e'
             #    una scorciatoia. Su una ZERO qualunque riga e' un guasto di
             #    ADESSO: l'esempio e' azionabile, e le righe sono poche per
@@ -386,6 +416,9 @@ def calcola_digest(
             #    catalogo dice di se'.
             if conteggio and riga["natura"] == NATURA_ZERO:
                 righe = repo.prime_righe(riga, limite=righe_nel_messaggio)
+                # ⭐ Le cause partono dai conteggi: arrivano anche quelle oltre
+                #    il campione, e su una vista che non si elenca.
+                cause = repo.cause_del_presidio(riga, righe, conteggi)
         except Exception as exc:  # isolamento per presidio voluto
             logger.warning(
                 "presidi_digest.presidio_non_letto vista=%s errore=%s",
@@ -422,9 +455,13 @@ def calcola_digest(
                 and not righe
             ),
             nota=riga["nota"],
+            significato=riga["significato"],
+            azione=riga["azione"],
+            chi_agisce=riga["chi_agisce"],
             registro=riga["registro"],
             perimetro=riga["perimetro"],
             righe=righe,
+            cause=cause,
             # ⚠️ «Troncato» vuol dire «ce ne sono altre OLTRE a quelle che
             #    vedi», quindi presuppone che le righe siano state CHIESTE. Su
             #    un REGISTRO — dove non si chiedono — un `conteggio > 0` lo
@@ -520,6 +557,81 @@ def _leggi_battito(
 #  Il messaggio
 # ══════════════════════════════════════════════════════════
 
+# Scopo: il titolo di ogni gruppo di presidi accesi, per CHI LO SPEGNE.
+# ⭐ Sono le stesse tre risposte dei badge del pannello
+#    (`amministrazione.processi.chi_agisce.*`), dette per una mail: il digest va
+#    per posta e non ha i locali del frontend — ed e' il motivo per cui il testo
+#    dei presidi sta a DB e non in i18n (brief D-1).
+# ⛔ Una chiave per ogni valore del mirror `CHI_AGISCE`: lo presidia
+#    `test_ogni_chi_agisce_ha_il_suo_titolo`, perche' un valore nuovo senza
+#    titolo finirebbe nel gruppo «senza indicazione» senza che niente fallisca.
+TITOLI_CHI_AGISCE: dict[str, str] = {
+    CHI_AGISCE_AMMINISTRATORE: "Puoi sistemarlo tu, dall'applicazione",
+    CHI_AGISCE_SISTEMISTA: "Da segnalare a chi gestisce il server",
+    CHI_AGISCE_SVILUPPO: "Da segnalare allo sviluppo",
+}
+TITOLO_CHI_AGISCE_ASSENTE = "Senza indicazione di chi agisce"
+
+
+# Scopo: le voci di un elenco, raggruppate per chi le spegne, nell'ordine del
+#        mirror `CHI_AGISCE` — prima cio' che si sistema dall'applicazione, poi
+#        cio' che va inoltrato — e in fondo quelle senza indicazione.
+# ⭐ Una sede sola per le due rese: testo e HTML ricevono gli stessi gruppi
+#    nello stesso ordine, e non possono raccontare la stessa mail in due modi.
+# ⚠️ Un gruppo vuoto non si restituisce: un titolo senza voci sotto si legge
+#    come «qui c'era qualcosa e si e' perso».
+def _per_chi_agisce(
+    voci: list[VocePresidio],
+) -> list[tuple[str, list[VocePresidio]]]:
+    # ⭐ Prima si aprono le voci per causa: e' la causa a dire a chi tocca
+    #    (§5.4.4 del brief-db-presidio-processi-testo-per-causa), e un presidio
+    #    con una causa dello sviluppo e una del sistemista finisce, per le sue
+    #    due parti, in due gruppi.
+    voci = [voce for v in voci for voce in _voci_per_causa(v)]
+    gruppi: list[tuple[str, list[VocePresidio]]] = [
+        (TITOLI_CHI_AGISCE[chi], dentro)
+        for chi in CHI_AGISCE
+        if (dentro := [v for v in voci if v.chi_agisce == chi])
+    ]
+    # ⛔ «Fuori vocabolario» e «assente» finiscono INSIEME in fondo, e non si
+    #    perdono: una voce che non trova il suo gruppo e' ancora un allarme.
+    resto = [v for v in voci if v.chi_agisce not in CHI_AGISCE]
+    if resto:
+        gruppi.append((TITOLO_CHI_AGISCE_ASSENTE, resto))
+    return gruppi
+
+
+# Scopo: una voce di presidio, aperta in una voce PER CAUSA quando il presidio
+#        ne ha (`VocePresidio.cause`); altrimenti la voce com'e'.
+# ⭐ La voce di una causa ha il conteggio, il testo, il «chi agisce» e le righe
+#    della causa; nota, registro, perimetro e cecita' restano quelli del
+#    presidio, che e' la stessa vista.
+# ⚠️ Gli elenchi del Digest (`allarmi`, `registri`) restano PER PRESIDIO, e cosi'
+#    oggetto e riepilogo: si apre solo la RESA. Contare le cause come presidi
+#    direbbe «3 in allarme» con due viste accese.
+# ⚠️ «Troncato» vale solo se le righe sono state chieste: la voce del presidio
+#    ne ha (`v.righe`) e la causa ne conta piu' di quante ne mostra. Una causa
+#    con zero righe nel campione e' troncata anche lei, e lo dice
+#    `_riga_troncamento`.
+def _voci_per_causa(v: VocePresidio) -> list[VocePresidio]:
+    if not v.cause:
+        return [v]
+    return [
+        replace(
+            v,
+            conteggio=c["conteggio"],
+            significato=c["significato"],
+            azione=c["azione"],
+            chi_agisce=c["chi_agisce"],
+            righe=c["righe"],
+            cause=[],
+            causa_resa=c,
+            troncato=bool(v.righe) and c["conteggio"] > len(c["righe"]),
+        )
+        for c in v.cause
+    ]
+
+
 # Scopo: Compone oggetto, corpo testo e corpo HTML del digest.
 #
 # ⭐ L'OGGETTO PORTA IL NUMERO, e non e' cosmesi: e' l'unica parte che si legge
@@ -571,16 +683,14 @@ def _corpo_testo(digest: Digest, quando: str) -> str:
 
     if digest.allarmi:
         r.append(f"ALLARMI ({len(digest.allarmi)}) — queste viste devono restare vuote")
-        for v in digest.allarmi:
-            r.extend(_voce_testo(v))
+        r.extend(_gruppi_testo(digest.allarmi))
         r.append("")
 
     if digest.registri:
         r.append(
             f"REGISTRI ({len(digest.registri)}) — voci che nessuno ha dichiarato"
         )
-        for v in digest.registri:
-            r.extend(_voce_testo(v))
+        r.extend(_gruppi_testo(digest.registri))
         r.append("")
 
     if digest.lavorazioni:
@@ -600,17 +710,36 @@ def _corpo_testo(digest: Digest, quando: str) -> str:
     return "\n".join(r)
 
 
-# Scopo: le righe di un presidio in allarme — il numero, il motivo, un esempio.
+# Scopo: un elenco di voci, a gruppi per chi le spegne (`_per_chi_agisce`).
+def _gruppi_testo(voci: list[VocePresidio]) -> list[str]:
+    r: list[str] = []
+    for titolo, dentro in _per_chi_agisce(voci):
+        r.append(f"  ▸ {titolo}")
+        for v in dentro:
+            r.extend(_voce_testo(v))
+    return r
+
+
+# Scopo: le righe di un presidio in allarme — il numero, cosa vuol dire, cosa
+#        fare, il motivo tecnico, un esempio.
+# ⭐ Prima il testo per chi agisce, poi quello per chi mantiene il presidio.
+#    ⚠️ Senza testo resta la sola nota, com'era prima del 2026-10-06.
 def _voce_testo(v: VocePresidio) -> list[str]:
-    r = [f"  · {v.vista}: {v.conteggio}"]
+    r = [f"  · {_nome_voce(v)}: {v.conteggio}"]
+    if (avviso := _avviso_causa(v)):
+        r.append(f"      ⚠️ {avviso}")
+    if v.significato:
+        r.append(f"      {v.significato}")
+    if v.azione:
+        r.append(f"      → {v.azione}")
     if v.registro:
         r.append(f"      registro delle voci note: {v.registro}")
     if v.nota:
-        r.append(f"      {v.nota}")
+        r.append(f"      {_prefisso_nota(v)}{v.nota}")
     for riga in v.righe:
         r.append("      - " + _riga_compatta(riga))
     if v.troncato:
-        r.append(f"      … e altre {v.conteggio - len(v.righe)}")
+        r.append(f"      {_riga_troncamento(v)}")
     elif v.cieco:
         # ⛔ Il numero c'e' e l'elenco no, su una vista che il catalogo dichiara
         #    elencabile. Le cause sono DUE, e il messaggio le nomina entrambe:
@@ -634,16 +763,72 @@ def _voce_testo(v: VocePresidio) -> list[str]:
     return r
 
 
+# Scopo: il nome di una voce: la vista, e per la voce di una causa la causa.
+def _nome_voce(v: VocePresidio) -> str:
+    if v.causa_resa is None:
+        return v.vista
+    causa = v.causa_resa["causa"]
+    return f"{v.vista} — {causa if causa is not None else 'causa non indicata'}"
+
+
+# Scopo: cosa manca alla voce di una causa per essere azionabile, o None.
+# ⛔ Causa senza testo, o che il catalogo delle cause non conosce: si dice, e non
+#    si prende in prestito il rimedio del presidio, che sarebbe quello di un
+#    altro guasto (§5.4.2 del brief-db-presidio-processi-testo-per-causa).
+# ⚠️ `chi_agisce` e' NOT NULL in `dbops.presidi_cause`: None vuol dire che la
+#    causa non e' a catalogo (o la riga non la dice), e la voce finisce fra
+#    quelle senza indicazione di chi agisce.
+def _avviso_causa(v: VocePresidio) -> str | None:
+    if v.causa_resa is None:
+        return None
+    if v.causa_resa["causa"] is None:
+        return "la riga non dice la sua causa: nessun testo e nessuna indicazione di chi agisce"
+    if v.chi_agisce is None:
+        return "causa non a catalogo: nessun testo e nessuna indicazione di chi agisce"
+    if not (v.significato or v.azione):
+        return "nessun testo per questa causa nel catalogo"
+    return None
+
+
+# Scopo: la riga che dice che le righe mostrate non sono tutte. Una sede per le
+#        due rese.
+# ⚠️ La voce di una causa puo' non avere nessuna riga nel campione (la causa sta
+#    oltre le prime righe lette): «e altre N» sotto un elenco vuoto si leggerebbe
+#    male, e si dice com'e'.
+def _riga_troncamento(v: VocePresidio) -> str:
+    if not v.righe:
+        return f"… nessuna fra le righe di esempio ({v.conteggio} in tutto)"
+    return f"… e altre {v.conteggio - len(v.righe)}"
+
+
+# Scopo: l'etichetta della nota quando sopra c'e' il testo per chi agisce: la
+#        nota diventa il DETTAGLIO TECNICO, e va detto, o due frasi di fila si
+#        leggerebbero come una spiegazione sola.
+def _prefisso_nota(v: VocePresidio) -> str:
+    return "dettaglio tecnico: " if (v.significato or v.azione) else ""
+
+
 # Scopo: una riga di una vista, compatta e leggibile — `chiave=valore`.
+# ⚠️ Un istante si scrive nell'ora dell'azienda e nel formato del BB, come il
+#    resto del messaggio: fino al 2026-10-09 era `str()` del valore, cioe' UTC
+#    con `+00:00` (brief un-solo-fuso-aziendale B-6).
 def _riga_compatta(riga: dict[str, Any]) -> str:
-    return ", ".join(
-        f"{k}={'—' if v is None else v}" for k, v in riga.items()
-    )
+    return ", ".join(f"{k}={_valore_compatto(v)}" for k, v in riga.items())
+
+
+# Scopo: un valore di una riga di vista nel messaggio: `None` -> «—», un
+#        istante -> ora dell'azienda coi secondi, il resto com'e'.
+def _valore_compatto(v: Any) -> str:
+    if v is None:
+        return "—"
+    if isinstance(v, datetime):
+        return format_datetime(v, with_seconds=True)
+    return str(v)
 
 
 # Scopo: un istante del messaggio, nel formato e nel fuso del BB
-#        `locale_formatters` (ora locale di `TIME_ZONE`, non quella dell'host:
-#        su un'unit systemd `TZ` puo' non esserci) — con i secondi per le
+#        `locale_formatters` (ora dell'azienda, non quella dell'host ne' del
+#        processo) — con i secondi per le
 #        corse, dove due corse dello stesso minuto vanno distinte, senza per la
 #        testata. `None` si scrive «—», non stringa vuota: in una riga di
 #        elenco il vuoto si legge come un difetto di resa.
@@ -689,8 +874,12 @@ def _esito_conclusa(conclusa: dict[str, Any]) -> str:
 # ⭐ Due forme, e la differenza e' il punto:
 #    - riga piu' recente APERTA → «in corso (avviata 14-09-2026 09:47:32) —
 #      ultima conclusa 14-09-2026 07:30:49 (ok)», o «— nessuna corsa conclusa»;
-#    - riga piu' recente CHIUSA → «14-09-2026 07:00:12 (ok)»: qui la riga piu'
-#      recente E' l'ultima conclusa, e una data basta.
+#    - riga piu' recente CHIUSA → «14-09-2026 07:00:12 (ok)»: la data e'
+#      quella dell'ultima conclusa, con l'esito suo. Di solito coincide con la
+#      riga piu' recente; non quando questa e' una corsa SALTATA (lock
+#      occupato, dal 2026-10-10 chiusa e senza esito): la skip e' segno di vita
+#      e non lavoro, e la data che accompagna l'esito resta quella della corsa
+#      vera (`_cte_corse` di MaintenanceRepository).
 def _pezzi_corsa(corsa: dict[str, Any]) -> list[tuple[str, bool]]:
     conclusa = corsa.get("ultima_conclusa")
     if corsa.get("in_corso"):
@@ -715,9 +904,10 @@ def _pezzi_corsa(corsa: dict[str, Any]) -> list[tuple[str, bool]]:
             (esito, esito == ESITO_FALLITA),
             (")", False),
         ]
-    # ⚠️ Riga piu' recente chiusa e nessuna conclusa non puo' succedere dal
-    #    repository (una riga chiusa E' una conclusa); da un dict costruito
-    #    altrove si', e si dice invece di sollevare dentro il messaggio.
+    # ⚠️ Riga piu' recente chiusa e nessuna conclusa: dal repository succede
+    #    quando la corsia ha solo corse SALTATE (una skip e' chiusa ma non e'
+    #    una conclusa); da un dict costruito altrove pure. Si dice, invece di
+    #    sollevare dentro il messaggio.
     return [
         (f"{_ora_locale(corsa.get('last_run_at'), secondi=True)} (nessuna corsa conclusa)", False),
     ]
@@ -816,35 +1006,48 @@ def _corpo_html(digest: Digest, quando: str) -> str:
     ):
         if not voci:
             continue
-        p.append(f"<h3>{titolo} ({len(voci)})</h3><p>{sottotitolo}</p><ul>")
-        for v in voci:
-            p.append(
-                f"<li><code>{e(v.vista)}</code>: <strong>{e(v.conteggio)}</strong>"
-            )
-            if v.registro:
-                p.append(f"<br><span style=\"color:#666\">registro: <code>{e(v.registro)}</code></span>")
-            if v.nota:
-                p.append(f"<br><span style=\"color:#666\">{e(v.nota)}</span>")
-            if v.righe:
-                p.append("<ul>")
-                for riga in v.righe:
-                    p.append(f"<li>{e(_riga_compatta(riga))}</li>")
-                if v.troncato:
-                    p.append(f"<li>… e altre {e(v.conteggio - len(v.righe))}</li>")
-                p.append("</ul>")
-            elif v.cieco:
+        p.append(f"<h3>{titolo} ({len(voci)})</h3><p>{sottotitolo}</p>")
+        # ⭐ A gruppi per chi le spegne, come il testo (`_per_chi_agisce`).
+        for chi, dentro in _per_chi_agisce(voci):
+            p.append(f"<h4 style=\"margin:.6rem 0 .2rem\">{e(chi)}</h4><ul>")
+            for v in dentro:
                 p.append(
-                    f"<br><strong>⚠️ il conteggio dice {e(v.conteggio)} ma da qui "
-                    f"la vista risponde vuota</strong>: il perimetro dichiarato "
-                    f"(LIBERO) non regge, la riga di catalogo va corretta."
+                    f"<li><code>{e(_nome_voce(v))}</code>: <strong>{e(v.conteggio)}</strong>"
                 )
-            elif v.perimetro == PERIMETRO_DEFINER:
-                p.append(
-                    "<br><span style=\"color:#666\">righe non elencabili da qui: "
-                    "la vista ha un perimetro</span>"
-                )
-            p.append("</li>")
-        p.append("</ul>")
+                if (avviso := _avviso_causa(v)):
+                    p.append(f"<br><strong>⚠️ {e(avviso)}</strong>")
+                if v.significato:
+                    p.append(f"<br>{e(v.significato)}")
+                if v.azione:
+                    p.append(f"<br><strong>→ {e(v.azione)}</strong>")
+                if v.registro:
+                    p.append(f"<br><span style=\"color:#666\">registro: <code>{e(v.registro)}</code></span>")
+                if v.nota:
+                    p.append(
+                        f"<br><span style=\"color:#666\">{e(_prefisso_nota(v))}{e(v.nota)}</span>"
+                    )
+                # ⭐ UN elenco solo, come la resa testo (`_voce_testo`): le righe,
+                #    poi la riga di troncamento dalla sua sede.
+                if v.righe or v.troncato:
+                    p.append("<ul>")
+                    for riga in v.righe:
+                        p.append(f"<li>{e(_riga_compatta(riga))}</li>")
+                    if v.troncato:
+                        p.append(f"<li>{e(_riga_troncamento(v))}</li>")
+                    p.append("</ul>")
+                elif v.cieco:
+                    p.append(
+                        f"<br><strong>⚠️ il conteggio dice {e(v.conteggio)} ma da qui "
+                        f"la vista risponde vuota</strong>: il perimetro dichiarato "
+                        f"(LIBERO) non regge, la riga di catalogo va corretta."
+                    )
+                elif v.perimetro == PERIMETRO_DEFINER:
+                    p.append(
+                        "<br><span style=\"color:#666\">righe non elencabili da qui: "
+                        "la vista ha un perimetro</span>"
+                    )
+                p.append("</li>")
+            p.append("</ul>")
 
     if digest.lavorazioni:
         p.append("<h3>In lavorazione (tendenza)</h3><ul>")

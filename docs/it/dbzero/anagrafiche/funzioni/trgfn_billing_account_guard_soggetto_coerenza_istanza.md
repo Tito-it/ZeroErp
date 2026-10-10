@@ -12,12 +12,18 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coer
  RETURNS trigger
  LANGUAGE plpgsql
 AS $function$
--- Scopo: garantire la coerenza modello "1 soggetto per istanza".
--- Verifica che il soggetto raggiunto via NEW.soggetto_ruolo_id
--- coincida con il soggetto dell'istanza ancorata in
--- NEW.istanza_utility_id. Raise se differiscono.
+-- Scopo: il ruolo del billing account e' quello giusto per la
+--   sua istanza:
+--   1. il soggetto raggiunto via NEW.soggetto_ruolo_id coincide
+--      con il soggetto dell'istanza (NEW.istanza_utility_id);
+--   2. il ruolo e' di tipo CLIENTE (rev 2026-10-09, D-7 di
+--      brief-db-esecutivi-ba-coppia): dal BB
+--      script.fn_guard_soggetto_ruolo, come le specializzazioni.
 -- Allinea il vincolo DB al modello documentato in
 -- istanze_utilities §7.3 ("il cliente vive dentro l'istanza").
+-- ⚠️ Gira in fascia _a20_, DOPO il lock di colonna: su UPDATE
+--   di soggetto_ruolo_id o istanza_utility_id deve parlare
+--   l'immutabilita' (E_BA_ISTANZA_IMMUTABILE), non la coerenza.
 DECLARE
     v_soggetto_ruolo  anagrafiche.soggetti_ruoli.soggetto_id%TYPE;
     v_soggetto_istanza anagrafiche.istanze_utilities.soggetto_id%TYPE;
@@ -32,6 +38,7 @@ BEGIN
       FROM anagrafiche.istanze_utilities iu
      WHERE iu.id = NEW.istanza_utility_id;
 
+    -- 1. Il soggetto.
     -- Difensivo: se uno dei due lookup non risolve, le FK
     -- esistenti gestiranno l'errore strutturale. Qui il
     -- guard si limita al confronto quando entrambi sono
@@ -60,12 +67,20 @@ BEGIN
         );
     END IF;
 
+    -- 2. Il tipo: un billing account e' di un ruolo CLIENTE.
+    --   Il soggetto l'ha gia' guardato il punto 1, quindi al BB
+    --   si passa NULL: qui serve solo il tipo.
+    PERFORM script.fn_guard_soggetto_ruolo(
+        p_soggetto_id       := NULL,
+        p_soggetto_ruolo_id := NEW.soggetto_ruolo_id,
+        p_cd_int_ruolo      := 'CL');
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_guard_soggetto_coerenza_istanza()
-IS 'Guard coerenza soggetto BA <-> istanza_utilities. Verifica che soggetti_ruoli.soggetto_id == istanze_utilities.soggetto_id. Raise E_BA_SOGGETTO_INCOERENTE_ISTANZA. Allinea il vincolo DB al modello documentato (1 cliente per istanza).';
+IS 'Guard del ruolo del billing account: (1) soggetti_ruoli.soggetto_id = istanze_utilities.soggetto_id, E_BA_SOGGETTO_INCOERENTE_ISTANZA; (2) rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-7): il ruolo e'' di tipo CLIENTE, dal BB script.fn_guard_soggetto_ruolo(NULL, sr, ''CL''), E_SOGGETTI_RUOLI — prima un BA poteva nascere sul ruolo FORNITORE del soggetto giusto, perche'' si confrontava il soggetto e non il tipo. Trigger in fascia _a20_ (dal 20261009-69): dopo il lock di colonna, che su UPDATE del ruolo o dell''istanza deve parlare per primo.';
 ```
 
 ---

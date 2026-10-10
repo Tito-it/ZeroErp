@@ -13,9 +13,9 @@
 | tipo_indirizzo_id | integer | NO |  |
 | snapshot | jsonb | NO | '{}'::jsonb |
 | data_insert | timestamp with time zone | NO | now() |
-| user_insert | character varying | NO | CURRENT_USER |
+| user_insert | character varying(80) | NO | CURRENT_USER |
 | data_update | timestamp with time zone | NO | now() |
-| user_update | character varying | YES | CURRENT_USER |
+| user_update | character varying(80) | NO | CURRENT_USER |
 | origine_indirizzo_id | bigint | YES |  |
 | origine_soggetto_ruolo_id | bigint | YES |  |
 | tx_id | uuid | YES |  |

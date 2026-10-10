@@ -152,8 +152,8 @@ WITH c AS (
          competenza_dal, competenza_al)
     SELECT 'PGTAP-CM-' || cl.lato || '-' || cl.billing_account_id,
            cl.billing_account_id, cl.utility_id,
-           date_trunc('month', CURRENT_DATE)::date,
-           (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date
+           date_trunc('month', script.fn_data_operativa())::date,
+           (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date
       FROM _clienti cl
     RETURNING id, billing_account_id
 )
@@ -171,10 +171,10 @@ WITH a AS (
     SELECT cm.commessa_id,
            ('SEG-RLSCM-' || cm.lato || '-' || cm.commessa_id)::varchar,
            ar.articolo_id, cm.istanza_utility_id,
-           CURRENT_DATE, ar.uom_id, 1.000000,
-           date_trunc('month', CURRENT_DATE)::date,
-           date_trunc('month', CURRENT_DATE)::date,
-           (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date,
+           script.fn_data_operativa(), ar.uom_id, 1.000000,
+           date_trunc('month', script.fn_data_operativa())::date,
+           date_trunc('month', script.fn_data_operativa())::date,
+           (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
            50.0000000000
       FROM _commesse cm CROSS JOIN _articolo ar
     RETURNING id, commessa_id
@@ -212,17 +212,17 @@ INSERT INTO vendite.attivita_fatturabili
      competenza_mese, competenza_dal, competenza_al)
 SELECT a.commessa_id, a.commessa_attivita_id, ar.articolo_id,
        cm.billing_account_id, cm.istanza_utility_id,
-       CURRENT_DATE, ar.uom_id, 1.000000,
-       date_trunc('month', CURRENT_DATE)::date,
-       date_trunc('month', CURRENT_DATE)::date,
-       (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date
+       script.fn_data_operativa(), ar.uom_id, 1.000000,
+       date_trunc('month', script.fn_data_operativa())::date,
+       date_trunc('month', script.fn_data_operativa())::date,
+       (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date
   FROM _attivita a
   JOIN _commesse cm ON cm.commessa_id = a.commessa_id
   CROSS JOIN _articolo ar;
 
 -- 4. la testata consumi: l'unica che NON pende dalla commessa
 INSERT INTO vendite.attivita_consumi (billing_account_id, competenza_mese)
-SELECT cm.billing_account_id, date_trunc('month', CURRENT_DATE)::date
+SELECT cm.billing_account_id, date_trunc('month', script.fn_data_operativa())::date
   FROM _commesse cm;
 
 -- ============================================================
@@ -376,7 +376,7 @@ BEGIN
     -- ⛔ SCRITTURA: un consumo sul billing account altrui.
     BEGIN
         INSERT INTO vendite.attivita_consumi (billing_account_id, competenza_mese)
-        VALUES (v_b.billing_account_id, date_trunc('month', CURRENT_DATE)::date);
+        VALUES (v_b.billing_account_id, date_trunc('month', script.fn_data_operativa())::date);
         PERFORM set_config('pgtap.scr_cons', 'PASSATA', true);
     EXCEPTION WHEN insufficient_privilege OR check_violation OR raise_exception THEN
         PERFORM set_config('pgtap.scr_cons', 'RIFIUTATA', true);

@@ -18,15 +18,12 @@
 //   - un gruppo: { group:true, fields:[<campi>] } → reso in form-grid-2col.
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useInjectReadonly } from '../composables/useReadonlyMode'
 import { useApiHandler } from '../composables/useApiHandler'
 import { useLookup } from '../composables/useLookup'
-import { useDrawerFormPreserve, gestoreVisibile } from '../composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../composables/useDrawerFormPreserve'
 import { DRAWER_WIDTH } from '../constants'
-import FormFooter from './FormFooter.vue'
-import DrawerTitle from './DrawerTitle.vue'
+import AppDrawer from './AppDrawer.vue'
 import EntityFormField from './EntityFormField.vue'
-import Drawer from 'primevue/drawer'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -43,7 +40,6 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'saved'])
 
 const { t } = useI18n()
-const isReadonly = useInjectReadonly()
 const { execute, loading } = useApiHandler()
 
 // Appiattisce gruppi + campi semplici in un'unica lista di field-def.
@@ -62,7 +58,6 @@ const form = ref({})
 // creazione: un record nuovo compilato e poi chiuso e' lavoro perso), e
 // chiudere con modifiche chiede conferma (BB useDrawerFormPreserve).
 const { fissa, modificato, chiudiConConferma } = useDrawerFormPreserve(form, { visibile: () => props.visible })
-const chiudi = () => chiudiConConferma(() => emit('update:visible', false))
 
 function defaultFor(f) {
   if (f.type === 'toggle') return f.default ?? true
@@ -130,54 +125,46 @@ async function handleSave() {
     }
   }
 }
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer
+  <!-- Il chrome (testata, uscita con conferma, montaggio a fine animazione,
+       corpo, footer) e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md): qui resta lo schema. -->
+  <AppDrawer
     :visible="visible"
-    position="right"
-    :style="{ width }"
-    @update:visible="suVisibile"
+    :title="t(titleKey)"
+    :icon="icon"
+    :action="mode === 'create' ? t('common.new') : t('common.edit')"
+    :width="width"
+    :modificato="modificato"
+    :conferma-uscita="chiudiConConferma"
+    :loading="loading"
+    :save-disabled="!canSave"
+    @update:visible="(v) => emit('update:visible', v)"
+    @save="handleSave"
   >
-    <template #header>
-      <DrawerTitle
-        :modificato="modificato"
-        :action="mode === 'create' ? t('common.new') : t('common.edit')"
-        :title="t(titleKey)"
-        :icon="icon"
-      />
-    </template>
-    <div class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-      <div class="form-grid">
-        <template v-for="(entry, i) in fields" :key="entry.group ? 'g' + i : entry.name">
-          <div v-if="entry.group" class="form-grid-2col">
-            <template v-for="fd in entry.fields" :key="fd.name">
-              <EntityFormField
-                v-if="fieldVisible(fd)"
-                v-model="form[fd.name]"
-                :field="fd"
-                :mode="mode"
-                :lookup="lookups[fd.name] || null"
-              />
-            </template>
-          </div>
-          <EntityFormField
-            v-else-if="fieldVisible(entry)"
-            v-model="form[entry.name]"
-            :field="entry"
-            :mode="mode"
-            :lookup="lookups[entry.name] || null"
-          />
-        </template>
-      </div>
-
-      <FormFooter
-        :loading="loading"
-        :disabled="!canSave"
-        @save="handleSave"
-        @cancel="chiudi"
-      />
+    <div class="form-grid">
+      <template v-for="(entry, i) in fields" :key="entry.group ? 'g' + i : entry.name">
+        <div v-if="entry.group" class="form-grid-2col">
+          <template v-for="fd in entry.fields" :key="fd.name">
+            <EntityFormField
+              v-if="fieldVisible(fd)"
+              v-model="form[fd.name]"
+              :field="fd"
+              :mode="mode"
+              :lookup="lookups[fd.name] || null"
+            />
+          </template>
+        </div>
+        <EntityFormField
+          v-else-if="fieldVisible(entry)"
+          v-model="form[entry.name]"
+          :field="entry"
+          :mode="mode"
+          :lookup="lookups[entry.name] || null"
+        />
+      </template>
     </div>
-  </Drawer>
+  </AppDrawer>
 </template>

@@ -13,9 +13,9 @@ CREATE OR REPLACE FUNCTION anagrafiche.trgfn_indirizzi_guard_tipo_ruolo_tipi_ind
  LANGUAGE plpgsql
 AS $function$
 DECLARE
-v_tipo_ruolo_id  integer;
+v_tipo_ruolo_id  anagrafiche.soggetti_ruoli.tipo_ruolo_id%TYPE;
 v_has_matrix     boolean;
-v_today          date := current_date;
+v_today          date := script.fn_data_operativa();
 BEGIN
 -- Gestione DELETE: nessun controllo
 IF TG_OP = 'DELETE' THEN

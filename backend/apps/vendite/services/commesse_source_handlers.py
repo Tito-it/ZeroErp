@@ -42,6 +42,11 @@ from apps.vendite.db.commesse_repository import (
     PushableRow,
 )
 from apps.vendite.services import _kit_meta as kit_meta
+from apps.vendite.services.prezzo_riga_commessa import (
+    argomenti_resolver,
+    origine_ammessa,
+    provenienza_da_resolver,
+)
 from apps.vendite.services.pricing_service import PricingService
 
 logger = logging.getLogger(__name__)
@@ -58,20 +63,13 @@ _IS_COMPOSITO_MODULE_CACHE_TTL_SECONDS = 300
 
 # Chiavi `meta` condivise tra BoMComponentExpander (scrittura) e il wiring
 # audit pricing (lettura): centralizzate per evitare drift silente sui literal.
-# Il contratto kit (`componente_di`, `esposto_in_fattura`, suffisso del
+# Il contratto kit (`componente_di`, `esposizione`, suffisso del
 # `segment_key`) sta in `_kit_meta`: e' letto anche dalla generazione righe
 # fattura, che e' l'altro capo del contratto.
 _META_KEY_ORIGINE_PREZZO = "origine_prezzo"
-
-# Valori ammessi per `commesse_attivita.origine_prezzo` (CHECK
-# chk_commesse_attivita_origine_prezzo, speculare ad attivita_fatturabili).
-# Il resolver pricing puo' restituire `origine` fuori da questo set (es.
-# 'LISTINO_BUNDLE' nello stadio bundle): in quel caso l'audit origine resta
-# NULL (NULL passa il CHECK), per non far fallire l'upsert. Allineare a DB se
-# il modello aggiunge valori.
-_ORIGINE_PREZZO_AMMESSE = frozenset(
-    {"PROMO", "CONTRATTO_OVERRIDE", "CONTRATTO_LISTINO", "CATEGORIA", "MANUALE"}
-)
+# ⚠️ Le origini ammesse dal CHECK di `commesse_attivita.origine_prezzo` stanno
+#    nel building block `prezzo_riga_commessa` (`origine_ammessa`), insieme al
+#    resto della provenienza del prezzo: fino al 2026-10-08 erano qui.
 
 
 # Scopo: invalida la cache modulo-level. Da chiamare nei test e in scenari
@@ -115,15 +113,16 @@ class BoMComponentExpander:
 
     Modello unificato componenti BoM 2026-05-13: il padre composito viene
     sempre espanso in N righe (una per ciascun componente attivo della
-    riga sorgente). `esposto_in_fattura` ora e' un flag di presentazione
-    fattura, non gate di expansion: tutti i figli attivi passano in
-    commessa, la separazione fra "padre con totale" e "figli esposti
-    come righe descrittive" avviene a valle (generazione fatture_righe).
+    riga sorgente). `esposizione_in_fattura` e' il modo di presentazione
+    in fattura (NASCOSTO / DESCRITTIVO / VALORIZZATO), non gate di
+    expansion: tutti i figli attivi passano in commessa, e cosa sta nel
+    totale del padre e cosa sulla riga del componente lo decide a valle
+    `vw_fattura_righe_esposte`.
 
     Path snapshot (unico, post cleanup legacy 2026-05-14): legge i
     componenti gia' negoziati al documento sorgente via
     `componenti_loader`, che internamente filtra `attivo=TRUE` (solo
-    componenti effettivamente inclusi). `esposto_in_fattura` arriva dalla
+    componenti effettivamente inclusi). `esposizione_in_fattura` arriva dalla
     proiezione (JOIN runtime su `articoli_componenti`).
 
     Articolo composito senza loader o con snapshot vuoto: pass-through
@@ -232,10 +231,10 @@ class BoMComponentExpander:
         row: PushableRow,
         *,
         componente_id: Any,
-        componente_uom_id: int | None,
+        componente_uom_id: int,
         componente_prezzo: Any,
         coeff_qta: Decimal,
-        esposto_in_fattura: bool,
+        esposizione: str,
         origine_prezzo: str | None = None,
     ) -> PushableRow:
         quantita_padre = row.quantita if row.quantita is not None else Decimal(0)
@@ -244,9 +243,16 @@ class BoMComponentExpander:
         # Meta: preservo tutto del padre, aggiungo audit componente.
         # `componente_di` permette tracing inverso in commesse_attivita.
         nuovo_meta = dict(row.meta or {})
-        nuovo_meta[kit_meta.META_KEY_ESPOSTO_IN_FATTURA] = esposto_in_fattura
+        nuovo_meta[kit_meta.META_KEY_ESPOSIZIONE] = esposizione
         nuovo_meta[kit_meta.META_KEY_COMPONENTE_DI] = str(row.articolo_id)
         nuovo_meta[kit_meta.META_KEY_COEFF_QTA] = str(coeff_qta)
+        # Quantita' e UoM della riga PADRE: la fattura le congela sulla riga
+        # del kit (`kit_qta`, `kit_uom_id`). Ricavarle dai componenti non si
+        # puo': con coefficienti diversi o unita' diverse non dicono un numero
+        # solo (brief-db-bom-flag-quantita-e-kit-in-fattura §2.2).
+        # `expand` arriva qui solo con quantita' e UoM del padre valorizzate.
+        nuovo_meta[kit_meta.META_KEY_QTA_PADRE] = str(quantita_padre)
+        nuovo_meta[kit_meta.META_KEY_UOM_PADRE] = row.uom_id
         if origine_prezzo is not None:
             nuovo_meta[_META_KEY_ORIGINE_PREZZO] = origine_prezzo
 
@@ -267,10 +273,10 @@ class BoMComponentExpander:
     #          - `uom_operativa_id` invece di `uom_id`
     #          - `coeff_qta_snapshot` invece di `coeff_qta`
     #          - `origine_prezzo` propagato in meta per audit downstream.
-    #        Modello unificato 2026-05-13: `esposto_in_fattura` arriva
+    #        Modello unificato 2026-05-13: `esposizione_in_fattura` arriva
     #        dalla proiezione del repository (JOIN runtime su
     #        `articoli_componenti`, BoM immutabile per design). Init popola
-    #        TUTTI i figli (no piu' filtro su esposto). Il `list_componenti_riga`
+    #        TUTTI i figli (nessun filtro sull'esposizione). Il `list_componenti_riga`
     #        col default `solo_attivi=True` filtra solo i componenti
     #        effettivamente inclusi nel documento (opzionali disattivati
     #        esclusi dal push verso commessa).
@@ -283,10 +289,18 @@ class BoMComponentExpander:
         return cls._build_componente_pushable_row(
             row,
             componente_id=componente["componente_id"],
-            componente_uom_id=componente.get("uom_operativa_id") or row.uom_id,
+            # NOT NULL sulle `*_righe_componenti` dal 2026-10-02: niente
+            # ripiego sulla UoM del padre, che su un kit misto trasformerebbe
+            # «3 metri» in «3 kit» (brief-db-bom-flag-quantita-e-kit-in-fattura
+            # §2.3, R-BE-B4).
+            componente_uom_id=componente["uom_operativa_id"],
             componente_prezzo=componente["prezzo_unitario"],
             coeff_qta=Decimal(str(componente["coeff_qta_snapshot"])),
-            esposto_in_fattura=bool(componente.get("esposto_in_fattura", False)),
+            # LEFT JOIN sulla distinta nella proiezione: un NULL vale il
+            # default della colonna, non un errore.
+            esposizione=kit_meta.esposizione_o_default(
+                componente.get("esposizione_in_fattura")
+            ),
             origine_prezzo=componente.get("origine_prezzo"),
         )
 
@@ -340,7 +354,7 @@ class BaseSourceHandler(ABC):
     # senza compositi o con override completo di `_expand_rows`, es. consumi).
     # È una staticmethod (non import top-level) perche' i *_repository importano
     # i types del dominio vendite → import locale evita cicli.
-    _componenti_repo_factory = None
+    _componenti_repo_factory: Callable[[], Any] | None = None
 
     def __init__(
         self,
@@ -481,7 +495,7 @@ class BaseSourceHandler(ABC):
             # resta esposto da `PushableRow`: le `fn_list_*_da_pushare`
             # continuano a calcolarlo e serve altrove. Cambia solo chi lo
             # ri-passa.
-            dimensioni_commessa = {
+            dimensioni_commessa: dict[str, Any] = {
                 "billing_account_id": row.billing_account_id,
                 "utility_id": row.utility_id,
                 "tipo_commessa": tipo_commessa,
@@ -587,8 +601,8 @@ class BaseSourceHandler(ABC):
     def _expand_rows(self, row: PushableRow) -> list[PushableRow]:
         """Hook per fan-out 1→N. Default: applica BoM v5 via BoMComponentExpander.
 
-        Articoli compositi con almeno un componente esposto in fattura
-        diventano N righe (una per componente obbligatorio attivo).
+        Articoli compositi diventano N righe (una per componente attivo,
+        qualunque sia il suo modo di esposizione in fattura).
         Articoli semplici e CASO B del resolver (1 riga padre) sono
         pass-through. Override completo possibile per pattern non-BoM
         (es. HandlerConsumi fan-out su componenti utility).
@@ -609,41 +623,40 @@ class BaseSourceHandler(ABC):
             return row.meta.get("policy_fatturazione", POLICY_FATTURAZIONE_DA_DOCUMENTO)
         return POLICY_FATTURAZIONE_DA_DOCUMENTO
 
-    # Scopo: risolve l'audit snapshot pricing v5 (8 campi diagnostici di
-    #        derivazione del prezzo) per una riga, via PricingService (F2-BE-12).
+    # Scopo: risolve la PROVENIENZA del prezzo di una riga (i
+    #        `CAMPI_PROVENIENZA` del building block `prezzo_riga_commessa`:
+    #        gli 8 campi diagnostici di derivazione e la versione di listino)
+    #        via PricingService (F2-BE-12).
     #        IMPORTANTE: NON tocca `prezzo_snapshot` (negoziato alla sorgente,
-    #        autoritativo); popola solo i campi di audit, ricostruendo dal
+    #        autoritativo); popola solo la provenienza, ricostruendo dal
     #        resolver QUALE listino/contratto/promo/categoria abbia determinato
     #        il prezzo alla data di competenza. La ricostruzione puo' divergere
     #        da un prezzo negoziato manualmente: per i componenti BoM si preferisce
     #        l'`origine_prezzo` gia' negoziato (in meta, autoritativo).
+    #        ⭐ Cosa chiedere al resolver e cosa scrivere della risposta lo
+    #        decide il building block, lo stesso di riallinea e sblocca
+    #        (regola del 2, 2026-10-08): contesto del kit, ripiego della data su
+    #        `competenza_mese` e versione di listino non possono piu' divergere.
     #        Best-effort: senza input sufficienti o su errore resolver ritorna
     #        dict vuoto (audit a None) e il push NON si blocca.
     def _resolve_pricing_audit(self, row: PushableRow) -> dict[str, Any]:
         # Pre-condizioni: senza questi input il resolver non e' chiamabile
         # (CONSUMI senza articolo, righe pre-espansione con uom None, ecc.).
-        if (
-            row.articolo_id is None
-            or row.uom_id is None
-            or row.billing_account_id is None
-            or row.utility_id is None
-            or row.emittente_soggetto_ruolo_id is None
-        ):
-            return {}
-        data_rif = row.data_attivita or row.competenza_mese
-        if data_rif is None:
+        argomenti = argomenti_resolver(
+            articolo_id=row.articolo_id,
+            uom_id=row.uom_id,
+            data_attivita=row.data_attivita,
+            competenza_mese=row.competenza_mese,
+            billing_account_id=row.billing_account_id,
+            utility_id=row.utility_id,
+            emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
+            meta=row.meta,
+        )
+        if argomenti is None:
             return {}
 
-        # Contesto BUNDLE per i componenti BoM: il padre e' tracciato in meta.
-        padre_contesto = (row.meta or {}).get(kit_meta.META_KEY_COMPONENTE_DI)
-        cache_key = (
-            str(row.articolo_id),
-            row.uom_id,
-            row.billing_account_id,
-            row.utility_id,
-            row.emittente_soggetto_ruolo_id,
-            data_rif,
-            padre_contesto,
+        cache_key = tuple(
+            str(v) if k == "articolo_id" else v for k, v in argomenti.items()
         )
         if cache_key in self._pricing_audit_cache:
             return self._pricing_audit_cache[cache_key]
@@ -653,25 +666,8 @@ class BaseSourceHandler(ABC):
             # Savepoint isolato: un errore resolver (DatabaseError → ServiceError)
             # non deve abortire la transazione del push ne' scartare la riga.
             with transaction.atomic():
-                r = self._pricing.resolve_prezzo(
-                    articolo_id=row.articolo_id,
-                    uom_id=row.uom_id,
-                    data_riferimento=data_rif,
-                    ba_id=row.billing_account_id,
-                    utility_id=row.utility_id,
-                    emittente_soggetto_ruolo_id=row.emittente_soggetto_ruolo_id,
-                    articolo_padre_contesto=padre_contesto,
-                )
-            audit = {
-                "prezzo_base_snapshot": r.get("prezzo_base_snapshot"),
-                "origine_prezzo": r.get("origine"),
-                "tipo_variazione_applicata": r.get("tipo_variazione_applicata"),
-                "valore_variazione_applicata": r.get("valore_variazione_applicata"),
-                "promo_id": r.get("promo_id"),
-                "contratto_id": r.get("contratto_id"),
-                "categoria_cliente_id_snapshot": r.get("categoria_cliente_id_snapshot"),
-                "classe_utenza_id_snapshot": r.get("classe_utenza_id_snapshot"),
-            }
+                r = self._pricing.resolve_prezzo(**argomenti)
+            audit = provenienza_da_resolver(r)
         except Exception as exc:  # best-effort: audit e' diagnostico, non bloccante
             logger.warning(
                 "Audit pricing snapshot non risolto (push prosegue) "
@@ -692,11 +688,8 @@ class BaseSourceHandler(ABC):
         # path snapshot) e' autoritativa: prevale sull'origine ricostruita.
         # Whitelist contro il CHECK DB: un valore fuori set (es. resolver
         # 'LISTINO_BUNDLE') diventa NULL invece di far fallire l'upsert.
-        origine_candidata = (row.meta or {}).get(_META_KEY_ORIGINE_PREZZO) or audit.get(
-            "origine_prezzo"
-        )
-        origine_prezzo = (
-            origine_candidata if origine_candidata in _ORIGINE_PREZZO_AMMESSE else None
+        origine_prezzo = origine_ammessa(
+            (row.meta or {}).get(_META_KEY_ORIGINE_PREZZO) or audit.get("origine_prezzo")
         )
         return CommessaAttivitaInput(
             commessa_id=commessa_id,
@@ -722,6 +715,17 @@ class BaseSourceHandler(ABC):
             sorgente_tipo_id=row.sorgente_tipo_id,
             sorgente_uid=row.sorgente_uid,
             meta=row.meta,
+            # ⭐ La versione di listino da cui verrebbe il prezzo (2026-10-08):
+            #    senza, il guard «versione cambiata» di `fn_riallinea_prezzo`
+            #    confrontava con NULL e non scattava mai sulle righe del push.
+            listino_versione_id=audit.get("listino_versione_id"),
+            # ⛔ `listino_riga_id` NON si prende dal resolver (decisione B di
+            #    Tid, 2026-10-09): la riga di listino si cita solo se il prezzo
+            #    e' venuto DAVVERO da li', e il push oggi non lo sa — il prezzo
+            #    e' quello del documento. Citarla la renderebbe «propagata»
+            #    (immutabile) senza che nessuno ne porti il prezzo. Resta NULL
+            #    finche' la provenienza non viaggia col prezzo dal documento
+            #    (brief-db-provenienza-prezzo-segue-il-prezzo).
             # === Snapshot pricing v5 (F2-BE-12) ===
             prezzo_base_snapshot=audit.get("prezzo_base_snapshot"),
             origine_prezzo=origine_prezzo,

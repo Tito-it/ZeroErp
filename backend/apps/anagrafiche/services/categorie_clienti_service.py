@@ -17,6 +17,7 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from apps.core.api.constants import DEFAULT_LIMIT
 from apps.anagrafiche.db.categorie_clienti_repository import (
     _ORDER_COLS,
     CategorieClientiRepository,
@@ -97,7 +98,7 @@ class CategorieClientiService:
         search: str | None = None,
         attivo: bool | None = None,
         partecipa_promo: bool | None = None,
-        limit: int = 25,
+        limit: int = DEFAULT_LIMIT,
         offset: int = 0,
         order_by: str = "ordinamento",
         order_dir: str = "asc",
@@ -246,14 +247,14 @@ class CategorieClientiService:
             )
             data["partecipa_promo"] = value
         if "ordinamento" in payload:
-            value = self._v.optional_smallint(payload, "ordinamento")
+            ordinamento = self._v.optional_smallint(payload, "ordinamento")
             ErrorManager.require(
-                value is not None,
+                ordinamento is not None,
                 code=E_ANAG_VALIDAZIONE,
                 message="Il campo 'ordinamento' non puo' essere NULL.",
                 context={"field": "ordinamento"},
             )
-            data["ordinamento"] = value
+            data["ordinamento"] = ordinamento
         if "attivo" in payload:
             value = self._v.optional_bool(payload, "attivo")
             ErrorManager.require(

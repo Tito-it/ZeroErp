@@ -10,7 +10,10 @@
 --  1) fixture: due registri di prova (OGGI e FINE_MESE_COMPETENZA) + una fattura
 --  2) fn_data_operativa risponde nel fuso DELL'AZIENDA, non in quello di sessione
 --  3) fn_data_operativa: parametro VUOTO -> solleva
---  4) fn_data_operativa: fuso NON riconosciuto -> solleva, e la frase nomina il valore
+--  4) fuso NON riconosciuto -> rifiutato ALLA SCRITTURA dal registro (rev 2026-10-08)
+--  4b) ... anche una stringa POSIX che AT TIME ZONE accetterebbe ('UTC+1')
+--  4c) rete di sicurezza: valore passato col registro spento -> la funzione
+--      solleva, e la frase nomina il valore
 --  5) fn_data_operativa: parametro ASSENTE -> solleva
 --  6) fn_calcola_data_documento, politica OGGI
 --  7) fn_calcola_data_documento, FINE_MESE_COMPETENZA -> ultimo del mese di competenza
@@ -18,10 +21,10 @@
 --  9) FINE_MESE_COMPETENZA senza competenza -> solleva (nessun ripiego su oggi)
 -- 10) fn_imposta_data_documento_lotto: scrive la data e RIGENERA il piano rate
 -- 11) ... e la prima rata si e' davvero spostata
--- 12) fn_imposta_data_documento_lotto: le fatture gia' numerate si SALTANO
--- 13) DB-14: cambiare la data di una fattura NUMERATA -> rifiutato (P0001)
--- 14) DB-14: ... e la frase nomina il NUMERO del documento
--- 15) DB-14: su una fattura NON numerata la data si cambia
+-- 12) DB-14: su una fattura NON numerata la data si cambia (controprova, prima della numerazione)
+-- 13) fn_imposta_data_documento_lotto: le fatture gia' numerate si SALTANO
+-- 14) DB-14: cambiare la data di una fattura NUMERATA -> rifiutato (P0001)
+-- 15) DB-14: ... e la frase nomina il NUMERO del documento
 -- ------------------------------------------------------------
 -- Scopo:
 --  - la data di un documento non e' piu' `current_date` catturato alla
@@ -54,7 +57,7 @@ DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 --   quello dell'azienda, il test 2 lo vedrebbe.
 SET LOCAL TimeZone = 'UTC';
 
-SELECT plan(15);
+SELECT plan(17);
 
 -- ============================================================
 -- 1) Fixture
@@ -132,11 +135,36 @@ SELECT throws_ok(
   'P0001', NULL,
   '3) fn_data_operativa: parametro VUOTO -> solleva (nessun ripiego a UTC)');
 
+-- ⭐ rev 2026-10-08 (20261008-20): il fuso si VALIDA QUANDO SI SCRIVE, dal
+--   registro config.parameter_fk_surrogate (riga 7 -> pg_timezone_names), non
+--   piu' a ogni chiamata della funzione (~8 ms, per riga nelle viste).
+UPDATE config.parameters SET default_value = 'Europe/Rome' WHERE code = 'SYSTEM_FUSO_ORARIO';
+SELECT throws_like(
+  $$ UPDATE config.parameters SET default_value = 'Europe/Roma'
+      WHERE code = 'SYSTEM_FUSO_ORARIO' $$,
+  '%Europe/Roma%',
+  '4) fuso non riconosciuto -> rifiutato alla scrittura, e la frase nomina il valore');
+
+-- ⛔ E' il caso per cui la validazione NON puo' stare in un EXCEPTION attorno ad
+--   AT TIME ZONE: 'UTC+1' e' una stringa POSIX che AT TIME ZONE accetta (col
+--   segno rovesciato: vuol dire UTC-1), cioe' una data plausibile e sbagliata.
+SELECT throws_like(
+  $$ UPDATE config.parameters SET default_value = 'UTC+1'
+      WHERE code = 'SYSTEM_FUSO_ORARIO' $$,
+  '%UTC+1%',
+  '4b) una stringa POSIX (UTC+1) e'' rifiutata alla scrittura, anche se AT TIME ZONE la accetterebbe');
+
+-- La rete di sicurezza della funzione: un valore che il sistema non riconosce
+-- (qui passato spegnendo la riga del registro) solleva l'errore di DOMINIO,
+-- non un 22023 grezzo. Si riaccende subito.
+UPDATE config.parameter_fk_surrogate SET enabled = false WHERE code_pattern = 'SYSTEM_FUSO_ORARIO';
 UPDATE config.parameters SET default_value = 'Europe/Roma' WHERE code = 'SYSTEM_FUSO_ORARIO';
 SELECT throws_like(
   $$ SELECT script.fn_data_operativa() $$,
   '%Europe/Roma%',
-  '4) fn_data_operativa: fuso non riconosciuto -> solleva, e la frase nomina il valore');
+  '4c) rete di sicurezza: fuso non riconosciuto dal sistema -> errore di dominio che nomina il valore');
+UPDATE config.parameters SET default_value = 'Europe/Rome' WHERE code = 'SYSTEM_FUSO_ORARIO';
+UPDATE config.parameter_fk_surrogate SET enabled = true WHERE code_pattern = 'SYSTEM_FUSO_ORARIO';
 
 DELETE FROM config.parameters WHERE code = 'SYSTEM_FUSO_ORARIO';
 SELECT throws_ok(
@@ -252,6 +280,25 @@ SELECT isnt(
   (SELECT prima_rata FROM tmp_ddoc_prima),
   '11) ... e il piano rate e'' stato RIGENERATO: la prima rata si e'' spostata');
 
+-- Controprova, PRIMA della numerazione: senza numero la data si cambia. ⭐ Serve
+--   a distinguere «il guard funziona» da «il guard blocca tutto», che sarebbe
+--   verde uguale sul test 14.
+-- ⚠️ Rev 2026-10-05: stava in coda e TOGLIEVA il numero alla fattura appena
+--   numerata (numero, anno, serie a NULL) per poi cambiarle la data. Dal
+--   20261004-80 (vendite.trgfn_fatture_guard_numero_fiscale, Q-4 di
+--   brief-db-esclusioni-implicite) la regola lo vieta — una fattura numerata non
+--   cambia identita' fiscale — e il file moriva li'. La domanda e' la stessa;
+--   la si fa sulla fattura quando non e' ancora numerata.
+-- ⚠️ Una data diversa da quella dei test 14-15 (2027-01-01): li' deve essere un
+--   CAMBIO, e un UPDATE allo stesso valore non lo e'.
+UPDATE vendite.fatture SET data = date '2027-02-01'
+ WHERE id = (SELECT id FROM tmp_ddoc_f);
+
+SELECT is(
+  (SELECT f.data FROM vendite.fatture f WHERE f.id = (SELECT id FROM tmp_ddoc_f)),
+  date '2027-02-01',
+  '12) su una fattura NON numerata la data si cambia (il guard non blocca tutto)');
+
 -- Adesso la fattura diventa numerata: la madre deve saltarla e contarla, non
 -- fallire. ⚠️ Il caso «lotto numerato a meta'» esiste nei dati veri.
 UPDATE vendite.fatture
@@ -262,16 +309,16 @@ SELECT is(
   (SELECT saltate_numerate FROM vendite.fn_imposta_data_documento_lotto(
              (SELECT lotto_id FROM tmp_ddoc_refs), date '2027-07-20')),
   1,
-  '12) le fatture gia'' numerate si SALTANO e si contano (il lotto non fallisce)');
+  '13) le fatture gia'' numerate si SALTANO e si contano (il lotto non fallisce)');
 
 -- ============================================================
--- 13..15) DB-14: la data di una fattura numerata e' immutabile
+-- 14..15) DB-14: la data di una fattura numerata e' immutabile
 -- ============================================================
 SELECT throws_ok(
   format($$ UPDATE vendite.fatture SET data = date '2027-01-01' WHERE id = %s $$,
          (SELECT id FROM tmp_ddoc_f)),
   'P0001', NULL,
-  '13) cambiare la data di una fattura NUMERATA -> rifiutato');
+  '14) cambiare la data di una fattura NUMERATA -> rifiutato');
 
 -- ⚠️ `throws_like` perche' la frase e' la posta in gioco: deve dire CHE COSA
 --   blocca (il numero), non «colonna non modificabile».
@@ -279,19 +326,7 @@ SELECT throws_like(
   format($$ UPDATE vendite.fatture SET data = date '2027-01-01' WHERE id = %s $$,
          (SELECT id FROM tmp_ddoc_f)),
   '%999001%',
-  '14) ... e la frase nomina il NUMERO del documento');
-
--- Controprova: senza numero la data si cambia. ⭐ Serve a distinguere «il guard
---   funziona» da «il guard blocca tutto», che sarebbe verde uguale sul test 13.
-UPDATE vendite.fatture SET numero = NULL, anno = NULL, serie = NULL
- WHERE id = (SELECT id FROM tmp_ddoc_f);
-UPDATE vendite.fatture SET data = date '2027-01-01'
- WHERE id = (SELECT id FROM tmp_ddoc_f);
-
-SELECT is(
-  (SELECT f.data FROM vendite.fatture f WHERE f.id = (SELECT id FROM tmp_ddoc_f)),
-  date '2027-01-01',
-  '15) su una fattura NON numerata la data si cambia (il guard non blocca tutto)');
+  '15) ... e la frase nomina il NUMERO del documento');
 
 SELECT * FROM finish();
 

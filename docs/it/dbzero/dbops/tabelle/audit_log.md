@@ -14,7 +14,7 @@
 | duration_ms | integer | YES |  |
 | tx_id | uuid | YES |  |
 | exec_mode | text | YES |  |
-| parts | ARRAY | YES |  |
+| parts | text[] | YES |  |
 | rule_type | text | YES |  |
 | dry_run | boolean | YES |  |
 | sqlstate | text | YES |  |

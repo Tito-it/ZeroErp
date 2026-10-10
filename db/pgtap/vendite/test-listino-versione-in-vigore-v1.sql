@@ -160,7 +160,7 @@ SELECT lives_ok(
     $$UPDATE vendite.listini_versioni SET stato = 'ATTIVA' WHERE id = (SELECT id FROM tmp_lvv_v2)$$,
     '9) V2 diventa ATTIVA sul periodo libero');
 
-SELECT is(pg_temp.in_vigore(CURRENT_DATE), (SELECT id FROM tmp_lvv_v2),
+SELECT is(pg_temp.in_vigore(script.fn_data_operativa()), (SELECT id FROM tmp_lvv_v2),
     '10) oggi e'' in vigore V2');
 
 SELECT is(pg_temp.in_vigore('2020-06-01'), (SELECT listino_versione_id FROM tmp_lvv_listino),
@@ -180,18 +180,37 @@ SELECT is(
     0,
     '12) nessuna copia della regola «ATTIVA o CHIUSA» fuori dalla sede unica');
 
+-- rev 2026-10-04 (brief-db-righe-esclusione-solo-non-si-vende): per le righe di
+--   contratto e offerta la versione la chiede una sede sola,
+--   vendite.fn_documento_listino_operativo. I quattro consumatori delle righe
+--   (check dell'esclusione, guard dell'aggiunta, lista delle righe, righe
+--   espanse dell'offerta) chiamano il risolutore.
+-- rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.3): fra le due
+--   c'e' vendite.fn_listino_versione_operativa, «la fissata, altrimenti quella
+--   in vigore oggi» sui VALORI della testata. La chiamano il risolutore delle
+--   righe, la check del congelamento e i due guard che congelano (emissione
+--   dell'offerta, attivazione del contratto). Chiedono questa funzione
+--   direttamente solo lei e il risolutore dei prezzi.
 SELECT is(
     (SELECT count(*)::integer FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-      WHERE (n.nspname, p.proname) IN (
-              ('script',  'fn_check_esclusione_articolo_contratto'),
-              ('vendite', 'trgfn_contratti_righe_guard_aggiunta_fuori_listino'),
-              ('vendite', 'trgfn_contratti_freeze_listino_versione'),
-              ('vendite', 'fn_contratto_righe_preview'),
-              ('vendite', 'fn_offerta_righe_espanse'),
+      WHERE ((n.nspname, p.proname) IN (
+              ('vendite', 'fn_listino_versione_operativa'),
               ('vendite', 'fn_resolve_prezzo_listino_v2_esito'))
-        AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_listino_versione_in_vigore\s*\('),
-    6,
-    '13) i sei consumatori chiedono la versione alla sede unica');
+             AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_listino_versione_in_vigore\s*\(')
+         OR ((n.nspname, p.proname) IN (
+              ('vendite', 'fn_documento_listino_operativo'),
+              ('script',  'fn_check_listino_congelabile'),
+              ('vendite', 'trgfn_offerte_commerciali_guard_transizione'),
+              ('vendite', 'trgfn_contratti_freeze_listino_versione'))
+             AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_listino_versione_operativa\s*\(')
+         OR ((n.nspname, p.proname) IN (
+              ('script',  'fn_check_esclusione_articolo_documento'),
+              ('script',  'trgfn_righe_guard_aggiunta_fuori_listino'),
+              ('vendite', 'fn_documento_righe_preview'),
+              ('vendite', 'fn_offerta_righe_espanse'))
+             AND regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_documento_listino_operativo\s*\(')),
+    10,
+    '13) i consumatori chiedono la versione alla sede unica: due direttamente, quattro dalla regola sui valori, quattro dal risolutore delle righe');
 
 SELECT * FROM finish();
 ROLLBACK;

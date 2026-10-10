@@ -1,0 +1,86 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ULTIMO BILLING ACCOUNT DI UN'ISTANZA NON SI CANCELLA DA SOLO
+#   NASCE anagrafiche.trgfn_billing_account_require_istanza_ha_ba
+#   + constraint trigger trg_billing_account_z90_require_istanza_ha_ba_dlt
+#     (AFTER DELETE, DEFERRABLE INITIALLY DEFERRED).
+#   Brief: brief-db-istanza-nasce-col-ba (R-1, §6.2)
+#
+# -- PERCHE' --------------------------------------------------------
+#   Il constraint trigger dell'istanza guarda solo la NASCITA (AFTER INSERT su
+#   istanze_utilities); la regola di Tid del 2026-10-08 dice «sempre». Su
+#   billing_account non c'era nessun guard sul DELETE (solo lo storico): si
+#   poteva cancellare l'ultimo BA e lasciare l'istanza sola. Stesso guard
+#   della nascita, anagrafiche.fn_guard_istanza_ha_ba (20261008-55).
+#
+# -- PERCHE' AL COMMIT ----------------------------------------------
+#   Cancellare l'istanza INTERA, BA compresi, nella stessa transazione resta
+#   lecito: al COMMIT l'istanza non c'e' piu' e il guard non ha niente da
+#   presidiare. Un trigger immediato rifiuterebbe il primo DELETE del BA.
+#
+# -- LE ALTRE PORTE -------------------------------------------------
+#   Lo spostamento del BA (UPDATE di istanza_utility_id o utility_id) e'
+#   chiuso dal lock di colonna generato da automation_lock_columns
+#   (E_BA_ISTANZA_IMMUTABILE): niente ramo UPDATE qui.
+#
+# Ritorno indietro: DROP del trigger e della funzione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261008-57-create-trigger-billing-account-require-istanza-ha-ba-mctit.yaml
+
+  - changeSet:
+      id: 20261008-57-create-trigger-billing-account-require-istanza-ha-ba
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Constraint trigger al COMMIT sulla cancellazione di un billing account: l'istanza che
+        resta deve avere ancora un BA (anagrafiche.fn_guard_istanza_ha_ba, E_ISTANZA_SENZA_BA).
+        Brief: brief-db-istanza-nasce-col-ba (R-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_billing_account_require_istanza_ha_ba()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                -- Al COMMIT: se l'istanza del BA cancellato esiste ancora,
+                -- deve avere un altro billing account. Istanza cancellata
+                -- nella stessa transazione: il guard non ha niente da dire.
+                PERFORM anagrafiche.fn_guard_istanza_ha_ba(OLD.istanza_utility_id);
+                RETURN NULL;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_billing_account_require_istanza_ha_ba()
+              IS 'Constraint trigger function (AFTER DELETE DEFERRABLE INITIALLY DEFERRED su anagrafiche.billing_account): al COMMIT l''istanza del billing account cancellato, se esiste ancora, deve avere un altro BA. Delega ad anagrafiche.fn_guard_istanza_ha_ba (E_ISTANZA_SENZA_BA), lo stesso guard della nascita dell''istanza. Al COMMIT e non subito, perche'' cancellare l''istanza intera insieme ai suoi BA resta lecito. Brief: brief-db-istanza-nasce-col-ba (R-1).';
+
+              CREATE CONSTRAINT TRIGGER trg_billing_account_z90_require_istanza_ha_ba_dlt
+                AFTER DELETE ON anagrafiche.billing_account
+                DEFERRABLE INITIALLY DEFERRED
+                FOR EACH ROW
+                EXECUTE FUNCTION anagrafiche.trgfn_billing_account_require_istanza_ha_ba();
+
+              COMMENT ON TRIGGER trg_billing_account_z90_require_istanza_ha_ba_dlt
+                ON anagrafiche.billing_account
+              IS 'Al COMMIT: l''ultimo billing account di un''istanza che resta non si cancella (E_ISTANZA_SENZA_BA). Gemello della nascita: trg_istanze_utilities_z90_require_utility_dichiarata_ins. Brief: brief-db-istanza-nasce-col-ba (R-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_billing_account_z90_require_istanza_ha_ba_dlt ON anagrafiche.billing_account;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_billing_account_require_istanza_ha_ba();

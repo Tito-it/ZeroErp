@@ -16,9 +16,7 @@ import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApiHandler } from '../../core/composables/useApiHandler'
 import { useFormInline } from '../../core/composables/useFormInline'
-import { useDrawerContentReady } from '../../core/composables/useDrawerContentReady'
-import { useDrawerClose } from '../../core/composables/useDrawerClose'
-import { useDrawerFormPreserve, gestoreVisibile } from '../../core/composables/useDrawerFormPreserve'
+import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPreserve'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
 import { useInjectReadonly } from '../../core/composables/useReadonlyMode'
 import { useListaConfigurabilePage } from '../../core/composables/useListaConfigurabilePage'
@@ -36,17 +34,16 @@ import {
 import ComponentiDialog from '../_shared/componenti/ComponentiDialog.vue'
 import { useArticoloUomOptions } from '../../catalogo/composables/useArticoloUomOptions'
 import { useListiniRigheStore } from '../stores/listiniRighe'
-import { MANAGE_ICONS } from '../../core/constants'
+import { DRAWER_WIDTH, MANAGE_ICONS } from '../../core/constants'
 import ArticoloLookup from '../../catalogo/components/ArticoloLookup.vue'
 import AttivoTag from '../../core/components/AttivoTag.vue'
 import ListaConfigStatusTag from '../../core/components/ListaConfigStatusTag.vue'
 import ListaConfigurabile from '../../core/components/ListaConfigurabile.vue'
 import PageActionsBar from '../../core/components/PageActionsBar.vue'
 import RowActionsMenu from '../../core/components/RowActionsMenu.vue'
-import DrawerTitle from '../../core/components/DrawerTitle.vue'
+import AppDrawer from '../../core/components/AppDrawer.vue'
 import FormFooter from '../../core/components/FormFooter.vue'
 import ApplicaVariazioneDialog from './ApplicaVariazioneDialog.vue'
-import Drawer from 'primevue/drawer'
 import Tag from 'primevue/tag'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
@@ -68,10 +65,6 @@ const props = defineProps({
   versione: { type: Object, required: true }
 })
 
-// Contenuto deferito a fine animazione: senza, i figli pesanti si montano
-// durante lo slide-in e il drawer «rimbalza» (`feedback_content_ready_after_show`).
-// ⛔ Il reset alla chiusura lo fa il composable: NON aggiungerlo nel watch.
-const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 const emit = defineEmits(['update:visible'])
 
 // Scaffolding lista configurabile: search/sort/page + azioni pagina standard
@@ -111,7 +104,6 @@ const {
     defaultSortOrder: 'asc',
   },
 })
-const DRAWER_WIDTH_RIGHE_LISTINO = '1000px'
 
 // Stato master-detail inline
 // formMode: null (nessun form visibile), 'create', 'edit' — la macchina e' il
@@ -119,8 +111,12 @@ const DRAWER_WIDTH_RIGHE_LISTINO = '1000px'
 // che ci aggiungono il form del prezzo. Il click apre la modifica solo in
 // BOZZA (getter letto al click: `isBozza` e' dichiarata piu' sotto).
 const {
-  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, azioneNuovaRiga,
-} = useFormInline({ puoModificare: () => isBozza.value })
+  formMode, formAperto, rigaInModifica, nuovaRiga, apriRiga, chiudiForm, ancoraForm, azioneNuovaRiga,
+} = useFormInline({
+  puoModificare: () => isBozza.value,
+  // D-8: cambiare riga col form modificato chiede (il getter e' letto al clic).
+  confermaCambio: (p) => inline.chiudiConConferma(p),
+})
 const form = ref({})
 // Modifiche non salvate del form inline: conferma alla chiusura del drawer e
 // all'Annulla del form, scritta arancio nel titolo.
@@ -196,33 +192,46 @@ function onNew() {
 //        Composito → ComponentiDialog (i prezzi vivono in
 //        `listini_righe_componenti`); standalone in BOZZA → form edit inline;
 //        versioni non BOZZA → sola lettura, nessun form.
+// ⚠️ Il composito NON passa da `apriRiga` (non ha un form inline: i suoi
+//    prezzi si danno nel dialog), quindi la conferma di D-8 la chiede qui
+//    (2026-10-03, rilievo di Tid in collaudo): il dialog e' un'altra riga, e
+//    con il form di quella aperta e modificato lo si lasciava sotto, con le
+//    modifiche in sospeso, senza chiedere. Dopo il si' il form si chiude — si
+//    e' lasciata quella riga —, come quando nel form si sceglie un composito.
 function onRowClick(r) {
   if (r?.is_composito) {
-    openBundleDialog({
+    const apriBundle = () => openBundleDialog({
       id: r.articolo_id,
       codice: r.articolo_codice,
       descrizione: r.articolo_descrizione,
       is_composito: true,
     })
+    if (!formAperto.value) {
+      apriBundle()
+      return
+    }
+    inline.chiudiConConferma(() => {
+      closeForm()
+      apriBundle()
+    })
     return
   }
-  apriRiga(r)
-  // Fuori da BOZZA il BB non apre: sola lettura, nessun form.
-  if (!formAperto.value) return
-  form.value = {
-    articolo_id: r.articolo_id,
-    articolo_obj: {
-      id: r.articolo_id,
-      codice: r.articolo_codice,
-      descrizione: r.articolo_descrizione,
-      _display: `${r.articolo_codice} — ${r.articolo_descrizione}`,
-    },
-    uom_id: r.uom_id,
-    prezzo: r.prezzo != null ? Number(r.prezzo) : null,
-  }
-  inline.fissa()
-  // Edit: UoM gia' nel form, no autopick.
-  loadUomPerArticolo(r.articolo_id)
+  apriRiga(r, () => {
+    form.value = {
+      articolo_id: r.articolo_id,
+      articolo_obj: {
+        id: r.articolo_id,
+        codice: r.articolo_codice,
+        descrizione: r.articolo_descrizione,
+        _display: `${r.articolo_codice} — ${r.articolo_descrizione}`,
+      },
+      uom_id: r.uom_id,
+      prezzo: r.prezzo != null ? Number(r.prezzo) : null,
+    }
+    inline.fissa()
+    // Edit: UoM gia' nel form, no autopick.
+    loadUomPerArticolo(r.articolo_id)
+  })
 }
 
 function onArticoloSelected(item) {
@@ -448,164 +457,166 @@ function onVariazioneApplied() {
   store.fetchList()
 }
 
-const onClose = useDrawerClose(emit)
-// Chiusure per volonta' dell'utente: con il form inline modificato chiedono conferma.
-const chiudi = () => inline.chiudiConConferma(onClose)
 const annullaForm = () => inline.chiudiConConferma(closeForm)
-const suVisibile = gestoreVisibile(emit, chiudi)
 </script>
 
 <template>
-  <Drawer :visible="visible" @update:visible="suVisibile"
-    position="right" :style="{ width: DRAWER_WIDTH_RIGHE_LISTINO }" :dismissable="!hasChildOpen"
-    @after-show="onAfterShow"
+  <!-- Il chrome e' di AppDrawer dal 2026-10-03
+       (work-done/analisi-fe-chrome-drawer.md). -->
+  <!-- ⚠️ Fino al 2026-10-03 la larghezza era `'1000px'`, scritta a mano e fuori
+       dalla scala (analisi-fe-chrome-drawer §4 D-4). Dal modello e' il caso di
+       `WIDE_PLUS`: master-detail con la sotto-tabella dei componenti BoM in
+       expansion. -->
+  <AppDrawer
+    :visible="visible"
+    :title="t('vendite.listini.tab_righe')"
+    :icon="MANAGE_ICONS.RIGHE"
+    :width="DRAWER_WIDTH.WIDE_PLUS"
+    :dismissable="!hasChildOpen"
+    :modificato="modificato"
+    :conferma-uscita="inline.chiudiConConferma"
+    :footer="formMode ? 'nessuno' : 'chiudi'"
+    @update:visible="(v) => emit('update:visible', v)"
   >
-    <template #header>
-      <DrawerTitle :title="t('vendite.listini.tab_righe')" :icon="MANAGE_ICONS.RIGHE" :modificato="modificato" />
-    </template>
 
-    <div v-if="contentReady" class="app-drawer-content" :class="{ 'app-readonly': isReadonly }">
-
-      <!-- === Intestazione contesto versione === -->
-      <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: end;">
-        <div class="form-grid-3col">
-          <div class="form-field">
-            <label>{{ t('vendite.listini.field_codice') }}</label>
-            <span>{{ listinoCodice || '—' }}</span>
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.listini.field_descrizione') }}</label>
-            <span>{{ listinoDescrizione || '—' }}</span>
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.listini.versione') }}</label>
-            <span>{{ versione?.codice_versione || `#${versione?.id}` }}</span>
-          </div>
+    <!-- === Intestazione contesto versione === -->
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: end;">
+      <div class="form-grid-3col">
+        <div class="form-field">
+          <label>{{ t('vendite.listini.field_codice') }}</label>
+          <span>{{ listinoCodice || '—' }}</span>
         </div>
         <div class="form-field">
-          <label>{{ t('vendite.listini.col_stato') }}</label>
-          <Tag :value="statoVersioneVisibile(versione)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(versione))" />
+          <label>{{ t('vendite.listini.field_descrizione') }}</label>
+          <span>{{ listinoDescrizione || '—' }}</span>
+        </div>
+        <div class="form-field">
+          <label>{{ t('vendite.listini.versione') }}</label>
+          <span>{{ versione?.codice_versione || `#${versione?.id}` }}</span>
         </div>
       </div>
-      <div class="form-grid-2col">
-        <div class="form-field">
-          <label>{{ t('vendite.listini.field_valido_dal') }}</label>
-          <span>{{ displayDate(versione?.valido_dal) }}</span>
-        </div>
-        <div class="form-field">
-          <label>{{ t('vendite.listini.field_valido_al') }}</label>
-          <span>{{ displayDate(versione?.valido_al) || '—' }}</span>
-        </div>
+      <div class="form-field">
+        <label>{{ t('vendite.listini.col_stato') }}</label>
+        <Tag :value="statoVersioneVisibile(versione)" :severity="statoVersioneListinoSeverity(statoVersioneVisibile(versione))" />
       </div>
-
-      <!-- === MASTER: toolbar + lista configurabile (server-side lazy) === -->
-      <div class="app-page-toolbar">
-        <FiltriLista :store="store" :inert="perimetroBloccato">
-          <template #sempre>
-            <InputText v-model="searchText" class="app-filter-w-lg"
-              :placeholder="t('vendite.listini.righe_cerca_articolo')" />
-          </template>
-        </FiltriLista>
-        <PageActionsBar :actions="pageActions">
-          <template #suffix>
-            <ListaConfigStatusTag :dirty="dirty" />
-          </template>
-        </PageActionsBar>
+    </div>
+    <div class="form-grid-2col">
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_valido_dal') }}</label>
+        <span>{{ displayDate(versione?.valido_dal) }}</span>
       </div>
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_valido_al') }}</label>
+        <span>{{ displayDate(versione?.valido_al) || '—' }}</span>
+      </div>
+    </div>
 
-      <!-- Lista unificata (UNION BE): righe standalone + compositi nello
-           stesso flusso paginato. Distinzione visiva via Tag "Composito" +
-           colonne adattive (UoM/prezzo vuoti sui compositi, badge N
-           componenti al posto del prezzo). Click riga discrimina: composito
-           apre `ComponentiDialog`, standalone apre form edit inline. -->
-      <ListaConfigurabile
-        ref="listaRef"
-        codice="vendite.listini_righe"
-        data-key="row_key"
-        :rows="store.items"
-        :total="store.totalRecords"
-        :loading="store.loading"
-        :paginator-options="paginatorProps"
-        :page="tablePage"
-        :sort-field="paginatorProps.sortField"
-        :sort-order="paginatorProps.sortOrder"
-        @page="onPage"
-        @sort="onSort"
-        @row-click="onRowClick"
-        @config-loaded="onConfigLoaded"
-      >
-        <template #cell-articolo_codice="{ data }">
-          <span>{{ data.articolo_codice }}</span>
-          <Tag v-if="data.is_composito"
-            :value="t('vendite.listini.tag_composito')"
-            severity="info"
-            style="margin-left: 0.4rem; font-size: 0.7rem;" />
+    <!-- === MASTER: toolbar + lista configurabile (server-side lazy) === -->
+    <div class="app-page-toolbar">
+      <FiltriLista :store="store" :inert="perimetroBloccato">
+        <template #sempre>
+          <InputText v-model="searchText" class="app-filter-w-lg"
+            :placeholder="t('vendite.listini.righe_cerca_articolo')" />
         </template>
-        <template #cell-uom="{ data }">
-          {{ data.uom_codice || '—' }}
+      </FiltriLista>
+      <PageActionsBar :actions="pageActions">
+        <template #suffix>
+          <ListaConfigStatusTag :dirty="dirty" />
         </template>
-        <template #cell-prezzo="{ data }">
-          <span v-if="data.is_composito" style="color: var(--app-text-muted); font-style: italic;">
-            {{ t('vendite.listini.composito_n_componenti', { n: data.n_componenti_bundle }) }}
-          </span>
-          <span v-else>{{ formatPrezzoListino(data.prezzo) }}</span>
-        </template>
-        <template #cell-iva_aliquota="{ data }">
-          {{ formatIvaLabel(data) }}
-        </template>
-        <template #cell-attivo="{ data }">
-          <AttivoTag :active="data.attivo" />
-        </template>
+      </PageActionsBar>
+    </div>
 
-        <template #actions="{ data }">
-          <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
-        </template>
-      </ListaConfigurabile>
-
-      <!-- === DETAIL: form inserimento/modifica (inline, sotto la tabella) === -->
-      <template v-if="formMode">
-        <div class="app-drawer-section">
-          <h4>{{ formTitle }}</h4>
-        </div>
-
-        <div class="form-field">
-          <label>{{ t('vendite.listini.field_articolo') }} *</label>
-          <ArticoloLookup
-            v-model="form.articolo_obj"
-            @update:modelValue="onArticoloSelected"
-            :disabled="formMode === 'edit'"
-            :filtri="{ soloComponenti: 'escludi', compositi: 'qualsiasi' }"
-          />
-        </div>
-
-        <div class="form-grid-2col">
-          <div class="form-field">
-            <label>{{ t('vendite.listini.field_uom') }} *</label>
-            <Select v-model="form.uom_id"
-              :options="uomOptions"
-              option-value="uom_id"
-              :option-label="uomLabel"
-              :placeholder="form.articolo_id ? t('catalogo.select_uom') : t('vendite.listini.uom_select_articolo_first')"
-              :disabled="!form.articolo_id || uomLoading"
-              :loading="uomLoading"
-              :empty-message="t('vendite.listini.uom_no_operative')"
-              :invalid="campiErrati.includes('uom_id')"
-            />
-          </div>
-          <div class="form-field">
-            <label>{{ t('vendite.listini.field_prezzo') }} *</label>
-            <InputNumber v-model="form.prezzo"
-              :minFractionDigits="2" :maxFractionDigits="10"
-              :invalid="campiErrati.includes('prezzo')"
-            />
-          </div>
-        </div>
-
-        <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="annullaForm" />
+    <!-- Lista unificata (UNION BE): righe standalone + compositi nello
+         stesso flusso paginato. Distinzione visiva via Tag "Composito" +
+         colonne adattive (UoM/prezzo vuoti sui compositi, badge N
+         componenti al posto del prezzo). Click riga discrimina: composito
+         apre `ComponentiDialog`, standalone apre form edit inline. -->
+    <ListaConfigurabile
+      ref="listaRef"
+      codice="vendite.listini_righe"
+      data-key="row_key"
+      :riga-attiva="rigaInModifica?.row_key ?? null"
+      :rows="store.items"
+      :total="store.totalRecords"
+      :loading="store.loading"
+      :paginator-options="paginatorProps"
+      :page="tablePage"
+      :sort-field="paginatorProps.sortField"
+      :sort-order="paginatorProps.sortOrder"
+      @page="onPage"
+      @sort="onSort"
+      @row-click="onRowClick"
+      @config-loaded="onConfigLoaded"
+    >
+      <template #cell-articolo_codice="{ data }">
+        <span>{{ data.articolo_codice }}</span>
+        <Tag v-if="data.is_composito"
+          :value="t('vendite.listini.tag_composito')"
+          severity="info"
+          style="margin-left: 0.4rem; font-size: 0.7rem;" />
+      </template>
+      <template #cell-uom="{ data }">
+        {{ data.uom_codice || '—' }}
+      </template>
+      <template #cell-prezzo="{ data }">
+        <span v-if="data.is_composito" style="color: var(--app-text-muted); font-style: italic;">
+          {{ t('vendite.listini.composito_n_componenti', { n: data.n_componenti_bundle }) }}
+        </span>
+        <span v-else>{{ formatPrezzoListino(data.prezzo) }}</span>
+      </template>
+      <template #cell-iva_aliquota="{ data }">
+        {{ formatIvaLabel(data) }}
+      </template>
+      <template #cell-attivo="{ data }">
+        <AttivoTag :active="data.attivo" />
       </template>
 
-      <FormFooter v-if="!formMode" close-only @cancel="chiudi" />
-    </div>
+      <template #actions="{ data }">
+        <RowActionsMenu :row="data" :actions="buildRigaActions(data)" />
+      </template>
+    </ListaConfigurabile>
+
+    <!-- === DETAIL: form inserimento/modifica (inline, sotto la tabella) === -->
+    <template v-if="formMode">
+      <div :ref="ancoraForm" class="app-drawer-section">
+        <h4>{{ formTitle }}</h4>
+      </div>
+
+      <div class="form-field">
+        <label>{{ t('vendite.listini.field_articolo') }} *</label>
+        <ArticoloLookup
+          v-model="form.articolo_obj"
+          @update:modelValue="onArticoloSelected"
+          :disabled="formMode === 'edit'"
+          :filtri="{ soloComponenti: 'escludi', compositi: 'qualsiasi' }"
+        />
+      </div>
+
+      <div class="form-grid-2col">
+        <div class="form-field">
+          <label>{{ t('vendite.listini.field_uom') }} *</label>
+          <Select v-model="form.uom_id"
+            :options="uomOptions"
+            option-value="uom_id"
+            :option-label="uomLabel"
+            :placeholder="form.articolo_id ? t('catalogo.select_uom') : t('vendite.listini.uom_select_articolo_first')"
+            :disabled="!form.articolo_id || uomLoading"
+            :loading="uomLoading"
+            :empty-message="t('vendite.listini.uom_no_operative')"
+            :invalid="campiErrati.includes('uom_id')"
+          />
+        </div>
+        <div class="form-field">
+          <label>{{ t('vendite.listini.field_prezzo') }} *</label>
+          <InputNumber v-model="form.prezzo"
+            :minFractionDigits="2" :maxFractionDigits="10"
+            :invalid="campiErrati.includes('prezzo')"
+          />
+        </div>
+      </div>
+
+      <FormFooter :loading="loading" :disabled="!canSave" @save="onSave" @cancel="annullaForm" />
+    </template>
 
     <ApplicaVariazioneDialog
       :visible="showVariazioneDialog"
@@ -633,5 +644,5 @@ const suVisibile = gestoreVisibile(emit, chiudi)
       i18n-prefix="vendite.componenti.bundle"
       @confirm="onBundleConfirm"
     />
-  </Drawer>
+  </AppDrawer>
 </template>

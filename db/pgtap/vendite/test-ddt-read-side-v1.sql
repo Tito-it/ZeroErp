@@ -17,7 +17,8 @@
 -- 10) fn_available_actions_ddt DRAFT: can_edit_testata=true, stato_codice=DRAFT
 -- 11) emissione DRAFT->EMESSO consentita
 -- 12) fn_available_actions_ddt EMESSO: spedisci presente, emetti assente
--- 13) fn_available_actions_ddt EMESSO: can_edit_testata=false
+-- 13) fn_available_actions_ddt EMESSO: can_edit_testata=true (trasporto, tracciamento, note), ma
+--     identita', causale e cliente fra i non modificabili (rev 2026-10-10, D-0/D-10)
 -- 14) vw_ddt_lista: numero valorizzato dopo EMESSO
 -- 15) fn_available_actions_ddt su DDT inesistente -> NULL
 -- 16) nessun arco MANUALE attivo punta a RESO (regola blindata sulla matrice)
@@ -76,7 +77,13 @@ SELECT
   (SELECT ba.id FROM anagrafiche.billing_account ba
     WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
     ORDER BY ba.id LIMIT 1)                       AS billing_account_id,
-  (SELECT sr.id FROM anagrafiche.soggetti_ruoli sr ORDER BY sr.id LIMIT 1) AS soggetto_ruolo_id,
+  -- rev 2026-10-09 (brief-db-esecutivi-ba-coppia, D-4/D-5): il ruolo del cliente
+  --   e' quello del BA scelto qui (prima: il primo ruolo del database,
+  --   scollegato dal BA; le FK composte verso il BA lo rifiutano).
+  (SELECT b_sr.soggetto_ruolo_id FROM anagrafiche.billing_account b_sr
+    WHERE b_sr.id = (SELECT ba.id FROM anagrafiche.billing_account ba
+    WHERE ba.utility_id IS NOT NULL AND ba.istanza_utility_id IS NOT NULL
+    ORDER BY ba.id LIMIT 1)) AS soggetto_ruolo_id,
   (SELECT a.id FROM catalogo.articoli a
     WHERE a.attivo IS TRUE AND COALESCE(a.is_composito,FALSE) IS FALSE
     ORDER BY a.data_insert DESC NULLS LAST LIMIT 1) AS articolo_id,
@@ -85,6 +92,8 @@ SELECT
   (SELECT ef.id FROM anagrafiche.emittenti_fiscali ef ORDER BY ef.id LIMIT 1) AS emittente_fiscale_id,
   (SELECT s.id FROM config.stati_doc_ordini s
     WHERE s.codice_interno='CONFERMATO' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_conf_id,
+  (SELECT s.id FROM config.stati_doc_ordini s
+    WHERE s.codice_interno='DRAFT' AND s.attivo IS TRUE LIMIT 1) AS stato_ord_draft_id,
   (SELECT s.id FROM config.stati_doc_ddt s
     WHERE s.codice_interno='EMESSO' AND s.attivo IS TRUE LIMIT 1) AS stato_ddt_emesso_id,
   (SELECT ct.id FROM config.causali_trasporto ct
@@ -103,7 +112,7 @@ WITH ins AS (
   INSERT INTO vendite.ordini (
     soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
     valuta_id, data, fatturazione_trigger, emittente_fiscale_id, storicizza, meta)
-  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_conf_id,
+  SELECT r.soggetto_ruolo_id, r.billing_account_id, r.stato_ord_draft_id,
          r.valuta_id, DATE '2026-07-01', 'SPEDITO', r.emittente_fiscale_id, false,
          jsonb_build_object('test_scope','pgtap_ddt_readside')
   FROM tmp_refs r
@@ -117,6 +126,13 @@ SELECT o.id, 1, r.articolo_id, 'Riga read-side',
        10.000000, 10.000000, 25.000000, r.iva_id, true, false,
        jsonb_build_object('test_scope','pgtap_ddt_readside')
 FROM tmp_ord o, tmp_refs r;
+
+-- ⚠️ rev 2026-10-08 (brief-db-righe-e-componenti-debiti-residui, D-1): la testata nasce DRAFT,
+-- prende le righe, poi passa a CONFERMATO con dbops.fn_pgtap_porta_a_stato — fuori bozza le
+-- righe non si scrivono piu' (20261008-90).
+DO $x$ BEGIN
+  PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', (SELECT id FROM tmp_ord), 'CONFERMATO');
+END $x$;
 
 CREATE TEMP TABLE tmp_ddt AS
 SELECT vendite.fn_genera_ddt_da_ordine((SELECT id FROM tmp_ord)) AS ddt_id;
@@ -197,9 +213,18 @@ SELECT ok(
      FROM tmp_act_emesso),
   '12) fn_available_actions_ddt EMESSO: spedisci presente, emetti assente'
 );
+-- ⚠️ rev 2026-10-10 (brief-db-testata-dopo-emissione, fase 2, D-0/D-10): fino
+--   a quel giorno il test pretendeva can_edit_testata = false su una bolla
+--   emessa. Ora la capability legge la testata dal montaggio del lock: in
+--   EMESSO trasporto, tracciamento e note si cambiano ancora, quindi la
+--   testata e' modificabile; che la bolla non si RISCRIVA lo dice
+--   non_editable_fields, e lo si prova qui.
 SELECT ok(
-  (SELECT (a->>'can_edit_testata')::boolean IS FALSE FROM tmp_act_emesso),
-  '13) fn_available_actions_ddt EMESSO: can_edit_testata=false'
+  (SELECT (a->>'can_edit_testata')::boolean IS TRUE
+      AND (a->'non_editable_fields') @> '["data","valuta_id","causale_trasporto_id","billing_account_id","numero"]'::jsonb
+      AND NOT ((a->'non_editable_fields') @> '["tracking_code"]'::jsonb)
+     FROM tmp_act_emesso),
+  '13) fn_available_actions_ddt EMESSO: testata modificabile (tracciamento, trasporto, note), data, valuta, causale, cliente e numero fermi'
 );
 SELECT ok(
   (SELECT numero IS NOT NULL AND btrim(numero) <> ''

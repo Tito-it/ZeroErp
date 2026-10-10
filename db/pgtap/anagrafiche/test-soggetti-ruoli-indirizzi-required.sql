@@ -86,11 +86,11 @@ WHERE m.obbligatorio = TRUE
   AND m.attivo = TRUE
   AND (
     m.valido_dal IS NULL
-    OR m.valido_dal <= current_date
+    OR m.valido_dal <= script.fn_data_operativa()
   )
   AND (
     m.valido_al IS NULL
-    OR m.valido_al >= current_date
+    OR m.valido_al >= script.fn_data_operativa()
   )
 ORDER BY m.tipo_ruolo_id,
   m.tipo_indirizzo_id
@@ -156,6 +156,7 @@ WITH ins AS (
       codice,
       cognome,
       nome,
+      sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
       stato_id,
       tipo_soggetto_dettaglio_id,
       codice_fiscale,
@@ -165,15 +166,18 @@ WITH ins AS (
   SELECT 'TST-RUOLO-IND-ERR',
     'Test',
     'Ruolo ERR',
+    'M',
     (
       SELECT stato_id
       FROM tmp_stato_test
     ),
+    -- Rev 2026-10-09: la natura per NOME (era «il primo id», cioe' PR per
+    --   caso): dal sesso in poi la natura decide cosa la riga deve portare.
+    --   brief-db-sesso-senza-default.
     (
       SELECT id
       FROM config.tipi_soggetto_dettaglio
-      ORDER BY id
-      LIMIT 1
+      WHERE codice_interno = 'PR'
     ),
     'QMMTPK69T01G127B',
     TRUE,
@@ -216,8 +220,8 @@ FROM tmp_soggetto_ruolo_err s
   JOIN tmp_indirizzo_dettaglio_test d ON TRUE
 WHERE m.obbligatorio = TRUE
   AND m.attivo = TRUE
-  AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-  AND (m.valido_al IS NULL OR m.valido_al >= current_date);
+  AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+  AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa());
 
 SELECT lives_ok(
     $$
@@ -256,6 +260,7 @@ WITH ins AS (
       codice,
       cognome,
       nome,
+      sesso,   -- un privato: obbligatorio (sesso_policy REQUIRED)
       stato_id,
       tipo_soggetto_dettaglio_id,
       codice_fiscale,
@@ -265,15 +270,18 @@ WITH ins AS (
   SELECT 'TST-RUOLO-IND-OK',
     'Test',
     'Ruolo OK',
+    'M',
     (
       SELECT stato_id
       FROM tmp_stato_test
     ),
+    -- Rev 2026-10-09: la natura per NOME (era «il primo id», cioe' PR per
+    --   caso): dal sesso in poi la natura decide cosa la riga deve portare.
+    --   brief-db-sesso-senza-default.
     (
       SELECT id
       FROM config.tipi_soggetto_dettaglio
-      ORDER BY id
-      LIMIT 1
+      WHERE codice_interno = 'PR'
     ),
     'QMMTPK69T01G127B',
     TRUE,
@@ -316,8 +324,8 @@ FROM tmp_soggetto_ruolo_ok s
   JOIN tmp_indirizzo_dettaglio_test d ON TRUE
 WHERE m.obbligatorio = TRUE
   AND m.attivo = TRUE
-  AND (m.valido_dal IS NULL OR m.valido_dal <= current_date)
-  AND (m.valido_al IS NULL OR m.valido_al >= current_date);
+  AND (m.valido_dal IS NULL OR m.valido_dal <= script.fn_data_operativa())
+  AND (m.valido_al IS NULL OR m.valido_al >= script.fn_data_operativa());
 
 WITH ins_role AS (
   INSERT INTO anagrafiche.soggetti_ruoli (soggetto_id, tipo_ruolo_id)

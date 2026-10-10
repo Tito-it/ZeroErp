@@ -232,13 +232,13 @@ SELECT au.id AS auth_user_id
     ON idg.auth_user_id = au.id
    AND idg.ruolo_applicativo = 'OPERATORE'
    AND idg.attivo IS TRUE
-   AND (idg.valido_dal IS NULL OR idg.valido_dal <= CURRENT_DATE)
-   AND (idg.valido_al  IS NULL OR idg.valido_al  >= CURRENT_DATE)
+   AND (idg.valido_dal IS NULL OR idg.valido_dal <= script.fn_data_operativa())
+   AND (idg.valido_al  IS NULL OR idg.valido_al  >= script.fn_data_operativa())
   JOIN anagrafiche.risorse_umane ru
     ON ru.soggetto_ruolo_id = idg.soggetto_ruolo_id
    AND ru.attivo IS TRUE
-   AND (ru.valido_dal IS NULL OR ru.valido_dal <= CURRENT_DATE)
-   AND (ru.valido_al  IS NULL OR ru.valido_al  >= CURRENT_DATE)
+   AND (ru.valido_dal IS NULL OR ru.valido_dal <= script.fn_data_operativa())
+   AND (ru.valido_al  IS NULL OR ru.valido_al  >= script.fn_data_operativa())
  ORDER BY au.id
  LIMIT 1;
 

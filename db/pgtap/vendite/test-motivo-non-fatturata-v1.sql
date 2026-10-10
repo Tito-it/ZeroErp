@@ -298,8 +298,8 @@ SELECT id AS fattura_id FROM ins;
 CREATE TEMP TABLE tmp_riga_mnf AS
 WITH ins AS (
   INSERT INTO vendite.fatture_righe (fattura_id, riga_nr, descrizione,
-                                     qta, prezzo_unitario, imponibile_riga)
-  SELECT f.fattura_id, 1, 'Riga PGTAP MNF', 1, 10, 10
+                                     qta, prezzo_unitario, imponibile_riga, competenza_dal, competenza_al)
+  SELECT f.fattura_id, 1, 'Riga PGTAP MNF', 1, 10, 10, script.fn_data_operativa(), script.fn_data_operativa()
     FROM tmp_fattura_mnf f
   RETURNING id)
 SELECT id AS riga_id FROM ins;

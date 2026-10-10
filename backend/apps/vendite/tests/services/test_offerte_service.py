@@ -14,7 +14,7 @@ Indice test eseguiti:
 5)  crea_offerta_codice_rifiutato_in_payload          [Step 5]
 6)  crea_offerta_richiede_validita_dal
 7)  crea_offerta_ok_setta_stato_bozza                 [Step 5: no codice]
-8)  aggiorna_offerta_su_emessa_fallisce
+8)  aggiorna_offerta_su_emessa_decide_il_db + aggiorna_offerta_utility_su_emessa_fallisce
 9)  emetti_da_non_bozza_fallisce
 10) registra_accettazione_da_bozza_fallisce
 11) registra_rifiuto_senza_motivazione_fallisce
@@ -253,16 +253,38 @@ class OfferteServiceTests(TestCase):
 
     # --- update / delete con guard stato ------------------------------
 
-    # Scopo: PATCH testata su offerta EMESSA -> 422 (guard stato BOZZA).
+    # Scopo: PATCH testata su offerta EMESSA: quali colonne si cambiano lo
+    #        dice il lock di testata del DB (brief-db-testata-dopo-emissione,
+    #        D-0). Il service non ha piu' un «solo in BOZZA» e passa la scrittura.
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_aggiorna_offerta_su_emessa_fallisce(self, repo_cls):
+    def test_aggiorna_offerta_su_emessa_decide_il_db(self, repo_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSA"
+        OfferteService().aggiorna_offerta(1, {"meta": {"nota": "x"}})
+        repo.update_offerta.assert_called_once()
+        repo.get_available_actions.assert_called()  # il dettaglio di ritorno
+
+    # Scopo: il satellite utility non ha un lock a DB: il cancello e' la
+    #        capability `can_edit_utility`, LETTA (non riscritta). Spenta ->
+    #        400 e nessuna scrittura, nemmeno della testata.
+    @patch("apps.vendite.services.offerte_service.OfferteRepository")
+    def test_aggiorna_offerta_utility_su_emessa_fallisce(self, repo_cls):
+        from apps.vendite.services.offerte_service import OfferteService
+
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSA"
+        repo.get_available_actions.return_value = {
+            "can_edit_utility": False, "stato_codice": "EMESSA",
+        }
         with self.assertRaises(ServiceError) as cm:
-            OfferteService().aggiorna_offerta(1, {"validita_al": "2026-12-31"})
+            OfferteService().aggiorna_offerta(
+                1, {"meta": {"nota": "x"}, "utility": {"param_2_txt": "y"}},
+            )
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
+        repo.update_offerta.assert_not_called()
+        repo.update_utility.assert_not_called()
 
     # --- transizioni di stato -----------------------------------------
 
@@ -379,12 +401,13 @@ class OfferteServiceTests(TestCase):
 
     # --- happy path -----------------------------------------------------
 
-    # Scopo: emetti BOZZA -> EMESSA: pre-step fissa listino_versione_id
-    #        (ATTIVA del listino oggi) + chiama update_stato con id risolto.
+    # Scopo: emetti BOZZA -> EMESSA: un solo cambio stato. ⛔ Nessuna
+    #        scrittura di `listino_versione_id` dal service: la congela il guard
+    #        DB nella stessa scrittura (brief-db-offerta-emissione-ed-erogazione
+    #        A-R1). Fino al 2026-10-07 il service la fissava prima, in Python.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.ListiniRepository")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_emetti_ok(self, repo_cls, listini_repo_cls, _atomic):
+    def test_emetti_ok(self, repo_cls, _atomic):
         from apps.vendite.services.offerte_service import OfferteService
 
         _atomic.return_value.__enter__ = MagicMock()
@@ -395,38 +418,11 @@ class OfferteServiceTests(TestCase):
         repo.get_offerta.return_value = _make_offerta_dict("EMESSA")
         repo.list_eccezioni.return_value = []
         repo.get_utility.return_value = None
-        # Pre-step "freeze at emission": il listino ha una versione ATTIVA
-        # (id 77) oggi. Il service la persiste su listino_versione_id.
-        listini_repo_cls.return_value.get_versione_attiva_alla_data.return_value = 77
 
         OfferteService().emetti(1)
 
-        repo.update_offerta.assert_called_once_with(1, {"listino_versione_id": 77})
-        repo.update_stato.assert_called_once_with(1, 2, motivazione_rifiuto=None)
-
-    # Scopo: emetti su offerta con listino senza versioni ATTIVE oggi ->
-    #        E_VENDITE_VALIDATION parlante prima del trigger DB (nessuna
-    #        chiamata a update_stato), senza dipendere dal P0001 generico
-    #        del trigger.
-    @patch("apps.vendite.services.offerte_service.transaction.atomic")
-    @patch("apps.vendite.services.offerte_service.ListiniRepository")
-    @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_emetti_senza_versione_attiva_listino_fail(
-        self, repo_cls, listini_repo_cls, _atomic,
-    ):
-        from apps.vendite.services.offerte_service import OfferteService
-
-        _atomic.return_value.__enter__ = MagicMock()
-        _atomic.return_value.__exit__ = MagicMock(return_value=False)
-        repo = repo_cls.return_value
-        repo.get_offerta.return_value = _make_offerta_dict("BOZZA")
-        listini_repo_cls.return_value.get_versione_attiva_alla_data.return_value = None
-
-        with self.assertRaises(ServiceError) as cm:
-            OfferteService().emetti(1)
-        self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")
         repo.update_offerta.assert_not_called()
-        repo.update_stato.assert_not_called()
+        repo.update_stato.assert_called_once_with(1, 2, motivazione_rifiuto=None)
 
     # Scopo: registra_accettazione EMESSA -> ACCETTATA, no motivazione.
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
@@ -1323,9 +1319,9 @@ class OfferteGatePrezzoTests(TestCase):
             1,
             {
                 "articolo_id": "00000000-0000-7000-8000-000000000abc",
+                # L'esclusione come la crea «Escludi»: articolo e tipo, niente
+                # dati di fatturazione (2026-10-04). Prima ci voleva la fonte.
                 "tipo_eccezione": "ESCLUSIONE",
-                "fonte_quantita_attesa": "MANUALE",
-                "prezzo_unitario": None,
             },
             auth_user_id=99,
         )
@@ -1476,7 +1472,6 @@ class OfferteScrittureBbTests(TestCase):
             svc.crea_eccezione(1, {
                 "articolo_id": "00000000-0000-7000-8000-000000000abc",
                 "tipo_eccezione": "ESCLUSIONE",
-                "fonte_quantita_attesa": "FISSA",
                 "meta": 42,
             })
         self.assertEqual(cm.exception.code, "E_VENDITE_VALIDATION")

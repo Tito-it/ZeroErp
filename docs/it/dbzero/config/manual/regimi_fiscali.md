@@ -8,6 +8,7 @@ Approfondimento tabelle:
 >
 Approfondimento funzioni:
 > • [script.fn_esigibilita_iva](/dbzero/script/funzioni/fn_esigibilita_iva)
+> • [vendite.fn_annotazioni_fattura](/dbzero/vendite/funzioni/fn_annotazioni_fattura)
 
 ---
 ### 🎯 Scopo Principale
@@ -31,7 +32,7 @@ codice viene da fuori, ciò che il sistema ne fa sta in una colonna.
 |---|---|
 | `codice_interno` | il codice RF del tracciato (`RFnn`, CHECK sulla forma), immutabile: è il valore che l'emittente referenzia e che lo snapshot della fattura congela |
 | `iva_per_cassa` | `true` = le operazioni dell'emittente sono a esigibilità **differita** (art. 32-bis DL 83/2012), salvo le esclusioni della regola. Oggi solo RF17 |
-| `annotazione_documento` | il testo che la fattura deve riportare (per RF17 l'annotazione art. 32-bis). ⚠️ Si stampa solo se il documento ha almeno una riga `D`: una fattura RF17 verso un privato è tutta immediata, e lì l'annotazione sarebbe falsa |
+| `annotazione_documento` | il testo che la fattura deve riportare (per RF17 l'annotazione art. 32-bis). Un regime per cassa lo porta **sempre** (CHECK `chk_regimi_fiscali_per_cassa_annotazione`, `20261002-02`). Lo stampa la voce `ESIGIBILITA_DIFFERITA` di [vendite.fn_annotazioni_fattura](/dbzero/vendite/funzioni/fn_annotazioni_fattura), solo se il documento ha almeno una riga `D`: una fattura RF17 verso un privato è tutta immediata, e lì l'annotazione sarebbe falsa. ⚠️ Un regime **non** per cassa con una dicitura sua (il forfettario) ha bisogno di una voce nuova in quella funzione: qui il testo da solo non si stampa |
 
 ---
 

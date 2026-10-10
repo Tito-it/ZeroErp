@@ -84,7 +84,7 @@ WITH base AS (
     COALESCE(mf.classe, 'ANOMALIA'::character varying) AS classe,
     mf.azione,
     b.data_riferimento,
-    (CURRENT_DATE - b.data_riferimento) AS anzianita_giorni,
+    (( SELECT script.fn_data_operativa() AS fn_data_operativa) - b.data_riferimento) AS anzianita_giorni,
     b.stato_codice_interno,
     b.stato_codice,
     b.fase,

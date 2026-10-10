@@ -30,6 +30,7 @@ import unittest
 from django.db import connection, transaction
 
 from apps.core.tests.db_e2e import (
+    Annulla,
     richiedi_db_provvisto,
     verifica_ricerca_colonna_per_colonna,
 )
@@ -41,10 +42,6 @@ _FIXTURE: tuple[str, ...] = (
     """,
     "SELECT script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _mondo))",
 )
-
-
-class _Annulla(Exception):
-    """Esce dal blocco atomico annullandolo."""
 
 
 # Scopo: costruisce mondo e righe; torna gli id di account, template e log.
@@ -117,8 +114,8 @@ class RicercaEmailDbTests(unittest.TestCase):
                     {"destinatario": "ricdestlog", "oggetto": "ricogglog"},
                     lambda t: EmailRepository().list_logs(search=t, limit=200)[0],
                 )
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass
 
     # 2. Le soglie: da un carattere la configurazione, di default il registro.
@@ -134,6 +131,6 @@ class RicercaEmailDbTests(unittest.TestCase):
                 self.assertEqual(EmailRepository().list_templates(search="§", limit=200)[1], 0)
                 # Il log ignora il termine corto: esce almeno la riga costruita.
                 self.assertGreater(EmailRepository().list_logs(search="§", limit=200)[1], 0)
-                raise _Annulla
-        except _Annulla:
+                raise Annulla
+        except Annulla:
             pass

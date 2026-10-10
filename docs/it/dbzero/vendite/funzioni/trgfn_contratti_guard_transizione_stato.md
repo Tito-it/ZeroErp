@@ -53,10 +53,10 @@ BEGIN
         IF current_setting('app.cessazione_automatica', true) = 'true' THEN
             -- Job notturno (fn_apply_chiusura_scadenze): contratto gia' scaduto.
             v_ammessa := (NEW.valido_al IS NOT NULL
-                          AND NEW.valido_al < CURRENT_DATE);
+                          AND NEW.valido_al < (SELECT script.fn_data_operativa()));
         ELSE
             -- Cessazione manuale: vietata la riscrittura storica.
-            IF NEW.valido_al IS NOT NULL AND NEW.valido_al < CURRENT_DATE THEN
+            IF NEW.valido_al IS NOT NULL AND NEW.valido_al < script.fn_data_operativa() THEN
                 PERFORM script.fn_log_and_raise_error(
                     'database',
                     TG_NAME::text,
@@ -65,11 +65,11 @@ BEGIN
                         'contratto_id', NEW.id,
                         'numero',       NEW.numero,
                         'valido_al',    NEW.valido_al,
-                        'today',        CURRENT_DATE
+                        'today',        (SELECT script.fn_data_operativa())
                     ),
                     NEW.tx_id,
                     NEW.valido_al::text,
-                    CURRENT_DATE::text
+                    (SELECT script.fn_data_operativa())::text
                 );
             END IF;
             v_ammessa := (NEW.valido_al IS NOT NULL);

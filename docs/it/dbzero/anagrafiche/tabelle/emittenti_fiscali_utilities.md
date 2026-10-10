@@ -11,8 +11,8 @@
 | id | bigint | NO |  |
 | emittente_soggetto_ruolo_id | bigint | NO |  |
 | utility_id | bigint | NO |  |
-| minimo_soglia_min | numeric | YES |  |
-| minimo_soglia_max | numeric | YES |  |
+| minimo_soglia_min | numeric(20,8) | YES |  |
+| minimo_soglia_max | numeric(20,8) | YES |  |
 | arrotondamento_importi_dec | smallint | NO |  |
 | metodo_arrotondamento_importi | character varying | NO |  |
 | attivo | boolean | NO | true |
@@ -27,6 +27,8 @@
 |------|------|---------|
 | CHECK | chk_emittenti_fiscali_utilities_arrotondamento_dec |  |
 | CHECK | chk_emittenti_fiscali_utilities_metodo_arrotondamento |  |
+| CHECK | chk_emittenti_fiscali_utilities_minimo_soglia_max_finito |  |
+| CHECK | chk_emittenti_fiscali_utilities_minimo_soglia_min_finito |  |
 | CHECK | chk_emittenti_fiscali_utilities_soglie |  |
 | CHECK | chk_emittenti_fiscali_utilities_soglie_coppia |  |
 | FOREIGN KEY | fk_emittenti_fiscali_utilities_emittente | emittente_soggetto_ruolo_id |

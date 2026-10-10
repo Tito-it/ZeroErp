@@ -74,8 +74,8 @@ BEGIN
     v_s   := dbops.fn_pgtap_crea_articolo('PGT-L3B-SEMPLICE', true,  false, false);
     v_l   := dbops.fn_pgtap_crea_articolo('PGT-L3B-A-LOTTI',  true,  true,  false);
     v_n   := dbops.fn_pgtap_crea_articolo('PGT-L3B-NON-GEST', false, false, false);
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3B-A', CURRENT_DATE - 10) RETURNING id INTO v_la;
-    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3B-B', CURRENT_DATE - 5)  RETURNING id INTO v_lb;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3B-A', script.fn_data_operativa() - 10) RETURNING id INTO v_la;
+    INSERT INTO magazzino.lotti (articolo_id, codice, data_arrivo) VALUES (v_l, 'PGT-L3B-B', script.fn_data_operativa() - 5)  RETURNING id INTO v_lb;
     INSERT INTO _fix
     SELECT v_mag, v_qua, v_s, v_l, v_n, v_la, v_lb,
            (SELECT t.id FROM config.tipi_reso t WHERE t.codice_interno = 'RESO_A_CREDITO'),

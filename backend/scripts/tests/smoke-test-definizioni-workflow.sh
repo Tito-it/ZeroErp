@@ -7,8 +7,9 @@
 #   regole-generazione) → guard negativi (codice duplicato, edizione congelata).
 #
 # Uso:  ./scripts/tests/smoke-test-definizioni-workflow.sh [password]
-#   oppure  SMOKE_TOKEN=<jwt> ./scripts/tests/smoke-test-definizioni-workflow.sh
-# Env:  BASE_URL (def http://127.0.0.1:8000), SMOKE_USER (def tid),
+#   oppure, col login unico: eval "$(./scripts/tests/smoke-login.sh)" e poi lo smoke
+#   (riusa SMOKE_TOKEN finche' vale, `_smoke_auth.sh`).
+# Env:  BASE_URL (def http://127.0.0.1:8000), SMOKE_USER (vedi _smoke_auth.sh),
 #       DEF_ID (BOZZA editabile, def 419), PUB_ID (PUBBLICATA, def 418).
 # Richiede un utente SUPER_ADMIN. Idempotente: codici unici (timestamp) +
 # cleanup finale; sweep best-effort degli step SMOKE_ residui all'avvio.
@@ -16,10 +17,8 @@
 set -uo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
-# Gunicorn diretto in HTTP: ci si dichiara HTTPS come Nginx (redirect di Django).
-source "$(dirname "${BASH_SOURCE[0]}")/_smoke_https.sh"
-USERNAME="${SMOKE_USER:-tid}"
-PASSWORD="${1:-${SMOKE_PASSWORD:-}}"
+# Login degli smoke (HTTPS come Nginx, secondo fattore, refresh, SMOKE_TOKEN): un BB.
+source "$(dirname "${BASH_SOURCE[0]}")/_smoke_auth.sh" "$@"
 DEF_ID="${DEF_ID:-419}"
 PUB_ID="${PUB_ID:-418}"
 TS="$(date +%s)"
@@ -63,18 +62,8 @@ echo "========================================="
 
 # --- 0. Auth ---
 echo ""; echo "-- 0. Autenticazione --"
-if [[ -n "${SMOKE_TOKEN:-}" ]]; then
-    TOKEN="$SMOKE_TOKEN"; log_ok "Token da SMOKE_TOKEN"
-else
-    if [[ -z "$PASSWORD" ]]; then echo -n "Password per '$USERNAME': "; read -rs PASSWORD; echo ""; fi
-    curl -s -w '\n%{http_code}' -H "Content-Type: application/json" \
-        -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\"}" \
-        "${BASE_URL}/api/v1/admin/token/" > "$TMPFILE" 2>/dev/null
-    if [[ "$(tail -1 "$TMPFILE")" != "200" ]]; then echo -e "${RED}Auth fallita${NC}"; sed '$d' "$TMPFILE" | head -c 300; exit 1; fi
-    TOKEN="$(sed '$d' "$TMPFILE" | py "d['access']")"
-    [[ -z "$TOKEN" ]] && { echo -e "${RED}Token assente${NC}"; exit 1; }
-    log_ok "Login JWT"
-fi
+smoke_login
+if [[ "$SMOKE_LOGIN_FONTE" == "SMOKE_TOKEN" ]]; then log_ok "Token da SMOKE_TOKEN"; else log_ok "Login JWT"; fi
 
 D="/api/v1/pratiche/definizioni"
 

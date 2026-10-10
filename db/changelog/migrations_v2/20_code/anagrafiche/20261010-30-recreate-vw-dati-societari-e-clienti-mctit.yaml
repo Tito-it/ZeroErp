@@ -1,0 +1,133 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RICREA LE VISTE DROPPATE DA 20261010-26 (anagrafiche)
+#   Brief: brief-db-character-n-spazi-di-riempimento.md §4 punto 2
+#
+#   vw_dati_societari (sigla e descrizione della provincia REA, destinatario_fe) e le due viste clienti (stato_descrizione da stati_cliente.descrizione_breve), identiche: cambia solo il tipo.
+#
+#   Corpo vivo dal catalogo (pg_get_viewdef con nomi qualificati, letto il
+#   2026-10-10), non dagli YAML del 2026-04-02: la catena e' stata riscritta
+#   piu' volte da allora. Opzioni (security_invoker) e COMMENT riprodotti dal
+#   vivo; GRANT all'applicazione esplicito come nei changeSet sorelle (i
+#   privilegi del ruolo batch li da' il provisioning, §11.6).
+#   Ordine: le radici prima delle foglie. Gira nella stessa corsa del -26.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261010-30-recreate-vw-dati-societari-e-clienti-mctit.yaml
+
+  - changeSet:
+      id: 20261010-30-recreate-vw-dati-societari-e-clienti
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ricrea anagrafiche.vw_dati_societari, anagrafiche.vw_clienti_lista, anagrafiche.vw_clienti_codice_ba dopo la conversione character(n) -> varchar
+        di 20261010-26. Brief: brief-db-character-n-spazi-di-riempimento.md §4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- anagrafiche.vw_dati_societari
+              CREATE VIEW anagrafiche.vw_dati_societari AS
+               SELECT ds.id AS dati_societari_id,
+                  ds.soggetto_id,
+                  s.ragione_sociale_completa,
+                  s.id_fiscale_univoco_cf_piva,
+                  ds.forma_giuridica_id,
+                  fg.codice AS forma_giuridica_codice,
+                  fg.descrizione AS forma_giuridica_descrizione,
+                  ds.id_prov_iscri_rea AS provincia_iscrizione_rea_id,
+                  pr.sigla AS provincia_iscrizione_rea_sigla,
+                  pr.descrizione AS provincia_iscrizione_rea_descrizione,
+                  ds.iscrizione_rea,
+                  ds.capitale_sociale,
+                  ds.socio_unico,
+                  ds.liquidazione,
+                  ds.destinatario_fe,
+                  ds.pec_fatturazione,
+                  ds.codice_sdi,
+                  ds.data_costituzione,
+                  ds.storicizza,
+                  ds.tx_id,
+                  ds.data_insert,
+                  ds.user_insert,
+                  ds.data_update,
+                  ds.user_update
+                 FROM anagrafiche.dati_societari ds
+                   JOIN anagrafiche.soggetti s ON s.id = ds.soggetto_id
+                   LEFT JOIN config.forme_giuridiche fg ON fg.id = ds.forma_giuridica_id
+                   LEFT JOIN config.province pr ON pr.id = ds.id_prov_iscri_rea;
+
+              COMMENT ON VIEW anagrafiche.vw_dati_societari IS
+                'Vista dati societari con decodifiche forma giuridica e provincia, include identificativi tecnici.';
+
+              GRANT SELECT ON anagrafiche.vw_dati_societari TO zeroerp_app;
+
+              -- anagrafiche.vw_clienti_lista
+              CREATE VIEW anagrafiche.vw_clienti_lista WITH (security_invoker = on) AS
+               SELECT cl.id,
+                  cl.soggetto_ruolo_id,
+                  cl.istanza_utility_id,
+                  cl.billing_account_id,
+                  s.id AS soggetto_id,
+                  s.codice AS soggetto_codice,
+                  ba.codice AS ba_codice,
+                  s.ragione_sociale_completa,
+                  s.codice_fiscale,
+                  s.partita_iva,
+                  s.id_fiscale_univoco_cf_piva,
+                  u.id AS utility_id,
+                  u.descrizione AS utility_descrizione,
+                  sc.id AS stato_cliente_id,
+                  sc.codice_interno AS stato_codice_interno,
+                  sc.codice AS stato_codice,
+                  sc.descrizione_breve AS stato_descrizione,
+                  cl.data_attivazione,
+                  cl.data_sospensione,
+                  cl.data_riattivazione,
+                  cl.data_chiusura
+                 FROM anagrafiche.clienti cl
+                   JOIN anagrafiche.istanze_utilities iu ON iu.id = cl.istanza_utility_id
+                   JOIN anagrafiche.soggetti s ON s.id = iu.soggetto_id
+                   JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id
+                   JOIN config.utilities u ON u.id = cl.utility_id
+                   JOIN config.stati_cliente sc ON sc.id = cl.stato_cliente_id;
+
+              COMMENT ON VIEW anagrafiche.vw_clienti_lista IS
+                'Vista flat clienti per la lista UI (anagrafiche.clienti). Espone anagrafica soggetto (incl. id_fiscale_univoco_cf_piva), codice BA, servizio, stato e date del ciclo di vita. stato_codice_interno = codice_interno (logica), stato_codice = codice (display). Sorgente dati per ui.lista_definizione codice=''anagrafiche.clienti''.';
+
+              GRANT SELECT ON anagrafiche.vw_clienti_lista TO zeroerp_app;
+
+              -- anagrafiche.vw_clienti_codice_ba
+              CREATE VIEW anagrafiche.vw_clienti_codice_ba WITH (security_invoker = on) AS
+               SELECT cl.soggetto_ruolo_id,
+                  cl.id,
+                  cl.id AS entita_id,
+                  cl.billing_account_id,
+                  ba.codice,
+                  cl.utility_id,
+                  cl.stato_cliente_id,
+                  sc.codice_interno AS stato_codice_interno,
+                  sc.codice AS stato_codice,
+                  sc.descrizione_breve AS stato_descrizione,
+                  cl.data_attivazione,
+                  cl.data_sospensione,
+                  cl.data_riattivazione,
+                  cl.data_chiusura
+                 FROM anagrafiche.clienti cl
+                   JOIN config.stati_cliente sc ON sc.id = cl.stato_cliente_id
+                   LEFT JOIN anagrafiche.billing_account ba ON ba.id = cl.billing_account_id;
+
+              COMMENT ON VIEW anagrafiche.vw_clienti_codice_ba IS
+                'Vista flat clienti con codice da billing_account, stato e date ciclo vita. Usata per ricerca codice universale (entita_tabella in tipi_ruoli) e come source dati per dettaglio entita'' CL. stato_codice_interno = codice_interno (logica), stato_codice = codice (display).';
+
+              GRANT SELECT ON anagrafiche.vw_clienti_codice_ba TO zeroerp_app;

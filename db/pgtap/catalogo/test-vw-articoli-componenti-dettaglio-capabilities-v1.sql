@@ -8,7 +8,7 @@
 -- Capability esposte:
 --   puo_chiudersi          BOOLEAN  = (valido_al IS NULL)
 --   data_min_chiusura      DATE     = valido_dal      [NULL se non chiudibile]
---   data_default_chiusura  DATE     = GREATEST(valido_dal, CURRENT_DATE)
+--   data_default_chiusura  DATE     = GREATEST(valido_dal, script.fn_data_operativa())
 --                                                    [NULL se non chiudibile]
 --   motivo_non_chiudibile  TEXT     = 'RIGA_GIA_CHIUSA' [NULL se chiudibile]
 --
@@ -83,12 +83,12 @@ CREATE TEMP TABLE _t_righe (scenario text, riga_id uuid);
 -- Riga CHIUSA: BASE/FALLBACK, [oggi-100, oggi-50]
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposto_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
+        esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT art_base, art_fallback, 1, false, true, false, false,
-           (CURRENT_DATE - INTERVAL '100 days')::date,
-           (CURRENT_DATE - INTERVAL '50  days')::date,
+    SELECT art_base, art_fallback, 1, true, 'NASCOSTO',
+           (script.fn_data_operativa() - INTERVAL '100 days')::date,
+           (script.fn_data_operativa() - INTERVAL '50  days')::date,
            true
       FROM _t_bomcap
     RETURNING id
@@ -99,11 +99,11 @@ INSERT INTO _t_righe (scenario, riga_id) SELECT 'chiusa', id FROM ins;
 -- chiusa (oggi-30 > oggi-50).
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposto_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
+        esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT art_base, art_fallback, 1, false, true, false, false,
-           (CURRENT_DATE - INTERVAL '30 days')::date,
+    SELECT art_base, art_fallback, 1, true, 'NASCOSTO',
+           (script.fn_data_operativa() - INTERVAL '30 days')::date,
            NULL,
            true
       FROM _t_bomcap
@@ -115,11 +115,11 @@ INSERT INTO _t_righe (scenario, riga_id) SELECT 'aperta', id FROM ins;
 -- con la riga aperta sullo stesso couple, [oggi+10, +inf).
 WITH ins AS (
     INSERT INTO catalogo.articoli_componenti (
-        prodotto_id, componente_id, coeff_qta, partecipa_qta, obbligatorio,
-        esposto_in_fattura, determina_qta_padre, valido_dal, valido_al, attivo
+        prodotto_id, componente_id, coeff_qta, obbligatorio,
+        esposizione_in_fattura, valido_dal, valido_al, attivo
     )
-    SELECT art_fallback, art_base, 1, false, true, false, false,
-           (CURRENT_DATE + INTERVAL '10 days')::date,
+    SELECT art_fallback, art_base, 1, true, 'NASCOSTO',
+           (script.fn_data_operativa() + INTERVAL '10 days')::date,
            NULL,
            true
       FROM _t_bomcap
@@ -141,14 +141,14 @@ SELECT is(
     (SELECT data_min_chiusura
        FROM catalogo.vw_articoli_componenti_dettaglio
       WHERE id = (SELECT riga_id FROM _t_righe WHERE scenario = 'aperta')),
-    (CURRENT_DATE - INTERVAL '30 days')::date,
+    (script.fn_data_operativa() - INTERVAL '30 days')::date,
     '2) APERTA: data_min_chiusura = valido_dal (oggi-30)'
 );
 SELECT is(
     (SELECT data_default_chiusura
        FROM catalogo.vw_articoli_componenti_dettaglio
       WHERE id = (SELECT riga_id FROM _t_righe WHERE scenario = 'aperta')),
-    CURRENT_DATE,
+    script.fn_data_operativa(),
     '3) APERTA: data_default_chiusura = GREATEST(valido_dal, today) = today'
 );
 SELECT is(
@@ -205,14 +205,14 @@ SELECT is(
     (SELECT data_min_chiusura
        FROM catalogo.vw_articoli_componenti_dettaglio
       WHERE id = (SELECT riga_id FROM _t_righe WHERE scenario = 'futura')),
-    (CURRENT_DATE + INTERVAL '10 days')::date,
+    (script.fn_data_operativa() + INTERVAL '10 days')::date,
     '10) FUTURA: data_min_chiusura = valido_dal (oggi+10)'
 );
 SELECT is(
     (SELECT data_default_chiusura
        FROM catalogo.vw_articoli_componenti_dettaglio
       WHERE id = (SELECT riga_id FROM _t_righe WHERE scenario = 'futura')),
-    (CURRENT_DATE + INTERVAL '10 days')::date,
+    (script.fn_data_operativa() + INTERVAL '10 days')::date,
     '11) FUTURA: data_default_chiusura = GREATEST(valido_dal, today) = valido_dal (futuro)'
 );
 SELECT is(

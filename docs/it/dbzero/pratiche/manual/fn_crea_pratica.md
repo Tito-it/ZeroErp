@@ -63,3 +63,11 @@ I guard sulla pratica **non** sono replicati nella funzione: sono trigger su
 * **`SECURITY INVOKER`**: RLS su `pratiche.pratiche` valutata come dal Python.
 * Stato/priorità di default risolti per `codice_interno` (`APERTA`, `NORMALE`);
   se non configurati ⇒ **`E_CONFIG_MANCANTE`**.
+
+---
+
+### Note di migrazione
+
+* **2026-10-08** (`20261008-67`): parametro `p_billing_account_id` **in coda**, `DEFAULT NULL` — il
+  cliente di cui parla la pratica. La firma vecchia e' stata tolta (un overload avrebbe reso
+  ambigue le chiamate per nome). Brief: brief-db-istanza-nasce-col-ba (R-8, D-9).

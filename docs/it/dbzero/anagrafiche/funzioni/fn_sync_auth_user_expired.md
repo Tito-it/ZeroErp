@@ -15,15 +15,31 @@ AS $function$
 DECLARE
     -- Variabili locali tipizzate %TYPE (policy ZeroErp).
     v_auth_user_id anagrafiche.identita_digitali.auth_user_id%TYPE;
-    v_modified     boolean;
-    v_count        integer := 0;
+    v_modified     boolean;        -- esito di fn_sync_auth_user_is_active: nessuna colonna dietro
+    v_count        integer := 0;   -- un conteggio
 BEGIN
     -- ------------------------------------------------------------
-    -- Funzione: anagrafiche.fn_sync_auth_user_expired (v3, 12-09-2026)
+    -- Funzione: anagrafiche.fn_sync_auth_user_expired (v5, 07-10-2026)
     -- Scopo:
-    --   Batch di disattivazione overnight per utenti con finestra
-    --   temporale scaduta: identita_digitali.valido_al < CURRENT_DATE,
-    --   per tutte le vesti.
+    --   Batch notturno: riallinea auth_user.is_active alla data di
+    --   oggi, nei DUE versi. Una data che arriva non scrive niente e
+    --   non fa scattare trigger, quindi:
+    --     * SPEGNE la credenziale che non ha piu' nessuna veste
+    --       utilizzabile (la veste o il rapporto sono scaduti);
+    --     * ACCENDE la credenziale che ne ha una diventata valida oggi
+    --       (valido_dal arrivato).
+    --   ⭐ v5 (decisione di Tid, 2026-10-07): fino alla v4 il batch
+    --   solo spegneva. Una credenziale con l'unica veste a valido_dal
+    --   futuro nasceva spenta e restava spenta anche il giorno in cui
+    --   la veste diventava valida, finche' qualcuno non scriveva sulla
+    --   veste. Il nome resta (pgAgent, command Django e repository BE
+    --   lo chiamano); il ritorno conta le credenziali riallineate.
+    --   ⭐ v4 (brief-db-veste-utilizzabile): i candidati si scelgono
+    --   con script.fn_veste_utilizzabile, la stessa regola che poi
+    --   decide in fn_sync_auth_user_is_active. Prima il batch
+    --   guardava solo identita_digitali.valido_al: con D-2 l'operatore
+    --   umano scade anche col suo rapporto (risorse_umane.valido_al),
+    --   e quel candidato il batch non lo avrebbe proposto mai.
     --   ⛔ Il «ramo legacy» (risorse_umane.valido_al via la vista
     --   risorse_umane_auth_user) e' caduto: la regola vive in
     --   identita_digitali.valido_al (decisione Tid 12-09-2026), e
@@ -32,7 +48,8 @@ BEGIN
     --
     --   Uso: pgAgent daily job + management command Django.
     --
-    -- Ritorna: numero di utenti effettivamente disattivati.
+    -- Ritorna: numero di credenziali effettivamente riallineate
+    --          (spente o accese).
     -- ------------------------------------------------------------
 
     -- Short-circuit CI: se lo schema django non esiste, no-op.
@@ -40,19 +57,23 @@ BEGIN
         RETURN 0;
     END IF;
 
-    -- Loop sui candidati: auth_user ancora is_active=true con almeno
-    -- un'identita' digitale attiva a finestra scaduta (operatori,
-    -- portale, fornitore, shop, api client).
+    -- Loop sui candidati: credenziali che hanno delle vesti e il cui
+    -- is_active non dice piu' «esiste una veste utilizzabile oggi»
+    -- (la regola che decide in fn_sync_auth_user_is_active), nei due
+    -- versi. Una credenziale senza vesti non e' affare di questo batch.
     FOR v_auth_user_id IN
         EXECUTE '
-            SELECT DISTINCT id.auth_user_id
-              FROM anagrafiche.identita_digitali id
-              JOIN django.auth_user au
-                ON au.id = id.auth_user_id
-             WHERE id.attivo = true
-               AND id.valido_al IS NOT NULL
-               AND id.valido_al < CURRENT_DATE
-               AND au.is_active = true
+            SELECT au.id
+              FROM django.auth_user au
+             WHERE EXISTS (
+                       SELECT 1
+                         FROM anagrafiche.identita_digitali id
+                        WHERE id.auth_user_id = au.id)
+               AND au.is_active IS DISTINCT FROM EXISTS (
+                       SELECT 1
+                         FROM anagrafiche.identita_digitali id
+                        WHERE id.auth_user_id = au.id
+                          AND script.fn_veste_utilizzabile(id.id))
         '
     LOOP
         -- Invoca la nuova firma sync per ciascun candidato.
@@ -72,7 +93,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_sync_auth_user_expired()
-IS 'Batch: disattiva auth_user per finestra temporale scaduta su identita_digitali.valido_al (tutte le vesti). Dal 12-09-2026 senza il ramo legacy via risorse_umane_auth_user: la regola vive in identita_digitali e fn_sync_auth_user_is_active decide solo li''. Invocata da pgAgent daily e management command Django. Ritorna il numero di utenti disattivati.';
+IS 'Batch notturno: riallinea django.auth_user.is_active alla data di oggi nei due versi, perche'' una data che arriva non scrive niente e non fa scattare trigger. Spegne le credenziali che hanno vesti ma nessuna piu'' utilizzabile (veste o rapporto scaduti) e accende quelle che ne hanno una diventata valida oggi; la regola e'' script.fn_veste_utilizzabile, la stessa di fn_sync_auth_user_is_active, che fa l''aggiornamento. Una credenziale senza vesti resta fuori. Invocata da pgAgent daily e dal management command Django. Ritorna il numero di credenziali riallineate (spente o accese). Rev 2026-10-07 (brief-db-veste-utilizzabile): fino alla v4 solo spegneva, e una credenziale con l''unica veste a valido_dal futuro restava spenta anche il giorno in cui la veste diventava valida; il nome resta perche'' pgAgent, command e repository BE lo chiamano.';
 ```
 
 ---

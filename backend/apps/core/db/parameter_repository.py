@@ -41,18 +41,40 @@ _SQL_RESOLVE = """
     )
 """
 
+# ⭐ La stessa cascata, ma SOLO se il parametro e' dichiarato: la chiamata parte
+#    dalla riga di `config.parameters`, e senza riga non c'e' chiamata (nessuna
+#    riga in risposta). `fn_get_parameter_full` su un codice non dichiarato
+#    SOLLEVA `E_ERRORE_PARAMETRI_TABELLA`, ed e' giusto: chi chiede un parametro
+#    obbligatorio deve saperlo. Questa e' la lettura per chi lo dichiara
+#    facoltativo (2026-10-11).
+_SQL_RESOLVE_SE_DICHIARATO = """
+    SELECT script.fn_get_parameter_full(
+        p.code::text,
+        %s::bigint,
+        %s::integer,
+        %s::integer[],
+        %s::text,
+        %s::text,
+        %s::smallint
+    )
+      FROM config.parameters p
+     WHERE p.code = %s::text
+"""
+
 # Limite massimo codici per singola richiesta (difesa contro abuse).
 MAX_CODES = 20
 
 # Le dimensioni di scope di `config.parameter_overrides`, in UN posto solo.
-# ⭐ Un override gestito da qui e' «di livello puro»: la sua dimensione
-#    valorizzata, TUTTE le altre NULL — in scrittura e in cancellazione. Il
-#    NULL di ogni dimensione si DERIVA da questa tupla, non si elenca a mano.
-# ⛔ Fino al 2026-09-28 ogni metodo aveva il suo elenco, e divergevano: gli
-#    upsert utente ed emittente non azzeravano `categoria_cliente_id`, e la
-#    delete emittente guardava solo utente e gruppo (F-5 dell'analisi difetti
-#    doc API core). Il modello non vieta le righe miste (l'unicita' e' su
-#    tutte le dimensioni insieme): il perimetro lo tiene questo modulo.
+# ⭐ Un override vale per UN ambito: la sua dimensione valorizzata, tutte le
+#    altre NULL. Dal 2026-10-07 lo dice il DB (`chk_parameter_overrides_un_ambito`,
+#    `num_nonnulls(...) = 1`, decisione di Tid: le righe miste non esistono), e
+#    l'unicita' sull'ambito e' vera (`uq_overrides_full_scope_v5`, NULLS NOT
+#    DISTINCT). Qui la tupla resta solo come elenco delle colonne ammesse come
+#    scope: i filtri «le altre dimensioni IS NULL» sarebbero una copia del CHECK
+#    (la stessa pulizia del 20261007-73 sulla lista).
+# ⛔ Fino al 2026-09-28 ogni metodo aveva il suo elenco, e divergevano (F-5
+#    dell'analisi difetti doc API core); fino al 2026-10-07 il perimetro «puro»
+#    lo teneva questo modulo, perche' il modello ammetteva le righe miste.
 _DIMENSIONI_OVERRIDE: tuple[str, ...] = (
     "django_user_id",
     "django_group_id",
@@ -63,15 +85,13 @@ _DIMENSIONI_OVERRIDE: tuple[str, ...] = (
 )
 
 
-# Scopo: Il frammento «tutte le altre dimensioni sono NULL» per uno scope.
-#        `scope_col` viene dai chiamanti di questo modulo (mai input utente):
-#        una colonna fuori tupla e' un errore di programmazione.
-def _altre_dimensioni_nulle(scope_col: str, alias: str = "") -> str:
+# Scopo: La colonna di scope, verificata. `scope_col` viene dai chiamanti di
+#        questo modulo (mai input utente) e finisce nella SQL per nome: una
+#        colonna fuori tupla e' un errore di programmazione.
+def _colonna_di_scope(scope_col: str) -> str:
     if scope_col not in _DIMENSIONI_OVERRIDE:
         raise ValueError(f"Dimensione di override sconosciuta: {scope_col!r}")
-    return "".join(
-        f"   AND {alias}{c} IS NULL\n" for c in _DIMENSIONI_OVERRIDE if c != scope_col
-    )
+    return scope_col
 
 
 class ParameterRepository:
@@ -101,9 +121,57 @@ class ParameterRepository:
             return None
         return row[0]
 
+    # Scopo: Il valore di DEFAULT di un parametro (`config.parameters.default_value`),
+    #        senza la cascata di override. None se il parametro non esiste o
+    #        il default e' NULL.
+    # ⭐ Per i limiti uguali per tutti (decisione del team DB, es. D-1 di
+    #    brief-db-parametro-data-minima-ritardo-dashboard): la cascata farebbe
+    #    valere un override che il modello non prevede. Stessa scelta di
+    #    `script.fn_data_operativa` su SYSTEM_FUSO_ORARIO.
+    def get_default_value(self, code: str) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT default_value FROM config.parameters WHERE code = %s",
+                [code],
+            )
+            row = cursor.fetchone()
+        return row[0] if row else None
+
+    # Scopo: Come `get_parameter`, per un parametro FACOLTATIVO: None se il
+    #        codice non e' dichiarato in `config.parameters` (o se il valore
+    #        risolto e' NULL), invece di `E_ERRORE_PARAMETRI_TABELLA`.
+    # ⭐ BB (regola del 2, ok Tid 2026-10-11): `get_parameters` e il default di
+    #    natura del risolutore per ruolo (`SoggettiRepository.get_config_resolver`).
+    #    Tutti e due dichiaravano «non trovato = escluso / None» e leggevano con la
+    #    funzione che SOLLEVA: un ruolo senza `DEFAULT_TIPO_SOGGETTO_DETTAGLIO_<ruolo>`
+    #    (il seed lo da' a CL e FO) mandava in errore il risolutore.
+    # ⛔ Non per un parametro che il modello pretende: li' l'errore e' il
+    #    contratto, e si usa `get_parameter`.
+    def get_parameter_se_dichiarato(
+        self,
+        code: str,
+        django_user_id: int | None = None,
+        group_ids: list[int] | None = None,
+        emittente_fiscale_id: int | None = None,
+        session_key: str | None = None,
+        function_name: str | None = None,
+        categoria_cliente_id: int | None = None,
+    ) -> str | None:
+        with connection.cursor() as cursor:
+            cursor.execute(_SQL_RESOLVE_SE_DICHIARATO, [
+                emittente_fiscale_id, django_user_id,
+                group_ids, session_key, function_name,
+                categoria_cliente_id, code,
+            ])
+            row = cursor.fetchone()
+        return row[0] if row else None
+
     # Scopo: Risolve N parametri in un'unica sessione DB.
     #        Restituisce un dizionario {code: valore_risolto}.
-    #        I codici non trovati vengono esclusi dal risultato.
+    #        I codici non dichiarati (e quelli che risolvono a NULL) vengono
+    #        esclusi dal risultato: lettura FACOLTATIVA, BB
+    #        `get_parameter_se_dichiarato`. Fino al 2026-10-11 un codice non
+    #        dichiarato faceva fallire l'intera richiesta.
     def get_parameters(
         self,
         codes: list[str],
@@ -114,18 +182,15 @@ class ParameterRepository:
     ) -> dict[str, str]:
         if not codes:
             return {}
-        safe_codes = codes[:MAX_CODES]
         results: dict[str, str] = {}
-        with connection.cursor() as cursor:
-            for code in safe_codes:
-                cursor.execute(_SQL_RESOLVE, [
-                    code, emittente_fiscale_id, django_user_id,
-                    group_ids, None, None,
-                    categoria_cliente_id,
-                ])
-                row = cursor.fetchone()
-                if row and row[0] is not None:
-                    results[code] = row[0]
+        for code in codes[:MAX_CODES]:
+            valore = self.get_parameter_se_dichiarato(
+                code, django_user_id=django_user_id, group_ids=group_ids,
+                emittente_fiscale_id=emittente_fiscale_id,
+                categoria_cliente_id=categoria_cliente_id,
+            )
+            if valore is not None:
+                results[code] = valore
         return results
 
     # Scopo: Restituisce la lista completa dei parametri con i valori risolti
@@ -162,78 +227,62 @@ class ParameterRepository:
             )
             return rows_to_list(cursor)
 
-    # Scopo: CTE-based upsert generico per config.parameter_overrides. Il classico
-    #        ON CONFLICT ON CONSTRAINT non funziona: PostgreSQL tratta NULL != NULL
-    #        nei UNIQUE constraint con colonne scope nullable, quindi serve il match
-    #        esplicito IS NULL sulle dimensioni non usate (derivate da
-    #        `_DIMENSIONI_OVERRIDE`). `scope_col` e' un nome colonna HARDCODED
-    #        dai chiamanti (nessun input utente).
-    #        Ritorna l'id dell'override, o None se il parametro NON ESISTE.
-    # ⭐ Il parametro si risolve UNA volta (`param`), e se manca la query non
-    #    produce righe: il chiamante lo dice col suo codice. Fino al 2026-09-28
+    # Scopo: Upsert generico di un override su config.parameter_overrides, sul
+    #        vincolo che identifica l'ambito (`uq_overrides_full_scope_v5`, NULLS
+    #        NOT DISTINCT: le dimensioni non scritte valgono NULL e collidono fra
+    #        loro). Ritorna l'id dell'override, o None se il parametro NON ESISTE.
+    # ⭐ Atomico: due upsert concorrenti sullo stesso ambito si serializzano sul
+    #    vincolo e il secondo aggiorna. Fino al 2026-10-07 era una CTE
+    #    SELECT-poi-INSERT col match IS NULL a mano, perche' il v4 (NULLS
+    #    DISTINCT) non scattava su nessuna riga reale: due richieste concorrenti
+    #    creavano un doppione, e la cascata ne sceglieva uno a caso. Col v5 la
+    #    CTE avrebbe risposto `23505`; `ON CONFLICT` non risponde affatto.
+    # ⭐ Il parametro si risolve nella SELECT dell'INSERT: se manca non nasce
+    #    nessuna riga e il chiamante lo dice col suo codice. Fino al 2026-09-28
     #    la sottoquery dava `parameter_id` NULL e l'INSERT violava il NOT NULL,
     #    cioe' un `E_DATABASE` al posto di «parametro non trovato» (E-9).
     # ⭐ L'UPDATE riattiva la riga (`attivo = true`, ok Tid 2026-09-28).
-    #    `target` non guarda `attivo` e non puo' (l'unicita' non lo comprende:
-    #    una seconda riga attiva accanto a quella spenta non si inserisce),
-    #    mentre risoluzione e lista leggono solo `attivo = true`. Prima un
+    #    L'unicita' non comprende `attivo`: una riga spenta occupa il suo
+    #    ambito, e risoluzione e lista leggono solo `attivo = true`. Prima un
     #    upsert su una riga spenta (o NULL) rispondeva con l'id e non aveva
     #    effetto: override invisibile e inerte. Impostare un override vuol
     #    dire volerlo in vigore.
-    def _upsert_override_cte(
+    def _upsert_override(
         self,
         parameter_code: str,
         scope_col: str,
         scope_value: int,
         value: str,
     ) -> int | None:
-        null_clause = _altre_dimensioni_nulle(scope_col, alias="po.")
+        colonna = _colonna_di_scope(scope_col)
         sql = f"""
-            WITH param AS (
-                SELECT id FROM config.parameters WHERE code = %s
-            ),
-            target AS (
-                SELECT po.id FROM config.parameter_overrides po
-                  JOIN param p ON p.id = po.parameter_id
-                 WHERE po.{scope_col} = %s
-{null_clause}            ),
-            updated AS (
-                UPDATE config.parameter_overrides po
-                   SET overridden_value = %s, attivo = true, data_update = now()
-                  FROM target t
-                 WHERE po.id = t.id
-                RETURNING po.id
-            ),
-            inserted AS (
-                INSERT INTO config.parameter_overrides
-                       (parameter_id, {scope_col}, overridden_value)
-                SELECT p.id, %s, %s
-                  FROM param p
-                 WHERE NOT EXISTS (SELECT 1 FROM target)
-                RETURNING id
-            )
-            SELECT id FROM updated
-            UNION ALL
-            SELECT id FROM inserted
+            INSERT INTO config.parameter_overrides
+                   (parameter_id, {colonna}, overridden_value)
+            SELECT p.id, %s, %s
+              FROM config.parameters p
+             WHERE p.code = %s
+            ON CONFLICT ON CONSTRAINT uq_overrides_full_scope_v5 DO UPDATE
+               SET overridden_value = EXCLUDED.overridden_value,
+                   attivo = true,
+                   data_update = now()
+            RETURNING id
         """  # noqa: S608
         with connection.cursor() as cursor:
-            cursor.execute(sql, [
-                parameter_code, scope_value, value, scope_value, value,
-            ])
+            cursor.execute(sql, [scope_value, value, parameter_code])
             row = cursor.fetchone()
         return row[0] if row else None
 
-    # Scopo: DELETE di un override di livello puro: l'id, il suo scope, e
-    #        tutte le altre dimensioni NULL. Stesso perimetro dell'upsert.
-    def _delete_override_puro(
+    # Scopo: DELETE di un override del suo ambito: l'id e il suo scope. Che le
+    #        altre dimensioni siano NULL lo garantisce il CHECK del DB.
+    def _delete_override(
         self, override_id: int, scope_col: str, scope_value: int,
     ) -> bool:
-        null_clause = _altre_dimensioni_nulle(scope_col)
+        colonna = _colonna_di_scope(scope_col)
         sql = f"""
             DELETE FROM config.parameter_overrides
              WHERE id = %s
-               AND {scope_col} = %s
-{null_clause}        """  # noqa: S608
+               AND {colonna} = %s
+        """  # noqa: S608
         with connection.cursor() as cursor:
             cursor.execute(sql, [override_id, scope_value])
             return cursor.rowcount > 0
@@ -247,18 +296,18 @@ class ParameterRepository:
         django_user_id: int,
         value: str,
     ) -> int | None:
-        return self._upsert_override_cte(
+        return self._upsert_override(
             parameter_code, "django_user_id", django_user_id, value,
         )
 
-    # Scopo: Rimuove un override personale dell'utente (di livello puro:
-    #        l'override deve essere dell'utente e di nessun'altra dimensione).
+    # Scopo: Rimuove un override personale dell'utente (l'override deve
+    #        essere dell'utente).
     def delete_user_override(
         self,
         override_id: int,
         django_user_id: int,
     ) -> bool:
-        return self._delete_override_puro(override_id, "django_user_id", django_user_id)
+        return self._delete_override(override_id, "django_user_id", django_user_id)
 
     # Scopo: Crea o aggiorna un override a livello emittente per un parametro.
     #        Vale per tutti gli utenti dell'emittente, salvo override di
@@ -269,17 +318,17 @@ class ParameterRepository:
         emittente_fiscale_id: int,
         value: str,
     ) -> int | None:
-        return self._upsert_override_cte(
+        return self._upsert_override(
             parameter_code, "emittente_fiscale_id", emittente_fiscale_id, value,
         )
 
-    # Scopo: Rimuove un override a livello emittente (di livello puro).
+    # Scopo: Rimuove un override a livello emittente.
     def delete_emittente_override(
         self,
         override_id: int,
         emittente_fiscale_id: int,
     ) -> bool:
-        return self._delete_override_puro(
+        return self._delete_override(
             override_id, "emittente_fiscale_id", emittente_fiscale_id,
         )
 
@@ -295,17 +344,17 @@ class ParameterRepository:
         categoria_cliente_id: int,
         value: str,
     ) -> int | None:
-        return self._upsert_override_cte(
+        return self._upsert_override(
             parameter_code, "categoria_cliente_id", categoria_cliente_id, value,
         )
 
-    # Scopo: Rimuove un override a livello categoria_cliente (di livello puro).
+    # Scopo: Rimuove un override a livello categoria_cliente.
     def delete_categoria_cliente_override(
         self,
         override_id: int,
         categoria_cliente_id: int,
     ) -> bool:
-        return self._delete_override_puro(
+        return self._delete_override(
             override_id, "categoria_cliente_id", categoria_cliente_id,
         )
 

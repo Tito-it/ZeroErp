@@ -23,7 +23,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from apps.core.api.base_views import DomainAPIView
-from apps.core.api.endpoint_helpers import get_scope_user_id, handle_post_json
+from apps.core.api.endpoint_helpers import get_actor_user_id, get_scope_user_id, handle_post_json
 from apps.core.api.payload_validators import (
     corpo_oggetto,
     paginated_envelope,
@@ -356,7 +356,7 @@ class ApiDdtRighe(DomainAPIView):
     )
     # Scopo: Aggiunge una riga (solo DRAFT). Pricing via BB condiviso.
     def post(self, request: Request, ddt_id: int) -> JsonResponse:
-        auth_user_id = get_scope_user_id(request)
+        auth_user_id = get_actor_user_id(request)
         return handle_post_json(
             request,
             handler=lambda payload: ddt_service.gestisci_riga(
@@ -380,7 +380,7 @@ class ApiDdtRigaDetail(DomainAPIView):
         return success_response(
             ddt_service.aggiorna_riga(
                 int(ddt_id), int(riga_id), dict(corpo_oggetto(request)),
-                auth_user_id=get_scope_user_id(request),
+                auth_user_id=get_actor_user_id(request),
             ),
         )
 
@@ -496,9 +496,9 @@ _DdtRigheLista, _DdtRigheListaExport = build_lista_figlia_views(
 
 # ⭐ Il cancello di perimetro come LETTERALE nel corpo della classe: e' la
 #    forma che `test_perimetro_emittente_copertura` legge (vedi la factory).
-class ApiDdtRigheListaView(_DdtRigheLista):
+class ApiDdtRigheListaView(_DdtRigheLista):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.ddt_righe"
 
 
-class ApiDdtRigheListaExportView(_DdtRigheListaExport):
+class ApiDdtRigheListaExportView(_DdtRigheListaExport):  # type: ignore[valid-type, misc]  # base costruita da una fabbrica
     lista_codice = "vendite.ddt_righe"
