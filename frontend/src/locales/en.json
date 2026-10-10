@@ -3903,7 +3903,6 @@
       "push_commessa_reason": {
         "non_accettato": "Project integration will be available once the quote is accepted.",
         "nessuna_riga": "No line to push to a job.",
-        "senza_billing_account": "The customer is missing: set it to push to a job.",
         "stato_chiuso": "The quote is closed: it no longer feeds the job order."
       },
       "genera_ordine_reason": {

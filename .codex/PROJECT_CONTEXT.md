@@ -317,7 +317,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   ordinabili (`test_search_ordinamento_db`).
 - ✅ **L'istanza nasce col billing account, sempre: chiuso il 2026-10-10** (`work-done/brief-db-istanza-nasce-col-ba.md`,
   D10-bis): DB `20261008-50…-76`, BE/FE il 2026-10-08 (§7: la pratica sceglie la fornitura, cioe' il BA — D-10).
-  Collaudo del preventivo superato; quello delle pratiche e i debiti ancora aperti sono in § «Aperto — Media priorità».
+  Collaudo del preventivo superato; quello delle pratiche è in § «Aperto — Media priorità».
+- ✅ **I residui di «l'istanza nasce col billing account»: chiuso il 2026-10-10**
+  (`work-done/brief-db-istanza-nasce-col-ba-residui.md`, D25): via `script.fn_get_billing_account_by_istanza` e il
+  motivo `PREVENTIVO_SENZA_BILLING_ACCOUNT` coi suoi due filtri gemelli (residuo commessa, lista del push); liste del
+  push senza il filtro inutile sul BA, lo stato assente ferma invece di aprire; ritirato `uq_gestori_singleton`;
+  lo spostamento dell'azienda predefinita non dipende più da chi lo fa (BB `script.fn_get_ba_emittente_sr_id_installazione`).
+  DB `20261010-50…-59`, pgTAP verdi anche su `zeroerp_ci`; FE la chiave tolta dai locales, BE una riga di doc.
 - ✅ **La data minima del filtro «ritardo» delle dashboard: chiuso il 2026-10-10**
   (`work-done/brief-db-parametro-data-minima-ritardo-dashboard.md`): parametro `VENDITE_DASHBOARD_RITARDO_DATA_MINIMA`,
   un solo controllo nel BE per le due dashboard, collaudo di Tid superato.
@@ -325,9 +331,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-done/brief-db-esecutivi-ba-coppia.md`, D21): l'ordine ha sempre il BA, il DDT lo vuole all'emissione
   se la causale manda merce a un cliente, il reso ha quello del suo DDT; utility e ruolo legati al BA, un solo
   BA lungo la catena, BA/destinatario/emittente fermi dopo la bozza. DB `20261009-62…-92` e `20261010-02…-07`,
-  BE/FE §12. Collaudo a video dei form di DDT e ordine da fare (Tid). Ciò che la chiusura ha trovato è D25 (sotto).
+  BE/FE §12. Collaudo a video dei form di DDT e ordine da fare (Tid). Ciò che la chiusura ha trovato è D27 (sotto).
 - 📝 **Gli indirizzi del documento seguono il cliente**
-  (`work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md`, D25, 2026-10-10): su DDT, preventivo
+  (`work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md`, D27, 2026-10-10): su DDT, preventivo
   e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
   e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
   nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. Al team DB, codice da scrivere.
@@ -337,7 +343,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   e' **D24** del registro DB (`migliorie-generali-da-test-valutazione.md`): la vista del presidio C2 non vede i BB
   trigger col codice in `TG_ARGV`, e il BE tiene un'esenzione su `E_DOC_EMITTENTE_BA_INCOERENTE` finche' non la vede.
 - 📝 **Il documento dopo la bozza: che cosa si cambia ancora** (`work-in-progress/brief-db-testata-dopo-emissione.md`,
-  D23, 2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
+  D26, 2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
   Colonne divise in famiglie (identità, stampato, arriva dopo, note, condizioni commerciali). Decisioni chiuse
   il 2026-10-10: decide il DB, il BE toglie i suoi «solo in DRAFT»; documento chiuso = tutto fermo (D-8).
   **Fase 1 (§5-bis), da fare per prima e consegnabile da sola:** il lettore del montaggio e la capability della
@@ -367,14 +373,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   - ⏭️ **collaudo a video delle pratiche** (§7.4): la tendina della fornitura (una riga per fornitura, con la
     utility), nessun campo fornitura su chi non è cliente, offerta e contratto col cliente ereditato dalla
     pratica. Rimandato da Tid: si fa alla ripresa del cantiere pratiche;
-  - ✅ **il resolver per istanza e il motivo «senza billing account»**: passati il 2026-10-10 a
-    `work-in-progress/brief-db-istanza-nasce-col-ba-residui.md` (D25 del registro DB). **Lato DB chiuso il
-    2026-10-10**, applicato da Tid e pgTAP verdi (`20261010-50…-59`: via `script.fn_get_billing_account_by_istanza`, via il ramo
-    `PREVENTIVO_SENZA_BILLING_ACCOUNT` e i suoi due filtri gemelli nel residuo commessa e nella lista del push),
-    resta la richiesta al FE: la chiave `vendite.preventivi.push_commessa_reason.senza_billing_account` esce dai
-    locales (R-FE-1), più una riga di doc BE (R-BE-1). Dal §5 fatti D-1…D-5 (liste del push: via il filtro inutile sul BA, lo stato assente ferma invece di
-    aprire; ritirato `uq_gestori_singleton`; pgTAP dello spostamento dell'azienda predefinita; quello spostamento
-    non dipende più da chi lo fa — BB nuovo `script.fn_get_ba_emittente_sr_id_installazione`).
+  - ✅ **il resolver per istanza e il motivo «senza billing account»**: chiusi e archiviati il 2026-10-10
+    (`work-done/brief-db-istanza-nasce-col-ba-residui.md`, D25; voce in § «Altri cantieri aperti»).
 - **La coerenza tra codice fiscale e sesso ha una sede sola, e parziale** (DB + BE, ereditata il 2026-10-10
   dalla chiusura di `work-done/brief-db-sesso-senza-default.md`, D5, rimandata da Tid il 2026-10-09): la
   controlla solo `SoggettiService._valida_cf_congruenza`, e solo nella **creazione** di una persona fisica.

@@ -3903,7 +3903,6 @@
       "push_commessa_reason": {
         "non_accettato": "L'integrazione con la commessa sara' disponibile dopo l'accettazione del preventivo.",
         "nessuna_riga": "Nessuna riga da inviare a commessa.",
-        "senza_billing_account": "Manca il cliente: impostalo per inviare a commessa.",
         "stato_chiuso": "Il preventivo è chiuso: non genera più smistamenti verso la commessa."
       },
       "genera_ordine_reason": {

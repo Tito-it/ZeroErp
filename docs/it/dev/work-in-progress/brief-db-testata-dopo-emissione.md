@@ -26,7 +26,7 @@
 > il resto del giro. Poi la fase 2: le colonne decise nel montaggio del BB fuori bozza di ogni
 > documento, un codice per famiglia, la forma per stato (§5); infine il BE toglie i suoi «solo in
 > DRAFT» (§7).
-> **Nel registro dei difetti DB:** voce **D23** di `migliorie-generali-da-test-valutazione.md`, che
+> **Nel registro dei difetti DB:** voce **D26** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
 ## 1. La domanda

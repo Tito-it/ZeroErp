@@ -515,9 +515,16 @@ errore.
 > `brief-db-istanza-nasce-col-ba` (2026-10-09). **D23** dal giro R-6 di
 > `brief-db-codici-non-trovato-email-e-permessi` (2026-10-10). **D24** dal giro BE
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
-> alla sua chiusura (2026-10-10).
+> alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
+> **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
+> (2026-10-09/10).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D23, D24, D25.
+> ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
+> numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
+> residui dell'istanza col BA); le due arrivate dopo sono diventate D26 (testata dopo l'emissione,
+> era D23) e D27 (indirizzi del documento, era D25). Brief e PROJECT_CONTEXT allineati lo stesso giorno.
+>
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D27.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -919,7 +926,7 @@ dalla stessa data), con un commento sul perché.
   valutare dopo il censimento: senza sapere quali regole sono temporali, il
   presidio sarebbe una ricerca testuale, cioè il criterio sbagliato.
 
-### 🟡 D23 — La testata dopo l'emissione: la regola completa sta solo nel backend
+### 🟡 D26 — La testata dopo l'emissione: la regola completa sta solo nel backend
 
 Trovato il 2026-10-09 (§8 e §10.3 di `brief-db-esecutivi-ba-coppia`): quali colonne di testata si
 cambiano dopo l'emissione lo dice per intero solo il backend («testata modificabile solo in DRAFT» su
@@ -974,22 +981,6 @@ per conto suo: per la vista quel sito non esiste.
   come la classe del codice in `trgfn_doc_guard_emittente_ba`).
 * **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
   di ritiro del presidio) e il BE la toglie.
-
-### 🟡 D25 — I residui di «l'istanza nasce col billing account»
-
-Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`: il resolver
-`script.fn_get_billing_account_by_istanza`, che il backend non chiama più, e il motivo
-`PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo, irraggiungibile perché BA e
-utility del preventivo sono `NOT NULL`. La stessa «testata incompleta» era scritta anche come filtro
-nel residuo commessa e nella lista del push.
-
-Dettaglio nel brief
-[brief-db-istanza-nasce-col-ba-residui.md](brief-db-istanza-nasce-col-ba-residui.md). 🔧 DB scritto e
-✅ lato DB chiuso il 2026-10-10 (`20261010-50…-59` applicati da Tid, pgTAP verdi); restano la chiave
-nei locales (FE) e una riga di doc (BE). Del §5 del brief sono fatte tutte: D-1 (via il filtro tautologico sul BA da ordini e contratti), D-2 (lo stato
-assente dal catalogo ferma le liste del push invece di aprirle), D-3 (ritirato
-`uq_gestori_singleton`), D-4 (il pgTAP dello spostamento dell'azienda predefinita) e D-5 (quello
-spostamento non dipende più da chi lo fa: i guard chiedono l'azienda dei BA per l'installazione).
 
 ---
 
@@ -1186,7 +1177,7 @@ D6 e il registro dei rossi in CI.
       contratto e offerta: chiusa il 2026-10-08 (§7).
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
-* [ ] **D23** — la testata dopo l'emissione, colonna per colonna: brief
+* [ ] **D26** — la testata dopo l'emissione, colonna per colonna: brief
       `brief-db-testata-dopo-emissione` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere;
       fase 1 = la capability della data di consegna confermata, brief assorbito lo stesso giorno).
 * [x] **D22** — il guard emittente <-> BA scritto sette volte: brief
@@ -1199,7 +1190,9 @@ D6 e il registro dei rossi in CI.
 * [x] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
       `work-done/brief-db-esecutivi-ba-coppia` — chiuso e archiviato il 2026-10-10 (DB `20261009-62…-92` e
       `20261010-02…-07`, BE/FE §12).
-* [ ] **D25** — gli indirizzi del documento seguono il cliente: brief
+* [x] **D25** — i residui di «l'istanza nasce col billing account»: brief
+      `work-done/brief-db-istanza-nasce-col-ba-residui` — chiuso e archiviato il 2026-10-10 (DB `20261010-50…-59`, FE/BE §4).
+* [ ] **D27** — gli indirizzi del documento seguono il cliente: brief
       `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
 
 ---
@@ -1599,7 +1592,7 @@ catena che potevano avere clienti diversi. Che cosa è cambiato nel sistema:
 
 Dettaglio nel brief
 [brief-db-esecutivi-ba-coppia.md](../work-done/brief-db-esecutivi-ba-coppia.md) (archiviato il
-2026-10-10). Ciò che la chiusura ha trovato è **D25**; il debito fuori perimetro è D22 (chiusa) e D23.
+2026-10-10). Ciò che la chiusura ha trovato è **D27**; il debito fuori perimetro è D22 (chiusa) e D26.
 
 ### ✅ D22 — L'emittente del documento e' quello del cliente: una regola, una sede — chiusa il 2026-10-10
 
@@ -1617,6 +1610,25 @@ significato, frasi che mostravano nomi di colonna all'utente e il log senza la t
 Dettaglio nel brief
 [brief-db-guard-emittente-ba-unico.md](../work-done/brief-db-guard-emittente-ba-unico.md) (archiviato
 il 2026-10-10). Ciò che la chiusura ha trovato è **D24**.
+
+### ✅ D25 — I residui di «l'istanza nasce col billing account» — chiusa il 2026-10-10
+
+Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`. Che cosa è
+cambiato nel sistema:
+* via il resolver `script.fn_get_billing_account_by_istanza`: il cliente lo dice il documento o la
+  pratica, non l'istanza;
+* via il motivo `PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo e i suoi due filtri
+  gemelli (residuo commessa, lista del push): BA e utility del preventivo sono `NOT NULL`. Lato FE
+  tolta la chiave dai locales;
+* liste del push di ordini e contratti senza il filtro inutile sul BA; lo stato di partenza assente
+  dal catalogo solleva `E_CODICE` invece di far cadere il filtro (D-2);
+* ritirato `uq_gestori_singleton`, che ripeteva la chiave primaria;
+* lo spostamento dell'azienda predefinita non dipende più da chi lo fa: i guard chiedono l'azienda dei
+  BA per l'installazione (BB `script.fn_get_ba_emittente_sr_id_installazione`), con il suo pgTAP.
+
+Dettaglio nel brief
+[brief-db-istanza-nasce-col-ba-residui.md](../work-done/brief-db-istanza-nasce-col-ba-residui.md)
+(archiviato il 2026-10-10; DB `20261010-50…-59`, pgTAP verdi anche su `zeroerp_ci`).
 
 ### ✅ D20 — Righe e componenti: tre debiti rimasti dalla chiusura di D19 — chiusa il 2026-10-09
 
