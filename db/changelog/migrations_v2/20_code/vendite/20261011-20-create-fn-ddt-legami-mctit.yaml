@@ -1,0 +1,98 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I LEGAMI DI UNA BOLLA, RIGA PER RIGA
+#   vendite.fn_ddt_legami(p_ddt_id) -> (ddt_riga_id, riga_nr, origine, origine_riga_id, qta)
+#   Brief: brief-db-annullo-documento-con-legami (§3; D-8 di brief-db-ddt-righe-evase-dall-ordine)
+#
+# -- CHE COSA RISPONDE --------------------------------------------------
+#   «Quali quantita', riga per riga, tornano all'origine se annullo questa
+#   bolla?». Una riga per legame: ORDINE (vendite.ordini_righe_fulfillment,
+#   origine_riga_id = riga d'ordine, qta = qta_evasa) o RESO
+#   (vendite.resi_righe_riconsegne, origine_riga_id = riga di reso, qta = qta
+#   del ponte). La ri-consegna legata a un ordine ha due righe.
+#
+# -- I TRE LETTORI --------------------------------------------------------
+#   * il guard di transizione (20261011-34): conta le righe legate per
+#     l'avviso E_DDT_ANNULLO_CON_LEGAMI;
+#   * il verbo dell'annullo (20261011-35): conta per la conferma, e ritira;
+#   * il backend, per la finestra di conferma.
+#   Lo stesso insieme che il ritiro cancella: avviso, conferma e ritiro non
+#   possono contare cose diverse.
+#
+# -- ⭐ PERCHE' NON IL LINEAGE (decisione di Tid del 2026-10-11) ----------------
+#   vendite.vw_documento_lineage_archi risponde a un'altra domanda, «da quali
+#   documenti viene questa bolla», a livello di testata: l'arco H si legge
+#   dalla sorgente della bolla, non dal fulfillment (una bolla standalone con
+#   un legame scritto a mano non ne ha), e l'arco T e' DISTINCT per documento.
+#   Qui serve la riga e la quantita'. Niente etichette di documento: il nome
+#   dell'ordine o del reso, per il gesto «vai al documento», il backend lo
+#   prende dal lineage, che ne resta la sede.
+#
+# -- TIPI -----------------------------------------------------------------------
+#   origine_riga_id e qta sono POLIMORFI (riga d'ordine o di reso;
+#   qta_evasa numeric(18,6) o qta numeric): tipi nudi DICHIARATI. LANGUAGE sql,
+#   STABLE, SECURITY INVOKER: legge sotto la RLS di chi chiede.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-20-create-fn-ddt-legami-mctit.yaml
+
+  - changeSet:
+      id: 20261011-20-create-fn-ddt-legami
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ddt_legami: i legami di una bolla con ordini e resi, riga per riga (origine, riga
+        d'origine, quantita'). Sede unica per l'avviso, la conferma e il ritiro dell'annullo (D-8).
+        Brief: brief-db-ddt-righe-evase-dall-ordine.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ddt_legami';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_ddt_legami(p_ddt_id vendite.ddt.id%TYPE)
+              RETURNS TABLE(
+                  ddt_riga_id     vendite.ddt_righe.id%TYPE,
+                  riga_nr         vendite.ddt_righe.riga_nr%TYPE,
+                  origine         text,
+                  origine_riga_id bigint,
+                  qta             numeric)
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  SELECT dr.id, dr.riga_nr, 'ORDINE'::text, f.ordine_riga_id, f.qta_evasa::numeric
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = dr.id
+                   WHERE dr.ddt_id = p_ddt_id
+                  UNION ALL
+                  SELECT dr.id, dr.riga_nr, 'RESO'::text, rr.resi_riga_id, rr.qta::numeric
+                    FROM vendite.ddt_righe dr
+                    JOIN vendite.resi_righe_riconsegne rr ON rr.ddt_riga_id = dr.id
+                   WHERE dr.ddt_id = p_ddt_id;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_legami(vendite.ddt.id%TYPE) IS
+                  'I legami di una bolla, riga per riga (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-8): una riga per legame, origine ORDINE (vendite.ordini_righe_fulfillment: origine_riga_id = riga d''ordine, qta = qta_evasa) o RESO (vendite.resi_righe_riconsegne: origine_riga_id = riga di reso, qta del ponte). Risponde a «quali quantita'' tornano all''origine se annullo questa bolla»: sede unica per l''avviso (vendite.trgfn_ddt_guard_transizione, E_DDT_ANNULLO_CON_LEGAMI), la conferma e il ritiro (vendite.fn_annulla_ddt) e la finestra di conferma del backend. Niente etichette di documento: per il gesto «vai al documento» il backend usa il lineage (vendite.vw_documento_lineage_archi), che risponde a un''altra domanda (da quali documenti viene la bolla, a livello di testata). origine_riga_id e qta polimorfi, tipi nudi dichiarati. SECURITY INVOKER.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_ddt_legami(bigint);

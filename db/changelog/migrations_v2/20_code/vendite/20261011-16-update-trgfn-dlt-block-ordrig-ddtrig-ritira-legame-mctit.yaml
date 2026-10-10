@@ -1,0 +1,306 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA RIGA EVASA SI TOGLIE IN BOZZA, E IL SUO LEGAME SE NE VA CON LEI
+#   vendite.trgfn_dlt_block_ordrig_ddtrig: ramo 2a sulla riga di DDT
+#   Brief: brief-db-ddt-righe-evase-dall-ordine (D-3, §5.1 punto 3)
+#
+# -- IL CASO --------------------------------------------------------
+#   Per consegnare meno del generato non c'era una strada: la riga evasa non
+#   si cancellava (E_DELETE_BLOCKED_FUL), e il verbo d'evasione non aggiunge
+#   righe a una bolla esistente. Restava eliminare la bozza e rigenerarla,
+#   perdendo trasporto, indirizzi e prelievi gia' compilati.
+#
+# -- COSA CAMBIA ----------------------------------------------------------
+#   Sulla riga di DDT i legami con l'origine non bloccano piu': si ritirano
+#   con la riga. Qui la riga arriva solo col DDT in bozza (il lock delle
+#   righe, fascia _a05_, rifiuta prima fuori bozza) o per la cascata dalla
+#   testata, che si elimina solo in bozza (trgfn_doc_guard_delete_solo_bozza).
+#   Quindi:
+#     1. il ramo 2b parla PRIMA del ritiro, ma guarda solo i resi che hanno
+#        la riga come ORIGINE (vendite.resi_righe.ddt_riga_id): merce gia'
+#        consegnata e resa, che in bozza non puo' esistere;
+#     2. si apre la porta del guard del legame (GUC transazionale
+#        zeroerp.ddt_riga_ritira_legame = id della riga), si cancellano i
+#        suoi due legami — fulfillment (riga d'ordine) e ponte di ri-consegna
+#        (riga di reso, D-7) — e si richiude la porta;
+#     3. ogni ordine toccato si riproietta col building block
+#        vendite.fn_ordine_proietta_stato_evasione: il residuo torna
+#        all'ordine, e se era l'ultimo legame l'ordine torna CONFERMATO. Il
+#        reso non ha uno stato da riproiettare: la sua copertura da
+#        ri-consegnare si ricalcola (fn_resi_riga_residuo_riconsegna) e la
+#        riga torna in coda.
+#   Sulla riga d'ordine nulla cambia: E_DELETE_BLOCKED_FUL resta, ed e'
+#   ormai il suo solo uso. E_DELETE_RIGA_DOC_REFERENZIATA sulla riga di DDT
+#   resta per i resi che la hanno come origine.
+#
+# -- ⭐ IL RITIRO E' UN BUILDING BLOCK (D-8, 2026-10-11) ------------------------
+#   vendite.fn_ddt_riga_ritira_legami(p_ddt_riga_id), creato qui prima della
+#   funzione trigger: lo chiamano la cancellazione della riga in bozza (D-3) e
+#   l'annullo della bolla (vendite.fn_annulla_ddt, D-8). Regola del 2.
+#
+# -- ⭐ LA FK RESTA IN RESTRICT, DI PROPOSITO ---------------------------------------
+#   fk_ordini_r_ful_v_ddt_riga resta ON DELETE RESTRICT, e il ponte di
+#   ri-consegna la sua NO ACTION (test 9 di
+#   vendite/test-delete-righe-documento-bozza-v1): il ritiro lo fa questa
+#   madre, che dichiara «sono io» con la GUC, e non una cascata. Una CASCADE
+#   farebbe sparire il legame per ogni percorso, anche quelli che nessuno ha
+#   pensato; cosi' un DELETE che arriva qui senza essere passato dal ritiro
+#   resta un 23503.
+#
+#   Corpo di partenza: doc auto-generata (20260922-05).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-16-update-trgfn-dlt-block-ordrig-ddtrig-ritira-legame-mctit.yaml
+
+  - changeSet:
+      id: 20261011-16-update-trgfn-dlt-block-ordrig-ddtrig-ritira-legame
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_dlt_block_ordrig_ddtrig: sulla riga di DDT (in bozza) i legami con l'origine
+        (fulfillment, ponte di ri-consegna) si ritirano con la riga e l'ordine si riproietta; i resi
+        che la hanno come origine parlano prima. Sulla riga d'ordine invariato. Brief:
+        brief-db-ddt-righe-evase-dall-ordine (D-3, D-7).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_ordine_proietta_stato_evasione';
+            - sqlCheck:
+                expectedResult: "2"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                   WHERE t.tgname IN ('trg_ordini_righe_fulfillment_a05_guard_legame_upd_dlt',
+                                      'trg_resi_righe_riconsegne_a05_guard_legame_upd_dlt');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_ddt_riga_ritira_legami(p_ddt_riga_id vendite.ddt_righe.id%TYPE)
+              RETURNS integer
+              LANGUAGE plpgsql
+              SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: ritirare i legami di UNA riga di DDT con la sua origine
+              --   (fulfillment verso la riga d'ordine, ponte di ri-consegna verso
+              --   la riga di reso) e riproiettare gli ordini toccati
+              --   (vendite.fn_ordine_proietta_stato_evasione). Il reso non ha uno
+              --   stato da riproiettare: la sua copertura si ricalcola.
+              --   La porta del guard del legame (GUC zeroerp.ddt_riga_ritira_legame =
+              --   id della riga) si apre qui e si richiude subito. Il guard la onora
+              --   solo con la bolla in bozza, o dentro l'annullo (seconda porta,
+              --   zeroerp.ddt_annullo, aperta dal verbo vendite.fn_annulla_ddt).
+              -- Ritorna: quanti legami ha ritirato (un CONTEGGIO: tipo nudo).
+              -- Consumatori: vendite.trgfn_dlt_block_ordrig_ddtrig (la riga si toglie
+              --   in bozza, D-3) e vendite.fn_annulla_ddt (la bolla si annulla, D-8).
+              -- Brief: brief-db-ddt-righe-evase-dall-ordine (D-3, D-7, D-8).
+              -- =========================================================
+              DECLARE
+                  -- bigint[] esplicito: `colonna%TYPE[]` non esiste.
+                  v_ordini    bigint[];
+                  v_ordine_id vendite.ordini.id%TYPE;
+                  v_n_ful     integer;
+                  v_n_ric     integer;
+              BEGIN
+                  IF p_ddt_riga_id IS NULL OR p_ddt_riga_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_ddt_riga_ritira_legami',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_ddt_riga_id', p_ddt_riga_id),
+                          NULL::uuid, 'vendite.fn_ddt_riga_ritira_legami',
+                          'p_ddt_riga_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  PERFORM set_config('zeroerp.ddt_riga_ritira_legame', p_ddt_riga_id::text, true);
+
+                  WITH ritirati AS (
+                      DELETE FROM vendite.ordini_righe_fulfillment f
+                       WHERE f.ddt_riga_id = p_ddt_riga_id
+                      RETURNING f.ordine_riga_id
+                  )
+                  SELECT array_agg(DISTINCT orr.ordine_id), count(*)
+                    INTO v_ordini, v_n_ful
+                    FROM ritirati r
+                    JOIN vendite.ordini_righe orr ON orr.id = r.ordine_riga_id;
+
+                  DELETE FROM vendite.resi_righe_riconsegne rr
+                   WHERE rr.ddt_riga_id = p_ddt_riga_id;
+                  GET DIAGNOSTICS v_n_ric = ROW_COUNT;
+
+                  PERFORM set_config('zeroerp.ddt_riga_ritira_legame', '', true);
+
+                  -- Il residuo torna all'ordine: lo stato si riproietta.
+                  IF v_ordini IS NOT NULL THEN
+                      FOREACH v_ordine_id IN ARRAY v_ordini LOOP
+                          PERFORM vendite.fn_ordine_proietta_stato_evasione(v_ordine_id);
+                      END LOOP;
+                  END IF;
+
+                  RETURN COALESCE(v_n_ful, 0) + v_n_ric;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ddt_riga_ritira_legami(vendite.ddt_righe.id%TYPE) IS
+                  'Building block (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-3, D-7, D-8): ritira i legami di UNA riga di DDT con la sua origine — fulfillment (riga d''ordine) e ponte di ri-consegna (riga di reso) — e riproietta gli ordini toccati con vendite.fn_ordine_proietta_stato_evasione (il residuo torna all''ordine; ultimo legame -> CONFERMATO). Il reso non ha stato da riproiettare: la sua copertura da ri-consegnare si ricalcola. Apre e richiude la porta del guard del legame (GUC transazionale zeroerp.ddt_riga_ritira_legame = id della riga): il guard la onora solo con la bolla in bozza, o dentro l''annullo (porta zeroerp.ddt_annullo del verbo vendite.fn_annulla_ddt, dal proprietario). Ritorna quanti legami ha ritirato. Consumatori: vendite.trgfn_dlt_block_ordrig_ddtrig (riga tolta in bozza) e vendite.fn_annulla_ddt (bolla annullata). Parametro non valido: E_VENDITE_CHIAMATA_NON_VALIDA.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_dlt_block_ordrig_ddtrig()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_documento  text;
+                v_testata_id bigint;
+                v_etichetta  text;
+                v_cnt        bigint := 0;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Sul DELETE di una riga di documento (DDT o ordine) che ha
+                --   LEGAMI A VALLE: tradurre il 23503 della FK in una frase, o
+                --   ritirare il legame quando il modello lo ammette.
+                --
+                -- Rami:
+                --   riga d'ordine:
+                --     2a. ha un fulfillment               -> E_DELETE_BLOCKED_FUL
+                --     2b. e' usata da resi                -> E_DELETE_RIGA_DOC_REFERENZIATA
+                --   riga di DDT:
+                --     2b. e' l'origine di un reso         -> E_DELETE_RIGA_DOC_REFERENZIATA
+                --     2a. ha legami con l'origine (fulfillment, ponte di
+                --         ri-consegna)                    -> si RITIRANO con la riga, e
+                --         l'ordine si riproietta (rev 2026-10-11, D-3, D-7)
+                --   3.  altrimenti                        -> si cancella
+                --
+                -- ⭐ rev 2026-09-22: il ramo «il documento non e' piu' in bozza» NON
+                --    sta qui: lo dice il building block
+                --    vendite.trgfn_doc_righe_lock_fuori_bozza in fascia _a05_, PRIMA
+                --    di questo trigger. Quindi una riga arriva qui solo col documento
+                --    in bozza, o per un cascade partito dalla testata (che si elimina
+                --    solo in bozza: trgfn_doc_guard_delete_solo_bozza).
+                -- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-3): la
+                --    riga di DDT evasa si toglie in bozza, e il suo fulfillment se ne
+                --    va con lei. Ritira QUESTA madre, aprendo la porta del guard del
+                --    legame (GUC zeroerp.ddt_riga_ritira_legame = id della riga) e
+                --    richiudendola; la FK resta ON DELETE RESTRICT, di proposito.
+                --    Dal D-7 anche il ponte di ri-consegna (riga di reso) si ritira
+                --    con la riga. Il 2b parla PRIMA del ritiro, e sulla riga di DDT
+                --    guarda solo i resi che la hanno come ORIGINE.
+                -- =========================================================
+
+                -- ── Dispatch: quale documento, e qual e' la sua testata ──
+                IF TG_TABLE_NAME = 'ordini_righe' THEN
+                  v_documento  := 'ORDINE';
+                  v_testata_id := OLD.ordine_id;
+                ELSIF TG_TABLE_NAME = 'ddt_righe' THEN
+                  v_documento  := 'DDT';
+                  v_testata_id := OLD.ddt_id;
+                ELSE
+                  -- Errore di MONTAGGIO: il trigger e' stato agganciato a una
+                  -- tabella che questa funzione non conosce. E' l'unico ramo
+                  -- che resta su E_DELETE_NOT_ALLOWED, ed e' l'uso corretto di
+                  -- quel codice: un diritto che manca, non uno stato.
+                  PERFORM script.fn_log_and_raise_error(
+                    'database', 'trgfn_dlt_block_ordrig_ddtrig', 'E_DELETE_NOT_ALLOWED',
+                    jsonb_build_object('table', TG_TABLE_NAME, 'id', OLD.id),
+                    NULL::uuid,
+                    TG_TABLE_NAME,
+                    OLD.id::text);
+                END IF;
+
+                -- ── L'etichetta per le frasi ─────────────────────────────
+                -- Dal lettore SECURITY DEFINER (testate e righe hanno RLS).
+                -- ⚠️ Testata assente = CASCADE partito dalla testata: la regola
+                --    di stato l'ha gia' applicata trgfn_doc_guard_delete_solo_bozza
+                --    sulla testata, e i legami a valle valgono comunque —
+                --    l'etichetta ripiega sul tipo di documento.
+                SELECT t.etichetta
+                  INTO v_etichetta
+                  FROM script.fn_get_stato_testata_documento(v_documento, v_testata_id) AS t;
+
+                -- ── 2a. Fulfillment della riga d'ordine ─────────────────
+                -- La FK e' in ON DELETE RESTRICT: bloccherebbe comunque. Qui
+                -- si traduce il 23503 in una frase.
+                IF TG_TABLE_NAME = 'ordini_righe' THEN
+                  SELECT count(*) INTO v_cnt
+                    FROM vendite.ordini_righe_fulfillment f
+                   WHERE f.ordine_riga_id = OLD.id;
+
+                  IF v_cnt > 0 THEN
+                    PERFORM script.fn_log_and_raise_error(
+                      'vendite', 'trgfn_dlt_block_ordrig_ddtrig', 'E_DELETE_BLOCKED_FUL',
+                      jsonb_build_object('table', TG_TABLE_NAME,
+                                         'id', OLD.id,
+                                         'documento', v_documento,
+                                         'testata_id', v_testata_id,
+                                         'legami', v_cnt),
+                      NULL::uuid,
+                      COALESCE(v_etichetta, v_documento));
+                  END IF;
+                END IF;
+
+                -- ── 2b. Resi e riconsegne ───────────────────────────────
+                -- FK in NO ACTION: stesso ragionamento del 2a. Sulla riga di DDT
+                -- parla PRIMA del ritiro del legame.
+                IF TG_TABLE_NAME = 'ordini_righe' THEN
+                  SELECT count(*) INTO v_cnt
+                    FROM vendite.resi_righe r
+                   WHERE r.ordine_riga_id = OLD.id;
+                ELSE
+                  -- Solo i resi che hanno la riga come ORIGINE: il ponte di
+                  -- ri-consegna e' un legame che si ritira (D-7), qui sotto.
+                  SELECT count(*) INTO v_cnt
+                    FROM vendite.resi_righe r
+                   WHERE r.ddt_riga_id = OLD.id;
+                END IF;
+
+                IF v_cnt > 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'trgfn_dlt_block_ordrig_ddtrig', 'E_DELETE_RIGA_DOC_REFERENZIATA',
+                    jsonb_build_object('table', TG_TABLE_NAME,
+                                       'id', OLD.id,
+                                       'documento', v_documento,
+                                       'testata_id', v_testata_id,
+                                       'legami', v_cnt),
+                    NULL::uuid,
+                    COALESCE(v_etichetta, v_documento));
+                END IF;
+
+                -- ── 2a. I legami della riga di DDT: si ritirano ─────────
+                -- (rev 2026-10-11, D-3, D-7). Il ritiro e' il building block
+                -- vendite.fn_ddt_riga_ritira_legami (porta, DELETE dei due legami,
+                -- riproiezione degli ordini), condiviso con l'annullo (D-8).
+                IF TG_TABLE_NAME = 'ddt_righe' THEN
+                  PERFORM vendite.fn_ddt_riga_ritira_legami(OLD.id);
+                END IF;
+
+                -- ── 3. Si cancella ──────────────────────────────────────
+                RETURN OLD;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_dlt_block_ordrig_ddtrig()
+              IS 'Sul DELETE di una riga di DDT o ordine con legami a valle. Riga d''ordine: fulfillment -> E_DELETE_BLOCKED_FUL, resi -> E_DELETE_RIGA_DOC_REFERENZIATA (il 23503 della FK diventa una frase). Riga di DDT: origine di un reso (vendite.resi_righe.ddt_riga_id) -> E_DELETE_RIGA_DOC_REFERENZIATA, PRIMA di tutto; poi, ⭐ dal 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-3, D-7), i legami con l''origine — fulfillment e ponte di ri-consegna — si RITIRANO con la riga: il ritiro e'' il building block vendite.fn_ddt_riga_ritira_legami (porta del guard del legame, DELETE dei legami, riproiezione degli ordini con vendite.fn_ordine_proietta_stato_evasione), condiviso con l''annullo della bolla (D-8). La riga arriva qui solo in bozza: il ramo «documento non piu'' in bozza» sta nel building block vendite.trgfn_doc_righe_lock_fuori_bozza, fascia _a05_, che parla prima (rev 2026-09-22); oppure per il cascade dalla testata, che si elimina solo in bozza (trgfn_doc_guard_delete_solo_bozza). ⛔ La FK fk_ordini_r_ful_v_ddt_riga resta ON DELETE RESTRICT di proposito: il ritiro e'' di questa madre, non di una cascata. Testata assente = cascade dalla testata: i legami a valle si controllano comunque, con l''etichetta che ripiega sul tipo di documento (script.fn_get_stato_testata_documento, SECURITY DEFINER). E_DELETE_NOT_ALLOWED resta solo sul ramo «tabella non prevista» (errore di montaggio).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo precedente di trgfn_dlt_block_ordrig_ddtrig e' quello del
+              -- 20260922-05: il ripristino e' il ripristino del giro. Il BB nuovo si
+              -- toglie solo dopo che nessuno lo chiama piu'.
+              SELECT 1;

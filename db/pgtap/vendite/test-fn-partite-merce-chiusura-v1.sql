@@ -201,7 +201,8 @@ END $$ LANGUAGE plpgsql;
 -- ammette righe in un DDT fuori bozza.
 CREATE OR REPLACE FUNCTION pg_temp.ch_mk_ddt(p_ordine_id bigint, p_ordine_riga_id bigint,
                                              p_qta numeric, p_data date,
-                                             p_riga_manuale numeric DEFAULT NULL)
+                                             p_riga_manuale numeric DEFAULT NULL,
+                                             p_lega_anche bigint DEFAULT NULL)
 RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
 DECLARE r RECORD; v_ddt bigint; v_uid uuid; v_ddtr bigint;
 BEGIN
@@ -218,6 +219,14 @@ BEGIN
         qta_operativa, quantita, prezzo_unitario, iva_id, attivo, storicizza, meta)
     VALUES (v_ddt, 900, r.articolo_id, 'Riga aggiunta a mano', p_riga_manuale, p_riga_manuale, 20, r.iva_id,
             true, false, jsonb_build_object('test_scope','pgtap_chiusura'));
+  END IF;
+  -- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-6): un legame
+  --   nasce solo con la bolla in bozza. La riga MULTIPLA si lega qui, prima
+  --   delle transizioni: dopo la consegna l'INSERT e' E_RIGA_DOC_NON_BOZZA.
+  IF p_lega_anche IS NOT NULL THEN
+    INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
+    SELECT p_lega_anche, dr.id, dr.quantita, false
+      FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
   END IF;
   UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_emesso_id     WHERE id = v_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id     = r.stato_ddt_spedito_id    WHERE id = v_ddt;
@@ -364,7 +373,9 @@ $$ LANGUAGE sql;
 --          vecchio: 10 al primo, 5 al secondo, 0 al terzo.
 -- ============================================================
 CREATE TEMP TABLE tmp_o1 AS SELECT * FROM pg_temp.ch_mk_ordine(30);
-CREATE TEMP TABLE tmp_d1 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-10');
+CREATE TEMP TABLE tmp_ob AS SELECT * FROM pg_temp.ch_mk_ordine(10);
+CREATE TEMP TABLE tmp_d1 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-10',
+                                                        p_lega_anche => (SELECT ordine_riga_id FROM tmp_ob));
 CREATE TEMP TABLE tmp_d2 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-11');
 CREATE TEMP TABLE tmp_d3 AS SELECT * FROM pg_temp.ch_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-12');
 SELECT pg_temp.ch_mk_af(('ORD:' || (SELECT ordine_uid FROM tmp_o1)::text || ':R:' || (SELECT ordine_riga_id FROM tmp_o1)::text)::varchar, 15);
@@ -468,9 +479,7 @@ SELECT is(
 --          riga minima (A). Chiesta per B non esce; chiesta per A esce
 --          MULTIPLA — come la legge il backend (§2-bis.7).
 -- ============================================================
-CREATE TEMP TABLE tmp_ob AS SELECT * FROM pg_temp.ch_mk_ordine(10);
-INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
-VALUES ((SELECT ordine_riga_id FROM tmp_ob), (SELECT ddt_riga_id FROM tmp_d1), 10, false);
+-- (il legame con B nasce con il primo DDT in bozza: pg_temp.ch_mk_ddt, D-6 del 2026-10-11)
 
 SELECT results_eq(
   $q$SELECT (SELECT count(*)::int FROM vendite.fn_partite_merce(NULL, ARRAY[(SELECT ordine_id FROM tmp_ob)]) p

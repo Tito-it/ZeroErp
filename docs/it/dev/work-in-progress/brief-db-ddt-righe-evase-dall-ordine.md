@@ -2,7 +2,11 @@
 
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10, dal collaudo a video di Tid. **A chi:**
 > team DB; poi BE/FE (§6).
-> **Stato:** 📝 **aperto, decisioni di Tid chiuse il 2026-10-10 (§4), nessun codice.**
+> **Stato (2026-10-11):** ✅ **lato DB applicato e verde** (§7): changeSet `20261011-05 … -20`, `-34`,
+> `-35`, applicati da Tid su dbdev e `zeroerp_ci`; corsa pgTAP senza regressioni. Dentro anche la
+> ri-consegna di un reso (D-7), il divieto di legami nuovi su bolle emesse (D-6) e l'annullo con
+> conferma (D-8, lavorato in [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md)
+> §3). **Tocca a BE/FE** (§6, §6.1; per l'annullo §3.4 del brief D29), poi collaudo a video e archivio.
 > **Nel registro dei difetti DB:** voce **D28** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -53,7 +57,7 @@ portano il legame con una riga d'ordine, si modificano? Se ne aggiungono altre a
 
 ⚠️ Nessuna di queste ragioni dipende da quante righe ci sono oggi in quello stato.
 
-## 4. Decisioni di Tid (2026-10-10)
+## 4. Decisioni di Tid (2026-10-10; D-6 e D-7 il 2026-10-11)
 
 | # | Domanda | Decisione |
 | --- | --- | --- |
@@ -62,6 +66,9 @@ portano il legame con una riga d'ordine, si modificano? Se ne aggiungono altre a
 | **D-3** | La riga evasa si toglie? | ✅ **Si', in bozza**, col ritiro del suo fulfillment: il residuo torna all'ordine e lo stato si riproietta. Fuori bozza resta fermo |
 | **D-4** | `qta_evasa` fuori bozza? | ⛔ **Ferma**, con un lock dichiarato a DB (l'invariante del brief dell'evasione, finalmente scritta) |
 | **D-5** | Righe aggiunte a mano su un DDT da ordine? | ✅ **Ammesse** (es. ordine pippo 10, bolla 15: riga evasa 10 + riga a mano pippo 5). Non sono legate all'ordine; vanno al cliente della bolla, che e' quello dell'ordine (D-6 di `brief-db-esecutivi-ba-coppia`) |
+| **D-6** (2026-10-11) | Un legame **nuovo** su una bolla gia' emessa (INSERT fuori bozza)? | ⛔ **No**: un legame nato dopo la spedizione cambia cio' che l'ordine (o il reso) risulta spedito senza che niente sia partito. Il lock fuori bozza copre anche l'INSERT |
+| **D-7** (2026-10-11) | Le righe di **ri-consegna** di un reso hanno lo stesso difetto: brief nuovo o qui? | ✅ **Qui, con la stessa regola**: la riga di ri-consegna e' una riga evasa (legame con la riga di reso, e col fulfillment se il reso viene da un ordine). Ferma, corretta dal verbo, cancellabile in bozza col ritiro dei suoi legami |
+| **D-8** (2026-10-11) | Annullare una bolla che porta legami (§7.6): che cosa succede ai legami? | ✅ **Si ritirano con l'annullo** (strada A), come in D-3: l'ordine si riproietta, il reso torna da ri-consegnare. ⚠️ Ma **non in silenzio**: l'annullo avvisa dei legami e chiede **conferma** (§8). Dentro questo brief, non uno nuovo. ⭐ Lavorato in [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md) §3 |
 
 ## 5. Forma proposta (la sceglie il team DB)
 
@@ -94,9 +101,10 @@ portano il legame con una riga d'ordine, si modificano? Se ne aggiungono altre a
 
 ### 5.1 Fuori da qui
 
-* **I DDT di riconsegna** (da reso, `fn_genera_ddt_riconsegna`, legame in `resi_righe_riconsegne`):
+* ~~**I DDT di riconsegna** (da reso, `fn_genera_ddt_riconsegna`, legame in `resi_righe_riconsegne`):
   Tid ha deciso il verbo **solo per i DDT da ordine**. Le righe di riconsegna restano come oggi; se
-  servira' la stessa domanda, sara' un brief suo.
+  servira' la stessa domanda, sara' un brief suo.~~ ⚠️ **Superato il 2026-10-11 da D-7**: la
+  ri-consegna entra in questo brief con la stessa regola (§7).
 * Il magazzino (Lotto 3): invariato, l'emissione ricontrolla i prelievi sulla quantita' nuova.
 
 ### 5.2 pgTAP (fixture fabbricati)
@@ -119,3 +127,138 @@ portano il legame con una riga d'ordine, si modificano? Se ne aggiungono altre a
 * Service: un metodo per il verbo, codici nuovi con policy e ripiego.
 * Guida [gestione-ddt](../../guide/gestione-ddt.md): una sezione «Le righe di un DDT da ordine»
   (righe evase ferme, correzione della quantita', righe a mano, i due esempi pippo 10→15 e 10→6).
+
+### 6.1 Il contratto consegnato dal DB (2026-10-11, da leggere per primo)
+
+| Cosa | Dove | Note per BE/FE |
+| --- | --- | --- |
+| La riga e' evasa | `vendite.vw_ddt_righe_dettaglio.evasa` (boolean) | `true`: la riga viene da un ordine o da un reso da ri-consegnare (D-7). Articolo, UoM e quantita' **spenti** nel form; la quantita' si cambia dal verbo. `false`: riga a mano, form com'e' oggi |
+| Il pulsante «Correggi quantita' evasa» | `vendite.vw_ddt_righe_dettaglio.correggi_qta_evasa_blocco` (text) | `NULL` = acceso. Altrimenti il `reason` del motivo: `DDT_NON_IN_BOZZA`, `RIGA_NON_EVASA`, `DDT_SENZA_ORIGINE`, `LEGAMI_MULTIPLI`. Il pulsante esiste solo dove `evasa = true` (gli altri motivi sono stato o forma, e restano grigi col tooltip) |
+| Le chiavi dei tooltip | `vendite.ddt.correggi_qta_evasa_reason.<reason minuscolo>` | ⚠️ **quattro chiavi nuove nei locales** (`ddt_non_in_bozza`, `riga_non_evasa`, `ddt_senza_origine`, `legami_multipli`): finche' mancano, `scripts/check_i18n_keys.py` (controllo 4) e' rosso |
+| Il verbo | `SELECT vendite.fn_ddt_riga_correggi_qta_evasa(ddt_riga_id, qta_operativa)` → nuova quantita' evasa (unita' base) | una `SELECT`, atomica. Riga, componenti, legami (ordine e/o reso) e stato dell'ordine cambiano insieme |
+| Annullare una bolla con legami (D-8) | l'annullo diretto risponde **E_DDT_ANNULLO_CON_LEGAMI** (409); la finestra elenca le righe da `vendite.fn_ddt_legami(ddt_id)`; alla conferma `SELECT * FROM vendite.fn_annulla_ddt(ddt_id, <righe legate viste>)` | la conferma che non corrisponde (righe cambiate nel frattempo) risponde lo stesso codice: la finestra si ripresenta. Il nome del documento d'origine per il gesto «vai a» viene dal lineage. Una bolla senza legami si annulla come oggi |
+| Cancellare la riga evasa | `DELETE FROM vendite.ddt_righe` come oggi | in bozza ora **riesce**, anche sulla riga di ri-consegna: i legami si ritirano, l'ordine si riproietta, il reso torna da ri-consegnare. Il pulsante segue `can_edit_righe` come le altre righe |
+| Codici nuovi | `E_DDT_RIGA_EVASA_FERMA` (409), `E_DDT_RIGA_NON_EVASA` (409), `E_DDT_RIGA_EVASA_LEGAMI_MULTIPLI` (500), `E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO` (500), `E_DDT_ANNULLO_CON_LEGAMI` (409, conferma) | policy e ripiego nel BE. Riusati: `E_RIGA_DOC_NON_BOZZA`, `E_QTA_NON_POSITIVA` (campo `qta_operativa`), `E_QTA_SUPERA_RESIDUO`, `E_RESO_RICONSEGNA_SUPERA_RESO`, `E_DDT_RIGA_NON_TROVATA`, `E_VENDITE_CHIAMATA_NON_VALIDA` |
+| `E_DELETE_BLOCKED_FUL`, `E_DELETE_RIGA_DOC_REFERENZIATA` | — | il primo non arriva piu' dalla riga di DDT (solo dalla riga d'ordine); il secondo, sulla riga di DDT, solo se e' l'origine di un reso. Il commento in `ddt_repository.delete_riga` («blocca la delete se la riga e' collegata a un ordine») e' da aggiornare |
+
+## 7. Consegna DB (2026-10-11)
+
+### 7.1 I changeSet
+
+| NN | Oggetto | Cosa |
+| --- | --- | --- |
+| `-05` | `vendite.fn_ordine_proietta_stato_evasione` | ⭐ BB: lo stato dell'ordine dalla sua evasione. Nessun legame → `CONFERMATO` (terzo esito, nuovo: serve a D-3); residuo → `PARZIALMENTE_EVASO`; altrimenti `EVASO` |
+| `-06 … -11` | `fn_genera_ddt_da_ordine`, `fn_conferma_reso`, `fn_annulla_reso`, `fn_chiudi_riconsegna_reso`, `fn_riapri_riconsegna_reso`, `fn_genera_ddt_riconsegna` | ⭐ regola del 2: la proiezione era copiata a mano in **sei** madri, non in una come diceva §5.2. Ritirate tutte nello stesso giro; comportamento invariato (girano solo su ordini con un legame, quindi il terzo esito li' non si raggiunge). Firma, `RETURNS` e `COMMENT` con `%TYPE`; `SECURITY INVOKER` esplicito sulle quattro non DEFINER |
+| `-12` | `vendite.fn_ddt_riga_evasa` | il predicato «riga evasa» (fulfillment **o** ponte di ri-consegna), sede unica di guard, check e vista |
+| `-13` | `vendite.trgfn_ddt_righe_guard_riga_evasa` + trigger `_a10_` | D-1, D-7 |
+| `-14` | ⭐ BB `vendite.trgfn_ddt_riga_legame_guard(colonna quantita', colonna del capo a monte)`, montato su `ordini_righe_fulfillment` e su `resi_righe_riconsegne` (`_a05_`) | il legame non si scrive a mano (D-2, D-3, D-4, D-7). Un BB e non due funzioni: i due legami sono la stessa cosa vista da due documenti a monte, e la ri-consegna da ordine li ha tutti e due |
+| `-15` | lock delle righe montato sui due legami, **INSERT e UPDATE**, livello RIGA | D-4, D-6, D-7; il DELETE e' del guard del legame (D-8) |
+| `-16` | ⭐ BB `vendite.fn_ddt_riga_ritira_legami` + `vendite.trgfn_dlt_block_ordrig_ddtrig` | D-3, D-7, D-8: il ritiro dei legami di una riga in un posto solo (cancellazione in bozza e annullo); i resi che hanno la riga come origine parlano prima |
+| `-17` | `script.fn_check_ddt_riga_correggi_qta_evasa` | la check dell'azione di riga (§12.5 delle linee guida) |
+| `-18` | `vendite.fn_ddt_riga_correggi_qta_evasa` | il verbo, SECURITY DEFINER: riga, fulfillment e ponte |
+| `-19` | `vendite.vw_ddt_righe_dettaglio` | `+ evasa`, `+ correggi_qta_evasa_blocco` |
+| `-20`, `-34`, `-35` | D-8 | brief-db-annullo-documento-con-legami §3.5 |
+| CSV | `codici_errore.csv`, `messaggi_errore.csv` | cinque codici (id 1283-1287); note di `E_DELETE_BLOCKED_FUL` e `E_DELETE_RIGA_DOC_REFERENZIATA` aggiornate |
+
+### 7.2 Scelte del team DB, dove il §5 lasciava strada
+
+* ⭐ **La FK del legame resta `ON DELETE RESTRICT`.** Una `CASCADE` era la strada piu' corta per D-3, ma
+  il test 9 di `test-delete-righe-documento-bozza-v1` la dichiara il muro voluto. Il ritiro lo fa la
+  madre (`trgfn_dlt_block_ordrig_ddtrig`) aprendo una porta per QUELLA riga (GUC
+  `zeroerp.ddt_riga_ritira_legame`, stile «la madre dichiara: sono io»). Un DELETE che arriva al
+  legame per un'altra strada resta un 23503.
+* **Le due porte non sono uguali.** Quella del verbo (`zeroerp.ddt_riga_correggi_qta`) vuole anche il
+  proprietario della tabella, come la porta del registro. Quella del ritiro no: parte da un trigger
+  che gira come chi cancella. Chi la accende a mano toglie un legame lasciando la riga: e' la famiglia
+  Q-2 di D17, non un difetto nuovo.
+* **I due capi del legame non si spostano mai.** Non era chiesto: e' la stessa invariante (un legame
+  spostato su un'altra riga diverge come una quantita' cambiata).
+* **Il verbo non ricontrolla le quantita'.** Il residuo dell'ordine lo giudica
+  `trgfn_ordini_ful_guard_consistenza` (`E_QTA_SUPERA_RESIDUO`, reso-aware), la copertura del reso
+  `trgfn_resi_riconsegne_guard` (`E_RESO_RICONSEGNA_SUPERA_RESO`): scattano sull'UPDATE dei legami.
+* **Ritiro della ri-consegna (D-7).** Il reso non ha uno stato da riproiettare: la sua copertura da
+  ri-consegnare si ricalcola (`fn_resi_riga_residuo_riconsegna`) e la riga torna in coda. L'ordine, se
+  c'e', si riproietta: il residuo riaperto dal reso torna aperto.
+* **`DDT_SENZA_ORIGINE` e `LEGAMI_MULTIPLI`** sono motivi della check, non casi ignorati. Una bolla
+  standalone con un legame scritto a mano ha la riga ferma, e il verbo la rifiuta. Una riga con due
+  legami dello stesso tipo il modello la ammette (l'unicita' e' sulla coppia) ma nessuna madre la
+  produce: il verbo non sa dividere una quantita' e rifiuta, con un codice TECNICO.
+
+### 7.3 Ordine dei BEFORE
+
+* `ddt_righe` (UPDATE): `_a05_doc_righe_lock_fuori_bozza` → `_a10_guard_riga_evasa` → … →
+  `_a10_qta_from_operativa`. Il guard confronta l'input (`qta_operativa`) prima del ricalcolo.
+* `ordini_righe_fulfillment`, `resi_righe_riconsegne`: `_a05_doc_bozza` (INSERT/UPDATE fuori bozza:
+  `E_RIGA_DOC_NON_BOZZA`) → `_a05_guard_legame` (la porta; da solo sul DELETE) → `_a10_guard_*`
+  (residuo dell'ordine, copertura del reso).
+
+### 7.4 La prova (2026-10-11, su `zeroerp_ci`, transazione ritirata, da owner)
+
+* SQL **estratto** dai quindici YAML (`yaml.safe_load`) con i codici nuovi, eseguito con
+  `ON_ERROR_STOP`: passa. I sette corpi riscritti coincidono col vivo dello scratch prima della prova.
+* pgTAP nuovo, **36/37** a questo punto del giro (**42/43** con D-8, brief-db-annullo-documento-con-legami §3.5). L'ultimo (la GUC accesa a mano non apre la porta del verbo) e' **rosso da owner
+  per costruzione**: il proprietario apre la porta. Come app e' verde, ed e' dichiarato nel file.
+* ⭐ Il pgTAP ha morso alla prima corsa: il guard del legame lasciava passare tutto quando la GUC non
+  era mai stata impostata. Il NULL di `current_setting(…, true)` faceva diventare NULL anche il
+  confronto, e `IF NOT NULL` non scatta. Corretto con `COALESCE` in tutti e due i guard prima di
+  consegnare.
+* Prima/dopo su 59 pgTAP (tutti i file che nominano le sei madri, i due legami, la vista, il trigger
+  di cancellazione o il BB del lock, piu' i presidi trasversali): **nessuna regressione**. Cambiano
+  solo i file che il giro sposta per contratto, aggiornati nello stesso giro:
+  * `vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1` test 2 e `vendite/test-righe-gemelle-secondo-giro-v1`
+    test 9: i due censimenti degli adottanti del BB (quindici; nove a livello RIGA);
+  * `vendite/test-vw-righe-dettaglio-sorgente-lista-v1` test 7: le due colonne nuove;
+  * `script/test-rubinetto-primo-motivo-v1` test 5: il verbo e' un sito nuovo dell'helper. ⚠️ L'altra
+    sessione DB di oggi (R-DB della testata, `20261011-21 … -33`) ha gia' portato l'atteso a **37**,
+    contando anche il suo sito: con i soli miei changeSet la prova da' 36, con tutti e due i giri 37.
+  `dbops/test-riferimenti-morti-v1` (plpgsql_check su tutte le funzioni), `test-stati-check-scrittori`,
+  `test-catalogo-messaggi-errore-completo` e `test-vw-codici-errore-motivo-nominato`: verdi dopo.
+* **D-6, fixture rifatte** (costruivano un legame su una bolla gia' consegnata, che ora il lock rifiuta):
+  * la «riga multipla» di `test-fn-resi-da-accreditare-chiusura`, `test-fn-partite-merce-chiusura` e
+    `test-fn-situazione-merce-ordine-chiusura`: l'helper che fabbrica la bolla lega la seconda riga
+    d'ordine mentre e' in bozza (`p_lega_anche`). Nel terzo la coppia e' **dedicata** (ordine A3 e B):
+    sul DDT del caso 1 avrebbe reso A non misurabile gia' al test 4; l'atteso del test 9 passa da 3
+    partite a 1 (una bolla sola), il significato resta. Rossi identici a prima (i test di scope, rossi da
+    owner);
+  * `test-resi-rinunce-fondamenta`: il ponte puntava alla riga del DDT d'ORIGINE (consegnato), forma che
+    nessuna madre produce. Ora punta a una bolla in bozza dello stesso cliente. ⚠️ Il file pesca dai dati
+    di dev: sullo scratch si ferma dove si fermava prima, la prova vera e' la corsa su dbdev.
+* ⚠️ Lo scratch non ha anagrafiche: i file che pescano dai dati falliscono **uguale** prima e dopo, e li'
+  la prova non dice niente. Conta la corsa di Tid su dbdev.
+* ⚠️ **Un'altra sessione DB lavora oggi** sulle R-DB di `brief-db-testata-dopo-emissione`. Numeri
+  disgiunti, ma due file condivisi: il test 2 di `test-trgfn-doc-righe-lock-fuori-bozza-v1` (anche quel
+  giro monta il BB, sui satelliti) e il conteggio del rubinetto. Chi committa per secondo riallinea.
+
+### 7.5 Decisioni prese il 2026-10-11
+
+D-6 e D-7 (§4). Nessuna domanda aperta su questo giro.
+
+### 7.6 Trovato nel giro: l'annullo non riapriva il residuo → D-8
+
+La matrice ammette `DRAFT → ANNULLATO` e `EMESSO → ANNULLATO`. Nessuno toccava i legami di una bolla
+annullata, e il residuo dell'ordine li somma senza guardare lo stato del DDT: l'ordine restava evaso per
+merce mai partita (o stornata dal magazzino), e non si poteva piu' rispedire. Deciso da Tid il
+2026-10-11 (D-8), lavorato e spostato in [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md) §3.
+
+
+## 8. D-8 — Spostato
+
+L'annullo di una bolla con legami (ritiro con conferma: disegno, consegna DB, prova, ricaduta BE/FE) sta
+dal 2026-10-11 nel brief
+[brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md), §3: e' il primo caso
+di un principio che vale per tutti i documenti con legami (decisione di Tid). I changeSet restano quelli
+di questo giro (`20261011-14`, `-15`, `-16`, `-20`, `-34`, `-35`), la decisione resta D-8 (§4).
+
+## 9. Apply e corsa pgTAP (2026-10-11)
+
+Tid ha applicato `20261011-05 … -20`, `-34`, `-35` su dbdev e su `zeroerp_ci`: **nessuna regressione**.
+Una fixture era sfuggita al censimento di D-8 perche' pesca la bolla dai dati invece di fabbricarla:
+`script/test-capability-motivi-e-nessuna-azione-v1` test 13 annullava con un UPDATE diretto un DDT figlio
+di un ordine, e il guard di transizione l'ha rifiutato (giustamente). Ora passa da `vendite.fn_annulla_ddt`,
+dichiarando le righe lette da `vendite.fn_ddt_legami`. Il censimento rifatto su ogni scrittura di stato
+ANNULLATO di una bolla nei pgTAP non ha trovato altri casi. Le righe dei codici nei due CSV e i due test
+condivisi (rubinetto, lock delle righe) sono entrati col commit del giro della testata (`43d03c390`).
+
+**Resta:** lato BE/FE (§6.1), collaudo a video, archivio. Nessun debito DB da portare in archivio: il solo
+trovato nel giro (l'annullo, §7.6) vive in brief-db-annullo-documento-con-legami (D29).
+

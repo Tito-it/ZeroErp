@@ -1,0 +1,97 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I LEGAMI DI UNA RIGA DI DDT FUORI BOZZA SONO FERMI: IL LOCK DELLE RIGHE SUI DUE LEGAMI
+#   trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd
+#   trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd
+#     -> vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA')
+#   Brief: brief-db-ddt-righe-evase-dall-ordine (D-4, D-6, D-7)
+#
+# -- PERCHE' IL BUILDING BLOCK E NON UN LOCK NUOVO -------------------------
+#   D-4: «qta_evasa fuori bozza ferma, con un lock dichiarato a DB». E' la
+#   stessa regola che il BB dice gia' per le figlie di una riga di DDT
+#   (componenti, prelievi): il legame si scrive solo finche' il DDT della sua
+#   riga e' in bozza. Livello RIGA: la FK punta alla riga di DDT, e la testata
+#   la da' script.fn_get_testata_id_di_riga. Il rifiuto e' E_RIGA_DOC_NON_BOZZA
+#   con la frase del documento, e il lettore del montaggio
+#   (script.fn_doc_lock_montaggi) lo vede come gli altri.
+#
+# -- INSERT E UPDATE (D-6, D-8, Tid 2026-10-11) --------------------------------
+#   Un legame NUOVO su una bolla gia' emessa cambia cio' che l'ordine (o il
+#   reso) risulta spedito senza che niente sia partito: chiuso anche l'INSERT.
+#   ⚠️ Il DELETE NO, di proposito: fuori bozza un legame si ritira quando la
+#   bolla si annulla (D-8, vendite.fn_annulla_ddt, con conferma), e il BB del
+#   lock non sa distinguere quella madre. Il DELETE lo governa il guard del
+#   legame (20261011-14), che ammette solo il ritiro in bozza e quello
+#   dell'annullo.
+#   Le madri lo scrivono tutte su una bolla appena nata in bozza
+#   (fn_genera_ddt_da_ordine, fn_genera_ddt_riconsegna). Le fixture pgTAP che
+#   lo costruivano su una bolla emessa sono rifatte nello stesso giro (§7.5 del
+#   brief).
+#
+# -- I DUE LEGAMI (D-7, Tid 2026-10-11) -----------------------------------------
+#   Il fulfillment (riga d'ordine) e il ponte di ri-consegna (riga di reso):
+#   stessa regola, stesso montaggio.
+#
+# -- ORDINE FRA I BEFORE ----------------------------------------------------
+#   _a05_doc_bozza_ < _a05_guard_legame_ (20261011-14) < _a10_guard_*:
+#   fuori bozza parla prima lo stato del documento, poi la porta del verbo,
+#   poi la quantita' (residuo dell'ordine, copertura del reso). Sul ritiro in
+#   bozza la riga di DDT c'e' ancora e il DDT e' in bozza: passa.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-15-create-trigger-legami-ddt-lock-fuori-bozza-mctit.yaml
+
+  - changeSet:
+      id: 20261011-15-create-trigger-legami-ddt-lock-fuori-bozza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Lock delle righe fuori bozza montato sui due legami di una riga di DDT
+        (vendite.ordini_righe_fulfillment, vendite.resi_righe_riconsegne), INSERT e UPDATE, livello RIGA:
+        un legame di un DDT fuori bozza non nasce e non cambia (D-4, D-6, D-7); il DELETE e' del
+        guard del legame (D-8).
+        Brief: brief-db-ddt-righe-evase-dall-ordine.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgname IN ('trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd',
+                                  'trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.ordini_righe_fulfillment
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA');
+
+              COMMENT ON TRIGGER trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd ON vendite.ordini_righe_fulfillment IS
+                  'Il legame d''evasione nasce e cambia solo finche'' il DDT della sua riga e'' in bozza (E_RIGA_DOC_NON_BOZZA): D-4 e D-6 di brief-db-ddt-righe-evase-dall-ordine. Il DELETE e'' del guard del legame (ritiro in bozza, o annullo con conferma: D-8). Building block vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA (FK ddt_riga_id). Fascia _a05_, prima del guard del legame e del guard di consistenza.';
+
+              CREATE TRIGGER trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd
+                BEFORE INSERT OR UPDATE ON vendite.resi_righe_riconsegne
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza('DDT', 'ddt_riga_id', 'DRAFT', 'RIGA');
+
+              COMMENT ON TRIGGER trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd ON vendite.resi_righe_riconsegne IS
+                  'Il legame di ri-consegna nasce e cambia solo finche'' il DDT della sua riga e'' in bozza (E_RIGA_DOC_NON_BOZZA): D-4, D-6, D-7 di brief-db-ddt-righe-evase-dall-ordine. Il DELETE e'' del guard del legame (ritiro in bozza, o annullo con conferma: D-8). Building block vendite.trgfn_doc_righe_lock_fuori_bozza a livello RIGA (FK ddt_riga_id). Fascia _a05_, prima del guard del legame e del guard di copertura.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd ON vendite.resi_righe_riconsegne;
+              DROP TRIGGER IF EXISTS trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd ON vendite.ordini_righe_fulfillment;

@@ -592,9 +592,23 @@ SELECT o.id AS ordine_id, d.id AS ddt_id,
  ORDER BY o.id, d.id
  LIMIT 1;
 
-UPDATE vendite.ddt SET stato_doc_ddt_id =
-       (SELECT id FROM config.stati_doc_ddt WHERE codice_interno = 'ANNULLATO')
- WHERE id IN (SELECT ddt_id FROM _ddt_ann);
+-- ⭐ rev 2026-10-11 (brief-db-annullo-documento-con-legami §3, D-8 di
+--   brief-db-ddt-righe-evase-dall-ordine): un DDT figlio di un ordine ne porta
+--   i legami, e l'annullo diretto e' rifiutato (E_DDT_ANNULLO_CON_LEGAMI). La
+--   transizione VERA passa dal verbo, dichiarando le righe legate lette da
+--   vendite.fn_ddt_legami, come fa la finestra di conferma; l'annullo di una
+--   bolla emessa chiede l'azione emetti_ddt al verbo di stato.
+DO $ann$
+DECLARE v_ddt bigint;
+BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(
+      NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+  FOR v_ddt IN SELECT ddt_id FROM _ddt_ann LOOP
+    PERFORM vendite.fn_annulla_ddt(
+        v_ddt,
+        (SELECT count(DISTINCT l.ddt_riga_id)::integer FROM vendite.fn_ddt_legami(v_ddt) l));
+  END LOOP;
+END $ann$;
 
 SELECT CASE WHEN (SELECT count(*) FROM _ddt_ann) = 0
   THEN pass('13) SKIP: nessun DDT figlio in uno stato da cui la matrice ammette l''annullamento')

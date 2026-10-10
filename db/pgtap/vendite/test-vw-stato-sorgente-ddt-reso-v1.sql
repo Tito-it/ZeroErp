@@ -47,6 +47,13 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
+-- L'annullo di una bolla emessa passa dal verbo di stato, che chiede l'azione
+-- emetti_ddt (rev 2026-10-11, D-8 di brief-db-ddt-righe-evase-dall-ordine).
+DO $az_ann$ BEGIN
+  PERFORM dbops.fn_pgtap_concedi_azione(
+      NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
+END $az_ann$;
+
 SELECT plan(13);
 
 SET LOCAL app.ruolo_applicativo = 'OPERATORE';
@@ -131,7 +138,12 @@ BEGIN
   UPDATE vendite.ddt SET causale_trasporto_id=r.causale_vendita_id WHERE id=v_ddt;
   UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_emesso_id WHERE id=v_ddt;
   IF p_stato = r.stato_ddt_annullato_id THEN
-    UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_annullato_id WHERE id=v_ddt;
+    -- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-8): la bolla nasce
+    --   dall'ordine e ne porta il legame. L'annullo diretto e' rifiutato
+    --   (E_DDT_ANNULLO_CON_LEGAMI): passa dal verbo, dichiarando le righe legate
+    --   lette da vendite.fn_ddt_legami, come fa la finestra di conferma.
+    PERFORM vendite.fn_annulla_ddt(v_ddt,
+        (SELECT count(DISTINCT l.ddt_riga_id)::integer FROM vendite.fn_ddt_legami(v_ddt) l));
   ELSIF p_stato <> r.stato_ddt_emesso_id THEN
     UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=v_ddt;
     IF p_stato <> r.stato_ddt_spedito_id THEN

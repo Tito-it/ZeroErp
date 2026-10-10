@@ -36,7 +36,9 @@ SELECT r.id,
     r.data_update,
     (EXISTS ( SELECT 1
            FROM vendite.ddt_righe_componenti rc
-          WHERE ((rc.riga_ddt_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a
+          WHERE ((rc.riga_ddt_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a,
+    vendite.fn_ddt_riga_evasa(r.id) AS evasa,
+    ((script.fn_check_ddt_riga_correggi_qta_evasa(r.id) -> 0) ->> 'reason'::text) AS correggi_qta_evasa_blocco
    FROM (((vendite.ddt_righe r
      LEFT JOIN catalogo.articoli a ON ((a.id = r.articolo_id)))
      LEFT JOIN catalogo.unita_misura um ON ((um.id = r.uom_operativa_id)))

@@ -24,7 +24,8 @@
 --   7) la riga MAI SPEDITA dello stesso ordine: NON_SPEDITA con da_spedire 4
 --      per seme ORDINE; per seme DDT non esce (nessuna spedizione l'ha toccata)
 --   8) un ordine in BOZZA: NON_IMPEGNATA e da_spedire NULL, non zero
---   9) ⭐ riga MULTIPLA (il primo DDT evade anche un ordine B): per seme DDT
+--   9) ⭐ riga MULTIPLA (un DDT dell'ordine A3 evade anche un ordine B, legato
+--      in bozza dal 2026-10-11, D-6): per seme DDT
 --      escono ENTRAMBE le righe d'ordine; quella di A e' NON_MISURABILE e quella
 --      di B ha 0 partite (la partita conta sotto la riga MINIMA) — come la vista
 --  10) ri-consegna: reso per ri-consegna 5 e ri-spedizione 3 — consegnato 13,
@@ -188,7 +189,8 @@ END $$ LANGUAGE plpgsql;
 
 -- Un DDT CONSEGNATO che evade p_qta della riga d'ordine, alla data p_data.
 CREATE OR REPLACE FUNCTION pg_temp.sm_mk_ddt(p_ordine_id bigint, p_ordine_riga_id bigint,
-                                             p_qta numeric, p_data date)
+                                             p_qta numeric, p_data date,
+                                             p_lega_anche bigint DEFAULT NULL)
 RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
 DECLARE r RECORD; v_ddt bigint; v_uid uuid; v_ddtr bigint;
 BEGIN
@@ -197,6 +199,14 @@ BEGIN
       p_ordine_id,
       jsonb_build_array(jsonb_build_object('ordine_riga_id', p_ordine_riga_id, 'qta_da_evadere', p_qta)),
       p_data);
+  -- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-6): un legame
+  --   nasce solo con la bolla in bozza. La riga MULTIPLA si lega qui, prima
+  --   delle transizioni: dopo la consegna l'INSERT e' E_RIGA_DOC_NON_BOZZA.
+  IF p_lega_anche IS NOT NULL THEN
+    INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
+    SELECT p_lega_anche, dr.id, dr.quantita, false
+      FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
+  END IF;
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
   UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id      WHERE id = v_ddt;
@@ -361,20 +371,27 @@ SELECT results_eq(
   '8) l''ordine in bozza: NON_IMPEGNATA, da_spedire NULL (non si applica), non zero');
 
 -- ============================================================
--- CASO 3 — la riga MULTIPLA: il primo DDT evade ANCHE un ordine B (id
---          maggiore). La partita conta sotto la riga MINIMA (A): per seme DDT1
---          escono entrambe le righe toccate — A NON_MISURABILE, B senza partite.
+-- CASO 3 — la riga MULTIPLA: un DDT dell'ordine A3 evade ANCHE un ordine B
+--          (id maggiore). La partita conta sotto la riga MINIMA (A3): per seme
+--          DDT escono entrambe le righe toccate — A3 NON_MISURABILE, B senza
+--          partite.
+-- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-6): un legame nasce
+--   solo con la bolla in bozza. Fino a quel giorno il legame con B si scriveva
+--   sul primo DDT del caso 1, gia' consegnato; ora nasce con la bolla
+--   (pg_temp.sm_mk_ddt, p_lega_anche), e la coppia e' DEDICATA: sul DDT del
+--   caso 1 avrebbe reso A non misurabile gia' al test 4.
 -- ============================================================
+CREATE TEMP TABLE tmp_o3 AS SELECT * FROM pg_temp.sm_mk_ordine(10, (SELECT stato_ord_conf_id FROM tmp_refs_sm));
 CREATE TEMP TABLE tmp_om AS SELECT * FROM pg_temp.sm_mk_ordine(10, (SELECT stato_ord_conf_id FROM tmp_refs_sm));
-INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
-VALUES ((SELECT ordine_riga_id FROM tmp_om), (SELECT ddt_riga_id FROM tmp_d1), 10, false);
+CREATE TEMP TABLE tmp_dm AS SELECT * FROM pg_temp.sm_mk_ddt((SELECT ordine_id FROM tmp_o3), (SELECT ordine_riga_id FROM tmp_o3), 10, DATE '2026-08-10',
+                                                        (SELECT ordine_riga_id FROM tmp_om));
 
 SELECT results_eq(
-  $q$SELECT s.ordine_riga_id = (SELECT ordine_riga_id FROM tmp_o1), s.stato::text, s.partite_merce, s.misurabile
-       FROM vendite.fn_situazione_merce_ordine(ARRAY[(SELECT ddt_id FROM tmp_d1)], NULL) s
+  $q$SELECT s.ordine_riga_id = (SELECT ordine_riga_id FROM tmp_o3), s.stato::text, s.partite_merce, s.misurabile
+       FROM vendite.fn_situazione_merce_ordine(ARRAY[(SELECT ddt_id FROM tmp_dm)], NULL) s
       ORDER BY s.ordine_riga_id$q$,
-  $q$VALUES (true, 'NON_MISURABILE', 3, false), (false, 'NON_SPEDITA', 0, true)$q$,
-  '9) riga MULTIPLA: per il primo DDT escono le DUE righe toccate — A NON_MISURABILE con le 3 partite, B senza partite');
+  $q$VALUES (true, 'NON_MISURABILE', 1, false), (false, 'NON_SPEDITA', 0, true)$q$,
+  '9) riga MULTIPLA: per il DDT escono le DUE righe toccate — A3 NON_MISURABILE con la sua partita, B senza partite');
 
 -- (l'uguaglianza con la vista per DDT1 e per l'ordine B e' asserita nel 10,
 --  insieme a quella del caso della ri-consegna)
@@ -396,7 +413,7 @@ SELECT results_eq(
   $q$SELECT s.consegnato, s.reso, s.tenuti, s.in_riconsegna, s.da_spedire, s.partite_merce,
             pg_temp.sm_diff_ordine((SELECT ordine_id FROM tmp_o2))
             + pg_temp.sm_diff_ddt((SELECT ddt_id FROM tmp_p))
-            + pg_temp.sm_diff_ddt((SELECT ddt_id FROM tmp_d1))
+            + pg_temp.sm_diff_ddt((SELECT ddt_id FROM tmp_dm))
             + pg_temp.sm_diff_ordine((SELECT ordine_id FROM tmp_om))
        FROM vendite.fn_situazione_merce_ordine(NULL, ARRAY[(SELECT ordine_id FROM tmp_o2)]) s$q$,
   $q$VALUES (13::numeric, 5::numeric, 8::numeric, 0::numeric, 2::numeric, 1, 0::bigint)$q$,

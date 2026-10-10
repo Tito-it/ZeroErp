@@ -185,7 +185,8 @@ END $$ LANGUAGE plpgsql;
 
 -- Un DDT CONSEGNATO che evade p_qta della riga d'ordine.
 CREATE OR REPLACE FUNCTION pg_temp.ca_mk_ddt(p_ordine_id bigint, p_ordine_riga_id bigint,
-                                             p_qta numeric, p_data date)
+                                             p_qta numeric, p_data date,
+                                             p_lega_anche bigint DEFAULT NULL)
 RETURNS TABLE(ddt_id bigint, ddt_uid uuid, ddt_riga_id bigint) AS $$
 DECLARE r RECORD; v_ddt bigint; v_uid uuid; v_ddtr bigint;
 BEGIN
@@ -194,6 +195,14 @@ BEGIN
       p_ordine_id,
       jsonb_build_array(jsonb_build_object('ordine_riga_id', p_ordine_riga_id, 'qta_da_evadere', p_qta)),
       p_data);
+  -- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-6): un legame
+  --   nasce solo con la bolla in bozza. La riga MULTIPLA si lega qui, prima
+  --   delle transizioni: dopo la consegna l'INSERT e' E_RIGA_DOC_NON_BOZZA.
+  IF p_lega_anche IS NOT NULL THEN
+    INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
+    SELECT p_lega_anche, dr.id, dr.quantita, false
+      FROM vendite.ddt_righe dr WHERE dr.ddt_id = v_ddt ORDER BY dr.id LIMIT 1;
+  END IF;
   INSERT INTO vendite.ddt_indirizzi (ddt_id, tipo_indirizzo_id, snapshot)
   VALUES (v_ddt, r.tipo_ind_con_id, '{"display":"CON"}'::jsonb) ON CONFLICT DO NOTHING;
   UPDATE vendite.ddt SET causale_trasporto_id = r.causale_vendita_id      WHERE id = v_ddt;
@@ -307,7 +316,9 @@ $$ LANGUAGE sql;
 --          capienza 3. La greedy per resi_riga_id da' 3 ad A e 0 a B.
 -- ============================================================
 CREATE TEMP TABLE tmp_o1 AS SELECT * FROM pg_temp.ca_mk_ordine(10);
-CREATE TEMP TABLE tmp_p AS SELECT * FROM pg_temp.ca_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-13');
+CREATE TEMP TABLE tmp_ob AS SELECT * FROM pg_temp.ca_mk_ordine(10);
+CREATE TEMP TABLE tmp_p AS SELECT * FROM pg_temp.ca_mk_ddt((SELECT ordine_id FROM tmp_o1), (SELECT ordine_riga_id FROM tmp_o1), 10, DATE '2026-08-13',
+                                                       (SELECT ordine_riga_id FROM tmp_ob));
 CREATE TEMP TABLE tmp_fr AS SELECT pg_temp.ca_fattura(('DDT:' || (SELECT ddt_uid FROM tmp_p)::text || ':R:' || (SELECT ddt_riga_id FROM tmp_p)::text)::varchar, 6) AS fattura_riga_id;
 CREATE TEMP TABLE tmp_ra AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p), (SELECT ddt_uid FROM tmp_p), 4, (SELECT tipo_credito_id FROM tmp_refs_ca));
 CREATE TEMP TABLE tmp_rb AS SELECT * FROM pg_temp.ca_mk_reso((SELECT ddt_riga_id FROM tmp_p), (SELECT ddt_uid FROM tmp_p), 3, (SELECT tipo_credito_id FROM tmp_refs_ca));
@@ -337,9 +348,7 @@ SELECT is(
 --          maggiore). Nella coda di B2 c'e' (fulfillment); nella partita per
 --          B2 no (ordine_id = riga minima). Due semantiche, di proposito.
 -- ============================================================
-CREATE TEMP TABLE tmp_ob AS SELECT * FROM pg_temp.ca_mk_ordine(10);
-INSERT INTO vendite.ordini_righe_fulfillment (ordine_riga_id, ddt_riga_id, qta_evasa, storicizza)
-VALUES ((SELECT ordine_riga_id FROM tmp_ob), (SELECT ddt_riga_id FROM tmp_p), 10, false);
+-- (il legame con B2 nasce con la bolla in bozza: pg_temp.ca_mk_ddt, D-6 del 2026-10-11)
 
 SELECT results_eq(
   $q$SELECT (SELECT count(*)::int FROM vendite.fn_resi_da_accreditare(NULL, ARRAY[(SELECT ordine_id FROM tmp_ob)])),
