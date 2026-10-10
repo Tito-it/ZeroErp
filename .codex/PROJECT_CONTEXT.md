@@ -306,7 +306,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `commesse_attivita.segment_base` (uguaglianza indicizzabile sotto RLS anche nel piano generico) e
   `plan_cache_mode = force_generic_plan` sulla capability e sul lister dei DDT. Capability su tutti i DDT
   ~2,1 → ~0,6 s. Nello stesso giorno: `COST 5000` sulle funzioni di policy (`20261010-77`, `-79`,
-  linee-guida-sql §10.3). Debito residuo: ⬜ **D26**, `work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md`
+  linee-guida-sql §10.3). Debito residuo: ⬜ **D26-2**, `work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md`
   (le altre funzioni che ripianificano a ogni chiamata; il lister senza filtri), aperto, non iniziato.
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
@@ -344,6 +344,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
   e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
   nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. Al team DB, codice da scrivere.
+- 📝 **Le righe di un DDT nato da un ordine** (`work-in-progress/brief-db-ddt-righe-evase-dall-ordine.md`, D28,
+  2026-10-10): in bozza la riga evasa cambia quantità e articolo senza che il fulfillment lo veda (ordine evaso
+  per 10, bolla a 6). Decisioni chiuse il 2026-10-10: riga evasa ferma; verbo DB per correggere la quantità in
+  bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; `qta_evasa` bloccata fuori bozza; righe a mano
+  ammesse. Il magazzino (Lotto 3) è invariato. Al team DB, codice da scrivere.
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito

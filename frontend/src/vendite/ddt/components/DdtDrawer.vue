@@ -211,11 +211,17 @@ const testata = useTestataDocumento({
 //    solo fuori bozza e D-2 (brief-db-esecutivi-ba-coppia) vuole che la bolla
 //    nata senza cliente lo riceva in bozza. Vale il lock: in bozza il cliente
 //    resta sceglibile. Segnalato al team DB (brief-db-testata-dopo-emissione
-//    §10.1).
+//    §10.1, R-DB-1).
+// ⛔ L'eccezione vale SOLO per la bolla senza documento d'origine: un DDT da
+//    ordine o da reso ha il cliente della sua sorgente (D-6, guard
+//    `trgfn_ddt_guard_cliente_sorgente`), quindi li' la capability ha ragione
+//    anche in bozza (collaudo di Tid, 2026-10-10: il cliente di un DDT da
+//    ordine si poteva cambiare a video, e il DB lo rifiutava solo al salvataggio).
 const nonEditableFields = computed(() => {
   const fermi = testata.campiBloccati.value
   const inBozza = detail.value?.stato_codice_interno === STATO_DDT.DRAFT
-  return inBozza ? fermi.filter((c) => c !== 'billing_account_id') : fermi
+  const conSorgente = detail.value?.sorgente_codice_interno != null
+  return inBozza && !conSorgente ? fermi.filter((c) => c !== 'billing_account_id') : fermi
 })
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null

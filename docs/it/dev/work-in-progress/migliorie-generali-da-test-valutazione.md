@@ -517,14 +517,16 @@ errore.
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
 > alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
 > **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
-> (2026-10-09/10).
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10).
 >
 > ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
 > numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
 > residui dell'istanza col BA); le due arrivate dopo sono diventate D26 (testata dopo l'emissione,
 > era D23) e D27 (indirizzi del documento, era D25). Brief e PROJECT_CONTEXT allineati lo stesso giorno.
+> Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
+> Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D27.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D28.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -998,7 +1000,7 @@ assente dal catalogo ferma le liste del push invece di aprirle), D-3 (ritirato
 `uq_gestori_singleton`), D-4 (il pgTAP dello spostamento dell'azienda predefinita) e D-5 (quello
 spostamento non dipende più da chi lo fa: i guard chiedono l'azienda dei BA per l'installazione).
 
-### 🟡 D26 — Le funzioni che ripianificano a ogni chiamata
+### 🟡 D26-2 — Le funzioni che ripianificano a ogni chiamata
 
 Ereditato il 2026-10-10 dalla chiusura di `work-done/brief-db-segment-base-commesse-attivita`: una
 funzione plpgsql che chiama con un parametro una funzione SQL grande che si incorpora fa
@@ -1009,6 +1011,33 @@ censimento delle altre e il lister senza filtri restano aperti.
 Dettaglio nel brief
 [brief-db-plancache-funzioni-con-query-incorporate.md](brief-db-plancache-funzioni-con-query-incorporate.md):
 aperto, non iniziato, due decisioni attese (§3).
+
+### 🟠 D27 — Gli indirizzi del documento non seguono il cliente
+
+Trovato il 2026-10-10 chiudendo il lato BE/FE di D21 (§12.3 di `brief-db-esecutivi-ba-coppia`). Sul
+DDT, sul preventivo e sull'offerta il cliente si cambia in bozza, ma gli indirizzi gia' scritti
+dall'anagrafica del cliente di prima restano. La regola «l'indirizzo e' del cliente del documento» la
+tiene solo il backend, e solo quando l'indirizzo viene scritto. Il gate d'emissione guarda che
+l'indirizzo ci sia, non di chi e': una bolla si emette con la Consegna del cliente di prima.
+
+Dettaglio e decisioni di Tid (chiuse il 2026-10-10: la regola e l'auto-assegnazione dello slot di
+default vanno nel DB) nel brief
+[brief-db-indirizzi-documento-seguono-il-cliente.md](brief-db-indirizzi-documento-seguono-il-cliente.md).
+📝 Aperto, nessun codice. ⚠️ La sezione era andata persa nella rinumerazione del 2026-10-10 (restava
+solo la riga della checklist): ripristinata lo stesso giorno.
+
+### 🟠 D28 — Le righe evase di un DDT da ordine si modificano senza il loro legame
+
+Trovato il 2026-10-10 nel collaudo a video di Tid. Su un DDT da ordine in bozza la riga evasa cambia
+quantita', articolo e unita' di misura con un `UPDATE`, e il fulfillment non lo vede: il guard del
+legame scatta solo quando il legame si scrive. Ordine 10, bolla corretta a 6: il magazzino scarica 6,
+l'ordine resta evaso per 10 e il residuo non si riapre. L'invariante «`qta_evasa` immutabile» del
+brief dell'evasione non ha un lock a DB.
+
+Dettaglio e decisioni di Tid (chiuse il 2026-10-10: riga evasa ferma; un verbo per correggere la
+quantita' in bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; righe a mano ammesse)
+nel brief [brief-db-ddt-righe-evase-dall-ordine.md](brief-db-ddt-righe-evase-dall-ordine.md).
+📝 Aperto, nessun codice.
 
 ---
 
@@ -1222,8 +1251,10 @@ D6 e il registro dei rossi in CI.
       `work-done/brief-db-istanza-nasce-col-ba-residui` — chiuso e archiviato il 2026-10-10 (DB `20261010-50…-59`, FE/BE §4).
 * [ ] **D27** — gli indirizzi del documento seguono il cliente: brief
       `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
-* [ ] **D26** — le funzioni che ripianificano a ogni chiamata: brief
+* [ ] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
       `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
+* [ ] **D28** — le righe evase di un DDT da ordine: brief `brief-db-ddt-righe-evase-dall-ordine` (aperto il
+      2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
 
 ---
 

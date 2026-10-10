@@ -3,7 +3,7 @@
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-10. **A chi:** Tid.
 > **Origine:** il debito residuo di
 > [brief-db-segment-base-commesse-attivita](../work-done/brief-db-segment-base-commesse-attivita.md)
-> (§8), archiviato il 2026-10-10. Voce nel registro: **D26** di
+> (§8), archiviato il 2026-10-10. Voce nel registro: **D26-2** di
 > [migliorie-generali-da-test-valutazione](migliorie-generali-da-test-valutazione.md).
 > **Stato (2026-10-10):** ⬜ **aperto, non iniziato.** Due decisioni attese (§3).
 > **Ricadute BE/FE:** nessuna prevista.
