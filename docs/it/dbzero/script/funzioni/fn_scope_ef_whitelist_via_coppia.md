@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_coppia(p_auth_user_id integer, p_istan
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_coppia(p_auth_user_id integer, p_istanza_utility_id bigint, p_utility_id integer)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: dire se l'operatore ha nel proprio perimetro il BA
     --   della coppia (istanza, utility).

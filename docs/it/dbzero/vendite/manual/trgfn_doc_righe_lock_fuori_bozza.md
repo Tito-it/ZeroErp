@@ -75,8 +75,10 @@ per rifiutare*.
   Lasciava aperti `CESSATO` e `ANNULLATO`, dove il backend le negava da sempre:
   il BB legge la regola nel verso giusto — solo in `DRAFT` — e da oggi quei due
   stati sono chiusi anche a DB. Il codice `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`
-  resta al lock **della testata** (`trgfn_contratti_lock_post_attivazione`),
-  che non è una copia: le quattro colonne di pricing sono un'altra regola.
+  restava al lock **della testata** (`trgfn_contratti_lock_post_attivazione`),
+  che non era una copia: le quattro colonne di pricing sono un'altra regola. Dal
+  2026-10-10 quel lock è ritirato anche lui: le quattro colonne le ferma il
+  gemello di testata `trgfn_doc_testata_lock_fuori_bozza`.
 * **il ramo 1 di `vendite.trgfn_dlt_block_ordrig_ddtrig`** (dal `20260826-21`,
   tolto con `20260922-05`): «documento non più in bozza → rifiuto», scritto per
   la sola porta del `DELETE` di DDT e ordini. Con il BB in fascia `_a05_` quel
@@ -271,3 +273,27 @@ ritirano la loro copia.
 > 📎 changeSet `20261008-89 … -94`. Presidio:
 > `db/pgtap/vendite/test-righe-e-componenti-debiti-residui-v1.sql` (test 4-20) e
 > `test-trgfn-doc-righe-lock-fuori-bozza-v1.sql` (test 2, 14).
+
+### 🔄 rev 2026-10-10 — gli argomenti e la decisione in una sede condivisa (brief-db-testata-dopo-emissione, fase 1)
+
+Le colonne che restano aperte fuori bozza servono anche a chi accende i pulsanti: la
+capability della promessa di consegna deve sapere **in quali stati** la data si cambia, e
+deve saperlo dagli argomenti di questo trigger, non da una sua lista. Per questo il trigger
+non interpreta più gli argomenti da sé:
+
+* la **grammatica** (quale argomento è cosa, i default, le liste) sta in
+  [`script.fn_doc_lock_regola`](/dbzero/script/funzioni/fn_doc_lock_regola);
+* la **decisione** (in bozza tutto; fuori, solo le colonne ammesse negli stati ammessi)
+  sta in [`script.fn_doc_lock_colonna_bloccata`](/dbzero/script/funzioni/fn_doc_lock_colonna_bloccata).
+
+Le stesse due le usa il lettore del montaggio,
+[`script.fn_doc_lock_montaggi`](/dbzero/script/funzioni/fn_doc_lock_montaggi): trigger e
+capability leggono lo stesso montaggio e decidono con la stessa funzione.
+
+Per gli adottanti non cambia niente: stessi codici, stesse frasi, stesso contesto.
+L'eccezione è la stessa detta per colonna: ogni colonna che cambia deve essere ammessa, o
+fra quelle che scrive l'audit. Unica stretta: una lista di sole virgole accanto a una piena
+è ora un montaggio a metà.
+
+> 📎 changeSet `20261010-60 … -64`. Presidio:
+> `db/pgtap/script/test-doc-lock-montaggio-v1.sql`.

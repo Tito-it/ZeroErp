@@ -64,3 +64,13 @@ ordine non scritto è un ordine che il prossimo cambia senza accorgersene.
 Rispetto a `fn_available_actions_ddt` **omette** `push_commessa` (nessun push reso in questa slice) e
 il blocco `pdf` (i resi sono fuori dal motore stampa). Copia solo matrice→azioni + capability di
 editing.
+
+## Rev 2026-10-10 — la testata letta dal montaggio
+
+`non_editable_fields` e `can_edit_testata` non sono più scritti nella funzione: li legge dal
+montaggio del lock di testata
+[`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in_stato). Restano
+nella capability solo le colonne «sempre» (valide anche in bozza); dopo vengono quelle che il
+lock blocca nello stato. Fuori bozza `can_edit_testata` è vero negli stati in cui una colonna
+resta aperta (le note di un documento vivo, i dati di trasporto della bolla), falso a documento
+chiuso. Brief `brief-db-testata-dopo-emissione`, fase 2.

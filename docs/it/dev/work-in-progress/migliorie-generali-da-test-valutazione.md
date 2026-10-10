@@ -514,9 +514,10 @@ errore.
 > la sua chiusura ha trovato. **D21** dal lato BE/FE di
 > `brief-db-istanza-nasce-col-ba` (2026-10-09). **D23** dal giro R-6 di
 > `brief-db-codici-non-trovato-email-e-permessi` (2026-10-10). **D24** dal giro BE
-> di D22 (2026-10-10), che è chiusa. **D25** dalla chiusura di D21 (2026-10-10).
+> di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
+> alla sua chiusura (2026-10-10).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D23, D24, D25.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D23, D24, D25.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -974,18 +975,21 @@ per conto suo: per la vista quel sito non esiste.
 * **Come si chiude:** quando la vista vede il sito, la riga di `_ESENZIONI` va rossa da sola (verso
   di ritiro del presidio) e il BE la toglie.
 
-### 🟠 D25 — Gli indirizzi del documento non seguono il cliente
+### 🟡 D25 — I residui di «l'istanza nasce col billing account»
 
-Trovato il 2026-10-10 chiudendo il lato BE/FE di D21 (§12.3 di `brief-db-esecutivi-ba-coppia`). Sul
-DDT, sul preventivo e sull'offerta il cliente si cambia in bozza, ma gli indirizzi gia' scritti
-dall'anagrafica del cliente di prima restano. La regola «l'indirizzo e' del cliente del documento» la tiene
-solo il backend, e solo quando l'indirizzo viene scritto. Il gate d'emissione guarda che l'indirizzo
-ci sia, non di chi e': una bolla si emette con la Consegna del cliente di prima.
+Ereditati il 2026-10-10 dalla chiusura di `work-done/brief-db-istanza-nasce-col-ba`: il resolver
+`script.fn_get_billing_account_by_istanza`, che il backend non chiama più, e il motivo
+`PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo, irraggiungibile perché BA e
+utility del preventivo sono `NOT NULL`. La stessa «testata incompleta» era scritta anche come filtro
+nel residuo commessa e nella lista del push.
 
-Dettaglio e decisioni di Tid (chiuse il 2026-10-10: la regola e l'auto-assegnazione dello slot di
-default vanno nel DB) nel brief
-[brief-db-indirizzi-documento-seguono-il-cliente.md](brief-db-indirizzi-documento-seguono-il-cliente.md).
-📝 Aperto, nessun codice.
+Dettaglio nel brief
+[brief-db-istanza-nasce-col-ba-residui.md](brief-db-istanza-nasce-col-ba-residui.md). 🔧 DB scritto e
+✅ lato DB chiuso il 2026-10-10 (`20261010-50…-59` applicati da Tid, pgTAP verdi); restano la chiave
+nei locales (FE) e una riga di doc (BE). Del §5 del brief sono fatte tutte: D-1 (via il filtro tautologico sul BA da ordini e contratti), D-2 (lo stato
+assente dal catalogo ferma le liste del push invece di aprirle), D-3 (ritirato
+`uq_gestori_singleton`), D-4 (il pgTAP dello spostamento dell'azienda predefinita) e D-5 (quello
+spostamento non dipende più da chi lo fa: i guard chiedono l'azienda dei BA per l'installazione).
 
 ---
 

@@ -60,13 +60,15 @@ BEGIN
 
     INSERT INTO anagrafiche.dati_societari (
         soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
-        socio_unico, liquidazione, destinatario_fe
+        socio_unico, liquidazione
     )
     -- ⚠️ uq_ds_prov_cea e' UNIQUE su (id_prov_iscri_rea,
     --   iscrizione_rea): il numero REA si deriva dalla partita IVA,
     --   che e' gia' unica per costruzione.
     VALUES (v_soggetto_id, 10000.00, v_prov_id, 'REA-' || v_piva,
-            'SM', 'LN', '0000000');
+            'SM', 'LN');
+    -- Rev 20261010-40: nessun canale FE (destinatario_fe NULL). Scriveva
+    --   '0000000', un codice SDI in una colonna che e' il canale (P/C).
 
     -- Gli indirizzi ammessi li decide la matrice per il
     -- TIPO SOGGETTO DETTAGLIO, non quella dei ruoli: si legge la
@@ -117,7 +119,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION dbops.fn_pgtap_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id integer, p_stato_id integer, p_piva text)
-IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md Rev 20261009-29 (brief-db-sesso-senza-default): il sesso e'' NULL (era ''S'', fuori vocabolario); una natura PF qui viene rifiutata dal guard del sesso, perche'' il builder non ne ha uno da dare.';
+IS 'Crea per una fixture pgTAP un soggetto PERSONA GIURIDICA gia'' valido: testata, dati societari, indirizzi obbligatori letti da config.tipi_soggetto_dettaglio_tipi_indirizzo, contatto. ⭐ Apre e RICHIUDE la finestra dei tre guard DEFERRABLE INITIALLY DEFERRED di anagrafiche.soggetti: e'' il punto che nessun test indovinava, perche'' il SET CONSTRAINTS ALL IMMEDIATE del preambolo obbligatorio li fa scattare prima che la saga possa esistere. Al ritorno i vincoli sono IMMEDIATE: un chiamante che dopo costruisce a mano un''altra saga deve aprirsi la sua finestra. Ritorna l''id del soggetto. Brief: brief-db-bonifica-baseline-pgtap-vendite.md Rev 20261009-29 (brief-db-sesso-senza-default): il sesso e'' NULL (era ''S'', fuori vocabolario); una natura PF qui viene rifiutata dal guard del sesso, perche'' il builder non ne ha uno da dare. Rev 20261010-40 (brief-db-character-n-spazi-di-riempimento D-6): i dati societari nascono senza canale FE (destinatario_fe NULL), non piu'' con il codice ''0000000''.';
 ```
 
 ---

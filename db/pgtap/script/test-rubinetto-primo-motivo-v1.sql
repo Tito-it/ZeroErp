@@ -78,6 +78,36 @@ SELECT plan(7);
 --   quella assegnata a `v_motivi`, perimetro PESSIMISTA — sono le stesse, e
 --   stanno scritte nel commento della vista.
 -- ⚠️ Da qui in avanti questo file DIPENDE da quella vista.
+
+-- Il testimone del test 7 nasce PRIMA della fotografia qui sotto, perche' la
+--   canarina legga la stessa fotografia dei test 2-6 (vedi laggiu').
+CREATE FUNCTION pg_temp.pgtap_coda_variabile_appoggio() RETURNS void
+LANGUAGE plpgsql AS $f$
+DECLARE
+    v_motivi jsonb;
+    v_primo  jsonb;
+BEGIN
+    v_motivi := script.fn_check_sorgente_chiudibile(1::bigint, 'PGTAP');
+    IF jsonb_array_length(v_motivi) > 0 THEN
+        v_primo := v_motivi -> 0;
+        PERFORM script.fn_log_and_raise_error(
+            'dbops', 'pgtap_coda_variabile_appoggio', v_primo ->> 'codice',
+            '{}'::jsonb, NULL::uuid,
+            VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
+    END IF;
+END
+$f$;
+
+-- ⭐ UNA FOTOGRAFIA, NON CINQUE LETTURE (2026-10-10). La vista scandisce
+--   pg_proc ed e' cara (~1,4 s a lettura come app, misurato il 2026-10-10 su
+--   dbdev): letta attraverso una TEMP VIEW dai test 2, 3, 4, 6 e di nuovo dal 7
+--   costava ~7 s. Fra le asserzioni non si crea e non si scrive niente, quindi
+--   il file ha un MOMENTO solo e la copia contiene esattamente le righe della
+--   vista viva. Si fotografa la vista intera, com'e': il filtro sui testimoni e
+--   l'aggregazione restano nella TEMP VIEW sopra, non riscritti nella copia.
+CREATE TEMP TABLE _vw_punti_primo_motivo AS
+SELECT * FROM dbops.vw_punti_primo_motivo;
+
 CREATE TEMP VIEW punti_primo_motivo AS
 SELECT sch,
        fn,
@@ -87,7 +117,7 @@ SELECT sch,
        --   perche' il sito sia in perimetro. Un presidio che sceglie il ramo
        --   ottimista assolve il caso che dovrebbe segnalare.
        coalesce(bool_or(check_emette_valori), false)       AS in_perimetro
-  FROM dbops.vw_punti_primo_motivo
+  FROM _vw_punti_primo_motivo
  WHERE fn !~ '^pgtap_'
  GROUP BY sch, fn;
 
@@ -275,25 +305,11 @@ SELECT ok(
 --    marcatore a `-> 0 ->> 'codice'`, questo diventa rosso.
 --    ⚠️ Il testimone e' escluso dai conteggi dei test 2-4 (`fn !~ '^pgtap_'`):
 --    un presidio che si conta addosso i propri semi sposta le sue soglie.
-CREATE FUNCTION pg_temp.pgtap_coda_variabile_appoggio() RETURNS void
-LANGUAGE plpgsql AS $f$
-DECLARE
-    v_motivi jsonb;
-    v_primo  jsonb;
-BEGIN
-    v_motivi := script.fn_check_sorgente_chiudibile(1::bigint, 'PGTAP');
-    IF jsonb_array_length(v_motivi) > 0 THEN
-        v_primo := v_motivi -> 0;
-        PERFORM script.fn_log_and_raise_error(
-            'dbops', 'pgtap_coda_variabile_appoggio', v_primo ->> 'codice',
-            '{}'::jsonb, NULL::uuid,
-            VARIADIC ARRAY(SELECT jsonb_array_elements_text(v_primo -> 'valori')));
-    END IF;
-END
-$f$;
-
+--    ⚠️ Il testimone (pg_temp.pgtap_coda_variabile_appoggio) e' creato nella
+--    Fixture, prima della fotografia: la canarina interroga la copia della
+--    vista, che e' la vista com'era con il testimone gia' dentro.
 SELECT ok(
-    EXISTS (SELECT 1 FROM dbops.vw_punti_primo_motivo
+    EXISTS (SELECT 1 FROM _vw_punti_primo_motivo
              WHERE sch ~ '^pg_temp' AND fn = 'pgtap_coda_variabile_appoggio'
                AND check_funzione = 'fn_check_sorgente_chiudibile'),
     'la vista riconosce la forma con la variabile d''appoggio e la lega alla sua check (canarina)');

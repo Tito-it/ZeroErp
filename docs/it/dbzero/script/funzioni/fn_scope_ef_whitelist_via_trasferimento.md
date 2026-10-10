@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_trasferimento(p_auth_user_id integer, 
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_trasferimento(p_auth_user_id integer, p_trasferimento_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: perimetro di un trasferimento via il magazzino di ORIGINE.
     -- ⭐ Una sola risalita basta: il guard

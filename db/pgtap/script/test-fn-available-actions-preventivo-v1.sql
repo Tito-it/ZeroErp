@@ -200,7 +200,8 @@ SELECT ok(
 -- TEST 5) Preventivo ACCETTATO senza righe →
 --         can_push_commessa=false (rev 12-06-2026: capability con
 --         residuo + testata) con reason NESSUNA_RIGA_COMMESSA,
---         can_edit_testata=false. I casi positivi (misto, righe
+--         can_edit_testata=true (dal 2026-10-10: in ACCETTATO note e
+--         competenza si cambiano, D-9/D-10), cliente e termine no. I casi positivi (misto, righe
 --         eleggibili) sono in test-fn-preventivo-ha-residuo-commessa-v1.
 --         ⚠️ rev 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2): fino a quel
 --         giorno il preventivo nasceva anche senza BA e il motivo atteso era
@@ -211,7 +212,8 @@ SELECT ok(
   (SELECT (script.fn_available_actions_preventivo(p.id)->>'can_push_commessa')::boolean IS FALSE
       AND (script.fn_available_actions_preventivo(p.id)->>'can_push_commessa_reason')
           = 'PREVENTIVO_NESSUNA_RIGA_COMMESSA'
-      AND (script.fn_available_actions_preventivo(p.id)->>'can_edit_testata')::boolean IS FALSE
+      AND (script.fn_available_actions_preventivo(p.id)->>'can_edit_testata')::boolean IS TRUE
+      AND (script.fn_available_actions_preventivo(p.id)->'non_editable_fields') @> '["billing_account_id","termine_pagamento_id"]'
      FROM tmp_prev_aa_accettato p
   ),
   'fn_available_actions_preventivo ACCETTATO senza righe: can_push_commessa=false, reason NESSUNA_RIGA_COMMESSA'

@@ -1,0 +1,522 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA TESTATA DOPO LA BOZZA: TERNE E MONTAGGI (fase 2)
+#   script.fn_doc_lock_regola                  — la testata a terne
+#   vendite.trgfn_doc_testata_lock_fuori_bozza — commenti (il corpo non cambia)
+#   sei montaggi rimontati: ddt, resi, ordini, preventivi, offerte_commerciali, contratti
+#   Brief: brief-db-testata-dopo-emissione (§3-§6, §5-bis.7, §9; D-1…D-10 di Tid, 2026-10-10)
+#
+# -- PERCHE' UN CHANGESET SOLO ------------------------------------------
+#   La grammatica cambia forma (coppie -> terne): con la grammatica nuova
+#   e i montaggi vecchi ogni modifica di testata sarebbe un errore di
+#   montaggio. Grammatica e sei montaggi cambiano nella stessa transazione.
+#
+# -- LE TERNE --------------------------------------------------------------
+#   (colonna, codice errore, stati in cui resta aperta fuori bozza). Stati
+#   vuoti: bloccata fuori bozza. Una lista: aperta solo li', ferma negli
+#   altri (D-8, D-10 modo B: gli stati si scrivono nel montaggio, colonna
+#   per colonna, senza tabelle nuove). Le colonne che il montaggio non nomina
+#   sono libere: le scrive il database.
+#
+# -- LE FAMIGLIE (§3, §4, §9.2) -------------------------------------------
+#   1 identita'   E_DOC_IDENTITA_FUORI_BOZZA    bloccata
+#   5 condizioni  E_DOC_CONDIZIONI_FUORI_BOZZA  bloccate (competenza_mese del
+#                                               preventivo aperta in EMESSO e
+#                                               ACCETTATO, D-9)
+#   cliente       E_DOC_CLIENTE_FUORI_BOZZA     preventivo, offerta, contratto;
+#                                               la utility dell'ordine (il BA ha
+#                                               il lock assoluto). Bolla: i suoi
+#                                               codici di prima
+#   sorgente      E_DOC_SORGENTE_FUORI_BOZZA    D-5
+#   emittente     E_DOC_EMITTENTE_FUORI_BOZZA   come prima
+#   2-4 aperte    E_DOC_CHIUSO                  negli stati del §9.2
+#   ⛔ Non nominate: le colonne GENERATE (contratti.validita,
+#   partecipa_overlap_snapshot): in un BEFORE valgono NULL e sembrerebbero
+#   cambiate sempre. validita segue valido_dal (bloccata) e valido_al.
+#   ⛔ Non nominata: fatturazione_immediata, che ha il suo guard (blocca
+#   quando il documento e' in commessa) e sul preventivo si sceglie
+#   accettando (§9.1).
+#
+# -- CHI SCRIVE FUORI BOZZA, E PASSA (censito il 2026-10-10, §9.1) ----------
+#   cambi di stato e totali (colonne non nominate); valido_al del contratto
+#   (cessazione, successione) in ATTIVO; motivazione_rifiuto con la
+#   transizione dall'offerta EMESSA; documento_origine dell'ordine appena
+#   nato (DRAFT); competenza_mese accettando il preventivo (EMESSO).
+#   Le derivazioni (numerazione, normalize, freeze del listino) sono trigger
+#   dopo il lock (_a05_) e scrivono uscendo dalla bozza.
+#
+#   Grammatica: corpo di 20261010-60 (applicato) col ramo TESTATA nuovo.
+#   Lock: corpo di 20261010-65 (applicato), cambiano solo i commenti.
+#   Precondition: i sei trigger da rimontare ci sono (DDL scritta a mano,
+#   non da ci_apply: lecita, linee-guida-sql §11.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261010-68-update-lock-testata-a-terne-e-montaggi-mctit.yaml
+
+  - changeSet:
+      id: 20261010-68-update-lock-testata-a-terne-e-montaggi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Fase 2: la grammatica della testata a terne (colonna, codice, stati aperti) e i sei montaggi di
+        testata con le famiglie decise, in un changeSet solo. Brief: brief-db-testata-dopo-emissione (§9).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "6"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_trigger t
+               WHERE t.tgfoid = 'vendite.trgfn_doc_testata_lock_fuori_bozza'::regproc
+                 AND t.tgname IN ('trg_ddt_a05_lock_fuori_bozza_upd', 'trg_resi_a05_lock_fuori_bozza_upd',
+                                  'trg_ordini_a05_lock_fuori_bozza_upd', 'trg_preventivi_a05_lock_fuori_bozza_upd',
+                                  'trg_offerte_commerciali_a05_lock_fuori_bozza_upd',
+                                  'trg_contratti_a05_lock_fuori_bozza_upd');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_doc_lock_regola(
+                  p_building_block text,
+                  p_argomenti      text[]
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE PARALLEL SAFE
+              SECURITY INVOKER
+              AS $function$
+              -- ⚠️ Tipi nudi DICHIARATI: p_building_block e' un selettore
+              --   (RIGHE | TESTATA) senza colonna di vocabolario; p_argomenti
+              --   sono gli argomenti di un trigger, text per costruzione.
+              DECLARE
+                -- Gli argomenti contati da 1, qualunque sia il primo indice
+                -- dell'array ricevuto (TG_ARGV parte da 0).
+                a          text[];
+                n          integer;
+                v_ammesse  text[];
+                v_stati    text[];
+                v_colonne  jsonb := '[]'::jsonb;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Dagli argomenti di un montaggio alla regola che dicono.
+                --   E' la grammatica dei due building block «si tocca solo
+                --   in bozza»: la leggono il trigger (da TG_ARGV) e il
+                --   lettore del montaggio (da pg_trigger.tgargs), cosi' i due
+                --   non possono capire gli argomenti in due modi.
+                --   La decisione («questa colonna, in questo stato?») sta in
+                --   script.fn_doc_lock_colonna_bloccata.
+                -- =========================================================
+                a := ARRAY(SELECT x
+                             FROM unnest(p_argomenti) WITH ORDINALITY AS u(x, k)
+                            ORDER BY k);
+                n := COALESCE(cardinality(a), 0);
+
+                IF p_building_block = 'RIGHE' THEN
+                  -- [0] tipo documento, [1] colonna FK verso il padre,
+                  -- [2] (opz.) stato bozza, [3] (opz.) livello TESTATA | RIGA,
+                  -- [4] (opz.) colonne che un UPDATE cambia fuori bozza,
+                  -- [5] (opz., con [4]) gli stati in cui le cambia.
+                  v_ammesse := ARRAY(SELECT btrim(x)
+                                       FROM unnest(string_to_array(COALESCE(a[5], ''), ',')) AS x
+                                      WHERE btrim(x) <> '');
+                  v_stati   := ARRAY(SELECT btrim(x)
+                                       FROM unnest(string_to_array(COALESCE(a[6], ''), ',')) AS x
+                                      WHERE btrim(x) <> '');
+
+                  RETURN jsonb_build_object(
+                    'building_block',   'RIGHE',
+                    'documento',        NULLIF(a[1], ''),
+                    'colonna_fk',       NULLIF(a[2], ''),
+                    'stato_bozza',      COALESCE(NULLIF(a[3], ''), 'DRAFT'),
+                    'livello',          COALESCE(NULLIF(a[4], ''), 'TESTATA'),
+                    'colonne_ammesse',  to_jsonb(v_ammesse),
+                    'stati_ammessi',    to_jsonb(v_stati),
+                    -- Le scrive l'audit, non chi modifica la riga: fuori dal
+                    -- confronto dell'eccezione.
+                    'colonne_tecniche', jsonb_build_array('data_update', 'user_update', 'tx_id'),
+                    'errore',
+                      CASE WHEN n < 2
+                             OR NULLIF(a[1], '') IS NULL
+                             OR NULLIF(a[2], '') IS NULL
+                             OR COALESCE(NULLIF(a[4], ''), 'TESTATA') NOT IN ('TESTATA', 'RIGA')
+                             -- [4] e [5] vanno insieme: colonne senza stati, o
+                             -- stati senza colonne, sono un montaggio a meta'.
+                             OR (cardinality(v_ammesse) = 0) <> (cardinality(v_stati) = 0)
+                           THEN 'attesi: tipo documento, colonna FK della riga [, codice stato bozza [, livello TESTATA | RIGA [, colonne ammesse fuori bozza, stati in cui sono ammesse]]]'
+                      END);
+                END IF;
+
+                IF p_building_block = 'TESTATA' THEN
+                  -- [0] tipo documento, [1] stato bozza, [2..] terne (colonna,
+                  -- codice errore, stati in cui resta aperta fuori bozza). Stati
+                  -- vuoti: bloccata fuori bozza. Una lista (codice_interno separati
+                  -- da virgola): aperta solo in quegli stati, chiusa negli altri
+                  -- (D-8 e D-10, rev 2026-10-10). Le colonne che il montaggio non
+                  -- nomina sono libere: le scrive il database (totali, istantanee,
+                  -- date dei cambi di stato, lo stato stesso).
+                  IF n < 5
+                     OR (n - 2) % 3 <> 0
+                     OR NULLIF(a[1], '') IS NULL
+                     OR NULLIF(a[2], '') IS NULL
+                     OR EXISTS (SELECT 1
+                                  FROM generate_series(3, n, 3) AS g(k)
+                                 WHERE NULLIF(btrim(a[k]), '') IS NULL
+                                    OR NULLIF(btrim(a[k + 1]), '') IS NULL) THEN
+                    RETURN jsonb_build_object(
+                      'building_block', 'TESTATA',
+                      'documento',      NULLIF(a[1], ''),
+                      'stato_bozza',    NULLIF(a[2], ''),
+                      'colonne',        '[]'::jsonb,
+                      'errore',         'attesi: tipo documento, codice dello stato bozza, e terne (colonna, codice errore, stati in cui resta aperta fuori bozza o vuoto)');
+                  END IF;
+
+                  FOR i IN 3 .. n BY 3 LOOP
+                    v_colonne := v_colonne || jsonb_build_array(jsonb_build_object(
+                      'colonna',       btrim(a[i]),
+                      'codice',        btrim(a[i + 1]),
+                      'stati_ammessi', to_jsonb(ARRAY(SELECT btrim(x)
+                                                        FROM unnest(string_to_array(COALESCE(a[i + 2], ''), ',')) AS x
+                                                       WHERE btrim(x) <> ''))));
+                  END LOOP;
+
+                  RETURN jsonb_build_object(
+                    'building_block', 'TESTATA',
+                    'documento',      a[1],
+                    'stato_bozza',    a[2],
+                    'colonne',        v_colonne,
+                    'errore',         NULL);
+                END IF;
+
+                -- Un building block che la grammatica non conosce: nessuna
+                -- regola da leggere, e chi la usa deve fermarsi.
+                RETURN jsonb_build_object(
+                  'building_block', p_building_block,
+                  'errore',         format('building block sconosciuto: %s', COALESCE(p_building_block, 'NULL')));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_doc_lock_regola(text, text[])
+              IS 'Building block (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): la GRAMMATICA dei montaggi dei due building block «si tocca solo in bozza». Dagli argomenti di un trigger (TG_ARGV, o pg_trigger.tgargs letto da dbops.fn_trigger_argomenti; qualunque primo indice) alla regola che dicono, in jsonb. p_building_block = RIGHE (vendite.trgfn_doc_righe_lock_fuori_bozza): documento, colonna_fk, stato_bozza (default DRAFT), livello (default TESTATA), colonne_ammesse e stati_ammessi (argomenti [4] e [5], liste separate da virgola), colonne_tecniche. TESTATA (vendite.trgfn_doc_testata_lock_fuori_bozza): documento, stato_bozza, colonne = [{colonna, codice, stati_ammessi}] nell''ordine degli argomenti: dal 2026-10-10 (fase 2) gli argomenti sono terne (colonna, codice, stati in cui resta aperta fuori bozza; vuoto = bloccata fuori bozza), D-8 e D-10. errore: NULL, o la frase di un montaggio sbagliato, che il chiamante solleva con E_DOC_RIGHE_LOCK_MONTAGGIO. La chiamano i due building block e il lettore script.fn_doc_lock_montaggi: trigger e capability non possono capire gli argomenti in due modi. La decisione per colonna e stato e'' script.fn_doc_lock_colonna_bloccata. STABLE. rev 2026-10-10 (fase 2, §5-bis.7 del brief, accettato da Tid): la testata a terne; una terna con colonna o codice vuoti e'' un montaggio sbagliato.';
+
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                -- La regola del montaggio, letta dalla grammatica condivisa
+                -- (script.fn_doc_lock_regola): [0] tipo documento, [1] stato
+                -- bozza, [2..] terne (colonna, codice errore, stati in cui resta aperta fuori bozza; vuoto = bloccata).
+                v_regola       jsonb;
+                v_documento    text;
+
+                v_old          jsonb;
+                v_new          jsonb;
+                v_cambiate     text[];
+                v_colonna      text;
+                v_codice       text;
+                v_stato        text;
+                v_etichetta    text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Una colonna della testata si sceglie solo finche' il
+                --   documento e' in bozza: fuori, e' stampata su un foglio
+                --   consegnato o ha gia' prodotto un fatto (merce uscita o
+                --   rientrata, un cliente a cui si fattura). Decide lo stato
+                --   VECCHIO: l'UPDATE che esce dalla bozza scegliendo la
+                --   colonna e' legittimo.
+                --
+                -- Building block, montato BEFORE UPDATE con:
+                --   [0] tipo documento (lettore
+                --       script.fn_get_stato_testata_documento);
+                --   [1] codice_interno dello stato bozza;
+                --   [2..] terne (colonna, codice errore, stati in cui resta aperta fuori bozza; vuoto = bloccata).
+                -- Gemello di testata di vendite.trgfn_doc_righe_lock_fuori_bozza.
+                -- ⭐ La grammatica degli argomenti e la decisione non stanno
+                --    qui (rev 2026-10-10): script.fn_doc_lock_regola legge il
+                --    montaggio, script.fn_doc_lock_colonna_bloccata decide. Le
+                --    stesse due le usa il lettore del montaggio
+                --    (script.fn_doc_lock_montaggi).
+                -- ⛔ Stato letto dal lettore SECURITY DEFINER: le testate
+                --    hanno RLS.
+                -- =========================================================
+
+                -- ── Argomenti ed evento: errore di MONTAGGIO, non di dato ─
+                v_regola := script.fn_doc_lock_regola('TESTATA', TG_ARGV);
+
+                IF TG_OP <> 'UPDATE' OR v_regola ->> 'errore' IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'evento',  TG_OP,
+                                       'tg_argv', TG_ARGV),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    COALESCE(v_regola ->> 'errore', 'si monta BEFORE UPDATE'));
+                END IF;
+
+                v_documento := v_regola ->> 'documento';
+                v_old       := to_jsonb(OLD);
+                v_new       := to_jsonb(NEW);
+
+                -- Una colonna che la testata non ha e' un refuso del
+                -- montaggio: il lock non scatterebbe mai, e nessuno se ne
+                -- accorgerebbe.
+                SELECT e ->> 'colonna'
+                  INTO v_colonna
+                  FROM jsonb_array_elements(v_regola -> 'colonne') AS e
+                 WHERE NOT (v_new ? (e ->> 'colonna'))
+                 LIMIT 1;
+
+                IF v_colonna IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'colonna', v_colonna),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    format('la colonna %s non esiste sulla testata', v_colonna));
+                END IF;
+
+                -- ── Le colonne che cambiano ──────────────────────────────
+                v_cambiate := ARRAY(SELECT n.key
+                                      FROM jsonb_each(v_new) AS n
+                                     WHERE n.value IS DISTINCT FROM (v_old -> n.key));
+
+                -- Nessuna colonna nominata cambia: niente da guardare, e lo
+                -- stato non si legge. Con lo stato NULL la decisione ferma
+                -- ogni colonna nominata che cambia.
+                IF script.fn_doc_lock_colonna_bloccata(v_regola, NULL, v_cambiate) IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- ── Lo stato VECCHIO ─────────────────────────────────────
+                -- Dentro il BEFORE ROW il lettore vede la versione che
+                -- l'UPDATE sta sostituendo.
+                SELECT t.stato, t.etichetta
+                  INTO v_stato, v_etichetta
+                  FROM script.fn_get_stato_testata_documento(v_documento, (v_old ->> 'id')::bigint) AS t;
+
+                -- La prima colonna, nell'ordine del montaggio, che in questo
+                -- stato non si cambia. Decide la funzione che usa anche la
+                -- capability.
+                v_colonna := script.fn_doc_lock_colonna_bloccata(v_regola, v_stato, v_cambiate);
+
+                IF v_colonna IS NOT NULL THEN
+                  SELECT e ->> 'codice'
+                    INTO v_codice
+                    FROM jsonb_array_elements(v_regola -> 'colonne') AS e
+                   WHERE e ->> 'colonna' = v_colonna
+                   LIMIT 1;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, v_codice,
+                    jsonb_build_object('table',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'id',         v_old ->> 'id',
+                                       'documento',  v_documento,
+                                       'etichetta',  v_etichetta,
+                                       'stato',      v_stato,
+                                       'colonna',    v_colonna,
+                                       'valore_da',  v_old -> v_colonna,
+                                       'valore_a',   v_new -> v_colonna),
+                    (v_new ->> 'tx_id')::uuid,
+                    COALESCE(v_stato, 'NULL'));
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza()
+              IS 'Building block (2026-10-09, brief-db-esecutivi-ba-coppia): una colonna della TESTATA di un documento si sceglie solo finche'' il documento e'' in bozza. BEFORE UPDATE FOR EACH ROW, TG_ARGV = [0] tipo documento per script.fn_get_stato_testata_documento, [1] codice_interno dello stato bozza, [2..] coppie (colonna, codice errore) come script.trgfn_lock_columns. Decide lo stato VECCHIO, letto dal lettore SECURITY DEFINER dentro il BEFORE ROW: l''UPDATE che esce dalla bozza scegliendo la colonna e'' legittimo. Si legge lo stato solo se una colonna bloccata cambia (confronto to_jsonb). Solleva il codice della PRIMA colonna che cambia, nell''ordine degli argomenti; VARIADIC: lo stato; nel contesto etichetta, colonna, valore_da, valore_a. Montaggio errato (evento diverso da UPDATE, argomenti spaiati, colonna che la testata non ha): E_DOC_RIGHE_LOCK_MONTAGGIO, come il gemello delle righe vendite.trgfn_doc_righe_lock_fuori_bozza. Si monta in fascia _a05_: l''immutabilita'' parla prima dei guard sul valore nuovo. Regola del 2: ritira vendite.trgfn_ddt_guard_causale_immutabile e il punto 1 di vendite.trgfn_ddt_guard_magazzino e di vendite.trgfn_resi_guard_magazzino. Adottanti: vendite.ddt (causale, cliente, magazzino), vendite.resi (magazzino). Dal 2026-10-09 (20261009-86…-92, brief-db-esecutivi-ba-coppia) anche l''emittente (emittente_fiscale_id, E_DOC_EMITTENTE_FUORI_BOZZA) su ddt, resi, ordini, offerte_commerciali, contratti e preventivi: adottanti vendite.ddt, vendite.resi, vendite.ordini, vendite.offerte_commerciali, vendite.contratti, vendite.preventivi. rev 2026-10-10 (brief-db-testata-dopo-emissione fase 1, R-1): la grammatica degli argomenti e la decisione escono dal corpo in due building block condivisi col lettore del montaggio. script.fn_doc_lock_regola legge TG_ARGV (le coppie diventano colonne con il loro codice e gli stati in cui restano aperte fuori bozza: per le coppie nessuno); script.fn_doc_lock_colonna_bloccata decide quale colonna nominata, fra quelle che cambiano, lo stato vecchio non lascia cambiare (la prima nell''ordine del montaggio). Se nessuna colonna nominata cambia lo stato non si legge (la decisione con lo stato NULL). Le stesse due le usa script.fn_doc_lock_montaggi: lock e capability leggono lo stesso montaggio con la stessa grammatica. La forma per stato della testata (D-8, fase 2) si aggiunge alla grammatica, e trigger e lettore la seguono insieme. Codici, contesto e valori invariati; la frase del montaggio sbagliato dice l''evento (si monta BEFORE UPDATE) o gli argomenti attesi. rev 2026-10-10 (fase 2): le coppie diventano terne (colonna, codice, stati in cui resta aperta fuori bozza); la colonna nominata si ferma se lo stato vecchio non e'' la bozza ne'' uno dei suoi stati. Famiglie del brief: identita'' (E_DOC_IDENTITA_FUORI_BOZZA), condizioni (E_DOC_CONDIZIONI_FUORI_BOZZA), cliente (E_DOC_CLIENTE_FUORI_BOZZA, e i codici di bolla e reso), sorgente (E_DOC_SORGENTE_FUORI_BOZZA), emittente, e le colonne aperte che si fermano a documento chiuso (E_DOC_CHIUSO). Sul contratto assorbe vendite.trgfn_contratti_lock_post_attivazione (ritirato).';
+
+              DROP TRIGGER trg_ddt_a05_lock_fuori_bozza_upd ON vendite.ddt;
+
+              CREATE TRIGGER trg_ddt_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.ddt
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                    'DDT', 'DRAFT',
+                    'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'causale_trasporto_id', 'E_DDT_CAUSALE_IMMUTABILE', '',
+                    'billing_account_id', 'E_DDT_CLIENTE_IMMUTABILE', '',
+                    'utility_id', 'E_DDT_CLIENTE_IMMUTABILE', '',
+                    'destinatario_soggetto_ruolo_id', 'E_DDT_CLIENTE_IMMUTABILE', '',
+                    'magazzino_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '',
+                    'magazzino_arrivo_id', 'E_DDT_MAGAZZINO_IMMUTABILE', '',
+                    'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '',
+                    'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'mittente_soggetto_ruolo_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'vettore_soggetto_ruolo_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'aspetto_bene_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'modalita_addebito_trasporto_id', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'num_colli', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'peso_lordo', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'peso_netto', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'volume', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'targa', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'autista', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'data_ora_partenza', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'data_ora_consegna_prev', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'tracking_code', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO',
+                    'meta', 'E_DOC_CHIUSO', 'EMESSO,SPEDITO,CONSEGNATO');
+
+              COMMENT ON TRIGGER trg_ddt_a05_lock_fuori_bozza_upd ON vendite.ddt IS
+                'La bolla fuori bozza (D-1, D-5, D-8/D-10 di Tid): identita'', cliente, causale, magazzini, emittente e sorgente bloccati; i dati di trasporto, il tracciamento e le note aperti in EMESSO, SPEDITO e CONSEGNATO, fermi in RESO e ANNULLATO. Building block vendite.trgfn_doc_testata_lock_fuori_bozza, terne (colonna, codice, stati aperti). Brief: brief-db-testata-dopo-emissione (fase 2).';
+
+              DROP TRIGGER trg_resi_a05_lock_fuori_bozza_upd ON vendite.resi;
+
+              CREATE TRIGGER trg_resi_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.resi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                    'RESO', 'DRAFT',
+                    'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'magazzino_id', 'E_RESO_MAGAZZINO_IMMUTABILE', '',
+                    'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '',
+                    'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'meta', 'E_DOC_CHIUSO', 'CONFERMATO');
+
+              COMMENT ON TRIGGER trg_resi_a05_lock_fuori_bozza_upd ON vendite.resi IS
+                'Il reso fuori bozza (D-2, D-5, D-8/D-10): identita'', magazzino, emittente e sorgente bloccati; le note aperte in CONFERMATO, ferme in ANNULLATO. Il cliente lo tiene il guard del cliente dal DDT. Building block vendite.trgfn_doc_testata_lock_fuori_bozza, terne (colonna, codice, stati aperti). Brief: brief-db-testata-dopo-emissione (fase 2).';
+
+              DROP TRIGGER trg_ordini_a05_lock_fuori_bozza_upd ON vendite.ordini;
+
+              CREATE TRIGGER trg_ordini_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.ordini
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                    'ORDINE', 'DRAFT',
+                    'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'tasso_cambio', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'anno', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'serie', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'registro_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '',
+                    'modalita_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'termine_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'agente_soggetto_ruolo_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'fatturazione_trigger', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'documento_origine_tipo', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'documento_origine_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'meta', 'E_DOC_CHIUSO', 'CONFERMATO,PARZIALMENTE_EVASO,ALLOCATO,SPEDITO,CONSEGNATO,EVASO');
+
+              COMMENT ON TRIGGER trg_ordini_a05_lock_fuori_bozza_upd ON vendite.ordini IS
+                'L''ordine fuori bozza (D-3, D-5, D-7, D-8/D-10): identita'', utility, emittente, condizioni e sorgente bloccati; le note aperte fino a EVASO (che puo'' tornare CONFERMATO), ferme in FATTURATO e ANNULLATO. Billing account e soggetto: lock assoluto (trgfn_lock_columns). Building block vendite.trgfn_doc_testata_lock_fuori_bozza, terne (colonna, codice, stati aperti). Brief: brief-db-testata-dopo-emissione (fase 2).';
+
+              DROP TRIGGER trg_preventivi_a05_lock_fuori_bozza_upd ON vendite.preventivi;
+
+              CREATE TRIGGER trg_preventivi_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.preventivi
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                    'PREVENTIVO', 'DRAFT',
+                    'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'rev', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '',
+                    'termine_pagamento_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'validita_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'validita_al', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'competenza_mese', 'E_DOC_CONDIZIONI_FUORI_BOZZA', 'EMESSO,ACCETTATO',
+                    'meta', 'E_DOC_CHIUSO', 'EMESSO,ACCETTATO');
+
+              COMMENT ON TRIGGER trg_preventivi_a05_lock_fuori_bozza_upd ON vendite.preventivi IS
+                'Il preventivo fuori bozza (D-3, D-6, D-7, D-9, D-8/D-10): identita'', cliente, emittente e condizioni bloccati; competenza_mese aperta in EMESSO e ACCETTATO (si sceglie accettando, D-9), le note pure; fermi in EVASO, RIFIUTATO, SCADUTO, ANNULLATO. fatturazione_immediata la governa il guard di commessa. Building block vendite.trgfn_doc_testata_lock_fuori_bozza, terne (colonna, codice, stati aperti). Brief: brief-db-testata-dopo-emissione (fase 2).';
+
+              DROP TRIGGER trg_offerte_commerciali_a05_lock_fuori_bozza_upd ON vendite.offerte_commerciali;
+
+              CREATE TRIGGER trg_offerte_commerciali_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.offerte_commerciali
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                    'OFFERTA', 'BOZZA',
+                    'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '',
+                    'listino_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'listino_versione_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'tipo_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'valore_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'validita_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'validita_al', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'meta', 'E_DOC_CHIUSO', 'EMESSA,ACCETTATA',
+                    'motivazione_rifiuto', 'E_DOC_CHIUSO', 'EMESSA,ACCETTATA');
+
+              COMMENT ON TRIGGER trg_offerte_commerciali_a05_lock_fuori_bozza_upd ON vendite.offerte_commerciali IS
+                'L''offerta fuori bozza (D-3, D-6, D-7, D-8/D-10): valuta, cliente, emittente e condizioni (listino, variazioni, validita'') bloccati; note e motivazione del rifiuto aperte in EMESSA e ACCETTATA, ferme in RIFIUTATA, SUPERATA, ANNULLATA. listino_versione_id la congela l''emissione, dalla bozza. Building block vendite.trgfn_doc_testata_lock_fuori_bozza, terne (colonna, codice, stati aperti). Brief: brief-db-testata-dopo-emissione (fase 2).';
+
+              DROP TRIGGER trg_contratti_a05_lock_fuori_bozza_upd ON vendite.contratti;
+
+              CREATE TRIGGER trg_contratti_a05_lock_fuori_bozza_upd
+                BEFORE UPDATE ON vendite.contratti
+                FOR EACH ROW
+                EXECUTE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza(
+                    'CONTRATTO', 'DRAFT',
+                    'data', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'valuta_id', 'E_DOC_IDENTITA_FUORI_BOZZA', '',
+                    'billing_account_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'istanza_utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'utility_id', 'E_DOC_CLIENTE_FUORI_BOZZA', '',
+                    'emittente_fiscale_id', 'E_DOC_EMITTENTE_FUORI_BOZZA', '',
+                    'listino_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'listino_versione_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'tipo_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'valore_variazione_globale', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'ambito', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'valido_dal', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'parent_contratto_id', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'categoria_cliente_id_snapshot', 'E_DOC_CONDIZIONI_FUORI_BOZZA', '',
+                    'offerta_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'sorgente_tipo_id', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'sorgente_uid', 'E_DOC_SORGENTE_FUORI_BOZZA', '',
+                    'valido_al', 'E_DOC_CHIUSO', 'ATTIVO',
+                    'codice_cig', 'E_DOC_CHIUSO', 'ATTIVO',
+                    'codice_cup', 'E_DOC_CHIUSO', 'ATTIVO',
+                    'codice_commessa', 'E_DOC_CHIUSO', 'ATTIVO',
+                    'meta', 'E_DOC_CHIUSO', 'ATTIVO');
+
+              COMMENT ON TRIGGER trg_contratti_a05_lock_fuori_bozza_upd ON vendite.contratti IS
+                'Il contratto fuori bozza (D-3, D-5, D-6, D-7, D-8/D-10): identita'', cliente, emittente, condizioni (comprese le quattro di pricing, dal lock post-attivazione ritirato, e la categoria cliente congelata) e sorgente bloccati; valido_al, CIG, CUP, codice commessa e note aperti in ATTIVO, fermi in CESSATO e ANNULLATO. Parla prima del guard del listino (_a05_ < _a10_). Building block vendite.trgfn_doc_testata_lock_fuori_bozza, terne (colonna, codice, stati aperti). Brief: brief-db-testata-dopo-emissione (fase 2).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Manovra di emergenza: la grammatica a coppie e' in 20261010-60, il lock in -65, i
+              --   montaggi a coppie in 20261009-71/-74/-86…-92. Si riapplicano insieme, a mano.
+              SELECT 1;

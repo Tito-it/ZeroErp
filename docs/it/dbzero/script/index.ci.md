@@ -51,6 +51,7 @@
 - [fn_check_operatore_invitabile](manual/fn_check_operatore_invitabile.md)
 - [fn_check_ordine_annullabile](manual/fn_check_ordine_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-15)
 - [fn_check_ordine_confermabile](manual/fn_check_ordine_confermabile.md) — (rev 2026-08-29 — funzione nata il 2026-08-29)
+- [fn_check_ordine_data_consegna_confermata](manual/fn_check_ordine_data_consegna_confermata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
 - [fn_check_parameter_fk_surrogate](manual/fn_check_parameter_fk_surrogate.md) — (latest review 02-05-2026)
 - [fn_check_preventivo_annullabile](manual/fn_check_preventivo_annullabile.md) — (rev 2026-08-21 — funzione rev 2026-08-10)
 - [fn_check_preventivo_emettibile](manual/fn_check_preventivo_emettibile.md) — (rev 2026-09-24 — MOTIVO 2, i prezzi non autorizzati; funzione nata il 2026-08-29)
@@ -75,6 +76,11 @@
 - [fn_current_identita_context](manual/fn_current_identita_context.md) — (latest review 19-04-2026)
 - [fn_data_operativa](manual/fn_data_operativa.md) — Risponde a una domanda sola: **che giorno è, per l'azienda?**
 - [fn_disdetta_cliente](manual/fn_disdetta_cliente.md) — (rev 2026-08-21)
+- [fn_doc_colonna_modificabile](manual/fn_doc_colonna_modificabile.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_lock_colonna_bloccata](manual/fn_doc_lock_colonna_bloccata.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_lock_montaggi](manual/fn_doc_lock_montaggi.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_lock_regola](manual/fn_doc_lock_regola.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 1)
+- [fn_doc_testata_in_stato](manual/fn_doc_testata_in_stato.md) — (nata il 2026-10-10, brief `brief-db-testata-dopo-emissione`, fase 2)
 - [fn_elimina_credenziale](manual/fn_elimina_credenziale.md) — (scritta il 06-10-2026)
 - [fn_ensure_logconn](manual/fn_ensure_logconn.md) — * **Stabilire una connessione persistente** a un database remoto o a se stesso attraverso l’estensione `dblink`, evitando overhead di creazione/removal di connessioni multiple. * **Supporto al logging remoto**: utilizzata da funzioni come `script.fn_log_error_only` per eseguire INSERT in un contesto transazionale separato.
 - [fn_esigibilita_iva](manual/fn_esigibilita_iva.md)
@@ -84,7 +90,7 @@
 - [fn_get_auth_user_id_for_risorsa_umana](manual/fn_get_auth_user_id_for_risorsa_umana.md) — (nata il 12-09-2026, `20_code/script/20260912-17`)
 - [fn_get_auth_user_stato](manual/fn_get_auth_user_stato.md) — Dire, per un utente dell'anagrafica di Django, **come si chiama** e **se è attivo**. Nient'altro.
 - [fn_get_ba_emittente_sr_id](manual/fn_get_ba_emittente_sr_id.md) — (latest review 13-09-26)
-- [fn_get_billing_account_by_istanza](manual/fn_get_billing_account_by_istanza.md)
+- [fn_get_ba_emittente_sr_id_installazione](manual/fn_get_ba_emittente_sr_id_installazione.md) — (latest review 10-10-26)
 - [fn_get_catasto_source_by_istanza](manual/fn_get_catasto_source_by_istanza.md) — La funzione **`script.fn_get_catasto_source_by_istanza(p_istanza_utilities_id)`** recupera il record catastale **"sorgente"** da utilizzare come base per una **clonazione** in caso di **subentro**.
 - [fn_get_contatti](manual/fn_get_contatti.md) — (latest review 25-03-26) * **Selezione univoca per tipo**   Per ogni `tipo_contatto_id` vengono restituiti **al più** un record, che rappresenta il contatto “migliore” in base al contesto richiesto.
 - [fn_get_contatto_default](manual/fn_get_contatto_default.md) — (latest review 25-03-26) La funzione **`script.fn_get_contatto_default`** restituisce **il contatto “di default”** per un determinato **soggetto** e, opzionalmente, per un determinato:

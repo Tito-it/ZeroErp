@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ba_ownership_via_fattura(p_identita_id bigint, p_fattur
 CREATE OR REPLACE FUNCTION script.fn_scope_ba_ownership_via_fattura(p_identita_id bigint, p_fattura_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Join fattura -> billing_account -> identita: il cliente
     -- dell'identita e quello del BA della fattura devono

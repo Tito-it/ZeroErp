@@ -8,8 +8,18 @@
 > sessione backend il 2026-10-09, archiviato in `work-done/` con un rimando qui). Era la stessa domanda
 > («fuori bozza, quali colonne si cambiano e in quale stato?») su una colonna di riga, e i due brief
 > fissavano la stessa forma per stato: ora è la **fase 1** di questo (§5-bis).
-> **Stato:** 📝 **aperto, decisioni tutte chiuse da Tid il 2026-10-10 (§5-bis.4, §6), nessun codice.**
-> ⛔ **Si comincia dalla fase 1** (§5-bis): il lettore del montaggio e la capability della data di
+> **Stato:** 📝 **aperto, decisioni tutte chiuse da Tid il 2026-10-10 (§5-bis.4, §6).**
+> ✅ **Fase 1, lato DB: applicata il 2026-10-10 su dbdev e zeroerp_ci, pgTAP di Tid senza
+> regressioni** (`20261010-60 … -67`, `script/test-doc-lock-montaggio-v1`). Il BE può partire col
+> suo verbo (§5-bis.6).
+> ✅ **Fase 2, lato DB: applicata il 2026-10-10 su dbdev e zeroerp_ci, pgTAP di Tid verdi**
+> (`20261010-68 … -76` e i
+> due CSV dei codici): **da leggere per primo il §9.4**. D-9 e D-10 decise da Tid lo stesso giorno.
+> ⚠️ Il BE toglie i suoi «solo in DRAFT» **nello stesso rilascio** (§9.5, R-BE-2): da questo apply
+> le capability accendono la testata negli stati in cui una colonna resta aperta.
+> **Resta:** lato DB il pgTAP del congelamento del listino all'uscita dalla bozza (§9.4, «Non fatto»);
+> lato BE/FE le richieste del §5-bis.6 e del §9.5. Poi l'archivio.
+> ⚠️ (superato: fasi 1 e 2 fatte) ⛔ **Si comincia dalla fase 1** (§5-bis): il lettore del montaggio e la capability della data di
 > consegna confermata. È consegnabile da sola, e **il BE la aspetta** per il suo verbo: non attende
 > il resto del giro. Poi la fase 2: le colonne decise nel montaggio del BB fuori bozza di ogni
 > documento, un codice per famiglia, la forma per stato (§5); infine il BE toglie i suoi «solo in
@@ -274,6 +284,108 @@ Per sapere cosa serve, non da fare ora. È la parte della fase 1 nel §7.
 La terza decisione presa nello stesso giro (documenti chiusi: tutto fermo) riguarda la forma per
 stato di tutti e due i BB: è **D-8** nel §6.
 
+### 5-bis.5 ⭐ Fase 1, lato DB: che cosa è stato scritto (2026-10-10)
+
+> ✅ **Applicato il 2026-10-10** (dbdev e zeroerp_ci, `databasechangelog` letto), pgTAP di Tid:
+> nessuna regressione.
+
+**L'idea.** D-F2 dice «si legge il montaggio». Leggere lo stesso dato però non basta: se il
+trigger capisse gli argomenti a modo suo e il lettore a modo suo, le **grammatiche** sarebbero
+due, e così le **regole** («in bozza tutto; fuori, le colonne ammesse negli stati ammessi»). Per
+questo grammatica e decisione sono uscite dal trigger in due funzioni, che il trigger stesso
+chiama e che il lettore riusa. Lock e capability non possono rispondere in due modi.
+
+| changeSet | Oggetto | Che cosa |
+| --- | --- | --- |
+| `20261010-60` | `script.fn_doc_lock_regola` (nuova) | **la grammatica**: dagli argomenti (`TG_ARGV` o `tgargs`) alla regola, per i due BB |
+| `20261010-61` | `script.fn_doc_lock_colonna_bloccata` (nuova) | **la decisione**: in questo stato, quale di queste colonne il montaggio ferma |
+| `20261010-62` | `script.fn_doc_lock_montaggi` (nuova) | **il lettore** (R-1): i lock di una tabella con la loro regola, da `pg_trigger.tgargs` |
+| `20261010-63` | `script.fn_doc_colonna_modificabile` (nuova) | la domanda generica di una capability: questa colonna, da sola, in questo stato? |
+| `20261010-64` | `vendite.trgfn_doc_righe_lock_fuori_bozza` | il lock delle righe legge e decide con `-60`/`-61` |
+| `20261010-65` | `vendite.trgfn_doc_testata_lock_fuori_bozza` | il lock della testata legge e decide con `-60`/`-61` |
+| `20261010-66` | `script.fn_check_ordine_data_consegna_confermata` (nuova) | **la check** (R-1) della promessa di consegna |
+| `20261010-67` | `script.fn_available_actions_ordine` | **la terna** (R-2) |
+
+**La check (R-1).** `NULL` se l'ordine non si vede; `[]` se il lock lascia cambiare la sola data
+(anche in DRAFT, dove si modifica la riga intera); altrimenti un motivo: codice
+`E_RIGA_DOC_NON_BOZZA` (quello che il lock solleva, nessun codice nuovo), reason
+`STATO_NON_AMMETTE`, i valori della frase del lock. Gli stati li legge dal montaggio: il pgTAP 30
+prova che nel codice della check, della capability e dei lettori non c'è scritto nessuno stato.
+
+**La terna (R-2).** `can_edit_data_consegna_confermata` · `_reason` · `_reason_key`:
+
+| Stato | flag | reason | reason_key |
+| --- | :---: | --- | --- |
+| `DRAFT` | `false` | `ORDINE_IN_BOZZA` | `vendite.ordini.data_consegna_confermata_reason.in_bozza` |
+| stati dell'eccezione del lock (oggi `CONFERMATO`, `PARZIALMENTE_EVASO`) | `true` | `null` | `null` |
+| gli altri (`ALLOCATO`, `SPEDITO`, `CONSEGNATO`, `EVASO`, `FATTURATO`, `ANNULLATO`) | `false` | `STATO_NON_AMMETTE` | `vendite.ordini.data_consegna_confermata_reason.stato_non_ammette` |
+
+Il motivo della bozza sta nella capability e non nella check: in bozza il lock lascia passare la
+data (la riga intera si modifica), quindi «in bozza non è il verbo giusto» è una scelta di
+presentazione, non una regola del database.
+
+**Che cosa cambia per i lock: niente, per gli adottanti di oggi.** Stessi codici, stesse frasi,
+stesso contesto. L'eccezione delle righe è la stessa, detta per colonna. Due sole differenze:
+una lista di sole virgole in `[4]` o `[5]` accanto a una piena ora è un montaggio a metà (nessun
+adottante la ha); la frase del montaggio sbagliato della testata dice l'evento («si monta BEFORE
+UPDATE») o gli argomenti attesi, separatamente.
+
+**La prova (2026-10-10, su `zeroerp_ci`, SQL estratto dagli YAML in transazione ritirata, come
+owner `zeroerp`).**
+
+* `script/test-doc-lock-montaggio-v1` (nuovo, 30 test): **30/30**.
+* **Regressione**, 29 pgTAP lanciati senza e con l'SQL estratto, esiti identici file per file:
+  i quindici che toccano i due lock (fra cui `test-trgfn-doc-righe-lock-fuori-bozza-v1` 21/21,
+  `test-righe-e-componenti-debiti-residui-v1` 24/24, `test-esecutivi-ba-coppia-v1`,
+  `test-guard-emittente-ba-unico-v1`), i sei della capability dell'ordine e i presidi trasversali
+  (`test-riferimenti-morti-v1`, `test-rubinetto-primo-motivo-v1`,
+  `test-catalogo-messaggi-errore-completo`, `test-vw-codici-errore-motivo-nominato`,
+  `test-security-definer-search-path-v1`, `test-catalogo-presidi-v1`). I rossi presenti sono gli
+  stessi con e senza (fixture e owner sullo scratch), non di questo giro.
+* `plpgsql_check` sulle funzioni nuove e sui due trigger: nessun errore. Resta un avviso sulla
+  check («STABLE ma chiama una VOLATILE»: è la `PERFORM` dell'errore sul parametro, come nelle
+  check sorelle).
+* Firme: una funzione per nome, identità e volatilità attese. Guardrail statici (letterali,
+  `runOnChange`, preCondition) verdi.
+* ⚠️ Come owner la RLS non c'è: l'esito come app arriva dalla corsa di Tid. Il file non è marcato
+  `pgtap-runner: owner`: monta i lock di prova su tabelle temporanee, che l'app può fare.
+
+**Presidi da guardare alla corsa di Tid.** `scripts/check_i18n_keys.py` vedrà le due chiavi
+nuove (`'reason_key', '…stato_non_ammette'` nella check, `v_dcc_reason_key := '…in_bozza'` nella
+capability) appena la doc auto-generata è rigenerata, e sarà rosso finché il FE non le aggiunge
+(§5-bis.6).
+
+**Documentazione.** Manuali nuovi in `docs/it/dbzero/script/manual/` per le cinque funzioni (la
+pagina concettuale è `fn_doc_lock_montaggi.md`); aggiornati quelli dei due lock e della capability.
+
+### 5-bis.6 Richieste a BE e FE, dopo l'apply della fase 1
+
+| # | A chi | Cosa |
+| --- | --- | --- |
+| R-BE-1 | BE | il verbo del §5-bis.3, e la terna nel dettaglio sotto `capabilities` (forma annidata). Nessun pre-check di stato in Python: il motivo arriva dalla capability, il rifiuto dal lock (`E_RIGA_DOC_NON_BOZZA`, 409) |
+| R-FE-1 | FE | le due chiavi nei `locales` (it, en): `vendite.ordini.data_consegna_confermata_reason.in_bozza` («In bozza la data si cambia modificando la riga.») e `vendite.ordini.data_consegna_confermata_reason.stato_non_ammette` («In questo stato la data di consegna non si cambia più.») |
+| R-FE-2 | FE | l'azione sulla riga e il dialog del §5-bis.3, spenta col motivo quando il flag è `false` |
+
+### 5-bis.7 La forma per stato della testata (D-8), fissata qui per la fase 2
+
+D-8 vuole che le colonne che restano aperte dopo l'emissione (famiglie 2-4, `valido_al`,
+CIG/CUP) si chiudano quando il documento si chiude. Il lock della testata deve quindi sapere,
+colonna per colonna, **in quali stati** resta aperta fuori bozza.
+
+* **L'uscita della grammatica è già quella giusta**: ogni colonna della testata porta
+  `stati_ammessi`, e la decisione lo usa (una colonna nominata si ferma se lo stato non è fra i
+  suoi). Oggi è sempre vuoto, perché le coppie dicono «bloccata fuori bozza».
+* **Gli argomenti — ✅ proposta del team DB accettata da Tid il 2026-10-10**: le coppie *(colonna, codice)* diventano **terne**
+  *(colonna, codice, stati)*, con `stati` vuoto = bloccata fuori bozza (le colonne di oggi) e una
+  lista = aperta solo in quegli stati (le famiglie 2-4). Le colonne che la testata non nomina
+  restano libere: sono quelle che scrive il database (totali, istantanee, date dei cambi di
+  stato, lo stato stesso).
+* **Che cosa costa nella fase 2**: la grammatica cambia in un punto solo
+  (`script.fn_doc_lock_regola`), e trigger e lettore la seguono insieme. I sei montaggi della
+  testata si rimontano nello stesso giro: andava fatto comunque, per aggiungere le famiglie 1, 5
+  e 6. Con le terne si aggiorna anche la «soluzione» di `E_DOC_RIGHE_LOCK_MONTAGGIO`, che
+  descrive gli argomenti.
+
 ## 6. Decisioni per Tid
 
 | # | Domanda | Proposta | Decisione di Tid |
@@ -306,3 +418,187 @@ stato di tutti e due i BB: è **D-8** nel §6.
   con le eccezioni per stato) e qui non si ridecide. Ci entrano solo dalla fase 1: il lettore del
   montaggio le legge, e la capability della data di consegna confermata è una colonna di riga.
 * **La commessa** (D-4).
+
+## 9. Fase 2 — la testata: censimento e due domande (2026-10-10)
+
+### 9.1 Chi scrive le testate fuori bozza (letto dal catalogo e dal codice, 2026-10-10)
+
+**Nel database.** Le funzioni che fanno `UPDATE` sulle sei testate scrivono lo **stato** (cambi di
+stato, resi, riconsegne, revisioni dell'offerta, push), i **totali** (`fn_ricalcola_totali_ordine`,
+`…_preventivo`) e un solo dato di dominio: `valido_al` del contratto in
+`vendite.fn_chiudi_contratto_per_successione`. Nessuna di queste colonne è fra quelle da bloccare,
+tranne `valido_al`, che resta aperta in `ATTIVO`.
+
+I trigger `BEFORE` che scrivono colonne derivate (`gen_numero`/`gen_codice`, `normalize`,
+`freeze_listino_versione`, la data di emissione dell'offerta) stanno **dopo** il lock, che è in
+fascia `_a05_`: il lock giudica la **richiesta**, non le derivazioni. E scrivono all'uscita dalla
+bozza, quando lo stato vecchio è ancora la bozza.
+
+⛔ **Una colonna generata non si nomina nel lock**: dentro un `BEFORE` `NEW.validita` vale `NULL`
+(linee-guida-sql §7b), quindi sembrerebbe cambiata a ogni `UPDATE`. `validita` del contratto, che il
+§4.6 elencava nella famiglia 5, **esce dall'elenco**: segue `valido_dal` (bloccata) e `valido_al`.
+Stesso discorso per `partecipa_overlap_snapshot`.
+
+**Nel backend.** Le testate si aggiornano solo nei verbi «solo in DRAFT» (§2), con quattro
+eccezioni:
+
+| Dove | Cosa scrive | Stato vecchio | Con il lock della fase 2 |
+| --- | --- | --- | --- |
+| `ordini_service._crea_testata_ordine_da_origine` | `documento_origine_tipo`, `documento_origine_id` | `DRAFT` (l'ordine è appena nato) | passa |
+| `offerte_repository.update_stato` | `motivazione_rifiuto`, con lo stato | `EMESSA` (verso `RIFIUTATA`/`ANNULLATA`) | passa se `EMESSA` è fra gli stati aperti della famiglia 4 |
+| `contratti_service` (cessazione) | `valido_al`, prima dello stato | `ATTIVO` | passa (`valido_al` aperta in `ATTIVO`) |
+| ⚠️ `preventivi_service.cambia_stato` | `competenza_mese`, `fatturazione_immediata` | **`EMESSO`** (verso `ACCETTATO`), e `ACCETTATO` | **rifiutato**, se `competenza_mese` è bloccata fuori bozza come dice D-3 → domanda D-9 |
+
+E una precisazione al §2/§4: `fatturazione_immediata` **non** è bloccata fuori bozza. Il suo guard
+(`trgfn_guard_fatturazione_immediata_immutabile`) la blocca quando il documento è **entrato in una
+commessa**: è un'altra regola, e resta.
+
+### 9.2 Le due domande
+
+**D-9 — Il preventivo: le condizioni di fatturazione si scelgono all'accettazione.**
+`competenza_mese` e `fatturazione_immediata` non si scelgono in bozza: si scelgono **accettando**
+(`EMESSO → ACCETTATO`), e si possono ancora cambiare in `ACCETTATO` finché il preventivo non è in
+commessa. D-3 le metteva fra le condizioni bloccate fuori bozza, ma bloccarle romperebbe
+l'accettazione.
+*Proposta*: `competenza_mese` aperta in `EMESSO` e `ACCETTATO`, chiusa negli altri stati (terna
+con quegli stati); `fatturazione_immediata` non nominata, la governa il suo guard di commessa.
+✅ **Decisa da Tid il 2026-10-10: come la proposta.** Corregge D-3 per il preventivo.
+
+**D-10 — Che cosa vuol dire «documento chiuso» (D-8), documento per documento.**
+D-8 chiude le colonne aperte dopo l'emissione quando il documento è chiuso. Il catalogo ha la
+`fase` `CHIUSO`, ma non coincide col senso di D-8: il **reso** ha un solo stato vivo dopo la bozza,
+`CONFERMATO`, che è già `CHIUSO` (con quella regola le sue note — D-2: «libere» — si fermerebbero
+alla conferma); la **bolla** `CONSEGNATO` è `CHIUSO` (tracciamento e data di consegna non si
+correggerebbero più dopo la consegna).
+*Proposta* (gli stati si scrivono nel montaggio, per `codice_interno`, come per le righe):
+
+| Documento | Colonne aperte fuori bozza | Aperte negli stati | Chiuse in |
+| --- | --- | --- | --- |
+| DDT | famiglie 2, 3, 4 | `EMESSO`, `SPEDITO`, `CONSEGNATO` | `RESO`, `ANNULLATO` |
+| reso | `meta` | `CONFERMATO` | `ANNULLATO` |
+| ordine | `meta` | `CONFERMATO`, `PARZIALMENTE_EVASO`, `ALLOCATO`, `SPEDITO`, `CONSEGNATO`, `EVASO` | `FATTURATO`, `ANNULLATO` |
+| preventivo | `meta` (e `competenza_mese`, D-9) | `EMESSO`, `ACCETTATO` | `EVASO`, `RIFIUTATO`, `SCADUTO`, `ANNULLATO` |
+| offerta | `meta`, `motivazione_rifiuto` | `EMESSA`, `ACCETTATA` | `RIFIUTATA`, `SUPERATA`, `ANNULLATA` |
+| contratto | `valido_al`, CIG, CUP, `codice_commessa`, `meta` | `ATTIVO` | `CESSATO`, `ANNULLATO` |
+
+Il criterio: chiuso è il documento **annullato** o **arrivato in fondo** (fatturato, cessato,
+superato, rifiutato, scaduto, reso, evaso dal preventivo); una consegna o una conferma del reso
+no. ⚠️ L'ordine `EVASO` resta aperto perché può tornare `CONFERMATO` (rientro da reso).
+✅ **Decisa da Tid il 2026-10-10: la tabella qui sopra (modo B), senza tabelle nuove.** Gli stati
+si scrivono nel montaggio, colonna per colonna (terne del §5-bis.7). Scartato il flag per stato sui
+cataloghi `config.stati_doc_*`: sei colonne nuove, e dice «aperto/chiuso» per documento, non per
+colonna (D-9 apre `competenza_mese` in stati suoi).
+
+### 9.3 Cosa si scrive dopo le risposte
+
+1. La grammatica della testata a terne (`script.fn_doc_lock_regola`, §5-bis.7) e la frase di
+   `E_DOC_RIGHE_LOCK_MONTAGGIO`.
+2. I codici per famiglia: `E_DOC_IDENTITA_FUORI_BOZZA` (1), `E_DOC_CONDIZIONI_FUORI_BOZZA` (5),
+   `E_DOC_CLIENTE_FUORI_BOZZA` (cliente di preventivo, offerta, contratto), `E_DOC_SORGENTE_FUORI_BOZZA`
+   (D-5), `E_DOC_CHIUSO` (le colonne aperte, a documento chiuso: D-8). I codici della bolla e del
+   reso che esistono già restano.
+3. I sei montaggi rimontati a terne, con le colonne del §4 (meno `validita`); per il contratto il
+   lock assorbe `trgfn_contratti_lock_post_attivazione` (quattro colonne di pricing, regola del 2)
+   e parla prima del guard del listino (§5, ereditati).
+4. La terza copia: `non_editable_fields` delle capability di ordine, DDT, contratto e offerta si
+   ricava dal montaggio.
+5. pgTAP: per documento, una colonna per famiglia in uno stato aperto e in uno chiuso; il
+   congelamento del listino all'uscita dalla bozza (offerta, contratto).
+
+### 9.4 ⭐ Fase 2, lato DB: che cosa è stato scritto (2026-10-10)
+
+> ✅ **Applicato su dbdev il 2026-10-10 alle 17:43** (`databasechangelog` letto: `-68 … -76`; i file erano
+> nella forma finale, ultimo ritocco 17:37; sul vivo ci sono la categoria del contratto, i cinque codici e il
+> ritiro). ✅ Poi anche su `zeroerp_ci`; pgTAP di Tid verdi (2026-10-10).
+
+| changeSet / file | Che cosa |
+| --- | --- |
+| `20261010-68` | la grammatica della testata a **terne** (`script.fn_doc_lock_regola`), i commenti del lock, e i **sei montaggi** rimontati con le colonne del §4 e gli stati del §9.2 — in un changeSet solo, perché grammatica nuova e montaggi vecchi non convivono |
+| `20261010-69` | ritirati `vendite.trgfn_contratti_lock_post_attivazione` e il suo trigger: le quattro colonne di pricing le ferma il lock di testata, in ogni stato fuori bozza e prima del guard del listino |
+| `20261010-70` | `script.fn_doc_testata_in_stato` (nuova): colonne non modificabili e `can_edit_testata` letti dal montaggio |
+| `20261010-71 … -76` | le capability di ordine, DDT, contratto, offerta, preventivo e reso leggono la testata da lì: **ritirate le liste a mano** (`c_non_edit_tutti`, `c_non_edit_attivo`, `c_non_edit_extra`) e gli stati scritti di `can_edit_testata`. Restano le liste «sempre» (campi di sistema e lock assoluti, valide anche in bozza) |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | cinque codici nuovi (`E_DOC_IDENTITA_FUORI_BOZZA`, `E_DOC_CONDIZIONI_FUORI_BOZZA`, `E_DOC_CLIENTE_FUORI_BOZZA`, `E_DOC_SORGENTE_FUORI_BOZZA`, `E_DOC_CHIUSO`, CONFLITTO_STATO, id messaggi 1249-1253); `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` ritirato (`obsoleto_dal`); la soluzione di `E_DOC_RIGHE_LOCK_MONTAGGIO` descrive le terne |
+
+**Rispetto al §4 e al §9.2, tre precisazioni prese scrivendo:**
+
+* la **utility dell'ordine** è nominata come cliente (`E_DOC_CLIENTE_FUORI_BOZZA`): il billing
+  account ha già il lock assoluto, la utility no, e dopo `brief-db-esecutivi-ba-coppia` non è più
+  legata al BA. Il §4.3 la dava per bloccata, ma non lo era;
+* `categoria_cliente_id_snapshot` del **contratto** è nominata fra le condizioni: il backend la
+  scrive dal form, decide la categoria di prezzo, e la lista a mano della capability la fermava
+  fuori bozza;
+* `validita` del contratto **non** è nominata (colonna generata, §9.1).
+
+**Censimento dei campi del form** (`TESTATA_UPDATE_COLUMNS` dei sei repository del backend,
+2026-10-10): tutti nominati nel montaggio, tranne `fatturazione_immediata`, che ha il suo guard
+(scelta del §9.1). Nessun campo resta libero a documento chiuso.
+
+**⚠️ Che cosa cambia nelle capability.** `can_edit_testata` ora vuol dire «in questo stato almeno
+un campo della testata si cambia»: vero su un ordine confermato (le note), su una bolla emessa
+(trasporto, tracciamento), su un contratto attivo; falso a documento chiuso. Quello che non si
+riscrive lo dice `non_editable_fields`, che ora porta identità, condizioni, cliente e sorgente.
+Il test 10 di `test-fn-available-actions-ordine-v1` pinnava apposta `can_edit_testata = false` su
+un ordine confermato («se diventasse true, è qui che si deve accorgere qualcuno»): adeguato, ora
+prova che i campi che contano sono fra i non modificabili. Stessa cosa per il test 5 di quello
+dell'offerta e il test 5 di quello del preventivo.
+
+**La prova (2026-10-10, `zeroerp_ci`, SQL estratto in transazione ritirata, come owner).**
+
+* `vendite/test-testata-dopo-emissione-v1` (nuovo, 26 test): **26/26**. Il test 3 è la matrice
+  colonna × stato di tutti e sei i documenti, scritta dal brief e confrontata col montaggio; il
+  21 prova, colonna per colonna sul preventivo, che capability e lock rispondono uguale.
+* `script/test-doc-lock-montaggio-v1` portato alle terne: **30/30**.
+* **Regressione** su 144 pgTAP (i due lock, i sei documenti, le capability, i presidi
+  trasversali), senza e con il giro: identici, salvo i quattro adeguati qui sopra
+  (`test-contratti-step23-v1` test 2 verificava il trigger ritirato; ora verifica le quattro
+  colonne nel lock di testata).
+* ⚠️ **Un buco della regressione, trovato da Tid dopo l'apply (2026-10-10).** Anche il test 13 di
+  `vendite/test-ddt-read-side-v1` pinnava `can_edit_testata = false` su una bolla `EMESSO`, ed è
+  diventato rosso alla corsa di Tid. Nella mia regressione risultava «uguale senza e con», ma
+  **troncato al test 5 in tutte e due le corse**: sullo scratch la sua fixture cerca i dati nel
+  database e si ferma, quindi il 13 non girava mai. Uguale non vuol dire verificato: un file che
+  si ferma prima dell'asserzione è cieco, e va contato come non provato. Adeguato come gli altri
+  tre (testata modificabile, identità, causale, cliente e numero fra i non modificabili, il
+  tracciamento no); il predicato nuovo è vero sulla lettura dal montaggio per `EMESSO` (dbdev,
+  come app). Gli altri pgTAP che nominano `can_edit_testata` o `non_editable_fields`, cercati per
+  nome: sono quelli già adeguati più `dbops/test-fn-non-editable-fields-conditional`, che parla
+  degli articoli.
+* ⚠️ **Secondo rosso alla corsa di Tid: `vendite/test-resolve-termini-livello-sorgente-v1`.** Il
+  file prendeva attività reali già spinte in commessa e cambiava termine e modalità di pagamento
+  sul loro ordine e preventivo, cioè su documenti fuori bozza: dopo D-3 il modello non lo ammette
+  da nessun percorso (`E_DOC_CONDIZIONI_FUORI_BOZZA`). **Riscritto in modo costruttivo** (scelta
+  di Tid, 2026-10-10): ordine e preventivo nascono in bozza col loro termine, escono dalla bozza
+  con le transizioni vere, passano dal push come lo fa il backend (lista da pushare →
+  `fn_get_or_create_commessa` con termine e modalità del documento → `fn_link_commessa_sorgente` →
+  `fn_upsert_commessa_attivita`) e dal pull (`fn_emit_attivita_fatturabili_da_commessa`). Al
+  preventivo un articolo servizio con natura `SERVIZIO_UNA_TANTUM`: la merce andrebbe all'ordine.
+  Il test non dipende più dai dati del database; il 7 (sorgente bolla, tipo non gestito) resta
+  sui dati e, dove non ce ne sono, è uno `skip` dichiarato. Su zeroerp_ci 9/9 (il 7 in skip).
+* **Censimento per nome** dei pgTAP che scrivono una colonna di testata ora bloccata (55 file).
+  Su zeroerp_ci nessuno solleva i codici nuovi; 30 si fermano prima della fine per i loro fixture
+  sui dati, e lì lo scratch è cieco. Di quelli che scrivono una colonna bloccata **da questa
+  fase**, letto il contesto: `fatturazione_trigger` è sempre rimesso su un ordine appena creato in
+  bozza; `ddt.data` in `test-documenti-numerazione-trasloco-v1` prima dell'emissione; i dati di
+  trasporto in `test-fn-genera-ddt-riconsegna-eredita-v1` sulla bolla appena generata; `meta`
+  dell'ordine pushato in `test-fatturazione-immediata-simmetria-sorgenti-v1` (aperta in
+  `CONFERMATO`); `codice_cig` in `test-fatture-atti-v1` su un contratto che deve essere `ATTIVO`
+  (l'unico che dipende dallo stato del contratto nel test). Da guardare alla corsa intera di Tid.
+* I due CSV caricati per intero (upsert di 1034 codici e 1030 messaggi) dopo l'SQL estratto:
+  nessun rifiuto.
+* `plpgsql_check`: nessun avviso nuovo; firme delle capability invariate (il reso ora ancorato
+  a `vendite.resi.id%TYPE`, stessa identità). Guardrail statici verdi.
+
+**Non fatto, dichiarato.** Il congelamento del listino **all'uscita dalla bozza** (offerta e
+contratto, ereditato dal §5) non ha un caso costruito: la matrice prova che fuori bozza
+`listino_versione_id` è ferma, non che l'emissione la scrive. Serve una fixture di offerta
+emessa e di contratto attivato, che i builder pgTAP non hanno; resta da fare in questo brief.
+
+### 9.5 Richieste a BE e FE, dopo l'apply della fase 2
+
+| # | A chi | Cosa |
+| --- | --- | --- |
+| R-BE-2 | BE | ⚠️ **nello stesso rilascio dell'apply**: togliere i «solo in DRAFT» della testata (`_STATI_MODIFICABILI` di ordini, DDT, resi, preventivi; `_STATI_EDITABILI` delle offerte) e la tabella per stato del contratto (`_CONTRATTO_PATCH_ALLOWED_BY_STATE`). Decide il DB (D-0); il 409 del lock passa com'è. Le whitelist `TESTATA_UPDATE_COLUMNS` restano |
+| R-BE-3 | BE | le policy dei cinque codici nuovi (CONFLITTO_STATO → 409; il presidio `test_error_codes_db_policy_guardrail` è rosso finché mancano) e il ritiro di `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` in `contratti_service.py` e nei file di policy e messaggi generati |
+| R-BE-4 | BE | i test che pinnano `can_edit_testata = false` fuori bozza o le liste di `non_editable_fields`; `docs/it/backend/vendite/manual/modello-contratti.md` nomina ancora il lock post-attivazione |
+| R-FE-3 | FE | i form di testata seguono `can_edit_testata` e `non_editable_fields` anche fuori bozza: la bolla emessa mostra trasporto e tracciamento modificabili (D-0), il preventivo emesso e accettato la competenza, il contratto attivo fine validità e CIG/CUP |
+

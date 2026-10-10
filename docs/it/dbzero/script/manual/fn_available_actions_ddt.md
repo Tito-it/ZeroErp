@@ -55,3 +55,13 @@ che oggi il modello ammette (decisione D7 del brief).
 Presidio: `db/pgtap/script/test-fn-available-actions-ddt-reason-catch-all-v1.sql`
 (16, casi costruiti: eleggibile a tre voci, `ALLOCATA`, `EMESSA`, precedenza
 sull'annullato, le cause del catch-all, pin di forma, scope).
+
+## Rev 2026-10-10 — la testata letta dal montaggio
+
+`non_editable_fields` e `can_edit_testata` non sono più scritti nella funzione: li legge dal
+montaggio del lock di testata
+[`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in_stato). Restano
+nella capability solo le colonne «sempre» (valide anche in bozza); dopo vengono quelle che il
+lock blocca nello stato. Fuori bozza `can_edit_testata` è vero negli stati in cui una colonna
+resta aperta (le note di un documento vivo, i dati di trasporto della bolla), falso a documento
+chiuso. Brief `brief-db-testata-dopo-emissione`, fase 2.

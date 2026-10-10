@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_evento_asset(p_auth_user_id integer, p
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_evento_asset(p_auth_user_id integer, p_evento_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: perimetro di un evento asset via l'ASSET (non un magazzino:
     --   l'evento puo' non averne). Chiave di note_evento_asset.

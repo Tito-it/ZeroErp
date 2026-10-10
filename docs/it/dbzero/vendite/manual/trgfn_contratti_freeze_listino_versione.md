@@ -15,7 +15,7 @@
 >
 > Trigger correlati:
 >
-> [vendite.trgfn_contratti_lock_post_attivazione](/dbzero/vendite/funzioni/trgfn_contratti_lock_post_attivazione) — lock immutabilità post-attivazione
+> [vendite.trgfn_doc_testata_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_testata_lock_fuori_bozza) — il lock di testata: fuori bozza la versione congelata non si cambia
 
 La trigger function **`vendite.trgfn_contratti_freeze_listino_versione()`** gestisce due responsabilità al momento dell'attivazione di un contratto (DRAFT→ATTIVO):
 
@@ -75,7 +75,7 @@ Se il listino esiste ma non ha versioni con `validita @> CURRENT_DATE AND attivo
 | --- | --- | --- |
 | **Questo trigger** (`freeze_listino_versione`) | 1° (lex.) | Freeze versione + guard negoziato puro |
 | `guard_transizione_stato` | 2° (lex.) | Valida matrice transizioni + check componenti PENDING |
-| `lock_post_attivazione` | — (UPDATE OF diverso) | Blocca modifica campi pricing post-attivazione |
+| `a05_lock_fuori_bozza` (BB di testata) | prima (`a05`) | Fuori bozza blocca listino, versione e variazioni (dal 2026-10-10; ha ritirato `lock_post_attivazione`) |
 
 <!-- rev-2026-09-28-liste-righe -->
 ### 🔄 rev 2026-09-28 — brief-db-liste-righe-documento

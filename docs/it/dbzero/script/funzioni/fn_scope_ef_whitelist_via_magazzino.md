@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_magazzino(p_auth_user_id integer, p_ma
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_magazzino(p_auth_user_id integer, p_magazzino_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: dire se l'operatore ha nel proprio perimetro l'emittente
     --   del magazzino indicato. E' la risalita che tutto il dominio usa.

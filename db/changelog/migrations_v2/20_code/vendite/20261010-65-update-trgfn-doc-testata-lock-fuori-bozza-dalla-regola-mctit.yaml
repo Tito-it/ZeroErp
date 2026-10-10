@@ -1,0 +1,201 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL LOCK DELLA TESTATA LEGGE IL MONTAGGIO CON LA GRAMMATICA CONDIVISA
+#   vendite.trgfn_doc_testata_lock_fuori_bozza(): argomenti da
+#   script.fn_doc_lock_regola (20261010-60), decisione da
+#   script.fn_doc_lock_colonna_bloccata (20261010-61).
+#   Brief: brief-db-testata-dopo-emissione (fase 1, §5-bis, R-1; D-8)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Il lettore del montaggio nasce generico sui due building block (R-1), e
+#   legge la testata con la grammatica con cui la legge il trigger: se il
+#   trigger interpretasse da se' le coppie (colonna, codice), le
+#   interpretazioni sarebbero due. E' anche il punto in cui la fase 2 porta
+#   la forma per stato sulla testata (D-8: le colonne che restano aperte
+#   dopo l'emissione si chiudono quando il documento si chiude): la
+#   grammatica cambia in script.fn_doc_lock_regola, e trigger e lettore la
+#   seguono insieme.
+#
+# -- NIENTE CAMBIA PER GLI ADOTTANTI (verificato con i loro pgTAP) ---------
+#   * la prima colonna nominata che cambia, nell'ordine degli argomenti,
+#     parla col suo codice, se lo stato VECCHIO non e' la bozza;
+#   * se nessuna colonna nominata cambia, lo stato non si legge. La domanda
+#     si fa alla decisione con lo stato NULL («fuori bozza, in nessuno stato
+#     ammesso»): ferma ogni colonna nominata che cambia;
+#   * stessi codici, contesto e valori; stesso errore di montaggio. La frase
+#     si divide in due: l'evento sbagliato («si monta BEFORE UPDATE») lo
+#     dice il trigger, gli argomenti sbagliati la grammatica.
+#
+#   Corpo di partenza: pg_get_functiondef su dbdev e zeroerp_ci (md5 del
+#   prosrc identico, = 20261009-70, verificato il 2026-10-10). SECURITY
+#   INVOKER ora esplicito (era il default). COMMENT: quello vivo, con gli
+#   adottanti aggiornati (era rimasto a ddt e resi: dal 20261009-86…-92
+#   anche ordini, offerte, contratti e preventivi), piu' la rev di oggi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261010-65-update-trgfn-doc-testata-lock-fuori-bozza-dalla-regola-mctit.yaml
+
+  - changeSet:
+      id: 20261010-65-update-trgfn-doc-testata-lock-fuori-bozza-dalla-regola
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.trgfn_doc_testata_lock_fuori_bozza: argomenti e decisione dai due BB condivisi col lettore del
+        montaggio (fn_doc_lock_regola, fn_doc_lock_colonna_bloccata). Brief: brief-db-testata-dopo-emissione (R-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                -- La regola del montaggio, letta dalla grammatica condivisa
+                -- (script.fn_doc_lock_regola): [0] tipo documento, [1] stato
+                -- bozza, [2..] coppie (colonna, codice errore).
+                v_regola       jsonb;
+                v_documento    text;
+
+                v_old          jsonb;
+                v_new          jsonb;
+                v_cambiate     text[];
+                v_colonna      text;
+                v_codice       text;
+                v_stato        text;
+                v_etichetta    text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Una colonna della testata si sceglie solo finche' il
+                --   documento e' in bozza: fuori, e' stampata su un foglio
+                --   consegnato o ha gia' prodotto un fatto (merce uscita o
+                --   rientrata, un cliente a cui si fattura). Decide lo stato
+                --   VECCHIO: l'UPDATE che esce dalla bozza scegliendo la
+                --   colonna e' legittimo.
+                --
+                -- Building block, montato BEFORE UPDATE con:
+                --   [0] tipo documento (lettore
+                --       script.fn_get_stato_testata_documento);
+                --   [1] codice_interno dello stato bozza;
+                --   [2..] coppie (colonna, codice errore).
+                -- Gemello di testata di vendite.trgfn_doc_righe_lock_fuori_bozza.
+                -- ⭐ La grammatica degli argomenti e la decisione non stanno
+                --    qui (rev 2026-10-10): script.fn_doc_lock_regola legge il
+                --    montaggio, script.fn_doc_lock_colonna_bloccata decide. Le
+                --    stesse due le usa il lettore del montaggio
+                --    (script.fn_doc_lock_montaggi).
+                -- ⛔ Stato letto dal lettore SECURITY DEFINER: le testate
+                --    hanno RLS.
+                -- =========================================================
+
+                -- ── Argomenti ed evento: errore di MONTAGGIO, non di dato ─
+                v_regola := script.fn_doc_lock_regola('TESTATA', TG_ARGV);
+
+                IF TG_OP <> 'UPDATE' OR v_regola ->> 'errore' IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'evento',  TG_OP,
+                                       'tg_argv', TG_ARGV),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    COALESCE(v_regola ->> 'errore', 'si monta BEFORE UPDATE'));
+                END IF;
+
+                v_documento := v_regola ->> 'documento';
+                v_old       := to_jsonb(OLD);
+                v_new       := to_jsonb(NEW);
+
+                -- Una colonna che la testata non ha e' un refuso del
+                -- montaggio: il lock non scatterebbe mai, e nessuno se ne
+                -- accorgerebbe.
+                SELECT e ->> 'colonna'
+                  INTO v_colonna
+                  FROM jsonb_array_elements(v_regola -> 'colonne') AS e
+                 WHERE NOT (v_new ? (e ->> 'colonna'))
+                 LIMIT 1;
+
+                IF v_colonna IS NOT NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, 'E_DOC_RIGHE_LOCK_MONTAGGIO',
+                    jsonb_build_object('trigger', TG_NAME,
+                                       'table',   TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'colonna', v_colonna),
+                    NULL::uuid,
+                    TG_NAME::text,
+                    TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                    format('la colonna %s non esiste sulla testata', v_colonna));
+                END IF;
+
+                -- ── Le colonne che cambiano ──────────────────────────────
+                v_cambiate := ARRAY(SELECT n.key
+                                      FROM jsonb_each(v_new) AS n
+                                     WHERE n.value IS DISTINCT FROM (v_old -> n.key));
+
+                -- Nessuna colonna nominata cambia: niente da guardare, e lo
+                -- stato non si legge. Con lo stato NULL la decisione ferma
+                -- ogni colonna nominata che cambia.
+                IF script.fn_doc_lock_colonna_bloccata(v_regola, NULL, v_cambiate) IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- ── Lo stato VECCHIO ─────────────────────────────────────
+                -- Dentro il BEFORE ROW il lettore vede la versione che
+                -- l'UPDATE sta sostituendo.
+                SELECT t.stato, t.etichetta
+                  INTO v_stato, v_etichetta
+                  FROM script.fn_get_stato_testata_documento(v_documento, (v_old ->> 'id')::bigint) AS t;
+
+                -- La prima colonna, nell'ordine del montaggio, che in questo
+                -- stato non si cambia. Decide la funzione che usa anche la
+                -- capability.
+                v_colonna := script.fn_doc_lock_colonna_bloccata(v_regola, v_stato, v_cambiate);
+
+                IF v_colonna IS NOT NULL THEN
+                  SELECT e ->> 'codice'
+                    INTO v_codice
+                    FROM jsonb_array_elements(v_regola -> 'colonne') AS e
+                   WHERE e ->> 'colonna' = v_colonna
+                   LIMIT 1;
+
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', TG_NAME::text, v_codice,
+                    jsonb_build_object('table',      TG_TABLE_SCHEMA || '.' || TG_TABLE_NAME,
+                                       'id',         v_old ->> 'id',
+                                       'documento',  v_documento,
+                                       'etichetta',  v_etichetta,
+                                       'stato',      v_stato,
+                                       'colonna',    v_colonna,
+                                       'valore_da',  v_old -> v_colonna,
+                                       'valore_a',   v_new -> v_colonna),
+                    (v_new ->> 'tx_id')::uuid,
+                    COALESCE(v_stato, 'NULL'));
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_testata_lock_fuori_bozza()
+              IS 'Building block (2026-10-09, brief-db-esecutivi-ba-coppia): una colonna della TESTATA di un documento si sceglie solo finche'' il documento e'' in bozza. BEFORE UPDATE FOR EACH ROW, TG_ARGV = [0] tipo documento per script.fn_get_stato_testata_documento, [1] codice_interno dello stato bozza, [2..] coppie (colonna, codice errore) come script.trgfn_lock_columns. Decide lo stato VECCHIO, letto dal lettore SECURITY DEFINER dentro il BEFORE ROW: l''UPDATE che esce dalla bozza scegliendo la colonna e'' legittimo. Si legge lo stato solo se una colonna bloccata cambia (confronto to_jsonb). Solleva il codice della PRIMA colonna che cambia, nell''ordine degli argomenti; VARIADIC: lo stato; nel contesto etichetta, colonna, valore_da, valore_a. Montaggio errato (evento diverso da UPDATE, argomenti spaiati, colonna che la testata non ha): E_DOC_RIGHE_LOCK_MONTAGGIO, come il gemello delle righe vendite.trgfn_doc_righe_lock_fuori_bozza. Si monta in fascia _a05_: l''immutabilita'' parla prima dei guard sul valore nuovo. Regola del 2: ritira vendite.trgfn_ddt_guard_causale_immutabile e il punto 1 di vendite.trgfn_ddt_guard_magazzino e di vendite.trgfn_resi_guard_magazzino. Adottanti: vendite.ddt (causale, cliente, magazzino), vendite.resi (magazzino). Dal 2026-10-09 (20261009-86…-92, brief-db-esecutivi-ba-coppia) anche l''emittente (emittente_fiscale_id, E_DOC_EMITTENTE_FUORI_BOZZA) su ddt, resi, ordini, offerte_commerciali, contratti e preventivi: adottanti vendite.ddt, vendite.resi, vendite.ordini, vendite.offerte_commerciali, vendite.contratti, vendite.preventivi. rev 2026-10-10 (brief-db-testata-dopo-emissione fase 1, R-1): la grammatica degli argomenti e la decisione escono dal corpo in due building block condivisi col lettore del montaggio. script.fn_doc_lock_regola legge TG_ARGV (le coppie diventano colonne con il loro codice e gli stati in cui restano aperte fuori bozza: per le coppie nessuno); script.fn_doc_lock_colonna_bloccata decide quale colonna nominata, fra quelle che cambiano, lo stato vecchio non lascia cambiare (la prima nell''ordine del montaggio). Se nessuna colonna nominata cambia lo stato non si legge (la decisione con lo stato NULL). Le stesse due le usa script.fn_doc_lock_montaggi: lock e capability leggono lo stesso montaggio con la stessa grammatica. La forma per stato della testata (D-8, fase 2) si aggiunge alla grammatica, e trigger e lettore la seguono insieme. Codici, contesto e valori invariati; la frase del montaggio sbagliato dice l''evento (si monta BEFORE UPDATE) o gli argomenti attesi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Il corpo di prima sta in 20261009-70: per tornarci si riapplica quello.
+              SELECT 1;

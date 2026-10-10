@@ -220,11 +220,12 @@ CREATE OR REPLACE FUNCTION pg_temp.rca_emit() RETURNS void AS $$
   SELECT vendite.fn_emit_attivita_fatturabili_da_commessa((SELECT commessa_id FROM tmp_com), true, false);
 $$ LANGUAGE sql;
 
--- I tre campi del push del blob, in una stringa confrontabile.
-CREATE OR REPLACE FUNCTION pg_temp.rca_push(p_ddt bigint) RETURNS text AS $$
+-- I tre campi del push di un blob, in una stringa confrontabile. Prende il
+-- BLOB e non il DDT: i test 3-12 lo leggono dalla fotografia _blob, il 17
+-- (che viene dopo scritture nuove) dalla chiamata viva.
+CREATE OR REPLACE FUNCTION pg_temp.rca_push(b jsonb) RETURNS text AS $$
   SELECT (b->>'can_push_commessa') || '|' || COALESCE(b->>'can_push_commessa_reason', '-')
-         || '|' || COALESCE(b->>'can_push_commessa_reason_key', '-')
-    FROM script.fn_available_actions_ddt(p_ddt) b;
+         || '|' || COALESCE(b->>'can_push_commessa_reason_key', '-');
 $$ LANGUAGE sql;
 
 -- ============================================================
@@ -249,6 +250,31 @@ SELECT pg_temp.rca_emit();
 SELECT pg_temp.mk_af(pg_temp.rca_segment(d_alloc), 10) FROM f;
 SELECT pg_temp.mk_af(pg_temp.rca_segment(d_prec_alloc), 10) FROM f;
 
+-- ⭐ UNA FOTOGRAFIA PER MOMENTO (2026-10-10). Da qui al test 15 il file non
+--   crea e non scrive niente: e' un momento solo. Fino a oggi i test 3-12
+--   chiedevano la capability 17 volte per 9 DDT (il 12 rifaceva le otto dei
+--   test 4-11), e i test 13 e 14 calcolavano due volte la diagnosi di TUTTE le
+--   righe — ~1,2 s l'una come app su dbdev, misurato il 2026-10-10. Le copie
+--   contengono esattamente cio' che la chiamata viva risponde in questo momento,
+--   con il contesto operatore gia' preso: cambia quante volte si paga, non cosa
+--   si vede.
+--   ⚠️ Restano VIVE le letture che vengono dopo una scrittura o un cambio di
+--   contesto: il 17 (DDT costruito dopo) e il 16 (scope).
+CREATE TEMP TABLE _blob AS
+SELECT s.ddt_id, script.fn_available_actions_ddt(s.ddt_id) AS b
+  FROM f CROSS JOIN LATERAL unnest(ARRAY[d_fattura_ordine, d_in_viaggio, d_solo_trasporto,
+                                         d_annullato, d_prec, d_ok, d_alloc, d_emessa,
+                                         d_prec_alloc]) AS s(ddt_id);
+
+-- Il blob di un DDT costruito qui, dalla fotografia. ⚠️ Dopo la CREATE TABLE:
+--   il corpo di una funzione SQL si valida alla creazione.
+CREATE OR REPLACE FUNCTION pg_temp.rca_blob(p_ddt bigint) RETURNS jsonb AS $$
+  SELECT b FROM _blob WHERE ddt_id = p_ddt;
+$$ LANGUAGE sql;
+
+CREATE TEMP TABLE _diagnosi AS
+SELECT * FROM vendite.fn_ddt_push_diagnosi();
+
 -- ============================================================
 -- 1-3) ⭐ L'ELEGGIBILE, costruito: la fonte, chi ne deriva, chi la legge.
 --      Prima del 21-09 qui c'era un EXCEPT lister/diagnosi sulle righe vive:
@@ -270,7 +296,7 @@ SELECT is(
   '2) ...e il lister, che ne deriva, porta quella riga con quantita 10');
 
 SELECT is(
-  (SELECT pg_temp.rca_push(d_ok) FROM f),
+  (SELECT pg_temp.rca_push(pg_temp.rca_blob(d_ok)) FROM f),
   'true|-|-',
   '3) ...e la capability dice can_push_commessa = true, senza reason ne'' key');
 
@@ -278,27 +304,27 @@ SELECT is(
 -- 4-8) Le cause del catch-all (invariate dal 2026-07-19)
 -- ============================================================
 SELECT is(
-  (SELECT script.fn_available_actions_ddt(d_fattura_ordine)->>'can_push_commessa_reason' FROM f),
+  (SELECT pg_temp.rca_blob(d_fattura_ordine)->>'can_push_commessa_reason' FROM f),
   'DDT_FATTURA_DA_ORDINE',
   '4) ordine CONFERMATO + DDT CONSEGNATO -> DDT_FATTURA_DA_ORDINE (era il falso «spedito o consegnato»)');
 
 SELECT is(
-  (SELECT script.fn_available_actions_ddt(d_in_viaggio)->>'can_push_commessa_reason' FROM f),
+  (SELECT pg_temp.rca_blob(d_in_viaggio)->>'can_push_commessa_reason' FROM f),
   'DDT_MERCE_IN_VIAGGIO',
   '5) ordine SPEDITO + DDT EMESSO (pre-trigger) -> DDT_MERCE_IN_VIAGGIO');
 
 SELECT is(
-  (SELECT script.fn_available_actions_ddt(d_solo_trasporto)->>'can_push_commessa_reason' FROM f),
+  (SELECT pg_temp.rca_blob(d_solo_trasporto)->>'can_push_commessa_reason' FROM f),
   'DDT_SOLO_TRASPORTO',
   '6) causale non fatturabile (CONTO_LAVORO) -> DDT_SOLO_TRASPORTO');
 
 SELECT is(
-  (SELECT script.fn_available_actions_ddt(d_annullato)->>'can_push_commessa_reason' FROM f),
+  (SELECT pg_temp.rca_blob(d_annullato)->>'can_push_commessa_reason' FROM f),
   'DDT_NON_PUSHABILE',
   '7) DDT ANNULLATO -> generico DDT_NON_PUSHABILE (non la frase sullo stato)');
 
 SELECT is(
-  (SELECT script.fn_available_actions_ddt(d_prec)->>'can_push_commessa_reason' FROM f),
+  (SELECT pg_temp.rca_blob(d_prec)->>'can_push_commessa_reason' FROM f),
   'DDT_NON_PUSHABILE',
   '8) ANNULLATO + ordine CONFERMATO: vince il documento (generico), non FATTURA_DA_ORDINE');
 
@@ -309,18 +335,18 @@ SELECT is(
 --       diagnosi, e la precedenza (PRIMA del motivo) deve restare quella.
 -- ============================================================
 SELECT is(
-  (SELECT pg_temp.rca_push(d_alloc) FROM f)
+  (SELECT pg_temp.rca_push(pg_temp.rca_blob(d_alloc)) FROM f)
     || '#' || (SELECT count(*) FROM vendite.fn_list_ddt_da_pushare(NULL, NULL, NULL, (SELECT d_alloc FROM f)))::text,
   'false|DDT_GIA_INVIATO|vendite.ddt.push_commessa_reason.gia_inviato#0',
   '9) riga instradata e non emessa (ALLOCATA): GIA_INVIATO, e il lister non la porta');
 
 SELECT is(
-  (SELECT pg_temp.rca_push(d_emessa) FROM f),
+  (SELECT pg_temp.rca_push(pg_temp.rca_blob(d_emessa)) FROM f),
   'false|DDT_GIA_FATTURATO|vendite.ddt.push_commessa_reason.gia_fatturato',
   '10) riga fatturata (EMESSA): GIA_FATTURATO');
 
 SELECT is(
-  (SELECT pg_temp.rca_push(d_prec_alloc) FROM f),
+  (SELECT pg_temp.rca_push(pg_temp.rca_blob(d_prec_alloc)) FROM f),
   'false|DDT_GIA_INVIATO|vendite.ddt.push_commessa_reason.gia_inviato',
   '11) DDT ANNULLATO con una riga ALLOCATA: il segmento vince sul documento (GIA_INVIATO, come prima)');
 
@@ -332,7 +358,7 @@ SELECT ok(
      FROM (SELECT unnest(ARRAY[d_fattura_ordine, d_in_viaggio, d_solo_trasporto, d_annullato,
                               d_prec, d_alloc, d_emessa, d_prec_alloc]) AS d FROM f) s
      CROSS JOIN LATERAL (
-       SELECT script.fn_available_actions_ddt(s.d)->>'can_push_commessa_reason_key' AS k) q
+       SELECT pg_temp.rca_blob(s.d)->>'can_push_commessa_reason_key' AS k) q
     WHERE k IS NOT NULL),
   '12) le otto reason_key stanno tutte sotto vendite.ddt.push_commessa_reason.*');
 
@@ -343,7 +369,7 @@ SELECT ok(
 --    questa funzione un motivo NULL significa «eleggibile», il contrario del vero.
 SELECT ok(
   NOT EXISTS (
-    SELECT 1 FROM vendite.fn_ddt_push_diagnosi() g
+    SELECT 1 FROM _diagnosi g
      WHERE (g.motivo_rank IS NULL) <> (g.motivo IS NULL)
   ),
   '13) rank e motivo sono valorizzati insieme: nessun rank senza etichetta');
@@ -355,7 +381,7 @@ SELECT ok(
 --    un'altra rank — annullato, in viaggio, fattura da ordine.)
 SELECT ok(
   NOT EXISTS (
-    SELECT 1 FROM vendite.fn_ddt_push_diagnosi() g
+    SELECT 1 FROM _diagnosi g
      WHERE (g.motivo IS NULL
             AND NOT (g.segment = 'LIBERA' AND g.quantita_push > 0 AND g.billing_account_id IS NOT NULL))
         OR (g.motivo = 'DDT_ROUTED'    AND g.segment = 'LIBERA')
@@ -442,7 +468,8 @@ ON CONFLICT DO NOTHING;
 --    La forma laterale non la usa nessun chiamante: lister e capability
 --    passano un parametro.
 SELECT results_eq(
-  $q$SELECT g.motivo_rank, g.motivo, g.billing_account_id, pg_temp.rca_push(n.ddt_id)
+  $q$SELECT g.motivo_rank, g.motivo, g.billing_account_id,
+            pg_temp.rca_push(script.fn_available_actions_ddt(n.ddt_id))
        FROM tmp_noba n
        CROSS JOIN vendite.fn_ddt_push_diagnosi((SELECT ddt_id FROM tmp_noba)) g$q$,
   $q$VALUES (3, 'DDT_SENZA_BA', NULL::bigint,

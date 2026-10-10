@@ -1,6 +1,11 @@
 -- ------------------------------------------------------------
 -- SPDX-License-Identifier: GPL-3.0-or-later
 -- pgTAP test per Zero ERP
+-- Copyright (C) 2026 Tid (Michele Carlo Titini)
+--
+-- Rilasciato sotto GNU GPLv3 o versione successiva.
+-- Vedi LICENSE.md per il testo completo della licenza.
+-- ------------------------------------------------------------
 -- Test: T.2 — il livello 1 di vendite.fn_resolve_termini_pagamento
 --       risolve la SORGENTE EFFETTIVA e torna raggiungibile.
 --       (brief-db-termine-dal-documento-alla-commessa.md §3.2 · changeSet
@@ -14,19 +19,29 @@
 --    Un livello si verifica **dal percorso che lo attraversa**, non dal codice
 --    che lo dichiara.
 --
---    Conseguenza sul disegno di questo file: le fixture **non inventano la
---    forma**. Si parte da attivita' REALI prodotte dal pull e si muove solo il
---    dato di dominio (il termine sul documento), lasciando intatta la forma
---    della sorgente. Il test 1 presidia proprio quella forma: se un domani il
---    pull cambiasse, e' il primo a dirlo.
+-- ⭐ rev 2026-10-10 (brief-db-testata-dopo-emissione, fase 2, D-3): il
+--    PERCORSO si COSTRUISCE, non si pesca.
+--    Fino a quel giorno il file prendeva attivita' reali gia' prodotte dal pull
+--    e poi CAMBIAVA il termine sul loro ordine o preventivo — documenti gia'
+--    spinti in commessa, quindi fuori bozza. D-3 ha chiuso le condizioni
+--    commerciali fuori bozza (E_DOC_CONDIZIONI_FUORI_BOZZA): quella scrittura
+--    il modello non la ammette piu' da nessun percorso, e il test la usava per
+--    costruirsi il caso. Ora i documenti nascono in bozza COL LORO termine,
+--    escono dalla bozza con le transizioni vere, e passano da push
+--    (fn_list_*_da_pushare -> fn_get_or_create_commessa ->
+--    fn_upsert_commessa_attivita, come il backend) e pull
+--    (fn_emit_attivita_fatturabili_da_commessa). La forma della sorgente e'
+--    quella del pull vero (COMMESSA), e il test non dipende piu' dai dati del
+--    database su cui gira.
 -- ------------------------------------------------------------
 -- Indice test (1..9):
 --   1)  ⭐ invariante di forma: le attivita' dal pull portano sorgente COMMESSA
+--       (anche quelle costruite qui)
 --   2)  ⭐ livello 1 dal PERCORSO REALE: il termine dell'ORDINE vince sul cliente
 --   3)  livello 1 porta anche la MODALITA' quando la sorgente e' un ordine
 --   4)  PREVENTIVO: porta il termine ma NON la modalita' (discesa indipendente)
---   5)  livello 2: la commessa batte il documento
---   6)  livello 4: senza nulla, default TP_1RATA
+--   5)  livello 2: la commessa batte il cliente, ma non il documento
+--   6)  livello 4: senza nulla lungo la catena, default TP_1RATA
 --   7)  ⚠️ sorgente polimorfa: un tipo non gestito NON esplode e non vince
 --   8)  T.1: le 5 fn_list_*_da_pushare espongono le due colonne
 --   9)  T.1: la colonna porta il valore del documento, non un NULL fisso
@@ -42,70 +57,255 @@ BEGIN;
 --   Brief: brief-db-pgtap-runner-rls-baseline §19.
 SET CONSTRAINTS ALL IMMEDIATE;
 
--- Contesto applicativo: questo test gira come gira l'applicazione (ruolo
--- OPERATORE + RLS attiva), non come owner. Senza, con FORCE ROW LEVEL
--- SECURITY disattivo l'owner salta la RLS e il test non la esercita mai.
--- Brief: brief-db-pgtap-runner-rls-baseline §8.
-DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
-
 SELECT plan(9);
 
 -- ============================================================
--- Fixture: attivita' REALI, una per tipo di documento d'origine.
--- Nessuna costruita a mano: si selezionano quelle che il pull ha prodotto.
+-- Il mondo: un cliente, un articolo, il contesto dell'operatore.
+--   Gira come l'applicazione (ruolo OPERATORE + RLS): il mondo apre il
+--   contesto sull'operatore che lo costruisce.
 -- ============================================================
-CREATE TEMP TABLE tmp_af AS
-SELECT s.codice_interno AS tipo, min(a.id) AS attivita_id
-  FROM vendite.attivita_fatturabili a
-  JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
-  JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
- GROUP BY s.codice_interno;
+CREATE TEMP TABLE _m AS
+SELECT * FROM dbops.fn_pgtap_crea_mondo_cliente('pgTAP termini dalla sorgente');
+
+DO $ctx$ BEGIN
+    PERFORM script.fn_pgtap_set_contesto_operatore((SELECT auth_user_id FROM _m));
+END $ctx$;
+
+CREATE TEMP TABLE _art AS SELECT dbops.fn_pgtap_crea_articolo('PGT-TRM-S') AS id;
+-- Al preventivo un SERVIZIO (non gestito a magazzino): la merce del preventivo
+-- va all'ordine (fn_push_preventivo_a_ordine), in commessa ci va il resto.
+CREATE TEMP TABLE _srv AS SELECT dbops.fn_pgtap_crea_articolo('PGT-TRM-SRV', p_gestito => false) AS id;
+-- La natura la riga la eredita dall'articolo (trg_preventivi_righe_a10_set_natura_vendita):
+-- un servizio una tantum ha destinazione COMMESSA.
+UPDATE catalogo.articoli
+   SET natura_vendita_id = (SELECT nv.id FROM config.nature_vendita nv WHERE nv.codice_interno = 'SERVIZIO_UNA_TANTUM')
+ WHERE id = (SELECT id FROM _srv);
+
+-- I termini per CODICE (chiave stabile), le modalita' per codice.
+CREATE TEMP TABLE _k AS
+SELECT (SELECT i.id FROM config.iva i WHERE i.attivo IS TRUE AND i.aliquota_iva > 0 ORDER BY i.id LIMIT 1) AS iva_id,
+       (SELECT v.id FROM config.valute v ORDER BY v.id LIMIT 1) AS valuta_id,
+       (SELECT t.id FROM config.termini_pagamento t WHERE t.codice_interno = 'TP_30_60_EOM_2R') AS tp_ordine,
+       (SELECT t.id FROM config.termini_pagamento t WHERE t.codice_interno = 'TP_30G_EOM_1R')   AS tp_preventivo,
+       (SELECT t.id FROM config.termini_pagamento t WHERE t.codice_interno = 'TP_60G_1R')       AS tp_commessa,
+       (SELECT t.id FROM config.termini_pagamento t WHERE t.codice_interno = 'TP_30G_1R')       AS tp_cliente,
+       (SELECT mp.id FROM config.modalita_pagamento mp WHERE mp.codice = 'MP05')               AS mp_ordine,
+       (SELECT mp.id FROM config.modalita_pagamento mp WHERE mp.codice = 'MP01')               AS mp_cliente;
+
+-- Il cliente ha un SUO termine e una SUA modalita': e' il livello che il
+-- documento deve battere (il difetto della fattura 2263).
+UPDATE anagrafiche.clienti
+   SET termine_pagamento_id = (SELECT tp_cliente FROM _k),
+       modalita_pagamento_id = (SELECT mp_cliente FROM _k)
+ WHERE istanza_utility_id = (SELECT istanza_utility_id FROM _m);
+
+-- ============================================================
+-- Push e pull come il backend: le righe della lista da pushare diventano
+-- attivita' di commessa, il pull le emette in attivita' fatturabili.
+-- Restituisce l'attivita' fatturabile nata dal documento.
+-- ============================================================
+CREATE FUNCTION pg_temp.spingi_e_tira(p_righe jsonb) RETURNS bigint
+LANGUAGE plpgsql AS $f$
+DECLARE
+    r          jsonb;
+    v_commessa bigint;
+BEGIN
+    IF jsonb_array_length(p_righe) = 0 THEN
+        RAISE EXCEPTION 'spingi_e_tira: la lista da pushare e'' vuota';
+    END IF;
+
+    -- Come commesse_source_handlers del backend: la commessa con le
+    -- dimensioni della riga (compresi termine e modalita' del documento),
+    -- poi il collegamento della sorgente ROOT, che il pull pretende.
+    r := p_righe -> 0;
+    v_commessa := vendite.fn_get_or_create_commessa(
+        p_billing_account_id     => (r ->> 'billing_account_id')::bigint,
+        p_utility_id             => (r ->> 'utility_id')::integer,
+        p_fatturazione_immediata => (r ->> 'fatturazione_immediata')::boolean,
+        p_competenza_dal         => (r ->> 'competenza_dal')::date,
+        p_competenza_al          => (r ->> 'competenza_al')::date,
+        p_meta                   => jsonb_build_object('test_scope', 'pgtap_resolve_termini'),
+        p_termine_pagamento_id   => (r ->> 'termine_pagamento_id')::bigint,
+        p_modalita_pagamento_id  => (r ->> 'modalita_pagamento_id')::integer);
+
+    PERFORM vendite.fn_link_commessa_sorgente(
+        p_commessa_id      => v_commessa,
+        p_sorgente_tipo_id => (r ->> 'sorgente_tipo_id')::bigint,
+        p_sorgente_uid     => r ->> 'sorgente_uid');
+
+    FOR r IN SELECT * FROM jsonb_array_elements(p_righe) LOOP
+        PERFORM vendite.fn_upsert_commessa_attivita(
+            p_commessa_id                   => v_commessa,
+            p_segment_key                   => r ->> 'segment_key',
+            p_articolo_id                   => (r ->> 'articolo_id')::uuid,
+            p_istanza_utility_id            => (r ->> 'istanza_utility_id')::bigint,
+            p_data_attivita                 => (r ->> 'data_attivita')::date,
+            p_uom_id                        => (r ->> 'uom_id')::bigint,
+            p_quantita                      => (r ->> 'quantita')::numeric,
+            p_competenza_mese               => (r ->> 'competenza_mese')::date,
+            p_competenza_dal                => (r ->> 'competenza_dal')::date,
+            p_competenza_al                 => (r ->> 'competenza_al')::date,
+            p_prezzo_snapshot               => (r ->> 'prezzo_snapshot')::numeric,
+            p_prezzo_base_snapshot          => NULL,
+            p_origine_prezzo                => NULL,
+            p_tipo_variazione_applicata     => NULL,
+            p_valore_variazione_applicata   => NULL,
+            p_promo_id                      => NULL,
+            p_contratto_id                  => NULL,
+            p_categoria_cliente_id_snapshot => NULL,
+            p_classe_utenza_id_snapshot     => NULL,
+            p_qta_operativa                 => (r ->> 'qta_operativa')::numeric,
+            p_uom_operativa_id              => (r ->> 'uom_operativa_id')::bigint,
+            p_factor_to_base                => (r ->> 'factor_to_base')::numeric,
+            p_tipo_doc_fiscale_id           => (r ->> 'tipo_doc_fiscale_id')::bigint,
+            p_valuta_id                     => (r ->> 'valuta_id')::integer,
+            p_prezzo_bloccato               => (r ->> 'prezzo_bloccato')::boolean,
+            p_pricing_mode                  => r ->> 'pricing_mode',
+            p_sorgente_tipo_id              => (r ->> 'sorgente_tipo_id')::bigint,
+            p_sorgente_uid                  => r ->> 'sorgente_uid',
+            p_meta                          => r -> 'meta');
+    END LOOP;
+
+    PERFORM vendite.fn_emit_attivita_fatturabili_da_commessa(
+        p_commessa_id   => v_commessa,
+        p_only_approved => false);
+
+    RETURN (SELECT min(a.id)
+              FROM vendite.attivita_fatturabili a
+              JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
+             WHERE a.commessa_id = v_commessa
+               AND ca.sorgente_uid = p_righe -> 0 ->> 'sorgente_uid');
+END
+$f$;
+
+-- ============================================================
+-- I documenti: nascono in bozza COL LORO termine, poi escono dalla bozza.
+--   ORD     termine e modalita' propri (livelli 1-3, 5, 9)
+--   ORD0    nessun termine e nessuna modalita' (livello 4)
+--   PREV    termine proprio, nessuna modalita' (livello 1 sul preventivo)
+-- ============================================================
+CREATE TEMP TABLE _doc (chiave text PRIMARY KEY, id bigint);
+
+DO $fixture$
+DECLARE
+    c    record;
+    k    record;
+    v_id bigint;
+BEGIN
+    SELECT * INTO c FROM _m;
+    SELECT * INTO k FROM _k;
+
+    FOR i IN 1..2 LOOP
+        INSERT INTO vendite.ordini
+            (soggetto_ruolo_id, billing_account_id, stato_doc_ordine_id,
+             fatturazione_trigger, emittente_fiscale_id, valuta_id, data,
+             termine_pagamento_id, modalita_pagamento_id)
+        VALUES
+            (c.cliente_soggetto_ruolo_id, c.billing_account_id,
+             (SELECT s.id FROM config.stati_doc_ordini s WHERE s.codice_interno = 'DRAFT'),
+             'CONFERMATO', c.emittente_fiscale_id, k.valuta_id, script.fn_data_operativa(),
+             CASE i WHEN 1 THEN k.tp_ordine END, CASE i WHEN 1 THEN k.mp_ordine END)
+        RETURNING id INTO v_id;
+
+        INSERT INTO vendite.ordini_righe
+            (ordine_id, riga_nr, articolo_id, descrizione, quantita, qta_operativa, prezzo_unitario, iva_id)
+        VALUES (v_id, 1, (SELECT id FROM _art), 'Riga pgTAP', 2, 2, 10, k.iva_id);
+
+        PERFORM dbops.fn_pgtap_porta_a_stato('vendite.ordini', v_id, 'CONFERMATO');
+        INSERT INTO _doc VALUES (CASE i WHEN 1 THEN 'ORD' ELSE 'ORD0' END, v_id);
+    END LOOP;
+
+    INSERT INTO vendite.preventivi
+        (numero, stato_doc_preventivo_id, utility_id, istanza_utility_id,
+         billing_account_id, data, emittente_fiscale_id, valuta_id, termine_pagamento_id)
+    VALUES
+        ('PGT-TRM-' || substring(md5(clock_timestamp()::text) FOR 6),
+         (SELECT s.id FROM config.stati_doc_preventivi s WHERE s.codice_interno = 'DRAFT'),
+         c.utility_id, c.istanza_utility_id, c.billing_account_id,
+         script.fn_data_operativa(), c.emittente_fiscale_id, k.valuta_id, k.tp_preventivo)
+    RETURNING id INTO v_id;
+
+    INSERT INTO vendite.preventivi_righe
+        (preventivo_id, articolo_id, quantita, qta_operativa, prezzo_unitario, iva_id, ordine)
+    VALUES (v_id, (SELECT id FROM _srv), 2, 2, 10, k.iva_id, 1);
+
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', v_id, 'EMESSO');
+    -- L'accettazione come la fa il backend: le condizioni di fatturazione si
+    -- scelgono accettando (D-9), poi la transizione.
+    UPDATE vendite.preventivi
+       SET fatturazione_immediata = false,
+           competenza_mese = date_trunc('month', script.fn_data_operativa())::date
+     WHERE id = v_id;
+    PERFORM dbops.fn_pgtap_porta_a_stato('vendite.preventivi', v_id, 'ACCETTATO');
+    INSERT INTO _doc VALUES ('PREV', v_id);
+END
+$fixture$;
+
+CREATE FUNCTION pg_temp.doc(p text) RETURNS bigint
+LANGUAGE sql STABLE AS $f$ SELECT id FROM _doc WHERE chiave = p $f$;
+
+-- ============================================================
+-- 9) T.1 PRIMA del push: la lista da pushare porta il termine del documento.
+--    Un ordine ANCORA DA PUSHARE: dopo il push la funzione lo esclude.
+--    ⚠️ DISTINCT e non LIMIT 1: la funzione ritorna una riga per riga
+--    d'ordine, ma il termine e' di TESTATA. Con DISTINCT la sotto-select
+--    esplode se le righe dello stesso ordine portassero valori diversi:
+--    asserisce anche l'invarianza.
+-- ============================================================
+CREATE TEMP TABLE _t9 AS
+SELECT (SELECT DISTINCT termine_pagamento_id
+          FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL, pg_temp.doc('ORD'))) AS termine;
+
+-- Il percorso: push e pull dei tre documenti.
+CREATE TEMP TABLE _af AS
+SELECT 'ORD' AS chiave,
+       pg_temp.spingi_e_tira((SELECT jsonb_agg(to_jsonb(l))
+                                FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL, pg_temp.doc('ORD')) l)) AS attivita_id
+UNION ALL
+SELECT 'ORD0',
+       pg_temp.spingi_e_tira((SELECT jsonb_agg(to_jsonb(l))
+                                FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL, pg_temp.doc('ORD0')) l))
+UNION ALL
+SELECT 'PREV',
+       pg_temp.spingi_e_tira((SELECT jsonb_agg(to_jsonb(l))
+                                FROM vendite.fn_list_preventivi_da_pushare(NULL, NULL, NULL, pg_temp.doc('PREV'), NULL) l));
+
+CREATE FUNCTION pg_temp.af(p text) RETURNS bigint
+LANGUAGE sql STABLE AS $f$ SELECT attivita_id FROM _af WHERE chiave = p $f$;
 
 -- ============================================================
 -- 1) ⭐ L'invariante di forma che ha ingannato tutti.
 --    Se questo test diventa rosso, il pull ha cambiato comportamento e il
 --    livello 1 va riletto: e' il primo campanello, non un dettaglio.
+--    Sulle attivita' costruite qui (devono esserci tutte e tre) e su tutte
+--    quelle del database.
 -- ============================================================
 SELECT is(
-    (SELECT count(*)::int FROM vendite.attivita_fatturabili a
-       JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
-      WHERE s.codice_interno <> 'COMMESSA'
-        AND a.commessa_attivita_id IS NOT NULL),
+    (SELECT count(*)::int FROM _af WHERE attivita_id IS NULL)
+    + (SELECT count(*)::int FROM vendite.attivita_fatturabili a
+         JOIN config.sorgenti s ON s.id = a.sorgente_tipo_id
+        WHERE s.codice_interno <> 'COMMESSA'
+          AND a.commessa_attivita_id IS NOT NULL),
     0,
-    '1) invariante: le attivita'' prodotte dal pull portano sorgente COMMESSA');
+    '1) invariante: il pull ha prodotto le tre attivita'', e le attivita'' del pull portano sorgente COMMESSA');
 
 -- ============================================================
 -- 2) ⭐ IL TEST CHE CONTA — livello 1 dal percorso reale.
---    Si prende un'attivita' vera nata da un ORDINE, si mette sull'ordine un
---    termine DIVERSO da quello del cliente, e si verifica che vinca l'ordine.
+--    L'ordine porta un termine DIVERSO da quello del cliente: vince l'ordine.
 --    Prima di T.2 qui usciva il termine del cliente: e' il difetto della
 --    fattura 2263.
 -- ============================================================
-CREATE TEMP TABLE tmp_ord AS
-SELECT a.id AS attivita_id, o.id AS ordine_id
-  FROM tmp_af f
-  JOIN vendite.attivita_fatturabili a ON a.id = f.attivita_id
-  JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
-  JOIN vendite.ordini o ON o.uid::text = ca.sorgente_uid
- WHERE f.tipo = 'ORDINE_VENDITA';
-
-UPDATE vendite.ordini
-   SET termine_pagamento_id = 3, modalita_pagamento_id = 5
- WHERE id = (SELECT ordine_id FROM tmp_ord);
-
 SELECT is(
-    (SELECT termine_pagamento_id FROM vendite.fn_resolve_termini_pagamento(
-        (SELECT attivita_id FROM tmp_ord))),
-    3::bigint,
+    (SELECT termine_pagamento_id FROM vendite.fn_resolve_termini_pagamento(pg_temp.af('ORD'))),
+    (SELECT tp_ordine FROM _k),
     '2) livello 1 dal percorso reale: vince il termine dell''ORDINE, non del cliente');
 
 -- ============================================================
 -- 3) La modalita' viaggia con lo stesso livello.
 -- ============================================================
 SELECT is(
-    (SELECT modalita_pagamento_id FROM vendite.fn_resolve_termini_pagamento(
-        (SELECT attivita_id FROM tmp_ord))),
-    5,
+    (SELECT modalita_pagamento_id FROM vendite.fn_resolve_termini_pagamento(pg_temp.af('ORD'))),
+    (SELECT mp_ordine FROM _k),
     '3) livello 1: l''ordine porta anche la modalita'' di pagamento');
 
 -- ============================================================
@@ -113,69 +313,52 @@ SELECT is(
 --    I due campi scendono la catena in modo indipendente, e il default
 --    esiste solo per il termine: config.modalita_pagamento non ha una riga
 --    «predefinita» e sceglierne una finirebbe sulla fattura elettronica.
+--    Il cliente non deve poter coprire il buco della modalita'.
 -- ============================================================
-CREATE TEMP TABLE tmp_prev AS
-SELECT a.id AS attivita_id, p.id AS preventivo_id
-  FROM tmp_af f
-  JOIN vendite.attivita_fatturabili a ON a.id = f.attivita_id
-  JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
-  JOIN vendite.preventivi p ON p.uid::text = ca.sorgente_uid
- WHERE f.tipo = 'PREVENTIVO';
-
-UPDATE vendite.preventivi SET termine_pagamento_id = 2
- WHERE id = (SELECT preventivo_id FROM tmp_prev);
--- il cliente non deve poter coprire il buco della modalita'
 UPDATE anagrafiche.clienti SET modalita_pagamento_id = NULL
- WHERE istanza_utility_id = (
-   SELECT ba.istanza_utility_id FROM vendite.attivita_fatturabili a
-     JOIN anagrafiche.billing_account ba
-       ON ba.id = COALESCE((SELECT parent_account_id FROM anagrafiche.billing_account WHERE id = a.billing_account_id), a.billing_account_id)
-    WHERE a.id = (SELECT attivita_id FROM tmp_prev));
+ WHERE istanza_utility_id = (SELECT istanza_utility_id FROM _m);
 
 SELECT is(
     (SELECT termine_pagamento_id::text || '/' || COALESCE(modalita_pagamento_id::text, 'NULL')
-       FROM vendite.fn_resolve_termini_pagamento((SELECT attivita_id FROM tmp_prev))),
-    '2/NULL',
+       FROM vendite.fn_resolve_termini_pagamento(pg_temp.af('PREV'))),
+    (SELECT tp_preventivo FROM _k)::text || '/NULL',
     '4) PREVENTIVO: porta il termine ma non la modalita'' (discesa indipendente)');
 
 -- ============================================================
--- 5) Livello 2: la commessa e' piu' specifica del documento e vince.
+-- 5) Livello 2: la commessa e' piu' specifica del cliente, ma il documento
+--    (livello 1) resta davanti.
 --    ⚠️ Il guard di immutabilita' della chiave scatta se la commessa ha gia'
 --    attivita' collegate: si usa la GUC di manutenzione, che e' il canale
---    previsto e non un aggiramento.
+--    previsto e non un aggiramento. La commessa non e' un documento col lock
+--    «fuori bozza».
 -- ============================================================
 SET LOCAL zeroerp.maintenance_reset_lotto_draft = 'on';
-UPDATE vendite.commesse SET termine_pagamento_id = 4
- WHERE id = (SELECT commessa_id FROM vendite.attivita_fatturabili
-              WHERE id = (SELECT attivita_id FROM tmp_ord));
+UPDATE vendite.commesse SET termine_pagamento_id = (SELECT tp_commessa FROM _k)
+ WHERE id IN (SELECT a.commessa_id FROM vendite.attivita_fatturabili a
+               WHERE a.id IN (pg_temp.af('ORD'), pg_temp.af('ORD0')));
 SET LOCAL zeroerp.maintenance_reset_lotto_draft = 'off';
 
 SELECT is(
-    (SELECT termine_pagamento_id FROM vendite.fn_resolve_termini_pagamento(
-        (SELECT attivita_id FROM tmp_ord))),
-    3::bigint,
-    '5) il documento (livello 1) precede la commessa (livello 2)');
+    (SELECT termine_pagamento_id FROM vendite.fn_resolve_termini_pagamento(pg_temp.af('ORD')))::text
+    || '|' ||
+    (SELECT termine_pagamento_id FROM vendite.fn_resolve_termini_pagamento(pg_temp.af('ORD0')))::text,
+    (SELECT tp_ordine FROM _k)::text || '|' || (SELECT tp_commessa FROM _k)::text,
+    '5) il documento (livello 1) precede la commessa (livello 2); senza termine sul documento vince la commessa');
 
 -- ============================================================
 -- 6) Livello 4: tolto tutto, resta il default. Nessuna fattura senza rate.
+--    ORD0 e' nato senza termine: si tolgono quello della commessa e del
+--    cliente.
 -- ============================================================
-UPDATE vendite.ordini SET termine_pagamento_id = NULL, modalita_pagamento_id = NULL
- WHERE id = (SELECT ordine_id FROM tmp_ord);
 SET LOCAL zeroerp.maintenance_reset_lotto_draft = 'on';
 UPDATE vendite.commesse SET termine_pagamento_id = NULL
- WHERE id = (SELECT commessa_id FROM vendite.attivita_fatturabili
-              WHERE id = (SELECT attivita_id FROM tmp_ord));
+ WHERE id = (SELECT a.commessa_id FROM vendite.attivita_fatturabili a WHERE a.id = pg_temp.af('ORD0'));
 SET LOCAL zeroerp.maintenance_reset_lotto_draft = 'off';
 UPDATE anagrafiche.clienti SET termine_pagamento_id = NULL
- WHERE istanza_utility_id = (
-   SELECT ba.istanza_utility_id FROM vendite.attivita_fatturabili a
-     JOIN anagrafiche.billing_account ba
-       ON ba.id = COALESCE((SELECT parent_account_id FROM anagrafiche.billing_account WHERE id = a.billing_account_id), a.billing_account_id)
-    WHERE a.id = (SELECT attivita_id FROM tmp_ord));
+ WHERE istanza_utility_id = (SELECT istanza_utility_id FROM _m);
 
 SELECT is(
-    (SELECT tp.codice_interno FROM vendite.fn_resolve_termini_pagamento(
-        (SELECT attivita_id FROM tmp_ord)) r
+    (SELECT tp.codice_interno FROM vendite.fn_resolve_termini_pagamento(pg_temp.af('ORD0')) r
        JOIN config.termini_pagamento tp ON tp.id = r.termine_pagamento_id),
     'TP_1RATA',
     '6) senza nulla lungo la catena resta il default TP_1RATA (D-J)');
@@ -185,12 +368,24 @@ SELECT is(
 --    `commesse_attivita.sorgente_uid` e' TEXT e per convenzione contratti e
 --    consumi vi mettono `id::text`, non un uuid; `attivita_fatturabili.
 --    sorgente_uid` e' invece UUID. Assegnare senza filtrare farebbe fallire
---    il cast. Il DDT e' il tipo non gestito disponibile sul dato reale.
+--    il cast. Il DDT e' il tipo non gestito: si prende un'attivita' nata da
+--    un DDT se il database ne ha una, altrimenti il caso non si puo'
+--    costruire qui (servirebbe tutta la catena della bolla) e si dichiara.
 -- ============================================================
-SELECT lives_ok(
+SELECT CASE
+  WHEN NOT EXISTS (SELECT 1 FROM vendite.attivita_fatturabili a
+                     JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
+                     JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                    WHERE s.codice_interno = 'DDT_VENDITA')
+  THEN skip('7) nessuna attivita'' nata da un DDT su questo database: il caso del tipo non gestito non si costruisce qui', 1)
+  ELSE lives_ok(
     $$ SELECT * FROM vendite.fn_resolve_termini_pagamento(
-         (SELECT attivita_id FROM tmp_af WHERE tipo = 'DDT_VENDITA')) $$,
-    '7) sorgente non gestita dal livello 1: risolve senza errore di cast');
+         (SELECT min(a.id) FROM vendite.attivita_fatturabili a
+            JOIN vendite.commesse_attivita ca ON ca.id = a.commessa_attivita_id
+            JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+           WHERE s.codice_interno = 'DDT_VENDITA')) $$,
+    '7) sorgente non gestita dal livello 1: risolve senza errore di cast')
+END;
 
 -- ============================================================
 -- 8-9) T.1 — il contratto delle fn di push.
@@ -203,27 +398,9 @@ SELECT is(
     5,
     '8) tutte e cinque le fn_list_*_da_pushare espongono le due colonne');
 
--- ⚠️ Serve un ordine ANCORA DA PUSHARE, non quello dietro l'attivita' del
---    test 2: quello e' gia' stato pushato e la fn lo esclude (0 righe), come
---    deve. E' la stessa famiglia di errore che questo file racconta in testa —
---    usare una riga in uno stato che il percorso reale non ha.
-CREATE TEMP TABLE tmp_ord_push AS
-SELECT min(ordine_id) AS ordine_id
-  FROM vendite.fn_list_ordini_da_pushare(NULL, NULL, NULL, NULL);
-
-UPDATE vendite.ordini SET termine_pagamento_id = 3, modalita_pagamento_id = 5
- WHERE id = (SELECT ordine_id FROM tmp_ord_push);
-
--- ⚠️ DISTINCT e non LIMIT 1, e l'asserzione ci guadagna. La funzione ritorna
---   una riga per riga d'ordine, ma termine_pagamento_id e' un valore di
---   TESTATA: con DISTINCT la sotto-select esplode ("more than one row") se le
---   righe dello stesso ordine portassero valori diversi. Cioe' asserisce anche
---   l'invarianza, che e' proprio quello che il nome del test dichiara — mentre
---   LIMIT 1 ne guardava una a caso e taceva sulle altre.
 SELECT is(
-    (SELECT DISTINCT termine_pagamento_id FROM vendite.fn_list_ordini_da_pushare(
-        NULL, NULL, NULL, (SELECT ordine_id FROM tmp_ord_push))),
-    3::bigint,
+    (SELECT termine FROM _t9),
+    (SELECT tp_ordine FROM _k),
     '9) la colonna porta il valore del documento, non un NULL fisso');
 
 SELECT * FROM finish();

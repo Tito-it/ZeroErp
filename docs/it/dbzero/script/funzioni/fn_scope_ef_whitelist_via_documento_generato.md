@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_documento_generato(p_auth_user_id inte
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_documento_generato(p_auth_user_id integer, p_documento_generato_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Scopo: dire se l'operatore ha nel proprio perimetro
     --   l'emittente del documento generato a cui la riga

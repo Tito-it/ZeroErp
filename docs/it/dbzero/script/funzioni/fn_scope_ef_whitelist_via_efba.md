@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_efba(p_auth_user_id integer, p_billing
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_efba(p_auth_user_id integer, p_billing_account_id bigint)
  RETURNS boolean
  LANGUAGE plpgsql
- STABLE
+ STABLE COST 5000
 AS $function$
 DECLARE
     v_scope bigint[];

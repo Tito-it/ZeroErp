@@ -1,0 +1,132 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: script.fn_check_ordine_data_consegna_confermata(p_ordine_id)
+#   «La promessa di consegna delle righe di quest'ordine si cambia ora? E se
+#   no, perche'?» — dalla stessa sede del lock.
+#   Brief: brief-db-testata-dopo-emissione (fase 1, §5-bis, R-1)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Dal 20261008-90 il lock delle righe d'ordine lascia aperta fuori bozza
+#   la sola data_consegna_confermata, in CONFERMATO e PARZIALMENTE_EVASO
+#   (argomenti [4] e [5] del montaggio). Il backend costruisce il verbo che
+#   la cambia dopo la conferma, e il client deve sapere QUANDO proporlo.
+#   Gli stati ammessi stanno solo nel montaggio: questa check li legge da
+#   li' (script.fn_doc_colonna_modificabile -> lettore del montaggio ->
+#   decisione del trigger), non da una copia. Al primo stato nuovo
+#   nell'eccezione, check e lock cambiano insieme.
+#
+# -- LA RISPOSTA (la forma delle fn_check_*) ---------------------------
+#   * NULL: l'ordine non c'e', o chi chiede non lo vede (RLS): nessuna
+#     risposta. Non [] che vorrebbe dire «si puo'».
+#   * []: il lock lascia cambiare la sola data. Anche in DRAFT, dove la
+#     riga intera si modifica: «non e' il verbo giusto in bozza» e' una
+#     scelta di presentazione, la fa la capability (20261010-67).
+#   * un motivo: lo stato non lo ammette. codice E_RIGA_DOC_NON_BOZZA (gia'
+#     a catalogo: e' quello che il lock solleva), reason STATO_NON_AMMETTE,
+#     reason_key vendite.ordini.data_consegna_confermata_reason.stato_non_ammette
+#     (debito verso il FE, §5-bis.6 del brief), dettaglio {stato}, valori
+#     della frase come il lock: etichetta, stato, verbo.
+#   Nessun codice nuovo. L'etichetta dal lettore SECURITY DEFINER del lock
+#   (la stessa frase del rifiuto), letta solo dopo che la SELECT sotto RLS
+#   ha detto che l'ordine si vede.
+#
+#   SECURITY INVOKER, STABLE. p_ordine_id ancorato; lo stato ancorato a
+#   config.stati_doc_ordini.codice_interno.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-66-create-fn-check-ordine-data-consegna-confermata-mctit.yaml
+
+  - changeSet:
+      id: 20261010-66-create-fn-check-ordine-data-consegna-confermata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuova check script.fn_check_ordine_data_consegna_confermata: la promessa di consegna si cambia
+        ora fuori bozza? Dal montaggio del lock delle righe. Brief: brief-db-testata-dopo-emissione (R-1).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_check_ordine_data_consegna_confermata(
+                  p_ordine_id vendite.ordini.id%TYPE
+              )
+              RETURNS jsonb
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_stato      config.stati_doc_ordini.codice_interno%TYPE;
+                -- La frase del lock (script.fn_get_stato_testata_documento):
+                -- composta, nessuna colonna di cui sia il riflesso.
+                v_etichetta  text;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   La promessa di consegna (data_consegna_confermata) delle
+                --   righe di quest'ordine si cambia ora, da sola? Funzione
+                --   PURA (fn_check_*): [] se si', un motivo se no, NULL se
+                --   l'ordine non si vede. La regola non sta qui: sta nel
+                --   montaggio del lock delle righe, letto da
+                --   script.fn_doc_colonna_modificabile.
+                --   Consumatore: script.fn_available_actions_ordine
+                --   (can_edit_data_consegna_confermata).
+                -- =========================================================
+                IF p_ordine_id IS NULL OR p_ordine_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'script', 'fn_check_ordine_data_consegna_confermata', 'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'ordine_id', 'valore', p_ordine_id),
+                    NULL::uuid, 'l''ordine e'' obbligatorio');
+                END IF;
+
+                -- Lo stato, sotto la RLS di chi chiede: un ordine che non
+                -- vede non ha risposta.
+                SELECT sdo.codice_interno
+                  INTO v_stato
+                  FROM vendite.ordini o
+                  JOIN config.stati_doc_ordini sdo ON sdo.id = o.stato_doc_ordine_id
+                 WHERE o.id = p_ordine_id;
+
+                IF NOT FOUND THEN
+                  RETURN NULL;
+                END IF;
+
+                -- La sola data, in questo stato: lo dice il montaggio del lock.
+                IF script.fn_doc_colonna_modificabile('vendite.ordini_righe'::regclass,
+                                                      'data_consegna_confermata',
+                                                      v_stato) THEN
+                  RETURN jsonb_build_array();
+                END IF;
+
+                -- La frase del rifiuto, la stessa del lock.
+                SELECT t.etichetta
+                  INTO v_etichetta
+                  FROM script.fn_get_stato_testata_documento('ORDINE', p_ordine_id) AS t;
+
+                RETURN jsonb_build_array(jsonb_build_object(
+                  'codice',     'E_RIGA_DOC_NON_BOZZA',
+                  'reason',     'STATO_NON_AMMETTE',
+                  'reason_key', 'vendite.ordini.data_consegna_confermata_reason.stato_non_ammette',
+                  'dettaglio',  jsonb_build_object('stato', v_stato),
+                  'valori',     jsonb_build_array(v_etichetta, v_stato, 'modificare')));
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_check_ordine_data_consegna_confermata(vendite.ordini.id%TYPE)
+              IS 'Check (2026-10-10, brief-db-testata-dopo-emissione fase 1, R-1): la promessa di consegna (data_consegna_confermata) delle righe di quest''ordine si cambia ora, da sola? Funzione pura. NULL: ordine assente o non visibile (RLS). []: il lock delle righe la lascia cambiare (anche in DRAFT: che in bozza il verbo giusto sia la modifica della riga lo decide la capability). Un motivo quando lo stato non lo ammette: codice E_RIGA_DOC_NON_BOZZA (quello che il lock solleva), reason STATO_NON_AMMETTE, reason_key vendite.ordini.data_consegna_confermata_reason.stato_non_ammette, dettaglio {stato}, valori etichetta, stato, verbo. La regola non e'' scritta qui: gli stati ammessi stanno negli argomenti del lock di vendite.ordini_righe (oggi CONFERMATO e PARZIALMENTE_EVASO, 20261008-90) e si leggono con script.fn_doc_colonna_modificabile, che decide con la funzione del trigger. Consumatore: script.fn_available_actions_ordine (can_edit_data_consegna_confermata).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_ordine_data_consegna_confermata(bigint);

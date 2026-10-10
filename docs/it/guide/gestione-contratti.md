@@ -15,7 +15,7 @@
 >
 > * [vendite.fn_resolve_prezzo_listino_v2](/dbzero/vendite/funzioni/fn_resolve_prezzo_listino_v2) — resolver pricing bundle-aware, STADIO 1
 > * [vendite.trgfn_contratti_freeze_listino_versione](/dbzero/vendite/manual/trgfn_contratti_freeze_listino_versione) — snapshot versione listino a DRAFT→ATTIVO
-> * [vendite.trgfn_contratti_lock_post_attivazione](/dbzero/vendite/manual/trgfn_contratti_lock_post_attivazione) — blocco testata post-attivazione
+> * [vendite.trgfn_doc_testata_lock_fuori_bozza](/dbzero/vendite/funzioni/trgfn_doc_testata_lock_fuori_bozza) — che cosa della testata si cambia ancora dopo la bozza
 > * [vendite.trgfn_doc_righe_lock_fuori_bozza](/dbzero/vendite/manual/trgfn_doc_righe_lock_fuori_bozza) — righe solo in bozza (building block condiviso con DDT e ordini)
 > * [script.trgfn_righe_guard_aggiunta_fuori_listino](/dbzero/script/funzioni/trgfn_righe_guard_aggiunta_fuori_listino) — guard AGGIUNTA già in listino (contratto e offerta)
 > * [vendite.fn_contratto_riga_componenti_init](/dbzero/vendite/manual/fn_contratto_riga_componenti_init) — popola componenti BoM su riga padre composito
@@ -320,19 +320,29 @@ Se la BoM del padre non ha figli validi, il sistema solleva
 
 ---
 
-## 6. Lock post-attivazione e immutabilità
+## 6. Dopo la bozza: che cosa si cambia ancora
 
-### 6.1 Campi testata bloccati
+### 6.1 La testata
 
-Da ATTIVO in poi, il trigger `trgfn_contratti_lock_post_attivazione` blocca
-qualsiasi UPDATE sui campi:
+Dopo l'attivazione il contratto è un documento firmato: quasi tutto resta com'era.
 
-* `listino_id`
-* `listino_versione_id`
-* `tipo_variazione_globale`
-* `valore_variazione_globale`
+| Che cosa | In ATTIVO | In CESSATO e ANNULLATO |
+| --- | --- | --- |
+| data, valuta | fermi | fermi |
+| cliente (billing account, istanza, utility) | fermo | fermo |
+| listino, versione, variazioni globali, ambito, decorrenza, contratto padre, categoria cliente | fermi | fermi |
+| offerta e sorgente da cui nasce | ferme | ferme |
+| fine validità (`valido_al`), CIG, CUP, codice commessa, note | **si cambiano** | fermi |
 
-Ogni tentativo di modifica solleva `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (452).
+La fine validità si sposta per programmare la cessazione; CIG, CUP e codice
+commessa arrivano spesso dopo la firma. A contratto cessato o annullato si ferma
+tutto. Il rifiuto dice quale famiglia di dati si è toccata
+(`E_DOC_IDENTITA_FUORI_BOZZA`, `E_DOC_CONDIZIONI_FUORI_BOZZA`,
+`E_DOC_CLIENTE_FUORI_BOZZA`, `E_DOC_SORGENTE_FUORI_BOZZA`, `E_DOC_CHIUSO`). La
+regola sta nel montaggio del lock di testata, e da lì la legge anche la
+capability del contratto per spegnere i campi nel form. Fino al 10 ottobre 2026 i
+quattro dati di pricing li fermava un controllo a parte, solo in ATTIVO
+(`E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`, ritirato).
 
 ### 6.2 Righe bloccate
 
@@ -505,7 +515,7 @@ Codici sollevati dal dominio contratti (registrati in `config.messaggi_errore`):
 | ---------------------------------------------- | --- | ---- | ------------------------------------------------------------------------------------------------------------------------ |
 | `E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO`          | 450 | 422  | AGGIUNTA su articolo già presente nel listino fissato — usare OVERRIDE                                                   |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`       | 451 | 422  | Attivazione contratto senza listino e senza almeno una riga AGGIUNTA con prezzo valorizzato                              |
-| `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`  | 452 | 422  | Tentativo modifica testata o righe su contratto ATTIVO                                                                   |
+| `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`  | 452 | 422  | ⛔ Ritirato il 2026-10-10: il pricing di un contratto fuori bozza lo ferma `E_DOC_CONDIZIONI_FUORI_BOZZA` (§6.1)         |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`              | 453 | 422  | Resolver chiede prezzo per articolo con ESCLUSIONE attiva                                                                |
 | `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`  | 454 | 422  | Tentativo rimozione listino con OVERRIDE/ESCLUSIONE presenti                                                             |
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 455 | 422  | ESCLUSIONE su un articolo che è componente (figlio) di un bundle del listino — escludere il padre bundle                 |

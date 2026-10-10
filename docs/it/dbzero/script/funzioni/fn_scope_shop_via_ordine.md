@@ -10,7 +10,7 @@ CREATE FUNCTION fn_scope_shop_via_ordine(p_identita_id bigint, p_ordine_id bigin
 CREATE OR REPLACE FUNCTION script.fn_scope_shop_via_ordine(p_identita_id bigint, p_ordine_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- ⛔ DUE condizioni, non una: la testata pretende anche
     --   `canale_origine = 'SHOP'`. Un satellite che chiedesse la

@@ -10,7 +10,8 @@
 -- Indice test (1..13):
 --   Struttura:
 --   1)  Trigger freeze_listino_versione presente su contratti
---   2)  Trigger lock_post_attivazione presente su contratti
+--   2)  Le quattro colonne di pricing nel lock di testata fuori bozza (rev 2026-10-10: ritirato
+--       trg_contratti_a10_lock_post_attivazione_upd, brief-db-testata-dopo-emissione fase 2)
 --   3)  Il BB delle righe (trg_contratti_righe_a05_doc_righe_lock_fuori_bozza) presente su contratti_righe (rev 22-09)
 --
 --   Freeze versione e guard negoziato puro:
@@ -196,18 +197,21 @@ SELECT ok(
 );
 
 -- ============================================================
--- 2) Trigger lock_post_attivazione presente su contratti
+-- 2) Le quattro colonne di pricing sono bloccate fuori bozza
+--    rev 2026-10-10 (brief-db-testata-dopo-emissione, fase 2): il lock
+--    post-attivazione (solo ATTIVO, fascia a10) e' ritirato; le blocca il
+--    building block di testata in ogni stato fuori bozza, e parla prima del
+--    guard del listino. Si chiede al montaggio, col lettore.
 -- ============================================================
 SELECT ok(
-    EXISTS (
-        SELECT 1 FROM pg_trigger t
-          JOIN pg_class c      ON c.oid = t.tgrelid
-          JOIN pg_namespace ns ON ns.oid = c.relnamespace
-         WHERE ns.nspname = 'vendite'
-           AND c.relname  = 'contratti'
-           AND t.tgname   = 'trg_contratti_a10_lock_post_attivazione_upd'
-    ),
-    '2) Trigger trg_contratti_a10_lock_post_attivazione_upd presente su contratti'
+    (SELECT bool_and(NOT script.fn_doc_colonna_modificabile('vendite.contratti'::regclass, c.col::name, s.stato))
+       FROM (VALUES ('listino_id'), ('listino_versione_id'), ('tipo_variazione_globale'),
+                    ('valore_variazione_globale')) AS c(col),
+            (VALUES ('ATTIVO'), ('CESSATO'), ('ANNULLATO')) AS s(stato))
+    AND NOT EXISTS (SELECT 1 FROM pg_trigger t
+                     WHERE t.tgrelid = 'vendite.contratti'::regclass
+                       AND t.tgname = 'trg_contratti_a10_lock_post_attivazione_upd'),
+    '2) listino, versione e variazioni globali bloccati fuori bozza in ogni stato dal lock di testata; il lock post-attivazione non c''e'' piu'''
 );
 
 -- ============================================================
@@ -280,7 +284,7 @@ SELECT throws_ok(
        WHERE numero = 'PGTAP_S23_ATT'$$,
     'P0001',
     NULL,
-    '7) UPDATE listino_id su contratto ATTIVO -> bloccato E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE'
+    '7) UPDATE listino_id su contratto ATTIVO -> bloccato (E_DOC_CONDIZIONI_FUORI_BOZZA dal 2026-10-10)'
 );
 
 -- ============================================================

@@ -16,6 +16,9 @@
 > 2026-10-10**, su decisione di Tid. Del collaudo a video (§7.4) è superato il punto del preventivo;
 > i punti sulle pratiche sono **rimandati** alla ripresa di quel cantiere, oggi fermo. I debiti
 > del §7.5 ancora aperti sono passati in PROJECT_CONTEXT § «Aperto — Media priorità».
+> ➡️ Il 2026-10-10 il resolver per istanza, il ramo morto della capability (§6.10.3, §6.12.3) e i
+> debiti rimasti senza sede (`uq_gestori_singleton`, il pgTAP del gestore globale) sono passati a
+> [brief-db-istanza-nasce-col-ba-residui.md](../work-in-progress/brief-db-istanza-nasce-col-ba-residui.md) (D25).
 > Decisioni D-1…D-9 prese (§6.1), D-10 (§7.1). R-3 non si fa.
 
 ## 1. La regola
@@ -330,11 +333,12 @@ pgTAP — corpo concatenato all'SQL estratto, stessa transazione, come owner:
 
 * **Ramo morto nelle capability del preventivo** (§6.3): `PREVENTIVO_SENZA_BILLING_ACCOUNT` e la
   sua chiave i18n non si raggiungono piu'; si ritirano al prossimo giro su
-  `script.fn_available_actions_preventivo`, insieme al frontend.
+  `script.fn_available_actions_preventivo`, insieme al frontend. ➡️ Scritto il 2026-10-10 in
+  `brief-db-istanza-nasce-col-ba-residui` (R-1, con i due filtri gemelli R-2 e R-3).
 * **Lo spostamento dell'azienda predefinita** (`fn_guard_istanza_ba_gestore_globale`) non ha un
   pgTAP: con un operatore in sessione un BA senza collegamento risolve all'azienda di chi agisce,
   e il caso «uno collegato, uno no» non si costruisce senza smontare il contesto del mondo. La
-  funzione e' provata solo da `plpgsql_check`.
+  funzione e' provata solo da `plpgsql_check`. ➡️ D-4 di `brief-db-istanza-nasce-col-ba-residui`.
 * **Ordine dei rifiuti sul BA**: cambiare `istanza_utility_id` verso l'istanza di un **altro
   soggetto** lo intercetta prima `trg_billing_account_a10_guard_soggetto_coerenza_istanza_ins_upd`
   (`E_BA_SOGGETTO_INCOERENTE_ISTANZA`), che in ordine alfabetico precede il lock. E' comunque un
@@ -559,7 +563,8 @@ flusso completato con una regola di generazione. Provato solo da `plpgsql_check`
 #### 6.12.3 Debiti e osservazioni
 
 * `script.fn_get_billing_account_by_istanza` e' **in ritiro**: resta finche' il backend la chiama
-  (dettaglio pratica), poi si cancella con la sua pagina `manual/`.
+  (dettaglio pratica), poi si cancella con la sua pagina `manual/`. ➡️ Ritiro scritto il 2026-10-10
+  in `brief-db-istanza-nasce-col-ba-residui` (R-4); li' anche `uq_gestori_singleton` (D-3).
 * `uq_gestori_singleton`, nonostante il nome, e' un indice **GiST non unico** su `id`: non vincola
   niente. Fuori da questo brief: o va ritirato, o doveva essere un vincolo (un solo gestore nel
   sistema?). Da decidere.

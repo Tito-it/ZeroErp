@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_cliente_ownership(p_identita_id bigint, p_cliente_sr_id
 CREATE OR REPLACE FUNCTION script.fn_scope_cliente_ownership(p_identita_id bigint, p_cliente_sr_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Match diretto: il target soggetto_ruolo e' quello
     -- dell'identita, e l'identita e' in veste CLIENTE_PORTALE

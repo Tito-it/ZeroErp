@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# vendite.fn_preventivo_ha_residuo_commessa: via il «requisito di testata».
+#
+# Il residuo commessa chiedeva, oltre alle righe eleggibili, una «testata
+# completa» (billing_account_id e utility_id NOT NULL), perche' la capability
+# non dicesse TRUE su un preventivo che il push non avrebbe listato. Dal
+# 2026-10-08 (brief-db-istanza-nasce-col-ba, R-2) le due colonne sono
+# NOT NULL: una testata incompleta non esiste, e il predicato e' una
+# tautologia che racconta un caso che il modello non ammette. Era il gemello
+# del ramo PREVENTIVO_SENZA_BILLING_ACCOUNT della capability (20261010-50) e
+# del filtro di fn_list_preventivi_da_pushare (20261010-52): si ritirano
+# insieme.
+#
+# Con i due predicati esce anche il JOIN a vendite.preventivi, che serviva
+# solo a loro. ⚠️ Non era un filtro implicito: la vista
+# vw_preventivi_righe_smistabili_commessa fa gia' lo stesso JOIN alla testata
+# ed e' security_invoker (verificato su dbdev il 2026-10-10), quindi la RLS
+# di chi chiama sulla testata si applica identica.
+# La funzione torna simmetrica alla gemella fn_preventivo_ha_residuo_ordine.
+#
+# Corpo: dal 20260612-03 (applicato), verificato identico al vivo
+# (pg_get_functiondef, 2026-10-10). Firma ancorata come li'. COMMENT vivo
+# senza la «testata completa» + riga di revisione.
+# Brief: brief-db-istanza-nasce-col-ba-residui (R-2)
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261010-51-update-fn-preventivo-ha-residuo-commessa-senza-testata-mctit.yaml
+
+  - changeSet:
+      id: 20261010-51-update-fn-preventivo-ha-residuo-commessa-senza-testata
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        fn_preventivo_ha_residuo_commessa: via il requisito di testata completa (BA e utility del
+        preventivo sono NOT NULL). Brief: brief-db-istanza-nasce-col-ba-residui (R-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_preventivo_ha_residuo_commessa(
+                  p_preventivo_id vendite.preventivi.id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE plpgsql
+              STABLE
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   TRUE se il preventivo ha righe natura COMMESSA (o NULL,
+                --   pregresso) non ancora instradate in commessa: il push
+                --   commessa avrebbe effetto.
+                --   Funzione fn_*: puro boolean, no raise oltre il guard id.
+                --
+                --   rev 2026-10-10: via il requisito di «testata completa»
+                --   (billing_account_id, utility_id): sono NOT NULL dal
+                --   2026-10-08. Brief: brief-db-istanza-nasce-col-ba-residui.
+                -- =========================================================
+
+                -- Guard standard parametro id.
+                IF p_preventivo_id IS NULL OR p_preventivo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_preventivo_ha_residuo_commessa',
+                    'E_PARAMETRO_INVALIDO',
+                    jsonb_build_object('parametro', 'p_preventivo_id',
+                                       'valore', p_preventivo_id),
+                    NULL::uuid,
+                    'p_preventivo_id obbligatorio e > 0'
+                  );
+                END IF;
+
+                RETURN EXISTS (
+                  SELECT 1
+                    FROM vendite.vw_preventivi_righe_smistabili_commessa v
+                   WHERE v.preventivo_id = p_preventivo_id
+                );
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_preventivo_ha_residuo_commessa(vendite.preventivi.id%TYPE)
+              IS 'TRUE se il preventivo ha righe natura COMMESSA (servizi; natura NULL = pregresso) non ancora instradate in commessa (nessuna attivita sul segment_key di riga, inclusi componenti #CMP, qualsiasi stato_emissione). Predicato condiviso (vista vw_preventivi_righe_smistabili_commessa): capability can_push_commessa + gate EVASO lato BE. Gemella di fn_preventivo_ha_residuo_ordine; non considera ORDINE (gestita da fn_push_preventivo_a_ordine). rev 2026-10-10 (20261010-51): via il requisito di testata completa (billing_account_id, utility_id NOT NULL), tautologico dal 2026-10-08 (le due colonne sono NOT NULL); con lui il JOIN alla testata, che la vista security_invoker fa gia''. Brief: brief-db-istanza-nasce-col-ba-residui (R-2).';
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Manovra di emergenza: il corpo precedente e' 20260612-03 e si riapplica.
+              SELECT 1;

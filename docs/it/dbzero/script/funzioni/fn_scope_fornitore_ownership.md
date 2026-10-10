@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_fornitore_ownership(p_identita_id bigint, p_fornitore_s
 CREATE OR REPLACE FUNCTION script.fn_scope_fornitore_ownership(p_identita_id bigint, p_fornitore_sr_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Match diretto: il target soggetto_ruolo e' quello dell'identita,
     -- e l'identita stessa e' in veste FORNITORE_PORTALE. Evita

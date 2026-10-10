@@ -1,0 +1,64 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: script.fn_get_billing_account_by_istanza
+#   DROP FUNCTION script.fn_get_billing_account_by_istanza(bigint)
+#   Brief: brief-db-istanza-nasce-col-ba-residui (R-4)
+#
+#   Rispondeva a «qual e' il BA dell'istanza?». Dal 2026-10-08 un'istanza
+#   puo' avere piu' utility, ognuna col suo BA (D-5), e la domanda ha una
+#   risposta solo se il BA e' uno: la funzione era gia' stata ridotta a
+#   questo e dichiarata in ritiro (20261008-71). Il suo unico consumatore,
+#   il dettaglio pratica del backend, legge ora la colonna della pratica
+#   (pratiche.pratiche.billing_account_id, D-9; lato BE fatto il
+#   2026-10-08). «Il cliente di cui si parla» lo dice il documento o la
+#   pratica, non l'istanza.
+#   ⚠️ Censimento del 2026-10-10: nessun'altra funzione la chiama (pg_proc),
+#   nessuna vista, nessuna dipendenza in pg_depend; nel backend nessun
+#   chiamante (resta solo un commento storico in un test). Nessun changeSet
+#   di 80_data/90_end la nomina: il DROP sta in 20_code. I due pgTAP che la
+#   provavano si adeguano nello stesso giro (il file dedicato si cancella,
+#   i test 8-9 di anagrafiche/test-un-ba-un-cliente-v1 diventano il presidio
+#   del ritiro), e la pagina manual/ omonima si cancella.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-53-drop-fn-get-billing-account-by-istanza-mctit.yaml
+
+  - changeSet:
+      id: 20261010-53-drop-fn-get-billing-account-by-istanza
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira script.fn_get_billing_account_by_istanza: il dettaglio pratica legge
+        pratiche.billing_account_id, e con piu' utility per istanza «il BA dell'istanza» non e'
+        una domanda. Brief: brief-db-istanza-nasce-col-ba-residui (R-4).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM pg_proc p
+               WHERE p.prosrc ~ 'fn_get_billing_account_by_istanza'
+                 AND p.oid <> COALESCE(to_regprocedure('script.fn_get_billing_account_by_istanza(bigint)')::oid, 0);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_get_billing_account_by_istanza(anagrafiche.istanze_utilities.id%TYPE);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si rimette dal changeSet 20261008-71.
+              SELECT 1;

@@ -29,7 +29,12 @@
 > conteggio per causa (§6.2)**, che serve al digest per raggruppare per chi agisce. Il
 > testo per causa nel pannello e nel digest si fa intanto (§6.3).
 >
-> **Da leggere per primo:** §5.4, poi §6.
+> ✅ **2026-10-10, DB: R-2 applicato da Tid, pgTAP verdi** — compresi i due di `vendite`
+> «senza veste», che provano come app il percorso INVOKER → DEFINER (§7). **Lato DB chiuso.**
+> ⏳ Resta al **team BE/FE**: il giro del §6.4 (conteggio per causa, digest per chi agisce
+> della causa, conteggio nel pannello), poi il collaudo a video di Tid e l'archivio.
+>
+> **Da leggere per primo:** §6.4, con la lettura in §7.4.
 
 ## 1. Il difetto
 
@@ -358,3 +363,94 @@ Prove: `test_presidi_repository` 12-13, `test_presidi_digest` 27-28, `test_presi
    le righe `NON_PROGRAMMATO` e `GIRA_E_NON_REGISTRA` vanno allo sviluppo (§5.4.4).
    L'intestazione e il conteggio del presidio restano su `dbops.presidi.chi_agisce`.
 4. Pannello: il conteggio accanto a ogni causa.
+
+## 7. Consegna DB di R-2 (2026-10-10)
+
+### 7.1 Che cosa è stato scritto
+
+| changeSet / file | Che cosa fa |
+| --- | --- |
+| `20_code/dbops/20261010-41-create-fn-conta-presidio-per-variante` | `dbops.fn_conta_presidio_per_variante(p_vista) RETURNS TABLE (variante, conteggio bigint)`, `SECURITY DEFINER` del proprietario, `search_path` pinnato come `fn_conta_presidio`, `GRANT EXECUTE` a `zeroerp_app` |
+| `20_code/dbops/20261010-42-update-fn-conta-presidio-somma-per-variante` | `dbops.fn_conta_presidio` = `coalesce(sum(conteggio), 0)` della funzione sopra; passa a `SECURITY INVOKER`. Firma e risposta invariate |
+| `db/pgtap/dbops/test-conta-presidio-per-variante-v1.sql` (nuovo, 13 test) | rifiuto fuori catalogo e su NULL; senza variante una riga anche a zero; caso **costruito** con due cause a conteggi diversi, filtro di stato, causa sana assente, gruppo NULL, stato nuovo che conta; somma; zero gruppi → `fn_conta_presidio` = 0 e non NULL; `fn_conta_presidio` non contiene più il filtro (sorgente); DEFINER/INVOKER; `search_path`; GRANT; i presidi veri con variante rispondono |
+| `db/pgtap/dbops/test-catalogo-presidi-v1.sql`, test 11 | risale al proprietario della **sede** (`fn_conta_presidio_per_variante`): è lei la DEFINER che legge le viste |
+| doc manuale | nuova `fn_conta_presidio_per_variante`; aggiornate `fn_conta_presidio` e `presidi` |
+
+Il contratto del §6.2 è rispettato punto per punto: perimetro e filtro uguali (sono
+gli stessi, §7.2), `GROUP BY` della colonna nominata dal catalogo con `%I`, una riga per
+valore presente, presidio senza variante = una riga con `variante NULL` (anche a zero),
+il NULL come gruppo a sé, `GRANT` all'app, pgTAP sui casi costruiti.
+
+### 7.2 Scelte di forma fatte qui
+
+* ⭐ **La sede è il conteggio per variante, e `fn_conta_presidio` ne è la somma.** Il
+  §6.2.1 chiedeva di condividere il `FROM … WHERE`. Il conteggio per gruppi contiene il
+  conteggio intero, il contrario no: quindi una sede sola, e la copia ritirata nello
+  stesso giro (regola del 2). Le due risposte **non possono** divergere, invece di
+  provare che oggi coincidono.
+* **Il pgTAP prova il sorgente, non l'uguaglianza.** Il §6.2.6 chiedeva «la somma è
+  uguale a `fn_conta_presidio` per ogni presidio»: dal `-42` è vero per costruzione e non
+  proverebbe niente. Il test 9 pretende invece che `fn_conta_presidio` non legga il
+  catalogo né applichi un filtro, e chiami la sede (linee-guida-sql §12.5.2). Il test 13
+  esegue la sede sui presidi **veri** con variante, perché lì può rompersi (colonna
+  rinominata, tipo): e se il catalogo non ne dichiara nessuno è rosso, non vuoto.
+* **`fn_conta_presidio` diventa `SECURITY INVOKER`.** Non legge più niente da sé; la
+  RLS la attraversa la sede, che è DEFINER. Lasciarla DEFINER sarebbe un privilegio senza
+  motivo.
+* **Ordine dei gruppi**: per valore, il NULL in coda. Stabile, il BE può leggerlo così.
+* **Il valore esce come testo** (`::text`): la colonna della vista può avere un tipo
+  suo, la variante a catalogo è testo.
+* ⚠️ **Non toccati**: le descrizioni di `E_PRESIDIO_NON_A_CATALOGO` in
+  `codici_errore.csv` e `messaggi_errore.csv` nominano `dbops.fn_conta_presidio`. Restano
+  vere (chi chiama il conteggio intero riceve quel codice), e svegliare due mirror per
+  una frase descrittiva non comprava niente. Il contesto del log ora nomina
+  `fn_conta_presidio_per_variante`, che è il sito che solleva.
+
+### 7.3 Prova (sessione DB, 2026-10-10)
+
+Su `zeroerp_ci` (migrato fino al `20261010-40`), come `zeroerp`, in transazioni
+annullate: SQL **estratto** dai due changeSet + un pgTAP per transazione, log via
+dblink spento.
+
+| File | senza | con |
+| --- | --- | --- |
+| `test-conta-presidio-per-variante-v1` | rosso (la funzione non esiste) | 13/13 |
+| `test-catalogo-presidi-v1` | 11/11 | 11/11 |
+| `test-presidi-testi-v1` | 19/19 | 19/19 |
+| `test-presidio-processi-testo-per-causa-v1` | 16/16 | 16/16 |
+| `test-vw-processi-programmazione` / `…-da-guardare` | 21/21, 7/7 | 21/21, 7/7 |
+| `test-vw-email-da-guardare`, `test-sorgenti-orfane-v1`, `test-articoli-a-magazzino-prontezza-v1`, `magazzino/test-valore-giacenza-divergenza-owner-v1` | verdi | verdi |
+| `vendite/test-lotti-fermi-verdetto-a-db-v1` | 20/21 | 20/21 |
+| `vendite/test-annullamento-chiude-la-vita-v1` | 16/17 | 16/17 |
+| `test-riferimenti-morti-v1` (plpgsql_check su ogni funzione) | — | 9/9 |
+| `test-catalogo-messaggi-errore-completo`, `test-codici-errore-identita`, `-obsoleto-dal` | — | verdi |
+
+⚠️ I due rossi di `vendite` (18 e 16, «senza veste la vista risponde zero») sono
+**identici prima e dopo**: da owner la RLS non c'è, quindi sono rossi per costruzione e
+verdi come app. Sono però i test che provano il percorso **app → `fn_conta_presidio`
+(ora INVOKER) → sede DEFINER**: la proprietà l'ho provata a parte su un cluster PG18
+usa-e-getta con ruoli di login veri (tabella in RLS con policy sulla GUC, vista
+`security_invoker`, la stessa coppia di funzioni): come app, la vista diretta senza GUC
+dà 0, la somma 3, i gruppi `A|2`, `B|1`.
+
+Mutazioni sul file nuovo: solo `-41` senza `-42` (la copia del filtro resta) → rossi 9 e
+10; `coalesce` tolto → rosso 8; gruppo NULL scartato → rossi 5 e 6.
+`plpgsql_check`: `fn_conta_presidio` pulita; la sede ha due `warning extra` (variabili
+OUT con `RETURN QUERY EXECUTE`), che il presidio dei riferimenti morti non conta.
+Guardrail statici (letterali, `runOnChange`, preCondition, timestamp, grant batch,
+trigger di automazione, v1, preambolo pgTAP) verdi.
+
+✅ **Apply e corsa pgTAP di Tid, 2026-10-10: verdi**, compresi `vendite/test-lotti-fermi-verdetto-a-db-v1`
+(18) e `vendite/test-annullamento-chiude-la-vita-v1` (16) come app: il percorso app →
+`fn_conta_presidio` (INVOKER) → sede (DEFINER) attraversa la RLS anche dal runner.
+
+### 7.4 Per il giro BE (§6.4)
+
+* La lettura è `SELECT variante, conteggio FROM dbops.fn_conta_presidio_per_variante(%s)`
+  — ⛔ non `SELECT dbops.fn_…(…)`, che consegna la tupla in un campo solo.
+* Un presidio senza variante dà **una** riga `(NULL, n)`: per il conteggio del presidio
+  resta `fn_conta_presidio`, invariata.
+* Un presidio con variante e niente da guardare dà **zero** righe.
+* Un gruppo `variante = NULL` in un presidio con variante è «causa non indicata»
+  (§6.2.4): non eredita il testo generico (§5.4.2).
+* Nessun codice d'errore nuovo: fuori catalogo resta `E_PRESIDIO_NON_A_CATALOGO`.

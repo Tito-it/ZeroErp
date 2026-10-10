@@ -11,7 +11,7 @@ CREATE FUNCTION fn_scope_ef_whitelist_via_sr(p_auth_user_id integer, p_emittente
 CREATE OR REPLACE FUNCTION script.fn_scope_ef_whitelist_via_sr(p_auth_user_id integer, p_emittente_sr_id bigint)
  RETURNS boolean
  LANGUAGE sql
- STABLE
+ STABLE COST 5000
 AS $function$
     -- Risolve SR -> emittente_fiscale_id (1:1 via soggetto_ruolo_id)
     -- e delega alla canonica. SR non mappato / emittente NULL ->
