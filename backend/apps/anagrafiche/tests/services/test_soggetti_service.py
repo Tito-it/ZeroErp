@@ -47,6 +47,9 @@ Indice test eseguiti:
 36) test_assign_ruolo_con_flusso_dedicato_rifiutato — CL/FO/EF/RIS_UMANA → E_ANAG_VALIDAZIONE, rimando al flusso
 35) test_update_soggetto_sesso_stessa_forma_della_creazione — «x» → «X», vuoto → None
 36) test_create_soggetto_pf_congruenza_cf_legge_il_sesso_normalizzato — « f » su CF maschile → E_ANAG_VALIDAZIONE
+37) test_update_soggetto_dati_societari_al_verbo — `dati_societari` al verbo, stato intero; la natura all'UPDATE
+38) test_update_soggetto_solo_dati_societari_non_tocca_il_soggetto — niente UPDATE vuoto, il «non trovato» e' del verbo
+39) test_update_soggetto_dati_societari_contratto — sezione non oggetto, chiave ignota, tipo errato → E_ANAG_VALIDAZIONE
 """
 
 from unittest import TestCase
@@ -401,6 +404,63 @@ class TestSoggettiUpdate(TestCase):
             SoggettiService().update_soggetto(FAKE_UUID, {"split_payment": "Y"})
         self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
         mock_repo.return_value.update_soggetto.assert_not_called()
+
+    @patch(SOGG_REPO)
+    def test_update_soggetto_dati_societari_al_verbo(self, mock_repo):
+        """Parte B (brief-db-dati-fiscali-e-societari-del-soggetto): la chiave
+        `dati_societari` va al verbo DB, STATO INTERO — una chiave assente
+        arriva come None — e DOPO l'update del soggetto.
+
+        ⚠️ Che l'ordine sia giusto lo prova il test sul DB vero (natura e forma
+        nella stessa PATCH); qui si prova che la natura NON finisce nel verbo
+        e i dati societari NON finiscono nell'UPDATE di `soggetti`.
+        """
+        mock_repo.return_value.update_soggetto.return_value = True
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().update_soggetto(FAKE_UUID, {
+            "tipo_soggetto_dettaglio_id": "4",
+            "dati_societari": {
+                "forma_giuridica_id": 7, "codice_sdi": " ABC1234 ",
+                "destinatario_fe": "c", "capitale_sociale": 1000.5,
+                "data_costituzione": "2020-03-15",
+            },
+        })
+        payload = mock_repo.return_value.update_soggetto.call_args.args[1]
+        self.assertEqual(payload, {"tipo_soggetto_dettaglio_id": 4})
+        kwargs = mock_repo.return_value.scrivi_dati_societari.call_args.kwargs
+        self.assertEqual(kwargs["forma_giuridica_id"], 7)
+        self.assertEqual(kwargs["codice_sdi"], "ABC1234")
+        self.assertEqual(kwargs["destinatario_fe"], "C")
+        self.assertEqual(str(kwargs["capitale_sociale"]), "1000.5")
+        self.assertEqual(str(kwargs["data_costituzione"]), "2020-03-15")
+        # Stato intero: cio' che non c'e' e' None, non «non toccare».
+        self.assertIsNone(kwargs["pec_fatturazione"])
+        self.assertIsNone(kwargs["iscrizione_rea"])
+
+    @patch(SOGG_REPO)
+    def test_update_soggetto_solo_dati_societari_non_tocca_il_soggetto(self, mock_repo):
+        """Con i soli dati societari non c'e' un UPDATE vuoto (che direbbe «non
+        trovato»): il soggetto inesistente lo dice il verbo."""
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        result = SoggettiService().update_soggetto(
+            FAKE_UUID, {"dati_societari": {"forma_giuridica_id": 7}},
+        )
+        self.assertTrue(result["updated"])
+        mock_repo.return_value.update_soggetto.assert_not_called()
+        mock_repo.return_value.scrivi_dati_societari.assert_called_once()
+
+    @patch(SOGG_REPO)
+    def test_update_soggetto_dati_societari_contratto(self, mock_repo):
+        """Il contratto della sezione: un oggetto, con le sole chiavi del verbo.
+        Fuori contratto → 400 E_ANAG_VALIDAZIONE, e niente scrive."""
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        for sezione in (None, [], "x", {"soggetto_id": FAKE_UUID}, {"forma_giuridica_id": "abc"}):
+            with self.subTest(sezione=sezione):
+                with self.assertRaises(ServiceError) as ctx:
+                    SoggettiService().update_soggetto(FAKE_UUID, {"dati_societari": sezione})
+                self.assertEqual(ctx.exception.code, "E_ANAG_VALIDAZIONE")
+        mock_repo.return_value.update_soggetto.assert_not_called()
+        mock_repo.return_value.scrivi_dati_societari.assert_not_called()
 
 
 class TestSoggettiContatti(TestCase):

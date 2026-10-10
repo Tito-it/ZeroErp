@@ -65,3 +65,13 @@ describe('useDatiSocietariForm.toPayload', () => {
     expect(senza).toMatchObject({ id_prov_iscri_rea: null, iscrizione_rea: '', capitale_sociale: null })
   })
 })
+
+describe('useDatiSocietariForm — stato intero per il verbo DB', () => {
+  it('la data di costituzione si legge, si tiene e riparte', () => {
+    const ds = useDatiSocietariForm({ formeGiuridiche: ref(FORME) })
+    ds.populate({ forma_giuridica_id: 1, data_costituzione: '2020-03-15' })
+    expect(ds.toPayload().data_costituzione).toBe('2020-03-15')
+    ds.reset()
+    expect(ds.toPayload().data_costituzione).toBeNull()
+  })
+})

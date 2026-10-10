@@ -78,6 +78,7 @@ from apps.anagrafiche.api.views_titoli_iva import (
     SoggettoTitoloIvaMovimentiView,
     SoggettoTitoloIvaMovimentoAnnullaView,
     SoggettoTitoliIvaExportView,
+    SoggettoTitoliIvaTipiLookupView,
     TitoliIvaSfondatiView,
 )
 from apps.anagrafiche.api.views_conti_bancari import (
@@ -202,6 +203,9 @@ urlpatterns = [
     #    cattura una parola, ma tenere l'ordine giusto e' la regola della
     #    famiglia (vedi `titoli-iva/sfondati/` qui sopra).
     path("soggetti/<str:soggetto_id>/titoli-iva/export/", SoggettoTitoliIvaExportView.as_view(), name="anagrafiche-soggetti-titoli-iva-export"),
+    # Lookup dei tipi di titolo ammessi dalla natura del soggetto (2026-10-10,
+    # brief-db-dati-fiscali-e-societari-del-soggetto, parte D).
+    path("soggetti/<str:soggetto_id>/titoli-iva/tipi/lookup/", SoggettoTitoliIvaTipiLookupView.as_view(), name="anagrafiche-soggetti-titoli-iva-tipi-lookup"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/", SoggettoTitoliIvaDetailView.as_view(), name="anagrafiche-soggetti-titoli-iva-detail"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/", SoggettoTitoloIvaAmbitiView.as_view(), name="anagrafiche-titoli-iva-ambiti"),
     path("soggetti/<str:soggetto_id>/titoli-iva/<int:titolo_id>/ambiti/<int:ambito_id>/", SoggettoTitoloIvaAmbitoDetailView.as_view(), name="anagrafiche-titoli-iva-ambiti-detail"),

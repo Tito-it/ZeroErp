@@ -137,6 +137,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_BOM_VALIDO_AL_INVALIDO": "Data di chiusura non valida: deve essere uguale o successiva alla data di inizio della riga.",
     "E_CAMBIO_PASSWORD_RICHIESTO": "Prima di continuare e' necessario cambiare la password.",
     "E_CANALE_ORIGINE_IMMUTABILE": "Il canale origine non e' modificabile dopo l'inserimento.",
+    "E_CAPITALE_SOCIALE_NON_AMMESSO": "Per questa forma giuridica il capitale sociale non si indica.",
+    "E_CAPITALE_SOCIALE_OBBLIGATORIO": "Per questa forma giuridica il capitale sociale e' obbligatorio.",
     "E_CATALOGO_ARTICOLO_NOT_FOUND": "Articolo non trovato.",
     "E_CATALOGO_COMPONENTE_NOT_FOUND": "Componente non trovato.",
     "E_CATALOGO_CONV_NOT_FOUND": "Conversione unita' di misura non trovata.",
@@ -154,6 +156,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_CLIENTE_FORNITURA_IMMUTABILE": "Un cliente appartiene per sempre alla sua fornitura: per un'altra fornitura si crea un cliente nuovo, per un nuovo intestatario si usa il subentro.",
     "E_CLIENTE_NON_ATTIVO": "Il cliente non e' in stato attivo.",
     "E_CLIENTE_NON_TROVATO": "Cliente non trovato.",
+    "E_CLIENTE_PA_NON_AMMESSO": "Questo tipo soggetto non puo' essere una Pubblica Amministrazione.",
     "E_CLIENTE_UTILITY_MISMATCH_BA": "Utility non coerente con il billing account del cliente.",
     # ⚠️ SENZA segnaposto, mentre il messaggio a catalogo ha un `%s` con lo
     # STATO della riga: è proprio quando gli argomenti non arrivano che il
@@ -280,6 +283,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO": "Soggetto non trovato.",
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "Policy dati societari non configurata per questo tipo soggetto.",
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "Per questo tipo soggetto i dati societari non sono previsti.",
+    "E_DATO_FISCALE_SENZA_TIPO_SOGGETTO": "Per indicare un regime fiscale o un titolo IVA serve prima il tipo soggetto.",
     "E_DB_ROLE_UNSAFE": "Errore interno di sicurezza sessione.",
     "E_DDT_CAUSALE_IMMUTABILE": "La causale di trasporto si sceglie solo in bozza: dopo l'emissione la bolla e' quella.",
     "E_DDT_CAUSALE_OBBLIGATORIA": "Causale di trasporto obbligatoria per emettere il DDT.",
@@ -517,6 +521,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
         "Il fondo e' nato da una sistemazione e non si cancella da qui: "
         "si disfa annullando quella sistemazione."
     ),
+    "E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO": "La forma giuridica non e' ammessa per questo tipo soggetto.",
     "E_FORMA_GIURIDICA_PAESE": "Forma giuridica non coerente con il paese del soggetto.",
     "E_FORNITORE_BLOCCATO": "Fornitore bloccato: non e' possibile emettere ordini.",
     "E_FORNITORE_ID_INVALIDO": "Identificativo fornitore non valido.",
@@ -1032,6 +1037,8 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_QUERY_FAILED": "Errore di esecuzione della query sulla tabella indicata.",
     "E_QUERY_FAILED_SCHEMA_TABLE": "Interrogazione fallita sulla tabella indicata.",
     "E_RATA_NON_TROVATA": "La rata non esiste o non e' accessibile.",
+    "E_REA_NON_AMMESSO": "Per questa forma giuridica l'iscrizione al REA non si indica.",
+    "E_REA_OBBLIGATORIO": "Per questa forma giuridica l'iscrizione al REA e' obbligatoria.",
     "E_RECONCILE_AMBIGUO": "Riconciliazione sorgente ambigua: piu' candidati.",
     "E_REGISTRO_FORMA_NUMERO_IMMUTABILE": "La forma del numero non si puo' piu' cambiare: questo sezionale ha gia' consegnato dei numeri, e il contatore non riparte quando la forma cambia.",
     "E_REGISTRO_SERIE_NON_AMMESSA": "I documenti di questa famiglia non registrano la serie: il sezionale non puo' portarne una, o il contatore ripartirebbe da 1 su numeri gia' emessi.",
@@ -1169,6 +1176,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_SOSPENSIONE_NOT_FOUND": "Sospensione non trovata o gia' chiusa.",
     "E_SOSPENSIONE_OVERLAP": "Esiste gia' una sospensione che copre questo periodo per la stessa pratica o lo stesso flusso.",
     "E_SOSPENSIONI_FLUSSO_NON_COERENTE": "Il flusso non appartiene alla pratica della sospensione.",
+    "E_SPLIT_PAYMENT_NON_AMMESSO": "Questo tipo soggetto non puo' essere in split payment.",
     "E_SQL_READ_TABLE": "Errore in lettura sulla tabella indicata.",
     "E_STAMPA_JOB_STANTIO": "Render interrotto (worker morto o kill): recuperato dal reaper.",
     "E_STATO_DDT_TRANSIZIONE_NON_VALIDA": "Transizione di stato non ammessa per il DDT.",
@@ -1205,8 +1213,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     # difetto di MONTAGGIO del trigger — se ne accorge chi lo installa, mai
     # l'operatore — quindi il messaggio non gli chiede di correggere niente.
     "E_TIPO_RUOLO_NON_RICERCABILE": "Questo tipo ruolo non si cerca nella ricerca universale.",
+    "E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI": "Il nuovo tipo soggetto non ammette un titolo IVA ancora in vigore: chiudere prima il titolo.",
+    "E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA": "Il nuovo tipo soggetto non ammette la forma giuridica: cambiare anche la forma.",
     "E_TITOLO_IVA_AMBITO_NON_AMMESSO": "Questo titolo IVA vale per tutte le merci: non ammette un elenco di voci. Togli le voci, oppure dichiara il titolo ristretto.",
     "E_TITOLO_IVA_AMBITO_SOVRAPPOSTO": "Esiste gia' un titolo IVA dello stesso tipo, valido nello stesso periodo, che copre la stessa merce allo stesso livello.",
+    "E_TITOLO_IVA_AMMISSIONE_IN_USO": "Il titolo IVA non si puo' ritirare per questo tipo soggetto: ci sono titoli in vigore che lo usano.",
     "E_TITOLO_IVA_ANNULLO_INCOERENTE": "La riga di annullo non corrisponde al movimento di plafond che dichiara di annullare: titolo diverso, oppure importo che non ne e' l'opposto esatto.",
     # ⛔ NON ENUMERA I MOTIVI, ed e' deliberato: `fn_check_annullo_movimento_titolo_iva`
     #    ne nomina CINQUE (non trovato, non e' una forzatura, e' gia' un annullo,
@@ -1219,6 +1230,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_TITOLO_IVA_CONSUMO_FUORI_VALIDITA": "Consumo di plafond chiesto a una data fuori dalla validita' del titolo.",
     "E_TITOLO_IVA_CONSUMO_NON_INVOCABILE": "Consumo di plafond invocato senza i dati necessari, o su un titolo che non esiste.",
     "E_TITOLO_IVA_MOVIMENTO_IMMUTABILE": "Il registro dei movimenti di plafond IVA e' append-only: una riga scritta non si modifica e non si cancella. Per correggere si registra un annullo.",
+    "E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO": "Questo titolo IVA non e' ammesso per il tipo soggetto.",
     "E_TITOLO_IVA_PLAFOND_MANCANTE": "Questo tipo di titolo ha un tetto che si consuma: indica il plafond.",
     "E_TITOLO_IVA_PLAFOND_NON_AMMESSO": "Questo tipo di titolo non ha un tetto da consumare: il plafond non si indica.",
     "E_TITOLO_IVA_UTILIZZATO_NEGATIVO": "Il consumo del titolo scenderebbe sotto zero: non e' un valore possibile.",

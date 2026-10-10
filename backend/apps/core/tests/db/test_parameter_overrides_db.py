@@ -26,6 +26,7 @@ Indice test eseguiti:
 3) ParameterOverridesDbTests.test_upsert_ripetuto_aggiorna_la_stessa_riga
 4) ParameterOverridesDbTests.test_delete_non_tocca_l_override_di_un_altro
 5) ParameterOverridesDbTests.test_upsert_riattiva_la_riga_spenta
+6) ParameterOverridesDbTests.test_lettura_facoltativa_di_un_codice_non_dichiarato
 """
 
 from __future__ import annotations
@@ -33,9 +34,10 @@ from __future__ import annotations
 import unittest
 
 from django.contrib.auth.models import User
-from django.db import IntegrityError, connection, transaction
+from django.db import DatabaseError, IntegrityError, connection, transaction
 
 from apps.core.db.parameter_repository import ParameterRepository
+from apps.core.services.db_error_fields import db_error_code
 from apps.core.tests.db_e2e import richiedi_db_provvisto
 
 _CODICE_INESISTENTE = "ZZ_PARAMETRO_CHE_NON_ESISTE_TEST"
@@ -155,3 +157,24 @@ class ParameterOverridesDbTests(unittest.TestCase):
                     )
                     self.assertEqual(cur.fetchone(), ("nuovo", True))
                 self._nel_mondo(azione)
+
+    # Scopo: ⭐ BB `get_parameter_se_dichiarato` (2026-10-11): un codice non
+    # dichiarato e' None, non `E_ERRORE_PARAMETRI_TABELLA`; un codice
+    # dichiarato vale quanto la cascata. `get_parameters` lo esclude invece di
+    # far fallire la richiesta. `get_parameter` resta rigido: e' il contratto
+    # dei parametri obbligatori.
+    def test_lettura_facoltativa_di_un_codice_non_dichiarato(self):
+        def azione(_cur, _param_id, code, _uid):
+            repo = ParameterRepository()
+            self.assertIsNone(repo.get_parameter_se_dichiarato(_CODICE_INESISTENTE))
+            self.assertEqual(repo.get_parameter_se_dichiarato(code), repo.get_parameter(code))
+            risolti = repo.get_parameters([_CODICE_INESISTENTE, code])
+            self.assertNotIn(_CODICE_INESISTENTE, risolti)
+            if repo.get_parameter(code) is not None:
+                self.assertIn(code, risolti)
+            # Il rifiuto e' quello del catalogo, non un errore qualunque.
+            with self.assertRaises(DatabaseError) as ctx:
+                with transaction.atomic():
+                    repo.get_parameter(_CODICE_INESISTENTE)
+            self.assertEqual(db_error_code(ctx.exception), "E_ERRORE_PARAMETRI_TABELLA")
+        self._nel_mondo(azione)

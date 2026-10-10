@@ -482,6 +482,7 @@
       "chiude_commessa": "Chiude la commessa",
       "chiude_lotto": "Chiude il lotto",
       "chiude_pratica": "Chiude la pratica",
+      "cliente_pa_ammesso": "Cliente PA ammesso",
       "codice": "Codice",
       "codice_interno": "Codice interno",
       "codice_iso": "Codice ISO",
@@ -573,6 +574,7 @@
       "simbolo": "Simbolo",
       "soggetto_ruolo_conto_bancario_id": "Conto bancario del soggetto",
       "soggetto_ruolo_id": "Soggetto (ruolo)",
+      "split_payment_ammesso": "Split payment ammesso",
       "stato_cliente_ia": "Stato cliente (IA)",
       "stato_id": "Stato (nazione)",
       "stato_iso2": "Stato ISO2",
@@ -5179,7 +5181,9 @@
     "fe_pec": "PEC",
     "fe_sdi": "Codice SDI",
     "pec_fatturazione": "PEC fatturazione",
-    "codice_sdi": "Codice destinatario SDI"
+    "codice_sdi": "Codice destinatario SDI",
+    "data_costituzione": "Data di costituzione",
+    "forma_non_ammessa": "non ammessa per il tipo soggetto"
   },
   "note": {
     "titolo_default": "Note",

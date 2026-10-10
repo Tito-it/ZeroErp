@@ -59,7 +59,29 @@ const paOptions = computed(() => [
 
 // Lookup forme giuridiche (ricaricato al cambio tipo) — passato a useDatiSocietariForm
 const formeGiuridicheLookup = ref([])
-const datiSocietari = useDatiSocietariForm({ formeGiuridiche: formeGiuridicheLookup })
+const formeGiuridicheCaricate = ref(false)
+// La forma che il soggetto HA (dal dettaglio), con le sue policy REA/capitale.
+const formaDelDettaglio = ref(null)
+// ⭐ La forma salvata resta VISIBILE anche se la natura non la ammette (riga
+//   fuori regola di prima del guard, o natura appena cambiata): marcata, in
+//   coda. Fino al 2026-10-10 il Select non la trovava fra le opzioni e la
+//   mostrava vuota — un dato illegale per la natura che nessuno diceva
+//   (brief-db-dati-fiscali-e-societari-del-soggetto §3.1). Stessa idea di
+//   `voceCorrente` di `LookupSelect`.
+// ⚠️ Solo a elenco CARICATO: prima, l'elenco vuoto la farebbe dire «non
+//    ammessa» a torto.
+const formeGiuridicheOpzioni = computed(() => {
+  const voce = formaDelDettaglio.value
+  if (!voce || !formeGiuridicheCaricate.value
+    || formeGiuridicheLookup.value.some(f => f.id === voce.id)) {
+    return formeGiuridicheLookup.value
+  }
+  return [
+    ...formeGiuridicheLookup.value,
+    { ...voce, descrizione: `${voce.descrizione} — ${t('dati_societari.forma_non_ammessa')}` },
+  ]
+})
+const datiSocietari = useDatiSocietariForm({ formeGiuridiche: formeGiuridicheOpzioni })
 const provinceLookup = useLookup(() => lookupProvince())
 
 // Restore ComuneAutocomplete in edit mode
@@ -75,6 +97,10 @@ const ruoliAssegnati = ref([])
 // fallback compat in SoggettoForm.
 const tipiModificabiliIds = ref(null)
 const nonEditableFields = ref(null)
+// In modifica: la natura com'era all'apertura (la PATCH la manda solo se
+// cambia) e se il soggetto ha gia' la riga dei dati societari.
+const tipoCaricatoId = ref(null)
+const haDatiSocietari = ref(false)
 
 // Drawer indirizzi, contatti e conti bancari (edit mode)
 const indirizziDrawerVisible = ref(false)
@@ -121,6 +147,7 @@ const isEdit = computed(() => props.mode === 'edit')
 // la risposta della richiesta precedente viene scartata.
 const fgFv = useFetchVersion()
 watch(() => soggetto.form.tipo_soggetto_dettaglio_id, async (tipoId) => {
+  formeGiuridicheCaricate.value = false
   if (!tipoId || !soggetto.showDatiSocietari.value) {
     formeGiuridicheLookup.value = []
     return
@@ -128,7 +155,10 @@ watch(() => soggetto.form.tipo_soggetto_dettaglio_id, async (tipoId) => {
   const v = fgFv.tag()
   try {
     const res = await lookupFormeGiuridiche(tipoId)
-    if (fgFv.isCurrent(v)) formeGiuridicheLookup.value = res.data.data.results
+    if (fgFv.isCurrent(v)) {
+      formeGiuridicheLookup.value = res.data.data.results
+      formeGiuridicheCaricate.value = true
+    }
   } catch {
     if (fgFv.isCurrent(v)) formeGiuridicheLookup.value = []
   }
@@ -199,10 +229,12 @@ function populateFromDetail(data) {
   //    SPEGNEREBBE uno split payment attivo — un errore fiscale silenzioso,
   //    nella direzione peggiore (la stessa che il travaso a DB ha risolto con
   //    `bool_or`, facendo vincere 'S').
-  // ⚠️ `.trim()`: la colonna e' `character(1)` — PostgreSQL restituisce il
-  //    valore paddato, e un confronto `=== 'S'` su ' ' fallirebbe in silenzio.
-  soggetto.form.split_payment = data.split_payment?.trim() ?? null
-  soggetto.form.cliente_pa = data.cliente_pa?.trim() ?? null
+  // Niente `.trim()` (dal 2026-10-10): sono `character(1)` NOT NULL con CHECK
+  //    ('S','N'), cioe' a lunghezza esatta — il padding non c'e'
+  //    (brief-db-character-n-spazi-di-riempimento §2.2).
+  soggetto.form.split_payment = data.split_payment ?? null
+  soggetto.form.cliente_pa = data.cliente_pa ?? null
+  tipoCaricatoId.value = data.tipo_soggetto_dettaglio_id ?? null
   // Oggetto completo per restore ComuneAutocomplete
   comuneNascitaItem.value = data.comune_nascita_id
     ? { id: data.comune_nascita_id, descrizione: data.comune_nascita_descrizione || '', provincia_sigla: data.comune_nascita_provincia_sigla || '' }
@@ -210,6 +242,15 @@ function populateFromDetail(data) {
   if (data.contatti?.length > 0) {
     contatto.populate(data.contatti[0])
   }
+  haDatiSocietari.value = !!data.dati_societari
+  formaDelDettaglio.value = data.dati_societari?.forma_giuridica_id
+    ? {
+        id: data.dati_societari.forma_giuridica_id,
+        descrizione: data.dati_societari.forma_giuridica_descrizione,
+        rea_policy: data.dati_societari.rea_policy,
+        capitale_sociale_policy: data.dati_societari.capitale_sociale_policy,
+      }
+    : null
   if (data.dati_societari) {
     datiSocietari.populate(data.dati_societari)
   }
@@ -285,6 +326,9 @@ watch(() => props.visible, async (val) => {
     // Reset sentinel a null in create — fallback compat in SoggettoForm
     tipiModificabiliIds.value = null
     nonEditableFields.value = null
+    tipoCaricatoId.value = null
+    haDatiSocietari.value = false
+    formaDelDettaglio.value = null
     nominativoManuale = false
     // Pre-imposta tipo soggetto se indicato dal chiamante (es. SoggettoResolver)
     if (props.tipoDefaultId) {
@@ -347,8 +391,27 @@ async function handleSave() {
     // ⛔ Si spediscono SOLO se valorizzati: un flag che il dettaglio non ha
     //    portato resta `null`, e mandarlo scriverebbe un valore che nessuno ha
     //    letto ne' scelto. Chiave assente = colonna non toccata.
-    if (f.split_payment) payload.split_payment = f.split_payment
-    if (f.cliente_pa) payload.cliente_pa = f.cliente_pa
+    // ⭐ Un flag che la natura NON ammette (campo nascosto) parte 'N': e' la
+    //    regola del DB (A-3, «chi cambia natura porta il flag a N nella stessa
+    //    scrittura»), non un valore inventato. Un 'S' rimasto da prima del
+    //    guard verrebbe altrimenti rifiutato su un campo che non si vede.
+    if (f.split_payment) payload.split_payment = soggetto.showSplitPayment.value ? f.split_payment : 'N'
+    if (f.cliente_pa) payload.cliente_pa = soggetto.showClientePa.value ? f.cliente_pa : 'N'
+    // La natura, solo se cambiata: i guard la confrontano con flag, forma e
+    // titoli IVA (brief-db-dati-fiscali-e-societari-del-soggetto §8.3).
+    if (f.tipo_soggetto_dettaglio_id !== tipoCaricatoId.value) {
+      payload.tipo_soggetto_dettaglio_id = f.tipo_soggetto_dettaglio_id
+    }
+    // Dati societari col verbo DB, STATO INTERO, come in creazione (parte B).
+    // ⚠️ Solo se la riga c'e' gia' o l'operatore ha scelto una forma: con la
+    //    natura OPTIONAL e la sezione lasciata vuota non c'e' niente da creare,
+    //    e una riga senza forma il DB la rifiuta (forma NOT NULL, C-2).
+    // ⭐ Il backend scrive PRIMA la natura e POI i dati societari, nella stessa
+    //    transazione: natura e forma si cambiano nello stesso salvataggio.
+    if (soggetto.showDatiSocietari.value
+      && (haDatiSocietari.value || datiSocietari.form.forma_giuridica_id)) {
+      payload.dati_societari = datiSocietari.toPayload()
+    }
 
     const result = await execute(
       () => store.update(props.itemId, payload),
@@ -512,13 +575,14 @@ async function handleSave() {
       <DatiSocietariForm
         :form="datiSocietari.form"
         :campi-errati="campiErrati"
-        :forme-giuridiche="formeGiuridicheLookup"
+        :forme-giuridiche="formeGiuridicheOpzioni"
         :province-lookup="provinceLookup"
         :show-rea="datiSocietari.showRea.value"
         :require-rea="datiSocietari.requireRea.value"
         :show-capitale-sociale="datiSocietari.showCapitaleSociale.value"
         :require-capitale-sociale="datiSocietari.requireCapitaleSociale.value"
         :required="soggetto.requireDatiSocietari.value"
+        :show-data-costituzione="isEdit"
         :disabled="false"
       />
     </template>
@@ -529,21 +593,26 @@ async function handleSave() {
          partita IVA. Stanno accanto a CF/P.IVA perche' e' da li' che
          discendono. ⚠️ NON sono un codice IVA e non entrano nel risolutore
          (D4): non cambiano l'aliquota, cambiano CHI VERSA l'imposta. -->
-    <template v-if="isEdit">
+    <!-- ⭐ Dal 2026-10-10 i due campi seguono la natura (`cliente_pa_ammesso`,
+         `split_payment_ammesso`): la sezione c'e' solo se ne resta almeno uno
+         (un privato o una ditta individuale non ne hanno nessuno). -->
+    <template v-if="isEdit && (soggetto.showClientePa.value || soggetto.showSplitPayment.value)">
       <div class="app-drawer-section">
         <h4>{{ t('anagrafiche.soggetti.section_dati_fiscali') }}</h4>
       </div>
       <div class="form-grid-2col">
-        <div class="form-field">
+        <div v-if="soggetto.showClientePa.value" class="form-field">
           <label>{{ t('anagrafiche.soggetti.field_cliente_pa') }}</label>
           <Select v-model="soggetto.form.cliente_pa" :options="paOptions"
             option-label="label" option-value="value"
+            :invalid="campiErrati.includes('cliente_pa')"
             :disabled="isReadonly" />
         </div>
-        <div class="form-field">
+        <div v-if="soggetto.showSplitPayment.value" class="form-field">
           <label>{{ t('anagrafiche.soggetti.field_split_payment') }}</label>
           <Select v-model="soggetto.form.split_payment" :options="paOptions"
             option-label="label" option-value="value"
+            :invalid="campiErrati.includes('split_payment')"
             :disabled="isReadonly" />
         </div>
       </div>

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1034, di cui 112 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1046, di cui 112 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -202,6 +202,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Lo solleva il BACKEND, dal cancello degli obblighi che gira dopo l'autenticazione DRF (apps/core/api/cancello_obblighi.py, lotto T-0 di brief-be-fe-sicurezza-header-token-mfa, chiude A-8 del piano accessi): la credenziale ha deve_cambiare_password e la richiesta non e' fra quelle ammesse (cambio password, logout, profilo). A catalogo per la frase e la classe, come E_TOTP_CODICE_NON_VALIDO. NON_PERMESSO (403) e non NON_AUTENTICATO: chi chiede e' autenticato, e' l'obbligo pendente che non gli permette altro. Esisteva gia' come stringa scritta a mano da PasswordChangeRequiredMiddleware, mai registrata: il middleware si ritira col cancello, e con lui E_CAMBIO_PASSWORD_CHECK_FALLITO, che NON si registra (un DB che non risponde dentro l'autenticazione e' E_DATABASE, fail-closed). Frase chiusa. Nasce il 2026-09-30 (brief-db-codici-cancello-obblighi-e-sfida-totp).
     "E_CAMBIO_PASSWORD_RICHIESTO": "NON_PERMESSO",
     "E_CANALE_ORIGINE_IMMUTABILE": "CONFLITTO_STATO",
+    # Guard anagrafiche.trgfn_dati_societari_guard_forma_giuridica (20261010-97): la forma ha capitale_sociale_policy = NONE (ditta individuale, enti) e il capitale e' compilato. DATO_ERRATO, campo capitale_sociale. VARIADIC: la forma. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-6).
+    "E_CAPITALE_SOCIALE_NON_AMMESSO": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_dati_societari_guard_forma_giuridica (20261010-97): la forma ha capitale_sociale_policy = REQUIRED e il capitale manca. DATO_ERRATO, campo capitale_sociale. VARIADIC: la forma. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-6).
+    "E_CAPITALE_SOCIALE_OBBLIGATORIO": "DATO_ERRATO",
     "E_CATALOGO_ARTICOLO_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_COMPONENTE_NOT_FOUND": "NON_TROVATO",
     "E_CATALOGO_CONV_NOT_FOUND": "NON_TROVATO",
@@ -222,6 +226,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CLIENTE_FORNITURA_IMMUTABILE": "CONFLITTO_STATO",
     "E_CLIENTE_NON_ATTIVO": "CONFLITTO_STATO",
     "E_CLIENTE_NON_TROVATO": "NON_TROVATO",
+    # Guard anagrafiche.trgfn_soggetti_guard_regime_pa (20261010-86): cliente_pa = 'S' su una natura di dettaglio con cliente_pa_ammesso = false (config.tipi_soggetto_dettaglio, 20261010-85). Un codice per flag e non uno per due: il flag sbagliato lo dice il codice, non un'etichetta italiana nel VARIADIC, che non si traduce. DATO_ERRATO, campo cliente_pa nel contesto; il VARIADIC porta la descrizione della natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (A-3).
+    "E_CLIENTE_PA_NON_AMMESSO": "DATO_ERRATO",
     "E_CLIENTE_UTILITY_MISMATCH_BA": "DATO_ERRATO",
     # ⚠️ RITIRATO il 2026-08-07
     "E_CLIENTI_GIORNI_SCADENZA_OBBLIGATORI": "DATO_ERRATO",
@@ -428,6 +434,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # ── 400 · il problema non e' un campo del form (`show_error_banner`) ──
     "E_DATI_SOCIETARI_TIPO_DETTAGLIO_NON_CONFIGURATO": "DATO_ERRATO",
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "DATO_ERRATO",
+    # Un dato fiscale che dipende dalla natura (cliente_pa o split_payment a 'S', un titolo IVA) su un soggetto senza tipo_soggetto_dettaglio_id. Decisione di Tid del 2026-10-10 (A-5/D-1): senza natura si rifiuta, non si tace. Frase chiusa, senza segnaposto: il guard passa il VARIADIC vuoto. Campo tipo_soggetto_dettaglio_id nel contesto: e' la natura che manca. Lo sollevano anagrafiche.trgfn_soggetti_guard_regime_pa (20261010-86), trgfn_soggetti_titoli_iva_guard_tipo_soggetto (20261010-92) e trgfn_soggetti_guard_titoli_iva_ammessi (20261010-93, natura tolta a chi ha titoli vigenti). Brief: brief-db-dati-fiscali-e-societari-del-soggetto.
+    "E_DATO_FISCALE_SENZA_TIPO_SOGGETTO": "DATO_ERRATO",
     # Configurazione mancante: logga ma non blocca, usa il fallback locale.
     # ⚠️ RITIRATO il 2026-08-07
     "E_DBLINK_LOG_CONN_MISSING": "AVVISO",
@@ -745,6 +753,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Il valore viene da vendite.regole_fatturazione_articolo, non da chi usa il programma: nessuno rimedia finche qualcuno non riconfigura.
     # ⚠️ RITIRATO il 2026-08-07
     "E_FONTE_QUANTITA_NON_VALIDA": "TECNICO",
+    # Guard anagrafiche.trgfn_dati_societari_guard_forma_giuridica (20261010-97): la forma giuridica non e' ammessa dalla natura del soggetto (anagrafiche.fn_forma_giuridica_ammessa, matrice config.forme_giuridiche_tipi_soggetto_dettaglio attiva e valida oggi). DATO_ERRATO, campo forma_giuridica_id. VARIADIC: forma, natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (C-1).
+    "E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO": "DATO_ERRATO",
     "E_FORMA_GIURIDICA_PAESE": "DATO_ERRATO",
     # `v_blocca_ordini = true`: e' lo stato del fornitore a bloccare · l'ordine, non un diritto che manca all'operatore (403).
     "E_FORNITORE_BLOCCATO": "CONFLITTO_STATO",
@@ -1211,6 +1221,10 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_QUERY_FAILED_SCHEMA_TABLE": "TECNICO",
     # pagamenti.fn_get_saldo_rata e il guard della rata: la scadenza indicata non esiste, oppure non e' visibile a chi sta scrivendo. ⚠️ Le due cose portano allo stesso messaggio DI PROPOSITO, ed e' la stessa scelta gia'  fatta da E_FATTURA_NON_TROVATA (140) sulla fattura: distinguerle direbbe a un operatore fuori perimetro che quella rata esiste. ⭐ Dove invece la distinzione CONTA — il guard di coerenza, che deve dire «non e' di questa fattura» e non «non la vedo» — la domanda si fa fuori dalla row security con script.fn_check_scadenza_di_fattura. Le due funzioni fanno cose diverse apposta: una risponde a chi ha diritto di sapere, l'altra a chi deve decidere.
     "E_RATA_NON_TROVATA": "NON_TROVATO",
+    # Guard anagrafiche.trgfn_dati_societari_guard_forma_giuridica (20261010-97): la forma ha rea_policy = NONE e il REA e' compilato. DATO_ERRATO, campo iscrizione_rea. VARIADIC: la forma. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-6).
+    "E_REA_NON_AMMESSO": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_dati_societari_guard_forma_giuridica (20261010-97): la forma ha rea_policy = REQUIRED e il numero REA manca. DATO_ERRATO, campo iscrizione_rea. VARIADIC: la forma. La coppia provincia/numero la tiene il CHECK chk_dati_societari_rea_coppia. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-6).
+    "E_REA_OBBLIGATORIO": "DATO_ERRATO",
     # ⚠️ CODICE-DATO: `pratiche.fn_reconcile_sorgente` non lo solleva — · lo **scrive** nella colonna `errcode` di · `pratiche.reconcile_errori` (best-effort, con RAISE WARNING come · ripiego). Nessun codice Python legge quella tabella, quindi oggi · non raggiunge nessun client: la policy c'e' perche' il cancello la · pretende, come per `E_ATTIVO_BLOCK_REF_NULL` (§16.2).
     "E_RECONCILE_AMBIGUO": "CONFLITTO_STATO",
     # ⚠️ RITIRATO il 2026-08-07
@@ -1423,6 +1437,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Sospensioni con data manuale (catalogo DB id 498/499): · EXCLUDE ex_sospensioni_no_overlap (23P01) e guard a10 data non futura.
     "E_SOSPENSIONE_OVERLAP": "CONFLITTO_STATO",
     "E_SOSPENSIONI_FLUSSO_NON_COERENTE": "DATO_ERRATO",
+    # Guard anagrafiche.trgfn_soggetti_guard_regime_pa (20261010-86): split_payment = 'S' su una natura di dettaglio con split_payment_ammesso = false. Gemello di E_CLIENTE_PA_NON_AMMESSO. DATO_ERRATO, campo split_payment nel contesto; il VARIADIC porta la descrizione della natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (A-3).
+    "E_SPLIT_PAYMENT_NON_AMMESSO": "DATO_ERRATO",
     # dbops.trgfn_tx_id_managed, `EXCEPTION WHEN OTHERS` sulla lettura.
     "E_SQL_READ_TABLE": "TECNICO",
     # Scritto dal backend in vendite.fatture_stampa_coda.ultimo_errore (vendite/db/pipeline_repository.py, reset_stale_stampe_in_corso), non sollevato: un render rimasto IN_CORSO oltre la soglia (worker morto o ucciso) viene recuperato dal reaper. Non attraversa HTTP. TECNICO come il gemello E_CODA_JOB_STANTIO della coda lavori generica. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
@@ -1482,10 +1498,16 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # script.fn_predicato_soggetto_ruolo_visibile (20261010-10), la regola unica della ricerca universale chiamata da lista e dettaglio: il tipo ruolo esiste ma config.tipi_ruoli.ricerca_visibile e' false (oggi emittente fiscale, gestore, risorsa umana, PSP, processo automatico). Decisione di Tid del 2026-10-09 (Q-2): il controllo era solo nel backend (E_SEARCH_VALIDATION), che lo ritira; il menu a tendina continua a leggere la colonna. NON_TROVATO come il fratello E_TIPO_RUOLO_NON_TROVATO: l'id arriva dall'URL, e per la ricerca universale quel ruolo non c'e'; chi lo manda puo' rimediare cambiando richiesta. VARIADIC: la descrizione del ruolo. Brief: brief-db-codici-non-trovato-email-e-permessi (R-6, Q-2).
     "E_TIPO_RUOLO_NON_RICERCABILE": "NON_TROVATO",
     "E_TIPO_RUOLO_NON_TROVATO": "NON_TROVATO",
+    # Guard anagrafiche.trgfn_soggetti_guard_titoli_iva_ammessi (20261010-93): il soggetto cambia natura e ha un titolo IVA vigente che la natura nuova non ammette (letto dal DEFINER anagrafiche.fn_titolo_iva_non_ammesso_del_soggetto, sopra la RLS per emittente). CONFLITTO_STATO: la natura nuova puo' essere giusta, e' il titolo in vigore che non lo consente; si esce chiudendo il titolo (valido_al). Campo tipo_soggetto_dettaglio_id. VARIADIC: natura nuova, tipo di titolo. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).
+    "E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI": "CONFLITTO_STATO",
+    # Guard al COMMIT anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura (20261010-98): il soggetto ha cambiato natura e la forma dei suoi dati societari non e' ammessa dalla natura nuova. Differito: natura e forma si cambiano nella stessa transazione, prima la natura e poi la forma. DATO_ERRATO, campo forma_giuridica_id (e' la forma che si corregge). VARIADIC: natura, forma. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (C-1).
+    "E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA": "DATO_ERRATO",
     # anagrafiche.fn_check_titolo_iva_ambito, sollevato dai due guard: un titolo con ambito = TUTTO porta righe in anagrafiche.soggetti_titoli_iva_ambiti. La tabella direbbe due cose opposte - vale per tutto e vale per queste voci - e il risolutore ne leggerebbe una sola. Si solleva su entrambi i versi: inserendo una riga di ambito su un titolo totale, e riportando a TUTTO un titolo che le righe ce l'ha gia'. DATO_ERRATO: il rimedio e' dell'operatore (togliere le righe, o dichiarare il titolo RISTRETTO). Nel VARIADIC la descrizione del tipo di titolo. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I7 / D10 / D12.
     "E_TITOLO_IVA_AMBITO_NON_AMMESSO": "DATO_ERRATO",
     # anagrafiche.fn_check_titolo_iva_ambito: due titoli IVA attivi dello stesso soggetto, verso lo stesso emittente, dello stesso tipo, con periodi che si toccano, coprono lo STESSO oggetto allo STESSO livello. E' il PAREGGIO di D13: nessuno dei due e' piu' specifico, e a parita' di specificita' non c'e' niente da scegliere - un'ambiguita' che si risolve sull'ordine degli id e' quello che AGENTS.md chiama un'ambiguita' del modello, non una scelta. ⚠️ Livelli DIVERSI non sono un pareggio e non si bloccano: articolo > categoria di merce > tutto, la stessa cascata degli indirizzi. ⛔ E' la meta' che l'EXCLUDE non puo' tenere: ex_soggetti_titoli_iva_no_overlap copre i soli titoli ambito = TUTTO, perche' per i ristretti la chiave attraversa la tabella figlia. Nel VARIADIC il tipo di titolo e il NOME della merce, mai gli id. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I7 / D10 / D13.
     "E_TITOLO_IVA_AMBITO_SOVRAPPOSTO": "DATO_ERRATO",
+    # Guard config.trgfn_tipi_titolo_iva_tipi_soggetto_dettaglio_guard_ritiro (20261010-94): una riga della matrice titoli x natura smette di ammettere (attivo -> false, DELETE, coppia cambiata) mentre esistono titoli vigenti che la usano. CONFLITTO_STATO, nessun campo: la scrive un CSV o un amministratore. VARIADIC: tipo di titolo, natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (D-6).
+    "E_TITOLO_IVA_AMMISSIONE_IN_USO": "CONFLITTO_STATO",
     # La riga di annullo e' incoerente con il movimento che dichiara di annullare: titolo IVA diverso, oppure importo che non e' l'opposto esatto. ⛔ TECNICO e non DATO_ERRATO perche' passando da anagrafiche.fn_annulla_movimento_titolo_iva quei due valori sono DERIVATI dalla riga annullata: sbagliarli lo puo' solo un chiamante che scrive nel registro direttamente. Copre anche i guard di parametro della madre e della check. ⚠️ Il controllo sul titolo e' quello che vale: un collegamento a un movimento di un ALTRO titolo decurterebbe il plafond sbagliato e lascerebbe gonfiato quello della forzatura, SENZA sollevare niente - l'accumulatore somma per titolo e del collegamento non sa nulla. ⚠️ Su un TECNICO la chiave `campo` esce dal contesto: non c'e' nessun campo da accendere. Piano: brief-db-titoli-iva-movimenti-annullo, B-c.
     "E_TITOLO_IVA_ANNULLO_INCOERENTE": "TECNICO",
     # L'annullo di un movimento di plafond non e' ammesso su quella riga. Un codice solo per i cinque motivi che script.fn_check_annullo_movimento_titolo_iva sa nominare - movimento non trovato, non e' una FORZATURA, e' esso stesso un annullo, e' gia' annullato, porterebbe l'usato del titolo sotto zero - perche' il `reason` li distingue e la frase e' la stessa: quel movimento, quella data. ⭐ La check e' la STESSA che alimenta annullo_blocco_codice su vw_stiva_movimenti_dettaglio: il pulsante spento e questo rifiuto leggono una regola sola e non possono divergere. ⛔ Un movimento FATTURA non si corregge cosi': si corregge dal documento, con una nota di credito, ed e' di I4. Piano: brief-db-titoli-iva-movimenti-annullo, B-b.
@@ -1496,6 +1518,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_TITOLO_IVA_CONSUMO_NON_INVOCABILE": "TECNICO",
     # Il registro dei movimenti di plafond IVA e' APPEND-ONLY per progetto: una riga scritta non si modifica e non si cancella (anagrafiche.trgfn_stiva_movimenti_append_only, BEFORE UPDATE OR DELETE). Si corregge con un CONTRO-MOVIMENTO di segno opposto, che lascia a video l'errore, la correzione e la data di entrambi. Decisione di Tid del 2026-08-30: prima era una promessa che il backend manteneva, e l'argomento del brief ci poggiava sopra. ⛔ Vieta ENTRAMBE le operazioni e non solo il DELETE: un UPDATE riscrive la storia IN SILENZIO, perche' l'accumulatore ricalcola e il totale resta "giusto" - nessuno vede che un importo e' cambiato. CONFLITTO_STATO e non DATO_ERRATO: non c'e' un campo da correggere, e' la natura del registro che non lo consente - ne discende che nel contesto non va la chiave `campo`. ⚠️ Con I5 la pulizia della fattura dovra' passare: o un'apertura dichiarata via GUC, o (preferibile) storna invece di cancellare. Piano: brief-db-titoli-iva-movimenti-annullo, B-1.
     "E_TITOLO_IVA_MOVIMENTO_IMMUTABILE": "CONFLITTO_STATO",
+    # Guard anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto (20261010-92): un titolo IVA vigente di un tipo che la natura del soggetto non ammette (anagrafiche.fn_titolo_iva_ammesso, matrice config.tipi_titolo_iva_tipi_soggetto_dettaglio; nessuna riga = non ammesso). DATO_ERRATO: il tipo lo sceglie una persona nel form, campo tipo_titolo_iva_id. VARIADIC: descrizione del tipo di titolo, descrizione della natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).
+    "E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO": "DATO_ERRATO",
     # anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza: un titolo IVA di un tipo che dichiara ha_plafond = true e' stato salvato senza plafond. Il tetto e' la ragione per cui quel tipo esiste: senza, la primitiva di consumo non avrebbe capienza da confrontare e coprirebbe zero o tutto secondo come e' scritta. DATO_ERRATO perche' il dato lo fornisce una persona in un form e puo' correggerlo: nel contesto va la chiave `campo` = plafond. Nel VARIADIC va la DESCRIZIONE del tipo di titolo, non il suo id: e' la frase che legge una persona. ⛔ Non e' un CHECK di colonna perche' la regola legge config.tipi_titolo_iva, cioe' un'altra tabella. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I7 / D10.
     "E_TITOLO_IVA_PLAFOND_MANCANTE": "DATO_ERRATO",
     # anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza: un titolo IVA di un tipo SENZA tetto (ha_plafond = false: uso industriale, agevolata disabili, cooperative) porta un plafond valorizzato. E' il verso della regola che si dimentica, ed e' il piu' insidioso: il numero c'e', nessuno lo consuma, e chi lo guarda crede che quel titolo abbia un limite - cioe' la voce 2 di questo brief in miniatura, un campo che promette una cosa che non succede. DATO_ERRATO, contesto con `campo` = plafond. Nel VARIADIC la descrizione del tipo. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I7 / D10.

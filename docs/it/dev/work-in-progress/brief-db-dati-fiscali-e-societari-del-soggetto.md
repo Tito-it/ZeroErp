@@ -3,8 +3,8 @@
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10, su segnalazioni di Tid e su quanto
 > trovato chiudendo `work-done/brief-db-character-n-spazi-di-riempimento.md`.
 > **A chi:** team DB; poi BE/FE (§5).
-> **Stato:** ✅ lato DB applicato e verde (2026-10-10, §8.4): tocca a BE/FE (§5, §8.3). Aperta solo
-> D-4 (`COOPERATIVA`). Storia: pronto per il team DB: decisioni di Tid prese il 2026-10-10 (§4), resta aperta solo
+> **Stato:** ✅ lato DB applicato e verde (2026-10-10, §8.4); ✅ BE/FE scritti e verdi (2026-10-10,
+> §9), collaudati in-app da Tid il 2026-10-11. Aperta solo D-4 (`COOPERATIVA`). Storia: pronto per il team DB: decisioni di Tid prese il 2026-10-10 (§4), resta aperta solo
 > D-4 (`COOPERATIVA`, Tid verifica; non blocca: senza righe di matrice). B-2, D-5, D-6 sono scelte
 > tecniche del team DB. BE/FE attendono il DB.
 >
@@ -304,6 +304,8 @@ farne lo decide Tid, guardandoli (come C-3).
 | 2026-10-10 | Decisioni di Tid: A-2 (SP/SC split, PA solo ENC), A-5/D-1 (senza natura = rifiuto), A-6 (nessun legame PA ⇒ split), D-2, D-3 (104 solo PR), B-6 (REA/capitale nullable + guard della forma), B-7 (canale FE facoltativo), C-2 (forma NOT NULL), C-3 (censimento, decide Tid). D-4 aperta. |
 | 2026-10-10 | Sviluppo DB (§8): A, D, B, C scritte e provate sullo scratch (`20261010-85…-99`, `20261011-01…-04`, 12 codici, 3 pgTAP nuovi, 9 adattati). Decisioni di Tid durante lo sviluppo: numerazione, B-5 (solo il verbo scrive, **senza** guard di livello), C-3 (le 6 righe senza forma le corregge Tid). Apply di Tid fino al `-87`; fermo, come previsto, sul `20261011-03`. |
 | 2026-10-10 | Tid: corrette a mano le 6 righe senza forma, migrate completo (`20261011-03`, `-04`), test verdi. Lato DB chiuso; restano BE/FE e D-4. |
+| 2026-10-10 | Sviluppo BE/FE (§9): A, B, C, D. Trovati due difetti fuori dal perimetro del brief e corretti: il lookup delle forme falliva sempre (colonna inesistente, §9.2) e la natura offerta in modifica non arrivava mai al DB (§9.3). |
+| 2026-10-11 | Collaudo in-app di Tid: superato. |
 
 ## 7. Fuori perimetro, da verificare
 
@@ -555,3 +557,75 @@ guardati come app i due rossi da owner dichiarati: test 14 di
   non li tocca finché nessuno li modifica;
 - `fornitori.split_payment` (§7): da verificare, eventualmente brief suo;
 - il permesso a DB per l'anagrafica (`fn_guard_livello` nei verbi): fuori da questo brief, cantiere suo.
+
+## 9. Sviluppo BE/FE (sessione BE, 2026-10-10)
+
+### 9.1 Cosa e' stato fatto, per parte
+
+| Parte | BE | FE |
+| --- | --- | --- |
+| **A** | `LookupRepository.list_tipi_soggetto_dettaglio` e `get_config_resolver` portano `cliente_pa_ammesso` / `split_payment_ammesso` | `useSoggettoForm` espone `showClientePa` / `showSplitPayment`; la sezione «Dati fiscali» c'e' solo se resta un campo; `:invalid` da `campiErrati`; via il `.trim()`. Un flag nascosto parte `N` (A-3) |
+| **B** | `SoggettiService.update_soggetto` accetta `dati_societari` (contratto validato: un oggetto, le sole chiavi del verbo) e chiama `SoggettiRepository.scrivi_dati_societari` → `fn_scrivi_dati_societari`, parametri nominati, stato intero. **Prima il soggetto, poi il verbo**, in un solo `transaction.atomic()`. `get_dati_societari` legge anche `data_costituzione` | `handleSave` in modifica manda `dati_societari` con `toPayload()` se la riga c'e' o se e' stata scelta una forma (con la natura `OPTIONAL` e la sezione vuota non c'e' niente da creare). Campo nuovo «Data di costituzione»: lo stato intero lo azzererebbe |
+| **C** | `list_forme_giuridiche` filtra col predicato del guard, `fn_forma_giuridica_ammessa(…, fn_giorno_operativo(now()))`: matrice attiva **e valida** | Forma, REA e capitale si accendono da `campiErrati`. La forma salvata fuori elenco resta visibile, marcata «non ammessa per il tipo soggetto» |
+| **D** | Lookup nuovo `GET soggetti/{id}/titoli-iva/tipi/lookup/` (`fn_titolo_iva_ammesso`), con `ha_plafond` | `TitoloIvaDrawer`: `LookupSelect` col fetcher del lookup, chiave per soggetto invalidata a ogni apertura (la natura puo' cambiare), voce corrente per un tipo non piu' ammesso, `:invalid` sul tipo |
+| Codici | `genera_error_policies` (12 codici, zero classi cambiate) + 12 ripieghi in `error_messages_fallback.py` | etichette del pannello config per le due colonne nuove (`config_panel.campi.*`) |
+
+### 9.2 ⛔ Trovato: il lookup delle forme giuridiche falliva sempre
+
+`list_forme_giuridiche` leggeva `COALESCE(fg.codice_interno, fg.codice)`, ma
+`config.forme_giuridiche` una colonna `codice_interno` non l'ha mai avuta. Dal 2026-03-28 la
+query falliva **sempre**: l'endpoint rispondeva 500, il drawer ingoiava l'errore e la tendina
+restava vuota. E' con ogni probabilita' la causa vera del «la forma giuridica e' vuota» del
+collaudo R-2 (§3.1), che si sommava al difetto del modello. I test unitari, col cursore mockato,
+non potevano vederlo; lo ha visto il primo test sul DB vero. Corretto (`fg.codice`).
+
+### 9.3 ⛔ Trovato: la natura cambiata in modifica non arrivava al DB
+
+Il drawer offre in modifica le nature della stessa natura base (`tipi_modificabili_ids`), ma
+`tipo_soggetto_dettaglio_id` non era nel contratto della PATCH, e il drawer non lo mandava:
+l'operatore cambiava SP in SC, leggeva «salvato» e non cambiava niente. Il §8.3 presuppone che
+il cambio passi dalla PATCH («prima la natura, poi il verbo»). Ora la chiave e' nel contratto
+(`SOGGETTO_UPDATE_COLS`) e il drawer la manda **solo se cambiata**; cosa la natura nuova ammette
+lo dicono i guard.
+
+### 9.4 Prove
+
+- `apps/anagrafiche/tests/db/test_dati_fiscali_societari_db.py` (DB vero, 12 test): flag per
+  natura, verbo con stato intero, campo acceso (`codice_sdi`, `forma_giuridica_id`, `cliente_pa`),
+  «non trovato» del verbo, **natura e forma nella stessa PATCH**, natura senza forma rifiutata al
+  COMMIT, i due lookup. Mutazione: invertendo l'ordine soggetto/verbo il test 8 va rosso.
+- 3 test unitari nuovi su `update_soggetto` (contratto della sezione, stato intero, niente
+  UPDATE vuoto).
+- Suite BE intera con `ZEROERP_TEST_DB_E2E=1`: 6495 verdi. mypy a registro, ruff pulito.
+- FE: vitest 795 verdi (spec di `useSoggettoForm` e `useDatiSocietariForm` estesi), lint, guard
+  e build verdi.
+- ✅ Collaudo in-app: fatto da Tid il 2026-10-11 (modifica di una SC con canale, SDI e data di
+  costituzione; cambio SP↔SC con la forma; privato senza sezione «Dati fiscali»; titolo IVA su
+  un privato, solo 104).
+
+### 9.5 Cosa resta
+
+- ⚠️ **Richiesta al team DB — `data_costituzione` in creazione.** `fn_crea_soggetto_pg` chiama il
+  verbo con `p_data_costituzione := NULL` e non ha un parametro per riceverla: la creazione non
+  la può scrivere. Il FE la offre quindi **solo in modifica** (`DatiSocietariForm`, prop
+  `showDataCostituzione`): in creazione si sarebbe persa in silenzio. Proposta: un parametro
+  `p_data_costituzione date DEFAULT NULL` passato al verbo; poi BE (`crea_soggetto_pg`,
+  `_create_pg`) e FE (togliere la prop) si allineano;
+- il rifiuto di un REA gia' usato (`uq_ds_prov_cea`) accende `iscrizione_rea`, in modifica e in
+  creazione (`create_with_constraint_mapping`, test 13 e 15 sul DB vero). In creazione fino al
+  2026-10-11 usciva «CF/PIVA duplicata»: difetto del solo BE, il DB nominava gia' il vincolo;
+- ⚠️ **Cambio di natura con dati non congrui** (dati societari su una natura `NONE`, titoli IVA
+  non ammessi, flag PA/split): oggi o vicolo cieco o perdita silenziosa. Decisione di Tid
+  (2026-10-11): conferma esplicita, poi pulizia → brief proprio,
+  [brief-db-cambio-natura-soggetto-conferma-e-pulizia](brief-db-cambio-natura-soggetto-conferma-e-pulizia.md);
+- ⛔ Trovato e corretto (solo BE): `get_config_resolver` leggeva il default di natura per ruolo con
+  `get_parameter`, che su un parametro non dichiarato solleva; il seed lo dichiara per CL e FO, e
+  per RIS_UMANA ed EF il risolutore andava in errore (il FE lo ingoiava: cercatore senza filtro di
+  natura). BB `get_parameter_se_dichiarato` (regola del 2, ok Tid 2026-10-11), usato anche da
+  `get_parameters`, che prometteva di escludere i codici non trovati e invece falliva (test 16);
+- BB `SQL_TIPI_SOGGETTO_DETTAGLIO` (regola del 2, ok Tid 2026-10-11): lookup e risolutore per
+  ruolo leggono la stessa riga. Divergevano: per l'ente `natura_soggetto` era `ENC` (il codice)
+  nel lookup, in lista e nel dettaglio, `ENTE` (l'enum) nel risolutore — e `SoggettoResolver`,
+  che confronta i due, marcava ogni ente «natura bloccata». Ora e' l'enum ovunque (test 14);
+- **D-4** (`COOPERATIVA`) e il censimento dei titoli fuori regola (§8.2), invariati;
+- `fornitori.split_payment` (§7), invariato.

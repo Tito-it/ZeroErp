@@ -327,8 +327,34 @@ Aggiorna uno o piu' campi del soggetto. Invia solo i campi da modificare.
 | `codice_fiscale` | string | Codice fiscale |
 | `partita_iva` | string | Partita IVA |
 | `sesso` | string | `M`, `F`, `X`; vuoto = `NULL`. Lo giudica il guard secondo `sesso_policy` (vedi la creazione) |
+| `data_nascita`, `comune_nascita_id` | string (ISO) / int | Dati di nascita (PF) |
+| `cliente_pa`, `split_payment` | string | `S` / `N` (minuscole e spazi normalizzati). Ammessi solo dove la natura lo dice (`cliente_pa_ammesso`, `split_payment_ammesso` del lookup dei tipi): altrimenti `E_CLIENTE_PA_NON_AMMESSO` / `E_SPLIT_PAYMENT_NON_AMMESSO` (400, `error.fields` = il flag) |
+| `tipo_soggetto_dettaglio_id` | int | La natura di dettaglio (fra i `tipi_modificabili_ids`). Cosa la natura nuova ammette — flag, forma giuridica, titoli IVA in vigore — lo giudicano i guard del DB |
+| `dati_societari` | object | La sezione dati societari, **stato intero**: crea o aggiorna la riga col verbo `anagrafiche.fn_scrivi_dati_societari`. Chiavi: `forma_giuridica_id`, `id_prov_iscri_rea`, `iscrizione_rea`, `capitale_sociale`, `socio_unico`, `liquidazione`, `destinatario_fe`, `pec_fatturazione`, `codice_sdi`, `data_costituzione`. Una chiave assente vale `null` |
 
-Inviare solo i campi che si intende modificare.
+Inviare solo i campi che si intende modificare. ⚠️ Fa eccezione `dati_societari`:
+se c'e', porta la sezione **intera** (il verbo non distingue «non toccare» da
+«svuota»).
+
+**Ordine e atomicita'** (dal 2026-10-10, brief-db-dati-fiscali-e-societari-del-soggetto):
+prima l'UPDATE del soggetto, poi il verbo dei dati societari, nella **stessa
+transazione**. Natura e forma giuridica si cambiano cosi' nello stesso
+salvataggio: il guard della forma la confronta con la natura nuova, e il guard
+al COMMIT (`trgfn_soggetti_guard_forma_giuridica_natura`) vede le due
+scritture insieme. Con i soli `dati_societari` il soggetto non si tocca, e un
+soggetto inesistente risponde `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` (404).
+
+**Rifiuti dei guard, col campo da accendere** (`error.fields`):
+
+| Codice | Status | Campo |
+| --- | --- | --- |
+| `E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO` | 400 | `forma_giuridica_id` |
+| `E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA` | 400 | `forma_giuridica_id` (natura cambiata, forma no) |
+| `E_REA_OBBLIGATORIO` / `E_REA_NON_AMMESSO` | 400 | `iscrizione_rea` |
+| `E_CAPITALE_SOCIALE_OBBLIGATORIO` / `E_CAPITALE_SOCIALE_NON_AMMESSO` | 400 | `capitale_sociale` |
+| `E_DATI_SOCIETARI_CODICE_SDI_*`, `E_DATI_SOCIETARI_PEC_FATTURAZIONE_MANCANTE` | 400 | `codice_sdi` / `pec_fatturazione` |
+| `E_CLIENTE_PA_NON_AMMESSO` / `E_SPLIT_PAYMENT_NON_AMMESSO` | 400 | `cliente_pa` / `split_payment` |
+| `E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI` | 409 | — (chiudere prima il titolo in vigore) |
 
 ### Risposta (200)
 
@@ -1045,7 +1071,10 @@ Usato per adattare ricerca soggetti e form di creazione al ruolo target
         "piva_obbligatoria": false,
         "formato_cf": "ALFANUM_16",
         "formato_piva": "NON_APPLICABILE",
-        "dati_societari_policy": "NONE"
+        "dati_societari_policy": "NONE",
+        "sesso_policy": "REQUIRED",
+        "cliente_pa_ammesso": false,
+        "split_payment_ammesso": false
       }
     ],
     "default_tipo_soggetto_dettaglio_id": 1,
