@@ -58,6 +58,14 @@
 --       coerente, non che qualcuno lo legga.
 -- ------------------------------------------------------------
 
+-- ⭐ rev 2026-10-10 (brief-db-dati-fiscali-e-societari-del-soggetto, Parte D):
+--   il «tipo senza plafond» della fixture e' USO_INDUSTRIALE, non piu'
+--   AGEVOLATA_104. Da trgfn_soggetti_titoli_iva_guard_tipo_soggetto (20261010-92)
+--   un titolo vigente deve essere ammesso dalla natura del titolare, e
+--   l'agevolazione L. 104 spetta al solo privato: sul cliente della fixture (una
+--   societa' di capitali) sarebbe rifiutata, e i rifiuti attesi dal guard di
+--   coerenza (P0001) passerebbero per il motivo sbagliato.
+
 -- ⚠️ 1. TRANSAZIONE: un fallimento a meta' lascerebbe la fixture nel database.
 BEGIN;
 
@@ -114,7 +122,7 @@ SELECT
     (SELECT t.id FROM config.tipi_titolo_iva t
       WHERE t.codice_interno = 'INTENTO')                   AS tipo_intento_id,
     (SELECT t.id FROM config.tipi_titolo_iva t
-      WHERE t.codice_interno = 'AGEVOLATA_104')             AS tipo_agevolata_id;
+      WHERE t.codice_interno = 'USO_INDUSTRIALE')             AS tipo_senza_plafond_id;
 
 SELECT ok(
     (SELECT emittente_fiscale_id IS NOT NULL
@@ -123,7 +131,7 @@ SELECT ok(
         AND articolo_id     IS NOT NULL
         AND gruppo_voce_id  IS NOT NULL
         AND tipo_intento_id IS NOT NULL
-        AND tipo_agevolata_id IS NOT NULL
+        AND tipo_senza_plafond_id IS NOT NULL
        FROM tmp_tiva_refs),
     'Riferimenti minimi presenti (emittente in whitelist, soggetto, IVA, articolo, gruppo, tipi)'
   );
@@ -180,11 +188,11 @@ SELECT throws_ok(
       VALUES (%L::uuid, %s, %s, %s, 'TUTTO', DATE '2026-01-01', DATE '2026-12-31', 5000.00)
     $$, (SELECT soggetto_id FROM tmp_tiva_refs),
         (SELECT emittente_fiscale_id FROM tmp_tiva_refs),
-        (SELECT tipo_agevolata_id FROM tmp_tiva_refs),
+        (SELECT tipo_senza_plafond_id FROM tmp_tiva_refs),
         (SELECT iva_id FROM tmp_tiva_refs)),
     'P0001',
     NULL,
-    'AGEVOLATA_104 con un plafond: il guard rifiuta anche il verso opposto'
+    'USO_INDUSTRIALE con un plafond: il guard rifiuta anche il verso opposto'
   );
 
 -- ============================================================
@@ -256,7 +264,7 @@ WITH ins AS (
   INSERT INTO anagrafiche.soggetti_titoli_iva
       (soggetto_id, emittente_fiscale_id, tipo_titolo_iva_id, iva_id,
        ambito, valido_dal, valido_al, riferimento)
-  SELECT r.soggetto_id, r.emittente_fiscale_id, r.tipo_agevolata_id, r.iva_id,
+  SELECT r.soggetto_id, r.emittente_fiscale_id, r.tipo_senza_plafond_id, r.iva_id,
          'RISTRETTO', DATE '2026-01-01', DATE '2026-12-31', 'PGTAP-CERT-104'
     FROM tmp_tiva_refs r
   RETURNING id
@@ -294,7 +302,7 @@ WITH ins AS (
   INSERT INTO anagrafiche.soggetti_titoli_iva
       (soggetto_id, emittente_fiscale_id, tipo_titolo_iva_id, iva_id,
        ambito, valido_dal, valido_al, riferimento)
-  SELECT r.soggetto_id, r.emittente_fiscale_id, r.tipo_agevolata_id, r.iva_id,
+  SELECT r.soggetto_id, r.emittente_fiscale_id, r.tipo_senza_plafond_id, r.iva_id,
          'RISTRETTO', DATE '2026-03-01', DATE '2026-09-30', 'PGTAP-CERT-104-BIS'
     FROM tmp_tiva_refs r
   RETURNING id
@@ -339,7 +347,7 @@ WITH ins AS (
   INSERT INTO anagrafiche.soggetti_titoli_iva
       (soggetto_id, emittente_fiscale_id, tipo_titolo_iva_id, iva_id,
        ambito, valido_dal, valido_al, riferimento)
-  SELECT r.soggetto_id, r.emittente_fiscale_id, r.tipo_agevolata_id, r.iva_id,
+  SELECT r.soggetto_id, r.emittente_fiscale_id, r.tipo_senza_plafond_id, r.iva_id,
          'RISTRETTO', DATE '2028-01-01', DATE '2028-12-31', 'PGTAP-CERT-104-TER'
     FROM tmp_tiva_refs r
   RETURNING id
@@ -540,7 +548,7 @@ WITH ins AS (
   INSERT INTO anagrafiche.soggetti_titoli_iva
       (soggetto_id, emittente_fiscale_id, tipo_titolo_iva_id, iva_id,
        ambito, valido_dal, valido_al, riferimento)
-  SELECT r.soggetto_id, r.emittente_fiscale_id, r.tipo_agevolata_id, r.iva_id,
+  SELECT r.soggetto_id, r.emittente_fiscale_id, r.tipo_senza_plafond_id, r.iva_id,
          'TUTTO', DATE '2031-01-01', DATE '2031-12-31', 'PGTAP-SENZA-TETTO'
     FROM tmp_tiva_refs r
   RETURNING id

@@ -3,7 +3,8 @@
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10, su segnalazioni di Tid e su quanto
 > trovato chiudendo `work-done/brief-db-character-n-spazi-di-riempimento.md`.
 > **A chi:** team DB; poi BE/FE (§5).
-> **Stato:** 🔵 pronto per il team DB: decisioni di Tid prese il 2026-10-10 (§4), resta aperta solo
+> **Stato:** ✅ lato DB applicato e verde (2026-10-10, §8.4): tocca a BE/FE (§5, §8.3). Aperta solo
+> D-4 (`COOPERATIVA`). Storia: pronto per il team DB: decisioni di Tid prese il 2026-10-10 (§4), resta aperta solo
 > D-4 (`COOPERATIVA`, Tid verifica; non blocca: senza righe di matrice). B-2, D-5, D-6 sono scelte
 > tecniche del team DB. BE/FE attendono il DB.
 >
@@ -246,7 +247,7 @@ farne lo decide Tid, guardandoli (come C-3).
 | --- | --- | --- |
 | **A-1** | **Dove sta la regola PA/split.** | Due colonne su `config.tipi_soggetto_dettaglio`, sul modello delle altre domande della natura: `cliente_pa_ammesso boolean NOT NULL DEFAULT false` e `split_payment_ammesso boolean NOT NULL DEFAULT false`. Booleani e non `presenza_policy_enum`: i flag sono `S`/`N` NOT NULL, quindi «obbligatorio» non ha significato. «Non ammesso» vuol dire che il valore resta `N`. |
 | **A-2** | **Quali nature li ammettono** (seed). | PR e DI: nessuno dei due (lo impone A-4). SP, SC: split sì (società controllate dalla PA o quotate), PA no. ENC: tutti e due. ⚠️ Il «PA no» su SC va confermato: le controllate sono in **split** (art. 17-ter c. 1-bis) ma ricevono fatture B2B, non FatturaPA; restano fuori gli enti dell'elenco ISTAT S13 costituiti in forma societaria, che sono PA. ✅ **Deciso da Tid il 2026-10-10**: SP e SC split sì, PA no; ENC tutti e due; un ente S13 in forma di società si censisce come ENC con forma «Ente pubblico». |
-| **A-3** | **Il guard.** | Su `anagrafiche.soggetti` (BEFORE INSERT OR UPDATE OF `cliente_pa`, `split_payment`, `tipo_soggetto_dettaglio_id`): un flag a `S` su una natura che non lo ammette → codice nuovo di classe `DATO_ERRATO` (proposta: `E_REGIME_PA_NON_AMMESSO`, uno solo per i due flag) con `campo` = il flag, e una frase che nomina natura e campo. Copre anche il cambio di natura: chi cambia natura porta il flag a `N` nella stessa scrittura, il DB non lo azzera da sé. |
+| **A-3** | **Il guard.** | Su `anagrafiche.soggetti` (BEFORE INSERT OR UPDATE OF `cliente_pa`, `split_payment`, `tipo_soggetto_dettaglio_id`): un flag a `S` su una natura che non lo ammette → codice nuovo di classe `DATO_ERRATO` (✏️ scritti **due**, `E_CLIENTE_PA_NON_AMMESSO` e `E_SPLIT_PAYMENT_NON_AMMESSO`, §8.1) con `campo` = il flag, e una frase che nomina natura e campo. Copre anche il cambio di natura: chi cambia natura porta il flag a `N` nella stessa scrittura, il DB non lo azzera da sé. |
 | **A-4** | **Il CHECK sulla natura base** (§1.3). | `CHECK (tipo_soggetto_id <> 'PF' OR (NOT cliente_pa_ammesso AND NOT split_payment_ammesso))` su `config.tipi_soggetto_dettaglio`, in `90_end` come il gemello del sesso. La legge sulla persona fisica non dipende dal CSV. |
 | **A-5** | **Soggetto senza natura** (§1.4). | ✅ **Deciso da Tid il 2026-10-10: rifiuto** di un flag a `S` quando `tipo_soggetto_dettaglio_id` è NULL. Un flag che cambia l'esigibilità non si accende su un soggetto di cui non si sa che cosa sia. Diverge dal limite dichiarato dei guard sesso e CF/P.IVA, e va scritto nel commento del guard. Stessa scelta per i titoli (D-1). |
 | **A-6** | **Legame fra i due flag.** | ✅ **Deciso da Tid il 2026-10-10: nessun vincolo** `cliente_pa ⇒ split_payment`. Verso la PA ci sono operazioni escluse dallo split, ma l'esclusione dipende dall'operazione, non dal cliente: se servirà, sarà una regola di riga con un brief suo. |
@@ -301,6 +302,8 @@ farne lo decide Tid, guardandoli (come C-3).
 | 2026-10-10 | Aggiunte B-6 (riscritta: con capitale `NONE` la creazione oggi fallisce sempre) e B-7 (il canale FE nullable per la colonna, obbligatorio per `fn_crea_soggetto_pg`), lette dal corpo vivo. Lato FE c'è già `toPayload()` (§5). |
 | 2026-10-10 | Analisi critica (sessione DB). Assorbito `brief-db-regime-fiscale-per-natura-soggetto` (stesso difetto A, proposte divergenti su SC e sul codice): entra la **Parte D** (titoli IVA), corretta su RLS, criterio «vigente» e matrice senza righe. A: `cliente_pa` oggi senza lettori (§1.1), CHECK sulla natura base (A-4), soggetto senza natura (A-5), «PA no» su SC motivato (A-2). Verificato che nessun changeset né commit successivo tocca il tema. |
 | 2026-10-10 | Decisioni di Tid: A-2 (SP/SC split, PA solo ENC), A-5/D-1 (senza natura = rifiuto), A-6 (nessun legame PA ⇒ split), D-2, D-3 (104 solo PR), B-6 (REA/capitale nullable + guard della forma), B-7 (canale FE facoltativo), C-2 (forma NOT NULL), C-3 (censimento, decide Tid). D-4 aperta. |
+| 2026-10-10 | Sviluppo DB (§8): A, D, B, C scritte e provate sullo scratch (`20261010-85…-99`, `20261011-01…-04`, 12 codici, 3 pgTAP nuovi, 9 adattati). Decisioni di Tid durante lo sviluppo: numerazione, B-5 (solo il verbo scrive, **senza** guard di livello), C-3 (le 6 righe senza forma le corregge Tid). Apply di Tid fino al `-87`; fermo, come previsto, sul `20261011-03`. |
+| 2026-10-10 | Tid: corrette a mano le 6 righe senza forma, migrate completo (`20261011-03`, `-04`), test verdi. Lato DB chiuso; restano BE/FE e D-4. |
 
 ## 7. Fuori perimetro, da verificare
 
@@ -309,3 +312,246 @@ farne lo decide Tid, guardandoli (come C-3).
 lato passivo la scissione dipende da chi **compra**, cioè dall'emittente, non dal fornitore: il flag
 potrebbe essere nella sede sbagliata, oltre che senza regola sulla natura. È un difetto diverso da
 A, e se confermato va in un **brief suo**.
+
+## 8. Sviluppo DB (sessione DB, dal 2026-10-10)
+
+Numerazione decisa da Tid: in sequenza da `20261010-85`; dopo il `-99` si passa a `20261011-01`.
+⛔ Niente è applicato: apply e corsa pgTAP restano di Tid.
+
+### 8.1 Parte A — scritta e provata, da applicare
+
+| changeSet / file | Cosa |
+| --- | --- |
+| `00_schema/config/20261010-85-alter-tipi-soggetto-dettaglio-add-regime-pa-ammesso` | colonne `cliente_pa_ammesso`, `split_payment_ammesso` (`boolean NOT NULL DEFAULT false`) |
+| `20_code/anagrafiche/20261010-86-create-trgfn-soggetti-guard-regime-pa` | guard `trgfn_soggetti_guard_regime_pa`, trigger `trg_soggetti_a10_guard_regime_pa_ins_upd` (BEFORE INSERT OR UPDATE OF `cliente_pa`, `split_payment`, `tipo_soggetto_dettaglio_id`) |
+| `90_end/20261010-87-check-tipi-soggetto-dettaglio-regime-pa-natura` | CHECK `chk_tipi_soggetto_dettaglio_regime_pa_natura` (A-4) |
+| `80_data/sql/config/tipi_soggetto_dettaglio.csv` + mirror `20250717-12` | i valori di A-2 (due colonne nuove nel mirror, `BOOLEAN`) |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_CLIENTE_PA_NON_AMMESSO`, `E_SPLIT_PAYMENT_NON_AMMESSO`, `E_DATO_FISCALE_SENZA_TIPO_SOGGETTO` (id 1254-1256) |
+| `db/pgtap/anagrafiche/test-soggetti-regime-pa-v1.sql` | nuovo, plan 15 |
+| `db/pgtap/anagrafiche/test-soggetti-split-payment-cliente-pa.sql` | fixture: un ente (`ENC`) invece di un soggetto senza natura, che il guard ora rifiuta |
+| `db/pgtap/vendite/test-fatture-righe-esigibilita-split.sql` | fixture: solo billing account con un cliente la cui natura ammette lo split (il primo per id, su dbdev, era di un privato) |
+| manuali `soggetti`, `tipi_soggetto_dettaglio`, `soggetti_titoli_iva` | la regola per natura; `cliente_pa` non è l'`EsigibilitaIVA` |
+
+**Una scelta presa scrivendo (A-3).** Due codici invece di `E_REGIME_PA_NON_AMMESSO`: il flag
+sbagliato lo dice il **codice**. Con un codice solo, il flag sarebbe finito nel `VARIADIC` come
+etichetta italiana («Cliente PA»), che non si traduce. Il codice «senza natura» ha una frase chiusa
+e lo riusa la Parte D.
+
+**Prova pre-apply** (scratch `zeroerp_ci`, owner `zeroerp`, transazione annullata). L'SQL è
+estratto dagli YAML, e i due mirror (`20250717-12`, `20260614-08`) sono resi offline con
+`updateSQL`, non riscritti:
+
+| File | Esito |
+| --- | --- |
+| `anagrafiche/test-soggetti-regime-pa-v1` | 15/15 |
+| `anagrafiche/test-soggetti-split-payment-cliente-pa` | 5/5 |
+| `anagrafiche/test-soggetti-sesso-policy-v1` (fratello sulla stessa tabella) | 20/20 |
+| mutazione: estratto **senza** il `-86` | 9 rossi, tutti sui casi del guard |
+| `vendite/test-fatture-righe-esigibilita-split` | rosso in fixture **come la versione di HEAD** (scratch senza dati: `ERRORE_FIXTURE` già in `baseline-rossi-ci.tsv`/`-scratch.tsv`). Su dbdev lo misura Tid |
+| `plpgsql_check_function` sul guard | nessun errore |
+| `sqlCheck` delle preCondition, su `zeroerp_ci` e dbdev | tutte `0` come atteso |
+
+Non coperto dalla prova: RLS come app, dati di dbdev, presidi trasversali.
+
+**Censimento (fatto datato, dbdev, 2026-10-10, C-3).** Un solo soggetto viola la Parte A:
+`SGT-0000121` (Titini Michele Carlo, PR) con `cliente_pa = 'S'`, cioè il caso della segnalazione.
+Il guard **non** blocca l'apply, perché giudica solo chi scrive. Ma qualunque modifica futura di
+quel soggetto che tocchi i flag o la natura verrà rifiutata finché `cliente_pa` non torna a `N`.
+⏳ Decide Tid: riportarlo a `N` a mano.
+
+**Ricadute BE/FE**: invariate (§5, voce A). I codici sono tre e non uno: `genera_error_policies`
+e ripiego per tutti e tre.
+
+### 8.2 Parte D — scritta e provata, da applicare
+
+| changeSet / file | Cosa |
+| --- | --- |
+| `00_schema/config/20261010-88-create-tipi-titolo-iva-tipi-soggetto-dettaglio` | la matrice: chiave (tipo, natura), `attivo`, audit, `tx_id`. Niente validità né storico (stampo: la matrice delle forme) |
+| `80_data/changelog/20261010-89-upsert-tipi-titolo-iva-tipi-soggetto-dettaglio` + CSV | il seed di D-2/D-3 (9 righe); `COOPERATIVA` senza righe (D-4) |
+| `20_code/anagrafiche/20261010-90-create-fn-titolo-iva-ammesso-e-vigente` | i due predicati condivisi: `fn_titolo_iva_ammesso` (STABLE, nessuna riga = false) e `fn_titolo_iva_vigente` (IMMUTABLE, sui valori, con «oggi» passato da chi chiama) |
+| `20_code/anagrafiche/20261010-91-create-fn-titoli-iva-vigenti-lettori-definer` | i due lettori `SECURITY DEFINER` sopra la RLS: `fn_titolo_iva_non_ammesso_del_soggetto`, `fn_titolo_iva_vigente_su_natura_esiste` |
+| `20_code/anagrafiche/20261010-92-create-trgfn-soggetti-titoli-iva-guard-tipo-soggetto` | guard sul titolo (BEFORE INSERT OR UPDATE OF `tipo_titolo_iva_id`, `soggetto_id`, `attivo`, `valido_al`; giudica solo un titolo vigente) |
+| `20_code/anagrafiche/20261010-93-create-trgfn-soggetti-guard-titoli-iva-ammessi` | guard sul cambio di natura (BEFORE UPDATE OF `tipo_soggetto_dettaglio_id`) |
+| `20_code/config/20261010-94-create-trgfn-tipi-titolo-iva-tsd-guard-ritiro` | guard sul ritiro di una riga di matrice (AFTER UPDATE OR DELETE; il mirror che riscrive la stessa riga tace) |
+| `codici_errore.csv`, `messaggi_errore.csv` | `E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO` (DATO_ERRATO), `E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI` e `E_TITOLO_IVA_AMMISSIONE_IN_USO` (CONFLITTO_STATO), id 1257-1259 |
+| `db/pgtap/anagrafiche/test-soggetti-titoli-iva-tipo-soggetto-v1.sql` | nuovo, plan 21 |
+| `test-soggetti-titoli-iva`, `test-consuma-plafond-titolo-iva-righe-v1` | il «tipo senza plafond» della fixture passa da `AGEVOLATA_104` a `USO_INDUSTRIALE`. Sul cliente `SC` l'agevolazione sarebbe rifiutata, e i rifiuti attesi dal guard di coerenza (`P0001`) passerebbero per il motivo sbagliato |
+| `vendite/test-fn-resolve-iva-riga` | il soggetto della fixture deve avere una natura; dentro la transazione la sua natura ammette i quattro tipi che il test mette sullo stesso soggetto (misura il risolutore, non la matrice) |
+| manuali `soggetti_titoli_iva`, `config/manual/tipi_titolo_iva_tipi_soggetto_dettaglio` (nuovo) | la regola per natura e i suoi tre lati |
+
+**Scelte prese scrivendo:**
+- tre codici invece di uno. Il cambio di natura e il ritiro di matrice sono **conflitti di
+  stato**, non dati sbagliati: la natura nuova può essere giusta, è il titolo in vigore che non lo
+  consente;
+- la natura tolta (NULL) a chi ha titoli vigenti riusa `E_DATO_FISCALE_SENZA_TIPO_SOGGETTO`;
+- un titolo che **comincia domani** è vigente: è già stato presentato;
+- `valido_dal` resta fuori dall'aggancio del guard: anticiparlo non cambia se il titolo arriva a oggi.
+
+**Prova pre-apply** (scratch `zeroerp_ci`, owner, transazione annullata, estratto A+D con i tre
+mirror resi offline):
+
+| File | Esito |
+| --- | --- |
+| `test-soggetti-titoli-iva-tipo-soggetto-v1` | 20/21. ⚠️ Il **14** (gemello RLS: «per l'altro operatore il titolo è invisibile») è **rosso da owner per costruzione** e verde come app. Con `FORCE ROW LEVEL SECURITY` il 14 diventa verde ma cade il 15, perché sullo scratch anche il lettore `DEFINER` ha lo stesso proprietario e subisce la policy. Il verdetto sui due insieme lo dà solo la corsa come app di Tid |
+| mutazioni: senza `-92` / `-93` / `-94` | 8 / 4 / 2 rossi, sui casi di quel guard (più il 14 da owner, e il 9 a cascata senza `-92`) |
+| fuso ostile (`PGTZ` Kiritimati, Pago Pago) | come sopra, stabile |
+| `test-soggetti-titoli-iva` 23/23, `-due-emittenti` 5/5, `test-consuma-plafond-…` 22/22, `test-stiva-movimenti-annullo-v1` 12/12, `test-reset-fattura-plafond-consumato-v1` 11/11, `test-dati-societari-policy` 13/13, `regime-pa` 15/15, `sesso` 20/20, `split-payment` 5/5 | verdi, uguali a prima |
+| `vendite/test-fn-resolve-iva-riga`, `vendite/test-fatture-righe-esigibilita-split` | rossi in fixture **uguali alla versione di HEAD** (scratch senza dati). Su dbdev li misura Tid |
+| presidi trasversali: `riferimenti-morti`, `security-definer-search-path`, `storico-scope-policy`, `codici-errore-valore-atteso`, `catalogo-messaggi-errore-completo`, `policy-funzioni-cost`, `sec-functions-owner-migratore-passa` | verdi prima e dopo |
+| `plpgsql_check` sui quattro guard | zero errori |
+| `sqlCheck` delle preCondition, in sequenza | tutte come atteso; su dbdev nessun oggetto nuovo esiste |
+
+**⏳ Censimento dei titoli (C-3): lo deve lanciare Tid come owner.** Come app la RLS lascia vedere
+zero titoli, quindi questa sessione non può contarli. Prima dell'apply va guardato che cosa
+diventerebbe «fuori regola»: il guard non blocca l'apply, ma rifiuterà la prossima modifica di
+quei titoli o del loro soggetto.
+
+```sql
+SELECT t.id, s.codice, tt.codice_interno AS titolo, tsd.codice_interno AS natura,
+       t.emittente_fiscale_id, t.valido_dal, t.valido_al
+  FROM anagrafiche.soggetti_titoli_iva t
+  JOIN anagrafiche.soggetti s       ON s.id  = t.soggetto_id
+  JOIN config.tipi_titolo_iva tt    ON tt.id = t.tipo_titolo_iva_id
+  LEFT JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
+ WHERE t.attivo
+   AND (t.valido_al IS NULL OR t.valido_al >= script.fn_giorno_operativo(now()))
+   AND (tsd.codice_interno IS NULL
+        OR NOT (   (tt.codice_interno IN ('INTENTO', 'USO_INDUSTRIALE') AND tsd.codice_interno IN ('DI', 'SP', 'SC', 'ENC'))
+                OR (tt.codice_interno = 'AGEVOLATA_104' AND tsd.codice_interno = 'PR')));
+```
+
+**Ricadute BE/FE**: §5, voce D. I codici nuovi sono tre: policy generata e ripiego per tutti.
+
+### 8.3 Parti B e C — scritte e provate, da applicare
+
+**Decisioni prese durante lo sviluppo** (Tid, 2026-10-10):
+- **B-5**: solo il verbo scrive `dati_societari`, quindi l'app perde `INSERT`/`UPDATE`/`DELETE`.
+  ✏️ Ma il verbo **non** ha `script.fn_guard_livello`. L'operatore pgTAP di default è `BLOCCATO`
+  su `anagrafiche.soggetti` (dbdev e scratch), e con il guard ogni fixture che crea una società
+  sarebbe rifiutata, mentre una fixture deve scrivere dove scrive l'app. Il permesso resta al
+  backend, come per `anagrafiche.soggetti`. Il permesso a DB per l'anagrafica è un cantiere suo;
+- **B-2** (team DB): stato intero.
+
+| changeSet / file | Cosa |
+| --- | --- |
+| `00_schema/anagrafiche/20261010-95-alter-dati-societari-rea-capitale-dalla-forma` | REA (provincia, numero) e capitale nullable; CHECK `chk_dati_societari_rea_coppia` (B-6) |
+| `20_code/anagrafiche/20261010-96-create-fn-forma-giuridica-ammessa` | predicato condiviso: riga attiva **e valida oggi** della matrice delle forme |
+| `20_code/anagrafiche/20261010-97-update-trgfn-dati-societari-guard-forma-giuridica` | il guard della forma: paese, matrice (C-1), REA e capitale per policy (B-6); riagganciato anche alle colonne REA e capitale |
+| `20_code/anagrafiche/20261010-98-create-trgfn-soggetti-guard-forma-giuridica-natura` | guard **al COMMIT** sul cambio di natura (constraint trigger differito): natura e forma si cambiano nella stessa transazione, prima la natura e poi la forma |
+| `20_code/anagrafiche/20261010-99-create-fn-scrivi-dati-societari` | il verbo: crea o aggiorna, stato intero, `SECURITY DEFINER`, nessuna regola propria (B-1..B-3) |
+| `20_code/anagrafiche/20261011-01-update-fn-crea-soggetto-pg-dal-verbo-dati-societari` | `fn_crea_soggetto_pg` scrive col verbo (B-4); via i controlli doppi su REA, capitale, canale FE (B-6, B-7) e la risoluzione dei default |
+| `20_code/dbops/20261011-02-update-fn-pgtap-crea-soggetto-pg-dal-verbo` | la fixture delle società passa dal verbo: forma = la prima ammessa dalla natura, REA e capitale solo se la forma li prevede. Resta `INVOKER` |
+| `90_end/20261011-03-alter-dati-societari-forma-giuridica-not-null` | `forma_giuridica_id NOT NULL` (C-2). ⛔ La preCondition **ferma il migrate** finché ci sono righe senza forma (vedi censimento) |
+| `90_end/20261011-04-revoke-app-scrittura-dati-societari` + loop `ci_apply/20260205-41` + `scripts/sql/provision_db_roles.sql` | la porta (B-5), nelle tre sedi |
+| `codici_errore.csv`, `messaggi_errore.csv` | 6 codici, id 1260-1265: `E_FORMA_GIURIDICA_NON_AMMESSA_PER_TIPO_SOGGETTO`, `E_REA_OBBLIGATORIO`, `E_REA_NON_AMMESSO`, `E_CAPITALE_SOCIALE_OBBLIGATORIO`, `E_CAPITALE_SOCIALE_NON_AMMESSO`, `E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA` (tutti `DATO_ERRATO`) |
+| `db/pgtap/anagrafiche/test-fn-scrivi-dati-societari-v1.sql` | nuovo, plan 22 |
+| `test-dati-societari-policy`, `test-dati-societari-canale-fe-v1`, `test-soggetti-indirizzi-required`, `create-soggetto-bank-branches` | le scritture dirette su `dati_societari` passano dal verbo, con una forma ammessa. Nel test del canale una funzione temporanea `ds_cambia` sovrappone i campi e chiama il verbo, e i casi restano identici. Nel test della policy l'asserzione sul privato è diventata `throws_like` sulla frase della policy: prima accettava qualunque errore |
+| manuali `dati_societari`, `trgfn_dati_societari_guard_forma_giuridica` | la porta, la forma che decide, l'ordine al cambio di natura |
+
+**Prova pre-apply** (scratch, owner, estratto A+B+C+D, i tre mirror resi offline):
+- `test-fn-scrivi-dati-societari-v1`: 21/22. Il **22** (UPDATE diretto → `42501`) è **rosso da
+  owner per costruzione** e verde come app. Il **3** (privilegi dell'app) è verde anche da owner,
+  perché legge il catalogo;
+- mutazioni: senza `-97` cadono 6 casi (9-13, 18); senza `-98` cadono 16 e 17; senza
+  `20261011-04` cadono 3 e 22;
+- i quattro file portati sul verbo: verdi come prima, tranne `test-soggetti-indirizzi-required`,
+  che muore **allo stesso punto della versione di HEAD** (`uq_soggetto_idstato_id_fiscale_univoc…`,
+  rosso che c'era già);
+- regressione larga: §8.4.
+
+**⏳ Censimento dei dati societari (C-3): da guardare prima dell'apply.** Al 2026-10-10, da §3.2:
+152 righe SC con forma «Ditta individuale» e 6 senza forma. Le righe **senza forma fermano il
+`20261011-03`**; le altre non fermano niente, ma verranno rifiutate alla prossima modifica. Query
+(da owner):
+
+```sql
+-- 1. senza forma: fermano il 20261011-03
+SELECT ds.id, s.codice, s.ragione_sociale FROM anagrafiche.dati_societari ds
+  JOIN anagrafiche.soggetti s ON s.id = ds.soggetto_id WHERE ds.forma_giuridica_id IS NULL;
+-- 2. forma non ammessa dalla natura
+SELECT ds.id, s.codice, tsd.codice_interno AS natura, fg.codice AS forma
+  FROM anagrafiche.dati_societari ds
+  JOIN anagrafiche.soggetti s ON s.id = ds.soggetto_id
+  JOIN config.tipi_soggetto_dettaglio tsd ON tsd.id = s.tipo_soggetto_dettaglio_id
+  JOIN config.forme_giuridiche fg ON fg.id = ds.forma_giuridica_id
+ WHERE NOT anagrafiche.fn_forma_giuridica_ammessa(ds.forma_giuridica_id, s.tipo_soggetto_dettaglio_id,
+                                                  script.fn_giorno_operativo(now()));
+-- 3. REA o capitale contro la policy della forma
+SELECT ds.id, s.codice, fg.codice AS forma, fg.rea_policy, ds.iscrizione_rea,
+       fg.capitale_sociale_policy, ds.capitale_sociale
+  FROM anagrafiche.dati_societari ds
+  JOIN anagrafiche.soggetti s ON s.id = ds.soggetto_id
+  JOIN config.forme_giuridiche fg ON fg.id = ds.forma_giuridica_id
+ WHERE (fg.rea_policy = 'REQUIRED' AND ds.iscrizione_rea IS NULL)
+    OR (fg.rea_policy = 'NONE' AND ds.iscrizione_rea IS NOT NULL)
+    OR (fg.capitale_sociale_policy = 'REQUIRED' AND ds.capitale_sociale IS NULL)
+    OR (fg.capitale_sociale_policy = 'NONE' AND ds.capitale_sociale IS NOT NULL);
+```
+
+La 2 e la 3 usano le funzioni nuove, quindi si lanciano **dopo** l'apply fino al `-99`, oppure
+sostituendo il predicato con la join sulla matrice.
+
+**Ricadute BE/FE** (aggiornano il §5):
+- **il verbo**: `anagrafiche.fn_scrivi_dati_societari(p_soggetto_id, p_forma_giuridica_id,
+  p_id_prov_iscri_rea, p_iscrizione_rea, p_capitale_sociale, p_socio_unico, p_liquidazione,
+  p_destinatario_fe, p_pec_fatturazione, p_codice_sdi, p_data_costituzione)`, parametri nominati,
+  **stato intero**;
+- **l'ordine**: se nella stessa PATCH cambia la natura, prima l'UPDATE del soggetto e poi il
+  verbo, nella stessa transazione. Il controllo che le lega scatta al COMMIT;
+- `fn_crea_soggetto_pg` non pretende più canale FE, REA e capitale: le regole arrivano dalla forma;
+- 12 codici nuovi in tutto il cantiere (A 3, D 3, B/C 6): `genera_error_policies` e ripiego;
+- il lookup delle forme (`LookupRepository.list_forme_giuridiche`) filtra per natura e `attivo`,
+  ma non per la **validità** (`valido_dal`/`valido_al`), che il guard invece guarda. Va allineato,
+  o il form offrirà una forma che il DB rifiuta.
+
+### 8.4 Regressione larga e stato dell'apply
+
+**Regressione pre-apply** (scratch, 2026-10-10): 301 pgTAP, cioè tutti quelli che toccano gli
+helper delle fixture, la creazione di società, dati societari, titoli, flag o natura. Lanciati
+prima (file di HEAD, senza estratto) e dopo (file attuali con l'estratto A+B+C+D): cambiano
+**solo i tre file nuovi**. Nessun file esistente cambia esito. Lo scratch non ha dati di
+macchina, quindi i test che pescano dai dati falliscono uguali prima e dopo: quelli li misura la
+corsa di Tid su dbdev.
+
+**Apply su dbdev (Tid, 2026-10-10 21:27):** entrati dal `20261010-85` al `-99`, `20261011-01`,
+`-02`, i tre mirror (`20250717-12`, `20260614-08`, `-89`) e il `-87`. Il migrate si è **fermato,
+come previsto, sul `20261011-03`**: ci sono 6 righe senza forma, tutte residui di pgTAP rimasti
+committati. Restano da applicare `20261011-03` e `-04`. ⛔ Da qui ogni correzione ai file
+applicati va in un changeSet nuovo.
+
+| ds | soggetto | natura | REA / capitale |
+| --- | --- | --- | --- |
+| 15 | SGT-0000119 Gestore Test pgTAP | SC | sì / sì |
+| 16 | SGT-0000123 Banca Zero Test pgTAP | SC | sì / sì |
+| 36 | TST-DSP-SP-001 Azienda SP OPTIONAL | SP | sì / sì |
+| 37 | TST-DSP-SC-OK Azienda SC REQUIRED con dati | SC | sì / sì |
+| 506, 508 | TST-IND-SC-OK-… Societa Test OK | SC | sì / sì |
+
+⏳ **Tid le corregge a mano** (decisione del 2026-10-10). Proposta, che regge il guard della forma
+(SRL: REA e capitale obbligatori; SNC: REA obbligatorio, capitale facoltativo):
+
+```sql
+UPDATE anagrafiche.dati_societari
+   SET forma_giuridica_id = CASE id
+           WHEN 36 THEN (SELECT id FROM config.forme_giuridiche WHERE codice = 'SNC')
+           ELSE         (SELECT id FROM config.forme_giuridiche WHERE codice = 'SRL') END
+ WHERE id IN (15, 16, 36, 37, 506, 508) AND forma_giuridica_id IS NULL;
+```
+
+Poi si rilancia il migrate, che applica `20261011-03` e `-04`. Dopo la corsa pgTAP vanno
+guardati come app i due rossi da owner dichiarati: test 14 di
+`test-soggetti-titoli-iva-tipo-soggetto-v1` e test 22 di `test-fn-scrivi-dati-societari-v1`.
+
+✅ **Chiuso il 2026-10-10 (Tid):** righe corrette a mano, migrate rilanciato (`20261011-03` e
+`-04` applicati), **test verdi**: compresi i due rossi da owner, che come app passano.
+
+**Cosa resta:**
+- **BE/FE**: §5 e ricadute del §8.3. Ci sono 12 codici nuovi da mettere in policy e ripiego, il
+  verbo da chiamare in modifica (prima la natura, poi il verbo), e il lookup delle forme da
+  allineare alla validità della matrice;
+- **D-4** (`COOPERATIVA`): finché è aperta, nessuna riga di matrice. Se si chiude con «titolare il
+  cliente», basta una riga nel CSV;
+- **censimento dei titoli IVA** fuori regola (query in §8.2): da guardare se ce ne sono; il guard
+  non li tocca finché nessuno li modifica;
+- `fornitori.split_payment` (§7): da verificare, eventualmente brief suo;
+- il permesso a DB per l'anagrafica (`fn_guard_livello` nei verbi): fuori da questo brief, cantiere suo.

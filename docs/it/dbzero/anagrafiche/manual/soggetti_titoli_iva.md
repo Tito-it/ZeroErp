@@ -153,6 +153,33 @@ mentre un residuo si confronta con niente. Il residuo è aritmetica.
 
 ---
 
+### ⛔ Chi può esserne titolare: la natura del soggetto (dal 2026-10-10)
+
+Un titolo **in vigore** deve essere ammesso dalla natura del soggetto: la regola sta in
+[config.tipi_titolo_iva_tipi_soggetto_dettaglio](/dbzero/config/manual/tipi_titolo_iva_tipi_soggetto_dettaglio).
+Una dichiarazione d'intento su un privato entrerebbe nel risolutore e cambierebbe l'aliquota delle
+sue righe.
+
+* **In vigore** vuol dire: attivo e valido almeno fino a oggi (`anagrafiche.fn_titolo_iva_vigente`).
+  Un titolo chiuso o scaduto non si giudica: registrarne la storia non cambia nessuna aliquota.
+  ⚠️ Il criterio è la **data di fine**, non il solo `attivo`: un titolo con movimenti di plafond
+  non si può disattivare, e per uscire si chiude `valido_al`.
+* La regola si fa rispettare da **tre lati**:
+
+| Chi scrive | Rifiuto |
+| --- | --- |
+| un titolo di un tipo che la natura non ammette | `E_TITOLO_IVA_NON_AMMESSO_PER_TIPO_SOGGETTO` |
+| il soggetto che cambia natura con un titolo in vigore che la nuova non ammette | `E_TIPO_SOGGETTO_CON_TITOLI_IVA_NON_AMMESSI` |
+| il ritiro di una riga di matrice mentre ci sono titoli in vigore che la usano | `E_TITOLO_IVA_AMMISSIONE_IN_USO` |
+
+* Senza natura del soggetto un titolo è rifiutato (`E_DATO_FISCALE_SENZA_TIPO_SOGGETTO`).
+* ⭐ I due controlli che guardano i titoli **di tutti** — il cambio di natura e il ritiro di
+  matrice — leggono sopra la RLS (lettori `SECURITY DEFINER`): un operatore non vede i titoli
+  presentati agli altri emittenti, ma non può aggirarli cambiando la natura del soggetto. Ai
+  lettori esce solo «quale tipo» o «esiste», mai protocollo, plafond o emittente.
+
+---
+
 ### Chi può vederli
 
 La tabella ha **row security**: un operatore vede e scrive solo i titoli presentati
@@ -165,9 +192,10 @@ la mette in dubbio nessuno.
 
 ### ⛔ Due cose che sembrano IVA e non stanno qui
 
-* **`split_payment` e `cliente_pa`** non sono titoli: non cambiano l'aliquota,
-  cambiano **chi versa l'imposta all'erario** (in fattura elettronica sono
-  l'`EsigibilitaIVA`). Vivono su [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti);
+* **`split_payment` e `cliente_pa`** non sono titoli: non cambiano l'aliquota.
+  `split_payment` cambia **chi versa l'imposta all'erario** (in fattura elettronica
+  e` l'`EsigibilitaIVA` `S`); `cliente_pa` dice che la controparte e` una PA, e oggi
+  non ha lettori. Vivono su [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti);
 * **l'aliquota ordinaria** la dice la merce e il suo uso — articolo, catena del
   prezzo, [config.tipi_utenze](/dbzero/config/tabelle/tipi_utenze). Il cliente non
   entra **mai** in quella domanda.

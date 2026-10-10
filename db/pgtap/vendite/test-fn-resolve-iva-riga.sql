@@ -167,10 +167,14 @@ BEGIN
 
   -- ── un soggetto SENZA titoli: i casi 9-12 ne fabbricano di propri, e uno
   --    gia' esistente li renderebbe illeggibili
+  --    ⭐ rev 2026-10-10: e con una NATURA. Un titolo su un soggetto senza
+  --    natura e' rifiutato (trgfn_soggetti_titoli_iva_guard_tipo_soggetto,
+  --    20261010-92, D-1 di brief-db-dati-fiscali-e-societari-del-soggetto).
   SELECT s.id INTO v_sogg
     FROM anagrafiche.soggetti s
    WHERE NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti_titoli_iva t
                       WHERE t.soggetto_id = s.id)
+     AND s.tipo_soggetto_dettaglio_id IS NOT NULL
    ORDER BY s.id LIMIT 1;
 
   v_manca := NULLIF(concat_ws(', ',
@@ -309,6 +313,22 @@ SELECT throws_ok(
 -- ============================================================
 -- Stadio B: i titoli. Da qui in poi si fabbricano e si smontano.
 -- ============================================================
+-- ⭐ rev 2026-10-10 (brief-db-dati-fiscali-e-societari-del-soggetto, Parte D):
+--   un titolo vigente deve essere ammesso dalla natura del titolare (matrice
+--   config.tipi_titolo_iva_tipi_soggetto_dettaglio, guard 20261010-92). Questo
+--   file mette QUATTRO tipi sullo stesso soggetto per misurare il risolutore
+--   (specificita', parita', plafond), e nessuna natura reale li ammette tutti:
+--   l'agevolazione L. 104 e' solo del privato, l'intento mai. Dentro la
+--   transazione la natura del soggetto della fixture li ammette tutti e quattro;
+--   la regola della matrice la misura anagrafiche/test-soggetti-titoli-iva-tipo-soggetto-v1.
+INSERT INTO config.tipi_titolo_iva_tipi_soggetto_dettaglio
+    (tipo_titolo_iva_id, tipo_soggetto_dettaglio_id, attivo)
+SELECT tt.id, s.tipo_soggetto_dettaglio_id, true
+  FROM tmp_fix f
+  JOIN anagrafiche.soggetti s ON s.id = f.soggetto_id
+ CROSS JOIN config.tipi_titolo_iva tt
+ WHERE tt.codice_interno IN ('USO_INDUSTRIALE', 'AGEVOLATA_104', 'COOPERATIVA', 'INTENTO')
+ON CONFLICT (tipo_titolo_iva_id, tipo_soggetto_dettaglio_id) DO UPDATE SET attivo = true;
 -- ⚠️ Ogni caso riparte da zero titoli: due casi che si lasciano dietro il
 --   proprio dato si verificano a vicenda, e il primo che sbaglia rende
 --   illeggibile il secondo.

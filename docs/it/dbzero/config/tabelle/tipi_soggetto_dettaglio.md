@@ -24,6 +24,8 @@
 | piva_obbligatoria | boolean | NO | false |
 | cf_obbligatorio | boolean | NO | false |
 | sesso_policy | config.presenza_policy_enum | NO | 'NONE'::config.presenza_policy_enum |
+| cliente_pa_ammesso | boolean | NO | false |
+| split_payment_ammesso | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -33,6 +35,7 @@
 | CHECK | chk_tipi_soggetto_dettaglio_formato_piva |  |
 | CHECK | chk_tipi_soggetto_dettaglio_piva_obbl_vs_formato |  |
 | CHECK | chk_tipi_soggetto_dettaglio_piva_vs_policy |  |
+| CHECK | chk_tipi_soggetto_dettaglio_regime_pa_natura |  |
 | CHECK | chk_tipi_soggetto_dettaglio_sesso_policy_natura |  |
 | FOREIGN KEY | fk_tipi_soggetto_dettaglio_stato_id | stato_id |
 | FOREIGN KEY | fk_tipi_soggetto_dettaglio_tipi_soggetto_id | tipo_soggetto_id |

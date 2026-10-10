@@ -47,6 +47,14 @@
 --       centesimo, somma esatta, le frazioni di centesimo nella quota ordinaria
 -- ------------------------------------------------------------
 
+-- ⭐ rev 2026-10-10 (brief-db-dati-fiscali-e-societari-del-soggetto, Parte D):
+--   il «tipo senza plafond» della fixture e' USO_INDUSTRIALE, non piu'
+--   AGEVOLATA_104. Da trgfn_soggetti_titoli_iva_guard_tipo_soggetto (20261010-92)
+--   un titolo vigente deve essere ammesso dalla natura del titolare, e
+--   l'agevolazione L. 104 spetta al solo privato: sul cliente della fixture (una
+--   societa' di capitali) sarebbe rifiutata, e i rifiuti attesi dal guard di
+--   coerenza (P0001) passerebbero per il motivo sbagliato.
+
 BEGIN;
 -- ⚠️ Vincoli DIFFERITI: senza questa riga il test smetterebbe di verificarli.
 SET CONSTRAINTS ALL IMMEDIATE;
@@ -79,7 +87,7 @@ SELECT
     (SELECT t.id FROM config.tipi_titolo_iva t
       WHERE t.codice_interno = 'INTENTO')                   AS tipo_intento_id,
     (SELECT t.id FROM config.tipi_titolo_iva t
-      WHERE t.codice_interno = 'AGEVOLATA_104')             AS tipo_agevolata_id,
+      WHERE t.codice_interno = 'USO_INDUSTRIALE')             AS tipo_senza_plafond_id,
     dbops.fn_pgtap_crea_articolo('PGTAP-CPR-C1')            AS c1,
     dbops.fn_pgtap_crea_articolo('PGTAP-CPR-C2')            AS c2,
     dbops.fn_pgtap_crea_articolo('PGTAP-CPR-C3')            AS c3,
@@ -165,7 +173,7 @@ RETURNS bigint LANGUAGE sql AS $fx$
       (soggetto_id, emittente_fiscale_id, tipo_titolo_iva_id, iva_id,
        ambito, valido_dal, valido_al, protocollo, riferimento, plafond)
   SELECT r.soggetto_id, r.emittente_fiscale_id,
-         CASE WHEN p_plafond IS NULL THEN r.tipo_agevolata_id ELSE r.tipo_intento_id END,
+         CASE WHEN p_plafond IS NULL THEN r.tipo_senza_plafond_id ELSE r.tipo_intento_id END,
          r.iva_id, 'TUTTO', make_date(p_anno, 1, 1), make_date(p_anno, 12, 31),
          CASE WHEN p_plafond IS NULL THEN NULL ELSE 'PGTAP-CPR-' || p_anno END,
          CASE WHEN p_plafond IS NULL THEN 'PGTAP-CPR-' || p_anno END,

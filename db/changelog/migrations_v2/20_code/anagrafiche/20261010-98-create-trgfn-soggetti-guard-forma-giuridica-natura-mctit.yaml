@@ -1,0 +1,150 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHI CAMBIA NATURA DEVE CAMBIARE ANCHE UNA FORMA CHE LA NUOVA NON AMMETTE
+#   anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura()
+#   trg_soggetti_def_guard_forma_giuridica_natura_upd
+#     CONSTRAINT TRIGGER AFTER UPDATE OF tipo_soggetto_dettaglio_id
+#     DEFERRABLE INITIALLY DEFERRED
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte C, C-1 secondo lato)
+#
+# -- LA REGOLA --------------------------------------------------------
+#   L'altro lato del guard della forma (20261010-97): se il soggetto cambia
+#   natura, la forma dei suoi dati societari deve restare ammessa dalla
+#   natura nuova -> E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA.
+#
+# -- ⭐ PERCHE' AL COMMIT ----------------------------------------------
+#   Natura e forma si cambiano insieme: una SC che diventa ente cambia anche
+#   la forma (SRL -> associazione). Con due controlli immediati ci si
+#   chiude in un vicolo: la natura non passa perche' la forma non e'
+#   ammessa, la forma non passa perche' la natura e' ancora la vecchia.
+#   Qui il controllo e' differito: nella stessa transazione si cambia PRIMA
+#   la natura (questo guard aspetta), POI la forma (il guard immediato della
+#   forma la confronta con la natura gia' nuova); al COMMIT si giudica lo
+#   stato finale. Stessa forma del gemello
+#   trg_soggetti_def_guard_dati_societari_required (prefisso def).
+#   Al COMMIT si rileggono soggetto e dati societari dalle tabelle, non da
+#   NEW: un secondo UPDATE nella stessa transazione puo' averli cambiati.
+#
+# -- LA FORMA ---------------------------------------------------------
+#   * Tace se il soggetto non ha dati societari, o la forma e' NULL, o la
+#     natura e' NULL (se ne occupano i guard dei dati societari).
+#   * La domanda e' anagrafiche.fn_forma_giuridica_ammessa (20261010-96),
+#     con oggi = script.fn_giorno_operativo(now()).
+#   * DATO_ERRATO, campo forma_giuridica_id: la natura nuova puo' essere
+#     giusta, e cio' che si corregge e' la forma, nella stessa scrittura.
+#   * dati_societari non ha RLS: SECURITY INVOKER basta.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261010-98-create-trgfn-soggetti-guard-forma-giuridica-natura-mctit.yaml
+
+  - changeSet:
+      id: 20261010-98-create-trgfn-soggetti-guard-forma-giuridica-natura
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Guard al COMMIT anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura e constraint trigger
+        trg_soggetti_def_guard_forma_giuridica_natura_upd (AFTER UPDATE OF tipo_soggetto_dettaglio_id,
+        DEFERRABLE INITIALLY DEFERRED): la natura nuova deve ammettere la forma dei dati societari.
+        Codice E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA. Brief:
+        brief-db-dati-fiscali-e-societari-del-soggetto (C-1).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_forma_giuridica_ammessa';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_trigger t
+                    JOIN pg_catalog.pg_class r ON r.oid = t.tgrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = r.relnamespace
+                   WHERE n.nspname = 'anagrafiche' AND r.relname = 'soggetti'
+                     AND t.tgname = 'trg_soggetti_def_guard_forma_giuridica_natura_upd';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              -- =========================================================
+              -- Scopo: al COMMIT, la natura del soggetto ammette la forma giuridica
+              --   dei suoi dati societari (anagrafiche.fn_forma_giuridica_ammessa).
+              -- Aggancio: CONSTRAINT TRIGGER AFTER UPDATE OF tipo_soggetto_dettaglio_id,
+              --   DEFERRABLE INITIALLY DEFERRED: natura e forma si cambiano nella
+              --   stessa transazione (prima la natura, poi la forma), e si giudica lo
+              --   stato finale. Si rileggono le tabelle, non NEW.
+              -- Tace senza dati societari, con forma o natura NULL.
+              -- Brief: brief-db-dati-fiscali-e-societari-del-soggetto (C-1).
+              -- =========================================================
+              DECLARE
+                  v_natura_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                  v_forma_id  anagrafiche.dati_societari.forma_giuridica_id%TYPE;
+                  v_natura    config.tipi_soggetto_dettaglio.descrizione%TYPE;
+                  v_forma     config.forme_giuridiche.descrizione%TYPE;
+              BEGIN
+                  SELECT s.tipo_soggetto_dettaglio_id INTO v_natura_id
+                    FROM anagrafiche.soggetti s WHERE s.id = NEW.id;
+                  SELECT ds.forma_giuridica_id INTO v_forma_id
+                    FROM anagrafiche.dati_societari ds WHERE ds.soggetto_id = NEW.id;
+
+                  IF v_natura_id IS NULL OR v_forma_id IS NULL THEN
+                      RETURN NULL;
+                  END IF;
+
+                  IF anagrafiche.fn_forma_giuridica_ammessa(v_forma_id, v_natura_id,
+                                                            script.fn_giorno_operativo(now())) THEN
+                      RETURN NULL;
+                  END IF;
+
+                  SELECT COALESCE(tsd.descrizione, tsd.codice_interno) INTO v_natura
+                    FROM config.tipi_soggetto_dettaglio tsd WHERE tsd.id = v_natura_id;
+                  SELECT fg.descrizione INTO v_forma
+                    FROM config.forme_giuridiche fg WHERE fg.id = v_forma_id;
+
+                  PERFORM script.fn_log_and_raise_error(
+                      'database', 'anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura',
+                      'E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA',
+                      jsonb_build_object('campo',                      'forma_giuridica_id',
+                                         'soggetto_id',                NEW.id,
+                                         'tipo_soggetto_dettaglio_id', v_natura_id,
+                                         'forma_giuridica_id',         v_forma_id),
+                      NEW.tx_id,
+                      v_natura,
+                      COALESCE(v_forma, v_forma_id::text));
+
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura() IS
+                  'Guard al COMMIT (constraint trigger AFTER UPDATE OF tipo_soggetto_dettaglio_id, DEFERRABLE INITIALLY DEFERRED) su anagrafiche.soggetti: la natura del soggetto deve ammettere la forma giuridica dei suoi dati societari (anagrafiche.fn_forma_giuridica_ammessa), altrimenti E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA, campo forma_giuridica_id. Differito perche'' natura e forma si cambiano insieme: nella stessa transazione prima la natura, poi la forma (il guard immediato della forma la confronta con la natura nuova). Rilegge le tabelle, non NEW. Tace senza dati societari o con forma o natura NULL. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (C-1).';
+
+              CREATE CONSTRAINT TRIGGER trg_soggetti_def_guard_forma_giuridica_natura_upd
+                  AFTER UPDATE OF tipo_soggetto_dettaglio_id ON anagrafiche.soggetti
+                  DEFERRABLE INITIALLY DEFERRED
+                  FOR EACH ROW
+                  EXECUTE FUNCTION anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_soggetti_def_guard_forma_giuridica_natura_upd ON anagrafiche.soggetti;
+              DROP FUNCTION IF EXISTS anagrafiche.trgfn_soggetti_guard_forma_giuridica_natura();

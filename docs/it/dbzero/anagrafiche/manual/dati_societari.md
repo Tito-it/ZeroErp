@@ -146,6 +146,42 @@ erDiagram
 
 ---
 
+## ⭐ Chi scrive i dati societari, e con quali regole (dal 2026-10-11)
+
+### Una porta sola: il verbo
+
+L'applicazione **legge** `anagrafiche.dati_societari` ma non la scrive. Scrive soltanto il verbo
+`anagrafiche.fn_scrivi_dati_societari` (`SECURITY DEFINER`), che **crea o aggiorna** la riga del
+soggetto. Lo chiamano `fn_crea_soggetto_pg`, il backend quando si modifica un soggetto e le fixture
+pgTAP.
+
+* Il verbo riceve lo **stato intero** della sezione: un valore assente scrive `NULL` dove la
+  colonna lo ammette. Socio unico e liquidazione, che sono obbligatori, prendono il default dei
+  parametri.
+* Il verbo **non** contiene regole: forma, natura, REA, capitale e canale FE stanno nei trigger
+  della tabella, e scattano anche da qui. Il permesso resta al backend, come per `anagrafiche.soggetti`.
+* La postura (niente `INSERT`/`UPDATE`/`DELETE` per l'app) è dichiarata in tre posti: il
+  changeSet `90_end/20261011-04`, il loop dei grant di `ci_apply`, il provisioning.
+
+### La forma giuridica decide
+
+* Se ci sono i dati societari c'è la forma: la colonna è `NOT NULL`.
+* La forma deve essere **ammessa dalla natura** del soggetto (matrice delle forme per natura).
+* **REA e capitale li decide la forma**, non la colonna (ora nullable): una SRL li pretende, una
+  ditta individuale o un'associazione no. Prima le tre colonne erano obbligatorie per tutti, e un
+  ente o una ditta con dati societari non si potevano creare.
+
+Il dettaglio dei controlli e dei codici è nel manuale del guard,
+[trgfn_dati_societari_guard_forma_giuridica](/dbzero/anagrafiche/manual/trgfn_dati_societari_guard_forma_giuridica).
+
+### Cambiare natura
+
+Una società che diventa ente cambia anche la forma, e nella stessa transazione si fa **prima la
+natura, poi la forma**: il controllo che le lega scatta al COMMIT
+(`trgfn_soggetti_guard_forma_giuridica_natura`, `E_TIPO_SOGGETTO_FORMA_GIURIDICA_NON_AMMESSA`).
+
+---
+
 ## 📘 Integrazione – Coerenza tra `dati_societari`, Tipo Soggetto e Tipologie Fiscali
 
 *(Aggiornamento del 2025-12-03)*

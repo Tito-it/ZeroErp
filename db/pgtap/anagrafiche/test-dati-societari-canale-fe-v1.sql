@@ -7,7 +7,9 @@
 --   codice SDI ha la sua forma.
 --   Brief: brief-db-character-n-spazi-di-riempimento (D-6, decisioni di Tid
 --   del 2026-10-10). ChangeSet: 20261010-37 (vocabolario, forma, coerenza,
---   via gli UNIQUE), -39 (guard), -40 (helper senza canale).
+--   via gli UNIQUE), -39 (guard), -40 (helper senza canale). Dal 20261011 le
+--   scritture passano dal verbo anagrafiche.fn_scrivi_dati_societari (B-5 di
+--   brief-db-dati-fiscali-e-societari-del-soggetto).
 --
 -- Elenco test (plan 13):
 --  1) l'helper di fixture crea i dati societari senza canale (NULL)
@@ -45,6 +47,33 @@ SELECT dbops.fn_pgtap_crea_soggetto_pg('PGTAP Canale FE Uno', p_piva := dbops.fn
        NULL::uuid AS s2;
 UPDATE _fx SET s2 = dbops.fn_pgtap_crea_soggetto_pg('PGTAP Canale FE Due', p_piva := dbops.fn_pgtap_piva_libera(1));
 
+-- ⭐ Rev 20261011 (brief-db-dati-fiscali-e-societari-del-soggetto, B-5): dal
+--   20261011-04 l'app non scrive anagrafiche.dati_societari, la porta e' il verbo
+--   anagrafiche.fn_scrivi_dati_societari, che riceve lo STATO INTERO. I casi
+--   restano gli stessi: questa funzione legge la riga, sovrappone i soli campi
+--   cambiati (jsonb_populate_record: una chiave con null scrive NULL) e chiama il
+--   verbo. Un codice di 10 caratteri lo ferma ancora il tipo varchar(7) (22001),
+--   ora nel passaggio al tipo della riga, prima del verbo.
+CREATE OR REPLACE FUNCTION pg_temp.ds_cambia(p_soggetto uuid, p_cambi jsonb) RETURNS void
+LANGUAGE plpgsql AS $f$
+DECLARE r anagrafiche.dati_societari;
+BEGIN
+    SELECT * INTO r FROM anagrafiche.dati_societari WHERE soggetto_id = p_soggetto;
+    r := jsonb_populate_record(r, p_cambi);
+    PERFORM anagrafiche.fn_scrivi_dati_societari(
+        p_soggetto_id        := p_soggetto,
+        p_forma_giuridica_id := r.forma_giuridica_id,
+        p_id_prov_iscri_rea  := r.id_prov_iscri_rea,
+        p_iscrizione_rea     := r.iscrizione_rea,
+        p_capitale_sociale   := r.capitale_sociale,
+        p_socio_unico        := r.socio_unico,
+        p_liquidazione       := r.liquidazione,
+        p_destinatario_fe    := r.destinatario_fe,
+        p_pec_fatturazione   := r.pec_fatturazione,
+        p_codice_sdi         := r.codice_sdi,
+        p_data_costituzione  := r.data_costituzione);
+END $f$;
+
 -- ============================================================
 -- 1. L'helper
 -- ============================================================
@@ -59,27 +88,23 @@ SELECT is(
 -- 2-5. Il codice SDI
 -- ============================================================
 SELECT lives_ok(
-    $$UPDATE anagrafiche.dati_societari SET destinatario_fe = 'C', codice_sdi = 'ABC1234'
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"destinatario_fe": "C", "codice_sdi": "ABC1234"}')$$,
     '2) canale C con un codice di 7 caratteri: entra'
 );
 
 SELECT lives_ok(
-    $$UPDATE anagrafiche.dati_societari SET codice_sdi = 'UFABC1'
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"codice_sdi": "UFABC1"}')$$,
     '3) un codice di 6 caratteri (PA): entra'
 );
 
 SELECT throws_like(
-    $$UPDATE anagrafiche.dati_societari SET codice_sdi = 'abc1234'
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"codice_sdi": "abc1234"}')$$,
     '%codice destinatario SDI%non è valido%',
     '4) codice in minuscolo: E_DATI_SOCIETARI_CODICE_SDI_NON_VALIDO'
 );
 
 SELECT throws_ok(
-    $$UPDATE anagrafiche.dati_societari SET codice_sdi = 'XXXXXXX002'
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"codice_sdi": "XXXXXXX002"}')$$,
     '22001', NULL,
     '5) codice di 10 caratteri: lo ferma il tipo varchar(7)'
 );
@@ -88,35 +113,30 @@ SELECT throws_ok(
 -- 6-10. Il canale e il suo recapito
 -- ============================================================
 SELECT throws_like(
-    $$UPDATE anagrafiche.dati_societari SET destinatario_fe = 'C', codice_sdi = NULL
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"destinatario_fe": "C", "codice_sdi": null}')$$,
     '%con il codice SDI, ma il codice manca%',
     '6) canale C senza codice: E_DATI_SOCIETARI_CODICE_SDI_MANCANTE'
 );
 
 SELECT throws_like(
-    $$UPDATE anagrafiche.dati_societari SET destinatario_fe = 'P', pec_fatturazione = NULL
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"destinatario_fe": "P", "pec_fatturazione": null}')$$,
     '%via PEC, ma la PEC manca%',
     '7) canale P senza PEC: E_DATI_SOCIETARI_PEC_FATTURAZIONE_MANCANTE'
 );
 
 SELECT lives_ok(
-    $$UPDATE anagrafiche.dati_societari SET destinatario_fe = 'P', pec_fatturazione = 'fatture.pgtap@pec.example.com'
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"destinatario_fe": "P", "pec_fatturazione": "fatture.pgtap@pec.example.com"}')$$,
     '8) canale P con la PEC: entra'
 );
 
 SELECT throws_ok(
-    $$UPDATE anagrafiche.dati_societari SET destinatario_fe = 'X'
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"destinatario_fe": "X"}')$$,
     '23514', NULL,
     '9) canale fuori vocabolario: 23514 (lo sceglie una lista, chi lo sbaglia e'' un chiamante rotto)'
 );
 
 SELECT lives_ok(
-    $$UPDATE anagrafiche.dati_societari SET destinatario_fe = NULL
-       WHERE soggetto_id = (SELECT s1 FROM _fx)$$,
+    $$SELECT pg_temp.ds_cambia((SELECT s1 FROM _fx), '{"destinatario_fe": null}')$$,
     '10) canale tolto: entra (nullable, decisione di Tid)'
 );
 
@@ -124,10 +144,8 @@ SELECT lives_ok(
 -- 11. Un intermediario serve piu' clienti
 -- ============================================================
 SELECT lives_ok(
-    $$UPDATE anagrafiche.dati_societari
-         SET destinatario_fe = 'C', codice_sdi = 'INTERM1',
-             pec_fatturazione = 'studio.pgtap@pec.example.com'
-       WHERE soggetto_id IN ((SELECT s1 FROM _fx), (SELECT s2 FROM _fx))$$,
+    $$SELECT pg_temp.ds_cambia(x.s, '{"destinatario_fe": "C", "codice_sdi": "INTERM1", "pec_fatturazione": "studio.pgtap@pec.example.com"}')
+        FROM (SELECT s1 AS s FROM _fx UNION ALL SELECT s2 FROM _fx) x$$,
     '11) due soggetti con lo stesso codice SDI e la stessa PEC: entrano'
 );
 

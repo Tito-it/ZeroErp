@@ -22,8 +22,6 @@ DECLARE
     v_stato_id                    config.stati.id%TYPE;
     v_stato_iso2_resolved         config.stati.codice_iso2%TYPE;
     v_dati_societari_policy       config.tipi_soggetto_dettaglio.dati_societari_policy%TYPE;
-    v_socio_unico_resolved        anagrafiche.dati_societari.socio_unico%TYPE;
-    v_liquidazione_resolved       anagrafiche.dati_societari.liquidazione%TYPE;
     v_tipo_contatto_id            config.tipi_contatti.id%TYPE;
     v_soggetto_id                 anagrafiche.soggetti.id%TYPE;
 BEGIN
@@ -125,21 +123,6 @@ BEGIN
         );
     END IF;
 
-    -- Socio unico e liquidazione (default da config.parameters)
-    v_socio_unico_resolved := COALESCE(
-        p_socio_unico,
-        (SELECT default_value FROM config.parameters
-          WHERE code = 'dati_societari_default_socio_unico')::anagrafiche.socio_unico_enum,
-        'SU'::anagrafiche.socio_unico_enum
-    );
-
-    v_liquidazione_resolved := COALESCE(
-        p_liquidazione,
-        (SELECT default_value FROM config.parameters
-          WHERE code = 'dati_societari_default_liquidazione')::anagrafiche.liquidazione_enum,
-        'LN'::anagrafiche.liquidazione_enum
-    );
-
     -- Guard unicita CF/PIVA per stato (se forniti)
     IF p_codice_fiscale IS NOT NULL AND TRIM(p_codice_fiscale) <> '' THEN
         IF EXISTS (
@@ -215,60 +198,25 @@ BEGIN
             OR p_codice_sdi IS NOT NULL
           ))
     THEN
-        -- Guard campi NOT NULL di dati_societari
-        IF p_id_prov_iscri_rea IS NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database', 'anagrafiche.fn_crea_soggetto_pg',
-                'E_ADMIN_VALIDAZIONE',
-                jsonb_build_object('parametro', 'p_id_prov_iscri_rea'),
-                NULL::uuid,
-                'Provincia iscrizione REA obbligatoria per dati societari.'
-            );
-        END IF;
-
-        IF p_iscrizione_rea IS NULL OR TRIM(p_iscrizione_rea) = '' THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database', 'anagrafiche.fn_crea_soggetto_pg',
-                'E_ADMIN_VALIDAZIONE',
-                jsonb_build_object('parametro', 'p_iscrizione_rea'),
-                NULL::uuid,
-                'Iscrizione REA obbligatoria per dati societari.'
-            );
-        END IF;
-
-        IF p_capitale_sociale IS NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database', 'anagrafiche.fn_crea_soggetto_pg',
-                'E_ADMIN_VALIDAZIONE',
-                jsonb_build_object('parametro', 'p_capitale_sociale'),
-                NULL::uuid,
-                'Capitale sociale obbligatorio per dati societari.'
-            );
-        END IF;
-
-        IF p_destinatario_fe IS NULL THEN
-            PERFORM script.fn_log_and_raise_error(
-                'database', 'anagrafiche.fn_crea_soggetto_pg',
-                'E_ADMIN_VALIDAZIONE',
-                jsonb_build_object('parametro', 'p_destinatario_fe'),
-                NULL::uuid,
-                'Destinatario FE obbligatorio per dati societari (P=PEC, C=Codice SDI).'
-            );
-        END IF;
-
-        INSERT INTO anagrafiche.dati_societari (
-            soggetto_id, capitale_sociale,
-            id_prov_iscri_rea, iscrizione_rea,
-            socio_unico, liquidazione,
-            destinatario_fe, pec_fatturazione, codice_sdi,
-            forma_giuridica_id
-        )
-        VALUES (
-            v_soggetto_id, p_capitale_sociale,
-            p_id_prov_iscri_rea, TRIM(p_iscrizione_rea),
-            v_socio_unico_resolved, v_liquidazione_resolved,
-            p_destinatario_fe, TRIM(p_pec_fatturazione), TRIM(p_codice_sdi),
-            p_forma_giuridica_id
+        -- ⭐ Rev 20261011-01 (B-4, B-6, B-7 di brief-db-dati-fiscali-e-societari-del-soggetto):
+        --   i dati societari passano dal VERBO, che e' la sola porta di scrittura
+        --   (dal 20261011-04 l'app non scrive la tabella). Spariti i quattro
+        --   controlli che stavano qui: REA e capitale li dice la forma (guard
+        --   della forma, B-6), il canale FE e' facoltativo (B-7), i default di
+        --   socio unico e liquidazione li risolve il verbo. Le regole stanno nei
+        --   trigger della tabella, e scattano anche da qui.
+        PERFORM anagrafiche.fn_scrivi_dati_societari(
+            p_soggetto_id        := v_soggetto_id,
+            p_forma_giuridica_id := p_forma_giuridica_id,
+            p_id_prov_iscri_rea  := p_id_prov_iscri_rea,
+            p_iscrizione_rea     := p_iscrizione_rea,
+            p_capitale_sociale   := p_capitale_sociale,
+            p_socio_unico        := p_socio_unico,
+            p_liquidazione       := p_liquidazione,
+            p_destinatario_fe    := p_destinatario_fe,
+            p_pec_fatturazione   := p_pec_fatturazione,
+            p_codice_sdi         := p_codice_sdi,
+            p_data_costituzione  := NULL
         );
     END IF;
 
@@ -277,7 +225,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
-IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli.';
+IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli. Rev 20261011-01: i dati societari si scrivono con anagrafiche.fn_scrivi_dati_societari (B-4); REA, capitale e canale FE non si pretendono piu'' qui (li governano la forma giuridica e il canale, B-6/B-7). Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
 ```
 
 ---

@@ -262,3 +262,23 @@ L'ordine di esecuzione e: prima il guard di presenza (fase `_a10_`), poi la vali
 ---
 
 📅 *Aggiornato: 28/02/2026*
+
+---
+
+## 🧾 Regime PA e split payment per natura (dal 2026-10-10)
+
+`cliente_pa_ammesso` e `split_payment_ammesso` (boolean, default `false`) dicono se la natura
+ammette i due flag fiscali di [anagrafiche.soggetti](/dbzero/anagrafiche/tabelle/soggetti):
+«non ammesso» vuol dire che il flag resta `N`. Il valore arriva dal CSV del catalogo, e il
+default `false` fa nascere **chiusa** una natura nuova (un dettaglio estero, per esempio).
+
+| Natura | `cliente_pa_ammesso` | `split_payment_ammesso` |
+| --- | --- | --- |
+| PR, DI | false | false |
+| SP, SC | false | true |
+| ENC | true | true |
+
+⛔ Il CHECK `chk_tipi_soggetto_dettaglio_regime_pa_natura` vieta i due flag a ogni natura base
+`PF`: una persona fisica non e` mai una PA ne` in scissione dei pagamenti, e il CSV non lo puo`
+dire. Le regole sul soggetto stanno nel manuale di
+[anagrafiche.soggetti](/dbzero/anagrafiche/manual/soggetti).

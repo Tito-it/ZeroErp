@@ -1,0 +1,122 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LE DUE DOMANDE SU UN TITOLO IVA, IN UN POSTO SOLO
+#   anagrafiche.fn_titolo_iva_ammesso(tipo, natura)       -> boolean, STABLE
+#   anagrafiche.fn_titolo_iva_vigente(attivo, valido_al, oggi) -> boolean, IMMUTABLE
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D, D-1, D-5)
+#
+# -- PERCHE' DUE FUNZIONI E NON UNA COPIA PER GUARD ---------------------
+#   Le stesse due domande le fanno tre punti (regola del 2, gia' alla terza):
+#     * il guard sul titolo (20261010-92): il titolo che scrivo e' ammesso?
+#     * il lettore del cambio di natura (20261010-91, DEFINER): il soggetto
+#       ha titoli vigenti che la natura nuova non ammette?
+#     * il lettore del ritiro di una riga di matrice (20261010-91): ci sono
+#       titoli vigenti che quella riga ammetteva?
+#   Tre copie della stessa regola rispondono prima o poi in tre modi.
+#
+# -- fn_titolo_iva_ammesso ------------------------------------------------
+#   true se esiste una riga ATTIVA di config.tipi_titolo_iva_tipi_soggetto_dettaglio
+#   per la coppia. ⭐ Nessuna riga = false (D-1): un dettaglio senza righe non
+#   e' libero. Natura NULL = false: senza natura nessun titolo e' ammesso
+#   (A-5/D-1); il guard sul titolo la distingue PRIMA, per dire la frase
+#   giusta. STABLE: legge una tabella. LANGUAGE sql, niente STRICT: il NULL
+#   e' un caso con la sua risposta (false), non «nessuna risposta».
+#
+# -- fn_titolo_iva_vigente -------------------------------------------------
+#   Un titolo e' VIGENTE se e' attivo e la sua finestra arriva almeno a oggi:
+#     attivo AND (valido_al IS NULL OR valido_al >= oggi).
+#   ⭐ Il criterio e' la validita', non il solo attivo (D-5): un titolo con
+#   movimenti non si disattiva mai (blocco di soggetti_titoli_iva_movimenti,
+#   che non ha una colonna attivo), e uno scaduto rimasto attivo non deve
+#   bloccare niente. Si esce chiudendo valido_al.
+#   Un titolo che comincia domani e' vigente: e' gia' stato presentato.
+#   Scritta sui VALORI, con oggi passato da chi chiama
+#   (script.fn_giorno_operativo(now()), il giorno nel fuso aziendale):
+#   IMMUTABLE, si prova senza fixture, e nessun guard dipende dal fuso della
+#   sessione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261010-90-create-fn-titolo-iva-ammesso-e-vigente-mctit.yaml
+
+  - changeSet:
+      id: 20261010-90-create-fn-titolo-iva-ammesso-e-vigente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_titolo_iva_ammesso (la natura ammette il tipo di titolo: riga attiva in
+        config.tipi_titolo_iva_tipi_soggetto_dettaglio, nessuna riga = false) e
+        anagrafiche.fn_titolo_iva_vigente (attivo e valido almeno fino a oggi, sui valori).
+        Brief: brief-db-dati-fiscali-e-societari-del-soggetto (D-1, D-5).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists:
+                { schemaName: config, tableName: tipi_titolo_iva_tipi_soggetto_dettaglio }
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'anagrafiche'
+                     AND p.proname IN ('fn_titolo_iva_ammesso', 'fn_titolo_iva_vigente');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION anagrafiche.fn_titolo_iva_ammesso(
+                  p_tipo_titolo_iva_id         config.tipi_titolo_iva_tipi_soggetto_dettaglio.tipo_titolo_iva_id%TYPE,
+                  p_tipo_soggetto_dettaglio_id config.tipi_titolo_iva_tipi_soggetto_dettaglio.tipo_soggetto_dettaglio_id%TYPE
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- Nessuna riga attiva = non ammesso (D-1); natura NULL = non ammesso.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.tipi_titolo_iva_tipi_soggetto_dettaglio m
+                       WHERE m.tipo_titolo_iva_id         = p_tipo_titolo_iva_id
+                         AND m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+                         AND m.attivo
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_titolo_iva_ammesso(bigint, bigint) IS
+                  'La natura di dettaglio ammette il tipo di titolo IVA: true se esiste una riga ATTIVA di config.tipi_titolo_iva_tipi_soggetto_dettaglio per la coppia. Nessuna riga = false (un dettaglio senza righe non e'' libero, D-1); natura NULL = false. Sede unica della domanda: la chiamano il guard sui titoli e i due lettori DEFINER del cambio di natura e del ritiro di matrice. STABLE, LANGUAGE sql, non STRICT. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).';
+
+              CREATE FUNCTION anagrafiche.fn_titolo_iva_vigente(
+                  p_attivo    anagrafiche.soggetti_titoli_iva.attivo%TYPE,
+                  p_valido_al anagrafiche.soggetti_titoli_iva.valido_al%TYPE,
+                  p_oggi      date
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              IMMUTABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- Vigente: attivo e valido almeno fino a oggi. Non STRICT:
+                  -- valido_al NULL e' «senza scadenza», non «nessuna risposta».
+                  SELECT COALESCE(p_attivo, false)
+                     AND (p_valido_al IS NULL OR p_valido_al >= p_oggi);
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_titolo_iva_vigente(boolean, date, date) IS
+                  'Un titolo IVA e'' VIGENTE se e'' attivo e la sua finestra arriva almeno a oggi: attivo AND (valido_al IS NULL OR valido_al >= oggi). Il criterio e'' la validita'', non il solo attivo (D-5): un titolo con movimenti non si disattiva mai, e uno scaduto non blocca niente; si esce chiudendo valido_al. Un titolo che comincia domani e'' vigente. Sui VALORI: oggi lo passa chi chiama (script.fn_giorno_operativo(now())), quindi IMMUTABLE e indipendente dal fuso della sessione. Non STRICT. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte D).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_titolo_iva_vigente(boolean, date, date);
+              DROP FUNCTION IF EXISTS anagrafiche.fn_titolo_iva_ammesso(bigint, bigint);

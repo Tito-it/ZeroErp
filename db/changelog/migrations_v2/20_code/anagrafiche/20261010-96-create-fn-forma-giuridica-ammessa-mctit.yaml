@@ -1,0 +1,92 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA FORMA GIURIDICA E' AMMESSA DALLA NATURA?
+#   anagrafiche.fn_forma_giuridica_ammessa(forma, natura, oggi) -> boolean, STABLE
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte C, C-1)
+#
+# -- IL CASO --------------------------------------------------------
+#   config.forme_giuridiche_tipi_soggetto_dettaglio dichiara quali forme
+#   ammette ogni natura (SC: SRL, SRLS, SPA, SAPA, cooperativa, consorzio,
+#   impresa sociale; SP: SNC, SAS; DI: ditta individuale; ENC: associazione,
+#   fondazione, ente pubblico, ONLUS), ma nessuno la faceva rispettare in
+#   scrittura: la leggeva solo il lookup del form. Una forma fuori matrice
+#   il drawer la mostrava vuota.
+#
+# -- LA DOMANDA, IN UN POSTO SOLO -------------------------------------
+#   La fanno due guard (regola del 2):
+#     * su anagrafiche.dati_societari (20261010-97): la forma che scrivo e'
+#       ammessa dalla natura del soggetto?
+#     * su anagrafiche.soggetti, al COMMIT (20261010-98): la natura nuova
+#       ammette ancora la forma dei dati societari?
+#   Ammessa = una riga ATTIVA della matrice, valida oggi (valido_dal /
+#   valido_al: la matrice delle forme, a differenza di quella dei titoli,
+#   ha una finestra). Nessuna riga = non ammessa. Natura o forma NULL =
+#   non ammessa (false): i chiamanti distinguono prima i casi NULL.
+#   Oggi si passa (script.fn_giorno_operativo(now()) dai chiamanti): la
+#   funzione non dipende dal fuso della sessione. STABLE, LANGUAGE sql,
+#   non STRICT.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261010-96-create-fn-forma-giuridica-ammessa-mctit.yaml
+
+  - changeSet:
+      id: 20261010-96-create-fn-forma-giuridica-ammessa
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_forma_giuridica_ammessa(forma, natura, oggi): la forma giuridica e' ammessa
+        dalla natura di dettaglio (riga attiva e valida oggi di
+        config.forme_giuridiche_tipi_soggetto_dettaglio). Sede unica per i due guard della Parte C.
+        Brief: brief-db-dati-fiscali-e-societari-del-soggetto (C-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_forma_giuridica_ammessa';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION anagrafiche.fn_forma_giuridica_ammessa(
+                  p_forma_giuridica_id         config.forme_giuridiche_tipi_soggetto_dettaglio.forma_giuridica_id%TYPE,
+                  p_tipo_soggetto_dettaglio_id config.forme_giuridiche_tipi_soggetto_dettaglio.tipo_soggetto_dettaglio_id%TYPE,
+                  p_oggi                       date
+              )
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+                  -- Riga attiva e valida oggi = ammessa; nessuna riga = no; NULL = no.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM config.forme_giuridiche_tipi_soggetto_dettaglio m
+                       WHERE m.forma_giuridica_id         = p_forma_giuridica_id
+                         AND m.tipo_soggetto_dettaglio_id = p_tipo_soggetto_dettaglio_id
+                         AND m.attivo
+                         AND (m.valido_dal IS NULL OR m.valido_dal <= p_oggi)
+                         AND (m.valido_al  IS NULL OR m.valido_al  >= p_oggi)
+                  );
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_forma_giuridica_ammessa(bigint, bigint, date) IS
+                  'La forma giuridica e'' ammessa dalla natura di dettaglio: true se esiste una riga ATTIVA e valida oggi (valido_dal/valido_al) di config.forme_giuridiche_tipi_soggetto_dettaglio per la coppia. Nessuna riga = false; forma o natura NULL = false. Oggi lo passa chi chiama (script.fn_giorno_operativo(now())). Sede unica della domanda: la chiamano il guard della forma su anagrafiche.dati_societari e il guard al COMMIT sul cambio di natura del soggetto. STABLE, LANGUAGE sql, non STRICT. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (C-1).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_forma_giuridica_ammessa(bigint, bigint, date);

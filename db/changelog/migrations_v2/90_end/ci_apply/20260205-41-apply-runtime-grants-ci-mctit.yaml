@@ -157,6 +157,14 @@
 #   provisioning (linee-guida-sql §11.9). Forward su dev `90_end/20261006-15`;
 #   terza sede il blocco del provisioning; pgTAP
 #   `db/pgtap/config/test-elimina-credenziale-v1.sql`.
+#
+# ── ⭐ I DATI SOCIETARI (dal 2026-10-11) ───────────────────────────────────
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto, B-5
+#   `anagrafiche.dati_societari` entra in `v_tabelle_sola_lettura_app`: la
+#   scrive solo il verbo DEFINER anagrafiche.fn_scrivi_dati_societari (lo
+#   chiamano fn_crea_soggetto_pg, il backend in modifica e le fixture pgTAP).
+#   Forward su dev `90_end/20261011-04`; terza sede il blocco del
+#   provisioning; pgTAP `db/pgtap/anagrafiche/test-fn-scrivi-dati-societari-v1.sql`.
 # ------------------------------------------------------------
 
 databaseChangeLog:
@@ -270,7 +278,11 @@ databaseChangeLog:
                   -- ⭐ Dal 2026-10-06 la TRACCIA DELLE CREDENZIALI ELIMINATE: la scrive
                   --   solo script.fn_elimina_credenziale
                   --   (brief-db-elimina-credenziale-senza-veste §4.2).
-                  'config.credenziali_eliminate'
+                  'config.credenziali_eliminate',
+                  -- ⭐ Dal 2026-10-11 i DATI SOCIETARI: li scrive solo il verbo
+                  --   anagrafiche.fn_scrivi_dati_societari
+                  --   (brief-db-dati-fiscali-e-societari-del-soggetto, B-5).
+                  'anagrafiche.dati_societari'
                 ];
                 -- ⭐ Tabelle SENZA DELETE per l'applicazione (la forma per tabella
                 --   di v_schemi_senza_delete): un blocco di magazzino si chiude

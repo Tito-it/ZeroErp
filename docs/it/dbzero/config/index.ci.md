@@ -103,6 +103,7 @@
 - [tipi_soggetto_dettaglio_tipi_indirizzo](manual/tipi_soggetto_dettaglio_tipi_indirizzo.md) — (latest review 19-12-25) La tabella **`config.tipi_soggetto_dettaglio_tipi_indirizzo`** rappresenta la **matrice di configurazione** che definisce:
 - [tipi_tariffe_ee](manual/tipi_tariffe_ee.md) — (rev 2026-08-21)
 - [tipi_titolo_iva](manual/tipi_titolo_iva.md) — (rev 2026-08-29 — tabella nata il 2026-08-29)
+- [tipi_titolo_iva_tipi_soggetto_dettaglio](manual/tipi_titolo_iva_tipi_soggetto_dettaglio.md)
 - [tipi_ubicazione](manual/tipi_ubicazione.md) — (rev 2026-08-21)
 - [tipi_utenze](manual/tipi_utenze.md) — (rev 2026-08-21)
 - [titoli_cortesia](manual/titoli_cortesia.md) — * **Uniformare i titoli**     Gestire centralmente i titoli di cortesia per tutti i soggetti/contatti, evitando discrepanze tra form, report e stampe.

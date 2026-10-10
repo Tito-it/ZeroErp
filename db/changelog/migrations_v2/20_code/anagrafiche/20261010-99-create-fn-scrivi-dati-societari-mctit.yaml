@@ -1,0 +1,181 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO DI SCRITTURA DEI DATI SOCIETARI
+#   anagrafiche.fn_scrivi_dati_societari(soggetto, forma, REA, capitale, ...) -> id
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte B, B-1..B-5)
+#
+# -- IL CASO --------------------------------------------------------
+#   I dati societari nascevano con il soggetto (fn_crea_soggetto_pg) e poi
+#   non si cambiavano piu' da nessuna parte: l'operatore correggeva canale,
+#   PEC o codice SDI, leggeva «salvato» e alla riapertura trovava i valori
+#   vecchi. Il codice destinatario va dritto nello snapshot della fattura.
+#   Strada decisa da Tid il 2026-10-10: un verbo a DB, con BE e FE dietro.
+#
+# -- COSA FA ----------------------------------------------------------
+#   * CREA o AGGIORNA la riga del soggetto (uq_ds_soggetto: una per
+#     soggetto). Crea, perche' con policy OPTIONAL un soggetto puo' nascere
+#     senza dati societari e riceverli dopo (B-1).
+#   * STATO INTERO (B-2): il form manda tutta la sezione, e NULL scrive NULL
+#     dove la colonna lo ammette. «Solo i campi passati» si distingue male
+#     da «passato NULL apposta». socio_unico e liquidazione sono NOT NULL:
+#     NULL vale il default di config.parameters (stesso ripiego di
+#     fn_crea_soggetto_pg). I testi si ripuliscono: btrim, vuoto = NULL.
+#   * Aggiunge SOLO il «soggetto non trovato» (B-3): forma,
+#     natura, REA, capitale, canale FE restano ai trigger della tabella,
+#     che scattano anche qui.
+#
+# -- ⛔ POSTURA (B-5, decisione di Tid del 2026-10-10) --------------------
+#   Dal 20261011-04 l'applicazione non scrive piu' anagrafiche.dati_societari
+#   direttamente: questo verbo e' la porta, e per questo e' SECURITY DEFINER
+#   del proprietario (search_path pg_catalog, public, pg_temp; nomi
+#   qualificati; EXECUTE tolto a PUBLIC e dato all'app, stampo
+#   config.fn_pannello_scrivi).
+#   ⭐ NESSUN GUARD DI LIVELLO (decisione di Tid del 2026-10-10): il permesso
+#   resta al backend, come per anagrafiche.soggetti, che l'app scrive senza
+#   controllo a DB. Con script.fn_guard_livello(TUTTO) qui, ogni fixture
+#   pgTAP che crea una societa' sarebbe rifiutata (l'operatore di default e'
+#   BLOCCATO su anagrafiche.soggetti), e la fixture deve scrivere dove scrive
+#   l'app, cioe' da qui. Il permesso a DB per l'anagrafica e' un cantiere suo.
+#   Le fixture (dbops.fn_pgtap_crea_soggetto_pg, 20261011-02) passano di qui.
+#
+# -- CHI LO CHIAMA ------------------------------------------------------
+#   anagrafiche.fn_crea_soggetto_pg (20261011-01, B-4) e il backend in
+#   modifica (SoggettiService.update_soggetto, §5 del brief). Se nella stessa
+#   scrittura cambia anche la natura, si aggiorna PRIMA il soggetto e POI si
+#   chiama il verbo: il guard al COMMIT (20261010-98) giudica lo stato finale.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/anagrafiche/20261010-99-create-fn-scrivi-dati-societari-mctit.yaml
+
+  - changeSet:
+      id: 20261010-99-create-fn-scrivi-dati-societari
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.fn_scrivi_dati_societari: crea o aggiorna i dati societari di un soggetto, stato
+        intero. SECURITY DEFINER: dal 20261011-04 e' la sola porta di scrittura per l'app (il
+        permesso resta al backend). Le regole restano ai guard.
+        Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-1..B-5).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'anagrafiche' AND p.proname = 'fn_scrivi_dati_societari';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION anagrafiche.fn_scrivi_dati_societari(
+                  p_soggetto_id        anagrafiche.dati_societari.soggetto_id%TYPE,
+                  p_forma_giuridica_id anagrafiche.dati_societari.forma_giuridica_id%TYPE,
+                  p_id_prov_iscri_rea  anagrafiche.dati_societari.id_prov_iscri_rea%TYPE,
+                  p_iscrizione_rea     anagrafiche.dati_societari.iscrizione_rea%TYPE,
+                  p_capitale_sociale   anagrafiche.dati_societari.capitale_sociale%TYPE,
+                  p_socio_unico        anagrafiche.dati_societari.socio_unico%TYPE,
+                  p_liquidazione       anagrafiche.dati_societari.liquidazione%TYPE,
+                  p_destinatario_fe    anagrafiche.dati_societari.destinatario_fe%TYPE,
+                  p_pec_fatturazione   anagrafiche.dati_societari.pec_fatturazione%TYPE,
+                  p_codice_sdi         anagrafiche.dati_societari.codice_sdi%TYPE,
+                  p_data_costituzione  anagrafiche.dati_societari.data_costituzione%TYPE
+              )
+              RETURNS anagrafiche.dati_societari.id%TYPE
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- =========================================================
+              -- Scopo: crea o aggiorna i dati societari di un soggetto (stato intero).
+              --   Aggiunge solo il «soggetto non trovato»: le regole (forma, natura,
+              --   REA, capitale, canale FE) sono nei trigger.
+              -- ⛔ SECURITY DEFINER: dal 20261011-04 l'app non scrive la tabella, e
+              --   questa e' la porta. Nessun guard di livello: il permesso resta al
+              --   backend, come per anagrafiche.soggetti (decisione di Tid, 2026-10-10).
+              -- Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-1..B-5).
+              -- =========================================================
+              DECLARE
+                  v_id           anagrafiche.dati_societari.id%TYPE;
+                  v_socio_unico  anagrafiche.dati_societari.socio_unico%TYPE;
+                  v_liquidazione anagrafiche.dati_societari.liquidazione%TYPE;
+              BEGIN
+                  IF p_soggetto_id IS NULL
+                     OR NOT EXISTS (SELECT 1 FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id) THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'anagrafiche.fn_scrivi_dati_societari',
+                          'E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO',
+                          jsonb_build_object('soggetto_id', p_soggetto_id),
+                          NULL::uuid,
+                          COALESCE(p_soggetto_id::text, '-'));
+                  END IF;
+
+                  -- I due enum NOT NULL: NULL vale il default di config.parameters.
+                  v_socio_unico := COALESCE(
+                      p_socio_unico,
+                      (SELECT default_value FROM config.parameters
+                        WHERE code = 'dati_societari_default_socio_unico')::anagrafiche.socio_unico_enum,
+                      'SU'::anagrafiche.socio_unico_enum);
+                  v_liquidazione := COALESCE(
+                      p_liquidazione,
+                      (SELECT default_value FROM config.parameters
+                        WHERE code = 'dati_societari_default_liquidazione')::anagrafiche.liquidazione_enum,
+                      'LN'::anagrafiche.liquidazione_enum);
+
+                  UPDATE anagrafiche.dati_societari ds
+                     SET forma_giuridica_id = p_forma_giuridica_id,
+                         id_prov_iscri_rea  = p_id_prov_iscri_rea,
+                         iscrizione_rea     = NULLIF(btrim(p_iscrizione_rea), ''),
+                         capitale_sociale   = p_capitale_sociale,
+                         socio_unico        = v_socio_unico,
+                         liquidazione       = v_liquidazione,
+                         destinatario_fe    = NULLIF(btrim(p_destinatario_fe), ''),
+                         pec_fatturazione   = NULLIF(btrim(p_pec_fatturazione), ''),
+                         codice_sdi         = NULLIF(btrim(p_codice_sdi), ''),
+                         data_costituzione  = p_data_costituzione
+                   WHERE ds.soggetto_id = p_soggetto_id
+                  RETURNING ds.id INTO v_id;
+
+                  IF v_id IS NULL THEN
+                      INSERT INTO anagrafiche.dati_societari (
+                          soggetto_id, forma_giuridica_id, id_prov_iscri_rea, iscrizione_rea,
+                          capitale_sociale, socio_unico, liquidazione,
+                          destinatario_fe, pec_fatturazione, codice_sdi, data_costituzione
+                      )
+                      VALUES (
+                          p_soggetto_id, p_forma_giuridica_id, p_id_prov_iscri_rea,
+                          NULLIF(btrim(p_iscrizione_rea), ''),
+                          p_capitale_sociale, v_socio_unico, v_liquidazione,
+                          NULLIF(btrim(p_destinatario_fe), ''),
+                          NULLIF(btrim(p_pec_fatturazione), ''),
+                          NULLIF(btrim(p_codice_sdi), ''),
+                          p_data_costituzione
+                      )
+                      RETURNING id INTO v_id;
+                  END IF;
+
+                  RETURN v_id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_scrivi_dati_societari(uuid, bigint, integer, character varying, numeric, anagrafiche.socio_unico_enum, anagrafiche.liquidazione_enum, character varying, character varying, character varying, date) IS
+                  'Il verbo di scrittura dei dati societari: crea o aggiorna la riga del soggetto (una per soggetto), STATO INTERO (NULL scrive NULL dove la colonna lo ammette; socio_unico e liquidazione NULL valgono il default di config.parameters; testi ripuliti, vuoto = NULL). Aggiunge solo il soggetto non trovato (E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO): forma, natura, REA, capitale e canale FE restano ai trigger della tabella. SECURITY DEFINER: dal 20261011-04 l''applicazione non scrive anagrafiche.dati_societari direttamente, e questa e'' la porta (B-5); nessun guard di livello, il permesso resta al backend come per anagrafiche.soggetti. Se nella stessa scrittura cambia la natura del soggetto, si aggiorna prima il soggetto e poi si chiama il verbo. Lo chiamano anagrafiche.fn_crea_soggetto_pg, il backend in modifica e le fixture pgTAP. Brief: brief-db-dati-fiscali-e-societari-del-soggetto (B-1..B-5).';
+
+              REVOKE EXECUTE ON FUNCTION anagrafiche.fn_scrivi_dati_societari(uuid, bigint, integer, character varying, numeric, anagrafiche.socio_unico_enum, anagrafiche.liquidazione_enum, character varying, character varying, character varying, date) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION anagrafiche.fn_scrivi_dati_societari(uuid, bigint, integer, character varying, numeric, anagrafiche.socio_unico_enum, anagrafiche.liquidazione_enum, character varying, character varying, character varying, date) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS anagrafiche.fn_scrivi_dati_societari(uuid, bigint, integer, character varying, numeric, anagrafiche.socio_unico_enum, anagrafiche.liquidazione_enum, character varying, character varying, character varying, date);

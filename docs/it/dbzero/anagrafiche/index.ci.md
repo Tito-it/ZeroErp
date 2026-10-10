@@ -88,7 +88,7 @@
 - [trgfn_clienti_sync_utility_from_ba](manual/trgfn_clienti_sync_utility_from_ba.md) — (latest review 15-02-26) La trigger function **`anagrafiche.trgfn_clienti_sync_utility_from_ba()`** garantisce la **coerenza** tra:
 - [trgfn_contatti_set_default_contatto](manual/trgfn_contatti_set_default_contatto.md) — (latest review 03-12-25) * **Impostare il contatto default**   Garantire che il primo contatto (o quello marcato explicitamente) diventi predefinito all’interno del suo contesto.
 - [trgfn_conti_bancari_normalize](manual/trgfn_conti_bancari_normalize.md) — (latest review 15-12-26) La trigger function **`anagrafiche.trgfn_conti_bancari_normalize()`** normalizza i campi bancari principali prima della persistenza, applicando regole semplici e deterministicamente ripetibili:
-- [trgfn_dati_societari_guard_forma_giuridica](manual/trgfn_dati_societari_guard_forma_giuridica.md) — (latest review 28-12-25) Garantire la **coerenza paese** tra il soggetto e la forma giuridica associata nei dati societari.
+- [trgfn_dati_societari_guard_forma_giuridica](manual/trgfn_dati_societari_guard_forma_giuridica.md)
 - [trgfn_dati_societari_guard_tipo_soggetto](manual/trgfn_dati_societari_guard_tipo_soggetto.md) — (latest review 03-12-25) Garantire che *solo* i soggetti autorizzati secondo le **policy dati societari** possano inserire o aggiornare una riga in `anagrafiche.dati_societari`.
 - [trgfn_efba_guard_albero_emittente](manual/trgfn_efba_guard_albero_emittente.md) — (latest review 18-08-26)
 - [trgfn_efba_guard_istanza_emittente](manual/trgfn_efba_guard_istanza_emittente.md) — (latest review 08-10-26)
