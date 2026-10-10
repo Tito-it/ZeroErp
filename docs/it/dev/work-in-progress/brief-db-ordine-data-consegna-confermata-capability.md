@@ -9,6 +9,10 @@
 > **Decisione di forma (Tid, 2026-10-09):** verbo dedicato **sopra una capability
 > letta dal DB**. Prima la capability (questo brief), poi BE e FE. Il BE attende.
 > **Stato:** 📝 da fare (DB).
+> ⛔ **Da qui si parte.** R-1 viene **prima** di
+> [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md), che lo attende: il lettore
+> del montaggio nasce generico sui due BB (righe e testata) e la forma per stato degli argomenti si
+> fissa qui, una volta per entrambi (nota in fondo a R-1).
 
 ## 1. Il punto
 
@@ -49,6 +53,15 @@ La forma la decide il team DB. Le due strade che vediamo:
   far leggere quel dato **sia** al trigger **sia** alla check. Cambia il montaggio del `-89`.
 
 ⛔ Non la terza strada: una check con i due codici scritti accanto a quelli del montaggio.
+
+🔗 **Secondo consumatore (nota DB, 2026-10-10):**
+[brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md) porta la regola fuori bozza
+sulla **testata** (BB `vendite.trgfn_doc_testata_lock_fuori_bozza`), con la forma per stato
+(«colonne» + «stati») presa da quella delle righe (§5 di quel brief). Il suo form dovrà sapere
+quali campi restano modificabili (§7 di quel brief): è la stessa domanda di R-1. Con la strada (a), quindi, il
+lettore nasce **generico** sui due BB (righe e testata), non cucito su `vendite.ordini_righe`, e
+la forma degli argomenti per stato si fissa una volta per entrambi. È un motivo in più per la (a):
+la (b) cambierebbe due montaggi. Ordine suggerito: R-1 prima, poi il giro della testata lo riusa.
 
 ### R-2 — cosa emette la capability
 

@@ -941,6 +941,16 @@ colonna all'utente e il log senza la transazione.
 Dettaglio e decisioni attese nel brief
 [brief-db-guard-emittente-ba-unico.md](brief-db-guard-emittente-ba-unico.md). 🔧 Lato DB applicato e verde il 2026-10-10; resta la ricaduta BE (§8.6).
 
+### 🟡 D23 — La testata dopo l'emissione: la regola completa sta solo nel backend
+
+Trovato il 2026-10-09 (§8 e §10.3 di `brief-db-esecutivi-ba-coppia`): quali colonne di testata si
+cambiano dopo l'emissione lo dice per intero solo il backend («testata modificabile solo in DRAFT» su
+ordine, DDT, reso, preventivo, offerta; una tabella per stato sul contratto). Il database ne blocca dei
+pezzi: chi scrive senza passare dai service cambia, per esempio, la valuta di un ordine confermato.
+
+Dettaglio e decisioni nel brief
+[brief-db-testata-dopo-emissione.md](brief-db-testata-dopo-emissione.md). 📝 Aperto, decisioni chiuse il 2026-10-10.
+
 ### 🟡 D23 — Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicono il vero
 
 Trovato il 2026-10-10 scrivendo R-6 di `brief-db-codici-non-trovato-email-e-permessi` (§14.5): la
@@ -1148,6 +1158,8 @@ D6 e il registro dei rossi in CI.
       contratto e offerta: chiusa il 2026-10-08 (§7).
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
+* [ ] **D23** — la testata dopo l'emissione, colonna per colonna: brief
+      `brief-db-testata-dopo-emissione` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
 * [ ] **D22** — il guard emittente <-> BA scritto sette volte: brief
       `brief-db-guard-emittente-ba-unico` (aperto il 2026-10-10; lato DB applicato e verde, resta il BE: §8.6).
 * [ ] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre

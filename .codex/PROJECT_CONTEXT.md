@@ -324,6 +324,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **L'emittente del documento e' quello del cliente: una regola, sette copie**
   (`work-in-progress/brief-db-guard-emittente-ba-unico.md`, D22, 2026-10-10): il guard emittente <-> BA estratto in
   un BB, un codice e una frase leggibile. Lato DB applicato e verde il 2026-10-10 (`20261010-17…-19`); resta il BE (§8.6).
+- 📝 **La testata di un documento dopo l'emissione** (`work-in-progress/brief-db-testata-dopo-emissione.md`, D23,
+  2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
+  Colonne divise in famiglie (identità, stampato, arriva dopo, note, condizioni commerciali). Decisioni chiuse
+  il 2026-10-10 (§6): decide il DB, il BE toglie i suoi «solo in DRAFT»; codice da scrivere.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato
