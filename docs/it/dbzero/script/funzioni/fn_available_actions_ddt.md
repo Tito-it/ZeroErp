@@ -12,6 +12,7 @@ CREATE OR REPLACE FUNCTION script.fn_available_actions_ddt(p_ddt_id bigint)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE
+ SET plan_cache_mode TO 'force_generic_plan'
 AS $function$
 -- Scopo: capability DDT per il detail API (data-driven,
 --   config.transizioni_stati_ddt). Mirror di fn_available_actions_ordine.

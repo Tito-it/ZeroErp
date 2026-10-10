@@ -991,6 +991,18 @@ assente dal catalogo ferma le liste del push invece di aprirle), D-3 (ritirato
 `uq_gestori_singleton`), D-4 (il pgTAP dello spostamento dell'azienda predefinita) e D-5 (quello
 spostamento non dipende più da chi lo fa: i guard chiedono l'azienda dei BA per l'installazione).
 
+### 🟡 D26 — Le funzioni che ripianificano a ogni chiamata
+
+Ereditato il 2026-10-10 dalla chiusura di `work-done/brief-db-segment-base-commesse-attivita`: una
+funzione plpgsql che chiama con un parametro una funzione SQL grande che si incorpora fa
+ripianificare la query a ogni chiamata (in modo `auto` la plancache preferisce i piani
+personalizzati). Curate e presidiate la capability del DDT e il lister dei DDT da spingere; il
+censimento delle altre e il lister senza filtri restano aperti.
+
+Dettaglio nel brief
+[brief-db-plancache-funzioni-con-query-incorporate.md](brief-db-plancache-funzioni-con-query-incorporate.md):
+aperto, non iniziato, due decisioni attese (§3).
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1201,6 +1213,8 @@ D6 e il registro dei rossi in CI.
       `20261010-02…-07`, BE/FE §12).
 * [ ] **D25** — gli indirizzi del documento seguono il cliente: brief
       `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
+* [ ] **D26** — le funzioni che ripianificano a ogni chiamata: brief
+      `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
 
 ---
 

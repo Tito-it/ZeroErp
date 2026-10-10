@@ -163,3 +163,17 @@ deparsato non contiene `LIKE` né `~~`) oltre ai tre valori con e senza suffissi
 documento invece di una chiamata per riga, con questa scalare come proiezione)
 per la lista senza documento — si decide sulla misura dopo l'apply.
 
+### 🔄 rev 2026-10-10 — si entra dalla base del segmento
+
+Il range qui sopra sale nell'indice, ma quando la chiave arriva come
+**parametro** (piano generico: le liste del push, la diagnosi, le capability) il
+pianificatore non conosce i bordi e stima ogni ramo a circa l'11 % della
+tabella: la scansione intera vinceva. Da `20261010-82` la funzione entra
+dall'**uguaglianza** `segment_base = split_part(p_segment_key, '#', 1)` sulla
+colonna generata di `20261010-80`, indicizzata; i tre rami di prima restano come
+filtro residuo e la implicano (una chiave che vale `k` o comincia per
+`k#CMP:`/`k#RET:` ha la base di `k`), quindi i tre valori non cambiano: il
+vicino numerico e il suffisso ignoto `#FOO` restano quelli del presidio.
+`split_part` sta sul **parametro**, non sulla colonna: la clausola resta
+leakproof per la tabella. Brief: `brief-db-segment-base-commesse-attivita`.
+
