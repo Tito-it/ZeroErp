@@ -334,8 +334,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   il 2026-10-10 (§6): decide il DB, il BE toglie i suoi «solo in DRAFT»; codice da scrivere.
 - 📝 **Un testo non si riempie di spazi** (`work-in-progress/brief-db-character-n-spazi-di-riempimento.md`,
   2026-10-10, da segnalazione BE: `Potenza (PZ        )` nel drawer comuni): colonne `character(n)` con dominio a
-  lunghezza variabile (sigla e descrizione provincia, `destinatario_fe`, …), oggi tamponate a valle in tre punti.
-  Bozza: cinque decisioni di Tid (§3).
+  lunghezza variabile (sigla e descrizione provincia, `destinatario_fe`, …), tamponate a valle in tre punti.
+  Lato DB chiuso il 2026-10-10 (`20261010-26…-40`, applicati e verdi), compreso D-6: `destinatario_fe` è il
+  canale FE (P/C) e pretende il suo recapito. Restano le richieste a BE/FE (§6). Regola nuova: §7e di
+  `linee-guida-sql.md`, presidio `test-character-n-v1`.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

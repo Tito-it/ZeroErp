@@ -52,9 +52,15 @@ AS $function$
       IF NOT v_locked THEN
         -- L'attore va scritto anche sulla riga di skip: senza,
         -- ogni sovrapposizione lascerebbe un run senza attore.
+        -- ⭐ Rev 2026-10-10: la riga si dichiara SALTATA, chiusa e
+        --   senza esito (ok NULL). Prima nasceva ok = TRUE e
+        --   APERTA: «riuscita e mai chiusa», contata come corsa
+        --   vera da ogni lettore. brief-db-corsa-saltata-non-e-una-corsa.
         INSERT INTO maintenance.job_run_log
-            (jobname, stepname, ok, message, processo_codice, auth_user_id)
-        VALUES (p_jobname, p_stepname, TRUE, 'skip: another run in progress',
+            (jobname, stepname, saltata, ended_at, message,
+             processo_codice, auth_user_id)
+        VALUES (p_jobname, p_stepname, TRUE, clock_timestamp(),
+                'skip: another run in progress',
                 v_processo, p_auth_user_id);
         RETURN;
       END IF;
@@ -141,7 +147,7 @@ AS $function$
 $function$
 
 COMMENT ON FUNCTION maintenance.fn_run_and_log(p_jobname text, p_stepname text, p_sql text, p_lock_key bigint, p_processo_codice text, p_auth_user_id integer)
-IS 'Registra una corsa di job in maintenance.job_run_log ed esegue il lavoro. ⭐ Rev 2026-09-05 (R-12): il verbale di un FALLIMENTO viene scritto anche FUORI transazione, con maintenance.fn_job_run_log_failure, prima del RAISE. ⛔ Prima il gestore d''eccezione scriveva la riga ok=false e poi rilanciava: il RAISE annulla la transazione, quindi anche quella riga — il verbale veniva redatto e distrutto nello stesso istante, e NESSUNO dei dodici job che passano di qui poteva lasciare una riga rossa. Cosi'' apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto agli atti a «done». ⚠️ L''UPDATE in transazione resta e non e'' un doppione: copre il caso in cui il chiamante catturi l''eccezione senza propagarla, dove la transazione sopravvive. Nel caso normale muore e resta solo la riga fuori transazione — o l''una o l''altra, mai due. ⚠️ Il RAISE non si toglie: smettere di propagare farebbe risultare riuscito un lavoro che non lo e''. Il lavoro si annulla, il verbale no. ⚠️ fn_job_run_log_failure non solleva mai: se il canale dblink non c''e'' emette un WARNING e si torna al comportamento precedente.';
+IS 'Registra una corsa di job in maintenance.job_run_log ed esegue il lavoro. ⭐ Rev 2026-09-05 (R-12): il verbale di un FALLIMENTO viene scritto anche FUORI transazione, con maintenance.fn_job_run_log_failure, prima del RAISE. ⛔ Prima il gestore d''eccezione scriveva la riga ok=false e poi rilanciava: il RAISE annulla la transazione, quindi anche quella riga — il verbale veniva redatto e distrutto nello stesso istante, e NESSUNO dei dodici job che passano di qui poteva lasciare una riga rossa. Cosi'' apply_storicizza_weekly e'' morto ogni settimana per sei mesi con l''ultimo verdetto agli atti a «done». ⚠️ L''UPDATE in transazione resta e non e'' un doppione: copre il caso in cui il chiamante catturi l''eccezione senza propagarla, dove la transazione sopravvive. Nel caso normale muore e resta solo la riga fuori transazione — o l''una o l''altra, mai due. ⚠️ Il RAISE non si toglie: smettere di propagare farebbe risultare riuscito un lavoro che non lo e''. Il lavoro si annulla, il verbale no. ⚠️ fn_job_run_log_failure non solleva mai: se il canale dblink non c''e'' emette un WARNING e si torna al comportamento precedente. ⭐ Rev 2026-10-10: col lock occupato la riga nasce SALTATA (saltata = TRUE), chiusa e con ok NULL. Prima nasceva ok = TRUE e aperta — «riuscita e mai chiusa» — e ogni lettore la contava come una corsa vera. Brief: brief-db-corsa-saltata-non-e-una-corsa §8.';
 ```
 
 ---

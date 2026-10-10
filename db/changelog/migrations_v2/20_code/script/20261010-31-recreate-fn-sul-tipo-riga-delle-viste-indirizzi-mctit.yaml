@@ -1,0 +1,234 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# CHARACTER(N) -> VARCHAR: LE FUNZIONI CHE NE DIPENDONO (20261010-31-recreate-fn-sul-tipo-riga-delle-viste-indirizzi)
+#   Brief: brief-db-character-n-spazi-di-riempimento.md §4 punto 2
+#
+#   Le tre funzioni RETURNS SETOF <vista> droppate da 20261010-26 tornano, identiche nel corpo: il tipo riga
+#   delle viste e' cambiato (provincia_sigla e provincia_descrizione varchar).
+#   fn_search_indirizzi_dettaglio riceve in questo giro la firma ancorata (stradario_id, civico);
+#   i parametri text restano text con la ragione scritta (identita' invariata).
+#
+#   ⛔ TROVATO NEL GIRO: fn_get_indirizzi_by_soggetto era ROTTA su dbdev (2026-10-10). Dichiara
+#   RETURNS SETOF vw_indirizzi_resolved_soggetto ma proiettava r.* da vw_indirizzi_resolved_base, che
+#   ha guadagnato colonne dopo il suo CREATE: ogni chiamata moriva con «l'istruzione finale restituisce
+#   troppe colonne». Il pgTAP test-indirizzi-fallback era nel registro dei rossi come ERRORE_FIXTURE.
+#   Ora legge la vista che dichiara: stesso filtro (scope = SOGGETTO), stesse righe.
+#
+#   Firma, RETURNS e COMMENT con %TYPE dove esiste una colonna di cui il valore e' il riflesso;
+#   dove non c'e', il tipo e' esplicito e la ragione e' scritta accanto. GRANT all'applicazione
+#   esplicito (il ruolo batch lo copre il provisioning, linee-guida-sql §11.6).
+#   Gira nella stessa corsa di 20261010-26 (conversione) e -27 ... -30 (viste).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-31-recreate-fn-sul-tipo-riga-delle-viste-indirizzi-mctit.yaml
+
+  - changeSet:
+      id: 20261010-31-recreate-fn-sul-tipo-riga-delle-viste-indirizzi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dopo la conversione character(n) -> varchar di 20261010-26: recreate fn sul tipo riga delle viste indirizzi.
+        Brief: brief-db-character-n-spazi-di-riempimento.md §4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzo_by_soggetto(p_soggetto_id anagrafiche.soggetti.id%TYPE, p_tipo_codice config.tipi_indirizzi.codice_interno%TYPE)
+               RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
+               LANGUAGE plpgsql
+               STABLE
+              AS $function$
+              DECLARE
+                v_tipo_soggetto_dettaglio_id anagrafiche.soggetti.tipo_soggetto_dettaglio_id%TYPE;
+                v_current_codice config.tipi_indirizzi.codice_interno%TYPE := p_tipo_codice;
+                v_current_tipo_id config.tipi_indirizzi.id%TYPE;
+                v_fallback_tipo_id config.tipi_soggetto_dettaglio_tipi_indirizzo.fallback_tipo_indirizzo_id%TYPE;
+                v_rows_found integer;
+                v_visited_tipo_ids config.tipi_indirizzi.id%TYPE[] := '{}'::integer[];
+              BEGIN
+                /*
+                  Restituisce l'indirizzo di un soggetto per tipo_codice richiesto.
+                  Se non trova indirizzi per quel tipo, segue la catena di fallback
+                  configurata in config.tipi_soggetto_dettaglio_tipi_indirizzo
+                  fino a trovare un match o esaurire i fallback.
+
+                  Regole:
+                    - Recupera tipo_soggetto_dettaglio_id dal soggetto
+                    - Loop: cerca indirizzo per tipo corrente
+                    - Se trovato: ritorna. Se non trovato: segue fallback
+                    - Protezione anti-loop circolare via v_visited_tipo_ids
+                */
+
+                -- Recupera il tipo soggetto dettaglio per determinare la catena fallback
+                SELECT s.tipo_soggetto_dettaglio_id INTO v_tipo_soggetto_dettaglio_id
+                FROM anagrafiche.soggetti s WHERE s.id = p_soggetto_id;
+                IF v_tipo_soggetto_dettaglio_id IS NULL THEN RETURN; END IF;
+
+                LOOP
+                  -- Il tipo si confronta per ID (rev 20260923-49): la vista espone in
+                  -- tipo_indirizzo_codice il CODICE (display, mutabile), il parametro e' il
+                  -- CODICE_INTERNO. Confrontati come testo non si incontravano mai.
+                  SELECT ti.id INTO v_current_tipo_id
+                  FROM config.tipi_indirizzi ti WHERE ti.codice_interno = v_current_codice;
+                  IF v_current_tipo_id IS NULL THEN RETURN; END IF;
+
+                  -- Cerca indirizzi per il tipo corrente
+                  RETURN QUERY
+                  SELECT * FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                  WHERE r.soggetto_id = p_soggetto_id AND r.tipo_indirizzo_id = v_current_tipo_id;
+
+                  GET DIAGNOSTICS v_rows_found = ROW_COUNT;
+                  IF v_rows_found > 0 THEN RETURN; END IF;
+
+                  -- Nessun indirizzo trovato: cerca fallback
+                  -- Protezione anti-loop circolare
+                  IF v_current_tipo_id = ANY (v_visited_tipo_ids) THEN RETURN; END IF;
+                  v_visited_tipo_ids := array_append(v_visited_tipo_ids, v_current_tipo_id);
+
+                  -- Legge il fallback dalla matrice tipo_soggetto_dettaglio / tipo_indirizzo
+                  SELECT m.fallback_tipo_indirizzo_id INTO v_fallback_tipo_id
+                  FROM config.tipi_soggetto_dettaglio_tipi_indirizzo m
+                  WHERE m.tipo_soggetto_dettaglio_id = v_tipo_soggetto_dettaglio_id
+                    AND m.tipo_indirizzo_id = v_current_tipo_id
+                    AND m.attivo = TRUE
+                    AND (m.valido_dal IS NULL OR m.valido_dal <= (SELECT script.fn_data_operativa()))
+                    AND (m.valido_al IS NULL OR m.valido_al >= (SELECT script.fn_data_operativa()))
+                  LIMIT 1;
+                  IF v_fallback_tipo_id IS NULL THEN RETURN; END IF;
+
+                  -- Risolve il codice del tipo fallback per il prossimo ciclo
+                  SELECT ti.codice_interno INTO v_current_codice
+                  FROM config.tipi_indirizzi ti WHERE ti.id = v_fallback_tipo_id;
+                  IF v_current_codice IS NULL THEN RETURN; END IF;
+                END LOOP;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzo_by_soggetto(anagrafiche.soggetti.id%TYPE, config.tipi_indirizzi.codice_interno%TYPE) IS
+                'Restituisce l''indirizzo di un soggetto per tipo richiesto, con fallback configurato in tipi_soggetto_dettaglio_tipi_indirizzo.';
+              GRANT EXECUTE ON FUNCTION script.fn_get_indirizzo_by_soggetto(anagrafiche.soggetti.id%TYPE, config.tipi_indirizzi.codice_interno%TYPE) TO zeroerp_app;
+
+              CREATE OR REPLACE FUNCTION script.fn_get_indirizzi_by_soggetto(
+                p_soggetto_id  anagrafiche.soggetti.id%TYPE
+              )
+               RETURNS SETOF anagrafiche.vw_indirizzi_resolved_soggetto
+               LANGUAGE sql
+               STABLE
+              AS $function$
+                -- Restituisce tutti gli indirizzi identitari (layer SOGGETTO)
+                -- per il soggetto indicato, ordinati per tipo indirizzo e id.
+                -- Legge la vista che DICHIARA come tipo di ritorno (rev 20261010-31):
+                -- e' la base filtrata per scope = SOGGETTO, con le sue colonne. Proiettare
+                -- r.* dalla base, come prima, si rompe a ogni colonna aggiunta alla base.
+                SELECT r.*
+                FROM anagrafiche.vw_indirizzi_resolved_soggetto r
+                WHERE r.soggetto_id = p_soggetto_id
+                ORDER BY r.tipo_indirizzo_codice, r.indirizzo_id;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_get_indirizzi_by_soggetto(anagrafiche.soggetti.id%TYPE) IS
+                'Restituisce tutti gli indirizzi layer SOGGETTO (identitario) per un dato soggetto_id, ordinati per tipo e id. Legge vw_indirizzi_resolved_soggetto, il suo tipo di ritorno (rev 20261010-31: proiettava la base e restituiva troppe colonne).';
+              GRANT EXECUTE ON FUNCTION script.fn_get_indirizzi_by_soggetto(anagrafiche.soggetti.id%TYPE) TO zeroerp_app;
+
+              CREATE OR REPLACE FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(
+                p_stradario_id      anagrafiche.indirizzi_dettaglio.stradario_id%TYPE DEFAULT NULL,
+                p_civico            anagrafiche.indirizzi_dettaglio.civico%TYPE       DEFAULT NULL,
+                -- text e non %TYPE: le colonne sono varchar, e ancorarle cambierebbe
+                -- l'identita' della funzione (overload con i DEFAULT = chiamate ambigue).
+                p_estensione_civico text DEFAULT NULL,
+                p_palazzina         text DEFAULT NULL,
+                p_scala             text DEFAULT NULL,
+                p_piano             text DEFAULT NULL,
+                p_interno           text DEFAULT NULL,
+                -- un PATTERN di ricerca, non il valore della colonna
+                p_indirizzo_norm    text DEFAULT NULL,
+                -- un tetto, nessuna colonna
+                p_limit             integer DEFAULT 50
+              )
+               RETURNS SETOF anagrafiche.vw_indirizzi_dettaglio
+               LANGUAGE plpgsql
+               STABLE PARALLEL SAFE
+              AS $function$
+              DECLARE
+                v_limit integer := COALESCE(p_limit, 50);
+                v_pattern text;
+              BEGIN
+                /*
+                  Ricerca indirizzi dettaglio con due modalita':
+                    - Per stradario_id: ricerca esatta con filtri opzionali
+                      su civico, estensione, palazzina, scala, piano, interno
+                    - Per pattern: ricerca fuzzy case-insensitive su
+                      indirizzo_normalizzato
+                  Almeno uno tra p_stradario_id e p_indirizzo_norm deve
+                  essere valorizzato.
+                */
+
+                -- Normalizza il pattern di ricerca
+                IF p_indirizzo_norm IS NOT NULL THEN
+                  v_pattern := NULLIF(btrim(p_indirizzo_norm), '');
+                ELSE
+                  v_pattern := NULL;
+                END IF;
+
+                -- Guard: almeno un criterio di ricerca obbligatorio
+                IF p_stradario_id IS NULL AND v_pattern IS NULL THEN
+                  RAISE EXCEPTION
+                    'fn_search_indirizzi_dettaglio: valorizzare almeno p_stradario_id o p_indirizzo_norm (non vuoto)'
+                    USING HINT = 'Per ricerche fuzzy usare p_indirizzo_norm, per ricerche esatte usare p_stradario_id + dettagli civico.';
+                END IF;
+
+                -- Ricerca per stradario_id (+ filtri opzionali + pattern opzionale)
+                IF p_stradario_id IS NOT NULL THEN
+                  RETURN QUERY
+                  SELECT *
+                  FROM anagrafiche.vw_indirizzi_dettaglio v
+                  WHERE
+                    v.attivo = TRUE
+                    AND v.stradario_id = p_stradario_id
+                    AND (p_civico IS NULL OR v.civico = p_civico)
+                    AND (p_estensione_civico IS NULL OR COALESCE(v.estensione_civico, '') = COALESCE(p_estensione_civico, ''))
+                    AND (p_palazzina IS NULL         OR COALESCE(v.palazzina,        '') = COALESCE(p_palazzina,        ''))
+                    AND (p_scala IS NULL             OR COALESCE(v.scala,            '') = COALESCE(p_scala,            ''))
+                    AND (p_piano IS NULL             OR COALESCE(v.piano,            '') = COALESCE(p_piano,            ''))
+                    AND (p_interno IS NULL           OR COALESCE(v.interno,          '') = COALESCE(p_interno,          ''))
+                    AND (
+                      v_pattern IS NULL
+                      OR UPPER(v.indirizzo_normalizzato) LIKE UPPER('%' || v_pattern || '%')
+                    )
+                  ORDER BY
+                    v.indirizzo_normalizzato,
+                    v.indirizzo_dettaglio_id
+                  LIMIT v_limit;
+
+                  RETURN;
+                END IF;
+
+                -- Ricerca fuzzy solo per pattern
+                RETURN QUERY
+                SELECT *
+                FROM anagrafiche.vw_indirizzi_dettaglio v
+                WHERE
+                  v.attivo = TRUE
+                  AND UPPER(v.indirizzo_normalizzato) LIKE UPPER('%' || v_pattern || '%')
+                ORDER BY
+                  v.indirizzo_normalizzato,
+                  v.indirizzo_dettaglio_id
+                LIMIT v_limit;
+
+                RETURN;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(anagrafiche.indirizzi_dettaglio.stradario_id%TYPE, anagrafiche.indirizzi_dettaglio.civico%TYPE, text, text, text, text, text, text, integer) IS
+                'Ricerca indirizzi dettaglio: per stradario_id (esatta) o per pattern fuzzy su indirizzo_normalizzato. Solo righe attive, limitate da p_limit.';
+              GRANT EXECUTE ON FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(anagrafiche.indirizzi_dettaglio.stradario_id%TYPE, anagrafiche.indirizzi_dettaglio.civico%TYPE, text, text, text, text, text, text, integer) TO zeroerp_app;

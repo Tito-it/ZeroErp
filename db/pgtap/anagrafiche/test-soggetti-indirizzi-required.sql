@@ -384,12 +384,12 @@ FROM ins;
 --   motivo sbagliato, non per l'indirizzo mancante che vuole verificare.
 INSERT INTO anagrafiche.dati_societari (
     soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
-    socio_unico, liquidazione, destinatario_fe
+    socio_unico, liquidazione
 )
 SELECT s.id, 10000.00,
        (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1),
        'REA-' || (SELECT sfx FROM tmp_run_sfx) || '-SCERR',
-       'SM', 'LN', '0000000'
+       'SM', 'LN'   -- nessun canale FE (D-6, 20261010-37)
   FROM tmp_soggetto_sc_err s;
 
 INSERT INTO anagrafiche.contatti (
@@ -542,7 +542,7 @@ SELECT lives_ok(
           'SP-REA-' || (SELECT sfx FROM tmp_run_sfx),
           'SM',
           'LN',
-          'XXXXXXX002',
+          'C',    -- canale FE: codice SDI (D-6, 20261010-37)
           'fatt.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
           'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
           script.fn_data_operativa()

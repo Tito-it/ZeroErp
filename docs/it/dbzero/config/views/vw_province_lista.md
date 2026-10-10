@@ -2,7 +2,7 @@
 
 > 📝 **Descrizione**
 >
-> Vista di lista delle province (ui.lista_definizione config.province). descrizione e sigla sono character(n) nella tabella: qui escono con TRIM. Brief: brief-db-liste-datatable-grezze §8 punto 6 (2026-09-27).
+> Vista di lista delle province (ui.lista_definizione config.province). descrizione e sigla escono come sono: dal 20261010-26 sono varchar e non portano spazi di riempimento (prima character(n), con TRIM qui). Brief: brief-db-liste-datatable-grezze §8 punto 6; brief-db-character-n-spazi-di-riempimento D-3.
 
 > 🔒 **Opzioni di sicurezza**: `security_invoker=on` — reloption non visibile in `pg_get_viewdef`, riportata qui esplicitamente. Va **ri-specificata** in ogni `CREATE OR REPLACE VIEW`, altrimenti PostgreSQL la azzera.
 
@@ -10,8 +10,8 @@
 CREATE OR REPLACE VIEW config.vw_province_lista
 WITH (security_invoker=on) AS
 SELECT p.id,
-    TRIM(BOTH FROM p.descrizione) AS descrizione,
-    TRIM(BOTH FROM p.sigla) AS sigla,
+    p.descrizione,
+    p.sigla,
     p.regione_id,
     r.descrizione AS regione_descrizione
    FROM (config.province p

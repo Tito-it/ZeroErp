@@ -304,7 +304,7 @@ SELECT throws_ok(
             'PRX-REA-001-' || (SELECT sfx FROM tmp_run_sfx),
             'SU',
             'LN',
-            'XXXXXXX001',
+            NULL,   -- nessun canale FE: ne' PEC ne' codice (D-6, 20261010-37)
             NULL,
             NULL,
             script.fn_data_operativa()
@@ -438,9 +438,9 @@ SELECT lives_ok(
             'SPR-REA-001-' || (SELECT sfx FROM tmp_run_sfx),
             'SM',
             'LN',
-            'XXXXXXX002',
-            -- ⚠️ PEC e codice SDI hanno un UNIQUE loro (uq_ds_pec_fatt,
-            --   uq_ds_codice_sdi): i valori fissi sono bruciati da un residuo.
+            'C',    -- canale FE: codice SDI (D-6, 20261010-37)
+            -- PEC e codice per corsa: fino al 20261010-37 avevano un UNIQUE
+            --   loro (uq_ds_pec_fatt, uq_ds_codice_sdi), ora tolto.
             'fatt.sp1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
             'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
             script.fn_data_operativa()
@@ -627,7 +627,7 @@ SELECT s.id,
     'SCX-REA-OK-' || (SELECT sfx FROM tmp_run_sfx),
     'SM',
     'LN',
-    'XXXXXXX003',
+    'C',    -- canale FE: codice SDI (D-6, 20261010-37)
     'fatt.sc1.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
     'SCCO' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 3)),
     script.fn_data_operativa()

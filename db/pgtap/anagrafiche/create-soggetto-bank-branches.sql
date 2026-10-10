@@ -141,11 +141,11 @@ VALUES (
 -- ---------------------------------------------------------
 INSERT INTO anagrafiche.dati_societari (
     soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
-    socio_unico, liquidazione, destinatario_fe
+    socio_unico, liquidazione
 )
 SELECT s.id, 10000.00,
        (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1),
-       'REA-PGTAP-01', 'SM', 'LN', '0000000'
+       'REA-PGTAP-01', 'SM', 'LN'   -- nessun canale FE (D-6, 20261010-37)
   FROM tmp_soggetto_banca s;
 
 -- Indirizzi obbligatori del SOGGETTO. Forma libera completa: il CHECK

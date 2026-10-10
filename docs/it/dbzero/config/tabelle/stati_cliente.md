@@ -11,7 +11,7 @@
 | id | integer | NO |  |
 | codice_interno | character varying(50) | NO |  |
 | descrizione | character varying(80) | NO | ''::character varying |
-| descrizione_breve | character(20) | NO |  |
+| descrizione_breve | character varying(20) | NO |  |
 | check_lettura | character(1) | NO | 'S'::bpchar |
 | abilita_fattura | character(1) | NO | 'S'::bpchar |
 | codice | character varying(50) | NO | 'IS'::bpchar |
@@ -24,6 +24,7 @@
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
+| CHECK | chk_stati_cliente_descrizione_breve_non_vuota |  |
 | PRIMARY KEY | pk_stati_cliente | id |
 | UNIQUE | uq_stati_cli_codice_interno | codice_interno |
 

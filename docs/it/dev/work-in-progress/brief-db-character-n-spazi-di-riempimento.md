@@ -6,9 +6,10 @@
 > trovato la causa nel tipo di `config.province.sigla` e proposto un brief
 > `brief-db-province-sigla-varchar`. Nell'analisi DB il perimetro risulta più largo della sola
 > sigla (§2), quindi il brief ha un nome più generale.
-> **Stato:** 📝 **bozza, non iniziato**. Prima di scrivere i changeSet servono le decisioni di Tid
-> del §3.
-> **Da leggere per primo:** §1 e §3.
+> **Stato:** ✅ **lato DB chiuso** (2026-10-10): D-1…D-6 applicate da Tid (`20261010-26` … `-40`),
+> corse pgTAP verdi. Restano le richieste a BE/FE (§6: R-1 … R-10) e la verifica a video del drawer
+> comuni (`Potenza (PZ)`).
+> **Da leggere per primo:** §6 (richieste a BE/FE), poi §7 per cosa è cambiato a DB.
 
 ## 1. Il difetto, sul modello
 
@@ -130,6 +131,10 @@ dipende dalla sola riga della provincia (vedi D-2).
 | **D-3** | **I tamponi del §2.3**: si tolgono? | **Sì, nello stesso giro**, nelle viste e nelle funzioni che i changeSet riscrivono comunque. Un `TRIM` rimasto non fa danni, ma lascia credere al prossimo lettore che il tipo produca ancora spazi. I `btrim` degli snapshot fiscali restano solo se D-2 lascia lì la regola delle due lettere. Il presidio pgTAP test 7 resta comunque. |
 | **D-4** | **Regola nuova** in `linee-guida-sql.md`? | Sì: «**`character(n)` non si usa.** Un testo a lunghezza variabile è `varchar(n)` o `text`. Un codice a lunghezza fissa è `varchar(n)` con un `CHECK` sulla forma. Nelle firme delle funzioni non compare mai `character`». La regola si scrive sul modello, non su questi casi. |
 | **D-5** | **Presidio** strutturale? | Un pgTAP che rifiuta ogni colonna `bpchar` nuova, con un **registro dichiarato** delle colonne del §2.2 tollerate, e ogni funzione con `character` in firma o nel `RETURNS`. Così il prossimo `character(n)` diventa rosso in CI, invece di arrivare come segnalazione dal drawer. |
+| **D-6** | ✅ **Decisa da Tid il 2026-10-10**, dopo una prima versione sbagliata (§7.6): `destinatario_fe` è il **canale** FE, non il codice. | Vocabolario `P`/`C`, nullable; `P` ⇒ PEC, `C` ⇒ codice SDI di 6-7 caratteri maiuscoli o cifre; via gli UNIQUE su `codice_sdi` e `pec_fatturazione`. Dettaglio nel §7.6. |
+
+✅ **D-1 … D-5 accettate da Tid il 2026-10-10** («accetto le tue proposte, procedi»). Come sono
+state applicate, e dove il codice si scosta dalla lettera del §4, è nel §7.
 
 ## 4. Piano dei changeSet (dopo le decisioni)
 
@@ -186,12 +191,195 @@ query del §2.4 riceveranno valori puliti senza modifiche.
 - **R-2 (BE/FE)** — dopo l'apply, verifica a video: autocomplete comuni (`Potenza (PZ)`), comune di
   nascita nel dettaglio soggetto, tendina province, dati societari (codice destinatario).
 - **R-3 (BE)** — il `.strip().upper()` in **ingresso** di `geo_repository.create_provincia` /
-  `update_provincia` può restare: normalizza l'input dell'utente. La regola sulla forma diventa del
-  DB (D-2), e un valore fuori forma torna come errore del `CHECK`. Se il codice è nuovo, va
-  registrato nella tassonomia errori di `api.md`.
+  `update_provincia` può restare: normalizza l'input dell'utente. La regola sulla forma è del DB
+  (D-2): una sigla fuori forma torna come **`E_PROVINCIA_SIGLA_NON_VALIDA`** (`P0001`,
+  `DATO_ERRATO`, `campo` = `sigla`; `stato_id` se a cambiare è lo stato di una regione), con una
+  frase che nomina sigla e provincia. Il `CHECK` resta solo come rete.
+- **R-4 (BE)** — codice nuovo `E_PROVINCIA_SIGLA_NON_VALIDA` (id messaggio 1245): rigenerare
+  `apps/core/services/error_policies_generated.py` dopo l'apply.
+- **R-5 (BE)** — il commento di `geo_repository.list_province_paginated` dice che
+  `vw_province_lista` esce «con TRIM»: dal `20261010-27` esce com'è (varchar). Solo il commento.
+  I tipi delle colonne delle viste di lista passano da `text` a `varchar(n)`: per Python sono
+  `str` uguali.
+- **R-6 (BE)** — `anagrafiche.fn_crea_soggetto_pg` cambia identità (`p_destinatario_fe` da
+  `character` a `varchar`, `20261010-34`). Il backend la chiama con parametri **nominati**
+  (`soggetti_repository.py`): niente da cambiare, ma il test Django che la attraversa va guardato
+  dopo l'apply.
+- **R-8 (BE)** — tre codici nuovi del canale FE (`E_DATI_SOCIETARI_CODICE_SDI_NON_VALIDO`,
+  `…_CODICE_SDI_MANCANTE`, `…_PEC_FATTURAZIONE_MANCANTE`, id 1246-1248): rigenerare
+  `error_policies_generated.py`, con R-4.
+- **R-9 (FE)** — `DatiSocietariForm.vue`: il codice SDI va scritto in maiuscolo (conviene
+  trasformarlo mentre si digita); il canale può restare vuoto (`show-clear` è giusto, la colonna
+  ora è nullable). Con canale `P` senza PEC, o `C` senza codice, il DB risponde con un errore sul
+  campo (`campo` = `pec_fatturazione` / `codice_sdi`): il form può accenderlo.
+- **R-10 (BE)** — `soggetti_service`: `destinatario_fe` vuoto arriva come NULL (`optional_str`):
+  giusto, ora è ammesso. Nessun cambio.
+- **R-7 (FE, facoltativo)** — la sigla della provincia si può validare anche nel form (due
+  lettere maiuscole per l'Italia): solo come aiuto, la regola resta del DB.
 
-## 7. Registro
+## 7. Lato DB: cosa è stato fatto (2026-10-10)
+
+### 7.1 I changeSet
+
+Tutti in una corsa: il `00_schema` abbatte la catena e converte, i `20_code` la ricostruiscono
+subito dopo per numero.
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `00_schema/config/20261010-26-alter-character-n-a-varchar` | `DROP` delle 3 funzioni `RETURNS SETOF <vista>` e delle 16 viste (§2.5, più `vw_clienti_lista` e `vw_clienti_codice_ba`, che leggono `stati_cliente.descrizione_breve`); le **12 colonne** del §2.1 diventano `varchar(n)` con la **stessa n** (`USING btrim`, `NULLIF` sulle nullable); i CHECK; `COMMENT` su sigla, descrizione, `destinatario_fe`. `preCondition` HALT: le 12 colonne sono ancora `character(n)` |
+| `20_code/config/…-27-recreate-viste-geo-senza-trim` | `vw_province_lista`, `vw_comuni_lista`, `vw_codici_postali_lista` **senza TRIM** (D-3), COMMENT aggiornati |
+| `20_code/script/…-28-recreate-vw-indirizzo-completo-e-ita-province` | le due viste di `script`, identiche |
+| `20_code/anagrafiche/…-29-recreate-catena-vw-indirizzi` | le 8 viste della catena indirizzi, identiche, dalle radici alle foglie |
+| `20_code/anagrafiche/…-30-recreate-vw-dati-societari-e-clienti` | `vw_dati_societari`, `vw_clienti_lista`, `vw_clienti_codice_ba`, identiche |
+| `20_code/script/…-31-recreate-fn-sul-tipo-riga-delle-viste-indirizzi` | le 3 funzioni `SETOF` (una **riparata**, §7.3); `fn_search_indirizzi_dettaglio` con firma ancorata dove l'identità non cambia |
+| `20_code/script/…-32-update-fn-get-indirizzo-e-by-ruolo-provincia-varchar` | `DROP` + `CREATE`: il `%TYPE` della provincia nel `RETURNS TABLE` si risolve ora a `varchar` |
+| `20_code/script/…-33-update-fn-get-soggetto-dati-by-ruolo-varchar` | idem per `provincia_iscri_rea_sigla` e `destinatario_fe` |
+| `20_code/anagrafiche/…-34-update-fn-crea-soggetto-pg-destinatario-fe-varchar` | `p_destinatario_fe` è `%TYPE` di una colonna convertita: cambia l'identità, `DROP` della firma vecchia + `CREATE` (niente overload) |
+| `20_code/script/…-35-update-fn-get-note-lingua-varchar` | `script.fn_get_note` e i tre wrapper (§7.3) |
+| `20_code/config/…-36-create-guard-sigla-provincia` | D-2: `config.fn_sigla_provincia_ammessa` e due guard (§7.2) |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | `E_PROVINCIA_SIGLA_NON_VALIDA` (`DATO_ERRATO`, messaggio id 1245) |
+
+Corpi dal **vivo** (`pg_get_viewdef` / `prosrc`), dichiarazioni dall'ultimo YAML ancorato (firme
+con `%TYPE`; tipi espliciti con la ragione scritta dove non c'è una colonna o dove ancorare
+cambierebbe l'identità). Opzioni `security_invoker`, `COMMENT` e `GRANT` all'app riprodotti.
+
+### 7.2 D-2: la sigla, in due sedi
+
+- `chk_province_sigla_forma`: `^[A-Z0-9]{1,10}$`, per ogni provincia.
+- Guard **`trg_province_a10_guard_sigla_ins_upd`** (BEFORE INSERT OR UPDATE OF `sigla`,
+  `regione_id`): due lettere maiuscole se la regione è di uno stato con `codice_iso2 = 'IT'`,
+  altrimenti la forma generale. Parla prima del CHECK, con una frase che nomina sigla e provincia.
+- Guard **`trg_regioni_a10_guard_sigla_province_upd`** su `config.regioni`: una regione non passa
+  all'Italia se una sua provincia ha una sigla che l'Italia non ammette. ⚠️ È **AFTER UPDATE**
+  con `WHEN (stato_id cambia)`, non BEFORE: `trg_regioni_normalize_ins_upd` riscrive `stato_id`
+  quando è NULL, e scatta dopo un guard `a10` in ordine alfabetico. Un BEFORE vedrebbe il NULL e
+  non lo stato finale.
+- Il predicato è uno solo (`config.fn_sigla_provincia_ammessa`), letto dai due guard.
+- ⚠️ Il guard **non rilegge** le province esistenti. Su dbdev c'è una provincia `TEST` in una
+  regione italiana (fatto datato, 2026-10-10). Non blocca l'apply, ma chi la tocca riceve
+  l'errore: va **corretta o cancellata a mano** (domanda a Tid, §7.5).
+
+### 7.3 Dove il codice si scosta dal §4, e cosa si è trovato scrivendo
+
+- **CHECK sul testo libero**: `btrim(col) <> ''` (la forma di casa, `chk_*_non_vuot*`), non
+  `col = btrim(col) AND col <> ''` come scritto nel §4. Uno spazio scritto da una persona è il suo
+  dato, non un padding. Rifiutarlo con un `23514` trasformerebbe un refuso in un errore tecnico.
+- **I `btrim` degli snapshot fiscali restano** (`fn_snapshot_indirizzo`, `_soggetto`,
+  `fn_snapshot_intestazione_fattura`). Nessun changeSet di questo giro li riscrive, e lo snapshot
+  di `stato_iso2` legge ancora un `character(2)`. D-3 li toglieva «dove si riscrive comunque».
+- ⛔ **Trovato: `script.fn_get_indirizzi_by_soggetto` era rotta su dbdev.** Dichiara `RETURNS
+  SETOF vw_indirizzi_resolved_soggetto` ma proiettava `r.*` da `vw_indirizzi_resolved_base`, che
+  dopo il suo `CREATE` (`20260402-08`) ha guadagnato colonne. Ogni chiamata moriva con
+  «l'istruzione finale restituisce troppe colonne». Il pgTAP `test-indirizzi-fallback` era nei
+  registri dei rossi come `ERRORE_FIXTURE`, che nascondeva il difetto. Riparata nel `-31`: legge
+  la vista che dichiara (stesso filtro `scope = SOGGETTO`, stesse righe).
+- **Trovato: `script.fn_get_note` gli spazi li fabbricava lei**: `l.codice_iso::char(5)`, da un
+  `config.lingue.codice_iso` che è già `varchar(5)`. Tolto il cast. Lingua e stile si ancorano al
+  loro vocabolario, e i tre wrapper (vendite, acquisti, magazzino) seguono. Il wrapper di
+  magazzino legge `magazzino.note`, quindi il suo `RETURNS` si ancora a quella tabella.
+- **`fn_crea_soggetto_pg` cambia identità** (`-34`). Non era nel §2.4: è emersa cercando chi
+  ancora con `%TYPE` le colonne convertite.
+- **D-6 aperta** (§3): la forma del codice SDI non è un vincolo.
+
+### 7.4 La prova (2026-10-10, scratch `zeroerp_ci` come `zeroerp`, transazione annullata)
+
+- **SQL estratto** dagli YAML (`changes[].sql`), `-26` … `-36` in fila: gira tutto. La
+  `preCondition` del `-26` risponde 12 su scratch.
+- **Firme**: una sola funzione per nome. L'identità cambia **solo** in `fn_crea_soggetto_pg`
+  (voluto); il corpo cambia solo in `fn_get_indirizzi_by_soggetto` e `fn_get_note` (voluto).
+- **Viste**: nomi e posizioni delle colonne identici. Cambia solo il tipo: da `character(n)` (o
+  `text`, dove c'era il TRIM) a `varchar(n)`, su 31 colonne. `security_invoker` conservato dove
+  c'era.
+- **Definizioni vive** delle 16 viste e 11 funzioni: identiche fra dbdev e scratch (md5), quindi
+  la prova vale per entrambi.
+- **pgTAP prima/dopo**: 101 file che nominano gli oggetti toccati o i cataloghi degli errori,
+  ognuno da solo e con l'SQL estratto in testa. **Nessuna regressione**: errori e rossi identici
+  prima e dopo in 98 file. Cambiano solo:
+  - `config/test-province-sigla-v1` (nuovo): 5/12 prima, **12/12** dopo;
+  - `dbops/test-character-n-v1` (nuovo): 4/8 prima, **8/8** dopo;
+  - `anagrafiche/test-indirizzi-fallback`: prima moriva al test 11 sull'errore di
+    `fn_get_indirizzi_by_soggetto`; dopo arriva in fondo, e il test 11 passa. Restano 6 rossi di
+    **fixture**: il test 1 cerca un Gestore esistente, che sullo scratch non c'è, e gli altri
+    cadono a cascata. Dopo l'apply va riclassificato nei registri dei rossi.
+- Presidi trasversali verdi prima e dopo: `test-riferimenti-morti-v1` (`plpgsql_check` su tutte le
+  funzioni), `test-rls-viste-security-invoker`, `test-catalogo-messaggi-errore-completo`,
+  `test-codici-errore-identita`.
+- **Controesempi su dbdev** (sola lettura): nessuna riga viola i CHECK nuovi, e nessun valore
+  supera la sua `n` dopo il `btrim`.
+- ⚠️ **Non provato**: il loader dei CSV degli errori (nella prova le due righe sono state inserite a
+  mano) e la corsa come `zeroerp_app`. Restano all'apply e alla corsa pgTAP di Tid.
+
+### 7.6 D-6: il canale della fattura elettronica (2026-10-10, dopo l'apply di `-26`…`-36`)
+
+Fatto datato (dbdev, 2026-10-10): nessuna riga di `dati_societari` ha `destinatario_fe` in `P`/`C`.
+Ci sono 155 `XXXXXXX002`, 2 `XXXXXXX003` (residui dei pgTAP che committano), `trewtetr` e `wwww`.
+Il form scrive `P`/`C`, ma su questo database non l'ha mai fatto con successo, oppure le righe sono
+state riscritte. Il dato non decide niente: dice solo che la colonna oggi non ha un contratto.
+
+Chi legge la colonna: `vendite.fn_snapshot_intestazione_fattura` (la copia nello snapshot accanto a
+`codice_sdi` e `pec_fatturazione`), `script.fn_get_soggetto_dati_by_ruolo`, `vw_dati_societari`, il
+backend (`soggetti_repository`).
+Chi la scrive: il form (`P`/`C`), `fn_crea_soggetto_pg`, l'helper `dbops.fn_pgtap_crea_soggetto_pg`
+(`'0000000'`) e tre pgTAP (`XXXXXXX00n`, `'C'`).
+
+⚠️ Anche il commento della colonna messo dal `-26` va corretto: parla di «codice destinatario» e
+rimanda a una D-6 che chiedeva la cosa sbagliata.
+
+**Decisioni di Tid (2026-10-10):** vocabolario + coerenza; via entrambi gli UNIQUE; canale nullable.
+
+⛔ **La prima versione di D-6 era sbagliata, ed è stata ritirata prima dell'apply.** La domanda del
+§3 chiedeva «la forma del codice SDI in `destinatario_fe`», fidandosi del commento della colonna.
+I changeSet scritti su quella base (un CHECK `^[A-Z0-9]{6,7}$` su `destinatario_fe`) avrebbero
+vietato proprio `P` e `C`. Li ha fermati il censimento dei chiamanti: il form usa la colonna come
+scelta del canale. ⇒ Il significato di una colonna si legge da **chi la scrive** (form, funzioni,
+fixture), non dal suo commento.
+
+**ChangeSet (applicati il 2026-10-10):**
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `00_schema/anagrafiche/20261010-37-alter-dati-societari-canale-fe` | `DROP` di `vw_dati_societari`; `destinatario_fe` nullable e `varchar(1)`, con `USING` che **deriva** il canale dove c'era un codice (codice SDI → `C`, altrimenti PEC → `P`, altrimenti NULL); `codice_sdi` `varchar(7)` `USING upper(btrim())`; CHECK `chk_dati_societari_destinatario_fe_canale`, `chk_dati_societari_codice_sdi_forma`, `chk_dati_societari_canale_fe_coerente`; `DROP` di `uq_ds_codice_sdi`, `uq_ds_pec_fatt` e del «non vuoto» del `-26`; COMMENT delle tre colonne riscritti |
+| `20_code/anagrafiche/…-38-recreate-vw-dati-societari-canale-fe` | la vista, identica (corpo vivo) |
+| `20_code/anagrafiche/…-39-create-trgfn-dati-societari-guard-canale-fe` | guard con una frase per campo: `E_DATI_SOCIETARI_CODICE_SDI_NON_VALIDO`, `…_CODICE_SDI_MANCANTE`, `…_PEC_FATTURAZIONE_MANCANTE` (DATO_ERRATO, id 1246-1248). Un canale fuori vocabolario resta al `23514`: lo sceglie una lista, chi lo sbaglia è un chiamante rotto |
+| `20_code/dbops/…-40-update-fn-pgtap-crea-soggetto-pg-senza-canale-fe` | l'helper di fixture non scrive più `'0000000'` nel canale |
+
+Fixture dei pgTAP allineate: `test-dati-societari-policy` (`XXXXXXX00n` → `C` o NULL secondo i
+recapiti presenti), `test-soggetti-indirizzi-required`, `create-soggetto-bank-branches` (`'0000000'`
+→ nessun canale). `test-emittenti-fiscali` scriveva già `'C'`: era giusto lui. Nuovo
+`anagrafiche/test-dati-societari-canale-fe-v1` (13). Il presidio `test-character-n-v1` aggiorna la
+riga di `destinatario_fe`. Manual `dati_societari` riscritto sui tre campi.
+
+**Passo 0, a mano su dbdev, PRIMA dell'apply (fatto)** (provato come app in transazione annullata: 0 righe
+residue fuori forma). Cinque `codice_sdi` da 10 caratteri, residui di pgTAP ritirati
+(`SPCOD12345`, `SCCOD67890`, …), farebbero fallire l'`ALTER` a `varchar(7)`:
+
+```sql
+UPDATE anagrafiche.dati_societari
+   SET codice_sdi = right(codice_sdi, 7)
+ WHERE length(codice_sdi) > 7;
+```
+
+I 157 `destinatario_fe` con un codice al posto del canale non vanno toccati: li converte la `USING`
+del `-37`.
+
+**Prova (2026-10-10, scratch, transazione annullata):**
+- l'SQL estratto di `-37`…`-40` gira; CHECK e tipi come attesi, una sola `fn_pgtap_crea_soggetto_pg`;
+- la `USING`, su righe costruite nei sei casi di dbdev: `XXXXXXX002` con codice → `C`; `trewtetr`
+  con la sola PEC → `P`; `'0000000'` senza recapiti → NULL; `P` e `C` restano; `abc1234` →
+  `ABC1234`; PEC vuota e codice di spazi → NULL;
+- pgTAP prima/dopo su 39 file (chi nomina `dati_societari` e i suoi recapiti, più i presidi
+  trasversali): nessuna regressione. Cambiano solo i due file toccati (`test-character-n-v1`
+  6/8 → 8/8, `test-dati-societari-canale-fe-v1` 3/13 → 13/13).
+
+### 7.5 Domande aperte a Tid
+
+Nessuna. (D-6 decisa; la provincia `TEST` cancellata a mano da Tid il 2026-10-10.)
+
+## 8. Registro
 
 | Data | Cosa |
 | --- | --- |
 | 2026-10-10 | Brief aperto su segnalazione BE (drawer comuni: `Potenza (PZ        )`). Perimetro allargato dall'analisi DB (§2). In attesa di D-1…D-5. |
+| 2026-10-10 | D-1…D-5 accettate da Tid. Lato DB scritto: `20261010-26` … `-36`, codice `E_PROVINCIA_SIGLA_NON_VALIDA`, pgTAP `test-character-n-v1` e `test-province-sigla-v1`, regola §7e in `linee-guida-sql.md`, manual di `province`. Trovati e riparati `fn_get_indirizzi_by_soggetto` (rotta) e il cast `char(5)` di `fn_get_note`. Aperta D-6. Prova sullo scratch senza regressioni (§7.4). Da applicare. |
+| 2026-10-10 | `-26`…`-36` applicati da Tid, pgTAP verdi; provincia `TEST` cancellata a mano. D-6 prima scritta sul significato sbagliato (`-37`/`-38`, ritirati prima dell'apply), poi rifatta sul canale FE dopo le decisioni di Tid: `-37`…`-40`, tre codici errore, pgTAP `test-dati-societari-canale-fe-v1`. Da applicare dopo il passo 0 (§7.6). |
+| 2026-10-10 | Passo 0 fatto, `-37`…`-40` applicati da Tid, pgTAP verdi. **Lato DB chiuso**; restano BE/FE (§6). |

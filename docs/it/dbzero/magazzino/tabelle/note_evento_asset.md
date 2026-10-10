@@ -14,7 +14,7 @@
 | testo | text | YES |  |
 | testo_md | text | YES |  |
 | stile | character varying(16) | NO | 'NORMALE'::character varying |
-| lingua | character(5) | YES |  |
+| lingua | character varying(5) | YES |  |
 | visibile | boolean | NO | true |
 | solo_stampa | boolean | NO | false |
 | meta | jsonb | NO | '{}'::jsonb |
@@ -28,6 +28,7 @@
 |------|------|---------|
 | CHECK | chk_note_anchor_tipo |  |
 | CHECK | chk_note_evento_asset_anchor |  |
+| CHECK | chk_note_lingua_non_vuota |  |
 | CHECK | chk_note_posizione |  |
 | CHECK | chk_note_seq_pos |  |
 | CHECK | chk_note_target_tipo |  |

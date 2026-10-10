@@ -2,13 +2,13 @@
 # ⚙️ Funzione `fn_crea_soggetto_pg`
 
 ```sql
-CREATE FUNCTION fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
+CREATE FUNCTION fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text DEFAULT NULL::text, p_partita_iva text DEFAULT NULL::text, p_stato_iso2 character DEFAULT NULL::bpchar, p_forma_giuridica_id bigint DEFAULT NULL::bigint, p_id_prov_iscri_rea integer DEFAULT NULL::integer, p_iscrizione_rea character varying DEFAULT NULL::character varying, p_capitale_sociale numeric DEFAULT NULL::numeric, p_socio_unico anagrafiche.socio_unico_enum DEFAULT NULL::anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum DEFAULT NULL::anagrafiche.liquidazione_enum, p_destinatario_fe character DEFAULT NULL::bpchar, p_pec_fatturazione character varying DEFAULT NULL::character varying, p_codice_sdi character varying DEFAULT NULL::character varying, p_tipo_contatto_id integer DEFAULT NULL::integer)
+CREATE OR REPLACE FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text DEFAULT NULL::text, p_partita_iva text DEFAULT NULL::text, p_stato_iso2 character DEFAULT NULL::bpchar, p_forma_giuridica_id bigint DEFAULT NULL::bigint, p_id_prov_iscri_rea integer DEFAULT NULL::integer, p_iscrizione_rea character varying DEFAULT NULL::character varying, p_capitale_sociale numeric DEFAULT NULL::numeric, p_socio_unico anagrafiche.socio_unico_enum DEFAULT NULL::anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum DEFAULT NULL::anagrafiche.liquidazione_enum, p_destinatario_fe character varying DEFAULT NULL::character varying, p_pec_fatturazione character varying DEFAULT NULL::character varying, p_codice_sdi character varying DEFAULT NULL::character varying, p_tipo_contatto_id integer DEFAULT NULL::integer)
  RETURNS uuid
  LANGUAGE plpgsql
 AS $function$
@@ -276,7 +276,7 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
+COMMENT ON FUNCTION anagrafiche.fn_crea_soggetto_pg(p_ragione_sociale text, p_tipo_soggetto_dettaglio_id bigint, p_email character varying, p_codice_fiscale text, p_partita_iva text, p_stato_iso2 character, p_forma_giuridica_id bigint, p_id_prov_iscri_rea integer, p_iscrizione_rea character varying, p_capitale_sociale numeric, p_socio_unico anagrafiche.socio_unico_enum, p_liquidazione anagrafiche.liquidazione_enum, p_destinatario_fe character varying, p_pec_fatturazione character varying, p_codice_sdi character varying, p_tipo_contatto_id integer)
 IS 'Crea soggetto PG o ENC + contatto default con tipo_contatto_id + dati societari (se policy). Una natura base PF (privato, ditta individuale) si rifiuta con E_SOGGETTO_CREAZIONE_NATURA_ERRATA: la porta e'' fn_crea_soggetto_pf (rev 20261009-28, brief-db-sesso-senza-default). Il sesso non si scrive: per PG ed ENC e'' NULL (sesso_policy NONE). Fallback tipo contatto: primo da config.tipi_contatti. Default stato_iso2, socio_unico, liquidazione da config.parameters. NON crea indirizzi ne assegna ruoli.';
 ```
 

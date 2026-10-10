@@ -20,12 +20,14 @@
 | meta | jsonb | NO | '{}'::jsonb |
 | processo_codice | text | YES |  |
 | auth_user_id | integer | YES |  |
+| saltata | boolean | NO | false |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
 |------|------|---------|
 | CHECK | chk_job_run_log_origine |  |
 | CHECK | chk_job_run_log_processo_dichiarato |  |
+| CHECK | chk_job_run_log_saltata |  |
 | FOREIGN KEY | fk_job_run_log_processi | processo_codice |
 | PRIMARY KEY | job_run_log_pkey | id |
 

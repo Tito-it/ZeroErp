@@ -142,6 +142,7 @@
 - [fn_pannello_scrivi](funzioni/fn_pannello_scrivi.md) — (scritta il 25-09-2026)
 - [fn_resolve_email_account](funzioni/fn_resolve_email_account.md) — Risolve l'account SMTP da utilizzare per l'invio di una email, dato il reparto (unita' organizzativa) del contesto. Implementa una catena di fallback a 2 livelli per garantire che ci sia sempre un account disponibile.
 - [fn_resolve_email_template](funzioni/fn_resolve_email_template.md) — Risolve il template email da utilizzare per un dato codice, reparto, tipo prestazione e lingua. Implementa una catena di fallback a 5 livelli che permette di specializzare i testi per reparto e tipo pratica mantenendo sempre un default di sistema.
+- [fn_sigla_provincia_ammessa](funzioni/fn_sigla_provincia_ammessa.md)
 - [trgfn_comuni_protect_update](funzioni/trgfn_comuni_protect_update.md) — (latest review 29-12-25) Impedire la modifica dei campi chiave di `config.comuni` quando il comune e' gia' utilizzato nello stradario.
 - [trgfn_credenziali_guard_ultimo_super_admin](funzioni/trgfn_credenziali_guard_ultimo_super_admin.md) — (scritta il 25-09-2026)
 - [trgfn_email_allegato_guard_solo_bozza](funzioni/trgfn_email_allegato_guard_solo_bozza.md)
@@ -151,6 +152,8 @@
 - [trgfn_parameters_fk_surrogate_dispatch](funzioni/trgfn_parameters_fk_surrogate_dispatch.md) — (latest review 02-05-2026)
 - [trgfn_profili_accesso_bindings_guard_coerenza](funzioni/trgfn_profili_accesso_bindings_guard_coerenza.md) — (latest review 18-04-2026) La trigger function **`config.trgfn_profili_accesso_bindings_guard_coerenza()`** verifica che il **tipo di binding** (colonna valorizzata) sia coerente con il **tipo del profilo di accesso** a cui il binding fa riferimento.
 - [trgfn_profili_accesso_bindings_guard_ultimo_super_admin](funzioni/trgfn_profili_accesso_bindings_guard_ultimo_super_admin.md) — (latest review 19-04-2026)
+- [trgfn_province_guard_sigla](funzioni/trgfn_province_guard_sigla.md)
+- [trgfn_regioni_guard_sigla_province](funzioni/trgfn_regioni_guard_sigla_province.md)
 - [trgfn_regioni_normalize](funzioni/trgfn_regioni_normalize.md) — (latest review 15-01-26) * **Impostare valori di default** per campi mancanti in `config.regioni` (ad esempio, assegnare `stato_id` da `config.stati` se `NEW.stato_id` è `NULL`). * **Pulire e normalizzare** ulteriori campi (es. trimming, uppercasing) seguendo le regole di business.
 - [trgfn_sorgenti_normalize](funzioni/trgfn_sorgenti_normalize.md) — (latest review 29-03-2026) La trigger function `config.trgfn_sorgenti_normalize()` normalizza il campo `codice_interno` delle sorgenti applicative, portandolo in formato uniforme prima del salvataggio.
 - [trgfn_stati_doc_fiscale_chiude_lotto_guard](funzioni/trgfn_stati_doc_fiscale_chiude_lotto_guard.md) — (latest review 29-03-2026) La trigger function `config.trgfn_stati_doc_fiscale_chiude_lotto_guard()` garantisce che il flag `chiude_lotto` in `config.stati_doc_fiscale` abbia cardinalita` **esattamente uno**: nel catalogo deve esistere sempre e solo una riga con `chiude_lotto = true`.

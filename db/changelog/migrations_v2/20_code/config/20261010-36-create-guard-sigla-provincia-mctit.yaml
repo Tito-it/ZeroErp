@@ -1,0 +1,238 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA SIGLA DI UNA PROVINCIA ITALIANA E' DI DUE LETTERE
+#   Brief: brief-db-character-n-spazi-di-riempimento.md §3 D-2 (Tid, 2026-10-10)
+#
+# -- IL CASO --------------------------------------------------------
+#   Fino al 20261010-26 nessuna regola diceva com'e' fatta una sigla: la
+#   colonna era character(10) e l'endpoint di creazione accettava qualunque
+#   testo (su dbdev, 2026-10-10, c'e' una provincia «TEST»). La FatturaPA
+#   pretende per la Provincia due caratteri, e lo snapshot li otteneva con un
+#   btrim.
+#
+# -- LA REGOLA, IN DUE SEDI -------------------------------------------
+#   * il CHECK chk_province_sigla_forma (20261010-26): maiuscole e cifre, da 1
+#     a 10. Vale per ogni provincia, anche estera;
+#   * questo guard: se la regione della provincia e' di uno stato con
+#     codice_iso2 = 'IT', la sigla e' di DUE LETTERE maiuscole. Lo stato sta
+#     in config.regioni, quindi non puo' essere un CHECK di riga.
+#   Il guard controlla anche la forma generale, prima del CHECK (i BEFORE ROW
+#   girano prima): l'operatore legge una frase sola, con la provincia e la
+#   sigla, invece di un 23514. Il CHECK resta la rete per le strade che il
+#   trigger non percorre.
+#   ⭐ 'IT' e' il codice ISO 3166 dell'Italia, chiave naturale stabile: e' la
+#   forma gia' in uso (fn_crea_utente_tecnico, trgfn_soggetti_valida_cf_piva_dispatch).
+#
+# -- DUE PORTE, UN PREDICATO --------------------------------------------
+#   La sigla diventa sbagliata in due modi: scrivendo la provincia (sigla o
+#   regione) o spostando la sua regione in Italia (config.regioni.stato_id).
+#   Il predicato sta in config.fn_sigla_provincia_ammessa, letto dai due
+#   guard (regola del 2).
+#   * trg_province_a10_guard_sigla_ins_upd: BEFORE INSERT OR UPDATE OF sigla,
+#     regione_id. OF e' la forma giusta: nessun altro trigger BEFORE della
+#     tabella scrive quelle colonne (l'audit scrive data_update/user_update).
+#     Il corpo confronta comunque OLD e NEW: OF scatta anche a valore uguale.
+#   * trg_regioni_a10_guard_sigla_province_upd: AFTER UPDATE, WHEN stato_id
+#     cambia. ⚠️ Non BEFORE UPDATE OF: trg_regioni_normalize_ins_upd riscrive
+#     stato_id quando e' NULL (lo stato di default), e scatta DOPO un guard
+#     a10 in ordine alfabetico. Un BEFORE vedrebbe il NULL e non lo stato che
+#     verra' scritto (linee-guida-trigger, «UPDATE vs UPDATE OF»); l'AFTER
+#     vede la riga finale, e il suo errore annulla l'istruzione.
+#   ⚠️ Un trigger UPDATE OF sigla e' una dipendenza: una futura ALTER COLUMN
+#   sigla TYPE dovra' droppare e ricreare il trigger nello stesso changeSet.
+#
+# -- RIGHE GIA' SCRITTE ---------------------------------------------------
+#   Il guard non rilegge le province esistenti: una sigla fuori regola resta
+#   finche' qualcuno non la tocca, e allora va corretta. Il CHECK generale
+#   invece le ha gia' validate tutte all'ADD CONSTRAINT del -26.
+#
+#   Codice: E_PROVINCIA_SIGLA_NON_VALIDA (DATO_ERRATO, campo sigla o
+#   stato_id), registrato in codici_errore.csv e messaggi_errore.csv.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261010-36-create-guard-sigla-provincia-mctit.yaml
+
+  - changeSet:
+      id: 20261010-36-create-guard-sigla-provincia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        config.fn_sigla_provincia_ammessa (predicato) e due guard: la sigla di una
+        provincia italiana e' di due lettere maiuscole, ogni altra di maiuscole e
+        cifre fino a 10. Su config.province (BEFORE INSERT, UPDATE OF sigla, regione_id)
+        e su config.regioni (AFTER UPDATE quando cambia stato_id). E_PROVINCIA_SIGLA_NON_VALIDA.
+        Brief: brief-db-character-n-spazi-di-riempimento.md D-2.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- --------------------------------------------------------
+              -- Il predicato
+              -- --------------------------------------------------------
+              CREATE FUNCTION config.fn_sigla_provincia_ammessa(
+                  p_sigla     config.province.sigla%TYPE,
+                  p_stato_id  config.regioni.stato_id%TYPE
+              )
+               RETURNS boolean
+               LANGUAGE plpgsql
+               STABLE
+               SECURITY INVOKER
+              AS $function$
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   La sigla di una provincia e' ammessa? Per una provincia
+                --   italiana (stato con codice_iso2 = 'IT') due lettere
+                --   maiuscole; per ogni altra maiuscole e cifre, da 1 a 10
+                --   (la stessa forma di chk_province_sigla_forma).
+                --   Stato NULL (provincia senza regione, o regione senza
+                --   stato): non si sa se e' italiana, vale la forma generale.
+                --   Pura sul risultato: non solleva, la usano i guard.
+                -- =========================================================
+                IF p_sigla IS NULL THEN
+                  RETURN false;
+                END IF;
+
+                IF EXISTS (SELECT 1 FROM config.stati s
+                            WHERE s.id = p_stato_id AND s.codice_iso2 = 'IT') THEN
+                  RETURN p_sigla ~ '^[A-Z]{2}$';
+                END IF;
+
+                RETURN p_sigla ~ '^[A-Z0-9]{1,10}$';
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.fn_sigla_provincia_ammessa(config.province.sigla%TYPE, config.regioni.stato_id%TYPE) IS
+                'La sigla di una provincia e'' ammessa? Italia (codice_iso2 = IT): due lettere maiuscole; '
+                'altrimenti maiuscole e cifre, da 1 a 10 (come chk_province_sigla_forma). Stato NULL: forma '
+                'generale. Non solleva: la leggono trgfn_province_guard_sigla e '
+                'trgfn_regioni_guard_sigla_province. Brief: brief-db-character-n-spazi-di-riempimento D-2.';
+              GRANT EXECUTE ON FUNCTION config.fn_sigla_provincia_ammessa(config.province.sigla%TYPE, config.regioni.stato_id%TYPE) TO zeroerp_app;
+
+              -- --------------------------------------------------------
+              -- Guard su config.province
+              -- --------------------------------------------------------
+              CREATE FUNCTION config.trgfn_province_guard_sigla()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_stato_id  config.regioni.stato_id%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Rifiuta una sigla che config.fn_sigla_provincia_ammessa
+                --   non ammette per lo stato della regione della provincia.
+                --   Montato BEFORE INSERT OR UPDATE OF sigla, regione_id.
+                -- =========================================================
+                IF TG_OP = 'UPDATE'
+                   AND NEW.sigla IS NOT DISTINCT FROM OLD.sigla
+                   AND NEW.regione_id IS NOT DISTINCT FROM OLD.regione_id THEN
+                  RETURN NEW;
+                END IF;
+
+                SELECT r.stato_id INTO v_stato_id
+                  FROM config.regioni r
+                 WHERE r.id = NEW.regione_id;
+
+                IF NOT config.fn_sigla_provincia_ammessa(NEW.sigla, v_stato_id) THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'config', 'trgfn_province_guard_sigla', 'E_PROVINCIA_SIGLA_NON_VALIDA',
+                    jsonb_build_object('provincia_id', NEW.id,
+                                       'regione_id',   NEW.regione_id,
+                                       'stato_id',     v_stato_id,
+                                       'campo',        'sigla'),
+                    NULL::uuid,
+                    COALESCE(NEW.sigla, ''),
+                    NEW.descrizione);
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_province_guard_sigla() IS
+                'Guard BEFORE INSERT OR UPDATE OF sigla, regione_id su config.province: la sigla deve essere '
+                'ammessa da config.fn_sigla_provincia_ammessa per lo stato della regione (Italia: due lettere). '
+                'E_PROVINCIA_SIGLA_NON_VALIDA. Brief: brief-db-character-n-spazi-di-riempimento D-2.';
+
+              CREATE TRIGGER trg_province_a10_guard_sigla_ins_upd
+                BEFORE INSERT OR UPDATE OF sigla, regione_id ON config.province
+                FOR EACH ROW EXECUTE FUNCTION config.trgfn_province_guard_sigla();
+
+              -- --------------------------------------------------------
+              -- Guard su config.regioni: la regione che cambia stato
+              -- --------------------------------------------------------
+              CREATE FUNCTION config.trgfn_regioni_guard_sigla_province()
+               RETURNS trigger
+               LANGUAGE plpgsql
+               SECURITY INVOKER
+              AS $function$
+              DECLARE
+                v_sigla        config.province.sigla%TYPE;
+                v_descrizione  config.province.descrizione%TYPE;
+              BEGIN
+                -- =========================================================
+                -- Scopo:
+                --   Una regione che cambia stato porta con se' le sue
+                --   province: se una di loro ha una sigla che il nuovo stato
+                --   non ammette, il cambio si rifiuta e la frase nomina la
+                --   prima (in ordine di sigla). Montato AFTER UPDATE WHEN
+                --   stato_id cambia: vede lo stato finale, anche quello che
+                --   trg_regioni_normalize_ins_upd mette al posto di un NULL.
+                -- =========================================================
+                IF NEW.stato_id IS NOT DISTINCT FROM OLD.stato_id THEN
+                  RETURN NEW;
+                END IF;
+
+                SELECT p.sigla, p.descrizione INTO v_sigla, v_descrizione
+                  FROM config.province p
+                 WHERE p.regione_id = NEW.id
+                   AND NOT config.fn_sigla_provincia_ammessa(p.sigla, NEW.stato_id)
+                 ORDER BY p.sigla, p.id
+                 LIMIT 1;
+
+                IF FOUND THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'config', 'trgfn_regioni_guard_sigla_province', 'E_PROVINCIA_SIGLA_NON_VALIDA',
+                    jsonb_build_object('regione_id', NEW.id,
+                                       'stato_id',   NEW.stato_id,
+                                       'campo',      'stato_id'),
+                    NULL::uuid,
+                    v_sigla,
+                    v_descrizione);
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION config.trgfn_regioni_guard_sigla_province() IS
+                'Guard AFTER UPDATE (WHEN stato_id cambia) su config.regioni: una regione non cambia stato se una sua '
+                'provincia ha una sigla che il nuovo stato non ammette (config.fn_sigla_provincia_ammessa). '
+                'E_PROVINCIA_SIGLA_NON_VALIDA. Brief: brief-db-character-n-spazi-di-riempimento D-2.';
+
+              CREATE TRIGGER trg_regioni_a10_guard_sigla_province_upd
+                AFTER UPDATE ON config.regioni
+                FOR EACH ROW
+                WHEN (OLD.stato_id IS DISTINCT FROM NEW.stato_id)
+                EXECUTE FUNCTION config.trgfn_regioni_guard_sigla_province();
+      rollback:
+        - sql:
+            sql: |
+              DROP TRIGGER IF EXISTS trg_regioni_a10_guard_sigla_province_upd ON config.regioni;
+              DROP TRIGGER IF EXISTS trg_province_a10_guard_sigla_ins_upd ON config.province;
+              DROP FUNCTION IF EXISTS config.trgfn_regioni_guard_sigla_province();
+              DROP FUNCTION IF EXISTS config.trgfn_province_guard_sigla();
+              DROP FUNCTION IF EXISTS config.fn_sigla_provincia_ammessa(config.province.sigla%TYPE, config.regioni.stato_id%TYPE);

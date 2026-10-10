@@ -1,0 +1,227 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN TESTO NON SI RIEMPIE DI SPAZI: character(n) -> varchar(n)
+#   Brief: brief-db-character-n-spazi-di-riempimento.md §2.1, D-1 (Tid, 2026-10-10)
+#
+# -- IL CASO --------------------------------------------------------
+#   character(n) riempie di spazi ogni valore piu' corto di n: 'PZ' in
+#   config.province.sigla character(10) si legge 'PZ        ', e il drawer
+#   comuni mostrava «Potenza (PZ        )». Il tipo e' giusto solo se OGNI
+#   valore ha esattamente n caratteri; queste dodici colonne non hanno un
+#   dominio a lunghezza fissa. Le colonne a lunghezza ESATTA (ISO2, ISO3,
+#   flag a un carattere, storico) restano fuori: li' il padding non nasce
+#   (brief §2.2, registro del presidio test-character-n-v1).
+#
+# -- COSA FA --------------------------------------------------------
+#   1. DROP delle tre funzioni sul tipo riga delle viste (RETURNS SETOF
+#      <vista>) e delle sedici viste che leggono le colonne, dalle foglie
+#      alle radici: ALTER COLUMN ... TYPE rifiuta una colonna letta da una
+#      vista. Le ricreano, nella stessa corsa, i changeSet 20_code
+#      20261010-27 ... -31 (corpo vivo dal catalogo).
+#   2. ALTER COLUMN ... TYPE varchar(n) con la STESSA n: nessun valore si
+#      tronca. USING btrim(): la conversione toglie gia' gli spazi in coda,
+#      btrim anche quelli in testa. Sulle colonne nullable un valore tutto
+#      spazi diventa NULL (NULLIF): in character(n) era la forma del vuoto.
+#      E' DDL: nessun trigger di riga scatta, nessun UPDATE di bonifica.
+#      Su magazzino.note (partizionata) l'ALTER scende alle nove partizioni.
+#   3. I CHECK: la sigla della provincia ha una forma (D-2: maiuscole e
+#      cifre, da 1 a 10; le due lettere della provincia ITALIANA le chiede il
+#      guard di 20261010-36, perche' lo stato sta in un'altra tabella); ogni
+#      altra colonna ha il CHECK «non vuoto» della casa
+#      (chk_<tabella>_<colonna>_non_vuot*: btrim(col) <> ''), che il NULL
+#      lascia passare. Sul testo libero NON si pretende col = btrim(col):
+#      uno spazio scritto da una persona e' il suo dato, non un padding, e
+#      rifiutarlo con un 23514 farebbe un errore tecnico di un refuso.
+#
+# -- COSA NON FA ----------------------------------------------------
+#   * Non tocca le funzioni che leggono queste colonne per RETURN QUERY con
+#     character nel RETURNS: le ricreano 20261010-32 ... -35 (DROP + CREATE,
+#     %TYPE risolto dopo l'ALTER).
+#   * Non tocca i btrim degli snapshot fiscali (fn_snapshot_indirizzo,
+#     _soggetto, fn_snapshot_intestazione_fattura): non hanno altra ragione
+#     di cambiare in questo giro, e lo snapshot di stato_iso2 legge ancora
+#     un character(2).
+#
+# -- NESSUN TRIGGER UPDATE OF SULLE COLONNE ------------------------------
+#   Verificato su pg_trigger.tgattr il 2026-10-10: i trigger UPDATE OF delle
+#   tabelle toccate nominano altre colonne (stati_cliente.codice_interno,
+#   dati_societari.soggetto_id e forma_giuridica_id, note_*.target_id).
+#
+# -- PRECONDITION ------------------------------------------------------
+#   Le dodici colonne sono character(n) (struttura, non contenuto di
+#   80_data): su un database dove la conversione e' gia' avvenuta il
+#   changeSet si ferma invece di droppare le viste per niente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/config/20261010-26-alter-character-n-a-varchar-mctit.yaml
+
+  - changeSet:
+      id: 20261010-26-alter-character-n-a-varchar
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Dodici colonne character(n) a lunghezza variabile diventano varchar(n)
+        (stessa n, USING btrim): sigla e descrizione della provincia,
+        destinatario_fe, descrizioni di gestori/ambiti/stati_cliente, campi
+        catastali, lingua delle note di magazzino. DROP della catena di viste e
+        delle tre funzioni sul loro tipo riga (ricreate da 20261010-27 ... -31),
+        CHECK di forma sulla sigla e «non vuoto» sulle altre.
+        Brief: brief-db-character-n-spazi-di-riempimento.md §2.1, D-1, D-2.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 12
+            sql: >
+              SELECT count(*) FROM pg_attribute a
+                JOIN pg_class c ON c.oid = a.attrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE a.atttypid = 'bpchar'::regtype AND NOT a.attisdropped
+                 AND (n.nspname, c.relname, a.attname) IN (
+                   ('config', 'province', 'sigla'),
+                   ('config', 'province', 'descrizione'),
+                   ('anagrafiche', 'dati_societari', 'destinatario_fe'),
+                   ('anagrafiche', 'gestori', 'descrizione'),
+                   ('anagrafiche', 'gestori', 'cd_prod_software'),
+                   ('config', 'ambiti', 'descrizione'),
+                   ('config', 'stati_cliente', 'descrizione_breve'),
+                   ('anagrafiche', 'catasto_unita_immobiliari', 'foglio_catastale'),
+                   ('anagrafiche', 'catasto_unita_immobiliari', 'particella'),
+                   ('anagrafiche', 'catasto_unita_immobiliari', 'sezione_catastale'),
+                   ('anagrafiche', 'catasto_unita_immobiliari', 'subalterno'),
+                   ('magazzino', 'note', 'lingua'))
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- --------------------------------------------------------
+              -- 1. Funzioni sul tipo riga delle viste (RETURNS SETOF <vista>)
+              --    Ricreate da 20261010-31.
+              -- --------------------------------------------------------
+              DROP FUNCTION script.fn_get_indirizzi_by_soggetto(uuid);
+              DROP FUNCTION script.fn_get_indirizzo_by_soggetto(uuid, character varying);
+              DROP FUNCTION anagrafiche.fn_search_indirizzi_dettaglio(integer, integer, text, text, text, text, text, text, integer);
+
+              -- --------------------------------------------------------
+              -- 2. Viste, dalle foglie alle radici
+              --    Ricreate da 20261010-27 (config), -28 (script),
+              --    -29 (catena indirizzi), -30 (dati societari, clienti).
+              -- --------------------------------------------------------
+              -- livello 4
+              DROP VIEW anagrafiche.vw_indirizzi_resolved_all;
+              DROP VIEW anagrafiche.vw_indirizzi_resolved_ruolo;
+              DROP VIEW anagrafiche.vw_indirizzi_resolved_soggetto;
+              DROP VIEW anagrafiche.vw_istanze_dati_precontrattuali_dettaglio;
+              -- livello 3
+              DROP VIEW anagrafiche.vw_indirizzi_resolved_base;
+              DROP VIEW anagrafiche.vw_istanze_utilities_dettaglio;
+              DROP VIEW anagrafiche.vw_pdp;
+              -- livello 2
+              DROP VIEW anagrafiche.vw_indirizzi_dettaglio;
+              -- livello 1: leggono direttamente le colonne convertite
+              DROP VIEW script.vw_indirizzo_completo;
+              DROP VIEW script.vw_ita_province_regioni;
+              DROP VIEW config.vw_province_lista;
+              DROP VIEW config.vw_comuni_lista;
+              DROP VIEW config.vw_codici_postali_lista;
+              DROP VIEW anagrafiche.vw_dati_societari;
+              DROP VIEW anagrafiche.vw_clienti_lista;
+              DROP VIEW anagrafiche.vw_clienti_codice_ba;
+
+              -- --------------------------------------------------------
+              -- 3. Conversione: stessa n, spazi tolti
+              -- --------------------------------------------------------
+              ALTER TABLE config.province
+                ALTER COLUMN sigla       TYPE varchar(10) USING btrim(sigla),
+                ALTER COLUMN descrizione TYPE varchar(80) USING btrim(descrizione);
+
+              ALTER TABLE anagrafiche.dati_societari
+                ALTER COLUMN destinatario_fe TYPE varchar(10) USING btrim(destinatario_fe);
+
+              ALTER TABLE anagrafiche.gestori
+                ALTER COLUMN descrizione      TYPE varchar(50) USING btrim(descrizione),
+                ALTER COLUMN cd_prod_software TYPE varchar(20) USING btrim(cd_prod_software);
+
+              ALTER TABLE config.ambiti
+                ALTER COLUMN descrizione TYPE varchar(100) USING btrim(descrizione);
+
+              ALTER TABLE config.stati_cliente
+                ALTER COLUMN descrizione_breve TYPE varchar(20) USING btrim(descrizione_breve);
+
+              -- nullable: il valore tutto spazi era il vuoto di character(n)
+              ALTER TABLE anagrafiche.catasto_unita_immobiliari
+                ALTER COLUMN foglio_catastale  TYPE varchar(5) USING NULLIF(btrim(foglio_catastale), ''),
+                ALTER COLUMN particella        TYPE varchar(5) USING NULLIF(btrim(particella), ''),
+                ALTER COLUMN sezione_catastale TYPE varchar(5) USING NULLIF(btrim(sezione_catastale), ''),
+                ALTER COLUMN subalterno        TYPE varchar(5) USING NULLIF(btrim(subalterno), '');
+
+              -- partizionata: l'ALTER scende alle nove partizioni
+              ALTER TABLE magazzino.note
+                ALTER COLUMN lingua TYPE varchar(5) USING NULLIF(btrim(lingua), '');
+
+              -- --------------------------------------------------------
+              -- 4. I vincoli
+              -- --------------------------------------------------------
+              -- D-2: la forma generale della sigla. Le due lettere della
+              -- provincia italiana le chiede il guard di 20261010-36.
+              ALTER TABLE config.province
+                ADD CONSTRAINT chk_province_sigla_forma
+                    CHECK (sigla ~ '^[A-Z0-9]{1,10}$'),
+                ADD CONSTRAINT chk_province_descrizione_non_vuota
+                    CHECK (btrim(descrizione) <> '');
+
+              ALTER TABLE anagrafiche.dati_societari
+                ADD CONSTRAINT chk_dati_societari_destinatario_fe_non_vuoto
+                    CHECK (btrim(destinatario_fe) <> '');
+
+              ALTER TABLE anagrafiche.gestori
+                ADD CONSTRAINT chk_gestori_descrizione_non_vuota
+                    CHECK (btrim(descrizione) <> ''),
+                ADD CONSTRAINT chk_gestori_cd_prod_software_non_vuoto
+                    CHECK (btrim(cd_prod_software) <> '');
+
+              ALTER TABLE config.ambiti
+                ADD CONSTRAINT chk_ambiti_descrizione_non_vuota
+                    CHECK (btrim(descrizione) <> '');
+
+              ALTER TABLE config.stati_cliente
+                ADD CONSTRAINT chk_stati_cliente_descrizione_breve_non_vuota
+                    CHECK (btrim(descrizione_breve) <> '');
+
+              ALTER TABLE anagrafiche.catasto_unita_immobiliari
+                ADD CONSTRAINT chk_catasto_unita_immobiliari_foglio_catastale_non_vuoto
+                    CHECK (btrim(foglio_catastale) <> ''),
+                ADD CONSTRAINT chk_catasto_unita_immobiliari_particella_non_vuota
+                    CHECK (btrim(particella) <> ''),
+                ADD CONSTRAINT chk_catasto_unita_immobiliari_sezione_catastale_non_vuota
+                    CHECK (btrim(sezione_catastale) <> ''),
+                ADD CONSTRAINT chk_catasto_unita_immobiliari_subalterno_non_vuoto
+                    CHECK (btrim(subalterno) <> '');
+
+              ALTER TABLE magazzino.note
+                ADD CONSTRAINT chk_note_lingua_non_vuota
+                    CHECK (btrim(lingua) <> '');
+
+              -- --------------------------------------------------------
+              -- 5. Il contratto delle colonne
+              -- --------------------------------------------------------
+              COMMENT ON COLUMN config.province.sigla IS
+                'Sigla della provincia (es. RM, MI). Maiuscole e cifre, da 1 a 10 caratteri '
+                '(chk_province_sigla_forma); per una provincia italiana due lettere (guard '
+                'trg_province_a10_guard_sigla_ins_upd). varchar dal 20261010-26: era character(10) '
+                'e si leggeva riempita di spazi. Brief: brief-db-character-n-spazi-di-riempimento.';
+              COMMENT ON COLUMN config.province.descrizione IS
+                'Descrizione della provincia. varchar dal 20261010-26 (era character(80), riempita di spazi).';
+              COMMENT ON COLUMN anagrafiche.dati_societari.destinatario_fe IS
+                'Codice destinatario per fattura elettronica (SDI). varchar dal 20261010-26 (era '
+                'character(10), riempito di spazi). La forma del codice SDI non e'' ancora un vincolo: '
+                'brief-db-character-n-spazi-di-riempimento D-6.';

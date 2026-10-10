@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RICREA LE VISTE DROPPATE DA 20261010-26 (config)
+#   Brief: brief-db-character-n-spazi-di-riempimento.md §4 punto 2
+#
+#   Le tre viste di lista geo, senza i TRIM: sigla e descrizione della provincia sono varchar dal 20261010-26 e non hanno piu' spazi da togliere (D-3).
+#
+#   Corpo vivo dal catalogo (pg_get_viewdef con nomi qualificati, letto il
+#   2026-10-10), non dagli YAML del 2026-04-02: la catena e' stata riscritta
+#   piu' volte da allora. Opzioni (security_invoker) e COMMENT riprodotti dal
+#   vivo; GRANT all'applicazione esplicito come nei changeSet sorelle (i
+#   privilegi del ruolo batch li da' il provisioning, §11.6).
+#   Ordine: le radici prima delle foglie. Gira nella stessa corsa del -26.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/config/20261010-27-recreate-viste-geo-senza-trim-mctit.yaml
+
+  - changeSet:
+      id: 20261010-27-recreate-viste-geo-senza-trim
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ricrea config.vw_province_lista, config.vw_comuni_lista, config.vw_codici_postali_lista dopo la conversione character(n) -> varchar
+        di 20261010-26. Brief: brief-db-character-n-spazi-di-riempimento.md §4.
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- config.vw_province_lista
+              CREATE VIEW config.vw_province_lista WITH (security_invoker = on) AS
+               SELECT p.id,
+                  p.descrizione,
+                  p.sigla,
+                  p.regione_id,
+                  r.descrizione AS regione_descrizione
+                 FROM config.province p
+                   LEFT JOIN config.regioni r ON r.id = p.regione_id;
+
+              COMMENT ON VIEW config.vw_province_lista IS
+                'Vista di lista delle province (ui.lista_definizione config.province). descrizione e sigla escono come sono: dal 20261010-26 sono varchar e non portano spazi di riempimento (prima character(n), con TRIM qui). Brief: brief-db-liste-datatable-grezze §8 punto 6; brief-db-character-n-spazi-di-riempimento D-3.';
+
+              GRANT SELECT ON config.vw_province_lista TO zeroerp_app;
+
+              -- config.vw_comuni_lista
+              CREATE VIEW config.vw_comuni_lista WITH (security_invoker = on) AS
+               SELECT c.id,
+                  c.descrizione,
+                  c.provincia_id,
+                  p.sigla AS provincia_sigla,
+                  p.descrizione AS provincia_descrizione,
+                  p.regione_id,
+                  r.descrizione AS regione_descrizione
+                 FROM config.comuni c
+                   LEFT JOIN config.province p ON p.id = c.provincia_id
+                   LEFT JOIN config.regioni r ON r.id = p.regione_id;
+
+              COMMENT ON VIEW config.vw_comuni_lista IS
+                'Vista di lista dei comuni (ui.lista_definizione config.comuni). Sigla e nome della provincia come sono: varchar dal 20261010-26, senza spazi di riempimento (prima character(n), con TRIM qui). Brief: brief-db-liste-datatable-grezze §8 punto 6; brief-db-character-n-spazi-di-riempimento D-3.';
+
+              GRANT SELECT ON config.vw_comuni_lista TO zeroerp_app;
+
+              -- config.vw_codici_postali_lista
+              CREATE VIEW config.vw_codici_postali_lista WITH (security_invoker = on) AS
+               SELECT cp.id,
+                  cp.codice,
+                  cp.comune_id,
+                  c.descrizione AS comune_descrizione,
+                  c.provincia_id,
+                  p.sigla AS provincia_sigla
+                 FROM config.codici_postali cp
+                   JOIN config.comuni c ON c.id = cp.comune_id
+                   LEFT JOIN config.province p ON p.id = c.provincia_id;
+
+              COMMENT ON VIEW config.vw_codici_postali_lista IS
+                'Vista di lista dei codici postali (ui.lista_definizione config.codici_postali). Porta la sigla della provincia del comune (NULL se il comune non ha provincia), che distingue comuni omonimi; varchar dal 20261010-26, senza spazi di riempimento. Brief: brief-db-liste-datatable-grezze §8 punto 6 e §9.2; brief-db-character-n-spazi-di-riempimento D-3.';
+
+              GRANT SELECT ON config.vw_codici_postali_lista TO zeroerp_app;

@@ -48,7 +48,7 @@ WITH panorama AS (
                     max(r.started_at) FILTER (WHERE ((r.origine)::text = 'PGAGENT'::text)) AS ultima_corsa_pgagent,
                     ( SELECT r2.ok
                            FROM maintenance.job_run_log r2
-                          WHERE ((r2.processo_codice = p.codice) OR (r2.jobname = p.codice))
+                          WHERE (((r2.processo_codice = p.codice) OR (r2.jobname = p.codice)) AND (NOT r2.saltata))
                           ORDER BY r2.started_at DESC, r2.id DESC
                          LIMIT 1) AS ultimo_esito
                    FROM maintenance.job_run_log r
