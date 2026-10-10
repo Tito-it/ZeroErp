@@ -2,19 +2,23 @@
 # ⚙️ Funzione `fn_get_search_detail`
 
 ```sql
-CREATE FUNCTION fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer, p_emittente_ids bigint[])
+CREATE FUNCTION fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer)
 ```
 
 **Definizione completa:**
 
 ```sql
-CREATE OR REPLACE FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer DEFAULT NULL::integer, p_emittente_ids bigint[] DEFAULT NULL::bigint[])
+CREATE OR REPLACE FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer DEFAULT NULL::integer)
  RETURNS jsonb
  LANGUAGE plpgsql
  STABLE
 AS $function$
 DECLARE
   v_tipo_ruolo_codice  config.tipi_ruoli.codice_interno%TYPE;
+  -- Predicato SQL della regola unica: nessuna colonna di cui sia il riflesso.
+  v_predicato          text;
+  -- Esito della verifica d'esistenza: nessuna colonna.
+  v_visibile           boolean;
   -- Il dettaglio composto: nessuna colonna di cui sia il riflesso.
   v_result             jsonb;
 BEGIN
@@ -26,58 +30,53 @@ BEGIN
     );
   END IF;
 
-  IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'script.fn_get_search_detail', 'E_PARAMETRO_INVALIDO',
-      jsonb_build_object('parametro', 'p_tipo_ruolo_id', 'valore', p_tipo_ruolo_id),
-      NULL::uuid, 'p_tipo_ruolo_id obbligatorio e > 0'
-    );
-  END IF;
+  -- =========================================================
+  -- Il tipo ruolo e «chi si vede» (rev 2026-10-10, R-6, Q-2).
+  --
+  -- Il BB valida il tipo ruolo (NULL o <= 0, inesistente, non
+  -- ricercabile) e rende il predicato della regola unica, lo
+  -- stesso che filtra la lista. Qui non si ripete nessuna delle
+  -- due cose.
+  -- =========================================================
+  v_predicato := script.fn_predicato_soggetto_ruolo_visibile(p_tipo_ruolo_id, 'sr');
 
   SELECT tr.codice_interno INTO v_tipo_ruolo_codice
   FROM config.tipi_ruoli tr
   WHERE tr.id = p_tipo_ruolo_id;
 
-  IF v_tipo_ruolo_codice IS NULL THEN
-    PERFORM script.fn_log_and_raise_error(
-      'database', 'script.fn_get_search_detail', 'E_TIPO_RUOLO_NON_TROVATO',
-      jsonb_build_object('detail', 'tipo_ruolo_id non trovato in config.tipi_ruoli', 'p_tipo_ruolo_id', p_tipo_ruolo_id),
-      NULL::uuid, p_tipo_ruolo_id::text
-    );
-  END IF;
-
   -- =========================================================
-  -- «Non c'e'» (rev 2026-10-08, R-4).
+  -- «Non c'e'» (R-4, regola unica dal 2026-10-10).
   --
   -- Il soggetto, con quel ruolo, risulta a chi guarda? Stesso
-  -- perimetro delle righe ma SENZA il filtro utility, con la
-  -- stessa check della lista (fn_search_soggetti_universale):
-  --   * il soggetto-ruolo esiste;
-  --   * per CL, almeno un suo cliente e' restituito dalla RLS.
-  -- Altrimenti NULL: il backend risponde 404 E_SEARCH_NOT_FOUND.
+  -- predicato della lista, SENZA il filtro utility. Altrimenti
+  -- NULL: il backend risponde 404 E_SEARCH_NOT_FOUND.
   -- ⚠️ Inesistente e fuori perimetro escono uguali, di
   --   proposito: il 404 non rivela un cliente di un altro
   --   emittente.
   -- ⚠️ Il filtro utility resta FUORI: «c'e', ma l'utility non
   --   ne trova» e' un risultato vero, righe = [].
   -- =========================================================
-  IF NOT EXISTS (
-    SELECT 1
-      FROM anagrafiche.soggetti_ruoli sr
-     WHERE sr.soggetto_id = p_soggetto_id
-       AND sr.tipo_ruolo_id = p_tipo_ruolo_id
-       AND script.fn_check_soggetto_ruolo_visibile(sr.id)
-  ) THEN
+  EXECUTE format(
+    'SELECT EXISTS (SELECT 1 FROM anagrafiche.soggetti_ruoli sr
+                     WHERE sr.soggetto_id = $1
+                       AND sr.tipo_ruolo_id = $2
+                       AND %s)',
+    v_predicato)
+  INTO v_visibile
+  USING p_soggetto_id, p_tipo_ruolo_id;
+
+  IF NOT v_visibile THEN
     RETURN NULL;
   END IF;
 
-  -- Dettaglio per codice_interno del tipo ruolo (immutabile).
+  -- Dettaglio per codice_interno del tipo ruolo (immutabile): la
+  -- forma delle righe di ciascun ruolo, non la regola di chi si vede.
   CASE v_tipo_ruolo_codice
 
   WHEN 'CL' THEN
     -- ⚠️ Il perimetro dei clienti lo applica la RLS di
-    --   anagrafiche.clienti (rev 2026-10-08): fino a quel giorno
-    --   qui c'era un filtro a mano che ne era una seconda copia.
+    --   anagrafiche.clienti, la stessa tabella che il catalogo da'
+    --   come entita_esistenza di CL.
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', COALESCE(jsonb_agg(row_detail ORDER BY row_detail->>'utility_codice_interno', row_detail->>'stato_descrizione'), '[]'::jsonb)
@@ -122,6 +121,8 @@ BEGIN
     ) sub;
 
   WHEN 'FO' THEN
+    -- anagrafiche.fornitori: la stessa tabella che il catalogo da'
+    -- come entita_esistenza di FO.
     SELECT jsonb_build_object(
       'tipo_ruolo', v_tipo_ruolo_codice,
       'righe', COALESCE(jsonb_agg(row_detail), '[]'::jsonb)
@@ -177,8 +178,8 @@ BEGIN
 END;
 $function$
 
-COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer, p_emittente_ids bigint[])
-IS 'Dettaglio della ricerca universale per tipo_ruolo (CASE su codice_interno). ⭐ NULL = «non c''e''» (rev 2026-10-08, brief-db-codici-non-trovato-email-e-permessi R-4, decisione di Tid): il soggetto non esiste, non ha quel ruolo, o per CL nessuno dei suoi clienti e'' visibile a chi guarda — la verifica e'' script.fn_check_soggetto_ruolo_visibile, la stessa della lista, sullo stesso perimetro delle righe ma senza il filtro utility. Il backend risponde 404 E_SEARCH_NOT_FOUND. Inesistente e fuori perimetro escono uguali, di proposito. NULL e non un raise: una lettura non scrive nel diario errori a ogni id sbagliato. La struttura {tipo_ruolo, righe} (righe anche vuota) solo quando il soggetto c''e'': righe = [] vuol dire che il filtro p_utility_id non ne trova. Perimetro: per CL lo fa la RLS di anagrafiche.clienti (dal 2026-10-08; prima un filtro a mano che ne era una seconda copia); FO e altri ruoli non portano un emittente nel modello, quindi non si filtrano per emittente (scelta di modello). ⚠️ p_emittente_ids SUPERATO dal 2026-10-08: resta in firma e non e'' letto, il ritiro lo decide Tid col backend. Ramo CL: utility_codice_interno (logica) + utility_codice (display), stato_codice_interno; stato_macro = stati_cliente.codice. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
+COMMENT ON FUNCTION script.fn_get_search_detail(p_soggetto_id uuid, p_tipo_ruolo_id integer, p_utility_id integer)
+IS 'Dettaglio della ricerca universale per tipo_ruolo (CASE su codice_interno: la forma delle righe di ciascun ruolo). ⭐ NULL = «non c''e''» (R-4): il soggetto non esiste, non ha quel ruolo, o non risulta a chi guarda secondo la regola unica script.fn_predicato_soggetto_ruolo_visibile (rev 2026-10-10, R-6) — la stessa della lista, senza il filtro utility: almeno una riga visibile della entita_esistenza del ruolo (CL clienti, sotto la RLS; FO fornitori; VT vettori; BANK_B bank_branches), o il solo soggetto-ruolo per i ruoli che non ne hanno. Lo stato dell''entita'' non conta: cliente chiuso e fornitore disattivato si aprono. Il backend risponde 404 E_SEARCH_NOT_FOUND; inesistente e fuori perimetro escono uguali, di proposito. NULL e non un raise: una lettura non scrive nel diario errori a ogni id sbagliato. La struttura {tipo_ruolo, righe} (righe anche vuota) solo quando il soggetto c''e'': righe = [] vuol dire che il filtro p_utility_id non ne trova. Tipo ruolo validato dal BB: NULL o <= 0 E_PARAMETRO_INVALIDO, inesistente E_TIPO_RUOLO_NON_TROVATO, non ricercabile (ricerca_visibile = false) E_TIPO_RUOLO_NON_RICERCABILE (Q-2). p_emittente_ids ritirato il 2026-10-10 (R-5): superato dal 2026-10-08, il perimetro lo fa la RLS. Ramo CL: utility_codice_interno (logica) + utility_codice (display), stato_codice_interno; stato_macro = stati_cliente.codice. SECURITY INVOKER: la RLS vale con l''identita'' di chi chiama.';
 ```
 
 ---

@@ -71,13 +71,13 @@
 - [fn_check_riga_magazzino](funzioni/fn_check_riga_magazzino.md) — (rev 2026-09-18 — Lotto 2 del magazzino)
 - [fn_check_rinuncia_reversibile](funzioni/fn_check_rinuncia_reversibile.md) — (creata 2026-07-26 — brief-db-chiusura-riconsegna-reso-definitivo §5.1)
 - [fn_check_scadenza_di_fattura](funzioni/fn_check_scadenza_di_fattura.md) — (rev 2026-08-22)
-- [fn_check_soggetto_ruolo_visibile](funzioni/fn_check_soggetto_ruolo_visibile.md)
 - [fn_check_sorgente_chiudibile](funzioni/fn_check_sorgente_chiudibile.md) — (latest review 26-08-2026)
 - [fn_check_totp_recovery_hash](funzioni/fn_check_totp_recovery_hash.md) — (scritta il 29-09-2026)
 - [fn_check_ultimo_super_admin_attivo](funzioni/fn_check_ultimo_super_admin_attivo.md)
 - [fn_check_user_can_create_ba](funzioni/fn_check_user_can_create_ba.md)
 - [fn_check_user_emittente_scope](funzioni/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
 - [fn_check_utility_istanza_coerenza](funzioni/fn_check_utility_istanza_coerenza.md)
+- [fn_cliente_dal_billing_account](funzioni/fn_cliente_dal_billing_account.md) — **Il cliente e la utility di un documento sono quelli del suo billing account.**
 - [fn_clone_catasto_from_parent_by_istanza](funzioni/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_crea_utente_tecnico](funzioni/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
 - [fn_credenziale_ha_vesti](funzioni/fn_credenziale_ha_vesti.md) — (scritta il 06-10-2026)
@@ -105,7 +105,6 @@
 - [fn_get_default_by_param](funzioni/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 - [fn_get_deve_cambiare_password](funzioni/fn_get_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_get_emittenti_scope_pk_ids](funzioni/fn_get_emittenti_scope_pk_ids.md)
-- [fn_get_emittenti_scope_sr_effettivo](funzioni/fn_get_emittenti_scope_sr_effettivo.md) — (latest review 18-08-26)
 - [fn_get_emittenti_scope_sr_ids](funzioni/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)
 - [fn_get_entita_ruolo_detail](funzioni/fn_get_entita_ruolo_detail.md) — * **Dati entita' per ruolo**: dato un `soggetto_ruolo_id`, recupera automaticamente il tipo ruolo e interroga la tabella/vista configurata in `tipi_ruoli.entita_tabella`.
 - [fn_get_fattura_intestazione](funzioni/fn_get_fattura_intestazione.md) — (rev 2026-08-22)
@@ -183,6 +182,7 @@
 - [fn_pgtap_emittente_sr_operatore](funzioni/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_registro_fattura](funzioni/fn_pgtap_registro_fattura.md)
 - [fn_pgtap_set_contesto_operatore](funzioni/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
+- [fn_predicato_soggetto_ruolo_visibile](funzioni/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)
 - [fn_raise_primo_motivo_se_presente](funzioni/fn_raise_primo_motivo_se_presente.md)
 - [fn_regime_fiscale_documento](funzioni/fn_regime_fiscale_documento.md)
 - [fn_registra_tentativo_login](funzioni/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)

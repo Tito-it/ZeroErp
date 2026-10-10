@@ -1,0 +1,168 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# script.fn_predicato_soggetto_ruolo_visibile: UNA REGOLA SOLA PER «CHI SI VEDE»
+#   Brief: brief-db-codici-non-trovato-email-e-permessi (R-6, Q-1, Q-2, Q-3, Q-5)
+#
+# -- IL DIFETTO ---------------------------------------------------------
+#   script.fn_check_soggetto_ruolo_visibile (20261008-01) scriveva 'CL' come
+#   letterale: un CL senza clienti spariva, un FO senza la riga in fornitori
+#   compariva (righe: []). Due stati che il modello ammette allo stesso modo,
+#   due risposte. E «il ruolo si puo' cercare?» (ricerca_visibile) lo
+#   controllava solo il backend: le funzioni DB accettavano qualunque ruolo.
+#
+# -- LA REGOLA (Tid, 2026-10-09) ----------------------------------------
+#   Per la ricerca universale, un soggetto-ruolo si mostra se:
+#   * il suo ruolo e' ricercabile (config.tipi_ruoli.ricerca_visibile, Q-2):
+#     altrimenti E_TIPO_RUOLO_NON_RICERCABILE, per lista e dettaglio;
+#   * il ruolo ha entita_esistenza (Q-1) -> almeno una riga di quella tabella
+#     che chi guarda vede: il perimetro lo fa la RLS della tabella (per CL
+#     quella di anagrafiche.clienti), qui non si ripete;
+#   * il ruolo non ha entita_esistenza -> il soggetto-ruolo esiste.
+#   Lo stato dell'entita' NON conta (Q-3): un cliente chiuso o un fornitore
+#   disattivato si ritrovano. Nemmeno soggetti.attivo (Q-5): il modello non
+#   ammette un soggetto-ruolo con il soggetto spento (non si disattiva un
+#   soggetto che ha ruoli, trg_soggetti_a10_soggetti_ruoli_block_deact_upd;
+#   non si da' un ruolo a un soggetto spento,
+#   trg_soggetti_ruoli_a10_soggetti_require_attivo_ins_upd).
+#
+# -- PERCHE' UN PREDICATO E NON UNA CHECK PER RIGA ----------------------
+#   La tabella dell'entita' e' un dato del catalogo: serve SQL dinamico. Una
+#   check boolean per soggetto-ruolo farebbe un EXECUTE per ogni riga della
+#   lista, quando il ruolo e' un parametro della chiamata ed e' uno solo.
+#   Scrivere l'EXISTS dentro la lista e dentro il dettaglio rifarebbe due
+#   copie, cioe' il difetto che la check del 2026-10-08 aveva tolto. Quindi
+#   la regola si risolve UNA volta per ruolo, e rende il PREDICATO su
+#   anagrafiche.soggetti_ruoli che lista e dettaglio compongono nel proprio
+#   SQL dinamico. La sede resta una.
+#   ⚠️ Il predicato nomina l'alias di anagrafiche.soggetti_ruoli che il
+#   chiamante usa (p_alias_soggetto_ruolo, validato come identificatore e
+#   quotato con %I). La tabella dell'entita' arriva dal catalogo in forma
+#   schema.tabella (CHECK di 20261010-08) ed e' quotata con %I.%I: niente
+#   regclass::text, che dipende dal search_path.
+#
+# -- E LA VALIDAZIONE DEL RUOLO ------------------------------------------
+#   Tipo ruolo NULL o <= 0, inesistente, non ricercabile: sono la stessa
+#   domanda («e' un ruolo su cui la ricerca universale lavora?») e la fanno
+#   lista e dettaglio. Sta qui, una volta: le due funzioni smettono di
+#   ripeterla (20261010-11, -12).
+#
+# ⚠️ LANGUAGE plpgsql (solleva), STABLE, SECURITY INVOKER: legge solo il
+#   catalogo, ma il predicato che rende gira nella query di chi chiama, con
+#   la sua identita' e quindi sotto la sua RLS.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-10-create-fn-predicato-soggetto-ruolo-visibile-mctit.yaml
+
+  - changeSet:
+      id: 20261010-10-create-fn-predicato-soggetto-ruolo-visibile
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        Nasce script.fn_predicato_soggetto_ruolo_visibile: valida il tipo ruolo della ricerca
+        universale (esiste, e' ricercabile) e rende il predicato su soggetti_ruoli che dice se un
+        soggetto-ruolo si mostra (almeno una riga visibile della sua entita_esistenza, o vero se
+        il ruolo non ne ha). La leggono lista e dettaglio della ricerca.
+      preConditions:
+        - onFail: HALT
+        - columnExists:
+            schemaName: config
+            tableName: tipi_ruoli
+            columnName: entita_esistenza
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION script.fn_predicato_soggetto_ruolo_visibile(
+                  p_tipo_ruolo_id         config.tipi_ruoli.id%TYPE,
+                  -- Alias SQL di anagrafiche.soggetti_ruoli nella query del
+                  -- chiamante: un identificatore, nessuna colonna di cui sia il riflesso.
+                  p_alias_soggetto_ruolo  text DEFAULT 'sr')
+              RETURNS text
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY INVOKER
+              AS $function$
+              DECLARE
+                  v_descrizione       config.tipi_ruoli.descrizione%TYPE;
+                  v_ricerca_visibile  config.tipi_ruoli.ricerca_visibile%TYPE;
+                  v_entita_esistenza  config.tipi_ruoli.entita_esistenza%TYPE;
+              BEGIN
+                  IF p_tipo_ruolo_id IS NULL OR p_tipo_ruolo_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_predicato_soggetto_ruolo_visibile', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_tipo_ruolo_id', 'valore', p_tipo_ruolo_id),
+                          NULL::uuid, 'p_tipo_ruolo_id obbligatorio e > 0'
+                      );
+                  END IF;
+
+                  -- L'alias entra nell'SQL del chiamante: solo un identificatore
+                  -- semplice, e comunque quotato con %I sotto.
+                  IF p_alias_soggetto_ruolo IS NULL
+                     OR p_alias_soggetto_ruolo !~ '^[a-z_][a-z0-9_]*$' THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_predicato_soggetto_ruolo_visibile', 'E_PARAMETRO_INVALIDO',
+                          jsonb_build_object('parametro', 'p_alias_soggetto_ruolo', 'valore', p_alias_soggetto_ruolo),
+                          NULL::uuid, 'p_alias_soggetto_ruolo deve essere un identificatore SQL semplice'
+                      );
+                  END IF;
+
+                  SELECT tr.descrizione, tr.ricerca_visibile, tr.entita_esistenza
+                    INTO v_descrizione, v_ricerca_visibile, v_entita_esistenza
+                    FROM config.tipi_ruoli tr
+                   WHERE tr.id = p_tipo_ruolo_id;
+
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_predicato_soggetto_ruolo_visibile', 'E_TIPO_RUOLO_NON_TROVATO',
+                          jsonb_build_object('detail', 'tipo_ruolo_id non trovato in config.tipi_ruoli', 'p_tipo_ruolo_id', p_tipo_ruolo_id),
+                          NULL::uuid, p_tipo_ruolo_id::text
+                      );
+                  END IF;
+
+                  -- Q-2: il ruolo si cerca solo se il catalogo lo dice. Prima lo
+                  --   controllava solo il backend; ora e' la regola del DB, per
+                  --   lista e dettaglio.
+                  IF NOT v_ricerca_visibile THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database', 'script.fn_predicato_soggetto_ruolo_visibile', 'E_TIPO_RUOLO_NON_RICERCABILE',
+                          jsonb_build_object('p_tipo_ruolo_id', p_tipo_ruolo_id),
+                          NULL::uuid, v_descrizione
+                      );
+                  END IF;
+
+                  -- Ruolo senza entita' propria: il soggetto-ruolo si mostra se esiste.
+                  IF v_entita_esistenza IS NULL THEN
+                      RETURN 'true';
+                  END IF;
+
+                  -- ⚠️ Il perimetro NON e' scritto qui: lo applica la RLS della
+                  --   tabella dell'entita', con l'identita' di chi esegue la query.
+                  --   Lo stato dell'entita' non conta (Q-3).
+                  RETURN format(
+                      'EXISTS (SELECT 1 FROM %I.%I e_vis WHERE e_vis.soggetto_ruolo_id = %I.id)',
+                      split_part(v_entita_esistenza, '.', 1),
+                      split_part(v_entita_esistenza, '.', 2),
+                      p_alias_soggetto_ruolo);
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION script.fn_predicato_soggetto_ruolo_visibile(config.tipi_ruoli.id%TYPE, text)
+              IS 'Regola unica della ricerca universale: chi si vede. Valida il tipo ruolo (NULL o <= 0: E_PARAMETRO_INVALIDO; inesistente: E_TIPO_RUOLO_NON_TROVATO; ricerca_visibile = false: E_TIPO_RUOLO_NON_RICERCABILE) e rende il PREDICATO SQL su anagrafiche.soggetti_ruoli (alias p_alias_soggetto_ruolo, default sr) che dice se un soggetto-ruolo si mostra: almeno una riga della sua config.tipi_ruoli.entita_esistenza che chi guarda vede (il perimetro lo fa la RLS di quella tabella, per CL anagrafiche.clienti), oppure ''true'' se il ruolo non ha entita_esistenza. Lo stato dell''entita'' non conta: cliente chiuso e fornitore disattivato si ritrovano (Q-3). Nemmeno soggetti.attivo: il modello non ammette un soggetto-ruolo col soggetto spento (Q-5). Predicato e non check per riga: il ruolo e'' uno per chiamata, la regola si risolve una volta e lista e dettaglio la compongono nel proprio SQL dinamico. Lettori: script.fn_search_soggetti_universale (filtro di riga) e script.fn_get_search_detail (verifica d''esistenza): non possono dissentire su chi si vede. SECURITY INVOKER: il predicato gira con l''identita'' del chiamante. Nasce il 2026-10-10 al posto di script.fn_check_soggetto_ruolo_visibile (letterale CL), brief-db-codici-non-trovato-email-e-permessi R-6.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_predicato_soggetto_ruolo_visibile(config.tipi_ruoli.id%TYPE, text);

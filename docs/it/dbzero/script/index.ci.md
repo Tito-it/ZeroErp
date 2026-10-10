@@ -67,6 +67,7 @@
 - [fn_check_user_can_create_ba](manual/fn_check_user_can_create_ba.md)
 - [fn_check_user_emittente_scope](manual/fn_check_user_emittente_scope.md) — (latest review 08-03-2026) La funzione **`script.fn_check_user_emittente_scope`** verifica se un utente ha accesso a uno specifico emittente fiscale. Pensata per i trigger defense-in-depth su tabelle operative (fatture, pagamenti).
 - [fn_check_utility_istanza_coerenza](manual/fn_check_utility_istanza_coerenza.md)
+- [fn_cliente_dal_billing_account](manual/fn_cliente_dal_billing_account.md) — **Il cliente e la utility di un documento sono quelli del suo billing account.**
 - [fn_clone_catasto_from_parent_by_istanza](manual/fn_clone_catasto_from_parent_by_istanza.md) — (latest review 15-12-25) La funzione **`script.fn_clone_catasto_from_parent_by_istanza(p_istanza_utilities_id)`** gestisce la **clonazione** di un record catastale (`anagrafiche.catasto_unita_immobiliari`) dalla **parent_istanza** verso l’istanza corrente, tipicamente nel flusso di **subentro**.
 - [fn_crea_utente_tecnico](manual/fn_crea_utente_tecnico.md) — (latest review 04-09-2026)
 - [fn_credenziale_ha_vesti](manual/fn_credenziale_ha_vesti.md) — (scritta il 06-10-2026)
@@ -92,7 +93,6 @@
 - [fn_get_default_by_param](manual/fn_get_default_by_param.md) — (latest update 21-12-25) Recuperare in modo dinamico un valore (tipicamente una **PK**) da una tabella qualsiasi, basandosi su un **codice parametro**.
 - [fn_get_deve_cambiare_password](manual/fn_get_deve_cambiare_password.md) — (scritta il 25-09-2026)
 - [fn_get_emittenti_scope_pk_ids](manual/fn_get_emittenti_scope_pk_ids.md)
-- [fn_get_emittenti_scope_sr_effettivo](manual/fn_get_emittenti_scope_sr_effettivo.md) — (latest review 18-08-26)
 - [fn_get_emittenti_scope_sr_ids](manual/fn_get_emittenti_scope_sr_ids.md) — (latest review 02-05-2026 — wrapper su `_pk_ids`)
 - [fn_get_entita_ruolo_detail](manual/fn_get_entita_ruolo_detail.md) — * **Dati entita' per ruolo**: dato un `soggetto_ruolo_id`, recupera automaticamente il tipo ruolo e interroga la tabella/vista configurata in `tipi_ruoli.entita_tabella`.
 - [fn_get_fattura_intestazione](manual/fn_get_fattura_intestazione.md) — (rev 2026-08-22)
@@ -164,6 +164,7 @@
 - [fn_pgtap_emittente_operatore](manual/fn_pgtap_emittente_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_emittente_sr_operatore](manual/fn_pgtap_emittente_sr_operatore.md) — (rev 2026-08-21)
 - [fn_pgtap_set_contesto_operatore](manual/fn_pgtap_set_contesto_operatore.md) — (rev 2026-08-21)
+- [fn_predicato_soggetto_ruolo_visibile](manual/fn_predicato_soggetto_ruolo_visibile.md) — (latest review 10-10-2026)
 - [fn_regime_fiscale_documento](manual/fn_regime_fiscale_documento.md)
 - [fn_registra_tentativo_login](manual/fn_registra_tentativo_login.md) — (riscritta il 25-09-2026)
 - [fn_resolve_codice_postale](manual/fn_resolve_codice_postale.md) — Risolve il `codice_postale_id` con logica di fallback a due livelli. Unica source of truth per la logica CAP (prima nel watcher Vue).

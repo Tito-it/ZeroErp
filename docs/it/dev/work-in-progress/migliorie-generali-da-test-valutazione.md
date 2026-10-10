@@ -512,9 +512,10 @@ errore.
 > che `brief-db-righe-esclusione-solo-non-si-vende` (§10.8) ha lasciato
 > all'archiviazione (2026-10-08), chiusa lo stesso giorno; **D20** da ciò che
 > la sua chiusura ha trovato. **D21** dal lato BE/FE di
-> `brief-db-istanza-nasce-col-ba` (2026-10-09).
+> `brief-db-istanza-nasce-col-ba` (2026-10-09). **D23** dal giro R-6 di
+> `brief-db-codici-non-trovato-email-e-permessi` (2026-10-10).
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D23.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -930,6 +931,18 @@ Dettaglio, decisioni di Tid (tutte chiuse il 2026-10-09) e forma proposta nel br
 2026-10-09, verde il 2026-10-10 (corsa completa di Tid, nessuna regressione); giro DB 2 (le decisioni del 2026-10-10) applicato e verde il 2026-10-10 (§11 del brief); resta la
 ricaduta BE/FE.
 
+### 🟡 D23 — Ricerca universale: oltre 10.000 risultati il totale e le pagine non dicono il vero
+
+Trovato il 2026-10-10 scrivendo R-6 di `brief-db-codici-non-trovato-email-e-permessi` (§14.5): la
+lista della ricerca universale tiene al massimo 10.000 corrispondenze con un `LIMIT` senza
+`ORDER BY`, poi conta, ordina e pagina su quelle. Oltre il tetto il totale è falso, la prima pagina
+non è la prima vera e le pagine possono ripetere o saltare soggetti.
+
+Dettaglio, due strade e decisioni attese nel brief
+[brief-db-ricerca-universale-tetto-10000.md](brief-db-ricerca-universale-tetto-10000.md). 🔧 Decisioni
+chiuse il 2026-10-10 (strada B, via l'ordinamento per utility); lato DB applicato e verde il
+2026-10-10 (`20261010-16`); resta il BE/FE (§7.3 del brief).
+
 ---
 
 ## 4. Cosa NON è un difetto
@@ -1125,6 +1138,8 @@ D6 e il registro dei rossi in CI.
       contratto e offerta: chiusa il 2026-10-08 (§7).
 * [x] **D20** — i tre debiti rimasti da D19: brief `brief-db-righe-e-componenti-debiti-residui`,
       chiuso e archiviato il 2026-10-09.
+* [ ] **D23** — il tetto delle 10.000 righe della ricerca universale (totale e pagine falsi oltre
+      il tetto): brief `brief-db-ricerca-universale-tetto-10000` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno; DB `20261010-16` applicato e verde; resta il BE/FE).
 * [ ] **D21** — ordine, DDT e reso col cliente come preventivo, offerta e contratto: brief
       `brief-db-esecutivi-ba-coppia` (decisioni chiuse il 2026-10-09; lato DB, giro 1 e 2, applicato e verde; resta il BE/FE: §11.5).
 

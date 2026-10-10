@@ -15,7 +15,7 @@
 -- config.user_emittenti_fiscali non vede piu' TUTTI gli emittenti.
 -- Brief: brief-db-perimetro-emittente-liste-e-gerarchia-ba.md §2.5
 --
--- Elenco test (plan 12):
+-- Elenco test (plan 11):
 --   0) PRECONDIZIONI: le tre aziende e il BA sono stati costruiti
 --   1) operatore CON riga            -> array di 1 (invariato)
 --   2) * operatore SENZA riga        -> '{}' e NON NULL     ⬅ LA correzione
@@ -27,8 +27,15 @@
 --  Utente NULL (rev 2026-10-04, Q-1 di brief-db-esclusioni-implicite):
 --   8) * fn_check_user_emittente_scope(NULL, …) -> false   (era true)
 --   9) * fn_scope_ef_whitelist_via_efba(NULL, …) -> false  (era true)
---  10) * fn_get_emittenti_scope_sr_effettivo(NULL, NULL) -> '{}' (era NULL)
---  11) * fn_get_emittenti_scope_sr_effettivo(NULL, [x]) -> '{}' (era [x])
+--  10) * fn_get_emittenti_scope_sr_ids(NULL) -> '{}' (la canonica, non NULL = tutto)
+--
+-- Rev 2026-10-10 (brief-db-codici-non-trovato-email-e-permessi R-5): i test 10
+--   e 11 provavano fn_get_emittenti_scope_sr_effettivo, ritirata con il
+--   parametro p_emittente_ids della ricerca universale (20261010-14). Ne era
+--   un involucro: la proprieta' che custodivano, «utente NULL = nessun
+--   accesso», resta qui sulla canonica fn_get_emittenti_scope_sr_ids, che
+--   nessun test asseriva direttamente (le viste fail-closed la davano per
+--   buona nei commenti).
 --
 -- Scopo:
 --  - 2 e 3 sono la correzione. Prima erano NULL e true, cioe' «vede tutto»:
@@ -68,7 +75,7 @@ BEGIN;
 
 SET CONSTRAINTS ALL IMMEDIATE;
 
-SELECT plan(12);
+SELECT plan(11);
 
 -- ============================================================
 -- Fixture: si costruisce il mondo, POI si apre il contesto
@@ -184,7 +191,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 8..11) * Utente NULL = nessun accesso (rev 2026-10-04, Q-1)
+-- 8..10) * Utente NULL = nessun accesso (rev 2026-10-04, Q-1)
 -- ============================================================
 -- Fino al 2026-10-04 la famiglia diceva «utente NULL = job batch = vede
 -- tutto». Le policy restavano chiuse solo per la veste OPERATORE: con la veste
@@ -207,16 +214,9 @@ SELECT ok(
 );
 
 SELECT is(
-    script.fn_get_emittenti_scope_sr_effettivo(NULL, NULL),
+    script.fn_get_emittenti_scope_sr_ids(NULL),
     '{}'::bigint[],
-    '10. * utente NULL senza restrizione: sr_effettivo -> ''{}'' (era NULL = tutto)'
-);
-
-SELECT is(
-    script.fn_get_emittenti_scope_sr_effettivo(
-        NULL, ARRAY[(SELECT soggetto_ruolo_id FROM _t_op)]::bigint[]),
-    '{}'::bigint[],
-    '11. * utente NULL con restrizione: sr_effettivo -> ''{}'' (era la restrizione stessa)'
+    '10. * utente NULL: fn_get_emittenti_scope_sr_ids -> ''{}'' (nessun accesso, non NULL = tutto)'
 );
 
 -- ============================================================

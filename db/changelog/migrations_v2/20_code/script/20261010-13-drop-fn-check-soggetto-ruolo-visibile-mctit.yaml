@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: script.fn_check_soggetto_ruolo_visibile
+#   DROP FUNCTION script.fn_check_soggetto_ruolo_visibile(bigint)
+#   Brief: brief-db-codici-non-trovato-email-e-permessi (R-6, regola del 2)
+#
+#   La regola «chi si vede nella ricerca universale» la dice ora
+#   script.fn_predicato_soggetto_ruolo_visibile (20261010-10), sul catalogo
+#   (config.tipi_ruoli.entita_esistenza) invece che sul letterale 'CL'. I due
+#   lettori sono passati al BB nello stesso giro (20261010-11 il dettaglio,
+#   -12 la lista): la check accanto al BB sarebbe una terza versione della
+#   stessa regola, e dissentirebbe gia' (per lei un FO senza fornitore si
+#   vede, per il BB no).
+#   ⚠️ Censimento del 2026-10-10: nessun'altra funzione la chiama (pg_proc),
+#   il backend nemmeno; l'unico pgTAP che la usava
+#   (script/test-search-soggetti-universale, nella fixture) passa al BB nello
+#   stesso giro. La pagina manual/ omonima si cancella nello stesso giro.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/script/20261010-13-drop-fn-check-soggetto-ruolo-visibile-mctit.yaml
+
+  - changeSet:
+      id: 20261010-13-drop-fn-check-soggetto-ruolo-visibile
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritira script.fn_check_soggetto_ruolo_visibile: la regola la dice il BB
+        script.fn_predicato_soggetto_ruolo_visibile (20261010-10), che lista e dettaglio
+        leggono gia'. Brief: brief-db-codici-non-trovato-email-e-permessi (R-6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*)
+                FROM pg_proc p
+               WHERE p.prosrc ~ 'fn_check_soggetto_ruolo_visibile'
+                 AND p.oid <> COALESCE(to_regprocedure('script.fn_check_soggetto_ruolo_visibile(bigint)')::oid, 0);
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP FUNCTION IF EXISTS script.fn_check_soggetto_ruolo_visibile(anagrafiche.soggetti_ruoli.id%TYPE);
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si rimette dal changeSet 20261008-01.
+              SELECT 1;
