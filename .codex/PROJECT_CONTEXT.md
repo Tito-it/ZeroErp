@@ -333,12 +333,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   **Fase 1 (§5-bis), da fare per prima e consegnabile da sola:** il lettore del montaggio e la capability della
   data di consegna confermata (assorbito il brief `brief-db-ordine-data-consegna-confermata-capability`); il BE
   la attende per il suo verbo. Poi la fase 2, la testata. Codice da scrivere.
-- 📝 **Un testo non si riempie di spazi** (`work-in-progress/brief-db-character-n-spazi-di-riempimento.md`,
-  2026-10-10, da segnalazione BE: `Potenza (PZ        )` nel drawer comuni): colonne `character(n)` con dominio a
-  lunghezza variabile (sigla e descrizione provincia, `destinatario_fe`, …), tamponate a valle in tre punti.
-  Lato DB chiuso il 2026-10-10 (`20261010-26…-40`, applicati e verdi), compreso D-6: `destinatario_fe` è il
-  canale FE (P/C) e pretende il suo recapito. Restano le richieste a BE/FE (§6). Regola nuova: §7e di
-  `linee-guida-sql.md`, presidio `test-character-n-v1`.
+- ✅ **Un testo non si riempie di spazi: chiuso il 2026-10-10** (`work-done/brief-db-character-n-spazi-di-riempimento.md`):
+  colonne `character(n)` a lunghezza variabile portate a `varchar` (`20261010-26…-40`), sigla di provincia con la
+  sua regola, `destinatario_fe` diventato il canale FE (P/C) che pretende il suo recapito; BE/FE e collaudo a video
+  superati. Regola nuova: §7e di `linee-guida-sql.md`, presidio `test-character-n-v1`. BB FE `InputMaiuscolo`.
+- 📝 **Dati fiscali e societari del soggetto** (`work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md`,
+  2026-10-10): (A) «Cliente PA» e «Split payment» ammessi per ogni natura, anche per un privato; (B) in modifica i
+  dati societari non si salvano, serve il verbo di scrittura (decisione di Tid); (C) la forma giuridica non è legata
+  alla natura, e il drawer la mostra vuota. Decisioni di Tid nel §4; BE/FE attendono il DB.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

@@ -7,8 +7,10 @@
 > `brief-db-province-sigla-varchar`. Nell'analisi DB il perimetro risulta più largo della sola
 > sigla (§2), quindi il brief ha un nome più generale.
 > **Stato:** ✅ **lato DB chiuso** (2026-10-10): D-1…D-6 applicate da Tid (`20261010-26` … `-40`),
-> corse pgTAP verdi. Restano le richieste a BE/FE (§6: R-1 … R-10) e la verifica a video del drawer
-> comuni (`Potenza (PZ)`).
+> corse pgTAP verdi. ✅ **Lato BE/FE fatto** il 2026-10-10 (§6.1). ✅ **Collaudo a video superato** (R-2,
+> Tid, 2026-10-10). ✅ **Chiuso e archiviato il 2026-10-10.** Il seguito (verbo di scrittura dei dati
+> societari, forma giuridica non legata alla natura) sta in
+> `work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md` (§8).
 > **Da leggere per primo:** §6 (richieste a BE/FE), poi §7 per cosa è cambiato a DB.
 
 ## 1. Il difetto, sul modello
@@ -217,6 +219,39 @@ query del §2.4 riceveranno valori puliti senza modifiche.
 - **R-7 (FE, facoltativo)** — la sigla della provincia si può validare anche nel form (due
   lettere maiuscole per l'Italia): solo come aiuto, la regola resta del DB.
 
+### 6.1 Lato BE/FE: cosa è stato fatto (2026-10-10, `dev/backend-tid`)
+
+| # | Esito |
+| --- | --- |
+| R-1 | Niente da togliere: nessun `.strip()` in **uscita** su sigla, descrizione o `destinatario_fe` (quelli di `geo_repository` stanno sull'ingresso, R-3). |
+| R-2 | Provato sul DB vero, a livello di dato: `search_comuni("Potenza")` → `'PZ'`, `list_province` → `'AG'`/`'AGRIGENTO'`, colonne `varchar(10)`/`varchar(80)`. ✅ **Collaudo a video di Tid superato** (2026-10-10): autocomplete comuni, comune di nascita, tendina province, dati societari. La forma giuridica vista vuota non è un difetto di questo brief: è la forma salvata fuori dalla matrice della natura (§8). |
+| R-3 | L'ingresso resta com'è. Provato con chiamata reale in transazione annullata: `create_provincia` con sigla `ABC` o `P1` in una regione italiana, e `update_provincia` con `XYZ`, escono **400 `E_PROVINCIA_SIGLA_NON_VALIDA`, `fields = ['sigla']`**, con la frase del DB (passa dal middleware: il guard solleva `P0001`, non un `IntegrityError`). |
+| R-4, R-8 | `genera_error_policies`: quattro voci aggiunte, tutte `DATO_ERRATO`, **nessuna classe spostata**; `--check` pulito. Aggiunti anche i quattro **ripieghi** senza segnaposto in `error_messages_fallback.py` (cancello `test_ogni_codice_vivo_ha_un_messaggio_di_ripiego`). |
+| R-5 | Commenti di `geo_repository` (`list_comuni`, `get_provincia`, `list_province_paginated`) riscritti: niente più TRIM, le viste danno `varchar`. |
+| R-6 | `fn_crea_soggetto_pg` ha un'identità sola, con `p_destinatario_fe varchar`. I test Django che la attraversano sono verdi (sotto). |
+| R-8 (prova) | `UPDATE` reale di una riga di `dati_societari`: `C` senza codice → 400 `…_CODICE_SDI_MANCANTE` `['codice_sdi']`; `P` senza PEC → 400 `…_PEC_FATTURAZIONE_MANCANTE` `['pec_fatturazione']`; `ab12` → 400 `…_CODICE_SDI_NON_VALIDO` `['codice_sdi']`. Canale `X` → `E_DATABASE` (23514), come previsto dal `-39`. |
+| R-9 | `DatiSocietariForm.vue`: il codice SDI va in maiuscolo mentre si digita, col BB `InputMaiuscolo` (regola del 2, ok Tid: le stesse righe stavano sull'estensione del civico in `IndirizzoDrawer` e `IndirizzoSoggettoForm`; una correzione in mezzo al testo lascia il cursore dov'era), `maxlength="7"`. `codice_sdi` e `pec_fatturazione` si accendono da `campiErrati`, che `SoggettoDrawer` ora passa al form. `show-clear` sul canale resta. Il payload lo compone `useDatiSocietariForm().toPayload()`: solo ciò che il form mostra, quindi un codice SDI scritto e poi lasciato per il canale `P` non parte più verso il guard, che lo rifiuterebbe su un campo nascosto. Spec: `InputMaiuscolo.spec.js`, `useDatiSocietariForm.spec.js`. |
+| R-10 | Nessun cambio. |
+| R-7 | Non fatto (facoltativo): la regola resta del DB, e il campo si accende già da `campiErrati`. |
+
+Test: `ZEROERP_TEST_DB_E2E=1 ./manage-test.sh apps.anagrafiche apps.amm_software.tests.db` più i cancelli dei
+codici errore (`test_error_policies_divergenza_db`, `test_error_codes_declared_guardrail`,
+`test_ui_action_e_canale_campi`, `apps.core.tests.services`): **1508 verdi**. `ruff` ed `eslint` puliti sui file toccati.
+
+### 6.2 Trovato lavorando: in modifica i dati societari non si salvano
+
+⛔ **In modifica i dati societari non si salvano, e nessuno lo dice.** `SoggettoDrawer` riempie
+`DatiSocietariForm` anche in modifica e lo lascia modificabile (`:disabled="false"`), ma il ramo di
+modifica di `handleSave` non mette `dati_societari` nel payload. Lato BE non c'è un percorso di
+scrittura: `SOGGETTO_UPDATE_COLS` non ha quelle colonne, e `dati_societari` si scrive solo alla
+creazione (`fn_crea_soggetto_pg`). L'operatore cambia canale, PEC o codice SDI, preme Salva, legge
+«salvato», e alla riapertura trova i valori vecchi. C'era già prima di questo brief. Le strade sono
+due: un **verbo di scrittura** dei dati societari (a DB, sul modello «una scrittura = un verbo»)
+con BE e FE dietro, oppure il form in **sola lettura** in modifica finché quel verbo non c'è.
+
+✅ **Deciso da Tid il 2026-10-10: il verbo di scrittura a DB, con BE e FE dietro** (ex D-7, ora nel
+brief del §8).
+
 ## 7. Lato DB: cosa è stato fatto (2026-10-10)
 
 ### 7.1 I changeSet
@@ -375,7 +410,19 @@ del `-37`.
 
 Nessuna. (D-6 decisa; la provincia `TEST` cancellata a mano da Tid il 2026-10-10.)
 
-## 8. Registro
+## 8. Il seguito
+
+Tre difetti emersi chiudendo questo brief riguardano lo stesso oggetto, i dati fiscali e societari
+del soggetto. Su indicazione di Tid stanno in **un** brief,
+`work-in-progress/brief-db-dati-fiscali-e-societari-del-soggetto.md`:
+
+- **A** — «Cliente PA» e «Split payment» valgono per ogni natura, anche per un privato;
+- **B** — in modifica i dati societari non si salvano (§6.2): il verbo di scrittura, deciso da Tid
+  (era D-7 di questo brief);
+- **C** — la forma giuridica non è legata alla natura: il DB accetta una forma fuori matrice, e il
+  drawer la mostra vuota (è ciò che il collaudo R-2 ha visto).
+
+## 9. Registro
 
 | Data | Cosa |
 | --- | --- |
@@ -383,3 +430,6 @@ Nessuna. (D-6 decisa; la provincia `TEST` cancellata a mano da Tid il 2026-10-10
 | 2026-10-10 | D-1…D-5 accettate da Tid. Lato DB scritto: `20261010-26` … `-36`, codice `E_PROVINCIA_SIGLA_NON_VALIDA`, pgTAP `test-character-n-v1` e `test-province-sigla-v1`, regola §7e in `linee-guida-sql.md`, manual di `province`. Trovati e riparati `fn_get_indirizzi_by_soggetto` (rotta) e il cast `char(5)` di `fn_get_note`. Aperta D-6. Prova sullo scratch senza regressioni (§7.4). Da applicare. |
 | 2026-10-10 | `-26`…`-36` applicati da Tid, pgTAP verdi; provincia `TEST` cancellata a mano. D-6 prima scritta sul significato sbagliato (`-37`/`-38`, ritirati prima dell'apply), poi rifatta sul canale FE dopo le decisioni di Tid: `-37`…`-40`, tre codici errore, pgTAP `test-dati-societari-canale-fe-v1`. Da applicare dopo il passo 0 (§7.6). |
 | 2026-10-10 | Passo 0 fatto, `-37`…`-40` applicati da Tid, pgTAP verdi. **Lato DB chiuso**; restano BE/FE (§6). |
+| 2026-10-10 | Lato BE/FE (§6.1): policy rigenerate e ripieghi per i quattro codici, commenti TRIM, form del canale FE (maiuscolo, campi accesi). Provato con chiamate reali sul DB, 1508 test verdi. Trovato il salvataggio mancante dei dati societari in modifica (§6.2, domanda a Tid). Resta la verifica a video (R-2). |
+| 2026-10-10 | Tid decide D-7: il verbo di scrittura dei dati societari, a DB, con BE e FE dietro. Lato FE estratto il BB `InputMaiuscolo` (regola del 2, ok Tid): codice SDI ed estensione del civico. |
+| 2026-10-10 | Collaudo a video di Tid superato (R-2). D-7 spostata, con PA/split e la forma giuridica fuori matrice, in `brief-db-dati-fiscali-e-societari-del-soggetto` (§8). **Brief chiuso e archiviato in `work-done/`.** |

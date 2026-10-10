@@ -380,7 +380,7 @@ async function handleSave() {
 
     // Dati societari (solo se visibili)
     if (soggetto.showDatiSocietari.value) {
-      payload.dati_societari = { ...datiSocietari.form }
+      payload.dati_societari = datiSocietari.toPayload()
     }
 
     const result = await execute(
@@ -511,6 +511,7 @@ async function handleSave() {
       </div>
       <DatiSocietariForm
         :form="datiSocietari.form"
+        :campi-errati="campiErrati"
         :forme-giuridiche="formeGiuridicheLookup"
         :province-lookup="provinceLookup"
         :show-rea="datiSocietari.showRea.value"
