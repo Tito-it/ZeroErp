@@ -48,7 +48,7 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
 - Detail `GET /api/v1/vendite/ddt/<id>/` — testata + capabilities data-driven
   (`fn_available_actions_ddt`) nella chiave `capabilities`, non fuse nella
   testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
-- Update `PATCH /api/v1/vendite/ddt/<id>/` — solo DRAFT. Cliente e
+- Update `PATCH /api/v1/vendite/ddt/<id>/` — in bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a bolla emessa restano aperti trasporto, tracciamento e note (D-0, D-1), fermi a bolla resa o annullata. Cliente e
   destinatario **si scelgono in bozza** (`billing_account_id`,
   `destinatario_soggetto_ruolo_id`; `utility_id` fuori contratto): al cambio di
   BA il destinatario non inviato segue il BA nuovo, un BA tolto toglie la

@@ -31,10 +31,11 @@
 >
 > ✅ **2026-10-10, DB: R-2 applicato da Tid, pgTAP verdi** — compresi i due di `vendite`
 > «senza veste», che provano come app il percorso INVOKER → DEFINER (§7). **Lato DB chiuso.**
-> ⏳ Resta al **team BE/FE**: il giro del §6.4 (conteggio per causa, digest per chi agisce
-> della causa, conteggio nel pannello), poi il collaudo a video di Tid e l'archivio.
+> ✅ **2026-10-10, BE/FE: il giro del §6.4 è fatto** (§6.5).
 >
-> **Da leggere per primo:** §6.4, con la lettura in §7.4.
+> ✅ **CHIUSO e archiviato il 2026-10-10.** Collaudo di Tid superato (§6.6): `SERVIZIO_GIU`
+> provocato fermando il listener, pannello e digest `--secco` come attesi. Il residuo (una
+> colonna «Stato» nella lista dei processi) sta in PROJECT_CONTEXT § «Aperto — Media priorità».
 
 ## 1. Il difetto
 
@@ -342,7 +343,7 @@ con R-2.
 
 | Dove | Che cosa |
 | --- | --- |
-| `presidi_repository` | la scelta della lingua in una sede sola (`_testo_per_lingua`), con due lettori: il testo del presidio (`variante IS NULL`) e quello della causa (`variante = c.causa`); `colonna_variante` letta dal catalogo; `testi_delle_cause(vista)` (`presidi_cause` + `presidi_testi`); `cause_delle_righe(riga, righe)`, unica sede del raggruppamento, con il nome della colonna dal catalogo. Una causa senza testo, o assente dal catalogo, arriva con i campi a `None` e non eredita il testo del presidio |
+| `presidi_repository` | la scelta della lingua in una sede sola (`_testo_per_lingua`), con due lettori: il testo del presidio (`variante IS NULL`) e quello della causa (`variante = c.causa`); `colonna_variante` letta dal catalogo; `testi_delle_cause(vista)` (`presidi_cause` + `presidi_testi`); `cause_delle_righe(riga, righe)` (dal §6.5 `cause_del_presidio`), unica sede del raggruppamento, con il nome della colonna dal catalogo. Una causa senza testo, o assente dal catalogo, arriva con i campi a `None` e non eredita il testo del presidio |
 | pannello (`stato_presidi` → `PresidiProcessiPanel`) | campo `cause`; a video ogni gruppo di righe ha sopra la causa, il badge del suo «chi agisce», l'azione e il significato; una causa senza testo lo dice |
 | digest | `VocePresidio.cause`; testo e HTML rendono ogni causa con «causa — a chi tocca», il rimedio e le sue righe. La voce resta nel gruppo del presidio: lo spostamento per causa aspetta R-2 |
 | doc | `api_amm_software.md` §presidi: `significato`, `azione`, `chi_agisce` (mancavano già) e `cause` |
@@ -363,6 +364,27 @@ Prove: `test_presidi_repository` 12-13, `test_presidi_digest` 27-28, `test_presi
    le righe `NON_PROGRAMMATO` e `GIRA_E_NON_REGISTRA` vanno allo sviluppo (§5.4.4).
    L'intestazione e il conteggio del presidio restano su `dbops.presidi.chi_agisce`.
 4. Pannello: il conteggio accanto a ogni causa.
+
+### 6.5 Il giro BE/FE dopo R-2 — fatto (2026-10-10, non committato)
+
+| Dove | Che cosa |
+| --- | --- |
+| `presidi_repository` | `conta_per_variante(riga)`: `SELECT variante, conteggio FROM dbops.fn_conta_presidio_per_variante(%s)`. `cause_delle_righe` diventa **`cause_del_presidio(riga, righe)`** e parte dai conteggi: ogni causa accesa arriva col suo `conteggio`, anche senza righe nel campione e sulle viste che non si elencano; l'ordine è quello della funzione. Una riga accesa fra le due letture non si perde (il gruppo nasce o cresce) e nessun gruppo conta meno delle righe che mostra. Il pallino (`con_righe=False`) non chiede le cause |
+| digest | `_voci_per_causa`: la voce di un presidio con cause si apre in **una voce per (presidio, causa)**, col conteggio, il testo, il «chi agisce» e le righe della causa, e `_per_chi_agisce` la smista nel gruppo del **suo** «chi agisce» — `NON_PROGRAMMATO` e `GIRA_E_NON_REGISTRA` allo sviluppo (§5.4.4). Gli elenchi del `Digest`, l'oggetto e il riepilogo restano **per presidio**. La resa ha un percorso solo (prima i gruppi di causa erano un ciclo annidato in testo e in HTML); il testo neutro del presidio non si ripete sopra le cause. Causa senza testo, fuori catalogo o non indicata: lo dice, e finisce fra le «senza indicazione» |
+| pannello | accanto a ogni causa il suo `conteggio`, e «mostrate n di N» quando il campione ne ha meno (non sulle viste non elencabili, dove lo dice già la testa) |
+| doc | `api_amm_software.md` §presidi (`cause[].conteggio`), catalogo BB backend (`PresidiRepository`) |
+
+⚠️ Scelta di forma: il `conteggio` del presidio resta `fn_conta_presidio`, letto a parte. Per
+costruzione è la somma della sede, ma è una seconda lettura: fra le due può cambiare una riga,
+come già fra `conta` e `prime_righe`. Leggerlo come somma dei gruppi avrebbe risparmiato una
+lettura solo per i presidi a variante, al prezzo di due strade per lo stesso numero.
+
+Prove: `test_presidi_repository` 13-17, `test_presidi_digest` 27-30, `test_presidi_catalogo`
+9-quater (e2e: la sede si legge come tabella, ogni variante è a catalogo — ⚠️ con niente acceso
+gira a vuoto; il trasporto dell'SQL lo prova il 14 del repository),
+`PresidiProcessiPanel.spec` 5-8. 69 test BE + 14 e2e sul dbdev, 10 vitest, ruff, mypy
+(cancello della baseline) e `check_i18n_keys` (i due rossi sono di `vendite.ordini`, di un
+altro cantiere) verdi.
 
 ## 7. Consegna DB di R-2 (2026-10-10)
 
@@ -454,3 +476,23 @@ trigger di automazione, v1, preambolo pgTAP) verdi.
 * Un gruppo `variante = NULL` in un presidio con variante è «causa non indicata»
   (§6.2.4): non eredita il testo generico (§5.4.2).
 * Nessun codice d'errore nuovo: fuori catalogo resta `E_PRESIDIO_NON_A_CATALOGO`.
+
+### 6.6 Collaudo di Tid (2026-10-10)
+
+Provocato `SERVIZIO_GIU` con `systemctl stop zeroerp-listen-permessi`, poi riacceso.
+
+* **Pannello**: scheda del presidio a 1, testo neutro in testa col badge del sistemista; il
+  gruppo `SERVIZIO_GIU` col suo conteggio, il suo badge, «il servizio va riavviato» (niente
+  timer, niente «Esegui ora»: il difetto del §1 non c'è più) e la sola riga di `listen_permessi`.
+* **Digest `--secco`**: oggetto «1 in allarme (1 righe)»; la voce
+  `dbops.vw_processi_programmazione_da_guardare — SERVIZIO_GIU: 1` nel gruppo del sistemista,
+  col suo rimedio; il testo neutro non si ripete.
+* **Difetto emerso e sanato lo stesso giorno**: nelle righe del pannello gli istanti uscivano
+  grezzi (`2026-10-09T13:47:54.044Z`, UTC), mentre il digest li scrive nell'ora dell'azienda.
+  `PresidiProcessiPanel` riconosce ora dalla forma un istante con fuso (→ `displayTimestamp`) e
+  un giorno (→ `displayDate`); una stringa senza fuso resta com'è. Spec 9.
+* **Osservazione, fuori perimetro**: nella lista dei processi «Attivo» è il flag del catalogo e
+  «Esito» l'esito dell'ultima corsa registrata: nessuna delle due dice se il processo gira
+  adesso, e per un servizio `SESSIONE` l'esito resta quello dell'avvio. Lo stato vivo lo calcola
+  già `vw_processi_programmazione`; portarlo in lista vuole la colonna nel seed della lista (DB).
+  Registrato come residuo, non deciso.

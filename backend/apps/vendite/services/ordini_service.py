@@ -19,6 +19,7 @@ import json
 import logging
 from decimal import Decimal, InvalidOperation
 from datetime import date
+from collections.abc import Callable
 from typing import Any
 
 from django.db import DatabaseError, transaction
@@ -169,10 +170,11 @@ UPDATE_KEYS_RIGA: frozenset[str] = frozenset({
 #    eccezione: un UPDATE della sola `data_consegna_confermata` in
 #    CONFERMATO/PARZIALMENTE_EVASO (brief-db-righe-e-componenti-debiti-residui,
 #    D-1). Quell'eccezione NON passa da `aggiorna_riga` (che resta «solo in
-#    bozza»): avra' un verbo suo, sulla capability letta dal DB
-#    (brief-db-ordine-data-consegna-confermata-capability).
+#    bozza»): ha il verbo suo, `cambia_data_consegna_confermata`, sulla
+#    capability letta dal DB (brief-db-testata-dopo-emissione, fase 1).
+_DATA_CONSEGNA_CONFERMATA = "data_consegna_confermata"
 _DATE_RIGA: tuple[str, ...] = (
-    "data_consegna_richiesta_cliente", "data_consegna_confermata",
+    "data_consegna_richiesta_cliente", _DATA_CONSEGNA_CONFERMATA,
 )
 # Validator del dominio (testata e date di riga): solleva `E_ORD_VALIDAZIONE`
 # con `context.field` = la chiave, cosi' l'input si accende (`campiErrati`).
@@ -456,15 +458,22 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     return creato
 
 
-# Scopo: Aggiorna testata ordine (solo in DRAFT).
+# Scopo: Aggiorna testata ordine.
 #
+# Quali colonne si cambiano in quale stato lo dice il DB, colonna per colonna:
+# il lock di testata `vendite.trgfn_doc_testata_lock_fuori_bozza` (in bozza
+# tutto; dopo, le note finche' l'ordine non e' chiuso). Fino al 2026-10-10 qui
+# c'era un «solo in DRAFT» che ne era la seconda copia
+# (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del lock passa com'e'.
 # Il cliente non cambia dopo la creazione, e lo dice il DB (lock di colonna su
 # `billing_account_id` e `soggetto_ruolo_id`, E_ORD_CLIENTE_IMMUTABILE): il BA
 # e' in whitelist e arriva fin li'. Fino al 2026-10-10 qui c'era una copia del
 # lock in Python, nata quando nessun trigger ri-sincronizzava il ruolo.
 def aggiorna_ordine(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = OrdiniRepository()
-    _assert_stato(repo, ordine_id, _STATI_MODIFICABILI, op="aggiorna_ordine")
+    # Prima la testata: fuori perimetro o inesistente e' un 404. Basta sapere
+    # che esiste: il lettore leggero, non la testata intera.
+    _get_testata_or_raise(repo, ordine_id, op="aggiorna_ordine", getter=repo.get_stato_codice)
 
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_ORDINE}
     if "billing_account_id" in data:
@@ -974,6 +983,49 @@ def aggiorna_riga(
     return {"ordine_id": ordine_id, "riga_id": riga_id, "updated": True}
 
 
+# Scopo: Cambia la data di consegna confermata di UNA riga, anche dopo la
+#        conferma dell'ordine (brief-db-testata-dopo-emissione, fase 1, R-BE-1).
+#
+# Scrive la SOLA colonna `data_consegna_confermata` (`null` toglie la promessa:
+# la colonna e' nullable). ⛔ Nessun pre-check di stato qui: in quali stati la
+# data si cambia lo dice il lock delle righe (`trgfn_doc_righe_lock_fuori_bozza`,
+# argomenti [4]/[5] del montaggio), e il 409 `E_RIGA_DOC_NON_BOZZA` passa com'e'.
+# Il motivo per spegnere l'azione prima arriva dalla capability
+# `can_edit_data_consegna_confermata`, che legge lo stesso montaggio.
+# `aggiorna_riga` resta «solo in bozza» per tutte le colonne.
+def cambia_data_consegna_confermata(
+    ordine_id: int, riga_id: int, payload: dict[str, Any],
+) -> dict[str, Any]:
+    fn = f"{_FN}.cambia_data_consegna_confermata"
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="cambia_data_consegna_confermata")
+    _get_riga_or_raise(repo, ordine_id, riga_id, op="cambia_data_consegna_confermata")
+    estranee = sorted(set(payload) - {_DATA_CONSEGNA_CONFERMATA})
+    ErrorManager.require(
+        not estranee,
+        code="E_ORD_VALIDAZIONE",
+        message="Il verbo cambia solo la data di consegna confermata.",
+        detail=f"chiavi non ammesse: {estranee}",
+        function_name=fn,
+    )
+    ErrorManager.require(
+        _DATA_CONSEGNA_CONFERMATA in payload,
+        code="E_ORD_VALIDAZIONE",
+        message="Data di consegna confermata obbligatoria (null per toglierla).",
+        context={"field": _DATA_CONSEGNA_CONFERMATA},
+        function_name=fn,
+    )
+    data = {_DATA_CONSEGNA_CONFERMATA: empty_to_none(payload[_DATA_CONSEGNA_CONFERMATA])}
+    _parse_date_riga(data, function_name=fn)
+    with _db_errors("cambia_data_consegna_confermata"):
+        repo.update_riga(riga_id, **data)
+    return {
+        "ordine_id": ordine_id,
+        "riga_id": riga_id,
+        _DATA_CONSEGNA_CONFERMATA: data[_DATA_CONSEGNA_CONFERMATA],
+    }
+
+
 # Scopo: Elimina riga ordine (HARD DELETE, solo DRAFT). I componenti BoM hanno
 #        ON DELETE CASCADE; il trigger DB blocca se la riga e' collegata a DDT.
 def elimina_riga(ordine_id: int, riga_id: int) -> dict[str, Any]:
@@ -1202,11 +1254,15 @@ _db_errors = make_db_errors_translator(
 
 # Scopo: Carica la testata ordine o solleva E_ORD_NOT_FOUND (BB core
 #        `testata_o_not_found`: qui solo codice e messaggio del dominio).
+# `getter` ammette il lettore leggero `get_stato_codice`, dove al chiamante
+# basta sapere che il documento esiste (stessa forma di
+# `offerte_service._get_offerta_or_raise`).
 def _get_testata_or_raise(
     repo: OrdiniRepository, ordine_id: int, *, op: str,
-) -> dict[str, Any]:
+    getter: Callable[[int], Any] | None = None,
+) -> Any:
     return testata_o_not_found(
-        repo.get_ordine, ordine_id,
+        getter or repo.get_ordine, ordine_id,
         code="E_ORD_NOT_FOUND", message="Ordine non trovato.",
         id_name="ordine_id", function_name=f"{_FN}.{op}",
     )

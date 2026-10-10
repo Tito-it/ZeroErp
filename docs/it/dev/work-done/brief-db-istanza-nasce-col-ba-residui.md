@@ -8,13 +8,12 @@
 > il resolver `script.fn_get_billing_account_by_istanza` senza più consumatori (§6.12.3 di quel
 > brief) e il ramo morto `PREVENTIVO_SENZA_BILLING_ACCOUNT` delle capability del preventivo
 > (§6.10.3). Registro: **D25** di `migliorie-generali-da-test-valutazione.md`.
-> **Stato:** ✅ **lato DB chiuso** (2026-10-10): `20261010-50` … `-59` **applicati da Tid** il
-> 2026-10-10 (15:14, tutti `EXECUTED` in `databasechangelog`), pgTAP verdi alla sua corsa su dbdev
-> (§6). Su `zeroerp_ci` un rosso nel pgTAP nuovo, dovuto alla sua fixture: corretto (§6), si
-> attende la conferma dalla prossima baseline CI.
-> D-1 … D-5 decise da Tid lo stesso giorno e fatte. ⏳ Restano le due richieste del §4: la chiave
-> nei locales (FE) e una riga di documentazione (BE). Fatte quelle, il brief si archivia (§7).
-> **Da leggere per primo:** §4 (cosa resta, a FE e BE), poi §3.1 e §5 per cosa è cambiato a DB.
+> **Stato:** ✅ **chiuso e archiviato il 2026-10-10.** `20261010-50` … `-59` **applicati da Tid** il
+> 2026-10-10 (15:14, tutti `EXECUTED` in `databasechangelog`), pgTAP verdi su dbdev e su
+> `zeroerp_ci` (il rosso della fixture del pgTAP nuovo, corretto lo stesso giorno, è verde nella
+> baseline CI: §6). D-1 … D-5 decise da Tid lo stesso giorno e fatte. Le due richieste del §4 (la
+> chiave nei locales, FE; una riga di documentazione, BE) fatte il 2026-10-10.
+> **Da leggere per primo:** §3.1 e §5 per cosa è cambiato a DB, §4 per FE e BE.
 
 ## 1. Che cosa resta, sul modello
 
@@ -125,6 +124,11 @@ in `dbops`, non committato). Per non contendere i numeri successivi ho preso il 
 | --- | --- | --- |
 | **R-FE-1** | FE | togliere `vendite.preventivi.push_commessa_reason.senza_billing_account` da `frontend/src/locales/it.json` e `en.json`, **dopo** l'apply del `-50`. Prima dell'apply la chiave serve ancora, in teoria: il ramo è irraggiungibile, ma il codice c'è |
 | **R-BE-1** | BE (doc) | `docs/it/backend/pratiche/manual/api_pratiche_list.md`, riga sul `billing_account_id`: `script.fn_get_billing_account_by_istanza` non è più «in ritiro» ma ritirata (2026-10-10). Nessuna modifica di codice |
+
+✅ **Fatte il 2026-10-10** (sessione BE/FE, `dev/backend-tid`): R-FE-1 tolta la chiave da `it.json` e
+`en.json`, `scripts/check_i18n_keys.py` pulito; R-BE-1 la riga di `api_pratiche_list.md` dice
+«ritirata il 2026-10-10». Il commento storico in `pratiche/tests/db/test_pratica_billing_account_db.py`
+resta: racconta cosa il test sostituisce, non chiama la funzione.
 
 Nessun endpoint cambia forma: il blob della capability ha le stesse chiavi, e
 `can_push_commessa_reason` resta uno dei tre motivi che già esce.
@@ -262,15 +266,15 @@ Correzione: la fixture costruisce una **terza azienda** e ci porta la predefinit
 scena (quando tutti i BA del test sono ancora collegati, quindi senza coppie miste); il test 0
 ora pretende proprio quella. La scena è la stessa su ogni database. Riprova: 8/8 su `zeroerp_ci`
 e 8/8 su dbdev, in transazione ritirata; la predefinita di dbdev è rimasta la sua e `zeroerp_ci`
-è rimasto vuoto. ⏳ A Tid: la conferma alla prossima baseline CI.
+è rimasto vuoto. ✅ Verde nella baseline CI di Tid (conferma del 2026-10-10).
 
 ## 7. Archiviazione
 
 * [x] apply e pgTAP verdi su dbdev (§6, 2026-10-10);
-* [ ] `test-istanza-ba-gestore-globale-v1` verde anche nella baseline di `zeroerp_ci` (fixture corretta il 2026-10-10, §6);
-* [ ] R-FE-1 e R-BE-1 fatte;
+* [x] `test-istanza-ba-gestore-globale-v1` verde anche nella baseline di `zeroerp_ci` (fixture corretta e confermata il 2026-10-10, §6);
+* [x] R-FE-1 e R-BE-1 fatte (2026-10-10, §4);
 * [x] D-3 e D-4 decise e fatte (2026-10-10);
 * [x] D-1 e D-2 decise e fatte (2026-10-10);
 * [x] D-5 decisa (strada a) e fatta (2026-10-10);
-* [ ] riga in `.codex/PROJECT_CONTEXT.md` da «aperto» a «chiuso», D25 spuntata nel registro,
-  brief in `work-done/`.
+* [x] riga in `.codex/PROJECT_CONTEXT.md` da «aperto» a «chiuso», D25 spuntata nel registro,
+  brief in `work-done/` (2026-10-10).

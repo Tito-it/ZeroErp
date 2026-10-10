@@ -114,10 +114,8 @@ class OrdiniServiceGuardsTests(SimpleTestCase):
         # E_ORD_CLIENTE_IMMUTABILE): il service non ricopia il lock e passa
         # il BA, invariato o no. Fino al 2026-10-10 qui c'era la copia Python.
         repo = repo_cls.return_value
-        repo.get_stato_codice.return_value = "DRAFT"
         ordini_service.aggiorna_ordine(7, {"billing_account_id": 99})
         self.assertEqual(repo.update_ordine.call_args.kwargs, {"billing_account_id": 99})
-        repo.get_ordine.assert_not_called()
 
     @patch(_REPO)
     def test_aggiorna_ordine_utility_scartata(self, repo_cls) -> None:
@@ -928,6 +926,92 @@ class OrdiniRigaDateConsegnaTests(SimpleTestCase):
         _, kwargs = repo.update_riga.call_args
         self.assertIsNone(kwargs["data_consegna_confermata"])
         self.assertEqual(kwargs["data_consegna_richiesta_cliente"], date(2026, 10, 2))
+
+
+# Scopo: Il verbo della promessa di consegna dopo la conferma
+#        (`cambia_data_consegna_confermata`, brief-db-testata-dopo-emissione
+#        fase 1, R-BE-1): scrive la sola colonna, nessun pre-check di stato
+#        (lo decide il lock delle righe del DB).
+#
+# Indice:
+#  1. test_ordine_confermato_scrive_la_sola_data
+#  2. test_null_toglie_la_promessa
+#  3. test_chiave_estranea_rifiutata_senza_scrivere
+#  4. test_data_assente_e_400_col_campo
+#  5. test_riga_di_un_altro_ordine_e_404
+#  6. test_il_rifiuto_del_lock_passa_col_suo_codice
+class OrdiniDataConsegnaConfermataTests(SimpleTestCase):
+    def _repo(self, repo_cls, stato: str = "CONFERMATO"):
+        repo = repo_cls.return_value
+        repo.get_ordine.return_value = {"id": 7, "stato_codice_interno": stato}
+        repo.get_riga.return_value = {"id": 60, "ordine_id": 7}
+        repo.update_riga.return_value = True
+        return repo
+
+    @patch(_REPO)
+    def test_ordine_confermato_scrive_la_sola_data(self, repo_cls) -> None:
+        repo = self._repo(repo_cls)
+        out = ordini_service.cambia_data_consegna_confermata(
+            7, 60, {"data_consegna_confermata": "2026-11-03"},
+        )
+        repo.update_riga.assert_called_once_with(
+            60, data_consegna_confermata=date(2026, 11, 3),
+        )
+        self.assertEqual(out["data_consegna_confermata"], date(2026, 11, 3))
+        # Nessun guard di stato in Python: lo stato non si chiede.
+        repo.get_stato_codice.assert_not_called()
+
+    @patch(_REPO)
+    def test_null_toglie_la_promessa(self, repo_cls) -> None:
+        repo = self._repo(repo_cls)
+        ordini_service.cambia_data_consegna_confermata(
+            7, 60, {"data_consegna_confermata": None},
+        )
+        repo.update_riga.assert_called_once_with(60, data_consegna_confermata=None)
+
+    @patch(_REPO)
+    def test_chiave_estranea_rifiutata_senza_scrivere(self, repo_cls) -> None:
+        repo = self._repo(repo_cls)
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_data_consegna_confermata(
+                7, 60, {"data_consegna_confermata": "2026-11-03", "qta_operativa": 5},
+            )
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        repo.update_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_data_assente_e_400_col_campo(self, repo_cls) -> None:
+        repo = self._repo(repo_cls)
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_data_consegna_confermata(7, 60, {})
+        self.assertEqual(cm.exception.code, "E_ORD_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "data_consegna_confermata")
+        repo.update_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_riga_di_un_altro_ordine_e_404(self, repo_cls) -> None:
+        repo = self._repo(repo_cls)
+        repo.get_riga.return_value = {"id": 60, "ordine_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_data_consegna_confermata(
+                7, 60, {"data_consegna_confermata": "2026-11-03"},
+            )
+        self.assertEqual(cm.exception.code, "E_ORD_NOT_FOUND")
+        repo.update_riga.assert_not_called()
+
+    @patch(_REPO)
+    def test_il_rifiuto_del_lock_passa_col_suo_codice(self, repo_cls) -> None:
+        # Ordine EVASO: il lock delle righe rifiuta, e il codice del DB arriva
+        # al client com'e' (nessuna traduzione in un codice del dominio).
+        repo = self._repo(repo_cls, stato="EVASO")
+        repo.update_riga.side_effect = DatabaseError(
+            "E_RIGA_DOC_NON_BOZZA: Ordine in stato EVASO, la riga non si modifica",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.cambia_data_consegna_confermata(
+                7, 60, {"data_consegna_confermata": "2026-11-03"},
+            )
+        self.assertEqual(cm.exception.code, "E_RIGA_DOC_NON_BOZZA")
 
 
 # Scopo: I satelliti «leggono prima la testata» (2026-09-21, allineamento a

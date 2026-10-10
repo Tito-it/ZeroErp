@@ -351,6 +351,8 @@ systemctl enable --now zeroerp-fatturazione-immediata.timer zeroerp-fatturazione
 Si abilitano i **`.timer`**; un run manuale si fa col `.service`. Dall'interfaccia
 c'è «Esegui ora» (§16.5).
 
+Tutti i comandi per servizio (start, stop, log, ricette): [Servizi ZeroERP — i comandi](servizi-zeroerp-comandi.md).
+
 ### 15.2) Validare i template in locale
 
 Senza root né systemctl, la stessa prova che gira in CI (job `validate-deploy`):

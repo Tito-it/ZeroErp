@@ -1691,6 +1691,7 @@
       "presidi_dettaglio_tecnico": "Dettaglio tecnico",
       "presidi_causa_non_indicata": "causa non indicata",
       "presidi_causa_senza_testo": "nessun testo per questa causa nel catalogo",
+      "presidi_causa_mostrate": "mostrate {n} di {tot}",
       "chi_agisce": {
         "amministratore": "Puoi sistemarlo tu",
         "sistemista": "Da segnalare a chi gestisce il server",
@@ -2799,7 +2800,8 @@
       "field_destinatario": "Destinatario",
       "field_destinatario_placeholder": "Cerca destinatario (terzista, deposito)...",
       "destinatario_dal_cliente_hint": "Con il cliente, il destinatario è il cliente stesso. Senza cliente (trasferimento, conto lavoro, riparazione) scegli chi riceve la merce.",
-      "utility_dal_cliente_hint": "La utility è quella del cliente: qui filtra solo la ricerca del cliente.",
+      "utility_dal_cliente_hint": "La utility della bolla è quella del cliente. Senza cliente la bolla non ha utility: qui filtri solo la ricerca del cliente.",
+      "field_utility_filtro": "Filtra clienti per utility",
       "field_emittente_fiscale": "Emittente fiscale",
       "field_billing_account": "Cliente",
       "field_billing_account_placeholder": "Cerca cliente per ragione sociale, codice, P.IVA...",
@@ -3712,6 +3714,15 @@
         "nessuna_riga_pushabile": "Nessuna riga inviabile a commessa: verifica quantità e prezzi delle righe.",
         "annullato": "L'ordine è annullato: non va a fatturazione."
       },
+      "data_consegna_confermata_reason": {
+        "in_bozza": "In bozza la data si cambia modificando la riga.",
+        "stato_non_ammette": "In questo stato la data di consegna non si cambia più."
+      },
+      "azione_data_consegna_confermata": "Cambia la data di consegna confermata",
+      "data_consegna_confermata_titolo": "Data di consegna confermata",
+      "data_consegna_confermata_riga": "Riga {riga_nr} — {descrizione}",
+      "data_consegna_confermata_hint": "Lascia il campo vuoto per togliere la promessa di consegna.",
+      "data_consegna_confermata_salvata": "Data di consegna confermata aggiornata.",
       "evasione_titolo": "Genera DDT",
       "evasione_intro": "Seleziona le righe da evadere e genera il documento di trasporto. Il DDT nasce in bozza.",
       "evasione_col_qta_ordinata": "Qtà ordinata",
@@ -3892,7 +3903,6 @@
       "push_commessa_reason": {
         "non_accettato": "L'integrazione con la commessa sara' disponibile dopo l'accettazione del preventivo.",
         "nessuna_riga": "Nessuna riga da inviare a commessa.",
-        "senza_billing_account": "Manca il cliente: impostalo per inviare a commessa.",
         "stato_chiuso": "Il preventivo è chiuso: non genera più smistamenti verso la commessa."
       },
       "genera_ordine_reason": {

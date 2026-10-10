@@ -51,3 +51,20 @@ export const FATTURAZIONE_TRIGGER_CODES = Object.freeze([
 // `pdf` di `fn_available_actions_ordine` (`EntityPdfButton`); la LISTA la legge
 // dalla colonna `pdf_mode` di `vendite.vw_ordini_lista` (`OrdiniSearchTable`,
 // `row.pdf_mode === PDF_MODE.ARCHIVE`). Nessuna lista di stati hardcoded qui.
+
+// Le colonne della testata che `OrdiniForm` MOSTRA, per `useTestataDocumento`
+// (brief-db-testata-dopo-emissione, R-FE-3): la testata e' modificabile se
+// almeno una di queste e' aperta nella capability. ⚠️ Deve dire gli stessi
+// campi del form: lo presidia `campiFormTestata.spec.js`, che la confronta
+// coi `isLocked('…')` del componente.
+export const CAMPI_FORM_TESTATA_ORDINE = Object.freeze([
+  'emittente_fiscale_id',
+  'billing_account_id',
+  'utility_id',
+  'data',
+  'valuta_id',
+  'modalita_pagamento_id',
+  'termine_pagamento_id',
+  'fatturazione_trigger',
+  'fatturazione_immediata',
+])

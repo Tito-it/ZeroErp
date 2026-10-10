@@ -34,6 +34,7 @@ Indice test eseguiti:
 24) test_search_ruoli_lookup_ok — happy path + normalizzazione tipo_ruolo upper
 25) test_search_ruoli_lookup_q_troppo_corta — q < 2 char → E_ANAG_VALIDAZIONE
 26) test_search_ruoli_lookup_limit_cap — limit oltre il max → cap a 50
+26-bis) test_search_ruoli_lookup_con_ruolo — con_ruolo arriva al repo, tipo_ruolo resta None
 27) test_by_id_ruolo_ok — restore riga ruolo via soggetto_ruolo_id
 28) test_by_id_senza_ruolo_ok — restore riga "senza ruolo" via soggetto_id
 29) test_by_id_chiavi_entrambe_o_nessuna — 0 o 2 chiavi → E_ANAG_VALIDAZIONE
@@ -739,6 +740,7 @@ class TestSearchRuoliLookup(TestCase):
         self.assertEqual(result["limit"], 20)
         repo.search_ruoli_lookup.assert_called_once_with(
             q="rossi", tipo_ruolo="CL", emittente_ids=[5], limit=20,
+            con_ruolo=False,
         )
 
     @patch(SOGG_REPO)
@@ -760,6 +762,17 @@ class TestSearchRuoliLookup(TestCase):
         self.assertEqual(result["limit"], 50)
         _, kwargs = repo.search_ruoli_lookup.call_args
         self.assertEqual(kwargs["limit"], 50)
+
+    @patch(SOGG_REPO)
+    def test_search_ruoli_lookup_con_ruolo(self, mock_repo):
+        """con_ruolo arriva al repo, senza restringere il tipo di ruolo."""
+        repo = mock_repo.return_value
+        repo.search_ruoli_lookup.return_value = ([], 0)
+        from apps.anagrafiche.services.soggetti_service import SoggettiService
+        SoggettiService().search_ruoli_lookup(q="rossi", con_ruolo=True)
+        _, kwargs = repo.search_ruoli_lookup.call_args
+        self.assertTrue(kwargs["con_ruolo"])
+        self.assertIsNone(kwargs["tipo_ruolo"])
 
 
 class TestGetRuoliLookupById(TestCase):

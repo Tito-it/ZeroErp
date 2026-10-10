@@ -26,7 +26,7 @@
 // Uso:
 //   const footerDrawer = useFooterDocumento({
 //     formRigaAperto: () => formRigaAperto.value,      // facoltativo
-//     modificabile: () => canEditTestataEffective.value && !isReadonly.value,
+//     modificabile: () => testata.modificabile.value,     // useTestataDocumento
 //     presente: () => hasDetail.value,
 //   })
 //   <AppDrawer :footer="footerDrawer" …>

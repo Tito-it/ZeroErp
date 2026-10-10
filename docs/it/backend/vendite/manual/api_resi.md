@@ -42,7 +42,7 @@ export via `ListaExportService`, scope emittente RLS + filtro applicativo).
 - Detail `GET /<id>/` — testata + capabilities data-driven
   (`fn_available_actions_reso`) nella chiave `capabilities`, non fuse nella
   testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
-- Update `PATCH /<id>/` — solo DRAFT (data/meta). Delete `DELETE /<id>/` — hard
+- Update `PATCH /<id>/` — `data`/`meta`; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a reso confermato restano aperte le note, ferme a reso annullato. Delete `DELETE /<id>/` — hard
   delete solo DRAFT + 0 righe (abbandono bozza).
 
 ### Azioni di dominio (fn madri DB, effetti atomici)

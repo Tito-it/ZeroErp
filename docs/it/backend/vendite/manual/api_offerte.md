@@ -988,9 +988,9 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
    `script.fn_generate_codice('offerta_commerciale')`. Rifiutato in
    payload come `unknown_key`.
 2. **Stato iniziale BOZZA**; transizioni via endpoint dedicato.
-3. **Editabilita' solo in BOZZA** per testata, eccezioni e utility.
-   Defense-in-depth applicativa; il trigger DB blocca comunque cambi su
-   stati terminali.
+3. **Testata**: quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e' (in EMESSA e ACCETTATA le note). **Eccezioni e
+   utility** solo in BOZZA: per la utility il cancello e' la capability
+   `can_edit_utility`, letta dal service, perche' il satellite non ha un lock a DB.
 4. **Annullamento solo da BOZZA, rifiuto solo da EMESSA**: state machine
    asimmetrica analoga ai contratti DRAFT/ATTIVO.
 5. **Versione listino congelata all'emissione** (Profilo A); da EMESSA

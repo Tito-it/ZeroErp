@@ -452,11 +452,13 @@ class ContrattiServiceTests(TestCase):
             ContrattiService().update_contratto(1, {"numero": "CNT9999999"})
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
 
-    # Scopo: contratto ATTIVO -> categoria_cliente_id_snapshot non e' nella
-    #        whitelist di campi ammessi per ATTIVO -> errore parlante
-    #        E_CONTRATTO_NON_MODIFICABILE.
+    # Scopo: contratto ATTIVO -> categoria_cliente_id_snapshot: quali colonne
+    #        si cambiano in quale stato lo dice il lock di testata del DB
+    #        (brief-db-testata-dopo-emissione, D-0; la categoria e' fra le
+    #        condizioni, ferma fuori bozza). Il service non ha piu' la tabella
+    #        per stato e passa la scrittura: il 409 arriva dal DB.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_attivo_rifiuta_categoria_snapshot(self, repo_cls):
+    def test_update_contratto_attivo_categoria_snapshot_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -465,10 +467,14 @@ class ContrattiServiceTests(TestCase):
             "stato_codice_interno": "ATTIVO",
             "categoria_cliente_id_snapshot": 1,
         }
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"categoria_cliente_id_snapshot": 5})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        ContrattiService().update_contratto(1, {"categoria_cliente_id_snapshot": 5})
+        self.assertEqual(
+            repo.update_contratto.call_args.args[1]["categoria_cliente_id_snapshot"], 5,
+        )
 
     # Scopo: contratto ATTIVO -> ammessa solo modifica valido_al/meta
     #        (programma cessazione + note). Il PATCH valido_al passa.
@@ -556,11 +562,11 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_VENDITE_VALIDATION")
         repo.update_contratto.assert_not_called()
 
-    # Scopo: contratto CESSATO -> tutti i campi rifiutati (whitelist vuota),
-    #        i tre riferimenti dell'atto compresi: li' la regola e'
-    #        immutabilita' piena e l'eccezione di Q1 non arriva.
+    # Scopo: contratto CESSATO -> nessun rifiuto Python: a contratto chiuso
+    #        tutto fermo lo dice il lock di testata (D-8, E_DOC_CHIUSO), anche
+    #        per i riferimenti dell'atto. Il service passa la scrittura.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_cessato_rifiuta_codici_atto(self, repo_cls):
+    def test_update_contratto_cessato_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -568,25 +574,14 @@ class ContrattiServiceTests(TestCase):
             **_testata_default(),
             "stato_codice_interno": "CESSATO",
         }
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"codice_cig": "1234567890ABCDE"})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
-
-    # Scopo: contratto CESSATO -> tutti i campi rifiutati (whitelist vuota).
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_cessato_rifiuta_qualsiasi_campo(self, repo_cls):
-        from apps.vendite.services.contratti_service import ContrattiService
-
-        repo = repo_cls.return_value
-        repo.get_contratto.return_value = {
-            **_testata_default(),
-            "stato_codice_interno": "CESSATO",
-        }
-
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"valido_al": "2026-12-31"})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        ContrattiService().update_contratto(1, {"codice_cig": "1234567890ABCDE"})
+        self.assertEqual(
+            repo.update_contratto.call_args.args[1]["codice_cig"], "1234567890ABCDE",
+        )
 
     # Scopo: contratto ATTIVO -> create_riga rifiutato col codice del DB
     #        (E_RIGA_DOC_NON_BOZZA: lo stesso di trgfn_doc_righe_lock_fuori_bozza

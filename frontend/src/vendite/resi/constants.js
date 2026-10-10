@@ -67,3 +67,12 @@ export const TAB_RESI = Object.freeze({
 // Nome della rotta della vista resi (router): lo usa il deep-link dal pannello
 // situazione merce.
 export const ROUTE_RESI = 'vendite-resi'
+
+// Le colonne della testata che `ResoForm` MOSTRA, per `useTestataDocumento`
+// (brief-db-testata-dopo-emissione, R-FE-3): la testata e' modificabile se
+// almeno una di queste e' aperta nella capability. ⚠️ Deve dire gli stessi
+// campi del form: lo presidia `campiFormTestata.spec.js`, che la confronta
+// coi `isLocked('…')` del componente.
+export const CAMPI_FORM_TESTATA_RESO = Object.freeze([
+  'data',
+])

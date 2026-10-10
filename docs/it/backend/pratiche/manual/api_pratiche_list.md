@@ -154,8 +154,9 @@ Envelope paginata standard (`paginated_envelope`):
 - Ogni riga espone `billing_account_id`, **colonna della pratica** dal 2026-10-08
   (brief-db-istanza-nasce-col-ba, D-9): il cliente di cui la pratica parla; `null` per le
   pratiche di altri ruoli, interne o con la sola istanza. Fino a quella data era
-  derivato dall'istanza (`script.fn_get_billing_account_by_istanza`, in ritiro), che
-  con piu' BA per istanza non sa quale scegliere. Alimenta, aprendo un documento dal
+  derivato dall'istanza (`script.fn_get_billing_account_by_istanza`, ritirata il
+  2026-10-10, brief-db-istanza-nasce-col-ba-residui), che con piu' BA per istanza non
+  sa quale scegliere. Alimenta, aprendo un documento dal
   flusso, l'eredità+lock cliente e il gating (offerta/contratto richiedono BA). Non è un
   filtro di lista.
 - Paginazione offset: `COUNT(*)` + dati con `LIMIT/OFFSET`. Risposta via `paginated_envelope` (count, page, page_size, total_pages, results).

@@ -194,6 +194,7 @@ nav:
                             - Backend:
                                       - Guida backend-dev: it/dev/backend/backend-dev.md
                                       - Playbook operativo backend: it/dev/backend/play-book-operativo-backend.md
+                                      - Servizi ZeroERP (comandi): it/dev/backend/servizi-zeroerp-comandi.md
                                       - Catalogo Building Block BE: it/dev/backend/catalogo-building-block-backend.md
                                       - Piano solidità Django: it/dev/backend/piano-solidita-django.md
                                       - Provisioning ruoli DB: it/dev/backend/provisioning-db-roles.md

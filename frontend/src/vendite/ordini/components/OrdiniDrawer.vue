@@ -19,9 +19,11 @@ import { useDrawerFormPreserve } from '../../../core/composables/useDrawerFormPr
 import { useEmittenteFiscaleField } from '../../../core/composables/useEmittenteFiscaleField'
 import { useUtilityDefaultId } from '../../../core/composables/useUtilityDefaultId'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
+import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
 import {
+  CAMPI_FORM_TESTATA_ORDINE,
   STATO_ORDINE,
   STATI_ORDINE_EVADIBILI,
 } from '../constants'
@@ -89,7 +91,7 @@ const {
 // stato: il legame e' del BB `useRigheDocumento` (regola del 2).
 const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumento({
   testata: { modificato, chiudiConConferma },
-  modificabile: () => canEditTestataEffective.value && !isReadonly.value,
+  modificabile: () => testata.modificabile.value,
   presente: () => hasDetail.value,
 })
 const modificatoDocumento = documento.modificato
@@ -133,8 +135,6 @@ provide(READONLY_KEY, isReadonly)
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
-const canEditTestata = caps.canEdit
-const canEditTestataEffective = computed(() => !isEdit.value || canEditTestata.value)
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
 // Push a commessa: la capability include l'azione in `available_actions` solo
 // quando e' eseguibile; quando non lo e', espone il motivo nei campi
@@ -149,12 +149,28 @@ const pushCommessaDisabledAction = computed(() => caps.azioneNegata('can_push_co
   label_key: 'vendite.ordini.azione_push_commessa',
 }))
 
-// Campi bloccati lato UX. Una volta che l'ordine esiste (EDIT classico o CREATE
-// post auto-save), il cliente NON e' piu' modificabile: lo blocca il DB (lock
-// di colonna, E_ORD_CLIENTE_IMMUTABILE), e qui il campo si spegne per non
-// proporre un gesto che verrebbe rifiutato. Cambiare cliente = nuovo ordine.
-// La utility e' una copia del cliente (la scrive il DB): si spegne con lui.
-const nonEditableFields = computed(() => (hasDetail.value ? ['billing_account_id', 'utility_id'] : []))
+// La testata dopo la bozza: quali campi del form si cambiano, dalla capability
+// (brief-db-testata-dopo-emissione, R-FE-3). Fuori bozza il form esce dal
+// corpo protetto se ha un campo aperto.
+const testata = useTestataDocumento({
+  caps,
+  campi: CAMPI_FORM_TESTATA_ORDINE,
+  readonlyPuro: () => isReadonlyPuro.value,
+  // Il documento esiste: in EDIT anche prima che arrivi il dettaglio, cosi'
+  // la capability ancora vuota tiene il form fermo (fail-closed).
+  presente: () => isEdit.value || hasDetail.value,
+  corpoProtetto: () => isReadonly.value,
+})
+
+// Campi bloccati: quelli della capability. Il cliente lo e' sempre, una volta
+// che l'ordine esiste (lock di colonna, E_ORD_CLIENTE_IMMUTABILE): cambiare
+// cliente = nuovo ordine. Fino al 2026-10-10 la lista era scritta qui a mano.
+// ⚠️ La utility e' una copia del cliente (la scrive il DB): si spegne con lui,
+//    ed e' la sola aggiunta di interfaccia.
+const nonEditableFields = computed(() => {
+  const fermi = testata.campiBloccati.value
+  return fermi.includes('billing_account_id') ? [...fermi, 'utility_id'] : fermi
+})
 
 // Readonly PURO (permesso LETTURA / split / readonly forzato) — SENZA il
 // lock-di-stato post-DRAFT: l'evasione e' un'azione di processo legittima su un
@@ -386,15 +402,16 @@ const { close } = useDrawerAutosaveBozza({
 })
 
 const canSave = computed(() => {
-  if (isReadonly.value) return false
+  if (!testata.modificabile.value) return false
   return form.value.billing_account_id != null
 })
 
 async function handleSave() {
   const f = form.value
   if (isEdit.value || createdId.value !== null) {
-    // UPDATE testata (DRAFT). emittente_fiscale_id NON e' aggiornabile (whitelist
-    // BE _UPDATE_KEYS_ORDINE). Inviamo la whitelist: il BE normalizza empty→NULL.
+    // UPDATE testata: in bozza tutto, dopo i soli campi aperti (decide il DB;
+    // i bloccati viaggiano invariati e il lock li lascia passare).
+    // emittente_fiscale_id NON e' aggiornabile (whitelist BE _UPDATE_KEYS_ORDINE). Inviamo la whitelist: il BE normalizza empty→NULL.
     // ⛔ La utility non si manda: e' una copia del cliente, la scrive il DB
     // (brief-db-esecutivi-ba-coppia). Il cliente invariato passa il lock.
     const payload = {
@@ -610,6 +627,7 @@ const drawerActions = computed(() => {
     :modificato="modificatoDocumento"
     :conferma-uscita="() => close()"
     :footer="footerDrawer"
+    :footer-readonly="testata.footerReadonly.value"
     :loading="loading"
     :save-disabled="!canSave"
     @update:visible="(v) => emit('update:visible', v)"
@@ -679,24 +697,31 @@ const drawerActions = computed(() => {
     <Divider v-if="hasDetail" />
 
     <!-- Form testata: monta dopo l'animazione drawer per evitare rimbalzo lookup. -->
-    <OrdiniForm
-      :campi-errati="campiErrati"
-      :form="form" :is-modificabile="canEditTestataEffective && !isReadonly"
-      :non-editable-fields="nonEditableFields"
-      :is-edit="isEdit || createdId !== null"
-      :record="detail" />
+    <!-- Fuori bozza il form esce dal corpo protetto se ha un campo aperto
+         (`useTestataDocumento`). -->
+    <div :class="{ 'app-escape': testata.sopraCorpoProtetto.value }">
+      <OrdiniForm
+        :campi-errati="campiErrati"
+        :form="form" :is-modificabile="testata.modificabile.value"
+        :non-editable-fields="nonEditableFields"
+        :is-edit="isEdit || createdId !== null"
+        :record="detail" />
+    </div>
 
     <!-- Righe: visibili appena c'e' detail (EDIT classico o CREATE post auto-save). -->
     <template v-if="hasDetail">
       <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
            contatore "+N altri", pulsante "Indirizzi" che apre il drawer
            di gestione. -->
+      <!-- Indirizzi: seguono lo stato (in bozza), non la capability della
+           testata, che dal 2026-10-10 e' vera anche fuori bozza per le
+           colonne ancora aperte (brief-db-testata-dopo-emissione). -->
       <DocumentoIndirizziSection
         dominio="ordini"
         :doc-id="effectiveOrdineId"
         :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
         :istanza-utility-id="detail?.istanza_utility_id ?? null"
-        :readonly="!(canEditTestataEffective && !isReadonly)"
+        :readonly="isReadonly"
         :bordo="false" />
 
       <Divider />
@@ -705,6 +730,8 @@ const drawerActions = computed(() => {
         :ordine-id="effectiveOrdineId"
         :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
         :is-modificabile="canEditRighe && !isReadonly"
+        :capabilities="capabilities"
+        :readonly="isReadonlyPuro"
         @changed="loadDetail()"
         @form-aperto="onFormAperto" />
 

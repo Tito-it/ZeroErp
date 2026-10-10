@@ -34,6 +34,7 @@
 
 import logging
 from datetime import date
+from collections.abc import Callable
 from typing import Any, NamedTuple
 
 from django.db import transaction
@@ -365,15 +366,23 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     return creato
 
 
-# Scopo: Aggiorna testata DDT (solo in DRAFT).
+# Scopo: Aggiorna testata DDT.
 #
+# Quali colonne si cambiano in quale stato lo dice il DB, colonna per colonna:
+# il lock di testata `vendite.trgfn_doc_testata_lock_fuori_bozza` (in bozza
+# tutto; dopo l'emissione trasporto, tracciamento e note finche' la bolla non
+# e' chiusa). Fino al 2026-10-10 qui c'era un «solo in DRAFT» che ne era la
+# seconda copia (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del
+# lock passa com'e'.
 # Cliente e destinatario sono nella whitelist (vedi UPDATE_KEYS_DDT): cosa
 # succede alle copie lo decide il DB. Fino al 2026-10-10 qui c'era un guard
 # «cliente immutabile dopo la creazione» che contraddiceva D-2: una bolla nata
 # senza BA non l'avrebbe mai ricevuto (brief-db-esecutivi-ba-coppia §9.6).
 def aggiorna_ddt(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     repo = DdtRepository()
-    _assert_stato(repo, ddt_id, _STATI_MODIFICABILI, op="aggiorna_ddt")
+    # Prima la testata: fuori perimetro o inesistente e' un 404. Basta sapere
+    # che esiste: il lettore leggero, non la testata intera.
+    _get_testata_or_raise(repo, ddt_id, op="aggiorna_ddt", getter=repo.get_stato_codice)
 
     data = {k: empty_to_none(v) for k, v in payload.items() if k in UPDATE_KEYS_DDT}
     _coerci_id_controparte(data, op="aggiorna_ddt")
@@ -867,11 +876,15 @@ def _coerci_id_controparte(data: dict[str, Any], *, op: str) -> None:
 
 # Scopo: Carica la testata DDT o solleva E_DDT_NOT_FOUND (BB core
 #        `testata_o_not_found`: qui solo codice e messaggio del dominio).
+# `getter` ammette il lettore leggero `get_stato_codice`, dove al chiamante
+# basta sapere che il documento esiste (stessa forma di
+# `offerte_service._get_offerta_or_raise`).
 def _get_testata_or_raise(
     repo: DdtRepository, ddt_id: int, *, op: str,
-) -> dict[str, Any]:
+    getter: Callable[[int], Any] | None = None,
+) -> Any:
     return testata_o_not_found(
-        repo.get_ddt, ddt_id,
+        getter or repo.get_ddt, ddt_id,
         code="E_DDT_NOT_FOUND", message="DDT non trovato.",
         id_name="ddt_id", function_name=f"{_FN}.{op}",
     )

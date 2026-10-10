@@ -164,7 +164,7 @@ DRAFT): contratto completo in [api_indirizzi_documento.md](api_indirizzi_documen
 
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 
-Solo in `DRAFT`. `request.data` (non `handle_post_json`, api.md). Campi
+In bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': dopo la conferma restano aperte le note, ferme a ordine fatturato o annullato. `corpo_oggetto(request)` (non `handle_post_json`, api.md). Campi
 aggiornabili: `billing_account_id` (vedi sotto), `valuta_id`,
 `modalita_pagamento_id`, `termine_pagamento_id`, `fatturazione_trigger`,
 `agente_soggetto_ruolo_id`, `data`, `meta`. `utility_id` non c'e': e' una copia
@@ -289,6 +289,7 @@ La response espone `commesse_ids` (commesse toccate dal push), oltre a
 | `POST /<id>/righe/` | Aggiunge una riga (solo DRAFT). `riga_nr` autoassegnato. Pricing auto-fill via `PricingService` se prezzo assente e articolo non composito; per articolo composito init componenti BoM con override prezzi opzionali (`componenti_overrides`, vedi sotto) |
 | `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). `request.data` |
 | `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT) |
+| `POST /<id>/righe/<riga_id>/data-consegna-confermata/` | La promessa di consegna **dopo la conferma** (2026-10-10, sotto) |
 
 Payload riga (create): `articolo_id` (obbligatorio), `descrizione`, `quantita`,
 `qta_operativa`, `uom_operativa_id`, `factor_to_base`, `prezzo_unitario`,
@@ -309,10 +310,20 @@ quanto chiesto); una data malformata è un **400** col campo
 lista ordini espone `data_consegna_richiesta_cliente_min` dalla vista
 (`vw_ordini_lista`), il `min()` sulle righe attive. ⚠️ **Fatto di modello
 dichiarato nel brief (§5.5, 1-bis) e non deciso qui**: le righe si scrivono solo
-in `DRAFT`, ma la promessa si decide **alla conferma** e può cambiare dopo — il
-DB non mette nessun guard di stato su questa colonna, di proposito. Serve un
-verbo suo per la data confermata su ordine `CONFERMATO` (stampo: gli override
-di prezzo) o un dialog di conferma che la raccolga: non è di questo cantiere.
+in `DRAFT`, ma la promessa si decide **alla conferma** e può cambiare dopo.
+
+⭐ **Il verbo della promessa dopo la conferma** (dal 2026-10-10,
+[brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)
+fase 1): `POST /<id>/righe/<riga_id>/data-consegna-confermata/`, corpo
+`{"data_consegna_confermata": "AAAA-MM-GG" | null}` (`null` toglie la promessa).
+Scrive la **sola** colonna; ogni altra chiave è un 400. ⛔ Nessun pre-check di
+stato nel backend: in quali stati la data si cambia lo dice il lock delle righe
+(`trgfn_doc_righe_lock_fuori_bozza`, oggi `CONFERMATO` e `PARZIALMENTE_EVASO`), e
+il 409 `E_RIGA_DOC_NON_BOZZA` passa com'è. Il dettaglio porta sotto `capabilities`
+la terna `can_edit_data_consegna_confermata` · `_reason` · `_reason_key`, letta
+dallo stesso montaggio: in `DRAFT` è spenta col motivo `ORDINE_IN_BOZZA` (la data
+si scrive modificando la riga). Risposta: `{ordine_id, riga_id, data_consegna_confermata}`.
+`PATCH /<id>/righe/<riga_id>/` resta «solo in bozza» per tutte le colonne.
 
 ### Componenti BoM (CASO A)
 
