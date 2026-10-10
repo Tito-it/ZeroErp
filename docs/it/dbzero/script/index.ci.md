@@ -190,7 +190,6 @@
 - [fn_scope_ef_whitelist_via_contabile](manual/fn_scope_ef_whitelist_via_contabile.md) — (rev 2026-08-22, corretta il 2026-09-15)
 - [fn_scope_ef_whitelist_via_coppia](manual/fn_scope_ef_whitelist_via_coppia.md) — (rev 2026-10-08)
 - [fn_scope_ef_whitelist_via_efba](manual/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
-- [fn_scope_ef_whitelist_via_ente_incasso](manual/fn_scope_ef_whitelist_via_ente_incasso.md) — (rev 2026-08-22)
 - [fn_scope_ef_whitelist_via_evento_asset](manual/fn_scope_ef_whitelist_via_evento_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_fattura](manual/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
 - [fn_scope_ef_whitelist_via_inventario](manual/fn_scope_ef_whitelist_via_inventario.md) — (rev 2026-09-15 — Lotto 1 del magazzino)

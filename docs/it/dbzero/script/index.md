@@ -221,7 +221,6 @@
 - [fn_scope_ef_whitelist_via_ddt_riga](funzioni/fn_scope_ef_whitelist_via_ddt_riga.md)
 - [fn_scope_ef_whitelist_via_documento_generato](funzioni/fn_scope_ef_whitelist_via_documento_generato.md)
 - [fn_scope_ef_whitelist_via_efba](funzioni/fn_scope_ef_whitelist_via_efba.md) — (rev 2026-06-01 — Ondata 2)
-- [fn_scope_ef_whitelist_via_ente_incasso](funzioni/fn_scope_ef_whitelist_via_ente_incasso.md) — (rev 2026-08-22)
 - [fn_scope_ef_whitelist_via_evento_asset](funzioni/fn_scope_ef_whitelist_via_evento_asset.md) — (rev 2026-09-15 — Lotto 1 del magazzino)
 - [fn_scope_ef_whitelist_via_fattura](funzioni/fn_scope_ef_whitelist_via_fattura.md) — (rev 2026-06-01)
 - [fn_scope_ef_whitelist_via_fattura_sdi](funzioni/fn_scope_ef_whitelist_via_fattura_sdi.md)
