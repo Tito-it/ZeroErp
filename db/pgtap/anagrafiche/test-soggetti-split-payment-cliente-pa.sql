@@ -34,6 +34,8 @@
 --
 --   Piano: brief-db-be-iva-risolutore-e-regime-cliente.md
 --     D8 / I0 · changeSet 20260829-14
+--   Rev 2026-10-10: la fixture e' un ente (ENC). Chi puo' accendere i flag
+--   (per natura) lo misura test-soggetti-regime-pa-v1.sql.
 -- ------------------------------------------------------------
 
 -- ⚠️ 1. TRANSAZIONE.
@@ -68,40 +70,23 @@ SELECT col_not_null('anagrafiche', 'soggetti', 'cliente_pa',
     'cliente_pa e'' NOT NULL');
 
 -- ============================================================
--- Fixture: un soggetto minimo
+-- Fixture: un ENTE, cioe' una natura che ammette entrambi i flag
 -- ============================================================
--- ⚠️ anagrafiche.soggetti ha un guard su CF/PIVA obbligatori
---   (trg_soggetti_a10_guard_cf_piva_obbligatori_ins_upd): il codice fiscale ci
---   vuole, e dev'essere formalmente valido. Si usa un CF fisso e sintetico, non
---   uno pescato dai dati.
+-- ⭐ Rev 2026-10-10 (brief-db-dati-fiscali-e-societari-del-soggetto, A-3/A-5):
+--   fino a ieri il soggetto nasceva SENZA natura, con un CF di persona fisica.
+--   Da trgfn_soggetti_guard_regime_pa (20261010-86) un flag a 'S' senza natura e'
+--   rifiutato, e su una persona fisica e' rifiutato sempre: il test 4 sarebbe
+--   morto sul guard e non sul CHECK. Un ente (ENC) ammette cliente_pa e
+--   split_payment (CSV, A-2), quindi qui si misura solo il vocabolario S/N.
+--   Il builder chiude da se' la finestra differita (indirizzi, contatti, dati
+--   societari) e non nomina le due colonne: e' il caso del test 5.
 CREATE TEMP TABLE tmp_sp_sogg AS
-WITH ins AS (
-  -- ⚠️ `ragione_sociale_completa` NON si scrive: e' una colonna GENERATED, e
-  --   nominarla fa fallire l'INSERT con «impossibile inserire un valore non
-  --   DEFAULT».
-  INSERT INTO anagrafiche.soggetti (ragione_sociale,
-                                    codice_fiscale, stato_id, attivo, storicizza)
-  SELECT 'PGTAP Split Payment SRL',
-         'RSSMRA80A01H501U',
-         (SELECT id FROM config.stati ORDER BY id LIMIT 1),
-         true, false
-  RETURNING id
-)
-SELECT * FROM ins;
+SELECT dbops.fn_pgtap_crea_soggetto_pg(
+           'PGTAP Split Payment ente',
+           p_tipo_soggetto_dettaglio_id := (SELECT id FROM config.tipi_soggetto_dettaglio
+                                             WHERE codice_interno = 'ENC')::integer) AS id;
 
--- ⚠️ Il contatto NON e' accessorio: anagrafiche.soggetti ha un vincolo DIFFERITO
---   che pretende almeno un recapito valido («Il soggetto non ha contatti validi»).
---   Con SET CONSTRAINTS ALL IMMEDIATE in testa scatta subito, e senza questa
---   riga il test morirebbe nella fixture — cioe' non verificherebbe niente.
---   Padre e figlio in DUE istruzioni, non in una CTE sola.
-INSERT INTO anagrafiche.contatti (tipo_contatto_id, soggetto_id, nominativo, email, is_default)
-SELECT (SELECT id FROM config.tipi_contatti ORDER BY id LIMIT 1),
-       (SELECT id FROM tmp_sp_sogg),
-       'Contatto PGTAP split payment',
-       'pgtap-split-payment@example.invalid',
-       true;
-
--- Unita' di lavoro completa: da qui i differiti possono scattare.
+-- Il builder esce IMMEDIATE: la saga del soggetto e' gia' verificata.
 SET CONSTRAINTS ALL IMMEDIATE;
 
 -- ============================================================

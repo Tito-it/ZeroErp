@@ -1,0 +1,74 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# SE CI SONO I DATI SOCIETARI, C'E' LA FORMA GIURIDICA
+#   anagrafiche.dati_societari.forma_giuridica_id -> NOT NULL
+#   Brief: brief-db-dati-fiscali-e-societari-del-soggetto (Parte C, C-2)
+#
+# -- LA REGOLA (decisione di Tid del 2026-10-10, C-2) -------------------
+#   Una riga di dati societari senza forma non ha senso: REA e capitale
+#   dipendono dalla forma (B-6), e il guard della forma (20261010-97) senza
+#   forma non ha policy da leggere. La regola stava solo nel frontend
+#   (validate() di useDatiSocietariForm): esce di li' ed entra nella colonna.
+#
+# -- ⛔ I DATI DI OGGI ----------------------------------------------------
+#   Su dbdev, al 2026-10-10, 6 righe sono senza forma (fatto datato, non un
+#   motivo: la regola vale anche a zero righe). La preCondition ferma il
+#   migrate finche' ce n'e' anche una sola, e lo dice: le righe si correggono
+#   o si cancellano A MANO prima (C-3, decide Tid guardandole). Nessuna
+#   bonifica d'ufficio qui: scegliere una forma per conto dell'operatore
+#   sarebbe inventare un dato.
+#   Da zero (CI) la tabella e' vuota a questo punto, e la preCondition passa.
+#
+# -- ORDINE: 90_end -------------------------------------------------------
+#   Come gli altri NOT NULL con preCondition sui residui (20260501-18,
+#   20260526-08, 20260601-25): gira dopo tutto il resto, e dopo 20261011-02,
+#   cioe' quando la fixture dbops.fn_pgtap_crea_soggetto_pg ha smesso di
+#   scrivere dati societari senza forma.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/90_end/20261011-03-alter-dati-societari-forma-giuridica-not-null-mctit.yaml
+
+  - changeSet:
+      id: 20261011-03-alter-dati-societari-forma-giuridica-not-null
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        anagrafiche.dati_societari.forma_giuridica_id NOT NULL: se ci sono i dati societari c'e' la
+        forma (C-2). La preCondition ferma il migrate finche' esistono righe senza forma: si correggono
+        a mano prima (C-3). Brief: brief-db-dati-fiscali-e-societari-del-soggetto.
+      preConditions:
+        - onFail: HALT
+        - onFailMessage: >
+            Ci sono righe di anagrafiche.dati_societari senza forma giuridica: vanno corrette o
+            cancellate a mano prima di questo changeSet (C-3 del brief
+            brief-db-dati-fiscali-e-societari-del-soggetto). Elenco:
+            SELECT id, soggetto_id FROM anagrafiche.dati_societari WHERE forma_giuridica_id IS NULL;
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM anagrafiche.dati_societari WHERE forma_giuridica_id IS NULL;
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE anagrafiche.dati_societari
+                  ALTER COLUMN forma_giuridica_id SET NOT NULL;
+
+              COMMENT ON COLUMN anagrafiche.dati_societari.forma_giuridica_id IS
+                  'Forma giuridica del soggetto. NOT NULL dal 2026-10-11 (C-2): se ci sono i dati societari c''e'' la forma, perche'' REA e capitale dipendono da lei (rea_policy, capitale_sociale_policy). Deve essere dello Stato del soggetto e ammessa dalla sua natura (config.forme_giuridiche_tipi_soggetto_dettaglio): lo presidia trgfn_dati_societari_guard_forma_giuridica, e al cambio di natura il guard al COMMIT trgfn_soggetti_guard_forma_giuridica_natura. Brief: brief-db-dati-fiscali-e-societari-del-soggetto.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE anagrafiche.dati_societari ALTER COLUMN forma_giuridica_id DROP NOT NULL;

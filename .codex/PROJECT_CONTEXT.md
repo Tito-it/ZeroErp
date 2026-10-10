@@ -308,6 +308,10 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   ~2,1 → ~0,6 s. Nello stesso giorno: `COST 5000` sulle funzioni di policy (`20261010-77`, `-79`,
   linee-guida-sql §10.3). Debito residuo: ⬜ **D26-2**, `work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md`
   (le altre funzioni che ripianificano a ogni chiamata; il lister senza filtri), aperto, non iniziato.
+- ⬜ **La lineage dei documenti si costruisce per il documento** (`work-in-progress/brief-db-lineage-seminata-per-chiave.md`,
+  2026-10-10): il grafo è costruito sempre intero, e ogni pagina di sette liste ne paga la chiusura (~0,42 s,
+  dbdev come app). Quattro decisioni attese (§6), fra cui la strada per le liste (A solo DB, B col backend, C dato
+  persistito). Aperto, non iniziato.
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
@@ -369,8 +373,8 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   2026-10-10): (A) «Cliente PA» e «Split payment» ammessi per ogni natura, anche per un privato; (B) in modifica i
   dati societari non si salvano, serve il verbo di scrittura (decisione di Tid); (C) la forma giuridica non è legata
   alla natura, e il drawer la mostra vuota; (D) un titolo IVA si registra su qualunque soggetto (assorbito
-  `brief-db-regime-fiscale-per-natura-soggetto`, ora solo rimando). Decisioni di Tid prese (§4), aperta solo D-4
-  (`COOPERATIVA`, non blocca); pronto per il team DB, BE/FE attendono il DB.
+  `brief-db-regime-fiscale-per-natura-soggetto`, ora solo rimando). ✅ Lato DB applicato e verde il 2026-10-10 (§8):
+  verbo `fn_scrivi_dati_societari` unica porta, regole per natura su flag, titoli e forma. Aperta D-4. Tocca a BE/FE: §5 e §8.3.
 - 📝 **La catena delle istanze su un PDP** (`work-in-progress/brief-db-catena-istanze-pdp.md`, D18 del registro DB):
   proposta da analizzare, cinque decisioni di Tid.
 - **Le liste di documento erano lente: chiuso** (`work-done/brief-db-liste-documento-lineage-lenta.md`, archiviato

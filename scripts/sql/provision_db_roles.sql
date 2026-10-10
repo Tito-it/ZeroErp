@@ -261,6 +261,19 @@ FROM (VALUES ('django.auth_user')) AS t(nome)
 WHERE to_regclass(t.nome) IS NOT NULL
 \gexec
 
+-- ⭐ LA PORTA DEI DATI SOCIETARI (dal 2026-10-11): brief
+--   brief-db-dati-fiscali-e-societari-del-soggetto, B-5.
+--   `anagrafiche.dati_societari` e' in SOLA LETTURA per l'applicazione: la
+--   scrive solo il verbo anagrafiche.fn_scrivi_dati_societari (SECURITY
+--   DEFINER del proprietario). Il permesso resta al backend, come per
+--   anagrafiche.soggetti. Stesso elenco di `v_tabelle_sola_lettura_app` nel loop
+--   20260205-41 e del forward 90_end/20261011-04;
+--   `db/pgtap/anagrafiche/test-fn-scrivi-dati-societari-v1.sql` lo dice se non lo fa.
+SELECT format('REVOKE INSERT, UPDATE, DELETE ON TABLE %s FROM %I', t.nome, :'app_role')
+FROM (VALUES ('anagrafiche.dati_societari')) AS t(nome)
+WHERE to_regclass(t.nome) IS NOT NULL
+\gexec
+
 -- ⭐ LA PORTA DEL PANNELLO DI CONFIGURAZIONE (dal 2026-09-25): brief
 --   brief-db-pannello-config-verbo-generico, sezione 3.5. `magazzino.causali` la
 --   scrive solo il verbo config.fn_pannello_scrivi; `config.tabelle_gestibili` e'

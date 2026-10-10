@@ -139,13 +139,21 @@ VALUES (
 -- ammessa: la policy la pretende. Quando questo file e' stato scritto non
 -- esisteva, ed e' il terzo dei guard entrati dopo che lo tenevano rosso.
 -- ---------------------------------------------------------
-INSERT INTO anagrafiche.dati_societari (
-    soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
-    socio_unico, liquidazione
-)
-SELECT s.id, 10000.00,
-       (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1),
-       'REA-PGTAP-01', 'SM', 'LN'   -- nessun canale FE (D-6, 20261010-37)
+-- ⭐ Rev 20261011 (brief-db-dati-fiscali-e-societari-del-soggetto, B-5): dal
+--   20261011-04 l'app non scrive la tabella, si passa dal verbo; la forma e'
+--   NOT NULL e ammessa dalla natura (SC -> SRL, C-1, C-2).
+SELECT anagrafiche.fn_scrivi_dati_societari(
+           p_soggetto_id        := s.id,
+           p_forma_giuridica_id := (SELECT fg.id FROM config.forme_giuridiche fg WHERE fg.codice = 'SRL'),
+           p_id_prov_iscri_rea  := (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1),
+           p_iscrizione_rea     := 'REA-PGTAP-01',
+           p_capitale_sociale   := 10000.00,
+           p_socio_unico        := 'SM',
+           p_liquidazione       := 'LN',
+           p_destinatario_fe    := NULL,   -- nessun canale FE (D-6, 20261010-37)
+           p_pec_fatturazione   := NULL,
+           p_codice_sdi         := NULL,
+           p_data_costituzione  := NULL)
   FROM tmp_soggetto_banca s;
 
 -- Indirizzi obbligatori del SOGGETTO. Forma libera completa: il CHECK

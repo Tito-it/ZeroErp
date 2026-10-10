@@ -382,14 +382,21 @@ FROM ins;
 --   Una societa' di capitali senza riga in anagrafiche.dati_societari viene
 --   bloccata da quel guard — e nel caso «ERR» il test verrebbe verde per il
 --   motivo sbagliato, non per l'indirizzo mancante che vuole verificare.
-INSERT INTO anagrafiche.dati_societari (
-    soggetto_id, capitale_sociale, id_prov_iscri_rea, iscrizione_rea,
-    socio_unico, liquidazione
-)
-SELECT s.id, 10000.00,
-       (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1),
-       'REA-' || (SELECT sfx FROM tmp_run_sfx) || '-SCERR',
-       'SM', 'LN'   -- nessun canale FE (D-6, 20261010-37)
+-- ⭐ Rev 20261011 (brief-db-dati-fiscali-e-societari-del-soggetto, B-5): dal
+--   20261011-04 l'app non scrive la tabella, si passa dal verbo; la forma e'
+--   NOT NULL e ammessa dalla natura (SC -> SRL, C-1, C-2).
+SELECT anagrafiche.fn_scrivi_dati_societari(
+           p_soggetto_id        := s.id,
+           p_forma_giuridica_id := (SELECT fg.id FROM config.forme_giuridiche fg WHERE fg.codice = 'SRL'),
+           p_id_prov_iscri_rea  := (SELECT p.id FROM config.province p ORDER BY p.id LIMIT 1),
+           p_iscrizione_rea     := 'REA-' || (SELECT sfx FROM tmp_run_sfx) || '-SCERR',
+           p_capitale_sociale   := 10000.00,
+           p_socio_unico        := 'SM',
+           p_liquidazione       := 'LN',
+           p_destinatario_fe    := NULL,   -- nessun canale FE (D-6, 20261010-37)
+           p_pec_fatturazione   := NULL,
+           p_codice_sdi         := NULL,
+           p_data_costituzione  := NULL)
   FROM tmp_soggetto_sc_err s;
 
 INSERT INTO anagrafiche.contatti (
@@ -516,36 +523,22 @@ JOIN tmp_tipo_sedeleg t ON TRUE;
 -- 3.b) Inserimento successivo di dati_societari: deve essere ammesso
 SELECT lives_ok(
     $$
-      INSERT INTO anagrafiche.dati_societari (
-          soggetto_id,
-          -- ⚠️ rev 2026-08-18: era `forma_giuridica` (stringa 'SPA'). La
-          --   colonna non esiste piu': oggi e' forma_giuridica_id, FK verso
-          --   config.forme_giuridiche. Il test inseguiva uno schema vecchio.
-          forma_giuridica_id,
-          capitale_sociale,
-          id_prov_iscri_rea,
-          iscrizione_rea,
-          socio_unico,
-          liquidazione,
-          destinatario_fe,
-          pec_fatturazione,
-          codice_sdi,
-          data_costituzione
-      )
-      SELECT
-          s.id,
-          (SELECT fg.id FROM config.forme_giuridiche fg ORDER BY fg.id LIMIT 1),
-          50000.00,
-          (SELECT provincia_id FROM tmp_provincia_test),
-          -- REA e SDI unici per corsa: i valori fissi sono bruciati da un
-          --   residuo del 2025 (uq su provincia+REA).
-          'SP-REA-' || (SELECT sfx FROM tmp_run_sfx),
-          'SM',
-          'LN',
-          'C',    -- canale FE: codice SDI (D-6, 20261010-37)
-          'fatt.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
-          'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
-          script.fn_data_operativa()
+      -- ⭐ Rev 20261011 (B-5): dal verbo; la forma non e' piu' «la prima per id»
+      --   ma una ammessa dalla natura SC (SRL), o il guard della forma la rifiuta.
+      SELECT anagrafiche.fn_scrivi_dati_societari(
+                 p_soggetto_id        := s.id,
+                 p_forma_giuridica_id := (SELECT fg.id FROM config.forme_giuridiche fg WHERE fg.codice = 'SRL'),
+                 p_id_prov_iscri_rea  := (SELECT provincia_id FROM tmp_provincia_test),
+                 -- REA e SDI unici per corsa: i valori fissi sono bruciati da un
+                 --   residuo del 2025 (uq su provincia+REA).
+                 p_iscrizione_rea     := 'SP-REA-' || (SELECT sfx FROM tmp_run_sfx),
+                 p_capitale_sociale   := 50000.00,
+                 p_socio_unico        := 'SM',
+                 p_liquidazione       := 'LN',
+                 p_destinatario_fe    := 'C',    -- canale FE: codice SDI (D-6, 20261010-37)
+                 p_pec_fatturazione   := 'fatt.' || (SELECT sfx FROM tmp_run_sfx) || '@example.com',
+                 p_codice_sdi         := 'SP' || upper(substr((SELECT sfx FROM tmp_run_sfx), 1, 5)),
+                 p_data_costituzione  := script.fn_data_operativa())
       FROM anagrafiche.soggetti s
       WHERE s.codice = 'TST-IND-SC-OK-' || (SELECT sfx FROM tmp_run_sfx);
     $$,

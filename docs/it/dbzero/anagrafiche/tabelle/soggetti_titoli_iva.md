@@ -63,6 +63,8 @@
 | trg_soggetti_titoli_iva_a10_emittenti_fiscali_require_at_7e7ab7 | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'emittenti_fiscali', 'attivo', 'emittente_fiscale_id', 'id')` |
 | trg_soggetti_titoli_iva_a10_guard_coerenza_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza()` |
 | trg_soggetti_titoli_iva_a10_guard_coerenza_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_coerenza()` |
+| trg_soggetti_titoli_iva_a10_guard_tipo_soggetto_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto()` |
+| trg_soggetti_titoli_iva_a10_guard_tipo_soggetto_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_soggetti_titoli_iva_guard_tipo_soggetto()` |
 | trg_soggetti_titoli_iva_a10_iva_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_soggetti_titoli_iva_a10_iva_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'iva', 'attivo', 'iva_id', 'id')` |
 | trg_soggetti_titoli_iva_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |

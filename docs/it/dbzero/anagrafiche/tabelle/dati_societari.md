@@ -10,9 +10,9 @@
 |---------|------|----------|---------|
 | id | bigint | NO |  |
 | soggetto_id | uuid | NO |  |
-| capitale_sociale | numeric(15,2) | NO |  |
-| id_prov_iscri_rea | integer | NO |  |
-| iscrizione_rea | character varying(30) | NO |  |
+| capitale_sociale | numeric(15,2) | YES |  |
+| id_prov_iscri_rea | integer | YES |  |
+| iscrizione_rea | character varying(30) | YES |  |
 | socio_unico | anagrafiche.socio_unico_enum | NO | 'SU'::anagrafiche.socio_unico_enum |
 | liquidazione | anagrafiche.liquidazione_enum | NO | 'LN'::anagrafiche.liquidazione_enum |
 | destinatario_fe | character varying(1) | YES |  |
@@ -25,7 +25,7 @@
 | user_update | text | NO | CURRENT_USER |
 | tx_id | uuid | YES |  |
 | storicizza | boolean | YES | false |
-| forma_giuridica_id | bigint | YES |  |
+| forma_giuridica_id | bigint | NO |  |
 
 ## 🔒 Vincoli
 | Tipo | Nome | Colonne |
@@ -34,6 +34,7 @@
 | CHECK | chk_dati_societari_capitale_sociale_finito |  |
 | CHECK | chk_dati_societari_codice_sdi_forma |  |
 | CHECK | chk_dati_societari_destinatario_fe_canale |  |
+| CHECK | chk_dati_societari_rea_coppia |  |
 | FOREIGN KEY | fk_dati_societari_forme_giuridiche | forma_giuridica_id |
 | FOREIGN KEY | fk_province_config | id_prov_iscri_rea |
 | FOREIGN KEY | fk_soggetti_anagrafiche | soggetto_id |
@@ -52,12 +53,12 @@
 ## 🚨 Trigger
 | Nome | Timing | Evento | Azione |
 |------|--------|--------|--------|
-| trg_dati_societari_a10_forme_giuridiche_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'forme_giuridiche', 'attivo', 'forma_giuridica_id', 'id')` |
 | trg_dati_societari_a10_forme_giuridiche_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'forme_giuridiche', 'attivo', 'forma_giuridica_id', 'id')` |
-| trg_dati_societari_a10_guard_canale_fe_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_canale_fe()` |
+| trg_dati_societari_a10_forme_giuridiche_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'forme_giuridiche', 'attivo', 'forma_giuridica_id', 'id')` |
 | trg_dati_societari_a10_guard_canale_fe_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_canale_fe()` |
-| trg_dati_societari_a10_guard_forma_giuridica_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()` |
+| trg_dati_societari_a10_guard_canale_fe_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_canale_fe()` |
 | trg_dati_societari_a10_guard_forma_giuridica_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()` |
+| trg_dati_societari_a10_guard_forma_giuridica_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION anagrafiche.trgfn_dati_societari_guard_forma_giuridica()` |
 | trg_dati_societari_a10_soggetti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_dati_societari_a10_soggetti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('anagrafiche', 'soggetti', 'attivo', 'soggetto_id', 'id')` |
 | trg_dati_societari_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
