@@ -332,7 +332,12 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   il 2026-10-10: decide il DB, il BE toglie i suoi «solo in DRAFT»; documento chiuso = tutto fermo (D-8).
   **Fase 1 (§5-bis), da fare per prima e consegnabile da sola:** il lettore del montaggio e la capability della
   data di consegna confermata (assorbito il brief `brief-db-ordine-data-consegna-confermata-capability`); il BE
-  la attende per il suo verbo. Poi la fase 2, la testata. Codice da scrivere.
+  la attende per il suo verbo. ⏳ Fase 1 lato DB scritta e provata il 2026-10-10, da applicare (`20261010-60…-67`:
+  grammatica e decisione dei due lock in due BB condivisi col lettore del montaggio `script.fn_doc_lock_montaggi`,
+  check `script.fn_check_ordine_data_consegna_confermata`, terna `can_edit_data_consegna_confermata`): ✅ applicata
+  il 2026-10-10. ✅ Fase 2 lato DB applicata il 2026-10-10 su dbdev e zeroerp_ci, pgTAP verdi (`20261010-68…-76`: lock di testata a
+  terne sui sei documenti, D-9/D-10 di Tid; capability che leggono la testata dal montaggio). Il BE toglie i suoi
+  «solo in DRAFT» nello stesso rilascio (§9.5).
 - 📝 **Un testo non si riempie di spazi** (`work-in-progress/brief-db-character-n-spazi-di-riempimento.md`,
   2026-10-10, da segnalazione BE: `Potenza (PZ        )` nel drawer comuni): colonne `character(n)` con dominio a
   lunghezza variabile (sigla e descrizione provincia, `destinatario_fe`, …), tamponate a valle in tre punti.

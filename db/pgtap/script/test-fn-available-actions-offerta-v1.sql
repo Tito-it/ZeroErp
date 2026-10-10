@@ -8,7 +8,7 @@
 --  2) BOZZA: available_actions ha 2 azioni (emetti + annulla)
 --  3) BOZZA: can_edit_testata=true, can_push_contratto=false, non_editable_fields lista corta
 --  4) EMESSA: available_actions ha 3 azioni (accetta + rifiuta + crea_revisione)
---  5) EMESSA: can_edit_testata=false, can_create_revisione=true
+--  5) EMESSA: can_edit_testata=true (le note), listino e cliente non modificabili, can_create_revisione=true
 --  6) EMESSA: azione rifiuta ha requires_motivazione=true (verifica meta update 20260526-01)
 --  7) ACCETTATA senza contratto ne' ordine: can_push_contratto=true, push_contratto presente
 --  8) ACCETTATA con contratto generato (mutua esclusivita'): can_push_contratto=false
@@ -294,15 +294,22 @@ SELECT is(
 );
 
 -- ============================================================
--- TEST 5) EMESSA: can_edit_testata=false, can_create_revisione=true
+-- TEST 5) EMESSA: can_edit_testata=true (le note), listino e cliente fermi
+--   ⚠️ rev 2026-10-10 (brief-db-testata-dopo-emissione, fase 2, D-0/D-10):
+--   can_edit_testata si legge dal montaggio del lock di testata e vuol dire
+--   «in questo stato almeno un campo della testata si cambia» (le note, nei
+--   documenti vivi). Che il documento non si RISCRIVA lo dice
+--   non_editable_fields, che deve contenere identita' e condizioni.
 -- ============================================================
 SELECT ok(
     (SELECT
-         (script.fn_available_actions_offerta(o.offerta_id)->>'can_edit_testata')::boolean IS FALSE
+         (script.fn_available_actions_offerta(o.offerta_id)->>'can_edit_testata')::boolean IS TRUE
+         AND (script.fn_available_actions_offerta(o.offerta_id)->'non_editable_fields') @> '["listino_id","billing_account_id","validita_al"]'
+         AND NOT (script.fn_available_actions_offerta(o.offerta_id)->'non_editable_fields') @> '["meta"]'
          AND (script.fn_available_actions_offerta(o.offerta_id)->>'can_create_revisione')::boolean IS TRUE
        FROM tmp_aa_ids o WHERE o.slot = 'EMESSA'
     ),
-    '5) EMESSA: can_edit_testata=false, can_create_revisione=true'
+    '5) EMESSA: can_edit_testata=true (le note), listino, cliente e validita'' non modificabili, can_create_revisione=true'
 );
 
 -- ============================================================

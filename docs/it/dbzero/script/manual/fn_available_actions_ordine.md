@@ -60,6 +60,9 @@ script.fn_available_actions_ordine(
     "can_change_state":   true,   // SOLO transizioni di stato (escluso push_commessa)
     "can_edit_testata":   true,   // true solo in DRAFT
     "can_edit_righe":     true,   // true solo in DRAFT
+    "can_edit_data_consegna_confermata":            false,             // la promessa di consegna, col verbo dedicato (rev 2026-10-10)
+    "can_edit_data_consegna_confermata_reason":     "ORDINE_IN_BOZZA", // null se ammesso
+    "can_edit_data_consegna_confermata_reason_key": "vendite.ordini.data_consegna_confermata_reason.in_bozza",
     "can_push_commessa":  false,  // true se righe pushabili (trigger CONFERMATO, anche PARZIALMENTE_EVASO/EVASO)
     "can_push_commessa_reason":     "ORDINE_NON_CONFERMATO",                  // null se push disponibile
     "can_push_commessa_reason_key": "ordini.push_commessa_reason.non_confermato", // chiave i18n tooltip
@@ -120,6 +123,16 @@ valorizza la coppia motivo/chiave i18n per il tooltip:
 > di `fn_list_ordini_da_pushare`), non lo stato documento.
 
 ### Dettaglio `non_editable_fields`
+
+> ⚠️ **Superato il 2026-10-10** (brief `brief-db-testata-dopo-emissione`, fase 2). Le liste
+> qui sotto erano scritte a mano nella funzione: la terza copia della regola «che cosa si
+> cambia ancora fuori bozza». Ora `non_editable_fields` e `can_edit_testata` si leggono dal
+> montaggio del lock di testata con
+> [`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in_stato): restano
+> nella capability solo le colonne «sempre» (campi di sistema e lock assoluti, valgono anche in
+> bozza), seguite da quelle che il lock blocca nello stato. Fuori bozza `can_edit_testata` è vero
+> negli stati in cui una colonna resta aperta (le note di un documento vivo, `valido_al` e
+> CIG/CUP del contratto attivo), falso a documento chiuso. La tabella resta per la storia.
 
 | Stato | `can_edit_testata` | `can_edit_righe` | `non_editable_fields` |
 |---|:---:|:---:|---|
@@ -201,3 +214,21 @@ ordine con un componente BoM **attivo** in attesa di approvazione (`PENDING`) o
 Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
 `common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
 (changeSet `20260924-30`, brief `brief-db-preventivi-congelamento-pricing`.)
+
+## Rev 2026-10-10 — la promessa di consegna dopo la conferma
+
+Dopo la conferma le righe dell'ordine non si toccano più, salvo la **data di consegna
+confermata**, che si sposta finché c'è merce da evadere. Il backend la cambia con un verbo
+dedicato, e la terna dice quando proporlo (famiglia 1: motivo e chiave dal nome del flag).
+
+| Stato | `can_edit_data_consegna_confermata` | `_reason` | `_reason_key` |
+|---|:---:|---|---|
+| `DRAFT` | `false` | `ORDINE_IN_BOZZA` | `vendite.ordini.data_consegna_confermata_reason.in_bozza` — in bozza la data si scrive modificando la riga |
+| stati dell'eccezione del lock (oggi `CONFERMATO`, `PARZIALMENTE_EVASO`) | `true` | `null` | `null` |
+| tutti gli altri | `false` | `STATO_NON_AMMETTE` | `vendite.ordini.data_consegna_confermata_reason.stato_non_ammette` |
+
+⭐ Gli stati **non sono scritti qui**: li dice il montaggio del lock delle righe d'ordine,
+letto da [`script.fn_check_ordine_data_consegna_confermata`](/dbzero/script/funzioni/fn_check_ordine_data_consegna_confermata).
+Il flag discende dal motivo. Capability di documento, non di riga: la regola guarda solo
+lo stato della testata.
+(changeSet `20261010-67`, brief `brief-db-testata-dopo-emissione`, fase 1.)

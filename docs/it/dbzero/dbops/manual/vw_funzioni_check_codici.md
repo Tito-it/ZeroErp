@@ -87,6 +87,26 @@ casi 15 e 16.
 Origine: `docs/it/dev/work-done/brief-be-presidio-ui-action-e-canale-campi.md`
 (§4-bis.2); la revisione: `brief-db-ricerca-full-colonne-da-accendere` §7.
 
+### 🔄 rev 2026-10-10 — legge solo i testi che possono contenere un collegamento
+
+La vista partiva dal testo di **tutte** le funzioni del database, anche se un
+collegamento nasce solo dove compare il nome di un controllo (`fn_check_…`).
+Il risultato era giusto, ma PostgreSQL, guardando quanto lavoro *sembrava*
+esserci, decideva di compilare la query prima di eseguirla: più di un secondo
+di preparazione per un decimo di secondo di lavoro, pagato da ogni lettura,
+compresi i due controlli che la interrogano.
+
+Da questo giorno la vista legge solo i testi che contengono `fn_check_`. Le
+righe sono le stesse — un testo senza quel nome non può collegare niente — e
+la lettura torna a costare un decimo di secondo.
+
+⚠️ È una proprietà che **non si vede nei risultati**: chi riscrive la vista
+senza quel filtro ottiene le stesse righe, solo dieci volte più lente. Per
+questo c'è un controllo apposta, `test-vw-funzioni-check-codici-sotto-jit-v1`,
+che guarda la stima del costo e non le righe.
+
+Origine: changeSet `20261010-43`.
+
 ---
 
 {% include-markdown "signature-core.md" %}

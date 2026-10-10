@@ -93,6 +93,16 @@ BA e utility del preventivo sono `NOT NULL` — `brief-db-istanza-nasce-col-ba-r
 
 ### Dettaglio `non_editable_fields`
 
+> ⚠️ **Superato il 2026-10-10** (brief `brief-db-testata-dopo-emissione`, fase 2). Le liste
+> qui sotto erano scritte a mano nella funzione: la terza copia della regola «che cosa si
+> cambia ancora fuori bozza». Ora `non_editable_fields` e `can_edit_testata` si leggono dal
+> montaggio del lock di testata con
+> [`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in_stato): restano
+> nella capability solo le colonne «sempre» (campi di sistema e lock assoluti, valgono anche in
+> bozza), seguite da quelle che il lock blocca nello stato. Fuori bozza `can_edit_testata` è vero
+> negli stati in cui una colonna resta aperta (le note di un documento vivo, `valido_al` e
+> CIG/CUP del contratto attivo), falso a documento chiuso. La tabella resta per la storia.
+
 Due famiglie di immutabilità:
 
 | Famiglia | Campi | Sempre? |

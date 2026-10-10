@@ -426,6 +426,15 @@ END $fn$;
 CREATE TEMP TABLE _punti  AS SELECT * FROM pg_temp.fn_punti_sollevamento();
 CREATE TEMP TABLE _motivi AS SELECT * FROM pg_temp.fn_motivi_con_valori();
 
+-- ⭐ rev 2026-10-10 — ANCHE LA VISTA DEL RAMO B SI FOTOGRAFA. Letta da sola
+--   dbops.vw_punti_primo_motivo costa ~150 ms (dopo 20261010-43); messa in JOIN
+--   con `_punti` dentro `_arita`, il pianificatore la portava dentro un nested
+--   loop e rivalutava la sua regex su pg_proc centinaia di volte: 3,2 s per 24
+--   righe (misura dbdev, come app). La copia contiene la vista com'e', intera:
+--   il ramo B la legge invece di riscriverne il criterio.
+CREATE TEMP TABLE _vw_punti_primo_motivo AS SELECT * FROM dbops.vw_punti_primo_motivo;
+ANALYZE _punti, _vw_punti_primo_motivo;
+
 CREATE TEMP TABLE _arita AS
 -- Ramo A — il codice e' un LETTERALE sulla riga della chiamata.
 SELECT DISTINCT 'A'::text AS ramo, s.funzione, s.codice, m.lingua, s.n_valori,
@@ -447,7 +456,7 @@ UNION ALL
 SELECT DISTINCT 'B'::text AS ramo, s.funzione, v.codice, m.lingua, s.n_valori,
        (length(m.messaggio) - length(replace(m.messaggio, '%s', ''))) / 2 AS n_segnaposto
   FROM _punti s
-  JOIN dbops.vw_punti_primo_motivo v ON v.funzione = s.funzione
+  JOIN _vw_punti_primo_motivo v ON v.funzione = s.funzione
   JOIN config.messaggi_errore m ON m.codice = v.codice
  WHERE s.codice IS NULL
    AND s.n_valori IS NOT NULL

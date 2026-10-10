@@ -90,3 +90,56 @@ cambia mai, nemmeno in bozza, come il cliente dell'ordine) resta a
 `db/pgtap/vendite/test-esecutivi-ba-coppia-v1.sql`: test 15 e 16 (cliente e
 causale del DDT), 28 e 29 (emittente di DDT e ordine), 30 e 38 (montaggio su
 preventivo, offerte, contratti e resi).
+
+---
+
+### 🔄 rev 2026-10-10 — gli argomenti e la decisione in una sede condivisa (brief-db-testata-dopo-emissione, fase 1)
+
+Come il gemello delle righe, il trigger non interpreta più gli argomenti da sé: la
+grammatica sta in [`script.fn_doc_lock_regola`](/dbzero/script/funzioni/fn_doc_lock_regola),
+la decisione in [`script.fn_doc_lock_colonna_bloccata`](/dbzero/script/funzioni/fn_doc_lock_colonna_bloccata),
+e le usa anche il lettore del montaggio,
+[`script.fn_doc_lock_montaggi`](/dbzero/script/funzioni/fn_doc_lock_montaggi).
+
+Il comportamento resta quello descritto sopra: se nessuna colonna nominata cambia lo stato
+non si legge; altrimenti parla la prima colonna nominata, nell'ordine del montaggio, col
+suo codice. Montato su un evento diverso da `UPDATE`, la frase dice «si monta BEFORE
+UPDATE»; con argomenti sbagliati dice quali si aspetta.
+
+⭐ È anche il punto in cui arriverà la **forma per stato** della testata (decisione D-8 del
+brief: le colonne che restano aperte dopo l'emissione si chiudono quando il documento si
+chiude). Si aggiunge alla grammatica, e trigger e lettore la seguono insieme.
+
+> 📎 changeSet `20261010-60`, `-61`, `-65`. Presidio:
+> `db/pgtap/script/test-doc-lock-montaggio-v1.sql` (18-21).
+
+---
+
+### 🔄 rev 2026-10-10 — terne e famiglie (brief-db-testata-dopo-emissione, fase 2)
+
+Gli argomenti sono **terne** *(colonna, codice, stati in cui resta aperta fuori bozza)*. Stati
+vuoti: la colonna è ferma appena il documento esce dalla bozza. Una lista: la colonna si cambia
+ancora in quegli stati, e si ferma negli altri (il documento chiuso: decisioni D-8 e D-10).
+
+| Documento | Ferme fuori bozza | Aperte, e dove |
+| --- | --- | --- |
+| bolla | data, valuta, anno, serie, registro; causale; cliente; magazzini; emittente; sorgente | vettore, mittente, aspetto, porto, colli, pesi, volume, targa, autista, partenza, consegna prevista, tracciamento, note — in `EMESSO`, `SPEDITO`, `CONSEGNATO` |
+| reso | data, valuta, anno, registro; magazzino; emittente; sorgente | note — in `CONFERMATO` |
+| ordine | data, valuta, cambio, anno, serie, registro; utility; emittente; pagamento, agente, condizioni di fatturazione; sorgente e documento d'origine | note — da `CONFERMATO` a `EVASO` |
+| preventivo | data, valuta, revisione; cliente; emittente; termine, validità | competenza (si sceglie accettando, D-9) e note — in `EMESSO`, `ACCETTATO` |
+| offerta | valuta; cliente; emittente; listino, versione, variazioni, validità | note e motivazione del rifiuto — in `EMESSA`, `ACCETTATA` |
+| contratto | data, valuta; cliente; emittente; listino, versione, variazioni, ambito, decorrenza, contratto padre, categoria cliente; offerta e sorgente | fine validità, CIG, CUP, codice commessa, note — in `ATTIVO` |
+
+Codici per famiglia: `E_DOC_IDENTITA_FUORI_BOZZA`, `E_DOC_CONDIZIONI_FUORI_BOZZA`,
+`E_DOC_CLIENTE_FUORI_BOZZA`, `E_DOC_SORGENTE_FUORI_BOZZA`, `E_DOC_EMITTENTE_FUORI_BOZZA`, e
+`E_DOC_CHIUSO` per le colonne aperte a documento chiuso. Bolla e reso tengono i loro codici di
+causale, cliente e magazzino.
+
+Non si nominano le colonne generate (in un trigger `BEFORE` valgono `NULL` e sembrerebbero
+cambiate sempre) né `fatturazione_immediata`, che ha il suo guard (si ferma quando il documento
+entra in commessa). Sul contratto il lock ha assorbito `trgfn_contratti_lock_post_attivazione`
+(ritirato), e parla prima del guard del listino. Le capability leggono le stesse informazioni
+con [`script.fn_doc_testata_in_stato`](/dbzero/script/funzioni/fn_doc_testata_in_stato).
+
+> 📎 changeSet `20261010-68`, `-69`. Presidio: `db/pgtap/vendite/test-testata-dopo-emissione-v1.sql`
+> (la matrice colonna × stato, test 3).

@@ -210,11 +210,14 @@ Trigger modalità C rimossi:
 
 **Lock post-attivazione** (dal Step 2.3):
 
-* **Testata** — trigger `trg_contratti_a10_lock_post_attivazione_upd`
-  (→ [`trgfn_contratti_lock_post_attivazione`](/dbzero/vendite/funzioni/trgfn_contratti_lock_post_attivazione)):
-  blocca UPDATE di `listino_id`, `listino_versione_id`, `tipo_variazione_globale`,
-  `valore_variazione_globale` su contratti ATTIVI.
-  Errore: `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (452).
+* **Testata** — trigger `trg_contratti_a05_lock_fuori_bozza_upd`
+  (→ [`trgfn_doc_testata_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_testata_lock_fuori_bozza)):
+  fuori bozza sono fermi identità, cliente, condizioni (pricing compreso) e
+  sorgente; `valido_al`, CIG, CUP, codice commessa e note si cambiano in ATTIVO
+  e si fermano in CESSATO e ANNULLATO. Dal 2026-10-10 (brief
+  `brief-db-testata-dopo-emissione`); prima le quattro colonne di pricing le
+  fermava `trgfn_contratti_lock_post_attivazione` solo in ATTIVO
+  (`E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`, ritirati).
 * **Righe** — trigger `trg_contratti_righe_a05_doc_righe_lock_fuori_bozza_ins_upd_dlt`
   (→ [`trgfn_doc_righe_lock_fuori_bozza`](/dbzero/vendite/funzioni/trgfn_doc_righe_lock_fuori_bozza),
   il building block «le righe di un documento si toccano solo in bozza»):

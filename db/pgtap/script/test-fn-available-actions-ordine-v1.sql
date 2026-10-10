@@ -275,11 +275,17 @@ END;
 --   dichiarato di quel lavoro. Il test era rimasto indietro rispetto
 --   alla decisione, non il contrario.
 --
---   ⚠️ `can_edit_testata` resta **false**, ed e' il punto che rende il
---   test ancora utile: una via d'uscita non e' un permesso di modifica.
---   Un ordine confermato si annulla, non si riscrive. Se un domani
---   `can_edit_testata` diventasse true, e' qui che si deve accorgere
---   qualcuno.
+--   ⚠️ `can_edit_testata` era **false**, e questo test ne pinnava il
+--   senso: una via d'uscita non e' un permesso di modifica. Un ordine
+--   confermato si annulla, non si riscrive.
+--   ⭐ rev 2026-10-10 (brief-db-testata-dopo-emissione, fase 2, D-0/D-10):
+--   can_edit_testata si legge dal montaggio del lock di testata e vuol dire
+--   «in questo stato almeno un campo della testata si cambia» (le note, nei
+--   documenti vivi). Che il documento non si RISCRIVA lo dice
+--   non_editable_fields, che deve contenere identita' e condizioni.
+--   Il senso resta, e si prova dove ora sta: can_edit_testata e' true
+--   (le note), e data, valuta, pagamento e cliente sono fra i
+--   non_editable_fields.
 --
 --   Si asserisce anche l'INSIEME delle chiavi (`annulla` +
 --   `push_commessa`) invece del solo booleano: `can_change_state = true`
@@ -290,14 +296,16 @@ SELECT CASE
   THEN skip('10) skip: nessun billing_account pushabile/coerente nel seed')
   ELSE ok(
     (SELECT (script.fn_available_actions_ordine(o.id)->>'can_change_state')::boolean IS TRUE
-        AND (script.fn_available_actions_ordine(o.id)->>'can_edit_testata')::boolean IS FALSE
+        AND (script.fn_available_actions_ordine(o.id)->>'can_edit_testata')::boolean IS TRUE
+        AND (script.fn_available_actions_ordine(o.id)->'non_editable_fields')
+            @> '["data","valuta_id","termine_pagamento_id","modalita_pagamento_id","billing_account_id"]'
         AND (SELECT jsonb_agg(elem->>'key' ORDER BY elem->>'key')
                FROM jsonb_array_elements(
                       script.fn_available_actions_ordine(o.id)->'available_actions'
                     ) AS elem)
             = '["annulla", "push_commessa"]'::jsonb
        FROM tmp_ord_conf o),
-    'CONFERMATO: can_change_state=true (CONFERMATO->ANNULLATO riacceso), can_edit_testata=false, azioni = annulla + push_commessa'
+    'CONFERMATO: can_change_state=true (CONFERMATO->ANNULLATO riacceso), can_edit_testata=true (solo le note: identita'', condizioni e cliente non modificabili), azioni = annulla + push_commessa'
   )
 END;
 

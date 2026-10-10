@@ -1,0 +1,58 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# RITIRO: vendite.trgfn_contratti_lock_post_attivazione
+#   e il suo trigger trg_contratti_a10_lock_post_attivazione_upd.
+#   Brief: brief-db-testata-dopo-emissione (fase 2, §5 «il posto del lock
+#   del contratto», regola del 2)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Bloccava listino_id, listino_versione_id, tipo_variazione_globale e
+#   valore_variazione_globale solo con il contratto ATTIVO, in fascia _a10_:
+#   dopo il guard del listino (a10_guard_listino… < a10_lock_post…), quindi
+#   su un contratto attivo un listino incoerente rispondeva «listino di
+#   un'altra utility» prima di «bloccato». Dal 20261010-68 le quattro colonne
+#   le blocca il building block di testata, fuori bozza in ogni stato (D-3),
+#   con E_DOC_CONDIZIONI_FUORI_BOZZA e in fascia _a05_: parla per primo. Una
+#   seconda regola sulle stesse colonne e' una copia, e si ritira nello
+#   stesso giro. Il codice E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE resta
+#   a catalogo con obsoleto_dal (CSV).
+#
+#   Chi la nominava (censito il 2026-10-10): solo il suo trigger. Nel
+#   backend il codice compare in contratti_service e nei file di policy
+#   generati (richiesta al BE nel brief §9); nei pgTAP
+#   test-contratti-step23-v1 (test 7-9, P0001: restano verdi, descrizioni
+#   aggiornate) e un commento di test-contratti-modalita-pricing-v1.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261010-69-drop-trgfn-contratti-lock-post-attivazione-mctit.yaml
+
+  - changeSet:
+      id: 20261010-69-drop-trgfn-contratti-lock-post-attivazione
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Ritiro di vendite.trgfn_contratti_lock_post_attivazione: le quattro colonne di pricing le blocca il
+        building block di testata (20261010-68). Brief: brief-db-testata-dopo-emissione (fase 2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_contratti_a10_lock_post_attivazione_upd ON vendite.contratti;
+              DROP FUNCTION IF EXISTS vendite.trgfn_contratti_lock_post_attivazione();
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- La funzione e il trigger stanno nella storia (20260515-*): si riapplicano a mano.
+              SELECT 1;
