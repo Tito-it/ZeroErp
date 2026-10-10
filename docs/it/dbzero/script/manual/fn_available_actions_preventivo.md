@@ -229,3 +229,9 @@ motivo** (`enabled`, `reason`, `reason_key`, `reasons`) se il preventivo ha un p
 attesa — [script.fn_check_prezzi_in_attesa](/dbzero/script/funzioni/fn_check_prezzi_in_attesa),
 la stessa funzione con cui `fn_crea_revisione_preventivo` rifiuta. `can_create_revisione`
 diventa **veritiero**: vero solo se la revisione si può davvero creare.
+
+## Rev 2026-10-11 — gli indirizzi (brief-db-testata-dopo-emissione §11, R-DB-3)
+
+Nuovo `can_edit_indirizzi`: vero se gli indirizzi si possono scrivere nello stato del
+documento, letto dal lock montato sui suoi indirizzi (in bozza sì, fuori no). Il backend li
+rifiutava da sé fuori DRAFT: ora la regola sta nel lock.

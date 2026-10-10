@@ -59,3 +59,11 @@ dall'ordine), 18 (bolla dall'ordine di un altro cliente), 20 (il billing
 account di una bolla che evade righe d'ordine non cambia), 36 (ordine che non
 esiste), 39 (ordine di un'altra azienda: verde come applicazione, rosso da
 proprietario del database, dove la RLS non c'è).
+
+### 🔄 rev 2026-10-11 — la regola in una sede sola (brief-db-testata-dopo-emissione §11, R-DB-1)
+
+Da dove viene il cliente della bolla (la sorgente ordine o reso, le righe d'ordine già
+evase) lo dice ora `vendite.fn_ddt_vincoli_cliente`. Il guard solleva soltanto, con gli
+stessi codici e la stessa frase di prima. La stessa funzione la legge la capability della
+bolla per spegnere il cliente nel form: il campo è spento esattamente dove il guard
+rifiuterebbe.

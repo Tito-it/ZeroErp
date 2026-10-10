@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    35,
+    37,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -275,7 +275,17 @@ SELECT is(
     --   di script.fn_check_listino_documento (20261008-13). La lettura per il
     --   form, vendite.fn_listini_selezionabili, chiama la stessa check ma non
     --   solleva (brief-db-offerta-emissione-ed-erogazione §F.2).
-    'le trentacinque funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-11: da 35 a 36. Un sito NUOVO nato sull'helper:
+    --   vendite.fn_ddt_riga_correggi_qta_evasa (20261011-18) solleva il primo
+    --   motivo di script.fn_check_ddt_riga_correggi_qta_evasa (20261011-17), la
+    --   stessa funzione da cui vendite.vw_ddt_righe_dettaglio spegne «Correggi
+    --   quantita' evasa» (brief-db-ddt-righe-evase-dall-ordine, D-2).
+    -- ⭐ 2026-10-11: da 36 a 37. Un sito NUOVO nato sull'helper:
+    --   script.trgfn_doc_guard_listino_con_righe (20261011-28) solleva il primo
+    --   motivo di script.fn_check_listino_cambiabile (20261011-27): il listino di
+    --   contratto e offerta non cambia sotto righe gia' caricate
+    --   (brief-db-testata-dopo-emissione §11, R-DB-4).
+    'le trentasette funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

@@ -1,0 +1,114 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: il lock «solo in bozza» sui satelliti del documento — gli
+#   indirizzi di DDT, ordine, preventivo, offerta e contratto, e la fornitura
+#   (utility 1:1) di offerta e contratto.
+#   Brief: brief-db-testata-dopo-emissione (§11, R-DB-3 e D-12 di Tid)
+#
+# -- PERCHE' ------------------------------------------------------------
+#   Quando indirizzi e fornitura si cambiano lo diceva solo il backend
+#   (_INDIRIZZI_CFG «solo in bozza», _assert_contratto_draft, la capability
+#   can_edit_utility dell'offerta scritta su BOZZA). Chi scrive senza
+#   passare dal backend cambiava la consegna di una bolla emessa o la
+#   fornitura di un'offerta emessa. La regola e' quella delle righe: il
+#   documento fuori bozza non e' piu' una proposta.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   Il building block delle righe, vendite.trgfn_doc_righe_lock_fuori_bozza,
+#   tre porte (INSERT, UPDATE, DELETE), fascia _a05_ (parla prima della
+#   whitelist dei tipi, _a10_), col codice E_DOC_DATI_COLLEGATI_NON_BOZZA
+#   (D-12: la frase non parla di righe). Nessuna eccezione fuori bozza.
+#
+# -- CHI LI SCRIVE (censito dal catalogo, 2026-10-11) -------------------
+#   fn_crea_revisione_offerta, fn_crea_revisione_preventivo,
+#   fn_push_offerta_a_contratto, fn_push_preventivo_a_ordine,
+#   fn_genera_ddt_da_ordine, fn_genera_ddt_riconsegna, fn_create_contratto,
+#   trgfn_contratti_snapshot_precontrattuali (AFTER INSERT): tutte su un
+#   documento appena nato in bozza. Il backend: solo in bozza.
+#   Una cancellazione a cascata dal documento passa (padre assente).
+#
+#   ⛔ I nomi dei trigger restano sotto i 63 caratteri (asserito al
+#   generare). vendite.fatture_indirizzi resta fuori: la fattura non e' di
+#   questo brief.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-24-create-lock-satelliti-documento-mctit.yaml
+
+  - changeSet:
+      id: 20261011-24-create-lock-satelliti-documento
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Il lock «solo in bozza» (building block delle righe, codice E_DOC_DATI_COLLEGATI_NON_BOZZA) sui
+        cinque *_indirizzi e sulle due utility 1:1 di offerta e contratto. Brief: brief-db-testata-dopo-emissione (R-DB-3).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- I satelliti del documento si scrivono solo in bozza (R-DB-3): il
+              -- building block delle righe, tre porte, col codice dei satelliti
+              -- (argomento [6], 20261011-21/-22). [4] e [5] vuoti: nessuna eccezione
+              -- fuori bozza.
+              CREATE TRIGGER trg_ddt_indirizzi_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.ddt_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'DDT', 'ddt_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA');
+
+              CREATE TRIGGER trg_ordini_indirizzi_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.ordini_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'ORDINE', 'ordine_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA');
+
+              CREATE TRIGGER trg_preventivi_indirizzi_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.preventivi_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'PREVENTIVO', 'preventivo_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA');
+
+              CREATE TRIGGER trg_offerte_commerciali_indirizzi_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.offerte_commerciali_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'OFFERTA', 'offerta_id', 'BOZZA', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA');
+
+              CREATE TRIGGER trg_contratti_indirizzi_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.contratti_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'CONTRATTO', 'contratto_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA');
+
+              CREATE TRIGGER trg_offerte_commerciali_utilities_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.offerte_commerciali_utilities
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'OFFERTA', 'offerta_id', 'BOZZA', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA');
+
+              CREATE TRIGGER trg_contratti_utilities_a05_doc_bozza_ins_upd_dlt
+                  BEFORE INSERT OR UPDATE OR DELETE ON vendite.contratti_utilities
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_righe_lock_fuori_bozza(
+                      'CONTRATTO', 'contratto_id', 'DRAFT', 'TESTATA', '', '', 'E_DOC_DATI_COLLEGATI_NON_BOZZA');
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP TRIGGER IF EXISTS trg_ddt_indirizzi_a05_doc_bozza_ins_upd_dlt ON vendite.ddt_indirizzi;
+              DROP TRIGGER IF EXISTS trg_ordini_indirizzi_a05_doc_bozza_ins_upd_dlt ON vendite.ordini_indirizzi;
+              DROP TRIGGER IF EXISTS trg_preventivi_indirizzi_a05_doc_bozza_ins_upd_dlt ON vendite.preventivi_indirizzi;
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_indirizzi_a05_doc_bozza_ins_upd_dlt ON vendite.offerte_commerciali_indirizzi;
+              DROP TRIGGER IF EXISTS trg_contratti_indirizzi_a05_doc_bozza_ins_upd_dlt ON vendite.contratti_indirizzi;
+              DROP TRIGGER IF EXISTS trg_offerte_commerciali_utilities_a05_doc_bozza_ins_upd_dlt ON vendite.offerte_commerciali_utilities;
+              DROP TRIGGER IF EXISTS trg_contratti_utilities_a05_doc_bozza_ins_upd_dlt ON vendite.contratti_utilities;

@@ -17,7 +17,11 @@
 > due CSV dei codici): **da leggere per primo il §9.4**. D-9 e D-10 decise da Tid lo stesso giorno.
 > ⚠️ Il BE toglie i suoi «solo in DRAFT» **nello stesso rilascio** (§9.5, R-BE-2): da questo apply
 > le capability accendono la testata negli stati in cui una colonna resta aperta.
-> **Resta:** lato DB il pgTAP del congelamento del listino all'uscita dalla bozza (§9.4, «Non fatto»)
+> ✅ **Giro R-DB (2026-10-11): `-21 … -33` e `-40`/`-41` (la nascita, D-13) applicati, pgTAP di Tid verdi.**
+> ✅ **Lato DB non resta niente** (§11.8). Restano BE/FE (§11.4: R-BE-5, R-BE-6, R-FE-4, R-FE-5), il collaudo a video e l'archivio.
+> `20261011-21 … -33`, CSV dei codici, pgTAP nuovo `test-testata-dopo-emissione-rdb-v1` (34/34 sullo
+> scratch) e tre pgTAP adeguati. Decisioni D-11 e D-12 di Tid. Apply e corsa pgTAP di Tid.
+> **Resta (prima del giro R-DB):** lato DB il pgTAP del congelamento del listino all'uscita dalla bozza (§9.4, «Non fatto»)
 > e le richieste **R-DB-1 … R-DB-4** del §10.1 (trovate dal BE/FE, tenute qui per decisione di Tid);
 > poi i ritocchi BE/FE che ne discendono e il collaudo a video. ✅ Lato BE/FE le richieste del
 > §5-bis.6 e del §9.5 sono fatte (§10, 2026-10-10, non committate). Poi l'archivio.
@@ -643,3 +647,186 @@ il form può continuare a mandarlo tutto.
 **Da sapere, non da fare:** `fatturazione_immediata` non è nominata dal lock (§9.1). Dopo R-FE-3
 l'interruttore resta acceso fuori bozza (ordine, bolla, contratto) finché il documento non entra in
 commessa, e lì lo ferma il suo guard. È la decisione del DB: a video si vedrà.
+
+## 11. Il giro delle richieste R-DB (team DB, dal 2026-10-11)
+
+### 11.1 Censimento prima di scrivere (letto dal catalogo e dalla doc auto-generata)
+
+* **R-DB-3, chi scrive i satelliti.** Nessuno dei sette satelliti di documento ha un lock:
+  `vendite.{ddt,ordini,preventivi,offerte_commerciali,contratti}_indirizzi`,
+  `vendite.offerte_commerciali_utilities` e anche `vendite.contratti_utilities`, che R-DB-3 non
+  nominava ma ha lo stesso buco. Le funzioni DB che li scrivono (`fn_crea_revisione_offerta`,
+  `fn_crea_revisione_preventivo`, `fn_push_offerta_a_contratto`, `fn_push_preventivo_a_ordine`,
+  `fn_genera_ddt_da_ordine`, `fn_genera_ddt_riconsegna`, `fn_create_contratto`,
+  `trgfn_contratti_snapshot_precontrattuali`, AFTER INSERT) scrivono tutte su un documento **appena
+  nato in bozza**: il BB delle righe (`vendite.trgfn_doc_righe_lock_fuori_bozza`) si monta senza
+  rompere le cascate. Le fatture (`fatture_indirizzi`) restano fuori: non sono di questo brief.
+* **R-DB-4.** Le due regole vivono solo in `contratti_service.update_contratto`; l'offerta, che ha le
+  stesse righe ed eccezioni, non ne ha nessuna (in bozza cambia listino sotto righe già caricate).
+  Fuori bozza `listino_id` è già fermo dal lock di testata (`_a05_`): le due regole contano in bozza.
+
+### 11.2 Decisioni di Tid (2026-10-11)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| **D-11** | R-DB-4 vale solo per il contratto o anche per l'offerta? | ✅ **Contratto e offerta**: un BB guard montato su tutti e due, con codici di documento al posto di `E_CONTRATTO_*` (regola del 2: contratto e offerta hanno le stesse regole sulle righe) |
+| **D-12** | R-DB-3: la frase di `E_RIGA_DOC_NON_BOZZA` parla di «righe»; va bene per indirizzi e fornitura? | ✅ **Codice nuovo per i satelliti**: il BB delle righe impara un argomento col codice da sollevare (default `E_RIGA_DOC_NON_BOZZA`), e i satelliti montano un codice con una frase loro |
+
+### 11.3 ⭐ Che cosa è stato scritto (2026-10-11, non applicato)
+
+> Numerazione: `20261011-21 … -33` (Tid: «parti da -21, lasciamo spazio all'altro cantiere»,
+> `brief-db-ddt-righe-evase-dall-ordine`, che sta in `-05 … -20`).
+
+| changeSet / file | Che cosa | Richiesta |
+| --- | --- | --- |
+| `20261011-21` | `script.fn_doc_lock_regola`: il BB delle righe legge un settimo argomento, il **codice** del rifiuto (default `E_RIGA_DOC_NON_BOZZA`) | R-DB-3, D-12 |
+| `20261011-22` | `vendite.trgfn_doc_righe_lock_fuori_bozza` solleva il codice del montaggio | R-DB-3 |
+| `20261011-23` | `script.fn_doc_riga_modificabile` (nuova): la riga intera, in uno stato, passa il lock? Sorella di `fn_doc_colonna_modificabile` | R-DB-3 |
+| `20261011-24` | il lock «solo in bozza» sui **sette satelliti** (cinque `*_indirizzi`, le due utility 1:1), codice `E_DOC_DATI_COLLEGATI_NON_BOZZA` | R-DB-3 |
+| `20261011-25` | `vendite.fn_ddt_vincoli_cliente` (nuova): da dove viene il cliente della bolla (sorgente ordine/reso, righe d'ordine evase) | R-DB-1 |
+| `20261011-26` | `vendite.trgfn_ddt_guard_cliente_sorgente` legge i vincoli da `-25`; comportamento invariato | R-DB-1 |
+| `20261011-27` | `script.fn_check_listino_cambiabile` (nuova): i due motivi per cui il listino non cambia | R-DB-4, D-11 |
+| `20261011-28` | `script.trgfn_doc_guard_listino_con_righe` (nuovo) montato su contratti e offerte, fascia `_a10_`, prima di `guard_listino_documento` | R-DB-4, D-11 |
+| `20261011-29` | `fn_available_actions_ddt`: il cliente fermo solo se un vincolo lo tiene (da `-25`); + `can_edit_indirizzi` | R-DB-1, R-DB-3 |
+| `20261011-30` | `fn_available_actions_offerta`: `motivazione_rifiuto` fuori dalle «sempre»; `can_edit_utility` e `can_edit_indirizzi` dal montaggio | R-DB-2, R-DB-3 |
+| `20261011-31 … -33` | `fn_available_actions_ordine`, `_preventivo`: + `can_edit_indirizzi`; `_contratto`: + `can_edit_utility`, `can_edit_indirizzi` | R-DB-3 |
+| `80_data/sql/config/codici_errore.csv`, `messaggi_errore.csv` | tre codici nuovi (`E_DOC_DATI_COLLEGATI_NON_BOZZA` CONFLITTO_STATO, id 1280; `E_DOC_LISTINO_CAMBIO_CON_RIGHE` e `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI` NON_ESEGUIBILE, id 1281-1282); ritirati (`obsoleto_dal`) `E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE` ed `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` | R-DB-4 |
+| `db/pgtap/vendite/test-testata-dopo-emissione-rdb-v1.sql` (nuovo, 34 test) | i quattro R-DB e il **congelamento del listino all'uscita dalla bozza** (il «Non fatto» del §9.4: offerta BOZZA → EMESSA e contratto DRAFT → ATTIVO congelano la versione in vigore, e dopo non si cambia) | §9.4, R-DB-1…4 |
+| `db/pgtap/script/test-doc-lock-montaggio-v1.sql` | test 1 adeguato: la regola delle righe porta anche `codice` | — |
+
+**Scelte prese scrivendo.**
+
+* **`contratti_utilities` entra nel montaggio** anche se R-DB-3 nominava solo l'offerta: il
+  backend la scrive solo in DRAFT (`_assert_contratto_draft`), è lo stesso buco.
+* **`can_edit_indirizzi` su cinque capability.** Gli indirizzi non avevano una capability: il
+  FE li spegneva col suo «readonly di stato» e il BE li rifiutava fuori DRAFT, due copie della
+  regola. Ora la capability la legge dal lock.
+* **Le id dei messaggi partono da 1280**, lasciando 1270-1279 all'altro cantiere che sta
+  scrivendo lo stesso CSV.
+* **`fn_check_listino_cambiabile` non emette `reason_key`**, come la gemella
+  `fn_check_listino_documento`: oggi la legge solo un guard, e non apre un debito verso i
+  locales.
+* ⚠️ **Un contratto inserito direttamente in ATTIVO** (seed, import: la matrice non vincola
+  l'INSERT, linee-guida-sql §7c punto 6) con dati precontrattuali ora fallisce: lo snapshot
+  `trgfn_contratti_snapshot_precontrattuali` (AFTER INSERT) scrive `contratti_utilities` su un
+  padre fuori bozza, e il lock lo ferma. È coerente con le righe, che su un contratto nato
+  ATTIVO già non si scrivono; nessuna funzione DB crea contratti fuori bozza. Da sapere, e
+  da confermare con Tid.
+
+### 11.4 Richieste a BE e FE, dopo l'apply di questo giro
+
+| # | A chi | Cosa |
+| --- | --- | --- |
+| R-BE-5 | BE | ⚠️ **nello stesso rilascio dell'apply**: togliere da `contratti_service.update_contratto` i due controlli del listino (`E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE`, `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`, ritirati) con `count_righe_attive` e `count_eccezioni_bloccanti` del repository se restano senza lettori; il 422 arriva dal DB coi codici `E_DOC_LISTINO_CAMBIO_CON_RIGHE` ed `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI` (NON_ESEGUIBILE, campo `listino_id`), anche sull'offerta. Policy dei tre codici nuovi (`E_DOC_DATI_COLLEGATI_NON_BOZZA` è CONFLITTO_STATO → 409), `error_policies_generated.py` rigenerato, ripieghi in `error_messages_fallback.py` |
+| R-BE-6 | BE | i «solo in bozza» dei satelliti: `stati_modificabili` di `_INDIRIZZI_CFG` (ordini, DDT, preventivi, offerte, contratti), `_assert_contratto_draft` di `create_utility`/`update_utility` del contratto, la lettura di `can_edit_utility` in `aggiorna_offerta`. Decide il DB (D-0): il 409 `E_DOC_DATI_COLLEGATI_NON_BOZZA` passa com'è. La capability porta ora `can_edit_indirizzi` (cinque documenti) e `can_edit_utility` (offerta, contratto) |
+| R-FE-4 | FE | il DDT: togliere l'eccezione dichiarata in `DdtDrawer` (`nonEditableFields` sul cliente): dal DB `billing_account_id` arriva fra i non modificabili solo sulla bolla da ordine o da reso (R-DB-1) |
+| R-FE-5 | FE | gli indirizzi e la fornitura seguono `can_edit_indirizzi` e `can_edit_utility` invece del readonly di stato (regola del 2: lo stato scritto nel FE è una copia) |
+
+### 11.5 La prova (2026-10-11, `zeroerp_ci`, SQL estratto in transazione ritirata, come owner `zeroerp`)
+
+* I corpi di partenza delle otto funzioni modificate coincidono con quelli vivi su `zeroerp_ci`
+  (`pg_get_functiondef` contro la doc auto-generata).
+* L'SQL estratto dei tredici changeSet, in ordine di id, più l'upsert **completo** dei due CSV
+  (1053 codici, 1049 messaggi): nessun rifiuto.
+* `vendite/test-testata-dopo-emissione-rdb-v1` (nuovo, 34 test): **34/34** con l'estratto;
+  senza, rosso dal test 1 e fermo al 4 (le funzioni non ci sono): il file vede ciò che deve
+  vedere.
+* **Regressione** su 88 pgTAP (chi scrive i sette satelliti, le cinque capability, i due lock,
+  il guard del cliente, il listino del contratto, i presidi trasversali), senza e con il giro:
+  identici, salvo:
+  * `script/test-doc-lock-montaggio-v1` — il test 1 adeguato (la regola delle righe porta
+    `codice`): 30/30 con, 29/30 senza, come atteso;
+  * `offerte_commerciali/test_fn_crea_revisione_offerta` e `test_fn_push_offerta_a_contratto`
+    — **adeguati**: la fixture scriveva la fornitura su un'offerta già EMESSA o ACCETTATA, che il
+    modello ora rifiuta; la fornitura nasce in bozza, prima delle transizioni (come le
+    eccezioni dal 2026-10-04). 7/7 e 10/10, con e senza;
+  * `script/test-rubinetto-primo-motivo-v1` — test 5, il conteggio esatto delle funzioni che
+    chiamano l'helper: **37** (il 36 è dell'altro cantiere, `fn_ddt_riga_correggi_qta_evasa`;
+    il 37 è `script.trgfn_doc_guard_listino_con_righe`). Su `zeroerp_ci` senza i due giri vale
+    35: il numero torna solo con entrambi applicati;
+  * `vendite/test-ddt-righe-evase-dall-ordine-v1` — dell'altro cantiere, fermo sulla colonna
+    `evasa` che arriva coi suoi changeSet non applicati: lo scratch non lo può giudicare.
+* ⚠️ **Trovato nella prova e corretto prima della consegna**: il presidio C2
+  (`test-punti-canale-campo-v1`, test 2) legge un `->> 'codice'` dentro la chiamata a
+  `fn_log_and_raise_error` come un sito «primo motivo» cieco. Il lock delle righe passa ora il
+  codice in una variabile (`v_codice`), come il gemello di testata.
+* `plpgsql_check` sulle quattro funzioni nuove e sulle otto modificate: nessun errore. Un
+  avviso su `fn_check_listino_cambiabile` («STABLE ma chiama una VOLATILE»: la `PERFORM`
+  dell'errore di chiamante, come nelle check sorelle); quello su `fn_available_actions_ordine`
+  c'era già prima del giro.
+* Guardrail statici verdi sui file del giro (letterali, `runOnChange`, preCondition, trigger di
+  automazione, `GRANT` batch, timestamp, v1). `guardrail_pgtap_preambolo` segnala
+  `vendite/test-push-list-stato-obbligatorio-v1.sql` (manca `SET CONSTRAINTS ALL IMMEDIATE`):
+  file già committato, non di questo giro.
+* ⚠️ Come owner la RLS non c'è: l'esito come app arriva dalla corsa di Tid.
+
+### 11.6 Dopo l'apply: la nascita del documento (2026-10-11, D-13 di Tid)
+
+> ✅ `20261011-21 … -33` applicati da Tid su dbdev e zeroerp_ci. Alla corsa pgTAP, sette rossi nuovi.
+
+**I rossi.** Sei sono la stessa causa: `test_fn_successione_contratti`, `test-fn-resolve-iva-riga`,
+`test-fn-resolve-prezzo-listino-v2-classe-da-contratto-v1`, `test-vw-dash-aperto-v1`,
+`test-vw-dash-backlog-v1`, `test-vw-dash-fatturazione-v1`. Inseriscono un contratto direttamente
+ATTIVO o ANNULLATO (lecito, linee-guida-sql §7c punto 6), e `trgfn_contratti_snapshot_precontrattuali`
+(AFTER INSERT) gli scrive la fornitura, che il lock dei satelliti rifiutava. È il caso dichiarato
+«da confermare» nel §11.3. Su dbdev succede perché l'istanza pescata ha dati precontrattuali; in CI
+quei fixture non li trovano. Il buco però è nel modello. Il settimo,
+`test-trgfn-doc-righe-lock-fuori-bozza-v1`, pinna l'elenco esatto dei montaggi del lock: mancavano
+i sette satelliti (**adeguato**, test 2).
+
+**D-13 di Tid.** Prima scelta: «la nascita è la transazione». Ripresa quando è emerso che acceca
+ogni pgTAP dei lock (il test è una transazione sola). Decisione finale: **passa ciò che un
+trigger scrive su un documento nato in questa transazione**. Scartato anche il lock della
+fornitura senza INSERT, che lascia un buco.
+
+| changeSet | Che cosa |
+| --- | --- |
+| `20261011-40` | `script.fn_get_stato_testata_documento`: + `nata_in_transazione` (`data_insert = transaction_timestamp()`: la scrive il default, nessun UPDATE la tocca; `xmin` no, lo cambia anche l'emissione). Cambia `RETURNS TABLE`: DROP e CREATE, poi il GRANT all'app. I chiamanti leggono le colonne per nome |
+| `20261011-41` | `vendite.trgfn_doc_righe_lock_fuori_bozza`: `CONTINUE WHEN v_nata AND pg_trigger_depth() > 1`. Una scrittura diretta resta rifiutata |
+| `vendite/test-testata-dopo-emissione-rdb-v1` | + test 35 (un contratto inserito ATTIVO riceve lo snapshot) e 36 (la fornitura scritta direttamente su un contratto attivo nato nella stessa transazione è rifiutata) |
+| `vendite/test-trgfn-doc-righe-lock-fuori-bozza-v1` | test 2: i sette satelliti nell'elenco atteso dei montaggi |
+
+> Numerazione: `-36 … -39` lasciati all'altro cantiere (che è a `-35`).
+
+**La prova** (`zeroerp_ci`, che ha già `-21 … -35`; SQL estratto di `-40`/`-41` in transazione
+ritirata, come owner, log dblink spento). `test-testata-dopo-emissione-rdb-v1` **36/36**; senza i
+due changeSet cade esattamente il test 35, con il rosso di Tid (`E_DOC_DATI_COLLEGATI_NON_BOZZA`).
+Regressione su 18 pgTAP (lock delle righe, montaggi, consumatori del lettore, satelliti, offerte,
+presidi): identici con e senza. I sei file di Tid su `zeroerp_ci` cadono prima, sui loro fixture
+che pescano dati: lo scratch non li giudica, il caso è costruito nei test 35-36. `plpgsql_check`
+pulito (l'avviso sul lettore è la `PERFORM` dell'errore di chiamante, c'era già). Dopo il DROP e
+CREATE la funzione ha gli stessi grant (app e batch, quest'ultimo dai privilegi di default).
+
+### 11.7 Due fixture che scrivevano la fornitura di un contratto attivo (2026-10-11)
+
+Dopo `-40`/`-41` (applicati da Tid) due file cadono ancora, e non per la nascita: la fixture
+**modifica** o **cancella** la fornitura di un contratto già ATTIVO, cioè proprio ciò che il lock
+dei satelliti vieta. Adeguati sul modello:
+
+| File | Prima | Ora |
+| --- | --- | --- |
+| `vendite/test-fn-resolve-iva-riga` | UPDATE di tipo e classe della fornitura del contratto ATTIVO | legge il tipo d'uso che lo snapshot ha scritto alla nascita, e mette il codice IVA su quello (catalogo); se lo snapshot non c'è, la fixture lo dice nel test 1 |
+| `vendite/test-fn-resolve-prezzo-listino-v2-classe-da-contratto-v1` | contratto nato ATTIVO, poi DELETE e INSERT della fornitura (due volte) | il contratto nasce DRAFT, riceve la fornitura, poi si attiva con la transizione vera (il listino costruito ha una versione in vigore oggi) |
+
+Censiti per nome gli altri pgTAP che scrivono `contratti_utilities` / `offerte_commerciali_utilities`
+con UPDATE o DELETE: solo `test-contratti-utilities-guard-tipo-classe-v1`, che lavora in DRAFT.
+⚠️ Lo scratch non li giudica: le due fixture pescano dati che su `zeroerp_ci` non ci sono. L'esito
+è della corsa di Tid su dbdev.
+
+### 11.8 Stato (2026-10-11)
+
+✅ `20261011-40`/`-41` applicati da Tid, pgTAP verdi (con le fixture adeguate del §11.7).
+
+**Lato DB non resta niente.** Le richieste R-DB-1 … R-DB-4 sono fatte (§11.3, §11.6), e il
+pgTAP del congelamento del listino all'uscita dalla bozza c'è (test 13-14 e 18-19 di
+`test-testata-dopo-emissione-rdb-v1`). Il brief resta aperto per:
+
+* **BE/FE**: le richieste del §11.4. R-BE-5, il ritiro dei due controlli del listino da
+  `update_contratto`, va nello stesso rilascio. Poi R-BE-6 (i «solo in bozza» dei satelliti),
+  R-FE-4 (l'eccezione del cliente in `DdtDrawer`) e R-FE-5 (`can_edit_indirizzi`, `can_edit_utility`);
+* il **collaudo a video** di Tid;
+* poi l'**archivio** in `work-done/`.
+
+Da sapere: D27 (`brief-db-indirizzi-documento-seguono-il-cliente`) scrive gli indirizzi dei
+documenti in bozza; il lock dei satelliti (`-24`) lo lascia fare, e un riempimento automatico
+fatto da un trigger alla nascita passa per D-13.

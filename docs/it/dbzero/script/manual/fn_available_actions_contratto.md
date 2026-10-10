@@ -193,3 +193,10 @@ contratto con una riga o un componente BoM **attivi** in attesa di approvazione
 Motivi nuovi: `PREZZO_PENDENTE` / `PREZZO_RIFIUTATO`, con `reason_key`
 `common.azione_reason.prezzo_pendente` / `common.azione_reason.prezzo_rifiutato`.
 (changeSet `20260924-26`, brief `brief-db-preventivi-congelamento-pricing`.)
+
+## Rev 2026-10-11 — fornitura e indirizzi (brief-db-testata-dopo-emissione §11, R-DB-3)
+
+Nuovi `can_edit_utility` e `can_edit_indirizzi`: veri se fornitura e indirizzi si possono
+scrivere nello stato del contratto, letti dai lock montati su `vendite.contratti_utilities` e
+`vendite.contratti_indirizzi` (in bozza sì, fuori no). Il backend li rifiutava da sé fuori
+DRAFT: ora la regola sta nel lock.

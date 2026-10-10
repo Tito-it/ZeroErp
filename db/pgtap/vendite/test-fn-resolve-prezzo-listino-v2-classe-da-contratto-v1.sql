@@ -137,12 +137,13 @@ SELECT v.versione_id, t.articolo_id, t.uom_id, 100
   FROM tmp_ctx_wd_versione v, tmp_ctx_wd t
 ON CONFLICT DO NOTHING;
 
--- Contratto ATTIVO in modalita' A (con listino, senza variazione globale).
+-- Contratto ATTIVO in modalita' A (con listino, senza variazione globale):
+-- nasce DRAFT e si attiva dopo la fornitura (rev 2026-10-11, sotto).
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id, stato_doc_contratto_id,
     valido_dal, valido_al, listino_id)
 SELECT 'PGTAP_V5B_CONTR_WD', t.ba_id, t.istanza_utility_id, t.utility_id,
-       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
+       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
        script.fn_data_operativa(), script.fn_data_operativa() + 365, v.listino_id
   FROM tmp_ctx_wd t, tmp_ctx_wd_versione v;
 
@@ -158,6 +159,15 @@ SELECT c.id, t.istanza_utility_id, t.utility_id,
        t.tipo_utenza_id, t.classe_contratto_id
   FROM vendite.contratti c, tmp_ctx_wd t
  WHERE c.numero = 'PGTAP_V5B_CONTR_WD';
+
+-- ⛔ rev 2026-10-11 (brief-db-testata-dopo-emissione §11.7): la fornitura si
+--   scrive solo in bozza (lock dei satelliti, 20261011-24). Il contratto nasce
+--   quindi DRAFT, riceve la sua fornitura, e poi si ATTIVA con la transizione
+--   vera (il listino costruito ha una versione in vigore oggi). Prima nasceva
+--   ATTIVO e la fornitura gli si cancellava e riscriveva dopo.
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
+ WHERE numero = 'PGTAP_V5B_CONTR_WD';
 
 -- 2) Test chiave: chiamo il resolver passando p_classe_utenza_id = NULL.
 -- Il resolver deve leggere la classe dal contratto, non dal parametro.
@@ -270,12 +280,13 @@ SELECT v.versione_id, t.articolo_id, t.uom_id, 100
   FROM tmp_ctx_nd_versione v, tmp_ctx_nd t
 ON CONFLICT DO NOTHING;
 
--- Contratto ATTIVO su utility commercio (contratti_utilities avra' classe NULL).
+-- Contratto ATTIVO su utility commercio (contratti_utilities avra' classe NULL):
+-- nasce DRAFT e si attiva dopo la fornitura (rev 2026-10-11, sotto).
 INSERT INTO vendite.contratti(
     numero, billing_account_id, istanza_utility_id, utility_id, stato_doc_contratto_id,
     valido_dal, valido_al, listino_id)
 SELECT 'PGTAP_V5B_CONTR_ND', t.ba_id, t.istanza_utility_id, t.utility_id,
-       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO'),
+       (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'DRAFT'),
        script.fn_data_operativa(), script.fn_data_operativa() + 365, v.listino_id
   FROM tmp_ctx_nd t, tmp_ctx_nd_versione v;
 
@@ -291,6 +302,15 @@ SELECT c.id, t.istanza_utility_id, t.utility_id,
        NULL, NULL
   FROM vendite.contratti c, tmp_ctx_nd t
  WHERE c.numero = 'PGTAP_V5B_CONTR_ND';
+
+-- ⛔ rev 2026-10-11 (brief-db-testata-dopo-emissione §11.7): la fornitura si
+--   scrive solo in bozza (lock dei satelliti, 20261011-24). Il contratto nasce
+--   quindi DRAFT, riceve la sua fornitura, e poi si ATTIVA con la transizione
+--   vera (il listino costruito ha una versione in vigore oggi). Prima nasceva
+--   ATTIVO e la fornitura gli si cancellava e riscriveva dopo.
+UPDATE vendite.contratti
+   SET stato_doc_contratto_id = (SELECT id FROM config.stati_doc_contratti WHERE codice_interno = 'ATTIVO')
+ WHERE numero = 'PGTAP_V5B_CONTR_ND';
 
 -- 4) Test: classe da contratto NULL -> fallback al parametro input
 SELECT is(
