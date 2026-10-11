@@ -41,6 +41,7 @@ vista, e il repository la legge.
 | `qta_residua_operativa` | ordinato − evaso, **mai negativo**, in UoM operativa |
 | `data_consegna_richiesta_cliente` / `data_consegna_confermata` | la richiesta è del cliente, la confermata è la nostra promessa (si decide alla conferma: può essere vuota in bozza) |
 | `is_composito_caso_a` | la riga ha componenti attivi: il FE mostra la freccia di espansione |
+| `data_consegna_confermata_blocco` | perché la data confermata della riga **non** si cambia ora: `STATO_NON_AMMETTE` (lo stato dell'ordine) o `RIGA_SPEDITA` (la riga è già partita con un DDT, anche in parte). `NULL` = si cambia. Dalla stessa check del guard, `script.fn_check_ordine_riga_data_consegna_confermata` (dal 2026-10-11, `20261012-07`) |
 
 ⚠️ Un `factor_to_base` a zero dà evaso e residuo **NULL**, non una divisione per
 zero.
