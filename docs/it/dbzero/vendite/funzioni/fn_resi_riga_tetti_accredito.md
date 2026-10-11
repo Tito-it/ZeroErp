@@ -13,6 +13,7 @@ CREATE OR REPLACE FUNCTION vendite.fn_resi_riga_tetti_accredito(p_resi_riga_id b
  LANGUAGE sql
  STABLE SECURITY DEFINER
  SET search_path TO 'pg_catalog', 'pg_temp'
+ SET plan_cache_mode TO 'force_generic_plan'
 AS $function$
 -- Scopo: i due tetti dell'accredito, letti SOPRA la RLS.
 --   - accredito_dovuto: quanti pezzi (in unita' di MERCE, cioe'

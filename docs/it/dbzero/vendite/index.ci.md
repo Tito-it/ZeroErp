@@ -139,6 +139,8 @@
 - [fn_ddt_vincoli_cliente](manual/fn_ddt_vincoli_cliente.md) — (nata il 2026-10-11, brief `brief-db-testata-dopo-emissione`, §11, R-DB-1)
 - [fn_diagnostica_gruppi_fatturabili](manual/fn_diagnostica_gruppi_fatturabili.md) — (latest review 15-08-2026)
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
+- [fn_documento_lineage_archi](manual/fn_documento_lineage_archi.md) — (rev 2026-10-11)
+- [fn_documento_lineage_nodi](manual/fn_documento_lineage_nodi.md) — (rev 2026-10-11)
 - [fn_documento_listino_operativo](manual/fn_documento_listino_operativo.md) — (funzione nata il 2026-10-04, `20261004-42`)
 - [fn_documento_righe_eccezione](manual/fn_documento_righe_eccezione.md) — (funzione nata il 2026-10-04, `20261004-70`)
 - [fn_documento_righe_preview](manual/fn_documento_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-71`, dal corpo di `fn_contratto_righe_preview`)

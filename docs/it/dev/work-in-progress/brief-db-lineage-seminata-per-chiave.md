@@ -11,7 +11,7 @@
 > **Stato (2026-10-10):** ⬜ **aperto, non iniziato.** Decisioni di Tid del
 > 2026-10-10: **D-1 sì, D-3 sì, D-4 sì** (prima il pannello, poi le liste — §6).
 > **D-2 = B** (le liste chiedono la lineage per gli id della pagina, §5.2).
-> Piano in §8.
+> Piano in §8. **2026-10-11**: ✅ giro 1 chiuso (`20261011-62…-67`, §8.3-§8.4). Prossimo: giro 2.
 > **Ricadute BE/FE:** dipendono da D-2 (§5.3). Nessuna se si sceglie la forma
 > che resta tutta nel DB.
 
@@ -155,11 +155,129 @@ della pagina). Nessuna decisione aperta.
 
 | Giro | Cosa | Chi | Stato |
 | --- | --- | --- | --- |
-| 1 | `fn_documento_lineage_archi(<seme>)` e `fn_documento_lineage_nodi(<seme>)`; le due viste diventano la loro proiezione col seme `NULL` (regola del 2); indice `ordini(documento_origine_tipo, documento_origine_id)` per tutti i tipi (D-3) | DB | ⬜ |
+| 1 | `fn_documento_lineage_archi(<seme>)` e `fn_documento_lineage_nodi(<seme>)`; le due viste diventano la loro proiezione col seme `NULL` (regola del 2); indice `ordini(documento_origine_tipo, documento_origine_id)` per tutti i tipi (D-3) | DB | ✅ `20261011-62…-67` applicati (§8.3, §8.4) |
 | 2 | `fn_documento_lineage` risale per livelli sulle funzioni seminate (il pannello «Passaggi»); equivalenza su ogni nodo con archi, nelle due direzioni | DB | ⬜ |
 | 3 | `fn_documento_lineage_sintesi(<chiavi>)`: le colonne di `vw_documento_lineage` (frontiera, radice, pratica, discendenti, natura) per le sole chiavi chieste; equivalenza contro la vista su tutti i documenti | DB | ⬜ |
 | 4 | le sette liste tolgono le colonne della lineage dalla query di pagina e le chiedono con il giro 3 per gli id della pagina | BE (§8.1) | ⬜ |
 | 5 | le viste di lista smettono di agganciare `vw_documento_lineage` — **solo dopo** il giro 4, o la lista perde le colonne | DB | ⬜ |
+
+### 8.2 Giro 1 — la forma (proposta, 2026-10-11)
+
+Letti dal vivo (doc auto-gen): le due viste, `fn_documento_lineage` (forma
+`20261010-44`) e i lettori degli archi. Oltre ai tre noti c'è un lettore nuovo,
+`vendite.fn_ddt_legami`, che legge gli archi per **un** DDT: è il primo candidato
+a passare alla funzione seminata, ma **non** in questo giro. Indici delle colonne
+di join riletti da `pg_indexes`: confermato il §3, manca solo il ramo A.
+
+**Il seme è la chiave del nodo**: `(p_tipo_ids bigint[], p_uids text[])`, due
+array paralleli, la coppia `(tipo_id, uid::text)` che il modello usa già come
+identità polimorfa del nodo (`key_selector`: `uid` per preventivo e offerta, `id`
+per gli altri). Il chiamante tipico è una **frontiera**, cioè un insieme misto di
+tipi: con un array per tipo (la forma della partita merce, otto parametri) ogni
+chiamante dovrebbe smistarla da sé.
+Dentro, il seme si smista **una volta** in array tipizzati (`uuid[]`, `bigint[]`)
+con `array_agg(…) FILTER (WHERE tipo = …)`. Il cast avviene solo sulle righe del
+tipo giusto, e ogni ramo cerca per indice con `= ANY(<array tipizzato>)`. Il
+confronto `id::text = uid` non entrerebbe nell'indice.
+Seme `NULL` = tutto, in rami `UNION ALL` a parte (filtro una tantum), mai
+`p IS NULL OR`.
+
+| # | ChangeSet | Cosa |
+| --- | --- | --- |
+| 1 | `00_schema/vendite` create index | `ix_ordini_documento_origine (documento_origine_tipo, documento_origine_id) WHERE documento_origine_id IS NOT NULL`, **non** unico (D-3). L'unicità per l'offerta resta in `uq_ordini_v_documento_origine_offerta`; quella per il preventivo è una domanda di modello, fuori da qui |
+| 2 | `20_code/vendite` create | `fn_documento_lineage_nodi(p_tipo_ids, p_uids)`, SQL `BEGIN ATOMIC`, `STABLE`, INVOKER: gli 8 tipi di nodo, ciascuno in due modi (seme / tutto) |
+| 3 | `20_code/vendite` create | `fn_documento_lineage_archi(p_tipo_ids, p_uids)`: archi **grezzi** (`from_tipo_id, from_uid, to_tipo_id, to_uid, ruolo, arco`, più `is_ramo_inverso` e `rango_origine`, che dipendono solo dall'arco: una sede sola). Per ogni ramo, col seme: arco **uscente** da un nodo del seme `UNION ALL` arco **entrante** il cui `from` non sta nel seme. Così il multiinsieme è esattamente quello della vista ristretta agli archi incidenti, senza doppioni né `DISTINCT` nuovi |
+| 4 | `20_code/vendite` update | `vw_documento_lineage_nodi` = proiezione di `fn_documento_lineage_nodi(NULL, NULL)`, colonne per nome coi typmod ricastati, `security_invoker=on` ripetuto |
+| 5 | `20_code/vendite` update | `vw_documento_lineage_archi` = archi di `fn_documento_lineage_archi(NULL, NULL)` decorati coi nodi; stesse colonne, stessi tipi |
+
+**Presidio**: pgTAP nuovo `vendite/test-documento-lineage-seminata-v1` su un grafo
+**costruito** con i 13 archi. Controlla: archi col seme = archi della vista
+incidenti al seme (`EXCEPT ALL` nei due versi), per un seme a un nodo, un seme
+misto e un seme vuoto; seme `NULL` = vista intera; i tipi delle due viste
+(`col_type_is`); le dipendenze in `pg_depend` (`BEGIN ATOMIC`).
+**Prova** prima dell'apply, sullo scratch e su dbdev come app: equivalenza delle
+viste prima e dopo su tutto il grafo, i 5 pgTAP della lineage identici, i tempi
+delle viste intere non peggiori.
+
+I lettori di oggi (`vw_documento_lineage`, `fn_documento_lineage`,
+`fn_check_preventivo_annullabile`, `fn_ddt_legami`) **non** cambiano in questo
+giro: leggono le viste, che restano uguali. Il guadagno arriva al giro 2.
+
+### 8.3 Giro 1 — scritto, provato e ✅ applicato da Tid (2026-10-11)
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `00_schema/vendite/20261011-62-create-ix-ordini-documento-origine` | indice D-3 |
+| `20_code/vendite/20261011-63-create-fn-documento-lineage-nodi` | nodi per chiave |
+| `20_code/vendite/20261011-64-create-fn-documento-lineage-archi` | archi grezzi per chiave |
+| `20_code/vendite/20261011-65-update-vw-documento-lineage-nodi-proiezione` | vista = proiezione |
+| `20_code/vendite/20261011-66-update-vw-documento-lineage-archi-proiezione` | vista = proiezione decorata |
+
+**pgTAP**: nuovo `vendite/test-documento-lineage-seminata-v1` (plan 16). Grafo
+**costruito** con gli archi A, B, E, H, U (due preventivi, un ordine, una
+commessa, un DDT); le altre otto lettere si provano su un arco vivo ciascuna,
+con `skip()` dichiarato quando mancano (database da zero). Ritoccato
+`config/test-costanti-catalogo-citate-dal-codice-v1`: le costanti
+`RESO_VENDITA` e `DDT_VENDITA` della lineage ora stanno nella funzione degli archi
+e non nella vista, e il test 4 legge anche i corpi `BEGIN ATOMIC` (`prosrc` è
+vuoto: il corpo lo dà `pg_get_function_sqlbody`). ⚠️ Prima dell'apply quel
+file è **rosso** (cerca la funzione nuova): va applicato insieme al `-64`.
+
+**Una correzione di forma trovata misurando** (2026-10-11, dbdev come app). La
+prima versione passava il seme come JOIN, coi nodi del seme in CTE
+`MATERIALIZED`. Sotto RLS il planner partiva dal lato sbagliato: leggeva la
+tabella dell'altro capo per il solo prefisso del tipo, pagando una policy per
+riga, e metteva il seme in fondo. Nella forma adottata una CTE `chiavi` porta il
+seme in tutte le forme che i rami cercano, e la prima tabella di ogni metà è
+limitata con `= ANY(<chiavi>)` sul suo indice. Con `enable_seqscan = off` ogni
+metà col seme parte da un indice (il ramo A dal `-62`).
+
+**Prove**:
+
+* equivalenza (copie `pg_temp`, dbdev come app): `fn(NULL, NULL)` = viste;
+  ognuno dei 477 nodi come seme = gli archi della vista incidenti a lui; le due
+  estremità di ognuno dei 232 archi = gli archi incidenti alla coppia; seme con
+  tutti i nodi = vista; tipi delle colonne delle viste identici (typmod
+  compresi);
+* scratch `zeroerp_ci`, da owner, SQL estratto dei cinque changeSet: **70 pgTAP**
+  (lineage, lettori, presidi su viste, funzioni SQL e `security_invoker`), prima
+  e dopo: identici tranne quello delle costanti, ritoccato sopra; il pgTAP nuovo
+  16/16 (il 15 è uno `skip()`: lo scratch non ha quelle lettere); su dbdev come
+  app 16/16 col 15 eseguito;
+* il pgTAP nuovo vede il difetto: togliendo l'esclusione delle entranti dal
+  ramo A, il test 11 diventa rosso.
+
+**Fatti datati** (dbdev come app, 2026-10-11): vista degli archi intera
+~170 ms di esecuzione contro ~180 di prima, ma **~+30 ms fissi di
+pianificazione** (il corpo è più grande). Non crescono coi dati, e dal giro 5 le
+liste non leggono più il grafo intero. Un nodo come seme: ~10 ms in piano
+generico, dovuti alle tabelle minuscole di dbdev (il planner legge per intero
+tabelle da 5-10 righe). Su tabelle grandi conta che ogni ramo parta da un
+indice, ed è verificato. ⚠️ Il costo di pianificazione e il JIT li ha risolti
+il §8.4.
+
+### 8.4 Il JIT — `20261011-67` (2026-10-11), ✅ applicato da Tid, pgTAP risolto
+
+**Trovato da Tid** dopo l'apply: `test-documento-lineage-seminata-v1` lento,
+**anche sullo scratch vuoto**. La causa sono i test 10 e 15, che chiamano la
+funzione con un seme preso dalla riga esterna. Quando il seme **non è una
+costante** il planner non può togliere i rami dell'altro modo, il costo stimato
+del piano supera le soglie del JIT, e la compilazione costa più della query, a
+ogni esecuzione. Non dipende dai dati ma dalla grandezza del piano: un chiamante
+vero (plpgsql, parametri) lo pagherebbe uguale, e su tabelle grandi di più.
+Fatto datato (dbdev come app): ~4,8 s a chiamata col JIT, 25 ms senza.
+
+**Cura**: `ALTER FUNCTION … SET jit = off, SET plan_cache_mode =
+force_generic_plan` sulle due funzioni. Una clausola `SET` le rende non
+incorporabili: si pianificano dentro di sé, una volta per sessione (in PG18 il
+piano di una funzione SQL sta nella plancache). Le viste non si ricreano.
+Copie `pg_temp` con le due clausole, dbdev come app: vista degli archi ~155 ms
+(prima ~210 compresa la pianificazione), vista dei nodi ~39 ms, un nodo ~11 ms,
+equivalenza a zero; il pgTAP nuovo da >40 s a 1,7 s (scratch 0,6 s). COMMENT
+vivi conservati, con la nota di revisione davanti; presidio unico della clausola
+esteso (`script/test-plan-cache-mode-piano-generico-v1`, test 6-7, plan 7).
+⇒ **giro 2**: `fn_documento_lineage` non deve dichiarare niente per la funzione
+che chiama.
 
 ### 8.1 Richiesta al team BE (giro 4) — da consegnare quando il giro 3 è applicato
 

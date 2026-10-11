@@ -74,6 +74,25 @@ sarebbe «tutta la coda», pagata per rispondere 0.
 
 ---
 
+### ⛔ rev 2026-10-11 — si pianifica una volta (`plan_cache_mode`)
+
+ChangeSet `20261011-42`. La funzione porta `SET plan_cache_mode =
+force_generic_plan` **accanto** a `SET search_path`. Dentro di lei la coda per
+documento si incorpora in una query grande con un seme che dipende dal
+parametro: in modo `auto` la plancache la ripianificava a ogni chiamata, cioè a
+ogni riga scritta sul ponte.
+
+La clausola sta **qui** e non sul guard né sul verbo: sulla funzione vale solo
+per le sue query, mentre il piano generico imposto a tutto l'`INSERT` del ponte
+rallenta il resto di quel percorso.
+
+⚠️ È una proprietà **invisibile nel corpo**: un `CREATE OR REPLACE` che non la
+ripete la perde, senza errore e con gli stessi risultati. Presidio:
+`db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql`. Misura e
+decisione: `brief-db-plancache-funzioni-con-query-incorporate` §5bis.
+
+---
+
 ### ⚠️ Zero, non `NULL`, sull'assenza
 
 È il valore **fail-closed**: una riga fuori dalla coda ha accredito dovuto `0`, e

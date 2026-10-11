@@ -117,9 +117,11 @@ INSERT INTO _costanti VALUES
     ('config',    'sorgenti',                      'FATTURA',
      'vendite',   'vw_fatture_lista',              'VISTA',    '20260824-15'),
 
-    -- L'arco del ramo inverso (reso) nel grafo del lineage.
+    -- L'arco del ramo inverso (reso) nel grafo del lineage. ⭐ Dal 2026-10-11
+    -- (20261011-64/-66) la grammatica dei 13 archi sta nella funzione e la
+    -- vista ne e' la proiezione: il contratto e' con la funzione.
     ('config',    'sorgenti',                      'RESO_VENDITA',
-     'vendite',   'vw_documento_lineage_archi',    'VISTA',    '20260825-19'),
+     'vendite',   'fn_documento_lineage_archi',    'FUNZIONE', '20261011-64'),
 
     -- La sorgente che la ri-consegna scrive sul DDT generato dal reso.
     ('config',    'sorgenti',                      'RESO_VENDITA',
@@ -128,7 +130,7 @@ INSERT INTO _costanti VALUES
     -- L'arco sorgente-DDT. ⚠️ Qui la costante non basta: conta anche il
     -- key_selector, ed e' il test 3.
     ('config',    'sorgenti',                      'DDT_VENDITA',
-     'vendite',   'vw_documento_lineage_archi',    'VISTA',    '20260828-24');
+     'vendite',   'fn_documento_lineage_archi',    'FUNZIONE', '20261011-64');
 
 -- Cosa il catalogo offre DAVVERO, con il predicato di attivita' proprio di
 -- ciascuna tabella. ⚠️ Non e' lo stesso predicato ovunque: `sorgenti` e
@@ -222,7 +224,11 @@ SELECT is(
              WHERE c.obj_tipo   = 'FUNZIONE'
                AND n.nspname    = c.obj_schema
                AND p.proname    = c.obj_nome
-               AND p.prosrc LIKE '%' || quote_literal(c.valore) || '%'
+               -- ⚠️ Una funzione BEGIN ATOMIC ha `prosrc` VUOTO: il corpo sta
+               --    in prosqlbody, e lo deparsa pg_get_function_sqlbody (i
+               --    letterali escono come 'X'::text, che il LIKE prende).
+               AND coalesce(nullif(p.prosrc, ''), pg_get_function_sqlbody(p.oid))
+                   LIKE '%' || quote_literal(c.valore) || '%'
       )
         AND NOT EXISTS (
             SELECT 1

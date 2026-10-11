@@ -320,4 +320,11 @@ ancora dalle tabelle dei documenti, con i loro permessi.
 
 ---
 
+### 🔄 rev 2026-10-11 — la vista è la proiezione di [`fn_documento_lineage_archi`](fn_documento_lineage_archi.md)
+
+Changeset `20261011-66`. Il corpo sta nella funzione, che
+si può chiamare **per i soli documenti che servono**; la vista ne è la lettura
+«senza seme», con le stesse colonne e gli stessi tipi. Brief:
+`brief-db-lineage-seminata-per-chiave` §8.3.
+
 {% include-markdown "signature-core.md" %}

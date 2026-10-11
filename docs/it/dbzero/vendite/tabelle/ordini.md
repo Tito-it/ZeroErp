@@ -72,6 +72,7 @@
 ## 📑 Indici
 | Nome | Definizione |
 |------|-------------|
+| ix_ordini_documento_origine | `CREATE INDEX ix_ordini_documento_origine ON vendite.ordini USING btree (documento_origine_tipo, documento_origine_id) WHERE (documento_origine_id IS NOT NULL)` |
 | ix_ordini_emittente_fiscale_id | `CREATE INDEX ix_ordini_emittente_fiscale_id ON vendite.ordini USING btree (emittente_fiscale_id)` |
 | ix_ordini_id_text | `CREATE INDEX ix_ordini_id_text ON vendite.ordini USING btree (((id)::text))` |
 | ix_ordini_v_cliente_statoid_data | `CREATE INDEX ix_ordini_v_cliente_statoid_data ON vendite.ordini USING btree (soggetto_ruolo_id, stato_doc_ordine_id, data)` |
