@@ -371,7 +371,8 @@ motivazione; l'icona la sceglie l'interfaccia dalla chiave dell'azione) e una se
 
 | Flag                                                                      | Vero quando                                                                                                   |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `can_edit_testata` / `can_edit_eccezioni` / `can_edit_utility`            | l'offerta è in BOZZA                                                                                          |
+| `can_edit_testata`                                                        | almeno una colonna della testata si cambia nello stato (in BOZZA tutte; EMESSA e ACCETTATA le note): lo legge il database dal suo blocco di testata |
+| `can_edit_eccezioni` / `can_edit_utility` / `can_edit_indirizzi`         | l'offerta è in BOZZA (eccezioni, fornitura e indirizzi): lo legge il database dal blocco «solo in bozza» che li protegge |
 | `can_create_revisione`                                                    | l'offerta è EMESSA                                                                                            |
 | `can_push_contratto`                                                      | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR)           |
 | `can_genera_ordine`                                                       | l'offerta è ACCETTATA **e** non esiste già né un contratto né un ordine generati dall'offerta (XOR)           |

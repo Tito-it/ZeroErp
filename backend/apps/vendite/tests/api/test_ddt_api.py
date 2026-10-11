@@ -25,6 +25,9 @@ Indice test eseguiti:
 12) test_indirizzi_get_ok         — 200 pannello indirizzi tipi+slot (mock service)
 13) test_indirizzi_upsert_ok      — 200 upsert slot indirizzo, payload propagato (mock)
 14) test_indirizzi_delete_ok      — 200 delete slot indirizzo (mock service)
+15) test_cambia_stato_annullo_con_conferma — righe_legate_confermate propagato al service
+16) test_legami_ok                — 200 GET legami della bolla (mock service)
+17) test_riga_qta_evasa_ok        — 200 POST verbo quantita' evasa, payload propagato
 """
 
 from unittest.mock import ANY, Mock, patch
@@ -156,7 +159,41 @@ class TestDdtApi(JwtMockedApiTest):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "SPEDITO")
-        mock_cs.assert_called_once_with(7, "SPEDITO")
+        # Al primo tentativo nessuna dichiarazione (D-8): None, non assente.
+        mock_cs.assert_called_once_with(7, "SPEDITO", righe_legate_confermate=None)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.cambia_stato")
+    def test_cambia_stato_annullo_con_conferma(self, mock_cs, _auth) -> None:
+        mock_cs.return_value = {"ddt_id": 7, "stato": "ANNULLATO"}
+        resp = self.client.post(
+            f"{_BASE}7/cambia-stato/",
+            data={"stato_codice": "ANNULLATO", "righe_legate_confermate": 2},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_cs.assert_called_once_with(7, "ANNULLATO", righe_legate_confermate=2)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.get_legami")
+    def test_legami_ok(self, mock_leg, _auth) -> None:
+        mock_leg.return_value = {"ddt_id": 7, "righe_legate": 1, "legami": [], "origini": []}
+        resp = self.client.get(f"{_BASE}7/legami/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["righe_legate"], 1)
+        mock_leg.assert_called_once_with(7)
+
+    @patch(_AUTH, return_value=(Mock(), None))
+    @patch(f"{_SVC}.correggi_qta_evasa")
+    def test_riga_qta_evasa_ok(self, mock_qta, _auth) -> None:
+        mock_qta.return_value = {"ddt_id": 7, "riga_id": 31, "qta_evasa": "6"}
+        resp = self.client.post(
+            f"{_BASE}7/righe/31/qta-evasa/", data={"qta_operativa": "6"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["data"]["qta_evasa"], "6")
+        mock_qta.assert_called_once_with(7, 31, {"qta_operativa": "6"})
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.push_a_commessa")

@@ -85,15 +85,6 @@ export function deleteRigaContratto(contrattoId, rigaId) {
   return api.delete(`${BASE}/${contrattoId}/righe/${rigaId}/`)
 }
 
-// Utility 1:1
-export function addUtilityContratto(contrattoId, payload) {
-  return api.post(`${BASE}/${contrattoId}/utility/`, payload)
-}
-
-export function updateUtilityContratto(contrattoId, utilityId, payload) {
-  return api.patch(`${BASE}/${contrattoId}/utility/${utilityId}/`, payload)
-}
-
 // --- Componenti BoM riga contratto (modello unificato 2026-05-13) ---
 // Specchio simmetrico dei 4 endpoint preventivi. Auto-init dei componenti
 // avviene lato BE in `addRigaContratto` quando l'articolo e' composito;

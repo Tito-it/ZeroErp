@@ -50,7 +50,7 @@ from apps.vendite.api._componenti_schema import (
     PREVIEW_COMPONENTI_RESPONSE,
     componenti_overrides_field,
 )
-from apps.vendite.api._schema_da_contratto import CAMBIA_STATO_REQUEST, schema_da_contratto
+from apps.vendite.api._schema_da_contratto import schema_da_contratto
 
 # Codice lista (ui.lista_definizione) usato dall'export per risolvere
 # colonne visibili/ordine/permessi dell'utente.
@@ -72,6 +72,16 @@ _DDT_RIGA_CREATE_REQUEST = schema_da_contratto(
 )
 _DDT_RIGA_UPDATE_REQUEST = schema_da_contratto(
     "VenditeDdtRigaUpdateReq", ddt_service.UPDATE_KEYS_RIGA,
+)
+# Il cambio di stato del DDT porta, verso ANNULLATO, la dichiarazione della
+# conferma (D-8): quante righe legate l'operatore ha visto.
+_DDT_CAMBIA_STATO_REQUEST = schema_da_contratto(
+    "VenditeDdtCambiaStatoReq", ("stato_codice", "righe_legate_confermate"),
+    obbligatorie=("stato_codice",),
+)
+_DDT_RIGA_QTA_EVASA_REQUEST = schema_da_contratto(
+    "VenditeDdtRigaQtaEvasaReq", ("qta_operativa",),
+    obbligatorie=("qta_operativa",),
 )
 _DDT_RESPONSE = inline_serializer(
     name="VenditeDdtResp", fields={"data": serializers.DictField()},
@@ -239,13 +249,15 @@ class ApiDdtCambiaStato(DomainAPIView):
     """POST /api/v1/vendite/ddt/<ddt_id>/cambia-stato/ — transizione di stato
     data-driven (SPEDITO / CONSEGNATO / RESO / ANNULLATO). Body: `stato_codice`
     (= `target_state` dell'azione). L'ammissibilita' e' validata dal trigger
-    guard DB."""
+    guard DB. Verso ANNULLATO, una bolla con righe legate a ordini o resi
+    risponde E_DDT_ANNULLO_CON_LEGAMI (`confirm_and_retry`) finche' il corpo
+    non dichiara `righe_legate_confermate` (letto da `…/legami/`)."""
 
     area_funzionale = "vendite"
     model_permission = ("vendite", "ddt")
 
     @extend_schema(
-        request=CAMBIA_STATO_REQUEST,
+        request=_DDT_CAMBIA_STATO_REQUEST,
         responses={200: _DDT_RESPONSE},
     )
     # Scopo: Esegue la transizione di stato richiesta (validata dal trigger DB).
@@ -254,8 +266,27 @@ class ApiDdtCambiaStato(DomainAPIView):
             request,
             handler=lambda payload: ddt_service.cambia_stato(
                 int(ddt_id), payload.get("stato_codice"),
+                righe_legate_confermate=payload.get("righe_legate_confermate"),
             ),
         )
+
+
+class ApiDdtLegami(DomainAPIView):
+    """GET /api/v1/vendite/ddt/<ddt_id>/legami/ — le righe della bolla legate a
+    un ordine o a un reso (`vendite.fn_ddt_legami`), il loro numero
+    (`righe_legate`, la dichiarazione della conferma d'annullo) e i documenti
+    d'origine dal lineage. Alimenta la finestra di conferma dell'annullo (D-8
+    di brief-db-ddt-righe-evase-dall-ordine)."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(
+        responses={200: _DDT_RESPONSE},
+    )
+    # Scopo: Legami e origini della bolla, per la finestra di conferma.
+    def get(self, request: Request, ddt_id: int) -> JsonResponse:
+        return success_response(ddt_service.get_legami(int(ddt_id)))
 
 
 class ApiDdtPush(DomainAPIView):
@@ -391,6 +422,30 @@ class ApiDdtRigaDetail(DomainAPIView):
     def delete(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
         return success_response(
             ddt_service.elimina_riga(int(ddt_id), int(riga_id)),
+        )
+
+
+class ApiDdtRigaQtaEvasa(DomainAPIView):
+    """POST /api/v1/vendite/ddt/<ddt_id>/righe/<riga_id>/qta-evasa/ — corregge
+    la quantita' evasa di una riga legata a un ordine o a un reso (verbo DB
+    `vendite.fn_ddt_riga_correggi_qta_evasa`, D-2 di
+    brief-db-ddt-righe-evase-dall-ordine). Body: `qta_operativa`. Il pulsante
+    segue `correggi_qta_evasa_blocco` della riga (NULL = acceso)."""
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ddt")
+
+    @extend_schema(
+        request=_DDT_RIGA_QTA_EVASA_REQUEST,
+        responses={200: _DDT_RESPONSE},
+    )
+    # Scopo: Nuova quantita' evasa della riga (riga, legami e ordine insieme).
+    def post(self, request: Request, ddt_id: int, riga_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: ddt_service.correggi_qta_evasa(
+                int(ddt_id), int(riga_id), payload,
+            ),
         )
 
 

@@ -185,4 +185,15 @@ const dialogVisible = ref(false)
 .app-merce-chip:hover :deep(.p-tag) {
   filter: brightness(0.95);
 }
+
+/* Affordance «cliccabile» sempre visibile, non solo all'hover: il chip ha la
+   forma di un Tag, che altrove e' un'etichetta inerte — senza un segno che sia
+   un link non si capisce che apre il dettaglio (rilievo in-app di Tid,
+   2026-10-11). Verde sottolineato come i link dei passaggi lineage (Button
+   `link` di PrimeVue = colore primario). */
+.app-merce-chip :deep(.p-tag-label) {
+  color: var(--p-primary-color);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 </style>

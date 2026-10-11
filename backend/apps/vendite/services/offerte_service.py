@@ -613,9 +613,11 @@ class OfferteService:
     #        col create (refactor atomico 2026-05-26). Eredita
     #        `istanza_utility_id`/`utility_id` dalla testata se non passati
     #        esplicitamente nel sub-oggetto (coerenza FK garantita dal BA).
-    #        ⚠️ Il satellite `offerte_commerciali_utilities` NON ha un lock a
-    #        DB: quando si cambia lo dice solo la capability (`can_edit_utility`).
-    #        Il cancello qui la LEGGE, non la riscrive.
+    #        In quale stato la fornitura si cambia lo dice il DB: il lock «solo
+    #        in bozza» dei satelliti (`E_DOC_DATI_COLLEGATI_NON_BOZZA`, 409) e la
+    #        capability `can_edit_utility`. Fino al 2026-10-11 qui si leggeva la
+    #        capability prima di scrivere (brief-db-testata-dopo-emissione §11,
+    #        R-BE-6): ora il 409 del lock passa com'e'.
     def aggiorna_offerta(
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
@@ -635,21 +637,6 @@ class OfferteService:
                 code=E_VENDITE_VALIDATION,
                 message="Campo 'utility' deve essere oggetto.",
                 context={"got": type(utility_payload).__name__},
-            )
-            # ⛔ Il messaggio non dice IN QUALI stati: lo sa solo la capability,
-            #    e una frase che lo ripete ne sarebbe la seconda copia.
-            capabilities = self._repo.get_available_actions(offerta_id)
-            ErrorManager.require(
-                bool(capabilities.get("can_edit_utility")),
-                code=E_VENDITE_VALIDATION,
-                message=(
-                    "I dati della fornitura dell'offerta non si cambiano "
-                    f"nello stato corrente ('{capabilities.get('stato_codice')}')."
-                ),
-                context={
-                    "offerta_id": offerta_id,
-                    "stato_corrente": capabilities.get("stato_codice"),
-                },
             )
         testata_payload = self._con_meta_normalizzato(
             {k: v for k, v in payload.items() if k != "utility"},
@@ -1427,14 +1414,15 @@ class OfferteService:
         return self._repo.get_utility(offerta_id)
 
     # Scopo: Crea il record utility 1:1. UNIQUE su offerta_id: doppio create
-    #        rilevato e mappato a E_VENDITE_DUPLICATO. Solo in BOZZA.
+    #        rilevato e mappato a E_VENDITE_DUPLICATO. Lo stato lo giudica il
+    #        DB (vedi `aggiorna_offerta`).
     def crea_utility(
         self, offerta_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
         self._v.guard_positive_int(offerta_id, field="offerta_id")
         self._v.validate_allowed_keys(payload, allowed=CREATE_KEYS_UTILITY)
         payload = self._con_meta_normalizzato(payload)
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        self._get_offerta_or_raise(offerta_id, op="crea_utility", getter=self._repo.get_stato_codice)
         for required in ("istanza_utility_id", "utility_id"):
             ErrorManager.require(
                 required in payload and payload[required] is not None,
@@ -1449,8 +1437,9 @@ class OfferteService:
         assert row is not None
         return row
 
-    # Scopo: Aggiorna il record utility (campi business). Solo in BOZZA.
-    #        Payload vuoto -> 400 (no-op silenzioso evitato).
+    # Scopo: Aggiorna il record utility (campi business). Lo stato lo giudica
+    #        il DB (vedi `aggiorna_offerta`). Payload vuoto -> 400 (no-op
+    #        silenzioso evitato).
     def aggiorna_utility(
         self, offerta_id: int, utility_id: int, payload: dict[str, Any]
     ) -> dict[str, Any]:
@@ -1459,7 +1448,7 @@ class OfferteService:
         self._v.validate_allowed_keys(payload, allowed=UPDATE_KEYS_UTILITY)
         payload = self._con_meta_normalizzato(payload)
         self._guard_payload_non_vuoto(payload, op="aggiorna_utility")
-        self._assert_stato_corrente(offerta_id, expected=_STATI_EDITABILI)
+        self._get_offerta_or_raise(offerta_id, op="aggiorna_utility", getter=self._repo.get_stato_codice)
         existing = self._repo.get_utility(offerta_id)
         ErrorManager.require(
             existing is not None and existing.get("id") == utility_id,
@@ -1783,9 +1772,7 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
     # dei test unit raggiungono anche il ramo auto-assegnazione.
     repo_factory=lambda: OfferteRepository(),
-    stati_modificabili=_STATI_EDITABILI,
     not_found_code=E_VENDITE_NOT_FOUND,
-    stato_error_code=E_VENDITE_VALIDATION,
     error_code=E_VENDITE_VALIDATION,
     fn_prefix="vendite.offerte_service",
 )

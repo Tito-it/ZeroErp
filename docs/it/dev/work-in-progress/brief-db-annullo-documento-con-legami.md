@@ -2,7 +2,7 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-11. **A chi:** Tid; poi BE/FE (§6, che sostituisce il §3.4).
 > **Origine:** il caso bolla → ordine trovato nel giro di
-> [brief-db-ddt-righe-evase-dall-ordine](brief-db-ddt-righe-evase-dall-ordine.md) (§7.6, decisione D-8),
+> [brief-db-ddt-righe-evase-dall-ordine](../work-done/brief-db-ddt-righe-evase-dall-ordine.md) (§7.6, decisione D-8),
 > e la domanda di Tid del 2026-10-11: *«quando esiste un legame, ci sia la conferma: abbiamo altri
 > legami simili per cui segnalare "attenzione, si riapre qualcosa"?»*
 > **Stato (2026-10-11):** ✅ **caso 1 (bolla) applicato e verde** (§3, changeSet del giro D28, applicati
@@ -76,6 +76,10 @@ l'uscita: il magazzino diceva «la merce e' qui», l'ordine «la merce e' partit
 | lock dei legami (`20261011-15`) | resta su INSERT e UPDATE; il DELETE lo governa il guard del legame, che sa distinguere le due madri |
 
 ### 3.4 Ricaduta BE/FE
+
+✅ **Fatta il 2026-10-11**: il dettaglio sta in brief-db-ddt-righe-evase-dall-ordine §10 (endpoint
+`GET …/ddt/<id>/legami/`, `cambia-stato` verso ANNULLATO sempre da `fn_annulla_ddt`, `confirm_and_retry`,
+finestra `DdtAnnulloLegamiDialog`, guida §4.3). ✅ Collaudo di Tid superato il 2026-10-11: il caso 1 è chiuso.
 
 * Il cambio di stato verso ANNULLATO, se riceve **E_DDT_ANNULLO_CON_LEGAMI**, apre una finestra di
   conferma che elenca le righe legate (da `vendite.fn_ddt_legami`: «riga 1, ordine 12, 10 pz»). Alla

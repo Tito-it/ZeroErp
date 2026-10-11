@@ -22,7 +22,8 @@
 //    comparirebbe un «Salva» sopra un form tutto spento.
 //
 // ⚠️ Il CORPO del drawer resta protetto dal readonly di stato del chiamante
-//    (righe, indirizzi, sub-drawer seguono le loro regole). Il form della
+//    (righe e sub-drawer seguono le loro regole; gli indirizzi la capability
+//    `can_edit_indirizzi`, in `DocumentoIndirizziSection`). Il form della
 //    testata ci sta sopra con `app-escape` quando ha qualcosa di aperto
 //    (`sopraCorpoProtetto`), e il footer ne libera il Salva
 //    (`footerReadonly`, la prop omonima di `AppDrawer`).

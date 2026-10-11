@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Building block service per gli indirizzi documento (design
 #        brief-design-indirizzi-documenti-vendita, D-1..D-5). Tutta la logica
-#        condivisa vive qui — guard esistenza/stato, ownership del picker,
+#        condivisa vive qui — guard di esistenza, ownership del picker,
 #        validazione snapshot, traduzione errori DB — parametrizzata da una
 #        `IndirizziDocumentoConfig` dichiarata una volta per dominio: i
 #        service espongono wrapper one-liner.
@@ -19,6 +19,14 @@
 #        - UNA-TANTUM (origine assente): snapshot libero dal payload,
 #          whitelist chiavi + soli valori scalari, con almeno un campo
 #          sostanziale. origine_* restano NULL.
+#
+#        ⭐ In quale stato del documento gli indirizzi si cambiano lo dice il
+#        DB: il lock «solo in bozza» dei satelliti
+#        (`vendite.trgfn_doc_righe_lock_fuori_bozza`, codice
+#        `E_DOC_DATI_COLLEGATI_NON_BOZZA`, 409) e la capability
+#        `can_edit_indirizzi`. Fino al 2026-10-11 qui c'era uno
+#        `stati_modificabili` per dominio, la seconda copia di quella regola
+#        (brief-db-testata-dopo-emissione §11, R-BE-6): il 409 passa com'e'.
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -124,13 +132,11 @@ def shape_indirizzi_context(
 # Scopo: Configurazione per-dominio del BB. Dichiarata una volta a livello di
 #        modulo nel service del dominio (vedi ddt_service._INDIRIZZI_CFG).
 #        `get_stato` legge il solo codice stato (query leggera, mai il detail
-#        completo); default: repo.get_stato_codice.
+#        completo) per il guard di esistenza; default: repo.get_stato_codice.
 @dataclass(frozen=True)
 class IndirizziDocumentoConfig:
     repo_factory: Callable[[], Any]
-    stati_modificabili: frozenset[str]
     not_found_code: str
-    stato_error_code: str
     error_code: str
     fn_prefix: str
     get_stato: Callable[[Any, int], str | None] | None = None
@@ -151,17 +157,16 @@ def _db_errors(cfg: IndirizziDocumentoConfig, op: str) -> Iterator[None]:
         yield
 
 
-# Scopo: Guard condiviso esistenza (+ opzionale editabilita') del documento.
-#        Esistenza -> not_found_code (404); stato fuori perimetro ->
-#        stato_error_code. Ritorna lo stato per eventuali usi del chiamante.
+# Scopo: Guard condiviso di esistenza del documento: inesistente o fuori
+#        perimetro -> not_found_code (404). Lo stato non si giudica qui: lo
+#        giudica il lock del DB (vedi header).
 def _assert_documento(
     cfg: IndirizziDocumentoConfig,
     repo: Any,
     documento_id: int,
     *,
     op: str,
-    richiedi_modificabile: bool,
-) -> str:
+) -> None:
     get_stato = cfg.get_stato or (lambda r, i: r.get_stato_codice(i))
     stato = get_stato(repo, documento_id)
     ErrorManager.require(
@@ -171,16 +176,6 @@ def _assert_documento(
         detail=f"documento_id={documento_id}",
         function_name=f"{cfg.fn_prefix}.{op}",
     )
-    assert stato is not None
-    if richiedi_modificabile:
-        ErrorManager.require(
-            stato in cfg.stati_modificabili,
-            code=cfg.stato_error_code,
-            message=f"Indirizzi non modificabili nello stato {stato}.",
-            detail=f"ammessi={sorted(cfg.stati_modificabili)}",
-            function_name=f"{cfg.fn_prefix}.{op}",
-        )
-    return stato
 
 
 # Scopo: Normalizza un dict snapshot dal payload: whitelist chiavi, soli
@@ -274,8 +269,7 @@ def list_indirizzi_documento(
     cfg: IndirizziDocumentoConfig, documento_id: int,
 ) -> dict[str, Any]:
     repo = cfg.repo_factory()
-    _assert_documento(cfg, repo, documento_id, op="list_indirizzi",
-                      richiedi_modificabile=False)
+    _assert_documento(cfg, repo, documento_id, op="list_indirizzi")
     return {
         "tipi_ammessi": repo.list_tipi_indirizzo_ammessi(),
         "indirizzi": repo.list_indirizzi(documento_id),
@@ -283,7 +277,7 @@ def list_indirizzi_documento(
 
 
 # Scopo: Upsert di uno slot indirizzo (uno-per-tipo). Vedi header per i due
-#        flussi; guard stato (documento modificabile) + ownership picker.
+#        flussi; guard di esistenza + ownership picker.
 def upsert_indirizzo_documento(
     cfg: IndirizziDocumentoConfig,
     documento_id: int,
@@ -291,7 +285,7 @@ def upsert_indirizzo_documento(
 ) -> dict[str, Any]:
     op = "upsert_indirizzo"
     repo = cfg.repo_factory()
-    _assert_documento(cfg, repo, documento_id, op=op, richiedi_modificabile=True)
+    _assert_documento(cfg, repo, documento_id, op=op)
 
     tipo_indirizzo_id = payload.get("tipo_indirizzo_id")
     ErrorManager.require(
@@ -375,7 +369,7 @@ def upsert_indirizzo_documento(
         )
 
 
-# Scopo: Rimozione di uno slot indirizzo (solo documento modificabile).
+# Scopo: Rimozione di uno slot indirizzo (lo stato lo giudica il DB).
 #        Riga inesistente o di un altro documento -> not_found_code (404,
 #        anti-tampering URL).
 def delete_indirizzo_documento(
@@ -385,7 +379,7 @@ def delete_indirizzo_documento(
 ) -> dict[str, Any]:
     op = "delete_indirizzo"
     repo = cfg.repo_factory()
-    _assert_documento(cfg, repo, documento_id, op=op, richiedi_modificabile=True)
+    _assert_documento(cfg, repo, documento_id, op=op)
     with _db_errors(cfg, op):
         deleted = repo.delete_indirizzo(documento_id, indirizzo_row_id)
     ErrorManager.require(

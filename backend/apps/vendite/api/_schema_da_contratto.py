@@ -144,6 +144,9 @@ TIPI: Tipi = {
     "attivo": (_booleano, False),
     # ── azioni ───────────────────────────────────────────────
     "stato_codice": (_testo, False),
+    # La conferma dell'annullo di una bolla con legami (D-8): quante righe
+    # legate l'operatore ha visto. Assente al primo tentativo.
+    "righe_legate_confermate": (_intero, True),
 }
 
 

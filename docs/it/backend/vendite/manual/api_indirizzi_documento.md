@@ -61,13 +61,14 @@ Via `handle_post_json`. Due flussi mutuamente esclusivi:
   dal layer soggetto (tag "Soggetto").
 
 - Regole: upsert `ON CONFLICT (<doc>_id, tipo_indirizzo_id)` (sostituisce lo
-  slot); documento in stato editabile (tabella sopra); tipo validato dal
-  trigger whitelist DB.
+  slot); tipo validato dal trigger whitelist DB. In quale stato si cambia lo
+  dice il DB: lock «solo in bozza» dei satelliti (dal 2026-10-11,
+  brief-db-testata-dopo-emissione §11), specchiato dalla capability
+  `can_edit_indirizzi` del documento.
 - Output `200`: riga completa upsertata (shape di `indirizzi[]`).
-- Errori: `E_<DOM>_NOT_FOUND` (404); guard stato per dominio
-  (`E_PREV_STATO_NON_MODIFICABILE`, `E_ORD_STATO_TRANSIZIONE`,
-  `E_DDT_STATO_TRANSIZIONE`, `E_CONTRATTO_NON_MODIFICABILE`,
-  `E_VENDITE_VALIDATION` per offerte); `E_TIPO_INDIRIZZO` (trigger whitelist);
+- Errori: `E_<DOM>_NOT_FOUND` (404); `E_DOC_DATI_COLLEGATI_NON_BOZZA` (409,
+  documento fuori bozza: lo solleva il lock del DB, il service non ha piu' un
+  guard di stato suo); `E_TIPO_INDIRIZZO` (trigger whitelist);
   `E_INDIRIZZO_SNAPSHOT_NOT_FOUND` (404, origine inesistente);
   `E_<DOM>_VALIDAZIONE` (payload/ownership).
 

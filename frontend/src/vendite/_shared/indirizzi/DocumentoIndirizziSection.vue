@@ -8,14 +8,27 @@
 //        Il pulsante "Indirizzi" apre il drawer di gestione
 //        (DocumentoIndirizziDrawer), montato qui: il caller aggiunge UNA
 //        sezione e ha tutto.
+//
+// ⭐ QUANDO si cambiano lo dice il DB, non lo stato del drawer: il lock «solo
+//    in bozza» dei satelliti, specchiato dalla capability `can_edit_indirizzi`
+//    del documento (brief-db-testata-dopo-emissione §11, R-FE-5). Per questo
+//    la sezione NON eredita la catena readonly: quella del corpo del drawer e'
+//    il readonly di stato, cioe' una copia della regola. Il chiamante passa
+//    due cose distinte: `readonly` (i SOLI permessi) e `capabilities` (il blob
+//    del documento); la capability la legge QUI, in un posto solo — fino al
+//    2026-10-11 ogni drawer ricomponeva lo stesso OR (cinque copie, regola
+//    del 2). La sezione esce dal corpo protetto (`app-escape`, la
+//    consultazione e' lecita anche fuori bozza) e ri-`provide` il suo
+//    readonly al drawer di gestione (stessa deroga alla convenzione dell'OR
+//    di `DocumentoCollegamentiBar`).
 
-import { computed, ref, watch } from 'vue'
+import { computed, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
-import { useInjectReadonly } from '../../../core/composables/useReadonlyMode'
+import { READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, TIPO_RUOLO } from '../../../core/constants'
 import DocumentoIndirizziDrawer from './DocumentoIndirizziDrawer.vue'
 import IndirizzoProvenienzaTags from './IndirizzoProvenienzaTags.vue'
@@ -28,7 +41,11 @@ const props = defineProps({
   soggettoRuoloId: { type: [Number, null], default: null },
   istanzaUtilityId: { type: [Number, null], default: null },
   tipoRuoloCodice: { type: String, default: TIPO_RUOLO.CLIENTE },
+  // Readonly dei PERMESSI del chiamante (non quello di stato del drawer).
   readonly: { type: Boolean, default: false },
+  // Il blob capability del documento (`useEntityCapabilities().capabilities`):
+  // la sezione ne legge `can_edit_indirizzi`. Assente = fail-closed.
+  capabilities: { type: [Object, null], default: null },
   // La linea in fondo alla sezione. `false` dove il drawer la fa seguire da un
   // `<Divider>` (preventivo, ordine, DDT, prima delle righe): le due linee
   // attaccate si leggevano come una doppia riga (rilievo di Tid, 2026-09-28).
@@ -39,8 +56,11 @@ const emit = defineEmits(['changed', 'state'])
 
 const { t } = useI18n()
 const { execute } = useApiHandler()
-const parentReadonly = useInjectReadonly()
-const isReadonlyEffective = computed(() => props.readonly || parentReadonly.value)
+// `=== true` come `useEntityCapabilities.flag`: un flag assente non apre.
+const isReadonlyEffective = computed(
+  () => props.readonly || props.capabilities?.can_edit_indirizzi !== true,
+)
+provide(READONLY_KEY, isReadonlyEffective)
 
 const apiClient = makeIndirizziDocumentoApi(`/vendite/${props.dominio}`)
 
@@ -90,7 +110,7 @@ async function onChanged() {
        `app-drawer-section` cade SOTTO gli indirizzi: vedi la prop `bordo`. -->
   <div
     v-if="docId && tipoDefault"
-    class="app-drawer-section"
+    class="app-drawer-section app-escape"
     :class="{ 'app-drawer-section--senza-bordo': !bordo }">
     <h4>{{ t('vendite.indirizzi.titolo') }}</h4>
 

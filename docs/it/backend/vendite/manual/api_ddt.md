@@ -71,7 +71,16 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   documenti). Il trigger assegna `numero` e valida componenti BoM + indirizzi
   obbligatori.
 - Cambia stato `POST /api/v1/vendite/ddt/<id>/cambia-stato/` — body
-  `{stato_codice}` (matrice `config.transizioni_stati_ddt`).
+  `{stato_codice}` (matrice `config.transizioni_stati_ddt`). Verso `ANNULLATO`
+  passa sempre dal verbo `vendite.fn_annulla_ddt`: su una bolla con righe legate
+  a ordini o resi risponde `E_DDT_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`)
+  finché il body non dichiara `righe_legate_confermate`, il numero letto da
+  `…/legami/`. Confermato, i legami si ritirano (ordine da evadere, reso da
+  ri-consegnare).
+- Legami `GET /<id>/legami/` — le righe legate a ordini o resi
+  (`vendite.fn_ddt_legami`), `righe_legate` (righe distinte: il numero da
+  dichiarare) e le `origini` della bolla dal lineage (livello 1). Alimenta la
+  finestra di conferma dell'annullo.
 - Push `POST /api/v1/vendite/ddt/<id>/push/` — push singolo a commessa
   (sorgente `DDT_VENDITA`, fatturazione differita).
 - Lista configurabile delle righe `GET /<id>/righe/lista/` (+ `export/`): BB condiviso, vedi [api_righe_documento.md](api_righe_documento.md).
@@ -79,6 +88,14 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   DRAFT; `prezzo_unitario`/`iva_id` nullable (DDT anche solo di trasporto).
   ⭐ **Il DDT è l'unico documento dove il prezzo mancante non è un errore**:
   vedi la sezione dedicata più sotto.
+  Sulla riga **evasa** (`evasa = true` nella lista: legata a una riga d'ordine o
+  di reso) articolo, UoM e quantità sono fermi (`E_DDT_RIGA_EVASA_FERMA`); in
+  bozza la DELETE riesce e ritira i legami.
+- Quantità evasa `POST /<id>/righe/<riga_id>/qta-evasa/` — body
+  `{qta_operativa}`; verbo `vendite.fn_ddt_riga_correggi_qta_evasa`: riga,
+  legami e stato dell'ordine insieme. Il pulsante segue
+  `correggi_qta_evasa_blocco` della riga (`NULL` = acceso). Oltre il residuo:
+  `E_QTA_SUPERA_RESIDUO`.
 - Componenti BoM `GET /<id>/righe/<rid>/componenti/` +
   `PATCH/DELETE .../componenti/<cid>/` + preview — mixin condiviso.
 - Note `GET/POST /<id>/note/` + `GET/PATCH/DELETE /<id>/note/<note_id>/` —

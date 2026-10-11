@@ -18,7 +18,7 @@
 > ⚠️ Il BE toglie i suoi «solo in DRAFT» **nello stesso rilascio** (§9.5, R-BE-2): da questo apply
 > le capability accendono la testata negli stati in cui una colonna resta aperta.
 > ✅ **Giro R-DB (2026-10-11): `-21 … -33` e `-40`/`-41` (la nascita, D-13) applicati, pgTAP di Tid verdi.**
-> ✅ **Lato DB non resta niente** (§11.8). Restano BE/FE (§11.4: R-BE-5, R-BE-6, R-FE-4, R-FE-5), il collaudo a video e l'archivio.
+> ✅ **Lato DB non resta niente** (§11.8). ✅ **BE/FE del §11.4 fatti e committati il 2026-10-11** (§12). ✅ **Collaudo a video di Tid superato il 2026-10-11** (§12.1). Resta l'archivio in `work-done/` (e il ritiro di `E_CONTRATTO_NON_MODIFICABILE` lato DB, §12).
 > `20261011-21 … -33`, CSV dei codici, pgTAP nuovo `test-testata-dopo-emissione-rdb-v1` (34/34 sullo
 > scratch) e tre pgTAP adeguati. Decisioni D-11 e D-12 di Tid. Apply e corsa pgTAP di Tid.
 > **Resta (prima del giro R-DB):** lato DB il pgTAP del congelamento del listino all'uscita dalla bozza (§9.4, «Non fatto»)
@@ -830,3 +830,40 @@ pgTAP del congelamento del listino all'uscita dalla bozza c'è (test 13-14 e 18-
 Da sapere: D27 (`brief-db-indirizzi-documento-seguono-il-cliente`) scrive gli indirizzi dei
 documenti in bozza; il lock dei satelliti (`-24`) lo lascia fare, e un riempimento automatico
 fatto da un trigger alla nascita passa per D-13.
+
+## 12. Lato BE/FE del giro R-DB (sessione backend, 2026-10-11)
+
+> Committato il 2026-10-11. Prove: suite `apps.core` + `apps.vendite` 3927 verdi (al commit l'intera
+> suite backend, 6136); con
+> `ZEROERP_TEST_DB_E2E=1` 4154, rossi i soli due presidi del codice di D27 (sotto); mypy a
+> cricchetto e ruff verdi; FE 795 test, `npm run guards`, lint e build verdi;
+> `check_i18n_keys.py` pulito.
+
+⏳ **Richiesta al team DB (2026-10-11, dalla revisione del giro):** `E_CONTRATTO_NON_MODIFICABILE`
+è ancora **vivo** nel catalogo (`config.codici_errore`), ma dopo R-BE-6 non lo solleva più nessuno,
+né il backend né una funzione del DB. Va marcato **ritirato** come i due codici del listino (R-DB-4),
+così entra in `CODICI_RITIRATI` alla prossima rigenerazione delle policy; il ripiego resta, come per
+gli altri ritirati.
+
+| # | Fatto |
+| --- | --- |
+| R-BE-5 | Tolti da `contratti_service.update_contratto` i due controlli del listino e da `ContrattiRepository` `count_righe_attive` / `count_eccezioni_bloccanti` (nessun altro lettore): il 422 arriva dal DB (`E_DOC_LISTINO_CAMBIO_CON_RIGHE`, `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`). Policy rigenerate; ripieghi dei tre codici nuovi e, nello stesso giro, dei cinque di `brief-db-ddt-righe-evase-dall-ordine` già nel catalogo in git |
+| R-BE-6 | Il BB `_indirizzi_documento_helpers` non giudica più lo stato (`stati_modificabili` e `stato_error_code` ritirati dalla config dei cinque domini): resta il guard di esistenza, il 409 `E_DOC_DATI_COLLEGATI_NON_BOZZA` passa com'è. Contratto: ritirato `_assert_contratto_draft` (create/update utility). Offerta: tolta la lettura di `can_edit_utility` in `aggiorna_offerta` e, oltre al §11.4, i «solo in BOZZA» di `crea_utility` / `aggiorna_utility` (stesso satellite, stessa copia). `E_CONTRATTO_NON_MODIFICABILE` non ha più chi lo solleva: tolto il suo override UI |
+| R-FE-4 | Tolta l'eccezione del cliente in `DdtDrawer`: il form legge `non_editable_fields` com'è |
+| R-FE-5 | `DocumentoIndirizziSection` prende dal chiamante i permessi (`readonly`) e il blob (`capabilities`) e legge lei `can_edit_indirizzi` (regola del 2: l'OR era ricopiato nei cinque drawer; presidio `DocumentoIndirizziSection.spec.js`), non dalla catena di stato del corpo, ed esce dal corpo protetto (`app-escape`): fuori bozza gli indirizzi si consultano in sola lettura. Cinque drawer. La fornitura del contratto non ha un'interfaccia: tolte le azioni `addUtility`/`updateUtility` dello store e le due API senza consumatori (ok di Tid); `can_edit_utility` serve all'offerta, che già la leggeva |
+| i18n | Le quattro chiavi `vendite.ddt.correggi_qta_evasa_reason.*` (it, en) di `fn_check_ddt_riga_correggi_qta_evasa`, dell'altro cantiere, importate qui (decisione di Tid) |
+
+⚠️ **Il DB di sviluppo è avanti rispetto a git** di un codice, `E_INDIRIZZO_DOC_NON_DEL_CLIENTE`
+(`brief-db-indirizzi-documento-seguono-il-cliente`, non pushato): è stato tolto da
+`error_policies_generated.py`, che resta allineato al catalogo in git. Rossi attesi in locale
+`test_error_codes_db_policy_guardrail` e `test_error_policies_divergenza_db`, finché quel giro non
+arriva in git; allora si rigenera e si scrive il ripiego.
+
+### 12.1 Collaudo a video (Tid, 2026-10-11): superato
+
+Percorso: listino sotto le righe su contratto e offerta in bozza (cambio con righe, rimozione con
+eccezioni, rimozione con sole AGGIUNTE, cambio senza righe); indirizzi dei cinque documenti in bozza
+(modificabili) e fuori bozza (consultabili in sola lettura); fornitura dell'offerta in bozza ed
+emessa; cliente della bolla standalone, da ordine ed emessa; le fasi 1-2 (data di consegna
+confermata dell'ordine, testata della bolla emessa e annullata, riferimenti dell'atto del
+contratto attivo, contratto cessato o annullato fermo).

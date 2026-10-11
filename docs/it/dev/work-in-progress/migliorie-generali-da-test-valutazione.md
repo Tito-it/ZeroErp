@@ -526,7 +526,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D28, D29.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D29.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -1026,22 +1026,9 @@ default vanno nel DB) nel brief
 📝 Aperto, nessun codice. ⚠️ La sezione era andata persa nella rinumerazione del 2026-10-10 (restava
 solo la riga della checklist): ripristinata lo stesso giorno.
 
-### 🟠 D28 — Le righe evase di un DDT da ordine si modificano senza il loro legame
-
-Trovato il 2026-10-10 nel collaudo a video di Tid. Su un DDT da ordine in bozza la riga evasa cambia
-quantita', articolo e unita' di misura con un `UPDATE`, e il fulfillment non lo vede: il guard del
-legame scatta solo quando il legame si scrive. Ordine 10, bolla corretta a 6: il magazzino scarica 6,
-l'ordine resta evaso per 10 e il residuo non si riapre. L'invariante «`qta_evasa` immutabile» del
-brief dell'evasione non ha un lock a DB.
-
-Dettaglio e decisioni di Tid (chiuse il 2026-10-10: riga evasa ferma; un verbo per correggere la
-quantita' in bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; righe a mano ammesse)
-nel brief [brief-db-ddt-righe-evase-dall-ordine.md](brief-db-ddt-righe-evase-dall-ordine.md).
-✅ Lato DB applicato e verde il 2026-10-11 (`20261011-05 … -20`, `-34`, `-35`); tocca a BE/FE. Dentro anche la ri-consegna (D-7) e l'annullo con conferma (D-8).
-
 ### 🟠 D29 — Annullare un documento con legami: l'origine resta consumata
 
-Trovato il 2026-10-11 nel giro di D28 (§7.6 di `brief-db-ddt-righe-evase-dall-ordine`) e allargato da Tid a
+Trovato il 2026-10-11 nel giro di D28 (§7.6 di `work-done/brief-db-ddt-righe-evase-dall-ordine`) e allargato da Tid a
 tutti i documenti: quando un documento nato da un altro si annulla, quello a monte deve tornare disponibile,
 con una conferma. Bolla → ordine e ri-consegna → reso sono fatti (D-8); restano preventivo → ordine,
 offerta → contratto, offerta → ordine (oggi consumati per sempre) e il ritiro dalla commessa (corretto ma
@@ -1265,8 +1252,8 @@ D6 e il registro dei rossi in CI.
       `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
 * [ ] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
       `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
-* [ ] **D28** — le righe evase di un DDT da ordine: brief `brief-db-ddt-righe-evase-dall-ordine` (aperto il
-      2026-10-10, decisioni chiuse lo stesso giorno; lato DB applicato e verde il 2026-10-11, tocca a BE/FE).
+* [x] **D28** — le righe evase di un DDT da ordine: brief `work-done/brief-db-ddt-righe-evase-dall-ordine` —
+      chiuso e archiviato il 2026-10-11 (DB `20261011-05 … -20`, `-34`, `-35`; BE/FE §10; collaudo di Tid superato).
 * [ ] **D29** — annullare un documento con legami: brief `brief-db-annullo-documento-con-legami` (aperto il
       2026-10-11; caso 1 applicato, casi 2-5 in attesa di decisioni).
 
@@ -1735,6 +1722,19 @@ applicati da Tid il 2026-10-08 (pgTAP verdi, nessuna regressione). Che cosa è c
 * `user_update NOT NULL` su righe e componenti dei documenti di vendita;
 * i CHECK della quantità dei componenti si chiamano `_nz`, come dice la regola.
 Ciò che la chiusura ha trovato è **D20**.
+
+### ✅ D28 — Le righe evase di un DDT da ordine — chiuso il 2026-10-11
+
+Sulla bozza di un DDT da ordine la riga evasa cambiava quantita' e articolo senza che il legame con
+l'ordine lo vedesse (ordine evaso per 10, bolla a 6). Ora la riga evasa — da un ordine o da un reso da
+ri-consegnare — e' **ferma** (`trgfn_ddt_righe_guard_riga_evasa`), la quantita' si corregge solo dal verbo
+`vendite.fn_ddt_riga_correggi_qta_evasa` (riga, legami e stato dell'ordine insieme), la riga evasa si
+cancella in bozza ritirando i suoi legami, i legami non si scrivono a mano ne' nascono su una bolla emessa,
+e l'annullo di una bolla con legami li ritira **con conferma** (`vendite.fn_annulla_ddt`, D-8). La proiezione
+dello stato dell'ordine ha una sede sola (`vendite.fn_ordine_proietta_stato_evasione`, sei copie ritirate).
+BE/FE: endpoint `qta-evasa/` e `legami/`, finestra di conferma dell'annullo. Brief
+`work-done/brief-db-ddt-righe-evase-dall-ordine.md`; il principio dell'annullo per gli altri documenti
+continua in D29.
 
 
 *Valutazione 2026-09-08 — perimetro DB. Le misure sono letture di struttura sul

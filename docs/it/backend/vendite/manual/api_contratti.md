@@ -266,11 +266,14 @@ ANNULLATO si ferma tutto (`E_DOC_CHIUSO`). Il form spegne i campi prima con
 montaggio. `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` e' ritirato. Per cambi
 sostanziali serve un nuovo contratto.
 
-**Blocco rimozione listino con eccezioni** (refactor §3-bis-F): se il PATCH
-porta `listino_id` da NOT NULL a NULL e ci sono OVERRIDE/ESCLUSIONE attive,
-il service ritorna 422 con `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`.
-AGGIUNTA non blocca (resta valida anche senza listino). L'operatore deve
-rimuovere/sostituire prima le eccezioni.
+**Il listino sotto le righe** (dal 2026-10-11, brief-db-testata-dopo-emissione
+§11, R-DB-4): lo giudica il DB, per contratto e offerta
+(`script.trgfn_doc_guard_listino_con_righe`). Un listino messo o sostituito con
+righe attive risponde 422 `E_DOC_LISTINO_CAMBIO_CON_RIGHE`; il listino tolto con
+eccezioni OVERRIDE/ESCLUSIONE attive risponde 422
+`E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI` (AGGIUNTA non blocca). Campo `listino_id`.
+Il service non ha piu' controlli suoi: `E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE` ed
+`E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` sono ritirati.
 
 **Gate L2 sulla variazione globale** (refactor §3-bis-E): se il PATCH tocca
 `valore_variazione_globale` con `tipo_variazione_globale = PERCENTUALE`,
@@ -954,7 +957,7 @@ alle righe di contratto via `target_riga_id`.
 | `E_VENDITE_DUPLICATO` | 400 | UNIQUE `uq_contratti_numero` o `uq_contratti_utilities_contratto_id` o `uq_contrighe_one_eccezione_per_articolo` o `uq_contrighe_one_aggiunta_per_articolo` | — |
 | `E_VENDITE_FK` | 400 | FK su BA/istanza/utility/listino/listino_versione/parent/stato/articolo/UoM/tipo/classe utenza/categoria cliente snapshot | — |
 | `E_VENDITE_CONTRATTO_OVERLAP` | 409 | Pre-check service `fn_contratto_sovrapposto` su `emetti()` (messaggio che nomina l'incumbent) **oppure** backstop EXCLUDE gist `ex_contratti_no_overlap`. Scatta all'**attivazione** (DRAFT esclusi dal vincolo, vedi Regole §9) | — |
-| `E_CONTRATTO_NON_MODIFICABILE` | 409 | Service — **utility e indirizzi** su contratto post-DRAFT (create/update utility, indirizzi). Dal 2026-10-10 non piu' la testata: lì decide il lock di testata del DB (riga `E_DOC_*` sotto). ⚠️ Fino al 2026-09-22 copriva anche righe e componenti: lì ora vale `E_RIGA_DOC_NON_BOZZA`, il codice del DB sulle stesse righe (prima lo stesso rifiuto usciva con due nomi) | — |
+| `E_DOC_DATI_COLLEGATI_NON_BOZZA` | 409 | DB P0001 (2026-10-11) — **utility e indirizzi** su contratto fuori bozza (create/update utility, indirizzi). Al posto di `E_CONTRATTO_NON_MODIFICABILE`, che il service sollevava come copia della regola e non solleva piu' | `trgfn_doc_righe_lock_fuori_bozza` (montato sui satelliti) |
 | `E_CONTRATTO_VALIDO_AL_RETROATTIVO` | 409 | DB P0001 (cessazione manuale con `valido_al < CURRENT_DATE`, bypass GUC per job notturno) | `trgfn_contratti_a10_guard_cessazione_no_retroattiva` |
 | `E_DATA_AL_MINORE_DAL` | 400 | DB P0001, campo `valido_al` — `valido_al < valido_dal` in create, PATCH testata e cessazione. Il service non lo anticipa (dal 2026-09-23). Frase del catalogo con le due date, soluzione in `hint`: `raise_from_database_error` fa vincere il codice del DB anche fuori da `_KNOWN_DB_ERROR_MARKERS` | `script.trgfn_guard_date_validita` (automazione `DATE_VALIDITA`) |
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE` | 422 | DB P0001 (refactor modalita 2026-05-15) — attivazione di contratto senza listino senza righe AGGIUNTA con prezzo valorizzato | `trgfn_contratti_freeze_listino_versione` (guard interno) |
@@ -973,7 +976,7 @@ alle righe di contratto via `target_riga_id`.
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO` | 422 | DB P0001 (resolver pricing) — tentativo di prezzare un articolo che ha eccezione ESCLUSIONE sul contratto attivo del cliente | `fn_resolve_prezzo_listino_v2` (STADIO 1 eccezioni) |
 | `E_DOC_IDENTITA_FUORI_BOZZA` · `E_DOC_CONDIZIONI_FUORI_BOZZA` · `E_DOC_CLIENTE_FUORI_BOZZA` · `E_DOC_SORGENTE_FUORI_BOZZA` · `E_DOC_CHIUSO` | 409 | DB P0001 (2026-10-10, brief-db-testata-dopo-emissione) — PATCH testata su una colonna che lo stato non ammette, una famiglia per codice; `E_DOC_CHIUSO` a contratto cessato o annullato. Al posto di `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE` (ritirato) e della tabella per stato del service | `trgfn_doc_testata_lock_fuori_bozza` |
 | `E_RIGA_DOC_NON_BOZZA` | 409 | DB P0001 (building block, 2026-09-22 — D7 di brief-db-partita-merce-per-documento) — INSERT/UPDATE/DELETE di un'eccezione su contratto non più in bozza; stesso codice sulle righe di DDT e (DELETE) di ordine. Lo solleva **anche il pre-check BE** (BB `richiedi_righe_in_bozza`) su righe e componenti, con la frase a catalogo (etichetta «Contratto <numero>», stato, verbo) | `trgfn_doc_righe_lock_fuori_bozza` + service |
-| `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` | 422 | Service (refactor §3-bis-F) — PATCH testata che porta `listino_id` da NOT NULL a NULL con eccezioni OVERRIDE/ESCLUSIONE attive | — |
+| `E_DOC_LISTINO_CAMBIO_CON_RIGHE` · `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI` | 422 | DB P0001 (2026-10-11) — PATCH testata che mette o sostituisce `listino_id` con righe attive, o lo toglie con eccezioni OVERRIDE/ESCLUSIONE attive. Campo `listino_id`. Stessi codici sull'offerta. Al posto di `E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE` ed `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI` (ritirati, erano controlli del service) | `script.trgfn_doc_guard_listino_con_righe` |
 | `E_PRICING_SCONTO_ECCESSIVO` / `E_PRICING_MAGGIORAZIONE_ECCESSIVA` | 403 (retryable=True) | Service (refactor §3-bis-E) — gate L2 sulla variazione globale del contratto al PATCH testata. Cascata user → categoria → group → emittente. VALORE_FISSO non applicabile (skip) | — |
 | `E_CONTRATTO_UTILITY_TIPO_CLASSE_OBBLIGATORI` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |
 | `E_CONTRATTO_CLASSE_TIPO_INCOERENTE` | 400 | DB P0001 | `trgfn_contratti_utilities_guard_tipo_classe` |

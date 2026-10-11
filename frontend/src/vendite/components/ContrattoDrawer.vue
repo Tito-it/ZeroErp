@@ -96,6 +96,7 @@ const { preserva, fissa, modificato, chiudiConConferma } = useDrawerFormPreserve
 // Il drawer NON ricalcola lo stato: tutto deriva dai metadata API.
 // Composable centralizzato (Fase 4.F2): isLocked(field) = !canEdit OR Set lookup.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const isLocked = caps.isLocked
@@ -447,10 +448,9 @@ const canSave = computed(() => {
 
 function buildPayload() {
   const f = form.value
-  // Profilo A whitelist FE: il payload PATCH va limitato ai campi che il
-  // BE accetta nello stato corrente. Il BE applica una guard speculare
-  // (E_CONTRATTO_NON_MODIFICABILE) — rispettiamo la stessa whitelist qui
-  // per evitare round-trip e fornire UX coerente.
+  // Il payload PATCH va limitato ai campi che il form lascia toccare nello
+  // stato corrente: fuori bozza la testata la ferma il lock del DB colonna per
+  // colonna (`E_DOC_*`), e mandare campi spenti farebbe rifiutare l'intera PATCH.
   // - DRAFT:    tutti i campi
   // - ATTIVO:   valido_al + meta (via dialog "Cessa contratto") e i TRE
   //             RIFERIMENTI DELL'ATTO (I8/D9, decisione Q1 del 2026-08-29),
@@ -848,6 +848,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       v-if="isEdit && contrattoId"
       base-path="/vendite/contratti"
       :doc-id="contrattoId"
+      @documento-chiuso="refreshDetail"
       :readonly="readonly || parentReadonly" />
 
     <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo
@@ -1048,6 +1049,18 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
     </div>
   </div>
 
+  <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
+       contatore "+N altri", pulsante "Indirizzi" che apre il drawer
+       di gestione. Solo in EDIT (documento persistito). -->
+  <DocumentoIndirizziSection
+    v-if="isEdit && detail"
+    dominio="contratti"
+    :doc-id="contrattoId"
+    :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
+    :istanza-utility-id="detail?.istanza_utility_id ?? null"
+    :readonly="readonly || parentReadonly"
+    :capabilities="capabilities" />
+
   <!-- === Pricing (refactor modalita 2026-05-15) === -->
   <!-- Niente piu' SelectButton A/B/C: l'operatore compila campi opzionali
        (listino + variazione globale). La "forma" derivata e' un badge
@@ -1135,17 +1148,6 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
         :disabled="isContractLocked" />
     </div>
   </div>
-
-  <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default,
-       contatore "+N altri", pulsante "Indirizzi" che apre il drawer
-       di gestione. Solo in EDIT (documento persistito). -->
-  <DocumentoIndirizziSection
-    v-if="isEdit && detail"
-    dominio="contratti"
-    :doc-id="contrattoId"
-    :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
-    :istanza-utility-id="detail?.istanza_utility_id ?? null"
-    :readonly="isReadonly" />
 
   <!-- L'area inline "Documenti generati" e' stata rimossa 2026-07-16
        (doppione): l'archivio PDF si consulta dal pulsante PDF in testata

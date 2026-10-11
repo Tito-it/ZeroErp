@@ -622,54 +622,6 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             cursor.execute(sql, [contratto_id])
             return row_to_dict(cursor)
 
-    # Scopo: Conta le eccezioni "bloccanti" (OVERRIDE / ESCLUSIONE) attive
-    #        sul contratto. Usato dal service per impedire la rimozione del
-    #        listino dalla testata: senza listino di riferimento, OVERRIDE
-    #        e ESCLUSIONE perdono significato (refactor modalita 2026-05-15
-    #        §3-bis-F). AGGIUNTA non blocca (resta valida senza listino).
-    # Scopo: Conta le righe persistite attive (qualsiasi tipo_eccezione) di
-    #        un contratto. Usato dal service per bloccare la modifica di
-    #        `listino_id`, `tipo_variazione_globale`, `valore_variazione_globale`
-    #        in stato DRAFT quando ci sono righe già caricate: cambiare il
-    #        contesto pricing (listino o variazione globale) con eccezioni
-    #        persistite causerebbe drift semantico silente (prezzi calcolati
-    #        contro un riferimento diverso da quello che le righe assumevano).
-    #        Pattern coerente con `count_eccezioni_bloccanti` ma generico:
-    #        anche le AGGIUNTA su contratti senza listino contano.
-    def count_righe_attive(self, contratto_id: int) -> int:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT COUNT(*)::int
-                  FROM vendite.contratti_righe
-                 WHERE contratto_id = %s
-                   AND attivo = TRUE
-                """,
-                [contratto_id],
-            )
-            row = cursor.fetchone()
-            return int(row[0]) if row else 0
-
-    def count_eccezioni_bloccanti(
-        self, contratto_id: int,
-    ) -> dict[str, int]:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT tipo_eccezione, COUNT(*)::int
-                  FROM vendite.contratti_righe
-                 WHERE contratto_id = %s
-                   AND attivo = TRUE
-                   AND tipo_eccezione IN ('OVERRIDE', 'ESCLUSIONE')
-                 GROUP BY tipo_eccezione
-                """,
-                [contratto_id],
-            )
-            counts = {"OVERRIDE": 0, "ESCLUSIONE": 0}
-            for tipo, n in cursor.fetchall():
-                counts[tipo] = int(n)
-            return counts
-
     # Scopo: Creazione atomica del contratto via funzione madre DB.
     #        Obiettivo: fondere in UNA sola statement (vendite.fn_create_contratto)
     #        la generazione del numero (`fn_generate_codice`), l'INSERT testata

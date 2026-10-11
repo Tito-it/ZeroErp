@@ -2933,6 +2933,26 @@
         "prelievi_incompleti": "Una o più righe non hanno prelievi che ne coprano la quantità: completa i prelievi prima di emettere.",
         "merce_non_prelevabile": "Un prelievo indicato non è ammesso dal magazzino (lotto, seriale o ubicazione non validi per l'articolo): aprilo dai prelievi della riga.",
         "merce_non_disponibile": "La merce da spedire non è disponibile a magazzino in quantità sufficiente."
+      },
+      "correggi_qta_evasa_reason": {
+        "ddt_non_in_bozza": "La quantità evasa si corregge solo finché la bolla è in bozza.",
+        "riga_non_evasa": "La riga non viene da un ordine o da un reso: la quantità si modifica dalla riga.",
+        "ddt_senza_origine": "La bolla non nasce da un ordine o da un reso: la quantità si modifica dalla riga.",
+        "legami_multipli": "La riga è legata a più righe d'origine: la quantità evasa non si può correggere da sola."
+      },
+      "correggi_qta_evasa": "Correggi quantità evasa",
+      "correggi_qta_evasa_ok": "Quantità evasa corretta",
+      "correggi_qta_evasa_spiegazione": "La riga {riga} viene da un ordine o da un reso: la nuova quantità cambia anche quanto risulta spedito per l'origine, e lo stato dell'ordine.",
+      "correggi_qta_evasa_nuova": "Nuova quantità",
+      "riga_evasa_hint": "Riga evasa da un ordine o da un reso: articolo, unità di misura e quantità non si cambiano da qui. La quantità si corregge con «Correggi quantità evasa».",
+      "annullo_legami": {
+        "righe": "Righe legate",
+        "riga": "Riga {riga} · {origine} · {qta}",
+        "origini": "Documenti d'origine",
+        "spiegazione": "Confermando, le quantità di queste righe tornano da spedire: l'ordine torna da evadere, il reso da ri-consegnare.",
+        "origine_ordine": "Ordine",
+        "origine_reso": "Reso",
+        "nessun_legame": "Le righe legate a ordini o resi non ci sono più: confermando, la bolla si annulla senza ritirare nessun legame."
       }
     },
     "famiglie_documento": {

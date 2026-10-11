@@ -27,6 +27,7 @@ from apps.vendite.api.views_ddt import (
     ApiDdtExportView,
     ApiDdtIndirizzi,
     ApiDdtIndirizzoDetail,
+    ApiDdtLegami,
     ApiDdtList,
     ApiDdtPush,
     ApiDdtRiepilogoIva,
@@ -34,6 +35,7 @@ from apps.vendite.api.views_ddt import (
     ApiDdtRigaComponentiList,
     ApiDdtRigaDetail,
     ApiDdtRigaPreviewComponenti,
+    ApiDdtRigaQtaEvasa,
     ApiDdtRighe,
     ApiDdtRigheListaExportView,
     ApiDdtRigheListaView,
@@ -76,6 +78,9 @@ urlpatterns = [
          name="vendite-ddt-cambia-stato"),
     path("<int:ddt_id>/push/", ApiDdtPush.as_view(),
          name="vendite-ddt-push"),
+    # Le righe legate a ordini o resi, per la conferma dell'annullo (D-8).
+    path("<int:ddt_id>/legami/", ApiDdtLegami.as_view(),
+         name="vendite-ddt-legami"),
 
     # Documenti generati (stampa PDF) — motore `documenti`, sorgente
     # DDT_VENDITA (quinto dominio della famiglia, view dal factory condiviso:
@@ -117,6 +122,9 @@ urlpatterns = [
          name="vendite-ddt-righe-preview-componenti"),
     path("<int:ddt_id>/righe/<int:riga_id>/", ApiDdtRigaDetail.as_view(),
          name="vendite-ddt-riga-detail"),
+    # La quantita' evasa di una riga legata a un ordine o a un reso (D-2).
+    path("<int:ddt_id>/righe/<int:riga_id>/qta-evasa/", ApiDdtRigaQtaEvasa.as_view(),
+         name="vendite-ddt-riga-qta-evasa"),
 
     # Componenti BoM
     path("<int:ddt_id>/righe/<int:riga_id>/componenti/",

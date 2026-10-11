@@ -1,10 +1,10 @@
-// Store Pinia contratti v5. Lista + detail + CRUD testata + azioni righe/utility + cambio stato.
+// Store Pinia contratti v5. Lista + detail + CRUD testata + azioni righe + cambio stato.
 // Filtro data obbligatorio (regola standard liste con date): floor `data_da`
 // unico di progetto (oggi-60gg al primo del mese), vedi core/utils/date.
 //
 // ⭐ Dal 2026-09-18 la lista e' `useListaStoreCore`, chiamato qui dentro: era
 //    una copia a mano del suo `buildParams` su `useListaEmptyStateFetch`. Non
-//    passa da una factory perche' lo store e' anche righe, utility, emissione
+//    passa da una factory perche' lo store e' anche righe, emissione
 //    e cambio stato: la lista e' una parte.
 import { defineStore } from 'pinia'
 import { defaultFiltroDataDaString } from '../../core/utils/date'
@@ -12,7 +12,6 @@ import {
   listContratti, getContratto, createContratto, updateContratto, cambiaStatoContratto,
   emettiContratto,
   addRigaContratto, updateRigaContratto, deleteRigaContratto,
-  addUtilityContratto, updateUtilityContratto,
 } from '../api/contratti'
 import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
 import { useTabEvents } from '../../core/composables/useTabEvents'
@@ -101,25 +100,12 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
     return res.data.data
   }
 
-  // Utility 1:1
-  async function addUtility(contrattoId, payload) {
-    const res = await addUtilityContratto(contrattoId, payload)
-    emitDataChanged(TAB_ENTITIES.CONTRATTO, contrattoId)
-    return res.data.data
-  }
-  async function updateUtility(contrattoId, utilityId, payload) {
-    const res = await updateUtilityContratto(contrattoId, utilityId, payload)
-    emitDataChanged(TAB_ENTITIES.CONTRATTO, contrattoId)
-    return res.data.data
-  }
-
   return {
     // Lista: TUTTO il core, non un sottoinsieme (`fetchSospesa` e
     // `erroreCaricamento` li leggono i BB di pagina con un guard `in store`).
     ...lista,
     fetchDetail, create, update, cambiaStato, emetti,
     addRiga, updateRiga, deleteRiga,
-    addUtility, updateUtility,
   }
 }, {
   // Reset automatico al logout (autoResetPlugin): items + filters dell'utente

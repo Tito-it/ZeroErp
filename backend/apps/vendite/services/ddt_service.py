@@ -109,6 +109,10 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
 _STATO_BOZZA = "DRAFT"
 _STATO_EMESSO = "EMESSO"
+_STATO_ANNULLATO = "ANNULLATO"
+# Il codice della bolla in `config.sorgenti`: lo leggono il lineage
+# (`get_legami`) e il push a commessa (`push_a_commessa`).
+_SORGENTE_DDT = "DDT_VENDITA"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
 # Whitelist campi testata accettati in create (null_vs_empty -> None).
@@ -272,9 +276,7 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
     # dei test unit raggiungono anche il ramo auto-assegnazione.
     repo_factory=lambda: DdtRepository(),
-    stati_modificabili=_STATI_MODIFICABILI,
     not_found_code="E_DDT_NOT_FOUND",
-    stato_error_code="E_DDT_STATO_TRANSIZIONE",
     error_code="E_DDT_VALIDAZIONE",
     fn_prefix=_FN,
 )
@@ -431,7 +433,18 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
 #        il service non duplica il grafo. Alla transizione a EMESSO il DB
 #        assegna il `numero` (trgfn_ddt_gen_numero_emesso) e scatta il guard
 #        approvazione componenti BoM.
-def cambia_stato(ddt_id: int, stato_codice: str | None) -> dict[str, Any]:
+#        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_ddt` (D-8 di
+#        brief-db-ddt-righe-evase-dall-ordine): una bolla con legami a ordini
+#        o resi si annulla solo se chi conferma DICHIARA quante righe legate
+#        ha visto (`righe_legate_confermate`, letto da `get_legami`); senza
+#        la dichiarazione il DB risponde E_DDT_ANNULLO_CON_LEGAMI
+#        (`confirm_and_retry`). Una bolla senza legami si annulla senza
+#        dichiarazione. Il verbo ritira i legami e passa da
+#        `fn_cambia_stato_ddt` (matrice, permesso, storno del magazzino).
+def cambia_stato(
+    ddt_id: int, stato_codice: str | None,
+    *, righe_legate_confermate: Any = None,
+) -> dict[str, Any]:
     repo = DdtRepository()
     # Guard esistenza leggero: serve solo lo stato corrente, non la testata
     # completa (vista + JOIN); la validazione della coppia e' del trigger DB.
@@ -458,6 +471,16 @@ def cambia_stato(ddt_id: int, stato_codice: str | None) -> dict[str, Any]:
         function_name=f"{_FN}.cambia_stato",
     )
     assert stato_id is not None
+    if target == _STATO_ANNULLATO:
+        # La dichiarazione e' un CONTEGGIO: un valore non intero e' un 400
+        # col campo, non un 500 dal cast del DB.
+        confermate = _V.optional_positive_int(
+            {"righe_legate_confermate": righe_legate_confermate},
+            "righe_legate_confermate", function_name=f"{_FN}.cambia_stato",
+        )
+        with _db_errors("cambia_stato"):
+            repo.annulla(ddt_id, confermate)
+        return {"ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target}
     # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
     # eventuale errore tradotto da _db_errors (E_STATO_DDT_TRANSIZIONE_NON_VALIDA
     # / E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO alla transizione a
@@ -654,10 +677,14 @@ def aggiorna_riga(
 #        se il documento non e' piu' in bozza -> E_RIGA_DOC_NON_BOZZA (fino a
 #        quel giorno era il ramo 1 di `trgfn_dlt_block_ordrig_ddtrig`, codice
 #        E_DELETE_RIGA_DOC_NON_BOZZA, ritirato); poi
-#        `trgfn_dlt_block_ordrig_ddtrig`, ridotto ai soli legami: riga legata
-#        a un fulfillment -> E_DELETE_BLOCKED_FUL; riga usata in un reso o in
-#        una riconsegna -> E_DELETE_RIGA_DOC_REFERENZIATA; altrimenti la
-#        cancellazione RIESCE.
+#        `trgfn_dlt_block_ordrig_ddtrig`, ridotto ai soli legami: riga usata
+#        come origine di un reso -> E_DELETE_RIGA_DOC_REFERENZIATA; altrimenti
+#        la cancellazione RIESCE.
+#        ⭐ Dal 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine D-3, D-7) la
+#        riga legata a un fulfillment o a un ponte di ri-consegna in bozza si
+#        CANCELLA, e i legami si ritirano con lei (l'ordine si riproietta, il
+#        reso torna da ri-consegnare): E_DELETE_BLOCKED_FUL dalla riga di DDT
+#        non arriva piu' (fino a quel giorno era il ramo della riga evasa).
 #        ⚠️ Il terzo esito non esisteva fino al 2026-08-26: la funzione
 #        sollevava su OGNI ramo e il `RETURN OLD` era irraggiungibile, quindi
 #        questo verbo NON ha mai potuto riuscire. Il commento che stava qui
@@ -678,6 +705,66 @@ def elimina_riga(ddt_id: int, riga_id: int) -> dict[str, Any]:
     with _db_errors("elimina_riga"):
         deleted = repo.delete_riga(riga_id)
     return {"ddt_id": ddt_id, "riga_id": riga_id, "deleted": deleted}
+
+
+# Scopo: Corregge la quantita' evasa di una riga (D-2 di
+#        brief-db-ddt-righe-evase-dall-ordine): la riga evasa da un ordine o
+#        da un reso ha articolo, UoM e quantita' fermi, e la quantita' cambia
+#        solo da qui. Il verbo DB fa riga, componenti, legami e stato
+#        dell'ordine insieme. ⛔ Nessuna regola ricopiata: bozza, riga evasa,
+#        origine, residuo, quantita' positiva li giudica il DB
+#        (`script.fn_check_ddt_riga_correggi_qta_evasa` e i guard dei
+#        legami), il backend controlla solo che il valore sia un numero.
+def correggi_qta_evasa(
+    ddt_id: int, riga_id: int, payload: dict[str, Any],
+) -> dict[str, Any]:
+    repo = DdtRepository()
+    _get_testata_or_raise(
+        repo, ddt_id, op="correggi_qta_evasa", getter=repo.get_stato_codice,
+    )
+    _get_riga_or_raise(repo, ddt_id, riga_id, op="correggi_qta_evasa")
+    qta_operativa = _V.require_decimal(
+        payload, "qta_operativa", function_name=f"{_FN}.correggi_qta_evasa",
+    )
+    with _db_errors("correggi_qta_evasa"):
+        qta_evasa = repo.correggi_qta_evasa(riga_id, qta_operativa)
+    return {"ddt_id": ddt_id, "riga_id": riga_id, "qta_evasa": qta_evasa}
+
+
+# Scopo: I legami della bolla per la finestra di conferma dell'annullo (D-8):
+#        le righe legate a un ordine o a un reso (`vendite.fn_ddt_legami`),
+#        quante sono (`righe_legate`: e' il numero che la conferma dichiara,
+#        `cambia_stato(..., righe_legate_confermate=...)`) e i documenti
+#        d'origine della bolla dal lineage, per il gesto «vai a».
+#        ⚠️ `righe_legate` conta le RIGHE distinte, non i legami: una riga di
+#        ri-consegna da un reso nato da un ordine ne porta due. E' lo stesso
+#        conteggio del verbo (`count(DISTINCT ddt_riga_id)`).
+#        ⚠️ Le origini sono a livello di TESTATA (decisione di Tid: il nome del
+#        documento lo da' il lineage, `fn_ddt_legami` non porta etichette).
+def get_legami(ddt_id: int) -> dict[str, Any]:
+    # Import locale: `vendite_service` e' il modulo trasversale del dominio.
+    from apps.vendite.services import vendite_service
+
+    repo = DdtRepository()
+    _get_testata_or_raise(repo, ddt_id, op="get_legami", getter=repo.get_stato_codice)
+    legami = repo.list_legami(ddt_id)
+    passaggi = vendite_service.get_documento_passaggi(_SORGENTE_DDT, ddt_id)
+    origini = [
+        {
+            "tipo_codice_interno": p["from_tipo_codice_interno"],
+            "doc_id": p["from_doc_id"],
+            "codice": p["from_codice"],
+            "stato_codice_interno": p["from_stato_codice_interno"],
+        }
+        for p in passaggi["indietro"]
+        if p["livello"] == 1
+    ]
+    return {
+        "ddt_id": ddt_id,
+        "righe_legate": len({legame["ddt_riga_id"] for legame in legami}),
+        "legami": legami,
+        "origini": origini,
+    }
 
 
 # ══════════════════════════════════════════════════════════
@@ -830,7 +917,7 @@ def push_a_commessa(ddt_id: int, *, user: str | None = None) -> dict[str, Any]:
     # pr_run_commesse_push_one diventa un savepoint annidato).
     with transaction.atomic():
         report = pr_run_commesse_push_one(
-            sorgente_codice="DDT_VENDITA",
+            sorgente_codice=_SORGENTE_DDT,
             sorgente_uid=ddt_id,
             user=user,
         )

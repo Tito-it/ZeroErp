@@ -133,6 +133,7 @@ provide(READONLY_KEY, isReadonly)
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Preventivi/Contratti (Fase 4.F2).
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
@@ -197,6 +198,18 @@ const collegamentiRef = ref(null)
 // Ref alla barra situazione merce: l'evasione sposta merce, quindi cambia il
 // conto (consegnato sale, `da_spedire` scende) e non solo il grafo.
 const merceRef = ref(null)
+
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability), righe e situazione merce. I chip li rilegge la
+//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+  merceRef.value?.reload()
+}
 
 // Scopo: callback @evaso della dialog — generato un DDT dall'ordine: ricarica il
 // detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
@@ -679,6 +692,7 @@ const drawerActions = computed(() => {
         ref="collegamentiRef"
         base-path="/vendite/ordini"
         :doc-id="effectiveOrdineId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="isReadonlyPuro" />
 
       <!-- Situazione merce dell'ordine: il riassunto per riga ordinata —
@@ -713,15 +727,13 @@ const drawerActions = computed(() => {
       <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
            contatore "+N altri", pulsante "Indirizzi" che apre il drawer
            di gestione. -->
-      <!-- Indirizzi: seguono lo stato (in bozza), non la capability della
-           testata, che dal 2026-10-10 e' vera anche fuori bozza per le
-           colonne ancora aperte (brief-db-testata-dopo-emissione). -->
       <DocumentoIndirizziSection
         dominio="ordini"
         :doc-id="effectiveOrdineId"
         :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
         :istanza-utility-id="detail?.istanza_utility_id ?? null"
-        :readonly="isReadonly"
+        :readonly="isReadonlyPuro"
+        :capabilities="capabilities"
         :bordo="false" />
 
       <Divider />
