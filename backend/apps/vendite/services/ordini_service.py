@@ -51,7 +51,6 @@ from apps.vendite.services._componenti_service_helpers import (
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
-    auto_assegna_indirizzo_default,
     delete_indirizzo_documento,
     list_indirizzi_documento,
     upsert_indirizzo_documento,
@@ -395,7 +394,7 @@ def list_riepilogo_iva(ordine_id: int) -> list[dict[str, Any]]:
 
 _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
-    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    # dei test unit raggiungono il repository.
     repo_factory=lambda: OrdiniRepository(),
     not_found_code="E_ORD_NOT_FOUND",
     error_code="E_ORD_VALIDAZIONE",
@@ -403,7 +402,7 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
 )
 
 
-# Scopo: Pannello indirizzi dell'ordine (ambito ORDINI). Guard, ownership e
+# Scopo: Pannello indirizzi dell'ordine (ambito ORDINI). Guard di esistenza e
 #        traduzione errori DB nel BB condiviso.
 def list_indirizzi(ordine_id: int) -> dict[str, Any]:
     return list_indirizzi_documento(_INDIRIZZI_CFG, ordine_id)
@@ -445,7 +444,9 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
     )
     assert stato_bozza_id is not None
 
-    with _db_errors("crea_ordine"):
+    # Creazione e slot di default in UNA transazione (il riempimento non e'
+    # best-effort: api.md §Atomicita').
+    with _db_errors("crea_ordine"), transaction.atomic():
         creato = repo.create_ordine(
             billing_account_id=billing_account_id,
             emittente_fiscale_id=data.get("emittente_fiscale_id"),
@@ -459,10 +460,10 @@ def crea_ordine(payload: dict[str, Any]) -> dict[str, Any]:
             meta=data.get("meta") if isinstance(data.get("meta"), dict) else None,
             fatturazione_immediata=data.get("fatturazione_immediata"),
         )
-    # UX v2: auto-assegnazione best-effort dell'indirizzo default (indirizzo
-    # di ruolo CON del cliente, fallback FATT). Mai bloccante. Copre anche le
-    # conversioni da offerta (passano da _crea_testata_ordine_da_origine).
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(creato["id"]))
+        # Slot di default dall'anagrafica del cliente: lo decide il DB
+        # (`vendite.fn_doc_indirizzo_default`). Copre anche le conversioni da
+        # offerta (passano da _crea_testata_ordine_da_origine).
+        repo.riempi_indirizzo_default(int(creato["id"]))
     return creato
 
 
@@ -563,13 +564,16 @@ def crea_ordine_da_preventivo(
     # creato ma il preventivo ACCETTATO (stato parziale, merce gia' su ordine). Ora
     # e' tutto-o-niente: niente piu' transiziona_a_evaso_se_smistato qui (il gate
     # bi-ramo vive dentro la fn). L'helper resta usato dal push a commessa (#5).
-    ordine_id = prev_repo.push_a_ordine(
-        preventivo_id, righe_ids=righe_ids, pratica_id=None,
-    )
-    # UX v2: la cascata DB copia gli indirizzi del preventivo; se il
-    # preventivo non aveva slot compatibili, fallback best-effort
-    # dall'anagrafica di ruolo (l'helper salta se il default e' valorizzato).
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(ordine_id))
+    # Il verbo e il default nella stessa transazione: la cascata DB copia gli
+    # indirizzi del preventivo, e il default riempie lo slot SOLO se e'
+    # rimasto vuoto (la sorgente vince). `_db_errors` fuori dall'atomic, come
+    # `crea_ddt_da_ordine`: i guard della fn (stato, nessuna riga merce) e gli
+    # errori del default arrivano al client col loro codice, non come 500.
+    with _db_errors("crea_ordine_da_preventivo"), transaction.atomic():
+        ordine_id = prev_repo.push_a_ordine(
+            preventivo_id, righe_ids=righe_ids, pratica_id=None,
+        )
+        OrdiniRepository().riempi_indirizzo_default(int(ordine_id))
 
     # Numero ordine per il messaggio FE (lettura leggera post-creazione).
     testata = OrdiniRepository().get_ordine(ordine_id)

@@ -436,6 +436,13 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
     piu' come chiamata BE separata → il gate/atomicita' EVASO e' coperto dal
     pgTAP DB, non piu' mockabile qui."""
 
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): il verbo e il
+        # riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(_REPO)
     @patch(_PREV_REPO)
     def test_crea_ordine_da_preventivo_ok(self, prev_cls, ord_cls) -> None:
@@ -452,6 +459,9 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
         self.assertEqual(out["ordine_id"], 7)
         self.assertEqual(out["numero"], "ORD7")
         self.assertEqual(out["documento_origine"], {"tipo": "PREVENTIVO", "id": 99})
+        # Dopo la cascata dal preventivo, lo slot di default sull'ordine nato
+        # (il DB lo riempie solo se e' rimasto vuoto): R-BE-1.
+        ord_cls.return_value.riempi_indirizzo_default.assert_called_once_with(7)
 
     @patch(_REPO)
     @patch(_PREV_REPO)
@@ -465,6 +475,37 @@ class OrdiniConversioneUpstreamTests(SimpleTestCase):
         prev_cls.return_value.push_a_ordine.assert_called_once_with(
             99, righe_ids=[11, 12], pratica_id=None,
         )
+
+    # Scopo: i guard della fn DB (stato non ammesso, nessuna riga merce)
+    #        arrivano al client col loro codice, non come 500 grezzo; e la
+    #        catena si ferma prima dello slot di default.
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_errore_db_tradotto(self, prev_cls, ord_cls) -> None:
+        prev_cls.return_value.push_a_ordine.side_effect = DatabaseError(
+            "E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO: preventivo in BOZZA",
+        )
+
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_preventivo(99)
+
+        self.assertEqual(cm.exception.code, "E_VENDITA_PREVENTIVO_PUSH_STATO_NON_AMMESSO")
+        ord_cls.return_value.riempi_indirizzo_default.assert_not_called()
+
+    # Scopo: un errore del building block dello slot di default sale tradotto
+    #        (non e' best-effort: annulla anche l'ordine, nella transazione).
+    @patch(_REPO)
+    @patch(_PREV_REPO)
+    def test_crea_ordine_da_preventivo_errore_default_tradotto(self, prev_cls, ord_cls) -> None:
+        prev_cls.return_value.push_a_ordine.return_value = 7
+        ord_cls.return_value.riempi_indirizzo_default.side_effect = DatabaseError(
+            "E_INDIRIZZO_DOC_NON_DEL_CLIENTE: indirizzo d'altri",
+        )
+
+        with self.assertRaises(ServiceError) as cm:
+            ordini_service.crea_ordine_da_preventivo(99)
+
+        self.assertEqual(cm.exception.code, "E_INDIRIZZO_DOC_NON_DEL_CLIENTE")
 
     # Nota: i test che verificavano la transizione EVASO lato BE
     # (test_..._evade_senza_residui / _non_evade_con_residuo_commessa /
@@ -843,6 +884,13 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
     futuro refactor verso un mapper esplicito non lo perde in silenzio.
     """
 
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): il verbo e il
+        # riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(_REPO)
     def test_crea_ordine_porta_il_flag(self, repo_cls) -> None:
         repo = repo_cls.return_value
@@ -854,6 +902,8 @@ class OrdiniFatturazioneImmediataTests(SimpleTestCase):
         self.assertIs(
             repo.create_ordine.call_args.kwargs["fatturazione_immediata"], True,
         )
+        # Lo slot di default lo riempie il DB, sull'ordine appena nato (R-BE-1).
+        repo.riempi_indirizzo_default.assert_called_once_with(7)
 
     # Senza la chiave si passa None: il repository omette la colonna e resta il
     # DEFAULT false del DB (corsia differita).

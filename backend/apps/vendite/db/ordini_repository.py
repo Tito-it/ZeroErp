@@ -132,12 +132,7 @@ class OrdiniRepository(
     _indirizzi_table = "vendite.ordini_indirizzi"
     _indirizzi_fk_documento = "ordine_id"
     _indirizzi_ambito = "ORDINI"
-    _indirizzi_documento_table = "vendite.ordini"
-    # Ancora ownership/auto-default = soggetto_ruolo NATIVO della testata
-    # (NOT NULL): e' il ruolo del BA, che sull'ordine e' NOT NULL e lo lega
-    # con la FK composta `fk_ordini_ba_cliente` (brief-db-esecutivi-ba-coppia
-    # D-1, D-5). Si legge la colonna nativa per non dipendere dalla JOIN.
-    _indirizzi_doc_sr_column = "soggetto_ruolo_id"
+    _indirizzi_documento = "ORDINE"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ordini_lista)

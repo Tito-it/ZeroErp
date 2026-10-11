@@ -25,6 +25,7 @@ DdtServiceGuardsTests
 
 DdtCreaTests
  6) test_crea_ddt_col_ba_lascia_le_copie_al_db — col BA destinatario None, utility scartata + DRAFT
+ 6b) test_crea_ddt_errore_del_default_sale   — slot di default dal DB: l'errore non si ingoia
  7) test_crea_ddt_destinatario_esplicito    — destinatario passato arriva al repo
  8) test_crea_ddt_senza_destinatario_ne_ba  — nessun guard Python: il NOT NULL lo dice il DB
  8b) test_crea_ddt_senza_ba_ammesso         — bolla senza cliente (terzista, deposito): BA None
@@ -50,7 +51,8 @@ DdtCambiaStatoTests
 
 DdtCreaDaOrdineTests
 18) test_crea_ddt_da_ordine_delega_e_ritorna — push_da_ordine + ritorno mappato
-19) test_crea_ddt_da_ordine_no_atomic_extra  — nessun transaction.atomic extra
+19) test_crea_ddt_da_ordine_default_dopo_la_cascata — slot di default chiesto dopo il verbo
+19b) test_crea_ddt_da_ordine_errore_del_default_sale — verbo e default in una transazione
 
 DdtPushCommessaTests
 20) test_push_nessuna_riga_pushable          — E_DDT_NESSUNA_RIGA
@@ -203,6 +205,13 @@ class DdtServiceGuardsTests(SimpleTestCase):
 class DdtCreaTests(SimpleTestCase):
     """crea_ddt standalone: BA facoltativo, copie del BA lasciate al DB, DRAFT."""
 
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): la creazione
+        # e il riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(_REPO)
     def test_crea_ddt_col_ba_lascia_le_copie_al_db(self, repo_cls) -> None:
         # Col BA, destinatario e utility li scrive `trgfn_ddt_normalize` (BB
@@ -222,6 +231,19 @@ class DdtCreaTests(SimpleTestCase):
         # stato risolto via codice interno DRAFT.
         repo.get_stato_id_by_codice.assert_called_once_with("DRAFT")
         self.assertEqual(kwargs["stato_doc_ddt_id"], 1)
+        # Lo slot di default lo riempie il DB, sul DDT appena nato (R-BE-1).
+        repo.riempi_indirizzo_default.assert_called_once_with(7)
+
+    @patch(_REPO)
+    def test_crea_ddt_errore_del_default_sale(self, repo_cls) -> None:
+        # Non e' piu' best-effort: l'errore sale, e la transaction.atomic()
+        # annulla anche la testata.
+        repo = repo_cls.return_value
+        repo.get_stato_id_by_codice.return_value = 1
+        repo.create_ddt.return_value = {"id": 7, "uid": "u", "numero": None}
+        repo.riempi_indirizzo_default.side_effect = RuntimeError("DB")
+        with self.assertRaises(RuntimeError):
+            ddt_service.crea_ddt({"billing_account_id": 3})
 
     @patch(_REPO)
     def test_crea_ddt_destinatario_esplicito(self, repo_cls) -> None:
@@ -442,6 +464,13 @@ class DdtCambiaStatoTests(SimpleTestCase):
 class DdtCreaDaOrdineTests(SimpleTestCase):
     """crea_ddt_da_ordine: delega alla primitiva DB madre (evasione)."""
 
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): la creazione
+        # e il riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     @patch(_REPO)
     def test_crea_ddt_da_ordine_delega_e_ritorna(self, repo_cls) -> None:
         repo = repo_cls.return_value
@@ -455,15 +484,30 @@ class DdtCreaDaOrdineTests(SimpleTestCase):
         repo.get_ddt.assert_not_called()
         self.assertEqual(out, {"ddt_id": 42, "numero": None, "ordine_id": 99})
 
-    @patch(f"{_SVC}.transaction")
     @patch(_REPO)
-    def test_crea_ddt_da_ordine_no_atomic_extra(self, repo_cls, mock_tx) -> None:
-        # L'atomicita' vive DENTRO la fn madre DB: il service NON deve aprire un
-        # transaction.atomic() extra (gemello crea_ordine_da_preventivo).
+    def test_crea_ddt_da_ordine_default_dopo_la_cascata(self, repo_cls) -> None:
+        # Il default si chiede DOPO il verbo (la cascata dall'ordine vince: il
+        # DB riempie lo slot solo se e' rimasto vuoto), sul DDT appena nato
+        # (brief-db-indirizzi-documento-seguono-il-cliente, R-BE-1).
         repo = repo_cls.return_value
         repo.push_da_ordine.return_value = 42
         ddt_service.crea_ddt_da_ordine(99)
-        mock_tx.atomic.assert_not_called()
+        self.assertEqual(
+            [c[0] for c in repo.method_calls if c[0] != "push_da_ordine"],
+            ["riempi_indirizzo_default"],
+        )
+        repo.riempi_indirizzo_default.assert_called_once_with(42)
+        self.assertEqual(repo.method_calls[0][0], "push_da_ordine")
+
+    @patch(_REPO)
+    def test_crea_ddt_da_ordine_errore_del_default_sale(self, repo_cls) -> None:
+        # Non e' piu' best-effort: l'errore sale, e la transaction.atomic()
+        # annulla anche il DDT appena creato.
+        repo = repo_cls.return_value
+        repo.push_da_ordine.return_value = 42
+        repo.riempi_indirizzo_default.side_effect = RuntimeError("DB")
+        with self.assertRaises(RuntimeError):
+            ddt_service.crea_ddt_da_ordine(99)
 
 
 class DdtPushCommessaTests(SimpleTestCase):
@@ -561,6 +605,13 @@ class DdtFatturazioneImmediataTests(SimpleTestCase):
     2026-07-27 sui contratti e' nato proprio dal dare per scontato che il gesto
     fosse identico sui tre domini.
     """
+
+    def setUp(self) -> None:
+        # transaction.atomic() a no-op (SimpleTestCase senza DB): la creazione
+        # e il riempimento dello slot di default stanno in una transazione.
+        patcher = patch(_ATOMIC, return_value=nullcontext())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @patch(_REPO)
     def test_crea_ddt_porta_il_flag(self, repo_cls) -> None:

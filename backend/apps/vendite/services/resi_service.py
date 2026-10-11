@@ -51,6 +51,7 @@ from apps.core.services.testata_guard import (
     testata_o_not_found,
 )
 from apps.core.services.value_normalizer import empty_to_none
+from apps.vendite.db.ddt_repository import DdtRepository
 from apps.vendite.db.resi_repository import ResiRepository
 
 logger = logging.getLogger(__name__)
@@ -630,8 +631,13 @@ def genera_ddt_riconsegna(
     # Guard di merito (CONFERMATO, copertura pendente, over-ri-spedizione)
     # nella fn madre / guard ponte DB: E_RESO_NON_CONFERMATO,
     # E_RESO_NESSUNA_RICONSEGNA_PENDENTE, E_RESO_RICONSEGNA_SUPERA_RESO.
-    with _db_errors("genera_ddt_riconsegna"):
+    # Il verbo e il default nella stessa transazione, come il DDT da ordine:
+    # la cascata copia gli indirizzi del DDT d'origine, e il default riempie
+    # lo slot SOLO se e' rimasto vuoto (la sorgente vince;
+    # brief-db-indirizzi-documento-seguono-il-cliente).
+    with _db_errors("genera_ddt_riconsegna"), transaction.atomic():
         ddt_id = repo.genera_ddt_riconsegna(int(reso_id), righe, data)
+        DdtRepository().riempi_indirizzo_default(int(ddt_id))
     return {"reso_id": int(reso_id), "ddt_id": ddt_id, "numero": None}
 
 

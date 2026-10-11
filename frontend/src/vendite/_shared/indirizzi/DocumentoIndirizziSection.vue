@@ -28,6 +28,7 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
+import { useFetchVersion } from '../../../core/composables/useFetchVersion'
 import { READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { MANAGE_ICONS, TIPO_RUOLO } from '../../../core/constants'
 import DocumentoIndirizziDrawer from './DocumentoIndirizziDrawer.vue'
@@ -67,9 +68,15 @@ const apiClient = makeIndirizziDocumentoApi(`/vendite/${props.dominio}`)
 const tipiAmmessi = ref([])
 const indirizzi = ref([])
 
+// Guard anti-stale: le `load()` possono sovrapporsi (cambio documento, cambio
+// cliente, `changed` dal drawer di gestione); vince l'ultima lanciata.
+const listaFv = useFetchVersion()
+
 async function load() {
   if (!props.docId) return
+  const tag = listaFv.tag()
   const res = await execute(() => apiClient.list(props.docId))
+  if (!listaFv.isCurrent(tag)) return
   tipiAmmessi.value = res?.tipi_ammessi ?? []
   indirizzi.value = res?.indirizzi ?? []
   // Stato del default per il caller (es. avviso nel dialog di emissione).
@@ -92,6 +99,23 @@ const rigaDefault = computed(() =>
 // NB: il watch immediate DEVE seguire i computed usati da load() (TDZ,
 // memoria feedback_vue_watch_immediate_tdz).
 watch(() => props.docId, load, { immediate: true })
+
+// Il cliente del documento cambiato in bozza (DDT: BA o destinatario;
+// preventivo, offerta, contratto: BA o istanza): il DB toglie gli indirizzi
+// del cliente di prima e riempie di nuovo lo slot di default
+// (brief-db-indirizzi-documento-seguono-il-cliente, R-FE-2). I prop sono
+// quelli del `detail` salvato, quindi si ricarica DOPO il salvataggio.
+// ⚠️ Solo sullo STESSO documento e se un cliente c'era gia': all'apertura
+//    l'identita' passa da vuota a valorizzata, e al cambio di documento il
+//    drawer azzera `detail` mentre cambia `docId` — in entrambi i casi il
+//    caricamento lo fa gia' il watch su `docId`, e una seconda `load()`
+//    sarebbe una richiesta doppia in gara con la prima.
+watch(
+  () => [props.docId, props.soggettoRuoloId, props.istanzaUtilityId],
+  ([doc], [docPrima, ...clientePrima]) => {
+    if (doc === docPrima && clientePrima.some((v) => v != null)) load()
+  },
+)
 
 // Altri tipi impostati oltre al default (visibili solo nel drawer gestione).
 const altriCount = computed(() =>

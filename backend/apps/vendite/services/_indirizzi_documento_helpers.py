@@ -4,7 +4,7 @@
 # Doc: Python
 # Scopo: Building block service per gli indirizzi documento (design
 #        brief-design-indirizzi-documenti-vendita, D-1..D-5). Tutta la logica
-#        condivisa vive qui — guard di esistenza, ownership del picker,
+#        condivisa vive qui — guard di esistenza,
 #        validazione snapshot, traduzione errori DB — parametrizzata da una
 #        `IndirizziDocumentoConfig` dichiarata una volta per dominio: i
 #        service espongono wrapper one-liner.
@@ -12,13 +12,20 @@
 #        Due flussi di upsert (D-4/D-5):
 #        - PICKER (origine_indirizzo_id valorizzato): snapshot composto
 #          SERVER-SIDE via script.fn_snapshot_indirizzo; dal payload vengono
-#          accettati solo i campi di contatto (email/telefono/note). Guard di
-#          OWNERSHIP: l'indirizzo deve appartenere al soggetto_ruolo del
-#          cliente del documento (anti-tampering: senza guard un id qualsiasi
-#          congelerebbe l'indirizzo di un ALTRO cliente sul documento).
+#          accettati solo i campi di contatto (email/telefono/note).
 #        - UNA-TANTUM (origine assente): snapshot libero dal payload,
 #          whitelist chiavi + soli valori scalari, con almeno un campo
 #          sostanziale. origine_* restano NULL.
+#
+#        ⭐ Che un indirizzo d'anagrafica sia DEL CLIENTE del documento lo
+#        dice il DB: il guard `vendite.trgfn_doc_indirizzi_guard_cliente`
+#        sulle sei `*_indirizzi` (`E_INDIRIZZO_DOC_NON_DEL_CLIENTE`, campo
+#        `tipo_indirizzo_id`), che guarda anche l'istanza. Fino al 2026-10-12
+#        qui c'erano due `require` sull'ownership, la sola sede della regola;
+#        e lo slot di default lo riempiva `auto_assegna_indirizzo_default`,
+#        ora `vendite.fn_doc_indirizzo_default` (repository,
+#        `riempi_indirizzo_default`). Brief
+#        brief-db-indirizzi-documento-seguono-il-cliente (R-BE-1, R-BE-2).
 #
 #        ⭐ In quale stato del documento gli indirizzi si cambiano lo dice il
 #        DB: il lock «solo in bozza» dei satelliti
@@ -31,16 +38,14 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
 from apps.core.services.error_manager import ErrorManager
-from apps.core.services.payload_helpers import translate_db_errors
+from apps.core.services.payload_helpers import PayloadValidator, translate_db_errors
 
-logger = logging.getLogger(__name__)
 
 # Chiavi ammesse nello snapshot (shape canonico fn_snapshot_indirizzo +
 # campi di contatto aggiunti dal BE). Tutto il resto viene scartato.
@@ -197,71 +202,6 @@ def _clean_snapshot(raw: dict[str, Any], allowed: frozenset[str]) -> dict[str, A
     return out
 
 
-# Scopo: Tipo di default dell'ambito: CON (Consegna, standard cross-dominio)
-#        → fallback FATT → primo ammesso (mirror della regola FE UX v2).
-def _tipo_default(tipi_ammessi: list[dict[str, Any]]) -> dict[str, Any] | None:
-    return (
-        next((x for x in tipi_ammessi if x["tipo_indirizzo_codice"] == "CON"), None)
-        or next((x for x in tipi_ammessi if x["tipo_indirizzo_codice"] == "FATT"), None)
-        or (tipi_ammessi[0] if tipi_ammessi else None)
-    )
-
-
-# Scopo: Auto-assegnazione BEST-EFFORT dell'indirizzo di default alla
-#        creazione del documento (UX v2): se il cliente ha un indirizzo di
-#        RUOLO di tipo CON (altrimenti FATT), viene congelato nello slot
-#        default. Mai bloccante: qualsiasi errore viene loggato e la
-#        creazione del documento procede (l'operatore puo' sempre impostare
-#        l'indirizzo dal pannello; l'obbligo resta sul guard DB all'emissione).
-def auto_assegna_indirizzo_default(
-    cfg: IndirizziDocumentoConfig, documento_id: int,
-) -> None:
-    try:
-        repo = cfg.repo_factory()
-        default = _tipo_default(repo.list_tipi_indirizzo_ammessi())
-        if default is None:
-            return
-        # Slot gia' valorizzato (es. cascata dal documento sorgente): non toccare.
-        esistenti = {r["tipo_indirizzo_id"] for r in repo.list_indirizzi(documento_id)}
-        if default["tipo_indirizzo_id"] in esistenti:
-            return
-        soggetto_ruolo, istanza_utility = repo.get_ancora_indirizzi_documento(
-            documento_id)
-        if soggetto_ruolo is None:
-            return
-        # Catena di priorita' (decisa con Tid 2026-07-12): per ciascun tipo
-        # (CON, poi FATT) si prova a risolvere l'indirizzo.
-        # Dal 2026-07-31 i due layer (RUOLO con aggancio origine → SOGGETTO
-        # senza) vivono dentro `script.fn_resolve_indirizzo_documento`, che
-        # applica anche la **precedenza all'istanza** del documento: qui resta
-        # solo la priorita' fra i TIPI, che e' regola di UX e non di dominio.
-        for tipo_codice in ("CON", "FATT"):
-            risolto = repo.resolve_indirizzo_documento(
-                soggetto_ruolo_id=soggetto_ruolo,
-                istanza_utility_id=istanza_utility,
-                tipo_codice=tipo_codice,
-            )
-            if risolto is not None:
-                # `origine_indirizzo_id` valorizzato = layer RUOLO (riga
-                # agganciabile); NULL con `origine_soggetto_ruolo_id` valorizzato
-                # = layer SOGGETTO, che il FE distingue dal vero una-tantum
-                # digitato (quello non ha nessuna delle due origini).
-                repo.upsert_indirizzo(
-                    documento_id=documento_id,
-                    tipo_indirizzo_id=int(default["tipo_indirizzo_id"]),
-                    snapshot=dict(risolto["snapshot"]),
-                    origine_indirizzo_id=risolto["origine_indirizzo_id"],
-                    origine_soggetto_ruolo_id=risolto["origine_soggetto_ruolo_id"],
-                )
-                return
-    except Exception:
-        logger.warning(
-            "auto-assegnazione indirizzo default fallita (best-effort) "
-            "documento_id=%s prefix=%s", documento_id, cfg.fn_prefix,
-            exc_info=True,
-        )
-
-
 # Scopo: GET del pannello indirizzi: slot (tipi ammessi per l'ambito, con
 #        flag obbligatorio) + righe correnti. Guard di esistenza: un
 #        documento fantasma torna 404, non un pannello vuoto editabile.
@@ -277,7 +217,7 @@ def list_indirizzi_documento(
 
 
 # Scopo: Upsert di uno slot indirizzo (uno-per-tipo). Vedi header per i due
-#        flussi; guard di esistenza + ownership picker.
+#        flussi; guard di esistenza (l'appartenenza al cliente e' del DB).
 def upsert_indirizzo_documento(
     cfg: IndirizziDocumentoConfig,
     documento_id: int,
@@ -287,13 +227,15 @@ def upsert_indirizzo_documento(
     repo = cfg.repo_factory()
     _assert_documento(cfg, repo, documento_id, op=op)
 
-    tipo_indirizzo_id = payload.get("tipo_indirizzo_id")
-    ErrorManager.require(
-        tipo_indirizzo_id is not None,
-        code=cfg.error_code,
-        message="tipo_indirizzo_id obbligatorio.",
-        function_name=f"{cfg.fn_prefix}.{op}",
+    # Gli id del payload passano dal BB: un valore non intero e' un errore di
+    # validazione del dominio, non un `ValueError` (500) da un `int()` grezzo.
+    # ⚠️ `origine_soggetto_ruolo_id` va al DB cosi' com'e' (lo giudica il
+    #    guard cliente): qui se ne controlla solo la forma.
+    v = PayloadValidator(
+        validation_code=cfg.error_code, function_name=f"{cfg.fn_prefix}.{op}",
     )
+    tipo_indirizzo_id = v.require_positive_int(payload, "tipo_indirizzo_id")
+    origine_indirizzo_id = v.optional_positive_int(payload, "origine_indirizzo_id")
 
     raw_snapshot = payload.get("snapshot")
     if raw_snapshot is None:
@@ -305,25 +247,11 @@ def upsert_indirizzo_documento(
         function_name=f"{cfg.fn_prefix}.{op}",
     )
 
-    origine_indirizzo_id = payload.get("origine_indirizzo_id")
     if origine_indirizzo_id is not None:
         # Flusso PICKER: snapshot server-side (D-5) + soli contatti dal payload.
         with _db_errors(cfg, op):
-            resolved = repo.snapshot_from_origine(int(origine_indirizzo_id))
+            resolved = repo.snapshot_from_origine(origine_indirizzo_id)
         origine_soggetto_ruolo_id = resolved["origine_soggetto_ruolo_id"]
-        # Ownership: l'indirizzo deve appartenere al cliente del documento.
-        # Se il soggetto_ruolo del documento non e' risolvibile (BA assente)
-        # il guard non e' applicabile e resta la sola whitelist tipi.
-        doc_soggetto_ruolo = repo.get_soggetto_ruolo_documento(documento_id)
-        ErrorManager.require(
-            doc_soggetto_ruolo is None
-            or origine_soggetto_ruolo_id == doc_soggetto_ruolo,
-            code=cfg.error_code,
-            message="L'indirizzo selezionato non appartiene al cliente del documento.",
-            detail=(f"origine_soggetto_ruolo_id={origine_soggetto_ruolo_id}, "
-                    f"documento_soggetto_ruolo_id={doc_soggetto_ruolo}"),
-            function_name=f"{cfg.fn_prefix}.{op}",
-        )
         snapshot = dict(resolved["snapshot"])
         snapshot.update(_clean_snapshot(raw_snapshot, _CONTACT_KEYS))
     else:
@@ -339,32 +267,18 @@ def upsert_indirizzo_documento(
             function_name=f"{cfg.fn_prefix}.{op}",
         )
         # Provenienza "anagrafica soggetto" (picker su riga fonte=soggetto):
-        # il client puo' dichiararla, ma SOLO se coincide col cliente del
-        # documento (anti-tampering); un vero una-tantum la lascia assente.
-        origine_soggetto_ruolo_id = payload.get("origine_soggetto_ruolo_id")
-        if origine_soggetto_ruolo_id is not None:
-            doc_soggetto_ruolo = repo.get_soggetto_ruolo_documento(documento_id)
-            ErrorManager.require(
-                doc_soggetto_ruolo is not None
-                and int(origine_soggetto_ruolo_id) == doc_soggetto_ruolo,
-                code=cfg.error_code,
-                message=(
-                    "origine_soggetto_ruolo_id non coincide con il cliente "
-                    "del documento."
-                ),
-                function_name=f"{cfg.fn_prefix}.{op}",
-            )
-            origine_soggetto_ruolo_id = int(origine_soggetto_ruolo_id)
+        # il client puo' dichiararla; che sia il cliente del documento lo
+        # giudica il guard DB (vedi header). Un vero una-tantum la lascia
+        # assente.
+        origine_soggetto_ruolo_id = v.optional_positive_int(
+            payload, "origine_soggetto_ruolo_id")
 
-    assert tipo_indirizzo_id is not None
     with _db_errors(cfg, op):
         return repo.upsert_indirizzo(
             documento_id=documento_id,
-            tipo_indirizzo_id=int(tipo_indirizzo_id),
+            tipo_indirizzo_id=tipo_indirizzo_id,
             snapshot=snapshot,
-            origine_indirizzo_id=(
-                int(origine_indirizzo_id) if origine_indirizzo_id is not None else None
-            ),
+            origine_indirizzo_id=origine_indirizzo_id,
             origine_soggetto_ruolo_id=origine_soggetto_ruolo_id,
         )
 

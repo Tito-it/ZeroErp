@@ -129,12 +129,7 @@ class DdtRepository(
     _indirizzi_table = "vendite.ddt_indirizzi"
     _indirizzi_fk_documento = "ddt_id"
     _indirizzi_ambito = "DDT"
-    _indirizzi_documento_table = "vendite.ddt"
-    # Ancora ownership/auto-default = DESTINATARIO (chi riceve la merce),
-    # NOT NULL in testata: coerente col picker FE. Col BA e' il ruolo del BA
-    # (`fk_ddt_ba_cliente`); senza — causale che non manda merce a un
-    # cliente — e' il terzista o il deposito, e resta l'unica ancora.
-    _indirizzi_doc_sr_column = "destinatario_soggetto_ruolo_id"
+    _indirizzi_documento = "DDT"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_ddt_lista)

@@ -156,11 +156,6 @@ class TestPreventiviService(unittest.TestCase):
         # ramo aggancio-commessa di push_a_commessa (rev.3) resta no-op — i test
         # pratica-aware lo sovrascrivono esplicitamente.
         self.mock_repo.get_pratica_id_by_preventivo_root.return_value = None
-        # Ancora indirizzi (Fase 0 satelliti, 2026-07-31): la coppia
-        # (soggetto_ruolo, istanza) va restituita come TUPLA — un MagicMock nudo
-        # non si spacchetta e l'auto-assegnazione best-effort loggherebbe un
-        # warning rumoroso a ogni crea_*. (None, None) = nessuna assegnazione.
-        self.mock_repo.get_ancora_indirizzi_documento.return_value = (None, None)
 
         # ⭐ Risolutore IVA (I3, 2026-08-31): collaboratore nuovo di
         # `gestisci_riga`. Mockato come il repository, e per la stessa ragione —
@@ -270,6 +265,9 @@ class TestPreventiviService(unittest.TestCase):
         kwargs = self.mock_repo.create_preventivo.call_args.kwargs
         self.assertEqual(kwargs["billing_account_id"], 42)
         self.assertEqual(kwargs["istanza_utility_id"], 100)
+        # Lo slot di default lo riempie il DB, nella transazione della
+        # creazione (brief-db-indirizzi-documento-seguono-il-cliente, R-BE-1).
+        self.mock_repo.riempi_indirizzo_default.assert_called_once_with(1)
 
     # Scopo: Verifica errore se utility_id mancante.
     def test_crea_preventivo_utility_mancante(self):

@@ -1,12 +1,27 @@
 # Brief DB — Gli indirizzi del documento seguono il cliente
 
+## ⏭️ Chi riparte — aggiornato al 2026-10-12
+
+**Riparte: Tid (collaudo) e il team DB (§8.4), in parallelo. BE/FE fermo fino alla consegna DB.**
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | **Tid** | Collaudo in-app del giro BE/FE (slot di default alla creazione, cambio di cliente in bozza su DDT, preventivo e offerta). Il backend di sviluppo è già ricaricato | §8.5 | niente |
+| 2 | **Team DB** | La fornitura di offerta e contratto (`*_utilities`) non segue il cliente: richiesta e proposta | §8.4 | niente |
+| 3 | **BE/FE** | Cambio di cliente del contratto in bozza, con il BB della coppia BA/istanza e il ritiro della copia del preventivo | §8.3 | il punto 2 |
+| 4 | **Tid** | Archiviazione in `work-done/` | — | i punti 1 e 3 |
+
+1 e 2 vanno in parallelo. **Decisioni aperte di Tid: nessuna.** ⚠️ Il giro BE/FE del §8
+non è ancora committato (`dev/backend-tid`).
+
 > **Chi scrive:** sessione BE (`dev/backend-tid`), 2026-10-10. **A chi:** team DB; poi BE/FE (§6).
 > **Origine:** §12.3 di [brief-db-esecutivi-ba-coppia](../work-done/brief-db-esecutivi-ba-coppia.md).
 > Dal giro di quel brief il cliente di un DDT si sceglie, si cambia e si toglie **in bozza**. Gli
 > indirizzi del documento gia' scritti non lo seguono.
 > **Stato:** ✅ **lato DB applicato e verde il 2026-10-11** (§7): `20261011-43` … `-61` e i tre CSV, pgTAP
-> verdi nella corsa di Tid (§7.4). D-4 decisa e fatta nello stesso giro (§7.5). ⏳ **Tocca a BE/FE** (§6):
-> il brief si chiude con la loro consegna.
+> verdi nella corsa di Tid (§7.4). D-4 decisa e fatta nello stesso giro (§7.5). ✅ **BE/FE scritti e verdi**
+> (2026-10-12, §8): R-BE-1 … R-FE-2. ⏳ Restano il collaudo in-app di Tid (§8.5), il cambio di cliente del
+> **contratto** in bozza (deciso da Tid, §8.3) e una **richiesta al team DB** (§8.4).
 > **Nel registro dei difetti DB:** voce **D27** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -278,3 +293,123 @@ degli indirizzi e quindi dal guard d'origine, sono verdi prima e dopo. La confer
 | # | Domanda | Raccomandazione |
 | --- | --- | --- |
 | **D-4** | La revisione dell'offerta copia gli indirizzi della madre, come quella del preventivo? | ✅ **Si', in questo giro** (Tid, 2026-10-11): `20261011-61`, test 18 |
+
+## 8. Sviluppo BE/FE (sessione BE, `dev/backend-tid`, 2026-10-12)
+
+### 8.1 Decisioni di Tid (2026-10-12)
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| **B-1** | Il cliente del contratto si cambia in bozza? Il DB lo ammette (lock solo fuori DRAFT, §7.1), il backend lo vietava sempre (`contratti_service._FORBIDDEN_TESTATA_UPDATE`) | ✅ **Si'**, come preventivo e offerta. Lavoro in §8.3 |
+| **B-2** | Chi crea un documento con una cascata, oltre ai tre di R-BE-1, chiama il building block? | ✅ **La riconsegna dal reso si'** (un DDT nuovo con cascata, gemello del DDT da ordine). **Le revisioni** di preventivo e offerta **no**: copiano la versione precedente com'e', slot vuoto compreso |
+| **B-3** | Al cambio di cliente si chiede conferma? | ✅ **No**, cambio in silenzio: gli indirizzi tolti sono copie dell'anagrafica, lo slot di default si riempie dal cliente nuovo, gli una-tantum restano. Il pannello si ricarica |
+| **B-4** | Sul contratto, l'emittente si cambia in modifica? | ✅ **No, come il preventivo**: si cambiano solo BA e istanza, in coppia (§8.3) |
+
+### 8.2 Cosa e' stato fatto
+
+| # | Che cosa |
+| --- | --- |
+| **R-BE-1** | Il mixin `IndirizziDocumentoRepositoryMixin` ha `riempi_indirizzo_default(id)` → `vendite.fn_doc_indirizzo_default(<documento>, id)`; ogni repository dichiara il selettore (`_indirizzi_documento`). Chiamato **nella transazione della creazione** (non e' piu' best-effort: un errore annulla anche la testata; `ATOMIC_REQUESTS` e' spento) in `crea_ddt`, `crea_ddt_da_ordine`, `genera_ddt_riconsegna` (B-2), `crea_ordine` (copre la conversione da offerta), `crea_ordine_da_preventivo`, `crea_preventivo`, `crea_offerta`, `push_a_contratto` dell'offerta (il verbo scrive la testata da se', non passa da `fn_create_contratto`). Tolta la chiamata dopo `create_contratto_atomico`. Ritirati `auto_assegna_indirizzo_default`, `_tipo_default`, `auto_assegna_indirizzo_default_contratto` |
+| **R-BE-2** | Tolti da `upsert_indirizzo_documento` i due `require` sull'ownership (picker e origine soggetto dichiarata). Il codice e' gia' mappato dalla policy generata: arriva `E_INDIRIZZO_DOC_NON_DEL_CLIENTE`, 400, campo `tipo_indirizzo_id` (provato sul DB vero, §8.5). ⚠️ Una differenza col Python, voluta: su un documento **senza cliente** il DB lascia passare una riga che dichiara un'origine soggetto (il predicato torna NULL), il Python la rifiutava; quando il cliente arriva, il trigger del cambio la toglie se non e' sua |
+| **R-BE-3** | `get_soggetto_ruolo_documento`, `get_ancora_indirizzi_documento` e `resolve_indirizzo_documento` non avevano altri utilizzatori: ritirati, con gli attributi `_indirizzi_documento_table`, `_indirizzi_doc_sr_column`, `_indirizzi_doc_istanza_column`. Il cliente del documento lo legge il DB (`script.fn_get_cliente_testata_documento`). Lo smoke `smoke-indirizzi-documento-catena.py` interroga la catena con l'SQL |
+| **R-FE-2** | `DocumentoIndirizziSection` osserva l'identita' del cliente che il drawer le passa dal `detail` salvato (`soggettoRuoloId`, `istanzaUtilityId`): se un cliente c'era e cambia, ricarica. Da vuota a valorizzata (apertura, cambio di documento) no: carica gia' il watch su `docId`. Vale per i cinque drawer senza toccarli |
+
+### 8.3 ⏳ Il cambio di cliente del contratto in bozza (B-1), fermo sul §8.4
+
+* **Regola del 2 — ✅ ok di Tid (2026-10-12).** Il preventivo risolve il
+  cliente per coppia BA/istanza in `preventivi_service._risolvi_cliente_preventivo`
+  (dal lato che il payload porta, BA della coppia `(istanza, utility)`, codici
+  `E_PREV_*`). Il contratto ne sarebbe la seconda copia: si estrae un BB in
+  `apps/vendite`, con i codici per dominio, e si ritira la copia del preventivo
+  nello stesso giro. ⚠️ L'estrazione si fa **insieme** al contratto, non prima:
+  un BB con il solo preventivo come consumatore sposterebbe il codice senza
+  centralizzare niente (AGENTS.md, regola del 2).
+* **⛔ Bloccante: il difetto del §8.4.** Senza, il cambio di cliente sul
+  contratto lascia la fornitura (`contratti_utilities`) sull'istanza di prima.
+  Decisione di Tid (2026-10-12): **nessun brief nuovo**, la richiesta al team
+  DB vive qui, nel §8.4.
+* **Emittente — ✅ deciso da Tid (2026-10-12): come il preventivo.**
+  `emittente_fiscale_id` resta fuori dall'aggiornamento del contratto (in
+  `_FORBIDDEN_TESTATA_UPDATE`), come `utility_id`. Escono dal divieto ed entrano
+  in `UPDATE_KEYS_TESTATA` i soli `billing_account_id` e `istanza_utility_id`,
+  risolti in coppia dal BB. Se il BA nuovo non e' dell'emittente del contratto
+  lo dice il guard DB (`script.trgfn_doc_guard_emittente_ba`,
+  `E_DOC_EMITTENTE_BA_INCOERENTE`); il commento sul divieto dell'emittente va
+  riscritto, perche' la sua premessa («il BA e' immutabile») cade.
+
+Ordine: il team DB consegna il §8.4 → BE (BB + contratto + ritiro della copia del
+preventivo) e FE nello stesso giro.
+
+Lato BE: `billing_account_id` e `istanza_utility_id` escono da
+`_FORBIDDEN_TESTATA_UPDATE` ed entrano in `UPDATE_KEYS_TESTATA`, risolti dal
+BB; `utility_id` resta immutabile come sul preventivo; `emittente_fiscale_id`
+va deciso con Tid (sull'offerta si cambia, sul preventivo no). Lato FE: il BA
+del `ContrattoDrawer` in modifica oggi e' un `InputText` disabilitato, e dopo il
+salvataggio in modifica il drawer **non** ricarica `detail`, che e' la fonte del
+R-FE-2: va ricaricato come fanno DDT, preventivo e offerta.
+
+### 8.4 ⛔ Richiesta al team DB — la fornitura del documento non segue il cliente
+
+> Per decisione di Tid (2026-10-12) la richiesta sta **in questo brief**: il team
+> DB la prende da qui. Blocca il §8.3.
+
+Trovato scrivendo il §8.3, sul contratto (la struttura):
+`vendite.offerte_commerciali_utilities` e `vendite.contratti_utilities` hanno
+una loro **copia** di `istanza_utility_id` e `utility_id` (NOT NULL), e
+`contratti_utilities` anche `istanza_dati_precontrattuali_id`. Nessun vincolo e
+nessun trigger le lega alla testata: la FK composta `fk_<doc>_ba_coppia` e' sulla
+testata, i satelliti hanno FK semplici, e nessuna funzione le riallinea.
+
+* **Offerta, oggi**: il cliente si cambia in bozza
+  (`UPDATE_KEYS_OFFERTA` ha BA e istanza) e il BE toglie `istanza_utility_id` /
+  `utility_id` dall'aggiornamento della fornitura (immutabili). Un'offerta che
+  cambia istanza tiene la fornitura sull'istanza di prima, e la cascata la porta
+  sul contratto (`fn_push_offerta_a_contratto`).
+* **Contratto**: il DB ammette il cambio in DRAFT (§7.1), con lo stesso esito.
+
+E' lo stesso difetto di questo brief, sulla fornitura invece che sugli
+indirizzi: un dato del documento preso dal cliente che non lo segue quando il
+cliente cambia. Proposta (la forma la sceglie il team DB): o la copia si toglie
+(la fornitura legge istanza e utility dalla testata), o un vincolo la lega alla
+testata (FK composta verso la testata, `ON UPDATE CASCADE`), o il trigger del
+cambio di cliente la riallinea; e un pgTAP che cambia l'istanza in bozza su
+offerta e contratto. Il §8.3 aspetta questa consegna.
+
+### 8.5 Prove
+
+* `apps/vendite/tests/db/test_indirizzi_seguono_cliente_db.py` (DB vero, 6 test,
+  mondo fabbricato): la creazione riempie lo slot CON dal ripiego FATT; a slot
+  pieno il building block torna `False`; il cliente cambiato in bozza porta lo
+  slot sul cliente nuovo; picker e origine soggetto di un altro cliente
+  rifiutati con `E_INDIRIZZO_DOC_NON_DEL_CLIENTE`, 400, campo
+  `tipo_indirizzo_id`; l'una-tantum si scrive.
+* Unitari: `test_indirizzi_documento_helpers.py` riscritto (6 test, repository
+  con `spec`: un ritorno al controllo Python fallirebbe; gli id del payload
+  passano da `PayloadValidator`, un id non intero e' `E_<DOM>_VALIDAZIONE` e non
+  un 500 da `int()` grezzo); un test per punto di
+  chiamata (DDT, DDT da ordine, riconsegna, ordine, ordine da preventivo,
+  preventivo, offerta, push al contratto; il contratto **non** lo richiama);
+  gli errori del building block salgono.
+* ⚠️ Trovato: `test_offerte_service.py` usa `unittest.TestCase`, che **non**
+  vieta il DB (api.md §Test). I due test del push al contratto hanno chiamato
+  `fn_doc_indirizzo_default` sul DB configurato prima che `ContrattiRepository`
+  fosse patchato. Verificato in lettura col contesto operatore: il contratto
+  101 non esiste, nessuna riga di `contratti_indirizzi` nata nella finestra
+  delle corse. Ora e' patchato; la classe resta un debito (`SimpleTestCase`).
+* Suite BE con `ZEROERP_TEST_DB_E2E=1`: 6549, verdi tranne i due guardrail
+  delle policy, rossi per `E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA`
+  (brief-db-date-consegna-righe-in-blocco): il codice e' a DB ma il suo seed
+  non e' ancora in git, quindi non si rigenera (DB avanti a git). ruff e mypy
+  puliti. Smoke `smoke-indirizzi-documento-catena.py` verde.
+* FE: vitest 813 verdi (spec della sezione 7-8 nuovi), lint, guard e build verdi.
+  Poi la sezione ha preso anche una guardia contro le risposte stantie
+  (`useFetchVersion`) e la ricarica solo a parita' di documento: spec 9 verdi.
+  Rilettura critica dello stesso giorno: il watch sul cliente ricaricava anche al
+  **cambio di documento** (doppia `list` in gara con quella del watch su `docId`)
+  e `load()` non scartava le risposte stantie. Ora ricarica solo sullo stesso
+  documento, con `useFetchVersion`; spec 9, provato per mutazione.
+* ⏳ **Collaudo in-app (Tid)**: un DDT nuovo nasce con la Consegna del cliente;
+  cambiato il cliente in bozza, il pannello mostra quella del cliente nuovo e
+  una consegna scritta a mano resta; un preventivo e un'offerta che cambiano
+  cliente fanno lo stesso; il DDT da ordine e la riconsegna tengono la consegna
+  della sorgente.

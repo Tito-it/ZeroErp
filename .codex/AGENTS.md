@@ -103,6 +103,25 @@ Vale per DB, backend e frontend. È il criterio con cui nascono i building block
 Esempi applicati: `frontend-standards.md` §«Dove vive il NOME di un'icona»
 (la regola applicata al significato) e le voci «regola del 2» dei due cataloghi.
 
+## ⏭️ Ogni brief dice in cima chi riparte
+
+Vale per ogni brief e piano in `docs/it/dev/work-in-progress/` (DB, BE, FE).
+Chi lo apre deve sapere **a chi tocca** senza leggerlo tutto.
+
+* Subito sotto il titolo c'è il blocco **«⏭️ Chi riparte — aggiornato al
+  AAAA-MM-GG»**: una riga che risponde da sola («Riparte: …»), poi una tabella
+  `# | Chi | Che cosa | Dove | Aspetta`, un passo per riga, fino
+  all'archiviazione. In fondo: le **decisioni aperte di Tid** (o «nessuna») e
+  se il lavoro fatto è ancora da committare.
+* **Si aggiorna nello stesso momento** in cui si chiude un giro o Tid prende
+  una decisione, insieme alla data. Un blocco con la data vecchia è peggio di
+  nessun blocco: dice a qualcuno che tocca a lui quando non è vero.
+* Il blocco dice **chi** e **dove**: il dettaglio resta nella sua sezione, non
+  si ricopia qui.
+
+Esempio:
+[brief-db-indirizzi-documento-seguono-il-cliente](../docs/it/dev/work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md).
+
 ## Dove sta cosa
 
 AGENTS.md tiene solo le regole **trasversali**. Il dettaglio di ogni materia sta

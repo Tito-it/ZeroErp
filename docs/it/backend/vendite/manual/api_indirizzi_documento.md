@@ -47,16 +47,19 @@ Via `handle_post_json`. Due flussi mutuamente esclusivi:
 - **PICKER** (indirizzo del cliente): body `{tipo_indirizzo_id, origine_indirizzo_id, snapshot?}`.
   Lo snapshot geografico è composto **server-side** da
   `script.fn_snapshot_indirizzo` (D-5): dal payload vengono accettati solo i
-  campi di contatto `email/telefono/note`. **Guard ownership**: l'indirizzo
-  deve appartenere al `soggetto_ruolo` del cliente (billing account) del
-  documento, altrimenti `E_<DOM>_VALIDAZIONE`.
+  campi di contatto `email/telefono/note`. Che l'indirizzo sia **del
+  cliente del documento** (il suo ruolo e, se e' legato a una fornitura, la
+  sua istanza) lo giudica il guard DB `vendite.trgfn_doc_indirizzi_guard_cliente`
+  sulle sei `*_indirizzi`: `E_INDIRIZZO_DOC_NON_DEL_CLIENTE` sul campo
+  `tipo_indirizzo_id`. Il backend non ha piu' un controllo suo (dal
+  2026-10-12, brief-db-indirizzi-documento-seguono-il-cliente R-BE-2).
 - **UNA-TANTUM** (indirizzo occasionale, D-4): body `{tipo_indirizzo_id, snapshot}`.
   Chiavi ammesse: `intestazione, via, cap, citta, prov, stato, display, email,
   telefono, note` (soli valori scalari, il resto scartato); richiesto almeno
   uno tra `via/citta/display`. `origine_indirizzo_id` resta NULL;
   `origine_soggetto_ruolo_id` opzionale per dichiarare la provenienza
-  "anagrafica soggetto" (picker su riga fonte=soggetto e auto-assegnazione):
-  validato contro il cliente del documento (anti-tampering). Semantica tag FE:
+  "anagrafica soggetto" (picker su riga fonte=soggetto e slot di default):
+  la giudica lo stesso guard DB. Semantica tag FE:
   entrambi NULL = una-tantum vero; solo `origine_soggetto_ruolo_id` = derivato
   dal layer soggetto (tag "Soggetto").
 
@@ -70,7 +73,9 @@ Via `handle_post_json`. Due flussi mutuamente esclusivi:
   documento fuori bozza: lo solleva il lock del DB, il service non ha piu' un
   guard di stato suo); `E_TIPO_INDIRIZZO` (trigger whitelist);
   `E_INDIRIZZO_SNAPSHOT_NOT_FOUND` (404, origine inesistente);
-  `E_<DOM>_VALIDAZIONE` (payload/ownership).
+  `E_INDIRIZZO_DOC_NON_DEL_CLIENTE` (400, indirizzo d'anagrafica di un altro
+  cliente o di un'altra fornitura, campo `tipo_indirizzo_id`);
+  `E_<DOM>_VALIDAZIONE` (payload).
 
 ### Rimozione slot `DELETE .../<id>/indirizzi/<indirizzo_id>/`
 
@@ -81,19 +86,32 @@ Via `handle_post_json`. Due flussi mutuamente esclusivi:
   **all'emissione** (`trg_ddt_a10_guard_indirizzi_obbligatori_upd` →
   `E_INDIRIZZO_DOC_OBBLIGATORIO`), non alla rimozione.
 
-## Auto-assegnazione default alla creazione (UX v2)
+## Slot di default e cambio di cliente
 
-`auto_assegna_indirizzo_default(cfg, documento_id)` (helper condiviso): alla
-creazione del documento, se lo slot default (CON → FATT) e' vuoto e il cliente
-ha un indirizzo di **ruolo** di tipo CON (fallback FATT), lo snapshot viene
-congelato con `origine_*`. Best-effort (mai bloccante). Attivo su **tutti i
-5 domini** (rollout 2026-07-12): DDT (create standalone + evasione da ordine),
-preventivi (`crea_preventivo`), ordini (`crea_ordine`, che copre anche la
-conversione da offerta, + fallback post `fn_push_preventivo_a_ordine`),
-offerte (`crea_offerta`), contratti (`create_contratto` + fallback post
-`fn_push_offerta_a_contratto` via `auto_assegna_indirizzo_default_contratto`).
-Dove esiste la cascata DB dal documento sorgente, l'helper agisce solo da
-fallback (salta se lo slot default e' gia' valorizzato).
+Lo slot di default lo riempie il **DB**, non il backend (dal 2026-10-12,
+brief-db-indirizzi-documento-seguono-il-cliente D-2):
+
+- **alla creazione** chi crea chiama `vendite.fn_doc_indirizzo_default(<documento>, <id>)`
+  (repository: `riempi_indirizzo_default`), nella **stessa transazione** della
+  creazione: non e' best-effort, un errore sale e annulla anche la testata.
+  Quale slot e quale ripiego sono un dato (`config.tipi_indirizzi_allowed.slot_default`,
+  `ripiego_tipo_indirizzo_id`: oggi CON con ripiego FATT su DDT, ordini,
+  preventivi, offerte, contratti). Lo slot si riempie **solo se e' vuoto**:
+  dove c'e' la cascata dal documento sorgente il building block si chiama
+  **dopo** il verbo, e la sorgente vince. Punti di chiamata: `crea_ddt`,
+  `crea_ddt_da_ordine`, `genera_ddt_riconsegna`, `crea_ordine` (copre la
+  conversione da offerta), `crea_ordine_da_preventivo`, `crea_preventivo`,
+  `crea_offerta`, `push_a_contratto` dell'offerta. `create_contratto` no: lo fa
+  `vendite.fn_create_contratto` da se'. Le revisioni di preventivo e offerta no:
+  copiano gli indirizzi della versione precedente cosi' come sono;
+- **al cambio di cliente in bozza** (DDT: BA o destinatario; preventivo,
+  offerta, contratto: BA o istanza) un trigger toglie gli indirizzi
+  d'anagrafica che non sono piu' del cliente (gli una-tantum restano) e
+  riempie di nuovo lo slot rimasto vuoto. Il FE ricarica il pannello dopo il
+  salvataggio del cliente.
+
+All'emissione l'indirizzo d'altri e' un motivo del gate
+(`reason_key` `common.azione_reason.indirizzo_non_del_cliente`).
 
 ## Dipendenze DB
 

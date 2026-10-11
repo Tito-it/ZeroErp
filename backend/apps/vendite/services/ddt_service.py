@@ -66,7 +66,6 @@ from apps.vendite.services._componenti_service_helpers import (
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
-    auto_assegna_indirizzo_default,
     delete_indirizzo_documento,
     list_indirizzi_documento,
     upsert_indirizzo_documento,
@@ -273,11 +272,12 @@ def list_righe_pagina(ddt_id: int, **opzioni: Any) -> tuple[list[dict[str, Any]]
 
 # ── Indirizzi documento (BB condiviso _indirizzi_documento_helpers) ──
 
-# Configurazione unica del BB per il dominio DDT: guard esistenza/stato,
-# ownership picker e traduzione errori DB vivono nel helper condiviso.
+# Configurazione unica del BB per il dominio DDT: guard di esistenza e
+# traduzione errori DB vivono nel helper condiviso (l'appartenenza al cliente
+# la giudica il DB).
 _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
-    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    # dei test unit raggiungono il repository.
     repo_factory=lambda: DdtRepository(),
     not_found_code="E_DDT_NOT_FOUND",
     error_code="E_DDT_VALIDAZIONE",
@@ -293,7 +293,8 @@ def list_indirizzi(ddt_id: int) -> dict[str, Any]:
 
 # Scopo: Upsert slot indirizzo (uno-per-tipo, solo DRAFT: dopo l'emissione lo
 #        snapshot e' congelato col documento). Picker: snapshot server-side da
-#        fn_snapshot_indirizzo + guard ownership; una-tantum: dal payload.
+#        fn_snapshot_indirizzo; una-tantum: dal payload. Che sia del cliente
+#        lo giudica il guard DB.
 def upsert_indirizzo(ddt_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     return upsert_indirizzo_documento(_INDIRIZZI_CFG, ddt_id, payload)
 
@@ -340,7 +341,10 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
     assert stato_bozza_id is not None
 
     meta = data.get("meta")
-    with _db_errors("crea_ddt"):
+    # Creazione e slot di default in UNA transazione: il riempimento non e'
+    # best-effort, e un suo errore non deve lasciare la bozza senza chi l'ha
+    # chiesta (ATOMIC_REQUESTS e' spento, api.md §Atomicita').
+    with _db_errors("crea_ddt"), transaction.atomic():
         creato = repo.create_ddt(
             destinatario_soggetto_ruolo_id=data.get("destinatario_soggetto_ruolo_id"),
             stato_doc_ddt_id=int(stato_bozza_id),
@@ -365,9 +369,9 @@ def crea_ddt(payload: dict[str, Any]) -> dict[str, Any]:
             meta=meta if isinstance(meta, dict) else None,
             fatturazione_immediata=data.get("fatturazione_immediata"),
         )
-    # UX v2: auto-assegnazione best-effort dell'indirizzo di consegna default
-    # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(creato["id"]))
+        # Slot di default dall'anagrafica del cliente: lo decide il DB
+        # (`vendite.fn_doc_indirizzo_default`, slot e ripiego sono dati).
+        repo.riempi_indirizzo_default(int(creato["id"]))
     return creato
 
 
@@ -840,9 +844,9 @@ def delete_componente(
 #        `vendite.fn_genera_ddt_da_ordine` (via DdtRepository.push_da_ordine),
 #        atomica DB-first: crea testata DRAFT + righe (snapshot A-2) + componenti
 #        + fulfillment riga<->riga e proietta lo stato ordine (CONFERMATO/
-#        PARZIALMENTE_EVASO/EVASO). NIENTE transaction.atomic() extra (come
-#        crea_ordine_da_preventivo). `righe` = [{ordine_riga_id, qta_da_evadere}]
-#        in UNITA' OPERATIVA; None = tutto il residuo. Ritorna
+#        PARZIALMENTE_EVASO/EVASO). La transaction.atomic() tiene insieme il
+#        verbo e il riempimento dello slot di default. `righe` =
+#        [{ordine_riga_id, qta_da_evadere}] in UNITA' OPERATIVA; None = tutto il residuo. Ritorna
 #        {ddt_id, numero(None in DRAFT), ordine_id}.
 def crea_ddt_da_ordine(
     ordine_id: int, righe: list[dict[str, Any]] | None = None,
@@ -851,12 +855,12 @@ def crea_ddt_da_ordine(
     # Errori del guard fulfillment/evasione (E_DDT_ORDINE_NOT_FOUND,
     # E_DDT_ORDINE_STATO_NON_EVADIBILE, E_DDT_NIENTE_DA_EVADERE,
     # E_QTA_SUPERA_RESIDUO) sollevati dalla fn DB -> tradotti da _db_errors.
-    with _db_errors("crea_ddt_da_ordine"):
+    # Il verbo e il default nella stessa transazione: la cascata DB copia
+    # gli indirizzi dell'ordine, e il default riempie lo slot SOLO se e'
+    # rimasto vuoto (la sorgente vince).
+    with _db_errors("crea_ddt_da_ordine"), transaction.atomic():
         ddt_id = repo.push_da_ordine(int(ordine_id), righe)
-    # UX v2: la cascata DB copia gli indirizzi dell'ordine; se l'ordine non
-    # aveva la consegna, fallback best-effort dall'anagrafica di ruolo
-    # (l'helper salta se lo slot default e' gia' valorizzato).
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(ddt_id))
+        repo.riempi_indirizzo_default(int(ddt_id))
     # Il DDT nasce sempre in DRAFT: il `numero` e' assegnato solo a EMESSO dal
     # trigger DB -> qui e' deterministicamente None (nessun re-read).
     return {"ddt_id": ddt_id, "numero": None, "ordine_id": int(ordine_id)}
