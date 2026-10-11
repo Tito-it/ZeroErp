@@ -111,7 +111,7 @@ Le sette funzioni si ritirano nello stesso giro.
 
 * **Le altre colonne di testata in fase chiusa** (§8 di brief-db-esecutivi-ba-coppia): quali colonne
   di una testata si possono ancora cambiare dopo l'emissione. È una domanda di dominio, colonna per
-  colonna: brief suo. ➡️ [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D26,
+  colonna: brief suo. ➡️ [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md) (D26,
   aperto il 2026-10-10).
 
 ## 8. Giro DB — consegna (team DB, 2026-10-10)

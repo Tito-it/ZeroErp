@@ -10,7 +10,7 @@
 > **Stato al 2026-10-10:** ✅ **chiuso e archiviato.** Lato DB applicato su dbdev e verde, giro 1 e
 > giro 2 (§9, §11); lato BE/FE fatto (§12, commit `062b06368`). Il debito fuori perimetro e' in tre
 > brief: [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22, chiuso),
-> [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D26) e
+> [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md) (D26) e
 > [brief-db-indirizzi-documento-seguono-il-cliente](../work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md)
 > (D27, dal §12.3). Il collaudo a video dei form di DDT e ordine resta di Tid (§12.2).
 > **Dettaglio:** 31 changeSet
@@ -762,7 +762,7 @@ Fuori perimetro — all'archiviazione va in un **brief nuovo**, con la voce-rima
   commesse), annotate nel §5.5: regola del 2, un BB parametrico. ➡️ **Brief aperto il 2026-10-10**:
   [brief-db-guard-emittente-ba-unico](brief-db-guard-emittente-ba-unico.md) (D22);
 * la domanda generale del §8 sulle **altre** colonne di testata in fase chiusa. ➡️ **Brief aperto il
-  2026-10-10**: [brief-db-testata-dopo-emissione](../work-in-progress/brief-db-testata-dopo-emissione.md) (D26).
+  2026-10-10**: [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md) (D26).
 
 Dentro il giro:
 
