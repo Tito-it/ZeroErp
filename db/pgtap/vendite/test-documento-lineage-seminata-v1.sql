@@ -40,13 +40,13 @@
 --  18) ⭐ e indietro dalla commessa: 1B, 1E, 1U, 2A, 2H, 3A — l'ordine arriva
 --      per due strade (A diretto al livello 2, e A dal DDT al livello 3): i
 --      percorsi sono due, e la guardia dei cicli e' sul percorso
---  19) ⭐ la sintesi (fn_documento_lineage_sintesi, 20261011-94) dei cinque
---      nodi costruiti, in un seme solo, = le loro righe di vw_documento_lineage
---  20) ⭐ e ogni nodo da solo, idem — finche' esiste la vista sono DUE copie
---      della regola, e questi due test le tengono uguali
+--  19) ⭐ la sintesi (fn_documento_lineage_sintesi) dei cinque nodi costruiti:
+--      discendenti, frontiera, sorgenti e radice attesi dal grafo (dal giro B
+--      la vista vw_documento_lineage non c'e' piu': i valori vengono dal grafo)
+--  20) ⭐ ogni nodo chiesto da solo da' la stessa riga che da' nel seme misto
 --  21) la commessa costruita ha tre sorgenti (B, E, U) e la radice e' il
 --      preventivo, che e' la sorgente ROOT
---  22) la sintesi senza seme solleva (la sintesi di tutti e' la vista)
+--  22) la sintesi senza seme solleva (si chiede per le chiavi dei documenti)
 --
 -- ── PERCHE' QUESTO FILE ─────────────────────────────────────────────
 --   La funzione degli archi scrive ogni ramo DUE volte: una per la lettura
@@ -331,33 +331,48 @@ SELECT is(
 -- ============================================================
 -- 19-22. La sintesi
 -- ============================================================
-CREATE TEMP TABLE g_vl AS
-SELECT v.* FROM vendite.vw_documento_lineage v
-  JOIN g_nodi n ON n.tipo_id = v.tipo_id AND n.uid = v.uid;
+-- ⭐ rev giro B (2026-10-11): vw_documento_lineage e' ritirata (20261011-98), e
+--   la sintesi e' la sede unica della regola. I valori attesi si ricavano dal
+--   grafo costruito (tutti i documenti in fase APERTO): la frontiera e' il nodo
+--   piu' a valle — la commessa, raggiunta al livello 3 dal preventivo via
+--   ordine e DDT; le sorgenti sono gli archi entranti non di ritorno, la radice
+--   e' la sorgente ROOT. Verificati contro la vista prima del ritiro.
+CREATE TEMP TABLE g_sint AS
+SELECT CASE
+         WHEN s.tipo_codice_interno = 'PREVENTIVO' AND s.uid = (SELECT preventivo_uid::text FROM g_prev)  THEN 'prev'
+         WHEN s.tipo_codice_interno = 'PREVENTIVO' AND s.uid = (SELECT preventivo_uid::text FROM g_prev2) THEN 'prev2'
+         WHEN s.tipo_codice_interno = 'ORDINE_VENDITA' THEN 'ord'
+         WHEN s.tipo_codice_interno = 'COMMESSA'       THEN 'com'
+         WHEN s.tipo_codice_interno = 'DDT_VENDITA'    THEN 'ddt'
+       END AS nodo, s.*
+  FROM vendite.fn_documento_lineage_sintesi(
+           (SELECT array_agg(tipo_id) FROM g_nodi), (SELECT array_agg(uid) FROM g_nodi)) s;
 
 SELECT is(
-    (SELECT count(*)::int FROM (
-        SELECT * FROM vendite.fn_documento_lineage_sintesi(
-                   (SELECT array_agg(tipo_id) FROM g_nodi), (SELECT array_agg(uid) FROM g_nodi))
-        EXCEPT ALL SELECT * FROM g_vl) a)
-  + (SELECT count(*)::int FROM (
-        SELECT * FROM g_vl
-        EXCEPT ALL SELECT * FROM vendite.fn_documento_lineage_sintesi(
-                   (SELECT array_agg(tipo_id) FROM g_nodi), (SELECT array_agg(uid) FROM g_nodi))) b)
-  + abs((SELECT count(*)::int FROM g_vl) - 5),
-    0,
-    '19) sintesi dei cinque nodi costruiti, in un seme solo = le loro righe di vw_documento_lineage');
+    (SELECT string_agg(g.nodo || ':' || g.n_discendenti_diretti || '/' || g.n_discendenti_attivi
+                       || '/' || g.frontiera_tipo_codice_interno || '/' || g.n_sorgenti
+                       || '/' || coalesce(so.codice_interno, '-') || '/' || g.is_transitato::text,
+                       ',' ORDER BY g.nodo)
+       FROM g_sint g
+       LEFT JOIN config.sorgenti so ON so.id = g.root_tipo_id),
+    'com:0/0/COMMESSA/3/PREVENTIVO/false,ddt:1/1/COMMESSA/1/ORDINE_VENDITA/true,'
+    'ord:2/2/COMMESSA/1/PREVENTIVO/true,prev:2/2/COMMESSA/0/-/true,prev2:0/0/PREVENTIVO/0/-/false',
+    '19) sintesi dei cinque nodi costruiti: discendenti, frontiera, sorgenti e radice attesi dal grafo');
 
 SELECT is(
     (SELECT count(*)::int FROM g_nodi n
       WHERE (SELECT count(*) FROM (
                 SELECT * FROM vendite.fn_documento_lineage_sintesi(ARRAY[n.tipo_id], ARRAY[n.uid])
-                EXCEPT ALL SELECT * FROM g_vl v WHERE v.tipo_id = n.tipo_id AND v.uid = n.uid) a)
-          + (SELECT count(*) FROM (
-                SELECT * FROM g_vl v WHERE v.tipo_id = n.tipo_id AND v.uid = n.uid
-                EXCEPT ALL SELECT * FROM vendite.fn_documento_lineage_sintesi(ARRAY[n.tipo_id], ARRAY[n.uid])) b) <> 0),
+                EXCEPT ALL
+                SELECT tipo_id, uid, codice, stato_codice_interno, stato_codice, stato_descrizione, fase,
+                       is_abortito, pratica_id, pratica_numero, n_pratiche, frontiera_tipo_id, frontiera_uid,
+                       frontiera_codice, frontiera_stato_codice_interno, frontiera_fase, n_discendenti_diretti,
+                       n_discendenti_attivi, is_transitato, n_sorgenti, root_tipo_id, root_uid, root_codice,
+                       natura_doc_codice_interno, natura_doc_descrizione, frontiera_natura_doc_codice_interno,
+                       tipo_codice_interno, frontiera_tipo_codice_interno
+                  FROM g_sint g WHERE g.tipo_id = n.tipo_id AND g.uid = n.uid) a) <> 0),
     0,
-    '20) sintesi di ogni nodo costruito, da solo = la sua riga di vw_documento_lineage');
+    '20) ogni nodo chiesto da solo da'' la stessa riga che da'' nel seme misto');
 
 SELECT is(
     (SELECT s.n_sorgenti || '|' || (s.root_uid = (SELECT preventivo_uid::text FROM g_prev))::text
@@ -370,7 +385,7 @@ SELECT is(
 SELECT throws_ok(
     $q$ SELECT * FROM vendite.fn_documento_lineage_sintesi(NULL::bigint[], NULL::text[]) $q$,
     NULL,
-    '22) la sintesi senza seme solleva: la sintesi di tutti e'' la vista');
+    '22) la sintesi senza seme solleva: si chiede per le chiavi dei documenti');
 
 SELECT * FROM finish();
 ROLLBACK;

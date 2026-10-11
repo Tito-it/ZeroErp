@@ -15,7 +15,7 @@
 --   4.  vista_sql della lista = vw_contratti_lista
 --   5.  Esattamente 22 colonne attive nel catalogo contratti
 --   6.  Colonna id_fiscale ha campo_sorgente = id_fiscale_univoco_cf_piva
---   7.  Tutti i campo_sorgente del catalogo esistono nella vista (anti-typo, gemello B2)
+--   7.  Tutti i campo_sorgente del catalogo esistono nella vista o nella sintesi della lineage (anti-typo, gemello B2)
 --   8.  Preset contratti_default presente con is_default=true
 --   9.  Preset: pagina_dimensione=25, ambito=sistema
 --   10. Esattamente 13 colonne visibili nel preset contratti_default
@@ -148,9 +148,16 @@ SELECT is(
                     AND ic.table_name   = 'vw_contratti_lista'
                     AND ic.column_name  = lc.campo_sorgente
                )
+           -- ⭐ D-B2 (giro B di brief-db-lineage-seminata-per-chiave, 2026-10-11):
+           --    oppure e' una colonna della SINTESI della lineage, che il backend
+           --    chiede per le chiavi della pagina (frontiera, transito…).
+           AND NOT EXISTS (
+                 SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
+                  WHERE sc.colonna = lc.campo_sorgente
+               )
     ),
     0,
-    '7. Tutti i campo_sorgente del catalogo contratti esistono nella vista'
+    '7. Tutti i campo_sorgente del catalogo contratti esistono nella vista o nella sintesi della lineage'
 );
 
 -- =========================================================

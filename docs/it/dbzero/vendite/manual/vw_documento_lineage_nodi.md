@@ -6,7 +6,7 @@
 >
 > [config.sorgenti](/dbzero/config/tabelle/sorgenti)
 > [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi)
-> [vendite.vw_documento_lineage](/dbzero/vendite/views/vw_documento_lineage)
+> [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) (era `vw_documento_lineage`, ritirata nel giro B)
 > [config/manual/sorgenti.md — Convenzione chiave sorgente](/dbzero/config/manual/sorgenti)
 
 ---

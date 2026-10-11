@@ -65,6 +65,21 @@ BEGIN ATOMIC
                     FROM config.sorgenti so
                    WHERE ((so.codice_interno)::text = 'DDT_VENDITA'::text)) AS t_ddt
             FROM seme k
+         ), cs_semi AS MATERIALIZED (
+          SELECT cs.id,
+             cs.commessa_id,
+             cs.sorgente_tipo_id,
+             cs.ruolo_link,
+                 CASE
+                     WHEN (cs.sorgente_tipo_id = k.t_prev) THEN (cs.sorgente_uid)::uuid
+                     ELSE NULL::uuid
+                 END AS k_uuid,
+                 CASE
+                     WHEN (((cs.sorgente_tipo_id = k.t_ord) OR (cs.sorgente_tipo_id = k.t_con)) OR (cs.sorgente_tipo_id = k.t_ddt)) THEN (cs.sorgente_uid)::bigint
+                     ELSE NULL::bigint
+                 END AS k_bigint
+            FROM (chiavi k
+              JOIN vendite.commesse_sorgenti cs ON (((cs.commessa_id = ANY (k.com_ids)) AND ((((cs.sorgente_tipo_id = k.t_prev) OR (cs.sorgente_tipo_id = k.t_ord)) OR (cs.sorgente_tipo_id = k.t_con)) OR (cs.sorgente_tipo_id = k.t_ddt)))))
          ), prev_k AS MATERIALIZED (
           SELECT (p.uid)::text AS uid
             FROM vendite.preventivi p
@@ -276,16 +291,13 @@ BEGIN ATOMIC
              'B'::text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text))))
-              JOIN vendite.preventivi p ON ((p.uid =
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = s_from.id) THEN (cs.sorgente_uid)::uuid
-                     ELSE NULL::uuid
-                 END)))
+              JOIN vendite.preventivi p ON ((p.uid = (cs.sorgente_uid)::uuid)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_prev
                     FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.prev_txt
-                    FROM chiavi k)::text[])))
+                    FROM chiavi k)::text[])) AND (p.uid = ANY (( SELECT k.prev_uids
+                    FROM chiavi k)::uuid[])))
          UNION ALL
           SELECT s_from.id,
              (p.uid)::text AS uid,
@@ -293,17 +305,13 @@ BEGIN ATOMIC
              (cm.id)::text AS id,
              cs.ruolo_link,
              'B'::text
-            FROM ((((vendite.commesse_sorgenti cs
+            FROM ((((cs_semi cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'PREVENTIVO'::text))))
-              JOIN vendite.preventivi p ON ((p.uid =
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = s_from.id) THEN (cs.sorgente_uid)::uuid
-                     ELSE NULL::uuid
-                 END)))
+              JOIN vendite.preventivi p ON ((p.uid = cs.k_uuid)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
-           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.commessa_id = ANY (( SELECT k.com_ids
-                    FROM chiavi k)::bigint[])) AND ((p.uid = ANY (( SELECT k.prev_uids
+           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_prev
+                    FROM chiavi k)) AND ((p.uid = ANY (( SELECT k.prev_uids
                     FROM chiavi k)::uuid[])) IS NOT TRUE))
          UNION ALL
           SELECT s_from.id,
@@ -368,16 +376,13 @@ BEGIN ATOMIC
              'E'::text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
-              JOIN vendite.ordini o ON ((o.id =
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = s_from.id) THEN (cs.sorgente_uid)::bigint
-                     ELSE NULL::bigint
-                 END)))
+              JOIN vendite.ordini o ON ((o.id = (cs.sorgente_uid)::bigint)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_ord
                     FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.ord_txt
-                    FROM chiavi k)::text[])))
+                    FROM chiavi k)::text[])) AND (o.id = ANY (( SELECT k.ord_ids
+                    FROM chiavi k)::bigint[])))
          UNION ALL
           SELECT s_from.id,
              (o.id)::text AS id,
@@ -385,17 +390,13 @@ BEGIN ATOMIC
              (cm.id)::text AS id,
              cs.ruolo_link,
              'E'::text
-            FROM ((((vendite.commesse_sorgenti cs
+            FROM ((((cs_semi cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'ORDINE_VENDITA'::text))))
-              JOIN vendite.ordini o ON ((o.id =
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = s_from.id) THEN (cs.sorgente_uid)::bigint
-                     ELSE NULL::bigint
-                 END)))
+              JOIN vendite.ordini o ON ((o.id = cs.k_bigint)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
-           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.commessa_id = ANY (( SELECT k.com_ids
-                    FROM chiavi k)::bigint[])) AND ((o.id = ANY (( SELECT k.ord_ids
+           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_ord
+                    FROM chiavi k)) AND ((o.id = ANY (( SELECT k.ord_ids
                     FROM chiavi k)::bigint[])) IS NOT TRUE))
          UNION ALL
           SELECT s_from.id,
@@ -406,16 +407,13 @@ BEGIN ATOMIC
              'F'::text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
-              JOIN vendite.contratti c ON ((c.id =
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = s_from.id) THEN (cs.sorgente_uid)::bigint
-                     ELSE NULL::bigint
-                 END)))
+              JOIN vendite.contratti c ON ((c.id = (cs.sorgente_uid)::bigint)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_con
                     FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.con_txt
-                    FROM chiavi k)::text[])))
+                    FROM chiavi k)::text[])) AND (c.id = ANY (( SELECT k.con_ids
+                    FROM chiavi k)::bigint[])))
          UNION ALL
           SELECT s_from.id,
              (c.id)::text AS id,
@@ -423,17 +421,13 @@ BEGIN ATOMIC
              (cm.id)::text AS id,
              cs.ruolo_link,
              'F'::text
-            FROM ((((vendite.commesse_sorgenti cs
+            FROM ((((cs_semi cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'CONTRATTO'::text))))
-              JOIN vendite.contratti c ON ((c.id =
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = s_from.id) THEN (cs.sorgente_uid)::bigint
-                     ELSE NULL::bigint
-                 END)))
+              JOIN vendite.contratti c ON ((c.id = cs.k_bigint)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
-           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.commessa_id = ANY (( SELECT k.com_ids
-                    FROM chiavi k)::bigint[])) AND ((c.id = ANY (( SELECT k.con_ids
+           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_con
+                    FROM chiavi k)) AND ((c.id = ANY (( SELECT k.con_ids
                     FROM chiavi k)::bigint[])) IS NOT TRUE))
          UNION ALL
           SELECT s_from.id,
@@ -444,16 +438,13 @@ BEGIN ATOMIC
              'U'::text
             FROM ((((vendite.commesse_sorgenti cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON ((d.id =
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = s_from.id) THEN (cs.sorgente_uid)::bigint
-                     ELSE NULL::bigint
-                 END)))
+              JOIN vendite.ddt d ON ((d.id = (cs.sorgente_uid)::bigint)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
            WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_ddt
                     FROM chiavi k)) AND (cs.sorgente_uid = ANY (( SELECT k.ddt_txt
-                    FROM chiavi k)::text[])))
+                    FROM chiavi k)::text[])) AND (d.id = ANY (( SELECT k.ddt_ids
+                    FROM chiavi k)::bigint[])))
          UNION ALL
           SELECT s_from.id,
              (d.id)::text AS id,
@@ -461,17 +452,13 @@ BEGIN ATOMIC
              (cm.id)::text AS id,
              cs.ruolo_link,
              'U'::text
-            FROM ((((vendite.commesse_sorgenti cs
+            FROM ((((cs_semi cs
               JOIN config.sorgenti s_from ON (((s_from.id = cs.sorgente_tipo_id) AND ((s_from.codice_interno)::text = 'DDT_VENDITA'::text))))
-              JOIN vendite.ddt d ON ((d.id =
-                 CASE
-                     WHEN (cs.sorgente_tipo_id = s_from.id) THEN (cs.sorgente_uid)::bigint
-                     ELSE NULL::bigint
-                 END)))
+              JOIN vendite.ddt d ON ((d.id = cs.k_bigint)))
               JOIN vendite.commesse cm ON ((cm.id = cs.commessa_id)))
               JOIN config.sorgenti s_to ON ((((s_to.codice_interno)::text = 'COMMESSA'::text) AND (s_to.attivo IS TRUE))))
-           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.commessa_id = ANY (( SELECT k.com_ids
-                    FROM chiavi k)::bigint[])) AND ((d.id = ANY (( SELECT k.ddt_ids
+           WHERE ((NOT ((fn_documento_lineage_archi.p_tipo_ids IS NULL) AND (fn_documento_lineage_archi.p_uids IS NULL))) AND (cs.sorgente_tipo_id = ( SELECT k.t_ddt
+                    FROM chiavi k)) AND ((d.id = ANY (( SELECT k.ddt_ids
                     FROM chiavi k)::bigint[])) IS NOT TRUE))
          UNION ALL
           SELECT DISTINCT s_from.id,
@@ -680,7 +667,7 @@ BEGIN ATOMIC
 END
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage_archi(p_tipo_ids bigint[], p_uids text[])
-IS '⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = force_generic_plan sulla funzione. Con un seme non costante il piano tiene i rami dei due modi e il JIT ne compilava le espressioni a ogni chiamata; le clausole la rendono non incorporabile e la pianificano una volta per sessione: chi la chiama non deve dichiarare niente. Gli ARCHI della lineage dei documenti, GREZZI (chiavi, ruolo, lettera A…U, is_ramo_inverso, rango_origine), per CHIAVE DEL NODO. Seme come fn_documento_lineage_nodi: (tipo_id, uid::text) in due array paralleli; entrambi NULL = tutti gli archi (vw_documento_lineage_archi ne e'' la proiezione decorata). Col seme: gli archi USCENTI da un nodo del seme e quelli ENTRANTI il cui from non sta nel seme, cioe'' gli archi incidenti, ciascuno una volta, con gli stessi DISTINCT della vista. Il seme scende come array (`= ANY`) sulla prima tabella di ogni ramo: passato come JOIN, sotto RLS il planner partiva dal lato sbagliato. Chi la chiama in un ciclo plpgsql dichiara SET plan_cache_mode = force_generic_plan: il corpo e'' grande e la pianificazione costa. Il vocabolario delle 13 lettere e'' quello di vw_documento_lineage_archi: un arco nuovo si aggiunge QUI, nei due modi. BEGIN ATOMIC, INVOKER. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
+IS '⭐ rev 2026-10-11 (20261011-92): nei rami polimorfi B, E, F, U il join verso il documento e'' un confronto fra colonne dello stesso tipo (cs_semi porta la chiave gia'' convertita): un cast nel join non e'' leakproof, e sotto RLS faceva leggere l''intera tabella dell''altro capo per ogni sorgente. ⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = force_generic_plan sulla funzione. Con un seme non costante il piano tiene i rami dei due modi e il JIT ne compilava le espressioni a ogni chiamata; le clausole la rendono non incorporabile e la pianificano una volta per sessione: chi la chiama non deve dichiarare niente. Gli ARCHI della lineage dei documenti, GREZZI (chiavi, ruolo, lettera A…U, is_ramo_inverso, rango_origine), per CHIAVE DEL NODO. Seme come fn_documento_lineage_nodi: (tipo_id, uid::text) in due array paralleli; entrambi NULL = tutti gli archi (vw_documento_lineage_archi ne e'' la proiezione decorata). Col seme: gli archi USCENTI da un nodo del seme e quelli ENTRANTI il cui from non sta nel seme, cioe'' gli archi incidenti, ciascuno una volta, con gli stessi DISTINCT della vista. Il seme scende come array (`= ANY`) sulla prima tabella di ogni ramo: passato come JOIN, sotto RLS il planner partiva dal lato sbagliato. Chi la chiama in un ciclo plpgsql dichiara SET plan_cache_mode = force_generic_plan: il corpo e'' grande e la pianificazione costa. Il vocabolario delle 13 lettere e'' quello di vw_documento_lineage_archi: un arco nuovo si aggiunge QUI, nei due modi. BEGIN ATOMIC, INVOKER. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
 ```
 
 ---

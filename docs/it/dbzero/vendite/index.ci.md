@@ -142,6 +142,7 @@
 - [fn_documento_lineage](manual/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_documento_lineage_archi](manual/fn_documento_lineage_archi.md) — (rev 2026-10-11)
 - [fn_documento_lineage_nodi](manual/fn_documento_lineage_nodi.md) — (rev 2026-10-11)
+- [fn_documento_lineage_sintesi](manual/fn_documento_lineage_sintesi.md) — (rev 2026-10-11)
 - [fn_documento_listino_operativo](manual/fn_documento_listino_operativo.md) — (funzione nata il 2026-10-04, `20261004-42`)
 - [fn_documento_righe_eccezione](manual/fn_documento_righe_eccezione.md) — (funzione nata il 2026-10-04, `20261004-70`)
 - [fn_documento_righe_preview](manual/fn_documento_righe_preview.md) — (funzione nata il 2026-10-04, `20261004-71`, dal corpo di `fn_contratto_righe_preview`)
@@ -399,9 +400,9 @@
 - [vw_ddt_riepilogo_iva_dettaglio](manual/vw_ddt_riepilogo_iva_dettaglio.md) — (rev 2026-08-21)
 - [vw_ddt_righe_dettaglio](manual/vw_ddt_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-19`)
 - [vw_ddt_righe_iva_base](manual/vw_ddt_righe_iva_base.md) — (rev 2026-08-21)
-- [vw_documento_lineage](manual/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
 - [vw_documento_lineage_archi](manual/vw_documento_lineage_archi.md) — `vendite.vw_documento_lineage_archi` è il **grafo di genealogia/transito** dei documenti vendite in forma **normalizzata**: **una riga per arco** (relazione padre→figlio tra due documenti). È la base da cui derivano sia la summary `vw_documento_lineage` sia il traversal `fn_documento_lineage`.
 - [vw_documento_lineage_nodi](manual/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
+- [vw_documento_lineage_sintesi_colonne](manual/vw_documento_lineage_sintesi_colonne.md) — (rev 2026-10-11)
 - [vw_famiglie_documento_lista](manual/vw_famiglie_documento_lista.md) — *(rev 2026-09-01 — vista nata il 2026-09-01)*
 - [vw_fattura_righe_esposte](manual/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
 - [vw_fattura_righe_lista](manual/vw_fattura_righe_lista.md) — (vista nata il 2026-09-28, `20260928-28`)
@@ -439,3 +440,6 @@
 - [vw_stato_sorgente_ordine](manual/vw_stato_sorgente_ordine.md) — (latest review 2026-07-02) `vendite.vw_stato_sorgente_ordine` è il **resolver del dominio ORDINE (di vendita)** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni ordine di vendita — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_ordini` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_preventivo](manual/vw_stato_sorgente_preventivo.md) — (latest review 01-07-2026) `vendite.vw_stato_sorgente_preventivo` è il **resolver del dominio PREVENTIVI** per la proiezione dello stato di dominio (brief-db-proiezione-stato-dominio, deliverable D2): espone il **descrittore normalizzato** dello stato **vivo** di ogni preventivo — stato nativo + mapping `fase`/`esito`/`terminale` dichiarato su `config.stati_doc_preventivi` — con chiave `(sorgente_tipo_id, sorgente_uid)` coerente con `pratiche.pratiche_sorgenti`.
 - [vw_stato_sorgente_reso](manual/vw_stato_sorgente_reso.md) — (latest review 2026-07-18)
+
+## 📘 Altri contenuti manuali
+- [vw_documento_lineage](manual/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:

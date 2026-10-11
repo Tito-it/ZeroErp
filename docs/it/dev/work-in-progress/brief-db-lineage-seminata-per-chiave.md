@@ -11,9 +11,10 @@
 > **Stato (2026-10-10):** ⬜ **aperto, non iniziato.** Decisioni di Tid del
 > 2026-10-10: **D-1 sì, D-3 sì, D-4 sì** (prima il pannello, poi le liste — §6).
 > **D-2 = B** (le liste chiedono la lineage per gli id della pagina, §5.2).
-> Piano in §8 (accorciato a giri A e B). **2026-10-11**: ✅ giro 1 chiuso (`20261011-62…-67`); ✅ giro A chiuso (`20261011-92…-94`, §8.5). Prossimo: giro B (DB + BE insieme).
-> **Ricadute BE/FE:** dipendono da D-2 (§5.3). Nessuna se si sceglie la forma
-> che resta tutta nel DB.
+> Piano in §8 (accorciato a giri A e B). **2026-10-11**: ✅ giro 1 chiuso (`20261011-62…-67`); ✅ giro A chiuso (`20261011-92…-94`, §8.5). Giro B: ✅ lato DB applicato (`20261011-95…-99`, §8.7); ⬜ B1 nel backend (§8.1) da confermare.
+> **Ricadute BE/FE:** **BE sì**, richiesta B1 pronta al §8.1 (liste, export e
+> drawer leggono le colonne del grafo dalla sintesi; va fatta **prima** del
+> `20261011-97/-98`). **FE:** nessuna, il contratto della riga non cambia.
 
 ## 1. Il difetto, sul modello
 
@@ -157,7 +158,7 @@ della pagina). Nessuna decisione aperta.
 | --- | --- | --- | --- |
 | 1 | `fn_documento_lineage_archi(<seme>)` e `fn_documento_lineage_nodi(<seme>)`; le due viste diventano la loro proiezione col seme `NULL` (regola del 2); indice `ordini(documento_origine_tipo, documento_origine_id)` per tutti i tipi (D-3) | DB | ✅ `20261011-62…-67` applicati (§8.3, §8.4) |
 | **A** | `fn_documento_lineage` risale per livelli sulle funzioni seminate (il pannello «Passaggi», `20261011-93`) **e** `fn_documento_lineage_sintesi(<chiavi>)`, le colonne di `vw_documento_lineage` per le sole chiavi chieste (`20261011-94`), più la correzione degli archi trovata misurando (`20261011-92`); equivalenza su tutti i documenti per tutte e due | DB | ✅ `20261011-92…-94` applicati, pgTAP verdi (§8.5) |
-| **B** | le viste di lista smettono di agganciare `vw_documento_lineage` **e insieme** le sette liste del backend chiedono la lineage a `fn_documento_lineage_sintesi` per gli id della pagina (§8.1); seed `ui.lista_colonna` e pgTAP delle colonne decisi insieme | DB + BE insieme | ⬜ |
+| **B** | le viste di lista smettono di agganciare `vw_documento_lineage` **e insieme** le sette liste del backend chiedono la lineage a `fn_documento_lineage_sintesi` per gli id della pagina (§8.1); seed `ui.lista_colonna` e pgTAP delle colonne decisi insieme | prima BE (B1), poi DB (B2) | ✅ decisioni (§8.6); ✅ B2 applicato (`20261011-95…-99`, §8.7), pgTAP verdi; ⬜ B1 nel backend da confermare (§8.1) |
 
 ⭐ **Piano accorciato (Tid, 2026-10-11)**: siamo solo in sviluppo, quindi i
 giri 2-5 diventano **A** e **B**. Il 2 e il 3 sono due funzioni DB che non
@@ -355,17 +356,186 @@ ritira. Seed `ui.lista_colonna`, ordinamento e filtri per una colonna della
 lineage, e i pgTAP che oggi leggono la vista (`test-documento-lineage-v1`,
 `test-colonne-lineage-liste-v1`) si decidono insieme (§8.1).
 
-### 8.1 Richiesta al team BE (giro 4) — da consegnare quando il giro 3 è applicato
+### 8.6 Giro B — la forma (2026-10-11): ✅ D-B1, D-B2 (a), D-B3 decise da Tid come proposte
 
-* Le liste di preventivi, offerte, ordini, DDT, resi, contratti, fatture leggono
-  oggi le colonne della lineage dalla vista di lista (che le aggancia da
-  `vw_documento_lineage`), e contano il totale con `COUNT(*) OVER ()` sulla
-  stessa query: la lineage si calcola per **tutte** le righe del filtro.
-* Dopo il giro 3: la query di pagina (e il conteggio) **senza** le colonne della
-  lineage; poi una chiamata `fn_documento_lineage_sintesi(<le chiavi della
-  pagina>)` e l'unione per `(tipo, uid)`. Il contratto della riga verso il FE
-  resta uguale.
-* ⚠️ Ordinare o filtrare per una colonna della lineage (frontiera, fase della
-  frontiera…) non si può più fare nella query di pagina: va censito quali liste
-  lo offrono oggi, e deciso caso per caso.
-* Il giro 5 (DB) parte solo a giro 4 consegnato.
+**Censimento** (doc auto-gen, `pg_depend`, seed letto da dbdev):
+
+* le sette viste di lista prendono da `vw_documento_lineage` le stesse **11
+  colonne**: `pratica_id`, `pratica_numero`, `n_pratiche` e **8 del grafo**
+  (`frontiera_tipo_id`, `frontiera_codice`, `frontiera_stato_codice_interno`,
+  `frontiera_fase`, `n_discendenti_attivi`, `is_transitato`,
+  `frontiera_natura_doc_codice_interno`, `frontiera_tipo_codice_interno`);
+* nel database nessun altro legge le sette viste, e `vw_documento_lineage` la
+  leggono solo loro. Nel backend la legge anche il drawer, per **un** documento
+  (`vendite_repository`, `WHERE l.tipo_id = %s AND l.uid = %s`);
+* catalogo `ui.lista_colonna`: **pratica** (`pratica_numero`) è filtrabile e
+  ordinabile (liste 4-9 e 48); **transito** (`frontiera_codice`) non è né
+  filtrabile né ordinabile, ma è **esportabile**;
+* il presidio `ui/test-lista-*-seed` (test 7) pretende che ogni `campo_sorgente`
+  sia una colonna della vista, e l'export delle liste legge per `campo_sorgente`.
+
+**La forma proposta**:
+
+* **la pratica resta nelle viste**, letta per chiave da un building block nuovo,
+  `pratiche.fn_pratica_del_documento(tipo, uid)` (SQL, `BEGIN ATOMIC`: la prima
+  pratica per id, il suo codice, quante sono). Non dipende dal grafo, quindi resta
+  ordinabile e filtrabile. La legge anche la sintesi (regola del 2: una sede sola
+  per la pratica di un documento);
+* **le 8 colonne del grafo escono dalle viste** e il backend le chiede a
+  `fn_documento_lineage_sintesi` per le sole chiavi della pagina (o
+  dell'export, o del documento del drawer), unendole alle righe con gli stessi
+  nomi: il contratto verso il FE non cambia;
+* **`vw_documento_lineage` si ritira** (non ha più lettori).
+
+**Decisioni attese**:
+
+* **D-B1** — l'ordine: **prima il BE** (B1: liste, export e drawer leggono le 8
+  colonne dalla sintesi; funziona già col DB di oggi, la sintesi c'è dal giro A),
+  **poi il DB** (B2: viste senza le 8 colonne, pratica dal building block, vista
+  ritirata). Così non c'è nemmeno la finestra di liste rotte. *Raccomandata.*
+* **D-B2** — il catalogo delle liste: le righe come `transito` hanno un
+  `campo_sorgente` che non sta più nella vista. Proposta: **niente colonna
+  nuova nel catalogo**. Una colonna «viene dalla sintesi» se il suo
+  `campo_sorgente` è una colonna del risultato di `fn_documento_lineage_sintesi`
+  (lo dice il catalogo di sistema, `pg_proc`). Il presidio 7 accetta «colonna
+  della vista **oppure** della sintesi», e il motore delle liste e l'export del
+  backend applicano la stessa regola. Alternativa: un attributo esplicito in
+  `ui.lista_colonna` (per esempio `origine = 'lineage'`), più chiaro da leggere
+  ma da tenere allineato a mano.
+* **D-B3** — l'export: le 8 colonne si chiedono alla sintesi con le chiavi di
+  **tutte** le righe esportate, a blocchi. Il costo segue l'export, non il grafo.
+
+### 8.7 Giro B, lato DB (B2) — scritto, provato e ✅ applicato da Tid, pgTAP verdi (2026-10-11)
+
+| ChangeSet | Cosa | Quando |
+| --- | --- | --- |
+| `20_code/pratiche/20261011-95-create-fn-pratica-del-documento` | la pratica di un documento, sede unica (building block nuovo) | subito |
+| `20_code/vendite/20261011-96-update-fn-documento-lineage-sintesi-pratica` | la sintesi legge la pratica da lì; vista `vendite.vw_documento_lineage_sintesi_colonne` (la regola D-B2 in un posto) | subito |
+| `20_code/ui/20261011-99-update-trgfn-ui-lista-colonna-campo-sorgente-sintesi` | la guardia del catalogo delle liste ammette un `campo_sorgente` della sintesi | subito (dopo `-96`) |
+| `20_code/vendite/20261011-97-update-viste-lista-senza-grafo` | le sette viste di lista senza le 8 colonne del grafo, pratica dal building block (DROP + CREATE, COMMENT conservati) | ⛔ **dopo B1** |
+| `20_code/vendite/20261011-98-drop-vw-documento-lineage` | ritiro di `vw_documento_lineage` | ⛔ **dopo B1 e `-97`** |
+
+**Trovato strada facendo.** Il presidio generale
+`ui/test-lista-colonna-campo-sorgente-in-vista-v1`, che nel censimento del §8.6
+mancava, e soprattutto la **guardia** dietro di lui:
+`ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente` rifiuta
+(`E_UI_CAMPO_SORGENTE_NON_TROVATO`) un `campo_sorgente` che non è nella vista.
+Dopo il `-97`, la prossima ricarica del seed delle liste (`transito` →
+`frontiera_codice`) sarebbe stata rifiutata. Il `-99` le applica la regola D-B2,
+letta dalla stessa vista delle colonne. Provato: la riscrittura delle 6 righe
+`transito` passa, un campo inesistente è ancora rifiutato.
+
+**pgTAP** (ritoccati in questo giro, tutti provati sullo scratch con l'SQL
+estratto del `-95…-99`):
+
+| File | Cosa | Verde da |
+| --- | --- | --- |
+| `ui/test-lista-{contratti,offerte,ordini,preventivi}-seed` | test 7: vista **o** sintesi | `-96` |
+| `ui/test-lista-colonna-campo-sorgente-in-vista-v1` | test 2: idem | `-96` |
+| `vendite/test-colonne-lineage-liste-v1` | 20 test «la vista espone frontiera_*» → «non la espone più»; invarianti misurati sulla sintesi per le chiavi di ogni lista | `-97` |
+| `vendite/test-documento-lineage-v1` | test 3, 7, 10 sulla sintesi (la vista è ritirata); invarianti «summary» sulla sintesi di tutti i nodi | `-98` |
+| `vendite/test-documento-lineage-seminata-v1` | test 19-20: valori attesi dal grafo costruito, non più il confronto con la vista | `-96` |
+
+Fra l'apply del `-96` e quello del `-97/-98` i due file `vendite/` sono **rossi
+per costruzione** (cercano lo stato di dopo), non per un difetto.
+
+**Prove** (2026-10-11):
+
+* le sette viste nuove come viste TEMP su dbdev come app: tipi delle colonne che
+  restano identici, righe identiche alle viste di oggi (`EXCEPT ALL` nei due
+  versi); pagina da 25 col totale 322-391 → 8-70 ms;
+* sintesi con la pratica dal building block: uguale a `vw_documento_lineage` a
+  pagine da 25 e documento per documento (482 nodi);
+* building block nel `LATERAL` di una lista come app: Index Cond su
+  `ix_pratiche_sorgenti_tipo_uid`; valori uguali a quelli della vista;
+* scratch, SQL estratto: dopo il `-97` restano 7 viste, `security_invoker`, COMMENT
+  della vista con la revisione davanti, COMMENT di colonna di
+  `vw_offerte_commerciali_lista` conservato, ACL `zeroerp_app` arwd e batch r;
+* regressione larga sullo scratch (80 file) prima e dopo: cambiano solo i file
+  ritoccati qui, tutti verdi dopo; tre `ui/` rossi anche prima (girano come
+  applicazione, lo scratch li lancia da owner), identici.
+
+✅ **Applicato** (2026-10-11): `20261011-95…-99`, pgTAP verdi. La pagina
+`manual/vw_documento_lineage.md` è cancellata insieme al `-98`. ⚠️ Con il `-97/-98`
+applicati, le liste mostrano frontiera e transito **solo** se B1 (§8.1) è già nel
+backend: da verificare nella sessione BE.
+
+### 8.1 Richiesta al team BE — B1 ⛔ URGENTE: il DB è già applicato
+
+> **A chi:** sessione BE (`dev/backend-tid`). **Stato (2026-10-11):** il lato DB
+> del giro B (`20261011-95…-99`) è **applicato** su dbdev, e B1 non è ancora
+> fatto. Era pensato al contrario (prima il BE): in sviluppo si è scelto di
+> applicare subito. **Effetti adesso, finché B1 non c'è:**
+> * le sette liste documento non hanno più le colonne del grafo: il chip
+>   «Transito» e le altre colonne di frontiera escono **vuote** (nessun errore,
+>   perché la riga semplicemente non le porta);
+> * il **drawer** (`vendite_repository`, ~riga 4593, `FROM vendite.vw_documento_lineage l`)
+>   va in **errore**: la vista non esiste più.
+> **FE:** nessuna ricaduta, il contratto della riga non cambia.
+
+**File che oggi nominano la lineage** (censimento per testo, 2026-10-11 — da
+rileggere, non è un elenco garantito):
+
+| File | Cosa |
+| --- | --- |
+| `backend/apps/vendite/db/vendite_repository.py` (~4479-4600) | il drawer: lettura di `vw_documento_lineage` per un documento → `fn_documento_lineage_sintesi(ARRAY[tipo_id], ARRAY[uid])`, stesse colonne |
+| `backend/apps/vendite/services/vendite_service.py` (~1829) | usa `frontiera_tipo_id`, `frontiera_uid`, `is_transitato`, `frontiera_*_codice_interno` del nodo letto dal drawer: non cambia, se la riga ha le stesse chiavi |
+| `backend/apps/vendite/types.py` (~1575) | il tipo della riga summary: solo il commento nomina la vista |
+| `backend/apps/vendite/db/{preventivi,offerte,ordini,contratti,ddt,resi,fatture}_repository.py` | le query di pagina delle sette liste: dopo la paginazione, la sintesi per le chiavi della pagina (punto 1 sotto) |
+| `backend/apps/ui/services/lista_export_service.py` | l'export per `campo_sorgente`: punto 3 sotto |
+| `backend/apps/vendite/api/lineage_views.py` (~80) | solo un commento |
+
+**Cosa è cambiato nel database (`20261011-97/-98`, applicati).**
+
+* Le sette viste di lista (`vw_preventivi_lista`, `vw_offerte_commerciali_lista`,
+  `vw_ordini_lista`, `vw_contratti_lista`, `vw_ddt_lista`, `vw_resi_lista`,
+  `vw_fatture_lista`) **non hanno più** le 8 colonne del grafo:
+  `frontiera_tipo_id`, `frontiera_codice`, `frontiera_stato_codice_interno`,
+  `frontiera_fase`, `n_discendenti_attivi`, `is_transitato`,
+  `frontiera_natura_doc_codice_interno`, `frontiera_tipo_codice_interno`.
+* Restano `pratica_id`, `pratica_numero`, `n_pratiche` (filtrabili e
+  ordinabili come oggi) e `fase`.
+* `vendite.vw_documento_lineage` **non esiste più**.
+
+**La lettura nuova.**
+`vendite.fn_documento_lineage_sintesi(p_tipo_ids bigint[], p_uids text[])`
+restituisce le 28 colonne che erano di `vw_documento_lineage`, per i soli
+documenti chiesti. La chiave del documento è la coppia `(tipo_id, uid)`:
+`tipo_id` = `config.sorgenti.id` del tipo, `uid` = la chiave resa a testo,
+cioè `uid::text` per preventivi e offerte e `id::text` per gli altri cinque.
+Una riga per documento visibile. Il seme è obbligatorio: `NULL` solleva
+`E_ERRORE_PARAMETRI`, un array vuoto dà zero righe.
+
+**Le richieste.**
+
+1. **Le sette liste.** La query di pagina (col suo `COUNT(*) OVER ()`) non
+   chiede più le 8 colonne alla vista. Dopo la paginazione, **una** chiamata
+   alla sintesi con le chiavi delle righe della pagina, e l'unione per
+   `(tipo_id, uid)`, con gli stessi nomi di colonna. Fatto datato (dbdev come app,
+   2026-10-11): pagina da 25 ~8-70 ms più ~58 ms di sintesi, contro ~320-390 ms
+   di oggi.
+2. **Quali colonne vengono dalla sintesi (D-B2).** Una colonna del catalogo
+   `ui.lista_colonna` viene dalla sintesi se il suo `campo_sorgente` **non** è
+   una colonna della vista di lista ed **è** in
+   `vendite.vw_documento_lineage_sintesi_colonne` (colonna `colonna`). Il
+   catalogo non cambia, e nessun elenco va scritto a mano. Oggi è il caso di
+   `transito` (`frontiera_codice`) nelle liste 4-9, ma la regola vale per
+   qualunque colonna futura. Queste colonne non sono filtrabili né ordinabili
+   (lo dice già il catalogo).
+3. **L'export (D-B3).** Stessa regola: le colonne che vengono dalla sintesi si
+   chiedono con le chiavi di **tutte** le righe esportate, a blocchi (per esempio
+   da 500), e si uniscono per chiave.
+4. **Il drawer** (`vendite_repository`, la lettura `FROM
+   vendite.vw_documento_lineage l WHERE l.tipo_id = %s AND l.uid = %s`): la
+   stessa riga si legge da `vendite.fn_documento_lineage_sintesi(ARRAY[%s],
+   ARRAY[%s])`. Fatto datato: ~300 → ~17 ms.
+5. Se un repository legge le viste di lista con `SELECT v.*` o nomina le 8
+   colonne nella proiezione o nella whitelist dell'ordinamento, va tolto: dopo
+   `-97` la colonna non c'è e la query fallisce.
+
+**Come si verifica.** Le liste tornano a mostrare frontiera e transito, e il
+drawer si apre. I valori sono quelli di prima: la sintesi è uguale, riga per riga,
+alla vista ritirata (provato il 2026-10-11, §8.5 e §8.7). Il lato DB lo presidiano
+i pgTAP `ui/test-lista-*-seed` (test 7), `ui/test-lista-colonna-campo-sorgente-in-vista-v1`
+e `vendite/test-colonne-lineage-liste-v1`; il lato BE ha bisogno dei suoi test
+(lista con frontiera, export con «Transito», drawer).

@@ -1,0 +1,153 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA GUARDIA DEL CATALOGO DELLE LISTE AMMETTE LE COLONNE DELLA SINTESI
+#   ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
+#   Brief: brief-db-lineage-seminata-per-chiave §8.6-§8.7 (giro B, D-B2).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   Il guard rifiuta (E_UI_CAMPO_SORGENTE_NON_TROVATO) un campo_sorgente che
+#   non e' una colonna della vista della lista. Col giro B le 8 colonne del
+#   grafo escono dalle viste di lista (20261011-97) e le chiede il backend a
+#   vendite.fn_documento_lineage_sintesi: la colonna «transito»
+#   (frontiera_codice) delle liste 4-9 non sta piu' nella vista. Senza questo
+#   changeSet la prossima scrittura di quelle righe del seed — la ricarica del
+#   CSV a un migrate — verrebbe rifiutata.
+#
+# ── LA CURA ─────────────────────────────────────────────────────────
+#   La regola D-B2, la stessa dei presidi ui/test-lista-*: un campo_sorgente e'
+#   valido se e' una colonna della vista OPPURE una colonna della sintesi,
+#   letta da vendite.vw_documento_lineage_sintesi_colonne (20261011-96). Corpo
+#   preso dalla doc auto-gen (rev 2026-09-27, 20260927-30); cambia solo il
+#   ramo dell'esistenza.
+#
+# Presidio: db/pgtap/ui/test-lista-colonna-campo-sorgente-in-vista-v1.sql
+# Dipendenze: 20261011-96 (la vista delle colonne della sintesi).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/ui/20261011-99-update-trgfn-ui-lista-colonna-campo-sorgente-sintesi-mctit.yaml
+
+  - changeSet:
+      id: 20261011-99-update-trgfn-ui-lista-colonna-campo-sorgente-sintesi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente: un campo_sorgente e' valido se e' una
+        colonna della vista oppure della sintesi della lineage
+        (vendite.vw_documento_lineage_sintesi_colonne). Regola D-B2 del giro B: le colonne del
+        grafo escono dalle viste di lista e le chiede il backend alla sintesi.
+      preConditions:
+        - onFail: HALT
+        - viewExists:
+            schemaName: vendite
+            viewName: vw_documento_lineage_sintesi_colonne
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente()
+               RETURNS trigger
+               LANGUAGE plpgsql
+              AS $function$
+              -- Scopo: verifica che campo_sorgente esista come attributo della view
+              -- referenziata da lista_definizione.vista_sql NELLO SCHEMA
+              -- lista_definizione.schema_dati, prima di permettere INSERT/UPDATE su
+              -- lista_colonna.
+              -- Skip per:
+              --   - tipo_colonna='azione'           (nessun campo sorgente per disegno)
+              --   - campo_sorgente IS NULL o ''     (colonna calcolata FE, es. sosp_riatt)
+              --   - lista senza vista_sql definita
+              -- rev 2026-09-27: la vista si cerca nel suo schema, non per solo nome.
+              -- rev 2026-10-11 (20261011-99, brief-db-lineage-seminata-per-chiave giro B,
+              --   D-B2): e' valido anche un campo_sorgente che NON sta nella vista ma e' una
+              --   colonna della sintesi della lineage (vendite.vw_documento_lineage_sintesi_colonne):
+              --   il backend la chiede a vendite.fn_documento_lineage_sintesi per le chiavi
+              --   della pagina. E' la stessa regola dei presidi ui/test-lista-*: in un posto
+              --   solo, la vista delle colonne.
+              DECLARE
+                v_vista_sql        ui.lista_definizione.vista_sql%TYPE;
+                v_schema_dati      ui.lista_definizione.schema_dati%TYPE;
+                v_colonna_esiste   BOOLEAN;
+              BEGIN
+                -- Le colonne di tipo 'azione' non hanno campo_sorgente
+                IF NEW.tipo_colonna = 'azione' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Nessuna validazione se campo_sorgente non valorizzato
+                -- (NULL = colonna calcolata; '' = equivalente nel seed CSV via loadUpdateData)
+                IF NEW.campo_sorgente IS NULL OR NEW.campo_sorgente = '' THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Recupera vista_sql e schema dalla lista padre
+                SELECT ld.vista_sql, ld.schema_dati
+                  INTO v_vista_sql, v_schema_dati
+                  FROM ui.lista_definizione ld
+                 WHERE ld.id = NEW.lista_id;
+
+                -- Se la lista non ha una view definita, skip
+                IF v_vista_sql IS NULL THEN
+                  RETURN NEW;
+                END IF;
+
+                -- Verifica esistenza della colonna nella relazione del suo schema
+                SELECT EXISTS (
+                  SELECT 1
+                    FROM pg_catalog.pg_class c
+                    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                    JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+                   WHERE n.nspname = v_schema_dati
+                     AND c.relname = v_vista_sql
+                     AND c.relkind IN ('v', 'm', 'r')
+                     AND a.attname = NEW.campo_sorgente
+                     AND a.attnum > 0
+                     AND NOT a.attisdropped
+                ) INTO v_colonna_esiste;
+
+                -- D-B2: oppure e' una colonna della sintesi della lineage.
+                IF NOT v_colonna_esiste THEN
+                  SELECT EXISTS (
+                    SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
+                     WHERE sc.colonna = NEW.campo_sorgente
+                  ) INTO v_colonna_esiste;
+                END IF;
+
+                IF NOT v_colonna_esiste THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'database',
+                    'ui.trgfn_ui_lista_colonna_a10_valida_campo_sorgente',
+                    'E_UI_CAMPO_SORGENTE_NON_TROVATO',
+                    jsonb_build_object(
+                      'detail', format('campo_sorgente = ''%s'' non trovato nella view ''%s.%s''',
+                                       NEW.campo_sorgente, v_schema_dati, v_vista_sql),
+                      'lista_id', NEW.lista_id,
+                      'codice', NEW.codice
+                    ),
+                    NULL,
+                    NEW.campo_sorgente,
+                    v_schema_dati || '.' || v_vista_sql
+                  );
+                END IF;
+
+                RETURN NEW;
+              END;
+              $function$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Si torna indietro ri-applicando il corpo di 20260927-30.
+              SELECT 1;

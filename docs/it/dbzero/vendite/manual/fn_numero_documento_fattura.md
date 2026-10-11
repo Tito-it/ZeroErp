@@ -8,7 +8,7 @@
 >
 > Dove finisce a video:
 >
-> [vendite.vw_documento_lineage](/dbzero/vendite/views/vw_documento_lineage)
+> [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) (era `vw_documento_lineage`, ritirata nel giro B)
 
 ---
 

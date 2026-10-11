@@ -1,0 +1,109 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA PRATICA DI UN DOCUMENTO: UNA SEDE SOLA
+#   pratiche.fn_pratica_del_documento(p_sorgente_tipo_id, p_sorgente_uid)
+#   Brief: brief-db-lineage-seminata-per-chiave §8.6-§8.7 (giro B).
+#
+# ── PERCHE' ─────────────────────────────────────────────────────────
+#   «La pratica di un documento» — la prima per id, il suo codice, quante sono
+#   — stava in vw_documento_lineage (CTE `prat`, calcolata per tutti i
+#   documenti) e da li' arrivava alle sette viste di lista, dove e' filtrabile
+#   e ordinabile. Col giro B le liste smettono di leggere il grafo: la pratica,
+#   che dal grafo non dipende, si legge per chiave. Due lettori — le viste di
+#   lista e fn_documento_lineage_sintesi — e una sede (regola del 2).
+#   Nessuna sede esistente dice questa cosa: script.vw_pratica_doc_sorgente e'
+#   «il documento piu' vivo di una pratica» (il verso opposto),
+#   vendite.vw_preventivi_pratiche elenca le pratiche di un preventivo.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   SQL, BEGIN ATOMIC (dipendenze in pg_depend), STABLE, INVOKER: la RLS delle
+#   pratiche resta di chi legge. Incorporabile, una riga sempre.
+#   Fatto datato (2026-10-11, dbdev come app): nel LATERAL di una lista diventa
+#   Index Cond su ix_pratiche_sorgenti_tipo_uid; valori identici a quelli di
+#   vw_documento_lineage per ogni documento.
+#
+# Presidio: db/pgtap/vendite/test-colonne-lineage-liste-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/pratiche/20261011-95-create-fn-pratica-del-documento-mctit.yaml
+
+  - changeSet:
+      id: 20261011-95-create-fn-pratica-del-documento
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        pratiche.fn_pratica_del_documento(tipo, uid): la pratica di un documento (prima per id, il
+        suo codice, quante sono), una riga sempre. Sede unica per le viste di lista e per
+        fn_documento_lineage_sintesi (giro B di brief-db-lineage-seminata-per-chiave).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: pratiche, tableName: pratiche }
+            - tableExists: { schemaName: pratiche, tableName: pratiche_sorgenti }
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE pronamespace = 'pratiche'::regnamespace
+                     AND proname = 'fn_pratica_del_documento'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION pratiche.fn_pratica_del_documento(
+                  p_sorgente_tipo_id pratiche.pratiche_sorgenti.sorgente_tipo_id%TYPE,
+                  -- la chiave POLIMORFA del documento, resa a text secondo key_selector:
+                  -- e' proprio la colonna sorgente_uid, quindi si ancora.
+                  p_sorgente_uid     pratiche.pratiche_sorgenti.sorgente_uid%TYPE)
+              RETURNS TABLE(
+                  n_pratiche     bigint,                          -- conteggio: le pratiche distinte del documento
+                  pratica_id     pratiche.pratiche.id%TYPE,       -- la prima per id
+                  pratica_numero pratiche.pratiche.codice%TYPE)   -- il codice di quella pratica
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+                  -- Una riga sempre: senza pratiche, n_pratiche = 0 e le altre NULL (un
+                  -- aggregato senza GROUP BY). Incorporabile: in un LATERAL di una vista di
+                  -- lista diventa una ricerca per indice su (sorgente_tipo_id, sorgente_uid).
+                  SELECT count(DISTINCT ps.pratica_id),
+                         min(p.id),
+                         (array_agg(p.codice ORDER BY p.id))[1]
+                    FROM pratiche.pratiche_sorgenti ps
+                    JOIN pratiche.pratiche p ON p.id = ps.pratica_id
+                   WHERE ps.sorgente_tipo_id = fn_pratica_del_documento.p_sorgente_tipo_id
+                     AND ps.sorgente_uid     = fn_pratica_del_documento.p_sorgente_uid;
+              END;
+        # ⚠️ Il COMMENT in un `sql:` a parte: pgjdbc esegue un BEGIN ATOMIC solo
+        #    se sta da solo (20260921-21).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION pratiche.fn_pratica_del_documento(bigint, text) IS
+                'La pratica di un documento, per la chiave polimorfa del documento (tipo, uid '
+                'resa a text secondo key_selector): quante pratiche distinte lo hanno fra le '
+                'sorgenti, la prima per id e il suo codice. Una riga sempre (0 e NULL senza '
+                'pratiche). Sede unica: la leggono le viste di lista (colonne pratica_id, '
+                'pratica_numero, n_pratiche, filtrabili e ordinabili) e '
+                'vendite.fn_documento_lineage_sintesi. BEGIN ATOMIC, STABLE, INVOKER, '
+                'incorporabile. Brief: brief-db-lineage-seminata-per-chiave, giro B.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Solo prima di 20261011-96/-97, che la leggono.
+              DROP FUNCTION IF EXISTS pratiche.fn_pratica_del_documento(bigint, text);
