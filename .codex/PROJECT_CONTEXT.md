@@ -348,18 +348,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
   e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
   nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. Al team DB, codice da scrivere.
-- ⏳ **Le righe di un DDT nato da un ordine** (`work-in-progress/brief-db-ddt-righe-evase-dall-ordine.md`, D28,
-  2026-10-10): in bozza la riga evasa cambia quantità e articolo senza che il fulfillment lo veda (ordine evaso
-  per 10, bolla a 6). Decisioni chiuse il 2026-10-10: riga evasa ferma; verbo DB per correggere la quantità in
-  bozza, solo sui DDT da ordine; riga evasa cancellabile in bozza; `qta_evasa` bloccata fuori bozza; righe a mano
-  ammesse. Il magazzino (Lotto 3) è invariato. Lato DB applicato e verde il 2026-10-11 (`20261011-05 … -20`,
-  `-34`, `-35`, con il BB `vendite.fn_ordine_proietta_stato_evasione` che ritira sei copie); tocca a BE/FE (§6.1).
-  D-6/D-7 (Tid, 2026-10-11): niente legami nuovi su bolle emesse, e la ri-consegna di un reso segue la
-  stessa regola, dentro lo stesso brief.
-  D-8: annullare una bolla con legami li ritira (l'ordine si riapre), ma con conferma (`vendite.fn_annulla_ddt`).
+- ✅ **Le righe di un DDT nato da un ordine: chiuso il 2026-10-11**
+  (`work-done/brief-db-ddt-righe-evase-dall-ordine.md`, D28): la riga evasa (da ordine o da reso da
+  ri-consegnare) e' ferma, la quantita' si corregge solo dal verbo `vendite.fn_ddt_riga_correggi_qta_evasa`,
+  si cancella in bozza ritirando i legami, e l'annullo di una bolla con legami li ritira con conferma
+  (`vendite.fn_annulla_ddt`). DB `20261011-05 … -20`, `-34`, `-35`; BE/FE §10; collaudo di Tid superato.
+  Nessun residuo: il cambio di stato del DDT dal verbo resta nel Lotto 3 (sopra).
 - 📝 **Annullare un documento con legami** (`work-in-progress/brief-db-annullo-documento-con-legami.md`, D29,
   2026-10-11): quando un documento nato da un altro si annulla, l'origine si riapre, con conferma. Caso 1
-  (bolla → ordine/reso) applicato nel giro di D28; aperti preventivo → ordine, offerta → contratto/ordine
+  (bolla → ordine/reso) fatto e collaudato nel giro di D28; aperti preventivo → ordine, offerta → contratto/ordine
   (oggi consumati per sempre) e il ritiro dalla commessa (silenzioso). Decisioni attese da Tid (§5).
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB

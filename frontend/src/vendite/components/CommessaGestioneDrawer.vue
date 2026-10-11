@@ -865,6 +865,7 @@ const fotoOnere = useFotografiaDialog(() => ({ ...onereForm.value }), { visibile
       v-if="commessaId"
       base-path="/vendite/commesse"
       :doc-id="commessaId"
+      @documento-chiuso="reloadAll"
       :readonly="isReadonly" />
 
     <!-- La TESTATA LEGGIBILE (Blocco C): descrizione e responsabile si

@@ -199,6 +199,18 @@ const collegamentiRef = ref(null)
 // conto (consegnato sale, `da_spedire` scende) e non solo il grafo.
 const merceRef = ref(null)
 
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability), righe e situazione merce. I chip li rilegge la
+//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+  merceRef.value?.reload()
+}
+
 // Scopo: callback @evaso della dialog — generato un DDT dall'ordine: ricarica il
 // detail (lo stato ordine viene proiettato dal BE: CONFERMATO/PARZIALMENTE_EVASO/
 // EVASO) e le capability. Il tab DDT lo ha gia' avvisato il verbo `generaDdt` dello store.
@@ -680,6 +692,7 @@ const drawerActions = computed(() => {
         ref="collegamentiRef"
         base-path="/vendite/ordini"
         :doc-id="effectiveOrdineId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="isReadonlyPuro" />
 
       <!-- Situazione merce dell'ordine: il riassunto per riga ordinata —

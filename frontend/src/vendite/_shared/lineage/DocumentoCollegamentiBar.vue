@@ -46,6 +46,9 @@ const props = defineProps({
   // NON il lock-di-stato del documento padre. Vedi provide sotto.
   readonly: { type: Boolean, default: false },
 })
+// `documento-chiuso`: si e' chiuso un documento aperto da qui (vedi l'host
+// sotto) — il drawer ospite rilegge i suoi dati.
+const emit = defineEmits(['documento-chiuso'])
 
 // I drawer aperti da qui (documento della tappa, pratica) sono documenti
 // DIVERSI dal drawer padre: il suo lock-di-stato (post-DRAFT → provide
@@ -146,12 +149,22 @@ const praticaDrawerVisible = ref(false)
 // per il contenitore, condivisa fra chip e dialog.
 // La guardia "tappa apribile" vive nel composable (`apri` e' no-op su chiave
 // sconosciuta o id nullo): qui basta inoltrare.
+// ⭐ Alla CHIUSURA del documento aperto da qui si ricarica (`onClose`): nel
+// drawer impilato l'operatore puo' aver AGITO, non solo letto — annullare il
+// DDT di un ordine riapre il residuo e riaccende «Genera DDT». Senza, il
+// drawer sotto restava col dato di prima (rilievo in-app di Tid, 2026-10-11).
+// La barra rilegge i propri chip; il drawer che la ospita riceve
+// `documento-chiuso` e rilegge il resto (testata, righe, merce).
 const {
   visible: docDrawerVisible,
   tipo: docDrawerTipo,
   id: docDrawerId,
   apri: apriDocumentoDrawer,
-} = useDocumentoDrawer()
+  onVisibleChange: onDocDrawerVisibleChange,
+} = useDocumentoDrawer(() => {
+  reload()
+  emit('documento-chiuso')
+})
 
 function apriDocumento(row) {
   apriDocumentoDrawer(row?.tipoCodice, row?.docId)
@@ -207,7 +220,8 @@ function apriDocumento(row) {
     :pratica-id="pratica.pratica_id" />
 
   <DocumentoDrawerHost
-    v-model:visible="docDrawerVisible"
+    :visible="docDrawerVisible"
+    @update:visible="onDocDrawerVisibleChange"
     :tipo-codice="docDrawerTipo"
     :doc-id="docDrawerId" />
 </template>

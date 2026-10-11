@@ -293,7 +293,8 @@ defineExpose({ modificato, chiudiConConferma })
              un Button disabilitato non emette eventi del mouse. -->
         <span v-if="isEvasa" class="app-action-tooltip-wrap"
           v-tooltip.top="correggiQtaMotivo || null">
-          <Button :label="t('vendite.ddt.correggi_qta_evasa')" size="small" text
+          <Button :label="t('vendite.ddt.correggi_qta_evasa')" size="small" link
+            class="app-correggi-qta-link"
             :disabled="Boolean(correggiQtaBlocco)"
             @click="correggiQtaVisible = true" />
         </span>
@@ -417,3 +418,14 @@ defineExpose({ modificato, chiudiConConferma })
     </div>
   </div>
 </template>
+
+<style scoped>
+/* «Correggi quantita' evasa» e' un'azione, ma accanto ai campi un Button
+   `text` sembrava una scritta (rilievo in-app di Tid, 2026-10-11): link verde
+   sottolineato SEMPRE, come i link dei passaggi lineage. Da spento resta
+   senza sottolineatura: non promette un click che non c'e'. */
+.app-correggi-qta-link:not(:disabled) :deep(.p-button-label) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+</style>

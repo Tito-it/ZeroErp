@@ -903,6 +903,7 @@ const footerDrawer = useFooterDocumento({
         ref="collegamentiRef"
         base-path="/vendite/offerte"
         :doc-id="offertaId"
+        @documento-chiuso="refreshDetail"
         :readonly="parentReadonly" />
 
       <!-- Motivo per cui push contratto / genera ordine non sono offerti

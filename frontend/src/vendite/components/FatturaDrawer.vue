@@ -479,6 +479,7 @@ function onNoteSaved(total) {
         <DocumentoCollegamentiBar
           base-path="/vendite/fatture"
           :doc-id="fatturaId"
+          @documento-chiuso="loadDettaglio"
           :readonly="isReadonly" />
 
         <!-- F5 · IL LEGAME DOCUMENTALE. «Questo accredito vale 12 € perché la

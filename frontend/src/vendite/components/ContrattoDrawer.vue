@@ -848,6 +848,7 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       v-if="isEdit && contrattoId"
       base-path="/vendite/contratti"
       :doc-id="contrattoId"
+      @documento-chiuso="refreshDetail"
       :readonly="readonly || parentReadonly" />
 
     <!-- Banner contratto bloccato: in stati post-DRAFT ammessa solo

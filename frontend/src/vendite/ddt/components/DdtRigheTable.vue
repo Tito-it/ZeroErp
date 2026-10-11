@@ -44,7 +44,12 @@ const emit = defineEmits(['changed', 'form-aperto'])
 //    aperta, inoltrata al drawer per le sue uscite. La tiene il form di riga,
 //    che si registra presso la tabella (`registra` dello slot).
 const tabella = ref(null)
-defineExpose({ ...unisciFotografie(() => tabella.value) })
+defineExpose({
+  ...unisciFotografie(() => tabella.value),
+  // Il drawer padre rilegge le righe dopo un gesto fatto altrove (un documento
+  // collegato chiuso dalla barra collegamenti).
+  loadRighe: () => tabella.value?.loadRighe(),
+})
 </script>
 
 <template>

@@ -719,6 +719,17 @@ const smistamentoDialogVisible = ref(false)
 // Ref alla barra collegamenti: lo smistamento crea archi verso ordine/commessa,
 // quindi i chip vanno ricaricati insieme al detail (vedi `onSmistato`).
 const collegamentiRef = ref(null)
+
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability), righe. I chip li rilegge la
+//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+}
 // Dialog accettazione estratto in PreventivoAccettazioneDialog (componente
 // condiviso col percorso pratica): qui resta solo apertura + conferma. Il
 // payload {fatturazione_immediata, competenza_mese} arriva gia' BE-ready.
@@ -1004,6 +1015,7 @@ const drawerActions = computed(() => {
         ref="collegamentiRef"
         base-path="/vendite/preventivi"
         :doc-id="effectivePreventivoId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="isReadonlyPuro" />
     </template>
 

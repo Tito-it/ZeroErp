@@ -109,6 +109,17 @@ const { righeTableRef, onFormAperto, documento, footerDrawer } = useRigheDocumen
 const modificatoDocumento = documento.modificato
 // Ref alla barra collegamenti (chip pratica/origine/destinazioni).
 const collegamentiRef = ref(null)
+
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability), righe. I chip li rilegge la
+//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+}
 // Dialog "DDT ri-spedizione": aperta dal pulsante in barra azioni (2026-07-25).
 // Era un pannello in coda al contenuto del drawer — le azioni di processo
 // stanno in alto, come «Genera reso» del DDT e «Genera DDT» dell'ordine.
@@ -308,6 +319,7 @@ async function onCoperturaRiconsegnaCambiata() {
         v-if="props.resoId"
         base-path="/vendite/resi"
         :doc-id="props.resoId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="readonly || parentReadonly" />
     </template>
 

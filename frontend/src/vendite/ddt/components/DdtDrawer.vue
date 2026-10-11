@@ -121,6 +121,18 @@ const collegamentiRef = ref(null)
 // Sono due letture diverse della stessa azione e vanno ricaricate entrambe.
 const merceRef = ref(null)
 
+// Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
+//        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
+//        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
+//        rileggono testata (stato, capability), righe e situazione merce. I chip li rilegge la
+//        barra da se'. Le liste in ascolto le ha gia' avvisate lo store del
+//        verbo, nel drawer impilato.
+async function onDocumentoCollegatoChiuso() {
+  await loadDetail()
+  righeTableRef.value?.loadRighe()
+  merceRef.value?.reload()
+}
+
 // ⭐ Il cambio di stato e' un gesto CONFERMABILE (D-8 di
 //    brief-db-ddt-righe-evase-dall-ordine): l'annullo di una bolla con righe
 //    legate a ordini o resi il DB lo rifiuta (`confirm_and_retry`) finche' chi
@@ -137,6 +149,19 @@ function onResoCreato() {
   merceRef.value?.reload()
   // ⭐ La lista DDT dietro: il reso cambia il conto della merce e i transiti.
   // `changed`, non `saved`: dal DDT si continua a lavorare.
+  emit('changed')
+}
+// Scopo: dopo una modifica alle righe (cancellazione, correzione della
+//        quantita' evasa), ricarica il detail e le due barre in testata.
+// ⚠️ Su un DDT nato da ordine o da reso la riga porta un LEGAME: cancellarla
+//    lo ritira (D-3) e correggerla lo sposta (D-2), cioe' cambia cosa resta da
+//    spedire e chi e' collegato. Ricaricare solo il detail lasciava la barra
+//    merce a mostrare il residuo di prima (rilievo in-app di Tid, 2026-10-11).
+//    Stesse due letture di `onResoCreato` e `dopoCambioStato`.
+function onRigheChanged() {
+  loadDetail()
+  collegamentiRef.value?.reload()
+  merceRef.value?.reload()
   emit('changed')
 }
 // Avviso emissione: true quando manca l'indirizzo obbligatorio (CON) —
@@ -724,6 +749,7 @@ const drawerActions = computed(() => {
         ref="collegamentiRef"
         base-path="/vendite/ddt"
         :doc-id="effectiveDdtId"
+        @documento-chiuso="onDocumentoCollegatoChiuso"
         :readonly="readonly || parentReadonly" />
 
       <!-- Situazione merce di QUESTA spedizione: quanto e' uscito, tornato,
@@ -773,7 +799,7 @@ const drawerActions = computed(() => {
         :emittente-fiscale-id="detail?.emittente_fiscale_id ?? null"
         :is-modificabile="canEditRighe && !isReadonly"
         :causale-fatturabile="causaleFatturabile"
-        @changed="loadDetail()"
+        @changed="onRigheChanged"
         @form-aperto="onFormAperto" />
 
       <!-- Riepilogo IVA aggregato (regola fiscale DPR 633/72 art. 21).
