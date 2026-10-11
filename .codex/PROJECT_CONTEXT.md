@@ -366,13 +366,14 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito
   e' **D24** del registro DB (`migliorie-generali-da-test-valutazione.md`): la vista del presidio C2 non vede i BB
   trigger col codice in `TG_ARGV`, e il BE tiene un'esenzione su `E_DOC_EMITTENTE_BA_INCOERENTE` finche' non la vede.
-- 📝 **Il documento dopo la bozza: che cosa si cambia ancora** (`work-in-progress/brief-db-testata-dopo-emissione.md`,
+- ✅ **Il documento dopo la bozza: che cosa si cambia ancora** (`work-in-progress/brief-db-testata-dopo-emissione.md`,
   D26, 2026-10-10): oggi la regola completa sta solo nel backend («solo in DRAFT»); il DB ne blocca dei pezzi.
   Colonne divise in famiglie (identità, stampato, arriva dopo, note, condizioni commerciali). Decisioni chiuse
   il 2026-10-10: decide il DB, il BE toglie i suoi «solo in DRAFT»; documento chiuso = tutto fermo (D-8).
-  Fasi 1 e 2 applicate (2026-10-10), BE/FE fatti. Il giro R-DB (§11, 2026-10-11, D-11/D-12 di Tid) è scritto e
-  provato sullo scratch, non applicato: lock «solo in bozza» su indirizzi e fornitura dei documenti, cliente della
-  bolla dal guard, regole del listino sotto le righe a DB per contratto e offerta, congelamento del listino provato.
+  Fasi 1 e 2 applicate (2026-10-10), BE/FE fatti. Giro R-DB (§11, 2026-10-11, D-11/D-12/D-13 di Tid) applicato:
+  lock «solo in bozza» su indirizzi e fornitura dei documenti, cliente della bolla dal guard, regole del listino
+  sotto le righe a DB per contratto e offerta, congelamento del listino provato. BE/FE fatti (§12) e collaudo a
+  video di Tid superato il 2026-10-11. Resta l'archivio (e il ritiro DB di `E_CONTRATTO_NON_MODIFICABILE`).
 - ✅ **Un testo non si riempie di spazi: chiuso il 2026-10-10** (`work-done/brief-db-character-n-spazi-di-riempimento.md`):
   colonne `character(n)` a lunghezza variabile portate a `varchar` (`20261010-26…-40`), sigla di provincia con la
   sua regola, `destinatario_fe` diventato il canale FE (P/C) che pretende il suo recapito; BE/FE e collaudo a video
@@ -671,7 +672,7 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - **La promessa di consegna dopo la conferma** (BE, decisione di Tid del 14-09): dal
   `20261008-90` il DB lascia aperta la sola `data_consegna_confermata` in `CONFERMATO`/`PARZIALMENTE_EVASO`;
   il verbo che la cambia è nella fase 1 (§5-bis) di `work-in-progress/brief-db-testata-dopo-emissione.md`
-  (prima la capability a DB, decisione di Tid del 2026-10-09)
+  (prima la capability a DB, decisione di Tid del 2026-10-09). ✅ Fatto e collaudato il 2026-10-11
 - **Pratica di approvazione prezzo su revisione superata** (BE,
   `work-done/refactor-prezzi.md` §4.7, residuo differito dal 2026-06-01): dal
   2026-09-14 (`20260914-14`) riguarda anche i **preventivi** — la rev N+1

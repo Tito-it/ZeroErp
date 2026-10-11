@@ -41,9 +41,10 @@ Indice test eseguiti:
 29) get_contratto_righe_count_usa_preview_per_modalita_ab
 30) get_contratto_righe_count_usa_righe_persistite_per_modalita_c
 31) create/update/delete_riga_rifiutata_su_contratto_attivo — E_RIGA_DOC_NON_BOZZA (il codice del DB sulle stesse righe, BB richiedi_righe_in_bozza; frase a catalogo, verbo)
-32) create/update_utility_rifiutata_su_contratto_attivo — E_CONTRATTO_NON_MODIFICABILE (la utility non e' una riga)
+32) create/update_utility_su_contratto_attivo_decide_il_db — lo stato lo giudica il lock dei satelliti (E_DOC_DATI_COLLEGATI_NON_BOZZA)
 33) update_componente_contratto_attivo — E_RIGA_DOC_NON_BOZZA, etichetta dal `numero` dello scope
 33b) update_componente_campi_del_workflow_rifiutati — niente auto-approvazione L3 dal client
+34) update_contratto_cambio/rimozione_listino_decide_il_db — il listino sotto le righe lo giudica il DB (E_DOC_LISTINO_*)
 """
 
 from datetime import date, timedelta
@@ -646,11 +647,12 @@ class ContrattiServiceTests(TestCase):
         self.assertEqual(ctx.exception.code, "E_RIGA_DOC_NON_BOZZA")
         self.assertIn(" togliere ", ctx.exception.message)
 
-    # Scopo: contratto ATTIVO -> create_utility rifiutato: la utility NON e' una
-    #        riga, resta E_CONTRATTO_NON_MODIFICABILE (lo stesso guard di
-    #        update_utility — fino al 22-09 era una copia inline).
+    # Scopo: contratto ATTIVO -> la fornitura: lo stato lo giudica il lock
+    #        «solo in bozza» dei satelliti a DB (`E_DOC_DATI_COLLEGATI_NON_BOZZA`,
+    #        brief-db-testata-dopo-emissione §11, R-BE-6). Il service non ha
+    #        piu' `_assert_contratto_draft` e passa la scrittura.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_create_utility_rifiutata_su_contratto_attivo(self, repo_cls):
+    def test_create_utility_su_contratto_attivo_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
@@ -658,26 +660,26 @@ class ContrattiServiceTests(TestCase):
             **_testata_default(),
             "stato_codice_interno": "ATTIVO",
         }
+        repo.get_utility.return_value = {"id": 1}
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().create_utility(1, {"istanza_utility_id": 20, "utility_id": 3})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
-        repo.create_utility.assert_not_called()
+        ContrattiService().create_utility(
+            1, {"tipo_utenza_id": 2, "classe_utenza_id": 7},
+        )
+        repo.create_utility.assert_called_once()
 
-    # Scopo: contratto ATTIVO -> update_utility rifiutato.
+    # Scopo: idem per update_utility.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_utility_rifiutata_su_contratto_attivo(self, repo_cls):
+    def test_update_utility_su_contratto_attivo_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_contratto.return_value = {
-            **_testata_default(),
-            "stato_codice_interno": "ATTIVO",
+        repo.get_stato_codice.return_value = "ATTIVO"
+        repo.get_utility.return_value = {
+            "id": 1, "istanza_utility_id": 20, "utility_id": 3,
         }
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_utility(1, {"tipo_utenza_id": 5})
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_NON_MODIFICABILE")
+        ContrattiService().update_utility(1, {"tipo_utenza_id": 5})
+        repo.update_utility.assert_called_once()
 
     # Scopo: cessazione immediata (valido_al passata) -> applica entrambi
     #        in transazione: PATCH valido_al + UPDATE stato CESSATO.
@@ -844,8 +846,6 @@ class ContrattiServiceTests(TestCase):
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        # Lock listino_id richiede 0 righe attive (refactor 2026-05-20).
-        repo.count_righe_attive.return_value = 0
 
         ContrattiService().update_contratto(1, {
             "listino_id": 200,
@@ -1048,87 +1048,40 @@ class ContrattiServiceTests(TestCase):
         self.assertTrue(ctx.exception.retryable)
         repo.update_contratto.assert_not_called()
 
-    # Scopo: refactor §3-bis-F. Rimuovere il listino con eccezioni
-    # OVERRIDE/ESCLUSIONE attive deve sollevare 422 con codice dedicato e
-    # NON tentare l'UPDATE del contratto.
+    # Scopo: il listino sotto le righe lo giudica il DB, per contratto e
+    #        offerta (`script.trgfn_doc_guard_listino_con_righe`,
+    #        brief-db-testata-dopo-emissione §11, R-DB-4 e R-BE-5). Il service
+    #        non conta piu' righe ne' eccezioni: passa la scrittura, e il 422
+    #        (`E_DOC_LISTINO_CAMBIO_CON_RIGHE`) arriva dal DB.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_rimuove_listino_con_eccezioni_bloccato(self, repo_cls):
+    def test_update_contratto_cambio_listino_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # listino_id=100
-        repo.count_eccezioni_bloccanti.return_value = {
-            "OVERRIDE": 3, "ESCLUSIONE": 2,
-        }
+        repo.update_contratto.return_value = True
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
 
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"listino_id": None})
+        ContrattiService().update_contratto(1, {"listino_id": 200})
 
-        self.assertEqual(
-            ctx.exception.code,
-            "E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",
-        )
-        self.assertIn("3 OVERRIDE", ctx.exception.detail or "")
-        self.assertIn("2 ESCLUSIONE", ctx.exception.detail or "")
-        repo.update_contratto.assert_not_called()
+        self.assertEqual(repo.update_contratto.call_args.args[1]["listino_id"], 200)
 
-    # Scopo: aggiungere o sostituire il `listino_id` con righe attive blocca
-    # (refactor 2026-05-20). Caso: contratto DRAFT senza listino, AGGIUNTE
-    # caricate, l'utente prova a settare un listino → blocco semantico.
+    # Scopo: idem per la rimozione del listino (`E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`
+    #        dal DB): `null` arriva al repository.
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_aggiunge_listino_con_righe_bloccato(self, repo_cls):
-        from apps.vendite.services.contratti_service import ContrattiService
-
-        repo = repo_cls.return_value
-        # Contratto attualmente senza listino (negoziato puro).
-        testata = _testata_default()
-        testata["listino_id"] = None
-        repo.get_contratto.return_value = testata
-        repo.count_righe_attive.return_value = 2  # 2 AGGIUNTE persistite
-
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"listino_id": 500})
-
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE")
-        self.assertIn("listino", (ctx.exception.detail or "").lower())
-        repo.update_contratto.assert_not_called()
-
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_sostituisce_listino_con_righe_bloccato(self, repo_cls):
-        # Sostituzione listino_id (100 → 200) con righe attive: blocco
-        # anche se ci sono solo AGGIUNTE (potrebbero conflittare col nuovo listino).
+    def test_update_contratto_rimozione_listino_decide_il_db(self, repo_cls):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
         repo.get_contratto.return_value = _testata_default()  # listino_id=100
-        repo.count_righe_attive.return_value = 1
-
-        with self.assertRaises(ServiceError) as ctx:
-            ContrattiService().update_contratto(1, {"listino_id": 200})
-
-        self.assertEqual(ctx.exception.code, "E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE")
-        repo.update_contratto.assert_not_called()
-
-    # Scopo: rimuovere il listino con SOLE AGGIUNTE (no OVERRIDE/ESCLUSIONE)
-    # e' ammesso — le AGGIUNTE restano valide anche senza listino.
-    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
-    def test_update_contratto_rimuove_listino_solo_aggiunte_ok(self, repo_cls):
-        from apps.vendite.services.contratti_service import ContrattiService
-
-        repo = repo_cls.return_value
-        repo.get_contratto.return_value = _testata_default()  # listino_id=100
-        repo.count_eccezioni_bloccanti.return_value = {
-            "OVERRIDE": 0, "ESCLUSIONE": 0,
-        }
         repo.update_contratto.return_value = True
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
 
         ContrattiService().update_contratto(1, {"listino_id": None})
 
-        repo.update_contratto.assert_called_once()
-        args = repo.update_contratto.call_args.args
-        self.assertIsNone(args[1]["listino_id"])
+        self.assertIsNone(repo.update_contratto.call_args.args[1]["listino_id"])
 
     # --- cambio stato --------------------------------------------------
 
@@ -3030,8 +2983,6 @@ class ContrattiCatenaUpdateTests(TestCase):
         repo.update_contratto.return_value = True
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
-        repo.count_righe_attive.return_value = 0
-        repo.count_eccezioni_bloccanti.return_value = {}
 
         for chiave in sorted(UPDATE_KEYS_TESTATA):
             with self.subTest(chiave=chiave):

@@ -121,6 +121,7 @@ const stato = computed(() => detail.value?.stato_codice_interno || null)
 // blocca tutta la testata fuori BOZZA, equivalente a `!canEdit`), ma resta
 // pronto per future estensioni (es. "modificabile solo meta in EMESSA").
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 
@@ -1158,7 +1159,8 @@ const footerDrawer = useFooterDocumento({
             :doc-id="offertaId"
             :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
             :istanza-utility-id="detail?.istanza_utility_id ?? null"
-            :readonly="isReadonly" />
+            :readonly="parentReadonly"
+            :capabilities="capabilities" />
 
           <!-- Motivazione (sola lettura, valorizzata su RIFIUTATA/ANNULLATA) -->
           <template v-if="isEdit && detail?.motivazione_rifiuto">

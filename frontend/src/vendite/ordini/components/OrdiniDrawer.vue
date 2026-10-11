@@ -133,6 +133,7 @@ provide(READONLY_KEY, isReadonly)
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Preventivi/Contratti (Fase 4.F2).
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
@@ -713,15 +714,13 @@ const drawerActions = computed(() => {
       <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
            contatore "+N altri", pulsante "Indirizzi" che apre il drawer
            di gestione. -->
-      <!-- Indirizzi: seguono lo stato (in bozza), non la capability della
-           testata, che dal 2026-10-10 e' vera anche fuori bozza per le
-           colonne ancora aperte (brief-db-testata-dopo-emissione). -->
       <DocumentoIndirizziSection
         dominio="ordini"
         :doc-id="effectiveOrdineId"
         :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
         :istanza-utility-id="detail?.istanza_utility_id ?? null"
-        :readonly="isReadonly"
+        :readonly="isReadonlyPuro"
+        :capabilities="capabilities"
         :bordo="false" />
 
       <Divider />

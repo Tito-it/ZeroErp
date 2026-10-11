@@ -989,8 +989,11 @@ Per il dettaglio vedi §Detail; per la lista paginata l'envelope contiene
    payload come `unknown_key`.
 2. **Stato iniziale BOZZA**; transizioni via endpoint dedicato.
 3. **Testata**: quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e' (in EMESSA e ACCETTATA le note). **Eccezioni e
-   utility** solo in BOZZA: per la utility il cancello e' la capability
-   `can_edit_utility`, letta dal service, perche' il satellite non ha un lock a DB.
+   utility** solo in BOZZA: per la utility lo dice il lock «solo in bozza» dei
+   satelliti a DB (dal 2026-10-11, `E_DOC_DATI_COLLEGATI_NON_BOZZA`, 409, che passa
+   com'e'), specchiato dalla capability `can_edit_utility`. Il listino sotto le
+   righe lo giudica il DB come sul contratto (`E_DOC_LISTINO_CAMBIO_CON_RIGHE`,
+   `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`, 422, campo `listino_id`).
 4. **Annullamento solo da BOZZA, rifiuto solo da EMESSA**: state machine
    asimmetrica analoga ai contratti DRAFT/ATTIVO.
 5. **Versione listino congelata all'emissione** (Profilo A); da EMESSA

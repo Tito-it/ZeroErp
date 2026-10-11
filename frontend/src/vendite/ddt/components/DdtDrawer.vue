@@ -16,6 +16,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
@@ -51,6 +52,7 @@ import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
 import DdtResoDialog from './DdtResoDialog.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
+import DdtAnnulloLegamiDialog from './dialogs/DdtAnnulloLegamiDialog.vue'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
@@ -119,6 +121,14 @@ const collegamentiRef = ref(null)
 // Sono due letture diverse della stessa azione e vanno ricaricate entrambe.
 const merceRef = ref(null)
 
+// ⭐ Il cambio di stato e' un gesto CONFERMABILE (D-8 di
+//    brief-db-ddt-righe-evase-dall-ordine): l'annullo di una bolla con righe
+//    legate a ordini o resi il DB lo rifiuta (`confirm_and_retry`) finche' chi
+//    conferma non dichiara quante righe legate ha visto. La domanda la porta a
+//    video `DdtAnnulloLegamiDialog`; una bolla senza legami passa al primo colpo.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
+
 // Scopo: dopo la creazione di un reso, ricarica il detail (residui rendibili,
 //        stato), i chip dei collegamenti e il conto della merce.
 function onResoCreato() {
@@ -177,6 +187,7 @@ const showResoAction = computed(
 // availableActions + can_edit_testata + non_editable_fields. Composable
 // centralizzato, uniforme a Ordini/Preventivi/Contratti.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
@@ -204,24 +215,6 @@ const testata = useTestataDocumento({
   // la capability ancora vuota tiene il form fermo (fail-closed).
   presente: () => isEdit.value || hasDetail.value,
   corpoProtetto: () => isReadonly.value,
-})
-// ⚠️ ECCEZIONE DICHIARATA, da togliere col changeSet DB che la corregge:
-//    `fn_available_actions_ddt` mette `billing_account_id` fra i campi fermi
-//    ANCHE IN BOZZA (`c_non_edit_draft`), mentre il lock di testata lo ferma
-//    solo fuori bozza e D-2 (brief-db-esecutivi-ba-coppia) vuole che la bolla
-//    nata senza cliente lo riceva in bozza. Vale il lock: in bozza il cliente
-//    resta sceglibile. Segnalato al team DB (brief-db-testata-dopo-emissione
-//    §10.1, R-DB-1).
-// ⛔ L'eccezione vale SOLO per la bolla senza documento d'origine: un DDT da
-//    ordine o da reso ha il cliente della sua sorgente (D-6, guard
-//    `trgfn_ddt_guard_cliente_sorgente`), quindi li' la capability ha ragione
-//    anche in bozza (collaudo di Tid, 2026-10-10: il cliente di un DDT da
-//    ordine si poteva cambiare a video, e il DB lo rifiutava solo al salvataggio).
-const nonEditableFields = computed(() => {
-  const fermi = testata.campiBloccati.value
-  const inBozza = detail.value?.stato_codice_interno === STATO_DDT.DRAFT
-  const conSorgente = detail.value?.sorgente_codice_interno != null
-  return inBozza && !conSorgente ? fermi.filter((c) => c !== 'billing_account_id') : fermi
 })
 
 // Default emittente fiscale: operatore → id profilo; admin globale → null
@@ -590,18 +583,33 @@ function onAction(action) {
 }
 
 // Transizione di stato generica (target_state dell'azione). Il trigger DB valida
-// l'ammissibilita'; qui orchestriamo chiamata + refresh detail.
+// l'ammissibilita'; qui orchestriamo chiamata + refresh detail. Il primo
+// tentativo va SEMPRE senza dichiarazione (`useForzaturaConfermata`).
 async function eseguiCambioStato(action) {
-  const result = await execute(
-    () => store.cambiaStato(effectiveDdtId.value, action.target_state),
+  const result = await cambioStato.esegui(
+    (dichiarazione) => store.cambiaStato(effectiveDdtId.value, action.target_state, dichiarazione),
     { successMessage: t('vendite.ddt.stato_cambiato') },
   )
+  await dopoCambioStato(result)
+}
+
+// Scopo: l'operatore ha visto le righe legate e conferma l'annullo: si ripete
+//        la chiamata DICHIARANDO quante erano. Se nel frattempo sono cambiate,
+//        il DB chiede di nuovo e la finestra si rilegge (domanda nuova).
+async function onConfermaAnnullo(dichiarazione) {
+  await dopoCambioStato(await cambioStato.conferma(dichiarazione))
+}
+
+async function dopoCambioStato(result) {
   if (result !== null) {
     await loadDetail()
     // Il cambio stato puo' spostare i conti della merce: l'ANNULLO rende il
     // documento abortito e le sue partite ESCONO dalla vista. Ricaricare solo
     // il detail lascerebbe la barra a raccontare partite che non esistono piu'.
     merceRef.value?.reload()
+    // E ritira i legami delle righe con ordini e resi (D-8): i collegamenti
+    // vanno riletti, o la barra mostrerebbe un ordine che non e' piu' evaso.
+    collegamentiRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -738,7 +746,7 @@ const drawerActions = computed(() => {
       <DdtForm
         :campi-errati="campiErrati"
         :form="form" :is-modificabile="testata.modificabile.value"
-        :non-editable-fields="nonEditableFields"
+        :non-editable-fields="testata.campiBloccati.value"
         :record="detail"
         :is-edit="isEdit || createdId !== null" />
     </div>
@@ -748,15 +756,13 @@ const drawerActions = computed(() => {
       <!-- Sezione indirizzi (UX v2, BB condiviso): solo il default CON,
            avviso se mancante (obbligatorio all'emissione, guard DB),
            pulsante "Indirizzi" che apre il drawer di gestione. -->
-      <!-- Indirizzi: seguono lo stato (in bozza), non la capability della
-           testata, che dal 2026-10-10 e' vera anche fuori bozza per le
-           colonne ancora aperte (brief-db-testata-dopo-emissione). -->
       <DocumentoIndirizziSection
         dominio="ddt"
         :doc-id="effectiveDdtId"
         :soggetto-ruolo-id="detail?.destinatario_soggetto_ruolo_id ?? null"
         :istanza-utility-id="detail?.istanza_utility_id ?? null"
-        :readonly="isReadonly"
+        :readonly="isReadonlyPuro"
+        :capabilities="capabilities"
         @state="(s) => { indirizzoObbligatorioMancante = s.obbligatorioMancante }"
         :bordo="false" />
 
@@ -801,6 +807,18 @@ const drawerActions = computed(() => {
     :ddt-id="effectiveDdtId"
     :readonly="props.readonly || parentReadonly"
     @reso-creato="onResoCreato"
+  />
+
+  <!-- La conferma dell'annullo di una bolla con righe legate a ordini o resi
+       (D-8): aperta dalla domanda del DB, chiusa dalla conferma o dalla rinuncia. -->
+  <DdtAnnulloLegamiDialog
+    v-if="effectiveDdtId"
+    :visible="domandaAnnullo !== null"
+    :ddt-id="effectiveDdtId"
+    :domanda="domandaAnnullo"
+    :loading="cambioStato.loading.value"
+    @conferma="onConfermaAnnullo"
+    @cancel="cambioStato.annulla()"
   />
 
   <!-- Dialog emissione DDT (transizione DRAFT → EMESSO, assegna numero). -->

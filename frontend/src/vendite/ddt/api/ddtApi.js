@@ -78,8 +78,20 @@ export function emettiDdt(id, { allegati = [], templateId = null } = {}) {
 // ANNULLATO). `statoCodice` = `target_state` dell'azione da
 // script.fn_available_actions_ddt. L'ammissibilita' e' validata dal trigger
 // guard DB trgfn_ddt_guard_transizione.
-export function cambiaStatoDdt(id, statoCodice) {
-  return api.post(`${BASE}/${id}/cambia-stato/`, { stato_codice: statoCodice })
+// `dichiarazione`: la conferma dell'annullo di una bolla con legami a ordini o
+// resi (`{ righe_legate_confermate }`, D-8 di brief-db-ddt-righe-evase-dall-ordine).
+// Al primo tentativo e' vuota (`useForzaturaConfermata`).
+export function cambiaStatoDdt(id, statoCodice, dichiarazione = {}) {
+  return api.post(`${BASE}/${id}/cambia-stato/`, { stato_codice: statoCodice, ...dichiarazione })
+}
+
+// Scopo: Le righe della bolla legate a un ordine o a un reso, per la finestra
+// di conferma dell'annullo. Risposta: { righe_legate, legami: [{ ddt_riga_id,
+// riga_nr, origine (ORDINE/RESO), origine_riga_id, qta }], origini: [{
+// tipo_codice_interno, doc_id, codice, stato_codice_interno }] } — le origini
+// a livello di testata, dal lineage. `righe_legate` e' il numero da dichiarare.
+export function getDdtLegami(id) {
+  return api.get(`${BASE}/${id}/legami/`)
 }
 
 // Push singolo del DDT a commessa (chiusura giro, fatturazione differita,
@@ -118,6 +130,13 @@ export function updateRiga(ddtId, rigaId, payload) {
 
 export function deleteRiga(ddtId, rigaId) {
   return api.delete(`${BASE}/${ddtId}/righe/${rigaId}/`)
+}
+
+// Scopo: Corregge la quantita' evasa di una riga legata a un ordine o a un reso
+// (verbo DB, D-2): riga, legami e stato dell'ordine cambiano insieme. Ritorna
+// { ddt_id, riga_id, qta_evasa } (unita' base).
+export function correggiQtaEvasa(ddtId, rigaId, qtaOperativa) {
+  return api.post(`${BASE}/${ddtId}/righe/${rigaId}/qta-evasa/`, { qta_operativa: qtaOperativa })
 }
 
 // --- Componenti BoM CASO A ---

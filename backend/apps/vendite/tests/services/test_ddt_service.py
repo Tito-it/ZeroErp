@@ -67,15 +67,28 @@ DdtSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
 26) test_list_riepilogo_iva_ddt_non_trovato_e_404 — idem sul riepilogo IVA
 27) test_list_componenti_riga_di_altro_ddt_e_404 — riga di un altro DDT: id incrociato → 404
 28) test_list_righe_con_testata_delega_al_repo    — caso felice: delega invariata
+
+DdtRigheEvaseTests (2026-10-11, brief-db-ddt-righe-evase-dall-ordine)
+29) test_annullo_passa_dal_verbo_senza_dichiarazione — ANNULLATO → repo.annulla(id, None), mai update_stato
+30) test_annullo_con_dichiarazione                    — righe_legate_confermate arriva al verbo come int
+31) test_annullo_dichiarazione_non_numerica           — E_DDT_VALIDAZIONE col campo (no 500)
+32) test_annullo_con_legami_codice_del_db             — E_DDT_ANNULLO_CON_LEGAMI tradotto, confirm_and_retry
+33) test_correggi_qta_evasa_delega_al_verbo           — Decimal al repo, qta_evasa nella risposta
+34) test_correggi_qta_evasa_qta_mancante              — E_DDT_VALIDAZIONE, verbo non chiamato
+35) test_correggi_qta_evasa_riga_di_altro_ddt_e_404   — E_DDT_NOT_FOUND, verbo non chiamato
+36) test_get_legami_conta_righe_distinte_e_origini    — righe distinte, origini = archi di livello 1
+37) test_get_legami_ddt_non_trovato_e_404             — E_DDT_NOT_FOUND, legami non letti
 """
 
 from contextlib import nullcontext
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.db import DatabaseError, IntegrityError
 from django.test import SimpleTestCase
 
 from apps.core.services.error_manager import ServiceError
+from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.vendite.services import ddt_service
 from apps.vendite.services.ddt_service import _db_errors
 
@@ -840,3 +853,122 @@ class DdtSatellitiTestataTests(SimpleTestCase):
         repo.list_righe.return_value = [{"id": 31}]
         self.assertEqual(ddt_service.list_righe(7), [{"id": 31}])
         repo.list_righe.assert_called_once_with(7)
+
+
+# Le righe evase dall'ordine o dal reso (brief-db-ddt-righe-evase-dall-ordine,
+# 2026-10-11): il verbo della quantita' evasa, l'annullo con conferma (D-8) e la
+# lettura dei legami per la finestra. ⚠️ Le regole (bozza, riga evasa, residuo,
+# conteggio della conferma) sono del DB e qui sono mockate: questi test provano
+# il trasporto, non la regola.
+class DdtRigheEvaseTests(SimpleTestCase):
+    @patch(_REPO)
+    def test_annullo_passa_dal_verbo_senza_dichiarazione(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSO"
+        repo.get_stato_id_by_codice.return_value = 9
+        out = ddt_service.cambia_stato(7, "ANNULLATO")
+        repo.annulla.assert_called_once_with(7, None)
+        repo.update_stato.assert_not_called()
+        self.assertEqual(out["stato"], "ANNULLATO")
+        self.assertEqual(out["stato_precedente"], "EMESSO")
+
+    @patch(_REPO)
+    def test_annullo_con_dichiarazione(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_id_by_codice.return_value = 9
+        ddt_service.cambia_stato(7, "ANNULLATO", righe_legate_confermate="2")
+        repo.annulla.assert_called_once_with(7, 2)
+
+    @patch(_REPO)
+    def test_annullo_dichiarazione_non_numerica(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_id_by_codice.return_value = 9
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.cambia_stato(7, "ANNULLATO", righe_legate_confermate="due")
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "righe_legate_confermate")
+        repo.annulla.assert_not_called()
+
+    @patch(_REPO)
+    def test_annullo_con_legami_codice_del_db(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSO"
+        repo.get_stato_id_by_codice.return_value = 9
+        repo.annulla.side_effect = DatabaseError(
+            "E_DDT_ANNULLO_CON_LEGAMI: DDT 12 ha 2 righe che vengono da un ordine",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.cambia_stato(7, "ANNULLATO")
+        self.assertEqual(cm.exception.code, "E_DDT_ANNULLO_CON_LEGAMI")
+        # Il comportamento che la finestra riconosce (`useForzaturaConfermata`).
+        policy = ErrorPolicyRegistry.resolve("E_DDT_ANNULLO_CON_LEGAMI")
+        self.assertEqual(policy.http_status, 409)
+        self.assertEqual(policy.ui_action, "confirm_and_retry")
+
+    @patch(_REPO)
+    def test_correggi_qta_evasa_delega_al_verbo(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 7}
+        repo.correggi_qta_evasa.return_value = Decimal("6")
+        out = ddt_service.correggi_qta_evasa(7, 31, {"qta_operativa": "6"})
+        repo.correggi_qta_evasa.assert_called_once_with(31, Decimal("6"))
+        self.assertEqual(out, {"ddt_id": 7, "riga_id": 31, "qta_evasa": Decimal("6")})
+
+    @patch(_REPO)
+    def test_correggi_qta_evasa_qta_mancante(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 7}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.correggi_qta_evasa(7, 31, {})
+        self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
+        repo.correggi_qta_evasa.assert_not_called()
+
+    @patch(_REPO)
+    def test_correggi_qta_evasa_riga_di_altro_ddt_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_riga.return_value = {"id": 31, "ddt_id": 8}
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.correggi_qta_evasa(7, 31, {"qta_operativa": "6"})
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.correggi_qta_evasa.assert_not_called()
+
+    @patch("apps.vendite.services.vendite_service.get_documento_passaggi")
+    @patch(_REPO)
+    def test_get_legami_conta_righe_distinte_e_origini(self, repo_cls, passaggi) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = "EMESSO"
+        # La riga 31 e' una ri-consegna di un reso nato da un ordine: due legami,
+        # una riga sola da dichiarare.
+        repo.list_legami.return_value = [
+            {"ddt_riga_id": 31, "riga_nr": 1, "origine": "ORDINE", "origine_riga_id": 5, "qta": Decimal("10")},
+            {"ddt_riga_id": 31, "riga_nr": 1, "origine": "RESO", "origine_riga_id": 9, "qta": Decimal("10")},
+            {"ddt_riga_id": 32, "riga_nr": 2, "origine": "ORDINE", "origine_riga_id": 6, "qta": Decimal("4")},
+        ]
+        passaggi.return_value = {"indietro": [
+            {"livello": 1, "from_tipo_codice_interno": "ORDINE_VENDITA", "from_doc_id": 12,
+             "from_codice": "OV-12", "from_stato_codice_interno": "EVASO"},
+            {"livello": 2, "from_tipo_codice_interno": "PREVENTIVO", "from_doc_id": 3,
+             "from_codice": "PV-3", "from_stato_codice_interno": "ACCETTATO"},
+        ]}
+        out = ddt_service.get_legami(7)
+        passaggi.assert_called_once_with("DDT_VENDITA", 7)
+        self.assertEqual(out["righe_legate"], 2)
+        self.assertEqual(len(out["legami"]), 3)
+        self.assertEqual(out["origini"], [{
+            "tipo_codice_interno": "ORDINE_VENDITA", "doc_id": 12,
+            "codice": "OV-12", "stato_codice_interno": "EVASO",
+        }])
+
+    @patch(_REPO)
+    def test_get_legami_ddt_non_trovato_e_404(self, repo_cls) -> None:
+        repo = repo_cls.return_value
+        repo.get_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            ddt_service.get_legami(99)
+        self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
+        repo.list_legami.assert_not_called()

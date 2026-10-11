@@ -68,6 +68,10 @@ l'uscita: il magazzino diceva «la merce e' qui», l'ordine «la merce e' partit
 
 ### 3.4 Ricaduta BE/FE
 
+✅ **Fatta il 2026-10-11**: il dettaglio sta in brief-db-ddt-righe-evase-dall-ordine §10 (endpoint
+`GET …/ddt/<id>/legami/`, `cambia-stato` verso ANNULLATO sempre da `fn_annulla_ddt`, `confirm_and_retry`,
+finestra `DdtAnnulloLegamiDialog`, guida §4.3). Resta il collaudo a video.
+
 * Il cambio di stato verso ANNULLATO, se riceve **E_DDT_ANNULLO_CON_LEGAMI**, apre una finestra di
   conferma che elenca le righe legate (da `vendite.fn_ddt_legami`: «riga 1, ordine 12, 10 pz»). Alla
   conferma: `SELECT * FROM vendite.fn_annulla_ddt(ddt_id, <righe viste>)`.

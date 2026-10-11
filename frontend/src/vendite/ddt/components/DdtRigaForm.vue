@@ -12,6 +12,13 @@
 // ComponentiDialog pre-save per editare i prezzi componente; gli override
 // viaggiano in `componenti_overrides`. In EDIT i prezzi componente si
 // modificano via DdtRigaComponentiPanel. Clone di OrdiniRigaForm (§D-4).
+// ⭐ LA RIGA EVASA (brief-db-ddt-righe-evase-dall-ordine, 2026-10-11): una
+// riga legata a un ordine o a un reso da ri-consegnare (`evasa` della vista)
+// ha articolo, UoM e quantita' FERMI — sono la fotografia di cio' che si
+// spedisce per conto dell'origine. La quantita' si corregge dal verbo
+// («Correggi quantita' evasa»), che cambia insieme riga, legame e ordine; il
+// pulsante segue `correggi_qta_evasa_blocco` (NULL = acceso). Descrizione,
+// prezzo e sconto restano del form. Le righe aggiunte a mano non cambiano.
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useNotify } from '../../../core/composables/useNotify'
@@ -30,8 +37,10 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
+import { componiBloccoMotivo } from '../../../core/utils/bloccoMotivo'
+import DdtCorreggiQtaEvasaDialog from './dialogs/DdtCorreggiQtaEvasaDialog.vue'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 const store = useDdtStore()
 const notify = useNotify()
 const loading = ref(false)
@@ -64,6 +73,27 @@ const form = ref({
 
 // Articolo selezionato (per restore autocomplete).
 const articoloObj = ref(null)
+
+// La riga evasa (D-1): la dice il DB, il form non la deduce dai legami.
+const isEvasa = computed(() => props.riga?.evasa === true)
+// Il motivo per cui il verbo e' spento, e la frase del tooltip. La vista
+// manda il solo codice (`correggi_qta_evasa_blocco`); la chiave e'
+// `vendite.ddt.correggi_qta_evasa_reason.<codice minuscolo>` (contratto del
+// DB, §6.1 del brief), fail-visible sul codice.
+const correggiQtaBlocco = computed(() => props.riga?.correggi_qta_evasa_blocco || '')
+const correggiQtaMotivo = computed(() => componiBloccoMotivo(t, te, {
+  reason: correggiQtaBlocco.value,
+  reasonKey: correggiQtaBlocco.value
+    ? `vendite.ddt.correggi_qta_evasa_reason.${correggiQtaBlocco.value.toLowerCase()}`
+    : '',
+}))
+const correggiQtaVisible = ref(false)
+
+// Scopo: la quantita' e' cambiata dal verbo: la riga si rilegge come dopo un
+//        salvataggio (lista, riepilogo IVA, stato dell'ordine nella barra).
+function onQtaCorretta(esito) {
+  emit('saved', esito)
+}
 
 // Cuore riga articolo/composito condiviso con Ordini/Preventivi (B11, regola del
 // 2): flag composito + wiring UoM + ComponentiDialog + submitRiga.
@@ -171,9 +201,14 @@ function buildRigaPayload() {
   const f = form.value
   if (isEdit.value) {
     const base = {
-      qta_operativa: f.qta_operativa,
       sconto_percentuale: f.sconto_percentuale,
       descrizione: f.descrizione || null,
+    }
+    // ⛔ La riga evasa non manda la quantita': e' ferma (E_DDT_RIGA_EVASA_FERMA)
+    //    e cambia solo dal verbo. Mandarla invariata passerebbe, ma direbbe al
+    //    lettore che il form la salva.
+    if (!isEvasa.value) {
+      base.qta_operativa = f.qta_operativa
     }
     // Per riga CASO A il prezzo padre e' SUM(componenti) via trigger DB:
     // l'edit del prezzo avviene per componente nel pannello sotto.
@@ -240,6 +275,10 @@ defineExpose({ modificato, chiudiConConferma })
         :placeholder="t('vendite.ddt.riga_cerca_articolo')" @select="onArticoloSelect" />
     </div>
 
+    <!-- Perche' articolo e quantita' sono spenti: lo si dice, non lo si lascia
+         indovinare. -->
+    <small v-if="isEvasa" class="app-field-hint">{{ t('vendite.ddt.riga_evasa_hint') }}</small>
+
     <div class="form-field">
       <label>{{ t('vendite.ddt.riga_descrizione') }}</label>
       <InputText v-model="form.descrizione" />
@@ -248,7 +287,16 @@ defineExpose({ modificato, chiudiConConferma })
     <div class="form-grid-3col">
       <div class="form-field">
         <label>{{ t('vendite.ddt.riga_quantita') }} *</label>
-        <InputNumber v-model="form.qta_operativa" :min-fraction-digits="2" :max-fraction-digits="6" />
+        <InputNumber v-model="form.qta_operativa" :min-fraction-digits="2" :max-fraction-digits="6"
+          :disabled="isEvasa" />
+        <!-- La riga evasa: la quantita' passa dal verbo. Tooltip sull'involucro:
+             un Button disabilitato non emette eventi del mouse. -->
+        <span v-if="isEvasa" class="app-action-tooltip-wrap"
+          v-tooltip.top="correggiQtaMotivo || null">
+          <Button :label="t('vendite.ddt.correggi_qta_evasa')" size="small" text
+            :disabled="Boolean(correggiQtaBlocco)"
+            @click="correggiQtaVisible = true" />
+        </span>
       </div>
       <div class="form-field">
         <label style="display: flex; align-items: center; gap: 0.5rem;">
@@ -353,6 +401,13 @@ defineExpose({ modificato, chiudiConConferma })
         :prezzo-richiesto="causaleFatturabile"
         @changed="emit('componenti-changed')" />
     </div>
+
+    <DdtCorreggiQtaEvasaDialog
+      v-if="isEvasa"
+      v-model:visible="correggiQtaVisible"
+      :ddt-id="ddtId"
+      :riga="props.riga"
+      @corretta="onQtaCorretta" />
 
     <!-- Bottoni Salva/Annulla della riga: sempre visibili in edit-riga. I bottoni
          del FormFooter testata si nascondono via `formRigaAperto` lato DdtDrawer. -->

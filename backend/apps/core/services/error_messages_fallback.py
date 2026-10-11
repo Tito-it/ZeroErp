@@ -285,6 +285,13 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DATI_SOCIETARI_TIPO_SOGGETTO_NON_AMMESSO": "Per questo tipo soggetto i dati societari non sono previsti.",
     "E_DATO_FISCALE_SENZA_TIPO_SOGGETTO": "Per indicare un regime fiscale o un titolo IVA serve prima il tipo soggetto.",
     "E_DB_ROLE_UNSAFE": "Errore interno di sicurezza sessione.",
+    # brief-db-ddt-righe-evase-dall-ordine (2026-10-11): la riga evasa dall'ordine
+    # o dal reso, il suo legame e l'annullo della bolla che li porta.
+    "E_DDT_ANNULLO_CON_LEGAMI": "La bolla ha righe che vengono da un ordine o da un reso: annullandola, quelle quantita' tornano da spedire. Serve una conferma.",
+    "E_DDT_LEGAME_EVASIONE_SOLO_DA_VERBO": "Il legame di una riga di DDT con la sua origine non si scrive direttamente: la quantita' si corregge col verbo, il legame si toglie con la riga.",
+    "E_DDT_RIGA_EVASA_FERMA": "La riga viene da un ordine o da un reso: articolo, unita' di misura e quantita' non si cambiano dalla riga.",
+    "E_DDT_RIGA_EVASA_LEGAMI_MULTIPLI": "La riga e' legata a piu' righe d'origine: la quantita' evasa non si puo' correggere da sola.",
+    "E_DDT_RIGA_NON_EVASA": "La riga non viene da un ordine o da un reso: la sua quantita' si modifica dalla riga.",
     "E_DDT_CAUSALE_IMMUTABILE": "La causale di trasporto si sceglie solo in bozza: dopo l'emissione la bolla e' quella.",
     "E_DDT_CAUSALE_OBBLIGATORIA": "Causale di trasporto obbligatoria per emettere il DDT.",
     "E_DDT_CLIENTE_IMMUTABILE": "Il cliente della bolla si sceglie solo in bozza: se e' sbagliato, annulla la bolla e creane una nuova.",
@@ -335,6 +342,11 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DOC_CLIENTE_FUORI_BOZZA": "Il cliente del documento si sceglie solo in bozza: se e' sbagliato, annulla il documento e creane uno nuovo.",
     "E_DOC_SORGENTE_FUORI_BOZZA": "Il documento da cui nasce si sceglie solo in bozza.",
     "E_DOC_CHIUSO": "Il documento e' chiuso, e non si modifica piu'.",
+    # brief-db-testata-dopo-emissione (giro R-DB, 2026-10-11): i satelliti del
+    # documento (indirizzi, fornitura) solo in bozza; il listino sotto le righe.
+    "E_DOC_DATI_COLLEGATI_NON_BOZZA": "Il documento non e' piu' in bozza: indirizzi e fornitura si cambiano solo finche' e' in bozza.",
+    "E_DOC_LISTINO_CAMBIO_CON_RIGHE": "Il listino del documento non si cambia: ci sono righe caricate con quello attuale. Elimina prima le righe.",
+    "E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI": "Il listino del documento non si toglie: ci sono eccezioni di prezzo o di esclusione che dipendono da quello. Rimuovile prima.",
     "E_DOC_LISTINO_EMITTENTE_DIVERSO": "Il listino scelto e' di un'altra azienda: il documento puo' usare solo un listino della sua azienda emittente.",
     "E_DOC_LISTINO_UTILITY_DIVERSA": "Il listino scelto e' di un'altra utility: il documento puo' usare solo un listino della sua utility.",
     "E_DOCUMENTI_ASSET_DELETE_BLOCKED": "Eliminazione asset non consentita. Disattivare l'asset impostando valido_al.",

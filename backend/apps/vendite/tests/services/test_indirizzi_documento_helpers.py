@@ -67,9 +67,7 @@ class AutoAssegnaIndirizzoTests(TestCase):
     def _cfg(self, repo):
         return IndirizziDocumentoConfig(
             repo_factory=lambda: repo,
-            stati_modificabili=frozenset({"BOZZA"}),
             not_found_code="E_TEST_NOT_FOUND",
-            stato_error_code="E_TEST_STATO",
             error_code="E_TEST",
             fn_prefix="vendite.test",
         )

@@ -196,6 +196,15 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # pannello riconosce il comportamento (`useForzaturaConfermata`) e apre il
     # dialog con username e vesti. La classe resta CONFLITTO_STATO (409).
     "E_CREDENZIALE_DA_CONFERMARE": "confirm_and_retry",  # classe CONFLITTO_STATO
+    # L'annullo di una bolla con legami (brief-db-ddt-righe-evase-dall-ordine
+    # D-8, 2026-10-11): stesso stampo. Il guard di transizione ferma l'annullo
+    # di una bolla che porta righe legate a un ordine o a un reso, e il verbo
+    # `vendite.fn_annulla_ddt` lo ACCETTA quando il secondo tentativo DICHIARA
+    # quante righe legate l'operatore ha visto (`righe_legate_confermate`).
+    # Col banner l'operatore resterebbe fermo su un annullo che il modello
+    # ammette: la finestra (`useForzaturaConfermata`) elenca le righe
+    # (`GET …/ddt/<id>/legami/`) e ripete con la dichiarazione.
+    "E_DDT_ANNULLO_CON_LEGAMI": "confirm_and_retry",  # classe CONFLITTO_STATO
     # ⚠️ La guard e' `attivo IS NOT TRUE`, che copre DUE casi: conto
     # disattivato e conto inesistente (SELECT INTO -> NULL). Il 400 con
     # il campo evidenziato e' corretto in entrambi; un 404 sarebbe
@@ -203,13 +212,6 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_CONTO_BANCARIO": "highlight_form_fields",  # classe DATO_ERRATO
     "E_CONTRATTO_AGGIUNTA_GIA_IN_LISTINO": "highlight_form_fields",  # classe NON_ESEGUIBILE
     "E_CONTRATTO_CLASSE_TIPO_INCOERENTE": "highlight_form_fields",  # classe DATO_ERRATO
-    # Guard Profilo A contratti: in stati post-DRAFT (ATTIVO/CESSATO)
-    # le modifiche sono limitate o vietate. La testata ammette solo
-    # `valido_al` e `meta` in ATTIVO; CESSATO immutabile. Le sotto
-    # -entita' (righe override, utility 1:1) sono CRUD-able solo in
-    # DRAFT. Per modifiche sostanziali post-DRAFT serve creare un
-    # nuovo contratto (eventualmente con parent_contratto_id).
-    "E_CONTRATTO_NON_MODIFICABILE": "show_toast_error",  # classe CONFLITTO_STATO
     #   Stessa forma dei due sopra, trovati dalla lente
     #   `scripts/sql/check_messaggio_vs_condizione.sql` dopo che i primi due
     #   erano stati chiusi. Tutti e tre `show_error_banner`: sono scritture
@@ -482,8 +484,8 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     "E_PROMO_INIZIATA_CAMPI_RISTRETTI": "show_toast_error",  # classe CONFLITTO_STATO
     # Guard Profilo A promo data-driven (vendite.promo_articoli):
     # le date governano lo stato (FUTURA / INIZIATA / SCADUTA) e vincolano
-    # i campi modificabili. Pattern simmetrico a Profilo A contratti
-    # (E_CONTRATTO_NON_MODIFICABILE) ma data-driven invece che stato-driven.
+    # i campi modificabili. Pattern simmetrico al lock di testata dei
+    # documenti (`E_DOC_*` fuori bozza) ma data-driven invece che stato-driven.
     # Defense-in-depth: trigger DB applica le stesse regole su bypass via psql.
     "E_PROMO_RETROATTIVA": "highlight_form_fields",  # classe DATO_ERRATO
     "E_PROMO_SCADUTA_IMMUTABILE": "show_toast_error",  # classe CONFLITTO_STATO

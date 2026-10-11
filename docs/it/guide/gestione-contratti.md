@@ -362,9 +362,12 @@ condizioni aggiornate.
 
 Se in DRAFT l'operatore tenta di rimuovere il `listino_id` da un contratto che
 ha eccezioni OVERRIDE o ESCLUSIONE, l'API risponde 422 con
-`E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`. Gli OVERRIDE e ESCLUSIONE perdono
+`E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`. Gli OVERRIDE e ESCLUSIONE perdono
 significato senza un listino di riferimento. Le AGGIUNTA non bloccano (sono
-articoli fuori listino, compatibili con entrambe le forme).
+articoli fuori listino, compatibili con entrambe le forme). Mettere o sostituire
+il listino quando ci sono già righe risponde 422 con
+`E_DOC_LISTINO_CAMBIO_CON_RIGHE`: le righe sono state caricate contro il listino di
+prima. Le due regole le dice il database, e valgono anche per l'offerta.
 
 ---
 
@@ -517,7 +520,7 @@ Codici sollevati dal dominio contratti (registrati in `config.messaggi_errore`):
 | `E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE`       | 451 | 422  | Attivazione contratto senza listino e senza almeno una riga AGGIUNTA con prezzo valorizzato                              |
 | `E_CONTRATTO_CAMPI_BLOCCATI_POST_ATTIVAZIONE`  | 452 | 422  | ⛔ Ritirato il 2026-10-10: il pricing di un contratto fuori bozza lo ferma `E_DOC_CONDIZIONI_FUORI_BOZZA` (§6.1)         |
 | `E_ARTICOLO_ESCLUSO_DA_CONTRATTO`              | 453 | 422  | Resolver chiede prezzo per articolo con ESCLUSIONE attiva                                                                |
-| `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`  | 454 | 422  | Tentativo rimozione listino con OVERRIDE/ESCLUSIONE presenti                                                             |
+| `E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI`  | 454 | 422  | ⛔ Ritirato il 2026-10-11: ora `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI` (§6.3), comune a contratto e offerta              |
 | `E_CONTRATTO_ESCLUSIONE_FIGLIO_BUNDLE_VIETATA` | 455 | 422  | ESCLUSIONE su un articolo che è componente (figlio) di un bundle del listino — escludere il padre bundle                 |
 | `E_CONTRATTO_ATTIVAZIONE_SENZA_VERSIONE_LISTINO` | 1201 | 409 | Attivazione di un contratto con listino che non ha una versione in vigore oggi (il DB congela la versione all'attivazione). In DRAFT il listino si sceglie comunque |
 | `E_ARTICOLO_NON_NEGOZIATO_SU_CONTRATTO_C`      | —   | 422  | Contratto senza listino e nessuna eccezione per l'articolo                                                               |

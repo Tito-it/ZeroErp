@@ -6,7 +6,8 @@
 > `-35`, applicati da Tid su dbdev e `zeroerp_ci`; corsa pgTAP senza regressioni. Dentro anche la
 > ri-consegna di un reso (D-7), il divieto di legami nuovi su bolle emesse (D-6) e l'annullo con
 > conferma (D-8, lavorato in [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md)
-> §3). **Tocca a BE/FE** (§6, §6.1; per l'annullo §3.4 del brief D29), poi collaudo a video e archivio.
+> §3). ✅ **Lato BE/FE fatto il 2026-10-11** (§10), compreso l'annullo (§3.4 del brief D29). **Resta:**
+> collaudo a video, poi archivio.
 > **Nel registro dei difetti DB:** voce **D28** di `migliorie-generali-da-test-valutazione.md`, che
 > rimanda qui.
 
@@ -259,6 +260,44 @@ dichiarando le righe lette da `vendite.fn_ddt_legami`. Il censimento rifatto su 
 ANNULLATO di una bolla nei pgTAP non ha trovato altri casi. Le righe dei codici nei due CSV e i due test
 condivisi (rubinetto, lock delle righe) sono entrati col commit del giro della testata (`43d03c390`).
 
-**Resta:** lato BE/FE (§6.1), collaudo a video, archivio. Nessun debito DB da portare in archivio: il solo
+**Resta:** collaudo a video, archivio (il lato BE/FE e' fatto, §10). Nessun debito DB da portare in archivio: il solo
 trovato nel giro (l'annullo, §7.6) vive in brief-db-annullo-documento-con-legami (D29).
 
+## 10. Consegna BE/FE (2026-10-11)
+
+### 10.1 Backend
+
+| Cosa | Dove |
+| --- | --- |
+| `evasa`, `correggi_qta_evasa_blocco` nelle righe | nessuna modifica: il repository legge `v.*` di `vw_ddt_righe_dettaglio` (lista e lettura completa) |
+| Il verbo | `POST …/ddt/<id>/righe/<riga_id>/qta-evasa/` (`qta_operativa`) → `ddt_service.correggi_qta_evasa` → `DdtRepository.correggi_qta_evasa`. Il BE controlla solo che il valore sia un numero: bozza, riga evasa, residuo e quantita' positiva li giudica il DB |
+| I legami per la finestra | `GET …/ddt/<id>/legami/` → `ddt_service.get_legami`: le righe di `fn_ddt_legami`, `righe_legate` (righe **distinte**, lo stesso conteggio del verbo) e le `origini` (archi di livello 1 del lineage, a livello di testata) |
+| L'annullo | `cambia-stato` verso ANNULLATO passa **sempre** da `fn_annulla_ddt`, col campo nuovo `righe_legate_confermate` (assente al primo tentativo). `E_DDT_ANNULLO_CON_LEGAMI` ha l'override `confirm_and_retry` in `error_ui_overrides.py` |
+| Commenti | `ddt_repository.delete_riga` e `ddt_service.elimina_riga`: la riga evasa in bozza si cancella |
+| Test | 9 in `test_ddt_service.py` (29-37), 3 in `test_ddt_api.py` (15-17). Suite `core` + `vendite` verde (3939), ruff e mypy (cricchetto) puliti |
+| Prova sul DB vero | smoke in transazione annullata su dbdev, ruolo `zeroerp_app`: bolla generata da un ordine, legami e origini letti, riga `evasa = true` col verbo acceso, PATCH diretto della quantita' → `E_DDT_RIGA_EVASA_FERMA`, verbo → nuova `qta_evasa`, verbo oltre il residuo → `E_QTA_SUPERA_RESIDUO`, annullo senza conferma e con conferma sbagliata → `E_DDT_ANNULLO_CON_LEGAMI`, con conferma giusta → ANNULLATO e legami ritirati |
+
+### 10.2 Frontend
+
+| Cosa | Dove |
+| --- | --- |
+| Form riga | `DdtRigaForm`: sulla riga `evasa` quantita' spenta (articolo e UoM lo erano gia' in modifica), la quantita' non viaggia nel PATCH, pulsante «Correggi quantita' evasa» col tooltip dal motivo (`vendite.ddt.correggi_qta_evasa_reason.<motivo>`, via `componiBloccoMotivo`) e una riga di spiegazione |
+| Il verbo | `DdtCorreggiQtaEvasaDialog` (AppDialog sm, fotografia D-14); lo store avvisa i tab DDT, ORDINE, RESO |
+| L'annullo | `DdtDrawer`: il cambio di stato passa da `useForzaturaConfermata`; la domanda apre `DdtAnnulloLegamiDialog` (righe legate, origini apribili con `DocumentoDrawerHost`, conferma che dichiara `righe_legate`). Dopo l'annullo si rileggono dettaglio, merce e collegamenti; lo store avvisa ORDINE e RESO |
+| Cancellazione | invariata: segue `can_edit_righe` come le altre righe |
+| i18n | le quattro chiavi dei motivi c'erano gia'; nuove `correggi_qta_evasa*`, `riga_evasa_hint`, `annullo_legami.*` (it + en). Titolo e pulsante della finestra d'annullo: `azione_annulla`, il nome dell'azione |
+| Presidi | `check_i18n_keys` pulito, `npm run guards` verde, oxlint/eslint puliti, vitest `vendite` + `core` verde (596), build ok |
+| Guida | `gestione-ddt.md`: §4.3 «Annullare una bolla da ordine o da reso», §6.3 «Le righe di un DDT da ordine» (pippo 10→15 e 10→6), errori, §15.3 |
+
+### 10.3 Trovato nel giro, fuori da questo brief
+
+* ⚠️ **Gli altri cambi di stato del DDT non passano dal verbo.** `ddt_service.cambia_stato` (e quindi
+  `emetti`) fa ancora l'UPDATE diretto di `stato_doc_ddt_id`, mentre `vendite.fn_cambia_stato_ddt` si
+  dichiara «VERBO di ogni cambio di stato di una bolla»: su una bolla che muove merce il guard risponde
+  `E_DDT_STATO_SOLO_DA_VERBO`. Qui e' stato portato al verbo il solo ANNULLATO (via `fn_annulla_ddt`,
+  che lo chiama). Il resto e' il lato BE del Lotto 3 del magazzino, gia' aperto in PROJECT_CONTEXT.
+* Da verificare, non un difetto dichiarato: lo smoke ha trovato un ordine `EVASO` per cui
+  `fn_ordine_ha_residuo_evasione` risponde `true` (reso-aware), e `fn_genera_ddt_da_ordine` lo rifiuta per
+  stato. Se il residuo riaperto da un reso si rispedisce solo dalla ri-consegna, i due sono coerenti;
+  se qualche superficie usa quel predicato per accendere «Genera DDT» sull'ordine, il pulsante sarebbe
+  acceso su un gesto rifiutato.

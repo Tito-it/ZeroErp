@@ -2933,6 +2933,26 @@
         "prelievi_incompleti": "One or more lines have picks that do not cover their quantity: complete the picks before issuing.",
         "merce_non_prelevabile": "A pick is not accepted by the warehouse (lot, serial or location not valid for the item): open it from the line picks.",
         "merce_non_disponibile": "The goods to ship are not available in stock in sufficient quantity."
+      },
+      "correggi_qta_evasa_reason": {
+        "ddt_non_in_bozza": "The shipped quantity can only be corrected while the delivery note is a draft.",
+        "riga_non_evasa": "The line does not come from an order or a return: change the quantity from the line.",
+        "ddt_senza_origine": "The delivery note does not come from an order or a return: change the quantity from the line.",
+        "legami_multipli": "The line is linked to several source lines: the shipped quantity cannot be corrected on its own."
+      },
+      "correggi_qta_evasa": "Correct shipped quantity",
+      "correggi_qta_evasa_ok": "Shipped quantity corrected",
+      "correggi_qta_evasa_spiegazione": "Line {riga} comes from an order or a return: the new quantity also changes what is shipped for the source, and the order status.",
+      "correggi_qta_evasa_nuova": "New quantity",
+      "riga_evasa_hint": "Line shipped from an order or a return: item, unit of measure and quantity cannot be changed here. Correct the quantity with «Correct shipped quantity».",
+      "annullo_legami": {
+        "righe": "Linked lines",
+        "riga": "Line {riga} · {origine} · {qta}",
+        "origini": "Source documents",
+        "spiegazione": "If you confirm, the quantities of these lines go back to be shipped: the order goes back to be fulfilled, the return to be re-delivered.",
+        "origine_ordine": "Order",
+        "origine_reso": "Return",
+        "nessun_legame": "The lines linked to orders or returns are no longer there: if you confirm, the delivery note is cancelled without withdrawing any link."
       }
     },
     "famiglie_documento": {

@@ -535,12 +535,59 @@ class DdtRepository(
 
     # Scopo: Elimina una riga DDT (HARD DELETE). La FK
     #        ddt_righe_componenti.riga_ddt_id ha ON DELETE CASCADE. Il trigger DB
-    #        `trgfn_dlt_block_ordrig_ddtrig` blocca la delete se la riga e' gia'
-    #        collegata a un ordine via fulfillment.
+    #        `trgfn_dlt_block_ordrig_ddtrig`: in bozza la riga evasa si cancella
+    #        e i suoi legami (fulfillment, ponte di ri-consegna) si ritirano con
+    #        lei, riproiettando l'ordine (brief-db-ddt-righe-evase-dall-ordine
+    #        D-3, D-7); blocca solo se la riga e' l'origine di un reso
+    #        (E_DELETE_RIGA_DOC_REFERENZIATA).
     def delete_riga(self, riga_id: int) -> bool:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM vendite.ddt_righe WHERE id = %s", [riga_id])
             return cursor.rowcount > 0
+
+    # Scopo: Corregge la quantita' evasa di una riga in bozza via il verbo DB
+    #        `vendite.fn_ddt_riga_correggi_qta_evasa` (D-2): riga, componenti,
+    #        legami e stato dell'ordine nella stessa operazione. Perimetro,
+    #        stato, residuo e copertura del reso li giudica il DB.
+    # Ritorna: la nuova quantita' evasa, in unita' base.
+    def correggi_qta_evasa(self, riga_id: int, qta_operativa: Any) -> Any:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_ddt_riga_correggi_qta_evasa(%s, %s)",
+                [int(riga_id), qta_operativa],
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
+    # Scopo: I legami della bolla, riga per riga (`vendite.fn_ddt_legami`,
+    #        sede unica dell'avviso, della conferma e del ritiro dell'annullo):
+    #        ddt_riga_id, riga_nr, origine (ORDINE/RESO), origine_riga_id, qta
+    #        (unita' base).
+    def list_legami(self, ddt_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT l.ddt_riga_id, l.riga_nr, l.origine, l.origine_riga_id, l.qta
+              FROM vendite.fn_ddt_legami(%s) AS l
+             ORDER BY l.riga_nr, l.origine
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [int(ddt_id)])
+            return rows_to_list(cursor)
+
+    # Scopo: Annulla la bolla via il verbo DB `vendite.fn_annulla_ddt` (D-8):
+    #        con legami, `righe_legate_confermate` dichiara quante righe
+    #        legate l'operatore ha visto (se non corrisponde:
+    #        E_DDT_ANNULLO_CON_LEGAMI); poi ritiro dei legami e
+    #        `fn_cambia_stato_ddt(…, 'ANNULLATO')` (matrice, permesso, storno).
+    # Ritorna: i movimenti di storno (movimento_id, prelievo_id, qta).
+    def annulla(
+        self, ddt_id: int, righe_legate_confermate: int | None,
+    ) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT * FROM vendite.fn_annulla_ddt(%s, %s)",
+                [int(ddt_id), righe_legate_confermate],
+            )
+            return rows_to_list(cursor)
 
     # ══════════════════════════════════════════════════════════
     #  Componenti riga (BoM CASO A) — init/preview

@@ -231,18 +231,12 @@ UPDATE_KEYS_TESTATA: frozenset[str] = frozenset({
 # `_CONTRATTO_PATCH_ALLOWED_BY_STATE`, la seconda copia di quella regola
 # (brief-db-testata-dopo-emissione, D-0 e R-BE-2): il 409 del lock passa com'e'.
 
-# Refactor 2026-05-20 — Lock cambio `listino_id` in presenza di righe.
-# Razionale: il `listino_id` definisce il contesto di pricing contro cui le
-# righe (OVERRIDE/ESCLUSIONE/AGGIUNTA) sono state caricate. Cambiarlo causa
-# drift semantico vero:
-#   - rimozione (valore → NULL): gia' coperta dal check piu' specifico
-#     `count_eccezioni_bloccanti` (blocca OVERRIDE/ESCLUSIONE; AGGIUNTE OK
-#     perche' restano valide senza listino).
-#   - aggiunta (NULL → valore): AGGIUNTE per articoli ora nel nuovo listino
-#     diventano illegali (trigger DB `script.trgfn_righe_guard_aggiunta_fuori_listino`).
-#   - sostituzione (valore → altro valore): OVERRIDE/ESCLUSIONE puntano a
-#     articoli del listino vecchio, potrebbero non esistere nel nuovo.
-# Il check inline copre aggiunta + sostituzione (qualsiasi righe attiva blocca).
+# Il listino sotto le righe: se si cambia (messo o sostituito) con righe
+# attive, o si toglie con eccezioni OVERRIDE/ESCLUSIONE, lo dice il DB, per
+# contratto e offerta (`script.trgfn_doc_guard_listino_con_righe`, codici
+# `E_DOC_LISTINO_CAMBIO_CON_RIGHE` e `E_DOC_LISTINO_RIMOZIONE_CON_ECCEZIONI`,
+# 422 sul campo `listino_id`). Fino al 2026-10-11 le due regole vivevano solo
+# qui (brief-db-testata-dopo-emissione §11, R-DB-4 e R-BE-5).
 #
 # `tipo_variazione_globale` / `valore_variazione_globale` NON sono bloccati:
 # la variazione si applica solo alle righe DA_LISTINO della preview (le
@@ -749,41 +743,6 @@ class ContrattiService:
         # il payload patch non lo include (es. patch solo su variazione globale).
         existing = self._get_contratto_or_raise(contratto_id, op="update_contratto")
 
-        # Refactor 2026-05-20: lock cambio `listino_id` (aggiunta o sostituzione,
-        # NON rimozione) quando ci sono righe persistite. Vedi commento su
-        # _CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE per il razionale.
-        # La rimozione (valore→NULL) e' gia' coperta dal check piu' specifico
-        # `_check_listino_id_rimozione` qui sotto (blocca solo se OVERRIDE/
-        # ESCLUSIONE attivi, AGGIUNTE compatibili). Questo nuovo check copre
-        # i 2 casi mancanti: introduzione (NULL→valore) e sostituzione (cambio).
-        sta_cambiando_listino_non_rimozione = (
-            "listino_id" in payload
-            and payload["listino_id"] is not None
-            and payload["listino_id"] != existing.get("listino_id")
-        )
-        if sta_cambiando_listino_non_rimozione:
-            n_righe = self._repo.count_righe_attive(contratto_id)
-            if n_righe > 0:
-                ErrorManager.raise_error(
-                    code="E_CONTRATTO_CAMPI_BLOCCATI_CON_RIGHE",
-                    message="Modifica del listino bloccata: ci sono righe gia' caricate.",
-                    detail=(
-                        f"Il `listino_id` definisce il contesto di pricing contro cui "
-                        f"le {n_righe} righe attive sono state caricate. Cambiare il "
-                        f"listino senza eliminarle prima causerebbe drift semantico "
-                        f"silente (OVERRIDE/ESCLUSIONE punterebbero ad articoli del "
-                        f"listino vecchio, AGGIUNTE potrebbero conflittare col nuovo). "
-                        f"Elimina prima le righe oppure annulla il contratto e creane "
-                        f"uno nuovo."
-                    ),
-                    context={
-                        "contratto_id": contratto_id,
-                        "listino_id_corrente": existing.get("listino_id"),
-                        "listino_id_richiesto": payload["listino_id"],
-                        "righe_count": n_righe,
-                    },
-                )
-
         data = self._build_update_data_testata(payload, existing=existing)
 
         ErrorManager.require(
@@ -803,44 +762,6 @@ class ContrattiService:
             data=data,
             auth_user_id=auth_user_id,
         )
-
-        # Refactor modalita 2026-05-15 §3-bis-F: se il PATCH rimuove il
-        # listino_id (NOT NULL -> NULL) e esistono eccezioni OVERRIDE o
-        # ESCLUSIONE attive, blocca con 422 — il significato di quelle
-        # eccezioni dipende dal listino e cancellarle silenziosamente sarebbe
-        # un cambio di semantica nascosto. AGGIUNTA non blocca (vale anche
-        # senza listino). L'operatore deve prima rimuovere/sostituire le
-        # eccezioni esplicitamente.
-        sta_rimuovendo_listino = (
-            "listino_id" in data
-            and data["listino_id"] is None
-            and existing.get("listino_id") is not None
-        )
-        if sta_rimuovendo_listino:
-            counts = self._repo.count_eccezioni_bloccanti(contratto_id)
-            n_override = counts.get("OVERRIDE", 0)
-            n_esclusione = counts.get("ESCLUSIONE", 0)
-            if n_override > 0 or n_esclusione > 0:
-                totale = n_override + n_esclusione
-                dettagli = []
-                if n_override:
-                    dettagli.append(f"{n_override} OVERRIDE")
-                if n_esclusione:
-                    dettagli.append(f"{n_esclusione} ESCLUSIONE")
-                ErrorManager.raise_error(
-                    code="E_CONTRATTO_LISTINO_RIMOZIONE_CON_ECCEZIONI",
-                    message="Impossibile rimuovere il listino di riferimento dal contratto.",
-                    detail=(
-                        f"{totale} eccezioni ({', '.join(dettagli)}) sono ancora "
-                        f"associate. Rimuovi prima le eccezioni o sostituiscile "
-                        f"con AGGIUNTA per articoli fuori-listino."
-                    ),
-                    context={
-                        "contratto_id": contratto_id,
-                        "override_count": n_override,
-                        "esclusione_count": n_esclusione,
-                    },
-                )
 
         with self._map_db_errors({"contratto_id": contratto_id}):
             updated = self._repo.update_contratto(contratto_id, data)
@@ -1070,7 +991,7 @@ class ContrattiService:
         )
 
     # =================================================================
-    # Guard sotto-entita' (righe + utility): solo DRAFT
+    # Lettura della testata (guard di esistenza)
     # =================================================================
 
     # Scopo: Carica la testata contratto o solleva E_VENDITE_NOT_FOUND (BB core
@@ -1086,33 +1007,6 @@ class ContrattiService:
             code=E_VENDITE_NOT_FOUND, message="Contratto non trovato.",
             id_name="contratto_id", function_name=f"contratti_service.{op}",
         )
-
-    # Scopo: Verifica che il contratto sia in stato DRAFT prima di accettare
-    #        operazioni sulla UTILITY (1:1 con la testata). In stati post-DRAFT
-    #        le sotto entita' sono congelate per audit (Profilo A): per
-    #        modifiche serve creare un nuovo contratto. Solleva
-    #        E_CONTRATTO_NON_MODIFICABILE con stato corrente nel context;
-    #        ritorna la testata letta, per chi ne ha bisogno dopo.
-    #        ⛔ Per le RIGHE (e i loro componenti) NON si usa questo: la regola
-    #        «le righe si toccano solo in bozza» ha il codice del DB,
-    #        `E_RIGA_DOC_NON_BOZZA` — vedi `_richiedi_righe_in_bozza`. Fino al
-    #        2026-09-22 lo stesso rifiuto usciva con due nomi: questo dal
-    #        pre-check Python e quello dal trigger sulle stesse righe.
-    def _assert_contratto_draft(self, contratto_id: int, *, op_label: str) -> dict[str, Any]:
-        contratto = self._get_contratto_or_raise(contratto_id, op="_assert_contratto_draft")
-        stato = str(contratto.get("stato_codice_interno") or "")
-        if stato != "DRAFT":
-            ErrorManager.raise_error(
-                code="E_CONTRATTO_NON_MODIFICABILE",
-                message="Operazione non consentita nello stato corrente.",
-                detail=(
-                    f"{op_label} ammessa solo su contratti in stato DRAFT. "
-                    f"Stato corrente: {stato}. Per modifiche su contratti post-DRAFT "
-                    f"creare un nuovo contratto."
-                ),
-                context={"contratto_id": contratto_id, "stato_codice": stato, "op": op_label},
-            )
-        return contratto
 
     # Scopo: «Le righe si toccano solo in bozza» sul contratto, col codice e la
     #        frase del BB a DB `trgfn_doc_righe_lock_fuori_bozza` (montato su
@@ -1746,11 +1640,14 @@ class ContrattiService:
     # Scopo: Crea la riga utility associata al contratto. Richiede che
     #        istanza_utility_id / utility_id coincidano con quelli della
     #        testata (controllo anticipato lato service).
+    #        ⭐ In quale stato la fornitura si cambia lo dice il DB: il lock
+    #        «solo in bozza» dei satelliti (`E_DOC_DATI_COLLEGATI_NON_BOZZA`,
+    #        409) e la capability `can_edit_utility`. Fino al 2026-10-11 qui
+    #        c'era `_assert_contratto_draft`, la seconda copia di quella regola
+    #        (brief-db-testata-dopo-emissione §11, R-BE-6).
     def create_utility(self, contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        # Guard Profilo A: utility 1:1 modificabile solo in DRAFT (stesso
-        # guard di `update_utility`: fino al 22-09 era una copia inline).
-        testata = self._assert_contratto_draft(contratto_id, op_label="Aggiunta utility contratto")
+        testata = self._get_contratto_or_raise(contratto_id, op="create_utility")
 
         self._validate_utility_payload_shape(payload, for_create=True)
         data = self._build_utility_data(
@@ -1771,11 +1668,11 @@ class ContrattiService:
         return result
 
     # Scopo: Aggiorna la riga utility (1:1 con il contratto). I campi
-    #        identificativi contratto/istanza/utility sono immutabili.
+    #        identificativi contratto/istanza/utility sono immutabili. Lo
+    #        stato lo giudica il DB (vedi `create_utility`).
     def update_utility(self, contratto_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
-        # Guard Profilo A: utility modificabile solo in DRAFT.
-        self._assert_contratto_draft(contratto_id, op_label="Modifica utility contratto")
+        self._get_contratto_or_raise(contratto_id, op="update_utility", getter=self._repo.get_stato_codice)
         existing = self._repo.get_utility(contratto_id)
         ErrorManager.require(
             existing is not None,
@@ -2559,9 +2456,7 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
     # dei test unit raggiungono anche il ramo auto-assegnazione.
     repo_factory=lambda: ContrattiRepository(),
-    stati_modificabili=frozenset({"DRAFT"}),
     not_found_code=E_VENDITE_NOT_FOUND,
-    stato_error_code="E_CONTRATTO_NON_MODIFICABILE",
     error_code=E_VENDITE_VALIDATION,
     fn_prefix="vendite.contratti_service",
 )

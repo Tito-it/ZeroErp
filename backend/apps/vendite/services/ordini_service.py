@@ -387,9 +387,7 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
     # dei test unit raggiungono anche il ramo auto-assegnazione.
     repo_factory=lambda: OrdiniRepository(),
-    stati_modificabili=_STATI_MODIFICABILI,
     not_found_code="E_ORD_NOT_FOUND",
-    stato_error_code="E_ORD_STATO_TRANSIZIONE",
     error_code="E_ORD_VALIDAZIONE",
     fn_prefix=_FN,
 )

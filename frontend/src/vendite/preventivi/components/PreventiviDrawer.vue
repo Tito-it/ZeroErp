@@ -215,6 +215,7 @@ const { contentReady, onAfterShow } = useDrawerContentReady(() => props.visible)
 // Composable centralizzato (Fase 4.F2): availableActions/canEdit/flag/isLocked/
 // nonEditableFields uniformi a Contratti/Promo. Qui editFlag = can_edit_testata.
 const caps = useEntityCapabilities(detail, { editFlag: 'can_edit_testata' })
+
 const capabilities = caps.capabilities
 const availableActions = caps.availableActions
 const canEditRighe = computed(() => caps.flag('can_edit_righe'))
@@ -1066,7 +1067,8 @@ const drawerActions = computed(() => {
               :doc-id="effectivePreventivoId"
               :soggetto-ruolo-id="detail?.soggetto_ruolo_id ?? null"
               :istanza-utility-id="detail?.istanza_utility_id ?? null"
-              :readonly="isReadonly"
+              :readonly="isReadonlyPuro"
+              :capabilities="capabilities"
               :bordo="false" />
 
             <Divider />
