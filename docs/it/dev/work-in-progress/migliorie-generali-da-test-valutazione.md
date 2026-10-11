@@ -1009,8 +1009,11 @@ personalizzati). Curate e presidiate la capability del DDT e il lister dei DDT d
 censimento delle altre e il lister senza filtri restano aperti.
 
 Dettaglio nel brief
-[brief-db-plancache-funzioni-con-query-incorporate.md](brief-db-plancache-funzioni-con-query-incorporate.md):
-aperto, non iniziato, due decisioni attese (§3).
+[brief-db-plancache-funzioni-con-query-incorporate.md](brief-db-plancache-funzioni-con-query-incorporate.md).
+Stato al 2026-10-11: censimento fatto (D-1); resi curati (`20261011-42`, D-3a); pannello «Passaggi» e
+liste chiusi nel brief figlio `work-done/brief-db-lineage-seminata-per-chiave` (D-4…D-6). ⬜ Restano
+**D-2** (il lister dei DDT senza filtri, ~1,2 s su 62 DDT, dbdev come app, 2026-10-11) e **D-3b** (il
+verbo dell'accredito, ~115 ms a chiamata): due query lente in se', da profilare.
 
 ### 🟠 D27 — Gli indirizzi del documento non seguono il cliente
 
@@ -1249,7 +1252,8 @@ D6 e il registro dei rossi in CI.
 * [ ] **D27** — gli indirizzi del documento seguono il cliente: brief
       `brief-db-indirizzi-documento-seguono-il-cliente` (aperto il 2026-10-10, decisioni chiuse lo stesso giorno, codice da scrivere).
 * [ ] **D26-2** — le funzioni che ripianificano a ogni chiamata: brief
-      `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
+      `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10; al 2026-10-11 restano D-2, il
+      lister dei DDT senza filtri, e D-3b, il verbo dell'accredito).
 * [x] **D28** — le righe evase di un DDT da ordine: brief `work-done/brief-db-ddt-righe-evase-dall-ordine` —
       chiuso e archiviato il 2026-10-11 (DB `20261011-05 … -20`, `-34`, `-35`; BE/FE §10; collaudo di Tid superato).
 * [x] **D29** — annullare un documento con legami: brief `work-done/brief-db-annullo-documento-con-legami` —

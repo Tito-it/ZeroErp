@@ -229,7 +229,7 @@ query (nessun `auto_explain` come app: si fa per istruzione, a mano).
 | Voce | Cosa | Stato | Dove |
 | --- | --- | --- | --- |
 | D-1 | censimento delle funzioni che ripianificano | ✅ fatto | §4 |
-| **D-2** | il lister dei DDT **senza filtri** (~1,1 s, diagnosi di tutti i DDT in una chiamata): profilarlo come query | ⬜ **aperto**, decisione attesa: ora o col volume | §2.2 |
+| **D-2** | il lister dei DDT **senza filtri** (diagnosi di tutti i DDT in una chiamata): profilarlo come query | ⬜ **aperto**, decisione attesa: ora o col volume. Rimisurato il 2026-10-11, dbdev come app: ~1,19 s su 62 DDT (il giro della lineage non lo tocca) | §2.2 |
 | **D-3** | resi: misurare un ciclo di accredito **costruito** (in transazione annullata) e, clausola `plan_cache_mode` **solo** su `fn_resi_riga_tetti_accredito` (D-3a: non sul verbo né sul trigger, §5bis). Un solo changeSet, **numero riservato `20261011-42`** (in `20_code/vendite/`). Presidio: il pgTAP `test-fn-available-actions-ddt-piano-generico-v1` diventa `test-plan-cache-mode-piano-generico-v1` con le tre funzioni, e il vecchio si ritira nello stesso giro (decisione di Tid, 2026-10-11) | **D-3a** ✅ `20261011-42` applicato, presidio 5/5 su dbdev · **D-3b** ⬜ aperto (dove vanno i ~115 ms del verbo, da profilare per istruzione) | §4.3, §4.4, §5bis |
 | D-4 | pannello «Passaggi», primo passo | ✅ `20261010-44` applicato e misurato | §5.2 |
 | **D-5 + D-6** | lista offerte per id e lineage seminata (ogni pagina di sette liste paga il grafo intero) | ✅ **chiuse nel brief figlio** (2026-10-11): grafo seminato per chiave, liste ed export dalla sintesi dopo la paginazione, `vw_documento_lineage` ritirata | [brief-db-lineage-seminata-per-chiave](../work-done/brief-db-lineage-seminata-per-chiave.md) §8 |
