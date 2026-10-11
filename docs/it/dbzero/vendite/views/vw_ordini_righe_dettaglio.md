@@ -40,7 +40,8 @@ SELECT r.id,
     r.data_consegna_confermata,
     (EXISTS ( SELECT 1
            FROM vendite.ordini_righe_componenti rc
-          WHERE ((rc.riga_ordine_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a
+          WHERE ((rc.riga_ordine_id = r.id) AND (rc.attivo IS TRUE)))) AS is_composito_caso_a,
+    ((script.fn_check_ordine_riga_data_consegna_confermata(r.id) -> 0) ->> 'reason'::text) AS data_consegna_confermata_blocco
    FROM ((((vendite.ordini_righe r
      LEFT JOIN catalogo.articoli a ON ((a.id = r.articolo_id)))
      LEFT JOIN catalogo.unita_misura um ON ((um.id = r.uom_operativa_id)))

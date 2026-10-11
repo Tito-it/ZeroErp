@@ -42,6 +42,12 @@
 --      ramo non era esercitato da nessuna riga viva (54 su 54 hanno un BA
 --      visibile): la clausola SENZA_BA del test 14 era vera A VUOTO, e il
 --      giro 7 riscrive proprio la lettura dei BA
+--  18) ⭐ pin di forma di D-2 (brief-db-plancache, 20261012-03): nella diagnosi
+--      la CTE `src` e' MATERIALIZED. Senza, nel ramo «tutti» si ricalcolava per
+--      ogni riga esterna (righe² giri del LATERAL sotto RLS, ~1,05 s su 1,18
+--      con 58 righe): i risultati restano giusti e solo il tempo se ne accorge,
+--      quindi un CREATE OR REPLACE che perdesse la parola passerebbe ogni altro
+--      test. Prima di 16 perche' 16 cambia il contesto.
 --  16) scope: chi non vede il DDT ha zero righe di diagnosi e capability NULL
 --      (⚠️ rosso da owner, che salta la RLS: gira come app; ULTIMO, cambia
 --      il contesto)
@@ -83,7 +89,7 @@ DO $az_ann$ BEGIN
       NULLIF(current_setting('app.current_user_id', true), '')::integer, 'emetti_ddt');
 END $az_ann$;
 
-SELECT plan(17);
+SELECT plan(18);
 
 -- ⛔ Niente `SET LOCAL app.current_user_id = '1'` dopo la riga di contesto:
 --    l'operatore lo sceglie (o lo COSTRUISCE, su un database vuoto)
@@ -490,6 +496,15 @@ SELECT results_eq(
   '17) DDT senza ordine e senza billing account: rank 3 DDT_SENZA_BA, BA NULL, capability spenta');
 
 -- ============================================================
+-- 18) Pin di forma di D-2: la CTE `src` della diagnosi e' MATERIALIZED. Il corpo
+--     e' BEGIN ATOMIC (prosrc vuoto): si legge da pg_get_function_sqlbody, che lo
+--     deparsa senza commenti — una menzione nella prosa non conta.
+SELECT ok(
+  (SELECT pg_get_function_sqlbody(p.oid) ~ '\msrc AS MATERIALIZED\M'
+     FROM pg_proc p
+    WHERE p.oid = 'vendite.fn_ddt_push_diagnosi(bigint)'::regprocedure),
+  '18) forma D-2: nella diagnosi la CTE src e'' MATERIALIZED (senza, il ramo «tutti» la ricalcola per ogni riga)');
+
 -- 16) Scope: chi non vede il documento non vede niente.
 -- ⚠️ Il cancello e' `app.ruolo_applicativo`: con la veste OPERATORE e un
 --    utente senza whitelist la RLS non fa vedere il DDT; la diagnosi

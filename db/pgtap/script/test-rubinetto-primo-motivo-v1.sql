@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    37,
+    38,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -285,7 +285,13 @@ SELECT is(
     --   motivo di script.fn_check_listino_cambiabile (20261011-27): il listino di
     --   contratto e offerta non cambia sotto righe gia' caricate
     --   (brief-db-testata-dopo-emissione §11, R-DB-4).
-    'le trentasette funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-11: da 37 a 38. Un sito NUOVO nato sull'helper:
+    --   vendite.trgfn_ordini_righe_guard_data_consegna_spedita (20261012-06)
+    --   solleva il primo motivo di script.fn_check_ordine_riga_data_consegna_confermata
+    --   (20261012-05), la stessa funzione da cui vendite.vw_ordini_righe_dettaglio
+    --   spegne il cambio della data confermata su una riga gia' spedita
+    --   (brief-db-date-consegna-righe-in-blocco, D-7).
+    'le trentotto funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

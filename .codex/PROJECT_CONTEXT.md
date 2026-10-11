@@ -307,8 +307,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   `plan_cache_mode = force_generic_plan` sulla capability e sul lister dei DDT. Capability su tutti i DDT
   ~2,1 → ~0,6 s. Nello stesso giorno: `COST 5000` sulle funzioni di policy (`20261010-77`, `-79`,
   linee-guida-sql §10.3). Debito residuo: ⬜ **D26-2**, `work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md`
-  (al 2026-10-11: resi curati con `20261011-42`, pannello e liste chiusi nel brief della lineage; restano
-  D-2, il lister dei DDT senza filtri, ~1,2 s, e D-3b, il verbo dell'accredito, ~115 ms — da profilare).
+  (al 2026-10-11: resi curati con `20261011-42`, pannello e liste chiusi nel brief della lineage; D-2, il
+  lister dei DDT senza filtri, chiusa con `20261012-03`, 1135 → 154 ms; resta D-3b, il verbo dell'accredito,
+  ~115 ms — da profilare).
 - ✅ **La lineage dei documenti si costruisce per il documento: chiuso il 2026-10-11**
   (`work-done/brief-db-lineage-seminata-per-chiave.md`): grafo seminato per chiave (`fn_documento_lineage_nodi`,
   `_archi`, `_sintesi`), le sette viste di lista senza il grafo e `vw_documento_lineage` ritirata

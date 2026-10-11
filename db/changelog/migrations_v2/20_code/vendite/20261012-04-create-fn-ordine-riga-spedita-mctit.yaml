@@ -1,0 +1,101 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# QUESTA RIGA D'ORDINE E' GIA' PARTITA CON UN DDT?
+#   vendite.fn_ordine_riga_spedita(p_ordine_riga_id) -> boolean
+#   Brief: brief-db-date-consegna-righe-in-blocco (D-7, P-1, §4.1)
+#
+# -- IL SIGNIFICATO -------------------------------------------------------
+#   Vero se la riga ha almeno un legame (vendite.ordini_righe_fulfillment)
+#   verso una riga di DDT il cui documento e' USCITO DALLA BOZZA e non e'
+#   abortito: la merce e' partita. Basta un DDT, anche per una parte della
+#   riga (P-1 di Tid: una spedizione parziale ferma la data come una totale).
+#   Un DDT in bozza non conta: la merce non e' ancora partita.
+#
+# -- LO STATO «MERCE PARTITA» ---------------------------------------------
+#   E' l'espressione di vendite.fn_partite_merce (CTE `soglia` + filtro di
+#   `riga`): stato con `ordine` >= quello di EMESSO e non is_abortito. Letta
+#   dal catalogo degli stati, non da un elenco di codici: uno stato nuovo
+#   fra EMESSO e CONSEGNATO entra da solo.
+#   ⚠️ E' la SECONDA sede di questa espressione (la prima e' fn_partite_merce):
+#   l'estrazione in un building block comune e il ritiro della copia sono
+#   dichiarati nel §4.1 del brief, da fare col cantiere che tocca
+#   fn_partite_merce (brief-db-plancache-funzioni-con-query-incorporate).
+#
+# -- PERCHE' SECURITY DEFINER ---------------------------------------------
+#   La legge un guard (vendite.trgfn_ordini_righe_guard_data_consegna_spedita,
+#   via script.fn_check_ordine_riga_data_consegna_confermata). DDT e righe di
+#   DDT hanno RLS: sotto la RLS di chi scrive, un DDT fuori perimetro
+#   sparirebbe e il guard lascerebbe passare la modifica proprio a chi non lo
+#   vede (fail-open). Stessa scelta di script.fn_get_stato_testata_documento.
+#   PERIMETRO: risponde un booleano su una riga d'ordine, non espone colonne.
+#   search_path stretto; tutto qualificato.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-04-create-fn-ordine-riga-spedita-mctit.yaml
+
+  - changeSet:
+      id: 20261012-04-create-fn-ordine-riga-spedita
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_ordine_riga_spedita: la riga d'ordine ha un legame con un DDT uscito dalla bozza
+        e non abortito (la merce e' partita, anche in parte). Lettore SECURITY DEFINER per il guard
+        della data di consegna confermata. Brief: brief-db-date-consegna-righe-in-blocco (D-7, P-1).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_ordine_riga_spedita';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_ordine_riga_spedita(p_ordine_riga_id vendite.ordini_righe.id%TYPE)
+              -- Tipo nudo: un esito CALCOLATO (EXISTS), nessuna colonna di cui sia il riflesso.
+              RETURNS boolean
+              LANGUAGE sql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+                  -- Scopo: la riga d'ordine e' gia' partita con un DDT? Vero se un
+                  --   suo legame porta a una riga di DDT il cui documento e' uscito
+                  --   dalla bozza (stato con ordine >= EMESSO) e non e' abortito:
+                  --   l'espressione di vendite.fn_partite_merce. Basta un DDT, anche
+                  --   per una parte della riga (P-1). Un id assente risponde falso.
+                  SELECT EXISTS (
+                      SELECT 1
+                        FROM vendite.ordini_righe_fulfillment f
+                        JOIN vendite.ddt_righe dr  ON dr.id = f.ddt_riga_id
+                        JOIN vendite.ddt d         ON d.id  = dr.ddt_id
+                        JOIN config.stati_doc_ddt s ON s.id = d.stato_doc_ddt_id
+                       WHERE f.ordine_riga_id = p_ordine_riga_id
+                         AND NOT s.is_abortito
+                         AND s.ordine >= (SELECT e.ordine
+                                            FROM config.stati_doc_ddt e
+                                           WHERE e.codice_interno = 'EMESSO'));
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_ordine_riga_spedita(vendite.ordini_righe.id%TYPE) IS
+                  'Lettore (2026-10-11, brief-db-date-consegna-righe-in-blocco D-7, P-1): la riga d''ordine e'' gia'' partita con un DDT? Vero se almeno un suo legame (vendite.ordini_righe_fulfillment) porta a una riga di DDT il cui documento e'' uscito dalla bozza e non e'' abortito: stato con ordine >= quello di EMESSO e non is_abortito, l''espressione di vendite.fn_partite_merce (seconda sede, estrazione dichiarata nel brief). Basta un DDT, anche per una parte della riga: una spedizione parziale ferma la data confermata come una totale (P-1 di Tid). Un DDT in bozza non conta. Un id assente risponde falso. ⛔ SECURITY DEFINER: la legge il guard della data di consegna confermata, e DDT e righe di DDT hanno RLS; sotto la RLS di chi scrive un DDT fuori perimetro sparirebbe e il guard diventerebbe fail-open (stessa scelta di script.fn_get_stato_testata_documento). PERIMETRO: un booleano su una riga d''ordine, nessuna colonna esposta. Consumatore: script.fn_check_ordine_riga_data_consegna_confermata.';
+
+              GRANT EXECUTE ON FUNCTION vendite.fn_ordine_riga_spedita(vendite.ordini_righe.id%TYPE) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_ordine_riga_spedita(vendite.ordini_righe.id%TYPE);

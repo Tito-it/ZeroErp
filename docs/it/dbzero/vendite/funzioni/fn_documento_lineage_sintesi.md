@@ -38,11 +38,11 @@ DECLARE
     v_stati   jsonb;                 -- [{o_t, o_u, t, u, v:[...]}] i percorsi aperti
     v_walk    jsonb := '[]'::jsonb;  -- [{o_t, o_u, d_t, d_u, l}]
     v_inc     jsonb;                 -- gli archi entranti nei nodi del seme
-    v_livello integer := 0;
-    v_tipi    bigint[];
-    v_uids    text[];
-    v_archi   jsonb;
-    v_nuovi   jsonb;
+    v_livello integer := 0;          -- contatore dei livelli, nessuna colonna dietro
+    v_tipi    bigint[];              -- config.sorgenti.id, ma `%TYPE[]` non esiste
+    v_uids    text[];                -- chiavi polimorfe dei nodi, rese a text
+    v_archi   jsonb;                 -- gli archi del livello
+    v_nuovi   jsonb;                 -- i passi nuovi del livello
 BEGIN
     IF p_tipo_ids IS NULL OR p_uids IS NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -149,7 +149,7 @@ BEGIN
     ), frontiera AS (
         SELECT c.o_tipo, c.o_uid, c.d_tipo, c.d_uid,
                nd.codice AS d_codice, nd.stato_codice_interno AS d_stato, nd.fase AS d_fase,
-               nd.natura_doc_codice_interno AS d_natura, nd.tipo_codice_interno AS d_tipo_codice,
+               nd.natura_doc_codice_interno AS d_natura, nd.tipo_codice_interno AS d_tipo_codice_interno,
                row_number() OVER (PARTITION BY c.o_tipo, c.o_uid ORDER BY
                    CASE WHEN nd.fase::text <> 'CHIUSO' AND NOT coalesce(nd.is_abortito, false)
                         THEN 0 ELSE 1 END,
@@ -193,7 +193,7 @@ BEGIN
            coalesce(dc.n_diretti, 0::bigint) > 0,
            coalesce(ic.n_sorgenti, 0::bigint), ic.root_tipo, ic.root_uid, ic.root_codice::varchar,
            n.natura_doc_codice_interno, n.natura_doc_descrizione,
-           fr.d_natura, n.tipo_codice_interno, fr.d_tipo_codice
+           fr.d_natura, n.tipo_codice_interno, fr.d_tipo_codice_interno
       FROM nodi n
       JOIN seme s        ON s.t = n.tipo_id AND s.u = n.uid
       LEFT JOIN prat pr  ON pr.tipo = n.tipo_id AND pr.uid = n.uid
@@ -204,7 +204,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_documento_lineage_sintesi(p_tipo_ids bigint[], p_uids text[])
-IS 'La SINTESI della lineage — pratica, frontiera, discendenti diretti e attivi, sorgenti e radice, natura — per i soli documenti del seme (la pagina di una lista, il drawer di un documento): le 28 colonne di vendite.vw_documento_lineage, nello stesso ordine. Seme = chiave del nodo (tipo_id, uid::text) in due array paralleli, OBBLIGATORIO (NULL solleva E_ERRORE_PARAMETRI). Costruita un livello alla volta da vendite.fn_documento_lineage_archi e decorata una volta da vendite.fn_documento_lineage_nodi: il costo segue il seme, non il grafo. Regola identica alla vista (cammino in avanti senza rami di ritorno, per percorsi, 10 livelli; frontiera = attivo, poi livello, poi pipeline_rank; sorgenti dagli archi entranti, radice per ROOT, rango, uid). ⛔ Seconda copia della regola finche'' esiste la vista: il giro B di brief-db-lineage-seminata-per-chiave la ritira. STABLE, INVOKER: la RLS resta di chi legge.';
+IS 'La SINTESI della lineage — pratica, frontiera, discendenti diretti e attivi, sorgenti e radice, natura — per i soli documenti del seme (la pagina di una lista, il drawer di un documento), con le colonne e l''ordine che erano di vw_documento_lineage. Seme = chiave del nodo (tipo_id, uid::text) in due array paralleli, OBBLIGATORIO (NULL solleva E_ERRORE_PARAMETRI). Costruita un livello alla volta da vendite.fn_documento_lineage_archi e decorata una volta da vendite.fn_documento_lineage_nodi: il costo segue il seme, non il grafo. Cammino in avanti senza rami di ritorno, per percorsi, 10 livelli; frontiera = attivo, poi livello, poi pipeline_rank; sorgenti dagli archi entranti, radice per ROOT, rango, uid; pratica da pratiche.fn_pratica_del_documento. Sede UNICA della regola: la vista vw_documento_lineage e'' ritirata (20261011-98). STABLE, INVOKER: la RLS resta di chi legge.';
 ```
 
 ---
