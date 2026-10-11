@@ -8,7 +8,7 @@
 > sessione backend il 2026-10-09, archiviato in `work-done/` con un rimando qui). Era la stessa domanda
 > («fuori bozza, quali colonne si cambiano e in quale stato?») su una colonna di riga, e i due brief
 > fissavano la stessa forma per stato: ora è la **fase 1** di questo (§5-bis).
-> **Stato:** 📝 **aperto, decisioni tutte chiuse da Tid il 2026-10-10 (§5-bis.4, §6).**
+> **Stato:** ✅ **chiuso e archiviato il 2026-10-11** (DB, BE/FE e collaudo a video di Tid; `E_CONTRATTO_NON_MODIFICABILE` ritirato dal team DB lo stesso giorno). Decisioni tutte chiuse da Tid il 2026-10-10 (§5-bis.4, §6).
 > ✅ **Fase 1, lato DB: applicata il 2026-10-10 su dbdev e zeroerp_ci, pgTAP di Tid senza
 > regressioni** (`20261010-60 … -67`, `script/test-doc-lock-montaggio-v1`). Il BE può partire col
 > suo verbo (§5-bis.6).
@@ -18,7 +18,7 @@
 > ⚠️ Il BE toglie i suoi «solo in DRAFT» **nello stesso rilascio** (§9.5, R-BE-2): da questo apply
 > le capability accendono la testata negli stati in cui una colonna resta aperta.
 > ✅ **Giro R-DB (2026-10-11): `-21 … -33` e `-40`/`-41` (la nascita, D-13) applicati, pgTAP di Tid verdi.**
-> ✅ **Lato DB non resta niente** (§11.8). ✅ **BE/FE del §11.4 fatti e committati il 2026-10-11** (§12). ✅ **Collaudo a video di Tid superato il 2026-10-11** (§12.1). Resta l'archivio in `work-done/` (e il ritiro di `E_CONTRATTO_NON_MODIFICABILE` lato DB, §12).
+> ✅ **Lato DB non resta niente** (§11.8). ✅ **BE/FE del §11.4 fatti e committati il 2026-10-11** (§12). ✅ **Collaudo a video di Tid superato il 2026-10-11** (§12.1). Archiviato in `work-done/` il 2026-10-11.
 > `20261011-21 … -33`, CSV dei codici, pgTAP nuovo `test-testata-dopo-emissione-rdb-v1` (34/34 sullo
 > scratch) e tre pgTAP adeguati. Decisioni D-11 e D-12 di Tid. Apply e corsa pgTAP di Tid.
 > **Resta (prima del giro R-DB):** lato DB il pgTAP del congelamento del listino all'uscita dalla bozza (§9.4, «Non fatto»)
@@ -193,7 +193,7 @@ ordine, DDT, contratto e offerta portano già una lista dei campi bloccati scrit
 (`non_editable_fields`: `c_non_edit_tutti`, `c_non_edit_attivo`…), accanto al trigger e al backend.
 Il lettore della fase 1 è la sede che la sostituisce.
 
-🔗 **Ereditati da [brief-db-offerta-emissione-ed-erogazione](brief-db-offerta-emissione-ed-erogazione.md)
+🔗 **Ereditati da [brief-db-offerta-emissione-ed-erogazione](../work-in-progress/brief-db-offerta-emissione-ed-erogazione.md)
 (2026-10-10), da fare in questo giro:**
 
 * **Il posto del lock del contratto** (terzo trovato del §F.4.3 di quel brief). Su un contratto
@@ -839,7 +839,7 @@ fatto da un trigger alla nascita passa per D-13.
 > cricchetto e ruff verdi; FE 795 test, `npm run guards`, lint e build verdi;
 > `check_i18n_keys.py` pulito.
 
-⏳ **Richiesta al team DB (2026-10-11, dalla revisione del giro):** `E_CONTRATTO_NON_MODIFICABILE`
+✅ **Fatta dal team DB il 2026-10-11** (`obsoleto_dal` in `codici_errore.csv`). **Richiesta al team DB (2026-10-11, dalla revisione del giro):** `E_CONTRATTO_NON_MODIFICABILE`
 è ancora **vivo** nel catalogo (`config.codici_errore`), ma dopo R-BE-6 non lo solleva più nessuno,
 né il backend né una funzione del DB. Va marcato **ritirato** come i due codici del listino (R-DB-4),
 così entra in `CODICI_RITIRATI` alla prossima rigenerazione delle policy; il ripiego resta, come per
