@@ -26,6 +26,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_FATTURA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     colonne_identita,
@@ -37,6 +38,7 @@ from apps.core.db._helpers import (
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.righe_lista_mixin import RigheListaCompletaMixin
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 
 # Scopo: whitelist ORDER BY della lista fatture. Le chiavi sono i
 #        `campo_sorgente` del catalogo `vendite.fatture` — quelli che il FE
@@ -229,4 +231,7 @@ class FattureRepository(RigheListaCompletaMixin):
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_FATTURA)
         return results, total_count

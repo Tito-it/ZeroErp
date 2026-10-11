@@ -3,12 +3,13 @@
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
 # Scopo: Test unit `DocumentiRepository` per i metodi della Tranche K
-#        (lookup sorgente per codice, lista documenti generati per
-#        sorgente, dettaglio documento, file principale per download).
+#        (lista documenti generati per sorgente, dettaglio documento, file
+#        principale per download). Il lookup della sorgente per codice sta in
+#        `apps.config.db.sorgenti_repository` (test in config/tests/db, dal
+#        2026-10-11).
 #        Mocka `connection.cursor` (regola CI: niente DB reale).
 #
 # Indice test (0..N):
-#   0. get_sorgente_tipo_id_by_codice_returns_dict_or_none
 #   1. list_documenti_per_sorgente_filtra_sorgente_riga_null
 #   2. list_documenti_per_sorgente_filtra_sorgente_riga_valorizzata
 #   3. list_documenti_per_sorgente_applica_scope_anyarray
@@ -69,32 +70,6 @@ def _columns(*names: str) -> list[Any]:
         m.name = n
         cols.append(m)
     return cols
-
-
-class GetSorgenteTipoIdByCodiceTests(TestCase):
-    """Lookup config.sorgenti per codice (es. PREVENTIVO)."""
-
-    # 0. row presente -> dict; row assente -> None.
-    @patch("apps.documenti.db.documenti_repository.connection.cursor")
-    def test_get_sorgente_tipo_id_by_codice_returns_dict_or_none(
-        self, mocked_factory
-    ) -> None:
-        cursor_ok = _mk_cursor(fetchone_results=[(10, "PREVENTIVO", True)])
-        mocked_factory.return_value = cursor_ok
-        row = DocumentiRepository().get_sorgente_tipo_id_by_codice("PREVENTIVO")
-        self.assertEqual(
-            row, {"id": 10, "codice": "PREVENTIVO", "attivo": True},
-        )
-        sql, params = cursor_ok.execute.call_args_list[0].args
-        self.assertIn("FROM config.sorgenti", sql)
-        self.assertIn("WHERE codice_interno = %s", sql)
-        self.assertEqual(params, ["PREVENTIVO"])
-
-        cursor_none = _mk_cursor(fetchone_results=[None])
-        mocked_factory.return_value = cursor_none
-        self.assertIsNone(
-            DocumentiRepository().get_sorgente_tipo_id_by_codice("INESIST"),
-        )
 
 
 class ListDocumentiPerSorgenteTests(TestCase):

@@ -5,7 +5,7 @@
 > **Stato (2026-10-11):** ✅ **lato DB applicato e verde** (§7): changeSet `20261011-05 … -20`, `-34`,
 > `-35`, applicati da Tid su dbdev e `zeroerp_ci`; corsa pgTAP senza regressioni. Dentro anche la
 > ri-consegna di un reso (D-7), il divieto di legami nuovi su bolle emesse (D-6) e l'annullo con
-> conferma (D-8, lavorato in [brief-db-annullo-documento-con-legami](../work-in-progress/brief-db-annullo-documento-con-legami.md)
+> conferma (D-8, lavorato in [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md)
 > §3). ✅ **Lato BE/FE fatto il 2026-10-11** (§10), compreso l'annullo (§3.4 del brief D29).
 > ✅ **Collaudo a video di Tid superato il 2026-10-11. Chiuso e archiviato lo stesso giorno** (§11).
 > **Nel registro dei difetti DB:** voce **D28** di `migliorie-generali-da-test-valutazione.md`, che
@@ -69,7 +69,7 @@ portano il legame con una riga d'ordine, si modificano? Se ne aggiungono altre a
 | **D-5** | Righe aggiunte a mano su un DDT da ordine? | ✅ **Ammesse** (es. ordine pippo 10, bolla 15: riga evasa 10 + riga a mano pippo 5). Non sono legate all'ordine; vanno al cliente della bolla, che e' quello dell'ordine (D-6 di `brief-db-esecutivi-ba-coppia`) |
 | **D-6** (2026-10-11) | Un legame **nuovo** su una bolla gia' emessa (INSERT fuori bozza)? | ⛔ **No**: un legame nato dopo la spedizione cambia cio' che l'ordine (o il reso) risulta spedito senza che niente sia partito. Il lock fuori bozza copre anche l'INSERT |
 | **D-7** (2026-10-11) | Le righe di **ri-consegna** di un reso hanno lo stesso difetto: brief nuovo o qui? | ✅ **Qui, con la stessa regola**: la riga di ri-consegna e' una riga evasa (legame con la riga di reso, e col fulfillment se il reso viene da un ordine). Ferma, corretta dal verbo, cancellabile in bozza col ritiro dei suoi legami |
-| **D-8** (2026-10-11) | Annullare una bolla che porta legami (§7.6): che cosa succede ai legami? | ✅ **Si ritirano con l'annullo** (strada A), come in D-3: l'ordine si riproietta, il reso torna da ri-consegnare. ⚠️ Ma **non in silenzio**: l'annullo avvisa dei legami e chiede **conferma** (§8). Dentro questo brief, non uno nuovo. ⭐ Lavorato in [brief-db-annullo-documento-con-legami](../work-in-progress/brief-db-annullo-documento-con-legami.md) §3 |
+| **D-8** (2026-10-11) | Annullare una bolla che porta legami (§7.6): che cosa succede ai legami? | ✅ **Si ritirano con l'annullo** (strada A), come in D-3: l'ordine si riproietta, il reso torna da ri-consegnare. ⚠️ Ma **non in silenzio**: l'annullo avvisa dei legami e chiede **conferma** (§8). Dentro questo brief, non uno nuovo. ⭐ Lavorato in [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md) §3 |
 
 ## 5. Forma proposta (la sceglie il team DB)
 
@@ -239,14 +239,14 @@ D-6 e D-7 (§4). Nessuna domanda aperta su questo giro.
 La matrice ammette `DRAFT → ANNULLATO` e `EMESSO → ANNULLATO`. Nessuno toccava i legami di una bolla
 annullata, e il residuo dell'ordine li somma senza guardare lo stato del DDT: l'ordine restava evaso per
 merce mai partita (o stornata dal magazzino), e non si poteva piu' rispedire. Deciso da Tid il
-2026-10-11 (D-8), lavorato e spostato in [brief-db-annullo-documento-con-legami](../work-in-progress/brief-db-annullo-documento-con-legami.md) §3.
+2026-10-11 (D-8), lavorato e spostato in [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md) §3.
 
 
 ## 8. D-8 — Spostato
 
 L'annullo di una bolla con legami (ritiro con conferma: disegno, consegna DB, prova, ricaduta BE/FE) sta
 dal 2026-10-11 nel brief
-[brief-db-annullo-documento-con-legami](../work-in-progress/brief-db-annullo-documento-con-legami.md), §3: e' il primo caso
+[brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md), §3: e' il primo caso
 di un principio che vale per tutti i documenti con legami (decisione di Tid). I changeSet restano quelli
 di questo giro (`20261011-14`, `-15`, `-16`, `-20`, `-34`, `-35`), la decisione resta D-8 (§4).
 
@@ -343,5 +343,5 @@ e non cambia; dopo l'apply si rigenera la policy (`error_policies_generated.py`)
   ri-consegna da reso.
 * Nessun residuo ereditato: i due punti del §10.3 sono uno gia' del Lotto 3, l'altro un dato.
 * Il principio dell'annullo con legami continua, per gli altri documenti, in
-  [brief-db-annullo-documento-con-legami](../work-in-progress/brief-db-annullo-documento-con-legami.md) (D29).
+  [brief-db-annullo-documento-con-legami](brief-db-annullo-documento-con-legami.md) (D29).
 * Registro dei difetti: **D28** chiusa (§7 di `migliorie-generali-da-test-valutazione.md`).

@@ -21,6 +21,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
 from django.db import DatabaseError, IntegrityError, transaction
 
+from apps.config.sorgenti import SORGENTE_COMMESSA, SORGENTE_PREVENTIVO
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.anagrafiche.db.billing_account_repository import BillingAccountRepository
@@ -916,7 +917,7 @@ def collega_pratica(
     # secondo ROOT sullo stesso flusso; il trigger guard verifica che il flusso
     # sia DI questa pratica. flusso_id None = retrocompat / link non da flusso.
     PraticheRepository().upsert_pratica_sorgente(
-        pratica_id=pratica_id, sorgente_codice="PREVENTIVO",
+        pratica_id=pratica_id, sorgente_codice=SORGENTE_PREVENTIVO,
         sorgente_uid=prev["uid"], ruolo_link="ROOT", flusso_id=flusso_id,
     )
     return {
@@ -1993,7 +1994,7 @@ def push_a_commessa(
     # `pr_run_commesse_push_one` diventa un savepoint annidato.
     with transaction.atomic():
         report = pr_run_commesse_push_one(
-            sorgente_codice="PREVENTIVO",
+            sorgente_codice=SORGENTE_PREVENTIVO,
             sorgente_uid=preventivo_id,
             righe_ids=righe_ids,
         )
@@ -2078,9 +2079,6 @@ def smistamento(preventivo_id: int) -> dict[str, Any]:
 _ESITO_SMISTAMENTO_MERCE = "MERCE_PRESENTE"
 _ESITO_SMISTAMENTO_SERVIZI = "SOLO_SERVIZI"
 _CODICE_FLUSSO_SMISTAMENTO = "SMISTAMENTO"
-# Sorgenti pratiche_sorgenti / documento_origine (config.sorgenti codice_interno).
-_SORGENTE_PREVENTIVO_ORIGINE = "PREVENTIVO"
-_SORGENTE_COMMESSA = "COMMESSA"
 _RUOLO_COLLEGATO = "COLLEGATO"
 
 
@@ -2105,12 +2103,12 @@ def _aggancia_commessa_servizi_a_pratica(preventivo_id: int, preventivo_uid: str
     if pratica_id is None:
         return
     commessa_id = CommesseRepository().get_commessa_id_by_sorgente(
-        sorgente_codice=_SORGENTE_PREVENTIVO_ORIGINE, sorgente_uid=preventivo_uid,
+        sorgente_codice=SORGENTE_PREVENTIVO, sorgente_uid=preventivo_uid,
     )
     if commessa_id is None:
         return
     PraticheRepository().upsert_pratica_sorgente(
-        pratica_id=pratica_id, sorgente_codice=_SORGENTE_COMMESSA,
+        pratica_id=pratica_id, sorgente_codice=SORGENTE_COMMESSA,
         sorgente_uid=str(commessa_id), ruolo_link=_RUOLO_COLLEGATO,
     )
 
@@ -2167,7 +2165,7 @@ def completa_smistamento(preventivo_id: int, *, user: str | None = None) -> dict
     #    disallineamento fra classificatore d'esito e handler (evita il fail-safe
     #    su artefatti incoerenti).
     ha_ordine = OrdiniRepository().get_ordine_by_documento_origine(
-        _SORGENTE_PREVENTIVO_ORIGINE, preventivo_id,
+        SORGENTE_PREVENTIVO, preventivo_id,
     ) is not None
     esito = _ESITO_SMISTAMENTO_MERCE if ha_ordine else _ESITO_SMISTAMENTO_SERVIZI
 

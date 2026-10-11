@@ -1228,29 +1228,9 @@ class DocumentiRepository:
         return {"id": int(row[0]), "codice": str(row[1]), "attivo": bool(row[2])}
 
     # =================================================================
-    # Lookup sorgente + lista documenti generati (Tranche K)
+    # Lista documenti generati per sorgente (Tranche K). Il lookup della
+    # sorgente per codice sta in `apps.config.db.sorgenti_repository`.
     # =================================================================
-
-    # Scopo: Lookup `config.sorgenti.id` per codice_interno (es. 'PREVENTIVO').
-    #        Match sulla colonna IMMUTABILE codice_interno (non `codice`
-    #        mutabile). Usato dal caller (es. view di dominio Tranche K) per
-    #        evitare ID numerici hardcoded a livello applicativo.
-    def get_sorgente_tipo_id_by_codice(
-        self, codice: str
-    ) -> dict[str, Any] | None:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, codice, attivo
-                  FROM config.sorgenti
-                 WHERE codice_interno = %s
-                """,
-                [codice],
-            )
-            row = cursor.fetchone()
-        if row is None:
-            return None
-        return {"id": int(row[0]), "codice": str(row[1]), "attivo": bool(row[2])}
 
     # Scopo: Lista paginata documenti generati per una sorgente specifica
     #        (lista configurabile `documenti.documenti_sorgente`, 84).

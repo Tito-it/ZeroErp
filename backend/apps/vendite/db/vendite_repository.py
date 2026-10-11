@@ -17,6 +17,7 @@ from typing import Any
 
 from django.db import DatabaseError, connection, transaction
 
+from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE, SORGENTE_PREVENTIVO
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -65,7 +66,6 @@ from apps.vendite.types import (
     FondoFatturaDaDecidereRow,
     LineageNodoRow,
     LineagePassaggioRow,
-    LineageSorgenteRow,
     LottoFattureRow,
     LottoGruppoRow,
     LottoListRow,
@@ -4476,31 +4476,10 @@ class VenditeRepository:
 
     # ------------------------------------------------------------------
     # Lineage documenti (genealogia/transiti — brief-be-fe-lineage)
-    # Letture generiche sulla famiglia vw_documento_lineage* +
-    # fn_documento_lineage. Tutte security_invoker/SECURITY INVOKER: la
+    # Letture generiche su vw_documento_lineage_nodi, fn_documento_lineage e
+    # fn_documento_lineage_sintesi. Tutte security_invoker/SECURITY INVOKER: la
     # RLS emittente del chiamante si applica da sola (niente auth_user_id).
     # ------------------------------------------------------------------
-
-    # Scopo: Risolve una sorgente lineage da config.sorgenti per
-    #        codice_interno (chiave stabile): id, key_selector e tabella
-    #        target per la traduzione doc_id -> chiave nodo polimorfa.
-    def get_lineage_sorgente(self, codice_interno: str) -> LineageSorgenteRow | None:
-        sql = """
-            SELECT s.id, s.key_selector, s.target_table::text
-            FROM config.sorgenti s
-            WHERE s.codice_interno = %s
-              AND s.attivo IS TRUE
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice_interno])
-            row = cursor.fetchone()
-        if not row:
-            return None
-        return {
-            "id": int(row[0]),
-            "key_selector": str(row[1]),
-            "target_table": str(row[2]),
-        }
 
     # Scopo: Traduce il doc_id di dominio nella chiave nodo lineage secondo
     #        la convenzione key_selector (config manual sorgenti): 'id' ->
@@ -4508,10 +4487,14 @@ class VenditeRepository:
     #        target. Ritorna None se il documento non esiste (o e' fuori
     #        scope RLS: indistinguibile per design).
     def resolve_lineage_node_uid(
-        self, *, target_table: str, key_selector: str, doc_id: int
+        self, *, target_table: str | None, key_selector: str, doc_id: int
     ) -> str | None:
         if key_selector == "id":
             return str(doc_id)
+        # ⚠️ `config.sorgenti.target_table` e' nullable: una sorgente con chiave
+        #    `uid` e senza tabella e' un seed incoerente, e lo si dice.
+        if target_table is None:
+            raise ValueError("target_table assente per una sorgente con key_selector 'uid'")
         # Guardia identifier: target_table viene da config.sorgenti
         # (regclass seedata), mai da input utente — la regex intercetta
         # solo dati sporchi da refactor (stesso pattern del repo note).
@@ -4524,14 +4507,17 @@ class VenditeRepository:
         return None if not row else str(row[0])
 
     # Scopo: Riga summary lineage di un documento (nodo + pratica +
-    #        frontiera + contatori) da vw_documento_lineage, con decodifica
-    #        dei tipi in codice_interno via JOIN a config.sorgenti (mai id
-    #        numerici verso il FE). None se il nodo non esiste.
+    #        frontiera + contatori) da fn_documento_lineage_sintesi, seminata
+    #        sul solo documento (brief-db-lineage-seminata-per-chiave B1: la
+    #        vista vw_documento_lineage, che calcolava il grafo intero, e'
+    #        ritirata col 20261011-98). I tipi arrivano gia' come
+    #        codice_interno (mai id numerici verso il FE). None se il nodo non
+    #        esiste o e' fuori perimetro RLS.
     def get_lineage_nodo(self, *, tipo_id: int, node_uid: str) -> LineageNodoRow | None:
         sql = """
             SELECT
                 l.tipo_id,
-                -- ⭐ Il CODICE del tipo lo porta la vista (20260829-02): fino a
+                -- ⭐ Il CODICE del tipo lo porta il grafo (20260829-02): fino a
                 -- ieri il grafo esponeva solo l'id e ogni consumatore lo
                 -- traduceva da se' con lo stesso join a config.sorgenti —
                 -- UNDICI volte nel backend, e una di quelle undici era stata
@@ -4539,9 +4525,9 @@ class VenditeRepository:
                 -- a database, niente a video e nessun errore).
                 -- ⚠️ E qui c'era una `JOIN` (INNER) a config.sorgenti: la
                 -- garanzia che il tipo esista non e' sparita insieme al join,
-                -- si e' SPOSTATA — `vw_documento_lineage` legge
-                -- `FROM vw_documento_lineage_nodi`, e la vista nodi costruisce
-                -- ogni suo ramo con una `JOIN sorgenti` interna. Un nodo senza
+                -- si e' SPOSTATA — la sintesi esce solo per i nodi di
+                -- `vendite.fn_documento_lineage_nodi`, che costruisce ogni
+                -- suo ramo con una `JOIN config.sorgenti` interna. Un nodo senza
                 -- sorgente attiva non esiste proprio, quindi la colonna non e'
                 -- mai NULL ed e' lecito il `str()` sul lato Python. E' una
                 -- garanzia STRUTTURALE (una join interna in una definizione di
@@ -4569,8 +4555,8 @@ class VenditeRepository:
                 l.n_sorgenti,
                 l.root_codice,
                 l.natura_doc_codice_interno,
-                -- ⭐ La natura della FRONTIERA la porta LA VISTA, dal
-                -- changeSet 20260828-22. Fino ad allora la summary non ce
+                -- ⭐ La natura della FRONTIERA la porta LA SINTESI (prima la
+                -- vista, dal changeSet 20260828-22). Fino ad allora la summary non ce
                 -- l'aveva e questo repository se la ricavava da solo, con un
                 -- LEFT JOIN a vw_documento_lineage_nodi sulla chiave del nodo
                 -- di frontiera. Erano DUE SEDI per la stessa regola, e la
@@ -4590,9 +4576,8 @@ class VenditeRepository:
                 -- documento fiscale»: la natura e' un asse diverso dal tipo ed
                 -- esiste solo per le fatture.
                 l.frontiera_natura_doc_codice_interno
-            FROM vendite.vw_documento_lineage l
-            WHERE l.tipo_id = %s
-              AND l.uid = %s
+            FROM vendite.fn_documento_lineage_sintesi(
+                     ARRAY[%s]::bigint[], ARRAY[%s]::text[]) l
         """
         with connection.cursor() as cursor:
             cursor.execute(sql, [tipo_id, node_uid])
@@ -4697,17 +4682,23 @@ class VenditeRepository:
             LEFT JOIN vendite.vw_documento_lineage_nodi nf
                    ON nf.tipo_id = p.from_tipo_id AND nf.uid = p.from_uid
             LEFT JOIN vendite.preventivi pfrom
-                   ON sf.codice_interno = 'PREVENTIVO' AND pfrom.uid::text = p.from_uid
+                   ON sf.codice_interno = %s AND pfrom.uid::text = p.from_uid
             LEFT JOIN vendite.offerte_commerciali ofrom
-                   ON sf.codice_interno = 'OFFERTA_COMMERCIALE' AND ofrom.uid::text = p.from_uid
+                   ON sf.codice_interno = %s AND ofrom.uid::text = p.from_uid
             LEFT JOIN vendite.preventivi pto
-                   ON st.codice_interno = 'PREVENTIVO' AND pto.uid::text = p.to_uid
+                   ON st.codice_interno = %s AND pto.uid::text = p.to_uid
             LEFT JOIN vendite.offerte_commerciali oto
-                   ON st.codice_interno = 'OFFERTA_COMMERCIALE' AND oto.uid::text = p.to_uid
+                   ON st.codice_interno = %s AND oto.uid::text = p.to_uid
             ORDER BY p.ordine
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [tipo_id, node_uid, direzione])
+            # ⚠️ Ordine dei parametri = ordine nel testo: i tre della funzione,
+            #    poi i codici delle quattro LEFT JOIN (from, from, to, to).
+            cursor.execute(sql, [
+                tipo_id, node_uid, direzione,
+                SORGENTE_PREVENTIVO, SORGENTE_OFFERTA_COMMERCIALE,
+                SORGENTE_PREVENTIVO, SORGENTE_OFFERTA_COMMERCIALE,
+            ])
             rows = cursor.fetchall()
 
         result: list[LineagePassaggioRow] = []

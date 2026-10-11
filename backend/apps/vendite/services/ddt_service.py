@@ -39,6 +39,7 @@ from typing import Any, NamedTuple
 
 from django.db import transaction
 
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
@@ -115,9 +116,6 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
 _STATO_BOZZA = "DRAFT"
 _STATO_EMESSO = "EMESSO"
-# Il codice della bolla in `config.sorgenti`: lo legge il push a commessa
-# (`push_a_commessa`).
-_SORGENTE_DDT = "DDT_VENDITA"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
 # Whitelist campi testata accettati in create (null_vs_empty -> None).
@@ -893,7 +891,7 @@ def push_a_commessa(ddt_id: int, *, user: str | None = None) -> dict[str, Any]:
     # pr_run_commesse_push_one diventa un savepoint annidato).
     with transaction.atomic():
         report = pr_run_commesse_push_one(
-            sorgente_codice=_SORGENTE_DDT,
+            sorgente_codice=SORGENTE_DDT_VENDITA,
             sorgente_uid=ddt_id,
             user=user,
         )

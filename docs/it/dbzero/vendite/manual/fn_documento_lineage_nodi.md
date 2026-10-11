@@ -4,7 +4,7 @@
 >
 > [vendite.vw_documento_lineage_nodi](/dbzero/vendite/views/vw_documento_lineage_nodi) — la stessa cosa per tutti i documenti
 > [vendite.fn_documento_lineage_archi](/dbzero/vendite/funzioni/fn_documento_lineage_archi) — gli archi, con lo stesso seme
-> Brief: `docs/it/dev/work-in-progress/brief-db-lineage-seminata-per-chiave.md` §8.2-§8.3
+> Brief: `docs/it/dev/work-done/brief-db-lineage-seminata-per-chiave.md` §8.2-§8.3
 
 ---
 ### 🎯 Scopo Principale

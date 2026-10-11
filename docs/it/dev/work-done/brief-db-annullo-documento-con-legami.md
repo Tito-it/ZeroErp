@@ -2,14 +2,15 @@
 
 > **Chi scrive:** team DB (`dev/db-tid`), 2026-10-11. **A chi:** Tid; poi BE/FE (§6, che sostituisce il §3.4).
 > **Origine:** il caso bolla → ordine trovato nel giro di
-> [brief-db-ddt-righe-evase-dall-ordine](../work-done/brief-db-ddt-righe-evase-dall-ordine.md) (§7.6, decisione D-8),
+> [brief-db-ddt-righe-evase-dall-ordine](brief-db-ddt-righe-evase-dall-ordine.md) (§7.6, decisione D-8),
 > e la domanda di Tid del 2026-10-11: *«quando esiste un legame, ci sia la conferma: abbiamo altri
 > legami simili per cui segnalare "attenzione, si riapre qualcosa"?»*
 > **Stato (2026-10-11):** ✅ **caso 1 (bolla) applicato e verde** (§3, changeSet del giro D28, applicati
 > da Tid il 2026-10-11, pgTAP senza regressioni). ✅ **Casi 2-5 applicati e verdi** (§8: `20261011-68 … -91`
 > + tre CSV, applicati da Tid il 2026-10-11, pgTAP verdi; decisioni D-1…D-6 di Tid, §5), con la forma
 > comune (D-4) che riallinea anche la bolla. **Lato DB chiuso.** ✅ **Lato BE/FE fatto il 2026-10-11**
-> (§9, R-1…R-6, non committato), provato sul DB vero. **Resta:** collaudo a video di Tid, poi archivio.
+> (§9, R-1…R-6), provato sul DB vero. ✅ **Collaudo di Tid superato. Chiuso e archiviato il 2026-10-11**
+> (§11). Il caso 6, l'annullo della commessa, e' diventato il brief D30 (§10).
 > **Nel registro dei difetti DB:** voce **D29** di `migliorie-generali-da-test-valutazione.md`, che rimanda
 > qui.
 
@@ -30,6 +31,7 @@ partita o per un contratto mai nato. E non in silenzio: chi annulla vede **che c
 | 3 | **Offerta → contratto** | `contratti.offerta_id` | il contratto si annulla (DRAFT → ANNULLATO), ma `fn_push_offerta_a_contratto` rifiuta se esiste **un qualunque** contratto dell'offerta, anche annullato | 🔴 consumata per sempre |
 | 4 | **Offerta → ordine** | `ordini.documento_origine_tipo/_id` | idem: il push rifiuta se esiste un ordine dell'offerta, anche annullato | 🔴 consumata per sempre |
 | 5 | **Preventivo / ordine / contratto / bolla → commessa** | `commesse_attivita` (`segment_key`), `commesse_sorgenti` | gia' regolato (strada A): alla chiusura le righe NON_EMESSA si **ritirano** (`trgfn_doc_ritira_commessa_attivita`), le EMESSA **bloccano** con una via d'uscita (`script.fn_check_sorgente_chiudibile`, «Riporta da emettere») | 🟡 corretto ma **silenzioso** |
+| 6 | **Commessa ← preventivo / ordine / contratto / bolla** (si annulla la COMMESSA) | `commesse_attivita` (`sorgente_tipo_id`, `sorgente_uid`) | la commessa va ad ANNULLATA (`fn_cambia_stato_commessa`), ma le sue righe NON_EMESSA restano tali, il documento che le ha spinte resta consumato (preventivo EVASO, residuo commessa `false`) e `fn_documento_legami` continua a contare il legame verso la commessa morta. Trovato nel collaudo di Tid del 2026-10-11 (§10) | 🔴 consumato per sempre |
 | — | Bolla → reso; reso → fattura (accrediti) | `resi`, `resi_righe_accrediti` | l'annullo del reso e' **bloccato** se ci sono ri-consegne o accrediti (`fn_annulla_reso`) | ✅ niente si riapre in silenzio |
 | — | Commessa → fattura; fattura → nota di credito | fatturazione | si corregge con la nota di credito, non annullando | ⚪ fuori dal principio |
 
@@ -333,3 +335,23 @@ il contratto annullato.
 * Fuori da questo brief: `check_i18n_keys.py` e' rosso su `common.azione_reason.indirizzo_non_del_cliente`,
   emessa da `script.fn_check_indirizzi_documento_cliente` (D27, arrivato col merge): e' del lato BE/FE di
   brief-db-indirizzi-documento-seguono-il-cliente.
+
+## 10. Caso 6 — Annullare la commessa: spostato
+
+Trovato nel collaudo di Tid del 2026-10-11 (PRV0000398 smistato in commessa, commessa annullata: nessuna
+finestra, il preventivo resta EVASO). Per decisione di Tid lo stesso giorno diventa un brief suo, che
+generalizza il verso all'indietro («annullare a valle riapre a monte, con la segnalazione; in avanti
+bloccato; un unico meccanismo»):
+[brief-db-annullo-a-valle-riapre-a-monte](../work-in-progress/brief-db-annullo-a-valle-riapre-a-monte.md)
+(D30). Le decisioni prese qui (D-7…D-10) sono passate la' come D-1…D-4. La forma di questo brief
+(lettore, avviso, verbo, finestra) si riusa.
+
+## 11. Chiusura (2026-10-11)
+
+* **Lato DB**: casi 1-5 applicati e verdi (§3.5, §8).
+* **Lato BE/FE**: R-1…R-6 fatti (§9), provati sul DB vero per bolla, ordine, preventivo e contratto.
+* **Collaudo a video di Tid**: superato per bolla, ordine, contratto e documento senza legami. Il caso
+  del preventivo ACCETTATO con righe in commessa non ancora emesse (PRV0000144) non e' stato provato a
+  video: passa al collaudo del brief D30 (§3 la', dove la decisione «in avanti bloccato» puo' cambiarlo).
+* **Il caso 6** (annullo della commessa) e' il brief D30 (§10).
+* Registro dei difetti: **D29** chiusa (§7 di `migliorie-generali-da-test-valutazione.md`).

@@ -4,7 +4,7 @@
 >
 > [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi) — la sintesi della lineage, che la legge
 > Le sette viste di lista di `vendite` (`vw_*_lista`) — colonne `pratica_id`, `pratica_numero`, `n_pratiche`
-> Brief: `docs/it/dev/work-in-progress/brief-db-lineage-seminata-per-chiave.md` §8.6-§8.7
+> Brief: `docs/it/dev/work-done/brief-db-lineage-seminata-per-chiave.md` §8.6-§8.7
 
 ---
 ### 🎯 Scopo Principale

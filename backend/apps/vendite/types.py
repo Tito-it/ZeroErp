@@ -1563,16 +1563,8 @@ class DashCompetenzaErroreRow(TypedDict):
     n_commesse_fallite: int
 
 
-class LineageSorgenteRow(TypedDict):
-    # Riga di config.sorgenti per la risoluzione della chiave nodo lineage
-    # (convenzione chiave sorgente: docs/it/dbzero/config/manual/sorgenti.md).
-    id: int
-    key_selector: str
-    target_table: str
-
-
 class LineageNodoRow(TypedDict):
-    # Riga summary di vendite.vw_documento_lineage per un documento:
+    # Riga summary di vendite.fn_documento_lineage_sintesi per un documento:
     # nodo + pratica collegata + frontiera forward + contatori genealogia.
     tipo_id: int
     tipo_codice_interno: str

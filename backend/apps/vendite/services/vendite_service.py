@@ -16,6 +16,17 @@ from decimal import Decimal
 from typing import Any
 
 
+from apps.config.db.sorgenti_repository import SorgentiRepository
+from apps.config.sorgenti import (
+    SORGENTE_COMMESSA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_FATTURA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+    SORGENTE_RESO_VENDITA,
+)
 from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
@@ -1735,14 +1746,14 @@ def fn_dash_competenza_errori(
 # indica sempre sé stessa. Misurato sulla fattura 835: 7 archi indietro (tre
 # commesse, tre ordini, un preventivo), 1 avanti (la nota di credito).
 LINEAGE_TIPI_DOCUMENTO: tuple[str, ...] = (
-    "PREVENTIVO",
-    "OFFERTA_COMMERCIALE",
-    "ORDINE_VENDITA",
-    "CONTRATTO",
-    "DDT_VENDITA",
-    "RESO_VENDITA",
-    "COMMESSA",
-    "FATTURA",
+    SORGENTE_PREVENTIVO,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_RESO_VENDITA,
+    SORGENTE_COMMESSA,
+    SORGENTE_FATTURA,
 )
 
 
@@ -1776,7 +1787,7 @@ def get_documento_passaggi(
 
     # Sorgente dal vocabolario (id + key_selector + target_table): assenza =
     # seed config incoerente, non input utente.
-    sorgente = repo.get_lineage_sorgente(tipo_codice)
+    sorgente = SorgentiRepository().get_sorgente_attiva(tipo_codice)
     ErrorManager.require(
         sorgente is not None,
         code="E_VENDITE_VALIDATION",

@@ -4,7 +4,7 @@
 >
 > [vendite.fn_documento_lineage_archi](/dbzero/vendite/funzioni/fn_documento_lineage_archi) — gli archi per chiave
 > [vendite.fn_documento_lineage](/dbzero/vendite/funzioni/fn_documento_lineage) — il pannello «Passaggi»
-> Brief: `docs/it/dev/work-in-progress/brief-db-lineage-seminata-per-chiave.md` §8.5
+> Brief: `docs/it/dev/work-done/brief-db-lineage-seminata-per-chiave.md` §8.5
 
 ---
 ### 🎯 Scopo Principale

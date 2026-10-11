@@ -3,18 +3,25 @@
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-10. **A chi:** Tid; poi
 > il team BE per le liste (§5.3), se la decisione D-2 lo coinvolge.
 > **Origine:** D-6 di
-> [brief-db-plancache-funzioni-con-query-incorporate](brief-db-plancache-funzioni-con-query-incorporate.md)
+> [brief-db-plancache-funzioni-con-query-incorporate](../work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md)
 > §5.3: dopo `20261010-44` il pannello «Passaggi» costa ~0,18 s, ed è il costo
 > di costruire il grafo intero. Censendo chi legge il grafo è emerso che lo
 > stesso costo lo paga **ogni pagina di sette liste** (§2), e che la D-5 dello
 > stesso brief (lista offerte letta per id) è lo stesso difetto.
-> **Stato (2026-10-10):** ⬜ **aperto, non iniziato.** Decisioni di Tid del
-> 2026-10-10: **D-1 sì, D-3 sì, D-4 sì** (prima il pannello, poi le liste — §6).
-> **D-2 = B** (le liste chiedono la lineage per gli id della pagina, §5.2).
-> Piano in §8 (accorciato a giri A e B). **2026-10-11**: ✅ giro 1 chiuso (`20261011-62…-67`); ✅ giro A chiuso (`20261011-92…-94`, §8.5). Giro B: ✅ lato DB applicato (`20261011-95…-99`, §8.7); ⬜ B1 nel backend (§8.1) da confermare.
-> **Ricadute BE/FE:** **BE sì**, richiesta B1 pronta al §8.1 (liste, export e
-> drawer leggono le colonne del grafo dalla sintesi; va fatta **prima** del
-> `20261011-97/-98`). **FE:** nessuna, il contratto della riga non cambia.
+> **Stato:** ✅ **chiuso il 2026-10-11, archiviato in `work-done/`.** Decisioni
+> di Tid del 2026-10-10: **D-1 sì, D-3 sì, D-4 sì** (prima il pannello, poi le
+> liste — §6); **D-2 = B** (le liste chiedono la lineage per gli id della
+> pagina, §5.2). Giro 1 (`20261011-62…-67`), giro A (`20261011-92…-94`, §8.5) e
+> giro B lato DB (`20261011-95…-99`, §8.7) applicati, pgTAP verdi; **B1 nel
+> backend** fatto lo stesso giorno (§8.1): liste, export e drawer leggono le
+> colonne del grafo da `fn_documento_lineage_sintesi`. `vw_documento_lineage`
+> è ritirata.
+> ⭐ **Anche la D-5** del brief d'origine (la lista offerte letta per id, che la
+> legge anche il trigger della revisione) è chiusa, per struttura: il costo era
+> il grafo dentro `vw_offerte_commerciali_lista`, e il `-97` lo ha tolto da
+> tutte e sette le viste di lista.
+> **Ricadute FE:** nessuna, il contratto della riga non è cambiato.
+> Nessuna decisione aperta, nessun debito ereditato.
 
 ## 1. Il difetto, sul modello
 
@@ -461,6 +468,20 @@ applicati, le liste mostrano frontiera e transito **solo** se B1 (§8.1) è già
 backend: da verificare nella sessione BE.
 
 ### 8.1 Richiesta al team BE — B1 ⛔ URGENTE: il DB è già applicato
+
+> ✅ **Fatto (2026-10-11, `dev/backend-tid`).** Building block nuovo
+> `apps/vendite/db/_lineage_sintesi.py` (`unisci_sintesi_lineage`), chiamato
+> dopo la paginazione dai metodi di lista dei sette repository: la stessa
+> chiamata copre l'export, che usa quei metodi con `limit=EXPORT_MAX_ROWS + 1`
+> (a blocchi da 500). Regola D-B2 sulla struttura: entra ogni colonna della
+> sintesi che la riga della vista non ha, senza elenchi. Il drawer
+> (`VenditeRepository.get_lineage_nodo`) legge
+> `fn_documento_lineage_sintesi(ARRAY[tipo], ARRAY[uid])`. Nessuna ricaduta FE.
+> Provato su dbdev come app (contesto operatore): le sette liste hanno le 7
+> colonne del chip su ogni riga, nessuna riga senza sintesi (ordini 110/110,
+> preventivi 161/161), drawer aperto su preventivo, ordine e fattura. Presidio:
+> `vendite/tests/db/test_lineage_sintesi.py`; suite `apps.vendite` + `apps.ui`
+> verde (2530 test). Catalogo BB backend aggiornato.
 
 > **A chi:** sessione BE (`dev/backend-tid`). **Stato (2026-10-11):** il lato DB
 > del giro B (`20261011-95…-99`) è **applicato** su dbdev, e B1 non è ancora

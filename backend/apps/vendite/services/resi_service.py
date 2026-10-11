@@ -33,6 +33,8 @@ from typing import Any
 
 from django.db import transaction
 
+from apps.config.db.sorgenti_repository import SorgentiRepository
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
@@ -106,9 +108,6 @@ _STATI_MODIFICABILI: frozenset[str] = frozenset({_STATO_BOZZA})
 # Stato richiesto al DDT sorgente per aprire un reso (non si rende cio' che
 # non e' stato consegnato — brief DB §3).
 _STATO_DDT_SORGENTE = "CONSEGNATO"
-# Sorgente data-driven (config.sorgenti, riuso riga esistente — mai id
-# hardcoded, memoria feedback_no_hardcoded_ids).
-_SORGENTE_DDT = "DDT_VENDITA"
 
 # Tetto della selezione massiva di accrediti. Non e' una regola fiscale: e' il
 # confine oltre il quale «ho scelto queste righe» non vuol piu' dire niente, e
@@ -474,14 +473,15 @@ def crea_reso(payload: dict[str, Any]) -> dict[str, Any]:
         function_name=f"{_FN}.crea_reso",
     )
 
-    sorgente_tipo_id = repo.get_sorgente_tipo_id_by_codice(_SORGENTE_DDT)
+    sorgente = SorgentiRepository().get_sorgente_attiva(SORGENTE_DDT_VENDITA)
     ErrorManager.require(
-        sorgente_tipo_id is not None,
+        sorgente is not None,
         code="E_RESO_VALIDAZIONE",
         message="Sorgente DDT_VENDITA non configurata in config.sorgenti.",
         function_name=f"{_FN}.crea_reso",
     )
-    assert sorgente_tipo_id is not None
+    assert sorgente is not None
+    sorgente_tipo_id = sorgente["id"]
 
     stato_bozza_id = repo.get_stato_id_by_codice(_STATO_BOZZA)
     ErrorManager.require(

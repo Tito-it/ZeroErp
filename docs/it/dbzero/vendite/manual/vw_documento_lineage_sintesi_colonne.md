@@ -3,7 +3,7 @@
 > 👀 **Vedi anche**
 >
 > [vendite.fn_documento_lineage_sintesi](/dbzero/vendite/funzioni/fn_documento_lineage_sintesi)
-> Brief: `docs/it/dev/work-in-progress/brief-db-lineage-seminata-per-chiave.md` §8.1, §8.6
+> Brief: `docs/it/dev/work-done/brief-db-lineage-seminata-per-chiave.md` §8.1, §8.6
 
 ---
 ### 🎯 Scopo Principale

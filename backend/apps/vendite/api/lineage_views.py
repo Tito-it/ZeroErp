@@ -20,6 +20,16 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.request import Request
 
+from apps.config.sorgenti import (
+    SORGENTE_COMMESSA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_FATTURA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+    SORGENTE_RESO_VENDITA,
+)
 from apps.core.api.base_views import DomainAPIView
 from apps.core.api.success_responses import success_response
 from apps.vendite.services import vendite_service
@@ -77,7 +87,7 @@ def build_passaggi_view(
     Genealogia/lineage del documento ({tipo_codice}): pratica collegata,
     frontiera (documento piu' prossimo in esecuzione) e catena completa dei
     passaggi in entrambe le direzioni (origine + destinazioni), dal grafo
-    vendite.fn_documento_lineage / vw_documento_lineage (RLS invoker).
+    vendite.fn_documento_lineage / fn_documento_lineage_sintesi (RLS invoker).
     I rami di RITORNO arrivano con is_ramo_inverso=true ed esclusi dalla
     frontiera forward: arco R (DDT->Reso, merce che torna) e arco N (fattura
     rettificata->nota di credito, valore che torna).
@@ -94,42 +104,42 @@ def build_passaggi_view(
 ApiPreventivoPassaggi = build_passaggi_view(
     schema_prefix="Preventivo",
     url_kwarg="preventivo_id",
-    tipo_codice="PREVENTIVO",
+    tipo_codice=SORGENTE_PREVENTIVO,
     model_permission=("vendite", "preventivo"),
 )
 
 ApiOffertaPassaggi = build_passaggi_view(
     schema_prefix="Offerta",
     url_kwarg="offerta_id",
-    tipo_codice="OFFERTA_COMMERCIALE",
+    tipo_codice=SORGENTE_OFFERTA_COMMERCIALE,
     model_permission=("vendite", "offerta_commerciale"),
 )
 
 ApiOrdinePassaggi = build_passaggi_view(
     schema_prefix="Ordine",
     url_kwarg="ordine_id",
-    tipo_codice="ORDINE_VENDITA",
+    tipo_codice=SORGENTE_ORDINE_VENDITA,
     model_permission=("vendite", "ordine"),
 )
 
 ApiContrattoPassaggi = build_passaggi_view(
     schema_prefix="Contratto",
     url_kwarg="contratto_id",
-    tipo_codice="CONTRATTO",
+    tipo_codice=SORGENTE_CONTRATTO,
     model_permission=("vendite", "contratto"),
 )
 
 ApiDdtPassaggi = build_passaggi_view(
     schema_prefix="Ddt",
     url_kwarg="ddt_id",
-    tipo_codice="DDT_VENDITA",
+    tipo_codice=SORGENTE_DDT_VENDITA,
     model_permission=("vendite", "ddt"),
 )
 
 ApiResoPassaggi = build_passaggi_view(
     schema_prefix="Reso",
     url_kwarg="reso_id",
-    tipo_codice="RESO_VENDITA",
+    tipo_codice=SORGENTE_RESO_VENDITA,
     model_permission=("vendite", "reso"),
 )
 
@@ -143,7 +153,7 @@ ApiResoPassaggi = build_passaggi_view(
 ApiFatturaPassaggi = build_passaggi_view(
     schema_prefix="Fattura",
     url_kwarg="fattura_id",
-    tipo_codice="FATTURA",
+    tipo_codice=SORGENTE_FATTURA,
     model_permission=("vendite", "fattura"),
 )
 
@@ -153,5 +163,5 @@ ApiFatturaPassaggi = build_passaggi_view(
 ApiCommessaPassaggi = build_passaggi_view(
     schema_prefix="Commessa",
     url_kwarg="commessa_id",
-    tipo_codice="COMMESSA",
+    tipo_codice=SORGENTE_COMMESSA,
 )

@@ -34,6 +34,8 @@
 > Il secondo trovato (FISSA, `quantita` a mano) resta aperto senza richiesta; il terzo (ordine fra
 > guard del listino e lock del contratto attivo) è **passato** a
 > [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md) §5 (§F.4.3).
+> **⏳ Quarto giro DB (§H, 2026-10-11):** l'offerta ACCETTATA che non si trasforma (righe fuori
+> perimetro dopo la scrittura; nessuna uscita da ACCETTATA). Supera B-D6. Al team DB, poi BE/FE.
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
 > **Le decisioni** (di Tid, 2026-10-07) stanno in §C.5 e in coda al §C.7: A-D1 chiusa dal modello,
 > A-D2 il contratto non si attiva senza versione in vigore, A-D3 la revisione congela alla sua
@@ -564,6 +566,8 @@ tipologia.
   ogni erogazione che la tipologia o la natura ammette, se il vocabolario B1 la dichiara coerente.
 * **B-D6** ✅ le righe già scritte restano come sono, **senza presidio**: sono solo dati di test.
   Il guard scatta su INSERT e quando cambiano articolo, erogazione o fonte.
+  ⛔ **Superata dal §H (2026-10-11)**: il perimetro dipende da dati che stanno fuori dalla riga,
+  quindi il controllo serve anche all'emissione e alla trasformazione, non solo alla scrittura.
 
 ### C.8 Consegna dei giri B1 e B2 (team DB, 2026-10-07)
 
@@ -1406,3 +1410,85 @@ collaudo a video e l'archiviazione.
 * **Una riga d'offerta FISSA → MANUALE** dal drawer: si salva, e la quantità sparisce (prima del
   §F era un errore sul campo `quantita`, che il form non ha). Lo stesso sul contratto.
 
+
+## H. Quarto giro DB: l'offerta accettata che non si trasforma (`dev/backend-tid`, 2026-10-11)
+
+> **Chi scrive:** sessione BE/FE, dal collaudo a video di Tid del 2026-10-11. **A chi:** team DB
+> (`dev/db-tid`); poi BE/FE (§H.5), che **attende** la consegna DB.
+> **Decisione:** di Tid, 2026-10-11: il giro sta in questo brief, perché rivede la sua B-D6.
+> Due difetti con una causa sola, un'offerta ACCETTATA che non diventa né contratto né ordine:
+> **H-A** fa sì che non ci si arrivi, **H-B** dà l'uscita quando ci si arriva lo stesso.
+
+### H.1 Il caso (fatto datato, non il motivo)
+
+Il 2026-10-11, su dbdev, l'offerta `OFC-0001064` (id 1070) è ACCETTATA. «Genera contratto» va in
+errore `E_RIGA_EROGAZIONE_FUORI_PERIMETRO` («Questo articolo non si eroga così…»), e l'offerta non
+ha più uscite. Tre righe attive su quattro sono fuori dal perimetro di
+`vendite.fn_articolo_erogazioni` (lo dice `script.fn_check_riga_erogazione('OFFERTA', 1070, …)`):
+
+| Articolo | Riga | Erogazione / fonte | Il perimetro dell'articolo |
+| --- | --- | --- | --- |
+| `titoart0001` | OVERRIDE | CONSUMO / MANUALE | UNA_TANTUM, FISSA (default) o MANUALE |
+| `art 100` | OVERRIDE | CONSUMO / LETTURE | UNA_TANTUM, FISSA (default) o MANUALE |
+| `ARC005474` | AGGIUNTA | CONSUMO / MANUALE | UNA_TANTUM, FISSA (default) o MANUALE, dalla natura |
+
+Le righe sono del 2026-10-07 mattina, prima del guard del perimetro (`20261007-63/-64`, applicati
+la notte). `ARC005474` è stata modificata il 2026-10-11 in altri campi, e il guard `…_upd` non
+scatta perché non sono cambiati né l'articolo né l'erogazione né la fonte (B-D6). Il push scrive
+righe **nuove** sul contratto, e lì il guard all'INSERT le rifiuta.
+
+### H.2 Il difetto, sul modello
+
+**H-A. Il perimetro si controlla solo quando si scrive la riga, ma dipende da dati che stanno
+fuori dalla riga.** La regola dipende dalla tipologia dell'articolo, e senza tipologia dalla
+natura, dentro la utility del documento. `catalogo.articoli.listino_tipologia_id` si può cambiare
+dopo, e nessun trigger lo blocca. Quindi una riga che era nel perimetro quando è stata scritta può
+non esserlo più quando l'offerta si emette, si accetta o si trasforma. Le righe vecchie sono solo
+il caso più evidente. ⛔ Per questo **B-D6 («senza presidio: sono solo dati di test») è superata**.
+Il difetto non sta nei dati di test ma nel fatto che il controllo c'è solo al momento della
+scrittura. Sul listino lo schema giusto esiste già (A-R2): l'emissione riverifica, e il pulsante
+si spegne con lo stesso controllo (`script.fn_check_listino_congelabile`).
+
+**H-B. Da ACCETTATA si esce solo trasformando l'offerta.** Le transizioni
+(`config.stati_doc_offerte_transizioni`) prevedono l'annullo solo da BOZZA e la revisione solo da
+EMESSA. Se la trasformazione è rifiutata, l'offerta resta bloccata per sempre. La guida
+([gestione-offerte-commerciali](../../guide/gestione-offerte-commerciali.md) §3) dice che
+ACCETTATA non è terminale, ma non dice che cosa si fa quando non si può trasformare. Il preventivo,
+che è il documento gemello, prevede `ACCETTATO → ANNULLATO`
+([gestione-preventivi](../../guide/gestione-preventivi.md)): manca la simmetria.
+
+### H.3 Richiesta
+
+| # | Cosa | Dettaglio |
+| --- | --- | --- |
+| **H-R1** | **Emissione: le righe nel perimetro** | il guard `BOZZA → EMESSA` rifiuta col primo motivo di `script.fn_check_riga_erogazione` su ogni riga attiva non ESCLUSIONE, col riferimento alla riga (id o articolo) nel contesto. La capability spegne «Emetti» con **lo stesso** controllo (`reason_key` nuova): pulsante e guard non possono dissentire, come per il listino |
+| **H-R2** | **Trasformazione: il motivo prima del clic** | `can_push_contratto` e `can_genera_ordine` di `script.fn_available_actions_offerta` falsi, con `reason_key`, se una riga è fuori perimetro: lo stesso controllo dell'H-R1, letto al momento (la tipologia può essere cambiata dopo l'emissione). Il guard all'INSERT su `contratti_righe` resta come rete. ⚠️ Da verificare **dal percorso**: il ramo `genera_ordine` passa da un controllo del perimetro? Se l'ordine non ha erogazione, H-R2 vale solo per il contratto, e va scritto |
+| **H-R3** | **Annullo da ACCETTATA** | transizione `ACCETTATA → ANNULLATA`, motivazione obbligatoria (`motivazione_rifiuto`, come da BOZZA), ammessa solo se l'offerta non ha documenti **vivi** a valle: `vendite.fn_offerta_documenti_vivi` (sede unica, da `brief-db-annullo-documento-con-legami` §7), non un secondo controllo. Esposta in `available_actions` |
+| **H-R4** | **La stessa regola sul contratto** (simmetria) | anche la riga di contratto può uscire dal perimetro dopo essere stata scritta. L'attivazione (`DRAFT → ATTIVO`) verifica le righe con la stessa `fn_check_riga_erogazione`, nel guard e nella capability. In DRAFT le righe si possono correggere, quindi qui non serve un'uscita nuova |
+| **H-R5** | Guide e manual | `gestione-offerte-commerciali` §3 (la transizione nuova, il controllo all'emissione), `api_offerte.md` (state machine, «Stati terminali»), `stati_doc_offerte_transizioni` (il commento: «5 transizioni») |
+| **H-R6** | pgTAP | riga fuori perimetro → «Emetti» rifiutato col motivo e capability spenta; tipologia cambiata dopo l'accettazione → push spento col motivo; annullo da ACCETTATA senza documenti vivi ammesso, con un contratto vivo rifiutato, con un contratto annullato ammesso; attivazione del contratto con una riga fuori perimetro rifiutata |
+
+### H.4 Da decidere (team DB, poi Tid)
+
+* **H-D1, il controllo all'accettazione.** Proposta: **no**. Il «sì» del cliente si registra in
+  ogni caso. Un'offerta che non si può più trasformare la fermano H-R2, con il motivo, e H-R3,
+  con l'uscita.
+* **H-D2, la revisione da ACCETTATA.** Proposta: **no**. Una revisione è una proposta nuova al
+  cliente, e lui ha già accettato. Per riproporla si annulla (H-R3) e si crea un'offerta nuova,
+  come per una rifiutata.
+* **H-D3, le righe già scritte fuori perimetro.** Proposta: **nessuna bonifica**. Con H-R1, H-R2
+  e H-R4 le righe le intercetta il primo passo che le usa, con il motivo. Se il team DB vuole un
+  conteggio a catalogo per sapere quante sono, lo scrive lui: è un dato per trovare gli errori,
+  non serve a decidere.
+
+### H.5 Lato BE/FE, a consegna DB fatta
+
+* **Offerta**: il pulsante «Annulla» da ACCETTATA arriva da `available_actions` e va gestito come
+  l'annullo da BOZZA (dialog con motivazione). «Emetti», «Genera contratto» e «Genera ordine»
+  spenti con il tooltip del motivo (frontend-standards, «stato ⇒ disabilita col motivo»).
+  Verificare che l'endpoint `/annulla/` non abbia un controllo «solo da BOZZA» suo, che farebbe
+  da specchio del DB.
+* **Contratto**: «Attiva» spento con il motivo (H-R4).
+* Policy e ripieghi per i codici nuovi (`genera_error_policies`, ripiego senza `%s`).
+* Collaudo a video (Tid): `OFC-0001064` mostra «Genera contratto» spento con il motivo, e si
+  annulla da ACCETTATA.

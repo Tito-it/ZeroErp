@@ -250,6 +250,16 @@ const showSmistamento = computed(() => {
   const stato = detail.value?.stato_codice_interno
   return stato === STATO_PREVENTIVO.ACCETTATO || stato === STATO_PREVENTIVO.EVASO
 })
+// Smistamento spento quando nessuno dei due rami e' eseguibile (es. EVASO):
+// stato ⇒ disabilita col motivo (frontend-standards). Il motivo e' quello che
+// il DB manda per ramo (`can_*_reason_key`), a tooltip sul pulsante — non piu'
+// due banner che ripetevano la nota di stato della barra.
+const smistamentoReason = computed(() => {
+  if (canPushCommessa.value || canGeneraOrdine.value) return ''
+  const keys = [generaOrdineReasonKey.value, pushCommessaReasonKey.value]
+    .filter(k => k && te(k))
+  return [...new Set(keys.map(k => t(k)))].join('\n')
+})
 // Per PreventiviForm passiamo l'array originale (no Set): il prop e' typed Array.
 // Quando il drawer ha gia' un detail (CREATE post auto-save bozza o EDIT classico)
 // blocchiamo lato UX il cambio di billing_account_id e istanza_utility_id: il
@@ -914,12 +924,15 @@ const drawerActions = computed(() => {
   // Smistamento: apre la dialog dedicata (righe residue instradate per natura
   // verso ordine/commessa). Da ACCETTATO in poi; resta visibile anche in
   // readonly puro — la dialog si apre consuntiva (footer di sola chiusura).
+  // Spento col motivo quando nessun ramo e' eseguibile (`smistamentoReason`).
   if (showSmistamento.value) {
     list.push({
       key: 'smistamento',
       kind: 'manage',
       label: t('vendite.preventivi.section_smistamento'),
       icon: MANAGE_ICONS.INVIA_A_COMMESSA,
+      disabled: !!smistamentoReason.value,
+      tooltip: smistamentoReason.value || undefined,
       command: () => { smistamentoDialogVisible.value = true },
     })
   }
@@ -1060,15 +1073,6 @@ const drawerActions = computed(() => {
     <Message v-if="hasDetail && detail.ba_ha_contratto_attivo === false"
       severity="info" :closable="false" class="mt-1">
       {{ t('vendite.preventivi.banner_no_contratto_attivo') }}
-    </Message>
-    <Message v-if="hasDetail && !canPushCommessa && pushCommessaReasonKey && te(pushCommessaReasonKey)"
-      severity="info" :closable="false" class="mt-1">
-      {{ t(pushCommessaReasonKey) }}
-    </Message>
-    <!-- Ramo ordine dello smistamento: stessa forma del ramo commessa sopra. -->
-    <Message v-if="hasDetail && !canGeneraOrdine && generaOrdineReasonKey && te(generaOrdineReasonKey)"
-      severity="info" :closable="false" class="mt-1">
-      {{ t(generaOrdineReasonKey) }}
     </Message>
 
     <Divider v-if="hasDetail" />

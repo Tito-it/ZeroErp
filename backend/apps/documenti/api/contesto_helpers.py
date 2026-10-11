@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.config.db.sorgenti_repository import SorgentiRepository
 from apps.core.services.error_manager import ErrorManager
-from apps.documenti.db.documenti_repository import DocumentiRepository
 
 # Codici errore allineati alla convenzione delle view documentali.
 _E_VALIDATION = "E_DOCUMENTI_VALIDATION"
@@ -60,9 +60,9 @@ def resolve_contesto_documentale(
         message=emittente_message,
         detail=f"entity_id={entity_id}",
     )
-    sorgente = DocumentiRepository().get_sorgente_tipo_id_by_codice(sorgente_codice)
+    sorgente = SorgentiRepository().get_sorgente_attiva(sorgente_codice)
     ErrorManager.require(
-        sorgente is not None and sorgente.get("attivo"),
+        sorgente is not None,
         code=_E_VALIDATION,
         message=f"Sorgente '{sorgente_codice}' non configurata o non attiva.",
     )
