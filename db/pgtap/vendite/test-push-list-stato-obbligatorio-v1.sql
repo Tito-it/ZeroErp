@@ -36,6 +36,8 @@
 
 BEGIN;
 
+SET CONSTRAINTS ALL IMMEDIATE;
+
 -- pgtap-contesto: escluso — legge solo il catalogo delle funzioni.
 
 SELECT plan(3);

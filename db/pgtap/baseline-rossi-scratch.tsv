@@ -24,7 +24,6 @@ db/pgtap/script/test-fn-available-actions-pdf-v1.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-crea-utente-tecnico.sql	ERRORE_FIXTURE
 db/pgtap/script/test-fn-raise-primo-motivo-se-presente-v1.sql	ASSERZIONE
 db/pgtap/script/test-search-soggetti-universale.sql	ERRORE_FIXTURE
-db/pgtap/script/test-seed-stati-doc-ordini-evaso-v1.sql	ASSERZIONE
 db/pgtap/script/test-vw-giornale-entita.sql	ERRORE_FIXTURE
 db/pgtap/ui/test-lista-competenza-gruppi-colonna-emittente-v1.sql	ASSERZIONE
 db/pgtap/vendite/contratti/test_fn_successione_contratti.sql	ERRORE_FIXTURE
