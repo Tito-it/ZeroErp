@@ -202,4 +202,14 @@ Il presidio non è più un'equivalenza da tenere:
 lo legge a tre voci (diagnosi, lister, capability), e pinna la **forma** — il
 corpo del lister nomina la diagnosi e non `fn_partite_merce` né
 `fn_get_stato_push_segment`.
+
+### ⛔ Si pianifica una volta (`plan_cache_mode`, changeSet 20261010-84)
+
+La funzione porta `SET plan_cache_mode = force_generic_plan`: chiama con un
+parametro la diagnosi del push, una funzione SQL che si incorpora in una query
+grande, e in modo `auto` la plancache la ripianificava a ogni chiamata.
+⚠️ È una proprietà **invisibile nel corpo**: un `CREATE OR REPLACE` che non la
+ripete la perde, senza errore e con gli stessi risultati. Presidio:
+`db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql`.
+
 {% include-markdown "signature-core.md" %}

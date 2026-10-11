@@ -12,7 +12,7 @@
 --   3) config.sorgenti DDT_VENDITA ha key_selector = 'id'
 --   4) anti-marciume: ogni coppia (oggetto vivo, costante) e' ancora vera
 --   5) derivato, senza elenco: ogni sorgente passata come argomento ai trigger
---      di chiusura/ritiro commessa esiste a catalogo ed e' attiva
+--      di chiusura commessa (il freno sulle righe EMESSA) esiste a catalogo ed e' attiva
 --   6) gemello «esiste» del test 5: quei trigger esistono
 --
 -- ── PERCHE' QUESTO FILE ESISTE ──────────────────────────────────────────
@@ -117,9 +117,11 @@ INSERT INTO _costanti VALUES
     ('config',    'sorgenti',                      'FATTURA',
      'vendite',   'vw_fatture_lista',              'VISTA',    '20260824-15'),
 
-    -- L'arco del ramo inverso (reso) nel grafo del lineage.
+    -- L'arco del ramo inverso (reso) nel grafo del lineage. ⭐ Dal 2026-10-11
+    -- (20261011-64/-66) la grammatica dei 13 archi sta nella funzione e la
+    -- vista ne e' la proiezione: il contratto e' con la funzione.
     ('config',    'sorgenti',                      'RESO_VENDITA',
-     'vendite',   'vw_documento_lineage_archi',    'VISTA',    '20260825-19'),
+     'vendite',   'fn_documento_lineage_archi',    'FUNZIONE', '20261011-64'),
 
     -- La sorgente che la ri-consegna scrive sul DDT generato dal reso.
     ('config',    'sorgenti',                      'RESO_VENDITA',
@@ -128,7 +130,7 @@ INSERT INTO _costanti VALUES
     -- L'arco sorgente-DDT. ⚠️ Qui la costante non basta: conta anche il
     -- key_selector, ed e' il test 3.
     ('config',    'sorgenti',                      'DDT_VENDITA',
-     'vendite',   'vw_documento_lineage_archi',    'VISTA',    '20260828-24');
+     'vendite',   'fn_documento_lineage_archi',    'FUNZIONE', '20261011-64');
 
 -- Cosa il catalogo offre DAVVERO, con il predicato di attivita' proprio di
 -- ciascuna tabella. ⚠️ Non e' lo stesso predicato ovunque: `sorgenti` e
@@ -222,7 +224,11 @@ SELECT is(
              WHERE c.obj_tipo   = 'FUNZIONE'
                AND n.nspname    = c.obj_schema
                AND p.proname    = c.obj_nome
-               AND p.prosrc LIKE '%' || quote_literal(c.valore) || '%'
+               -- ⚠️ Una funzione BEGIN ATOMIC ha `prosrc` VUOTO: il corpo sta
+               --    in prosqlbody, e lo deparsa pg_get_function_sqlbody (i
+               --    letterali escono come 'X'::text, che il LIKE prende).
+               AND coalesce(nullif(p.prosrc, ''), pg_get_function_sqlbody(p.oid))
+                   LIKE '%' || quote_literal(c.valore) || '%'
       )
         AND NOT EXISTS (
             SELECT 1
@@ -254,15 +260,14 @@ SELECT is(
        JOIN pg_namespace pn ON pn.oid = pr.pronamespace
       WHERE NOT tg.tgisinternal
         AND pn.nspname = 'vendite'
-        AND pr.proname IN ('trgfn_doc_guard_chiusura_sorgente',
-                           'trgfn_doc_ritira_commessa_attivita')
+        AND pr.proname = 'trgfn_doc_guard_chiusura_sorgente'
         AND NOT EXISTS (
             SELECT 1 FROM config.sorgenti s
              WHERE s.codice_interno = (string_to_array(encode(tg.tgargs, 'escape'), '\000'))[1]
                AND s.attivo IS TRUE
         )),
     0,
-    '5. Ogni sorgente passata ai trigger di chiusura/ritiro commessa e'' a catalogo e attiva'
+    '5. Ogni sorgente passata ai freni di chiusura commessa e'' a catalogo e attiva'
 );
 
 -- ============================================================
@@ -270,6 +275,11 @@ SELECT is(
 -- ============================================================
 -- ⚠️ Anche il test 5 conta i cattivi: se i trigger venissero rinominati o
 --   smontati risponderebbe zero su zero. Il 2026-09-02 erano sette.
+-- ⚠️ rev 2026-10-11 (brief-db-annullo-documento-con-legami D-5): il motore del
+--   ritiro automatico (trgfn_doc_ritira_commessa_attivita, quattro trigger
+--   _z90_) si e' ritirato — le righe NON_EMESSA le ritira il verbo di annullo
+--   dopo la conferma. Restano i freni sulle righe EMESSA: tre (DDT, ordine,
+--   contratto; il preventivo usa il proprio codice dentro la sua check).
 SELECT cmp_ok(
     (SELECT count(*)::int
        FROM pg_trigger tg
@@ -277,10 +287,9 @@ SELECT cmp_ok(
        JOIN pg_namespace pn ON pn.oid = pr.pronamespace
       WHERE NOT tg.tgisinternal
         AND pn.nspname = 'vendite'
-        AND pr.proname IN ('trgfn_doc_guard_chiusura_sorgente',
-                           'trgfn_doc_ritira_commessa_attivita')),
-    '>=', 4,
-    '6. I trigger di chiusura/ritiro commessa esistono (il test 5 ha dei candidati)'
+        AND pr.proname = 'trgfn_doc_guard_chiusura_sorgente'),
+    '>=', 3,
+    '6. I freni di chiusura sulle righe di commessa emesse esistono (il test 5 ha dei candidati)'
 );
 
 -- ============================================================

@@ -25,7 +25,10 @@ vivo (MOTIVO 1), oppure **righe di commessa già `EMESSA`** (MOTIVO 2).
 > stato **ritirato**: il motivo per cui esisteva era che **non c'era modo di
 > disfare il push**, e adesso c'è — alla chiusura il documento **ritira da sé**
 > le righe che nessuno ha ancora emesso
-> ([`trgfn_doc_ritira_commessa_attivita`](/dbzero/vendite/funzioni/trgfn_doc_ritira_commessa_attivita)).
+> (rev 2026-10-11: non più in silenzio — le righe `NON_EMESSA` sono legami, l'annullo chiede
+> conferma e le ritira il verbo di annullo, BB
+> [`vendite.fn_documento_ritira_legami`](/dbzero/vendite/funzioni/fn_documento_ritira_legami);
+> brief-db-annullo-documento-con-legami, D-5).
 >
 > ⭐ Resta un freno solo, e su una condizione **vera**: le righe già `EMESSA`
 > sono in volo verso una fattura. E ha una via d'uscita che il messaggio nomina —

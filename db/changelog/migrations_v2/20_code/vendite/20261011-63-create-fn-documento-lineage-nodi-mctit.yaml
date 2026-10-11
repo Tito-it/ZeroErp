@@ -1,0 +1,291 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I NODI DELLA LINEAGE PER CHIAVE: vendite.fn_documento_lineage_nodi(p_tipo_ids, p_uids)
+#   Brief: brief-db-lineage-seminata-per-chiave §4, §8.2 (D-1 di Tid); giro 1.
+#
+# ── IL DIFETTO, SUL MODELLO ─────────────────────────────────────────
+#   vendite.vw_documento_lineage_nodi e' una vista: chi vuole i nodi di UNA
+#   catena li legge tutti e scarta. Il costo cresce col numero dei documenti
+#   del sistema, non con quelli che servono.
+#
+# ── LA FORMA (regola del 2: un corpo) ──────────────────────────────
+#   Gli otto rami della vista passano in una funzione con un SEME, e la vista
+#   ne diventa la proiezione col seme NULL (20261011-65).
+#   Il seme e' la CHIAVE DEL NODO, la stessa che il modello usa come identita'
+#   polimorfa: (tipo_id, uid::text), in due array paralleli. Il chiamante
+#   tipico e' una frontiera, cioe' un insieme misto di tipi.
+#   Dentro, il seme si smista UNA volta in array tipizzati (FILTER: il cast
+#   tocca solo le righe del suo tipo) e ogni ramo cerca con `= ANY(<array>)`,
+#   che entra nell'indice.
+#   ⛔ I due modi (seme / tutti) sono rami in UNION ALL, ciascuno col suo
+#   filtro sui parametri, mai `p IS NULL OR`. Con i NULL letterali della vista
+#   i rami col seme si piegano a falso ed escono dal piano.
+#   ⛔ BEGIN ATOMIC: le dipendenze stanno in pg_depend, e la catena vista →
+#   funzione → tabelle con RLS resta leggibile dal presidio security_invoker.
+#   Da solo nel suo `sql:` (pgjdbc). INVOKER: la RLS resta di chi legge.
+#
+# ── PROVE (2026-10-11, dbdev come app, copia pg_temp) ──────────────
+#   fn(NULL, NULL) = vista, EXCEPT ALL a zero nei due versi; ognuno dei 477
+#   nodi come seme da solo = la sua riga della vista; seme misto con tutti i
+#   nodi = vista; seme vuoto, tipo ignoto, chiave inesistente: zero righe.
+#
+# Presidio: db/pgtap/vendite/test-documento-lineage-seminata-v1.sql
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-63-create-fn-documento-lineage-nodi-mctit.yaml
+
+  - changeSet:
+      id: 20261011-63-create-fn-documento-lineage-nodi
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.fn_documento_lineage_nodi(p_tipo_ids, p_uids), BEGIN ATOMIC: gli otto rami
+        dei nodi della lineage letti per chiave del nodo (tipo, uid::text); seme NULL = tutti.
+        Rami in UNION ALL, mai `p IS NULL OR`. La vista ne diventa la proiezione nel 20261011-65.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: preventivi }
+            - tableExists: { schemaName: vendite, tableName: offerte_commerciali }
+            - tableExists: { schemaName: vendite, tableName: ordini }
+            - tableExists: { schemaName: vendite, tableName: contratti }
+            - tableExists: { schemaName: vendite, tableName: ddt }
+            - tableExists: { schemaName: vendite, tableName: fatture }
+            - tableExists: { schemaName: vendite, tableName: commesse }
+            - tableExists: { schemaName: vendite, tableName: resi }
+            - sqlCheck:
+                expectedResult: 0
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_documento_lineage_nodi'
+                     AND pronamespace = 'vendite'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_documento_lineage_nodi(
+                  -- ⚠️ Array espliciti: `colonna%TYPE[]` non esiste in PostgreSQL.
+                  --    Il seme e' la chiave del nodo, in due array paralleli: p_tipo_ids[i]
+                  --    e' un config.sorgenti.id, p_uids[i] la chiave del documento resa a
+                  --    text secondo key_selector (uid per preventivo e offerta, id per gli
+                  --    altri). Entrambi NULL = tutti i nodi.
+                  p_tipo_ids bigint[] DEFAULT NULL,
+                  p_uids     text[]   DEFAULT NULL)
+              -- Ancorate le colonne che hanno UNA colonna dietro; tipi espliciti, con la
+              -- ragione, per cio' che esce dalla UNION di otto tabelle diverse.
+              RETURNS TABLE(
+                  tipo_id                   config.sorgenti.id%TYPE,
+                  uid                       text,                -- chiave polimorfa del nodo, resa a text (key_selector)
+                  codice                    character varying,   -- numero/codice: otto tabelle, lunghezze diverse
+                  stato_codice_interno      character varying,   -- dagli otto vocabolari degli stati
+                  stato_codice              character varying,   -- idem
+                  stato_descrizione         character varying,   -- idem
+                  fase                      character varying,   -- idem (varchar(20) in tutti: la vista ricasta)
+                  is_abortito               boolean,             -- idem
+                  pipeline_rank             smallint,            -- costante per tipo: il tie-break della frontiera
+                  natura_doc_codice_interno config.nature_doc_fiscale.codice_interno%TYPE,
+                  natura_doc_descrizione    config.nature_doc_fiscale.descrizione%TYPE,
+                  tipo_codice_interno       config.sorgenti.codice_interno%TYPE)
+              LANGUAGE sql
+              STABLE
+              BEGIN ATOMIC
+              WITH seme AS MATERIALIZED (
+                  -- Il seme si smista UNA volta in array tipizzati. Il cast si fa solo
+                  -- sulle righe del tipo (FILTER si valuta prima dell'argomento): un uid di
+                  -- preventivo non passa mai da ::bigint. Ogni ramo cerca poi con
+                  -- `= ANY((SELECT …)::<tipo>[])`, che entra nell'indice (`id::text = uid`
+                  -- no). ⚠️ Il cast serve: senza, `ANY ((SELECT …))` e' la forma con
+                  -- sottoquery, che confronta l'elemento con l'array intero.
+                  SELECT array_agg(s.uid::uuid)   FILTER (WHERE so.codice_interno = 'PREVENTIVO')          AS prev_uids,
+                         array_agg(s.uid::uuid)   FILTER (WHERE so.codice_interno = 'OFFERTA_COMMERCIALE') AS off_uids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'ORDINE_VENDITA')      AS ord_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'CONTRATTO')           AS con_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'DDT_VENDITA')         AS ddt_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'FATTURA')             AS fat_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'COMMESSA')            AS com_ids,
+                         array_agg(s.uid::bigint) FILTER (WHERE so.codice_interno = 'RESO_VENDITA')        AS res_ids
+                    FROM unnest(fn_documento_lineage_nodi.p_tipo_ids, fn_documento_lineage_nodi.p_uids) AS s(tipo_id, uid)
+                    JOIN config.sorgenti so ON so.id = s.tipo_id
+                   WHERE s.uid IS NOT NULL
+              )
+              -- ── Modo «tutti» (seme NULL): gli otto rami della vista, invariati. Il
+              --    filtro sui parametri non nomina colonne: e' un One-Time Filter, e con un
+              --    seme il ramo non si esegue.
+              SELECT s.id, p.uid::text, p.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     1::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.preventivi p
+                JOIN config.sorgenti s ON s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_preventivi st ON st.id = p.stato_doc_preventivo_id
+               WHERE fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL
+              UNION ALL
+              SELECT s.id, oc.uid::text, oc.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     1::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.offerte_commerciali oc
+                JOIN config.sorgenti s ON s.codice_interno = 'OFFERTA_COMMERCIALE' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_offerte st ON st.id = oc.stato_doc_offerta_id
+               WHERE fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL
+              UNION ALL
+              SELECT s.id, o.id::text, o.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.ordini o
+                JOIN config.sorgenti s ON s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ordini st ON st.id = o.stato_doc_ordine_id
+               WHERE fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL
+              UNION ALL
+              SELECT s.id, c.id::text, c.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.contratti c
+                JOIN config.sorgenti s ON s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_contratti st ON st.id = c.stato_doc_contratto_id
+               WHERE fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL
+              UNION ALL
+              SELECT s.id, d.id::text, d.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     3::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.ddt d
+                JOIN config.sorgenti s ON s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ddt st ON st.id = d.stato_doc_ddt_id
+               WHERE fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL
+              UNION ALL
+              SELECT s.id, f.id::text, vendite.fn_numero_documento_fattura(f.numero, f.serie)::text,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     5::smallint, nd.codice_interno, nd.descrizione, s.codice_interno
+                FROM vendite.fatture f
+                JOIN config.sorgenti s ON s.codice_interno = 'FATTURA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_fiscale st ON st.id = f.stato_doc_fiscale_id
+                LEFT JOIN config.nature_doc_fiscale nd ON nd.id = f.natura_doc_id
+               WHERE fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL
+              UNION ALL
+              SELECT s.id, cm.id::text, cm.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     4::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.commesse cm
+                JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
+                LEFT JOIN vendite.stati_commessa st ON st.id = cm.stato_commessa_id
+               WHERE fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL
+              UNION ALL
+              SELECT s.id, r.id::text, r.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     0::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.resi r
+                JOIN config.sorgenti s ON s.codice_interno = 'RESO_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_reso st ON st.id = r.stato_doc_reso_id
+               WHERE fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL
+              -- ── Modo «seme»: gli stessi otto rami, ciascuno letto per chiave. Il filtro
+              --    sui parametri e' il gemello di quello del modo «tutti»: con i NULL
+              --    letterali della vista si piega a falso e il ramo esce dal piano.
+              UNION ALL
+              SELECT s.id, p.uid::text, p.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     1::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.preventivi p
+                JOIN config.sorgenti s ON s.codice_interno = 'PREVENTIVO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_preventivi st ON st.id = p.stato_doc_preventivo_id
+               WHERE NOT (fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL)
+                 AND p.uid = ANY ((SELECT k.prev_uids FROM seme k)::uuid[])
+              UNION ALL
+              SELECT s.id, oc.uid::text, oc.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     1::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.offerte_commerciali oc
+                JOIN config.sorgenti s ON s.codice_interno = 'OFFERTA_COMMERCIALE' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_offerte st ON st.id = oc.stato_doc_offerta_id
+               WHERE NOT (fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL)
+                 AND oc.uid = ANY ((SELECT k.off_uids FROM seme k)::uuid[])
+              UNION ALL
+              SELECT s.id, o.id::text, o.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.ordini o
+                JOIN config.sorgenti s ON s.codice_interno = 'ORDINE_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ordini st ON st.id = o.stato_doc_ordine_id
+               WHERE NOT (fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL)
+                 AND o.id = ANY ((SELECT k.ord_ids FROM seme k)::bigint[])
+              UNION ALL
+              SELECT s.id, c.id::text, c.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     2::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.contratti c
+                JOIN config.sorgenti s ON s.codice_interno = 'CONTRATTO' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_contratti st ON st.id = c.stato_doc_contratto_id
+               WHERE NOT (fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL)
+                 AND c.id = ANY ((SELECT k.con_ids FROM seme k)::bigint[])
+              UNION ALL
+              SELECT s.id, d.id::text, d.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     3::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.ddt d
+                JOIN config.sorgenti s ON s.codice_interno = 'DDT_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_ddt st ON st.id = d.stato_doc_ddt_id
+               WHERE NOT (fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL)
+                 AND d.id = ANY ((SELECT k.ddt_ids FROM seme k)::bigint[])
+              UNION ALL
+              SELECT s.id, f.id::text, vendite.fn_numero_documento_fattura(f.numero, f.serie)::text,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     5::smallint, nd.codice_interno, nd.descrizione, s.codice_interno
+                FROM vendite.fatture f
+                JOIN config.sorgenti s ON s.codice_interno = 'FATTURA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_fiscale st ON st.id = f.stato_doc_fiscale_id
+                LEFT JOIN config.nature_doc_fiscale nd ON nd.id = f.natura_doc_id
+               WHERE NOT (fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL)
+                 AND f.id = ANY ((SELECT k.fat_ids FROM seme k)::bigint[])
+              UNION ALL
+              SELECT s.id, cm.id::text, cm.codice,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     4::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.commesse cm
+                JOIN config.sorgenti s ON s.codice_interno = 'COMMESSA' AND s.attivo IS TRUE
+                LEFT JOIN vendite.stati_commessa st ON st.id = cm.stato_commessa_id
+               WHERE NOT (fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL)
+                 AND cm.id = ANY ((SELECT k.com_ids FROM seme k)::bigint[])
+              UNION ALL
+              SELECT s.id, r.id::text, r.numero,
+                     st.codice_interno, st.codice, st.descrizione, st.fase, st.is_abortito,
+                     0::smallint, NULL::varchar, NULL::varchar, s.codice_interno
+                FROM vendite.resi r
+                JOIN config.sorgenti s ON s.codice_interno = 'RESO_VENDITA' AND s.attivo IS TRUE
+                LEFT JOIN config.stati_doc_reso st ON st.id = r.stato_doc_reso_id
+               WHERE NOT (fn_documento_lineage_nodi.p_tipo_ids IS NULL AND fn_documento_lineage_nodi.p_uids IS NULL)
+                 AND r.id = ANY ((SELECT k.res_ids FROM seme k)::bigint[]);
+              END;
+        # ⚠️ Il COMMENT in un `sql:` a parte: pgjdbc esegue un BEGIN ATOMIC solo
+        #    se sta da solo (20260921-21).
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              COMMENT ON FUNCTION vendite.fn_documento_lineage_nodi(bigint[], text[]) IS
+                'I NODI della lineage dei documenti, per CHIAVE DEL NODO. Il seme e'' la coppia '
+                '(tipo_id, uid::text) in due array paralleli: p_tipo_ids[i] e'' un config.sorgenti.id, '
+                'p_uids[i] la chiave del documento resa a text secondo key_selector (uid per preventivo '
+                'e offerta, id per gli altri). Entrambi NULL = tutti i nodi (vw_documento_lineage_nodi '
+                'ne e'' la proiezione); array vuoti = zero righe; una coppia con un tipo ignoto o una '
+                'chiave inesistente non seleziona niente. Il seme si smista una volta in array '
+                'tipizzati e ogni ramo cerca per indice. I due modi sono rami in UNION ALL, mai '
+                '`p IS NULL OR`. BEGIN ATOMIC (dipendenze in pg_depend), INVOKER: la RLS resta di '
+                'chi legge. Brief: brief-db-lineage-seminata-per-chiave §8.2.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- ⚠️ Solo finche' 20261011-65 non ha fatto della vista la proiezione
+              --    di questa funzione: dopo, il DROP cascaderebbe sulle viste.
+              DROP FUNCTION IF EXISTS vendite.fn_documento_lineage_nodi(bigint[], text[]);

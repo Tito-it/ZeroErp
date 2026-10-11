@@ -4,7 +4,7 @@
 --
 -- Test: ordine, DDT e reso parlano del cliente come preventivo, offerta e
 --   contratto — il billing account, e le copie in testata legate a lui.
---   Brief: docs/it/dev/work-in-progress/brief-db-esecutivi-ba-coppia.md
+--   Brief: docs/it/dev/work-done/brief-db-esecutivi-ba-coppia.md
 --   ChangeSet 20261009-62 ... -92, 20261010-02 ... -07 (giro 2: BB delle copie
 --   dal BA, sorgente non trovata = errore).
 --

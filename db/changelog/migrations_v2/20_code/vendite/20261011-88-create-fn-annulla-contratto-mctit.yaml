@@ -1,0 +1,143 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL VERBO: ANNULLARE UN CONTRATTO CHE PORTA LEGAMI, CON CONFERMA
+#   vendite.fn_annulla_contratto(p_contratto_id, p_legami_confermati) -> integer
+#   Brief: brief-db-annullo-documento-con-legami (§7, casi 3 e 5; D-1, D-4, D-6)
+#
+# ── I LEGAMI DI UN CONTRATTO ────────────────────────────────────────
+#   * l'offerta d'origine (offerta_id): PROVENIENZA, resta sul contratto
+#     annullato; l'offerta torna trasformabile perche' l'unicita' vale sui
+#     contratti vivi (uq_contratti_offerta_id, 20261011-68). Non si
+#     ritira, ma si conferma: chi annulla deve sapere che l'offerta si
+#     riapre (D-1);
+#   * le righe di commessa NON_EMESSA spinte dal contratto: CONSUMO, si
+#     ritirano col registro (D-5).
+#   Si annulla solo in bozza (DRAFT -> ANNULLATO): lo dice la matrice.
+#
+# ── COSA FA, IN ORDINE ──────────────────────────────────────────────
+#   1. guard di parametro; 2. testata FOR UPDATE nel perimetro (fuori:
+#   E_CONTRATTO_NON_TROVATO); 3. conferma e ritiro dal BB
+#   vendite.fn_documento_ritira_legami, che apre la porta; 4. lo stato ad
+#   ANNULLATO con un UPDATE, come fa il backend: i guard della tabella
+#   applicano matrice, freni e avviso (che con la porta aperta lascia
+#   passare la provenienza); 5. porta chiusa. UNA transazione.
+#   SECURITY DEFINER con search_path bloccato. EXECUTE solo all'app; il
+#   permesso di annullare lo verifica il backend, come per l'UPDATE diretto.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-88-create-fn-annulla-contratto-mctit.yaml
+
+  - changeSet:
+      id: 20261011-88-create-fn-annulla-contratto
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Verbo vendite.fn_annulla_contratto: annulla un contratto con conferma; se porta legami (offerta d'origine, righe di commessa NON_EMESSA), chi
+        conferma dichiara quanti ne ha visti, i consumi si ritirano (BB vendite.fn_documento_ritira_legami)
+        e poi lo stato passa ad ANNULLATO. SECURITY DEFINER.
+        Brief: brief-db-annullo-documento-con-legami (D-1, D-4).
+      preConditions:
+        - onFail: HALT
+        - and:
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_ritira_legami';
+            - sqlCheck:
+                expectedResult: "0"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_proc p
+                    JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                   WHERE n.nspname = 'vendite' AND p.proname = 'fn_annulla_contratto';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_annulla_contratto(
+                  p_contratto_id                 vendite.contratti.id%TYPE,
+                  p_legami_confermati  integer DEFAULT NULL)
+              RETURNS integer
+              LANGUAGE plpgsql
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              -- =========================================================
+              -- Scopo: annullare un contratto. Con legami: conferma e ritiro
+              --   dal BB vendite.fn_documento_ritira_legami, poi lo stato.
+              --   p_legami_confermati e' un CONTEGGIO: tipo nudo. Vedi
+              --   l'intestazione del changeSet.
+              -- Ritorna: i legami confermati (0 se non ce n'erano).
+              -- =========================================================
+              DECLARE
+                  v_utente  config.user_override_azioni.auth_user_id%TYPE;
+                  v_trovato boolean;
+                  -- CONTEGGIO dei legami confermati.
+                  v_legami  integer;
+              BEGIN
+                  v_utente := NULLIF(current_setting('app.current_user_id', true), '')::integer;
+
+                  -- 1. Parametri.
+                  IF p_contratto_id IS NULL OR p_contratto_id <= 0 THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_contratto',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_contratto_id', p_contratto_id),
+                          NULL::uuid, 'vendite.fn_annulla_contratto',
+                          'p_contratto_id (obbligatorio, maggiore di zero)');
+                  END IF;
+
+                  -- 2. La testata FOR UPDATE, nel perimetro (predicato della
+                  --    policy: DEFINER). Fuori perimetro come inesistente.
+                  SELECT true
+                    INTO v_trovato
+                    FROM vendite.contratti t
+                   WHERE t.id = p_contratto_id
+                     AND script.fn_scope_ef_whitelist_via_contratto(v_utente, t.id)
+                     FOR UPDATE;
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_annulla_contratto',
+                          'E_CONTRATTO_NON_TROVATO', jsonb_build_object('id', p_contratto_id), NULL::uuid,
+                          p_contratto_id::text);
+                  END IF;
+
+                  -- 3. Conferma e ritiro: il BB apre la porta e la lascia aperta.
+                  v_legami := vendite.fn_documento_ritira_legami('CONTRATTO', p_contratto_id, p_legami_confermati);
+
+                  -- 4. Lo stato. I guard della tabella fanno il resto: matrice,
+                  --    freni (righe di commessa EMESSA, figli vivi), avviso.
+                  UPDATE vendite.contratti c
+                     SET stato_doc_contratto_id = (SELECT s.id FROM config.stati_doc_contratti s
+                                                    WHERE s.codice_interno = 'ANNULLATO')
+                   WHERE c.id = p_contratto_id;
+
+                  -- 5. Porta chiusa.
+                  PERFORM set_config('zeroerp.doc_ritira_legami', '', true);
+
+                  RETURN v_legami;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_annulla_contratto(vendite.contratti.id%TYPE, integer) IS
+                  'VERBO (2026-10-11, brief-db-annullo-documento-con-legami D-1/D-4): annulla un contratto. Testata FOR UPDATE nel perimetro (script.fn_scope_ef_whitelist_via_contratto; fuori perimetro E_CONTRATTO_NON_TROVATO). Conferma e ritiro dal BB vendite.fn_documento_ritira_legami: chi conferma DICHIARA quanti legami ha visto (p_legami_confermati, le righe di vendite.fn_documento_legami(''CONTRATTO'', id): offerta d''origine, righe di commessa NON_EMESSA); se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Poi lo stato passa ad ANNULLATO (i guard della tabella applicano matrice e freni) e la porta del ritiro si chiude. UNA transazione. Senza legami non c''e'' niente da confermare. Ritorna i legami confermati. SECURITY DEFINER con search_path bloccato: la porta del ritiro vuole il proprietario. EXECUTE solo all''app.';
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_annulla_contratto(vendite.contratti.id%TYPE, integer) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_annulla_contratto(vendite.contratti.id%TYPE, integer) TO zeroerp_app;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_annulla_contratto(bigint, integer);

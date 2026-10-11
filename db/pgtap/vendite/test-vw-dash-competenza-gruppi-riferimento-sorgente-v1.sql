@@ -23,9 +23,10 @@
 --    zero — passerebbe a vuoto sempre.
 --    ⛔ Zero occorrenze non significa che il caso non esista: significa che
 --    non c'e' ancora un controesempio. Il modello lo ammette, ed e' verificato:
---    fn_crea_revisione_preventivo NON tocca commesse_attivita, e
---    trgfn_doc_ritira_commessa_attivita scatta solo all'ingresso in uno stato
---    abortito. Quindi le attivita' spinte dalla rev 0 restano sulla rev 0.
+--    fn_crea_revisione_preventivo NON tocca commesse_attivita, e le righe di
+--    commessa si ritirano solo annullando il documento (rev 2026-10-11: dal
+--    verbo di annullo, dopo la conferma; prima dal ritiro automatico _z90_).
+--    Quindi le attivita' spinte dalla rev 0 restano sulla rev 0.
 --
 -- ⭐ IL TEST 2 E' IL GEMELLO «ESISTE» dei test 3 e 4. Senza, se un giorno
 --    fn_crea_revisione_preventivo smettesse di produrre la revisione, i test 3

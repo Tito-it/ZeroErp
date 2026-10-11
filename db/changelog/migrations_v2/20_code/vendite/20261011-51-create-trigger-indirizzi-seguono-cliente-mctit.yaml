@@ -1,0 +1,78 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGI: vendite.trgfn_doc_indirizzi_seguono_cliente su DDT, preventivo,
+#   offerta e contratto
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§5.3, §7.2 b)
+#
+#   AFTER UPDATE senza OF, col confronto nel WHEN (linee-guida-trigger: si
+#   reagisce a un CAMBIO di valore). Sul DDT destinatario e utility li allinea
+#   al BA un trigger BEFORE: il WHEN di un AFTER vede la riga finale.
+#   Colonne del cliente:
+#     DDT                          billing_account_id, destinatario_soggetto_ruolo_id
+#     preventivo, offerta, contratto  billing_account_id, istanza_utility_id
+#   (utility_id segue il BA per le FK composte: non serve nominarlo.)
+#   L'ordine resta fuori: BA e ruolo fermi sempre (E_ORD_CLIENTE_IMMUTABILE).
+#   Fascia _m50_: un effetto, dopo i guard, prima dei terminali _z90_.
+#   ⛔ Nomi sotto i 63 caratteri (il piu' lungo: 57).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-51-create-trigger-indirizzi-seguono-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20261011-51-create-trigger-indirizzi-seguono-cliente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_doc_indirizzi_seguono_cliente su DDT, preventivo, offerta e contratto, col
+        WHEN sulle colonne del cliente. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§5.3).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite'
+                 AND t.tgname LIKE 'trg_%_m50_indirizzi_seguono_cliente_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ddt_m50_indirizzi_seguono_cliente_upd
+                  AFTER UPDATE ON vendite.ddt
+                  FOR EACH ROW
+                  WHEN (OLD.billing_account_id IS DISTINCT FROM NEW.billing_account_id
+                        OR OLD.destinatario_soggetto_ruolo_id IS DISTINCT FROM NEW.destinatario_soggetto_ruolo_id)
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente('DDT');
+
+              CREATE TRIGGER trg_preventivi_m50_indirizzi_seguono_cliente_upd
+                  AFTER UPDATE ON vendite.preventivi
+                  FOR EACH ROW
+                  WHEN (OLD.billing_account_id IS DISTINCT FROM NEW.billing_account_id
+                        OR OLD.istanza_utility_id IS DISTINCT FROM NEW.istanza_utility_id)
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente('PREVENTIVO');
+
+              CREATE TRIGGER trg_offerte_commerciali_m50_indirizzi_seguono_cliente_upd
+                  AFTER UPDATE ON vendite.offerte_commerciali
+                  FOR EACH ROW
+                  WHEN (OLD.billing_account_id IS DISTINCT FROM NEW.billing_account_id
+                        OR OLD.istanza_utility_id IS DISTINCT FROM NEW.istanza_utility_id)
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente('OFFERTA');
+
+              CREATE TRIGGER trg_contratti_m50_indirizzi_seguono_cliente_upd
+                  AFTER UPDATE ON vendite.contratti
+                  FOR EACH ROW
+                  WHEN (OLD.billing_account_id IS DISTINCT FROM NEW.billing_account_id
+                        OR OLD.istanza_utility_id IS DISTINCT FROM NEW.istanza_utility_id)
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente('CONTRATTO');

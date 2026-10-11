@@ -1,0 +1,218 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I LEGAMI DI UN DOCUMENTO: CHE COSA SI RIAPRE SE LO ANNULLO
+#   vendite.fn_documento_legami(p_documento, p_id)
+#     -> (riga_id, riga_nr, origine, natura, origine_id, origine_riga_id, qta)
+#   Brief: brief-db-annullo-documento-con-legami (§7.2, D-4 di Tid)
+#
+# ── LA DOMANDA ──────────────────────────────────────────────────────
+#   «Se annullo questo documento, che cosa torna disponibile, e dove?».
+#   Una riga per legame. Lo leggono il guard dell'annullo (per contare),
+#   il BB del ritiro (per confermare e ritirare) e il backend (la finestra
+#   di conferma): avviso, conferma e ritiro contano la stessa cosa.
+#
+# ── REGOLA DEL 2 ────────────────────────────────────────────────────
+#   La prima copia e' vendite.fn_ddt_legami (20261011-20), la sola bolla.
+#   Questa la generalizza (D-4) e la sostituisce: la bolla ne e' un ramo,
+#   con le stesse righe; fn_ddt_legami si ritira in 20261011-91.
+#
+# ── I LEGAMI, PER DOCUMENTO (§7.1) ──────────────────────────────────
+#   origine     natura       da dove                                        documenti
+#   ORDINE      CONSUMO      ordini_righe_fulfillment (qta_evasa)           DDT
+#   RESO        CONSUMO      resi_righe_riconsegne (qta del ponte)          DDT
+#   PREVENTIVO  CONSUMO      ordini_righe.preventivo_riga_id (quantita)     ORDINE
+#   OFFERTA     PROVENIENZA  ordini.documento_origine_* (tipo OFFERTA),     ORDINE, CONTRATTO
+#                            contratti.offerta_id
+#   COMMESSA    CONSUMO      commesse_attivita NON_EMESSA della sorgente    DDT, ORDINE,
+#                            (sorgente_tipo_id, sorgente_uid = uid::text)   PREVENTIVO, CONTRATTO
+#   CONSUMO: il ritiro lo toglie (vendite.fn_documento_ritira_legami).
+#   PROVENIENZA: resta sul documento annullato, e l'offerta torna
+#   trasformabile perche' l'unicita' vale sui vivi (D-6): si conferma
+#   comunque, chi annulla deve vederlo (D-1).
+#   ⚠️ Le righe di commessa EMESSA non sono legami: bloccano l'annullo
+#   (script.fn_check_sorgente_chiudibile, «Riporta da emettere»).
+#   ⚠️ La provenienza da PREVENTIVO sulla testata dell'ordine non e' un
+#   legame: dal preventivo si riaprono le RIGHE, che sono gia' qui.
+#
+# ── LE COLONNE ──────────────────────────────────────────────────────
+#   riga_id/riga_nr: la riga del documento (NULL per i legami di testata
+#   e per la commessa, che non porta la riga). origine: il documento
+#   dall'altra parte, nel vocabolario di p_documento (quello dei lettori
+#   di testata, script.fn_get_stato_testata_documento) piu' COMMESSA;
+#   origine_id: la sua testata; origine_riga_id: la sua riga (riga
+#   d'ordine, di reso, di preventivo, attivita' di commessa). Niente
+#   etichette: il nome dei documenti lo da' il lineage (decisione di Tid
+#   del 2026-10-11, in 20261011-20). Colonne polimorfe: tipi nudi
+#   dichiarati.
+#
+# ── POSTURA: SECURITY DEFINER, e perche' ────────────────────────────
+#   plpgsql (un documento sconosciuto e' un errore TECNICO, non zero
+#   legami: un guard montato male deve gridare), STABLE.
+#   ⭐ DEFINER, con search_path bloccato: i tre lettori devono contare la
+#   STESSA cosa. Il verbo che conferma e ritira e' DEFINER; il guard e la
+#   finestra del backend girano come l'applicazione. Sotto la RLS i legami
+#   stanno su tabelle con perimetri propri (righe di commessa, ordini,
+#   resi): un lettore INVOKER potrebbe vederne meno del verbo, e la
+#   conferma non tornerebbe mai («hai visto 2, sono 3»), oppure il guard
+#   ne vedrebbe zero e lascerebbe annullare in silenzio — il difetto che
+#   il cantiere chiude. Il documento lo sceglie chi chiama, che lo sta
+#   annullando o mostrando: la funzione restituisce solo id e quantita'
+#   dei suoi legami, niente etichette. EXECUTE all'app, non a PUBLIC.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-77-create-fn-documento-legami-mctit.yaml
+
+  - changeSet:
+      id: 20261011-77-create-fn-documento-legami
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_documento_legami: i legami di un documento (bolla, ordine, preventivo,
+        contratto), una riga per legame, con la natura (consumo o provenienza). Il lettore unico
+        di avviso, conferma, ritiro e finestra di conferma (D-4). Generalizza vendite.fn_ddt_legami.
+        Brief: brief-db-annullo-documento-con-legami.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: "0"
+            sql: >
+              SELECT count(*) FROM pg_catalog.pg_proc p
+                JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite' AND p.proname = 'fn_documento_legami';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE FUNCTION vendite.fn_documento_legami(
+                  p_documento text,
+                  p_id        bigint)
+              RETURNS TABLE(
+                  riga_id         bigint,
+                  riga_nr         integer,
+                  origine         text,
+                  natura          text,
+                  origine_id      bigint,
+                  origine_riga_id bigint,
+                  qta             numeric)
+              LANGUAGE plpgsql
+              STABLE
+              SECURITY DEFINER
+              SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+              AS $function$
+              #variable_conflict use_column
+              -- =========================================================
+              -- Scopo: i legami di un documento, una riga per legame: che
+              --   cosa si riapre se lo annullo, e dove. Vedi l'intestazione
+              --   del changeSet per la tabella dei legami.
+              -- Parametri: p_documento e' il codice dei lettori di testata
+              --   (DDT, ORDINE, PREVENTIVO, CONTRATTO), p_id la testata:
+              --   polimorfi, tipi nudi.
+              -- =========================================================
+              DECLARE
+                  -- La sorgente di commessa del documento e la sua chiave
+                  -- (commesse_attivita.sorgente_uid porta <testata>.uid::text).
+                  v_sorgente config.sorgenti.codice_interno%TYPE;
+                  v_uid      text;
+              BEGIN
+                  IF p_id IS NULL OR p_id <= 0
+                     OR p_documento IS NULL
+                     OR p_documento NOT IN ('DDT', 'ORDINE', 'PREVENTIVO', 'CONTRATTO') THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'vendite', 'vendite.fn_documento_legami',
+                          'E_VENDITE_CHIAMATA_NON_VALIDA',
+                          jsonb_build_object('p_documento', p_documento, 'p_id', p_id),
+                          NULL::uuid, 'vendite.fn_documento_legami',
+                          'documento (DDT, ORDINE, PREVENTIVO, CONTRATTO) e id maggiore di zero');
+                  END IF;
+
+                  IF p_documento = 'DDT' THEN
+                      v_sorgente := 'DDT_VENDITA';
+                      SELECT d.uid::text INTO v_uid FROM vendite.ddt d WHERE d.id = p_id;
+
+                      RETURN QUERY
+                          SELECT dr.id, dr.riga_nr, 'ORDINE'::text, 'CONSUMO'::text,
+                                 orr.ordine_id, f.ordine_riga_id, f.qta_evasa::numeric
+                            FROM vendite.ddt_righe dr
+                            JOIN vendite.ordini_righe_fulfillment f ON f.ddt_riga_id = dr.id
+                            JOIN vendite.ordini_righe orr ON orr.id = f.ordine_riga_id
+                           WHERE dr.ddt_id = p_id
+                          UNION ALL
+                          SELECT dr.id, dr.riga_nr, 'RESO'::text, 'CONSUMO'::text,
+                                 r.reso_id, rr.resi_riga_id, rr.qta::numeric
+                            FROM vendite.ddt_righe dr
+                            JOIN vendite.resi_righe_riconsegne rr ON rr.ddt_riga_id = dr.id
+                            JOIN vendite.resi_righe r ON r.id = rr.resi_riga_id
+                           WHERE dr.ddt_id = p_id;
+
+                  ELSIF p_documento = 'ORDINE' THEN
+                      v_sorgente := 'ORDINE_VENDITA';
+                      SELECT o.uid::text INTO v_uid FROM vendite.ordini o WHERE o.id = p_id;
+
+                      RETURN QUERY
+                          SELECT orr.id, orr.riga_nr, 'PREVENTIVO'::text, 'CONSUMO'::text,
+                                 pr.preventivo_id, orr.preventivo_riga_id, orr.quantita::numeric
+                            FROM vendite.ordini_righe orr
+                            JOIN vendite.preventivi_righe pr ON pr.id = orr.preventivo_riga_id
+                           WHERE orr.ordine_id = p_id
+                          UNION ALL
+                          SELECT NULL::bigint, NULL::integer, 'OFFERTA'::text, 'PROVENIENZA'::text,
+                                 o.documento_origine_id, NULL::bigint, NULL::numeric
+                            FROM vendite.ordini o
+                           WHERE o.id = p_id
+                             AND o.documento_origine_tipo = 'OFFERTA'
+                             AND o.documento_origine_id IS NOT NULL;
+
+                  ELSIF p_documento = 'PREVENTIVO' THEN
+                      v_sorgente := 'PREVENTIVO';
+                      SELECT p.uid::text INTO v_uid FROM vendite.preventivi p WHERE p.id = p_id;
+
+                  ELSE  -- CONTRATTO
+                      v_sorgente := 'CONTRATTO';
+                      SELECT c.uid::text INTO v_uid FROM vendite.contratti c WHERE c.id = p_id;
+
+                      RETURN QUERY
+                          SELECT NULL::bigint, NULL::integer, 'OFFERTA'::text, 'PROVENIENZA'::text,
+                                 c.offerta_id, NULL::bigint, NULL::numeric
+                            FROM vendite.contratti c
+                           WHERE c.id = p_id
+                             AND c.offerta_id IS NOT NULL;
+                  END IF;
+
+                  -- Le righe di commessa che il documento ha spinto e che
+                  -- nessuno ha ancora emesso: le stesse che il ritiro porta ad
+                  -- ANNULLATA (vendite.fn_ritira_commessa_attivita_da_sorgente).
+                  -- Documento inesistente o invisibile: v_uid NULL, nessuna riga.
+                  RETURN QUERY
+                      SELECT NULL::bigint, NULL::integer, 'COMMESSA'::text, 'CONSUMO'::text,
+                             ca.commessa_id, ca.id, ca.quantita::numeric
+                        FROM vendite.commesse_attivita ca
+                        JOIN config.sorgenti s ON s.id = ca.sorgente_tipo_id
+                       WHERE s.codice_interno  = v_sorgente
+                         AND ca.sorgente_uid   = v_uid
+                         AND ca.stato_emissione = 'NON_EMESSA'
+                       ORDER BY ca.id;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_documento_legami(text, bigint) IS
+                  'I legami di un documento, una riga per legame (2026-10-11, brief-db-annullo-documento-con-legami D-4): che cosa si riapre se lo annullo, e dove. p_documento: DDT, ORDINE, PREVENTIVO, CONTRATTO (codici dei lettori di testata). origine/natura: ORDINE e RESO (consumi della bolla: fulfillment e ponte di ri-consegna), PREVENTIVO (consumo dell''ordine: ordini_righe.preventivo_riga_id), OFFERTA (PROVENIENZA di ordine e contratto: resta sul documento annullato, l''offerta torna trasformabile perche'' l''unicita'' vale sui vivi), COMMESSA (righe di commessa NON_EMESSA spinte dal documento). Le righe EMESSA non sono legami: bloccano (script.fn_check_sorgente_chiudibile). riga_id/riga_nr: la riga del documento, NULL per testata e commessa; origine_id: la testata (o la commessa) dall''altra parte; origine_riga_id: la sua riga. Niente etichette: il nome lo da'' il lineage. Lettore unico di: guard vendite.trgfn_doc_guard_annullo_con_legami (avviso), BB vendite.fn_documento_ritira_legami (conferma e ritiro), finestra di conferma del backend. Generalizza e sostituisce vendite.fn_ddt_legami. Documento sconosciuto: E_VENDITE_CHIAMATA_NON_VALIDA. SECURITY DEFINER con search_path bloccato: avviso (guard, come l''app), conferma (verbo DEFINER) e finestra (backend) contano la stessa cosa anche dove la RLS dei legami ne nasconderebbe una parte. EXECUTE solo all''app.';
+
+              REVOKE EXECUTE ON FUNCTION vendite.fn_documento_legami(text, bigint) FROM PUBLIC;
+              GRANT EXECUTE ON FUNCTION vendite.fn_documento_legami(text, bigint) TO zeroerp_app;
+
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP FUNCTION IF EXISTS vendite.fn_documento_legami(text, bigint);

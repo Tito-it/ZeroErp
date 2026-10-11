@@ -7,7 +7,8 @@
 > [migliorie-generali-da-test-valutazione](migliorie-generali-da-test-valutazione.md).
 > **Stato (2026-10-10):** 🔎 censimento e misura del §2.1 fatti (§4). **D-4**: primo
 > passo `20261010-44` ✅ applicato da Tid, pgTAP `vendite` rilanciati, misurato (§5.2).
-> D-6 e D-5 passate al brief figlio `brief-db-lineage-seminata-per-chiave`. **Cosa resta: §6.**
+> D-6 e D-5 passate al brief figlio `brief-db-lineage-seminata-per-chiave`. **2026-10-11**: D-3
+> misurata (§5bis), **D-3a** `20261011-42` ✅ applicato. Aperte **D-2** e **D-3b**. **Cosa resta: §6.**
 > **Ricadute BE/FE:** nessuna prevista.
 
 ## 1. Cosa ha insegnato il cantiere da cui nasce
@@ -163,13 +164,72 @@ Il censimento ha mostrato che lo stesso costo lo paga **ogni pagina di sette
 liste** (~0,42 s), e che la **D-5** di questo brief (lista offerte letta per id)
 è lo stesso difetto: anche D-5 passa di là.
 
+## 5bis. D-3 — la misura del ciclo di accredito (2026-10-11, dbdev come app)
+
+Metodo: N chiamate di `vendite.fn_accredita_riga_reso` sulla sola riga in coda
+(15922, una riga di ponte per chiamata), ciascuna in sottotransazione annullata;
+la plancache della sessione sopravvive al rollback. Script nello scratchpad della
+sessione (`misura-d3-*.sql`), tutto in `BEGIN … ROLLBACK`.
+
+| Cosa, ms/chiamata | `auto` | generico | Nota |
+| --- | --- | --- | --- |
+| guard da solo, `fn_resi_riga_tetti_accredito` | 7,1 | 1,5 | 4,8× |
+| la coda letta **come la legge il verbo** (stessa forma plpgsql) | 27 | 12 | 2,2× |
+| copia `pg_temp` del guard: la clausola **sulla funzione SQL DEFINER**, sessione in `auto` | 30 | 15,6 | in PG18 la clausola su una SQL non incorporata funziona (la copia gira come app, sotto RLS: conta il rapporto, non il valore) |
+| **verbo intero**, generico di sessione (= la clausola sul verbo) | 119-126 | 115-120 | ~5% |
+
+Copia `pg_temp` del verbo (INVOKER, risultato identico alla vera), col generico
+acceso **solo** attorno a una istruzione, due corse in ordine mescolato:
+
+| Variante | ms/chiamata |
+| --- | --- |
+| tutto `auto` | 123-126 |
+| generico solo sulla lettura della coda | 117-118,5 |
+| generico solo sull'`INSERT` del ponte (guard e trigger della tabella) | **132-137** — peggio |
+| generico su coda + `INSERT` | 117-120 |
+| tutto generico | 118-119 |
+
+Cosa dice:
+
+* il difetto c'è **su entrambe le istruzioni** prese da sole: nel guard e
+  nella lettura della coda;
+* il verbo costa ~115 ms **altrove**, non nella pianificazione: le due cure
+  insieme ne tolgono ~5-7;
+* il generico acceso su tutta la finestra dell'`INSERT` del ponte **peggiora**
+  il verbo: qualche istruzione di quel percorso (guard, trigger della tabella)
+  sta meglio coi piani personalizzati. ⇒ La clausola non va sul **trigger**.
+  La clausola su `fn_resi_riga_tetti_accredito` invece si applica solo alle
+  query di quella funzione (il GUC torna com'era all'uscita), e lì il difetto
+  è misurato.
+
+**D-3a** ✅ **decisa da Tid (2026-10-11)**: la clausola va **solo** su
+`fn_resi_riga_tetti_accredito`, nel changeSet `20261011-42`; sul verbo no.
+
+**D-3a scritta (2026-10-11)**: `20_code/vendite/20261011-42-alter-fn-resi-riga-tetti-accredito-piano-generico`
+(`ALTER FUNCTION … SET plan_cache_mode`; rollback `RESET plan_cache_mode`).
+Presidio unico `db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql` (plan 5:
+le tre funzioni, più il contratto della capability e il fail-closed dei tetti);
+`test-fn-available-actions-ddt-piano-generico-v1` è **ritirato** (i commenti di
+`-83/-84`, già applicati, lo nominano ancora: l'intestazione del nuovo dice che lo
+sostituisce). Nota nelle pagine `manual/` delle tre funzioni.
+Prova sullo scratch `zeroerp_ci`, da owner, SQL estratto: precondition 1; presidio
+**senza** il `-42` 4/5 (rosso solo il 4, cioè vede il difetto), **con** il `-42` 5/5;
+andata e ritorno: definizione identica (md5), `GRANT` conservati. ✅ **Applicato** da Tid
+(2026-10-11, `EXECUTED` nel `databasechangelog` di dbdev). Dopo l'apply, su dbdev come app:
+presidio 5/5; la funzione vera in sessione `auto` 1,9 ms a chiamata (prima 7,1). Sul verbo toglierebbe i ~6 ms
+della coda, ma imporrebbe il generico a **tutto** il verbo, compresa la finestra
+dell'`INSERT` dove la misura lo mostra peggiore: nasconderebbe quel peggioramento
+invece di mostrarlo.
+**D-3b** (decisione attesa): dove vanno i ~115 ms del verbo, da profilare come
+query (nessun `auto_explain` come app: si fa per istruzione, a mano).
+
 ## 6. Cosa resta — indice per chi riparte (aggiornato al 2026-10-11)
 
 | Voce | Cosa | Stato | Dove |
 | --- | --- | --- | --- |
 | D-1 | censimento delle funzioni che ripianificano | ✅ fatto | §4 |
 | **D-2** | il lister dei DDT **senza filtri** (~1,1 s, diagnosi di tutti i DDT in una chiamata): profilarlo come query | ⬜ **aperto**, decisione attesa: ora o col volume | §2.2 |
-| **D-3** | resi: misurare un ciclo di accredito **costruito** (in transazione annullata) e, se il 4× regge, `plan_cache_mode` sui chiamanti plpgsql | ⬜ **aperto** | §4.3, §4.4 |
+| **D-3** | resi: misurare un ciclo di accredito **costruito** (in transazione annullata) e, clausola `plan_cache_mode` **solo** su `fn_resi_riga_tetti_accredito` (D-3a: non sul verbo né sul trigger, §5bis). Un solo changeSet, **numero riservato `20261011-42`** (in `20_code/vendite/`). Presidio: il pgTAP `test-fn-available-actions-ddt-piano-generico-v1` diventa `test-plan-cache-mode-piano-generico-v1` con le tre funzioni, e il vecchio si ritira nello stesso giro (decisione di Tid, 2026-10-11) | **D-3a** ✅ `20261011-42` applicato, presidio 5/5 su dbdev · **D-3b** ⬜ aperto (dove vanno i ~115 ms del verbo, da profilare per istruzione) | §4.3, §4.4, §5bis |
 | D-4 | pannello «Passaggi», primo passo | ✅ `20261010-44` applicato e misurato | §5.2 |
 | **D-5 + D-6** | lista offerte per id e lineage seminata (ogni pagina di sette liste paga il grafo intero) | 🔀 **nel brief figlio** — decisioni prese da Tid, giro 1 da iniziare | [brief-db-lineage-seminata-per-chiave](brief-db-lineage-seminata-per-chiave.md) §8 |
 

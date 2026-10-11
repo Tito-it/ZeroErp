@@ -7,3 +7,4 @@ id,stato_da_id,stato_a_id,attivo,meta,data_insert,user_insert,data_update,user_u
 6,2,9,t,"{""action_key"":""annulla"",""label_key"":""vendite.preventivi.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
 7,4,9,t,"{""action_key"":""annulla"",""label_key"":""vendite.preventivi.azione_annulla"",""requires_confirm"":true,""outlined"":true,""manuale"":true}",2026-04-03 00:00:00+02,SEED,2026-08-06 00:00:00+02,mctit
 8,4,10,t,"{""manuale"":false}",2026-05-10 00:00:00+02,SEED,2026-05-10 00:00:00+02,SEED
+9,10,4,t,"{""manuale"":false}",2026-10-11 00:00:00+02,mctit,2026-10-11 00:00:00+02,mctit

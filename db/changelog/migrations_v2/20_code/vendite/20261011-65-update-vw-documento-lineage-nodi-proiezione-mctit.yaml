@@ -1,0 +1,242 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I NODI DELLA LINEAGE: LA VISTA E' LA PROIEZIONE DELLA FUNZIONE
+#   Brief: brief-db-lineage-seminata-per-chiave §8.2; giro 1.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   La vista diventa la proiezione di vendite.fn_documento_lineage_nodi(NULL, NULL): un corpo
+#   solo (regola del 2). Stesse colonne, stessi tipi, stesse righe; i
+#   lettori (vw_documento_lineage, fn_documento_lineage,
+#   script.fn_check_preventivo_annullabile, vendite.fn_ddt_legami) non
+#   cambiano in questo giro.
+
+#
+# ── PERCHE' NON `SELECT *` (20260921-22, provato) ───────────────────
+#   Un tipo di risultato non porta typmod: `SELECT * FROM fn()` passerebbe
+#   (PostgreSQL ammette di PERDERE un typmod) e la vista cambierebbe
+#   contratto in silenzio, a senso unico. Le colonne si proiettano per nome
+#   e i typmod si ricastano.
+#
+# ── PERCHE' security_invoker VA RI-SPECIFICATO ──────────────────────
+#   La reloption non si vede in pg_get_viewdef e un CREATE OR REPLACE la
+#   azzera: qui vorrebbe dire leggere sopra la RLS.
+#
+# ── IL COMMENT ──────────────────────────────────────────────────────
+#   Quello vivo resta, ed e' ancora vero: gli si premette la nota di
+#   revisione leggendolo da obj_description, cosi' non si ricopia (e non
+#   diverge) un testo lungo.
+#
+# ── PROVE (2026-10-11, dbdev come app, vista TEMP sopra le copie pg_temp) ──
+#   Tipi delle colonne identici (pg_attribute, con typmod); righe identiche,
+#   EXCEPT ALL a zero nei due versi.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-65-update-vw-documento-lineage-nodi-proiezione-mctit.yaml
+
+  - changeSet:
+      id: 20261011-65-update-vw-documento-lineage-nodi-proiezione
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        vendite.vw_documento_lineage_nodi diventa la proiezione di vendite.fn_documento_lineage_nodi(NULL, NULL): stesse
+        colonne, stessi tipi (typmod ricastati per nome), stesse righe. security_invoker=on
+        ri-specificato; COMMENT vivo conservato, con la nota di revisione premessa.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists:
+                schemaName: vendite
+                viewName: vw_documento_lineage_nodi
+            - sqlCheck:
+                expectedResult: 1
+                sql: >
+                  SELECT count(*) FROM pg_proc
+                   WHERE proname = 'fn_documento_lineage_nodi'
+                     AND pronamespace = 'vendite'::regnamespace
+                     AND prosqlbody IS NOT NULL
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_nodi
+              WITH (security_invoker=on) AS
+              SELECT n.tipo_id,
+                     n.uid,
+                     n.codice,
+                     n.stato_codice_interno,
+                     n.stato_codice,
+                     n.stato_descrizione,
+                     -- ⚠️ I typmod si ricastano per NOME: la funzione li perde (un tipo di
+                     --    risultato non porta typmod), e un SELECT * cambierebbe il
+                     --    contratto della vista in silenzio, a senso unico.
+                     n.fase::character varying(20) AS fase,
+                     n.is_abortito,
+                     n.pipeline_rank,
+                     n.natura_doc_codice_interno,
+                     n.natura_doc_descrizione,
+                     n.tipo_codice_interno::character varying(50) AS tipo_codice_interno
+                FROM vendite.fn_documento_lineage_nodi(NULL::bigint[], NULL::text[]) n;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              DO $c$
+              BEGIN
+                  EXECUTE format('COMMENT ON VIEW vendite.vw_documento_lineage_nodi IS %L',
+                      '⭐ rev 2026-10-11 (brief-db-lineage-seminata-per-chiave, giro 1): la vista e'' la '
+                      'PROIEZIONE di vendite.fn_documento_lineage_nodi(NULL, NULL), un corpo solo; chi vuole una '
+                      'parte del grafo chiama la funzione col seme. Stesse colonne, stessi tipi. '
+                      || coalesce(obj_description('vendite.vw_documento_lineage_nodi'::regclass, 'pg_class'), ''));
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- La definizione di prima, dalla doc auto-generata (2026-10-11).
+              -- Il COMMENT resta quello con la nota premessa.
+              CREATE OR REPLACE VIEW vendite.vw_documento_lineage_nodi
+              WITH (security_invoker=on) AS
+              SELECT s.id AS tipo_id,
+                  (p.uid)::text AS uid,
+                  p.numero AS codice,
+                  st.codice_interno AS stato_codice_interno,
+                  st.codice AS stato_codice,
+                  st.descrizione AS stato_descrizione,
+                  st.fase,
+                  st.is_abortito,
+                  (1)::smallint AS pipeline_rank,
+                  NULL::character varying AS natura_doc_codice_interno,
+                  NULL::character varying AS natura_doc_descrizione,
+                  s.codice_interno AS tipo_codice_interno
+                 FROM ((vendite.preventivi p
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'PREVENTIVO'::text) AND (s.attivo IS TRUE))))
+                   LEFT JOIN config.stati_doc_preventivi st ON ((st.id = p.stato_doc_preventivo_id)))
+              UNION ALL
+               SELECT s.id AS tipo_id,
+                  (oc.uid)::text AS uid,
+                  oc.codice,
+                  st.codice_interno AS stato_codice_interno,
+                  st.codice AS stato_codice,
+                  st.descrizione AS stato_descrizione,
+                  st.fase,
+                  st.is_abortito,
+                  (1)::smallint AS pipeline_rank,
+                  NULL::character varying AS natura_doc_codice_interno,
+                  NULL::character varying AS natura_doc_descrizione,
+                  s.codice_interno AS tipo_codice_interno
+                 FROM ((vendite.offerte_commerciali oc
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'OFFERTA_COMMERCIALE'::text) AND (s.attivo IS TRUE))))
+                   LEFT JOIN config.stati_doc_offerte st ON ((st.id = oc.stato_doc_offerta_id)))
+              UNION ALL
+               SELECT s.id AS tipo_id,
+                  (o.id)::text AS uid,
+                  o.numero AS codice,
+                  st.codice_interno AS stato_codice_interno,
+                  st.codice AS stato_codice,
+                  st.descrizione AS stato_descrizione,
+                  st.fase,
+                  st.is_abortito,
+                  (2)::smallint AS pipeline_rank,
+                  NULL::character varying AS natura_doc_codice_interno,
+                  NULL::character varying AS natura_doc_descrizione,
+                  s.codice_interno AS tipo_codice_interno
+                 FROM ((vendite.ordini o
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'ORDINE_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   LEFT JOIN config.stati_doc_ordini st ON ((st.id = o.stato_doc_ordine_id)))
+              UNION ALL
+               SELECT s.id AS tipo_id,
+                  (c.id)::text AS uid,
+                  c.numero AS codice,
+                  st.codice_interno AS stato_codice_interno,
+                  st.codice AS stato_codice,
+                  st.descrizione AS stato_descrizione,
+                  st.fase,
+                  st.is_abortito,
+                  (2)::smallint AS pipeline_rank,
+                  NULL::character varying AS natura_doc_codice_interno,
+                  NULL::character varying AS natura_doc_descrizione,
+                  s.codice_interno AS tipo_codice_interno
+                 FROM ((vendite.contratti c
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'CONTRATTO'::text) AND (s.attivo IS TRUE))))
+                   LEFT JOIN config.stati_doc_contratti st ON ((st.id = c.stato_doc_contratto_id)))
+              UNION ALL
+               SELECT s.id AS tipo_id,
+                  (d.id)::text AS uid,
+                  d.numero AS codice,
+                  st.codice_interno AS stato_codice_interno,
+                  st.codice AS stato_codice,
+                  st.descrizione AS stato_descrizione,
+                  st.fase,
+                  st.is_abortito,
+                  (3)::smallint AS pipeline_rank,
+                  NULL::character varying AS natura_doc_codice_interno,
+                  NULL::character varying AS natura_doc_descrizione,
+                  s.codice_interno AS tipo_codice_interno
+                 FROM ((vendite.ddt d
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'DDT_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   LEFT JOIN config.stati_doc_ddt st ON ((st.id = d.stato_doc_ddt_id)))
+              UNION ALL
+               SELECT s.id AS tipo_id,
+                  (f.id)::text AS uid,
+                  (vendite.fn_numero_documento_fattura(f.numero, f.serie))::text AS codice,
+                  st.codice_interno AS stato_codice_interno,
+                  st.codice AS stato_codice,
+                  st.descrizione AS stato_descrizione,
+                  st.fase,
+                  st.is_abortito,
+                  (5)::smallint AS pipeline_rank,
+                  nd.codice_interno AS natura_doc_codice_interno,
+                  nd.descrizione AS natura_doc_descrizione,
+                  s.codice_interno AS tipo_codice_interno
+                 FROM (((vendite.fatture f
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'FATTURA'::text) AND (s.attivo IS TRUE))))
+                   LEFT JOIN config.stati_doc_fiscale st ON ((st.id = f.stato_doc_fiscale_id)))
+                   LEFT JOIN config.nature_doc_fiscale nd ON ((nd.id = f.natura_doc_id)))
+              UNION ALL
+               SELECT s.id AS tipo_id,
+                  (cm.id)::text AS uid,
+                  cm.codice,
+                  st.codice_interno AS stato_codice_interno,
+                  st.codice AS stato_codice,
+                  st.descrizione AS stato_descrizione,
+                  st.fase,
+                  st.is_abortito,
+                  (4)::smallint AS pipeline_rank,
+                  NULL::character varying AS natura_doc_codice_interno,
+                  NULL::character varying AS natura_doc_descrizione,
+                  s.codice_interno AS tipo_codice_interno
+                 FROM ((vendite.commesse cm
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'COMMESSA'::text) AND (s.attivo IS TRUE))))
+                   LEFT JOIN vendite.stati_commessa st ON ((st.id = cm.stato_commessa_id)))
+              UNION ALL
+               SELECT s.id AS tipo_id,
+                  (r.id)::text AS uid,
+                  r.numero AS codice,
+                  st.codice_interno AS stato_codice_interno,
+                  st.codice AS stato_codice,
+                  st.descrizione AS stato_descrizione,
+                  st.fase,
+                  st.is_abortito,
+                  (0)::smallint AS pipeline_rank,
+                  NULL::character varying AS natura_doc_codice_interno,
+                  NULL::character varying AS natura_doc_descrizione,
+                  s.codice_interno AS tipo_codice_interno
+                 FROM ((vendite.resi r
+                   JOIN config.sorgenti s ON ((((s.codice_interno)::text = 'RESO_VENDITA'::text) AND (s.attivo IS TRUE))))
+                   LEFT JOIN config.stati_doc_reso st ON ((st.id = r.stato_doc_reso_id)));

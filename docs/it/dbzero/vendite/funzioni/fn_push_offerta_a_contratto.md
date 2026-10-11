@@ -94,11 +94,15 @@ BEGIN
     --    gli id. Sono un array perche' se i contratti fossero piu' d'uno —
     --    l'anomalia che questo guard esiste per fermare — l'operatore deve
     --    poterli vedere tutti, non solo il primo.
-    SELECT jsonb_agg(jsonb_build_object('tipo', 'CONTRATTO', 'id', c.id::text)
-                     ORDER BY c.id)
+    --
+    -- ⭐ rev 2026-10-11 (D-3/D-6 di brief-db-annullo-documento-con-legami):
+    --    solo i documenti VIVI, dalla sede unica vendite.fn_offerta_documenti_vivi.
+    --    Un contratto annullato conserva la provenienza ma non consuma l'offerta.
+    SELECT jsonb_agg(jsonb_build_object('tipo', d.tipo, 'id', d.documento_id::text)
+                     ORDER BY d.documento_id)
       INTO v_bersagli
-      FROM vendite.contratti c
-     WHERE c.offerta_id = p_offerta_id;
+      FROM vendite.fn_offerta_documenti_vivi(p_offerta_id) AS d
+     WHERE d.tipo = 'CONTRATTO';
 
     IF v_bersagli IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -114,12 +118,12 @@ BEGIN
     -- Guard mutua esclusivita': ordine gia' generato per questa offerta?
     -- Stesso principio del guard qui sopra: si manda l'operatore sull'ORDINE
     -- che esiste, non sull'offerta che ha gia' aperto.
-    SELECT jsonb_agg(jsonb_build_object('tipo', 'ORDINE_VENDITA', 'id', o.id::text)
-                     ORDER BY o.id)
+    -- Solo gli ordini VIVI (rev 2026-10-11, come sopra).
+    SELECT jsonb_agg(jsonb_build_object('tipo', d.tipo, 'id', d.documento_id::text)
+                     ORDER BY d.documento_id)
       INTO v_bersagli
-      FROM vendite.ordini o
-     WHERE o.documento_origine_tipo = 'OFFERTA'
-       AND o.documento_origine_id   = p_offerta_id;
+      FROM vendite.fn_offerta_documenti_vivi(p_offerta_id) AS d
+     WHERE d.tipo = 'ORDINE_VENDITA';
 
     IF v_bersagli IS NOT NULL THEN
         PERFORM script.fn_log_and_raise_error(
@@ -450,7 +454,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_push_offerta_a_contratto(p_offerta_id bigint, p_pratica_id bigint, p_chiudi_contratto_esistente boolean)
-IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev6 (2026-06-08): guard di mutua esclusivita'' offerta->contratto/ordine (E_OFFERTA_ORDINE_GIA_GENERATO) — un''offerta genera al massimo uno tra contratto e ordine. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti). Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO). ⭐ rev 2026-08-24: i due guard di idempotenza portano il BERSAGLIO, e il bersaglio NON e'' l''offerta — e'' il documento GIA'' GENERATO (il contratto, oppure l''ordine). La frase nomina l''offerta perche'' e'' il soggetto del discorso, ma l''operatore l''offerta ce l''ha gia'' davanti: cio'' che non riesce a raggiungere e'' il documento che gli blocca la strada. E'' un array perche'' se i documenti fossero piu'' d''uno — l''anomalia che il guard esiste per fermare — deve poterli vedere tutti. Da qui il canale DATATYPE dell''eccezione, e il frontend ci disegna «vai al contratto». ⚠️ L''EXISTS e'' diventato una raccolta: stessa scansione, in piu'' gli id. Brief: brief-db-bersaglio-errore.md §6 L6.';
+IS 'Genera un contratto DRAFT da un''offerta commerciale ACCETTATA. Rev6 (2026-06-08): guard di mutua esclusivita'' offerta->contratto/ordine (E_OFFERTA_ORDINE_GIA_GENERATO) — un''offerta genera al massimo uno tra contratto e ordine. Rev5 (2026-06-01): trasporta 1:1 stato_approvazione_prezzo + pratica_approvazione_prezzo_id anche sulle RIGHE (oltre che sui componenti). Rev4 (2026-05-31): consumatore del meccanismo generico di successione contratti (advisory lock + overlap + routing + backstop). Copia eccezioni+componenti e utility; idempotente (E_OFFERTA_CONTRATTO_GIA_GENERATO). ⭐ rev 2026-08-24: i due guard di idempotenza portano il BERSAGLIO, e il bersaglio NON e'' l''offerta — e'' il documento GIA'' GENERATO (il contratto, oppure l''ordine). La frase nomina l''offerta perche'' e'' il soggetto del discorso, ma l''operatore l''offerta ce l''ha gia'' davanti: cio'' che non riesce a raggiungere e'' il documento che gli blocca la strada. E'' un array perche'' se i documenti fossero piu'' d''uno — l''anomalia che il guard esiste per fermare — deve poterli vedere tutti. Da qui il canale DATATYPE dell''eccezione, e il frontend ci disegna «vai al contratto». ⚠️ L''EXISTS e'' diventato una raccolta: stessa scansione, in piu'' gli id. Brief: brief-db-bersaglio-errore.md §6 L6. rev 2026-10-11 (20261011-74, brief-db-annullo-documento-con-legami D-3/D-6): i due guard (E_OFFERTA_CONTRATTO_GIA_GENERATO, E_OFFERTA_ORDINE_GIA_GENERATO) guardano i soli documenti VIVI, letti da vendite.fn_offerta_documenti_vivi (sede unica, con la capability dell''offerta): un contratto o un ordine annullato conserva la provenienza ma non consuma piu'' l''offerta. Gli indici unici uq_contratti_offerta_id e uq_ordini_v_documento_origine_offerta valgono sui soli vivi (20261011-68, -70).';
 ```
 
 ---
