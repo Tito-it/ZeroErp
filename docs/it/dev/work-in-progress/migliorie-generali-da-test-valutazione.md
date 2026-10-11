@@ -517,7 +517,7 @@ errore.
 > di D22 (2026-10-10), che è chiusa. **D25** dai residui di `brief-db-istanza-nasce-col-ba`
 > alla sua chiusura (2026-10-10), chiusa lo stesso giorno. **D26** (la testata dopo l'emissione) e
 > **D27** (gli indirizzi del documento seguono il cliente) da `brief-db-esecutivi-ba-coppia`
-> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11).
+> (2026-10-09/10). **D28** (le righe evase di un DDT da ordine) dal collaudo di Tid (2026-10-10). **D29** (l'annullo di un documento con legami) dal giro di D28 (2026-10-11), chiusa lo stesso giorno. **D30** (tornare indietro: annullare a valle riapre a monte) dal collaudo di D29 (2026-10-11).
 >
 > ⚠️ **Rinumerazione del 2026-10-10:** D23 e D25 erano stati dati due volte, a voci diverse. Il
 > numero è rimasto alla voce che l'aveva preso per prima (D23 alla ricerca universale, D25 ai
@@ -526,7 +526,7 @@ errore.
 > Lo stesso giorno D26 è stato dato una seconda volta (le funzioni che ripianificano): per decisione di
 > Tid quella voce è diventata **D26-2**, e D26 è rimasto alla testata dopo l'emissione, che l'aveva prima.
 >
-> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D29.
+> Qui sotto, **solo il lavoro che resta**: D17, D18, D6, D7, D8, D9, D11, D12, D15, D16, D21, D24, D26, D26-2, D27, D30.
 
 ### 🟠 D17 — Resta Q-2: le GUC di bypass che chiunque può accendere
 
@@ -1026,17 +1026,15 @@ default vanno nel DB) nel brief
 📝 Aperto, nessun codice. ⚠️ La sezione era andata persa nella rinumerazione del 2026-10-10 (restava
 solo la riga della checklist): ripristinata lo stesso giorno.
 
-### 🟠 D29 — Annullare un documento con legami: l'origine resta consumata
+### 🟠 D30 — Tornare indietro: annullare la commessa non riapre il documento a monte
 
-Trovato il 2026-10-11 nel giro di D28 (§7.6 di `work-done/brief-db-ddt-righe-evase-dall-ordine`) e allargato da Tid a
-tutti i documenti: quando un documento nato da un altro si annulla, quello a monte deve tornare disponibile,
-con una conferma. Bolla → ordine e ri-consegna → reso sono fatti (D-8); restano preventivo → ordine,
-offerta → contratto, offerta → ordine (oggi consumati per sempre) e il ritiro dalla commessa (corretto ma
-silenzioso). Dettaglio, censimento e decisioni attese nel brief
-[brief-db-annullo-documento-con-legami.md](brief-db-annullo-documento-con-legami.md). ✅ Caso 1 applicato.
-📝 Casi 2-5 decisi da Tid (D-1…D-6) e scritti il 2026-10-11 con la forma comune (lettore, avviso, conferma,
-verbo per documento): ✅ applicati e verdi il 2026-10-11 (`20261011-68 … -91`, §8 del brief). Lato DB
-chiuso; resta BE/FE (§6).
+Trovato il 2026-10-11 nel collaudo di D29: annullare una commessa non mostra niente e non restituisce
+niente. PRV0000398, smistato per intero in commessa, resta EVASO dopo l'annullo della commessa, la sua
+riga resta NON_EMESSA dentro una commessa ANNULLATA e non si puo' piu' smistare. Tid generalizza: tornare
+indietro (annullare a valle) riapre a monte con la segnalazione, in avanti e' bloccato, un unico
+meccanismo (la forma di D29). Decisioni D-1…D-4 di Tid il 2026-10-11 (il preventivo torna ACCETTATO,
+l'ordine CONFERMATO; forma comune; righe emesse gia' bloccanti; dati di test da non sistemare). Brief
+[brief-db-annullo-a-valle-riapre-a-monte.md](brief-db-annullo-a-valle-riapre-a-monte.md): tocca al team DB.
 
 ---
 
@@ -1254,8 +1252,10 @@ D6 e il registro dei rossi in CI.
       `brief-db-plancache-funzioni-con-query-incorporate` (aperto il 2026-10-10, non iniziato, due decisioni attese).
 * [x] **D28** — le righe evase di un DDT da ordine: brief `work-done/brief-db-ddt-righe-evase-dall-ordine` —
       chiuso e archiviato il 2026-10-11 (DB `20261011-05 … -20`, `-34`, `-35`; BE/FE §10; collaudo di Tid superato).
-* [ ] **D29** — annullare un documento con legami: brief `brief-db-annullo-documento-con-legami` (aperto il
-      2026-10-11; caso 1 applicato, casi 2-5 in attesa di decisioni).
+* [x] **D29** — annullare un documento con legami: brief `work-done/brief-db-annullo-documento-con-legami` —
+      chiuso e archiviato il 2026-10-11 (DB `20261011-68 … -91` e il caso 1 del giro D28; BE/FE §9; collaudo di Tid).
+* [ ] **D30** — tornare indietro, annullare la commessa: brief `brief-db-annullo-a-valle-riapre-a-monte` (aperto il
+      2026-10-11, decisioni chiuse lo stesso giorno, al team DB).
 
 ---
 
@@ -1735,6 +1735,18 @@ dello stato dell'ordine ha una sede sola (`vendite.fn_ordine_proietta_stato_evas
 BE/FE: endpoint `qta-evasa/` e `legami/`, finestra di conferma dell'annullo. Brief
 `work-done/brief-db-ddt-righe-evase-dall-ordine.md`; il principio dell'annullo per gli altri documenti
 continua in D29.
+
+### ✅ D29 — Annullare un documento con legami — chiuso il 2026-10-11
+
+Un documento nato da un altro, annullato, lasciava l'origine consumata per sempre (l'ordine evaso per
+merce mai partita, il preventivo occupato da un ordine morto, l'offerta non piu' trasformabile) o la
+ritirava in silenzio (le righe di commessa). Ora bolla, ordine, preventivo e contratto si annullano dal
+loro verbo (`vendite.fn_annulla_<documento>`): con legami il DB avvisa (`E_DOC_ANNULLO_CON_LEGAMI`), la
+finestra di conferma comune mostra che cosa si riapre (lettore unico `vendite.fn_documento_legami`) e
+l'operatore dichiara quanti legami ha visto; poi i consumi si ritirano (BB
+`vendite.fn_documento_ritira_legami`) e i documenti a monte si riaprono. L'unicita' offerta → contratto /
+ordine vale sui soli documenti vivi. Brief `work-done/brief-db-annullo-documento-con-legami.md`; il verso
+dalla commessa continua in D30.
 
 
 *Valutazione 2026-09-08 — perimetro DB. Le misure sono letture di struttura sul

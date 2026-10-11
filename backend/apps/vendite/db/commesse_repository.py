@@ -13,6 +13,13 @@ from typing import Any, cast
 
 from django.db import connection, transaction
 
+from apps.config.sorgenti import (
+    SORGENTE_ATTIVITA_CONSUMI,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI
 from apps.core.db._helpers import call_jsonb_fn, row_to_dict, limiti_pagina
 from apps.core.db.sql_write_helpers import execute_dynamic_update
@@ -57,11 +64,11 @@ COLONNE_PROVENIENZA_PREZZO: tuple[str, ...] = (
 
 # --- Mapping codice sorgente → fn SQL da chiamare ---
 _SORGENTE_FN_MAP: dict[str, str] = {
-    "PREVENTIVO": "vendite.fn_list_preventivi_da_pushare",
-    "ORDINE_VENDITA": "vendite.fn_list_ordini_da_pushare",
-    "ATTIVITA_CONSUMI": "vendite.fn_list_consumi_da_pushare",
-    "CONTRATTO": "vendite.fn_list_contratti_da_pushare",
-    "DDT_VENDITA": "vendite.fn_list_ddt_da_pushare",
+    SORGENTE_PREVENTIVO: "vendite.fn_list_preventivi_da_pushare",
+    SORGENTE_ORDINE_VENDITA: "vendite.fn_list_ordini_da_pushare",
+    SORGENTE_ATTIVITA_CONSUMI: "vendite.fn_list_consumi_da_pushare",
+    SORGENTE_CONTRATTO: "vendite.fn_list_contratti_da_pushare",
+    SORGENTE_DDT_VENDITA: "vendite.fn_list_ddt_da_pushare",
 }
 
 # Sorgenti la cui fn_list_*_da_pushare espone il 5o parametro `p_righe_ids`
@@ -69,7 +76,7 @@ _SORGENTE_FN_MAP: dict[str, str] = {
 # (brief-db-smistamento-preventivi.md C); aggiungere qui quando le altre fn
 # acquisiranno il parametro (sviluppo concentrico: la whitelist e' il punto
 # unico di espansione).
-_SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({"PREVENTIVO"})
+_SORGENTE_SUPPORTA_RIGHE_IDS: frozenset[str] = frozenset({SORGENTE_PREVENTIVO})
 
 # Colonne ordinabili della lista attivita' commessa: specchio della whitelist
 # CHIUSA dentro vendite.fn_list_commessa_attivita (changeset 20260802-26), dove

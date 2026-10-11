@@ -6,7 +6,9 @@
 #        brief-be-fe-lineage + la SESTA SORELLA `vendite.resi`, 2026-08-25 +
 #        la SETTIMA `vendite.fatture`, 2026-08-29): whitelist ORDER BY estesa a
 #        pratica/fase, NON-ridecodifica del tipo della frontiera (dal
-#        20260829-02 la porta la vista) e prop del chip transito nei `.vue`.
+#        20260829-02 la porta il grafo), prop del chip transito nei `.vue` e,
+#        dal 2026-10-11, la sintesi lineage unita da ogni lista
+#        (brief-db-lineage-seminata-per-chiave B1).
 # ------------------------------------------------------------
 
 """
@@ -15,6 +17,8 @@ Indice test eseguiti:
 2) LineageListeOrderWhitelistTests.test_frontiera_non_ordinabile
 3) LineageListeFrontieraDecodeTests.test_nessuna_lista_ridecodifica_il_tipo_della_frontiera
 4) LineageListeChipPropTests.test_ogni_lista_col_transito_passa_la_natura_al_chip
+5) LineageListeSintesiTests.test_ogni_lista_unisce_la_sintesi_col_suo_tipo
+6) LineageListeSintesiTests.test_ogni_lista_col_transito_e_servita_dalla_sintesi
 
 ⛔ QUESTO FILE ERA ANCORATO A CINQUE LISTE, ed e' la stessa trappola che il
    brief dell'arco S ha isolato sul lato pgTAP (§5 DB-F.3: i test ancorati a
@@ -60,6 +64,7 @@ from apps.core.tests.test_liste_configurabili_seed import _seed, _senza_commenti
 #    trovato una sede vera invece di diventare la terza copia.
 from apps.core.tests._repo import sorgente_senza_commenti
 
+from apps.vendite.services.vendite_service import LINEAGE_TIPI_DOCUMENTO
 from apps.vendite.db import (
     contratti_repository,
     ddt_repository,
@@ -72,17 +77,19 @@ from apps.vendite.db import (
 
 # Le 7 whitelist ORDER BY delle liste documento (chiave FE campo_sorgente ->
 # colonna SQL sull'alias `v` della vista canonica), accanto al modulo del
-# repository che le possiede — serve al test 3, che ne legge il sorgente.
+# repository che le possiede — serve ai test 3 e 5, che ne leggono il sorgente —
+# e al tipo del documento nel grafo (`config.sorgenti.codice_interno`), che il
+# repository passa alla sintesi lineage (test 5, dal 2026-10-11).
 _WHITELISTS = {
-    "preventivi": (preventivi_repository, preventivi_repository._ORDER_COLS_PREVENTIVI),
-    "offerte": (offerte_repository, offerte_repository._ORDER_COLS_OFFERTE),
-    "ordini": (ordini_repository, ordini_repository._ORDER_COLS_ORDINI),
-    "contratti": (contratti_repository, contratti_repository._ORDER_COLS_CONTRATTI),
-    "ddt": (ddt_repository, ddt_repository._ORDER_COLS_DDT),
+    "preventivi": (preventivi_repository, preventivi_repository._ORDER_COLS_PREVENTIVI, "PREVENTIVO"),
+    "offerte": (offerte_repository, offerte_repository._ORDER_COLS_OFFERTE, "OFFERTA_COMMERCIALE"),
+    "ordini": (ordini_repository, ordini_repository._ORDER_COLS_ORDINI, "ORDINE_VENDITA"),
+    "contratti": (contratti_repository, contratti_repository._ORDER_COLS_CONTRATTI, "CONTRATTO"),
+    "ddt": (ddt_repository, ddt_repository._ORDER_COLS_DDT, "DDT_VENDITA"),
     # ⭐ La sesta sorella (2026-08-25): `vw_resi_lista` prende `fase` + le nove
     #    colonne di genealogia, e su un reso la frontiera e' la NOTA DI CREDITO
     #    che lo accredita (arco S).
-    "resi": (resi_repository, resi_repository._ORDER_COLS_RESI),
+    "resi": (resi_repository, resi_repository._ORDER_COLS_RESI, "RESO_VENDITA"),
     # ⭐ La settima (2026-08-29): `vw_fatture_lista` porta le stesse quattro
     #    colonne `frontiera_*` delle sorelle, e il suo repository decodifica
     #    gia' il tipo della frontiera. ⚠️ Non monta (ancora) il chip «Transito»
@@ -90,7 +97,7 @@ _WHITELISTS = {
     #    questi tre test presidiano — pratica/fase ordinabili, frontiera no,
     #    tipo decodificato — lo rispetta gia' tutto, e restarne fuori
     #    significherebbe solo che nessuno se ne accorge quando smettera'.
-    "fatture": (fatture_repository, fatture_repository._ORDER_COLS_FATTURE),
+    "fatture": (fatture_repository, fatture_repository._ORDER_COLS_FATTURE, "FATTURA"),
 }
 
 
@@ -99,7 +106,7 @@ class LineageListeOrderWhitelistTests(TestCase):
     #        mappate sulle colonne della vista (seed ui.lista_colonna:
     #        pratica.ordinabile=true, fase.ordinabile=true).
     def test_pratica_e_fase_ordinabili_su_tutte_le_liste(self):
-        for nome, (_modulo, wl) in _WHITELISTS.items():
+        for nome, (_modulo, wl, _tipo) in _WHITELISTS.items():
             with self.subTest(lista=nome):
                 self.assertEqual(wl.get("pratica_numero"), "v.pratica_numero")
                 self.assertEqual(wl.get("fase"), "v.fase")
@@ -107,7 +114,7 @@ class LineageListeOrderWhitelistTests(TestCase):
     # Scopo: la frontiera (chip transito) NON e' ordinabile — nessuna colonna
     #        di ordinamento la espone (seed transito.ordinabile=false).
     def test_frontiera_non_ordinabile(self):
-        for nome, (_modulo, wl) in _WHITELISTS.items():
+        for nome, (_modulo, wl, _tipo) in _WHITELISTS.items():
             with self.subTest(lista=nome):
                 self.assertNotIn("frontiera_codice", wl)
                 self.assertNotIn("transito", wl)
@@ -122,16 +129,19 @@ class LineageListeFrontieraDecodeTests(TestCase):
     #        sette repository, e dimenticarla non dava errore — spegneva la
     #        cella «Transito» in silenzio (successo il 25/08 sulla lista resi
     #        appena nata: colonna a catalogo, dato a DB, niente a video).
-    #        ⭐ Dal changeSet 20260829-02 il codice lo porta LA VISTA
-    #        (`frontiera_tipo_codice_interno`), quindi le sette copie sono
-    #        sparite e questo presidio si ribalta: nessuno deve RIMETTERLE.
-    #        ⚠️ Il lato positivo — «la vista espone davvero la colonna» — NON e'
-    #        piu' presidiabile da qui, e non e' scoperto: sta nel pgTAP
-    #        `db/pgtap/vendite/test-colonne-lineage-liste-v1.sql`, test 40..46,
-    #        che le enumera per nome su tutte e sette. Un test Python non puo'
-    #        guardare il database (regola CI: nessuna dipendenza da un DB vero).
+    #        ⭐ Dal changeSet 20260829-02 il codice lo porta il GRAFO
+    #        (`frontiera_tipo_codice_interno`: prima la vista di lista, dal
+    #        2026-10-11 la sintesi lineage unita dopo la paginazione), quindi le
+    #        sette copie sono sparite e questo presidio si ribalta: nessuno deve
+    #        RIMETTERLE.
+    #        ⚠️ Il lato positivo — «la sintesi espone davvero la colonna» — NON
+    #        e' presidiabile da qui: sta nei pgTAP
+    #        `db/pgtap/vendite/test-colonne-lineage-liste-v1.sql` e
+    #        `test-documento-lineage-v1.sql`. Un test Python non puo' guardare il
+    #        database (regola CI: nessuna dipendenza da un DB vero). Che ogni
+    #        lista CHIAMI la sintesi lo presidia il test 5.
     def test_nessuna_lista_ridecodifica_il_tipo_della_frontiera(self):
-        for nome, (modulo, _wl) in _WHITELISTS.items():
+        for nome, (modulo, _wl, _tipo) in _WHITELISTS.items():
             with self.subTest(lista=nome):
                 sorgente = sorgente_senza_commenti(inspect.getsource(modulo))
                 # ⚠️ Il join si cerca col suo alias `v` (la vista di lista) e con
@@ -142,8 +152,8 @@ class LineageListeFrontieraDecodeTests(TestCase):
                     sorgente,
                     r"config\.sorgenti\s+\w+\s+ON\s+\w+\.id\s*=\s*v\.frontiera_tipo_id",
                     f"{nome}: la decodifica del tipo frontiera e' tornata nel "
-                    "repository. La porta la vista: sette copie della stessa "
-                    "riga sono il difetto che questo file esiste per fermare.",
+                    "repository. La porta la sintesi lineage: sette copie della "
+                    "stessa riga sono il difetto che questo file esiste per fermare.",
                 )
                 # ⚠️ `\b` dopo il nome, non un `\n`: una regressione si riscrive
                 #    quasi sempre con la virgola (`AS frontiera_tipo_codice,`) e
@@ -153,9 +163,9 @@ class LineageListeFrontieraDecodeTests(TestCase):
                 self.assertNotRegex(
                     sorgente, r"\bAS\s+frontiera_tipo_codice\b",
                     f"{nome}: alias locale su frontiera_tipo_codice — il nome "
-                    "canonico e' `frontiera_tipo_codice_interno` e viaggia con "
-                    "`v.*`; un alias qui ricrea un secondo nome per lo stesso "
-                    "valore.",
+                    "canonico e' `frontiera_tipo_codice_interno` e arriva dalla "
+                    "sintesi lineage; un alias qui ricrea un secondo nome per lo "
+                    "stesso valore.",
                 )
 
 
@@ -298,6 +308,54 @@ class LineageListeChipPropTests(TestCase):
         self.assertRegex(
             testo, r":tipo-codice=\"data\.frontiera_tipo_codice_interno\"",
             f"{nome}: legge ancora il nome vecchio del tipo frontiera; dal "
-            "20260829-02 la vista espone `frontiera_tipo_codice_interno` e il "
+            "20260829-02 il grafo espone `frontiera_tipo_codice_interno` e il "
             "chip resterebbe muto.",
         )
+
+
+class LineageListeSintesiTests(TestCase):
+    """Le colonne del grafo arrivano alle liste dalla sintesi lineage.
+
+    Dal `20261011-97` le viste di lista non portano piu' frontiera, discendenti
+    e transito: li unisce `unisci_sintesi_lineage` dopo la paginazione. Una
+    lista che non la chiama non da' errore — il chip «Transito» esce VUOTO, e
+    con lui la colonna dell'export, che chiama gli stessi metodi.
+    """
+
+    # Scopo: ogni lista del registro chiama la sintesi, col SUO tipo del
+    #        grafo — un tipo sbagliato (ordini col tipo dei DDT) non trova i
+    #        nodi e lascia le colonne a NULL, anche qui senza errore. Il tipo
+    #        si passa con la costante di `apps.config.sorgenti`
+    #        (`SORGENTE_<codice>`), che il suo presidio lega al seed.
+    def test_ogni_lista_unisce_la_sintesi_col_suo_tipo(self):
+        tipi = [tipo for _modulo, _wl, tipo in _WHITELISTS.values()]
+        self.assertEqual(len(tipi), len(set(tipi)), "due liste col tipo del grafo uguale")
+        for nome, (modulo, _wl, tipo) in _WHITELISTS.items():
+            with self.subTest(lista=nome):
+                self.assertIn(tipo, LINEAGE_TIPI_DOCUMENTO)
+                sorgente = sorgente_senza_commenti(inspect.getsource(modulo))
+                self.assertRegex(
+                    sorgente,
+                    r"unisci_sintesi_lineage\(\s*results\s*,\s*tipo_codice_interno\s*=\s*"
+                    + re.escape(f"SORGENTE_{tipo}") + r"\s*\)",
+                    f"{nome}: la lista non unisce la sintesi lineage col tipo "
+                    f"{tipo}: frontiera e transito uscirebbero vuoti.",
+                )
+
+    # Scopo: ogni lista che dichiara «transito» a catalogo e' servita da un
+    #        repository del registro (cioe' da uno che unisce la sintesi). La
+    #        guardia del catalogo (`20261011-99`) accetta un `campo_sorgente`
+    #        della sintesi su QUALUNQUE lista: senza questo presidio una lista
+    #        nuova con la colonna passerebbe il seed e mostrerebbe la cella
+    #        vuota. ⭐ Le liste attese vengono dal SEED, non da un elenco qui.
+    def test_ogni_lista_col_transito_e_servita_dalla_sintesi(self):
+        attese = _liste_con_colonna_transito()
+        self.assertTrue(attese, "nessuna lista dichiara «transito» nel seed")
+        for codice in sorted(attese):
+            with self.subTest(lista=codice):
+                self.assertIn(
+                    codice.removeprefix("vendite."), _WHITELISTS,
+                    f"{codice}: ha la colonna «transito» a catalogo ma il suo "
+                    "repository non e' nel registro delle liste che uniscono la "
+                    "sintesi lineage.",
+                )

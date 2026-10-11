@@ -25,6 +25,13 @@ from uuid import UUID
 
 from django.db import DatabaseError, transaction
 
+from apps.config.sorgenti import (
+    SORGENTE_ATTIVITA_CONSUMI,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
 from apps.core.api.constants import DEFAULT_LIMIT, DEFAULT_LIMIT_EVENTI, MAX_LIMIT
 from apps.core.services.diagnostica_best_effort import diagnostica_best_effort
 from apps.core.services.error_manager import ErrorManager
@@ -64,11 +71,11 @@ from apps.vendite.services.pricing_service import PricingService
 # Registry: codice config.sorgenti → handler class.
 # Permette costruzione dinamica basata sulle sorgenti attive in DB.
 _HANDLER_REGISTRY: dict[str, type[BaseSourceHandler]] = {
-    "PREVENTIVO": HandlerPreventivi,
-    "ORDINE_VENDITA": HandlerOrdini,
-    "CONTRATTO": HandlerContratti,
-    "DDT_VENDITA": HandlerDdt,
-    "ATTIVITA_CONSUMI": HandlerConsumi,
+    SORGENTE_PREVENTIVO: HandlerPreventivi,
+    SORGENTE_ORDINE_VENDITA: HandlerOrdini,
+    SORGENTE_CONTRATTO: HandlerContratti,
+    SORGENTE_DDT_VENDITA: HandlerDdt,
+    SORGENTE_ATTIVITA_CONSUMI: HandlerConsumi,
 }
 
 # Stati `PushReport.stato` che richiedono rollback all-or-nothing nel push

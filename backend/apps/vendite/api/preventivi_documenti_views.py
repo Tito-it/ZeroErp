@@ -22,6 +22,7 @@ from typing import Any
 
 from rest_framework.request import Request
 
+from apps.config.sorgenti import SORGENTE_PREVENTIVO
 from apps.documenti.api.sorgente_documenti_views import (
     build_documenti_sorgente_views,
 )
@@ -31,9 +32,6 @@ from apps.documenti.services.document_generation_service import (
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.vendite.services import preventivi_service
 
-# Codice sorgente PREVENTIVO -> id risolto runtime via repo (memoria
-# feedback_no_hardcoded_ids: lookup per codice, non ID numerici).
-_CODICE_SORGENTE_PREVENTIVO = "PREVENTIVO"
 
 
 # Scopo: Closure di dominio per il factory: contesto minimo (id, uid,
@@ -61,7 +59,7 @@ def _emetti_call(request: Request, preventivo_id: int) -> dict[str, Any]:
 
 _views = build_documenti_sorgente_views(
     schema_prefix="Preventivo",
-    sorgente_codice=_CODICE_SORGENTE_PREVENTIVO,
+    sorgente_codice=SORGENTE_PREVENTIVO,
     not_found_message="Preventivo non trovato.",
     emittente_message="Emittente fiscale non risolto per il preventivo.",
     get_entity=_get_entity,

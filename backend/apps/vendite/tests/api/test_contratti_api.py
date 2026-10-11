@@ -59,7 +59,7 @@ _VIEW_ATOMIC = "apps.documenti.api.sorgente_documenti_views.transaction.atomic"
 # (refactor 2026-05-28): il patch deve puntare lì per mockare la risoluzione
 # del sorgente_tipo. ContrattiRepository resta importato in
 # contratti_documenti_views perche' fetcha il contratto prima del helper.
-_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
+_SORGENTI_REPO = "apps.documenti.api.contesto_helpers.SorgentiRepository"
 _CONTRATTI_REPO = "apps.vendite.api.contratti_documenti_views.ContrattiRepository"
 _BASE = "/api/v1/vendite/contratti/"
 
@@ -131,18 +131,17 @@ class TestDetailGet(_BaseApiTest):
 class TestDocumentiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
-    def test_post_documento_anteprima_ok(self, repo_cls, doc_repo_cls, svc_cls, _auth):
+    def test_post_documento_anteprima_ok(self, repo_cls, sorgenti_repo_cls, svc_cls, _auth):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
             "id": 4,
             "codice": "CONTRATTO",
-            "attivo": True,
         }
         svc_cls.return_value.anteprima_documento.return_value = {
             "pdf_bytes": b"%PDF",
@@ -166,18 +165,17 @@ class TestDocumentiContratto(_BaseApiTest):
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
-    def test_get_documenti_list_ok(self, repo_cls, doc_repo_cls, svc_cls, _auth):
+    def test_get_documenti_list_ok(self, repo_cls, sorgenti_repo_cls, svc_cls, _auth):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
             "id": 4,
             "codice": "CONTRATTO",
-            "attivo": True,
         }
         svc_cls.return_value.list_documenti_per_sorgente.return_value = {
             "results": [{"id": 1, "nome_file": "contratto.pdf"}],
@@ -402,11 +400,11 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
     @patch(_SVC_VIEW_DOC)
     def test_emetti_integration_atomic_state_genera_allegati(
-        self, svc_cls, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+        self, svc_cls, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
     ):
         svc_cls.return_value.emetti.return_value = {
             "id": 7, "stato_codice": "ATTIVO",
@@ -416,8 +414,8 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 4, "codice": "CONTRATTO",
         }
         doc_svc_cls.return_value.genera_documento.return_value = {
             "id": 100, "uid": "doc-uid-100", "nome_file": "contratto.pdf",
@@ -449,18 +447,18 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     # esistente. Verifica route e delega a list_documento_files.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
     def test_get_documento_allegati_list_ok(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 4, "codice": "CONTRATTO",
         }
         doc_svc_cls.return_value.list_documento_files.return_value = {
             "files": [
@@ -482,18 +480,18 @@ class TestEmissioneAllegatiContratto(_BaseApiTest):
     # aggiungi_allegati.
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_DOC_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_CONTRATTI_REPO)
     def test_post_documento_allegati_upload_ok(
-        self, repo_cls, doc_repo_cls, doc_svc_cls, _auth,
+        self, repo_cls, sorgenti_repo_cls, doc_svc_cls, _auth,
     ):
         repo_cls.return_value.get_for_documento_generation.return_value = {
             "id": 7,
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 4, "codice": "CONTRATTO", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 4, "codice": "CONTRATTO",
         }
         doc_svc_cls.return_value.aggiungi_allegati.return_value = {
             "allegati": [{"id": 200, "file_name": "extra.pdf"}],

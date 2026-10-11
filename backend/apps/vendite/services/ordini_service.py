@@ -24,6 +24,7 @@ from typing import Any
 
 from django.db import DatabaseError, transaction
 
+from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA, SORGENTE_PREVENTIVO
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
@@ -366,7 +367,7 @@ def _completa_flusso_ordine_pratica(
     from apps.pratiche.services import pratiche_service
 
     pratica_id = PraticheRepository().get_pratica_id_by_sorgente(
-        sorgente_codice="ORDINE_VENDITA", sorgente_uid=str(ordine_id),
+        sorgente_codice=SORGENTE_ORDINE_VENDITA, sorgente_uid=str(ordine_id),
         ruolo_link="COLLEGATO",
     )
     if pratica_id is None:
@@ -576,7 +577,7 @@ def crea_ordine_da_preventivo(
     return {
         "ordine_id": ordine_id,
         "numero": numero,
-        "documento_origine": {"tipo": "PREVENTIVO", "id": int(preventivo_id)},
+        "documento_origine": {"tipo": SORGENTE_PREVENTIVO, "id": int(preventivo_id)},
     }
 
 
@@ -1200,7 +1201,7 @@ def push_a_commessa(ordine_id: int, *, user: str | None = None) -> dict[str, Any
     # savepoint annidato.
     with transaction.atomic():
         report = pr_run_commesse_push_one(
-            sorgente_codice="ORDINE_VENDITA",
+            sorgente_codice=SORGENTE_ORDINE_VENDITA,
             sorgente_uid=ordine_id,
         )
 

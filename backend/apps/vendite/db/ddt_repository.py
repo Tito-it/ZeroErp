@@ -21,6 +21,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_DDT_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -35,6 +36,7 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 from apps.vendite.db._righe_repo_mixin import (
     COLONNE_RIGHE_COMMERCIALI,
@@ -238,6 +240,9 @@ class DdtRepository(
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_DDT_VENDITA)
         return results, total_count
 
     # Scopo: Dettaglio singolo DDT. Riusa la vista canonica (decodifiche +

@@ -26,6 +26,15 @@
 
 from typing import Any
 
+from apps.config.sorgenti import (
+    SORGENTE_COMMESSA,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_OFFERTA_COMMERCIALE,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+    SORGENTE_RESO_VENDITA,
+)
 from apps.core.services.payload_helpers import PayloadValidator
 
 # I documenti che il lettore dei legami e i verbi di annullo conoscono (i codici
@@ -44,20 +53,20 @@ STATO_ANNULLATO = "ANNULLATO"
 # Il tipo del lineage (`config.sorgenti.codice_interno`) del documento che si
 # annulla: e' la chiave per leggere il nome dei documenti collegati.
 _TIPO_LINEAGE_DEL_DOCUMENTO: dict[str, str] = {
-    DOCUMENTO_DDT: "DDT_VENDITA",
-    DOCUMENTO_ORDINE: "ORDINE_VENDITA",
-    DOCUMENTO_PREVENTIVO: "PREVENTIVO",
-    DOCUMENTO_CONTRATTO: "CONTRATTO",
+    DOCUMENTO_DDT: SORGENTE_DDT_VENDITA,
+    DOCUMENTO_ORDINE: SORGENTE_ORDINE_VENDITA,
+    DOCUMENTO_PREVENTIVO: SORGENTE_PREVENTIVO,
+    DOCUMENTO_CONTRATTO: SORGENTE_CONTRATTO,
 }
 # Il tipo del lineage dell'ORIGINE di un legame (`origine` del lettore). Serve
 # al gesto «vai al documento»: il lettore porta l'id della testata dall'altra
 # parte ma, per decisione di Tid, non il nome, che lo da' il lineage.
 _TIPO_LINEAGE_DELL_ORIGINE: dict[str, str] = {
-    "ORDINE": "ORDINE_VENDITA",
-    "RESO": "RESO_VENDITA",
-    "PREVENTIVO": "PREVENTIVO",
-    "OFFERTA": "OFFERTA_COMMERCIALE",
-    "COMMESSA": "COMMESSA",
+    "ORDINE": SORGENTE_ORDINE_VENDITA,
+    "RESO": SORGENTE_RESO_VENDITA,
+    "PREVENTIVO": SORGENTE_PREVENTIVO,
+    "OFFERTA": SORGENTE_OFFERTA_COMMERCIALE,
+    "COMMESSA": SORGENTE_COMMESSA,
 }
 
 _CAMPO_DICHIARAZIONE = "legami_confermati"

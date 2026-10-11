@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from apps.config.sorgenti import SORGENTE_OFFERTA_COMMERCIALE
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
@@ -54,7 +55,7 @@ E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 class OffertaDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti OFFERTA_COMMERCIALE."""
 
-    CODE = "OFFERTA_COMMERCIALE"
+    CODE = SORGENTE_OFFERTA_COMMERCIALE
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
     CONTEXT_VERSION = 2
 

@@ -25,12 +25,11 @@
 
 from typing import Any
 
+from apps.config.sorgenti import SORGENTE_ORDINE_VENDITA, SORGENTE_PREVENTIVO
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.db.ordini_repository import OrdiniRepository
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 
-_SORGENTE_PREVENTIVO = "PREVENTIVO"
-_SORGENTE_ORDINE = "ORDINE_VENDITA"
 
 
 class PostSmistamentoHandler:
@@ -72,7 +71,7 @@ class PostSmistamentoHandler:
         #    NB 1:N: lo smistamento puo' produrre piu' ordini (consegne parziali);
         #    si aggancia il PRIMO (il caso pratica tipico e' un solo ordine).
         ordine = ord_repo.get_ordine_by_documento_origine(
-            _SORGENTE_PREVENTIVO, preventivo_id,
+            SORGENTE_PREVENTIVO, preventivo_id,
         )
         ErrorManager.require(
             ordine is not None,
@@ -86,7 +85,7 @@ class PostSmistamentoHandler:
 
         # 3. Aggancio dell'ordine alla pratica (COLLEGATO, idempotente).
         prat_repo.upsert_pratica_sorgente(
-            pratica_id=pratica_id, sorgente_codice=_SORGENTE_ORDINE,
+            pratica_id=pratica_id, sorgente_codice=SORGENTE_ORDINE_VENDITA,
             sorgente_uid=str(ordine_id), ruolo_link="COLLEGATO",
         )
 

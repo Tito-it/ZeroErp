@@ -15,6 +15,7 @@ from typing import Any, cast
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_PREVENTIVO
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -30,6 +31,7 @@ from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.core.db.sql_write_helpers import execute_dynamic_update
 from apps.vendite.db._componenti_repo_mixin import ComponentiRepositoryMixin
 from apps.vendite.db._indirizzi_repo_mixin import IndirizziDocumentoRepositoryMixin
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 from apps.vendite.db._riepilogo_iva_repo_mixin import RiepilogoIvaRepositoryMixin
 from apps.vendite.db._righe_repo_mixin import (
     COLONNE_RIGHE_COMMERCIALI,
@@ -124,6 +126,8 @@ PREVENTIVO_REVISIONI_SORT_COLONNE_DATA: frozenset[str] = frozenset({"data"})
 # gratis da is_attiva). Nessun UPDATE del link, nessun trigger: risoluzione a
 # read-time (Fase 4 uniformità pratica preventivi). Interpolato come costante
 # (nessun input utente) → S608 ok.
+# ⚠️ Il frammento porta UN parametro, il codice della sorgente
+# (`SORGENTE_PREVENTIVO`): va PRIMO nella lista, prima di quelli del chiamante.
 _ROOT_PREVENTIVO_ATTIVO_FROM = """
     FROM pratiche.pratiche_sorgenti ps
     JOIN config.sorgenti s ON s.id = ps.sorgente_tipo_id
@@ -132,7 +136,7 @@ _ROOT_PREVENTIVO_ATTIVO_FROM = """
       ON p_attivo.numero = p_link.numero
      AND p_attivo.emittente_fiscale_id = p_link.emittente_fiscale_id
      AND p_attivo.is_attiva
-    WHERE s.codice_interno = 'PREVENTIVO'
+    WHERE s.codice_interno = %s
       AND ps.ruolo_link = 'ROOT'
 """
 
@@ -311,9 +315,10 @@ class PreventiviRepository(
         # (frontend-standards "REGOLA CRITICA: Paginazione deterministica").
         # Senza id, righe con stessa data/numero (es. revisioni) possono
         # comparire duplicate o sparire fra pagine consecutive.
-        # ⭐ Il chip transito legge `frontiera_tipo_codice_interno` dalla vista
-        # (20260829-02): mai id numerici verso il FE, e mai una decodifica
-        # ricopiata per lista (memoria feedback_no_hardcoded_ids).
+        # ⭐ Il chip transito legge `frontiera_tipo_codice_interno` dalla
+        # sintesi lineage (unita dopo la paginazione, sotto): mai id numerici
+        # verso il FE, e mai una decodifica ricopiata per lista (memoria
+        # feedback_no_hardcoded_ids).
         data_sql = f"""
             SELECT v.*
             FROM vendite.vw_preventivi_lista v
@@ -330,6 +335,9 @@ class PreventiviRepository(
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_PREVENTIVO)
         return cast("list[PreventivoListRow]", results), total_count
 
     # Scopo: Restituisce dettaglio singolo preventivo con tutte le decodifiche.
@@ -565,7 +573,7 @@ class PreventiviRepository(
     def get_preventivo_id_by_pratica_root(self, pratica_id: int) -> int | None:
         sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.pratica_id = %s LIMIT 1"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [pratica_id])
+            cursor.execute(sql, [SORGENTE_PREVENTIVO, pratica_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -578,7 +586,7 @@ class PreventiviRepository(
     def get_preventivo_id_by_flusso_root(self, flusso_id: int) -> int | None:
         sql = f"SELECT p_attivo.id {_ROOT_PREVENTIVO_ATTIVO_FROM} AND ps.flusso_id = %s LIMIT 1"
         with connection.cursor() as cursor:
-            cursor.execute(sql, [flusso_id])
+            cursor.execute(sql, [SORGENTE_PREVENTIVO, flusso_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -598,14 +606,14 @@ class PreventiviRepository(
               JOIN vendite.preventivi p_in
                 ON p_in.numero = p_link.numero
                AND p_in.emittente_fiscale_id = p_link.emittente_fiscale_id
-             WHERE s.codice_interno = 'PREVENTIVO'
+             WHERE s.codice_interno = %s
                AND ps.ruolo_link = 'ROOT'
                AND ps.flusso_id IS NOT NULL
                AND p_in.id = %s
              LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
+            cursor.execute(sql, [SORGENTE_PREVENTIVO, preventivo_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 
@@ -626,14 +634,14 @@ class PreventiviRepository(
               JOIN vendite.preventivi p_in
                 ON p_in.numero = p_link.numero
                AND p_in.emittente_fiscale_id = p_link.emittente_fiscale_id
-             WHERE s.codice_interno = 'PREVENTIVO'
+             WHERE s.codice_interno = %s
                AND ps.ruolo_link = 'ROOT'
                AND p_in.id = %s
              ORDER BY ps.id DESC
              LIMIT 1
         """
         with connection.cursor() as cursor:
-            cursor.execute(sql, [preventivo_id])
+            cursor.execute(sql, [SORGENTE_PREVENTIVO, preventivo_id])
             row = cursor.fetchone()
         return int(row[0]) if row else None
 

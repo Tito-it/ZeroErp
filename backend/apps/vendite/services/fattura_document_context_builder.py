@@ -79,6 +79,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.config.sorgenti import SORGENTE_FATTURA
 from apps.core.services.testata_guard import testata_o_not_found
 from apps.core.services.payload_helpers import PayloadValidator
 from apps.documenti.services.context_builders._number_formatting import (
@@ -104,7 +105,7 @@ E_NOT_FOUND = "E_DOCUMENTI_NOT_FOUND"
 class FatturaDocumentContextBuilder(DocumentContextBuilder):
     """Builder di contesto per documenti FATTURA (stampa/ristampa fattura)."""
 
-    CODE = "FATTURA"
+    CODE = SORGENTE_FATTURA
     # La forma dei dati prodotti: sede unica (vedi DocumentContextBuilder).
     CONTEXT_VERSION = 5
 

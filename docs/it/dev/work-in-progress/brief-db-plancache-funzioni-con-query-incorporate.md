@@ -7,7 +7,8 @@
 > [migliorie-generali-da-test-valutazione](migliorie-generali-da-test-valutazione.md).
 > **Stato (2026-10-10):** 🔎 censimento e misura del §2.1 fatti (§4). **D-4**: primo
 > passo `20261010-44` ✅ applicato da Tid, pgTAP `vendite` rilanciati, misurato (§5.2).
-> D-6 e D-5 passate al brief figlio `brief-db-lineage-seminata-per-chiave`. **2026-10-11**: D-3
+> D-6 e D-5 passate al brief figlio `brief-db-lineage-seminata-per-chiave`, ✅ chiuso il
+> 2026-10-11 (`work-done/`): tutte e due risolte. **2026-10-11**: D-3
 > misurata (§5bis), **D-3a** `20261011-42` ✅ applicato. Aperte **D-2** e **D-3b**. **Cosa resta: §6.**
 > **Ricadute BE/FE:** nessuna prevista.
 
@@ -159,7 +160,7 @@ la vista degli archi è letta anche dalle liste (`vw_documento_lineage`, la
 colonna della lineage nelle liste). Decisione attesa: **D-6**.
 
 ➡️ **D-6 è diventata un brief suo** (2026-10-10, su richiesta di Tid):
-[brief-db-lineage-seminata-per-chiave](brief-db-lineage-seminata-per-chiave.md).
+[brief-db-lineage-seminata-per-chiave](../work-done/brief-db-lineage-seminata-per-chiave.md).
 Il censimento ha mostrato che lo stesso costo lo paga **ogni pagina di sette
 liste** (~0,42 s), e che la **D-5** di questo brief (lista offerte letta per id)
 è lo stesso difetto: anche D-5 passa di là.
@@ -231,6 +232,6 @@ query (nessun `auto_explain` come app: si fa per istruzione, a mano).
 | **D-2** | il lister dei DDT **senza filtri** (~1,1 s, diagnosi di tutti i DDT in una chiamata): profilarlo come query | ⬜ **aperto**, decisione attesa: ora o col volume | §2.2 |
 | **D-3** | resi: misurare un ciclo di accredito **costruito** (in transazione annullata) e, clausola `plan_cache_mode` **solo** su `fn_resi_riga_tetti_accredito` (D-3a: non sul verbo né sul trigger, §5bis). Un solo changeSet, **numero riservato `20261011-42`** (in `20_code/vendite/`). Presidio: il pgTAP `test-fn-available-actions-ddt-piano-generico-v1` diventa `test-plan-cache-mode-piano-generico-v1` con le tre funzioni, e il vecchio si ritira nello stesso giro (decisione di Tid, 2026-10-11) | **D-3a** ✅ `20261011-42` applicato, presidio 5/5 su dbdev · **D-3b** ⬜ aperto (dove vanno i ~115 ms del verbo, da profilare per istruzione) | §4.3, §4.4, §5bis |
 | D-4 | pannello «Passaggi», primo passo | ✅ `20261010-44` applicato e misurato | §5.2 |
-| **D-5 + D-6** | lista offerte per id e lineage seminata (ogni pagina di sette liste paga il grafo intero) | 🔀 **nel brief figlio** — decisioni prese da Tid, giro 1 da iniziare | [brief-db-lineage-seminata-per-chiave](brief-db-lineage-seminata-per-chiave.md) §8 |
+| **D-5 + D-6** | lista offerte per id e lineage seminata (ogni pagina di sette liste paga il grafo intero) | ✅ **chiuse nel brief figlio** (2026-10-11): grafo seminato per chiave, liste ed export dalla sintesi dopo la paginazione, `vw_documento_lineage` ritirata | [brief-db-lineage-seminata-per-chiave](../work-done/brief-db-lineage-seminata-per-chiave.md) §8 |
 
 Il padre si archivia quando D-2 e D-3 sono chiuse; il figlio vive per conto suo.

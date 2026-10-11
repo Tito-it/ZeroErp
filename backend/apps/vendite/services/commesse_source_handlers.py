@@ -33,6 +33,13 @@ from typing import Any
 
 from django.db import connection, transaction
 
+from apps.config.sorgenti import (
+    SORGENTE_ATTIVITA_CONSUMI,
+    SORGENTE_CONTRATTO,
+    SORGENTE_DDT_VENDITA,
+    SORGENTE_ORDINE_VENDITA,
+    SORGENTE_PREVENTIVO,
+)
 from apps.core.services.fan_out import run_fan_out
 from apps.vendite.db.commesse_repository import (
     POLICY_FATTURAZIONE_DA_DOCUMENTO,
@@ -752,7 +759,7 @@ class HandlerPreventivi(BaseSourceHandler):
     """
 
     name = "HandlerPreventivi"
-    sorgente_codice = "PREVENTIVO"
+    sorgente_codice = SORGENTE_PREVENTIVO
 
     @staticmethod
     def _componenti_repo_factory():
@@ -771,7 +778,7 @@ class HandlerOrdini(BaseSourceHandler):
     """
 
     name = "HandlerOrdini"
-    sorgente_codice = "ORDINE_VENDITA"
+    sorgente_codice = SORGENTE_ORDINE_VENDITA
 
     @staticmethod
     def _componenti_repo_factory():
@@ -788,7 +795,7 @@ class HandlerContratti(BaseSourceHandler):
     """
 
     name = "HandlerContratti"
-    sorgente_codice = "CONTRATTO"
+    sorgente_codice = SORGENTE_CONTRATTO
 
     @staticmethod
     def _componenti_repo_factory():
@@ -805,7 +812,7 @@ class HandlerDdt(BaseSourceHandler):
     """
 
     name = "HandlerDdt"
-    sorgente_codice = "DDT_VENDITA"
+    sorgente_codice = SORGENTE_DDT_VENDITA
 
     @staticmethod
     def _componenti_repo_factory():
@@ -840,7 +847,7 @@ class HandlerConsumi(BaseSourceHandler):
     """
 
     name = "HandlerConsumi"
-    sorgente_codice = "ATTIVITA_CONSUMI"
+    sorgente_codice = SORGENTE_ATTIVITA_CONSUMI
 
     def _expand_rows(self, row: PushableRow) -> list[PushableRow]:
         """Fan-out: espande una riga consumo base in N righe componente."""

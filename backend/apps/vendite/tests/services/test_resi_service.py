@@ -123,6 +123,7 @@ from apps.vendite.services import resi_service
 from apps.vendite.services.resi_service import _db_errors
 
 _REPO = "apps.vendite.services.resi_service.ResiRepository"
+_SORGENTI_REPO = "apps.vendite.services.resi_service.SorgentiRepository"
 _SVC = "apps.vendite.services.resi_service"
 _ATOMIC = "apps.vendite.services.resi_service.transaction.atomic"
 
@@ -233,14 +234,15 @@ class ResiCreaTests(SimpleTestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    @patch(_SORGENTI_REPO)
     @patch(_REPO)
-    def test_crea_reso_ok(self, repo_cls) -> None:
+    def test_crea_reso_ok(self, repo_cls, sorgenti_cls) -> None:
         repo = repo_cls.return_value
         repo.get_ddt_sorgente.return_value = {
             "id": 30, "uid": "u-ddt-30", "numero": "DDT01",
             "stato_codice_interno": "CONSEGNATO",
         }
-        repo.get_sorgente_tipo_id_by_codice.return_value = 8
+        sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_reso.return_value = {"id": 7, "uid": "u-reso", "numero": None}
 
@@ -249,7 +251,7 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(out["id"], 7)
         self.assertEqual(out["righe_ids"], [])
         # Sorgente risolta per codice (mai id hardcoded) e uid del DDT.
-        repo.get_sorgente_tipo_id_by_codice.assert_called_once_with("DDT_VENDITA")
+        sorgenti_cls.return_value.get_sorgente_attiva.assert_called_once_with("DDT_VENDITA")
         repo.get_stato_id_by_codice.assert_called_once_with("DRAFT")
         kwargs = repo.create_reso.call_args.kwargs
         self.assertEqual(kwargs["sorgente_tipo_id"], 8)
@@ -296,8 +298,9 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_RESO_DDT_NON_CONSEGNATO")
         repo.create_reso.assert_not_called()
 
+    @patch(_SORGENTI_REPO)
     @patch(_REPO)
-    def test_crea_reso_con_righe_atomic(self, repo_cls) -> None:
+    def test_crea_reso_con_righe_atomic(self, repo_cls, sorgenti_cls) -> None:
         # Pannello FE: testata + N righe in un'unica chiamata; le righe
         # ricevono lo snapshot dalla riga DDT e finiscono in righe_ids.
         # riga_nr assegnato in batch (testata nuova): NIENTE next_riga_nr.
@@ -305,7 +308,7 @@ class ResiCreaTests(SimpleTestCase):
         repo.get_ddt_sorgente.return_value = {
             "id": 30, "uid": "u-ddt-30", "stato_codice_interno": "CONSEGNATO",
         }
-        repo.get_sorgente_tipo_id_by_codice.return_value = 8
+        sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
         repo.get_stato_id_by_codice.return_value = 1
         repo.create_reso.return_value = {"id": 7, "uid": "u", "numero": None}
         repo.get_ddt_riga_snapshot.return_value = dict(_SNAPSHOT_RIGA)
@@ -327,15 +330,16 @@ class ResiCreaTests(SimpleTestCase):
         self.assertEqual(kwargs["qta_operativa"], "3")
         self.assertEqual(kwargs["motivo"], "danneggiato")
 
+    @patch(_SORGENTI_REPO)
     @patch(_REPO)
-    def test_crea_reso_data_non_iso(self, repo_cls) -> None:
+    def test_crea_reso_data_non_iso(self, repo_cls, sorgenti_cls) -> None:
         # `data` non ISO -> 4xx parlante, non errore DB grezzo (o peggio
         # interpretazione DateStyle-dipendente).
         repo = repo_cls.return_value
         repo.get_ddt_sorgente.return_value = {
             "id": 30, "uid": "u-ddt-30", "stato_codice_interno": "CONSEGNATO",
         }
-        repo.get_sorgente_tipo_id_by_codice.return_value = 8
+        sorgenti_cls.return_value.get_sorgente_attiva.return_value = {"id": 8}
         repo.get_stato_id_by_codice.return_value = 1
         with self.assertRaises(ServiceError) as cm:
             resi_service.crea_reso({"ddt_id": 30, "data": "13/07/2026"})

@@ -22,7 +22,9 @@ from __future__ import annotations
 import unittest
 
 from apps.ai_assistant.tools.documenti_tools import _SORGENTE_UID_RESOLVERS
-from apps.vendite.api.preventivi_documenti_views import _CODICE_SORGENTE_PREVENTIVO
+# Il codice della sorgente del gemello: la view `preventivi_documenti_views` lo
+# prende da qui (dal 2026-10-11 non ne tiene piu' una copia locale).
+from apps.config.sorgenti import SORGENTE_PREVENTIVO
 
 
 class TestDocumentiToolGemello(unittest.TestCase):
@@ -31,7 +33,7 @@ class TestDocumentiToolGemello(unittest.TestCase):
     #    voce in piu' nella mappa.
     def test_le_sorgenti_sono_quella_del_gemello(self) -> None:
         self.assertEqual(
-            set(_SORGENTE_UID_RESOLVERS), {_CODICE_SORGENTE_PREVENTIVO},
+            set(_SORGENTE_UID_RESOLVERS), {SORGENTE_PREVENTIVO},
             "cerca_documenti_generati ha il permesso della lista documenti del "
             "preventivo: una sorgente diversa vuole il suo tool e il suo gemello",
         )

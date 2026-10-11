@@ -308,10 +308,13 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   ~2,1 → ~0,6 s. Nello stesso giorno: `COST 5000` sulle funzioni di policy (`20261010-77`, `-79`,
   linee-guida-sql §10.3). Debito residuo: ⬜ **D26-2**, `work-in-progress/brief-db-plancache-funzioni-con-query-incorporate.md`
   (le altre funzioni che ripianificano a ogni chiamata; il lister senza filtri), aperto, non iniziato.
-- ⬜ **La lineage dei documenti si costruisce per il documento** (`work-in-progress/brief-db-lineage-seminata-per-chiave.md`,
-  2026-10-10): il grafo è costruito sempre intero, e ogni pagina di sette liste ne paga la chiusura (~0,42 s,
-  dbdev come app). Quattro decisioni attese (§6), fra cui la strada per le liste (A solo DB, B col backend, C dato
-  persistito). Aperto, non iniziato.
+- ✅ **La lineage dei documenti si costruisce per il documento: chiuso il 2026-10-11**
+  (`work-done/brief-db-lineage-seminata-per-chiave.md`): grafo seminato per chiave (`fn_documento_lineage_nodi`,
+  `_archi`, `_sintesi`), le sette viste di lista senza il grafo e `vw_documento_lineage` ritirata
+  (`20261011-62…-67`, `-92…-99`, pgTAP verdi). BE (B1): liste, export e drawer leggono le colonne del grafo
+  dalla sintesi dopo la paginazione (BB `unisci_sintesi_lineage`). Chiusa con lui anche la D-5 del brief
+  plancache (lista offerte letta per id). Nello stesso giro i codici di `config.sorgenti` in un posto solo
+  (`apps/config/sorgenti.py`) e un solo lookup per codice (`SorgentiRepository`).
 - ⏳ **Offerta: emissione ed erogazione** (`work-in-progress/brief-db-offerta-emissione-ed-erogazione.md`, dal
   collaudo del drawer del 2026-10-07): DB giri 1-3 applicati e verdi (§F: quantità calcolata, listino del documento),
   BE/FE fatti il 2026-10-08 (§G, non committati). Restano i tre trovati del §F.4.3 da decidere (la quantità DERIVATA),
@@ -356,15 +359,18 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   si cancella in bozza ritirando i legami, e l'annullo di una bolla con legami li ritira con conferma
   (`vendite.fn_annulla_ddt`). DB `20261011-05 … -20`, `-34`, `-35`; BE/FE §10; collaudo di Tid superato.
   Nessun residuo: il cambio di stato del DDT dal verbo resta nel Lotto 3 (sopra).
-- ⏳ **Annullare un documento con legami** (`work-in-progress/brief-db-annullo-documento-con-legami.md`, D29,
-  2026-10-11): quando un documento nato da un altro si annulla, l'origine si riapre, con conferma. Caso 1
-  (bolla → ordine/reso) fatto e collaudato nel giro di D28; aperti preventivo → ordine, offerta → contratto/ordine
-  (oggi consumati per sempre) e il ritiro dalla commessa (silenzioso). Decisioni prese da Tid il 2026-10-11
-  (§5: tutti con conferma dichiarata e verbo, anche la commessa; preventivo → ordine col ritiro del legame;
-  offerta → contratto/ordine con l'unicita' sui soli vivi). ✅ Lato DB applicato e verde il 2026-10-11
-  (`20261011-68 … -91`, §8): lettore unico `vendite.fn_documento_legami`, avviso
-  `E_DOC_ANNULLO_CON_LEGAMI`, verbi `fn_annulla_<documento>`; ritirati il ritiro automatico dalla commessa e
-  `fn_ddt_legami`. ✅ Lato BE/FE fatto il 2026-10-11 (§9: finestra di conferma comune ai quattro documenti, verbi di annullo, R-4/R-5), provato sul DB vero; resta il collaudo a video.
+- ✅ **Annullare un documento con legami: chiuso il 2026-10-11**
+  (`work-done/brief-db-annullo-documento-con-legami.md`, D29): bolla, ordine, preventivo e contratto si
+  annullano dal loro verbo (`vendite.fn_annulla_<documento>`) con l'avviso `E_DOC_ANNULLO_CON_LEGAMI`, la
+  finestra di conferma comune (lettore unico `vendite.fn_documento_legami`) e la dichiarazione dei legami
+  visti; l'origine si riapre (ordine da evadere, reso da ri-consegnare, preventivo di nuovo ACCETTATO,
+  offerta di nuovo trasformabile: unicita' sui soli vivi). DB `20261011-68 … -91` + caso 1 del giro D28;
+  BE/FE §9; collaudo di Tid superato. Il verso dalla commessa e' D30 (sotto).
+- 📝 **Tornare indietro: annullare a valle riapre a monte**
+  (`work-in-progress/brief-db-annullo-a-valle-riapre-a-monte.md`, D30, 2026-10-11): annullare una commessa
+  oggi non segnala niente e non riapre il preventivo (resta EVASO) ne' l'ordine. Principio di Tid: tornare
+  indietro riapre a monte con la segnalazione, in avanti e' bloccato, un unico meccanismo (la forma di D29).
+  Decisioni chiuse il 2026-10-11; al team DB, poi `CommessaGestioneDrawer` con la finestra comune.
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito

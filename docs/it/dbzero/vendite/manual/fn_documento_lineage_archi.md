@@ -5,7 +5,7 @@
 > [vendite.vw_documento_lineage_archi](/dbzero/vendite/views/vw_documento_lineage_archi) — la stessa cosa per tutto il grafo, con i nodi decorati
 > [vendite.fn_documento_lineage_nodi](/dbzero/vendite/funzioni/fn_documento_lineage_nodi) — i nodi, con lo stesso seme
 > [vendite.fn_documento_lineage](/dbzero/vendite/funzioni/fn_documento_lineage) — il pannello «Passaggi»
-> Brief: `docs/it/dev/work-in-progress/brief-db-lineage-seminata-per-chiave.md` §8.2-§8.3
+> Brief: `docs/it/dev/work-done/brief-db-lineage-seminata-per-chiave.md` §8.2-§8.3
 
 ---
 ### 🎯 Scopo Principale

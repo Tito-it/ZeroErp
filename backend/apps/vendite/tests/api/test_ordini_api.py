@@ -39,7 +39,7 @@ _SVC = "apps.vendite.services.ordini_service"
 # dipendenze sono importate nel modulo della view documentale.
 _DOC_VIEW_SVC = "apps.vendite.api.ordini_documenti_views.ordini_service"
 _DOC_GEN_SVC = "apps.vendite.api.ordini_documenti_views.DocumentGenerationService"
-_DOC_REPO = "apps.documenti.api.contesto_helpers.DocumentiRepository"
+_SORGENTI_REPO = "apps.documenti.api.contesto_helpers.SorgentiRepository"
 _ORD_REPO = "apps.vendite.api.ordini_documenti_views.OrdiniRepository"
 _VIEW_ATOMIC = "apps.documenti.api.sorgente_documenti_views.transaction.atomic"
 
@@ -195,11 +195,11 @@ class TestOrdineEmissione(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_ORD_REPO)
     @patch(_DOC_VIEW_SVC)
     def test_emetti_route_ok(
-        self, svc_mod, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+        self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
     ) -> None:
         svc_mod.conferma.return_value = {"ordine_id": 7, "stato": "CONFERMATO"}
         repo_cls.return_value.get_for_documento_generation.return_value = {
@@ -207,8 +207,8 @@ class TestOrdineEmissione(JwtMockedApiTest):
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 4, "codice": "ORDINE_VENDITA", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 4, "codice": "ORDINE_VENDITA",
         }
         doc_svc_cls.return_value.genera_documento.return_value = {
             "id": 100, "uid": "doc-uid-100", "nome_file": "ordine.pdf",
@@ -223,11 +223,11 @@ class TestOrdineEmissione(JwtMockedApiTest):
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(_VIEW_ATOMIC)
     @patch(_DOC_GEN_SVC)
-    @patch(_DOC_REPO)
+    @patch(_SORGENTI_REPO)
     @patch(_ORD_REPO)
     @patch(_DOC_VIEW_SVC)
     def test_emetti_integration_atomic_conferma_genera_allegati(
-        self, svc_mod, repo_cls, doc_repo_cls, doc_svc_cls, _atomic, _auth,
+        self, svc_mod, repo_cls, sorgenti_repo_cls, doc_svc_cls, _atomic, _auth,
     ) -> None:
         svc_mod.conferma.return_value = {
             "ordine_id": 7, "stato_precedente": "DRAFT", "stato": "CONFERMATO",
@@ -237,8 +237,8 @@ class TestOrdineEmissione(JwtMockedApiTest):
             "uid": "0190b000-0000-0000-0000-000000000007",
             "emittente_fiscale_id": 11,
         }
-        doc_repo_cls.return_value.get_sorgente_tipo_id_by_codice.return_value = {
-            "id": 4, "codice": "ORDINE_VENDITA", "attivo": True,
+        sorgenti_repo_cls.return_value.get_sorgente_attiva.return_value = {
+            "id": 4, "codice": "ORDINE_VENDITA",
         }
         doc_svc_cls.return_value.genera_documento.return_value = {
             "id": 100, "uid": "doc-uid-100", "nome_file": "ordine.pdf",

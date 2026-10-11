@@ -22,6 +22,7 @@ from typing import Any
 
 from django.db import connection
 
+from apps.config.sorgenti import SORGENTE_RESO_VENDITA
 from apps.core.api.constants import MAX_LIMIT
 from apps.core.db._helpers import (
     limiti_pagina,
@@ -37,6 +38,7 @@ from apps.core.db._helpers import (
 )
 from apps.core.db.emittente_scope_helpers import add_emittente_scope_condition
 from apps.vendite.db._coda_documento_filtro import lettura_coda_per_documento
+from apps.vendite.db._lineage_sintesi import unisci_sintesi_lineage
 from apps.vendite.db._righe_repo_mixin import RigheDocumentoRepositoryMixin
 from apps.core.db.sql_write_helpers import execute_dynamic_insert, execute_dynamic_update
 
@@ -178,9 +180,10 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
     #        id_fiscale_univoco_cf_piva), `stato_codice_interno` per la severity
     #        del Tag FE, il DDT di origine e `emittente_fiscale_id` per lo scope
     #        operatore (RLS `rls_resi_ef_whitelist` + filtro applicativo).
-    #        Dal 2026-08-25 anche le colonne di genealogia (`fase`, pratica,
-    #        frontiera, discendenti, `is_transitato`): `vw_resi_lista` e' la
-    #        SESTA SORELLA delle liste documento. Su un reso la frontiera e' la
+    #        Dal 2026-08-25 anche le colonne di genealogia (`fase`, pratica
+    #        dalla vista; frontiera, discendenti, `is_transitato` dalla sintesi
+    #        lineage dal 2026-10-11): `vw_resi_lista` e' la SESTA SORELLA delle
+    #        liste documento. Su un reso la frontiera e' la
     #        NOTA DI CREDITO che lo accredita (arco S), quindi la colonna
     #        «Transito» risponde a «questo reso e' gia' stato accreditato, e con
     #        quale documento».
@@ -256,9 +259,9 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         #    mostra «—» — cioe' «non transitato» — proprio sul reso accreditato,
         #    che e' l'unica cosa che questa lista doveva dire (arco S,
         #    2026-08-25).
-        # ⭐ Dal 20260829-02 il codice lo porta LA VISTA
-        #    (`frontiera_tipo_codice_interno`) e qui non si decodifica piu'
-        #    niente: prima il grafo parlava per id e ogni lista si scriveva il
+        # ⭐ Il codice lo porta LA SINTESI lineage
+        #    (`frontiera_tipo_codice_interno`, unita dopo la paginazione) e qui
+        #    non si decodifica niente: prima il grafo parlava per id e ogni lista si scriveva il
         #    suo `LEFT JOIN config.sorgenti` — sette copie della stessa riga, e
         #    proprio questa era nata senza.
         data_sql = f"""
@@ -277,6 +280,9 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
             cursor.execute(data_sql, [*params, safe_limit, safe_offset])
             results = rows_to_list(cursor)
 
+        # Le colonne del grafo dalla sintesi, per le chiavi della pagina
+        # (brief-db-lineage-seminata-per-chiave B1): la vista non le porta piu'.
+        unisci_sintesi_lineage(results, tipo_codice_interno=SORGENTE_RESO_VENDITA)
         return results, total_count
 
     # Scopo: Dettaglio singolo reso. Riusa la vista canonica (decodifiche +
@@ -945,19 +951,6 @@ class ResiRepository(RigheDocumentoRepositoryMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [ddt_riga_id])
             return row_to_dict(cursor)
-
-    # Scopo: id della sorgente `config.sorgenti` via codice_interno (riuso riga
-    #        DDT_VENDITA esistente — mai id hardcoded).
-    def get_sorgente_tipo_id_by_codice(self, codice_interno: str) -> int | None:
-        sql = """
-            SELECT id FROM config.sorgenti
-             WHERE codice_interno = %s AND attivo = true
-             LIMIT 1
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [codice_interno])
-            row = cursor.fetchone()
-            return row[0] if row else None
 
     # Scopo: id di uno stato reso via codice_interno (immutabile).
     def get_stato_id_by_codice(self, codice_interno: str) -> int | None:

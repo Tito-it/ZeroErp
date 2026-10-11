@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.config.sorgenti import SORGENTE_FATTURA
 from apps.documenti.api.sorgente_documenti_views import (
     build_documenti_sorgente_views,
 )
@@ -31,10 +32,6 @@ from apps.documenti.services.document_generation_service import (
 )
 from apps.vendite.db.vendite_repository import VenditeRepository
 
-# Codice sorgente FATTURA → id risolto runtime via repo (memoria
-# feedback_no_hardcoded_ids). Allineato a config.sorgenti.codice_interno +
-# documenti.tipi_documento_output.codice + template context_builder_code.
-_CODICE_SORGENTE_FATTURA = "FATTURA"
 
 
 # Scopo: Closure di dominio per il factory: contesto minimo (id, uid,
@@ -56,7 +53,7 @@ def _doc_service() -> DocumentGenerationService:
 # (namespace.emetti = None). La fattura non si emette da UI: si stampa/ristampa.
 _views = build_documenti_sorgente_views(
     schema_prefix="Fattura",
-    sorgente_codice=_CODICE_SORGENTE_FATTURA,
+    sorgente_codice=SORGENTE_FATTURA,
     not_found_message="Fattura non trovata.",
     emittente_message="Emittente fiscale non risolto per la fattura.",
     get_entity=_get_entity,
