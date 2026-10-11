@@ -6,7 +6,8 @@
 > e la domanda di Tid del 2026-10-11: *«quando esiste un legame, ci sia la conferma: abbiamo altri
 > legami simili per cui segnalare "attenzione, si riapre qualcosa"?»*
 > **Stato (2026-10-11):** ✅ **caso 1 (bolla) applicato e verde** (§3, changeSet del giro D28, applicati
-> da Tid il 2026-10-11, pgTAP senza regressioni). ⬜ **Casi 2-5 aperti** (§4): decisioni attese da Tid (§5).
+> da Tid il 2026-10-11, pgTAP senza regressioni). ⬜ **Casi 2-5 aperti** (§4): decisioni **prese** da Tid il
+> 2026-10-11 (§5: D-1…D-5, D-2 strada A); scrittura non iniziata, attende il via (§5.2).
 > **Nel registro dei difetti DB:** voce **D29** di `migliorie-generali-da-test-valutazione.md`, che rimanda
 > qui.
 
@@ -123,14 +124,37 @@ il freno della commessa), e lo stato dell'offerta cambia all'annullo del documen
 La regola e' gia' giusta (strada A): manca solo la conferma. `script.fn_check_sorgente_chiudibile` sa gia'
 quali righe si ritirano: l'avviso e la conferma si appoggiano li'.
 
-## 5. Decisioni attese da Tid
+## 5. Decisioni di Tid (2026-10-11)
 
-| # | Domanda | Proposta |
+| # | Domanda | Decisione |
 | --- | --- | --- |
-| **D-1** | I casi 2-5 seguono il principio del §1 (si riapre, con conferma)? | ✅ si' |
-| **D-2** | Caso 2: il legame si ritira (riga d'ordine scollegata) o lo smistamento ignora gli ordini annullati? | ritiro, come D-8: il dato dice la verita' senza che ogni lettore debba filtrare |
-| **D-3** | Casi 3-4: il push guarda solo i documenti vivi? L'offerta torna da trasformare? | si', con `is_abortito` dal vocabolario |
-| **D-4** | Una forma comune: un **lettore unico dei legami** per documento (il generale di `vendite.fn_ddt_legami`), un **codice unico di avviso** («annullandolo si riapre…») e un **verbo di annullo con conferma** per documento | si': regola del 2, alla seconda finestra di conferma la prima diventa il building block; senza, cinque finestre scritte in cinque modi |
+| **D-1** | I casi 2-5 seguono il principio del §1 (si riapre, con conferma)? | ✅ **si'**, tutti e quattro |
+| **D-2** | Caso 2: il legame si ritira (riga d'ordine scollegata) o lo smistamento ignora gli ordini annullati? | ✅ **strada A, il legame si ritira** (§5.1) |
+| **D-3** | Casi 3-4: il push guarda solo i documenti vivi? L'offerta torna da trasformare? | ✅ **si'**, con `is_abortito` dal vocabolario |
+| **D-4** | Una forma comune: un **lettore unico dei legami** per documento (il generale di `vendite.fn_ddt_legami`), un **codice unico di avviso** («annullandolo si riapre…») e un **verbo di annullo con conferma** per documento | ✅ **si'**: regola del 2, alla seconda finestra di conferma la prima diventa il building block (e la forma della bolla, §3, vi si riallinea nello stesso giro: niente copie accanto al BB) |
+| **D-5** | Caso 5 (commessa): la regola c'e' gia', manca l'avviso. Stesso stampo degli altri o un avviso senza rifiuto? | ✅ **stesso stampo**: rifiuto con l'avviso, **conferma dichiarata** e **verbo** di annullo, come gli altri casi |
+
+### 5.1 D-2 in chiaro: perche' il ritiro
+
+Annullando un ordine nato da un preventivo, le sue righe perdono `preventivo_riga_id` (torna NULL), come
+la bolla perde i suoi legami in D-8; il preventivo torna da EVASO ad ACCETTATO (arco nuovo della matrice).
+
+* **Il dato dice la verita'**: una riga di preventivo e' occupata solo se un ordine **vivo** la usa. Chi
+  legge (oggi `vw_preventivi_righe_smistabili_ordine`, domani altri) non deve ricordarsi di escludere gli
+  ordini annullati.
+* **La struttura lo pretende**: `uq_ordini_righe_v_preventivo_riga` (UNIQUE parziale su
+  `preventivo_riga_id IS NOT NULL`) dice «una riga di preventivo sta in una sola riga d'ordine». Con
+  l'aggancio lasciato sull'ordine annullato, il secondo ordine dallo stesso preventivo sbatterebbe sul
+  UNIQUE; per tenerlo servirebbe un guard scritto a mano «una sola riga d'ordine **viva**» (un indice non
+  vede lo stato, che sta sulla testata). Col ritiro il UNIQUE resta com'e' e garantisce la regola giusta.
+* **Il prezzo, accettato**: la riga dell'ordine annullato non dice piu' da quale riga del preventivo
+  veniva. La testata lo dice ancora (`documento_origine_*`, e il lineage), quindi si perde il solo
+  dettaglio riga per riga, su un documento morto.
+
+### 5.2 Prossimo passo (non iniziato: Tid, 2026-10-11, «aspetta ancora»)
+
+Per ogni caso, prima il pgTAP che lo **costruisce** (§2, ⚠️: i casi 2-4 sono letti dal contratto), poi i
+changeSet. La scrittura dei changeSet attende il via di Tid.
 
 ## 6. Ricaduta BE/FE (quando i casi 2-5 sono fatti)
 

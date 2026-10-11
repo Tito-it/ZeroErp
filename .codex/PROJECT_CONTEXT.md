@@ -362,7 +362,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
 - 📝 **Annullare un documento con legami** (`work-in-progress/brief-db-annullo-documento-con-legami.md`, D29,
   2026-10-11): quando un documento nato da un altro si annulla, l'origine si riapre, con conferma. Caso 1
   (bolla → ordine/reso) applicato nel giro di D28; aperti preventivo → ordine, offerta → contratto/ordine
-  (oggi consumati per sempre) e il ritiro dalla commessa (silenzioso). Decisioni attese da Tid (§5).
+  (oggi consumati per sempre) e il ritiro dalla commessa (silenzioso). Decisioni prese da Tid il 2026-10-11
+  (§5: tutti con conferma dichiarata e verbo, anche la commessa; preventivo → ordine col ritiro del legame);
+  scrittura non iniziata.
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito
