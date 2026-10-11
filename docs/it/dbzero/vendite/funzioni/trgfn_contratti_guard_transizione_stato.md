@@ -30,6 +30,10 @@ AS $function$
 --   dal building block script.fn_check_prezzi_autorizzati — righe E
 --   componenti, PENDING E REJECTED (brief-db-preventivi-congelamento-
 --   pricing, D-4/D-5).
+-- Aggiornato 2026-10-11: ->ATTIVO solleva anche il primo motivo di
+--   script.fn_check_indirizzi_documento_cliente — un indirizzo d'anagrafica
+--   che non e' del cliente del contratto (brief-db-indirizzi-documento-
+--   seguono-il-cliente, D-3).
 DECLARE
     v_codice_da config.stati_doc_contratti.codice_interno%TYPE;
     v_codice_a  config.stati_doc_contratti.codice_interno%TYPE;
@@ -115,12 +119,32 @@ BEGIN
                 'stato_a',      v_codice_a));
     END IF;
 
+    -- Indirizzi del cliente (rev 2026-10-11, brief-db-indirizzi-documento-
+    -- seguono-il-cliente, D-3 di Tid): il cliente del contratto (BA/istanza)
+    -- si cambia in DRAFT, e un indirizzo d'anagrafica del cliente di prima, o
+    -- di una fornitura che il contratto non ha piu', non si attiva.
+    -- ⭐ Il predicato e' script.fn_check_indirizzi_documento_cliente, lo
+    --   stesso che fn_available_actions_contratto somma per spegnere «Attiva»,
+    --   dopo listino e prezzi: lo stesso ordine qui.
+    IF v_codice_a = 'ATTIVO' THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_indirizzi_documento_cliente('CONTRATTO', NEW.id),
+            'tipo_indirizzo_id',
+            NEW.tx_id,
+            jsonb_build_object(
+                'contratto_id', NEW.id,
+                'numero',       NEW.numero,
+                'stato_da',     v_codice_da,
+                'stato_a',      v_codice_a));
+    END IF;
+
     RETURN NEW;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_contratti_guard_transizione_stato()
-IS 'Trigger function: controlla transizioni stato contratto. DRAFT->ATTIVO: sempre ammessa (check PENDING componenti BoM). DRAFT->ANNULLATO: sempre ammessa (nessuna fatturazione su DRAFT). ATTIVO->ANNULLATO: non ammessa (raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. rev 2026-05-20 (DRAFT->ANNULLATO). rev 2026-09-24: all''''ingresso in ATTIVO il controllo del prezzo passa dal building block script.fn_check_prezzi_autorizzati via fn_raise_primo_motivo_se_presente — righe E componenti BoM attivi, PENDING E REJECTED, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO. Prima guardava i soli componenti PENDING e sollevava E_COMPONENTE_PREZZO_PENDENTE (che resta al guard per riga dei componenti). La capability fn_available_actions_contratto legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5).';
+IS 'Trigger function: controlla transizioni stato contratto. DRAFT->ATTIVO: sempre ammessa (check PENDING componenti BoM). DRAFT->ANNULLATO: sempre ammessa (nessuna fatturazione su DRAFT). ATTIVO->ANNULLATO: non ammessa (raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA). ATTIVO->CESSATO: job automatico (GUC app.cessazione_automatica=true) ammette valido_al<oggi; cessazione manuale ammette valido_al>=oggi (no retroattiva). Retroattiva raise E_CONTRATTO_VALIDO_AL_RETROATTIVO (449); NULL raise E_CONTRATTO_STATO_TRANSIZIONE_INVALIDA. rev 2026-05-20 (DRAFT->ANNULLATO). rev 2026-09-24: all''''ingresso in ATTIVO il controllo del prezzo passa dal building block script.fn_check_prezzi_autorizzati via fn_raise_primo_motivo_se_presente — righe E componenti BoM attivi, PENDING E REJECTED, codici E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO. Prima guardava i soli componenti PENDING e sollevava E_COMPONENTE_PREZZO_PENDENTE (che resta al guard per riga dei componenti). La capability fn_available_actions_contratto legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5). rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-3 di Tid): verso ATTIVO, dopo i prezzi, solleva il primo motivo di script.fn_check_indirizzi_documento_cliente(''CONTRATTO'', id) — E_INDIRIZZO_DOC_NON_DEL_CLIENTE, un indirizzo d''anagrafica che non e'' del cliente del contratto — nell''ordine della capability.';
 ```
 
 ---

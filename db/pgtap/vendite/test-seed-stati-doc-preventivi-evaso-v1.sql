@@ -7,7 +7,8 @@
 -- 1) Stato EVASO esiste in config.stati_doc_preventivi con codice_interno='EVASO', attivo=TRUE
 -- 2) Stato EVASO ha ordine=45 (tra ACCETTATO=40 e RIFIUTATO=50)
 -- 3) Transizione ACCETTATO → EVASO esiste con manuale=false
--- 4) Nessuna transizione in uscita da EVASO (stato terminale)
+-- 4) Da EVASO nessuna uscita MANUALE; l'unica uscita e' l'automatica EVASO -> ACCETTATO
+--    (rev 2026-10-11, brief-db-annullo-documento-con-legami D-2)
 -- ------------------------------------------------------------
 
 BEGIN;
@@ -71,15 +72,21 @@ SELECT ok(
 );
 
 -- ============================================================
--- TEST 4) Nessuna transizione in uscita da EVASO (stato terminale)
+-- TEST 4) Da EVASO: nessuna uscita manuale, una sola automatica verso ACCETTATO
 -- ============================================================
-SELECT ok(
-  NOT EXISTS (
-    SELECT 1
-    FROM config.transizioni_stati_preventivi t
-    JOIN config.stati_doc_preventivi sd ON sd.id = t.stato_da_id AND sd.codice_interno = 'EVASO'
-  ),
-  'config.transizioni_stati_preventivi: nessuna transizione in uscita da EVASO (stato terminale)'
+-- ⭐ rev 2026-10-11 (brief-db-annullo-documento-con-legami, D-2 di Tid): EVASO
+--   era senza uscite. Annullare un ordine nato dal preventivo ne stacca le righe,
+--   e un preventivo EVASO che ha di nuovo un residuo torna ACCETTATO: lo fa il
+--   ritiro dei legami (vendite.fn_documento_ritira_legami), mai l'operatore.
+--   «Terminale» resta vero per chi preme i pulsanti: nessuna uscita manuale.
+SELECT is(
+  (SELECT string_agg(sa.codice_interno || ':' || COALESCE(t.meta->>'manuale', 'NULL'), ',' ORDER BY sa.codice_interno)
+     FROM config.transizioni_stati_preventivi t
+     JOIN config.stati_doc_preventivi sd ON sd.id = t.stato_da_id AND sd.codice_interno = 'EVASO'
+     JOIN config.stati_doc_preventivi sa ON sa.id = t.stato_a_id
+    WHERE t.attivo IS TRUE),
+  'ACCETTATO:false',
+  'config.transizioni_stati_preventivi: da EVASO nessuna uscita manuale, solo EVASO -> ACCETTATO automatica (D-2)'
 );
 
 SELECT * FROM finish();

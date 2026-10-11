@@ -75,3 +75,13 @@ chiuso. Brief `brief-db-testata-dopo-emissione`, fase 2.
 * **Gli indirizzi (R-DB-3).** `can_edit_indirizzi`: vero se gli indirizzi si possono scrivere
   nello stato della bolla, letto dal lock montato su `vendite.ddt_indirizzi` (in bozza sì,
   fuori no).
+
+### ⛔ Si pianifica una volta (`plan_cache_mode`, changeSet 20261010-83)
+
+La funzione porta `SET plan_cache_mode = force_generic_plan`: chiama con un
+parametro la diagnosi del push, una funzione SQL che si incorpora in una query
+grande, e in modo `auto` la plancache la ripianificava a ogni chiamata.
+⚠️ È una proprietà **invisibile nel corpo**: un `CREATE OR REPLACE` che non la
+ripete la perde, senza errore e con gli stessi risultati. Presidio:
+`db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql`.
+

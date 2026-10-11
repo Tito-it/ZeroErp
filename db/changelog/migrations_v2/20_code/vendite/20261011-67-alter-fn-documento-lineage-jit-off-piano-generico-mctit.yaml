@@ -1,0 +1,125 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# LA LINEAGE PER CHIAVE NON PASSA DAL JIT, E SI PIANIFICA UNA VOLTA
+#   vendite.fn_documento_lineage_nodi(bigint[], text[])
+#   vendite.fn_documento_lineage_archi(bigint[], text[])
+#   SET jit = off, SET plan_cache_mode = force_generic_plan.
+#   Brief: brief-db-lineage-seminata-per-chiave §8.4.
+#
+# ── IL DIFETTO (trovato da Tid col pgTAP, anche sul database VUOTO) ──
+#   Le due funzioni (20261011-63/-64) portano nel corpo i due modi: «tutti»
+#   e «seme». Quando il seme e' una costante il planner piega i rami
+#   dell'altro modo e li toglie. Quando NON lo e' — una colonna di una riga
+#   esterna, un parametro plpgsql — li tiene tutti, e il costo STIMATO del
+#   piano supera le soglie del JIT: la compilazione di centinaia di
+#   espressioni costa piu' della query, a ogni esecuzione. Non dipende dai
+#   dati ma dalla grandezza del piano, e sulle tabelle grandi i costi stimati
+#   salgono: scatterebbe di piu', non di meno.
+#   Fatti datati (2026-10-11, dbdev come app): la forma del pgTAP (seme
+#   preso dalla riga esterna) ~4,8 s a chiamata col JIT, 25 ms senza.
+#
+# ── LA CURA ─────────────────────────────────────────────────────────
+#   SET jit = off: niente compilazione JIT per queste query.
+#   SET plan_cache_mode = force_generic_plan: una clausola SET rende la
+#   funzione NON incorporabile, quindi si pianifica dentro di se', e in
+#   PG18 il piano di una funzione SQL sta nella plancache della sessione.
+#   Col generico si pianifica una volta: i rami del modo che non serve
+#   restano dietro il loro One-Time Filter e non si eseguono.
+#   Cosi' sparisce anche il costo di pianificazione notato in
+#   20261011-64/-66 (~45 ms a chiamata in `auto`, ~+30 ms sulla vista).
+#   Fatti datati (2026-10-11, dbdev come app, copie pg_temp con le due
+#   clausole): vista degli archi intera ~155 ms (prima ~210, pianificazione
+#   compresa); vista dei nodi ~39 ms (invariata); un nodo come seme ~11 ms;
+#   la forma del pgTAP ~11,5 ms a chiamata; equivalenza con le viste a zero.
+#   ⭐ Le viste non si ricreano: incorporare o no una funzione si decide
+#   quando si pianifica, non quando si crea la vista.
+#   ⭐ ALTER, non CREATE OR REPLACE: corpo, firma e %TYPE restano.
+#
+# ── ⛔ PROPRIETA' INVISIBILI NEL CORPO ──────────────────────────────
+#   Un CREATE OR REPLACE FUNCTION che non ripete le due clausole SET le
+#   perde, con risultati identici. Presidio:
+#   db/pgtap/script/test-plan-cache-mode-piano-generico-v1.sql (test 6-7).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-67-alter-fn-documento-lineage-jit-off-piano-generico-mctit.yaml
+
+  - changeSet:
+      id: 20261011-67-alter-fn-documento-lineage-jit-off-piano-generico
+      author: mctit
+      runOnChange: false
+      validCheckSums:
+        - ANY
+      failOnError: true
+      comment: >
+        fn_documento_lineage_nodi e fn_documento_lineage_archi: SET jit = off e SET plan_cache_mode
+        = force_generic_plan. Con un seme non costante il piano tiene i rami dei due modi e il JIT
+        ne compilava le espressioni a ogni chiamata (~4,8 s contro 25 ms, anche a database vuoto).
+        Non incorporabili, si pianificano una volta per sessione. ALTER: corpo e %TYPE restano.
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 2
+            sql: |
+              SELECT count(*) FROM pg_proc p
+                JOIN pg_namespace n ON n.oid = p.pronamespace
+               WHERE n.nspname = 'vendite'
+                 AND p.proname IN ('fn_documento_lineage_nodi', 'fn_documento_lineage_archi');
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- ⛔ Si perdono a ogni CREATE OR REPLACE che non ripete le clausole SET:
+              --    presidio in script/test-plan-cache-mode-piano-generico-v1.sql.
+              ALTER FUNCTION vendite.fn_documento_lineage_nodi(bigint[], text[])
+                SET jit = off;
+              ALTER FUNCTION vendite.fn_documento_lineage_nodi(bigint[], text[])
+                SET plan_cache_mode = force_generic_plan;
+              ALTER FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[])
+                SET jit = off;
+              ALTER FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[])
+                SET plan_cache_mode = force_generic_plan;
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              -- Il COMMENT vivo resta: gli si premette la revisione (il -64 diceva
+              -- «chi la chiama in un ciclo dichiari il piano generico»: ora lo
+              -- dichiara la funzione stessa).
+              DO $c$
+              DECLARE
+                  v_fn regprocedure;
+              BEGIN
+                  FOREACH v_fn IN ARRAY ARRAY[
+                      'vendite.fn_documento_lineage_nodi(bigint[], text[])'::regprocedure,
+                      'vendite.fn_documento_lineage_archi(bigint[], text[])'::regprocedure]
+                  LOOP
+                      EXECUTE format('COMMENT ON FUNCTION %s IS %L', v_fn,
+                          '⭐ rev 2026-10-11 (20261011-67): SET jit = off e SET plan_cache_mode = '
+                          'force_generic_plan sulla funzione. Con un seme non costante il piano '
+                          'tiene i rami dei due modi e il JIT ne compilava le espressioni a ogni '
+                          'chiamata; le clausole la rendono non incorporabile e la pianificano una '
+                          'volta per sessione: chi la chiama non deve dichiarare niente. '
+                          || coalesce(obj_description(v_fn, 'pg_proc'), ''));
+                  END LOOP;
+              END
+              $c$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER FUNCTION vendite.fn_documento_lineage_nodi(bigint[], text[])  RESET jit;
+              ALTER FUNCTION vendite.fn_documento_lineage_nodi(bigint[], text[])  RESET plan_cache_mode;
+              ALTER FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[]) RESET jit;
+              ALTER FUNCTION vendite.fn_documento_lineage_archi(bigint[], text[]) RESET plan_cache_mode;

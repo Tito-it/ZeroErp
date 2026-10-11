@@ -1046,8 +1046,10 @@ tutti i documenti: quando un documento nato da un altro si annulla, quello a mon
 con una conferma. Bolla → ordine e ri-consegna → reso sono fatti (D-8); restano preventivo → ordine,
 offerta → contratto, offerta → ordine (oggi consumati per sempre) e il ritiro dalla commessa (corretto ma
 silenzioso). Dettaglio, censimento e decisioni attese nel brief
-[brief-db-annullo-documento-con-legami.md](brief-db-annullo-documento-con-legami.md). ✅ Caso 1 applicato,
-casi 2-5 aperti.
+[brief-db-annullo-documento-con-legami.md](brief-db-annullo-documento-con-legami.md). ✅ Caso 1 applicato.
+📝 Casi 2-5 decisi da Tid (D-1…D-6) e scritti il 2026-10-11 con la forma comune (lettore, avviso, conferma,
+verbo per documento): ✅ applicati e verdi il 2026-10-11 (`20261011-68 … -91`, §8 del brief). Lato DB
+chiuso; resta BE/FE (§6).
 
 ---
 

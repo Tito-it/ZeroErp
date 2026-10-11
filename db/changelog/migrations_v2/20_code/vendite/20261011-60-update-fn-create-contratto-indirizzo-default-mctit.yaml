@@ -1,0 +1,164 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CONTRATTO NASCE CON LO SLOT DI DEFAULT GIA' RIEMPITO
+#   vendite.fn_create_contratto
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-2, §7.2 b)
+#
+#   Decisione di Tid del 2026-10-11 sul «quando»: alla creazione il
+#   riempimento dello slot di default lo fa scattare chi crea. Il contratto
+#   ha una funzione madre: la chiama lei, in coda (vendite.fn_doc_indirizzo_
+#   default, 20261011-49). Il backend smette di chiamare
+#   auto_assegna_indirizzo_default dopo create_contratto_atomico (§6).
+#   RETURNS TABLE ancorato a %TYPE: bigint e character varying come prima
+#   (il typmod non entra nella firma), nessun DROP.
+#   Corpo: doc auto-generata (= 20260831-24), con la sola chiamata nuova.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-60-update-fn-create-contratto-indirizzo-default-mctit.yaml
+
+  - changeSet:
+      id: 20261011-60-update-fn-create-contratto-indirizzo-default
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_create_contratto: in coda riempie lo slot di default dall'anagrafica del cliente
+        (vendite.fn_doc_indirizzo_default). Brief: brief-db-indirizzi-documento-seguono-il-cliente (D-2).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_create_contratto(p_testata jsonb, p_utility jsonb DEFAULT NULL::jsonb)
+               RETURNS TABLE(contratto_id vendite.contratti.id%TYPE, numero vendite.contratti.numero%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                  v_numero       vendite.contratti.numero%TYPE;
+                  v_stato_id     vendite.contratti.stato_doc_contratto_id%TYPE;
+                  v_contratto_id vendite.contratti.id%TYPE;
+                  v_cols         text[];
+                  v_insert_cols  text;
+                  v_select_cols  text;
+                  v_sql          text;
+                  -- rev 2026-07-27: aggiunta 'fatturazione_immediata' (corsia di
+                  -- instradamento, Fase B brief emissione mirata). Va decisa PRIMA
+                  -- del push in commessa: in create e' il momento naturale, e senza
+                  -- questa voce la chiave veniva scartata in silenzio.
+                  -- rev 2026-08-31: aggiunti i TRE RIFERIMENTI DELL'ATTO — CIG, CUP
+                  -- e commessa. Stesso difetto della riga sopra, sulla stessa
+                  -- funzione: in PATCH il backend li scriveva gia', in CREATE la
+                  -- chiave veniva scartata e il contratto nasceva senza il CIG,
+                  -- senza nessun errore. ⚠️ A differenza di fatturazione_immediata
+                  -- le tre sono NULLABLE: un null e' un valore legittimo e vuol
+                  -- dire «non c'e' un CIG», quindi il BE puo' mandarle sempre.
+                  v_testata_allowed text[] := ARRAY[
+                      'billing_account_id', 'emittente_fiscale_id', 'istanza_utility_id',
+                      'utility_id', 'ambito', 'valido_dal', 'valido_al',
+                      'parent_contratto_id', 'data', 'listino_id',
+                      'tipo_variazione_globale', 'valore_variazione_globale',
+                      'categoria_cliente_id_snapshot', 'valuta_id',
+                      'fatturazione_immediata',
+                      'codice_cig', 'codice_cup', 'codice_commessa', 'meta'
+                  ];
+                  v_util_allowed text[] := ARRAY[
+                      'istanza_utility_id', 'utility_id', 'istanza_dati_precontrattuali_id',
+                      'tipo_utenza_id', 'classe_utenza_id', 'param_1_num',
+                      'param_2_txt', 'meta'
+                  ];
+              BEGIN
+                  -- ----------------------------------------------------
+                  -- 1) Numero contratto (consuma il contatore; rolla con
+                  --    la funzione se un qualsiasi step successivo fallisce).
+                  -- ----------------------------------------------------
+                  v_numero := script.fn_generate_codice('contratto');
+
+                  -- 2) Stato iniziale DRAFT.
+                  SELECT s.id
+                    INTO v_stato_id
+                    FROM config.stati_doc_contratti s
+                   WHERE s.codice_interno = 'DRAFT';
+                  IF NOT FOUND THEN
+                      PERFORM script.fn_log_and_raise_error(
+                          'database',
+                          'vendite.fn_create_contratto',
+                          'E_CONFIG_MANCANTE',
+                          jsonb_build_object('config', 'config.stati_doc_contratti.DRAFT'),
+                          NULL::uuid,
+                          VARIADIC ARRAY['stato iniziale DRAFT (config.stati_doc_contratti)']
+                      );
+                  END IF;
+
+                  -- ----------------------------------------------------
+                  -- 3) INSERT testata: solo chiavi whitelisted presenti
+                  --    (le assenti ereditano default/trigger DB).
+                  -- ----------------------------------------------------
+                  SELECT array_agg(quote_ident(key) ORDER BY key)
+                    INTO v_cols
+                    FROM jsonb_object_keys(COALESCE(p_testata, '{}'::jsonb)) AS key
+                   WHERE key = ANY(v_testata_allowed);
+
+                  v_insert_cols := COALESCE(', ' || array_to_string(v_cols, ', '), '');
+                  v_select_cols := COALESCE(
+                      ', ' || (SELECT string_agg('r.' || c, ', ' ORDER BY n)
+                                 FROM unnest(v_cols) WITH ORDINALITY AS u(c, n)),
+                      '');
+
+                  v_sql := format(
+                      'INSERT INTO vendite.contratti (numero, stato_doc_contratto_id%s) '
+                      'SELECT $1, $2%s '
+                      '  FROM jsonb_populate_record(NULL::vendite.contratti, $3) AS r '
+                      'RETURNING id',
+                      v_insert_cols, v_select_cols);
+                  EXECUTE v_sql
+                     INTO v_contratto_id
+                    USING v_numero, v_stato_id, COALESCE(p_testata, '{}'::jsonb);
+
+                  -- ----------------------------------------------------
+                  -- 4) INSERT utility opzionale.
+                  -- ----------------------------------------------------
+                  IF p_utility IS NOT NULL AND p_utility <> '{}'::jsonb THEN
+                      SELECT array_agg(quote_ident(key) ORDER BY key)
+                        INTO v_cols
+                        FROM jsonb_object_keys(p_utility) AS key
+                       WHERE key = ANY(v_util_allowed);
+
+                      v_insert_cols := COALESCE(', ' || array_to_string(v_cols, ', '), '');
+                      v_select_cols := COALESCE(
+                          ', ' || (SELECT string_agg('r.' || c, ', ' ORDER BY n)
+                                     FROM unnest(v_cols) WITH ORDINALITY AS u(c, n)),
+                          '');
+
+                      v_sql := format(
+                          'INSERT INTO vendite.contratti_utilities (contratto_id%s) '
+                          'SELECT $1%s '
+                          '  FROM jsonb_populate_record(NULL::vendite.contratti_utilities, $2) AS r',
+                          v_insert_cols, v_select_cols);
+                      EXECUTE v_sql USING v_contratto_id, p_utility;
+                  END IF;
+
+                  -- ----------------------------------------------------
+                  -- 5) Lo slot di default dall'anagrafica del cliente (rev 2026-10-11,
+                  --    brief-db-indirizzi-documento-seguono-il-cliente, D-2 e decisione di
+                  --    Tid sul «quando»: alla creazione lo fa scattare chi crea). La regola
+                  --    sta in vendite.fn_doc_indirizzo_default; prima la applicava il
+                  --    backend dopo questa funzione (auto_assegna_indirizzo_default).
+                  --    Dopo la fornitura: l'istanza del contratto c'e' gia' in testata.
+                  -- ----------------------------------------------------
+                  PERFORM vendite.fn_doc_indirizzo_default('CONTRATTO', v_contratto_id);
+
+                  RETURN QUERY
+                  SELECT v_contratto_id, v_numero;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_create_contratto(p_testata jsonb, p_utility jsonb)
+              IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. rev 2026-08-31: aggiunti ''codice_cig'', ''codice_cup'' e ''codice_commessa'' — i tre riferimenti dell''atto, colonne dal 20260829-13. ⛔ E'' LO STESSO DIFETTO della rev precedente sulla stessa funzione: in PATCH il backend li scriveva gia'', in CREATE la chiave veniva SCARTATA e il contratto nasceva senza il CIG, con un 200 e nessun errore a video. Un CIG nasce con la gara, cioe'' PRIMA del contratto: la creazione e'' il momento naturale per digitarlo. ⚠️ IL FILTRO E'' SULLA PRESENZA DELLA CHIAVE, e la semantica del null NON e'' la stessa su tutte le voci: ''fatturazione_immediata'' e'' NOT NULL con DEFAULT false, quindi chiave assente = DEFAULT e chiave = null = 23502 (il BE deve omettere o mandare un booleano, mai null); i tre codici dell''atto sono NULLABLE, quindi un null e'' un valore legittimo che significa «non c''e'' un CIG» e il BE puo'' mandarli sempre. ⛔ La whitelist resta NON fail-loud (chiave ignota scartata e non respinta): renderla tale cambierebbe il comportamento di TUTTE le chiavi di una madre gia'' in uso dal backend, e resta la proposta §6 di brief-db-fatturazione-immediata-create-contratto. Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto + brief-db-fn-create-contratto-codici-atto. rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-2): in coda, lo slot di default dall''anagrafica del cliente con vendite.fn_doc_indirizzo_default(''CONTRATTO'', id) — prima lo faceva il backend dopo questa funzione. RETURNS TABLE ancorato (vendite.contratti.id%TYPE, vendite.contratti.numero%TYPE: stessi tipi).';

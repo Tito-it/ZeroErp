@@ -116,13 +116,23 @@ BEGIN
         EXECUTE v_sql USING v_contratto_id, p_utility;
     END IF;
 
+    -- ----------------------------------------------------
+    -- 5) Lo slot di default dall'anagrafica del cliente (rev 2026-10-11,
+    --    brief-db-indirizzi-documento-seguono-il-cliente, D-2 e decisione di
+    --    Tid sul «quando»: alla creazione lo fa scattare chi crea). La regola
+    --    sta in vendite.fn_doc_indirizzo_default; prima la applicava il
+    --    backend dopo questa funzione (auto_assegna_indirizzo_default).
+    --    Dopo la fornitura: l'istanza del contratto c'e' gia' in testata.
+    -- ----------------------------------------------------
+    PERFORM vendite.fn_doc_indirizzo_default('CONTRATTO', v_contratto_id);
+
     RETURN QUERY
     SELECT v_contratto_id, v_numero;
 END;
 $function$
 
 COMMENT ON FUNCTION vendite.fn_create_contratto(p_testata jsonb, p_utility jsonb)
-IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. rev 2026-08-31: aggiunti ''codice_cig'', ''codice_cup'' e ''codice_commessa'' — i tre riferimenti dell''atto, colonne dal 20260829-13. ⛔ E'' LO STESSO DIFETTO della rev precedente sulla stessa funzione: in PATCH il backend li scriveva gia'', in CREATE la chiave veniva SCARTATA e il contratto nasceva senza il CIG, con un 200 e nessun errore a video. Un CIG nasce con la gara, cioe'' PRIMA del contratto: la creazione e'' il momento naturale per digitarlo. ⚠️ IL FILTRO E'' SULLA PRESENZA DELLA CHIAVE, e la semantica del null NON e'' la stessa su tutte le voci: ''fatturazione_immediata'' e'' NOT NULL con DEFAULT false, quindi chiave assente = DEFAULT e chiave = null = 23502 (il BE deve omettere o mandare un booleano, mai null); i tre codici dell''atto sono NULLABLE, quindi un null e'' un valore legittimo che significa «non c''e'' un CIG» e il BE puo'' mandarli sempre. ⛔ La whitelist resta NON fail-loud (chiave ignota scartata e non respinta): renderla tale cambierebbe il comportamento di TUTTE le chiavi di una madre gia'' in uso dal backend, e resta la proposta §6 di brief-db-fatturazione-immediata-create-contratto. Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto + brief-db-fn-create-contratto-codici-atto.';
+IS 'Funzione madre atomica: genera il numero, crea la testata contratto (stato DRAFT) e l''eventuale riga utility in un''unica statement (o tutto o rollback, contatore numero incluso). INSERT dinamico delle sole chiavi whitelisted presenti (rispetta i default DB). SECURITY INVOKER. Ritorna (contratto_id, numero). rev 2026-07-27: ''fatturazione_immediata'' aggiunta a v_testata_allowed — la corsia di instradamento si decide PRIMA del push in commessa e la create e'' il momento naturale; senza questa voce la chiave veniva scartata in silenzio. rev 2026-08-31: aggiunti ''codice_cig'', ''codice_cup'' e ''codice_commessa'' — i tre riferimenti dell''atto, colonne dal 20260829-13. ⛔ E'' LO STESSO DIFETTO della rev precedente sulla stessa funzione: in PATCH il backend li scriveva gia'', in CREATE la chiave veniva SCARTATA e il contratto nasceva senza il CIG, con un 200 e nessun errore a video. Un CIG nasce con la gara, cioe'' PRIMA del contratto: la creazione e'' il momento naturale per digitarlo. ⚠️ IL FILTRO E'' SULLA PRESENZA DELLA CHIAVE, e la semantica del null NON e'' la stessa su tutte le voci: ''fatturazione_immediata'' e'' NOT NULL con DEFAULT false, quindi chiave assente = DEFAULT e chiave = null = 23502 (il BE deve omettere o mandare un booleano, mai null); i tre codici dell''atto sono NULLABLE, quindi un null e'' un valore legittimo che significa «non c''e'' un CIG» e il BE puo'' mandarli sempre. ⛔ La whitelist resta NON fail-loud (chiave ignota scartata e non respinta): renderla tale cambierebbe il comportamento di TUTTE le chiavi di una madre gia'' in uso dal backend, e resta la proposta §6 di brief-db-fatturazione-immediata-create-contratto. Piano: analisi-fix-transazioni Classe A #2 + brief-db-fatturazione-immediata-create-contratto + brief-db-fn-create-contratto-codici-atto. rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-2): in coda, lo slot di default dall''anagrafica del cliente con vendite.fn_doc_indirizzo_default(''CONTRATTO'', id) — prima lo faceva il backend dopo questa funzione. RETURNS TABLE ancorato (vendite.contratti.id%TYPE, vendite.contratti.numero%TYPE: stessi tipi).';
 ```
 
 ---

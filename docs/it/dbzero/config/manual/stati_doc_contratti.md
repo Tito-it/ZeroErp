@@ -33,8 +33,8 @@ dell'attivazione). Gli stati con `is_abortito = true` hanno effetti speciali:
   usa un predicato parziale `WHERE NOT is_abortito_snapshot`: i contratti in
   stato abortito sono esclusi dal check di sovrapposizione temporale.
 * `is_abortito` viene denormalizzato su `vendite.contratti.is_abortito_snapshot`
-  tramite il trigger `trg_contratti_z90_sync_is_abortito_snapshot_ins_upd`
-  ad ogni transizione di stato.
+  tramite il trigger `trg_contratti_z90_snapshot_da_stato_ins_upd` (BB
+  `vendite.trgfn_doc_snapshot_da_stato`, dal 2026-10-11) a ogni scrittura.
 
 #### Campo `meta`
 

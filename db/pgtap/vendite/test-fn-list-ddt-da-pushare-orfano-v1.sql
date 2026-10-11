@@ -124,10 +124,11 @@ BEGIN
     -- da CONSEGNATO e' attivo=f)
     -- ⭐ rev 2026-10-11 (brief-db-ddt-righe-evase-dall-ordine, D-8): la bolla nasce
     --   dall'ordine e ne porta il legame. L'annullo diretto e' rifiutato
-    --   (E_DDT_ANNULLO_CON_LEGAMI): passa dal verbo, dichiarando le righe legate
-    --   lette da vendite.fn_ddt_legami, come fa la finestra di conferma.
+    --   (E_DOC_ANNULLO_CON_LEGAMI): passa dal verbo, dichiarando i legami letti
+    --   da vendite.fn_documento_legami, come fa la finestra di conferma
+    --   (rev 2026-10-11, brief-db-annullo-documento-con-legami D-4).
     PERFORM vendite.fn_annulla_ddt(v_ddt,
-        (SELECT count(DISTINCT l.ddt_riga_id)::integer FROM vendite.fn_ddt_legami(v_ddt) l));
+        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT', v_ddt) l));
   ELSIF p_stato_finale <> r.stato_ddt_emesso_id THEN
     UPDATE vendite.ddt SET stato_doc_ddt_id=r.stato_ddt_spedito_id WHERE id=v_ddt;
     IF p_stato_finale <> r.stato_ddt_spedito_id THEN

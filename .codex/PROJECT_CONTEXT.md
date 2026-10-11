@@ -347,7 +347,9 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-in-progress/brief-db-indirizzi-documento-seguono-il-cliente.md`, D27, 2026-10-10): su DDT, preventivo
   e offerta il cliente si cambia in bozza ma gli indirizzi presi dall'anagrafica del cliente di prima restano,
   e l'emissione non lo vede. Decisioni chiuse il 2026-10-10: regola e auto-assegnazione dello slot di default
-  nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. Al team DB, codice da scrivere.
+  nel DB, motivo d'emissione nuovo; il BE ritira i suoi helper. ✅ DB applicato e verde il 2026-10-11 (`20261011-43…-61`): slot di default come dato, guard d'origine sulle sei `*_indirizzi`,
+  cambio di cliente in bozza a trigger, codice `E_INDIRIZZO_DOC_NON_DEL_CLIENTE` nei gate; alla creazione il
+  default lo chiama chi crea (D-2-bis di Tid). ⏳ Tocca a BE/FE (§6, nello stesso giro: chiave i18n e policy del codice); D-4 fatta (la revisione dell'offerta copia gli indirizzi).
 - ⏳ **Le righe di un DDT nato da un ordine** (`work-in-progress/brief-db-ddt-righe-evase-dall-ordine.md`, D28,
   2026-10-10): in bozza la riga evasa cambia quantità e articolo senza che il fulfillment lo veda (ordine evaso
   per 10, bolla a 6). Decisioni chiuse il 2026-10-10: riga evasa ferma; verbo DB per correggere la quantità in
@@ -357,10 +359,15 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   D-6/D-7 (Tid, 2026-10-11): niente legami nuovi su bolle emesse, e la ri-consegna di un reso segue la
   stessa regola, dentro lo stesso brief.
   D-8: annullare una bolla con legami li ritira (l'ordine si riapre), ma con conferma (`vendite.fn_annulla_ddt`).
-- 📝 **Annullare un documento con legami** (`work-in-progress/brief-db-annullo-documento-con-legami.md`, D29,
+- ⏳ **Annullare un documento con legami** (`work-in-progress/brief-db-annullo-documento-con-legami.md`, D29,
   2026-10-11): quando un documento nato da un altro si annulla, l'origine si riapre, con conferma. Caso 1
   (bolla → ordine/reso) applicato nel giro di D28; aperti preventivo → ordine, offerta → contratto/ordine
-  (oggi consumati per sempre) e il ritiro dalla commessa (silenzioso). Decisioni attese da Tid (§5).
+  (oggi consumati per sempre) e il ritiro dalla commessa (silenzioso). Decisioni prese da Tid il 2026-10-11
+  (§5: tutti con conferma dichiarata e verbo, anche la commessa; preventivo → ordine col ritiro del legame;
+  offerta → contratto/ordine con l'unicita' sui soli vivi). ✅ Lato DB applicato e verde il 2026-10-11
+  (`20261011-68 … -91`, §8): lettore unico `vendite.fn_documento_legami`, avviso
+  `E_DOC_ANNULLO_CON_LEGAMI`, verbi `fn_annulla_<documento>`; ritirati il ritiro automatico dalla commessa e
+  `fn_ddt_legami`. Poi BE/FE (§6, R-5 nello stesso rilascio).
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito

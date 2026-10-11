@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# L'ORDINE SA SE E' VIVO: is_abortito_snapshot
+#   vendite.ordini.is_abortito_snapshot boolean NOT NULL DEFAULT false
+#   Brief: brief-db-annullo-documento-con-legami (§7.1, D-6 di Tid)
+#
+# ── PERCHE' UNA COLONNA ─────────────────────────────────────────────
+#   «Un'offerta genera al piu' un ordine VIVO» (D-6) e' un indice unico
+#   parziale, e un predicato di indice non legge un'altra tabella: lo
+#   stato abortito deve stare sulla riga. E' la forma che il contratto ha
+#   gia' (vendite.contratti.is_abortito_snapshot, 20260521-01), per lo
+#   stesso motivo.
+#
+# ── CHI LA SCRIVE ───────────────────────────────────────────────────
+#   Il BB vendite.trgfn_doc_snapshot_da_stato (20261011-71), BEFORE INSERT
+#   e UPDATE, da config.stati_doc_ordini.is_abortito (20261011-72). Qui
+#   solo la colonna e l'allineamento delle righe che ci sono.
+#   Su un database da zero non ci sono ordini.
+#
+# ── ⛔ L'ALLINEAMENTO SENZA I TRIGGER DELLA TABELLA ─────────────────
+#   Un UPDATE di vendite.ordini fa scattare anche i trigger AFTER
+#   «il padre dev'essere attivo» (emittente, registro, termine di
+#   pagamento…), che controllano a OGNI UPDATE, non solo al cambio della
+#   FK. Un ordine annullato che punta a un termine di pagamento poi
+#   disattivato e' uno stato che il modello ammette, e l'allineamento
+#   morirebbe li'. La colonna e' DERIVATA, non un fatto di dominio: niente
+#   audit, niente storico, niente guard. Quindi DISABLE TRIGGER USER
+#   intorno al solo UPDATE (i trigger di vincolo delle FK restano: non
+#   sono USER). Non nomina nessun trigger: vale anche su un database da
+#   zero, dove i trigger generati da ci_apply non ci sono ancora (§11.5).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261011-69-alter-ordini-add-is-abortito-snapshot-mctit.yaml
+
+  - changeSet:
+      id: 20261011-69-alter-ordini-add-is-abortito-snapshot
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.ordini.is_abortito_snapshot: lo stato abortito sulla riga, per l'unicita' «un'offerta
+        genera al piu' un ordine vivo» (indice parziale). Forma gemella di vendite.contratti.
+        D-6 di brief-db-annullo-documento-con-legami.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - tableExists: { schemaName: vendite, tableName: ordini }
+            - not:
+                - columnExists: { schemaName: vendite, tableName: ordini, columnName: is_abortito_snapshot }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.ordini
+                  ADD COLUMN is_abortito_snapshot boolean NOT NULL DEFAULT false;
+
+              COMMENT ON COLUMN vendite.ordini.is_abortito_snapshot IS
+                  'Snapshot di config.stati_doc_ordini.is_abortito (2026-10-11, brief-db-annullo-documento-con-legami D-6): l''ordine e'' in uno stato di annullo. Lo scrive il BB vendite.trgfn_doc_snapshot_da_stato, BEFORE INSERT e UPDATE: non si scrive a mano. Serve all''indice unico parziale uq_ordini_v_documento_origine_offerta (un''offerta genera al piu'' un ordine VIVO), che non puo'' leggere il vocabolario. Gemella di vendite.contratti.is_abortito_snapshot.';
+
+              -- Si spengono e si riaccendono i SOLI trigger accesi, ciascuno nel
+              -- modo in cui era acceso: uno spento di proposito resta spento
+              -- (ENABLE TRIGGER USER lo riaccenderebbe), uno ALWAYS resta ALWAYS.
+              DO $do$
+              DECLARE
+                  v_nomi  text[];
+                  v_modi  "char"[];
+                  i       integer;
+              BEGIN
+                  -- L'elenco si legge UNA volta, prima di spegnere.
+                  SELECT array_agg(t.tgname::text ORDER BY t.tgname),
+                         array_agg(t.tgenabled    ORDER BY t.tgname)
+                    INTO v_nomi, v_modi
+                    FROM pg_catalog.pg_trigger t
+                   WHERE t.tgrelid = 'vendite.ordini'::regclass
+                     AND NOT t.tgisinternal
+                     AND t.tgenabled <> 'D';
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.ordini DISABLE TRIGGER %I', v_nomi[i]);
+                  END LOOP;
+
+                  UPDATE vendite.ordini o
+                     SET is_abortito_snapshot = true
+                    FROM config.stati_doc_ordini s
+                   WHERE s.id = o.stato_doc_ordine_id
+                     AND s.is_abortito;
+
+                  FOR i IN 1 .. COALESCE(cardinality(v_nomi), 0) LOOP
+                      EXECUTE format('ALTER TABLE vendite.ordini ENABLE %s TRIGGER %I',
+                                     CASE v_modi[i] WHEN 'A' THEN 'ALWAYS'
+                                                    WHEN 'R' THEN 'REPLICA'
+                                                    ELSE '' END,
+                                     v_nomi[i]);
+                  END LOOP;
+              END;
+              $do$;
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              ALTER TABLE vendite.ordini DROP COLUMN IF EXISTS is_abortito_snapshot;

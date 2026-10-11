@@ -1,0 +1,88 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGI: vendite.trgfn_doc_indirizzi_guard_cliente sulle sei *_indirizzi
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§5.4, §7.2 c)
+#
+#   BEFORE INSERT OR UPDATE OF le due origini e la colonna verso la testata:
+#   sono le sole colonne che cambiano il legame, e nessun trigger BEFORE
+#   della tabella le scrive (linee-guida-trigger: UPDATE OF e' giusto).
+#   Fascia _a10_, nome «guard_origine»: dopo il lock di stato (_a05_), dopo
+#   congelamento e scope emittente della fattura (alfabetico), prima della
+#   whitelist dei tipi.
+#   ⛔ I nomi restano sotto i 63 caratteri (il piu' lungo: 59).
+#   Chi ci passa: il backend (picker e una-tantum), le cascate dei verbi
+#   (fn_genera_ddt_da_ordine, fn_genera_ddt_riconsegna,
+#   fn_push_preventivo_a_ordine, fn_push_offerta_a_contratto,
+#   fn_crea_revisione_preventivo: lo stesso BA lungo la catena, quindi lo
+#   stesso ruolo), vendite.fn_snapshot_indirizzi_fattura (dal BA di testata)
+#   e vendite.fn_doc_indirizzo_default.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-48-create-trigger-indirizzi-guard-origine-mctit.yaml
+
+  - changeSet:
+      id: 20261011-48-create-trigger-indirizzi-guard-origine
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_doc_indirizzi_guard_cliente sulle sei *_indirizzi (DDT, ordine,
+        preventivo, offerta, contratto, fattura). Brief: brief-db-indirizzi-documento-seguono-il-cliente (§7.2 c).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite'
+                 AND t.tgname LIKE 'trg_%_indirizzi_a10_guard_origine_ins_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_ddt_indirizzi_a10_guard_origine_ins_upd
+                  BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, ddt_id
+                  ON vendite.ddt_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('DDT');
+
+              CREATE TRIGGER trg_ordini_indirizzi_a10_guard_origine_ins_upd
+                  BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, ordine_id
+                  ON vendite.ordini_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('ORDINE');
+
+              CREATE TRIGGER trg_preventivi_indirizzi_a10_guard_origine_ins_upd
+                  BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, preventivo_id
+                  ON vendite.preventivi_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('PREVENTIVO');
+
+              CREATE TRIGGER trg_offerte_commerciali_indirizzi_a10_guard_origine_ins_upd
+                  BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, offerta_id
+                  ON vendite.offerte_commerciali_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('OFFERTA');
+
+              CREATE TRIGGER trg_contratti_indirizzi_a10_guard_origine_ins_upd
+                  BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, contratto_id
+                  ON vendite.contratti_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('CONTRATTO');
+
+              CREATE TRIGGER trg_fatture_indirizzi_a10_guard_origine_ins_upd
+                  BEFORE INSERT OR UPDATE OF origine_indirizzo_id, origine_soggetto_ruolo_id, fattura_id
+                  ON vendite.fatture_indirizzi
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_guard_cliente('FATTURA');

@@ -26,6 +26,10 @@ AS $function$
 -- altrimenti quella in vigore oggi) dopo il predicato
 -- script.fn_check_listino_congelabile (brief-db-offerta-emissione-ed-
 -- erogazione §C.1.3).
+-- rev 2026-10-11: BOZZA->EMESSA solleva anche il primo motivo di
+-- script.fn_check_indirizzi_documento_cliente — un indirizzo d'anagrafica
+-- che non e' del cliente dell'offerta (brief-db-indirizzi-documento-
+-- seguono-il-cliente, D-3).
 DECLARE
     v_codice_da config.stati_doc_offerte.codice_interno%TYPE;
     v_codice_a  config.stati_doc_offerte.codice_interno%TYPE;
@@ -171,6 +175,28 @@ BEGIN
                 'stato_a',    v_codice_a));
     END IF;
 
+    -- Indirizzi del cliente (rev 2026-10-11, brief-db-indirizzi-documento-
+    -- seguono-il-cliente, D-3 di Tid): il cliente dell'offerta (BA/istanza) si
+    -- cambia in bozza, e un indirizzo d'anagrafica del cliente di prima, o di
+    -- una fornitura che l'offerta non ha piu', non va al cliente.
+    -- ⭐ Il predicato e' script.fn_check_indirizzi_documento_cliente, lo
+    --   stesso che fn_available_actions_offerta legge per spegnere «Emetti»,
+    --   dopo listino e prezzi: lo stesso ordine qui.
+    -- ⚠️ Solo all'emissione (BOZZA -> EMESSA): il rientro da uno stato di
+    --   superamento non e' un invio al cliente.
+    IF v_codice_da = 'BOZZA' AND v_codice_a = 'EMESSA' THEN
+        PERFORM script.fn_raise_primo_motivo_se_presente(
+            'database', TG_NAME::text,
+            script.fn_check_indirizzi_documento_cliente('OFFERTA', NEW.id),
+            'tipo_indirizzo_id',
+            NEW.tx_id,
+            jsonb_build_object(
+                'offerta_id', NEW.id,
+                'codice',     NEW.codice,
+                'stato_da',   v_codice_da,
+                'stato_a',    v_codice_a));
+    END IF;
+
     -- Valorizza il timestamp corrispondente al passaggio stato.
     -- ⚠️ data_emissione con COALESCE: un rientro SUPERATA->EMESSA e' un
     -- SECONDO ingresso in EMESSA, e riscrivere la data cancellerebbe il
@@ -189,7 +215,7 @@ END;
 $function$
 
 COMMENT ON FUNCTION vendite.trgfn_offerte_commerciali_guard_transizione()
-IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Regola del RIENTRO (rev 2026-08-28): si esce da uno stato con is_superato solo se non esiste piu'' una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA — la condizione vale per chiunque scriva, non solo per il trigger di rientro. Valorizza data_accettazione|data_rifiuto|data_annullamento, e data_emissione solo se ancora NULL (un rientro non riscrive la data di emissione reale). rev 2026-09-24: verso EMESSA e ACCETTATA solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su eccezioni e loro componenti BoM attivi, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO) — prima nessun controllo sul prezzo. ⛔ Non sul rientro da uno stato di superamento (flag is_superato): e'''' l''''automatismo del padre che torna vivo, e bloccarlo fermerebbe l''''annullamento della revisione. La capability fn_available_actions_offerta legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5). Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.3): BOZZA->EMESSA non pretende più una versione già fissata, la CONGELA: solleva il primo motivo di script.fn_check_listino_congelabile(''OFFERTA'', ...) — nessuna versione in vigore oggi (E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO) o versione fissata non ATTIVA (E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA), lo stesso predicato della capability — poi scrive NEW.listino_versione_id := vendite.fn_listino_versione_operativa (la fissata, altrimenti quella in vigore oggi), nella stessa scrittura del cambio stato. Prima la fissava il backend, e la capability spegneva «Emetti» perché non era ancora fissata.';
+IS 'BEFORE UPDATE OF stato_doc_offerta_id: blocca transizioni non ammesse (config-driven via config.stati_doc_offerte_transizioni). Guard BOZZA->EMESSA: listino_versione_id NOT NULL + stato ATTIVA. Regola del RIENTRO (rev 2026-08-28): si esce da uno stato con is_superato solo se non esiste piu'' una revisione figlia non abortita, altrimenti E_OFFERTA_RIENTRO_CON_REVISIONE_VIVA — la condizione vale per chiunque scriva, non solo per il trigger di rientro. Valorizza data_accettazione|data_rifiuto|data_annullamento, e data_emissione solo se ancora NULL (un rientro non riscrive la data di emissione reale). rev 2026-09-24: verso EMESSA e ACCETTATA solleva il primo motivo di script.fn_check_prezzi_autorizzati (prezzi PENDING o REJECTED su eccezioni e loro componenti BoM attivi, E_DOC_PREZZO_PENDENTE / E_DOC_PREZZO_RIFIUTATO) — prima nessun controllo sul prezzo. ⛔ Non sul rientro da uno stato di superamento (flag is_superato): e'''' l''''automatismo del padre che torna vivo, e bloccarlo fermerebbe l''''annullamento della revisione. La capability fn_available_actions_offerta legge la stessa funzione. Brief: brief-db-preventivi-congelamento-pricing (D-1, D-4, D-5). Rev 2026-10-07 (brief-db-offerta-emissione-ed-erogazione §C.1.3): BOZZA->EMESSA non pretende più una versione già fissata, la CONGELA: solleva il primo motivo di script.fn_check_listino_congelabile(''OFFERTA'', ...) — nessuna versione in vigore oggi (E_OFFERTA_EMISSIONE_SENZA_VERSIONE_LISTINO) o versione fissata non ATTIVA (E_OFFERTA_EMISSIONE_VERSIONE_LISTINO_NON_ATTIVA), lo stesso predicato della capability — poi scrive NEW.listino_versione_id := vendite.fn_listino_versione_operativa (la fissata, altrimenti quella in vigore oggi), nella stessa scrittura del cambio stato. Prima la fissava il backend, e la capability spegneva «Emetti» perché non era ancora fissata. rev 2026-10-11 (brief-db-indirizzi-documento-seguono-il-cliente, D-3 di Tid): BOZZA->EMESSA solleva anche il primo motivo di script.fn_check_indirizzi_documento_cliente(''OFFERTA'', id) — E_INDIRIZZO_DOC_NON_DEL_CLIENTE, un indirizzo d''anagrafica che non e'' del cliente dell''offerta (altro ruolo, o fornitura diversa) — dopo listino e prezzi, nell''ordine della capability.';
 ```
 
 ---
