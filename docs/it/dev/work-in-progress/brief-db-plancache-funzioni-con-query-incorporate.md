@@ -9,7 +9,7 @@
 > passo `20261010-44` ✅ applicato da Tid, pgTAP `vendite` rilanciati, misurato (§5.2).
 > D-6 e D-5 passate al brief figlio `brief-db-lineage-seminata-per-chiave`, ✅ chiuso il
 > 2026-10-11 (`work-done/`): tutte e due risolte. **2026-10-11**: D-3
-> misurata (§5bis), **D-3a** `20261011-42` ✅ applicato. Aperte **D-2** e **D-3b**. **Cosa resta: §6.**
+> misurata (§5bis), **D-3a** `20261011-42` ✅ applicato. **D-2** ✅ chiusa (`20261012-03` applicato, §5ter). Aperta solo **D-3b**. **Cosa resta: §6.**
 > **Ricadute BE/FE:** nessuna prevista.
 
 ## 1. Cosa ha insegnato il cantiere da cui nasce
@@ -224,12 +224,44 @@ invece di mostrarlo.
 **D-3b** (decisione attesa): dove vanno i ~115 ms del verbo, da profilare come
 query (nessun `auto_explain` come app: si fa per istruzione, a mano).
 
+## 5ter. D-2 — il lister dei DDT senza filtri (2026-10-11) — ✅ chiusa
+
+**Profilo** (dbdev come app): `fn_list_ddt_da_pushare(NULL, NULL, NULL, NULL)`
+~1,17 s, ed è tutta la diagnosi (`fn_ddt_push_diagnosi(NULL)` ~1,18 s). Ma la
+stessa diagnosi fatta DDT per DDT e sommata costa ~0,38 s: il ramo «tutti» non
+faceva più lavoro, era pianificato male.
+
+**Causa.** La CTE `src` della diagnosi (la riga d'ordine sorgente di ogni riga di
+DDT: il primo fulfillment, `LATERAL … LIMIT 1`) non era `MATERIALIZED`. `cand` la
+incorporava come sottoquery in `LEFT JOIN src s ON s.dr_id = r.dr_id` e, non
+potendole passare la chiave, la ricalcolava intera per ogni riga esterna: il
+`LATERAL` girava righe² volte, con tre policy a giro (58 righe: 3364 giri, ~1,05 s
+su 1,18). Cresce col **quadrato** delle righe di DDT del sistema.
+
+**Cura**: `20_code/vendite/20261012-03-update-fn-ddt-push-diagnosi-src-materialized`.
+`src AS MATERIALIZED`, corpo preso dal vivo `20261009-83` coi suoi `%TYPE`,
+COMMENT conservato con la revisione davanti.
+
+**Prove** (copia `pg_temp`, dbdev come app): diagnosi e lister identici ai vivi nel
+ramo «tutti» e DDT per DDT; stessa firma. Tempi: diagnosi di tutti 1178 → 169 ms,
+lister senza filtri 1135 → 154 ms, per DDT invariato (~410 ms per 62 chiamate).
+Sullo scratch, SQL estratto: i 6 pgTAP che toccano diagnosi, lister e capability
+identici prima e dopo.
+
+**Presidio** (decisione di Tid, 2026-10-11): `script/test-fn-available-actions-ddt-reason-catch-all-v1`
+test **18** (plan 17 → 18), pin di forma: nella diagnosi la CTE `src` è
+`MATERIALIZED`, letto da `pg_get_function_sqlbody` (il corpo è `BEGIN ATOMIC`).
+Senza la parola i risultati restano giusti e solo il tempo se ne accorge. Provato:
+rosso senza il `-03`, verde con.
+
+✅ **Applicato** da Tid (2026-10-11): `20261012-03`, pgTAP verdi.
+
 ## 6. Cosa resta — indice per chi riparte (aggiornato al 2026-10-11)
 
 | Voce | Cosa | Stato | Dove |
 | --- | --- | --- | --- |
 | D-1 | censimento delle funzioni che ripianificano | ✅ fatto | §4 |
-| **D-2** | il lister dei DDT **senza filtri** (diagnosi di tutti i DDT in una chiamata): profilarlo come query | ⬜ **aperto**, decisione attesa: ora o col volume. Rimisurato il 2026-10-11, dbdev come app: ~1,19 s su 62 DDT (il giro della lineage non lo tocca) | §2.2 |
+| D-2 | il lister dei DDT **senza filtri** (diagnosi di tutti i DDT in una chiamata) | ✅ **chiusa**: la CTE `src` si ricalcolava per ogni riga (righe² giri sotto RLS); `20261012-03` applicato, 1135 → 154 ms, presidio di forma (test 18) | §2.2, §5ter |
 | **D-3** | resi: misurare un ciclo di accredito **costruito** (in transazione annullata) e, clausola `plan_cache_mode` **solo** su `fn_resi_riga_tetti_accredito` (D-3a: non sul verbo né sul trigger, §5bis). Un solo changeSet, **numero riservato `20261011-42`** (in `20_code/vendite/`). Presidio: il pgTAP `test-fn-available-actions-ddt-piano-generico-v1` diventa `test-plan-cache-mode-piano-generico-v1` con le tre funzioni, e il vecchio si ritira nello stesso giro (decisione di Tid, 2026-10-11) | **D-3a** ✅ `20261011-42` applicato, presidio 5/5 su dbdev · **D-3b** ⬜ aperto (dove vanno i ~115 ms del verbo, da profilare per istruzione) | §4.3, §4.4, §5bis |
 | D-4 | pannello «Passaggi», primo passo | ✅ `20261010-44` applicato e misurato | §5.2 |
 | **D-5 + D-6** | lista offerte per id e lineage seminata (ogni pagina di sette liste paga il grafo intero) | ✅ **chiuse nel brief figlio** (2026-10-11): grafo seminato per chiave, liste ed export dalla sintesi dopo la paginazione, `vw_documento_lineage` ritirata | [brief-db-lineage-seminata-per-chiave](../work-done/brief-db-lineage-seminata-per-chiave.md) §8 |
