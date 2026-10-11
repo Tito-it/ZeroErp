@@ -467,6 +467,21 @@ per costruzione** (cercano lo stato di dopo), non per un difetto.
 applicati, le liste mostrano frontiera e transito **solo** se B1 (§8.1) è già nel
 backend: da verificare nella sessione BE.
 
+⚠️ **Trovato in CI dopo la chiusura (2026-10-11): `20261012-01`.** Il guardrail
+`scripts/sql/check_naming_stato_codice.sql` (linee-guida-sql §6c) ha rifiutato la
+definizione di `fn_documento_lineage_sintesi`: nella CTE `frontiera` il
+`config.sorgenti.codice_interno` del nodo si chiamava `d_tipo_codice`, cioè un
+codice interno col nome del codice mutabile (nato nel `-94`, ripreso nel `-96`).
+Il `20261012-01` ricrea la funzione con l'alias `d_tipo_codice_interno`: è
+interno alla CTE, la colonna che esce resta `frontiera_tipo_codice_interno`, quindi
+il BE non cambia. Nello stesso giro: il motivo scritto accanto a ogni tipo
+esplicito di `RETURNS TABLE` e `DECLARE` (dove non c'è una colonna per il
+`%TYPE`), e il COMMENT, che diceva ancora «seconda copia finché esiste la vista».
+Prova: scratch, SQL estratto in transazione annullata — firma e risultato
+identici, una sola funzione, guardrail verde; dbdev come app, copia in `pg_temp`
+contro la funzione viva sui 436 documenti di vendita: 436 righe, zero differenze.
+⏳ Da applicare (Tid).
+
 ### 8.1 Richiesta al team BE — B1 ⛔ URGENTE: il DB è già applicato
 
 > ✅ **Fatto (2026-10-11, `dev/backend-tid`).** Building block nuovo
