@@ -12,7 +12,7 @@
 --       e le due viste che ne sono la proiezione (20261011-65/-66).
 --       Brief: brief-db-lineage-seminata-per-chiave §8.2, giro 1.
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 22):
 --   1) le due funzioni esistono con la firma (bigint[], text[])
 --   2) nodi: BEGIN ATOMIC, STABLE, INVOKER
 --   3) archi: BEGIN ATOMIC, STABLE, INVOKER
@@ -35,6 +35,18 @@
 --      arco vivo per lettera, e i suoi due capi come seme danno gli archi della
 --      vista — skip() se nessuna c'e' (database da zero, CI)
 --  16) il nodo senza archi (il secondo preventivo) da' zero archi
+--  17) ⭐ il pannello (fn_documento_lineage, per livelli dal 20261011-93), in
+--      avanti dal preventivo del grafo costruito: 1A, 1B, 2E, 2H, 3U
+--  18) ⭐ e indietro dalla commessa: 1B, 1E, 1U, 2A, 2H, 3A — l'ordine arriva
+--      per due strade (A diretto al livello 2, e A dal DDT al livello 3): i
+--      percorsi sono due, e la guardia dei cicli e' sul percorso
+--  19) ⭐ la sintesi (fn_documento_lineage_sintesi, 20261011-94) dei cinque
+--      nodi costruiti, in un seme solo, = le loro righe di vw_documento_lineage
+--  20) ⭐ e ogni nodo da solo, idem — finche' esiste la vista sono DUE copie
+--      della regola, e questi due test le tengono uguali
+--  21) la commessa costruita ha tre sorgenti (B, E, U) e la radice e' il
+--      preventivo, che e' la sorgente ROOT
+--  22) la sintesi senza seme solleva (la sintesi di tutti e' la vista)
 --
 -- ── PERCHE' QUESTO FILE ─────────────────────────────────────────────
 --   La funzione degli archi scrive ogni ramo DUE volte: una per la lettura
@@ -59,7 +71,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(22);
 
 -- ============================================================
 -- Il grafo costruito: due preventivi, un ordine, una commessa, un DDT.
@@ -294,6 +306,71 @@ SELECT is(
          ARRAY[(SELECT preventivo_uid::text FROM g_prev2)])),
     0,
     '16) il preventivo senza archi, come seme, non ne da'' nessuno');
+
+-- ============================================================
+-- 17-18. Il pannello, sul grafo costruito
+-- ============================================================
+-- Le catene attese sono ricavate dal grafo, e verificate contro la forma di
+-- prima (vista intera + ricorsione, 20261010-44) il 2026-10-11.
+SELECT is(
+    (SELECT string_agg(l.livello || l.arco, ',' ORDER BY l.livello, l.arco)
+       FROM vendite.fn_documento_lineage(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+                (SELECT preventivo_uid::text FROM g_prev), 'avanti') l),
+    '1A,1B,2E,2H,3U',
+    '17) pannello, avanti dal preventivo: A e B, poi E e H dall''ordine, poi U dal DDT');
+
+SELECT is(
+    (SELECT string_agg(l.livello || l.arco, ',' ORDER BY l.livello, l.arco)
+       FROM vendite.fn_documento_lineage(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+                (SELECT commessa_id::text FROM g_com), 'indietro') l),
+    '1B,1E,1U,2A,2H,3A',
+    '18) pannello, indietro dalla commessa: l''ordine si raggiunge per due strade, e A compare a due livelli');
+
+-- ============================================================
+-- 19-22. La sintesi
+-- ============================================================
+CREATE TEMP TABLE g_vl AS
+SELECT v.* FROM vendite.vw_documento_lineage v
+  JOIN g_nodi n ON n.tipo_id = v.tipo_id AND n.uid = v.uid;
+
+SELECT is(
+    (SELECT count(*)::int FROM (
+        SELECT * FROM vendite.fn_documento_lineage_sintesi(
+                   (SELECT array_agg(tipo_id) FROM g_nodi), (SELECT array_agg(uid) FROM g_nodi))
+        EXCEPT ALL SELECT * FROM g_vl) a)
+  + (SELECT count(*)::int FROM (
+        SELECT * FROM g_vl
+        EXCEPT ALL SELECT * FROM vendite.fn_documento_lineage_sintesi(
+                   (SELECT array_agg(tipo_id) FROM g_nodi), (SELECT array_agg(uid) FROM g_nodi))) b)
+  + abs((SELECT count(*)::int FROM g_vl) - 5),
+    0,
+    '19) sintesi dei cinque nodi costruiti, in un seme solo = le loro righe di vw_documento_lineage');
+
+SELECT is(
+    (SELECT count(*)::int FROM g_nodi n
+      WHERE (SELECT count(*) FROM (
+                SELECT * FROM vendite.fn_documento_lineage_sintesi(ARRAY[n.tipo_id], ARRAY[n.uid])
+                EXCEPT ALL SELECT * FROM g_vl v WHERE v.tipo_id = n.tipo_id AND v.uid = n.uid) a)
+          + (SELECT count(*) FROM (
+                SELECT * FROM g_vl v WHERE v.tipo_id = n.tipo_id AND v.uid = n.uid
+                EXCEPT ALL SELECT * FROM vendite.fn_documento_lineage_sintesi(ARRAY[n.tipo_id], ARRAY[n.uid])) b) <> 0),
+    0,
+    '20) sintesi di ogni nodo costruito, da solo = la sua riga di vw_documento_lineage');
+
+SELECT is(
+    (SELECT s.n_sorgenti || '|' || (s.root_uid = (SELECT preventivo_uid::text FROM g_prev))::text
+       FROM vendite.fn_documento_lineage_sintesi(
+                ARRAY[(SELECT s2.id FROM config.sorgenti s2 WHERE s2.codice_interno = 'COMMESSA')],
+                ARRAY[(SELECT commessa_id::text FROM g_com)]) s),
+    '3|true',
+    '21) la commessa costruita ha tre sorgenti (B, E, U) e la radice e'' il preventivo ROOT');
+
+SELECT throws_ok(
+    $q$ SELECT * FROM vendite.fn_documento_lineage_sintesi(NULL::bigint[], NULL::text[]) $q$,
+    NULL,
+    '22) la sintesi senza seme solleva: la sintesi di tutti e'' la vista');
 
 SELECT * FROM finish();
 ROLLBACK;

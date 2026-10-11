@@ -123,4 +123,16 @@ ed è un lavoro a parte. Dettaglio:
 
 ---
 
+---
+
+### 🔄 rev 2026-10-11 — la catena si risale un livello alla volta
+
+Changeset `20261011-93`. Il pannello non legge più l'intero grafo: parte dal
+documento, chiede a [`fn_documento_lineage_archi`](fn_documento_lineage_archi.md)
+i passaggi dei soli documenti raggiunti, livello per livello, e alla fine legge i
+dettagli dei soli documenti toccati da
+[`fn_documento_lineage_nodi`](fn_documento_lineage_nodi.md). Il risultato è lo
+stesso di prima, riga per riga; il costo segue la lunghezza della catena e non il
+numero dei documenti del sistema (su dbdev, 2026-10-11: ~154 → ~16 ms).
+
 {% include-markdown "signature-core.md" %}

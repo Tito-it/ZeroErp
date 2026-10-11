@@ -11,7 +11,7 @@
 > **Stato (2026-10-10):** ⬜ **aperto, non iniziato.** Decisioni di Tid del
 > 2026-10-10: **D-1 sì, D-3 sì, D-4 sì** (prima il pannello, poi le liste — §6).
 > **D-2 = B** (le liste chiedono la lineage per gli id della pagina, §5.2).
-> Piano in §8. **2026-10-11**: ✅ giro 1 chiuso (`20261011-62…-67`, §8.3-§8.4). Prossimo: giro 2.
+> Piano in §8 (accorciato a giri A e B). **2026-10-11**: ✅ giro 1 chiuso (`20261011-62…-67`); ✅ giro A chiuso (`20261011-92…-94`, §8.5). Prossimo: giro B (DB + BE insieme).
 > **Ricadute BE/FE:** dipendono da D-2 (§5.3). Nessuna se si sceglie la forma
 > che resta tutta nel DB.
 
@@ -156,10 +156,15 @@ della pagina). Nessuna decisione aperta.
 | Giro | Cosa | Chi | Stato |
 | --- | --- | --- | --- |
 | 1 | `fn_documento_lineage_archi(<seme>)` e `fn_documento_lineage_nodi(<seme>)`; le due viste diventano la loro proiezione col seme `NULL` (regola del 2); indice `ordini(documento_origine_tipo, documento_origine_id)` per tutti i tipi (D-3) | DB | ✅ `20261011-62…-67` applicati (§8.3, §8.4) |
-| 2 | `fn_documento_lineage` risale per livelli sulle funzioni seminate (il pannello «Passaggi»); equivalenza su ogni nodo con archi, nelle due direzioni | DB | ⬜ |
-| 3 | `fn_documento_lineage_sintesi(<chiavi>)`: le colonne di `vw_documento_lineage` (frontiera, radice, pratica, discendenti, natura) per le sole chiavi chieste; equivalenza contro la vista su tutti i documenti | DB | ⬜ |
-| 4 | le sette liste tolgono le colonne della lineage dalla query di pagina e le chiedono con il giro 3 per gli id della pagina | BE (§8.1) | ⬜ |
-| 5 | le viste di lista smettono di agganciare `vw_documento_lineage` — **solo dopo** il giro 4, o la lista perde le colonne | DB | ⬜ |
+| **A** | `fn_documento_lineage` risale per livelli sulle funzioni seminate (il pannello «Passaggi», `20261011-93`) **e** `fn_documento_lineage_sintesi(<chiavi>)`, le colonne di `vw_documento_lineage` per le sole chiavi chieste (`20261011-94`), più la correzione degli archi trovata misurando (`20261011-92`); equivalenza su tutti i documenti per tutte e due | DB | ✅ `20261011-92…-94` applicati, pgTAP verdi (§8.5) |
+| **B** | le viste di lista smettono di agganciare `vw_documento_lineage` **e insieme** le sette liste del backend chiedono la lineage a `fn_documento_lineage_sintesi` per gli id della pagina (§8.1); seed `ui.lista_colonna` e pgTAP delle colonne decisi insieme | DB + BE insieme | ⬜ |
+
+⭐ **Piano accorciato (Tid, 2026-10-11)**: siamo solo in sviluppo, quindi i
+giri 2-5 diventano **A** e **B**. Il 2 e il 3 sono due funzioni DB che non
+cambiano contratti; il 4 e il 5 si fanno insieme, accettando qualche ora di
+liste rotte in sviluppo invece di far aspettare il DB al backend.
+ℹ️ `fn_ddt_legami`, il quarto lettore degli archi, non c'è più: ritirata in
+`20261011-91` (brief-db-annullo-documento-con-legami).
 
 ### 8.2 Giro 1 — la forma (proposta, 2026-10-11)
 
@@ -282,6 +287,73 @@ vivi conservati, con la nota di revisione davanti; presidio unico della clausola
 esteso (`script/test-plan-cache-mode-piano-generico-v1`, test 6-7, plan 7).
 ⇒ **giro 2**: `fn_documento_lineage` non deve dichiarare niente per la funzione
 che chiama.
+
+### 8.5 Giro A — scritto, provato e ✅ applicato da Tid, pgTAP verdi (2026-10-11)
+
+| ChangeSet | Cosa |
+| --- | --- |
+| `20_code/vendite/20261011-92-update-fn-documento-lineage-archi-join-leakproof` | archi per chiave: nei rami B, E, F, U il join verso il documento diventa leakproof |
+| `20_code/vendite/20261011-93-update-fn-documento-lineage-per-livelli` | il pannello risale la catena un livello alla volta |
+| `20_code/vendite/20261011-94-create-fn-documento-lineage-sintesi` | le 28 colonne di `vw_documento_lineage` per i soli documenti chiesti |
+
+**Trovato misurando il pannello: il `-92`.** Nei rami polimorfi verso la
+commessa (B, E, F, U) la chiave del documento sta come testo in
+`commesse_sorgenti.sorgente_uid`, e il join la convertiva
+(`p.uid = cs.sorgente_uid::uuid`). Un cast non è leakproof, e sotto RLS entra
+nell'indice solo una clausola leakproof (linee-guida-sql §8.5-bis): per ogni
+sorgente il planner leggeva l'intera tabella dell'altro capo. Fatto datato: una
+commessa con 32 preventivi, ~270 ms; anche con `enable_seqscan = off` l'indice
+veniva letto per intero, senza Index Cond. Cresce con le sorgenti per commessa e
+con la tabella del documento. Cura: una CTE `cs_semi` legge una volta le sorgenti
+delle commesse del seme con la chiave già convertita, e il join diventa un
+confronto fra colonne dello stesso tipo (Index Cond `uid = cs.k_uuid`, ~30 ms).
+Nelle metà uscenti il nodo si limita anche con `= ANY(<chiavi>)`.
+
+**Il pannello (`-93`)** fa una chiamata agli archi per livello, con seme = i nodi
+correnti di tutti i percorsi aperti, e decora una volta sola alla fine. La
+semantica è quella di prima: percorsi, guardia dei cicli sul percorso (assente al
+livello 1), 10 livelli, stesso `ordine`.
+
+**La sintesi (`-94`)** è la regola di `vw_documento_lineage` costruita per
+livelli dai nodi del seme. Il seme è **obbligatorio**: la sintesi di tutti i
+documenti resta la vista. ⛔ Fino al giro B la regola sta in due posti: lo dice
+l'intestazione della funzione, e il pgTAP le confronta (test 19-20). Il giro B
+ritira la vista, quando liste e drawer leggono dalla sintesi. Il drawer la legge
+oggi per **un** documento (`vendite_repository`, `WHERE l.tipo_id = %s AND l.uid
+= %s`), pagando l'intero grafo.
+
+**Prove** (2026-10-11, dbdev come app, copie `pg_temp`; scratch da owner, SQL
+estratto):
+
+* archi riscritti: equivalenza completa come al §8.3, a zero;
+* pannello: ognuno dei 477 nodi nelle due direzioni (954 casi, 710 righe per
+  parte), `EXCEPT ALL` a zero, `ordine` compreso;
+* sintesi contro la vista: i 477 nodi in un seme solo, ognuno da solo, a pagine
+  da 25: a zero. Colonne non banali nel campione: 162 frontiere diverse dal nodo,
+  153 con sorgenti, 69 con pratica, 147 con discendenti attivi;
+* pgTAP `test-documento-lineage-seminata-v1` ora a **plan 22**: 17-18 il pannello
+  su un grafo costruito (le catene attese, verificate anche contro la forma di
+  prima), 19-22 la sintesi. Scratch 22/22 in 0,6 s, dbdev come app 22/22 in 2,3 s;
+* scratch, prima e dopo: 71 pgTAP della regressione larga (col `-92/-93`) e i
+  presidi trasversali col `-94` (catalogo errori, rubinetto, costo delle policy,
+  `ROWS` delle SRF, RLS delle viste, i due della lineage, plancache):
+  identici; `plpgsql_check` a zero errori sulle due funzioni plpgsql;
+  riferimenti morti 9/9.
+
+**Fatti datati** (dbdev come app):
+
+| Lettura | Prima | Dopo |
+| --- | --- | --- |
+| pannello, media su 954 casi | ~154 ms | ~16 ms (max ~88) |
+| una pagina da 25, colonne di lineage | ~420 ms (vista) | ~58 ms (max ~108) |
+| un documento (drawer) | ~300 ms (vista) | ~17 ms |
+
+⇒ **Giro B**: le sette liste e il drawer chiedono la lineage a
+`fn_documento_lineage_sintesi` per le sole chiavi della pagina (o del documento),
+le viste di lista smettono di agganciare `vw_documento_lineage`, e la vista si
+ritira. Seed `ui.lista_colonna`, ordinamento e filtri per una colonna della
+lineage, e i pgTAP che oggi leggono la vista (`test-documento-lineage-v1`,
+`test-colonne-lineage-liste-v1`) si decidono insieme (§8.1).
 
 ### 8.1 Richiesta al team BE (giro 4) — da consegnare quando il giro 3 è applicato
 

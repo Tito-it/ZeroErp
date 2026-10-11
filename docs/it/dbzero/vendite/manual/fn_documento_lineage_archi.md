@@ -67,4 +67,14 @@ semina niente, come nella vista.
 * `is_ramo_inverso` e `rango_origine` dipendono solo dalla lettera dell'arco e
   stanno qui, una volta sola.
 
+### 🔄 rev 2026-10-11 — i passaggi verso la commessa si cercano per indice
+
+Changeset `20261011-92`. Nei rami preventivo/ordine/contratto/DDT → commessa la
+chiave del documento è scritta come testo nelle sorgenti della commessa. Il
+confronto passava da una conversione di tipo, e sotto le policy di sicurezza una
+conversione non può usare l'indice: per ogni sorgente il database leggeva l'intera
+tabella dell'altro capo. Ora le sorgenti delle commesse del seme si leggono una
+volta con la chiave già convertita, e il confronto è fra colonne dello stesso tipo
+(una commessa con 32 preventivi: ~270 → ~30 ms).
+
 {% include-markdown "signature-core.md" %}
