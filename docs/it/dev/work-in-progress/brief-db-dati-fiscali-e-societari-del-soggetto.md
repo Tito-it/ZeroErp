@@ -306,6 +306,7 @@ farne lo decide Tid, guardandoli (come C-3).
 | 2026-10-10 | Tid: corrette a mano le 6 righe senza forma, migrate completo (`20261011-03`, `-04`), test verdi. Lato DB chiuso; restano BE/FE e D-4. |
 | 2026-10-10 | Sviluppo BE/FE (§9): A, B, C, D. Trovati due difetti fuori dal perimetro del brief e corretti: il lookup delle forme falliva sempre (colonna inesistente, §9.2) e la natura offerta in modifica non arrivava mai al DB (§9.3). |
 | 2026-10-11 | Collaudo in-app di Tid: superato. |
+| 2026-10-11 | CI rossa sul rubinetto degli accumulatori (`scripts/codici-errore-baseline.sh`): `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` aveva acquistato la famiglia PARAMETRO, perché il verbo `20261010-99` rifiutava `p_soggetto_id IS NULL OR NOT EXISTS` con un solo codice. Un soggetto non passato è un chiamante rotto, non un 404. `20261012-02`: NULL → `E_PARAMETRO_INVALIDO`, inesistente → `E_DATI_SOCIETARI_SOGGETTO_NON_TROVATO` come prima; COMMENT con la firma in `%TYPE`. pgTAP `test-fn-scrivi-dati-societari-v1` con l'8-bis (plan 23), rosso sul corpo vecchio per il motivo giusto. Prova sullo scratch, SQL estratto: 22/23, rosso solo il 22 (da owner per costruzione); fotografia delle famiglie col changeSet dentro: nessun accumulo. Baseline `db/baseline-codici-errore-famiglie.tsv` stretta da quella fotografia (gli stessi 1 ristretto e 4 rientrati della CI, più i codici nati dopo con una sola famiglia). BE invariato: nessun chiamante passa NULL. ⏳ Da applicare (Tid). |
 
 ## 7. Fuori perimetro, da verificare
 
