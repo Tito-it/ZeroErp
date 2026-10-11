@@ -57,7 +57,7 @@
 --  G — D-6
 --  36) su una bolla emessa non nasce un legame nuovo (fulfillment, ponte)
 --  H — D-8: l'annullo di una bolla con legami chiede conferma
---  37) l'annullo diretto (UPDATE dello stato) e' rifiutato: E_DDT_ANNULLO_CON_LEGAMI
+--  37) l'annullo diretto (UPDATE dello stato) e' rifiutato: E_DOC_ANNULLO_CON_LEGAMI
 --  38) il verbo con una conferma che non corrisponde: stesso rifiuto
 --  39) il verbo confermato, bolla in bozza: ANNULLATO, legame ritirato, ordine CONFERMATO
 --  40) il verbo confermato, bolla emessa: ANNULLATO, legame ritirato, ordine CONFERMATO
@@ -104,7 +104,7 @@ SELECT is(
                                      ('vendite', 'trgfn_ddt_riga_legame_guard'),
                                      ('script',  'fn_check_ddt_riga_correggi_qta_evasa'),
                                      ('vendite', 'fn_ddt_riga_correggi_qta_evasa'),
-                                     ('vendite', 'fn_ddt_legami'),
+                                     ('vendite', 'fn_documento_legami'),
                                      ('vendite', 'fn_ddt_riga_ritira_legami'),
                                      ('vendite', 'fn_annulla_ddt')))
   + (SELECT count(*)::int FROM pg_trigger t
@@ -116,7 +116,7 @@ SELECT is(
               ('vendite.ordini_righe_fulfillment'::regclass, 'trg_ordini_righe_fulfillment_a05_doc_bozza_ins_upd'),
               ('vendite.resi_righe_riconsegne'::regclass, 'trg_resi_righe_riconsegne_a05_doc_bozza_ins_upd'))),
   14,
-  '1) le nove funzioni nuove esistono e i cinque trigger sono montati');
+  '1) le nove funzioni esistono (il lettore dei legami e'' vendite.fn_documento_legami dal 2026-10-11) e i cinque trigger sono montati');
 
 SELECT is(
   (SELECT string_agg(c.codice || '=' || c.classe, ' ' ORDER BY c.codice)
@@ -557,7 +557,7 @@ SELECT pg_temp.re_prova('37_annullo_diretto',
               (SELECT s.id FROM config.stati_doc_ddt s WHERE s.codice_interno = 'ANNULLATO')
             WHERE id = %s$q$, pg_temp.re_fix('h1_ddt')));
 SELECT ok(pg_temp.re_rifiuto('37_annullo_diretto', 'Serve una conferma'),
-  '37) D-8: l''annullo diretto di una bolla con legami e'' rifiutato (E_DDT_ANNULLO_CON_LEGAMI)');
+  '37) D-8: l''annullo diretto di una bolla con legami e'' rifiutato (E_DOC_ANNULLO_CON_LEGAMI)');
 
 SELECT pg_temp.re_prova('38_conferma_sbagliata',
   format('SELECT * FROM vendite.fn_annulla_ddt(%s, 0)', pg_temp.re_fix('h1_ddt')));

@@ -73,9 +73,14 @@ Obiettivi principali:
   contratto. Necessario perche’ i constraint DB non possono referenziare altre
   tabelle — il predicato `WHERE` di `ex_contratti_no_overlap` dipende da un
   campo sulla stessa riga.
-* **Trigger `trg_contratti_z90_sync_is_abortito_snapshot_ins_upd`** (BEFORE
-  INSERT OR UPDATE OF `stato_doc_contratto_id`, fase `_z90_`): mantiene
-  `is_abortito_snapshot` aggiornato ad ogni transizione di stato.
+* **Trigger `trg_contratti_z90_snapshot_da_stato_ins_upd`** (BEFORE INSERT OR
+  UPDATE, fase `_z90_`; BB
+  [`vendite.trgfn_doc_snapshot_da_stato`](/dbzero/vendite/funzioni/trgfn_doc_snapshot_da_stato),
+  dal 2026-10-11 al posto di `trg_contratti_z90_sync_is_abortito_snapshot_ins_upd`):
+  mantiene `is_abortito_snapshot` e `is_draft_snapshot` allineati allo stato a
+  ogni scrittura, anche se qualcuno li scrive a mano. Serve anche all'indice
+  unico sui vivi `uq_contratti_offerta_id` (un'offerta genera al più un
+  contratto vivo).
   Deve essere BEFORE (non AFTER): il predicato WHERE del constraint e’
   valutato al momento della scrittura della riga.
 * La colonna `validita` (GENERATED ALWAYS STORED) rimane immutata e continua

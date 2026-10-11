@@ -1,0 +1,111 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# IL CRUSCOTTO DELLE OFFERTE NON DA' PER SCONTATO UN SOLO FIGLIO
+#   vendite.vw_dash_fatturazione_offerte
+#   Brief: brief-db-annullo-documento-con-legami (§7.1, D-6 di Tid)
+#
+# ── IL LETTORE CHE IL CAMBIO DEGLI INDICI ROMPEVA ───────────────────
+#   La vista leggeva i figli dell'offerta contando sull'unicita' «al piu'
+#   un contratto, al piu' un ordine» (i commenti lo dicevano: «Figlio
+#   contratto: al piu' uno (uq_contratti_offerta_id)»): un LEFT JOIN sul
+#   contratto e un LATERAL ... LIMIT 1, senza ORDER BY, sull'ordine. Da
+#   20261011-68/-70 l'unicita' vale sui VIVI: un'offerta puo' avere un
+#   contratto annullato e uno vivo. Il JOIN duplicherebbe l'offerta nel
+#   cruscotto, il LIMIT 1 potrebbe pescare il figlio morto.
+#
+# ── LA FORMA ────────────────────────────────────────────────────────
+#   Per lato una riga sola, (esiste, vivo), da un aggregato: nessuna
+#   duplicazione, nessuna scelta arbitraria. Le regole della vista restano
+#   le sue: contratto vivo = NOT is_abortito_snapshot, ordine vivo = esito
+#   dello stato diverso da NEGATIVO. Colonne, tipi e security_invoker
+#   invariati. Corpo dalla doc auto-generata (l'ultimo changeSet che la
+#   riscrive e' 20261009-54); COMMENT da 20260703-60, con la revisione.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261011-76-update-vw-dash-fatturazione-offerte-figli-vivi-mctit.yaml
+
+  - changeSet:
+      id: 20261011-76-update-vw-dash-fatturazione-offerte-figli-vivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.vw_dash_fatturazione_offerte: i figli dell'offerta (contratti, ordini) si riassumono in una riga per lato (esiste, vivo), perche' l'unicita' vale ora sui soli vivi. D-6 di brief-db-annullo-documento-con-legami.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - viewExists: { schemaName: vendite, viewName: vw_dash_fatturazione_offerte }
+            - columnExists: { schemaName: vendite, tableName: contratti, columnName: is_abortito_snapshot }
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE VIEW vendite.vw_dash_fatturazione_offerte
+              WITH (security_invoker=on) AS
+              SELECT 'OFFERTE'::character varying AS area,
+                  (date_trunc('month'::text, (COALESCE(o.validita_dal, script.fn_giorno_operativo(o.data_emissione), script.fn_giorno_operativo(o.data_insert)))::timestamp with time zone))::date AS competenza_mese,
+                  o.id AS documento_id,
+                  (o.uid)::text AS documento_uid,
+                  o.codice,
+                  o.emittente_fiscale_id,
+                  NULL::bigint AS emittente_soggetto_ruolo_id,
+                  NULL::numeric AS valore_totale,
+                  NULL::numeric AS valore_transitato,
+                  1 AS unita_totali,
+                      CASE
+                          WHEN (ct.vivo OR fo.vivo) THEN 1
+                          ELSE 0
+                      END AS unita_transitate,
+                  (ct.vivo OR fo.vivo) AS is_transitato,
+                  COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) AS is_abortito,
+                  (
+                      CASE
+                          WHEN COALESCE(((sdo.esito)::text = 'NEGATIVO'::text), false) THEN NULL::text
+                          WHEN (ct.vivo OR fo.vivo) THEN NULL::text
+                          WHEN (ct.esiste OR fo.esiste) THEN 'FIGLIO_ABORTITO'::text
+                          WHEN ((sdo.codice_interno)::text = 'BOZZA'::text) THEN 'DOC_BOZZA'::text
+                          WHEN ((sdo.codice_interno)::text = 'EMESSA'::text) THEN 'IN_ATTESA_ACCETTAZIONE'::text
+                          ELSE 'SENZA_FIGLIO'::text
+                      END)::character varying AS motivo_fermo,
+                  sdo.codice_interno AS stato_codice_interno,
+                  sdo.codice AS stato_codice,
+                  sdo.fase,
+                  s.ragione_sociale_completa AS cliente_display,
+                  COALESCE(script.fn_giorno_operativo(o.data_emissione), o.validita_dal, script.fn_giorno_operativo(o.data_insert)) AS data_riferimento
+                 FROM (((((vendite.offerte_commerciali o
+                   JOIN config.stati_doc_offerte sdo ON ((sdo.id = o.stato_doc_offerta_id)))
+                   -- rev 2026-10-11 (D-6 di brief-db-annullo-documento-con-legami): un'offerta
+                   -- ha al piu' UN figlio VIVO, ma i figli annullati possono essere piu' d'uno.
+                   -- I figli si riassumono in UNA riga (esiste, vivo): prima il JOIN sul
+                   -- contratto duplicava l'offerta, e il LIMIT 1 senza ORDER BY sull'ordine
+                   -- poteva pescare il figlio morto accanto a quello vivo.
+                   CROSS JOIN LATERAL ( SELECT (count(*) > 0) AS esiste,
+                          COALESCE(bool_or((NOT c.is_abortito_snapshot)), false) AS vivo
+                         FROM vendite.contratti c
+                        WHERE (c.offerta_id = o.id)) ct)
+                   CROSS JOIN LATERAL ( SELECT (count(*) > 0) AS esiste,
+                          COALESCE(bool_or(((sdor.esito)::text IS DISTINCT FROM 'NEGATIVO'::text)), false) AS vivo
+                         FROM (vendite.ordini od
+                           JOIN config.stati_doc_ordini sdor ON ((sdor.id = od.stato_doc_ordine_id)))
+                        WHERE (((od.documento_origine_tipo)::text = 'OFFERTA'::text) AND (od.documento_origine_id = o.id))) fo)
+                   LEFT JOIN anagrafiche.istanze_utilities iu ON ((iu.id = o.istanza_utility_id)))
+                   LEFT JOIN anagrafiche.soggetti s ON ((s.id = iu.soggetto_id)));
+
+              COMMENT ON VIEW vendite.vw_dash_fatturazione_offerte IS
+                'Dashboard fatturazione: resolver area OFFERTE, a conteggi (D-2). Transitata = figlio vivo (contratto via offerta_id NOT is_abortito_snapshot, o ordine documento_origine OFFERTA esito != NEGATIVO). FIGLIO_ABORTITO = figlio annullato (XOR permanente). cliente_display=ragione sociale intestatario istanza (path vw_offerte_commerciali_lista). Consumata da vw_dash_fatturazione_documenti. rev 2026-10-11 (20261011-76, brief-db-annullo-documento-con-legami D-6): un''offerta ha al piu'' un figlio VIVO ma puo'' avere piu'' figli annullati; i figli si riassumono in una riga per lato (esiste, vivo), cosi'' l''offerta non si duplica e un figlio morto non nasconde quello vivo. FIGLIO_ABORTITO resta il caso «figli solo annullati», che ora si sblocca rigenerando.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              -- Ritorno logico: ripristinare la vista di 20261009-54.
+              SELECT 'ripristino rieseguendo 20261009-54' AS note;

@@ -1,0 +1,87 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# UN'OFFERTA GENERA AL PIU' UN CONTRATTO VIVO
+#   vendite.contratti: uq_contratti_offerta_id da UNIQUE (offerta_id) a
+#   indice unico parziale sui contratti non abortiti.
+#   Brief: brief-db-annullo-documento-con-legami (§7.1, D-3 e D-6 di Tid)
+#
+# ── IL DIFETTO, SUL MODELLO ─────────────────────────────────────────
+#   Un contratto nato da un'offerta si annulla (DRAFT -> ANNULLATO), e
+#   l'offerta dovrebbe tornare trasformabile (D-3). Il vincolo UNIQUE
+#   (offerta_id) non vede lo stato: un secondo contratto dalla stessa
+#   offerta sbatte sul vincolo anche se il primo e' morto. L'offerta resta
+#   consumata per sempre.
+#
+# ── LA FORMA (D-6 di Tid) ───────────────────────────────────────────
+#   offerta_id e' PROVENIENZA, non consumo: il contratto annullato
+#   continua a dire da quale offerta viene (lineage, storia). Non si
+#   ritira; l'unicita' vale sui soli contratti VIVI, cioe' non abortiti.
+#   is_abortito_snapshot c'e' gia' (20260521-01), sincronizzato BEFORE
+#   dallo stato: l'indice lo legge sulla riga finale.
+#   Stesso NOME dell'oggetto di prima: i commenti che lo citano
+#   (messaggi_errore, viste del cruscotto) restano veri.
+#
+# ── LA FK fk_contratti_offerta ──────────────────────────────────────
+#   Il vincolo la copriva per prefisso; l'indice parziale sui vivi no
+#   (linee-guida-sql §8.7: predicato ammesso solo «colonna IS NOT NULL»).
+#   La policy FK e' opt-in e la FK non e' a registro, come le altre
+#   FK del contratto (billing_account, istanza, parent): nessun indice
+#   gemello. La lettura che conta, «i contratti vivi di questa offerta»
+#   (vendite.fn_offerta_documenti_vivi), e' servita esattamente da qui.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/00_schema/vendite/20261011-68-alter-uq-contratti-offerta-id-sui-vivi-mctit.yaml
+
+  - changeSet:
+      id: 20261011-68-alter-uq-contratti-offerta-id-sui-vivi
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        uq_contratti_offerta_id diventa unico sui soli contratti vivi (NOT is_abortito_snapshot):
+        un contratto annullato non consuma piu' l'offerta, e ne conserva la provenienza.
+        D-3/D-6 di brief-db-annullo-documento-con-legami.
+      preConditions:
+        - onFail: HALT
+        - and:
+            - columnExists: { schemaName: vendite, tableName: contratti, columnName: offerta_id }
+            - columnExists: { schemaName: vendite, tableName: contratti, columnName: is_abortito_snapshot }
+            - sqlCheck:
+                expectedResult: "1"
+                sql: >
+                  SELECT count(*) FROM pg_catalog.pg_constraint k
+                    JOIN pg_catalog.pg_class t ON t.oid = k.conrelid
+                    JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+                   WHERE n.nspname = 'vendite' AND t.relname = 'contratti'
+                     AND k.conname = 'uq_contratti_offerta_id' AND k.contype = 'u';
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              ALTER TABLE vendite.contratti
+                  DROP CONSTRAINT uq_contratti_offerta_id;
+
+              CREATE UNIQUE INDEX uq_contratti_offerta_id
+                  ON vendite.contratti (offerta_id)
+                  WHERE offerta_id IS NOT NULL
+                    AND NOT is_abortito_snapshot;
+
+              COMMENT ON INDEX vendite.uq_contratti_offerta_id IS
+                  'Un''offerta genera al piu'' UN contratto VIVO (2026-10-11, brief-db-annullo-documento-con-legami D-3/D-6): unico sui contratti non abortiti. offerta_id e'' provenienza: il contratto annullato la conserva, e l''offerta torna trasformabile. Era UNIQUE (offerta_id) senza stato (20260525-01): un contratto annullato consumava l''offerta per sempre. is_abortito_snapshot e'' sincronizzato BEFORE dallo stato. Lettore: vendite.fn_offerta_documenti_vivi.';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              DROP INDEX IF EXISTS vendite.uq_contratti_offerta_id;
+              ALTER TABLE vendite.contratti
+                  ADD CONSTRAINT uq_contratti_offerta_id UNIQUE (offerta_id);

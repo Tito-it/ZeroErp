@@ -168,6 +168,10 @@ Letti dal vivo (doc auto-gen): le due viste, `fn_documento_lineage` (forma
 `vendite.fn_ddt_legami`, che legge gli archi per **un** DDT: è il primo candidato
 a passare alla funzione seminata, ma **non** in questo giro. Indici delle colonne
 di join riletti da `pg_indexes`: confermato il §3, manca solo il ramo A.
+> ℹ️ Nota del 2026-10-11 (brief-db-annullo-documento-con-legami, D-4): `vendite.fn_ddt_legami`
+> si ritira (`20261011-91`), sostituita da `vendite.fn_documento_legami`. Nessuna delle due legge
+> gli archi del lineage: leggono i legami riga per riga (fulfillment, ponti di ri-consegna, righe di
+> commessa), quindi non sono candidate alla funzione seminata.
 
 **Il seme è la chiave del nodo**: `(p_tipo_ids bigint[], p_uids text[])`, due
 array paralleli, la coppia `(tipo_id, uid::text)` che il modello usa già come

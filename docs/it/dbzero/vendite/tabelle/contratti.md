@@ -66,7 +66,6 @@
 | FOREIGN KEY | fk_v_contratti_stato_ddt | stato_doc_contratto_id |
 | PRIMARY KEY | pk_contratti | id |
 | UNIQUE | uq_contratti_numero | numero |
-| UNIQUE | uq_contratti_offerta_id | offerta_id |
 
 ## 📑 Indici
 | Nome | Definizione |
@@ -79,7 +78,7 @@
 | ix_contratti_listino_versione | `CREATE INDEX ix_contratti_listino_versione ON vendite.contratti USING btree (listino_versione_id)` |
 | pk_contratti | `CREATE UNIQUE INDEX pk_contratti ON vendite.contratti USING btree (id)` |
 | uq_contratti_numero | `CREATE UNIQUE INDEX uq_contratti_numero ON vendite.contratti USING btree (numero)` |
-| uq_contratti_offerta_id | `CREATE UNIQUE INDEX uq_contratti_offerta_id ON vendite.contratti USING btree (offerta_id)` |
+| uq_contratti_offerta_id | `CREATE UNIQUE INDEX uq_contratti_offerta_id ON vendite.contratti USING btree (offerta_id) WHERE ((offerta_id IS NOT NULL) AND (NOT is_abortito_snapshot))` |
 | uq_contratti_uid | `CREATE UNIQUE INDEX uq_contratti_uid ON vendite.contratti USING btree (uid)` |
 
 ## 🚨 Trigger
@@ -110,24 +109,24 @@
 | trg_contratti_a10_listini_versioni_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_contratti_a10_listini_versioni_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('vendite', 'listini_versioni', 'attivo', 'listino_versione_id', 'id')` |
 | trg_contratti_a10_lock_columns_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_lock_columns('numero', 'E_CODICE_NON_MODIFICABILE')` |
-| trg_contratti_a10_set_categoria_cliente_snapshot_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_set_categoria_cliente_snapshot()` |
 | trg_contratti_a10_set_categoria_cliente_snapshot_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_set_categoria_cliente_snapshot()` |
-| trg_contratti_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
+| trg_contratti_a10_set_categoria_cliente_snapshot_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_set_categoria_cliente_snapshot()` |
 | trg_contratti_a10_sorgenti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
-| trg_contratti_a10_stati_doc_contratti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_contratti', 'attivo', 'stato_doc_contratto_id', 'id')` |
+| trg_contratti_a10_sorgenti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'sorgenti', 'attivo', 'sorgente_tipo_id', 'id')` |
 | trg_contratti_a10_stati_doc_contratti_require_attivo_ins_upd | AFTER | INSERT | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_contratti', 'attivo', 'stato_doc_contratto_id', 'id')` |
-| trg_contratti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_contratti_a10_stati_doc_contratti_require_attivo_ins_upd | AFTER | UPDATE | `EXECUTE FUNCTION dbops.trgfn_child_requires_active_parent('config', 'stati_doc_contratti', 'attivo', 'stato_doc_contratto_id', 'id')` |
 | trg_contratti_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
+| trg_contratti_audit_data_user_upd | BEFORE | UPDATE | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_contratti_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_contratti_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_contratti_m10_guard_annullo_con_legami_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_guard_annullo_con_legami('CONTRATTO', 'stato_doc_contratto_id', 'config.stati_doc_contratti')` |
 | trg_contratti_m50_indirizzi_seguono_cliente_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente('CONTRATTO')` |
-| trg_contratti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_normalize()` |
 | trg_contratti_normalize_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_normalize()` |
-| trg_contratti_z90_ritira_commessa_attivita_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_ritira_commessa_attivita('CONTRATTO', 'stato_doc_contratto_id', 'config.stati_doc_contratti')` |
+| trg_contratti_normalize_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_normalize()` |
+| trg_contratti_z90_snapshot_da_stato_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_doc_snapshot_da_stato('stato_doc_contratto_id', 'config.stati_doc_contratti', 'is_abortito_snapshot', 'is_abortito', 'is_draft_snapshot', 'is_bozza')` |
+| trg_contratti_z90_snapshot_da_stato_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_snapshot_da_stato('stato_doc_contratto_id', 'config.stati_doc_contratti', 'is_abortito_snapshot', 'is_abortito', 'is_draft_snapshot', 'is_bozza')` |
 | trg_contratti_z90_snapshot_precontrattuali_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_snapshot_precontrattuali()` |
 | trg_contratti_z90_sync_canali_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_documenti_sync_canali()` |
-| trg_contratti_z90_sync_is_abortito_snapshot_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot()` |
-| trg_contratti_z90_sync_is_abortito_snapshot_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION vendite.trgfn_contratti_sync_is_abortito_snapshot()` |
 
 ---
 {% include-markdown "signature-core.md" %}

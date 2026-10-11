@@ -1,13 +1,14 @@
 # Brief DB — Annullare un documento con legami: si riapre l'origine, con conferma
 
-> **Chi scrive:** team DB (`dev/db-tid`), 2026-10-11. **A chi:** Tid; poi BE/FE (§3.4, §6).
+> **Chi scrive:** team DB (`dev/db-tid`), 2026-10-11. **A chi:** Tid; poi BE/FE (§6, che sostituisce il §3.4).
 > **Origine:** il caso bolla → ordine trovato nel giro di
 > [brief-db-ddt-righe-evase-dall-ordine](brief-db-ddt-righe-evase-dall-ordine.md) (§7.6, decisione D-8),
 > e la domanda di Tid del 2026-10-11: *«quando esiste un legame, ci sia la conferma: abbiamo altri
 > legami simili per cui segnalare "attenzione, si riapre qualcosa"?»*
 > **Stato (2026-10-11):** ✅ **caso 1 (bolla) applicato e verde** (§3, changeSet del giro D28, applicati
-> da Tid il 2026-10-11, pgTAP senza regressioni). ⬜ **Casi 2-5 aperti** (§4): decisioni **prese** da Tid il
-> 2026-10-11 (§5: D-1…D-5, D-2 strada A); scrittura non iniziata, attende il via (§5.2).
+> da Tid il 2026-10-11, pgTAP senza regressioni). ✅ **Casi 2-5 applicati e verdi** (§8: `20261011-68 … -91`
+> + tre CSV, applicati da Tid il 2026-10-11, pgTAP verdi; decisioni D-1…D-6 di Tid, §5), con la forma
+> comune (D-4) che riallinea anche la bolla. **Lato DB chiuso.** ⏳ Tocca a BE/FE (§6, R-1…R-6; R-5 subito).
 > **Nel registro dei difetti DB:** voce **D29** di `migliorie-generali-da-test-valutazione.md`, che rimanda
 > qui.
 
@@ -36,6 +37,13 @@ fuori. ⚠️ I casi 2-4 sono letti dal contratto (viste, verbi, matrici), non a
 il primo passo di ciascuno e' il test che li costruisce.
 
 ## 3. Caso 1 — La bolla con legami (D-8 di brief-db-ddt-righe-evase-dall-ordine): fatto
+
+> ⚠️ **Riallineato il 2026-10-11 dalla forma comune (D-4, §7-§8).** Restano: il BB del ritiro di una
+> riga, il guard e il lock dei legami, il verbo `fn_annulla_ddt`. Cambiano: il lettore
+> (`vendite.fn_ddt_legami` → `vendite.fn_documento_legami('DDT', id)`), il codice
+> (`E_DDT_ANNULLO_CON_LEGAMI` → `E_DOC_ANNULLO_CON_LEGAMI`), l'avviso (la Regola 4 → il guard comune
+> `_m10_`), la porta (GUC `zeroerp.ddt_annullo` → `zeroerp.doc_ritira_legami`), la conferma (le righe
+> legate → i legami visti). Le tabelle qui sotto raccontano il giro D28 com'era.
 
 
 ### 3.1 Il caso, in semplice
@@ -104,7 +112,7 @@ contratto (§7.4 di brief-db-ddt-righe-evase-dall-ordine), due differenze che **
 test 1 aspetta la chiave `codice` del `20261011-21` dell'altra sessione, e il rubinetto aspetta 37 (il mio
 sito piu' il loro). Con tutti e due i giri applicati tornano.
 
-## 4. I casi aperti
+## 4. I casi aperti (2026-10-11: chiusi dal disegno del §7, scritti nel §8)
 
 ### 4.1 Caso 2 — Preventivo → ordine
 
@@ -133,6 +141,7 @@ quali righe si ritirano: l'avviso e la conferma si appoggiano li'.
 | **D-3** | Casi 3-4: il push guarda solo i documenti vivi? L'offerta torna da trasformare? | ✅ **si'**, con `is_abortito` dal vocabolario |
 | **D-4** | Una forma comune: un **lettore unico dei legami** per documento (il generale di `vendite.fn_ddt_legami`), un **codice unico di avviso** («annullandolo si riapre…») e un **verbo di annullo con conferma** per documento | ✅ **si'**: regola del 2, alla seconda finestra di conferma la prima diventa il building block (e la forma della bolla, §3, vi si riallinea nello stesso giro: niente copie accanto al BB) |
 | **D-5** | Caso 5 (commessa): la regola c'e' gia', manca l'avviso. Stesso stampo degli altri o un avviso senza rifiuto? | ✅ **stesso stampo**: rifiuto con l'avviso, **conferma dichiarata** e **verbo** di annullo, come gli altri casi |
+| **D-6** | Casi 3-4: `uq_contratti_offerta_id` (UNIQUE su `offerta_id`) e `uq_ordini_v_documento_origine_offerta` (UNIQUE sull'ordine da offerta) non vedono lo stato: col solo push filtrato (D-3) il secondo documento dalla stessa offerta sbatte sull'indice. Ritiro del legame o UNIQUE sui vivi? | ✅ **UNIQUE sui soli vivi** (§7.1): la provenienza resta sul documento annullato; sull'ordine nasce `is_abortito_snapshot`, come sul contratto |
 
 ### 5.1 D-2 in chiaro: perche' il ritiro
 
@@ -151,13 +160,137 @@ la bolla perde i suoi legami in D-8; il preventivo torna da EVASO ad ACCETTATO (
   veniva. La testata lo dice ancora (`documento_origine_*`, e il lineage), quindi si perde il solo
   dettaglio riga per riga, su un documento morto.
 
-### 5.2 Prossimo passo (non iniziato: Tid, 2026-10-11, «aspetta ancora»)
+### 5.2 Prossimo passo
 
-Per ogni caso, prima il pgTAP che lo **costruisce** (§2, ⚠️: i casi 2-4 sono letti dal contratto), poi i
-changeSet. La scrittura dei changeSet attende il via di Tid.
+Via di Tid il 2026-10-11 («puoi partire»), numeri dal `20261011-68`. Il disegno e' il §7.
 
-## 6. Ricaduta BE/FE (quando i casi 2-5 sono fatti)
+## 7. Casi 2-5: il disegno (2026-10-11)
 
-* Una finestra di conferma sola, guidata dal codice di avviso e dal lettore dei legami: elenca che cosa si
-  riapre e dove («riga 1, ordine 12, 10 pz»), col gesto «vai al documento» dal lineage.
-* Per la bolla (caso 1) vale gia' il §3.4.
+### 7.1 Consumo e provenienza
+
+Il criterio che tiene insieme D-2 e D-6: **il consumo si ritira, la provenienza resta**.
+
+| Legame | Natura | All'annullo |
+| --- | --- | --- |
+| fulfillment e ponte di ri-consegna della bolla | consumo (quantita' evasa) | si ritira (D-8) |
+| `ordini_righe.preventivo_riga_id` | consumo (la riga di preventivo e' occupata) | si ritira (D-2); lo storico della riga ne tiene il valore |
+| righe di commessa NON_EMESSA spinte dal documento | consumo | si ritirano (ANNULLATA, col registro: la primitiva di sempre) |
+| `contratti.offerta_id`, `ordini.documento_origine_*` | **provenienza**: dice da dove viene il documento | resta; gli indici UNIQUE valgono sui soli vivi (D-6) |
+
+Una provenienza non si ritira, ma **si conferma lo stesso** (D-1): annullando il contratto, l'offerta torna
+trasformabile, e chi annulla lo vede.
+
+### 7.2 La forma comune (D-4)
+
+| Oggetto | Cosa |
+| --- | --- |
+| ⭐ `vendite.fn_documento_legami(p_documento, p_id)` | il lettore unico: una riga per legame (bolla, ordine, preventivo, contratto), con la natura (consumo o provenienza). Prende il posto di `vendite.fn_ddt_legami` |
+| ⭐ BB `vendite.fn_documento_ritira_legami(p_documento, p_id, p_legami_confermati)` | la conferma (chi conferma dichiara quanti legami ha visto) e il ritiro di tutti i consumi; apre la porta del ritiro (`zeroerp.doc_ritira_legami` = `DOCUMENTO:id`) |
+| BB `vendite.fn_doc_porta_ritiro_ammette(…)` | la porta, letta da chi blocca: il lock delle righe (per staccare `preventivo_riga_id` da un ordine confermato), il guard del legame della bolla, il guard dell'annullo. Vale solo per il proprietario della tabella (i verbi DEFINER) |
+| guard `vendite.trgfn_doc_guard_annullo_con_legami`, fascia `_m10_` | l'avviso, su bolla, ordine, preventivo e contratto: entrare in uno stato `is_abortito` con legami → **E_DOC_ANNULLO_CON_LEGAMI**. Dopo i guard `_a10_` (matrice, righe di commessa EMESSA): prima parla cio' che vieta, poi cio' che chiede conferma. Prende il posto della Regola 4 della bolla |
+| verbi `vendite.fn_annulla_ddt`, `fn_annulla_ordine`, `fn_annulla_preventivo`, `fn_annulla_contratto` | perimetro, BB, cambio di stato. Quello della bolla si riallinea al BB |
+| `vendite.fn_offerta_documenti_vivi(p_offerta_id)` | i contratti e gli ordini **vivi** nati dall'offerta: lo leggono il push, la capability dell'offerta (e il backend, che oggi ne tiene uno specchio) |
+| `E_DOC_ANNULLO_CON_LEGAMI` | il codice unico; `E_DDT_ANNULLO_CON_LEGAMI` si ritira (`obsoleto_dal`) |
+
+Si ritirano anche: il ritiro automatico dalla commessa (`vendite.trgfn_doc_ritira_commessa_attivita` e i
+suoi quattro trigger `_z90_`), che col guard non scatterebbe piu' (il ritiro lo fa il verbo, dopo la
+conferma); `vendite.trgfn_contratti_sync_is_abortito_snapshot`, che diventa il BB
+`vendite.trgfn_doc_snapshot_da_stato` montato su contratto e ordine (regola del 2).
+
+### 7.3 Il preventivo torna ACCETTATO
+
+Staccate le righe dell'ordine, un preventivo EVASO che ha di nuovo un residuo torna ACCETTATO: arco nuovo
+EVASO → ACCETTATO (`manuale = false`) in `transizioni_stati_preventivi`, eseguito dal BB.
+
+## 6. Ricaduta BE/FE (2026-10-11, dopo l'apply del §8; sostituisce il §3.4)
+
+| # | Cosa | Dove | Note |
+| --- | --- | --- | --- |
+| **R-1** | **Una finestra di conferma sola**, per bolla, ordine, preventivo e contratto | il cambio di stato verso ANNULLATO (UPDATE diretto per ordine e contratto, `fn_cambia_stato_preventivo` per il preventivo, quello della bolla) | se il DB risponde **E_DOC_ANNULLO_CON_LEGAMI** (409, contesto `documento`, `id`, `legami`), la finestra legge `SELECT * FROM vendite.fn_documento_legami(<documento>, <id>)` ed elenca che cosa si riapre e dove («riga 1, preventivo 12, 4 pz»; «offerta 7 torna trasformabile»; «2 righe di commessa da emettere tornano annullate»). Il nome dei documenti per il gesto «vai al documento» dal lineage. La colonna `natura` distingue CONSUMO (si riapre) da PROVENIENZA (l'offerta torna trasformabile) |
+| **R-2** | **Alla conferma, il verbo del documento** | `SELECT * FROM vendite.fn_annulla_ddt(id, n)` (movimenti), `SELECT vendite.fn_annulla_ordine(id, n)`, `fn_annulla_preventivo(id, n)`, `fn_annulla_contratto(id, n)` (i legami confermati) | `n` = quante righe la finestra ha mostrato. Se non corrisponde (legami cambiati nel frattempo) risponde lo stesso codice: la finestra si ripresenta aggiornata. Il permesso di annullare resta quello del BE (come per l'UPDATE diretto); la bolla emessa chiede `emetti_ddt` al verbo di stato |
+| **R-3** | **Codice nuovo** `E_DOC_ANNULLO_CON_LEGAMI` | policy (409, `ui_action` di conferma) e frase di ripiego | `E_DDT_ANNULLO_CON_LEGAMI` si ritira (`obsoleto_dal` 2026-10-11) prima di essere arrivato al BE: non va mappato |
+| **R-4** | **L'offerta non e' consumata da un documento annullato** | `ordini_service.crea_ordine_da_offerta` (guard specchio), `views_offerte` (dialog «gia' generato») | il controllo «l'offerta ha gia' generato un contratto/ordine» guarda i soli documenti VIVI: legga `vendite.fn_offerta_documenti_vivi(offerta_id)` invece di tenere uno specchio (regola del 2). La violazione di `uq_ordini_v_documento_origine_offerta` resta la rete sulla corsa, ora sui soli vivi |
+| **R-5** | ⚠️ **`offerte_repository._FROM_JOINS_OFFERTA`: il LEFT JOIN sul contratto dava per scontato «0 o 1»** | `LEFT JOIN vendite.contratti c ON c.offerta_id = o.id` | con l'unicita' sui vivi un'offerta puo' avere un contratto annullato e uno vivo: la riga dell'offerta si DUPLICA. Va filtrato `AND NOT c.is_abortito_snapshot` (il contratto che il dialog mostra e' quello vivo). Da fare nello stesso rilascio dell'apply |
+| **R-6** | Guide | `gestione-ddt` e le guide di ordini, preventivi, contratti | «Annullare un documento nato da un altro»: che cosa si riapre (quantita' da spedire, righe da ordinare, offerta da trasformare, righe di commessa), e che la finestra lo chiede. Il preventivo torna ACCETTATO quando un suo ordine si annulla |
+
+## 8. Consegna DB dei casi 2-5 (2026-10-11): ✅ applicata da Tid e verde
+
+### 8.1 I changeSet
+
+| NN | Oggetto | Cosa |
+| --- | --- | --- |
+| `-68` | `uq_contratti_offerta_id` | da UNIQUE (offerta_id) a indice unico parziale sui contratti vivi (D-6); stesso nome |
+| `-69` | `vendite.ordini.is_abortito_snapshot` | colonna nuova + allineamento delle righe, coi trigger della tabella spenti per il solo UPDATE (i trigger «padre attivo» controllano a ogni UPDATE: un ordine annullato su un termine di pagamento poi disattivato e' uno stato ammesso) |
+| `-70` | `uq_ordini_v_documento_origine_offerta` | unico sui soli ordini vivi (D-6); stesso nome |
+| `-71` | BB `vendite.trgfn_doc_snapshot_da_stato` | le bandiere dello stato copiate sulla riga, a ogni scrittura (regola del 2: prima copia sul contratto) |
+| `-72` | trigger | montato su ordine e contratto; ritirata `vendite.trgfn_contratti_sync_is_abortito_snapshot` |
+| `-73` | `vendite.fn_offerta_documenti_vivi` | i contratti e gli ordini vivi nati dall'offerta: sede unica (push, capability, backend) |
+| `-74` | `vendite.fn_push_offerta_a_contratto` | i due guard «gia' generato» sui soli vivi (D-3) |
+| `-75` | `script.fn_available_actions_offerta` | `can_push_contratto` / `can_genera_ordine` sui soli vivi |
+| `-76` | `vendite.vw_dash_fatturazione_offerte` | il lettore che l'unicita' sui vivi rompeva: i figli dell'offerta in una riga per lato (esiste, vivo), niente duplicati ne' `LIMIT 1` arbitrario |
+| `-77` | ⭐ `vendite.fn_documento_legami` | il lettore unico dei legami (D-4), SECURITY DEFINER perche' avviso, conferma e finestra contino la stessa cosa sotto la RLS |
+| `-78` | BB `vendite.fn_doc_porta_ritiro_ammette` | la porta del ritiro (GUC `zeroerp.doc_ritira_legami` + proprietario + cosa il ritiro tocca) |
+| `-79` | `vendite.trgfn_doc_righe_lock_fuori_bozza` | la porta prima del rifiuto: la riga d'ordine si stacca dal preventivo anche fuori bozza, solo dal verbo |
+| `-80` | `vendite.trgfn_ddt_riga_legame_guard` | il DELETE fuori bozza dalla porta comune (via `zeroerp.ddt_annullo`) |
+| `-81` | BB `vendite.trgfn_doc_guard_annullo_con_legami` | l'avviso: consumo presente → rifiuto sempre; sola provenienza → passa con la porta |
+| `-82` | trigger `_m10_` | l'avviso su bolla, ordine, preventivo, contratto (dopo i guard `_a10_`) |
+| `-83` | `vendite.trgfn_ddt_guard_transizione` | ritirata la Regola 4 |
+| `-84` | ⭐ BB `vendite.fn_documento_ritira_legami` | conferma e ritiro dei consumi (bolla, ordine → preventivo con EVASO → ACCETTATO, commessa); lascia la porta aperta |
+| `-85` | `vendite.fn_annulla_ddt` | riallineato al BB; il parametro diventa `p_legami_confermati` (DROP/CREATE: il BE non lo chiamava ancora) |
+| `-86` `-87` `-88` | `vendite.fn_annulla_ordine` / `_preventivo` / `_contratto` | i tre verbi nuovi, SECURITY DEFINER: perimetro, BB, cambio di stato, porta chiusa |
+| `-89` | `vendite.trgfn_doc_guard_chiusura_sorgente` | solo testo: non nomina piu' il motore che si ritira |
+| `-90` | DROP `vendite.trgfn_doc_ritira_commessa_attivita` + 4 trigger `_z90_` | il ritiro automatico e silenzioso (D-5): col guard non scatterebbe piu' |
+| `-91` | DROP `vendite.fn_ddt_legami` | il lettore della sola bolla (regola del 2) |
+| CSV | `transizioni_stati_preventivi` | arco 9: EVASO → ACCETTATO, `manuale = false` |
+| CSV | `codici_errore`, `messaggi_errore` | `E_DOC_ANNULLO_CON_LEGAMI` (CONFLITTO_STATO, id 1289); `E_DDT_ANNULLO_CON_LEGAMI` `obsoleto_dal` 2026-10-11 |
+
+### 8.2 La prova (sullo scratch `zeroerp_ci`, da owner, transazione ritirata)
+
+* **SQL estratto** dei 24 changeSet, in ordine, con le **preCondition** valutate ciascuna al suo punto:
+  tutte vere. I CSV sono simulati con INSERT/UPDATE (il loader non e' provato qui).
+* **pgTAP nuovo** `vendite/test-annullo-documento-con-legami-v1.sql`: **29/30**; il 30 e' il rosso
+  «da owner» dichiarato (la GUC accesa a mano: da proprietario la porta si apre per costruzione, come il
+  test 43 del caso 1). Costruisce i casi 2, 3, 4 e 5 dai builder e dai push veri.
+* **Regressione** (stesso file prima e dopo, stesso scratch): 80 pgTAP che toccano annulli, legami,
+  offerte, push e commessa, piu' 137 presidi trasversali (`dbops/`, `config/`, presidi di `script/`, fra
+  cui riferimenti morti, rubinetto, catalogo dei messaggi, DEFINER): **nessuna regressione**. Le
+  differenze sono i file aggiornati per contratto:
+  * `vendite/test-ritiro-alla-chiusura-documento-v1` riscritto per D-5 (l'UPDATE nudo ora chiede conferma,
+    il ritiro e' del verbo) e passato ai builder: **8/8**, e ora gira anche da zero (prima si fermava sui
+    dati);
+  * `config/test-costanti-catalogo-citate-dal-codice-v1` (test 5-6: i freni rimasti sono tre) 6/6;
+  * `vendite/test-ddt-righe-evase-dall-ordine-v1` 42/43 (il 43 rosso da owner, come prima), e i tre file
+    con le fixture della bolla annullata (`reason-catch-all` 16/1 come prima; `stato-sorgente-ddt-reso` e
+    `list-ddt-orfano` sullo scratch si fermano prima per i dati, come prima) dichiarano ora i legami da
+    `fn_documento_legami`.
+* ⚠️ **Non provato qui**: l'esito come app (la RLS; il test 30) e i file che sullo scratch si fermano per i
+  dati: li prova la corsa di Tid su dbdev. Ho riletto a mano quelli che annullano un documento
+  (`fn-list-ordini-da-pushare-v3`, `vw-dash-backlog`, `vw-dash-fatturazione`, `fn-cambia-stato-preventivo`,
+  `vw-situazione-merce-ordine`): annullano documenti senza legami, o inseriscono contratti gia'
+  annullati, quindi l'avviso non li tocca.
+* **Dopo l'apply (Tid, 2026-10-11, dbdev):** `script/test-capability-motivi-e-nessuna-azione-v1` si fermava
+  al test 12 con E_DOC_ANNULLO_CON_LEGAMI. La fixture prende dai dati il primo ordine DRAFT annullabile e lo
+  annullava con un UPDATE diretto: su dbdev quell'ordine ha un legame, e l'avviso l'ha fermato, com'e' giusto.
+  Sullo scratch il ramo va in SKIP (nessun ordine), per questo la regressione non l'aveva visto. Fixture
+  riallineata: passa da `vendite.fn_annulla_ordine` dichiarando i legami letti da `fn_documento_legami`,
+  come gia' la gemella della bolla nello stesso file. Riletti gli altri file che annullano con un UPDATE
+  diretto (`ordini-guard-transizione`, `testata-dopo-emissione`, `preventivi-approvazione-prezzo`,
+  `seed-stati-doc-ordini-evaso`, `contratti-step23`, `fn-check-prezzi-autorizzati`): costruiscono
+  documenti propri senza legami, l'avviso non li tocca.
+* **Dopo l'apply (2):** `vendite/test-seed-stati-doc-preventivi-evaso-v1` test 4 fissava «da EVASO nessuna
+  transizione»: e' la regola che D-2 cambia. Riscritto sul significato: da EVASO nessuna uscita MANUALE,
+  una sola automatica verso ACCETTATO. 4/4 sullo scratch. ⚠️ Il gemello degli ordini
+  (`script/test-seed-stati-doc-ordini-evaso-v1`, test 4 e 6) e' rosso da PRIMA di questo giro (5/2 sullo
+  scratch prima e dopo): fissa la stessa regola, ma gli ordini hanno uscite automatiche da EVASO dal
+  2026-07-09 (proiezione dell'evasione). Non e' di questo cantiere: da decidere a parte.
+
+### 8.3 Fatti da sapere prima dell'apply
+
+* La FK `fk_contratti_offerta` perde la copertura per prefisso (l'indice sui vivi e' parziale su
+  `is_abortito_snapshot`): la policy FK e' opt-in e la FK non e' a registro, come le altre del contratto.
+* Il backend ha **due** lettori che davano per scontato «un'offerta, al piu' un contratto» (R-4, R-5 del
+  §6): vanno nello stesso rilascio, o una seconda trasformazione duplica la riga dell'offerta.
+* Le pagine `manual/` dei due oggetti ritirati si cancellano, e il loro contenuto passa in
+  `trgfn_doc_snapshot_da_stato.md` e `trgfn_doc_guard_annullo_con_legami.md` (nuove, con
+  `fn_documento_legami.md`).
+

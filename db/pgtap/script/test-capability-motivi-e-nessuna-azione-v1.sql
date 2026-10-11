@@ -545,9 +545,21 @@ SELECT o.id FROM vendite.ordini o
  ORDER BY o.id
  LIMIT 1;
 
-UPDATE vendite.ordini SET stato_doc_ordine_id =
-       (SELECT id FROM config.stati_doc_ordini WHERE codice_interno = 'ANNULLATO')
- WHERE id IN (SELECT id FROM _ord_ann);
+-- ⭐ rev 2026-10-11 (brief-db-annullo-documento-con-legami, D-1/D-4): un ordine
+--   con legami (righe di preventivo, offerta d'origine, righe di commessa
+--   NON_EMESSA) non si annulla con l'UPDATE diretto — l'avviso
+--   E_DOC_ANNULLO_CON_LEGAMI lo rifiuta. La transizione VERA passa dal verbo,
+--   dichiarando i legami letti da vendite.fn_documento_legami, come fa la
+--   finestra di conferma; un ordine senza legami ne dichiara zero.
+DO $ord$
+DECLARE v_ord bigint;
+BEGIN
+  FOR v_ord IN SELECT id FROM _ord_ann LOOP
+    PERFORM vendite.fn_annulla_ordine(
+        v_ord,
+        (SELECT count(*)::integer FROM vendite.fn_documento_legami('ORDINE', v_ord) l));
+  END LOOP;
+END $ord$;
 
 SELECT CASE WHEN (SELECT count(*) FROM _ord_ann) = 0
   THEN pass('12) SKIP: nessun ordine DRAFT annullabile da cui costruire il soggetto')
@@ -594,9 +606,9 @@ SELECT o.id AS ordine_id, d.id AS ddt_id,
 
 -- ⭐ rev 2026-10-11 (brief-db-annullo-documento-con-legami §3, D-8 di
 --   brief-db-ddt-righe-evase-dall-ordine): un DDT figlio di un ordine ne porta
---   i legami, e l'annullo diretto e' rifiutato (E_DDT_ANNULLO_CON_LEGAMI). La
---   transizione VERA passa dal verbo, dichiarando le righe legate lette da
---   vendite.fn_ddt_legami, come fa la finestra di conferma; l'annullo di una
+--   i legami, e l'annullo diretto e' rifiutato (E_DOC_ANNULLO_CON_LEGAMI). La
+--   transizione VERA passa dal verbo, dichiarando i legami letti da
+--   vendite.fn_documento_legami (D-4), come fa la finestra di conferma; l'annullo di una
 --   bolla emessa chiede l'azione emetti_ddt al verbo di stato.
 DO $ann$
 DECLARE v_ddt bigint;
@@ -606,7 +618,7 @@ BEGIN
   FOR v_ddt IN SELECT ddt_id FROM _ddt_ann LOOP
     PERFORM vendite.fn_annulla_ddt(
         v_ddt,
-        (SELECT count(DISTINCT l.ddt_riga_id)::integer FROM vendite.fn_ddt_legami(v_ddt) l));
+        (SELECT count(*)::integer FROM vendite.fn_documento_legami('DDT', v_ddt) l));
   END LOOP;
 END $ann$;
 
