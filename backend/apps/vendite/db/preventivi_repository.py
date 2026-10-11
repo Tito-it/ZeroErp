@@ -197,11 +197,7 @@ class PreventiviRepository(
     _indirizzi_table = "vendite.preventivi_indirizzi"
     _indirizzi_fk_documento = "preventivo_id"
     _indirizzi_ambito = "PREVENTIVI"
-    _indirizzi_documento_table = "vendite.preventivi"
-    # Precontrattuale: l'istanza si sceglie prima che esista un BA ed e'
-    # congelata in testata → e' quella che dà la precedenza nella risoluzione
-    # indirizzi (fallback `ba.istanza_utility_id`).
-    _indirizzi_doc_istanza_column = "istanza_utility_id"
+    _indirizzi_documento = "PREVENTIVO"
 
     # ══════════════════════════════════════════════════════════
     #  LETTURE — Testata (via vista canonica vw_preventivi_lista)

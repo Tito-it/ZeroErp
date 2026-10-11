@@ -250,6 +250,9 @@ class OfferteServiceTests(TestCase):
         self.assertNotIn("revisione_numero", call)
         # `codice` NON deve mai arrivare al repo (Step 5: trigger DB).
         self.assertNotIn("codice", call)
+        # Lo slot di default lo riempie il DB, nella transazione della
+        # creazione (R-BE-1).
+        repo.riempi_indirizzo_default.assert_called_once_with(1)
 
     # --- update / delete con guard stato ------------------------------
 
@@ -690,9 +693,10 @@ class OfferteServiceTests(TestCase):
 
     # Scopo: push ok costruisce OffertaPushResult con id+numero+uid del nuovo
     #        contratto letto da get_contratto_minimal.
+    @patch("apps.vendite.services.offerte_service.ContrattiRepository")
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_push_a_contratto_ok_costruisce_result(self, repo_cls, _atomic):
+    def test_push_a_contratto_ok_costruisce_result(self, repo_cls, _atomic, contratti_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
         _atomic.return_value.__enter__ = MagicMock()
@@ -710,6 +714,10 @@ class OfferteServiceTests(TestCase):
         result = OfferteService().push_a_contratto(1)
 
         repo.push_a_contratto.assert_called_once_with(1, None, False)
+        # Dopo la cascata dall'offerta, lo slot di default sul contratto nato:
+        # il verbo non passa da `fn_create_contratto`, quindi lo chiede il
+        # service (brief-db-indirizzi-documento-seguono-il-cliente, R-BE-1).
+        contratti_cls.return_value.riempi_indirizzo_default.assert_called_once_with(101)
         repo.get_contratto_minimal.assert_called_once_with(101)
         self.assertEqual(result, {
             "contratto_id": 101,
@@ -740,9 +748,10 @@ class OfferteServiceTests(TestCase):
         )
 
     # Scopo: pratica_id viene passato al repository quando valorizzato.
+    @patch("apps.vendite.services.offerte_service.ContrattiRepository")
     @patch("apps.vendite.services.offerte_service.transaction.atomic")
     @patch("apps.vendite.services.offerte_service.OfferteRepository")
-    def test_push_a_contratto_con_pratica_passa_pratica_id(self, repo_cls, _atomic):
+    def test_push_a_contratto_con_pratica_passa_pratica_id(self, repo_cls, _atomic, _contratti_cls):
         from apps.vendite.services.offerte_service import OfferteService
 
         _atomic.return_value.__enter__ = MagicMock()

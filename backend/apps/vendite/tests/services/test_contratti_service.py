@@ -259,6 +259,9 @@ class ContrattiServiceTests(TestCase):
         # numero e stato DRAFT sono risolti dalla fn madre: il BE non li passa.
         self.assertNotIn("numero", testata)
         self.assertNotIn("stato_doc_contratto_id", testata)
+        # Lo slot di default lo riempie `vendite.fn_create_contratto` da se':
+        # il service non lo chiede una seconda volta (R-BE-1).
+        repo.riempi_indirizzo_default.assert_not_called()
 
     @patch("apps.vendite.services.contratti_service.ContrattiRepository")
     def test_create_contratto_modalita_C_ok(self, repo_cls):

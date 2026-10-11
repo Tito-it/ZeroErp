@@ -44,6 +44,7 @@ from apps.vendite.db._documento_eccezioni_repo import (
     list_erogazioni_riga,
     listino_versione_operativa,
 )
+from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.offerte_repository import (
     _ORDER_COLS_OFFERTE,
     OffertaRigheListaRepository,
@@ -51,7 +52,6 @@ from apps.vendite.db.offerte_repository import (
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
-    auto_assegna_indirizzo_default,
     delete_indirizzo_documento,
     list_indirizzi_documento,
     upsert_indirizzo_documento,
@@ -567,9 +567,9 @@ class OfferteService:
                     self._add_utility_inline(
                         offerta_id, payload, utility_payload,
                     )
-        # UX v2: auto-assegnazione best-effort dell'indirizzo default
-        # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
-        auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(offerta_id))
+                # Slot di default dall'anagrafica del cliente, nella stessa
+                # transazione: lo decide il DB (`vendite.fn_doc_indirizzo_default`).
+                self._repo.riempi_indirizzo_default(int(offerta_id))
         return self.get_offerta(offerta_id)
 
     # Scopo: Crea il record utility 1:1 contestualmente alla testata. Riusa
@@ -823,13 +823,11 @@ class OfferteService:
                 contratto_id = self._repo.push_a_contratto(
                     offerta_id, pratica_id, chiudi_esistente,
                 )
-        # UX v2: la cascata DB copia gli indirizzi dell'offerta sul contratto;
-        # fallback best-effort dall'anagrafica di ruolo se la sorgente non
-        # aveva slot compatibili. Import locale per evitare cicli fra service.
-        from apps.vendite.services.contratti_service import (
-            auto_assegna_indirizzo_default_contratto,
-        )
-        auto_assegna_indirizzo_default_contratto(int(contratto_id))
+                # La cascata DB copia gli indirizzi dell'offerta sul contratto;
+                # il default riempie lo slot SOLO se e' rimasto vuoto (la
+                # sorgente vince). Il verbo scrive la testata da se', non passa
+                # da `vendite.fn_create_contratto`: il default va chiamato qui.
+                ContrattiRepository().riempi_indirizzo_default(int(contratto_id))
         contratto = self._repo.get_contratto_minimal(contratto_id)
         ErrorManager.require(
             contratto is not None,
@@ -1770,7 +1768,7 @@ def _orchestrate_l3_request_offerta(
 
 _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
-    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    # dei test unit raggiungono il repository.
     repo_factory=lambda: OfferteRepository(),
     not_found_code=E_VENDITE_NOT_FOUND,
     error_code=E_VENDITE_VALIDATION,
@@ -1778,8 +1776,8 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
 )
 
 
-# Scopo: Pannello indirizzi dell'offerta (ambito OFFERTE). Guard, ownership e
-#        traduzione errori DB nel BB condiviso.
+# Scopo: Pannello indirizzi dell'offerta (ambito OFFERTE). Guard di esistenza
+#        e traduzione errori DB nel BB condiviso.
 def list_indirizzi(offerta_id: int) -> dict[str, Any]:
     return list_indirizzi_documento(_INDIRIZZI_CFG, offerta_id)
 

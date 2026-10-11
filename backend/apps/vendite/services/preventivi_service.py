@@ -63,7 +63,6 @@ from apps.vendite.services._componenti_service_helpers import (
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
-    auto_assegna_indirizzo_default,
     delete_indirizzo_documento,
     list_indirizzi_documento,
     upsert_indirizzo_documento,
@@ -376,7 +375,7 @@ def get_contesto_pricing(preventivo_id: int) -> dict[str, Any] | None:
 
 _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
-    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    # dei test unit raggiungono il repository.
     repo_factory=lambda: PreventiviRepository(),
     not_found_code="E_PREV_NOT_FOUND",
     error_code="E_PREV_VALIDAZIONE",
@@ -384,8 +383,8 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
 )
 
 
-# Scopo: Pannello indirizzi del preventivo (ambito PREVENTIVI). Guard,
-#        ownership e traduzione errori DB nel BB condiviso.
+# Scopo: Pannello indirizzi del preventivo (ambito PREVENTIVI). Guard di
+#        esistenza e traduzione errori DB nel BB condiviso.
 def list_indirizzi(preventivo_id: int) -> dict[str, Any]:
     return list_indirizzi_documento(_INDIRIZZI_CFG, preventivo_id)
 
@@ -555,7 +554,9 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
     )
     assert stato_bozza_id is not None
 
-    with _vincoli_cliente_preventivo():
+    # Creazione e slot di default in UNA transazione (il riempimento non e'
+    # best-effort: api.md §Atomicita').
+    with _vincoli_cliente_preventivo(), transaction.atomic():
         result = repo.create_preventivo(
             billing_account_id=billing_account_id,
             utility_id=utility_id,
@@ -570,9 +571,9 @@ def crea_preventivo(payload: dict[str, Any]) -> dict[str, Any]:
             stato_doc_preventivo_id=stato_bozza_id,
             meta=payload.get("meta"),
         )
-    # UX v2: auto-assegnazione best-effort dell'indirizzo default (indirizzo
-    # di ruolo CON del cliente, fallback FATT). Mai bloccante.
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(result["id"]))
+        # Slot di default dall'anagrafica del cliente: lo decide il DB
+        # (`vendite.fn_doc_indirizzo_default`).
+        repo.riempi_indirizzo_default(int(result["id"]))
     return result
 
 

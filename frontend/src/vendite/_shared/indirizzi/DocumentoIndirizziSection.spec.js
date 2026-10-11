@@ -23,6 +23,8 @@
 //  4) permessi in sola lettura vincono sulla capability accesa
 //  5) ⭐ la catena readonly del padre (il readonly di STATO) NON passa
 //  6) i cinque drawer passano il blob alla sezione
+//  7) il cliente del documento cambia (detail salvato): la sezione ricarica
+//  8) all'apertura l'identita' da vuota a valorizzata non ricarica una seconda volta
 // ------------------------------------------------------------
 import { describe, it, expect, vi } from 'vitest'
 import { defineComponent, nextTick, ref } from 'vue'
@@ -38,18 +40,19 @@ import sorgenteOfferta from '../../offerte/components/OffertaDrawer.vue?raw'
 import sorgenteContratto from '../../components/ContrattoDrawer.vue?raw'
 
 // Contorno: la lista degli indirizzi (un tipo CON ammesso, nessuna riga).
+// `list` e' una spia: i test 7 e 8 contano le ricariche.
+const { list } = vi.hoisted(() => ({ list: vi.fn() }))
 vi.mock('./documentoIndirizziApi', async (importOriginal) => ({
   ...(await importOriginal()),
-  makeIndirizziDocumentoApi: () => ({
-    list: async () => ({
-      data: {
-        data: {
-          tipi_ammessi: [{ tipo_indirizzo_id: 1, tipo_indirizzo_codice: 'CON', obbligatorio: true }],
-          indirizzi: [],
-        },
-      },
-    }),
-  }),
+  makeIndirizziDocumentoApi: () => ({ list }),
+}))
+list.mockImplementation(async () => ({
+  data: {
+    data: {
+      tipi_ammessi: [{ tipo_indirizzo_id: 1, tipo_indirizzo_codice: 'CON', obbligatorio: true }],
+      indirizzi: [],
+    },
+  },
 }))
 
 // Contorno: il drawer di gestione. Si legge solo il readonly che riceve.
@@ -114,5 +117,55 @@ describe('DocumentoIndirizziSection — quando si modificano', () => {
       })
       .map(([nome]) => nome)
     expect(senza).toEqual([])
+  })
+
+  // R-FE-2 (brief-db-indirizzi-documento-seguono-il-cliente): cambiato il
+  // cliente in bozza, il DB ha tolto gli indirizzi di prima e riempito lo
+  // slot di default dal nuovo. Il drawer ricarica `detail`, e la sezione
+  // deve ricaricare la lista.
+  it('il cliente cambia: la sezione ricarica', async () => {
+    list.mockClear()
+    const wrapper = monta(
+      DocumentoIndirizziSection,
+      { dominio: 'ddt', docId: 7, soggettoRuoloId: 10, istanzaUtilityId: null },
+      { global: { stubs: { DocumentoIndirizziDrawer: DrawerFinto } } },
+    )
+    await flushPromises()
+    expect(list).toHaveBeenCalledTimes(1)
+    await wrapper.setProps({ soggettoRuoloId: 20, istanzaUtilityId: 5 })
+    await flushPromises()
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  // All'apertura `detail` arriva dopo il `docId`: l'identita' passa da vuota
+  // a valorizzata, e il caricamento l'ha gia' fatto il watch sul documento.
+  it("all'apertura l'identita' che arriva non ricarica", async () => {
+    list.mockClear()
+    const wrapper = monta(
+      DocumentoIndirizziSection,
+      { dominio: 'ddt', docId: 7, soggettoRuoloId: null, istanzaUtilityId: null },
+      { global: { stubs: { DocumentoIndirizziDrawer: DrawerFinto } } },
+    )
+    await flushPromises()
+    await wrapper.setProps({ soggettoRuoloId: 10, istanzaUtilityId: 5 })
+    await flushPromises()
+    expect(list).toHaveBeenCalledTimes(1)
+  })
+
+  // Cambio di documento: cambia `docId` e, con lui, il cliente. Carica il
+  // watch sul documento, una volta sola: una seconda `load()` dal watch sul
+  // cliente sarebbe una richiesta doppia in gara con la prima.
+  it('il cambio di documento carica una volta sola', async () => {
+    list.mockClear()
+    const wrapper = monta(
+      DocumentoIndirizziSection,
+      { dominio: 'ddt', docId: 7, soggettoRuoloId: 10, istanzaUtilityId: 5 },
+      { global: { stubs: { DocumentoIndirizziDrawer: DrawerFinto } } },
+    )
+    await flushPromises()
+    await wrapper.setProps({ docId: 8, soggettoRuoloId: 20, istanzaUtilityId: null })
+    await flushPromises()
+    expect(list).toHaveBeenCalledTimes(2)
+    expect(list).toHaveBeenLastCalledWith(8)
   })
 })

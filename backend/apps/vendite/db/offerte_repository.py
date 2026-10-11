@@ -352,9 +352,7 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
     _indirizzi_table = "vendite.offerte_commerciali_indirizzi"
     _indirizzi_fk_documento = "offerta_id"
     _indirizzi_ambito = "OFFERTE"
-    _indirizzi_documento_table = "vendite.offerte_commerciali"
-    # Precontrattuale: istanza congelata in testata (vedi preventivi).
-    _indirizzi_doc_istanza_column = "istanza_utility_id"
+    _indirizzi_documento = "OFFERTA"
 
     # =================================================================
     # Lista e dettaglio testata

@@ -59,7 +59,6 @@ from apps.core.services.testata_guard import (
 )
 from apps.vendite.services._indirizzi_documento_helpers import (
     IndirizziDocumentoConfig,
-    auto_assegna_indirizzo_default,
     delete_indirizzo_documento,
     list_indirizzi_documento,
     upsert_indirizzo_documento,
@@ -710,9 +709,8 @@ class ContrattiService:
                 testata=data, utility=utility_data,
             )
 
-        # UX v2: auto-assegnazione best-effort dell'indirizzo default
-        # (indirizzo di ruolo CON del cliente, fallback FATT). Mai bloccante.
-        auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(new_id))
+        # Lo slot di default lo riempie `vendite.fn_create_contratto` in coda,
+        # nella stessa statement (brief-db-indirizzi-documento-seguono-il-cliente).
         return self.get_contratto(new_id)
 
     # =================================================================
@@ -2488,7 +2486,7 @@ def _orchestrate_l3_request_contratto(
 
 _INDIRIZZI_CFG = IndirizziDocumentoConfig(
     # lambda (non la classe): risolve il nome a call-time, cosi' i @patch
-    # dei test unit raggiungono anche il ramo auto-assegnazione.
+    # dei test unit raggiungono il repository.
     repo_factory=lambda: ContrattiRepository(),
     not_found_code=E_VENDITE_NOT_FOUND,
     error_code=E_VENDITE_VALIDATION,
@@ -2496,8 +2494,8 @@ _INDIRIZZI_CFG = IndirizziDocumentoConfig(
 )
 
 
-# Scopo: Pannello indirizzi del contratto (ambito CONTRATTI). Guard,
-#        ownership e traduzione errori DB nel BB condiviso.
+# Scopo: Pannello indirizzi del contratto (ambito CONTRATTI). Guard di
+#        esistenza e traduzione errori DB nel BB condiviso.
 def list_indirizzi(contratto_id: int) -> dict[str, Any]:
     return list_indirizzi_documento(_INDIRIZZI_CFG, contratto_id)
 
@@ -2511,12 +2509,3 @@ def upsert_indirizzo(contratto_id: int, payload: dict[str, Any]) -> dict[str, An
 # Scopo: Rimozione slot indirizzo (solo DRAFT).
 def delete_indirizzo(contratto_id: int, indirizzo_id: int) -> dict[str, Any]:
     return delete_indirizzo_documento(_INDIRIZZI_CFG, contratto_id, indirizzo_id)
-
-
-# Scopo: Auto-assegnazione best-effort dell'indirizzo default sul contratto,
-#        esposta per i flussi che creano contratti FUORI da questo service
-#        (push offerta→contratto in offerte_service): la cascata DB copia gli
-#        indirizzi dell'offerta, questo e' il fallback dall'anagrafica di
-#        ruolo quando la sorgente non aveva slot compatibili. Mai bloccante.
-def auto_assegna_indirizzo_default_contratto(contratto_id: int) -> None:
-    auto_assegna_indirizzo_default(_INDIRIZZI_CFG, int(contratto_id))

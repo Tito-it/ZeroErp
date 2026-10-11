@@ -54,8 +54,8 @@ ResiAzioniTests
 20) test_conferma_not_found_da_fn         — E_RESO_NOT_FOUND estratto dal RAISE della fn
 21) test_conferma_no_atomic_extra         — atomicita' nella fn madre DB
 22) test_annulla_delega_fn_madre_light    — fn_annulla_reso + stato riletto
-23) test_riconsegna_delega_e_ritorna      — fn_genera_ddt_riconsegna + ddt_id
-24) test_riconsegna_no_atomic_extra       — nessun transaction.atomic extra
+23) test_riconsegna_delega_e_ritorna      — fn_genera_ddt_riconsegna + ddt_id + slot di default
+24) test_riconsegna_errore_del_default_sale — verbo e default in una transazione
 24b) test_riconsegna_righe_vuote          — E_RESO_VALIDAZIONE (no degrado a "tutto")
 24c) test_riconsegna_righe_non_lista      — E_RESO_VALIDAZIONE (no degrado a "tutto")
 24d) test_riconsegna_riga_senza_qta       — E_RESO_VALIDAZIONE
@@ -126,6 +126,7 @@ _REPO = "apps.vendite.services.resi_service.ResiRepository"
 _SORGENTI_REPO = "apps.vendite.services.resi_service.SorgentiRepository"
 _SVC = "apps.vendite.services.resi_service"
 _ATOMIC = "apps.vendite.services.resi_service.transaction.atomic"
+_DDT_REPO = "apps.vendite.services.resi_service.DdtRepository"
 
 
 # Scopo: il BB `run_fan_out` VERO, con l'isolamento per elemento spento. Il
@@ -665,8 +666,10 @@ class ResiAzioniTests(SimpleTestCase):
         repo.annulla.assert_called_once_with(7)
         self.assertEqual(out, {"reso_id": 7, "stato": "ANNULLATO"})
 
+    @patch(_DDT_REPO)
+    @patch(_ATOMIC, return_value=nullcontext())
     @patch(_REPO)
-    def test_riconsegna_delega_e_ritorna(self, repo_cls) -> None:
+    def test_riconsegna_delega_e_ritorna(self, repo_cls, _atomic, ddt_cls) -> None:
         repo = repo_cls.return_value
         repo.genera_ddt_riconsegna.return_value = 42
 
@@ -680,14 +683,21 @@ class ResiAzioniTests(SimpleTestCase):
         # Il DDT di ri-spedizione nasce in DRAFT: numero deterministicamente
         # None (nessun re-read).
         self.assertEqual(out, {"reso_id": 7, "ddt_id": 42, "numero": None})
+        # Dopo la cascata dal DDT d'origine, lo slot di default sul DDT nato
+        # (il DB lo riempie solo se e' rimasto vuoto): come il DDT da ordine.
+        ddt_cls.return_value.riempi_indirizzo_default.assert_called_once_with(42)
 
-    @patch(f"{_SVC}.transaction")
+    @patch(_DDT_REPO)
+    @patch(_ATOMIC, return_value=nullcontext())
     @patch(_REPO)
-    def test_riconsegna_no_atomic_extra(self, repo_cls, mock_tx) -> None:
-        repo = repo_cls.return_value
-        repo.genera_ddt_riconsegna.return_value = 42
-        resi_service.genera_ddt_riconsegna(7)
-        mock_tx.atomic.assert_not_called()
+    def test_riconsegna_errore_del_default_sale(self, repo_cls, atomic, ddt_cls) -> None:
+        # Verbo e default nella stessa transazione: non e' best-effort, un
+        # errore sale e annulla anche il DDT di ri-spedizione.
+        repo_cls.return_value.genera_ddt_riconsegna.return_value = 42
+        ddt_cls.return_value.riempi_indirizzo_default.side_effect = RuntimeError("DB")
+        with self.assertRaises(RuntimeError):
+            resi_service.genera_ddt_riconsegna(7)
+        atomic.assert_called_once_with()
 
     @patch(_REPO)
     def test_riconsegna_righe_vuote(self, repo_cls) -> None:

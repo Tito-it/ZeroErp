@@ -15,10 +15,14 @@
 //   3) ⭐ la X (update:visible false) passa dalla STESSA conferma
 //   4) ⭐ l'ESC passa dalla stessa conferma
 //   5) lo slot `#footer` riceve `chiudi`, che passa dalla conferma
+//   6) ⭐ all'apertura il fuoco entra nel dialog (senza, ESC non si sente)
+//   7) un fuoco gia' dentro il dialog (un `autofocus`) resta dov'e'
+//   8) ⭐ in testa il tasto «Esc», il titolo e' quello di `aria-labelledby`
+//   9) dove ESC e' spento il tasto non si dice
 // ------------------------------------------------------------
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, ref } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
 import AppDialog from './AppDialog.vue'
@@ -27,10 +31,14 @@ import { monta } from '../../../test/montaggio'
 const DialogFinto = defineComponent({
   name: 'DialogFinto',
   props: ['visible', 'header', 'pt'],
-  emits: ['update:visible'],
-  setup(props, { slots }) {
+  emits: ['update:visible', 'show'],
+  setup(props, { slots, expose }) {
+    // Come PrimeVue: la radice e' esposta come `container`.
+    const container = ref(null)
+    expose({ container })
     return () =>
-      h('div', { class: 'dialog-finto', ...props.pt?.root }, [
+      h('div', { ref: container, class: 'dialog-finto', ...props.pt?.root }, [
+        h('header', slots.header?.({ class: 'p-dialog-title' })),
         h('main', slots.default?.()),
         h('footer', slots.footer?.()),
       ])
@@ -44,6 +52,7 @@ function montaDialog(props = {}, opts = {}) {
     {
       slots: { default: '<p class="contenuto">campi</p>', ...opts.slots },
       global: { stubs: { Dialog: DialogFinto } },
+      attachTo: opts.attachTo,
     },
   )
 }
@@ -99,5 +108,41 @@ describe('AppDialog — uscita', () => {
     )
     await w.find('button.mio').trigger('click')
     expect(chiamate).toBe(1)
+  })
+
+  it('6) all`apertura il fuoco entra nel dialog', () => {
+    // 🔴 Rilievo di Tid (2026-10-11): senza un campo `autofocus` il fuoco
+    //    restava fuori, l'ESC arrivava a `document` e non chiudeva niente.
+    const fuori = document.createElement('button')
+    document.body.appendChild(fuori)
+    fuori.focus()
+    const w = montaDialog({}, { attachTo: document.body })
+    w.findComponent(DialogFinto).vm.$emit('show')
+    expect(document.activeElement).toBe(w.find('.dialog-finto').element)
+    fuori.remove()
+  })
+
+  it('7) un fuoco gia` dentro il dialog resta dov`e`', () => {
+    const w = montaDialog(
+      {},
+      { attachTo: document.body, slots: { default: '<input class="campo" />' } },
+    )
+    const campo = w.find('input.campo').element
+    campo.focus()
+    w.findComponent(DialogFinto).vm.$emit('show')
+    expect(document.activeElement).toBe(campo)
+  })
+
+  it('8) in testa il tasto Esc, e il titolo e` quello di aria-labelledby', () => {
+    const w = montaDialog()
+    expect(w.find('header kbd.app-kbd').exists()).toBe(true)
+    const titolo = w.find('header .p-dialog-title')
+    expect(titolo.text()).toBe('Prova')
+    expect(w.find('.dialog-finto').attributes('aria-labelledby')).toBe(titolo.attributes('id'))
+  })
+
+  it('9) dove ESC e` spento il tasto non si dice', () => {
+    const w = montaDialog({ closeOnEscape: false })
+    expect(w.find('header kbd').exists()).toBe(false)
   })
 })

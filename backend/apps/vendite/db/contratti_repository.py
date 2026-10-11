@@ -322,9 +322,7 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
     _indirizzi_table = "vendite.contratti_indirizzi"
     _indirizzi_fk_documento = "contratto_id"
     _indirizzi_ambito = "CONTRATTI"
-    _indirizzi_documento_table = "vendite.contratti"
-    # Precontrattuale: istanza congelata in testata (vedi preventivi).
-    _indirizzi_doc_istanza_column = "istanza_utility_id"
+    _indirizzi_documento = "CONTRATTO"
 
     # =================================================================
     # Lista e dettaglio testata

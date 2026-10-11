@@ -2,9 +2,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright (C) 2026 Tid (Michele Carlo Titini)
 # Doc: Python
-# Smoke — CATENA DI RISOLUZIONE INDIRIZZI DOCUMENTO sul percorso reale, dopo il
-#         ripuntamento del mixin su `script.fn_resolve_indirizzo_documento`
-#         (Fase 0 del piano BE/FE satelliti fattura, 2026-07-31).
+# Smoke — CATENA DI RISOLUZIONE INDIRIZZI DOCUMENTO sul percorso reale:
+#         `script.fn_resolve_indirizzo_documento` (Fase 0 del piano BE/FE
+#         satelliti fattura, 2026-07-31). Dal 2026-10-12 il backend non la
+#         chiama piu': la usa il DB, nel building block dello slot di default
+#         `vendite.fn_doc_indirizzo_default` (brief-db-indirizzi-documento-
+#         seguono-il-cliente). Lo smoke la interroga direttamente.
 # Uso:    ./manage-env.sh shell < scripts/tests/smoke-indirizzi-documento-catena.py
 # ------------------------------------------------------------
 #
@@ -34,11 +37,12 @@
 #      (filtro di uguaglianza, non solo ordinamento)
 #   4  layer SOGGETTO: nessun indirizzo di ruolo -> snapshot senza origine_indirizzo_id
 #   5  tipo non risolvibile -> zero righe (nessun errore: decide il chiamante)
-#   6  il mixin espone la catena a tutti e 5 i domini (stessa implementazione)
-#   7  i 3 domini precontrattuali dichiarano l'istanza di testata, gli esecutivi no
+#   6  i 5 domini dichiarano il documento per lo slot di default DB
 # ------------------------------------------------------------
 
 from django.db import connection, transaction
+
+from apps.core.db._helpers import coerce_jsonb_dict, row_to_dict
 
 from apps.vendite.db.contratti_repository import ContrattiRepository
 from apps.vendite.db.ddt_repository import DdtRepository
@@ -73,7 +77,23 @@ if row is None:
     raise SystemExit("Prerequisito DB assente: il ripuntamento non è collaudabile.")
 print(f"    args: {row[0]}\n    ret : {row[1]}\n")
 
-repo = PreventiviRepository()
+
+
+# Scopo: la catena, interrogata come la interroga il building block DB.
+def _risolvi(*, soggetto_ruolo_id, istanza_utility_id, tipo_codice):
+    with connection.cursor() as cur:
+        cur.execute(
+            """
+            SELECT snapshot, origine_indirizzo_id, origine_soggetto_ruolo_id
+              FROM script.fn_resolve_indirizzo_documento(%s, %s, %s)
+            """,
+            [soggetto_ruolo_id, istanza_utility_id, tipo_codice],
+        )
+        row = row_to_dict(cur)
+    if row is not None:
+        row["snapshot"] = coerce_jsonb_dict(row.get("snapshot"))
+    return row
+
 
 with transaction.atomic():
     with connection.cursor() as cur:
@@ -166,7 +186,7 @@ with transaction.atomic():
         )
         id_generico = cur.fetchone()[0]
 
-    risolto = repo.resolve_indirizzo_documento(
+    risolto = _risolvi(
         soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id, tipo_codice=tipo_codice,
     )
     check("2) layer RUOLO risolve con origine agganciata",
@@ -196,7 +216,7 @@ with transaction.atomic():
         )
         id_istanza = cur.fetchone()[0]
 
-    risolto = repo.resolve_indirizzo_documento(
+    risolto = _risolvi(
         soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id, tipo_codice=tipo_codice,
     )
     check("3) PRECEDENZA ISTANZA: vince l'indirizzo dell'istanza, non il generico",
@@ -205,7 +225,7 @@ with transaction.atomic():
           f"(istanza={id_istanza}, generico={id_generico})")
 
     # Controprova: un documento SENZA istanza deve prendere il generico.
-    risolto_senza = repo.resolve_indirizzo_documento(
+    risolto_senza = _risolvi(
         soggetto_ruolo_id=sr_id, istanza_utility_id=None, tipo_codice=tipo_codice,
     )
     check("3b) documento senza istanza -> indirizzo generico",
@@ -219,7 +239,7 @@ with transaction.atomic():
     # senza, un `OR istanza IS NOT NULL` sbagliato passerebbe il caso 3
     # e servirebbe l'indirizzo di un'altra fornitura.
     if altra_istanza_id is not None:
-        risolto_altra = repo.resolve_indirizzo_documento(
+        risolto_altra = _risolvi(
             soggetto_ruolo_id=sr_id, istanza_utility_id=altra_istanza_id,
             tipo_codice=tipo_codice,
         )
@@ -261,7 +281,7 @@ with transaction.atomic():
         tipo_sog = cur.fetchone()
 
     if tipo_sog:
-        risolto = repo.resolve_indirizzo_documento(
+        risolto = _risolvi(
             soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id,
             tipo_codice=tipo_sog[0],
         )
@@ -300,7 +320,7 @@ with transaction.atomic():
         tipo_orfano = cur.fetchone()
 
     if tipo_orfano:
-        risolto = repo.resolve_indirizzo_documento(
+        risolto = _risolvi(
             soggetto_ruolo_id=sr_id, istanza_utility_id=istanza_id,
             tipo_codice=tipo_orfano[0],
         )
@@ -312,26 +332,18 @@ with transaction.atomic():
 
     transaction.set_rollback(True)
 
-# --- 6/7) la catena è condivisa, e il cablaggio dell'istanza è corretto ---
+# --- 6) lo slot di default e' del DB, per tutti e 5 i domini ---------------
 repos = {
-    "PREVENTIVI": PreventiviRepository, "OFFERTE": OfferteRepository,
-    "ORDINI": OrdiniRepository, "DDT": DdtRepository,
-    "CONTRATTI": ContrattiRepository,
+    "PREVENTIVO": PreventiviRepository, "OFFERTA": OfferteRepository,
+    "ORDINE": OrdiniRepository, "DDT": DdtRepository,
+    "CONTRATTO": ContrattiRepository,
 }
 # Attributi DI CLASSE del mixin: si leggono dalla classe, senza istanziare.
-senza_catena = [n for n, cls in repos.items()
-                if not hasattr(cls, "resolve_indirizzo_documento")]
-check("6) tutti e 5 i domini espongono la catena unica", not senza_catena,
-      f"mancanti: {senza_catena}" if senza_catena else "preventivi, offerte, ordini, ddt, contratti")
-
-# Precontrattuali: istanza in testata. Esecutivi: dal billing account.
-attesi = {"PREVENTIVI": "istanza_utility_id", "OFFERTE": "istanza_utility_id",
-          "CONTRATTI": "istanza_utility_id", "ORDINI": None, "DDT": None}
-errati = {n: (cls._indirizzi_doc_istanza_column, attesi[n])
+errati = {n: getattr(cls, "_indirizzi_documento", None)
           for n, cls in repos.items()
-          if cls._indirizzi_doc_istanza_column != attesi[n]}
-check("7) istanza di testata dichiarata dai soli precontrattuali", not errati,
-      str(errati) if errati else "3 precontrattuali + 2 esecutivi via BA")
+          if getattr(cls, "_indirizzi_documento", None) != n}
+check("6) i 5 domini dichiarano il documento per fn_doc_indirizzo_default", not errati,
+      str(errati) if errati else "preventivo, offerta, ordine, ddt, contratto")
 
 print("\n=== ROLLBACK eseguito: nessun indirizzo di prova persistito ===")
 print(f"=== ESITO: {'FALLITO — ' + ', '.join(FAIL) if FAIL else 'TUTTO VERDE'} ===\n")
