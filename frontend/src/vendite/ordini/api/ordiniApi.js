@@ -76,8 +76,11 @@ export function emettiOrdine(id, { allegati = [], templateId = null } = {}) {
 // Transizione di stato generica data-driven (es. annulla DRAFT->ANNULLATO).
 // `statoCodice` = `target_state` dell'azione da fn_available_actions_ordine.
 // L'ammissibilita' della transizione e' validata dal trigger guard DB.
-export function cambiaStatoOrdine(id, statoCodice) {
-  return api.post(`${BASE}/${id}/cambia-stato/`, { stato_codice: statoCodice })
+// `dichiarazione`: la conferma dell'annullo di un ordine con legami
+// (`{ legami_confermati }`, brief-db-annullo-documento-con-legami). Al primo
+// tentativo e' vuota (`useForzaturaConfermata`).
+export function cambiaStatoOrdine(id, statoCodice, dichiarazione = {}) {
+  return api.post(`${BASE}/${id}/cambia-stato/`, { stato_codice: statoCodice, ...dichiarazione })
 }
 
 // Push singolo dell'ordine CONFERMATO a commessa (chiusura giro). Ritorna un

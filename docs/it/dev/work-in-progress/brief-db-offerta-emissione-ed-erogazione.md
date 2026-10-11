@@ -33,7 +33,7 @@
 >
 > Il secondo trovato (FISSA, `quantita` a mano) resta aperto senza richiesta; il terzo (ordine fra
 > guard del listino e lock del contratto attivo) è **passato** a
-> [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md) §5 (§F.4.3).
+> [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md) §5 (§F.4.3).
 > **Da leggere per primo:** §C.10 (riepilogo di chiusura), poi §C.6.4 e §C.9.6 per chi fa il BE/FE.
 > **Le decisioni** (di Tid, 2026-10-07) stanno in §C.5 e in coda al §C.7: A-D1 chiusa dal modello,
 > A-D2 il contratto non si attiva senza versione in vigore, A-D3 la revisione congela alla sua
@@ -1194,7 +1194,7 @@ riscritta: il campo è sempre `qta_operativa`.
   cambio di listino incoerente risponde «listino di un'altra utility/azienda» prima di «campi
   bloccati» (`a10_guard_listino…` < `a10_lock_post_attivazione`). L'operatore corregge il listino
   e poi trova il lock. Se conta, il lock va in `_a05_` (linee-guida-trigger), cantiere a sé.
-  ➡️ **Passato** (2026-10-10) a [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md)
+  ➡️ **Passato** (2026-10-10) a [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md)
   §5: quel giro rimonta il lock del contratto nella forma per stato, e lì se ne sceglie il posto.
 
 #### F.4.4 pgTAP e prova (2026-10-08, prima dell'apply)

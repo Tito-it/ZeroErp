@@ -14,6 +14,8 @@ import { defineStore } from 'pinia'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
+import { STATO_ORDINE } from '../constants'
+import { avvisaDocumentiCollegati } from '../../_shared/annullo/avvisoDocumentiCollegati'
 import {
   cambiaStatoOrdine,
   confermaOrdine,
@@ -118,9 +120,12 @@ export const useOrdiniStore = defineStore('vendite-ordini', () => {
 
   // Transizione di stato generica data-driven (es. annulla). `statoCodice` =
   // target_state dell'azione; il trigger DB valida l'ammissibilita'.
-  async function cambiaStato(id, statoCodice) {
-    const res = await cambiaStatoOrdine(id, statoCodice)
+  // `dichiarazione`: la conferma dell'annullo con legami; l'annullo riapre i
+  // documenti dall'altra parte, e se ne avvisano i tab.
+  async function cambiaStato(id, statoCodice, dichiarazione = {}) {
+    const res = await cambiaStatoOrdine(id, statoCodice, dichiarazione)
     emitDataChanged(TAB_ENTITIES.ORDINE, id)
+    if (statoCodice === STATO_ORDINE.ANNULLATO) avvisaDocumentiCollegati(emitDataChanged)
     return res.data.data
   }
 

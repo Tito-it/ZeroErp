@@ -196,15 +196,18 @@ UI_ACTION_OVERRIDE: dict[str, str] = {
     # pannello riconosce il comportamento (`useForzaturaConfermata`) e apre il
     # dialog con username e vesti. La classe resta CONFLITTO_STATO (409).
     "E_CREDENZIALE_DA_CONFERMARE": "confirm_and_retry",  # classe CONFLITTO_STATO
-    # L'annullo di una bolla con legami (brief-db-ddt-righe-evase-dall-ordine
-    # D-8, 2026-10-11): stesso stampo. Il guard di transizione ferma l'annullo
-    # di una bolla che porta righe legate a un ordine o a un reso, e il verbo
-    # `vendite.fn_annulla_ddt` lo ACCETTA quando il secondo tentativo DICHIARA
-    # quante righe legate l'operatore ha visto (`righe_legate_confermate`).
-    # Col banner l'operatore resterebbe fermo su un annullo che il modello
-    # ammette: la finestra (`useForzaturaConfermata`) elenca le righe
-    # (`GET …/ddt/<id>/legami/`) e ripete con la dichiarazione.
-    "E_DDT_ANNULLO_CON_LEGAMI": "confirm_and_retry",  # classe CONFLITTO_STATO
+    # L'annullo di un documento con legami (brief-db-annullo-documento-con-
+    # legami, D-4 di Tid, 2026-10-11): stesso stampo. L'avviso unico di bolla,
+    # ordine, preventivo e contratto ferma l'annullo di un documento che ha
+    # consumato qualcosa di altri documenti (o nasce da un'offerta), e il verbo
+    # del documento (`vendite.fn_annulla_<documento>`) lo ACCETTA quando il
+    # secondo tentativo DICHIARA quanti legami l'operatore ha visto
+    # (`legami_confermati`). Col banner l'operatore resterebbe fermo su un
+    # annullo che il modello ammette: la finestra (`useForzaturaConfermata`)
+    # elenca i legami (`GET …/<documento>/<id>/legami/`) e ripete con la
+    # dichiarazione. ⛔ Sostituisce `E_DDT_ANNULLO_CON_LEGAMI` (della sola
+    # bolla), ritirato lo stesso giorno: il suo override si e' tolto con lui.
+    "E_DOC_ANNULLO_CON_LEGAMI": "confirm_and_retry",  # classe CONFLITTO_STATO
     # ⚠️ La guard e' `attivo IS NOT TRUE`, che copre DUE casi: conto
     # disattivato e conto inesistente (SELECT INTO -> NULL). Il 400 con
     # il campo evidenziato e' corretto in entrambi; un 404 sarebbe

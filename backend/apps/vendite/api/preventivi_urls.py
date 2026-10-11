@@ -7,6 +7,7 @@
 
 from django.urls import path
 
+from apps.vendite.api.legami_views import ApiPreventivoLegami
 from apps.vendite.api.lineage_views import ApiPreventivoPassaggi
 from apps.vendite.api.note_views import (
     ApiPreventivoNoteDetail,
@@ -95,6 +96,12 @@ urlpatterns = [
         "<int:preventivo_id>/passaggi/",
         ApiPreventivoPassaggi.as_view(),
         name="vendite-preventivi-passaggi",
+    ),
+    # I legami del preventivo, per la conferma dell'annullo (legami_views).
+    path(
+        "<int:preventivo_id>/legami/",
+        ApiPreventivoLegami.as_view(),
+        name="vendite-preventivi-legami",
     ),
     # Cambio stato
     path(

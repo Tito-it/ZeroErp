@@ -8,6 +8,7 @@ import { usePreventiviStore } from '../stores/preventivi'
 import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useEntityCapabilities } from '../../../core/composables/useEntityCapabilities'
@@ -47,6 +48,7 @@ import { SORGENTE_CODES } from '../../../documenti/constants'
 import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
 import PreventivoAccettazioneDialog from './dialogs/PreventivoAccettazioneDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
@@ -720,6 +722,16 @@ const smistamentoDialogVisible = ref(false)
 // quindi i chip vanno ricaricati insieme al detail (vedi `onSmistato`).
 const collegamentiRef = ref(null)
 
+// ⭐ L'annullo e' un gesto CONFERMABILE (brief-db-annullo-documento-con-
+//    legami): con righe di commessa da emettere il DB lo rifiuta
+//    (`confirm_and_retry`) finche' chi conferma non dichiara quanti legami ha
+//    visto; la domanda la porta a video `DocumentoAnnulloLegamiDialog`.
+//    ⚠️ Solo l'annullo passa da qui: le altre transizioni restano su
+//    `execute`, perche' l'accettazione accende i campi del suo dialog con i
+//    `campiErrati` dell'handler del drawer.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
+
 // Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
 //        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
 //        ordine riapre il residuo e riaccende «Genera DDT» — quindi si
@@ -812,12 +824,28 @@ async function handleEmissioneConferma({ files }) {
 }
 
 async function eseguiCambioStato(nuovoStato, extras = {}) {
-  const result = await execute(
-    () => store.cambiaStato(effectivePreventivoId.value, nuovoStato, extras),
-    { successMessage: t('vendite.preventivi.stato_cambiato') }
-  )
+  const opts = { successMessage: t('vendite.preventivi.stato_cambiato') }
+  // L'annullo: primo tentativo SEMPRE senza dichiarazione.
+  const result = nuovoStato === STATO_PREVENTIVO.ANNULLATO
+    ? await cambioStato.esegui(
+      (dichiarazione) => store.cambiaStato(effectivePreventivoId.value, nuovoStato, { ...extras, ...dichiarazione }),
+      opts,
+    )
+    : await execute(() => store.cambiaStato(effectivePreventivoId.value, nuovoStato, extras), opts)
+  await dopoCambioStato(result)
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  await dopoCambioStato(await cambioStato.conferma(dichiarazione))
+}
+
+async function dopoCambioStato(result) {
   if (result !== null) {
     await loadDetail()
+    // L'annullo ritira i legami: i collegamenti vanno riletti.
+    collegamentiRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -1136,6 +1164,20 @@ const drawerActions = computed(() => {
     v-if="effectivePreventivoId"
     v-model:visible="noteDrawerVisible"
     :preventivo-id="effectivePreventivoId"
+  />
+
+  <!-- La conferma dell'annullo di un preventivo con legami: aperta dalla
+       domanda del DB, chiusa dalla conferma o dalla rinuncia. -->
+  <DocumentoAnnulloLegamiDialog
+    v-if="effectivePreventivoId"
+    :visible="domandaAnnullo !== null"
+    base-path="/vendite/preventivi"
+    :doc-id="effectivePreventivoId"
+    :header="t('vendite.preventivi.azione_annulla')"
+    :domanda="domandaAnnullo"
+    :loading="cambioStato.loading.value"
+    @conferma="onConfermaAnnullo"
+    @cancel="cambioStato.annulla()"
   />
 
   <!-- Dialog emissione preventivo (transizione BOZZA → EMESSO). Wrapper sul

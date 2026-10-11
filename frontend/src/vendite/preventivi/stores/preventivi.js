@@ -18,6 +18,8 @@ import {
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { useListaStoreCore } from '../../../core/composables/useListaStoreCore'
 import { TAB_ENTITIES } from '../../../core/constants'
+import { STATO_PREVENTIVO } from '../../constants'
+import { avvisaDocumentiCollegati } from '../../_shared/annullo/avvisoDocumentiCollegati'
 
 export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   const { emitDataChanged } = useTabEvents()
@@ -99,10 +101,13 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
   // NB refactor 2026-05-28: BOZZA->EMESSO NON passa piu' da qui — usare
   // `emetti()` sotto (orchestra atomic state + documento + allegati via
   // PreventivoEmissioneDialog). Il BE rifiuterebbe E_PREV_VALIDAZIONE.
+  // Verso ANNULLATO `extras` porta la dichiarazione della conferma
+  // (`{ legami_confermati }`), e l'annullo riapre i documenti dall'altra parte.
   async function cambiaStato(id, nuovoStato, extras = {}) {
     const payload = { nuovo_stato: nuovoStato, ...extras }
     const res = await cambiaStatoPreventivo(id, payload)
     emitDataChanged(TAB_ENTITIES.PREVENTIVO, id)
+    if (nuovoStato === STATO_PREVENTIVO.ANNULLATO) avvisaDocumentiCollegati(emitDataChanged)
     return res.data.data
   }
 

@@ -83,6 +83,12 @@ Indice test eseguiti:
 52) test_list_riepilogo_iva_preventivo_non_trovato_e_404 — idem sul riepilogo IVA
 53) test_list_revisioni_preventivo_non_trovato_e_404 — idem sulle revisioni
 54) test_list_righe_con_testata_delega_al_repo — caso felice: delega invariata
+55) test_annullo_passa_dal_verbo — ANNULLATO via fn_annulla_preventivo, con e senza dichiarazione
+56) test_annullo_dichiarazione_non_numerica — legami_confermati non intero → E_PREV_VALIDAZIONE col campo
+57) test_annullo_preventivo_inesistente — E_PREV_NOT_FOUND prima del verbo
+58) test_annullo_con_legami_codice_del_db — il rifiuto del verbo esce col suo codice (confirm_and_retry)
+59) test_cambia_stato_errore_db_senza_codice — errore DB senza codice → 400 del dominio
+60) test_get_legami_dopo_la_testata — «leggi prima la testata», poi il BB legami_del_documento
 
 TestNormalizeComponentiOverrides:
 - test_none_ritorna_none, test_dict_vuoto_ritorna_none
@@ -513,6 +519,89 @@ class TestPreventiviService(unittest.TestCase):
         self.assertEqual(ctx.exception.code, "E_PREV_VALIDAZIONE")
         # Nessuna chiamata al repo: il guard scatta prima di qualsiasi I/O.
         self.mock_repo.cambia_stato.assert_not_called()
+
+    # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo,
+    # con la dichiarazione della conferma (assente al primo tentativo), e la
+    # risposta ha la forma di `fn_cambia_stato_preventivo`.
+    def test_annullo_passa_dal_verbo(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = "EMESSO"
+        out = cambia_stato(7, "ANNULLATO")
+        self.mock_repo.annulla.assert_called_once_with(7, None)
+        self.mock_repo.cambia_stato.assert_not_called()
+        self.assertEqual(out, {
+            "preventivo_id": 7,
+            "stato_precedente": "EMESSO",
+            "stato_nuovo": "ANNULLATO",
+        })
+        cambia_stato(7, "ANNULLATO", legami_confermati="3")
+        self.mock_repo.annulla.assert_called_with(7, 3)
+
+    def test_annullo_dichiarazione_non_numerica(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = "EMESSO"
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(7, "ANNULLATO", legami_confermati="tre")
+        self.assertEqual(cm.exception.code, "E_PREV_VALIDAZIONE")
+        self.assertEqual(cm.exception.context.get("field"), "legami_confermati")
+        self.mock_repo.annulla.assert_not_called()
+
+    def test_annullo_preventivo_inesistente(self):
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = None
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(99, "ANNULLATO")
+        self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+        self.mock_repo.annulla.assert_not_called()
+
+    # ⭐ Il rifiuto del verbo arriva col SUO codice, tradotto dal BB del
+    #    dominio: e' il comportamento che la finestra riconosce.
+    def test_annullo_con_legami_codice_del_db(self):
+        from django.db import DatabaseError
+
+        from apps.core.services.error_policies import ErrorPolicyRegistry
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.get_stato_codice.return_value = "ACCETTATO"
+        self.mock_repo.annulla.side_effect = DatabaseError(
+            "E_DOC_ANNULLO_CON_LEGAMI: annullando Preventivo 12 si riaprono 2 legami",
+        )
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(7, "ANNULLATO")
+        self.assertEqual(cm.exception.code, "E_DOC_ANNULLO_CON_LEGAMI")
+        self.assertEqual(cm.exception.context.get("op"), "vendite.preventivi_service.cambia_stato")
+        policy = ErrorPolicyRegistry.resolve("E_DOC_ANNULLO_CON_LEGAMI")
+        self.assertEqual(policy.ui_action, "confirm_and_retry")
+
+    # Le altre transizioni passano dallo stesso traduttore: un errore DB senza
+    # codice e' il 400 del dominio, non un 500 generico.
+    def test_cambia_stato_errore_db_senza_codice(self):
+        from django.db import DatabaseError
+
+        from apps.vendite.services.preventivi_service import cambia_stato
+
+        self.mock_repo.cambia_stato.side_effect = DatabaseError("qualcosa e' andato storto")
+        with self.assertRaises(ServiceError) as cm:
+            cambia_stato(7, "RIFIUTATO")
+        self.assertEqual(cm.exception.code, "E_PREV_VALIDAZIONE")
+
+    def test_get_legami_dopo_la_testata(self):
+        from apps.vendite.services import preventivi_service
+
+        with patch.object(
+            preventivi_service, "legami_del_documento", return_value={"legami": 0},
+        ) as bb:
+            self.mock_repo.get_stato_codice.return_value = None
+            with self.assertRaises(ServiceError) as cm:
+                preventivi_service.get_legami(99)
+            self.assertEqual(cm.exception.code, "E_PREV_NOT_FOUND")
+            bb.assert_not_called()
+            self.mock_repo.get_stato_codice.return_value = "EMESSO"
+            preventivi_service.get_legami(7)
+            bb.assert_called_once_with("PREVENTIVO", 7)
 
     # Scopo: `emetti()` e' un thin wrapper sul repo che bypassa il guard
     # di cambia_stato (l'orchestrazione atomic state+genera_documento+

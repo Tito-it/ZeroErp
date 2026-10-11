@@ -1,6 +1,6 @@
 # Guida — Gestione Contratti vendita
 
-> **Ultimo aggiornamento**: 20 settembre 2026
+> **Ultimo aggiornamento**: 11 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -178,6 +178,15 @@ La transizione `DRAFT → ANNULLATO` è sempre ammessa: una bozza non ancora
 attivata può essere annullata in qualsiasi momento. Un contratto ANNULLATO non
 partecipa al controllo di overlap temporale: dopo l'annullamento è possibile
 creare un nuovo contratto sulla stessa quadrupla senza conflitti.
+
+**Annullare un contratto nato da un'offerta.** L'offerta torna trasformabile, in
+un contratto o in un ordine: conta solo il contratto **vivo**, quello annullato
+conserva la provenienza. Se il contratto ha spinto righe in commessa ancora da
+emettere, si annullano anche quelle. Non succede in silenzio: «Annulla
+contratto» apre una **finestra di conferma** che elenca che cosa si riapre, con
+l'offerta e la commessa apribili con un clic, e l'operatore dichiara quanti
+legami ha visto. Le righe di commessa **già emesse** non si riaprono: bloccano
+l'annullo.
 
 Non esiste revisione come nei preventivi: se le condizioni cambiano, si cessa il
 contratto corrente e se ne crea uno nuovo.

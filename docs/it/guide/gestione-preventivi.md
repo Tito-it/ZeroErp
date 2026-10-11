@@ -1,6 +1,6 @@
 # Guida — Gestione Preventivi vendita
 
-> **Ultimo aggiornamento**: 14 settembre 2026
+> **Ultimo aggiornamento**: 11 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, sviluppatori backend/frontend, DBA.
 >
@@ -237,12 +237,14 @@ DRAFT      → EMESSO     (emetti)
 DRAFT      → ANNULLATO  (annulla)
 EMESSO     → ACCETTATO  (accetta)
 EMESSO     → RIFIUTATO  (rifiuta)
+EMESSO     → ANNULLATO  (annulla)
+ACCETTATO  → ANNULLATO  (annulla)
 ```
 
-> **L'annullamento manuale è ammesso solo da DRAFT** (le transizioni
-> `EMESSO → ANNULLATO` e `ACCETTATO → ANNULLATO` esistono in matrice ma sono
-> disattivate). Un preventivo EMESSO si **rifiuta** (è il "no" del cliente) o
-> **scade**; uno ACCETTATO ha già avviato il downstream.
+> **Rifiutare non è annullare.** Un preventivo EMESSO che il cliente non vuole si
+> **rifiuta** (è il "no" del cliente) o **scade**; l'annullo è la rinuncia di chi
+> lo ha emesso. Annullare un preventivo che ha già spinto lavoro in commessa
+> chiede una conferma (§3.2).
 
 `EMESSO → SCADUTO` è automatica (job notturno quando supera `validita_al`).
 `ACCETTATO → EVASO` è automatica: la scatena il backend dopo lo smistamento, quando
@@ -258,7 +260,18 @@ ACCETTATO compaiono **due** azioni distinte e simmetriche: `push_commessa` (se
 restano righe-servizio da smistare) e `genera_ordine` (se restano righe-merce da
 smistare) — vedi §8.
 
-### 3.2 Stati terminali e stato "abortito"
+### 3.2 Annullare un preventivo che ha generato altro
+
+* **Il preventivo annullato.** Se ha spinto righe in commessa ancora da emettere,
+  annullarlo le annulla. Non succede in silenzio: «Annulla preventivo» apre una
+  **finestra di conferma** con le righe di commessa che tornano annullate, e
+  l'operatore dichiara quante ne ha viste. Le righe **già emesse** non si
+  riaprono: bloccano l'annullo.
+* **L'ordine annullato.** Se si annulla un ordine nato dallo smistamento, le righe
+  del preventivo che occupava si liberano e si possono ordinare di nuovo; un
+  preventivo `EVASO` torna `ACCETTATO` (in automatico, non è un pulsante).
+
+### 3.3 Stati terminali e stato "abortito"
 
 `config.stati_doc_preventivi` ha un campo `is_abortito` che marca lo stato
 **ANNULLATO** come "rinuncia". Tutti gli altri stati terminali (RIFIUTATO,

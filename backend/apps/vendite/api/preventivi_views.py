@@ -368,6 +368,11 @@ class ApiPreventivoStato(DomainAPIView):
                 "competenza_mese": serializers.DateField(
                     required=False, allow_null=True,
                 ),
+                # Verso ANNULLATO: quanti legami l'operatore ha visto nella
+                # finestra di conferma (assente al primo tentativo).
+                "legami_confermati": serializers.IntegerField(
+                    required=False, allow_null=True,
+                ),
             },
         ),
         responses={200: inline_serializer(
@@ -388,6 +393,7 @@ class ApiPreventivoStato(DomainAPIView):
                 # user serve al hook atomico EMESSO per scope emittente +
                 # audit `generato_da_user_id` su documenti_generati.
                 user=request.user,
+                legami_confermati=payload.get("legami_confermati"),
             )
         return handle_post_json(request, handler=_handler)
 

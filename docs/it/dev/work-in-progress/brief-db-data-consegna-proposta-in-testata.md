@@ -8,7 +8,7 @@
 > * [brief-db-modifiche-certe-ciclo-vendita-e-articolo](../work-done/brief-db-modifiche-certe-ciclo-vendita-e-articolo.md)
 >   P-6: lì si è **scartata** una data di testata come **riassunto** delle righe (seconda fonte di
 >   verità). Qui la testata non riassume niente: **propone**, e la verità resta sulla riga (§2);
-> * [brief-db-testata-dopo-emissione](brief-db-testata-dopo-emissione.md): è la sede della regola
+> * [brief-db-testata-dopo-emissione](../work-done/brief-db-testata-dopo-emissione.md): è la sede della regola
 >   «fuori bozza, quali colonne di testata si cambiano e in quale stato». Le colonne nuove si
 >   montano nel suo lock con la sua grammatica (§4.3); la regola non si riscrive qui.
 

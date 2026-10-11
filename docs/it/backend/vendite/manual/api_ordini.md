@@ -164,7 +164,7 @@ DRAFT): contratto completo in [api_indirizzi_documento.md](api_indirizzi_documen
 
 ### Update testata `PATCH /api/v1/vendite/ordini/<id>/`
 
-In bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': dopo la conferma restano aperte le note, ferme a ordine fatturato o annullato. `corpo_oggetto(request)` (non `handle_post_json`, api.md). Campi
+In bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': dopo la conferma restano aperte le note, ferme a ordine fatturato o annullato. `corpo_oggetto(request)` (non `handle_post_json`, api.md). Campi
 aggiornabili: `billing_account_id` (vedi sotto), `valuta_id`,
 `modalita_pagamento_id`, `termine_pagamento_id`, `fatturazione_trigger`,
 `agente_soggetto_ruolo_id`, `data`, `meta`. `utility_id` non c'e': e' una copia
@@ -244,6 +244,20 @@ L'ammissibilità della transizione è validata dal trigger guard DB
 transizione non ammessa → `E_ORDINE_TRANSIZIONE_NON_AMMESSA`. La conferma
 (`DRAFT→CONFERMATO`) ha l'endpoint dedicato `/conferma/` per le sue precondizioni.
 
+Verso `ANNULLATO` passa sempre dal verbo `vendite.fn_annulla_ordine`: su un
+ordine con legami (righe di preventivo, offerta d'origine, righe di commessa da
+emettere) risponde `E_DOC_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`) finché
+il body non dichiara `legami_confermati` (intero, letto da `…/legami/`).
+Confermato, le righe del preventivo si liberano (EVASO → ACCETTATO), l'offerta
+torna trasformabile, le righe di commessa da emettere si annullano.
+
+### Legami `GET /<id>/legami/` (factory `build_legami_view`, BB
+`_annullo_con_legami.legami_del_documento`): `{documento, id, legami, righe}`,
+una riga per legame di `vendite.fn_documento_legami` con `origine`, `natura`
+(CONSUMO/PROVENIENZA), `origine_id` e il nome del documento dall'altra parte
+dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
+numero da dichiarare. Alimenta la finestra di conferma dell'annullo.
+
 ### Push singolo a commessa `POST /api/v1/vendite/ordini/<id>/push/`
 
 Push del singolo ordine `CONFERMATO` via `fn_list_ordini_da_pushare(…, p_ordine_id)`
@@ -313,7 +327,7 @@ dichiarato nel brief (§5.5, 1-bis) e non deciso qui**: le righe si scrivono sol
 in `DRAFT`, ma la promessa si decide **alla conferma** e può cambiare dopo.
 
 ⭐ **Il verbo della promessa dopo la conferma** (dal 2026-10-10,
-[brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)
+[brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)
 fase 1): `POST /<id>/righe/<riga_id>/data-consegna-confermata/`, corpo
 `{"data_consegna_confermata": "AAAA-MM-GG" | null}` (`null` toglie la promessa).
 Scrive la **sola** colonna; ogni altra chiave è un 400. ⛔ Nessun pre-check di

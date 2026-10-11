@@ -724,6 +724,22 @@ class ContrattiRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositor
             )
             return cursor.rowcount > 0
 
+    # Scopo: Annulla il contratto via il verbo DB `vendite.fn_annulla_contratto`
+    #        (brief-db-annullo-documento-con-legami): con legami (offerta
+    #        d'origine, righe di commessa da emettere) `legami_confermati`
+    #        dichiara quanti l'operatore ne ha visti; se non corrisponde,
+    #        E_DOC_ANNULLO_CON_LEGAMI. Lo stato passa ad ANNULLATO coi guard della
+    #        tabella (matrice e freni, fra cui le fatture).
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(self, contratto_id: int, legami_confermati: int | None) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_annulla_contratto(%s, %s)",
+                [int(contratto_id), legami_confermati],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
     # Scopo: Pre-check applicativo overlap per l'attivazione manuale del
     #        contratto (guard §3.3 brief refactor-overlap). Delega alla fn di
     #        dominio `vendite.fn_contratto_sovrapposto` (firma invariata,

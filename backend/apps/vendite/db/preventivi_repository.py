@@ -667,6 +667,22 @@ class PreventiviRepository(
             assert result is not None
             return result
 
+    # Scopo: Annulla il preventivo via il verbo DB `vendite.fn_annulla_preventivo`
+    #        (brief-db-annullo-documento-con-legami): con legami (righe di
+    #        commessa da emettere) `legami_confermati` dichiara quanti
+    #        l'operatore ne ha visti; se non corrisponde, E_DOC_ANNULLO_CON_LEGAMI.
+    #        Lo stato passa ad ANNULLATO coi guard della tabella (matrice e
+    #        `script.fn_check_preventivo_annullabile`).
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(self, preventivo_id: int, legami_confermati: int | None) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_annulla_preventivo(%s, %s)",
+                [int(preventivo_id), legami_confermati],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+
     # Scopo: Crea nuova revisione invocando la funzione DB.
     # Copia testata + righe attive + indirizzi, disattiva revisione precedente.
     def crea_revisione(self, preventivo_id: int, user: str) -> dict[str, Any]:

@@ -185,7 +185,15 @@ tutti ritirati
 - Transizioni: EMESSO→ACCETTATO/RIFIUTATO/SCADUTO/ANNULLATO, BOZZA→ANNULLATO
 - **Transizione BOZZA→EMESSO non ammessa da questo endpoint** (refactor 2026-05-28): il service fail-fast con `E_PREV_VALIDAZIONE` (400) e indirizza all'endpoint dedicato `POST /<id>/emetti/` (§5b). Motivo: l'emissione deve orchestrare atomicamente cambio stato + generazione documento + allegati per garantire l'invariante "stato EMESSO ⇒ esiste un documento PDF persistito".
 - **Prezzi non autorizzati verso ACCETTATO**: la Regola 3 di `vendite.trgfn_preventivi_guard_transizione` rifiuta la transizione se una riga o un componente BoM attivo ha il prezzo `PENDING` o `REJECTED` (building block `script.fn_check_prezzi_autorizzati`, vedi `api_approvazioni_prezzo.md`): si attende l'esito, si corregge il prezzo o si toglie la riga. Annulla resta sempre ammesso.
-- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_DOC_PREZZO_PENDENTE` (409), `E_DOC_PREZZO_RIFIUTATO` (409), `E_PREV_VALIDAZIONE` (400 se `nuovo_stato="EMESSO"`)
+- **Verso ANNULLATO** passa sempre dal verbo `vendite.fn_annulla_preventivo`: con righe di commessa da emettere risponde `E_DOC_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`) finché il body non dichiara `legami_confermati` (intero, letto da `GET /{id}/legami/`). Risposta con la stessa forma di `fn_cambia_stato_preventivo` (`preventivo_id`, `stato_precedente`, `stato_nuovo`).
+- Errori: `E_PREV_STATO_TRANSIZIONE` (409), `E_PREV_NESSUNA_RIGA` (400), `E_DOC_PREZZO_PENDENTE` (409), `E_DOC_PREZZO_RIFIUTATO` (409), `E_PREV_VALIDAZIONE` (400 se `nuovo_stato="EMESSO"`), `E_DOC_ANNULLO_CON_LEGAMI` (409, conferma)
+
+### 5a. Legami `GET /<id>/legami/` (factory `build_legami_view`, BB
+`_annullo_con_legami.legami_del_documento`): `{documento, id, legami, righe}`,
+una riga per legame di `vendite.fn_documento_legami` con `origine`, `natura`
+(CONSUMO/PROVENIENZA), `origine_id` e il nome del documento dall'altra parte
+dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
+numero da dichiarare. Alimenta la finestra di conferma dell'annullo.
 
 ---
 

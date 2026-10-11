@@ -48,7 +48,7 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
 - Detail `GET /api/v1/vendite/ddt/<id>/` — testata + capabilities data-driven
   (`fn_available_actions_ddt`) nella chiave `capabilities`, non fuse nella
   testata (api.md §«Il blob sta SOTTO `capabilities`», 2026-09-23).
-- Update `PATCH /api/v1/vendite/ddt/<id>/` — in bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a bolla emessa restano aperti trasporto, tracciamento e note (D-0, D-1), fermi a bolla resa o annullata. Cliente e
+- Update `PATCH /api/v1/vendite/ddt/<id>/` — in bozza tutti i campi; quali colonne si cambiano fuori bozza lo dice il lock di testata del DB (`trgfn_doc_testata_lock_fuori_bozza`, dal 2026-10-10, [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)); il 409 del lock (`E_DOC_*`) passa com'e': a bolla emessa restano aperti trasporto, tracciamento e note (D-0, D-1), fermi a bolla resa o annullata. Cliente e
   destinatario **si scelgono in bozza** (`billing_account_id`,
   `destinatario_soggetto_ruolo_id`; `utility_id` fuori contratto): al cambio di
   BA il destinatario non inviato segue il BA nuovo, un BA tolto toglie la
@@ -72,15 +72,17 @@ Convenzioni identiche ad api_ordini.md (envelope, lista configurabile
   obbligatori.
 - Cambia stato `POST /api/v1/vendite/ddt/<id>/cambia-stato/` — body
   `{stato_codice}` (matrice `config.transizioni_stati_ddt`). Verso `ANNULLATO`
-  passa sempre dal verbo `vendite.fn_annulla_ddt`: su una bolla con righe legate
-  a ordini o resi risponde `E_DDT_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`)
-  finché il body non dichiara `righe_legate_confermate`, il numero letto da
-  `…/legami/`. Confermato, i legami si ritirano (ordine da evadere, reso da
-  ri-consegnare).
-- Legami `GET /<id>/legami/` — le righe legate a ordini o resi
-  (`vendite.fn_ddt_legami`), `righe_legate` (righe distinte: il numero da
-  dichiarare) e le `origini` della bolla dal lineage (livello 1). Alimenta la
-  finestra di conferma dell'annullo.
+  passa sempre dal verbo `vendite.fn_annulla_ddt`: su una bolla con legami
+  (ordini, resi, righe di commessa da emettere) risponde
+  `E_DOC_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`) finché il body non
+  dichiara `legami_confermati`, il numero letto da `…/legami/`. Confermato, i
+  legami si ritirano (ordine da evadere, reso da ri-consegnare).
+- Legami `GET /<id>/legami/` (factory `build_legami_view`, BB
+  `_annullo_con_legami.legami_del_documento`): `{documento, id, legami, righe}`,
+  una riga per legame di `vendite.fn_documento_legami` con `origine`, `natura`
+  (CONSUMO/PROVENIENZA), `origine_id` e il nome del documento dall'altra parte
+  dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
+  numero da dichiarare. Alimenta la finestra di conferma dell'annullo.
 - Push `POST /api/v1/vendite/ddt/<id>/push/` — push singolo a commessa
   (sorgente `DDT_VENDITA`, fatturazione differita).
 - Lista configurabile delle righe `GET /<id>/righe/lista/` (+ `export/`): BB condiviso, vedi [api_righe_documento.md](api_righe_documento.md).

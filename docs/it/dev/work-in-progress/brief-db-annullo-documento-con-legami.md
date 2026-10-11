@@ -8,7 +8,8 @@
 > **Stato (2026-10-11):** ✅ **caso 1 (bolla) applicato e verde** (§3, changeSet del giro D28, applicati
 > da Tid il 2026-10-11, pgTAP senza regressioni). ✅ **Casi 2-5 applicati e verdi** (§8: `20261011-68 … -91`
 > + tre CSV, applicati da Tid il 2026-10-11, pgTAP verdi; decisioni D-1…D-6 di Tid, §5), con la forma
-> comune (D-4) che riallinea anche la bolla. **Lato DB chiuso.** ⏳ Tocca a BE/FE (§6, R-1…R-6; R-5 subito).
+> comune (D-4) che riallinea anche la bolla. **Lato DB chiuso.** ✅ **Lato BE/FE fatto il 2026-10-11**
+> (§9, R-1…R-6, non committato), provato sul DB vero. **Resta:** collaudo a video di Tid, poi archivio.
 > **Nel registro dei difetti DB:** voce **D29** di `migliorie-generali-da-test-valutazione.md`, che rimanda
 > qui.
 
@@ -298,3 +299,36 @@ EVASO → ACCETTATO (`manuale = false`) in `transizioni_stati_preventivi`, esegu
   `trgfn_doc_snapshot_da_stato.md` e `trgfn_doc_guard_annullo_con_legami.md` (nuove, con
   `fn_documento_legami.md`).
 
+## 9. Lato BE/FE (sessione backend, 2026-10-11)
+
+> Non committato. Prove: suite `apps.core` + `apps.vendite` 3951 verdi; presidi sul DB vero
+> (`test_error_codes_db_policy_guardrail`, `test_error_policies_divergenza_db`) verdi; ruff e mypy a
+> cricchetto puliti; FE 608 test (`vendite` + `core`), `npm run guards`, lint e build verdi.
+
+| # | Fatto |
+| --- | --- |
+| **R-1** | BB backend `services/_annullo_con_legami.py` (`legami_del_documento`, `legami_confermati`): legge `vendite.fn_documento_legami` e mette a ogni legame il nome del documento dall'altra parte, dal lineage nelle due direzioni. Factory `api/legami_views.build_legami_view`: `GET …/ddt|ordini|preventivi|contratti/<id>/legami/` → `{documento, id, legami, righe}`. Il service legge prima la testata (il lettore e' DEFINER). Finestra FE comune `vendite/_shared/annullo/DocumentoAnnulloLegamiDialog.vue` (+ `legamiApi.getLegami`, + spec), cablata con `useForzaturaConfermata` in `DdtDrawer`, `OrdiniDrawer`, `PreventiviDrawer` e `ContrattoDrawer` (negli ultimi due solo l'annullo: le altre transizioni restano su `execute`). ⭐ Regola del 2: `DdtAnnulloLegamiDialog`, `getDdtLegami` e `DdtRepository.list_legami` ritirati nello stesso giro |
+| **R-2** | `cambia_stato` di bolla, ordine, preventivo e contratto: verso ANNULLATO chiama SEMPRE il verbo (`fn_annulla_ddt` / `_ordine` / `_preventivo` / `_contratto`) con `legami_confermati` dal corpo (assente al primo tentativo; non intero → 400 col campo). Il preventivo risponde con la forma di `fn_cambia_stato_preventivo`. La dichiarazione della bolla si chiamava `righe_legate_confermate` e contava le righe distinte: ora `legami_confermati`, il `count(*)` del lettore come il verbo. Dopo l'annullo gli store avvisano i tab di ordini, resi, preventivi, offerte (`avvisaDocumentiCollegati`) |
+| **R-3** | Policy rigenerate dal catalogo (`E_DOC_ANNULLO_CON_LEGAMI`, e `E_INDIRIZZO_DOC_NON_DEL_CLIENTE` di D27 arrivato nello stesso merge), override `confirm_and_retry` spostato sul codice nuovo, ripieghi per i due codici. Il ripiego di `E_DDT_ANNULLO_CON_LEGAMI` resta per il diario |
+| **R-4** | `crea_ordine_da_offerta`: i due controlli specchio (ordine gia' nato, contratto gia' nato) diventano una lettura di `vendite.fn_offerta_documenti_vivi` (`OfferteRepository.list_documenti_vivi`). Il dialog «gia' generato» legge `contratto_id` del dettaglio, ora sui soli vivi (R-5) |
+| **R-5** | `offerte_repository._FROM_JOINS_OFFERTA`: `LEFT JOIN vendite.contratti c ON c.offerta_id = o.id AND NOT c.is_abortito_snapshot` |
+| **R-6** | Guide: `gestione-ddt` §4.3 (generalizzata), `gestione-ordini` §4.3 nuova, `gestione-preventivi` §3.2 nuova, `gestione-contratti` §3.1. Corretti nello stesso giro due archi stantii: CONFERMATO → ANNULLATO dell'ordine e EMESSO/ACCETTATO → ANNULLATO del preventivo erano dati «disabilitati», la matrice li ha attivi e manuali. Manuali API dei quattro documenti. Cataloghi BB backend e frontend |
+
+**Prova sul DB vero** (dbdev, ruolo `zeroerp_app`, transazione ritirata), per bolla (generata da un
+ordine), ordine (con righe di preventivo), preventivo (con righe di commessa da emettere) e contratto (da
+offerta): legami letti coi nomi dal lineage; annullo senza conferma e con conferma sbagliata →
+`E_DOC_ANNULLO_CON_LEGAMI`; con conferma giusta → ANNULLATO. Dopo l'annullo del contratto
+`fn_offerta_documenti_vivi` non lo conta piu', l'offerta resta una riga sola e il suo dettaglio non mostra
+il contratto annullato.
+
+### 9.1 Trovato nel giro
+
+* ⭐ **Difetto corretto, conseguenza di D-2:** `OrdiniRepository.get_ordine_by_documento_origine` (l'ordine
+  nato dal preventivo, per l'esito dello smistamento `MERCE_PRESENTE` e per l'handler che aggancia l'ordine
+  alla pratica) leggeva anche gli ordini annullati: con un preventivo il cui ordine e' stato annullato e poi
+  rigenerato avrebbe preso quello morto (il primo per id). Ora legge i soli vivi (`NOT is_abortito_snapshot`).
+* Il service del preventivo lascia arrivare l'errore del DB grezzo (lo traduce il middleware in HTTP), come
+  prima per `fn_cambia_stato_preventivo`: in HTTP il codice e' quello giusto.
+* Fuori da questo brief: `check_i18n_keys.py` e' rosso su `common.azione_reason.indirizzo_non_del_cliente`,
+  emessa da `script.fn_check_indirizzi_documento_cliente` (D27, arrivato col merge): e' del lato BE/FE di
+  brief-db-indirizzi-documento-seguono-il-cliente.

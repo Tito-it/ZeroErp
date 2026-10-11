@@ -144,9 +144,10 @@ TIPI: Tipi = {
     "attivo": (_booleano, False),
     # ── azioni ───────────────────────────────────────────────
     "stato_codice": (_testo, False),
-    # La conferma dell'annullo di una bolla con legami (D-8): quante righe
-    # legate l'operatore ha visto. Assente al primo tentativo.
-    "righe_legate_confermate": (_intero, True),
+    # La conferma dell'annullo di un documento con legami
+    # (brief-db-annullo-documento-con-legami): quanti legami l'operatore ha
+    # visto. Assente al primo tentativo.
+    "legami_confermati": (_intero, True),
 }
 
 
@@ -168,4 +169,10 @@ def schema_da_contratto(
 #    nome sono due classi, e drf-spectacular avverte che lo schema e' sbagliato.
 CAMBIA_STATO_REQUEST = schema_da_contratto(
     "VenditeCambiaStatoReq", ("stato_codice",), obbligatorie=("stato_codice",),
+)
+# Il cambio di stato di un documento che si annulla con conferma (bolla,
+# ordine): verso ANNULLATO porta la dichiarazione `legami_confermati`.
+CAMBIA_STATO_CON_CONFERMA_REQUEST = schema_da_contratto(
+    "VenditeCambiaStatoConConfermaReq", ("stato_codice", "legami_confermati"),
+    obbligatorie=("stato_codice",),
 )

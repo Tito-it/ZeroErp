@@ -37,8 +37,11 @@ export function updateContratto(id, payload) {
 // NB refactor 2026-05-28: DRAFT->ATTIVO NON passa piu' da qui — usare
 // `emettiContratto()` (orchestra atomic state + documento + allegati via
 // ContrattoEmissioneDialog). Il BE rifiuterebbe E_VENDITE_VALIDAZIONE.
-export function cambiaStatoContratto(id, codiceInterno, { validoAl = null } = {}) {
-  const payload = { codice_interno: codiceInterno }
+// `dichiarazione`: la conferma dell'annullo di un contratto con legami
+// (`{ legami_confermati }`, brief-db-annullo-documento-con-legami). Al primo
+// tentativo e' vuota (`useForzaturaConfermata`).
+export function cambiaStatoContratto(id, codiceInterno, { validoAl = null, dichiarazione = {} } = {}) {
+  const payload = { codice_interno: codiceInterno, ...dichiarazione }
   if (validoAl) payload.valido_al = validoAl
   return api.post(`${BASE}/${id}/cambia-stato/`, payload)
 }

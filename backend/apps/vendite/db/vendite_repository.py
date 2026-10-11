@@ -4627,6 +4627,26 @@ class VenditeRepository:
             "frontiera_natura_doc_codice_interno": row[24],
         }
 
+    # Scopo: I legami di un documento che si annulla
+    #        (`vendite.fn_documento_legami`, lettore unico di avviso, conferma e
+    #        finestra; brief-db-annullo-documento-con-legami D-4): una riga per
+    #        legame — riga_id, riga_nr (NULL per testata e commessa), origine
+    #        (ORDINE, RESO, PREVENTIVO, OFFERTA, COMMESSA), natura (CONSUMO o
+    #        PROVENIENZA), origine_id (la testata dall'altra parte),
+    #        origine_riga_id, qta.
+    #        ⚠️ La funzione e' SECURITY DEFINER: non applica il perimetro. Il
+    #        chiamante deve aver gia' letto la testata del documento.
+    def list_documento_legami(self, documento: str, documento_id: int) -> list[dict[str, Any]]:
+        sql = """
+            SELECT l.riga_id, l.riga_nr, l.origine, l.natura, l.origine_id,
+                   l.origine_riga_id, l.qta
+              FROM vendite.fn_documento_legami(%s, %s) AS l
+             ORDER BY l.riga_nr NULLS LAST, l.origine, l.origine_id
+        """
+        with connection.cursor() as cursor:
+            cursor.execute(sql, [documento, int(documento_id)])
+            return rows_to_list(cursor)
+
     # Scopo: Catena dei passaggi di un documento via
     #        fn_documento_lineage(tipo, uid, direzione), decodificando i
     #        tipi degli estremi in codice_interno (JOIN config.sorgenti).

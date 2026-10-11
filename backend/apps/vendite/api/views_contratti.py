@@ -292,6 +292,10 @@ _CONTRATTO_STATO_REQUEST = inline_serializer(
             required=False, allow_null=True,
             help_text="Opzionale: data fine validita' (cessazione contestuale al cambio stato).",
         ),
+        "legami_confermati": serializers.IntegerField(
+            required=False, allow_null=True,
+            help_text="Verso ANNULLATO: quanti legami si sono visti nella finestra di conferma.",
+        ),
     },
 )
 
@@ -323,6 +327,7 @@ class ApiContrattoCambiaStato(DomainAPIView):
                 codice_interno=codice,
                 valido_al=valido_al,
                 user=request.user,
+                legami_confermati=body.get("legami_confermati"),
             )
         )
 

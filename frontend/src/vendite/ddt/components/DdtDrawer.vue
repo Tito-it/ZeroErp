@@ -52,7 +52,7 @@ import DdtRigheTable from './DdtRigheTable.vue'
 import DdtNoteDrawer from './DdtNoteDrawer.vue'
 import DdtResoDialog from './DdtResoDialog.vue'
 import DdtEmissioneDialog from './dialogs/DdtEmissioneDialog.vue'
-import DdtAnnulloLegamiDialog from './dialogs/DdtAnnulloLegamiDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
@@ -137,7 +137,7 @@ async function onDocumentoCollegatoChiuso() {
 //    brief-db-ddt-righe-evase-dall-ordine): l'annullo di una bolla con righe
 //    legate a ordini o resi il DB lo rifiuta (`confirm_and_retry`) finche' chi
 //    conferma non dichiara quante righe legate ha visto. La domanda la porta a
-//    video `DdtAnnulloLegamiDialog`; una bolla senza legami passa al primo colpo.
+//    video `DocumentoAnnulloLegamiDialog`; una bolla senza legami passa al primo colpo.
 const cambioStato = useForzaturaConfermata()
 const { richiestaConferma: domandaAnnullo } = cambioStato
 
@@ -835,12 +835,15 @@ const drawerActions = computed(() => {
     @reso-creato="onResoCreato"
   />
 
-  <!-- La conferma dell'annullo di una bolla con righe legate a ordini o resi
-       (D-8): aperta dalla domanda del DB, chiusa dalla conferma o dalla rinuncia. -->
-  <DdtAnnulloLegamiDialog
+  <!-- La conferma dell'annullo di una bolla con legami (ordini, resi, righe di
+       commessa): aperta dalla domanda del DB, chiusa dalla conferma o dalla
+       rinuncia. Finestra comune ai documenti che si annullano con conferma. -->
+  <DocumentoAnnulloLegamiDialog
     v-if="effectiveDdtId"
     :visible="domandaAnnullo !== null"
-    :ddt-id="effectiveDdtId"
+    base-path="/vendite/ddt"
+    :doc-id="effectiveDdtId"
+    :header="t('vendite.ddt.azione_annulla')"
     :domanda="domandaAnnullo"
     :loading="cambioStato.loading.value"
     @conferma="onConfermaAnnullo"

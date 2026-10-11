@@ -112,7 +112,7 @@ class TestOrdiniApi(JwtMockedApiTest):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["data"]["stato"], "ANNULLATO")
-        mock_cs.assert_called_once_with(7, "ANNULLATO")
+        mock_cs.assert_called_once_with(7, "ANNULLATO", legami_confermati=None)
 
     @patch(_AUTH, return_value=(Mock(), None))
     @patch(f"{_SVC}.list_riepilogo_iva")

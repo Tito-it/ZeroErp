@@ -27,6 +27,12 @@ from apps.anagrafiche.db.billing_account_repository import BillingAccountReposit
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
+from apps.vendite.services._annullo_con_legami import (
+    DOCUMENTO_PREVENTIVO,
+    STATO_ANNULLATO,
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
+)
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.permissions_resolver import PermissionResolver
 from apps.vendite.services._pricing_gate_helpers import (
@@ -34,7 +40,11 @@ from apps.vendite.services._pricing_gate_helpers import (
     resolve_or_check_override_prezzo,
     validate_componenti_overrides_authorization,
 )
-from apps.core.services.payload_helpers import PayloadValidator, vincolo_violato
+from apps.core.services.payload_helpers import (
+    PayloadValidator,
+    make_db_errors_translator,
+    vincolo_violato,
+)
 from apps.core.services.testata_guard import (
     pagina_dopo_testata,
     riga_del_padre_o_not_found,
@@ -80,6 +90,15 @@ _FN = "vendite.preventivi_service"
 # Solo la FORMA si controlla qui (una data malformata e' un 400 col campo
 # acceso, non un 500 dal DB): nessun CHECK di dominio, per scelta (brief §2.3).
 _CHIAVE_DATA_CONSEGNA = "data_consegna_richiesta_cliente"
+# Il traduttore degli errori DB del cambio di stato, lo stesso BB di ordine,
+# bolla e contratto: il codice E_* del trigger o del verbo arriva al FE col
+# contesto dell'operazione (`confirm_and_retry` dell'annullo compreso), e un
+# errore DB senza codice e' il 400 del dominio, non un 500 generico.
+_db_errors = make_db_errors_translator(
+    fn_prefix=_FN,
+    fallback_code="E_PREV_VALIDAZIONE",
+    fallback_message="Violazione vincolo DB su preventivo.",
+)
 
 # Scopo: il contratto dell'operatore sull'UPDATE di testata e di riga, come
 #        `_UPDATE_KEYS_*` di ddt/ordini/resi. Fino al 2026-09-26 erano due tuple
@@ -661,6 +680,12 @@ def aggiorna_preventivo(preventivo_id: int, payload: dict[str, Any]) -> dict[str
 #
 # Le altre transizioni (DRAFT→EMESSO, EMESSO→RIFIUTATO, *→ANNULLATO, ...)
 # ignorano i 2 parametri.
+#
+# ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_preventivo`
+# (brief-db-annullo-documento-con-legami): con legami il DB rifiuta
+# (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche' la richiesta non
+# dichiara `legami_confermati`, il numero letto da `get_legami`. La risposta ha
+# la stessa forma di `fn_cambia_stato_preventivo`.
 def cambia_stato(
     preventivo_id: int,
     nuovo_stato: str,
@@ -668,6 +693,7 @@ def cambia_stato(
     fatturazione_immediata: bool | None = None,
     competenza_mese: date | None = None,
     user: AbstractBaseUser | AnonymousUser | None = None,
+    legami_confermati: Any = None,
 ) -> dict[str, Any]:
     repo = PreventiviRepository()
 
@@ -707,7 +733,7 @@ def cambia_stato(
             # statement INSERT/UPDATE con trigger). Per multi-statement
             # atomic serve transaction.atomic, ma qui sono 2 UPDATE
             # consecutivi: avvolgiamo entrambe.
-            with transaction.atomic():
+            with _db_errors("cambia_stato"), transaction.atomic():
                 repo.update_preventivo(
                     preventivo_id,
                     fatturazione_immediata=bool(fatturazione_immediata),
@@ -735,8 +761,40 @@ def cambia_stato(
         function_name=f"{_FN}.cambia_stato",
     )
 
-    result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
+    if nuovo_stato == STATO_ANNULLATO:
+        confermati = dichiarazione_legami(
+            legami_confermati, validation_code="E_PREV_VALIDAZIONE",
+            function_name=f"{_FN}.cambia_stato",
+        )
+        stato_prec = testata_o_not_found(
+            repo.get_stato_codice, preventivo_id,
+            code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
+            id_name="preventivo_id", function_name=f"{_FN}.cambia_stato",
+        )
+        with _db_errors("cambia_stato"):
+            repo.annulla(preventivo_id, confermati)
+        return {
+            "preventivo_id": preventivo_id,
+            "stato_precedente": stato_prec,
+            "stato_nuovo": STATO_ANNULLATO,
+        }
+
+    with _db_errors("cambia_stato"):
+        result = repo.cambia_stato(preventivo_id, nuovo_stato, "django_api")
     return result
+
+
+# Scopo: I legami del preventivo per la finestra di conferma dell'annullo (BB
+#        `legami_del_documento`): righe di commessa da emettere. Prima la
+#        testata: il lettore del DB non applica il perimetro.
+def get_legami(preventivo_id: int) -> dict[str, Any]:
+    repo = PreventiviRepository()
+    testata_o_not_found(
+        repo.get_stato_codice, preventivo_id,
+        code="E_PREV_NOT_FOUND", message="Preventivo non trovato.",
+        id_name="preventivo_id", function_name=f"{_FN}.get_legami",
+    )
+    return legami_del_documento(DOCUMENTO_PREVENTIVO, preventivo_id)
 
 
 # Scopo: GUIDA (D4) — «Accetta/Rifiuta» in-pratica → azione sul DOCUMENTO

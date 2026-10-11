@@ -46,6 +46,12 @@ from apps.core.services.fuso_aziendale import oggi_aziendale
 from apps.core.api.constants import DEFAULT_LIMIT, MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
+from apps.vendite.services._annullo_con_legami import (
+    DOCUMENTO_CONTRATTO,
+    STATO_ANNULLATO,
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
+)
 from apps.core.services.testata_guard import (
     pagina_dopo_testata,
     riga_del_padre_o_not_found,
@@ -802,6 +808,10 @@ class ContrattiService:
     #        2026-05-15 (E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE, lock
     #        post-attivazione su listino_versione_id): traduciamo i P0001
     #        in ServiceError parlanti via `_KNOWN_DB_ERROR_MARKERS`.
+    #        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_contratto`
+    #        (brief-db-annullo-documento-con-legami): con legami il DB rifiuta
+    #        (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche' la
+    #        richiesta non dichiara `legami_confermati`, letto da `get_legami`.
     def cambia_stato(
         self,
         contratto_id: int,
@@ -809,6 +819,7 @@ class ContrattiService:
         codice_interno: str,
         valido_al: date | None = None,
         user: AbstractBaseUser | AnonymousUser | None = None,
+        legami_confermati: Any = None,
     ) -> dict[str, Any]:
         self._v.guard_positive_int(contratto_id, field="contratto_id")
         ErrorManager.require(
@@ -846,6 +857,18 @@ class ContrattiService:
         assert target_stato_id is not None
         # Esistenza col lettore leggero: qui serve solo che il contratto ci sia.
         self._get_contratto_or_raise(contratto_id, op="cambia_stato", getter=self._repo.get_stato_codice)
+
+        if codice_norm == STATO_ANNULLATO:
+            confermati = dichiarazione_legami(
+                legami_confermati, validation_code=E_VENDITE_VALIDATION,
+                function_name="contratti_service.cambia_stato",
+            )
+            with self._map_db_errors(
+                {"contratto_id": contratto_id, "codice_interno": codice_norm},
+                fallback_message="Violazione vincolo DB su annullo contratto.",
+            ):
+                self._repo.annulla(contratto_id, confermati)
+            return self.get_contratto(contratto_id)
 
         # Pre-validazione data-driven per CESSATO (regola fail-safe):
         # - valido_al obbligatorio (valido_al >= valido_dal lo giudica il DB)
@@ -896,6 +919,17 @@ class ContrattiService:
                         context={"contratto_id": contratto_id},
                     )
         return self.get_contratto(contratto_id)
+
+    # Scopo: I legami del contratto per la finestra di conferma dell'annullo
+    #        (BB `legami_del_documento`): offerta d'origine, righe di commessa
+    #        da emettere. Prima la testata: il lettore del DB non applica il
+    #        perimetro.
+    def get_legami(self, contratto_id: int) -> dict[str, Any]:
+        self._v.guard_positive_int(contratto_id, field="contratto_id")
+        self._get_contratto_or_raise(
+            contratto_id, op="get_legami", getter=self._repo.get_stato_codice,
+        )
+        return legami_del_documento(DOCUMENTO_CONTRATTO, contratto_id)
 
     # Scopo: DRAFT -> ATTIVO. Solo la transizione di stato: la view multipart
     #        ApiContrattoEmetti incapsula questa chiamata insieme a

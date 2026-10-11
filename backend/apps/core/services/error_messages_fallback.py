@@ -331,6 +331,10 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_DELETE_RIGA_DOC_REFERENZIATA": "Questa riga e' gia' stata usata in un reso o in una riconsegna: non si puo' togliere.",
     "E_DIAGNOSTICA_NON_REGISTRATA": "Una scrittura di diagnosi non e' andata a buon fine: il lavoro e' proseguito lo stesso.",
     "E_DISSOCIAZIONE_PARENT_CON_ATTIVITA": "Parent non rimovibile: esistono attivita' non fatturate sul billing account.",
+    # brief-db-annullo-documento-con-legami (2026-10-11): l'avviso unico
+    # dell'annullo di un documento con legami (bolla, ordine, preventivo,
+    # contratto). Sostituisce E_DDT_ANNULLO_CON_LEGAMI, che resta per il diario.
+    "E_DOC_ANNULLO_CON_LEGAMI": "Annullando il documento si riaprono i suoi legami con altri documenti: quantita' da spedire, righe da ordinare, righe di commessa o l'offerta da cui nasce. Serve una conferma.",
     "E_DOC_CLIENTE_DIVERSO_DA_BA": "Il cliente o la utility non corrispondono al billing account del documento: lasciali vuoti, li mette il billing account.",
     "E_DOC_CLIENTE_DIVERSO_DA_SORGENTE": "Il cliente deve essere quello del documento da cui nasce.",
     "E_DOC_EMITTENTE_BA_INCOERENTE": "L'azienda che emette il documento non e' quella del cliente: lasciala vuota, la mette il billing account.",
@@ -557,6 +561,9 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_IDEMPOTENCY_KEY_REQUIRED": "Idempotency-Key obbligatoria per questa operazione.",
     "E_IDENTITA_NON_ATTIVA": "Sessione non piu' valida: effettua nuovamente l'accesso.",
     "E_ID_FISCALI_DIVERSI": "Il parent account appartiene a un identificativo fiscale diverso.",
+    # brief-db-indirizzi-documento-seguono-il-cliente (2026-10-11): l'indirizzo
+    # preso dall'anagrafica non e' del cliente del documento.
+    "E_INDIRIZZO_DOC_NON_DEL_CLIENTE": "Un indirizzo del documento non e' del suo cliente: viene dall'anagrafica di un altro cliente, o di una fornitura diversa. Sceglilo fra quelli del cliente del documento.",
     "E_INDIRIZZO_DOC_OBBLIGATORIO": "Indirizzo obbligatorio mancante: impostare l'indirizzo di consegna prima dell'emissione.",
     "E_INDIRIZZO_FATTURA_MANCANTE": "Alcune fatture non hanno l'indirizzo di fatturazione: vedi i log delle fatture interessate.",
     "E_INDIRIZZO_OBBLIGATORIO_MANCANTE": "Indirizzo obbligatorio mancante per questo tipo soggetto.",
