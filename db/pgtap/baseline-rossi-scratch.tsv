@@ -165,7 +165,6 @@ db/pgtap/vendite/test-ricalcola-totali-fattura-arrotondamento.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-riferimento-gruppo-fatturabile-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-rinuncia-gate-accredito-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-riporta-attivita-da-emettere-v1.sql	ERRORE_FIXTURE
-db/pgtap/vendite/test-ritiro-alla-chiusura-documento-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-ritiro-commessa-attivita-da-sorgente-v1.sql	ERRORE_FIXTURE
 db/pgtap/vendite/test-snapshot-indirizzi-fattura-v1.sql	ASSERZIONE
 db/pgtap/vendite/test-snapshot-indirizzi-lotto-v1.sql	ASSERZIONE

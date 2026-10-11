@@ -159,6 +159,7 @@
 - [fn_documento_lineage](funzioni/fn_documento_lineage.md) — `vendite.fn_documento_lineage(p_tipo_id, p_uid, p_direzione)` è il **traversal ricorsivo** del grafo di genealogia, pensato per il pannello **"Passaggi"** del dettaglio documento: ritorna la **catena completa** degli archi attraversati, con lo stato di ogni tappa e `livello`/`ordine` per il rendering a timeline/albero.
 - [fn_documento_lineage_archi](funzioni/fn_documento_lineage_archi.md) — (rev 2026-10-11)
 - [fn_documento_lineage_nodi](funzioni/fn_documento_lineage_nodi.md) — (rev 2026-10-11)
+- [fn_documento_lineage_sintesi](funzioni/fn_documento_lineage_sintesi.md) — (rev 2026-10-11)
 - [fn_documento_listino_operativo](funzioni/fn_documento_listino_operativo.md) — (funzione nata il 2026-10-04, `20261004-42`)
 - [fn_documento_riga_erogazioni](funzioni/fn_documento_riga_erogazioni.md)
 - [fn_documento_righe_eccezione](funzioni/fn_documento_righe_eccezione.md) — (funzione nata il 2026-10-04, `20261004-70`)
@@ -452,9 +453,9 @@
 - [vw_ddt_righe_dettaglio](views/vw_ddt_righe_dettaglio.md) — (vista nata il 2026-09-28, `20260928-19`)
 - [vw_ddt_righe_iva_base](views/vw_ddt_righe_iva_base.md) — (rev 2026-08-21)
 - [vw_documenti_trattenuti_da_lotto](views/vw_documenti_trattenuti_da_lotto.md)
-- [vw_documento_lineage](views/vw_documento_lineage.md) — `vendite.vw_documento_lineage` è la vista **summary** (una riga per documento) pensata per **arricchire le liste vendite** con un solo JOIN. Risponde a due domande dalle liste:
 - [vw_documento_lineage_archi](views/vw_documento_lineage_archi.md) — `vendite.vw_documento_lineage_archi` è il **grafo di genealogia/transito** dei documenti vendite in forma **normalizzata**: **una riga per arco** (relazione padre→figlio tra due documenti). È la base da cui derivano sia la summary `vw_documento_lineage` sia il traversal `fn_documento_lineage`.
 - [vw_documento_lineage_nodi](views/vw_documento_lineage_nodi.md) — `vendite.vw_documento_lineage_nodi` è la **dimensione nodo** del grafo di genealogia dei documenti vendite (brief-db-lineage-documenti-vendite): **una riga per documento** delle 8 testate-nodo (preventivo, offerta, ordine, contratto, DDT, fattura, commessa, reso), con la **chiave nativa polimorfa** e lo **stato/fase normalizzati**.
+- [vw_documento_lineage_sintesi_colonne](views/vw_documento_lineage_sintesi_colonne.md) — (rev 2026-10-11)
 - [vw_famiglie_documento_lista](views/vw_famiglie_documento_lista.md) — *(rev 2026-09-01 — vista nata il 2026-09-01)*
 - [vw_fattura_righe_esposte](views/vw_fattura_righe_esposte.md) — Produce **come il documento va rappresentato**, a partire dalle righe che lo compongono.
 - [vw_fattura_righe_lista](views/vw_fattura_righe_lista.md) — (vista nata il 2026-09-28, `20260928-28`)

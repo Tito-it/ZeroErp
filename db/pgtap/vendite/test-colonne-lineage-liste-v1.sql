@@ -23,6 +23,18 @@
 --   correttezza del seed, invariante seed-agnostica. 1 spot-check §5 (PRV0000185)
 --   protetto da skip() se i dati non ci sono.
 --
+-- ⭐ rev 2026-10-11 — GIRO B di brief-db-lineage-seminata-per-chiave (D-B2).
+--   Le 8 colonne del GRAFO (frontiera_*, n_discendenti_attivi, is_transitato)
+--   escono dalle viste di lista (20261011-97): il backend le chiede a
+--   vendite.fn_documento_lineage_sintesi per le chiavi della pagina e le unisce
+--   alle righe con gli stessi nomi. La pratica (filtrabile e ordinabile) e la
+--   fase restano nella vista. Quindi: i test che dicevano «la vista espone
+--   frontiera_*» (3, 6, 9, 12, 15, 18, 31-37, 40-46) ora dicono che NON la
+--   espone piu' (hasnt_column); gli invarianti 28, 39, 47 si misurano sulla
+--   sintesi chiesta per le chiavi delle righe di ogni lista, come fa il backend.
+--   Che il catalogo trovi le sue colonne nella vista o nella sintesi lo dice il
+--   test 7 di ui/test-lista-*-seed.
+--
 -- Indice test (1..47):
 --   1..18) le 6 viste espongono pratica_numero, fase, frontiera_codice
 --  19..24) le 6 viste hanno security_invoker attivo (preservato)
@@ -85,36 +97,52 @@ SELECT plan(47);
 --   indeboliscono — cambia quante volte si paga il filtro, non cosa si vede.
 --   ⚠️ Una colonna nuova da asserire si aggiunge QUI, o il test leggerebbe la vista
 --   di nuovo (e tornerebbe lento) o una copia che non la porta (e non compilerebbe).
+-- ⭐ rev 2026-10-11 (giro B di brief-db-lineage-seminata-per-chiave, D-B2): le
+--   8 colonne del grafo non stanno piu' nelle viste di lista. Il backend le chiede
+--   a vendite.fn_documento_lineage_sintesi per le chiavi della pagina; qui si fa
+--   lo stesso, per le chiavi di TUTTE le righe di ogni lista, una chiamata per
+--   lista. La pratica e la fase restano nella vista.
+CREATE TEMP TABLE _chiavi_liste AS
+SELECT 'preventivi'::text AS vista, (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO') AS tipo_id, l.uid::text AS uid FROM vendite.vw_preventivi_lista l
+UNION ALL SELECT 'offerte'::text AS vista, (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'OFFERTA_COMMERCIALE') AS tipo_id, l.uid::text AS uid FROM vendite.vw_offerte_commerciali_lista l
+UNION ALL SELECT 'ordini'::text AS vista, (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA') AS tipo_id, l.id::text AS uid FROM vendite.vw_ordini_lista l
+UNION ALL SELECT 'contratti'::text AS vista, (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'CONTRATTO') AS tipo_id, l.id::text AS uid FROM vendite.vw_contratti_lista l
+UNION ALL SELECT 'ddt'::text AS vista, (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'DDT_VENDITA') AS tipo_id, l.id::text AS uid FROM vendite.vw_ddt_lista l
+UNION ALL SELECT 'resi'::text AS vista, (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'RESO_VENDITA') AS tipo_id, l.id::text AS uid FROM vendite.vw_resi_lista l
+UNION ALL SELECT 'fatture'::text AS vista, (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'FATTURA') AS tipo_id, l.id::text AS uid FROM vendite.vw_fatture_lista l;
+
+CREATE TEMP TABLE _sintesi_liste AS
+SELECT k.vista, s.*
+  FROM (SELECT vista, array_agg(tipo_id) AS t, array_agg(uid) AS u FROM _chiavi_liste GROUP BY vista) k
+ CROSS JOIN LATERAL vendite.fn_documento_lineage_sintesi(k.t, k.u) s;
+
 CREATE TEMP TABLE _lin_prev AS
-SELECT pratica_numero, n_pratiche, fase, frontiera_codice,
-       frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno
-  FROM vendite.vw_preventivi_lista;
+SELECT l.pratica_numero, l.n_pratiche, l.fase, s.frontiera_codice,
+       s.frontiera_natura_doc_codice_interno, s.frontiera_tipo_id, s.frontiera_tipo_codice_interno
+  FROM vendite.vw_preventivi_lista l
+  LEFT JOIN _sintesi_liste s ON s.vista = 'preventivi' AND s.uid = l.uid::text;
 
 CREATE TEMP TABLE _lin_frontiera AS
-SELECT 'preventivi'::text AS vista, frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM _lin_prev
-UNION ALL SELECT 'offerte',   frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_offerte_commerciali_lista
-UNION ALL SELECT 'ordini',    frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_ordini_lista
-UNION ALL SELECT 'contratti', frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_contratti_lista
-UNION ALL SELECT 'ddt',       frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_ddt_lista
-UNION ALL SELECT 'resi',      frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_resi_lista
-UNION ALL SELECT 'fatture',   frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno FROM vendite.vw_fatture_lista;
+SELECT vista, frontiera_natura_doc_codice_interno, frontiera_tipo_id, frontiera_tipo_codice_interno
+  FROM _sintesi_liste;
 
--- ---- 1..18: colonne nuove presenti sulle 6 viste ------------------------
+-- ---- 1..18: pratica e fase restano sulle 6 viste; frontiera_codice no ----
+-- (dal giro B la frontiera viene dalla sintesi: D-B2, 2026-10-11)
 SELECT has_column('vendite', 'vw_preventivi_lista',          'pratica_numero',  'preventivi: pratica_numero');
 SELECT has_column('vendite', 'vw_preventivi_lista',          'fase',            'preventivi: fase');
-SELECT has_column('vendite', 'vw_preventivi_lista',          'frontiera_codice','preventivi: frontiera_codice');
+SELECT hasnt_column('vendite', 'vw_preventivi_lista', 'frontiera_codice', 'preventivi: frontiera_codice non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'pratica_numero',  'offerte: pratica_numero');
 SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'fase',            'offerte: fase');
-SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'frontiera_codice','offerte: frontiera_codice');
+SELECT hasnt_column('vendite', 'vw_offerte_commerciali_lista', 'frontiera_codice', 'offerte: frontiera_codice non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 SELECT has_column('vendite', 'vw_ordini_lista',              'pratica_numero',  'ordini: pratica_numero');
 SELECT has_column('vendite', 'vw_ordini_lista',              'fase',            'ordini: fase');
-SELECT has_column('vendite', 'vw_ordini_lista',              'frontiera_codice','ordini: frontiera_codice');
+SELECT hasnt_column('vendite', 'vw_ordini_lista', 'frontiera_codice', 'ordini: frontiera_codice non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 SELECT has_column('vendite', 'vw_contratti_lista',           'pratica_numero',  'contratti: pratica_numero');
 SELECT has_column('vendite', 'vw_contratti_lista',           'fase',            'contratti: fase');
-SELECT has_column('vendite', 'vw_contratti_lista',           'frontiera_codice','contratti: frontiera_codice');
+SELECT hasnt_column('vendite', 'vw_contratti_lista', 'frontiera_codice', 'contratti: frontiera_codice non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 SELECT has_column('vendite', 'vw_ddt_lista',                 'pratica_numero',  'ddt: pratica_numero');
 SELECT has_column('vendite', 'vw_ddt_lista',                 'fase',            'ddt: fase');
-SELECT has_column('vendite', 'vw_ddt_lista',                 'frontiera_codice','ddt: frontiera_codice');
+SELECT hasnt_column('vendite', 'vw_ddt_lista', 'frontiera_codice', 'ddt: frontiera_codice non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 -- ⭐ rev 2026-08-25: la SESTA sorella. vw_resi_lista era l'unica lista documento
 --    senza genealogia, e su un reso la colonna «transito» (frontiera_codice) e'
 --    il numero della NOTA DI CREDITO che lo accredita — l'arco S del cantiere
@@ -123,7 +151,7 @@ SELECT has_column('vendite', 'vw_ddt_lista',                 'frontiera_codice',
 --    seed omonimo sarebbe nato vuoto in silenzio.
 SELECT has_column('vendite', 'vw_resi_lista',                'pratica_numero',  'resi: pratica_numero');
 SELECT has_column('vendite', 'vw_resi_lista',                'fase',            'resi: fase');
-SELECT has_column('vendite', 'vw_resi_lista',                'frontiera_codice','resi: frontiera_codice');
+SELECT hasnt_column('vendite', 'vw_resi_lista', 'frontiera_codice', 'resi: frontiera_codice non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 
 -- ---- 19..24: security_invoker preservato --------------------------------
 SELECT ok(EXISTS (SELECT 1 FROM pg_class c, unnest(c.reloptions) o
@@ -236,18 +264,18 @@ SELECT ok(
 -- ⭐ Sono SETTE e non sei: il blocco frontiera_* ce l'ha anche
 --    vw_fatture_lista. La sesta/settima e' esattamente l'errore che si vuole
 --    rendere impossibile da ripetere.
-SELECT has_column('vendite', 'vw_preventivi_lista',          'frontiera_natura_doc_codice_interno', 'preventivi: frontiera_natura_doc_codice_interno');
-SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'frontiera_natura_doc_codice_interno', 'offerte: frontiera_natura_doc_codice_interno');
-SELECT has_column('vendite', 'vw_ordini_lista',              'frontiera_natura_doc_codice_interno', 'ordini: frontiera_natura_doc_codice_interno');
-SELECT has_column('vendite', 'vw_contratti_lista',           'frontiera_natura_doc_codice_interno', 'contratti: frontiera_natura_doc_codice_interno');
-SELECT has_column('vendite', 'vw_ddt_lista',                 'frontiera_natura_doc_codice_interno', 'ddt: frontiera_natura_doc_codice_interno');
-SELECT has_column('vendite', 'vw_resi_lista',                'frontiera_natura_doc_codice_interno', 'resi: frontiera_natura_doc_codice_interno');
+SELECT hasnt_column('vendite', 'vw_preventivi_lista', 'frontiera_natura_doc_codice_interno', 'preventivi: frontiera_natura_doc_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_offerte_commerciali_lista', 'frontiera_natura_doc_codice_interno', 'offerte: frontiera_natura_doc_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_ordini_lista', 'frontiera_natura_doc_codice_interno', 'ordini: frontiera_natura_doc_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_contratti_lista', 'frontiera_natura_doc_codice_interno', 'contratti: frontiera_natura_doc_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_ddt_lista', 'frontiera_natura_doc_codice_interno', 'ddt: frontiera_natura_doc_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_resi_lista', 'frontiera_natura_doc_codice_interno', 'resi: frontiera_natura_doc_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 -- ⚠️ La settima: su vw_fatture_lista la colonna e' COSTANTE (una fattura e'
 --    sempre frontiera di se stessa - pgTAP 30 di test-documento-lineage-v1) e
 --    il chip non e' montato. C'e' lo stesso, e il test la pretende, perche' la
 --    ragione e' di FORMA: sette sorelle devono esporre lo stesso blocco, o chi
 --    scrive l'ottava copia da quella diversa.
-SELECT has_column('vendite', 'vw_fatture_lista',             'frontiera_natura_doc_codice_interno', 'fatture: frontiera_natura_doc_codice_interno');
+SELECT hasnt_column('vendite', 'vw_fatture_lista', 'frontiera_natura_doc_codice_interno', 'fatture: frontiera_natura_doc_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 
 -- ---- 38: security_invoker sulla SETTIMA ---------------------------------
 -- ⛔ vw_fatture_lista non era in questo file, quindi nessuno verificava che
@@ -290,13 +318,13 @@ SELECT is(
 --    e' config.sorgenti.codice_interno — la colonna IMMUTABILE, che il FE usa
 --    per la chiave i18n e per instradare, cioe' come LOGICA. §6c vieta
 --    `codice_interno AS *_codice` e il guardrail CI fallisce sul pattern.
-SELECT has_column('vendite', 'vw_preventivi_lista',          'frontiera_tipo_codice_interno', 'preventivi: frontiera_tipo_codice_interno');
-SELECT has_column('vendite', 'vw_offerte_commerciali_lista', 'frontiera_tipo_codice_interno', 'offerte: frontiera_tipo_codice_interno');
-SELECT has_column('vendite', 'vw_ordini_lista',              'frontiera_tipo_codice_interno', 'ordini: frontiera_tipo_codice_interno');
-SELECT has_column('vendite', 'vw_contratti_lista',           'frontiera_tipo_codice_interno', 'contratti: frontiera_tipo_codice_interno');
-SELECT has_column('vendite', 'vw_ddt_lista',                 'frontiera_tipo_codice_interno', 'ddt: frontiera_tipo_codice_interno');
-SELECT has_column('vendite', 'vw_resi_lista',                'frontiera_tipo_codice_interno', 'resi: frontiera_tipo_codice_interno');
-SELECT has_column('vendite', 'vw_fatture_lista',             'frontiera_tipo_codice_interno', 'fatture: frontiera_tipo_codice_interno');
+SELECT hasnt_column('vendite', 'vw_preventivi_lista', 'frontiera_tipo_codice_interno', 'preventivi: frontiera_tipo_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_offerte_commerciali_lista', 'frontiera_tipo_codice_interno', 'offerte: frontiera_tipo_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_ordini_lista', 'frontiera_tipo_codice_interno', 'ordini: frontiera_tipo_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_contratti_lista', 'frontiera_tipo_codice_interno', 'contratti: frontiera_tipo_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_ddt_lista', 'frontiera_tipo_codice_interno', 'ddt: frontiera_tipo_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_resi_lista', 'frontiera_tipo_codice_interno', 'resi: frontiera_tipo_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
+SELECT hasnt_column('vendite', 'vw_fatture_lista', 'frontiera_tipo_codice_interno', 'fatture: frontiera_tipo_codice_interno non sta piu'' nella vista (viene dalla sintesi, D-B2)');
 
 -- ---- 47: il valore, non solo il nome ------------------------------------
 -- ⭐⭐ L'INVARIANTE CHE I SETTE has_column NON SANNO FARE. L'errore plausibile

@@ -12,7 +12,7 @@
 --       e le due viste che ne sono la proiezione (20261011-65/-66).
 --       Brief: brief-db-lineage-seminata-per-chiave §8.2, giro 1.
 --
--- Elenco test (plan 16):
+-- Elenco test (plan 22):
 --   1) le due funzioni esistono con la firma (bigint[], text[])
 --   2) nodi: BEGIN ATOMIC, STABLE, INVOKER
 --   3) archi: BEGIN ATOMIC, STABLE, INVOKER
@@ -35,6 +35,18 @@
 --      arco vivo per lettera, e i suoi due capi come seme danno gli archi della
 --      vista — skip() se nessuna c'e' (database da zero, CI)
 --  16) il nodo senza archi (il secondo preventivo) da' zero archi
+--  17) ⭐ il pannello (fn_documento_lineage, per livelli dal 20261011-93), in
+--      avanti dal preventivo del grafo costruito: 1A, 1B, 2E, 2H, 3U
+--  18) ⭐ e indietro dalla commessa: 1B, 1E, 1U, 2A, 2H, 3A — l'ordine arriva
+--      per due strade (A diretto al livello 2, e A dal DDT al livello 3): i
+--      percorsi sono due, e la guardia dei cicli e' sul percorso
+--  19) ⭐ la sintesi (fn_documento_lineage_sintesi) dei cinque nodi costruiti:
+--      discendenti, frontiera, sorgenti e radice attesi dal grafo (dal giro B
+--      la vista vw_documento_lineage non c'e' piu': i valori vengono dal grafo)
+--  20) ⭐ ogni nodo chiesto da solo da' la stessa riga che da' nel seme misto
+--  21) la commessa costruita ha tre sorgenti (B, E, U) e la radice e' il
+--      preventivo, che e' la sorgente ROOT
+--  22) la sintesi senza seme solleva (si chiede per le chiavi dei documenti)
 --
 -- ── PERCHE' QUESTO FILE ─────────────────────────────────────────────
 --   La funzione degli archi scrive ogni ramo DUE volte: una per la lettura
@@ -59,7 +71,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(16);
+SELECT plan(22);
 
 -- ============================================================
 -- Il grafo costruito: due preventivi, un ordine, una commessa, un DDT.
@@ -294,6 +306,86 @@ SELECT is(
          ARRAY[(SELECT preventivo_uid::text FROM g_prev2)])),
     0,
     '16) il preventivo senza archi, come seme, non ne da'' nessuno');
+
+-- ============================================================
+-- 17-18. Il pannello, sul grafo costruito
+-- ============================================================
+-- Le catene attese sono ricavate dal grafo, e verificate contro la forma di
+-- prima (vista intera + ricorsione, 20261010-44) il 2026-10-11.
+SELECT is(
+    (SELECT string_agg(l.livello || l.arco, ',' ORDER BY l.livello, l.arco)
+       FROM vendite.fn_documento_lineage(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+                (SELECT preventivo_uid::text FROM g_prev), 'avanti') l),
+    '1A,1B,2E,2H,3U',
+    '17) pannello, avanti dal preventivo: A e B, poi E e H dall''ordine, poi U dal DDT');
+
+SELECT is(
+    (SELECT string_agg(l.livello || l.arco, ',' ORDER BY l.livello, l.arco)
+       FROM vendite.fn_documento_lineage(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+                (SELECT commessa_id::text FROM g_com), 'indietro') l),
+    '1B,1E,1U,2A,2H,3A',
+    '18) pannello, indietro dalla commessa: l''ordine si raggiunge per due strade, e A compare a due livelli');
+
+-- ============================================================
+-- 19-22. La sintesi
+-- ============================================================
+-- ⭐ rev giro B (2026-10-11): vw_documento_lineage e' ritirata (20261011-98), e
+--   la sintesi e' la sede unica della regola. I valori attesi si ricavano dal
+--   grafo costruito (tutti i documenti in fase APERTO): la frontiera e' il nodo
+--   piu' a valle — la commessa, raggiunta al livello 3 dal preventivo via
+--   ordine e DDT; le sorgenti sono gli archi entranti non di ritorno, la radice
+--   e' la sorgente ROOT. Verificati contro la vista prima del ritiro.
+CREATE TEMP TABLE g_sint AS
+SELECT CASE
+         WHEN s.tipo_codice_interno = 'PREVENTIVO' AND s.uid = (SELECT preventivo_uid::text FROM g_prev)  THEN 'prev'
+         WHEN s.tipo_codice_interno = 'PREVENTIVO' AND s.uid = (SELECT preventivo_uid::text FROM g_prev2) THEN 'prev2'
+         WHEN s.tipo_codice_interno = 'ORDINE_VENDITA' THEN 'ord'
+         WHEN s.tipo_codice_interno = 'COMMESSA'       THEN 'com'
+         WHEN s.tipo_codice_interno = 'DDT_VENDITA'    THEN 'ddt'
+       END AS nodo, s.*
+  FROM vendite.fn_documento_lineage_sintesi(
+           (SELECT array_agg(tipo_id) FROM g_nodi), (SELECT array_agg(uid) FROM g_nodi)) s;
+
+SELECT is(
+    (SELECT string_agg(g.nodo || ':' || g.n_discendenti_diretti || '/' || g.n_discendenti_attivi
+                       || '/' || g.frontiera_tipo_codice_interno || '/' || g.n_sorgenti
+                       || '/' || coalesce(so.codice_interno, '-') || '/' || g.is_transitato::text,
+                       ',' ORDER BY g.nodo)
+       FROM g_sint g
+       LEFT JOIN config.sorgenti so ON so.id = g.root_tipo_id),
+    'com:0/0/COMMESSA/3/PREVENTIVO/false,ddt:1/1/COMMESSA/1/ORDINE_VENDITA/true,'
+    'ord:2/2/COMMESSA/1/PREVENTIVO/true,prev:2/2/COMMESSA/0/-/true,prev2:0/0/PREVENTIVO/0/-/false',
+    '19) sintesi dei cinque nodi costruiti: discendenti, frontiera, sorgenti e radice attesi dal grafo');
+
+SELECT is(
+    (SELECT count(*)::int FROM g_nodi n
+      WHERE (SELECT count(*) FROM (
+                SELECT * FROM vendite.fn_documento_lineage_sintesi(ARRAY[n.tipo_id], ARRAY[n.uid])
+                EXCEPT ALL
+                SELECT tipo_id, uid, codice, stato_codice_interno, stato_codice, stato_descrizione, fase,
+                       is_abortito, pratica_id, pratica_numero, n_pratiche, frontiera_tipo_id, frontiera_uid,
+                       frontiera_codice, frontiera_stato_codice_interno, frontiera_fase, n_discendenti_diretti,
+                       n_discendenti_attivi, is_transitato, n_sorgenti, root_tipo_id, root_uid, root_codice,
+                       natura_doc_codice_interno, natura_doc_descrizione, frontiera_natura_doc_codice_interno,
+                       tipo_codice_interno, frontiera_tipo_codice_interno
+                  FROM g_sint g WHERE g.tipo_id = n.tipo_id AND g.uid = n.uid) a) <> 0),
+    0,
+    '20) ogni nodo chiesto da solo da'' la stessa riga che da'' nel seme misto');
+
+SELECT is(
+    (SELECT s.n_sorgenti || '|' || (s.root_uid = (SELECT preventivo_uid::text FROM g_prev))::text
+       FROM vendite.fn_documento_lineage_sintesi(
+                ARRAY[(SELECT s2.id FROM config.sorgenti s2 WHERE s2.codice_interno = 'COMMESSA')],
+                ARRAY[(SELECT commessa_id::text FROM g_com)]) s),
+    '3|true',
+    '21) la commessa costruita ha tre sorgenti (B, E, U) e la radice e'' il preventivo ROOT');
+
+SELECT throws_ok(
+    $q$ SELECT * FROM vendite.fn_documento_lineage_sintesi(NULL::bigint[], NULL::text[]) $q$,
+    NULL,
+    '22) la sintesi senza seme solleva: si chiede per le chiavi dei documenti');
 
 SELECT * FROM finish();
 ROLLBACK;

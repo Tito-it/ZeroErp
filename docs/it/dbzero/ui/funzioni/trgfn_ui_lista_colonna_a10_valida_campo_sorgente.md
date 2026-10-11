@@ -21,6 +21,12 @@ AS $function$
 --   - campo_sorgente IS NULL o ''     (colonna calcolata FE, es. sosp_riatt)
 --   - lista senza vista_sql definita
 -- rev 2026-09-27: la vista si cerca nel suo schema, non per solo nome.
+-- rev 2026-10-11 (20261011-99, brief-db-lineage-seminata-per-chiave giro B,
+--   D-B2): e' valido anche un campo_sorgente che NON sta nella vista ma e' una
+--   colonna della sintesi della lineage (vendite.vw_documento_lineage_sintesi_colonne):
+--   il backend la chiede a vendite.fn_documento_lineage_sintesi per le chiavi
+--   della pagina. E' la stessa regola dei presidi ui/test-lista-*: in un posto
+--   solo, la vista delle colonne.
 DECLARE
   v_vista_sql        ui.lista_definizione.vista_sql%TYPE;
   v_schema_dati      ui.lista_definizione.schema_dati%TYPE;
@@ -61,6 +67,14 @@ BEGIN
        AND a.attnum > 0
        AND NOT a.attisdropped
   ) INTO v_colonna_esiste;
+
+  -- D-B2: oppure e' una colonna della sintesi della lineage.
+  IF NOT v_colonna_esiste THEN
+    SELECT EXISTS (
+      SELECT 1 FROM vendite.vw_documento_lineage_sintesi_colonne sc
+       WHERE sc.colonna = NEW.campo_sorgente
+    ) INTO v_colonna_esiste;
+  END IF;
 
   IF NOT v_colonna_esiste THEN
     PERFORM script.fn_log_and_raise_error(

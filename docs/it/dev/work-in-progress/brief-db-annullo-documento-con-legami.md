@@ -287,7 +287,8 @@ EVASO → ACCETTATO (`manuale = false`) in `transizioni_stati_preventivi`, esegu
   una sola automatica verso ACCETTATO. 4/4 sullo scratch. ⚠️ Il gemello degli ordini
   (`script/test-seed-stati-doc-ordini-evaso-v1`, test 4 e 6) e' rosso da PRIMA di questo giro (5/2 sullo
   scratch prima e dopo): fissa la stessa regola, ma gli ordini hanno uscite automatiche da EVASO dal
-  2026-07-09 (proiezione dell'evasione). Non e' di questo cantiere: da decidere a parte.
+  2026-07-09 (proiezione dell'evasione). Non e' di questo cantiere: riallineato a parte il 2026-10-11 (test 4:
+  nessuna uscita manuale; test 6: `ORDINE_GIA_EVASO` tolto il 2026-07-10 da `20260710-02`): ✅ verde su dbdev (Tid, 2026-10-11).
 
 ### 8.3 Fatti da sapere prima dell'apply
 
