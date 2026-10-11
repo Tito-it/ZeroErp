@@ -18,6 +18,7 @@ from apps.vendite.api.ddt_documenti_views import (
     ApiDdtDocumentoGenera,
     ApiDdtEmetti,
 )
+from apps.vendite.api.legami_views import ApiDdtLegami
 from apps.vendite.api.lineage_views import ApiDdtPassaggi
 from apps.vendite.api.note_views import ApiDdtNoteDetail, ApiDdtNoteList
 from apps.vendite.api.situazione_merce_views import ApiDdtSituazioneMerce
@@ -27,7 +28,6 @@ from apps.vendite.api.views_ddt import (
     ApiDdtExportView,
     ApiDdtIndirizzi,
     ApiDdtIndirizzoDetail,
-    ApiDdtLegami,
     ApiDdtList,
     ApiDdtPush,
     ApiDdtRiepilogoIva,
@@ -78,7 +78,7 @@ urlpatterns = [
          name="vendite-ddt-cambia-stato"),
     path("<int:ddt_id>/push/", ApiDdtPush.as_view(),
          name="vendite-ddt-push"),
-    # Le righe legate a ordini o resi, per la conferma dell'annullo (D-8).
+    # I legami della bolla, per la conferma dell'annullo (legami_views).
     path("<int:ddt_id>/legami/", ApiDdtLegami.as_view(),
          name="vendite-ddt-legami"),
 

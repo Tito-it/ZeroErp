@@ -78,20 +78,11 @@ export function emettiDdt(id, { allegati = [], templateId = null } = {}) {
 // ANNULLATO). `statoCodice` = `target_state` dell'azione da
 // script.fn_available_actions_ddt. L'ammissibilita' e' validata dal trigger
 // guard DB trgfn_ddt_guard_transizione.
-// `dichiarazione`: la conferma dell'annullo di una bolla con legami a ordini o
-// resi (`{ righe_legate_confermate }`, D-8 di brief-db-ddt-righe-evase-dall-ordine).
-// Al primo tentativo e' vuota (`useForzaturaConfermata`).
+// `dichiarazione`: la conferma dell'annullo di una bolla con legami
+// (`{ legami_confermati }`, brief-db-annullo-documento-con-legami). Al primo
+// tentativo e' vuota (`useForzaturaConfermata`).
 export function cambiaStatoDdt(id, statoCodice, dichiarazione = {}) {
   return api.post(`${BASE}/${id}/cambia-stato/`, { stato_codice: statoCodice, ...dichiarazione })
-}
-
-// Scopo: Le righe della bolla legate a un ordine o a un reso, per la finestra
-// di conferma dell'annullo. Risposta: { righe_legate, legami: [{ ddt_riga_id,
-// riga_nr, origine (ORDINE/RESO), origine_riga_id, qta }], origini: [{
-// tipo_codice_interno, doc_id, codice, stato_codice_interno }] } — le origini
-// a livello di testata, dal lineage. `righe_legate` e' il numero da dichiarare.
-export function getDdtLegami(id) {
-  return api.get(`${BASE}/${id}/legami/`)
 }
 
 // Push singolo del DDT a commessa (chiusura giro, fatturazione differita,

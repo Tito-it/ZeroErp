@@ -167,7 +167,7 @@ modellato).
 Il contratto ATTIVO e' **blindato** per garantire stabilita' contrattuale.
 ⭐ Dal 2026-10-10 la regola ha **una sede sola**, il lock di testata del DB
 (`vendite.trgfn_doc_testata_lock_fuori_bozza`, montato colonna per colonna e per
-stato: [brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)).
+stato: [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)).
 Il backend non ha piu' la sua tabella per stato (`_CONTRATTO_PATCH_ALLOWED_BY_STATE`,
 ritirata): passa la scrittura e il 409 del lock arriva com'e'. Il form spegne i
 campi prima, leggendo `can_edit_testata` e `non_editable_fields` dalla capability,

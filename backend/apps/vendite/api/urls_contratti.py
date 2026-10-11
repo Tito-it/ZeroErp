@@ -17,6 +17,7 @@ from apps.vendite.api.contratti_documenti_views import (
     ApiContrattoDocumentoGenera,
     ApiContrattoEmetti,
 )
+from apps.vendite.api.legami_views import ApiContrattoLegami
 from apps.vendite.api.lineage_views import ApiContrattoPassaggi
 from apps.vendite.api.note_views import (
     ApiContrattoNoteDetail,
@@ -58,6 +59,9 @@ urlpatterns = [
     # Genealogia/lineage (pannello "Passaggi", brief-be-fe-lineage).
     path("<int:contratto_id>/passaggi/", ApiContrattoPassaggi.as_view(),
          name="vendite-contratto-passaggi"),
+    # I legami del contratto, per la conferma dell'annullo (legami_views).
+    path("<int:contratto_id>/legami/", ApiContrattoLegami.as_view(),
+         name="vendite-contratto-legami"),
     path("<int:contratto_id>/indirizzi/", ApiContrattoIndirizzi.as_view(),
          name="vendite-contratto-indirizzi"),
     path("<int:contratto_id>/indirizzi/<int:indirizzo_id>/",

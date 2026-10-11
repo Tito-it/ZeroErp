@@ -29,6 +29,12 @@ from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
+from apps.vendite.services._annullo_con_legami import (
+    DOCUMENTO_ORDINE,
+    STATO_ANNULLATO,
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
+)
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
 from apps.core.services.testata_guard import (
@@ -100,6 +106,9 @@ _CHECK_CONSTRAINTS: dict[str, tuple[str, str]] = {
 
 # ── Costanti di dominio ──
 _FN = "vendite.ordini_service"
+# I tipi di `vendite.fn_offerta_documenti_vivi` (codici di config.tipi_entita).
+_TIPO_VIVO_ORDINE = "ORDINE_VENDITA"
+_TIPO_VIVO_CONTRATTO = "CONTRATTO"
 _STATO_BOZZA = "DRAFT"
 _STATO_CONFERMATO = "CONFERMATO"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
@@ -668,36 +677,29 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
         function_name=f"{_FN}.crea_ordine_da_offerta",
     )
 
-    repo = OrdiniRepository()
-
-    # Idempotenza 1:1 (univocità offerta→ordine): un'offerta genera al massimo un
-    # ordine (specchio applicativo dell'UNIQUE parziale
-    # uq_ordini_v_documento_origine_offerta + della guard data-driven
-    # can_genera_ordine). Fail-fast PARLANTE prima di lavorare; l'UNIQUE resta la
-    # rete sulla race concorrente (mappata in _UNIQUE_CONSTRAINTS).
-    ordine_esistente = repo.get_ordine_by_documento_origine(
-        "OFFERTA", int(offerta_id),
-    )
+    # «L'offerta e' gia' trasformata?» (brief-db-annullo-documento-con-legami
+    # R-4, 2026-10-11): una lettura sola, la sede del DB
+    # (`vendite.fn_offerta_documenti_vivi`), per le due domande che qui erano
+    # due specchi — un ordine gia' nato dall'offerta, o un contratto (offerta →
+    # contratto XOR ordine). ⭐ Contano i soli documenti VIVI: annullandoli
+    # l'offerta torna trasformabile (D-3). Fail-fast PARLANTE prima di lavorare;
+    # `uq_ordini_v_documento_origine_offerta`, ora sui soli vivi, resta la rete
+    # sulla corsa concorrente (mappata in _UNIQUE_CONSTRAINTS).
+    vivi = off_repo.list_documenti_vivi(offerta_id)
+    ordine_vivo = next((d for d in vivi if d["tipo"] == _TIPO_VIVO_ORDINE), None)
     ErrorManager.require(
-        ordine_esistente is None,
+        ordine_vivo is None,
         code="E_ORD_OFFERTA_GIA_CONVERTITA",
         message="Un ordine è già stato generato da questa offerta.",
         detail=(
             f"offerta_id={offerta_id}, "
-            f"ordine_id={ordine_esistente.get('id') if ordine_esistente else None}"
+            f"ordine_id={ordine_vivo['documento_id'] if ordine_vivo else None}"
         ),
         function_name=f"{_FN}.crea_ordine_da_offerta",
     )
-
-    # Mutua esclusività offerta → (contratto XOR ordine): se l'offerta ha già
-    # generato un CONTRATTO non può generare anche un ordine (e viceversa, lato
-    # DB in fn_push_offerta_a_contratto → E_OFFERTA_ORDINE_GIA_GENERATO). Specchio
-    # applicativo della capability `can_genera_ordine` (reason
-    # OFFERTA_CONTRATTO_GIA_GENERATO) + guard BE di questa direzione, lasciato
-    # qui dal team DB perché crea_ordine_da_offerta è orchestrato in BE, non in una
-    # singola fn DB. `contratto_id` è già nel dettaglio (LEFT JOIN), niente query.
+    contratto_vivo = next((d for d in vivi if d["tipo"] == _TIPO_VIVO_CONTRATTO), None)
     ErrorManager.require(
-        testata.get("contratto_id") is None,
+        contratto_vivo is None,
         code="E_OFFERTA_CONTRATTO_GIA_GENERATO",
         message=(
             "Questa offerta ha già generato un contratto: "
@@ -705,10 +707,12 @@ def crea_ordine_da_offerta(offerta_id: int) -> dict[str, Any]:
         ),
         detail=(
             f"offerta_id={offerta_id}, "
-            f"contratto_id={testata.get('contratto_id')}"
+            f"contratto_id={contratto_vivo['documento_id'] if contratto_vivo else None}"
         ),
         function_name=f"{_FN}.crea_ordine_da_offerta",
     )
+
+    repo = OrdiniRepository()
 
     righe = off_repo.list_righe_espanse(offerta_id)
 
@@ -820,7 +824,13 @@ def conferma(ordine_id: int, *, user: str | None = None) -> dict[str, Any]:
 #        il service non duplica il grafo. La conferma (DRAFT->CONFERMATO) ha un
 #        endpoint dedicato (`conferma`) per le sue precondizioni; questa copre le
 #        altre transizioni manuali esposte.
-def cambia_stato(ordine_id: int, stato_codice: str | None) -> dict[str, Any]:
+#        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_ordine`
+#        (brief-db-annullo-documento-con-legami): con legami il DB rifiuta
+#        (E_DOC_ANNULLO_CON_LEGAMI, `confirm_and_retry`) finche' la richiesta
+#        non dichiara `legami_confermati`, il numero letto da `get_legami`.
+def cambia_stato(
+    ordine_id: int, stato_codice: str | None, *, legami_confermati: Any = None,
+) -> dict[str, Any]:
     repo = OrdiniRepository()
     testata = _get_testata_or_raise(repo, ordine_id, op="cambia_stato")
     stato_prec = testata.get("stato_codice_interno")
@@ -841,11 +851,29 @@ def cambia_stato(ordine_id: int, stato_codice: str | None) -> dict[str, Any]:
         function_name=f"{_FN}.cambia_stato",
     )
     assert stato_id is not None
+    if target == STATO_ANNULLATO:
+        confermati = dichiarazione_legami(
+            legami_confermati, validation_code="E_ORD_VALIDAZIONE",
+            function_name=f"{_FN}.cambia_stato",
+        )
+        with _db_errors("cambia_stato"):
+            repo.annulla(ordine_id, confermati)
+        return {"ordine_id": ordine_id, "stato_precedente": stato_prec, "stato": target}
     # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
     # eventuale errore tradotto da _db_errors (E_ORDINE_TRANSIZIONE_NON_AMMESSA).
     with _db_errors("cambia_stato"):
         repo.update_stato(ordine_id, int(stato_id))
     return {"ordine_id": ordine_id, "stato_precedente": stato_prec, "stato": target}
+
+
+# Scopo: I legami dell'ordine per la finestra di conferma dell'annullo (BB
+#        `legami_del_documento`): righe di preventivo, offerta d'origine, righe
+#        di commessa da emettere. Prima la testata: il lettore del DB non
+#        applica il perimetro.
+def get_legami(ordine_id: int) -> dict[str, Any]:
+    repo = OrdiniRepository()
+    _get_testata_or_raise(repo, ordine_id, op="get_legami", getter=repo.get_stato_codice)
+    return legami_del_documento(DOCUMENTO_ORDINE, ordine_id)
 
 
 # ══════════════════════════════════════════════════════════

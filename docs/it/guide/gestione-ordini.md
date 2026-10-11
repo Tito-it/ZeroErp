@@ -1,6 +1,6 @@
 # Guida — Gestione Ordini di vendita
 
-> **Ultimo aggiornamento**: 14 settembre 2026
+> **Ultimo aggiornamento**: 11 ottobre 2026
 >
 > **Destinatari**: analisti funzionali, operatori commerciali, sviluppatori
 > backend/frontend, DBA.
@@ -303,7 +303,7 @@ vengono raggiunti da alcun processo sull'ordine.
 | `DRAFT` | Bozza in preparazione | Sì: testata e righe | No | ✅ |
 | `CONFERMATO` | Ordine confermato, pronto per il push a commessa | No | No | ✅ |
 | `EVASO` | Righe inviate a commessa (push completato): il giro è chiuso | No | Sì | ✅ |
-| `ANNULLATO` | Bozza annullata | No | Sì | ✅ |
+| `ANNULLATO` | Ordine annullato, in bozza o confermato | No | Sì | ✅ |
 | `ALLOCATO` / `SPEDITO` / `CONSEGNATO` / `FATTURATO` | Fasi logistiche/finanziarie future | — | — | ⏳ non ancora raggiunti |
 
 ### 4.2 Transizioni ammesse
@@ -314,10 +314,8 @@ cosa mostrare in interfaccia, sia cosa il database accetta davvero.
 
 ```text
 DRAFT ──(conferma)──▶ CONFERMATO ──(push commessa completato)──▶ EVASO (terminale)
-  │
-  └──(annulla)──▶ ANNULLATO  (terminale)
-
-CONFERMATO ┄┄(annulla)┄┄▶ ANNULLATO     (presente ma DISABILITATO)
+  │                       │
+  └──(annulla)──▶ ANNULLATO ◀──(annulla)──┘   (terminale)
 ```
 
 - **DRAFT → CONFERMATO** (*conferma*): richiede **almeno una riga**.
@@ -326,16 +324,34 @@ CONFERMATO ┄┄(annulla)┄┄▶ ANNULLATO     (presente ma DISABILITATO)
 - **CONFERMATO → EVASO** (*automatica*): scatta da sé quando il **push a commessa**
   si conclude con esito **completato** (vedi §10). Non è un pulsante: è una
   transizione automatica che chiude il giro. `EVASO` è **terminale**.
-- **CONFERMATO → ANNULLATO**: la riga esiste in matrice ma è **disabilitata**. Un
-  ordine confermato **non si annulla con un click**: la riabilitazione arriverà
-  insieme alla regola "annullabile solo se non ancora evaso/fatturato".
+- **CONFERMATO → ANNULLATO** (*annulla*): consentito. Se l'ordine ha legami con
+  altri documenti, l'annullo chiede una conferma (§4.3).
 
 > **Il push a commessa non è una transizione "a pulsante".** Il push crea le entità
 > a valle (attività fatturabili); se va a buon fine **per intero**, porta poi
 > l'ordine a `EVASO` in automatico. Se il push è solo parziale o fallisce, l'ordine
 > **resta `CONFERMATO`** ed è possibile ripeterlo.
 
-### 4.3 La doppia difesa
+### 4.3 Annullare un ordine nato da un altro documento
+
+Un ordine può occupare qualcosa di altri documenti: le **righe del preventivo** da
+cui è nato, l'**offerta** che ha trasformato, le **righe di commessa** ancora da
+emettere che ha spinto. Annullandolo, queste cose tornano disponibili:
+
+* le righe del preventivo si liberano e si possono ordinare di nuovo; se il
+  preventivo era `EVASO`, torna `ACCETTATO`;
+* l'offerta torna trasformabile, in un ordine o in un contratto: conta solo
+  l'ordine **vivo**, quello annullato conserva la provenienza;
+* le righe di commessa ancora da emettere si annullano.
+
+Non succede in silenzio. Su un ordine con legami, «Annulla ordine» apre una
+**finestra di conferma** che elenca che cosa si riapre e dove; ogni documento
+dall'altra parte si apre con un clic. Confermando, l'operatore dichiara quanti
+legami ha visto: se nel frattempo sono cambiati, la finestra si ripresenta
+aggiornata. Un ordine senza legami si annulla con la sola conferma del cambio di
+stato. Le righe di commessa **già emesse** non si riaprono: bloccano l'annullo.
+
+### 4.4 La doppia difesa
 
 Le regole di transizione valgono a **due livelli**:
 

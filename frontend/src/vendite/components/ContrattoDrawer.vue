@@ -20,6 +20,7 @@ import { useDrawerFormPreserve } from '../../core/composables/useDrawerFormPrese
 import { useDrawerDetailLoad } from '../../core/composables/useDrawerDetailLoad'
 import { useInjectReadonly, READONLY_KEY } from '../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../core/composables/useForzaturaConfermata'
 import { useEntityCapabilities } from '../../core/composables/useEntityCapabilities'
 import { useTestataDocumento } from '../../core/composables/useTestataDocumento'
 import { DRAWER_WIDTH, MANAGE_ICONS, TIPO_RUOLO, STATUS_ICONS, DATE_FORMAT } from '../../core/constants'
@@ -40,6 +41,7 @@ import EmittenteFiscaleField from '../../core/components/EmittenteFiscaleField.v
 import UtilityPerRuoloSelect from '../../core/components/UtilityPerRuoloSelect.vue'
 import ContrattoNoteDrawer from './ContrattoNoteDrawer.vue'
 import ContrattoEmissioneDialog from './dialogs/ContrattoEmissioneDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import ContrattoRigheDrawer from './ContrattoRigheDrawer.vue'
 import EntityPdfButton from '../../documenti/components/EntityPdfButton.vue'
 import { SORGENTE_CODES } from '../../documenti/constants'
@@ -681,11 +683,30 @@ function onCambiaStato(action) {
   eseguiCambioStato(action.target_state)
 }
 
+// ⭐ L'annullo e' un gesto CONFERMABILE (brief-db-annullo-documento-con-
+//    legami): con legami (offerta d'origine, righe di commessa da emettere) il
+//    DB lo rifiuta (`confirm_and_retry`) finche' chi conferma non dichiara
+//    quanti legami ha visto; la domanda la porta a video
+//    `DocumentoAnnulloLegamiDialog`. Le altre transizioni restano su `execute`.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
+
 async function eseguiCambioStato(targetState) {
-  const result = await execute(
-    () => store.cambiaStato(props.contrattoId, targetState),
-    { successMessage: t('vendite.contratti.stato_cambiato') },
-  )
+  const opts = { successMessage: t('vendite.contratti.stato_cambiato') }
+  // L'annullo: primo tentativo SEMPRE senza dichiarazione.
+  const result = targetState === STATO_CONTRATTO.ANNULLATO
+    ? await cambioStato.esegui(
+      (dichiarazione) => store.cambiaStato(props.contrattoId, targetState, { dichiarazione }),
+      opts,
+    )
+    : await execute(() => store.cambiaStato(props.contrattoId, targetState), opts)
+  if (result !== null) await refreshDetail()
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  const result = await cambioStato.conferma(dichiarazione)
   if (result !== null) await refreshDetail()
 }
 
@@ -1181,6 +1202,20 @@ const fotoCessa = useFotografiaDialog(() => ({ data: cessaDialogData.value }), {
       v-model:visible="noteDrawerVisible"
       :contratto-id="props.contrattoId"
       :righe="detail.righe || []"
+    />
+
+    <!-- La conferma dell'annullo di un contratto con legami: aperta dalla
+         domanda del DB, chiusa dalla conferma o dalla rinuncia. -->
+    <DocumentoAnnulloLegamiDialog
+      v-if="contrattoId"
+      :visible="domandaAnnullo !== null"
+      base-path="/vendite/contratti"
+      :doc-id="contrattoId"
+      :header="t('vendite.contratti.azione_annulla')"
+      :domanda="domandaAnnullo"
+      :loading="cambioStato.loading.value"
+      @conferma="onConfermaAnnullo"
+      @cancel="cambioStato.annulla()"
     />
 
     <!-- Dialog attivazione contratto (transizione DRAFT → ATTIVO). Wrapper sul

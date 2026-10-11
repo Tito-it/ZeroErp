@@ -70,13 +70,13 @@ DdtSatellitiTestataTests (2026-09-21, «leggi prima la testata»)
 
 DdtRigheEvaseTests (2026-10-11, brief-db-ddt-righe-evase-dall-ordine)
 29) test_annullo_passa_dal_verbo_senza_dichiarazione — ANNULLATO → repo.annulla(id, None), mai update_stato
-30) test_annullo_con_dichiarazione                    — righe_legate_confermate arriva al verbo come int
+30) test_annullo_con_dichiarazione                    — legami_confermati arriva al verbo come int
 31) test_annullo_dichiarazione_non_numerica           — E_DDT_VALIDAZIONE col campo (no 500)
-32) test_annullo_con_legami_codice_del_db             — E_DDT_ANNULLO_CON_LEGAMI tradotto, confirm_and_retry
+32) test_annullo_con_legami_codice_del_db             — E_DOC_ANNULLO_CON_LEGAMI tradotto, confirm_and_retry
 33) test_correggi_qta_evasa_delega_al_verbo           — Decimal al repo, qta_evasa nella risposta
 34) test_correggi_qta_evasa_qta_mancante              — E_DDT_VALIDAZIONE, verbo non chiamato
 35) test_correggi_qta_evasa_riga_di_altro_ddt_e_404   — E_DDT_NOT_FOUND, verbo non chiamato
-36) test_get_legami_conta_righe_distinte_e_origini    — righe distinte, origini = archi di livello 1
+36) test_get_legami_delega_al_bb                       — testata, poi il BB comune col codice DDT
 37) test_get_legami_ddt_non_trovato_e_404             — E_DDT_NOT_FOUND, legami non letti
 """
 
@@ -877,7 +877,7 @@ class DdtRigheEvaseTests(SimpleTestCase):
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_stato_id_by_codice.return_value = 9
-        ddt_service.cambia_stato(7, "ANNULLATO", righe_legate_confermate="2")
+        ddt_service.cambia_stato(7, "ANNULLATO", legami_confermati="2")
         repo.annulla.assert_called_once_with(7, 2)
 
     @patch(_REPO)
@@ -886,9 +886,9 @@ class DdtRigheEvaseTests(SimpleTestCase):
         repo.get_stato_codice.return_value = "DRAFT"
         repo.get_stato_id_by_codice.return_value = 9
         with self.assertRaises(ServiceError) as cm:
-            ddt_service.cambia_stato(7, "ANNULLATO", righe_legate_confermate="due")
+            ddt_service.cambia_stato(7, "ANNULLATO", legami_confermati="due")
         self.assertEqual(cm.exception.code, "E_DDT_VALIDAZIONE")
-        self.assertEqual(cm.exception.context.get("field"), "righe_legate_confermate")
+        self.assertEqual(cm.exception.context.get("field"), "legami_confermati")
         repo.annulla.assert_not_called()
 
     @patch(_REPO)
@@ -897,13 +897,13 @@ class DdtRigheEvaseTests(SimpleTestCase):
         repo.get_stato_codice.return_value = "EMESSO"
         repo.get_stato_id_by_codice.return_value = 9
         repo.annulla.side_effect = DatabaseError(
-            "E_DDT_ANNULLO_CON_LEGAMI: DDT 12 ha 2 righe che vengono da un ordine",
+            "E_DOC_ANNULLO_CON_LEGAMI: annullando DDT 12 si riaprono 2 legami",
         )
         with self.assertRaises(ServiceError) as cm:
             ddt_service.cambia_stato(7, "ANNULLATO")
-        self.assertEqual(cm.exception.code, "E_DDT_ANNULLO_CON_LEGAMI")
+        self.assertEqual(cm.exception.code, "E_DOC_ANNULLO_CON_LEGAMI")
         # Il comportamento che la finestra riconosce (`useForzaturaConfermata`).
-        policy = ErrorPolicyRegistry.resolve("E_DDT_ANNULLO_CON_LEGAMI")
+        policy = ErrorPolicyRegistry.resolve("E_DOC_ANNULLO_CON_LEGAMI")
         self.assertEqual(policy.http_status, 409)
         self.assertEqual(policy.ui_action, "confirm_and_retry")
 
@@ -937,38 +937,23 @@ class DdtRigheEvaseTests(SimpleTestCase):
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
         repo.correggi_qta_evasa.assert_not_called()
 
-    @patch("apps.vendite.services.vendite_service.get_documento_passaggi")
+    @patch(f"{_SVC}.legami_del_documento")
     @patch(_REPO)
-    def test_get_legami_conta_righe_distinte_e_origini(self, repo_cls, passaggi) -> None:
+    def test_get_legami_delega_al_bb(self, repo_cls, bb) -> None:
+        # Il conteggio e i nomi sono del BB comune (test_annullo_con_legami):
+        # qui la testata prima, poi la delega col codice del documento.
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = "EMESSO"
-        # La riga 31 e' una ri-consegna di un reso nato da un ordine: due legami,
-        # una riga sola da dichiarare.
-        repo.list_legami.return_value = [
-            {"ddt_riga_id": 31, "riga_nr": 1, "origine": "ORDINE", "origine_riga_id": 5, "qta": Decimal("10")},
-            {"ddt_riga_id": 31, "riga_nr": 1, "origine": "RESO", "origine_riga_id": 9, "qta": Decimal("10")},
-            {"ddt_riga_id": 32, "riga_nr": 2, "origine": "ORDINE", "origine_riga_id": 6, "qta": Decimal("4")},
-        ]
-        passaggi.return_value = {"indietro": [
-            {"livello": 1, "from_tipo_codice_interno": "ORDINE_VENDITA", "from_doc_id": 12,
-             "from_codice": "OV-12", "from_stato_codice_interno": "EVASO"},
-            {"livello": 2, "from_tipo_codice_interno": "PREVENTIVO", "from_doc_id": 3,
-             "from_codice": "PV-3", "from_stato_codice_interno": "ACCETTATO"},
-        ]}
-        out = ddt_service.get_legami(7)
-        passaggi.assert_called_once_with("DDT_VENDITA", 7)
-        self.assertEqual(out["righe_legate"], 2)
-        self.assertEqual(len(out["legami"]), 3)
-        self.assertEqual(out["origini"], [{
-            "tipo_codice_interno": "ORDINE_VENDITA", "doc_id": 12,
-            "codice": "OV-12", "stato_codice_interno": "EVASO",
-        }])
+        bb.return_value = {"documento": "DDT", "id": 7, "legami": 2, "righe": []}
+        self.assertEqual(ddt_service.get_legami(7)["legami"], 2)
+        bb.assert_called_once_with("DDT", 7)
 
+    @patch(f"{_SVC}.legami_del_documento")
     @patch(_REPO)
-    def test_get_legami_ddt_non_trovato_e_404(self, repo_cls) -> None:
+    def test_get_legami_ddt_non_trovato_e_404(self, repo_cls, bb) -> None:
         repo = repo_cls.return_value
         repo.get_stato_codice.return_value = None
         with self.assertRaises(ServiceError) as cm:
             ddt_service.get_legami(99)
         self.assertEqual(cm.exception.code, "E_DDT_NOT_FOUND")
-        repo.list_legami.assert_not_called()
+        bb.assert_not_called()

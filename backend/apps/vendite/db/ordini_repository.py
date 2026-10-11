@@ -411,12 +411,16 @@ class OrdiniRepository(
             cursor.execute(sql, [tipo, int(origine_id), int(ordine_id)])
             return cursor.rowcount > 0
 
-    # Scopo: Idempotenza 1:1 della conversione upstream → ordine. Ritorna il
-    #        primo ordine già nato da (tipo, origine_id) o None. Specchio
-    #        applicativo dell'UNIQUE parziale uq_ordini_v_documento_origine_offerta
-    #        (per OFFERTA): il guard BE in crea_ordine_da_offerta lo usa per
-    #        fallire fast con E_ORD_OFFERTA_GIA_CONVERTITA prima di lavorare,
-    #        lasciando l'UNIQUE come rete sulla race concorrente.
+    # Scopo: Il primo ordine VIVO nato da (tipo, origine_id), o None. Lo
+    #        leggono lo smistamento del preventivo (esito MERCE_PRESENTE) e
+    #        l'handler che aggancia l'ordine alla pratica.
+    #        ⛔ Solo i vivi (`NOT is_abortito_snapshot`, 2026-10-11): dal D-2 di
+    #        brief-db-annullo-documento-con-legami un ordine annullato rilascia
+    #        le righe del preventivo, che puo' generarne un altro. Leggere anche
+    #        gli annullati darebbe MERCE_PRESENTE per un ordine morto e
+    #        aggancerebbe alla pratica quello sbagliato.
+    #        L'offerta non passa piu' da qui: «l'offerta e' gia' trasformata?»
+    #        lo dice `OfferteRepository.list_documenti_vivi`.
     def get_ordine_by_documento_origine(
         self, tipo: str, origine_id: int,
     ) -> dict[str, Any] | None:
@@ -425,6 +429,7 @@ class OrdiniRepository(
               FROM vendite.ordini
              WHERE documento_origine_tipo = %s
                AND documento_origine_id   = %s
+               AND NOT is_abortito_snapshot
              ORDER BY id
              LIMIT 1
         """
@@ -488,6 +493,22 @@ class OrdiniRepository(
                 [ordine_id],
             )
             return cursor.rowcount > 0
+
+    # Scopo: Annulla l'ordine via il verbo DB `vendite.fn_annulla_ordine`
+    #        (brief-db-annullo-documento-con-legami): con legami (righe di
+    #        preventivo, offerta d'origine, righe di commessa da emettere)
+    #        `legami_confermati` dichiara quanti l'operatore ne ha visti; se non
+    #        corrisponde, E_DOC_ANNULLO_CON_LEGAMI. Ritira i consumi e porta lo
+    #        stato ad ANNULLATO (matrice e freni dai guard della tabella).
+    # Ritorna: i legami confermati (0 se non ce n'erano).
+    def annulla(self, ordine_id: int, legami_confermati: int | None) -> int:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT vendite.fn_annulla_ordine(%s, %s)",
+                [int(ordine_id), legami_confermati],
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
 
     # Scopo: Cambia stato ordine via UPDATE diretto di stato_doc_ordine_id. La
     #        transizione e' validata dal trigger DB

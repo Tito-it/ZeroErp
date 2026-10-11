@@ -791,17 +791,36 @@ class ContrattiServiceTests(TestCase):
         from apps.vendite.services.contratti_service import ContrattiService
 
         repo = repo_cls.return_value
-        repo.get_stato_id_by_codice.return_value = 9  # ANNULLATO id
-        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_stato_id_by_codice.return_value = 9  # SOSPESO id
+        repo.get_stato_codice.return_value = "ATTIVO"
         repo.update_stato.return_value = True
         repo.get_contratto.return_value = _testata_default()
         repo.get_utility.return_value = None
         repo.list_righe.return_value = []
 
-        ContrattiService().cambia_stato(1, codice_interno="ANNULLATO")
+        ContrattiService().cambia_stato(1, codice_interno="SOSPESO")
 
         repo.update_contratto.assert_not_called()
         repo.update_stato.assert_called_once_with(1, 9)
+
+    # brief-db-annullo-documento-con-legami: ANNULLATO passa SEMPRE dal verbo
+    # `fn_annulla_contratto`, con la dichiarazione della conferma.
+    @patch("apps.vendite.services.contratti_service.transaction.atomic")
+    @patch("apps.vendite.services.contratti_service.ContrattiRepository")
+    def test_annullo_passa_dal_verbo(self, repo_cls, _atomic):
+        from apps.vendite.services.contratti_service import ContrattiService
+
+        repo = repo_cls.return_value
+        repo.get_stato_id_by_codice.return_value = 4
+        repo.get_stato_codice.return_value = "DRAFT"
+        repo.get_contratto.return_value = _testata_default()
+        repo.get_utility.return_value = None
+        repo.list_righe.return_value = []
+
+        ContrattiService().cambia_stato(1, codice_interno="ANNULLATO", legami_confermati=2)
+
+        repo.annulla.assert_called_once_with(1, 2)
+        repo.update_stato.assert_not_called()
 
     # Scopo: cambia_stato con valido_al < valido_dal NON lo giudica il
     #        service: la data arriva al DB, dove il guard comune delle date

@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1054, di cui 114 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1056, di cui 116 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -373,6 +373,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_CONTRATTO_MODALITA_C_SENZA_RIGHE": "NON_ESEGUIBILE",
     # Sostituiscono i vecchi guard di "modalita C" rimossi col modello · unificato. Mappati dal team DB nel CSV `messaggi_errore` (450-454).
     "E_CONTRATTO_NEGOZIATO_PURO_SENZA_RIGHE": "NON_ESEGUIBILE",
+    # ritirato: la regola la dice il lock dei satelliti, E_DOC_DATI_COLLEGATI_NON_BOZZA
+    # ⚠️ RITIRATO il 2026-10-11
     "E_CONTRATTO_NON_MODIFICABILE": "CONFLITTO_STATO",
     "E_CONTRATTO_NON_TROVATO": "NON_TROVATO",
     "E_CONTRATTO_OVERLAP_ESISTENTE": "CONFLITTO_STATO",
@@ -444,7 +446,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_DBLINK_LOG_CONN_MISSING": "AVVISO",
     # Sollevato dal backend (core/middleware/jwt_audit_middleware.py), nessuna funzione DB: la connessione web gira su un ruolo con BYPASSRLS, cioe' senza le policy RLS, e la richiesta si rifiuta. TECNICO: e' configurazione della macchina (DB_USER del web uguale a un ruolo batch o al migratore), l'operatore non puo' rimediare. Frase volutamente generica, uguale a E_GUC_RESET_FAILED. Messo a catalogo il 2026-10-07 (brief-db-codici-sfilati-e-lista-parametri R-1).
     "E_DB_ROLE_UNSAFE": "TECNICO",
-    # vendite.trgfn_ddt_guard_transizione (Regola 4) e vendite.fn_annulla_ddt (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-8): si sta annullando una bolla che porta legami con ordini o resi (vendite.fn_ddt_legami: fulfillment e ponti di ri-consegna). Annullandola i legami si ritirano e quelle quantita' tornano da spedire: per decisione di Tid non succede in silenzio. Dal guard e' l'AVVISO, su ogni strada che cambia lo stato; dal verbo e' la conferma che non corrisponde (chi conferma dichiara quante righe legate ha visto, stampo di E_CREDENZIALE_DA_CONFERMARE). CONFLITTO_STATO: il rimedio e' confermare con vendite.fn_annulla_ddt. I VALORI: etichetta della bolla e numero di righe legate; nel contesto righe_legate, per la finestra (che elenca le righe da vendite.fn_ddt_legami). Primo caso del principio di brief-db-annullo-documento-con-legami.
+    # Ritirato il 2026-10-11 nello stesso giorno in cui era nato (brief-db-annullo-documento-con-legami, D-4 di Tid): l'avviso dell'annullo con legami vale per bolla, ordine, preventivo e contratto, e il codice e' uno, E_DOC_ANNULLO_CON_LEGAMI (BB vendite.trgfn_doc_guard_annullo_con_legami, lettore vendite.fn_documento_legami). Resta a catalogo per le righe gia' scritte in dbops.error_log (pattern obsoleto_dal). Storia: vendite.trgfn_ddt_guard_transizione (Regola 4) e vendite.fn_annulla_ddt (2026-10-11, brief-db-ddt-righe-evase-dall-ordine D-8): si sta annullando una bolla che porta legami con ordini o resi (vendite.fn_ddt_legami: fulfillment e ponti di ri-consegna). Annullandola i legami si ritirano e quelle quantita' tornano da spedire: per decisione di Tid non succede in silenzio. Dal guard e' l'AVVISO, su ogni strada che cambia lo stato; dal verbo e' la conferma che non corrisponde (chi conferma dichiara quante righe legate ha visto, stampo di E_CREDENZIALE_DA_CONFERMARE). CONFLITTO_STATO: il rimedio e' confermare con vendite.fn_annulla_ddt. I VALORI: etichetta della bolla e numero di righe legate; nel contesto righe_legate, per la finestra (che elenca le righe da vendite.fn_ddt_legami). Primo caso del principio di brief-db-annullo-documento-con-legami.
+    # ⚠️ RITIRATO il 2026-10-11
     "E_DDT_ANNULLO_CON_LEGAMI": "CONFLITTO_STATO",
     # Il DDT emesso porta stampata la sua causale: cambiarla dopo vorrebbe dire che il documento consegnato al vettore e quello in archivio dicono cose diverse. · Nasce il 2026-08-19 (brief-ddt-righe-senza-prezzo, decisione D-4): il gate all'emissione guarda solo la transizione verso EMESSO, quindi senza questo guard una causale non fatturabile poteva diventare fatturabile a documento gia' spedito — e la riga senza prezzo finiva eleggibile al lister, per fermarsi molto piu' tardi contro il NOT NULL di commesse_attivita.prezzo_snapshot.
     "E_DDT_CAUSALE_IMMUTABILE": "CONFLITTO_STATO",
@@ -522,6 +525,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # Il fallimento di una SCRITTURA DI DIAGNOSI — un diario, una marcatura d'errore, una riga di log funzionale — raccolto dal telaio best-effort del backend (apps/core/services/diagnostica_best_effort.py). Il lavoro che quella scrittura descriveva e' proseguito: qui resta la traccia che l'appunto non e' passato, ed e' tutta la differenza fra «best-effort» e «silenzio» (D-15 di brief-db-event-log-scope-e-riga-parlante). Nasce il 2026-08-23 su richiesta del backend, e sostituisce E_PIPELINE_MARK_ERROR (699), che mentiva due volte: (1) il NOME diceva PIPELINE, ma dal 2026-08-22 il telaio serve anche il push commesse — chi cercasse i guasti del push per codice non li avrebbe trovati; (2) la CLASSE era DATO_ERRATO (400), mentre qui non c'e' nessun dato sbagliato di nessuna persona: e' un guasto interno, e chi ha fatto la richiesta non puo' farci niente. ⭐ E' volutamente UNO SOLO e generico per tutte le sedi: cio' che identifica il guasto e' il function_name (che ogni chiamante passa specifico) piu' il contesto dell'evento, non un codice per ogni punto di scrittura. ⚠️ E_PIPELINE_MARK_ERROR NON viene ritirato adesso: l'obsoleto_dal si mette quando il backend avra' spostato la costante CODICE_DIAGNOSTICA_FALLITA su questo codice. Un codice ritirato che qualcuno solleva ancora e' peggio di un nome che mente.
     "E_DIAGNOSTICA_NON_REGISTRATA": "TECNICO",
     "E_DISSOCIAZIONE_PARENT_CON_ATTIVITA": "CONFLITTO_STATO",
+    # Si sta annullando un documento che ha legami con altri documenti (2026-10-11, brief-db-annullo-documento-con-legami, D-1/D-4/D-5 di Tid): annullandolo, cio' che ha consumato torna disponibile (le quantita' all'ordine o al reso da ri-consegnare, le righe al preventivo, le righe di commessa non emesse) o l'offerta da cui nasce torna trasformabile. Per decisione di Tid non succede in silenzio. Lo sollevano il guard vendite.trgfn_doc_guard_annullo_con_legami (l'AVVISO, su ogni strada che porta bolla, ordine, preventivo o contratto in uno stato abortito) e il BB vendite.fn_documento_ritira_legami (la conferma che non corrisponde: chi conferma dichiara quanti legami ha visto, stampo di E_CREDENZIALE_DA_CONFERMARE). CONFLITTO_STATO: il rimedio e' confermare col verbo del documento (vendite.fn_annulla_ddt, fn_annulla_ordine, fn_annulla_preventivo, fn_annulla_contratto). VALORI: etichetta del documento, numero di legami. CONTESTO: documento, id, legami (e consumi dal guard, confermati dal BB), per la finestra che li elenca da vendite.fn_documento_legami. Prende il posto di E_DDT_ANNULLO_CON_LEGAMI.
+    "E_DOC_ANNULLO_CON_LEGAMI": "CONFLITTO_STATO",
     # D-8 di Tid (2026-10-10, brief-db-testata-dopo-emissione): le colonne che restano aperte dopo l'emissione (note, dati di trasporto e tracciamento della bolla, motivazione del rifiuto dell'offerta, valido_al e CIG/CUP/commessa del contratto) si fermano quando il documento e' chiuso, cioe' annullato o arrivato in fondo. Gli stati in cui restano aperte sono scritti nel montaggio, colonna per colonna (D-10, modo B). VARIADIC lo stato.
     "E_DOC_CHIUSO": "CONFLITTO_STATO",
     # Il ruolo del cliente o la utility di un documento (cliente, ordine, DDT) sono COPIE di cio' che il suo billing account dice, e qui dissentono: le risolve il BB script.fn_cliente_dal_billing_account (brief-db-esecutivi-ba-coppia §10.2 domanda 2, Tid 2026-10-10, regola del 2), chiamato da anagrafiche.trgfn_clienti_sync_utility_from_ba, vendite.trgfn_ordini_normalize, vendite.trgfn_ddt_normalize. UN codice per i tre documenti: prima il cliente rispondeva E_CLIENTE_UTILITY_MISMATCH_BA (che resta a catalogo per fn_get_or_create_commessa) e ordine e DDT il 23503 delle FK composte (che restano la rete sotto). DATO_ERRATO: e' un valore scelto sbagliato; nel contesto `campo` = soggetto_ruolo_id | destinatario_soggetto_ruolo_id | utility_id. VARIADIC: documento, «il cliente» | «la utility», codice del billing account.
@@ -800,6 +805,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     "E_IDEMPOTENCY_KEY_REQUIRED": "DATO_ERRATO",
     "E_IDENTITA_NON_ATTIVA": "NON_AUTENTICATO",
     "E_ID_FISCALI_DIVERSI": "DATO_ERRATO",
+    # Un indirizzo d'anagrafica sul documento non e' del suo cliente (2026-10-11, brief-db-indirizzi-documento-seguono-il-cliente, D-1 e D-3 di Tid). Due sedi, un predicato (script.fn_indirizzo_documento_fuori_cliente): il guard di scrittura vendite.trgfn_doc_indirizzi_guard_cliente sulle sei vendite.*_indirizzi, e il motivo d'emissione script.fn_check_indirizzi_documento_cliente, letto dai gate di DDT (vendite.trgfn_ddt_guard_indirizzi_obbligatori), preventivo (fn_check_preventivo_emettibile), offerta e contratto (guard di transizione e capability). Sostituisce il guard d'origine del backend (upsert_indirizzo_documento). · DATO_ERRATO: si corregge scegliendo un indirizzo del cliente, o scrivendone uno a mano (una-tantum). · CAMPO: tipo_indirizzo_id. · VALORI: il tipo d'indirizzo leggibile (Consegna, Fatturazione...). Nel contesto il motivo macchina: ALTRO_CLIENTE (ruolo diverso) o ALTRA_FORNITURA (indirizzo legato a un'istanza che non e' quella del documento).
+    "E_INDIRIZZO_DOC_NON_DEL_CLIENTE": "DATO_ERRATO",
     # Guard DB all'emissione DDT (tipi obbligatori dell'ambito mancanti): · il FE previene (Conferma disabilitata), il trigger resta la fonte · di verita'.
     "E_INDIRIZZO_DOC_OBBLIGATORIO": "NON_ESEGUIBILE",
     # Non sono errori di richiesta: viaggiano su `task_runs.error_code` e · arrivano all'utente dal cockpit. Registrarli serve al `user_message`: · senza policy il fallback li mostrerebbe tutti come «Errore di · validazione», che non dice ne' cosa e' successo ne' dove guardare.
@@ -1828,9 +1835,11 @@ CODICI_RITIRATI: frozenset[str] = frozenset(
         "E_CONTRATTO_MODALITA_C_RIGA_SENZA_PREZZO",
         "E_CONTRATTO_MODALITA_C_RIGHE_INCOMPLETE",
         "E_CONTRATTO_MODALITA_C_SENZA_RIGHE",
+        "E_CONTRATTO_NON_MODIFICABILE",
         "E_DATA_FINE_INFERIORE_DI_INIZIO",
         "E_DATA_FINE_NON_MAGGIORE_DI_INIZIO",
         "E_DBLINK_LOG_CONN_MISSING",
+        "E_DDT_ANNULLO_CON_LEGAMI",
         "E_DDT_EMITTENTE_BA_INCOERENTE",
         "E_DELETE_RIGA_DOC_NON_BOZZA",
         "E_DRYRUN_CREATE_TRIGGER",

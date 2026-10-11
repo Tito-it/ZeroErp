@@ -48,7 +48,10 @@ from apps.vendite.api._componenti_schema import (
     PREVIEW_COMPONENTI_RESPONSE,
     componenti_overrides_field,
 )
-from apps.vendite.api._schema_da_contratto import CAMBIA_STATO_REQUEST, schema_da_contratto
+from apps.vendite.api._schema_da_contratto import (
+    CAMBIA_STATO_CON_CONFERMA_REQUEST,
+    schema_da_contratto,
+)
 
 # Codice lista configurabile (catalogo ui.lista_definizione id=7). Usato
 # dall'export per risolvere colonne visibili/ordine/permessi dell'utente.
@@ -388,7 +391,7 @@ class ApiOrdineCambiaStato(DomainAPIView):
     model_permission = ("vendite", "ordine")
 
     @extend_schema(
-        request=CAMBIA_STATO_REQUEST,
+        request=CAMBIA_STATO_CON_CONFERMA_REQUEST,
         responses={200: _ORDINE_RESPONSE},
     )
     def post(self, request: Request, ordine_id: int) -> JsonResponse:
@@ -396,6 +399,7 @@ class ApiOrdineCambiaStato(DomainAPIView):
             request,
             handler=lambda payload: ordini_service.cambia_stato(
                 int(ordine_id), payload.get("stato_codice"),
+                legami_confermati=payload.get("legami_confermati"),
             ),
         )
 

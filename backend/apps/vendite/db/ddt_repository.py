@@ -559,33 +559,19 @@ class DdtRepository(
             row = cursor.fetchone()
             return row[0] if row else None
 
-    # Scopo: I legami della bolla, riga per riga (`vendite.fn_ddt_legami`,
-    #        sede unica dell'avviso, della conferma e del ritiro dell'annullo):
-    #        ddt_riga_id, riga_nr, origine (ORDINE/RESO), origine_riga_id, qta
-    #        (unita' base).
-    def list_legami(self, ddt_id: int) -> list[dict[str, Any]]:
-        sql = """
-            SELECT l.ddt_riga_id, l.riga_nr, l.origine, l.origine_riga_id, l.qta
-              FROM vendite.fn_ddt_legami(%s) AS l
-             ORDER BY l.riga_nr, l.origine
-        """
-        with connection.cursor() as cursor:
-            cursor.execute(sql, [int(ddt_id)])
-            return rows_to_list(cursor)
-
-    # Scopo: Annulla la bolla via il verbo DB `vendite.fn_annulla_ddt` (D-8):
-    #        con legami, `righe_legate_confermate` dichiara quante righe
-    #        legate l'operatore ha visto (se non corrisponde:
-    #        E_DDT_ANNULLO_CON_LEGAMI); poi ritiro dei legami e
-    #        `fn_cambia_stato_ddt(…, 'ANNULLATO')` (matrice, permesso, storno).
+    # Scopo: Annulla la bolla via il verbo DB `vendite.fn_annulla_ddt`: con
+    #        legami, `legami_confermati` dichiara quanti legami l'operatore ha
+    #        visto (se non corrisponde: E_DOC_ANNULLO_CON_LEGAMI); poi ritiro
+    #        dei legami e `fn_cambia_stato_ddt(…, 'ANNULLATO')` (matrice,
+    #        permesso, storno del magazzino).
     # Ritorna: i movimenti di storno (movimento_id, prelievo_id, qta).
     def annulla(
-        self, ddt_id: int, righe_legate_confermate: int | None,
+        self, ddt_id: int, legami_confermati: int | None,
     ) -> list[dict[str, Any]]:
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT * FROM vendite.fn_annulla_ddt(%s, %s)",
-                [int(ddt_id), righe_legate_confermate],
+                [int(ddt_id), legami_confermati],
             )
             return rows_to_list(cursor)
 

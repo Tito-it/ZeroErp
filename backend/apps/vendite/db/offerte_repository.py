@@ -213,11 +213,15 @@ _FROM_JOINS_OFFERTA = """
     LEFT JOIN vendite.listini l ON l.id = o.listino_id
     LEFT JOIN vendite.listini_versioni lv ON lv.id = o.listino_versione_id
     LEFT JOIN config.valute v_val ON v_val.id = o.valuta_id
-    -- LEFT JOIN col contratto generato dal push (idempotenza Pattern A
-    -- garantita da UNIQUE uq_contratti_offerta_id). 0 o 1 riga: nessun
-    -- rischio di duplicazione. Il FE usa contratto_id/numero per il dialog
-    -- "gia' generato" e per il deep-link a ContrattoDrawer post-push.
-    LEFT JOIN vendite.contratti c ON c.offerta_id = o.id
+    -- LEFT JOIN col contratto VIVO generato dal push. Il FE usa
+    -- contratto_id/numero per il dialog "gia' generato" e per il deep-link a
+    -- ContrattoDrawer post-push.
+    -- ⛔ Il filtro sui vivi NON e' facoltativo (brief-db-annullo-documento-con-
+    --    legami R-5, 2026-10-11): `uq_contratti_offerta_id` vale sui soli
+    --    contratti non abortiti, quindi un'offerta puo' avere un contratto
+    --    annullato e uno vivo. Senza il filtro la riga dell'offerta si DUPLICA;
+    --    con il filtro resta «0 o 1», ed e' lo stesso predicato dell'indice.
+    LEFT JOIN vendite.contratti c ON c.offerta_id = o.id AND NOT c.is_abortito_snapshot
     -- Decode emittente fiscale: codice + ragione sociale del soggetto
     -- (nessun fallback a `emittenti_fiscali.descrizione`, rimosso col brief
     -- emittente-ragione-sociale-dal-soggetto). Pattern allineato a
@@ -1104,6 +1108,19 @@ class OfferteRepository(ComponentiRepositoryMixin, IndirizziDocumentoRepositoryM
                 [offerta_id],
             )
             return row_to_dict(cursor)
+
+    # Scopo: I contratti e gli ordini VIVI nati dall'offerta
+    #        (`vendite.fn_offerta_documenti_vivi`, sede unica di «l'offerta e'
+    #        gia' trasformata?»: la leggono anche il push a contratto e la
+    #        capability). Un documento annullato conserva la provenienza ma non
+    #        consuma l'offerta. `tipo` = CONTRATTO | ORDINE_VENDITA.
+    def list_documenti_vivi(self, offerta_id: int) -> list[dict[str, Any]]:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT tipo, documento_id FROM vendite.fn_offerta_documenti_vivi(%s)",
+                [int(offerta_id)],
+            )
+            return rows_to_list(cursor)
 
     # Scopo: Lookup minimal del contratto post-push (id + numero + uid).
     #        Usato dal service per costruire `OffertaPushResult` senza

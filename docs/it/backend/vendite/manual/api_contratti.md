@@ -254,7 +254,7 @@ Solo campi mutabili: `ambito`, `valido_dal`, `valido_al`,
 `valore_variazione_globale`, `categoria_cliente_id_snapshot`, `meta`.
 Identificativi (numero, BA, istanza, utility, stato) sono immutabili.
 **Fuori bozza decide il DB** (dal 2026-10-10,
-[brief-db-testata-dopo-emissione](/dev/work-in-progress/brief-db-testata-dopo-emissione)):
+[brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)):
 il service non ha piu' una tabella dei campi ammessi per stato. In ATTIVO
 restano aperti `valido_al`, `codice_cig`/`codice_cup`/`codice_commessa` e
 `meta`; il resto lo ferma il lock di testata con un 409 per famiglia —
@@ -287,6 +287,19 @@ skip (non e' percentuale, gate non applicabile). Superuser bypass.
 ```json
 {"codice_interno": "SOSPESO"}
 ```
+
+Verso `ANNULLATO` passa sempre dal verbo `vendite.fn_annulla_contratto`: su un
+contratto con legami (offerta d'origine, righe di commessa da emettere) risponde
+`E_DOC_ANNULLO_CON_LEGAMI` (409, `confirm_and_retry`) finché il body non dichiara
+`legami_confermati` (intero, letto da `…/legami/`). Confermato, l'offerta torna
+trasformabile e le righe di commessa da emettere si annullano.
+
+Legami `GET /<id>/legami/` (factory `build_legami_view`, BB
+`_annullo_con_legami.legami_del_documento`): `{documento, id, legami, righe}`,
+una riga per legame di `vendite.fn_documento_legami` con `origine`, `natura`
+(CONSUMO/PROVENIENZA), `origine_id` e il nome del documento dall'altra parte
+dal lineage (`origine_tipo_codice_interno`, `origine_codice`). `legami` e' il
+numero da dichiarare. Alimenta la finestra di conferma dell'annullo.
 
 Stati ammessi via questo endpoint: `SOSPESO`, `CESSATO`, `ANNULLATO` e
 ritorni `→ DRAFT` ammessi dal modello. **`ATTIVO` non è ammesso da questo

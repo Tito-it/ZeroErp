@@ -12,6 +12,7 @@ import { useApiHandler } from '../../../core/composables/useApiHandler'
 import { useNotify } from '../../../core/composables/useNotify'
 import { useInjectReadonly, READONLY_KEY } from '../../../core/composables/useReadonlyMode'
 import { useConfirmAction } from '../../../core/composables/useConfirmAction'
+import { useForzaturaConfermata } from '../../../core/composables/useForzaturaConfermata'
 import { useDrawerClose } from '../../../core/composables/useDrawerClose'
 import { useDrawerDetailLoad } from '../../../core/composables/useDrawerDetailLoad'
 import { useDrawerContentReady } from '../../../core/composables/useDrawerContentReady'
@@ -49,6 +50,7 @@ import OrdiniForm from './OrdiniForm.vue'
 import OrdiniRigheTable from './OrdiniRigheTable.vue'
 import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
 import OrdineEvasioneDialog from './dialogs/OrdineEvasioneDialog.vue'
+import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
@@ -198,6 +200,15 @@ const collegamentiRef = ref(null)
 // Ref alla barra situazione merce: l'evasione sposta merce, quindi cambia il
 // conto (consegnato sale, `da_spedire` scende) e non solo il grafo.
 const merceRef = ref(null)
+
+// ⭐ Il cambio di stato e' un gesto CONFERMABILE (brief-db-annullo-documento-
+//    con-legami): l'annullo di un ordine con legami (righe di preventivo,
+//    offerta d'origine, righe di commessa da emettere) il DB lo rifiuta
+//    (`confirm_and_retry`) finche' chi conferma non dichiara quanti legami ha
+//    visto. La domanda la porta a video `DocumentoAnnulloLegamiDialog`; un
+//    ordine senza legami passa al primo colpo.
+const cambioStato = useForzaturaConfermata()
+const { richiestaConferma: domandaAnnullo } = cambioStato
 
 // Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
 //        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
@@ -565,14 +576,28 @@ function onAction(action) {
 }
 
 // Transizione di stato generica (es. annulla DRAFT->ANNULLATO). Il trigger DB
-// valida l'ammissibilita'; qui orchestriamo chiamata + refresh detail.
+// valida l'ammissibilita'; qui orchestriamo chiamata + refresh detail. Il primo
+// tentativo va SEMPRE senza dichiarazione (`useForzaturaConfermata`).
 async function eseguiCambioStato(action) {
-  const result = await execute(
-    () => store.cambiaStato(effectiveOrdineId.value, action.target_state),
+  const result = await cambioStato.esegui(
+    (dichiarazione) => store.cambiaStato(effectiveOrdineId.value, action.target_state, dichiarazione),
     { successMessage: t('vendite.ordini.stato_cambiato') },
   )
+  await dopoCambioStato(result)
+}
+
+// Scopo: l'operatore ha visto i legami e conferma l'annullo: si ripete la
+//        chiamata DICHIARANDO quanti erano.
+async function onConfermaAnnullo(dichiarazione) {
+  await dopoCambioStato(await cambioStato.conferma(dichiarazione))
+}
+
+async function dopoCambioStato(result) {
   if (result !== null) {
     await loadDetail()
+    // L'annullo ritira i legami: collegamenti e merce vanno riletti.
+    collegamentiRef.value?.reload()
+    merceRef.value?.reload()
     emit('saved', result)
   }
 }
@@ -779,6 +804,20 @@ const drawerActions = computed(() => {
        aperta dal pulsante in barra azioni. Il DDT nasce DRAFT e si rifinisce
        dal tab DDT; lo stato ordine (PARZIALMENTE_EVASO/EVASO) e' proiettato dal
        BE e si vede dopo il reload del detail. -->
+  <!-- La conferma dell'annullo di un ordine con legami: aperta dalla domanda
+       del DB, chiusa dalla conferma o dalla rinuncia. -->
+  <DocumentoAnnulloLegamiDialog
+    v-if="effectiveOrdineId"
+    :visible="domandaAnnullo !== null"
+    base-path="/vendite/ordini"
+    :doc-id="effectiveOrdineId"
+    :header="t('vendite.ordini.azione_annulla')"
+    :domanda="domandaAnnullo"
+    :loading="cambioStato.loading.value"
+    @conferma="onConfermaAnnullo"
+    @cancel="cambioStato.annulla()"
+  />
+
   <OrdineEvasioneDialog
     v-if="effectiveOrdineId && showEvasione"
     v-model:visible="evasioneDialogVisible"

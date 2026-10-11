@@ -43,6 +43,12 @@ from apps.core.api.constants import MAX_LIMIT
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
+from apps.vendite.services._annullo_con_legami import (
+    DOCUMENTO_DDT,
+    STATO_ANNULLATO,
+    legami_del_documento,
+    legami_confermati as dichiarazione_legami,
+)
 from apps.vendite.services._iva_contesto_documento import make_risolvi_iva_riga
 from apps.core.services.error_policies import ErrorPolicyRegistry
 from apps.core.services.payload_helpers import PayloadValidator, make_db_errors_translator
@@ -109,9 +115,8 @@ _V = PayloadValidator(validation_code="E_DDT_VALIDAZIONE")
 _ID_CONTROPARTE: tuple[str, ...] = ("billing_account_id", "destinatario_soggetto_ruolo_id")
 _STATO_BOZZA = "DRAFT"
 _STATO_EMESSO = "EMESSO"
-_STATO_ANNULLATO = "ANNULLATO"
-# Il codice della bolla in `config.sorgenti`: lo leggono il lineage
-# (`get_legami`) e il push a commessa (`push_a_commessa`).
+# Il codice della bolla in `config.sorgenti`: lo legge il push a commessa
+# (`push_a_commessa`).
 _SORGENTE_DDT = "DDT_VENDITA"
 _STATI_MODIFICABILI: frozenset[str] = frozenset({"DRAFT"})
 
@@ -433,17 +438,16 @@ def elimina_ddt(ddt_id: int) -> dict[str, Any]:
 #        il service non duplica il grafo. Alla transizione a EMESSO il DB
 #        assegna il `numero` (trgfn_ddt_gen_numero_emesso) e scatta il guard
 #        approvazione componenti BoM.
-#        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_ddt` (D-8 di
-#        brief-db-ddt-righe-evase-dall-ordine): una bolla con legami a ordini
-#        o resi si annulla solo se chi conferma DICHIARA quante righe legate
-#        ha visto (`righe_legate_confermate`, letto da `get_legami`); senza
-#        la dichiarazione il DB risponde E_DDT_ANNULLO_CON_LEGAMI
-#        (`confirm_and_retry`). Una bolla senza legami si annulla senza
-#        dichiarazione. Il verbo ritira i legami e passa da
-#        `fn_cambia_stato_ddt` (matrice, permesso, storno del magazzino).
+#        ⭐ ANNULLATO passa SEMPRE dal verbo `vendite.fn_annulla_ddt`
+#        (brief-db-annullo-documento-con-legami): una bolla con legami si
+#        annulla solo se chi conferma DICHIARA quanti legami ha visto
+#        (`legami_confermati`, letto da `get_legami`); senza la dichiarazione
+#        il DB risponde E_DOC_ANNULLO_CON_LEGAMI (`confirm_and_retry`). Una
+#        bolla senza legami si annulla senza dichiarazione. Il verbo ritira i
+#        legami e passa da `fn_cambia_stato_ddt` (matrice, permesso, storno).
 def cambia_stato(
     ddt_id: int, stato_codice: str | None,
-    *, righe_legate_confermate: Any = None,
+    *, legami_confermati: Any = None,
 ) -> dict[str, Any]:
     repo = DdtRepository()
     # Guard esistenza leggero: serve solo lo stato corrente, non la testata
@@ -471,15 +475,13 @@ def cambia_stato(
         function_name=f"{_FN}.cambia_stato",
     )
     assert stato_id is not None
-    if target == _STATO_ANNULLATO:
-        # La dichiarazione e' un CONTEGGIO: un valore non intero e' un 400
-        # col campo, non un 500 dal cast del DB.
-        confermate = _V.optional_positive_int(
-            {"righe_legate_confermate": righe_legate_confermate},
-            "righe_legate_confermate", function_name=f"{_FN}.cambia_stato",
+    if target == STATO_ANNULLATO:
+        confermati = dichiarazione_legami(
+            legami_confermati, validation_code="E_DDT_VALIDAZIONE",
+            function_name=f"{_FN}.cambia_stato",
         )
         with _db_errors("cambia_stato"):
-            repo.annulla(ddt_id, confermate)
+            repo.annulla(ddt_id, confermati)
         return {"ddt_id": ddt_id, "stato_precedente": stato_prec, "stato": target}
     # La transizione (stato_prec -> target) e' validata dal trigger guard DB;
     # eventuale errore tradotto da _db_errors (E_STATO_DDT_TRANSIZIONE_NON_VALIDA
@@ -731,40 +733,14 @@ def correggi_qta_evasa(
     return {"ddt_id": ddt_id, "riga_id": riga_id, "qta_evasa": qta_evasa}
 
 
-# Scopo: I legami della bolla per la finestra di conferma dell'annullo (D-8):
-#        le righe legate a un ordine o a un reso (`vendite.fn_ddt_legami`),
-#        quante sono (`righe_legate`: e' il numero che la conferma dichiara,
-#        `cambia_stato(..., righe_legate_confermate=...)`) e i documenti
-#        d'origine della bolla dal lineage, per il gesto «vai a».
-#        ⚠️ `righe_legate` conta le RIGHE distinte, non i legami: una riga di
-#        ri-consegna da un reso nato da un ordine ne porta due. E' lo stesso
-#        conteggio del verbo (`count(DISTINCT ddt_riga_id)`).
-#        ⚠️ Le origini sono a livello di TESTATA (decisione di Tid: il nome del
-#        documento lo da' il lineage, `fn_ddt_legami` non porta etichette).
+# Scopo: I legami della bolla per la finestra di conferma dell'annullo (BB
+#        `legami_del_documento`, comune a bolla, ordine, preventivo e
+#        contratto): legami con ordini e resi, righe di commessa da emettere.
+#        Prima la testata: il lettore del DB non applica il perimetro.
 def get_legami(ddt_id: int) -> dict[str, Any]:
-    # Import locale: `vendite_service` e' il modulo trasversale del dominio.
-    from apps.vendite.services import vendite_service
-
     repo = DdtRepository()
     _get_testata_or_raise(repo, ddt_id, op="get_legami", getter=repo.get_stato_codice)
-    legami = repo.list_legami(ddt_id)
-    passaggi = vendite_service.get_documento_passaggi(_SORGENTE_DDT, ddt_id)
-    origini = [
-        {
-            "tipo_codice_interno": p["from_tipo_codice_interno"],
-            "doc_id": p["from_doc_id"],
-            "codice": p["from_codice"],
-            "stato_codice_interno": p["from_stato_codice_interno"],
-        }
-        for p in passaggi["indietro"]
-        if p["livello"] == 1
-    ]
-    return {
-        "ddt_id": ddt_id,
-        "righe_legate": len({legame["ddt_riga_id"] for legame in legami}),
-        "legami": legami,
-        "origini": origini,
-    }
+    return legami_del_documento(DOCUMENTO_DDT, ddt_id)
 
 
 # ══════════════════════════════════════════════════════════

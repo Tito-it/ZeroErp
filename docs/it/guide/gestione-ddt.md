@@ -242,15 +242,17 @@ Una bolla nata da un ordine (o da un reso da ri-consegnare) porta, riga per riga
 il **legame** con la riga d'origine: è ciò che fa risultare l'ordine evaso, o il
 reso ri-consegnato. Annullare la bolla **ritira quei legami**: le quantità tornano
 da spedire, l'ordine torna da evadere (`CONFERMATO` o `PARZIALMENTE_EVASO`), il
-reso torna da ri-consegnare. Vale sia in bozza sia da emessa; da emessa il
-magazzino storna anche l'uscita.
+reso torna da ri-consegnare. Se la bolla ha spinto righe in commessa ancora da
+emettere, anche quelle si annullano. Vale sia in bozza sia da emessa; da emessa
+il magazzino storna anche l'uscita.
 
-Non succede in silenzio. Su una bolla con righe legate, «Annulla DDT» apre una
-**finestra di conferma** che elenca le righe legate (numero di riga, origine,
-quantità) e i documenti d'origine, apribili con un clic. Confermando, l'operatore
-dichiara quante righe legate ha visto: se nel frattempo sono cambiate, la
-finestra si ripresenta aggiornata. Una bolla senza legami si annulla come
-sempre, con la sola conferma del cambio di stato.
+Non succede in silenzio. Su una bolla con legami, «Annulla DDT» apre una
+**finestra di conferma** che elenca che cosa si riapre: per ogni legame il
+documento dall'altra parte (apribile con un clic), la riga e la quantità.
+Confermando, l'operatore dichiara quanti legami ha visto: se nel frattempo sono
+cambiati, la finestra si ripresenta aggiornata. Una bolla senza legami si annulla
+come sempre, con la sola conferma del cambio di stato. La stessa finestra vale
+per ordini, preventivi e contratti.
 
 ### 4.4 La doppia difesa
 
@@ -596,7 +598,7 @@ Codici sollevati dal dominio DDT (registrati in `error_policies`):
 | `E_DDT_RIGA_EVASA_FERMA`             | Articolo, unità di misura o quantità cambiati su una riga evasa da un ordine o da un reso (guard DB): la quantità passa da «Correggi quantità evasa» |
 | `E_DDT_RIGA_NON_EVASA`               | «Correggi quantità evasa» su una riga aggiunta a mano o su una bolla senza origine                            |
 | `E_QTA_SUPERA_RESIDUO`               | La quantità evasa corretta supera il residuo dell'ordine                                                      |
-| `E_DDT_ANNULLO_CON_LEGAMI`           | Annullo di una bolla con righe legate a ordini o resi: apre la finestra di conferma (§4.3)                    |
+| `E_DOC_ANNULLO_CON_LEGAMI`           | Annullo di una bolla con legami (ordini, resi, righe di commessa): apre la finestra di conferma (§4.3)        |
 | `E_INDIRIZZO_DOC_OBBLIGATORIO`       | Emissione senza l'indirizzo di consegna obbligatorio (guard DB)                                              |
 | `E_DOCUMENTI_*`                      | Stampa: template/versione non risolti, input invalido o render fallito                                       |
 

@@ -11,6 +11,7 @@
     "azione_reason": {
       "senza_righe": "The document has no rows: add at least one to proceed.",
       "indirizzi_mancanti": "Required document addresses are missing: fill them in the Addresses section.",
+      "indirizzo_non_del_cliente": "A document address does not belong to its customer: pick one of the customer's addresses, or type it in, in the Addresses section.",
       "prezzo_pendente": "Some prices are waiting for approval ({0}).",
       "prezzo_rifiutato": "Some prices were rejected by the manager ({0}): correct them or remove the lines."
     },
@@ -2944,16 +2945,7 @@
       "correggi_qta_evasa_ok": "Shipped quantity corrected",
       "correggi_qta_evasa_spiegazione": "Line {riga} comes from an order or a return: the new quantity also changes what is shipped for the source, and the order status.",
       "correggi_qta_evasa_nuova": "New quantity",
-      "riga_evasa_hint": "Line shipped from an order or a return: item, unit of measure and quantity cannot be changed here. Correct the quantity with «Correct shipped quantity».",
-      "annullo_legami": {
-        "righe": "Linked lines",
-        "riga": "Line {riga} · {origine} · {qta}",
-        "origini": "Source documents",
-        "spiegazione": "If you confirm, the quantities of these lines go back to be shipped: the order goes back to be fulfilled, the return to be re-delivered.",
-        "origine_ordine": "Order",
-        "origine_reso": "Return",
-        "nessun_legame": "The lines linked to orders or returns are no longer there: if you confirm, the delivery note is cancelled without withdrawing any link."
-      }
+      "riga_evasa_hint": "Line shipped from an order or a return: item, unit of measure and quantity cannot be changed here. Correct the quantity with «Correct shipped quantity»."
     },
     "famiglie_documento": {
       "col_codice_interno": "Internal code",
@@ -3139,6 +3131,20 @@
       "natura_fattura": "Invoice",
       "natura_nota_credito": "Credit note",
       "natura_nota_debito": "Debit note"
+    },
+    "annullo_legami": {
+      "righe": "What is reopened",
+      "riga": "line {riga} · {qta} become available again",
+      "riga_senza_qta": "line {riga} becomes available again",
+      "commessa": "a line to be issued is cancelled",
+      "provenienza": "can be converted again",
+      "spiegazione": "If you confirm, the document is cancelled and these become available again: quantities to ship, lines to order, job lines, the offer to convert.",
+      "nessun_legame": "The links with other documents are no longer there: if you confirm, the document is cancelled without withdrawing anything.",
+      "origine_ordine": "Order",
+      "origine_reso": "Return",
+      "origine_preventivo": "Quote",
+      "origine_offerta": "Offer",
+      "origine_commessa": "Job"
     },
     "listini": {
       "search_placeholder": "Search by price list code or description...",

@@ -16,6 +16,8 @@ import {
 import { useListaStoreCore } from '../../core/composables/useListaStoreCore'
 import { useTabEvents } from '../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../core/constants'
+import { STATO_CONTRATTO } from '../constants'
+import { avvisaDocumentiCollegati } from '../_shared/annullo/avvisoDocumentiCollegati'
 
 const defaultDataDa = defaultFiltroDataDaString()
 
@@ -67,9 +69,13 @@ export const useContrattiStore = defineStore('vendite-contratti', () => {
   // NB refactor 2026-05-28: DRAFT->ATTIVO non passa piu' da qui — usare
   // `emetti()` sotto (orchestra atomic state + documento + allegati via
   // ContrattoEmissioneDialog). Il BE rifiuta con E_VENDITE_VALIDAZIONE.
-  async function cambiaStato(id, codiceInterno, { validoAl = null } = {}) {
-    const res = await cambiaStatoContratto(id, codiceInterno, { validoAl })
+  // `dichiarazione`: la conferma dell'annullo con legami; l'annullo riapre i
+  // documenti dall'altra parte (l'offerta torna trasformabile), e se ne
+  // avvisano i tab.
+  async function cambiaStato(id, codiceInterno, { validoAl = null, dichiarazione = {} } = {}) {
+    const res = await cambiaStatoContratto(id, codiceInterno, { validoAl, dichiarazione })
     emitDataChanged(TAB_ENTITIES.CONTRATTO, id)
+    if (codiceInterno === STATO_CONTRATTO.ANNULLATO) avvisaDocumentiCollegati(emitDataChanged)
     return res.data.data
   }
 

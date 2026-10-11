@@ -11,6 +11,7 @@
     "azione_reason": {
       "senza_righe": "Il documento non ha righe: aggiungine almeno una per procedere.",
       "indirizzi_mancanti": "Mancano gli indirizzi obbligatori del documento: compilali dalla sezione Indirizzi.",
+      "indirizzo_non_del_cliente": "Un indirizzo del documento non è del suo cliente: sceglilo fra quelli del cliente, o scrivilo a mano, dalla sezione Indirizzi.",
       "prezzo_pendente": "Ci sono prezzi in attesa di approvazione ({0}).",
       "prezzo_rifiutato": "Ci sono prezzi rifiutati dal responsabile ({0}): correggili o togli le righe."
     },
@@ -2944,16 +2945,7 @@
       "correggi_qta_evasa_ok": "Quantità evasa corretta",
       "correggi_qta_evasa_spiegazione": "La riga {riga} viene da un ordine o da un reso: la nuova quantità cambia anche quanto risulta spedito per l'origine, e lo stato dell'ordine.",
       "correggi_qta_evasa_nuova": "Nuova quantità",
-      "riga_evasa_hint": "Riga evasa da un ordine o da un reso: articolo, unità di misura e quantità non si cambiano da qui. La quantità si corregge con «Correggi quantità evasa».",
-      "annullo_legami": {
-        "righe": "Righe legate",
-        "riga": "Riga {riga} · {origine} · {qta}",
-        "origini": "Documenti d'origine",
-        "spiegazione": "Confermando, le quantità di queste righe tornano da spedire: l'ordine torna da evadere, il reso da ri-consegnare.",
-        "origine_ordine": "Ordine",
-        "origine_reso": "Reso",
-        "nessun_legame": "Le righe legate a ordini o resi non ci sono più: confermando, la bolla si annulla senza ritirare nessun legame."
-      }
+      "riga_evasa_hint": "Riga evasa da un ordine o da un reso: articolo, unità di misura e quantità non si cambiano da qui. La quantità si corregge con «Correggi quantità evasa»."
     },
     "famiglie_documento": {
       "col_codice_interno": "Codice interno",
@@ -3139,6 +3131,20 @@
       "natura_fattura": "Fattura",
       "natura_nota_credito": "Nota di credito",
       "natura_nota_debito": "Nota di debito"
+    },
+    "annullo_legami": {
+      "righe": "Che cosa si riapre",
+      "riga": "riga {riga} · {qta} tornano disponibili",
+      "riga_senza_qta": "riga {riga} torna disponibile",
+      "commessa": "una riga da emettere torna annullata",
+      "provenienza": "torna trasformabile",
+      "spiegazione": "Confermando, il documento si annulla e queste cose tornano disponibili: quantità da spedire, righe da ordinare, righe di commessa, l'offerta da trasformare.",
+      "nessun_legame": "I legami con altri documenti non ci sono più: confermando, il documento si annulla senza ritirare niente.",
+      "origine_ordine": "Ordine",
+      "origine_reso": "Reso",
+      "origine_preventivo": "Preventivo",
+      "origine_offerta": "Offerta",
+      "origine_commessa": "Commessa"
     },
     "listini": {
       "search_placeholder": "Cerca per codice o descrizione listino...",

@@ -356,11 +356,12 @@ onMounted(async () => {
           />
         </button>
 
-        <!-- Pallino dei presidi (#8): sempre visibile per chi passa la porta,
-             ANCHE a zero (verde con lo 0 = «visto e vuoto»). Un segmento per
-             allarmi (danger) e uno per non letti (warn), stesse classi del
-             badge code (`topbar-contatore-*`). Click → «Processi automatici»,
-             che c'e' gia'. -->
+        <!-- Pallino dei presidi (#8): l'icona e' sempre visibile per chi passa
+             la porta; a zero (`ok`) resta la sola icona, senza badge — come il
+             badge code (richiesta di Tid, 2026-10-11). Il «visto e vuoto» lo
+             dice il tooltip. Un segmento per allarmi (danger) e uno per non
+             letti (warn), stesse classi del badge code (`topbar-contatore-*`).
+             Click → «Processi automatici», che c'e' gia'. -->
         <button
           v-if="presidiDisponibile"
           class="topbar-icon-btn topbar-contatore-btn"
@@ -369,7 +370,7 @@ onMounted(async () => {
         >
           <i :class="NAV_ICONS.PROCESSI_AUTOMATICI"></i>
           <Badge
-            v-for="(seg, i) in presidiPallino?.segmenti ?? []"
+            v-for="(seg, i) in presidiPallino && !presidiPallino.ok ? presidiPallino.segmenti : []"
             :key="seg.chiave"
             :value="seg.valore"
             :severity="seg.severity"
