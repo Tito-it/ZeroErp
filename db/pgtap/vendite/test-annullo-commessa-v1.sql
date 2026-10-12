@@ -9,15 +9,17 @@
 --   sulle righe di commessa, vendite.fn_rendi_commessa_emittibile,
 --   script.fn_get_stato_push_segment (una riga ANNULLATA non occupa), le
 --   viste del preventivo e la primitiva del ritiro limitata a una commessa.
--- ChangeSet: 20261012-08 … -24
--- Brief: brief-db-annullo-a-valle-riapre-a-monte (D-1 … D-10)
+-- ChangeSet: 20261012-08 … -24; 20261012-43 … -47 (il link documento -> commessa
+--   nasce con la riga e conta solo la commessa aperta: §10 del brief)
+-- Brief: brief-db-annullo-a-valle-riapre-a-monte (D-1 … D-10, D-12, D-13)
 -- ------------------------------------------------------------
--- Indice test (plan 31):
+-- Indice test (plan 37):
 --  A — la forma
 --   1) gli oggetti nuovi esistono, i tre trigger sono montati, la primitiva
 --      del ritiro ha il quarto parametro
 --  B — preventivo -> commessa, andata e ritorno (D-1, D-5, D-10)
 --   2) l'invio (lister + madre delle righe): il preventivo diventa EVASO DAL DB
+--   2b) e la madre ha scritto il link documento -> commessa (D-13), ROOT
 --   3) il pannello dice IN_COMMESSA per la riga mandata e non ancora emessa
 --   4) dopo l'invio la commessa diventa emittibile dal DB: righe approvate,
 --      PRONTA_FATTURAZIONE
@@ -32,14 +34,32 @@
 --      classificatore LIBERA, pannello RESIDUA), nessun legame verso la
 --      commessa morta
 --  12) un secondo invio in una commessa nuova riesce e riporta il preventivo EVASO
+--      (dal 20261012-46 passa dalla porta del link: e' la prova del §10)
+--  12b) il link verso la commessa annullata resta come storia; la commessa
+--      aperta del documento e' la nuova
 --  C — ordine -> commessa (D-6)
 --  13) l'invio non cambia lo stato dell'ordine, e l'ordine non e' piu' da mandare
 --  14) annullata la commessa con conferma, l'ordine resta CONFERMATO e torna da mandare
+--  14c) con la sola commessa annullata il flag di fatturazione immediata
+--      dell'ordine si cambia (D-14, 20261012-47)
+--  14b) e si rimanda in una commessa nuova: chiave id::text, due link, una commessa aperta
+--  14d) con la commessa nuova aperta il flag si blocca di nuovo
 --  D — preventivo misto (§7.4 del brief)
 --  15) merce all'ordine, servizi in commessa: EVASO solo quando tutte e due le strade sono vuote
 --  16) annullata la commessa: ACCETTATO, l'ordine resta vivo con la sua riga
---  E — una sorgente in due commesse (la primitiva limitata, 20261012-18)
---  17) annullata la prima commessa, la riga nella seconda resta NON_EMESSA
+--  E — una sorgente in due commesse APERTE (D-12)
+--  17) rifiutato: E_COMMESSA_SORGENTE_ALTRA_COMMESSA, e nella seconda non si scrive
+--      niente (ne' la riga ne' il link)
+--  17b) annullata la prima, le due righe vanno nella seconda e il preventivo e' EVASO
+--  ⚠️ Fino al 20261012-46 questo caso metteva lo stesso preventivo in due
+--    commesse vive e controllava la primitiva del ritiro limitata a una
+--    commessa (20261012-18): era uno stato che il percorso vero non produce,
+--    perche' il link lo scriveva il backend e qui non passava (§10.6 del
+--    brief). La primitiva limitata resta: il verbo le passa la sua commessa.
+--  ⚠️ CHIUSA e ANNULLATA hanno lo stesso chiude_commessa = true, ed e' quello
+--    che la porta legge: il caso «invio parziale, commessa CHIUSA, invio del
+--    resto» attraversa lo stesso ramo del 12, e qui non si costruisce (vorrebbe
+--    la catena fino alla fattura).
 --  F — gli oneri (D-7)
 --  18) il legame dell'onere: ONERE, natura ANNULLO
 --  19) l'annullo diretto e' rifiutato anche con i soli oneri
@@ -78,7 +98,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Il test gira come l'applicazione (OPERATORE + RLS attiva).
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(31);
+SELECT plan(37);
 
 -- ============================================================
 -- A — La forma
@@ -326,6 +346,15 @@ SELECT ok(
   AND NOT vendite.fn_preventivo_ha_residuo_commessa(pg_temp.ac_fix('b_prev')),
   '2) l''invio in commessa: il preventivo diventa EVASO dal DB, senza residuo');
 
+-- Il link lo scrive la madre delle righe (D-13), con la chiave canonica del
+-- preventivo (key_selector 'uid': l'uuid).
+SELECT ok(
+  (SELECT count(*) = 1 AND bool_and(cs.commessa_id = pg_temp.ac_fix('b_cm1') AND cs.ruolo_link = 'ROOT')
+     FROM vendite.commesse_sorgenti cs
+    WHERE cs.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')
+      AND cs.sorgente_uid = (SELECT p.uid::text FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev'))),
+  '2b) la madre delle righe ha scritto il link preventivo -> commessa, ROOT (D-13)');
+
 SELECT is(
   (SELECT v.stato_smistamento FROM vendite.vw_preventivi_smistamento_righe v
     WHERE v.riga_id = pg_temp.ac_fix('b_s1')),
@@ -396,6 +425,18 @@ SELECT ok(
   AND pg_temp.ac_stato('preventivi', pg_temp.ac_fix('b_prev')) = 'EVASO',
   '12) un secondo invio in una commessa nuova riesce e riporta il preventivo EVASO');
 
+SELECT ok(
+  (SELECT array_agg(cs.commessa_id ORDER BY cs.commessa_id)
+          = ARRAY[pg_temp.ac_fix('b_cm1'), pg_temp.ac_fix('b_cm2')]
+     FROM vendite.commesse_sorgenti cs
+    WHERE cs.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO')
+      AND cs.sorgente_uid = (SELECT p.uid::text FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev')))
+  AND vendite.fn_commessa_viva_di_sorgente(
+        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'PREVENTIVO'),
+        (SELECT p.uid::text FROM vendite.preventivi p WHERE p.id = pg_temp.ac_fix('b_prev')))
+      = pg_temp.ac_fix('b_cm2'),
+  '12b) il link verso la commessa annullata resta come storia; la commessa aperta del preventivo e'' la nuova');
+
 -- ============================================================
 -- C — ordine -> commessa (D-6)
 -- ============================================================
@@ -414,6 +455,46 @@ SELECT ok(
   pg_temp.ac_stato('ordini', pg_temp.ac_fix('c_ord')) = 'CONFERMATO'
   AND EXISTS (SELECT 1 FROM vendite.fn_list_ordini_da_pushare(p_ordine_id => pg_temp.ac_fix('c_ord'))),
   '14) l''ordine resta CONFERMATO e torna da mandare in commessa');
+
+-- D-14: il flag di corsia si blocca solo con una commessa APERTA. Qui
+-- l'ordine ha solo il link verso la commessa annullata (la storia): il flag
+-- si cambia, e si rimette com'era per l'invio che segue.
+SELECT pg_temp.ac_prova('14c_flag_avanti',
+  format('UPDATE vendite.ordini SET fatturazione_immediata = NOT fatturazione_immediata WHERE id = %s',
+         pg_temp.ac_fix('c_ord')));
+SELECT pg_temp.ac_prova('14c_flag_indietro',
+  format('UPDATE vendite.ordini SET fatturazione_immediata = NOT fatturazione_immediata WHERE id = %s',
+         pg_temp.ac_fix('c_ord')));
+SELECT ok(
+  (SELECT count(*) = 2 AND bool_and(e.sqlstate IS NULL AND e.righe = 1)
+     FROM tmp_ac_esito e WHERE e.caso IN ('14c_flag_avanti', '14c_flag_indietro')),
+  '14c) con la sola commessa annullata il flag di fatturazione immediata dell''ordine si cambia (D-14)');
+
+-- Il secondo invio dell'ordine (il controesempio del §10.1, lato ordine). La
+-- chiave dell'ordine e' id::text (key_selector 'id'): la porta traduce l'uid
+-- che il lister passa.
+-- ⚠️ L'invio in un'istruzione sua: le sottoquery della stessa istruzione
+--   leggerebbero la fotografia di prima dell'invio.
+SELECT pg_temp.ac_mk_commessa('c_cm2');
+INSERT INTO tmp_ac_fix
+SELECT 'c_n_righe_cm2', cardinality(pg_temp.ac_invia('ORDINE', pg_temp.ac_fix('c_ord'), pg_temp.ac_fix('c_cm2')));
+SELECT ok(
+  pg_temp.ac_fix('c_n_righe_cm2') = 1
+  AND NOT EXISTS (SELECT 1 FROM vendite.fn_list_ordini_da_pushare(p_ordine_id => pg_temp.ac_fix('c_ord')))
+  AND (SELECT count(*) = 2
+         FROM vendite.commesse_sorgenti cs
+        WHERE cs.sorgente_tipo_id = (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA')
+          AND cs.sorgente_uid = pg_temp.ac_fix('c_ord')::text)
+  AND vendite.fn_commessa_viva_di_sorgente(
+        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'ORDINE_VENDITA'),
+        pg_temp.ac_fix('c_ord')::text) = pg_temp.ac_fix('c_cm2'),
+  '14b) l''ordine si rimanda in una commessa nuova: due link (chiave id), aperta la nuova');
+
+SELECT pg_temp.ac_prova('14d_flag_aperta',
+  format('UPDATE vendite.ordini SET fatturazione_immediata = NOT fatturazione_immediata WHERE id = %s',
+         pg_temp.ac_fix('c_ord')));
+SELECT ok(pg_temp.ac_rifiuto('14d_flag_aperta', 'fatturazione immediata non e'' piu'' modificabile'),
+  '14d) con la commessa nuova aperta il flag si blocca di nuovo: E_FATT_IMMEDIATA_NON_MODIFICABILE');
 
 -- ============================================================
 -- D — preventivo misto: merce all'ordine, servizi in commessa
@@ -445,7 +526,7 @@ SELECT ok(
   '16) annullata la commessa: ACCETTATO, l''ordine resta vivo con la sua riga, si riapre solo la strada della commessa');
 
 -- ============================================================
--- E — una sorgente in due commesse
+-- E — una sorgente in due commesse APERTE (D-12)
 -- ============================================================
 SELECT pg_temp.ac_mk_preventivo('e', 0, 2);
 SELECT pg_temp.ac_mk_commessa('e_cm1');
@@ -453,16 +534,27 @@ SELECT pg_temp.ac_mk_commessa('e_cm2');
 INSERT INTO tmp_ac_fix
 SELECT 'e_ca1', (pg_temp.ac_invia('PREVENTIVO', pg_temp.ac_fix('e_prev'), pg_temp.ac_fix('e_cm1'),
                                   ARRAY[pg_temp.ac_fix('e_s1')]))[1];
-INSERT INTO tmp_ac_fix
-SELECT 'e_ca2', (pg_temp.ac_invia('PREVENTIVO', pg_temp.ac_fix('e_prev'), pg_temp.ac_fix('e_cm2'),
-                                  ARRAY[pg_temp.ac_fix('e_s2')]))[1];
-SELECT vendite.fn_annulla_commessa(pg_temp.ac_fix('e_cm1'), 1);
+SELECT pg_temp.ac_prova('17_due_aperte',
+  format('SELECT pg_temp.ac_invia(''PREVENTIVO'', %s, %s, ARRAY[%s]::bigint[])',
+         pg_temp.ac_fix('e_prev'), pg_temp.ac_fix('e_cm2'), pg_temp.ac_fix('e_s2')));
 
+-- Il frammento e' comune al testo di prima e a quello del 2026-10-12
+-- (messaggi_errore.csv): la prova pre-apply gira col catalogo di prima.
 SELECT ok(
-  (SELECT ca.stato_emissione = 'ANNULLATA' FROM vendite.commesse_attivita ca WHERE ca.id = pg_temp.ac_fix('e_ca1'))
-  AND (SELECT ca.stato_emissione = 'NON_EMESSA' FROM vendite.commesse_attivita ca WHERE ca.id = pg_temp.ac_fix('e_ca2'))
+  pg_temp.ac_rifiuto('17_due_aperte', 'altra commessa')
+  AND NOT EXISTS (SELECT 1 FROM vendite.commesse_attivita ca WHERE ca.commessa_id = pg_temp.ac_fix('e_cm2'))
+  AND NOT EXISTS (SELECT 1 FROM vendite.commesse_sorgenti cs WHERE cs.commessa_id = pg_temp.ac_fix('e_cm2'))
   AND pg_temp.ac_stato('preventivi', pg_temp.ac_fix('e_prev')) = 'ACCETTATO',
-  '17) annullata la prima commessa, la riga dello stesso preventivo nella seconda resta NON_EMESSA');
+  '17) lo stesso preventivo in una seconda commessa aperta e'' rifiutato, e nella seconda non si scrive niente');
+
+SELECT vendite.fn_annulla_commessa(pg_temp.ac_fix('e_cm1'), 1);
+INSERT INTO tmp_ac_fix
+SELECT 'e_n_righe_cm2', cardinality(pg_temp.ac_invia('PREVENTIVO', pg_temp.ac_fix('e_prev'), pg_temp.ac_fix('e_cm2')));
+SELECT ok(
+  pg_temp.ac_fix('e_n_righe_cm2') = 2
+  AND (SELECT ca.stato_emissione = 'ANNULLATA' FROM vendite.commesse_attivita ca WHERE ca.id = pg_temp.ac_fix('e_ca1'))
+  AND pg_temp.ac_stato('preventivi', pg_temp.ac_fix('e_prev')) = 'EVASO',
+  '17b) annullata la prima commessa, tutte e due le righe vanno nella seconda e il preventivo e'' EVASO');
 
 -- ============================================================
 -- F — gli oneri

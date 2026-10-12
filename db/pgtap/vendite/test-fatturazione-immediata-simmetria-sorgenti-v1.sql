@@ -414,9 +414,13 @@ SELECT vendite.fn_link_commessa_sorgente(
 -- ============================================================
 -- TEST 15 (G17): dopo il push il cambio e' respinto.
 --   Non e' pignoleria: dopo il push il flag e' GIA' inerte (e' nella
---   chiave di dedup della commessa, e il documento e' legato a una sola
---   commessa per sempre). Senza guard il campo resterebbe editabile a
---   video senza produrre alcun effetto.
+--   chiave di dedup della commessa, e il documento sta in una sola
+--   commessa aperta). Senza guard il campo resterebbe editabile a video
+--   senza produrre alcun effetto.
+--   ⭐ Dal 2026-10-12 (20261012-47, D-14) il blocco vale solo finche' la
+--   commessa e' APERTA: il caso «commessa annullata, flag di nuovo
+--   modificabile» e' in vendite/test-annullo-commessa-v1 (14c, 14d), che le
+--   fixture se le costruisce.
 -- ============================================================
 SELECT throws_ok(
   $$ UPDATE vendite.ordini

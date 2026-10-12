@@ -105,6 +105,7 @@
 | trg_offerte_commerciali_audit_data_user_upd | BEFORE | INSERT | `EXECUTE FUNCTION script.trgfn_audit_data_user_generic()` |
 | trg_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | UPDATE | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
 | trg_offerte_commerciali_gen_tx_id_ins_upd | BEFORE | INSERT | `EXECUTE FUNCTION dbops.trgfn_tx_id_managed()` |
+| trg_offerte_commerciali_m50_fornitura_segue_cliente_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_fornitura_segue_cliente('OFFERTA')` |
 | trg_offerte_commerciali_m50_indirizzi_seguono_cliente_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_doc_indirizzi_seguono_cliente('OFFERTA')` |
 | trg_offerte_commerciali_z90_revisione_ins | AFTER | INSERT | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_revisione()` |
 | trg_offerte_commerciali_z90_rientro_padre_upd | AFTER | UPDATE | `EXECUTE FUNCTION vendite.trgfn_offerte_commerciali_rientro_padre()` |
