@@ -2,8 +2,7 @@
 
 ## ⏭️ Chi riparte — aggiornato al 2026-10-12
 
-**Riparte: Tid**, collaudo a video del lato BE/FE (§8) e decisione sull'anteprima (§8.2), poi
-archiviazione. Lato DB chiuso: il secondo giro (§4.7) è applicato e verde.
+**Riparte: Tid**, collaudo a video del lato BE/FE (§8), poi archiviazione. Lato DB chiuso: il secondo giro (§4.7) è applicato e verde.
 
 | # | Chi | Che cosa | Dove | Aspetta |
 | --- | --- | --- | --- | --- |
@@ -18,7 +17,7 @@ archiviazione. Lato DB chiuso: il secondo giro (§4.7) è applicato e verde.
 | 9 | BE | rigenerare `error_policies_generated.py` (`./manage-env.sh genera_error_policies`): la nota di `E_DOC_ANNULLO_CON_LEGAMI` del CSV ora è in git (02fae5709) | — | — |
 | 10 | Tid | collaudo a video, poi archiviazione in `work-done/` | — | — |
 
-**Decisioni aperte di Tid:** l'anteprima lascia una riga nel diario degli errori a ogni rifiuto (§8.2).
+**Decisioni aperte di Tid:** nessuna (§8.2 decisa il 2026-10-12: (a), si accetta).
 **Da committare:** sì, il secondo giro DB (§4.7: quattro changeSet, due pgTAP, manuali, questo brief).
 Il lavoro BE/FE è già in git (6fdd888cc).
 
@@ -370,7 +369,7 @@ Tre correzioni dopo la prima scrittura. Le prime due toglievano difetti che non 
 Verifica dopo la revisione (2026-10-12): test BE del service, sul DB vero e del service ordini, 83 verdi; spec FE di
 dialog, composable, store e `bloccoMotivo`, 27 verdi.
 
-### 8.2 ⚠️ Decisione aperta di Tid: l'anteprima e il diario degli errori
+### 8.2 ✅ L'anteprima e il diario degli errori — deciso (a), Tid 2026-10-12
 
 L'anteprima (R-1) esegue l'`UPDATE` vero in un savepoint e lo annulla. Quando il lock o il guard
 la rifiutano, il rifiuto passa da `script.fn_log_and_raise_error`, che scrive in `dbops.error_log`
@@ -382,3 +381,11 @@ un secondo.
 Due strade: **(a)** si accetta, e si dichiara (il diario racconta anche le prove); **(b)** il BE
 passa all'anteprima un segnale che il DB riconosce per non loggare. La (b) tocca il BB del
 diario, che oggi non conosce un «modo prova»: andrebbe disegnata a parte, non qui.
+
+**Decisione (Tid, 2026-10-12): (a).** La traccia è di un rifiuto vero, e sul modello è rara: il
+pulsante si accende solo dove le capability ammettono la colonna, quindi l'anteprima viene
+rifiutata solo nei casi che le capability non vedono (una riga `PENDING` del preventivo, BF-2; un
+documento cambiato da un altro utente fra apertura e click). La (b) toccherebbe il BB del diario,
+usato da tutti i guard, e un segnale che spegne il log va disegnato perché non diventi il modo di
+nascondere errori veri. Nessuna ricaduta sul DB. Se il rumore nel diario diventerà un problema,
+la (b) si apre come brief a sé.
