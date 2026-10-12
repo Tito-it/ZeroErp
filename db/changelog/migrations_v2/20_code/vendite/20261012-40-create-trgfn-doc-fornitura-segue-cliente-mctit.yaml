@@ -1,0 +1,67 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# NUOVO: vendite.trgfn_doc_fornitura_segue_cliente()
+#   Quando la fornitura di un documento cambia in bozza, la sua scheda di
+#   fornitura si rifa' dall'anagrafica della fornitura nuova.
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5)
+#
+# -- IL CASO ------------------------------------------------------------
+#   Su contratto e offerta il cliente (la coppia BA/istanza) si cambia in
+#   bozza. Gli indirizzi lo seguono dal 20261011-50; la scheda di fornitura
+#   (*_utilities) no: restava sull'istanza di prima, con la classe, il tipo
+#   d'uso e i parametri di quella, e il push dall'offerta la portava sul
+#   contratto.
+#
+# -- LA FORMA ------------------------------------------------------------
+#   AFTER UPDATE FOR EACH ROW, col WHEN sulla coppia (montaggi: 20261012-41);
+#   TG_ARGV[0] = il documento. Chiama vendite.fn_doc_fornitura_da_anagrafica,
+#   che toglie la scheda e la riscrive dalla coppia nuova (D-5: anche se
+#   prima non c'era, D-5-bis). La regola e' tutta nel building block: questo
+#   trigger dice solo QUANDO.
+#   ⚠️ La coppia si cambia solo in bozza (lock di testata), quindi DELETE e
+#   INSERT sulla scheda passano il lock dei satelliti per costruzione.
+#   INVOKER: cancella e scrive sotto la RLS di chi ha cambiato il cliente.
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-40-create-trgfn-doc-fornitura-segue-cliente-mctit.yaml
+
+  - changeSet:
+      id: 20261012-40-create-trgfn-doc-fornitura-segue-cliente
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Nuovo trigger BB vendite.trgfn_doc_fornitura_segue_cliente: al cambio della coppia
+        (istanza, utility) in bozza rifa' la scheda di fornitura dall'anagrafica. Brief:
+        brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-5).
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.trgfn_doc_fornitura_segue_cliente()
+              RETURNS trigger
+              LANGUAGE plpgsql
+              AS $function$
+              BEGIN
+                  -- =========================================================
+                  -- Scopo:
+                  --   La fornitura del documento e' cambiata: la scheda di
+                  --   prima descrive un'altra fornitura. Si rifa' dall'anagrafica
+                  --   della nuova. Il selettore lo valida il building block.
+                  -- =========================================================
+                  PERFORM vendite.fn_doc_fornitura_da_anagrafica(TG_ARGV[0], NEW.id);
+                  RETURN NULL;
+              END;
+              $function$;
+
+              COMMENT ON FUNCTION vendite.trgfn_doc_fornitura_segue_cliente()
+              IS 'Building block AFTER UPDATE FOR EACH ROW sulle testate con scheda di fornitura (contratto, offerta), col WHEN sulla coppia istanza_utility_id/utility_id nel montaggio; TG_ARGV[0] = documento (CONTRATTO | OFFERTA). Rifa'' la scheda di fornitura dall''anagrafica della coppia nuova con vendite.fn_doc_fornitura_da_anagrafica (D-5 di Tid, 2026-10-12: la scheda descrive la fornitura; se cambia si rifa'', anche se prima non c''era, D-5-bis). Selettore ignoto: E_DOC_TIPO_NON_GESTITO dal building block. ⚠️ La coppia si cambia solo in bozza (lock di testata), quindi il lock dei satelliti lascia passare. Gemello di vendite.trgfn_doc_indirizzi_seguono_cliente, che sullo stesso cambio porta gli indirizzi. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4).';

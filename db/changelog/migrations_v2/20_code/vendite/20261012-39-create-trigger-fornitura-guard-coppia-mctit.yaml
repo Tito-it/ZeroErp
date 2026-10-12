@@ -1,0 +1,60 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# MONTAGGI: vendite.trgfn_doc_fornitura_guard_coppia sulle schede di
+#   fornitura di contratto e offerta
+#   Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-6)
+#
+#   BEFORE INSERT OR UPDATE OF la coppia e la colonna verso la testata: sono
+#   colonne che nessun trigger BEFORE della scheda scrive, quindi UPDATE OF
+#   («qualcuno ha chiesto di scriverle») e' la forma giusta
+#   (linee-guida-trigger). Fascia _a10_: un guard, dopo il lock dei satelliti
+#   fuori bozza (_a05_), che parla per primo.
+#   ⚠️ Le righe gia' scritte non si rigiudicano: un guard giudica le
+#   scritture. Le schede gia' fuori coppia si censiscono a parte (brief §8.4.5).
+#   ⛔ Nomi sotto i 63 caratteri (il piu' lungo: 56).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-39-create-trigger-fornitura-guard-coppia-mctit.yaml
+
+  - changeSet:
+      id: 20261012-39-create-trigger-fornitura-guard-coppia
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        Monta vendite.trgfn_doc_fornitura_guard_coppia sulle schede di fornitura di contratto e
+        offerta. Brief: brief-db-indirizzi-documento-seguono-il-cliente (§8.4, D-6).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 0
+            sql: >
+              SELECT count(*) FROM pg_trigger t
+                JOIN pg_class c ON c.oid = t.tgrelid
+                JOIN pg_namespace n ON n.oid = c.relnamespace
+               WHERE n.nspname = 'vendite'
+                 AND t.tgname LIKE 'trg_%_a10_guard_coppia_ins_upd'
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE TRIGGER trg_contratti_utilities_a10_guard_coppia_ins_upd
+                  BEFORE INSERT OR UPDATE OF istanza_utility_id, utility_id, contratto_id
+                  ON vendite.contratti_utilities
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_fornitura_guard_coppia('CONTRATTO');
+
+              CREATE TRIGGER trg_offerte_commerciali_utilities_a10_guard_coppia_ins_upd
+                  BEFORE INSERT OR UPDATE OF istanza_utility_id, utility_id, offerta_id
+                  ON vendite.offerte_commerciali_utilities
+                  FOR EACH ROW
+                  EXECUTE FUNCTION vendite.trgfn_doc_fornitura_guard_coppia('OFFERTA');
