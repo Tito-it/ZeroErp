@@ -37,7 +37,7 @@ import Select from 'primevue/select'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useIvaRisolta } from '../../_shared/righe/useIvaRisolta'
-import { componiBloccoMotivo } from '../../../core/utils/bloccoMotivo'
+import { motivoDaCodiceBlocco } from '../../../core/utils/bloccoMotivo'
 import DdtCorreggiQtaEvasaDialog from './dialogs/DdtCorreggiQtaEvasaDialog.vue'
 
 const { t, te } = useI18n()
@@ -81,12 +81,9 @@ const isEvasa = computed(() => props.riga?.evasa === true)
 // `vendite.ddt.correggi_qta_evasa_reason.<codice minuscolo>` (contratto del
 // DB, §6.1 del brief), fail-visible sul codice.
 const correggiQtaBlocco = computed(() => props.riga?.correggi_qta_evasa_blocco || '')
-const correggiQtaMotivo = computed(() => componiBloccoMotivo(t, te, {
-  reason: correggiQtaBlocco.value,
-  reasonKey: correggiQtaBlocco.value
-    ? `vendite.ddt.correggi_qta_evasa_reason.${correggiQtaBlocco.value.toLowerCase()}`
-    : '',
-}))
+const correggiQtaMotivo = computed(() => motivoDaCodiceBlocco(
+  t, te, correggiQtaBlocco.value, 'vendite.ddt.correggi_qta_evasa_reason',
+))
 const correggiQtaVisible = ref(false)
 
 // Scopo: la quantita' e' cambiata dal verbo: la riga si rilegge come dopo un

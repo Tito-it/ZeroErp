@@ -48,6 +48,7 @@ from apps.vendite.api._componenti_schema import (
     PREVIEW_COMPONENTI_RESPONSE,
     componenti_overrides_field,
 )
+from apps.vendite.api._date_consegna_schema import DATE_CONSEGNA_REQUEST, DATE_CONSEGNA_RESPONSE
 from apps.vendite.api._schema_da_contratto import (
     CAMBIA_STATO_CON_CONFERMA_REQUEST,
     schema_da_contratto,
@@ -519,6 +520,27 @@ class ApiOrdineRigaDataConsegnaConfermata(DomainAPIView):
             request,
             handler=lambda payload: ordini_service.cambia_data_consegna_confermata(
                 int(ordine_id), int(riga_id), payload,
+            ),
+        )
+
+
+class ApiOrdineRigheDateConsegna(DomainAPIView):
+    """POST /api/v1/vendite/ordini/<ordine_id>/righe/date-consegna/.
+
+    «Aggiorna date di consegna»: una data su piu' righe, richiesta o
+    confermata, TUTTE o SOLO_VUOTE (brief-db-date-consegna-righe-in-blocco).
+    Le righe gia' spedite si saltano; ogni altro rifiuto e' del DB.
+    """
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "ordine")
+
+    @extend_schema(request=DATE_CONSEGNA_REQUEST, responses={200: DATE_CONSEGNA_RESPONSE})
+    def post(self, request: Request, ordine_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: ordini_service.aggiorna_date_consegna(
+                int(ordine_id), payload,
             ),
         )
 

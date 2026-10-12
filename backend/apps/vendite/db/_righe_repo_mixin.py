@@ -22,9 +22,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+import json
+from datetime import date
+from typing import Any, ClassVar
 
-from django.db import connection
+from django.db import connection, transaction
 
 from apps.core.db._helpers import (
     colonne_identita,
@@ -60,6 +62,12 @@ class RigheDocumentoRepositoryMixin(RigheListaCompletaMixin):
     """
 
     _righe_tabella: str
+    # Le date di consegna che le righe di QUESTO documento portano
+    # (brief-db-date-consegna-righe-in-blocco, D-4): colonna -> `None`, oppure
+    # la coppia (check di riga, `reason` del motivo che fa SALTARE la riga).
+    # E' l'unica cosa che `scrivi_data_consegna` sa del documento; un
+    # documento senza date (DDT, reso) lascia il dizionario vuoto.
+    _righe_date_consegna: ClassVar[dict[str, tuple[str, str] | None]] = {}
 
     # Scopo: QUANTE righe attive ha il documento: il `righe_count` del
     #        dettaglio e i guard «senza righe» (elimina, conferma).
@@ -82,6 +90,87 @@ class RigheDocumentoRepositoryMixin(RigheListaCompletaMixin):
         with connection.cursor() as cursor:
             cursor.execute(sql, [documento_id])
             return int(fetchone_scalar(cursor))
+
+    # Scopo: le colonne di data di consegna che le righe di questo documento
+    #        portano: la whitelist di `scrivi_data_consegna`, letta dal service
+    #        per validare la richiesta senza toccare l'attributo di classe.
+    @classmethod
+    def colonne_date_consegna(cls) -> tuple[str, ...]:
+        return tuple(sorted(cls._righe_date_consegna))
+
+    # Scopo: scrive UNA data di consegna sulle righe attive del documento, in un
+    #        solo UPDATE (brief-db-date-consegna-righe-in-blocco §5, §8). Serve
+    #        all'utility «Aggiorna date di consegna» e al verbo per riga
+    #        (`riga_id`): la stessa scrittura, regola del 2.
+    # ⭐ Il giudice resta il DB, riga per riga: lock di stato, guard di riga.
+    #    L'unica selezione fatta qui e' saltare le righe il cui motivo e' quello
+    #    dichiarato in `_righe_date_consegna` (BF-1: la riga gia' spedita). Un
+    #    motivo di STATO non fa saltare niente: la riga va all'UPDATE e il lock
+    #    la rifiuta col suo 409, invece di un «0 aggiornate» muto.
+    # ⚠️ Con `riga_id` non si salta nulla: sulla riga singola il rifiuto e' la
+    #    risposta giusta, e lo dice il guard col suo codice.
+    # ⭐ `anteprima` esegue lo STESSO UPDATE in un savepoint e lo annulla: i
+    #    lock e il guard girano davvero, quindi un rifiuto arriva prima della
+    #    domanda di conferma, e i numeri sono quelli che la scrittura dara'.
+    #    Fino al 2026-10-12 contava con una SELECT a parte, che non passava dai
+    #    trigger: diceva «5 righe» e poi la scrittura prendeva il 409.
+    # Ritorna: {"aggiornate": n, "saltate": m}. Con `anteprima` nulla resta scritto.
+    def scrivi_data_consegna(
+        self,
+        documento_id: int,
+        colonna: str,
+        data: date | None,
+        *,
+        riga_id: int | None = None,
+        solo_vuote: bool = False,
+        anteprima: bool = False,
+    ) -> dict[str, int]:
+        if colonna not in self._righe_date_consegna:
+            raise ValueError(f"{self._righe_tabella}: colonna non ammessa {colonna!r}")
+        regola_salto = self._righe_date_consegna[colonna]
+        params: list[Any] = []
+        if regola_salto is None or riga_id is not None:
+            saltata = "false"
+        else:
+            check_fn, motivo = regola_salto
+            saltata = f"COALESCE({check_fn}(r.id) @> %s::jsonb, false)"
+            params.append(json.dumps([{"reason": motivo}]))
+        filtri = [f"r.{self._righe_fk_documento} = %s", "r.attivo IS TRUE"]
+        params.append(documento_id)
+        if riga_id is not None:
+            filtri.append("r.id = %s")
+            params.append(riga_id)
+        if solo_vuote:
+            filtri.append(f"r.{colonna} IS NULL")
+        candidate = f"""
+            WITH candidate AS (
+                SELECT r.id, {saltata} AS saltata
+                  FROM {self._righe_tabella} r
+                 WHERE {" AND ".join(filtri)}
+            )
+        """  # noqa: S608 — tabella, FK, colonna e check da attributi di classe (colonna in whitelist); valori come parametri
+        sql = candidate + f"""
+            , scritte AS (
+                UPDATE {self._righe_tabella} t
+                   SET {colonna} = %s
+                  FROM candidate c
+                 WHERE t.id = c.id
+                   AND NOT c.saltata
+                RETURNING t.id
+            )
+            SELECT (SELECT COUNT(*) FROM scritte),
+                   (SELECT COUNT(*) FROM candidate WHERE saltata)
+        """  # noqa: S608 — come sopra
+        params.append(data)
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            row = cursor.fetchone()
+            assert row is not None
+            if anteprima:
+                # Il savepoint si annulla all'uscita: i trigger hanno giudicato,
+                # niente resta scritto.
+                transaction.set_rollback(True)
+            return {"aggiornate": int(row[0]), "saltate": int(row[1])}
 
     # Scopo: una riga attiva per id, con la stessa proiezione della lista.
     #        ⭐ Prima ogni repository la rifaceva a mano, e due su quattro

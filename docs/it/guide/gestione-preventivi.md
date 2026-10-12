@@ -150,6 +150,15 @@ del cliente, e lì la promessa (`data_consegna_confermata`) nasce vuota. Vedi
 nasce con le righe senza data richiesta (§4.2). Sul preventivo la data sta sulla
 riga e la riga è **per documento**, quindi in una revisione va reinserita.
 
+**In blocco.** Finché il preventivo è in `DRAFT`, l'azione **«Aggiorna date di
+consegna»** della barra del drawer scrive la stessa data richiesta su più righe:
+*solo quelle senza data*, oppure *tutte*, che sovrascrive anche le date già
+scritte e chiede prima conferma col numero di righe. È anche il modo rapido di
+rimettere la data sulle righe di una revisione nuova. Fuori bozza l'azione non
+compare. Una riga col prezzo in attesa di approvazione non si modifica, e ferma
+il gesto per intero: nessuna riga cambia. Lo stesso gesto, sull'ordine, in
+[Gestione Ordini §3.5](/guide/gestione-ordini).
+
 #### Quali articoli possono stare su un preventivo
 
 Sul preventivo puoi mettere **merce** e **servizi una tantum**. **Non** puoi

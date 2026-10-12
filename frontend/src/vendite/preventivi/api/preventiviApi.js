@@ -4,6 +4,7 @@
 
 import api from '../../../core/api'
 import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
+import { makeDateConsegnaApi } from '../../_shared/dateConsegna/dateConsegnaApi'
 import { generateIdempotencyKey } from '../../../core/utils/idempotency'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
@@ -100,6 +101,8 @@ export function listRevisioni(id, params = {}) {
 // righe qui: il FE non ne ha consumatori (a differenza di ordine e reso, per
 // i dialog di evasione e ri-consegna). `GET …/righe/` resta lato backend.
 export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
+// «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco).
+export const { aggiornaDateConsegna } = makeDateConsegnaApi(BASE)
 
 export function createRiga(preventivoId, payload) {
   return api.post(`${BASE}/${preventivoId}/righe/`, payload)

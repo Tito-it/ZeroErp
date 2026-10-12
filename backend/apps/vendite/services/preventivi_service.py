@@ -28,6 +28,7 @@ from apps.anagrafiche.db.billing_account_repository import BillingAccountReposit
 from apps.anagrafiche.services.billing_account_service import istanza_del_billing_account
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._righe_bozza_guard import Verbo, richiedi_righe_in_bozza
+from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
     DOCUMENTO_PREVENTIVO,
     STATO_ANNULLATO,
@@ -1722,6 +1723,22 @@ def elimina_riga(preventivo_id: int, riga_id: int) -> dict[str, Any]:
     )
     # Ricalcolo totali gestito da trigger DB AFTER su preventivi_righe
     return {"status": "ok", "riga_id": riga_id}
+
+
+# Scopo: «Aggiorna date di consegna» del preventivo: la data richiesta dal
+#        cliente su piu' righe, in modalita' TUTTE o SOLO_VUOTE
+#        (brief-db-date-consegna-righe-in-blocco, D-2, D-4). Segue il lock
+#        delle righe (solo bozza), che la rifiuta nello stesso UPDATE. Regola e
+#        forma nel BB `_date_consegna_righe`; qui la testata e il codice.
+def aggiorna_date_consegna(preventivo_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    repo = PreventiviRepository()
+    _get_testata_or_raise(repo, preventivo_id, op="aggiorna_date_consegna")
+    with _db_errors("aggiorna_date_consegna"):
+        return aggiorna_date_consegna_righe(
+            repo, preventivo_id, payload,
+            error_code="E_PREV_VALIDAZIONE",
+            function_name=f"{_FN}.aggiorna_date_consegna",
+        )
 
 
 # ══════════════════════════════════════════════════════════

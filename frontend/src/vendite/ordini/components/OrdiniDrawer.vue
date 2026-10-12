@@ -23,6 +23,7 @@ import { useEntityCapabilities } from '../../../core/composables/useEntityCapabi
 import { useTestataDocumento } from '../../../core/composables/useTestataDocumento'
 import { mapAvailableActionsToDrawerActions } from '../../../core/composables/useDrawerActions'
 import { statoOrdineSeverity } from '../../../core/utils/severity'
+import { labelOrCode } from '../../../core/utils/i18nLabel'
 import {
   CAMPI_FORM_TESTATA_ORDINE,
   STATO_ORDINE,
@@ -52,6 +53,8 @@ import OrdineNoteDrawer from './OrdineNoteDrawer.vue'
 import OrdineEvasioneDialog from './dialogs/OrdineEvasioneDialog.vue'
 import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
 import OrdineEmissioneDialog from './dialogs/OrdineEmissioneDialog.vue'
+import DateConsegnaRigheDialog from '../../_shared/dateConsegna/DateConsegnaRigheDialog.vue'
+import { useDateConsegnaRighe } from '../../_shared/dateConsegna/useDateConsegnaRighe'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 
@@ -209,6 +212,42 @@ const merceRef = ref(null)
 //    ordine senza legami passa al primo colpo.
 const cambioStato = useForzaturaConfermata()
 const { richiestaConferma: domandaAnnullo } = cambioStato
+
+// «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco): le
+// due date della riga d'ordine. La richiesta si scrive in bozza; la confermata
+// in bozza e dopo la conferma (D-3). Le colonne sono l'unica cosa che
+// l'utility sa del documento (D-4).
+const dateConsegna = useDateConsegnaRighe({
+  colonne: [
+    {
+      colonna: 'data_consegna_richiesta_cliente',
+      labelKey: 'vendite.ordini.riga_data_consegna_richiesta_cliente',
+      attiva: () => caps.flag('can_edit_righe'),
+    },
+    {
+      colonna: 'data_consegna_confermata',
+      labelKey: 'vendite.ordini.riga_data_consegna_confermata',
+      attiva: () => caps.flag('can_edit_righe') || caps.flag('can_edit_data_consegna_confermata'),
+      motivo: () => labelOrCode(
+        t, te,
+        capabilities.value.can_edit_data_consegna_confermata_reason_key,
+        capabilities.value.can_edit_data_consegna_confermata_reason,
+      ),
+    },
+  ],
+  readonlyPuro: () => isReadonlyPuro.value,
+  presente: () => hasDetail.value,
+})
+const dateConsegnaAzione = dateConsegna.azione
+const dateConsegnaVisible = dateConsegna.dialogVisible
+const dateConsegnaColonne = dateConsegna.colonneAttive
+
+// Scopo: le date sono cambiate sulle righe: si rileggono le righe e la
+//        testata, come dopo il verbo per riga (`@changed` della tabella righe).
+function onDateConsegnaAggiornate() {
+  righeTableRef.value?.loadRighe()
+  loadDetail()
+}
 
 // Scopo: si e' chiuso un documento aperto dalla barra collegamenti (passaggi
 //        lineage): li' l'operatore puo' aver agito — annullare il DDT di un
@@ -636,6 +675,7 @@ const drawerActions = computed(() => {
           command: () => { evasioneDialogVisible.value = true },
         }]
       : []),
+    ...dateConsegnaAzione.value,
     {
       key: 'manage-note',
       kind: 'manage',
@@ -816,6 +856,15 @@ const drawerActions = computed(() => {
     :loading="cambioStato.loading.value"
     @conferma="onConfermaAnnullo"
     @cancel="cambioStato.annulla()"
+  />
+
+  <DateConsegnaRigheDialog
+    v-if="effectiveOrdineId"
+    v-model:visible="dateConsegnaVisible"
+    :invia="(payload) => store.aggiornaDateConsegna(effectiveOrdineId, payload)"
+    :colonne="dateConsegnaColonne"
+    :readonly="isReadonlyPuro"
+    @aggiornate="onDateConsegnaAggiornate"
   />
 
   <OrdineEvasioneDialog

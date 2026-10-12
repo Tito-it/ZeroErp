@@ -304,6 +304,7 @@ La response espone `commesse_ids` (commesse toccate dal push), oltre a
 | `PATCH /<id>/righe/<riga_id>/` | Aggiorna riga (solo DRAFT). `request.data` |
 | `DELETE /<id>/righe/<riga_id>/` | Hard-delete riga (solo DRAFT) |
 | `POST /<id>/righe/<riga_id>/data-consegna-confermata/` | La promessa di consegna **dopo la conferma** (2026-10-10, sotto) |
+| `POST /<id>/righe/date-consegna/` | Una data di consegna su **più righe** (2026-10-12, sotto) |
 
 Payload riga (create): `articolo_id` (obbligatorio), `descrizione`, `quantita`,
 `qta_operativa`, `uom_operativa_id`, `factor_to_base`, `prezzo_unitario`,
@@ -322,9 +323,8 @@ quanto chiesto); una data malformata è un **400** col campo
 (`E_ORD_VALIDAZIONE`, `fields`), non un 500 dal DB. Escono da `list_righe` e
 `get_riga` (proiezione esplicita). Sulla testata non c'è nessuna colonna: la
 lista ordini espone `data_consegna_richiesta_cliente_min` dalla vista
-(`vw_ordini_lista`), il `min()` sulle righe attive. ⚠️ **Fatto di modello
-dichiarato nel brief (§5.5, 1-bis) e non deciso qui**: le righe si scrivono solo
-in `DRAFT`, ma la promessa si decide **alla conferma** e può cambiare dopo.
+(`vw_ordini_lista`), il `min()` sulle righe attive. Le righe si scrivono solo in
+`DRAFT`; la promessa, che si decide alla conferma, ha il verbo suo (sotto).
 
 ⭐ **Il verbo della promessa dopo la conferma** (dal 2026-10-10,
 [brief-db-testata-dopo-emissione](/dev/work-done/brief-db-testata-dopo-emissione)
@@ -338,6 +338,27 @@ la terna `can_edit_data_consegna_confermata` · `_reason` · `_reason_key`, lett
 dallo stesso montaggio: in `DRAFT` è spenta col motivo `ORDINE_IN_BOZZA` (la data
 si scrive modificando la riga). Risposta: `{ordine_id, riga_id, data_consegna_confermata}`.
 `PATCH /<id>/righe/<riga_id>/` resta «solo in bozza» per tutte le colonne.
+⛔ Dal 2026-10-12 una riga **già spedita** (un DDT uscito dalla bozza, anche per
+una parte) tiene la sua data: 409 `E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA` del guard
+di riga ([brief-db-date-consegna-righe-in-blocco](/dev/work-in-progress/brief-db-date-consegna-righe-in-blocco) D-7).
+Lo si sa prima dalla lista righe: `data_consegna_confermata_blocco` (il `reason`
+del primo motivo, `NULL` = si cambia; chiave i18n
+`vendite.ordini.data_consegna_confermata_reason.<reason minuscolo>`).
+
+⭐ **Le date in blocco** (dal 2026-10-12, stesso brief §5, §8):
+`POST /<id>/righe/date-consegna/`, corpo
+`{"colonna": "data_consegna_richiesta_cliente" | "data_consegna_confermata",
+"data": "AAAA-MM-GG", "modalita": "TUTTE" | "SOLO_VUOTE", "anteprima": false}`.
+Un solo UPDATE sulle righe attive (`SOLO_VUOTE`: le sole senza data). Le righe
+già spedite si **saltano e si contano** (solo per la confermata); ogni altro
+rifiuto del DB — lo stato che non ammette la colonna (`E_RIGA_DOC_NON_BOZZA`) —
+fa fallire il gesto per intero. Nessun pre-check di stato nel backend.
+`anteprima: true` esegue lo stesso UPDATE e lo annulla: i numeri sono quelli
+della scrittura, un rifiuto del DB arriva già qui, e niente resta scritto. Risposta: `{documento_id, colonna, data,
+modalita, anteprima, aggiornate, saltate_spedite}`. Errori: `E_ORD_NOT_FOUND`
+(404), `E_ORD_VALIDAZIONE` (400, col campo), `E_RIGA_DOC_NON_BOZZA` (409). La
+scrittura è il BB `RigheDocumentoRepositoryMixin.scrivi_data_consegna`, la stessa
+del verbo per riga.
 
 ### Componenti BoM (CASO A)
 

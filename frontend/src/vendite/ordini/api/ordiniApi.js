@@ -10,6 +10,7 @@
 
 import api from '../../../core/api'
 import { makeRigheListaApi } from '../../_shared/righe/righeListaApi'
+import { makeDateConsegnaApi } from '../../_shared/dateConsegna/dateConsegnaApi'
 import { makeComponentiBomApi } from '../../../core/api/componentiBom'
 
 const BASE = '/vendite/ordini'
@@ -114,6 +115,8 @@ export function getOrdinePerPratica(praticaId) {
 // factory condivisa coi documenti gemelli. `listRighe` qui sotto resta la
 // lettura COMPLETA (dialog, stampe).
 export const { listRigheLista, exportRigheLista } = makeRigheListaApi(BASE)
+// «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco).
+export const { aggiornaDateConsegna } = makeDateConsegnaApi(BASE)
 
 export function listRighe(ordineId) {
   return api.get(`${BASE}/${ordineId}/righe/`)

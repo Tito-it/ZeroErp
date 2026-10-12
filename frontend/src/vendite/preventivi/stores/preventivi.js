@@ -13,6 +13,7 @@ import {
   listPreventivi, getPreventivo, createPreventivo, updatePreventivo, deletePreventivo,
   cambiaStatoPreventivo, emettiPreventivo, creaRevisione,
   createRiga, updateRiga, deleteRiga, getRiepilogoIva,
+  aggiornaDateConsegna as postDateConsegna,
   pushCommessa, getSmistamento, generaPratica, generaOrdineFromPreventivo,
 } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
@@ -151,6 +152,18 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     return res.data.data
   }
 
+  // Scopo: «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco):
+  //        la data richiesta su piu' righe. Si avvisa solo quando si scrive:
+  //        l'anteprima conta e basta.
+  // ⚠️ Ritorna la RESPONSE, non l'esito: l'esito ha una chiave `data` (la data
+  //    scritta) e `useApiHandler.execute` lo scambierebbe per un envelope,
+  //    restituendo la sola data.
+  async function aggiornaDateConsegna(preventivoId, payload) {
+    const res = await postDateConsegna(preventivoId, payload)
+    if (!payload.anteprima) emitDataChanged(TAB_ENTITIES.PREVENTIVO, preventivoId)
+    return res
+  }
+
   // Scopo: Carica riepilogo IVA aggregato del preventivo (regola fiscale
   //        DPR 633/72 art. 21). Una entry per aliquota IVA distinta. Il
   //        ricalcolo e' atomico lato DB su ogni mutazione delle righe.
@@ -205,7 +218,7 @@ export const usePreventiviStore = defineStore('vendite-preventivi', () => {
     ...lista,
     fetchDetail, create, update, elimina,
     cambiaStato, emetti, nuovaRevisione,
-    addRiga, aggiornaRiga, eliminaRiga, loadRiepilogoIva,
+    addRiga, aggiornaRiga, eliminaRiga, aggiornaDateConsegna, loadRiepilogoIva,
     inviaACommessa, generaOrdine, loadSmistamento,
     creaPratica,
   }

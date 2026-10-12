@@ -13,19 +13,21 @@
 //  1. avvisa PREVENTIVO e ORDINE, con gli id giusti
 //  2. senza `ordine_id` nella risposta avvisa solo il PREVENTIVO
 //  3. se l'api fallisce l'errore risale e non parte nessun avviso
+//  4. date in blocco: scrivere avvisa il PREVENTIVO, l'anteprima no
 // ------------------------------------------------------------
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import { usePreventiviStore } from './preventivi'
-import { generaOrdineFromPreventivo } from '../api/preventiviApi'
+import { aggiornaDateConsegna, generaOrdineFromPreventivo } from '../api/preventiviApi'
 import { useTabEvents } from '../../../core/composables/useTabEvents'
 import { TAB_ENTITIES } from '../../../core/constants'
 
 // Tutti gli export che lo store importa: il modulo vero caricherebbe il
 // client HTTP, che in ambiente node non ha `localStorage`.
 vi.mock('../api/preventiviApi', () => ({
+  aggiornaDateConsegna: vi.fn(),
   listPreventivi: vi.fn(),
   getPreventivo: vi.fn(),
   createPreventivo: vi.fn(),
@@ -79,5 +81,23 @@ describe('store preventivi — generaOrdine', () => {
     await expect(usePreventiviStore().generaOrdine(8)).rejects.toThrow('rifiutato')
     stop()
     expect(eventi).toEqual([])
+  })
+})
+
+// brief-db-date-consegna-righe-in-blocco: fino al 2026-10-12 il dialog
+// chiamava l'api senza avvisare la lista.
+describe('store preventivi — date di consegna in blocco', () => {
+  beforeEach(() => { setActivePinia(createPinia()) })
+
+  it('scrivere avvisa il PREVENTIVO, l\'anteprima no', async () => {
+    const response = { data: { data: { aggiornate: 1, data: '2026-11-20' } } }
+    aggiornaDateConsegna.mockResolvedValue(response)
+    const { eventi, stop } = ascolta()
+    const store = usePreventiviStore()
+    await store.aggiornaDateConsegna(8, { anteprima: true })
+    expect(eventi).toEqual([])
+    expect(await store.aggiornaDateConsegna(8, { anteprima: false })).toBe(response)
+    stop()
+    expect(eventi).toEqual([[TAB_ENTITIES.PREVENTIVO, 8]])
   })
 })

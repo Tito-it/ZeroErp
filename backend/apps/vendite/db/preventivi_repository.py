@@ -182,6 +182,9 @@ class PreventiviRepository(
     _righe_ordinamento = _ORDER_COLS_RIGHE
     _righe_ricerca = _RICERCA_RIGHE
     _righe_colonne_desc = ("data_consegna_richiesta_cliente",)
+    # Le date di consegna in blocco (BB `scrivi_data_consegna`): la sola
+    # richiesta, che segue il lock delle righe (solo bozza).
+    _righe_date_consegna = {"data_consegna_richiesta_cliente": None}
 
     # Configurazione mixin componenti.
     _componenti_table_name = "vendite.preventivi_righe_componenti"

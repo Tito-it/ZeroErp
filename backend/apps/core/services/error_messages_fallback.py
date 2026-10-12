@@ -901,6 +901,7 @@ USER_MESSAGE_FALLBACK: dict[str, str] = {
     "E_ORDINE_CONFERMA_SENZA_RIGHE": "Ordine senza righe: impossibile confermare.",
     "E_ORDINE_EMITTENTE_BA_INCOERENTE": "Emittente fiscale non coerente col cliente selezionato.",
     "E_ORDINE_EMITTENTE_NON_RISOLTO": "Nessun emittente fiscale attivo: selezionalo in alto o indicalo nella richiesta.",
+    "E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA": "La merce di questa riga e' gia' partita con un DDT: la data di consegna confermata non si cambia piu'.",
     "E_ORDINE_RIGA_IVA_MANCANTE": "Una riga dell'ordine ha un prezzo ma nessuna aliquota IVA: sceglila, oppure togli il prezzo se la merce non si valorizza.",
     "E_ORDINE_RIGA_NON_TROVATA": "Riga ordine non trovata.",
     "E_ORDINE_TRANSIZIONE_NON_AMMESSA": "Transizione di stato dell'ordine non ammessa dallo stato attuale.",

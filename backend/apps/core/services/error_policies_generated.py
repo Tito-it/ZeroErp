@@ -12,7 +12,7 @@
 #        Per cambiare la classe di un codice si cambia il CATALOGO
 #        (`db/changelog/migrations_v2/80_data/sql/config/codici_errore.csv`) e si
 #        rigenera. Il commento sopra ogni voce e' la sua `note` a catalogo.
-# Note: ⚠️ Le voci sono 1056, di cui 116 RITIRATE. Un codice
+# Note: ⚠️ Le voci sono 1057, di cui 116 RITIRATE. Un codice
 #        ritirato resta qui e continua a risolvere, ed e' voluto: il diario
 #        (`dbops.error_log`) contiene le sue righe e devono restare leggibili.
 #        `obsoleto_dal` non e' `attivo = false`.
@@ -1046,6 +1046,8 @@ CLASSE_PER_CODICE: dict[str, str] = {
     # RITIRATO il 2026-09-15 (brief-db-emittente-di-default-un-bb-solo, D1): vendite.trgfn_ordini_default_emittente era una delle tre copie della stessa regola (ordini, preventivi, contratti; ddt la variante) e la sua funzione e' droppata. La regola vive in script.trgfn_default_emittente_fiscale, che solleva E_EMITTENTE_NON_RISOLTO. Nessuna funzione viva nomina piu' questo codice; il messaggio resta perche' il diario deve restare leggibile.
     # ⚠️ RITIRATO il 2026-09-15
     "E_ORDINE_EMITTENTE_NON_RISOLTO": "DATO_ERRATO",
+    # vendite.trgfn_ordini_righe_guard_data_consegna_spedita, dal primo motivo di script.fn_check_ordine_riga_data_consegna_confermata (2026-10-11, brief-db-date-consegna-righe-in-blocco D-7, P-1): si e' tentato di cambiare la data di consegna confermata di una riga d'ordine gia' partita con un DDT uscito dalla bozza, anche per una parte della riga (vendite.fn_ordine_riga_spedita). La data di consegna si scrive prima di spedire: il lock delle righe la lasciava cambiare in PARZIALMENTE_EVASO guardando solo lo stato della testata. CONFLITTO_STATO e non DATO_ERRATO: la data nuova puo' essere giusta, e' la riga gia' spedita che non la ammette. I VALORI: etichetta dell'ordine e numero di riga (nessun id); campo data_consegna_confermata.
+    "E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA": "CONFLITTO_STATO",
     # Una riga di ORDINE che porta un PREZZO deve portare anche l'ALIQUOTA: senza, vendite.vw_ordini_righe_iva_base la fa entrare nel riepilogo (filtra solo attivo e quantita > 0, NON guarda ne' prezzo ne' iva_id) e vw_ordini_riepilogo_iva_dettaglio la somma con COALESCE(aliquota,0), producendo un imponibile pieno con codice IVA vuoto e imposta zero - su un ordine confermato e stampato. Gemello di E_DDT_RIGA_IVA_MANCANTE (2026-08-28), stessa regola sull'altro documento. Sollevato dal guard di transizione vendite.trgfn_ordini_guard_transizione (Regola 4), via script.fn_check_ordine_confermabile. CONFLITTO_STATO come i gemelli: la richiesta e' "porta l'ordine a CONFERMATO" e non c'e' un campo di quella richiesta da correggere - ne discende che nel contesto non va la chiave `campo`. ⚠️ Il perimetro e' QUALUNQUE transizione verso CONFERMATO, non il solo DRAFT->CONFERMATO: la matrice ammette il rientro da PARZIALMENTE_EVASO e da EVASO, e la vista del riepilogo non sa da dove si arriva. ⚠️ Nel VARIADIC va il NUMERO di riga, non l'id: e' la frase che legge una persona. ⛔ Non e' un NOT NULL di colonna: ordini_righe.iva_id e' nullable e la bozza deve restare libera. Piano: brief-db-be-iva-risolutore-e-regime-cliente, I9.
     "E_ORDINE_RIGA_IVA_MANCANTE": "CONFLITTO_STATO",
     "E_ORDINE_RIGA_NON_TROVATA": "NON_TROVATO",

@@ -45,6 +45,7 @@ from apps.vendite.api.preventivi_views import (
     ApiPreventivoRigaDetail,
     ApiPreventivoRigaPreviewComponenti,
     ApiPreventivoRigaSuggerisciPrezzo,
+    ApiPreventivoRigheDateConsegna,
     ApiPreventivoRigheList,
     ApiPreventivoRigheListaExportView,
     ApiPreventivoRigheListaView,
@@ -171,6 +172,12 @@ urlpatterns = [
         "<int:preventivo_id>/righe/<int:riga_id>/",
         ApiPreventivoRigaDetail.as_view(),
         name="vendite-preventivi-righe-detail",
+    ),
+    # Righe: le date di consegna in blocco (brief-db-date-consegna-righe-in-blocco)
+    path(
+        "<int:preventivo_id>/righe/date-consegna/",
+        ApiPreventivoRigheDateConsegna.as_view(),
+        name="vendite-preventivi-righe-date-consegna",
     ),
     # Righe: suggerimento prezzo via pricing resolver v5
     path(

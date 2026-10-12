@@ -2108,6 +2108,21 @@
     "indirizzo_label": "Address"
   },
   "vendite": {
+    "date_consegna": {
+      "azione": "Update delivery dates",
+      "titolo": "Update delivery dates",
+      "intro": "Writes one delivery date on several lines of the document.",
+      "colonna": "Date to update",
+      "data": "Date",
+      "modalita": "On which lines",
+      "modalita_solo_vuote": "Only lines without a date",
+      "modalita_tutte": "All lines (overwrites the dates already set)",
+      "conferma_titolo": "Overwrite the dates?",
+      "conferma_tutte": "The date will be written on {aggiornate} lines, replacing those already set. Continue?",
+      "conferma_tutte_con_saltate": "The date will be written on {aggiornate} lines, replacing those already set. {saltate} lines have already left with a delivery note and stay as they are. Continue?",
+      "esito": "Delivery date updated on {aggiornate} lines.",
+      "esito_con_saltate": "Delivery date updated on {aggiornate} lines; {saltate} already shipped with a delivery note stay as they are."
+    },
     "approvazioni_prezzo": {
       "page_title": "Price approvals",
       "page_description": "Pending requests for approval of price changes proposed by operators.",
@@ -3744,7 +3759,8 @@
       },
       "data_consegna_confermata_reason": {
         "in_bozza": "In draft the date is changed by editing the line.",
-        "stato_non_ammette": "In this status the delivery date can no longer be changed."
+        "stato_non_ammette": "In this status the delivery date can no longer be changed.",
+        "riga_spedita": "The goods on this line have already left with a delivery note: the confirmed delivery date stays the one they left with."
       },
       "azione_data_consegna_confermata": "Change the confirmed delivery date",
       "data_consegna_confermata_titolo": "Confirmed delivery date",

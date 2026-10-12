@@ -21,7 +21,7 @@ import { useApiHandler } from '../../../../core/composables/useApiHandler'
 import { useFotografiaDialog } from '../../../../core/composables/useFotografiaDialog'
 import { DATE_FORMAT } from '../../../../core/constants'
 import { parseIsoDate, toDateString } from '../../../../core/utils/date'
-import { cambiaDataConsegnaConfermata } from '../../api/ordiniApi'
+import { useOrdiniStore } from '../../stores/ordini'
 
 const props = defineProps({
   visible: { type: Boolean, required: true },
@@ -38,6 +38,8 @@ const emit = defineEmits(['update:visible', 'salvata'])
 
 const { t } = useI18n()
 const { execute, loading } = useApiHandler()
+// Lo store scrive e avvisa le liste (frontend-standards §«Producer cross-tab»).
+const store = useOrdiniStore()
 
 const dataScelta = ref(null)
 
@@ -59,7 +61,7 @@ async function salva() {
   if (!props.riga) return
   const data = dataScelta.value ? toDateString(dataScelta.value) : null
   const res = await execute(
-    () => cambiaDataConsegnaConfermata(props.ordineId, props.riga.id, data),
+    () => store.cambiaDataConsegnaConfermata(props.ordineId, props.riga.id, data),
     { successMessage: t('vendite.ordini.data_consegna_confermata_salvata') },
   )
   if (res === null) return
