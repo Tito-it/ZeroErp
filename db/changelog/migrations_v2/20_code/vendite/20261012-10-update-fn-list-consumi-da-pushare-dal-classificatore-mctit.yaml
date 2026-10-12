@@ -1,0 +1,361 @@
+# ------------------------------------------------------------
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Liquibase changelog per Zero ERP
+# Copyright (C) 2026 Tid (Michele Carlo Titini)
+#
+# Rilasciato sotto GNU GPLv3 o versione successiva.
+# Vedi LICENSE.md per il testo completo della licenza.
+# ------------------------------------------------------------
+# I CONSUMI DA MANDARE IN COMMESSA: «GIA' MANDATO» DAL CLASSIFICATORE
+#   vendite.fn_list_consumi_da_pushare(...)
+#   Brief: brief-db-annullo-a-valle-riapre-a-monte (D-5, D-7 di Tid; R-7)
+#
+# ── COSA CAMBIA ─────────────────────────────────────────────────────
+#   Solo l'esclusione «gia' inviato»: da un NOT EXISTS proprio a
+#   script.fn_get_stato_push_segment('CONS:<uid>') = 'LIBERA', la fonte
+#   unica del predicato (regola del 2, D-5).
+#
+# ── IL DIFETTO CHE C'ERA (trovato nel censimento del 2026-10-12) ───
+#   Il NOT EXISTS cercava 'CONS:<uid>:%', ma il segmento che questa
+#   funzione scrive e' 'CONS:<uid>', senza i due punti: vedeva solo le
+#   righe del fan-out per componente (':COMP:<x>' in
+#   HandlerConsumi._expand_rows), che e' uno stub rimandato (Tid,
+#   2026-06-16) e non ne scrive. Il consumo gia' mandato restava in lista;
+#   all'idempotenza pensava solo l'ON CONFLICT dell'upsert nella stessa
+#   commessa. Letto sul contratto (corpo del lister e handler), non sui
+#   dati.
+#   ⚠️ Il giorno in cui il fan-out si accende deve usare il suffisso
+#   '#CMP:' che il classificatore vede (DEC-2), non ':COMP:'.
+#
+# ── FORMA ───────────────────────────────────────────────────────────
+#   Firma e RETURNS TABLE invariati, %TYPE compresi: CREATE OR REPLACE.
+#   Corpo di partenza: 20260803-02 (identico al vivo su zeroerp_ci,
+#   2026-10-12).
+# ------------------------------------------------------------
+
+databaseChangeLog:
+  - logicalFilePath: migrations_v2/20_code/vendite/20261012-10-update-fn-list-consumi-da-pushare-dal-classificatore-mctit.yaml
+
+  - changeSet:
+      id: 20261012-10-update-fn-list-consumi-da-pushare-dal-classificatore
+      author: mctit
+      runOnChange: false
+      failOnError: true
+      comment: >
+        vendite.fn_list_consumi_da_pushare: «gia' mandato» da script.fn_get_stato_push_segment invece del NOT EXISTS proprio, che cercava un segmento con i due punti finali e non escludeva il consumo gia' mandato (D-5, regola del 2). Brief: brief-db-annullo-a-valle-riapre-a-monte (R-7).
+      preConditions:
+        - onFail: HALT
+        - sqlCheck:
+            expectedResult: 1
+            sql: >
+              SELECT count(*) FROM pg_proc
+               WHERE proname = 'fn_list_consumi_da_pushare'
+                 AND pronamespace = 'vendite'::regnamespace
+      changes:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            stripComments: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_consumi_da_pushare(
+                  p_competenza_mese    vendite.attivita_consumi.competenza_mese%TYPE DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE            DEFAULT NULL::bigint,
+                  p_limit              integer                                       DEFAULT NULL::integer,
+                  p_consumo_id         vendite.attivita_consumi.id%TYPE              DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  consumo_id                  vendite.attivita_consumi.id%TYPE,
+                  consumo_uid                 vendite.attivita_consumi.uid%TYPE,
+                  billing_account_id          vendite.attivita_consumi.billing_account_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  emittente_soggetto_ruolo_id bigint,
+                  competenza_dal              date,
+                  competenza_al               date,
+                  -- boolean nudo per SCELTA: non esiste (e non deve esistere)
+                  -- una colonna vendite.attivita_consumi.fatturazione_immediata
+                  -- a cui ancorare il %TYPE. Vedi D-6 nell'header.
+                  fatturazione_immediata      boolean,
+                  sorgente_tipo_id            config.sorgenti.id%TYPE,
+                  sorgente_uid                text,
+                  segment_key                 character varying,
+                  articolo_id                 uuid,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  data_attivita               date,
+                  uom_id                      vendite.attivita_consumi.uom_id%TYPE,
+                  quantita                    vendite.attivita_consumi.consumo_totale%TYPE,
+                  qta_operativa               vendite.attivita_consumi.consumo_totale%TYPE,
+                  uom_operativa_id            vendite.attivita_consumi.uom_id%TYPE,
+                  factor_to_base              numeric,
+                  competenza_mese             vendite.attivita_consumi.competenza_mese%TYPE,
+                  prezzo_snapshot             numeric,
+                  prezzo_bloccato             boolean,
+                  pricing_mode                character varying,
+                  tipo_movimento              character varying,
+                  tipo_consumo                character varying,
+                  valuta_id                   integer,
+                  meta                        jsonb,
+                  tipo_doc_fiscale_id         config.sorgenti.tipo_doc_fiscale_id%TYPE,
+                  termine_pagamento_id        config.termini_pagamento.id%TYPE,
+                  modalita_pagamento_id       config.modalita_pagamento.id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente risolta
+                -- per codice_interno (immutabile), non per codice (mutabile).
+                -- rev 2026-07-27 (brief emissione mirata PARTE B, D-6): a differenza
+                -- di ordini/contratti/DDT, qui fatturazione_immediata RESTA la
+                -- costante FALSE. Non e' una dimenticanza: e' dominio. Un consumo
+                -- e' una misura, la corsia la decide il contratto che lo governa.
+                -- Guard: p_consumo_id, se specificato, deve essere > 0.
+                IF p_consumo_id IS NOT NULL AND p_consumo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_list_consumi_da_pushare',
+                    'E_PUSH_SORGENTE_ID_INVALIDO',
+                    jsonb_build_object('parametro', 'p_consumo_id', 'valore', p_consumo_id),
+                    NULL::uuid,
+                    'p_consumo_id', p_consumo_id::text
+                  );
+                END IF;
+
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'ATTIVITA_CONSUMI' AND s.attivo IS TRUE
+                LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_consumi_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'ATTIVITA_CONSUMI'),
+                    NULL::uuid,
+                    'ATTIVITA_CONSUMI', 'config.sorgenti'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  ac.id, ac.uid,
+                  ac.billing_account_id,
+                  ba.utility_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(ac.billing_account_id),
+                  ac.periodo_dal, ac.periodo_al,
+                  -- fatturazione_immediata: costante FALSE PER SCELTA DI DOMINIO
+                  -- (D-6, 2026-07-27). I consumi seguono sempre la corsia
+                  -- differita; la corsia immediata si ottiene marcando il
+                  -- CONTRATTO che governa la fornitura, non la singola lettura.
+                  -- NON sostituire con una colonna: vedi header del changeSet.
+                  FALSE,
+                  v_sorgente_tipo_id,
+                  ac.uid::text,
+                  ('CONS:' || ac.uid::text)::varchar,
+                  NULL::uuid,
+                  ba.istanza_utility_id,
+                  COALESCE(ac.periodo_dal, ac.competenza_mese),
+                  ac.uom_id,
+                  ac.consumo_totale,
+                  ac.consumo_totale,
+                  ac.uom_id,
+                  1::numeric,
+                  ac.competenza_mese,
+                  NULL::numeric,
+                  -- prezzo_bloccato: FALSE per una ragione DIVERSA e non
+                  -- correlata alla precedente — un consumo non porta prezzo
+                  -- dalla sorgente (prezzo_snapshot NULL sopra), quindi non
+                  -- c'e' nulla da bloccare: il prezzo lo risolve il pricing.
+                  FALSE,
+                  'FIXED'::varchar,
+                  'NORMALE'::varchar,
+                  'CONSUMO'::varchar,
+                  NULL::integer,
+                  jsonb_build_object(
+                    'consumo_uid',         ac.uid,
+                    'stato_calcolo',       ac.stato_calcolo,
+                    'periodo_dal',         ac.periodo_dal,
+                    'periodo_al',          ac.periodo_al,
+                    'tipo_commessa',       'AUTO',
+                    'policy_fatturazione', 'DA_DOCUMENTO'
+                  ),
+                  v_tipo_doc_fiscale_id,
+                  NULL::bigint,
+                  NULL::integer
+                FROM vendite.attivita_consumi ac
+                JOIN anagrafiche.billing_account ba ON ba.id = ac.billing_account_id
+                WHERE ac.stato_calcolo = 'OK'
+                  AND ac.fattura_id IS NULL
+                  AND (p_competenza_mese IS NULL OR ac.competenza_mese = p_competenza_mese)
+                  AND (p_billing_account_id IS NULL OR ac.billing_account_id = p_billing_account_id)
+                  -- Estensione 2026-05: NULL = lista globale; NOT NULL = singolo consumo.
+                  AND (p_consumo_id IS NULL OR ac.id = p_consumo_id)
+                  -- Esclusione "gia' inviato" (rev 2026-10-12, 20261012-10): dal
+                  -- classificatore unico, sul segmento che questa funzione scrive
+                  -- ('CONS:<uid>', sopra). Il NOT EXISTS di prima cercava
+                  -- 'CONS:<uid>:%', con i due punti finali che il segmento base non
+                  -- ha: vedeva solo le righe del fan-out per componente
+                  -- (':COMP:<x>', HandlerConsumi._expand_rows), che e' uno stub
+                  -- RIMANDATO (Tid, 2026-06-16) e non ne scrive. ⚠️ Il giorno in cui
+                  -- il fan-out si accende deve usare il suffisso '#CMP:' che il
+                  -- classificatore vede (DEC-2), non ':COMP:'. Una riga ANNULLATA
+                  -- non occupa (D-5).
+                  AND script.fn_get_stato_push_segment(
+                        ('CONS:' || ac.uid::text)::varchar) = 'LIBERA'
+                ORDER BY ac.competenza_mese, ac.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(vendite.attivita_consumi.competenza_mese%TYPE, anagrafiche.billing_account.id%TYPE, integer, vendite.attivita_consumi.id%TYPE)
+              IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude i consumi gia'' mandati in commessa (script.fn_get_stato_push_segment, dal 2026-10-12). rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE (non piu'' solo emessi): il NOT EXISTS non filtra piu'' stato_emissione — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: NESSUN cambio di comportamento — documentata come scelta di dominio (D-6) la costante FALSE su fatturazione_immediata: a differenza di ordini/contratti/DDT i consumi NON hanno il flag, perche'' un consumo e'' una misura e la corsia la decide il contratto che lo governa. Non sostituire con una colonna — brief-db-emissione-fattura-per-documento-sorgente PARTE B. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i consumi non hanno un documento con condizioni di pagamento (rev 2026-08-03, T.1). rev 2026-10-12 (20261012-10, brief-db-annullo-a-valle-riapre-a-monte D-5): «gia'' mandato» dal classificatore unico script.fn_get_stato_push_segment(''CONS:<uid>'') invece del NOT EXISTS proprio, che cercava ''CONS:<uid>:%'' con due punti finali che il segmento scritto qui non ha, e quindi vedeva solo le righe del fan-out per componente '':COMP:<x>'' (stub rimandato, non ne scrive): il consumo gia'' mandato restava in lista, e all''idempotenza pensava solo l''ON CONFLICT dell''upsert nella stessa commessa. ⚠️ Quando il fan-out si accendera'' dovra'' usare il suffisso ''#CMP:'' che il classificatore vede. Una riga ANNULLATA non occupa: annullata la commessa, il consumo torna da mandare (D-7).';
+      rollback:
+        - sql:
+            dbms: postgresql
+            splitStatements: false
+            sql: |
+              CREATE OR REPLACE FUNCTION vendite.fn_list_consumi_da_pushare(
+                  p_competenza_mese    vendite.attivita_consumi.competenza_mese%TYPE DEFAULT NULL::date,
+                  p_billing_account_id anagrafiche.billing_account.id%TYPE            DEFAULT NULL::bigint,
+                  p_limit              integer                                       DEFAULT NULL::integer,
+                  p_consumo_id         vendite.attivita_consumi.id%TYPE              DEFAULT NULL::bigint)
+               RETURNS TABLE(
+                  consumo_id                  vendite.attivita_consumi.id%TYPE,
+                  consumo_uid                 vendite.attivita_consumi.uid%TYPE,
+                  billing_account_id          vendite.attivita_consumi.billing_account_id%TYPE,
+                  utility_id                  anagrafiche.billing_account.utility_id%TYPE,
+                  emittente_soggetto_ruolo_id bigint,
+                  competenza_dal              date,
+                  competenza_al               date,
+                  -- boolean nudo per SCELTA: non esiste (e non deve esistere)
+                  -- una colonna vendite.attivita_consumi.fatturazione_immediata
+                  -- a cui ancorare il %TYPE. Vedi D-6 nell'header.
+                  fatturazione_immediata      boolean,
+                  sorgente_tipo_id            config.sorgenti.id%TYPE,
+                  sorgente_uid                text,
+                  segment_key                 character varying,
+                  articolo_id                 uuid,
+                  istanza_utility_id          anagrafiche.billing_account.istanza_utility_id%TYPE,
+                  data_attivita               date,
+                  uom_id                      vendite.attivita_consumi.uom_id%TYPE,
+                  quantita                    vendite.attivita_consumi.consumo_totale%TYPE,
+                  qta_operativa               vendite.attivita_consumi.consumo_totale%TYPE,
+                  uom_operativa_id            vendite.attivita_consumi.uom_id%TYPE,
+                  factor_to_base              numeric,
+                  competenza_mese             vendite.attivita_consumi.competenza_mese%TYPE,
+                  prezzo_snapshot             numeric,
+                  prezzo_bloccato             boolean,
+                  pricing_mode                character varying,
+                  tipo_movimento              character varying,
+                  tipo_consumo                character varying,
+                  valuta_id                   integer,
+                  meta                        jsonb,
+                  tipo_doc_fiscale_id         config.sorgenti.tipo_doc_fiscale_id%TYPE,
+                  termine_pagamento_id        config.termini_pagamento.id%TYPE,
+                  modalita_pagamento_id       config.modalita_pagamento.id%TYPE)
+               LANGUAGE plpgsql
+              AS $function$
+              DECLARE
+                v_sorgente_tipo_id    config.sorgenti.id%TYPE;
+                v_tipo_doc_fiscale_id config.sorgenti.tipo_doc_fiscale_id%TYPE;
+              BEGIN
+                -- rev 2026-06-28 (analisi-hardcoded-codice §3a): sorgente risolta
+                -- per codice_interno (immutabile), non per codice (mutabile).
+                -- rev 2026-07-27 (brief emissione mirata PARTE B, D-6): a differenza
+                -- di ordini/contratti/DDT, qui fatturazione_immediata RESTA la
+                -- costante FALSE. Non e' una dimenticanza: e' dominio. Un consumo
+                -- e' una misura, la corsia la decide il contratto che lo governa.
+                -- Guard: p_consumo_id, se specificato, deve essere > 0.
+                IF p_consumo_id IS NOT NULL AND p_consumo_id <= 0 THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite',
+                    'fn_list_consumi_da_pushare',
+                    'E_PUSH_SORGENTE_ID_INVALIDO',
+                    jsonb_build_object('parametro', 'p_consumo_id', 'valore', p_consumo_id),
+                    NULL::uuid,
+                    'p_consumo_id', p_consumo_id::text
+                  );
+                END IF;
+
+                SELECT s.id, s.tipo_doc_fiscale_id
+                  INTO v_sorgente_tipo_id, v_tipo_doc_fiscale_id
+                FROM config.sorgenti s
+                WHERE s.codice_interno = 'ATTIVITA_CONSUMI' AND s.attivo IS TRUE
+                LIMIT 1;
+
+                IF v_sorgente_tipo_id IS NULL THEN
+                  PERFORM script.fn_log_and_raise_error(
+                    'vendite', 'fn_list_consumi_da_pushare', 'E_CODICE',
+                    jsonb_build_object('codice', 'ATTIVITA_CONSUMI'),
+                    NULL::uuid,
+                    'ATTIVITA_CONSUMI', 'config.sorgenti'
+                  );
+                END IF;
+
+                RETURN QUERY
+                SELECT
+                  ac.id, ac.uid,
+                  ac.billing_account_id,
+                  ba.utility_id,
+                  anagrafiche.fn_get_emittente_fiscale_id(ac.billing_account_id),
+                  ac.periodo_dal, ac.periodo_al,
+                  -- fatturazione_immediata: costante FALSE PER SCELTA DI DOMINIO
+                  -- (D-6, 2026-07-27). I consumi seguono sempre la corsia
+                  -- differita; la corsia immediata si ottiene marcando il
+                  -- CONTRATTO che governa la fornitura, non la singola lettura.
+                  -- NON sostituire con una colonna: vedi header del changeSet.
+                  FALSE,
+                  v_sorgente_tipo_id,
+                  ac.uid::text,
+                  ('CONS:' || ac.uid::text)::varchar,
+                  NULL::uuid,
+                  ba.istanza_utility_id,
+                  COALESCE(ac.periodo_dal, ac.competenza_mese),
+                  ac.uom_id,
+                  ac.consumo_totale,
+                  ac.consumo_totale,
+                  ac.uom_id,
+                  1::numeric,
+                  ac.competenza_mese,
+                  NULL::numeric,
+                  -- prezzo_bloccato: FALSE per una ragione DIVERSA e non
+                  -- correlata alla precedente — un consumo non porta prezzo
+                  -- dalla sorgente (prezzo_snapshot NULL sopra), quindi non
+                  -- c'e' nulla da bloccare: il prezzo lo risolve il pricing.
+                  FALSE,
+                  'FIXED'::varchar,
+                  'NORMALE'::varchar,
+                  'CONSUMO'::varchar,
+                  NULL::integer,
+                  jsonb_build_object(
+                    'consumo_uid',         ac.uid,
+                    'stato_calcolo',       ac.stato_calcolo,
+                    'periodo_dal',         ac.periodo_dal,
+                    'periodo_al',          ac.periodo_al,
+                    'tipo_commessa',       'AUTO',
+                    'policy_fatturazione', 'DA_DOCUMENTO'
+                  ),
+                  v_tipo_doc_fiscale_id,
+                  NULL::bigint,
+                  NULL::integer
+                FROM vendite.attivita_consumi ac
+                JOIN anagrafiche.billing_account ba ON ba.id = ac.billing_account_id
+                WHERE ac.stato_calcolo = 'OK'
+                  AND ac.fattura_id IS NULL
+                  AND (p_competenza_mese IS NULL OR ac.competenza_mese = p_competenza_mese)
+                  AND (p_billing_account_id IS NULL OR ac.billing_account_id = p_billing_account_id)
+                  -- Estensione 2026-05: NULL = lista globale; NOT NULL = singolo consumo.
+                  AND (p_consumo_id IS NULL OR ac.id = p_consumo_id)
+                  -- Esclusione "gia' inviato": basta l'ALLOCAZIONE (qualunque
+                  -- stato_emissione, ANNULLATA inclusa) — il match a prefisso
+                  -- per-documento era gia' corretto (vede anche i #CMP).
+                  AND NOT EXISTS (
+                    SELECT 1 FROM vendite.commesse_attivita ca
+                    WHERE ca.segment_key LIKE 'CONS:' || ac.uid::text || ':%'
+                  )
+                ORDER BY ac.competenza_mese, ac.id
+                LIMIT p_limit;
+              END
+              $function$;
+
+              COMMENT ON FUNCTION vendite.fn_list_consumi_da_pushare(p_competenza_mese date, p_billing_account_id bigint, p_limit integer, p_consumo_id bigint)
+              IS 'Lista consumi eligible al push su commessa (stato_calcolo OK, non fatturati). p_consumo_id (opzionale): NULL=lista globale batch, NOT NULL=singolo consumo. Tutti i filtri in AND. Esclude consumi gia` emessi via NOT EXISTS su commesse_attivita. rev 2026-06-28: sorgente per codice_interno (analisi-hardcoded-codice §3a). rev 2026-07-19: esclusione su ALLOCAZIONE (non piu'' solo emessi): il NOT EXISTS non filtra piu'' stato_emissione — brief-db-push-commessa-gia-inviato §4a. rev 2026-07-27: NESSUN cambio di comportamento — documentata come scelta di dominio (D-6) la costante FALSE su fatturazione_immediata: a differenza di ordini/contratti/DDT i consumi NON hanno il flag, perche'' un consumo e'' una misura e la corsia la decide il contratto che lo governa. Non sostituire con una colonna — brief-db-emissione-fattura-per-documento-sorgente PARTE B. Espone termine_pagamento_id e modalita_pagamento_id a NULL: i consumi non hanno un documento con condizioni di pagamento (rev 2026-08-03, T.1).';

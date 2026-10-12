@@ -376,7 +376,8 @@ BEGIN
             v_r.uom_id, 1, v_mese, v_mese,
             (v_mese + INTERVAL '1 month - 1 day')::date,
             v_r.tipo_doc_fiscale_id, v_r.valuta_id, 10.000000, 'FIXED',
-            'APPROVATA', 'NON_EMESSA', NULL, NULL);
+            'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+            (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text);
 
     INSERT INTO vendite.fatturazione_lotti
         (codice, competenza_mese, tipo_doc_fiscale_id,
@@ -386,7 +387,8 @@ BEGIN
     RETURNING id INTO v_lot;
 
     INSERT INTO tmp_dg_trat
-    VALUES (v_comm, vendite.fn_build_gruppo_fatturabile_key(NULL, NULL, v_comm), v_lot);
+    VALUES (v_comm, vendite.fn_build_gruppo_fatturabile_key(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm), v_lot);
 
     INSERT INTO vendite.fatturazione_lotti_esiti
         (lotto_id, gruppo_key, stato_esecuzione, errore_codice, errore_messaggio)

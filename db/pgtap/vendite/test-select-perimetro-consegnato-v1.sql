@@ -169,7 +169,8 @@ BEGIN
             v_rif.uom_id, 1, v_rif.mese, v_rif.mese,
             (v_rif.mese + INTERVAL '1 month - 1 day')::date,
             v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
-            'APPROVATA', 'NON_EMESSA', NULL, NULL);
+            'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+            (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text);
 
     INSERT INTO tmp_commessa_sel VALUES (v_comm);
 END

@@ -372,7 +372,11 @@ in `config.tabelle_gestibili`; `config.aree_funzionali` in sola lettura per l'ap
   (`work-in-progress/brief-db-annullo-a-valle-riapre-a-monte.md`, D30, 2026-10-11): annullare una commessa
   oggi non segnala niente e non riapre il preventivo (resta EVASO) ne' l'ordine. Principio di Tid: tornare
   indietro riapre a monte con la segnalazione, in avanti e' bloccato, un unico meccanismo (la forma di D29).
-  Decisioni chiuse il 2026-10-11; al team DB, poi `CommessaGestioneDrawer` con la finestra comune.
+  Decisioni D-1…D-4 il 2026-10-11, D-5…D-10 il 2026-10-12 dopo la lettura critica del team DB (§7): una riga
+  di commessa ANNULLATA non occupa piu' il documento; «Evaso» dell'ordine = solo bolle; eccezione motivata per
+  la commessa a valle (conferma, non blocco); e tutto il verso in avanti verso la commessa passa al DB (il BE
+  ritira le sue tre copie). ✅ DB scritto e provato il 2026-10-12 (`20261012-08 … -24`, §8; pgTAP nuovi 31/31 e
+  6/6 sullo scratch, regressione su 145 file senza differenze): da applicare. Poi BE/FE (§6).
 - ✅ **L'emittente del documento e' quello del cliente: chiuso il 2026-10-10**
   (`work-done/brief-db-guard-emittente-ba-unico.md`, D22): il guard emittente <-> BA estratto in un BB
   (`script.trgfn_doc_guard_emittente_ba`), un codice e una frase leggibile; DB `20261010-17…-19`, BE §9. Il seguito

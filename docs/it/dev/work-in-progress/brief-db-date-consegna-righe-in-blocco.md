@@ -185,7 +185,25 @@ righe di catalogo, in transazione annullata; preConditions provate a parte):
   `test-fn-push-preventivo-a-ordine-v1`);
 * rollback provato in ordine inverso: zero funzioni, vista con le sue 30 colonne.
 
-L'apply, il pgTAP **come app** (RLS vera) e la corsa intera li ha fatti Tid dopo: verdi. Gli avvisi `fn_log_error_only … fk_error_log_messaggio_errore_id` della prova sono
+L'apply, il pgTAP **come app** (RLS vera) e la corsa intera li ha fatti Tid dopo: verdi.
+
+⚠️ **Un rosso nuovo su `zeroerp_ci` dopo l'apply, non causato da questi oggetti** (2026-10-12):
+`dbops/test-vw-funzioni-check-codici-sotto-jit-v1.sql` test 3 —
+`dbops.vw_punti_canale_campo` stima 191.880 contro la soglia 100.000 (e la sorella
+`vw_funzioni_check_codici`, test 1, è a 91.674: il file la dava a ~9.400 il 2026-10-10).
+Misurato in transazione annullata: **togliendo tutti e quattro i changeSet la stima non cambia di
+un decimale**. A cambiare sono le **statistiche di `pg_proc`**: l'autoanalyze è scattato alle
+00:15:43, un minuto dopo l'apply (00:14:39), e la stima della CTE `motivo` dipende dai `rows`
+che il pianificatore ricava da quelle statistiche (join su `proname`, ricorsione `codici_rec`).
+La premessa del test — «la stima viene dalla STRUTTURA, non dai dati: uguale in CI» — non regge:
+viene dalle statistiche del catalogo, che un autoanalyze rinfresca.
+✅ **Corretto** (2026-10-12, su indicazione di Tid, senza brief a parte): `20261012-25`
+(`dbops.fn_regexp_occorrenze`, le occorrenze di una regex con `ROWS 1` dichiarato) e `20261012-26`
+(`dbops.vw_funzioni_check_codici`: le sei estrazioni dall'helper, `unnest(regexp_split_to_array)`
+al posto di `regexp_split_to_table`, l'estrazione delle deleghe materializzata). Righe identiche
+sulle tre viste; stima da 92.006 / 92.963 / 192.883 a 11.586 / 12.700 / 32.135, e sotto la soglia
+anche col prefiltro forzato a 594 corpi; ~320 ms senza JIT contro ~560. Il pgTAP del presidio ha la
+premessa corretta e due test nuovi (4, 5) sulle proprietà invisibili della cura. Da applicare. Gli avvisi `fn_log_error_only … fk_error_log_messaggio_errore_id` della prova sono
 dell'estratto: il log via dblink non vede la riga di catalogo non committata.
 
 ## 5. Ricaduta BE/FE (dopo la consegna DB)

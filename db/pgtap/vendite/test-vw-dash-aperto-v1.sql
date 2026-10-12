@@ -312,7 +312,8 @@ SELECT (SELECT id FROM tmp_ap_commessa),
        r.articolo_id, r.istanza_utility_id, DATE '2080-02-01', r.uom_id, 1,
        DATE '2080-02-01', DATE '2080-02-01', DATE '2080-02-28',
        r.tipo_doc_fiscale_id, r.valuta_id, 33.000000, 'FIXED',
-       'BOZZA', 'NON_EMESSA', NULL, NULL
+       'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         ((SELECT id FROM tmp_ap_commessa))::text
 FROM tmp_ap_refs r;
 
 -- ============================================================

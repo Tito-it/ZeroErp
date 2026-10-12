@@ -31,6 +31,11 @@ preventivo `ACCETTATO` verso un nuovo **ordine `DRAFT`** con
   (sezione 8): gate bi-ramo (`fn_preventivo_ha_residuo_ordine` +
   `fn_preventivo_ha_residuo_commessa`), atomico con la creazione dell'ordine.
   Niente più «ordine creato + preventivo bloccato in ACCETTATO».
+  ⭐ rev 2026-10-12 (`20261012-13`, brief-db-annullo-a-valle-riapre-a-monte
+  D-10): la sezione 8 non scrive più la regola, chiama il building block
+  [`fn_preventivo_proietta_stato_smistamento`](/dbzero/vendite/funzioni/fn_preventivo_proietta_stato_smistamento),
+  la sede unica di `ACCETTATO ↔ EVASO` (la leggono anche l'annullo dell'ordine e
+  l'invio in commessa). Stesso esito.
 * **`flusso_id` sul link COLLEGATO (D-B).** Nuovo parametro `p_flusso_id`
   (`DEFAULT NULL`, retro-compatibile): valorizza `pratiche_sorgenti.flusso_id`
   sul link `ORDINE` COLLEGATO alla generazione (lo step generatore conosce il

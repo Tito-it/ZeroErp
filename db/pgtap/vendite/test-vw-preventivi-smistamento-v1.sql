@@ -17,7 +17,12 @@
 --   3) Riga servizio EMESSA -> IN_COMMESSA
 --   4) Riga servizio residua -> RESIDUA
 --   5) Riga natura NULL -> destinazione COMMESSA (pregresso), RESIDUA
---   6) Allineamento predicato: ca NON_EMESSA non conta (riga resta RESIDUA)
+--   6) Allineamento predicato col classificatore unico (rev 2026-10-12,
+--      20261012-11, brief-db-annullo-a-valle-riapre-a-monte D-5): una ca
+--      NON_EMESSA porta la riga IN_COMMESSA (6a); ritirata (ANNULLATA) la
+--      riga torna RESIDUA (6b). Prima il test fissava «NON_EMESSA non conta»,
+--      cioe' l'allineamento a un predicato che la vista smistabili non ha piu'
+--      dal 2026-06-28.
 --   7) Aggregata: contatori per ramo corretti
 --   8) Aggregata: righe_residue = 2 (progress X/Y -> EVASO)
 -- ------------------------------------------------------------
@@ -38,7 +43,7 @@ SET CONSTRAINTS ALL IMMEDIATE;
 -- Brief: brief-db-pgtap-runner-rls-baseline §8.
 DO $ctx$ BEGIN PERFORM script.fn_pgtap_set_contesto_operatore(); END $ctx$;
 
-SELECT plan(9);
+SELECT plan(10);
 
 -- ============================================================
 -- 0) Riferimenti minimi + classificazione nature
@@ -252,7 +257,7 @@ SELECT ok(
 );
 
 -- ============================================================
--- 6) Allineamento predicato: ca NON_EMESSA non conta
+-- 6) Allineamento predicato col classificatore unico (D-5)
 -- ============================================================
 INSERT INTO vendite.commesse_attivita (
   commessa_id, segment_key,
@@ -276,8 +281,21 @@ FROM tmp_vs_refs r;
 SELECT is(
   (SELECT v.stato_smistamento FROM vendite.vw_preventivi_smistamento_righe v
     WHERE v.riga_id = (SELECT id FROM tmp_vs_riga_serv_residua)),
+  'IN_COMMESSA',
+  '6a. Attivita NON_EMESSA: la riga e'' IN_COMMESSA (stessa domanda del push: gia'' mandata)'
+);
+
+-- La riga si ritira (come all'annullo della commessa): non occupa piu'.
+UPDATE vendite.commesse_attivita
+   SET stato_emissione = 'ANNULLATA'
+ WHERE segment_key = 'PREV:' || (SELECT uid FROM tmp_vs_prev)::text || ':R:'
+                     || (SELECT id FROM tmp_vs_riga_serv_residua)::text;
+
+SELECT is(
+  (SELECT v.stato_smistamento FROM vendite.vw_preventivi_smistamento_righe v
+    WHERE v.riga_id = (SELECT id FROM tmp_vs_riga_serv_residua)),
   'RESIDUA',
-  '6. Attivita NON_EMESSA non conta: la riga resta RESIDUA (predicato allineato a EMESSA)'
+  '6b. Attivita ritirata (ANNULLATA): la riga torna RESIDUA'
 );
 
 -- ============================================================

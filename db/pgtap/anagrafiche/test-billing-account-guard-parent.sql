@@ -277,19 +277,21 @@ BEGIN
         script.fn_pgtap_emittente_sr_operatore()
     ) RETURNING id INTO v_commessa_id;
 
-    -- Commessa attivita
+    -- Commessa attivita. -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
     INSERT INTO vendite.commesse_attivita (
         commessa_id, segment_key, articolo_id, istanza_utility_id,
         data_attivita, uom_id, quantita,
         competenza_mese, competenza_dal, competenza_al,
-        prezzo_snapshot, tipo_doc_fiscale_id, valuta_id
+        prezzo_snapshot, tipo_doc_fiscale_id, valuta_id,
+        sorgente_tipo_id, sorgente_uid
     ) VALUES (
         v_commessa_id, 'TST-SEG-01', v_articolo_id, v_child1_istanza_id,
         script.fn_data_operativa(), v_uom_id, 1,
         date_trunc('month', script.fn_data_operativa())::date,
         date_trunc('month', script.fn_data_operativa())::date,
         (date_trunc('month', script.fn_data_operativa()) + interval '1 month - 1 day')::date,
-        10.00, v_tipo_doc_id, v_valuta_id
+        10.00, v_tipo_doc_id, v_valuta_id,
+        (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_commessa_id::text
     ) RETURNING id INTO v_commessa_attivita_id;
 
     -- Attivita fatturabili (NON fatturata) per BA figlio 1

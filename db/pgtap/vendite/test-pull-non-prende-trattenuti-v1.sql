@@ -187,11 +187,13 @@ BEGIN
                 v_rif.uom_id, 1, v_rif.mese, v_rif.mese,
                 (v_rif.mese + INTERVAL '1 month - 1 day')::date,
                 v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
-                'APPROVATA', 'NON_EMESSA', NULL, NULL)
+                'APPROVATA', 'NON_EMESSA', -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text)
         RETURNING id INTO v_ca;
 
         INSERT INTO tmp_pt VALUES (r.caso, v_comm, v_ca,
-            vendite.fn_build_gruppo_fatturabile_key(NULL, NULL, v_comm));
+            vendite.fn_build_gruppo_fatturabile_key(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm));
     END LOOP;
 
     -- Due lotti IN GIOCO: «altrui» tiene la commessa bloccata, «mio» e' quello
@@ -401,7 +403,8 @@ SELECT t.commessa_id,
        r.articolo_id, r.istanza_utility_id, r.mese,
        r.uom_id, 1, r.mese, r.mese, (r.mese + INTERVAL '1 month - 1 day')::date,
        r.tipo_doc_fiscale_id, r.valuta_id, 10.000000, 'FIXED',
-       'BOZZA', 'NON_EMESSA', NULL, NULL
+       'BOZZA', 'NON_EMESSA', (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'),
+         (t.commessa_id)::text
   FROM tmp_pt_rif r, tmp_pt t WHERE t.caso = 'bloccata';
 
 SELECT is(

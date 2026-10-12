@@ -184,7 +184,7 @@ SELECT is(
     (SELECT count(*)::int FROM pg_proc p
       WHERE regexp_replace(p.prosrc, '--[^\n]*', '', 'g') ~ 'fn_raise_primo_motivo_se_presente\s*\('
         AND p.proname <> 'fn_raise_primo_motivo_se_presente'),
-    38,
+    39,
     -- ⚠️ 2026-09-09: da 10 a 16. E' un'uguaglianza ESATTA, non una soglia:
     --   scende se una bonifica viene disfatta (ed e' il test che ha morso nella
     --   prova per mutazione), sale se qualcuno ne bonifica un'altra senza
@@ -291,7 +291,14 @@ SELECT is(
     --   (20261012-05), la stessa funzione da cui vendite.vw_ordini_righe_dettaglio
     --   spegne il cambio della data confermata su una riga gia' spedita
     --   (brief-db-date-consegna-righe-in-blocco, D-7).
-    'le trentotto funzioni bonificate chiamano l''helper');
+    -- ⭐ 2026-10-12: da 38 a 39. Un sito NUOVO nato sull'helper:
+    --   vendite.fn_documento_ritira_legami (20261012-22) solleva, PRIMA della
+    --   conferma dell'annullo con legami, il primo motivo della check che il
+    --   guard della testata solleverebbe (fn_check_preventivo_annullabile,
+    --   fn_check_ordine_annullabile, fn_check_commessa_annullabile,
+    --   fn_check_sorgente_chiudibile): prima cio' che vieta, poi la conferma
+    --   (brief-db-annullo-a-valle-riapre-a-monte, D-3).
+    'le trentanove funzioni bonificate chiamano l''helper');
 
 -- 6) ⚠️ Il marcatore non e' troppo LARGO. vendite.fn_cleanup_fatture_by_ids
 --    solleva un codice LETTERALE e dal primo motivo legge solo un valore per la

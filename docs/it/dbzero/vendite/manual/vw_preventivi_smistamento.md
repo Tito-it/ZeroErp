@@ -48,6 +48,8 @@ SELECT preventivo_numero,
 ### Note operative
 
 * `security_invoker = on` (policy RLS).
-* `righe_residue = 0` e' la condizione "tutte le righe smistate" coerente con
-  il gate EVASO lato BE (che usa le due fn `fn_preventivo_ha_residuo_*`).
+* `righe_residue = 0` e' la condizione "tutte le righe smistate", coerente con
+  il passaggio a `EVASO` del DB (`vendite.fn_preventivo_proietta_stato_smistamento`,
+  che usa le due fn `fn_preventivo_ha_residuo_*`; fino al 2026-10-12 lo faceva il
+  backend dopo l'invio in commessa).
 * Test: `db/pgtap/vendite/test-vw-preventivi-smistamento-v1.sql`.

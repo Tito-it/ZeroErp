@@ -23,11 +23,12 @@ Una riga e' eleggibile se:
 * `attivo IS TRUE`, `quantita > 0`, `prezzo_unitario >= 0`;
 * natura di riga NULL (pregresso pre-trigger, trattata COMMESSA) **oppure**
   `nature_vendita.destinazione_tipo = 'COMMESSA'`;
-* non gia' **instradata** in commessa (`NOT EXISTS` su `commesse_attivita`):
-  esclusa appena esiste un'attivita per il suo `segment_key`
-  `'PREV:<uid>:R:<riga_id>'` **oppure** per un suo componente BoM
-  `'PREV:<uid>:R:<riga_id>#CMP:%'` — **qualsiasi `stato_emissione`** —
-  idempotenza di riga.
+* non gia' **mandata** in commessa: `script.fn_get_stato_push_segment('PREV:<uid>:R:<riga_id>')
+  = 'LIBERA'` — il classificatore unico del «gia' inviato» (componenti `#CMP:` e
+  rettifiche `#RET:` compresi; una riga `ANNULLATA` non occupa) — idempotenza di
+  riga. ⭐ rev 2026-10-12 (`20261012-09`, brief-db-annullo-a-valle-riapre-a-monte
+  D-5): prima era un `NOT EXISTS` proprio, «qualsiasi `stato_emissione`»; annullata
+  la commessa, la riga non tornava mai smistabile.
 
 Le condizioni di **testata** (billing account, utility, stato ACCETTATO,
 competenza) restano fuori dalla vista: le applica chi la consuma, come per la

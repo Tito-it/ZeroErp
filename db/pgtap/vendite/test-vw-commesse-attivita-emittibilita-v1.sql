@@ -183,13 +183,15 @@ BEGIN
                 ((v_rif.mese + (r.off_mese || ' month')::interval)
                   + INTERVAL '1 month - 1 day')::date,
                 v_rif.tipo_doc_fiscale_id, v_rif.valuta_id, 10.000000, 'FIXED',
-                r.approvazione, r.emissione, NULL, NULL)
+                r.approvazione, r.emissione, -- La riga NORMALE ha la sua sorgente (vincolo 20261012-27).
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text)
         RETURNING id INTO v_ca;
 
         INSERT INTO tmp_ce VALUES (
             r.caso, v_comm, v_ca,
             -- ⭐ La chiave si CHIEDE alla sola fonte, non si scrive a mano.
-            vendite.fn_build_gruppo_fatturabile_key(NULL, NULL, v_comm));
+            vendite.fn_build_gruppo_fatturabile_key(
+                (SELECT s.id FROM config.sorgenti s WHERE s.codice_interno = 'COMMESSA'), v_comm::text, v_comm));
     END LOOP;
 END;
 $fixture$;
