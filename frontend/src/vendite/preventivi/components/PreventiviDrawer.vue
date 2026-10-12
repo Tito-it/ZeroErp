@@ -49,6 +49,8 @@ import PreventivoNoteDrawer from '../../components/PreventivoNoteDrawer.vue'
 import PreventivoEmissioneDialog from './dialogs/PreventivoEmissioneDialog.vue'
 import PreventivoAccettazioneDialog from './dialogs/PreventivoAccettazioneDialog.vue'
 import DocumentoAnnulloLegamiDialog from '../../_shared/annullo/DocumentoAnnulloLegamiDialog.vue'
+import DateConsegnaRigheDialog from '../../_shared/dateConsegna/DateConsegnaRigheDialog.vue'
+import { useDateConsegnaRighe } from '../../_shared/dateConsegna/useDateConsegnaRighe'
 import Tag from 'primevue/tag'
 import Divider from 'primevue/divider'
 import Message from 'primevue/message'
@@ -890,6 +892,30 @@ async function onSmistato() {
   emit('changed')
 }
 
+// «Aggiorna date di consegna» (brief-db-date-consegna-righe-in-blocco): la
+// riga di preventivo porta la sola data richiesta, e si scrive in bozza (D-3,
+// D-4). Fuori bozza l'azione non compare: `can_edit_righe` non porta un
+// motivo (BF-3). In readonly puro — anche una revisione superata — nemmeno.
+const dateConsegna = useDateConsegnaRighe({
+  colonne: [{
+    colonna: 'data_consegna_richiesta_cliente',
+    labelKey: 'vendite.preventivi.riga_data_consegna_richiesta_cliente',
+    attiva: () => caps.flag('can_edit_righe'),
+  }],
+  readonlyPuro: () => isReadonlyPuro.value,
+  presente: () => hasDetail.value,
+})
+const dateConsegnaAzione = dateConsegna.azione
+const dateConsegnaVisible = dateConsegna.dialogVisible
+const dateConsegnaColonne = dateConsegna.colonneAttive
+
+// Scopo: le date sono cambiate sulle righe: si rileggono le righe e la
+//        testata, come dopo il verbo per riga (`@changed` della tabella righe).
+function onDateConsegnaAggiornate() {
+  righeTableRef.value?.loadRighe()
+  loadDetail()
+}
+
 // Azioni della testata preventivo consumate da DrawerActionsBar.
 // Read-only PURO (permesso LETTURA / pannello split / readonly forzato): le
 // azioni di stato (Accetta/Rifiuta/Annulla/revisione) — che abilitano un
@@ -936,6 +962,7 @@ const drawerActions = computed(() => {
       command: () => { smistamentoDialogVisible.value = true },
     })
   }
+  list.push(...dateConsegnaAzione.value)
   list.push({
     key: 'manage-note',
     kind: 'manage',
@@ -1219,6 +1246,15 @@ const drawerActions = computed(() => {
     :preventivo-id="effectivePreventivoId"
     :consuntivo="isReadonlyPuro"
     @smistato="onSmistato"
+  />
+
+  <DateConsegnaRigheDialog
+    v-if="effectivePreventivoId"
+    v-model:visible="dateConsegnaVisible"
+    :invia="(payload) => store.aggiornaDateConsegna(effectivePreventivoId, payload)"
+    :colonne="dateConsegnaColonne"
+    :readonly="isReadonlyPuro"
+    @aggiornate="onDateConsegnaAggiornate"
   />
 </template>
 

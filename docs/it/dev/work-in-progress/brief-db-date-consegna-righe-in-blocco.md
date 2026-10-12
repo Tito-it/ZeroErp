@@ -1,10 +1,30 @@
 # Brief DB — Le date di consegna delle righe, aggiornate in blocco
 
+## ⏭️ Chi riparte — aggiornato al 2026-10-12
+
+**Riparte: Tid**, collaudo a video del lato BE/FE (§8), poi archiviazione.
+
+| # | Chi | Che cosa | Dove | Aspetta |
+| --- | --- | --- | --- | --- |
+| 1 | BE/FE | policy, ripiego e locales del codice nuovo | §5 | ✅ 2026-10-12 |
+| 2 | BE | repository + service + due endpoint `…/righe/date-consegna/`, verbo per riga sulla stessa funzione, test (anche sul DB vero) | §5, §8 | ✅ 2026-10-12 |
+| 3 | FE | dialog condiviso, azione nei drawer ordine e preventivo, kebab di riga spento dal motivo di riga, spec | §5, §8 | ✅ 2026-10-12 |
+| 4 | BE/FE | guide `gestione-ordini` §3.5 e `gestione-preventivi`, doc API, cataloghi BB | §5 | ✅ 2026-10-12 |
+| 5 | Tid | revisione: anteprima vera, scritture dallo store, esito intero | §8.1 | ✅ 2026-10-12 |
+| 6 | Tid | collaudo a video, poi archiviazione in `work-done/` | — | — |
+
+**Decisioni aperte di Tid:** la regola del 2 lato DB (§4.1, ⚠️: (a) o (b)).
+**Da committare:** sì, tutto il lavoro BE/FE, compresa la revisione (§8.1).
+⚠️ **Prima del commit**: `test_error_policies_divergenza_db` è rosso sul DB di sviluppo per una
+nota di `E_DOC_ANNULLO_CON_LEGAMI` che un'altra sessione DB ha cambiato e non ha ancora pushato
+(brief-db-annullo-a-valle-riapre-a-monte). Non è di questo lavoro: `error_policies_generated.py`
+qui porta la sola voce `E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA`, e si rigenera quando quel CSV è in git.
+
 > **Chi scrive:** sessione DB (`dev/db-tid`), 2026-10-11, su decisione di Tid. **A chi:** team DB
 > (§4), poi BE/FE (§5).
 > **Stato:** ✅ **lato DB applicato, pgTAP verdi** (Tid, 2026-10-12; §4.6): quattro changeSet
-> `20261012-04 … -07`, il codice nuovo nei due CSV, un pgTAP nuovo e due adeguati. Ora tocca a
-> BE/FE (§5).
+> `20261012-04 … -07`, il codice nuovo nei due CSV, un pgTAP nuovo e due adeguati.
+> ✅ **Lato BE/FE scritto e rivisto** (2026-10-12, §8 e §8.1): resta il collaudo a video.
 > Decisioni D-1 … D-7 e P-1 prese da Tid il 2026-10-11 (§3, §6). Resta una scelta per Tid sulla
 > regola del 2 (§4.1, ⚠️).
 > **Storia:** la prima versione (sessione BE, stesso giorno, col nome
@@ -211,3 +231,46 @@ dell'estratto: il log via dblink non vede la riga di catalogo non committata.
   ⑪) si guarda lì.
 * Una data di testata, proposta o calcolata (D-1; P-6 per quella calcolata, che è già il `min` di
   `vw_ordini_lista`).
+
+## 8. Lato BE/FE — il disegno e tre decisioni (Tid, 2026-10-12)
+
+**Il disegno** (dichiarato prima del codice, regola del 2, ok Tid):
+
+* **Repository** — `RigheDocumentoRepositoryMixin.scrivi_data_consegna(...)`: ogni repository
+  dichiara le sue colonne (ordine: le due date, la confermata con la check di riga; preventivo: la
+  sola richiesta). Un solo `UPDATE` in una CTE, ritorna `aggiornate` e `saltate_spedite`;
+  `anteprima` esegue lo stesso `UPDATE` in un savepoint e lo annulla (2026-10-12, dopo la revisione:
+  contare con una `SELECT` a parte non passava dai lock, e in uno stato che non ammette la colonna
+  l'anteprima dava un numero e la scrittura il 409). Con una riga sola (il verbo per riga) non salta niente: parla il
+  guard col codice nuovo.
+* **Service** — `apps/vendite/services/_date_consegna_righe.py`, condiviso da ordini e preventivi:
+  valida colonna (whitelist da `colonne_date_consegna()` del repository), data (obbligatoria) e
+  modalità `TUTTE` / `SOLO_VUOTE`. Nessun pre-check di stato.
+* **Endpoint** — `POST …/ordini/<id>/righe/date-consegna/`, `POST …/preventivi/<id>/righe/date-consegna/`.
+* **FE** — `vendite/_shared/dateConsegna/`: il dialog `DateConsegnaRigheDialog.vue` (colonna, data,
+  modalità; «Tutte» chiede l'anteprima e conferma col numero di righe), il composable
+  `useDateConsegnaRighe` (l'azione «Aggiorna date di consegna» nella barra del drawer, dalle
+  capability) e la factory `makeDateConsegnaApi(BASE)`, esportata dall'API di ciascun dominio. Il
+  dialog **non chiama l'API**: scrive con l'azione dello store del dominio, che riceve in `invia`
+  (§8.1). Il kebab di riga dell'ordine si spegne anche sul motivo di riga, con l'helper
+  `motivoDaCodiceBlocco` di `bloccoMotivo.js` (seconda occorrenza dopo `DdtRigaForm`, che passa
+  sull'helper nello stesso giro).
+
+| # | Domanda | Decisione |
+| --- | --- | --- |
+| **BF-1** | Quali righe salta l'utility? | **Solo quelle col motivo `RIGA_SPEDITA`** (`check @> '[{"reason":"RIGA_SPEDITA"}]'`), non tutte quelle con `check <> '[]'` come diceva il §5: con lo stato che non ammette la modifica il filtro del §5 salterebbe ogni riga e risponderebbe «0 aggiornate, N spedite», falso. Così il motivo di stato va all'`UPDATE` e lo rifiuta il lock (409) |
+| **BF-2** | Preventivo con una riga `PENDING` di approvazione prezzo? | Il gesto fallisce per intero col 409 di `trgfn_righe_guard_pending`: giudica il DB, e il brief salta solo le spedite |
+| **BF-3** | Azione senza colonne attive? | Ordine: visibile e spenta col motivo della data confermata. Preventivo fuori bozza: non compare (`can_edit_righe` non porta un motivo), come «Nuova riga» |
+
+### 8.1 La revisione di Tid (2026-10-12)
+
+Tre correzioni dopo la prima scrittura. Le prime due toglievano difetti che non davano errore.
+
+| # | Che cosa non andava | Com'è ora |
+| --- | --- | --- |
+| **R-1** | L'anteprima contava con una `SELECT` a parte, che non passa dai trigger. In uno stato che non ammette la colonna diceva «5 righe», e poi la scrittura prendeva il 409 | `anteprima` esegue **lo stesso `UPDATE`** in un savepoint e lo annulla: i lock e il guard girano davvero, quindi il rifiuto arriva prima della domanda di conferma, e i numeri sono quelli della scrittura. Presidi: test 7 di `tests/db/test_date_consegna_righe_db.py`, test 8 di `DateConsegnaRigheDialog.spec.js` |
+| **R-2** | Il dialog chiamava l'API da sé, e lo stesso faceva `OrdineRigaDataConsegnaDialog`: dopo la scrittura le liste aperte in altre schede non venivano avvisate | Scrivono le azioni degli store, `ordini.aggiornaDateConsegna`, `ordini.cambiaDataConsegnaConfermata` e `preventivi.aggiornaDateConsegna`, che avvisano le liste (frontend-standards §«Producer cross-tab»); l'anteprima non avvisa. Il dialog riceve l'azione in `invia` |
+| **R-3** | L'esito ha una chiave `data` (la data scritta), e `useApiHandler.execute` lo scambiava per un envelope: al dialog arrivava la sola data, e i conteggi andavano persi | Le azioni `aggiornaDateConsegna` degli store ritornano la **response** e non l'esito, così `execute` spacchetta l'envelope una volta sola. Presidi: test «l'esito con la chiave `data` arriva intero» del dialog e gli spec dei due store |
+
+Verifica dopo la revisione (2026-10-12): test BE del service, sul DB vero e del service ordini, 83 verdi; spec FE di
+dialog, composable, store e `bloccoMotivo`, 27 verdi.

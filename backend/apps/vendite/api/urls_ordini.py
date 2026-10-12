@@ -35,6 +35,7 @@ from apps.vendite.api.views_ordini import (
     ApiOrdineRigaComponenteDetail,
     ApiOrdineRigaComponentiList,
     ApiOrdineRigaDataConsegnaConfermata,
+    ApiOrdineRigheDateConsegna,
     ApiOrdineRigaDetail,
     ApiOrdineRigaPreviewComponenti,
     ApiOrdineRighe,
@@ -110,6 +111,9 @@ urlpatterns = [
          name="vendite-ordine-righe-lista"),
     path("<int:ordine_id>/righe/lista/export/", ApiOrdineRigheListaExportView.as_view(),
          name="vendite-ordine-righe-lista-export"),
+    # Le date di consegna in blocco (brief-db-date-consegna-righe-in-blocco).
+    path("<int:ordine_id>/righe/date-consegna/", ApiOrdineRigheDateConsegna.as_view(),
+         name="vendite-ordine-righe-date-consegna"),
     path("<int:ordine_id>/righe/preview-componenti/",
          ApiOrdineRigaPreviewComponenti.as_view(),
          name="vendite-ordine-righe-preview-componenti"),

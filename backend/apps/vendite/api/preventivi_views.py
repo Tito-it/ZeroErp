@@ -37,6 +37,7 @@ from apps.vendite.services import preventivi_service
 from apps.ui.api.lista_figlia_views import EMITTENTE_DOCUMENTO_PARAM, build_lista_figlia_views
 from apps.vendite.db.preventivi_repository import PreventiviRepository
 from apps.core.api.openapi_params import param_ricerca_full
+from apps.vendite.api._date_consegna_schema import DATE_CONSEGNA_REQUEST, DATE_CONSEGNA_RESPONSE
 from apps.vendite.api._schema_da_contratto import schema_da_contratto
 from apps.vendite.api._componenti_schema import (
     COMPONENTE_PATCH_REQUEST,
@@ -741,6 +742,27 @@ class ApiPreventivoRigaDetail(DomainAPIView):
     def delete(self, request: Request, preventivo_id: int, riga_id: int) -> JsonResponse:
         result = preventivi_service.elimina_riga(preventivo_id, riga_id)
         return success_response(result)
+
+
+class ApiPreventivoRigheDateConsegna(DomainAPIView):
+    """POST /api/v1/vendite/preventivi/<preventivo_id>/righe/date-consegna/.
+
+    «Aggiorna date di consegna»: la data richiesta dal cliente su piu' righe,
+    TUTTE o SOLO_VUOTE (brief-db-date-consegna-righe-in-blocco). Il lock delle
+    righe la ammette solo in bozza.
+    """
+
+    area_funzionale = "vendite"
+    model_permission = ("vendite", "preventivo")
+
+    @extend_schema(request=DATE_CONSEGNA_REQUEST, responses={200: DATE_CONSEGNA_RESPONSE})
+    def post(self, request: Request, preventivo_id: int) -> JsonResponse:
+        return handle_post_json(
+            request,
+            handler=lambda payload: preventivi_service.aggiorna_date_consegna(
+                int(preventivo_id), payload,
+            ),
+        )
 
 
 # ── Componenti BoM CASO A (refactor componenti 2026-05-11) ──

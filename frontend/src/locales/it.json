@@ -2108,6 +2108,21 @@
     "indirizzo_label": "Indirizzo"
   },
   "vendite": {
+    "date_consegna": {
+      "azione": "Aggiorna date di consegna",
+      "titolo": "Aggiorna date di consegna",
+      "intro": "Scrive una data di consegna su più righe del documento.",
+      "colonna": "Data da aggiornare",
+      "data": "Data",
+      "modalita": "Su quali righe",
+      "modalita_solo_vuote": "Solo le righe senza data",
+      "modalita_tutte": "Tutte le righe (sovrascrive le date già scritte)",
+      "conferma_titolo": "Sovrascrivere le date?",
+      "conferma_tutte": "La data verrà scritta su {aggiornate} righe, sostituendo quelle già presenti. Continuare?",
+      "conferma_tutte_con_saltate": "La data verrà scritta su {aggiornate} righe, sostituendo quelle già presenti. {saltate} righe sono già partite con un DDT e restano come sono. Continuare?",
+      "esito": "Data di consegna aggiornata su {aggiornate} righe.",
+      "esito_con_saltate": "Data di consegna aggiornata su {aggiornate} righe; {saltate} già partite con un DDT restano come sono."
+    },
     "approvazioni_prezzo": {
       "page_title": "Approvazioni prezzo",
       "page_description": "Richieste in attesa di approvazione delle variazioni di prezzo proposte dagli operatori.",
@@ -3744,7 +3759,8 @@
       },
       "data_consegna_confermata_reason": {
         "in_bozza": "In bozza la data si cambia modificando la riga.",
-        "stato_non_ammette": "In questo stato la data di consegna non si cambia più."
+        "stato_non_ammette": "In questo stato la data di consegna non si cambia più.",
+        "riga_spedita": "La merce di questa riga è già partita con un DDT: la data di consegna confermata resta quella con cui è partita."
       },
       "azione_data_consegna_confermata": "Cambia la data di consegna confermata",
       "data_consegna_confermata_titolo": "Data di consegna confermata",

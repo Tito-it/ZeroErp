@@ -77,3 +77,20 @@ export function bloccoAttivo(riga, prefisso, campoFlag = null) {
   if (campoFlag && riga && campoFlag in riga) return riga[campoFlag] === false
   return Boolean(riga?.[`${prefisso}_reason`])
 }
+
+// Scopo: la frase di un verbo spento quando la riga porta il SOLO codice del
+//        motivo (`<verbo>_blocco`, linee-guida-sql §12.5.1: il `reason` del
+//        primo motivo della check, `NULL` = ammesso) e la chiave i18n e'
+//        convenzione del DB: `<prefissoChiave>.<codice minuscolo>`.
+//        Stringa vuota se il codice non c'e' (azione accesa).
+// ⭐ Estratto il 2026-10-12 alla seconda occorrenza (regola del 2, ok Tid,
+//    brief-db-date-consegna-righe-in-blocco §8): `correggi_qta_evasa_blocco`
+//    della riga di DDT e `data_consegna_confermata_blocco` della riga d'ordine.
+//    Fail-visible come `componiBloccoMotivo`: chiave non tradotta -> codice.
+export function motivoDaCodiceBlocco(t, te, codice, prefissoChiave) {
+  if (!codice) return ''
+  return componiBloccoMotivo(t, te, {
+    reason: codice,
+    reasonKey: `${prefissoChiave}.${String(codice).toLowerCase()}`,
+  })
+}

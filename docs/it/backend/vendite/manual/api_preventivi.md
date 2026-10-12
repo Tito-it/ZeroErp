@@ -401,6 +401,17 @@ Alimenta il dialog di smistamento riga-per-riga (§6c): ritorna **solo** le righ
 
 ---
 
+### 8a-bis. Date di consegna in blocco
+
+- Metodo: `POST`
+- Path: `/api/v1/vendite/preventivi/{id}/righe/date-consegna/`
+- Body JSON: `colonna` (`data_consegna_richiesta_cliente`, l'unica data della riga di preventivo), `data` (`AAAA-MM-GG`, **obbligatoria**), `modalita` (`TUTTE` | `SOLO_VUOTE`), `anteprima` (bool, opzionale: esegue lo stesso UPDATE e lo annulla — i numeri della scrittura, il rifiuto del DB già qui, niente resta scritto)
+- Scopo: scrive la stessa data richiesta su più righe attive, in un solo UPDATE ([brief-db-date-consegna-righe-in-blocco](/dev/work-in-progress/brief-db-date-consegna-righe-in-blocco) §5, §8). La giudica il lock delle righe: solo in `DRAFT`. Nessun pre-check di stato nel backend
+- Output `200`: `{ "data": { "documento_id": 9, "colonna": "data_consegna_richiesta_cliente", "data": "2026-11-20", "modalita": "SOLO_VUOTE", "anteprima": false, "aggiornate": 3, "saltate_spedite": 0 } }`
+- Errori: `E_PREV_NOT_FOUND` (404), `E_PREV_VALIDAZIONE` (400, col campo), `E_RIGA_DOC_NON_BOZZA` (409), `E_RIGA_PREZZO_PENDENTE` (409: una riga col prezzo in attesa di approvazione ferma il gesto per intero)
+
+---
+
 ### 8b. Suggerisci prezzo riga
 
 - Metodo: `POST`

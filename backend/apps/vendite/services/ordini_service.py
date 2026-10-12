@@ -30,6 +30,7 @@ from apps.core.api.payload_validators import paginated_envelope
 from apps.core.services.error_manager import ErrorManager
 from apps.vendite.services._cliente_dal_ba import FK_CLIENTE_DIVERSO_DA_BA
 from apps.vendite.services._righe_bozza_guard import richiedi_righe_in_bozza
+from apps.vendite.services._date_consegna_righe import aggiorna_date_consegna_righe
 from apps.vendite.services._annullo_con_legami import (
     DOCUMENTO_ORDINE,
     STATO_ANNULLATO,
@@ -1048,13 +1049,38 @@ def cambia_data_consegna_confermata(
     )
     data = {_DATA_CONSEGNA_CONFERMATA: empty_to_none(payload[_DATA_CONSEGNA_CONFERMATA])}
     _parse_date_riga(data, function_name=fn)
+    # ⭐ La stessa scrittura dell'utility in blocco (BB `scrivi_data_consegna`,
+    #    regola del 2), ristretta a questa riga: qui non si salta nulla, e una
+    #    riga gia' spedita e' un 409 `E_ORDINE_RIGA_DATA_CONSEGNA_SPEDITA` del
+    #    guard di riga (brief-db-date-consegna-righe-in-blocco, D-7).
     with _db_errors("cambia_data_consegna_confermata"):
-        repo.update_riga(riga_id, **data)
+        repo.scrivi_data_consegna(
+            ordine_id, _DATA_CONSEGNA_CONFERMATA, data[_DATA_CONSEGNA_CONFERMATA],
+            riga_id=riga_id,
+        )
     return {
         "ordine_id": ordine_id,
         "riga_id": riga_id,
         _DATA_CONSEGNA_CONFERMATA: data[_DATA_CONSEGNA_CONFERMATA],
     }
+
+
+# Scopo: «Aggiorna date di consegna» dell'ordine: una data su piu' righe, per
+#        la richiesta dal cliente o per la confermata, in modalita' TUTTE o
+#        SOLO_VUOTE (brief-db-date-consegna-righe-in-blocco, D-2). Le righe gia'
+#        spedite si saltano e si contano. Regola e forma nel BB
+#        `_date_consegna_righe`; qui solo la testata e il codice del dominio.
+def aggiorna_date_consegna(ordine_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    repo = OrdiniRepository()
+    _get_testata_or_raise(
+        repo, ordine_id, op="aggiorna_date_consegna", getter=repo.get_stato_codice,
+    )
+    with _db_errors("aggiorna_date_consegna"):
+        return aggiorna_date_consegna_righe(
+            repo, ordine_id, payload,
+            error_code="E_ORD_VALIDAZIONE",
+            function_name=f"{_FN}.aggiorna_date_consegna",
+        )
 
 
 # Scopo: Elimina riga ordine (HARD DELETE, solo DRAFT). I componenti BoM hanno

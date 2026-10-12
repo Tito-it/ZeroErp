@@ -246,9 +246,9 @@ La convenzione dei nomi è quella di `numero` / `numero_fornitore`: *non marcato
 la conferma lui).
 
 Entrambe sono **facoltative** e si scrivono con la riga (in `DRAFT`); nel form
-di riga sono due selettori di data, e la tabella delle righe mostra la
-**promessa** e, in sua assenza, la richiesta in tono attenuato. Una data
-malformata è un errore di validazione sul campo, non un errore del database.
+di riga sono due selettori di data, e la tabella delle righe le mostra in due
+colonne. Una data malformata è un errore di validazione sul campo, non un
+errore del database.
 
 ⛔ **Nessun vincolo fra le due date, ed è una scelta**: si può confermare
 *prima* di quanto chiesto, ed è una buona notizia. E nessun vincolo contro la
@@ -280,13 +280,41 @@ richiesta del cliente. Tre valori, e non si appiattiscono:
 Nel pannello la colonna «Ritardo» è un'etichetta: verde «In tempo» sullo zero,
 rossa «N gg di ritardo» sopra.
 
-> ⚠️ **Un fatto di modello dichiarato e non ancora deciso.** Le righe si
-> scrivono solo in `DRAFT`, ma la promessa si decide **alla conferma** e può
-> cambiare dopo (il fornitore ritarda). Il database, di proposito, non mette
-> nessun guard di stato su `data_consegna_confermata`; oggi però, con la
-> modifica righe limitata alla bozza, la promessa si scrive solo prima di
-> confermare. Serve un verbo suo per la data confermata su ordine
-> `CONFERMATO`, o un dialog di conferma che la raccolga: è un cantiere a sé.
+**La promessa dopo la conferma.** Le righe si modificano solo in `DRAFT`, ma
+la promessa si decide alla conferma e può cambiare dopo. Per questo la **data
+confermata** è l'unica colonna di riga che si scrive anche in `CONFERMATO` e
+`PARZIALMENTE_EVASO`: dal menu della riga, «Cambia la data di consegna
+confermata». Il campo vuoto toglie la promessa.
+
+⛔ **Una riga già spedita tiene la sua data.** Basta un DDT uscito dalla bozza,
+anche per una parte della quantità: da quel momento la data confermata della
+riga è quella con cui la merce è partita, e l'azione della riga è spenta col
+motivo. Se il DDT era un errore, annullarlo: la riga torna libera. Se la
+consegna è slittata, si annota nelle note dell'ordine.
+
+#### Aggiornare le date in blocco
+
+Un ordine che si consegna tutto insieme vuole la stessa data su tutte le righe.
+L'azione **«Aggiorna date di consegna»**, nella barra del drawer, chiede:
+
+- **quale data** — la richiesta dal cliente o la confermata, fra quelle che in
+  quel momento si possono scrivere. In `DRAFT` tutte e due; dopo la conferma la
+  sola confermata, e l'azione si spegne col motivo quando l'ordine è in uno
+  stato che non la ammette;
+- **la data**;
+- **su quali righe** — *solo quelle senza data*, oppure *tutte*, che
+  sovrascrive anche le date già scritte. Con «tutte» si vede prima quante righe
+  verranno toccate, e si conferma.
+
+Le righe già spedite si **saltano**: la data confermata resta quella con cui
+sono partite, e il messaggio finale dice quante sono. Ogni altro rifiuto ferma
+il gesto per intero, e nessuna riga cambia.
+
+> **Esempio.** Ordine di dodici righe, confermato. Si scrive «tutto il 20
+> novembre»: *Aggiorna date di consegna* → data confermata → 20/11 → *tutte*.
+> Il 15 il cliente chiede di spostare al 22, e quattro righe sono già partite
+> con un DDT: si ripete col 22, *tutte*. Otto righe passano al 22, e le quattro
+> spedite restano al 20.
 
 ---
 
