@@ -254,17 +254,21 @@ class PrezzoRigaCommessaDbTests(TestCase):
             cur.execute(
                 "SELECT segment_key, quantita, competenza_mese, articolo_id, prezzo_snapshot,"
                 " uom_id, istanza_utility_id, data_attivita, competenza_dal, competenza_al,"
-                " tipo_doc_fiscale_id, valuta_id"
+                " tipo_doc_fiscale_id, valuta_id, sorgente_tipo_id, sorgente_uid"
                 " FROM vendite.commesse_attivita WHERE id = %s",
                 [self.attivita],
             )
             (
                 segment_key, quantita, competenza_mese, articolo_id, prezzo, uom_id,
                 istanza_utility_id, data_attivita, competenza_dal, competenza_al,
-                tipo_doc_fiscale_id, valuta_id,
+                tipo_doc_fiscale_id, valuta_id, sorgente_tipo_id, sorgente_uid,
             ) = cur.fetchone()
 
         # Il re-push della stessa riga (stesso segmento: ramo ON CONFLICT).
+        # ⛔ Con la SUA sorgente, come il push vero: dal 2026-10-12 una riga
+        #   NORMALE senza sorgente non entra
+        #   (`chk_commesse_attivita_senza_sorgente_onere_rettifica`,
+        #   brief-db-annullo-a-valle-riapre-a-monte §8.5).
         esito = CommesseRepository().batch_upsert_attivita([CommessaAttivitaInput(
             commessa_id=self.commessa,
             segment_key=segment_key,
@@ -281,6 +285,8 @@ class PrezzoRigaCommessaDbTests(TestCase):
             valuta_id=valuta_id,
             listino_versione_id=self.v2,
             listino_riga_id=self.riga_v2,
+            sorgente_tipo_id=sorgente_tipo_id,
+            sorgente_uid=sorgente_uid,
         )])
         self.assertEqual(esito.errors, [])
         self.assertEqual(self._listino_riga_della_commessa(), self.riga_v2)
